@@ -19,6 +19,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
+from .ownership import hand_to_service
 from .wire import canonical
 
 KEY_FILE = "signing-key.pem"
@@ -107,6 +108,11 @@ def rotate(state_dir: Path) -> tuple[str, str]:
     old = KeyStore(state_dir)
     retired = state_dir / RETIRED_DIR
     retired.mkdir(mode=0o700, exist_ok=True)
-    (retired / f"{old.key_id}.pub").write_bytes(old.public_pems()[old.key_id])
+    pub = retired / f"{old.key_id}.pub"
+    pub.write_bytes(old.public_pems()[old.key_id])
     (state_dir / KEY_FILE).unlink()  # a retired key never signs again, so its private half is not kept
-    return old.key_id, KeyStore(state_dir).key_id
+    new = KeyStore(state_dir)
+    # Root runs this: everything it wrote is the service account's, or the restarted service could not read its own
+    # key (review of #269, M1).
+    hand_to_service(state_dir, retired, pub, state_dir / KEY_FILE)
+    return old.key_id, new.key_id

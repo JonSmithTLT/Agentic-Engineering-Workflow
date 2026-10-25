@@ -26,17 +26,20 @@ from urllib.parse import unquote
 
 from aew.errors import ValidationFailed
 
-from . import wire
+from . import CONFIRM_SOCK, REQUEST_SOCK, wire
 from .service import G3Service, Reply
 
 if sys.platform == "win32":
     raise ImportError("aew_g3.server runs on Linux only: G3's sockets are Unix filesystem sockets with SO_PEERCRED")
 
-REQUEST_SOCK, CONFIRM_SOCK = "request.sock", "confirm.sock"
 # The largest body the service reads: an O-01 set has at most 8 closed members, a few kilobytes; a megabyte is far
 # beyond any valid request, and anything larger is refused STRUCTURAL before it is parsed.
 MAX_BODY = 1024 * 1024
-_REF = r"([A-Za-z][A-Za-z0-9:._-]{2,127})"  # the wire's Ref, without '/', which no approval_ref the service makes holds
+# How long a connection may take to send its request: one that declares a body and stops sending holds a thread no
+# longer than this. Every client of G3 is local and sends at once; half a minute is a stall, never a slow client.
+REQUEST_TIMEOUT_S = 30
+# The wire's Ref, less '/', which no approval_ref the service makes holds and a path segment cannot carry.
+_REF = "(" + wire.schema()["$defs"]["Ref"]["pattern"].strip("^$").replace("/", "") + ")"
 _ROUTES: dict[str, list[tuple[str, re.Pattern[str], str]]] = {
     REQUEST_SOCK: [("POST", re.compile(r"^/g3/v1/approval-requests$"), "request"),
                    ("GET", re.compile(rf"^/g3/v1/approval-requests/{_REF}$"), "get"),
@@ -49,14 +52,15 @@ _ROUTES: dict[str, list[tuple[str, re.Pattern[str], str]]] = {
 def peer_uid(conn: socket.socket) -> int | None:
     """The connected peer's UID by ``SO_PEERCRED``, or None when it cannot be read."""
     try:
-        raw = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
-        return struct.unpack("3i", raw)[1]
+        raw = conn.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("iII"))
+        return struct.unpack("iII", raw)[1]  # struct ucred: pid_t is signed, uid_t and gid_t are not (#269, m6)
     except (OSError, AttributeError, struct.error):
         return None
 
 
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
+    timeout = REQUEST_TIMEOUT_S
 
     @property
     def _srv(self) -> _Server:
@@ -81,7 +85,19 @@ class _Handler(BaseHTTPRequestHandler):
         if data:
             self.wfile.write(data)
 
+    def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
+        """http.server's own refusals (a method with no handler, a malformed or over-long request line, a bad version)
+        go through the peer check and the wire like every other reply (G3-10, Interfaces; review of #269, m1)."""
+        self.close_connection = True
+        self.request_version = self.protocol_version  # a reply with headers, even to a line that never parsed
+        if code == 501:  # the request parsed, headers and all: its body is drained first, as _dispatch does (M2)
+            self._read_body()
+        if peer_uid(self.connection) != self._srv.operator_uid:
+            return self._send(wire.problem("PEER_NOT_PERMITTED"))
+        self._send(wire.problem("NOT_FOUND" if code in (404, 405, 501) else "STRUCTURAL"))
+
     def _dispatch(self, method: str) -> None:
+        raw = self._read_body()  # before any reply, so a refused client still receives its refusal (#269, M2)
         if peer_uid(self.connection) != self._srv.operator_uid:  # re-read on every request (G3-10)
             return self._send(wire.problem("PEER_NOT_PERMITTED"))
         path = unquote(self.path.split("?", 1)[0])
@@ -95,7 +111,7 @@ class _Handler(BaseHTTPRequestHandler):
         svc = self._srv.service
         if method == "GET":
             return self._send(svc.get(match.group(1)) if name == "get" else svc.list_pending())
-        body = self._body()
+        body = _parse(raw)
         if body is _BAD:
             return self._send(wire.problem("STRUCTURAL"))
         if name == "request":
@@ -104,17 +120,21 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(svc.consume(body))
         return self._send(svc.decide(match.group(1), body))
 
-    def _body(self) -> Any:
+    def _read_body(self) -> bytes | None:
+        """The declared body, read whole before the service answers: a client may still be sending it when the answer
+        is a refusal, and closing on it then would lose the refusal (review of #269, M2). None when the declared
+        length is not a length, or is over MAX_BODY: then at most MAX_BODY bytes are read, and dropped."""
+        declared = self.headers.get("Content-Length")
+        if declared is None:
+            return b""
         try:
-            n = int(self.headers.get("Content-Length", ""))
+            n = int(declared)
         except ValueError:
-            return _BAD
-        if n < 0 or n > MAX_BODY:
-            return _BAD
-        try:
-            return json.loads(self.rfile.read(n).decode("utf-8"))
-        except (ValueError, UnicodeDecodeError):
-            return _BAD
+            return None
+        if n < 0:
+            return None
+        data = self.rfile.read(min(n, MAX_BODY))
+        return data if n <= MAX_BODY else None
 
     def do_GET(self) -> None:  # noqa: N802 - http.server's name
         self._dispatch("GET")
@@ -124,6 +144,15 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 _BAD = object()
+
+
+def _parse(raw: bytes | None) -> Any:
+    if raw is None:
+        return _BAD
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, RecursionError):  # RecursionError: a body nested beyond the parser (m2)
+        return _BAD
 
 
 class _Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):

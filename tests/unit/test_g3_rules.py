@@ -19,9 +19,9 @@ from typing import Any
 
 import pytest
 
-from aew_g3 import pinstore, render, wire
+from aew_g3 import COMMAND, pinstore, render, wire
 from aew_g3.keys import KeyStore, rotate
-from aew_g3.ledger import LedgerUnavailable
+from aew_g3.ledger import Ledger, LedgerUnavailable
 from tests.helpers import g3 as G
 
 ACCEPTED = (200, 201, 204)
@@ -351,6 +351,22 @@ def test_n09_a_rendering_line_carrying_client_prose_or_another_value_is_renderin
     assert rig.svc.request(G.request_body(cs), lines=honest)[0] == 201, "control: the service's own rendering"
 
 
+def test_n09_the_regression_aids_own_injected_rendering_is_rendering_underived(tmp_path: Path) -> None:
+    """The vendored case itself (A-26 g3-cases.json N09, binding under addendum 1), over the set its rendering was made
+    from: P1's, with the member proof its own line shows (#269, n3). The control drops only the injected line, so the
+    refusal is that line's and no other's."""
+    rig = G.make(tmp_path, facts=G.P1_FACTS)
+    injected = G.cases()["N09"]["injected_rendering"]
+    req = copy.deepcopy(G.P1["approval_request"])
+    req["command_set"]["intents"][0]["origin_proof_ref"] = next(
+        ln["values"]["value"] for ln in injected if ln["source"].get("field_path") == "intents[0].origin_proof_ref")
+    prose = [ln for ln in injected if ln["source"]["kind"] == "TEMPLATE" and ln["values"]]
+    assert len(prose) == 1, prose  # the client's note on a template line, which G3-03 never shows
+    assert G.code(rig.svc.request(req, lines=injected)) == "RENDERING_UNDERIVED"
+    assert rig.svc.request(req, lines=[ln for ln in injected if ln not in prose])[0] == 201, \
+        "control: without the injected line the same rendering is derived, and the refusal took none of its proofs"
+
+
 def test_n16_every_covered_leaf_changes_the_rendering_and_dropping_any_one_is_rendering_incomplete(
         tmp_path: Path) -> None:
     rig = G.make(tmp_path)
@@ -408,6 +424,38 @@ def test_n11_approving_at_expires_at_is_approval_expired_and_one_second_before_i
     assert G.code(rig.svc.decide(late["approval_ref"], {"decision": "DECLINE"})) == "APPROVAL_EXPIRED"
     assert rig.svc.ledger.approval(late["approval_ref"]) is None
     assert rig.svc.list_pending() == (200, [])
+
+
+LONE_SURROGATE = chr(0xD800)  # a wire-valid JSON string ("\ud800") no keyboard can type, and no codec can encode
+
+
+def test_no_refused_decision_but_a_wrong_pin_on_an_open_approval_counts_toward_the_lockout(tmp_path: Path) -> None:
+    """Addendum 2 §1's order: a malformed decision, a decided or unknown approval, and an expired one are each refused
+    before the PIN is compared, and none counts (review of #269, m4 B2)."""
+    rig = G.make(tmp_path)
+    pin_id = pinstore.read(tmp_path).pin_id
+    _, expired = rig.svc.request(G.request_body(G.fresh_proofs(G.base_set())))
+    rig.clock.advance(minutes=10)
+    for decision, expected in (({"decision": "APPROVE", "pin": "wrong-pin"}, "APPROVAL_EXPIRED"),
+                               ({"decision": "APPROVE", "pin": "short"}, "STRUCTURAL"),
+                               ({"decision": "APPROVE"}, "STRUCTURAL"),
+                               ({"decision": "APPROVE", "pin": LONE_SURROGATE * 6}, "STRUCTURAL")):
+        assert G.code(rig.svc.decide(expired["approval_ref"], decision)) == expected, decision
+    assert G.code(rig.svc.decide("g3:approval:unknown", {"decision": "APPROVE", "pin": "wrong-pin"})) == "NOT_FOUND"
+    assert rig.svc.ledger.failures(pin_id) == 0
+    _, open_ = rig.svc.request(G.request_body(G.fresh_proofs(G.base_set())))
+    assert G.code(rig.svc.decide(open_["approval_ref"], {"decision": "APPROVE", "pin": "wrong-pin"})) == "PIN_INCORRECT"
+    assert rig.svc.ledger.failures(pin_id) == 1, "control: the one refusal that counts"
+
+
+def test_a_pin_that_is_not_utf8_is_structural_and_neither_counts_nor_decides(tmp_path: Path) -> None:
+    """A lone surrogate reaches _decide from json.loads: STRUCTURAL, not a dropped connection (review of #269, m2)."""
+    rig = G.make(tmp_path)
+    _, pending = rig.svc.request(G.request_body(G.fresh_proofs(G.base_set())))
+    pin = "abc" + LONE_SURROGATE + "def"
+    assert G.code(rig.svc.decide(pending["approval_ref"], {"decision": "APPROVE", "pin": pin})) == "STRUCTURAL"
+    assert rig.svc.ledger.failures(pinstore.read(tmp_path).pin_id) == 0
+    assert rig.svc.get(pending["approval_ref"])[1]["state"] == "PENDING"
 
 
 def _wrong(rig: G.Rig, ref: str, n: int) -> list[str | None]:
@@ -555,6 +603,39 @@ def test_with_the_pin_record_unreadable_nothing_is_approved(tmp_path: Path) -> N
     (tmp_path / pinstore.PIN_FILE).unlink()
     assert G.code(rig.svc.decide(pending["approval_ref"], {"decision": "APPROVE", "pin": G.PIN})) == "G3_UNAVAILABLE"
     assert rig.svc.ledger.approval(pending["approval_ref"]) is None
+
+
+def test_a_hold_names_its_cause_and_the_remedy_in_the_journal_and_never_the_pin(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The wire's Problem has no detail, so G3-11's cause goes to stderr, the service's journal (#269, m5)."""
+    rig = G.make(tmp_path)
+    _, pending = rig.svc.request(G.request_body(G.fresh_proofs(G.base_set())))
+    (tmp_path / pinstore.PIN_FILE).unlink()
+    assert G.code(rig.svc.decide(pending["approval_ref"], {"decision": "APPROVE", "pin": G.PIN})) == "G3_UNAVAILABLE"
+    pin_line = capsys.readouterr().err
+    assert "the PIN record cannot be read (FileNotFoundError)" in pin_line and f"sudo {COMMAND} set-pin" in pin_line
+    rig.clock.broken = True
+    assert G.code(rig.svc.list_pending()) == "G3_UNAVAILABLE"
+    assert "the clock cannot be read (OSError)" in capsys.readouterr().err
+    rig.clock.broken = False
+
+    def fail(*a: Any, **k: Any) -> Any:
+        raise LedgerUnavailable("disk I/O error")
+
+    rig.svc.ledger.accept_proofs = fail  # type: ignore[method-assign]
+    assert G.code(rig.svc.request(G.request_body(G.fresh_proofs(G.base_set())))) == "G3_UNAVAILABLE"
+    err = capsys.readouterr().err
+    assert "the ledger cannot be read or written (disk I/O error)" in err
+    assert G.PIN not in pin_line + err
+
+
+def test_the_ledger_commits_with_synchronous_full(tmp_path: Path) -> None:
+    """G3-08's "written and flushed before the reply", and addendum 2 §3: FULL (2), never NORMAL or OFF (m4 B5)."""
+    ledger = Ledger(tmp_path)
+    try:
+        assert ledger._db.execute("PRAGMA synchronous").fetchone()[0] == 2
+    finally:
+        ledger.close()
 
 
 # ------------------------------------------------------------------------------------------------ the wire

@@ -60,8 +60,17 @@ The full path, because Rocky 8's `sudo` searches only its `secure_path`, which l
 - **`tests/unit/test_g3_rules.py`:** the regression aid's binding cases (A-26's `g3-cases.json`, vendored in
   `tests/fixtures/g3/`) and the planted controls, run in process on both platforms.
 - **`tests/unit/test_g3_facts.py`:** the deployment's tripwires, the PIN's bounds, the key, the issuer and the wire.
+  It also checks that the units, `install.sh` and the code name the same sockets, directories and install root. The
+  `g3` extra must pin the same `cryptography` as `requirements-offline.txt`. The service may load from `aew` only the
+  allowed modules, read both from the source and at run time. Every refusal reason the code names must be planted by
+  some G3 test.
+- **`tests/unit/test_g3_admin.py`:** `set-pin` and `rotate-key` as root runs them, on Linux, with `os.geteuid` patched
+  and `getpass` stubbed. Every file either command writes must be handed to the state directory's owner. It also
+  covers the refusals of administration and start, and the peer's UID read unsigned.
 - **`tests/integration/test_g3_process.py`:** the real process on its real sockets, on Linux. It covers socket
   activation, refusals to start, a restart after `SIGKILL`, a race between consumers, and a planted PIN that never
-  appears.
+  appears. It also checks the peer check on every request, including those http.server refuses itself, and that a
+  refusal waits for the declared body. A stalled client is dropped at the request timeout. Bodies at and over
+  `MAX_BODY`, a PIN that is not UTF-8 and a body nested past the parser are each held to their rule.
 
 **Coverage:** the coverage ratchet measures `src/aew` only, so it does not count this package's lines.

@@ -17,7 +17,6 @@ import hmac
 import json
 import os
 import secrets
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -25,6 +24,7 @@ from typing import Any
 from aew.errors import ValidationFailed
 
 from .deployment import Deployment, pin_max_length
+from .ownership import hand_to_service
 
 PIN_FILE = "pin.json"
 # scrypt at 2^15 x 8 x 1 (32 MiB): the standard library's memory-hard function at a common interactive setting. The
@@ -85,10 +85,6 @@ def set_pin(state_dir: Path, pin: str, deployment: Deployment) -> str:
         os.fsync(fd)
     finally:
         os.close(fd)
-    if sys.platform != "win32" and os.geteuid() == 0:  # pragma: posix-only
-        # Root writes into the service's own state: the file belongs to the account that owns the directory, the
-        # service's dynamic UID (G3-05, G3-09), never to root.
-        st = state_dir.stat()
-        os.chown(tmp, st.st_uid, st.st_gid)
+    hand_to_service(state_dir, tmp)  # root's file is the service account's, never root's (G3-05)
     os.replace(tmp, target)
     return pin_id

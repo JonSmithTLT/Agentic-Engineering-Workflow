@@ -44,7 +44,7 @@ def schema() -> dict[str, Any]:
 WIRE: str = schema()["$defs"]["Wire"]["const"]
 
 # A-37's Interfaces table: the HTTP status each Problem code is sent with. Its codes and statuses are the wire's
-# Problem enums exactly (tests/unit/test_g3_wire.py).
+# Problem enums exactly (tests/unit/test_g3_facts.py).
 STATUS: dict[str, int] = {
     "STRUCTURAL": 400, "MIXED_AUTHORITY_SET_UNSELECTED": 400, "MEMBER_PROOF_INVALID": 400,
     "PEER_NOT_PERMITTED": 403,

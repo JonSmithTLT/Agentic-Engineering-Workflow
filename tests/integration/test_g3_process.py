@@ -24,7 +24,7 @@ from typing import Any
 
 import pytest
 
-from aew_g3 import ROOT, deployment, pinstore
+from aew_g3 import CONFIRM_SOCK, REQUEST_SOCK, ROOT, deployment, pinstore, wire
 from tests.helpers import g3 as G
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="G3 is a Linux profile: Unix sockets, SO_PEERCRED")
@@ -57,6 +57,34 @@ def call(sock: Path, method: str, path: str, body: Any = None) -> tuple[int, Any
         conn.close()
 
 
+def raw_call(sock: Path, data: bytes, *, then: bytes = b"", pause_s: float = 0.0) -> tuple[int, Any, dict[str, str]]:
+    """Sends bytes no http.client would (a request http.server refuses itself); with ``then``, sends ``data``, checks
+    that no reply has come within ``pause_s``, then sends the rest. Returns the reply as ``call`` does."""
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(30)
+    try:
+        s.connect(str(sock))
+        s.sendall(data)
+        if then:
+            s.settimeout(pause_s)
+            with pytest.raises(TimeoutError):
+                s.recv(1)  # the service waits for the body it was told of, and says nothing yet
+            s.settimeout(30)
+            s.sendall(then)
+        out = b""
+        try:
+            while chunk := s.recv(65536):
+                out += chunk
+        except ConnectionResetError:  # Linux: the service closed with bytes of ours it never read, after its reply
+            assert out, "the reply came first"
+    finally:
+        s.close()
+    head, _, body = out.partition(b"\r\n\r\n")
+    status_line, *header_lines = head.decode("latin-1").split("\r\n")
+    headers = dict(line.split(": ", 1) for line in header_lines)
+    return int(status_line.split()[1]), (json.loads(body) if body else None), headers
+
+
 def install(base: Path, **over: Any) -> Path:
     """A root laid out as /opt/aew-g3 is (G3-14), with the deployment's values."""
     root = base / "opt-aew-g3"
@@ -85,11 +113,11 @@ class Service:
 
     @property
     def request(self) -> Path:
-        return self.run / "request.sock"
+        return self.run / REQUEST_SOCK
 
     @property
     def confirm(self) -> Path:
-        return self.run / "confirm.sock"
+        return self.run / CONFIRM_SOCK
 
     def text(self) -> str:
         return self.log.read_bytes().decode("utf-8", "replace")
@@ -210,7 +238,7 @@ def test_a_socket_activated_service_serves_on_the_sockets_systemd_passes(tmp_pat
     run = tmp_path / "activated"
     run.mkdir()
     socks = []
-    for name in ("request.sock", "confirm.sock"):
+    for name in (REQUEST_SOCK, CONFIRM_SOCK):
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.bind(str(run / name))
         os.chmod(run / name, 0o600)
@@ -223,18 +251,28 @@ def test_a_socket_activated_service_serves_on_the_sockets_systemd_passes(tmp_pat
     svc = start(services, tmp_path, argv_prefix=[sys.executable, "-c", shim, str(fds[0]), str(fds[1])], pass_fds=fds)
     for s in socks:
         s.close()
-    assert not (svc.run / "request.sock").exists(), "it bound nothing of its own"
+    assert not (svc.run / REQUEST_SOCK).exists(), "it bound nothing of its own"
     assert f"operator_uid={os.getuid()}" in svc.text()
-    status, listed, _ = call(run / "confirm.sock", "GET", "/g3/v1/pending")
+    status, listed, _ = call(run / CONFIRM_SOCK, "GET", "/g3/v1/pending")
     assert status == 200 and listed == []
-    status, body, _ = call(run / "request.sock", "POST", "/g3/v1/approval-requests",
+    status, body, _ = call(run / REQUEST_SOCK, "POST", "/g3/v1/approval-requests",
                            G.request_body(G.fresh_proofs(G.base_set())))
     assert status == 201, body
 
 
 # ------------------------------------------------------------------------------------------------ G3-10 peers
-def test_a_peer_whose_uid_is_not_the_operators_or_cannot_be_read_is_refused_on_every_route(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+LONG_LINE = b"GET /" + b"a" * 70_000 + b" HTTP/1.0\r\n\r\n"  # over http.server's 64 KiB request line
+# Requests http.server refuses before any do_ method runs (review of #269, m1), each with the operator's Problem.
+REFUSED_BY_HTTP_SERVER = [("PUT", b"PUT /g3/v1/consume HTTP/1.0\r\nContent-Length: 2\r\n\r\n{}", "NOT_FOUND"),
+                          ("HEAD", b"HEAD /g3/v1/pending HTTP/1.0\r\n\r\n", "NOT_FOUND"),
+                          ("malformed line", b"NOT-HTTP\r\n\r\n", "STRUCTURAL"),
+                          ("bad version", b"GET /g3/v1/pending HTTP/9.9\r\n\r\n", "STRUCTURAL"),
+                          ("line over 64 KiB", LONG_LINE, "STRUCTURAL")]
+
+
+@pytest.fixture
+def in_process(tmp_path: Path) -> Iterator[tuple[G.Rig, Path]]:
+    """The service's own server over real sockets, in this process: its ledger and lockout stay readable."""
     from aew_g3 import server
 
     rig = G.make(tmp_path / "state")
@@ -242,24 +280,135 @@ def test_a_peer_whose_uid_is_not_the_operators_or_cannot_be_read_is_refused_on_e
     srv.start()
     try:
         assert srv.operator_uid == os.getuid()
-        new = G.request_body(G.fresh_proofs(G.base_set()))
-        routes = [(server.REQUEST_SOCK, "POST", "/g3/v1/approval-requests", new),
-                  (server.REQUEST_SOCK, "GET", "/g3/v1/approval-requests/g3:approval:x", None),
-                  (server.REQUEST_SOCK, "POST", "/g3/v1/consume", {}),
-                  (server.CONFIRM_SOCK, "GET", "/g3/v1/pending", None),
-                  (server.CONFIRM_SOCK, "POST", "/g3/v1/approvals/g3:approval:x", {"decision": "APPROVE",
-                                                                                    "pin": G.PIN})]
-        for label, uid in (("another UID", os.getuid() + 1), ("unreadable credentials", None), ("root", 0)):
-            monkeypatch.setattr(server, "peer_uid", lambda conn, uid=uid: uid)
-            for sock, method, path, body in routes:
-                status, out, h = call(tmp_path / "run" / sock, method, path, body)
-                assert (status, out["code"]) == (403, "PEER_NOT_PERMITTED"), (label, path)
-                assert h["X-AEW-G3-Wire"] == "g3-0.6.1-candidate"
-        monkeypatch.undo()
-        assert call(tmp_path / "run" / server.CONFIRM_SOCK, "GET", "/g3/v1/pending")[0] == 200, "control: the operator"
-        assert rig.svc.ledger.approval("g3:approval:x") is None and not rig.svc.pending
+        yield rig, tmp_path / "run"
     finally:
         srv.stop()
+
+
+def test_a_peer_whose_uid_is_not_the_operators_or_cannot_be_read_is_refused_on_every_route(
+        in_process: tuple[G.Rig, Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every request, routed or not, and those http.server refuses itself, is refused PEER_NOT_PERMITTED with the wire
+    header: the peer check precedes routing (G3-10; review of #269, m1 and m4 B4)."""
+    from aew_g3 import server
+
+    rig, run = in_process
+    new = G.request_body(G.fresh_proofs(G.base_set()))
+    routes = [(REQUEST_SOCK, "POST", "/g3/v1/approval-requests", new),
+              (REQUEST_SOCK, "GET", "/g3/v1/approval-requests/g3:approval:x", None),
+              (REQUEST_SOCK, "POST", "/g3/v1/consume", {}),
+              (CONFIRM_SOCK, "GET", "/g3/v1/pending", None),
+              (CONFIRM_SOCK, "POST", "/g3/v1/approvals/g3:approval:x", {"decision": "APPROVE", "pin": G.PIN}),
+              (REQUEST_SOCK, "GET", "/g3/v1/no-such-route", None)]
+    for label, uid in (("another UID", os.getuid() + 1), ("unreadable credentials", None), ("root", 0)):
+        monkeypatch.setattr(server, "peer_uid", lambda conn, uid=uid: uid)
+        for sock, method, path, body in routes:
+            status, out, h = call(run / sock, method, path, body)
+            assert (status, out["code"]) == (403, "PEER_NOT_PERMITTED"), (label, path)
+            assert h["X-AEW-G3-Wire"] == wire.WIRE
+        for case, data, _ in REFUSED_BY_HTTP_SERVER:
+            status, out, h = raw_call(run / REQUEST_SOCK, data)
+            assert (status, out["code"], h.get(wire.HEADER)) == (403, "PEER_NOT_PERMITTED", wire.WIRE), (label, case)
+    monkeypatch.undo()
+    # Controls, the operator: a route answers, an unknown path is NOT_FOUND, and http.server's refusals are the wire's.
+    assert call(run / CONFIRM_SOCK, "GET", "/g3/v1/pending")[0] == 200
+    assert call(run / REQUEST_SOCK, "GET", "/g3/v1/no-such-route")[1]["code"] == "NOT_FOUND"
+    for case, data, code in REFUSED_BY_HTTP_SERVER:
+        status, out, h = raw_call(run / REQUEST_SOCK, data)
+        assert (status, out, h.get(wire.HEADER)) == (*wire.problem(code), wire.WIRE), case
+    assert rig.svc.ledger.approval("g3:approval:x") is None and not rig.svc.pending
+
+
+def test_a_refusal_waits_for_the_body_the_client_declared_so_the_client_always_receives_it(
+        in_process: tuple[G.Rig, Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deterministic (review of #269, M2): the headers go first, the service says nothing until the declared body has
+    come, then refuses. Answering earlier would close on a client still sending, which then loses the refusal."""
+    from aew_g3 import server
+
+    _, run = in_process
+    body = json.dumps(G.request_body(G.fresh_proofs(G.base_set()))).encode()
+    head = f"POST /g3/v1/approval-requests HTTP/1.0\r\nContent-Length: {len(body)}\r\n\r\n".encode()
+    monkeypatch.setattr(server, "peer_uid", lambda conn: os.getuid() + 1)
+    assert raw_call(run / REQUEST_SOCK, head, then=body, pause_s=0.5)[1]["code"] == "PEER_NOT_PERMITTED"
+    monkeypatch.undo()
+    for data in (b"POST /g3/v1/no-such-route HTTP/1.0\r\nContent-Length: 2\r\n\r\n",
+                 b"PUT /g3/v1/consume HTTP/1.0\r\nContent-Length: 2\r\n\r\n"):
+        assert raw_call(run / REQUEST_SOCK, data, then=b"{}", pause_s=0.5)[1]["code"] == "NOT_FOUND", data
+    assert raw_call(run / REQUEST_SOCK, head + body)[0] == 201  # control: a whole request is answered at once
+
+
+def test_a_client_that_declares_a_body_and_never_sends_it_holds_a_thread_only_until_the_request_timeout(
+        in_process: tuple[G.Rig, Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    """The drain above waits for the declared body, so a stalled client is dropped at the handler's socket timeout
+    rather than holding its thread for ever (review of #269, M2). The timeout is shortened to keep the test short."""
+    from aew_g3 import server
+
+    _, run = in_process
+    assert server._Handler.timeout == server.REQUEST_TIMEOUT_S  # the shipped bound, before the test shortens it
+    monkeypatch.setattr(server._Handler, "timeout", 1)
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(10)
+    try:
+        s.connect(str(run / REQUEST_SOCK))
+        s.sendall(b"POST /g3/v1/consume HTTP/1.0\r\nContent-Length: 100\r\n\r\n{")
+        began = time.monotonic()
+        assert s.recv(1) == b"", "closed with no reply"
+        assert time.monotonic() - began < 8
+    finally:
+        s.close()
+    monkeypatch.undo()
+    assert call(run / CONFIRM_SOCK, "GET", "/g3/v1/pending")[0] == 200  # control: the service still answers
+
+
+# ------------------------------------------------------------------------------------------------ malformed bodies
+def call_bytes(sock: Path, path: str, data: bytes) -> tuple[int, Any]:
+    conn = _UnixHTTP(sock)
+    try:
+        conn.request("POST", path, body=data, headers={"Content-Type": "application/json"})
+        r = conn.getresponse()
+        return r.status, json.loads(r.read())
+    finally:
+        conn.close()
+
+
+def test_a_body_of_max_body_bytes_is_read_and_one_byte_more_is_structural_and_never_parsed(
+        in_process: tuple[G.Rig, Path]) -> None:
+    """The bound on what the service reads (review of #269, m4 B6): over it, the request is refused before parsing, so
+    the consume it holds never happens; at it, the same consume is served."""
+    from aew_g3.server import MAX_BODY
+
+    rig, run = in_process
+    cs = G.fresh_proofs(G.base_set())
+    _, record = G.approved(rig.svc, cs)
+    req = json.dumps(G.consume_req(cs, record)).encode()
+
+    def padded(n: int) -> bytes:
+        return req + b" " * (n - len(req))  # JSON's own whitespace: the same request at any length
+
+    assert call_bytes(run / REQUEST_SOCK, "/g3/v1/consume", padded(MAX_BODY + 1)) == wire.problem("STRUCTURAL")
+    assert not rig.svc.ledger.consumed(record["consent_set_ref"], cs["intents"][0]["intent_ref"])
+    status, out = call_bytes(run / REQUEST_SOCK, "/g3/v1/consume", padded(MAX_BODY))
+    assert (status, out["result"]) == (200, "CONSUMED")
+
+
+def test_a_pin_that_is_not_utf8_and_a_body_nested_past_the_parser_are_structural_and_the_service_still_answers(
+        in_process: tuple[G.Rig, Path]) -> None:
+    """Both once killed the handler thread, so the client got no reply (review of #269, m2). A lone surrogate is a
+    valid wire string no UTF-8 encoder takes; neither counts toward the lockout or decides the approval."""
+    rig, run = in_process
+    status, pending, _ = call(run / REQUEST_SOCK, "POST", "/g3/v1/approval-requests",
+                              G.request_body(G.fresh_proofs(G.base_set())))
+    assert status == 201
+    ref = pending["approval_ref"]
+    status, out, _ = call(run / CONFIRM_SOCK, "POST", f"/g3/v1/approvals/{ref}",
+                          {"decision": "APPROVE", "pin": chr(0xD800) + G.PIN})
+    assert (status, out) == wire.problem("STRUCTURAL")
+    deep = b"[" * 100_000 + b"]" * 100_000
+    for sock, path in ((REQUEST_SOCK, "/g3/v1/approval-requests"), (REQUEST_SOCK, "/g3/v1/consume"),
+                       (CONFIRM_SOCK, f"/g3/v1/approvals/{ref}")):
+        assert call_bytes(run / sock, path, deep) == wire.problem("STRUCTURAL"), path
+    assert call(run / REQUEST_SOCK, "GET", f"/g3/v1/approval-requests/{ref}")[1]["state"] == "PENDING"
+    status, _, _ = call(run / CONFIRM_SOCK, "POST", f"/g3/v1/approvals/{ref}", {"decision": "APPROVE", "pin": G.PIN})
+    assert status == 200, "control: nothing counted toward the lockout, and the service still answers"
 
 
 # ------------------------------------------------------------------------------------------------ G3-14 start
@@ -280,7 +429,7 @@ def test_the_service_refuses_to_start_on_a_deployment_value_beyond_its_tripwire_
     out = json.loads(svc.text().strip().splitlines()[-1])
     assert code != 0 and out["code"] == "VALIDATION_FAILED", label
     assert out["details"]["reason"] == "DEPLOYMENT_INVALID" and out["details"]["errors"] == [error], label
-    assert not (tmp_path / "run" / "request.sock").exists(), "it never listened"
+    assert not (tmp_path / "run" / REQUEST_SOCK).exists(), "it never listened"
 
 
 # ------------------------------------------------------------------------------------------------ G3-11 durability

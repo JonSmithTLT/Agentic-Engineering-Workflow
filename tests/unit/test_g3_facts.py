@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 
 from aew.errors import ValidationFailed
-from aew_g3 import DEPLOYMENT_FILE, ROOT, cli, deployment, pinstore, render, wire
+from aew_g3 import CONFIRM_SOCK, DEPLOYMENT_FILE, REQUEST_SOCK, ROOT, cli, deployment, pinstore, render, wire
 from aew_g3.keys import KeyStore, key_id_of
 from aew_g3.service import PROOF, app_specific_id, issuer_ref_from_machine_id
 from tests.helpers import g3 as G
@@ -294,3 +294,85 @@ def test_every_command_given_to_root_names_the_wrapper_install_sh_writes_by_its_
             given.append((f.name, m.group(1)))
     assert {g for _, g in given} <= {cli.COMMAND, "$WRAPPER", "{COMMAND}"}, given
     assert len(given) >= 6, given  # control: the detector sees the commands the files do give
+
+
+def _unit(name: str) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for line in (ROOT / "systemd" / name).read_bytes().decode().splitlines():
+        key, sep, value = line.partition("=")
+        if sep and not line.startswith("#"):
+            out.setdefault(key.strip(), []).append(value.strip())
+    return out
+
+
+def test_the_units_install_sh_and_the_code_name_the_same_sockets_and_directories() -> None:
+    """One fact each, held to its owners (review of #269, n1): the socket unit's two paths are the server's two names
+    under the CLI's runtime directory; the service unit's directories are the CLI's; its ExecStart runs the install
+    root install.sh makes; and the wrapper runs the same interpreter the same way."""
+    sock, svc = _unit("aew-g3.socket"), _unit("aew-g3.service")
+    install = (ROOT / "install.sh").read_bytes().decode()
+    root = re.search(r"^ROOT=(\S+)$", install, re.M)
+    assert root
+    paths = [Path(p) for p in sock["ListenStream"]]
+    assert {p.name for p in paths} == {REQUEST_SOCK, CONFIRM_SOCK}
+    assert {p.parent.as_posix() for p in paths} == {cli.RUNTIME_DIR.as_posix()}
+    assert svc["StateDirectory"] == [cli.STATE_DIR.name] and cli.STATE_DIR.parent.as_posix() == "/var/lib"
+    assert svc["RuntimeDirectory"] == [f"{cli.RUNTIME_DIR.name}/keys"] and cli.RUNTIME_DIR.parent.as_posix() == "/run"
+    assert svc["ExecStart"] == [f"{root.group(1)}/venv/bin/python -I -B -m aew_g3 serve"]
+    assert 'exec $ROOT/venv/bin/python -I -B -m aew_g3 "\\$@"' in install
+
+
+def test_set_fields_are_exactly_the_set_level_fields_sw02_digests() -> None:
+    """render.SET_FIELDS restates SW-02's set-level fields; aew.stg02.wire.set_digest owns them (#269, n1). Held both
+    ways: the digest over SET_FIELDS and intents is SW-02's, each set field moves it, and no other field does."""
+    import hashlib
+
+    cs = G.base_set()
+    own = hashlib.sha256(wire.canonical({k: cs[k] for k in (*render.SET_FIELDS, "intents")})).hexdigest()
+    assert own == wire.set_digest(cs)
+    for k in cs:
+        moved = wire.set_digest(dict(cs, **{k: "x:other"})) != wire.set_digest(cs)
+        assert moved is (k in render.SET_FIELDS or k == "intents"), k
+
+
+def test_the_g3_extra_pins_the_same_cryptography_the_host_installs() -> None:
+    """CI runs the cryptography the host runs (review of #269, n3): the g3 extra's pin is requirements-offline.txt's."""
+    import tomllib
+
+    extra = tomllib.loads((G.REPO / "pyproject.toml").read_bytes().decode())["project"]["optional-dependencies"]["g3"]
+    offline = re.search(r"^cryptography==(\S+) ", (ROOT / "requirements-offline.txt").read_bytes().decode(), re.M)
+    assert offline and extra == [f"cryptography=={offline.group(1)}"]
+
+
+# ----------------------------------------------------------------------------------------- apartness, at run time
+def test_at_run_time_the_service_loads_from_aew_only_the_allowed_modules_and_their_packages() -> None:
+    """The second detector of the import rule (review of #269, m3): a fresh isolated interpreter imports every aew_g3
+    module, and the aew entries of sys.modules are the allowed set and its parent packages, so an import that aew's own
+    modules gain later is seen too."""
+    import subprocess
+
+    modules = sorted(p.stem for p in (ROOT / "aew_g3").glob("*.py") if p.stem != "__main__")
+    if sys.platform == "win32":
+        modules.remove("server")  # Linux only: it refuses to import on Windows
+    code = ("import json, sys; sys.path[:0] = sys.argv[1:3]\n"
+            f"for m in {modules!r}: __import__('aew_g3.' + m if m != '__init__' else 'aew_g3')\n"
+            "print(json.dumps(sorted(n for n in sys.modules if n == 'aew' or n.startswith('aew.'))))")
+    out = subprocess.run([sys.executable, "-I", "-c", code, str(G.REPO / "src"), str(ROOT)], capture_output=True,
+                         text=True, timeout=120, check=True,
+                         creationflags=0x08000000 if sys.platform == "win32" else 0)  # CREATE_NO_WINDOW
+    loaded = set(json.loads(out.stdout))
+    assert loaded == ALLOWED_AEW | {"aew", "aew.stg02"}, loaded
+
+
+# ------------------------------------------------------------------------------------------------ refusal reasons
+def test_every_refusal_reason_the_service_names_is_planted_by_a_g3_test() -> None:
+    """Mechanical (review of #269, m4): each reason="..." in g3/aew_g3 appears as a string in some other G3 test."""
+    reasons = set()
+    for f in (ROOT / "aew_g3").glob("*.py"):
+        reasons |= set(re.findall(r'reason="([A-Z_]+)"', f.read_bytes().decode()))
+    tests = [G.REPO / "tests" / "unit" / "test_g3_rules.py", G.REPO / "tests" / "unit" / "test_g3_admin.py",
+             G.REPO / "tests" / "integration" / "test_g3_process.py", Path(__file__)]
+    text = "\n".join(t.read_bytes().decode() for t in tests)
+    untested = sorted(r for r in reasons if f'"{r}"' not in text)
+    assert not untested, untested
+    assert len(reasons) >= 10, reasons  # control: the detector sees the reasons the code does name

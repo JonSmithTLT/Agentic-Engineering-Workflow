@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import re
 import secrets
+import sys
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -21,13 +22,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from . import pinstore, render, wire
+from . import COMMAND, pinstore, render, wire
 from .deployment import Deployment
 from .keys import KeyStore
 from .ledger import Ledger, LedgerUnavailable
 
 Reply = tuple[int, dict[str, Any] | list[dict[str, Any]] | None]
-PROOF = re.compile(r"^proof:[0-9a-f]{32,64}$")  # G3-02; the wire's Proof pattern (tests/unit/test_g3_wire.py)
+PROOF = re.compile(wire.schema()["$defs"]["Proof"]["pattern"])  # G3-02: the client's proof, as the wire defines it
 # issuer_ref (G3-06's `g3:<host-installation>`; the designer's ruling, hand-off addendum 2 §2, 2026-10-25): G3's
 # app-specific machine id, derived as systemd's sd_id128_get_machine_app_specific does, so the raw machine id never
 # leaves the host in a record. The application id is G3's, fixed and public.
@@ -69,6 +70,22 @@ class _Unavailable(Exception):
     """A dependency G3-11 names failed: answered as ``G3_UNAVAILABLE``."""
 
 
+def _utf8(s: str) -> bool:
+    try:
+        s.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _cause(e: Exception) -> str:
+    if isinstance(e, pinstore.PinUnavailable):
+        return f"the PIN record cannot be read ({e}); root sets the PIN: sudo {COMMAND} set-pin"
+    if isinstance(e, LedgerUnavailable):
+        return f"the ledger cannot be read or written ({e})"
+    return str(e)
+
+
 @dataclass
 class _Pending:
     body: dict[str, Any]
@@ -97,16 +114,20 @@ class G3Service:
         try:
             now = self.clock()
         except Exception as e:
-            raise _Unavailable("clock") from e
+            raise _Unavailable(f"the clock cannot be read ({type(e).__name__})") from e
         if now.tzinfo is None:
-            raise _Unavailable("clock")
+            raise _Unavailable("the clock gave a time with no zone")
         return now
 
     def _guarded(self, fn: Callable[[], Reply]) -> Reply:
         with self._lock:
             try:
                 return fn()
-            except (_Unavailable, LedgerUnavailable, pinstore.PinUnavailable):
+            except (_Unavailable, LedgerUnavailable, pinstore.PinUnavailable) as e:
+                # The wire's Problem has no detail, so the cause goes to the journal: what failed and what to do,
+                # never a body (review of #269, m5). Each message is a reason the code wrote, or SQLite's, no value.
+                sys.stderr.write(f"aew-g3: held, G3_UNAVAILABLE: {_cause(e)}\n")
+                sys.stderr.flush()
                 return wire.problem("G3_UNAVAILABLE")
 
     def _state(self, p: _Pending, now: datetime) -> str:
@@ -214,8 +235,8 @@ class G3Service:
         return self._guarded(lambda: self._decide(approval_ref, body))
 
     def _decide(self, approval_ref: str, decision: Any) -> Reply:
-        if wire.wire_errors("ApprovalDecision", decision):
-            return wire.problem("STRUCTURAL")
+        if wire.wire_errors("ApprovalDecision", decision) or not _utf8(decision.get("pin", "")):
+            return wire.problem("STRUCTURAL")  # a PIN no keyboard could type (a lone surrogate) is no PIN (#269, m2)
         p = self.pending.get(approval_ref)
         # The designer's ruling (hand-off addendum 2 §1): an approval already approved or declined is no longer pending,
         # so it is NOT_FOUND, before expiry and before the PIN, outside the lockout count; a retried approval after a

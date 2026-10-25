@@ -648,7 +648,7 @@ commands:
       reason: "decomposition; the engine keeps its own guards (no moving a committed Ticket)"
       options: {work_id: homes, "--parent": homes, "--reason": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [OBLIGATIONS_DROPPED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work promote
     home: product
     users: [lead]
@@ -665,7 +665,7 @@ commands:
       reason: "decomposition; the engine keeps its own guards"
       options: {work_id: homes, "--to": homes, "--title": homes, "--reason": homes, "--class": homes}
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [OBLIGATIONS_DROPPED, PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
   - name: work reclassify
     home: product
     users: [lead]

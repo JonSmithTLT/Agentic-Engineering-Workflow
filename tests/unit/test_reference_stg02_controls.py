@@ -387,7 +387,114 @@ def test_a_cause_both_tables_name_is_one_record_and_the_vendored_one(monkeypatch
 
 
 def test_reaches_owner_is_null_with_an_unresolved_item_when_the_member_shape_is_not_found(monkeypatch):
-    monkeypatch.setattr(K, "read", lambda tree: K.Reading(None, None, [], [], [], sorted(K.BUILDERS)))
+    monkeypatch.setattr(K, "read", lambda tree: K.Reading(None, None, [], [], [], sorted(K.BUILDERS), [], []))
     commands = [r for r in K.build(C.Context(ROOT)) if r.family == K.COMMANDS]
     assert commands and all((r.fact or {})["reaches_owner"] is None for r in commands)
     assert all(r.coverage["label"] == "lower-bound" and r.coverage["unresolved"] for r in commands)
+
+
+# ---------------------------------------------------------------------------------------------- who returns a pair
+
+REGISTRY = {"PROTECTED": {"origin": "PROTECTED_G3"}, "DELEGATED": {"origin": "CURRENT_DELEGATED_GRANT"},
+            "CONTINUE_ELIGIBLE_WORK": {"origin": "CURRENT_DELEGATED_GRANT"}}
+NAMED = {("PROTECTED", "ORIGIN_NOT_ESTABLISHED"), ("PROTECTED", "NEVER_RETURNED"),
+         ("DELEGATED", "DELEGATED_GRANT_UNVERIFIED"), ("DELEGATED", "DELEGATION_EXPIRED"),
+         ("DELEGATED", "NOT_MODELLED"), ("CONTINUE_ELIGIBLE_WORK", "DELEGATED_GRANT_UNVERIFIED"),
+         ("CONTINUE_ELIGIBLE_WORK", "DELEGATION_EXPIRED"), ("CONTINUE_ELIGIBLE_WORK", "HEB_STATE_UNKNOWN")}
+MEMBER, HEB = "Carrier._member", "Carrier._heb_continue"
+
+
+def test_both_readings_find_the_steps_of_the_member_and_every_refusal_call():
+    ours, theirs = both_commands(COMMANDS)
+    assert ours == theirs
+    assert ours.steps == [(MEMBER, "origin-test", "CURRENT_DELEGATED_GRANT", "ORIGIN_NOT_ESTABLISHED"),
+                          (MEMBER, "state-test", "", "$_delegation"),
+                          (MEMBER, "action-test", "CONTINUE_ELIGIBLE_WORK", "NOT_MODELLED"),
+                          (MEMBER, "hand-on", "_heb_continue", "")]
+    assert ours.calls == [(HEB, "i['action']", "HEB_STATE_UNKNOWN"), (MEMBER, "action", "$_delegation"),
+                          (MEMBER, "action", "NOT_MODELLED"), (MEMBER, "action", "ORIGIN_NOT_ESTABLISHED")]
+
+
+def test_the_steps_are_replayed_over_the_actions_each_step_taking_what_it_refuses():
+    """The right case: each pair is returned by the site whose action and cause are both possible there, and a cause in
+    a table that no step returns (``NEVER_RETURNED``) is in no pair."""
+    pairs, problems = K.emitted(both_commands(COMMANDS)[0], REGISTRY, NAMED)
+    assert problems == []
+    assert pairs == {
+        ("PROTECTED", "ORIGIN_NOT_ESTABLISHED"): [MEMBER],
+        ("DELEGATED", "DELEGATED_GRANT_UNVERIFIED"): [MEMBER], ("DELEGATED", "DELEGATION_EXPIRED"): [MEMBER],
+        ("DELEGATED", "NOT_MODELLED"): [MEMBER],
+        ("CONTINUE_ELIGIBLE_WORK", "DELEGATED_GRANT_UNVERIFIED"): [MEMBER],
+        ("CONTINUE_ELIGIBLE_WORK", "DELEGATION_EXPIRED"): [MEMBER],
+        ("CONTINUE_ELIGIBLE_WORK", "HEB_STATE_UNKNOWN"): [HEB]}
+    assert ("PROTECTED", "NEVER_RETURNED") not in pairs  # in a table, returned by no path: an empty list on its record
+
+
+def test_the_replay_follows_the_order_of_the_steps_not_a_fixed_order():
+    """Taking the action test before the delegation test leaves the delegation test only the action that goes on."""
+    swapped = COMMANDS.replace(
+        '        e = self._delegation(req, i, now)\n        if e:\n            return refusal(action, e)\n'
+        '        if action != "CONTINUE_ELIGIBLE_WORK":\n            return refusal(action, "NOT_MODELLED")\n',
+        '        if action != "CONTINUE_ELIGIBLE_WORK":\n            return refusal(action, "NOT_MODELLED")\n'
+        '        e = self._delegation(req, i, now)\n        if e:\n            return refusal(action, e)\n')
+    assert swapped != COMMANDS
+    ours, theirs = both_commands(swapped)
+    assert ours == theirs
+    pairs, problems = K.emitted(ours, REGISTRY, NAMED)
+    assert problems == [] and ("DELEGATED", "DELEGATION_EXPIRED") not in pairs
+    assert pairs[("CONTINUE_ELIGIBLE_WORK", "DELEGATION_EXPIRED")] == [MEMBER]
+
+
+@pytest.mark.parametrize(("name", "extra", "fragment"), [
+    ("a refusal in a function the steps do not place",
+     "\n\ndef sneak(action):\n    return refusal(action, 'NOT_MODELLED')\n",
+     "sneak returns a refusal on a path this reading cannot place"),
+    ("a refusal with a cause held in a variable of no method",
+     "\n\nclass Other:\n    def go(self, action, c):\n        return refusal(action, c)\n",
+     "Other.go returns a refusal on a path this reading cannot place"),
+])
+def test_a_refusal_call_no_step_places_is_named_not_dropped(name, extra, fragment):
+    ours, theirs = both_commands(COMMANDS + extra)
+    assert ours == theirs, name
+    _, problems = K.emitted(ours, REGISTRY, NAMED)
+    assert any(fragment in p for p in problems), (name, problems)
+
+
+def test_a_pair_the_code_can_return_and_no_table_names_is_named_and_a_lost_shape_is_not_replayed():
+    ours = both_commands(COMMANDS)[0]
+    _, problems = K.emitted(ours, REGISTRY, NAMED - {("DELEGATED", "NOT_MODELLED")})
+    assert any("can return NOT_MODELLED for DELEGATED, which no table names" in p for p in problems)
+    pairs, problems = K.emitted(ours._replace(origin=None), REGISTRY, NAMED)
+    assert pairs == {} and "steps of Carrier._member are not where this reading looks" in problems[0]
+
+
+def test_a_cause_in_a_table_that_no_code_path_returns_has_an_empty_list_on_its_record(monkeypatch):
+    from aew.stg02 import commands as module
+
+    owner = module.SLICE_OWNER_REASONS
+    monkeypatch.setattr(module, "SLICE_OWNER_REASONS", {
+        **owner, "CONTINUE_ELIGIBLE_WORK": {**owner["CONTINUE_ELIGIBLE_WORK"], "NEVER_RETURNED": "SOURCE_UNAVAILABLE"}})
+    records = {r.key: r for r in K.build(C.Context(ROOT)) if r.family == K.REFUSALS}
+    never = records["CONTINUE_ELIGIBLE_WORK:NEVER_RETURNED"]
+    assert never.fact is not None and never.fact["emitted_by"] == []  # the planted case
+    assert never.fact_coverage is not None and never.fact_coverage["emitted_by"]["label"] == "complete-by-construction"
+    # and in the real tables: NOT_MODELLED is a cause of seven actions and the slice returns it for one
+    member = [{"module": K.COMMAND_MODULE, "symbol": MEMBER}]
+    assert (records["CLOSE_ATTACHMENT:NOT_MODELLED"].fact or {})["emitted_by"] == []
+    assert (records["DELEGATED_CANCEL:NOT_MODELLED"].fact or {})["emitted_by"] == member
+    assert (records["CONTINUE_ELIGIBLE_WORK:HEB_STATE_UNKNOWN"].fact or {})["emitted_by"] == [
+        {"module": K.COMMAND_MODULE, "symbol": HEB}]
+
+
+def test_a_refusal_call_the_reading_cannot_place_makes_emitted_by_lower_bound_on_every_record(monkeypatch):
+    src = C.Context(ROOT).sources()[K.COMMAND_MODULE]
+    assert src.tree is not None
+    real = K.read(src.tree)
+    monkeypatch.setattr(K, "read", lambda tree: real._replace(calls=[*real.calls, ("sneak", "action", "NOT_MODELLED")]))
+    records = [r for r in K.build(C.Context(ROOT)) if r.family == K.REFUSALS]
+    assert records and all(r.fact_coverage is not None for r in records)
+    for r in records:
+        assert r.fact_coverage is not None and r.fact_coverage["emitted_by"]["label"] == "lower-bound"
+        assert any("sneak returns a refusal on a path this reading cannot place" in i["why"]
+                   for i in r.fact_coverage["emitted_by"]["unresolved"])
+        assert r.coverage["label"] == "complete-by-construction"  # the record itself is unchanged

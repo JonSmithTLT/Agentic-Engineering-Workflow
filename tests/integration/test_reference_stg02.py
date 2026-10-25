@@ -307,3 +307,92 @@ def test_every_refusal_result_comes_through_the_one_lookup():
             COMMANDS.refusal(action, "A_CAUSE_NO_TABLE_NAMES")
     with pytest.raises(AssertionError, match="no reason code"):
         COMMANDS.refusal("AN_ACTION_NO_TABLE_NAMES", "ORIGIN_NOT_ESTABLISHED")
+
+
+# ---------------------------------------------------------------------------------------------- who returns a pair
+
+def named_pairs() -> set[tuple[str, str]]:
+    tables = (A.refusals(), COMMANDS.SLICE_OWNER_REASONS)
+    return {(action, cause) for table in tables for action, causes in table.items() for cause in causes}
+
+
+def test_every_refusal_call_of_the_module_is_placed_by_the_reading():
+    """The completeness of ``emitted_by``: every ``refusal(...)`` call of the module is one that a step of
+    ``Carrier._member``, or the method it hands on to, places. The inventory is counted two ways beyond the two
+    detectors: every call node of the whole tree is one of the inventory's, and the replay leaves none unplaced."""
+    tree, text = commands_source()
+    reading = K.read(tree)
+    other = KT.read(text)
+    assert (reading.calls, reading.steps) == (other.calls, other.steps)
+    walked = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+              and n.func.id == "refusal"]
+    assert len(walked) == len(reading.calls) > 0
+    pairs, problems = K.emitted(reading, A.registry(), named_pairs())
+    assert problems == [] and pairs
+
+
+def battery() -> set[tuple[str, str]]:
+    """The (action, cause) pairs ``Carrier._member`` returns, over every action and, for a delegated one, over the
+    states of its delegation and of the owner's work (synthetic fixtures only; ``_member`` reads the fixture world and
+    nothing else, so no ledger is opened)."""
+    from aew.stg02.world import Fixture
+
+    registry = A.registry()
+    gone = W.utc(T0 - timedelta(hours=1))
+
+    def unknown_work(i: dict[str, Any], fx: Fixture) -> None:
+        i["target"]["work_ref"] = "fixture:no-such-work"
+
+    def stale_revision(i: dict[str, Any], fx: Fixture) -> None:
+        i["target"]["work_revision"] = "fixture:another-revision"
+
+    def not_eligible(i: dict[str, Any], fx: Fixture) -> None:
+        work = fx.work(i["target"]["work_ref"])
+        assert work is not None
+        work["heb_eligibility"]["eligible"] = False
+
+    def nothing(i: dict[str, Any], fx: Fixture) -> None:
+        return None
+
+    # (what changes in the intent or the world, what the issuer's proof is changed to; None: there is no proof)
+    scenarios: list[tuple[Any, dict[str, Any] | None]] = [
+        (nothing, None), (nothing, {"issuer_ref": "delegation:another"}), (nothing, {"status": "REVOKED"}),
+        (nothing, {"actor_ref": "fixture:actor-another"}), (nothing, {"valid_until": gone}), (nothing, {}),
+        (unknown_work, {}), (stale_revision, {}), (not_eligible, {})]
+    seen: set[tuple[str, str]] = set()
+    for action, row in registry.items():
+        for change, proof_change in scenarios:
+            fx = Fixture.load(T0)
+            carrier = COMMANDS.Carrier(fx, None)  # type: ignore[arg-type]  # _member never opens the ledger
+            intent = copy.deepcopy(fx.intents["continue"])
+            intent.update(action=action, owner_hint=row["sole_admitting_owner"],
+                          authority_class=COMMANDS.ORIGIN_CLASS[row["origin"]],
+                          delegated_grant_proof_ref="fixture:delegation-battery")
+            change(intent, fx)
+            if proof_change is not None:
+                fx.delegations["fixture:delegation-battery"] = {
+                    "issuer_ref": "delegation:fixture", "status": "CURRENT", "intent_ref": intent["intent_ref"],
+                    "actor_ref": intent["actor_ref"], "installation_ref": fx.installation,
+                    "recipient_ref": fx.recipient, "intent_digest": W.intent_digest(intent),
+                    "valid_until": W.utc(T0 + timedelta(hours=1)), **proof_change}
+            req = {"installation_ref": fx.installation, "recipient_ref": fx.recipient}
+            result = carrier._member(req, intent, None, T0)
+            if result["owner_reason"] is not None:
+                seen.add((action, result["owner_reason"]))
+    return seen
+
+
+def test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states():
+    """The observation behind ``emitted_by``: the pairs the reading says the admission path returns are exactly the
+    pairs ``Carrier._member`` returns over the battery. A pair read and not observed would be a site that returns
+    nothing; one observed and not read would be a return the reading missed. Each pair is also a record."""
+    read = {(r["fact"]["action"], r["fact"]["cause"]) for r in records("command-refusals").values()
+            if r["fact"]["emitted_by"]}
+    observed = battery()
+    assert observed == read, (sorted(observed - read), sorted(read - observed))
+    assert observed <= named_pairs()
+    sites = {tuple(s["symbol"] for s in r["fact"]["emitted_by"]) for r in records("command-refusals").values()
+             if r["fact"]["emitted_by"]}
+    assert sites == {("Carrier._member",), ("Carrier._heb_continue",)}
+    for r in records("command-refusals").values():
+        assert r["fact_coverage"]["emitted_by"]["label"] == "complete-by-construction"

@@ -31,5 +31,18 @@ the commands the code admits and the causes it can refuse with mechanically.
   ways and each is a key of some table. A cause no table names, a refusal whose cause cannot be read (a keyword cause, a
   helper that returns something but a constant, a second different origin or action test in `_member`), or a builder
   outside the set makes every refusal record lower-bound.
+- **Which of the 72 the slice returns (`emitted_by`, the designer's sixth addendum).** A record is a pair the lookup
+  resolves; whether the slice returns it is a separate fact on the record: the sites of the admission path that return the
+  pair (`{module, symbol}`), an empty list meaning the slice never returns it. 18 of the 72 are returned (`ORIGIN_NOT_ESTABLISHED`
+  for the eight actions whose origin is not the delegated grant, the three delegation causes for each of the two delegated
+  actions, `NOT_MODELLED` for `DELEGATED_CANCEL` only, and the three owner causes for `CONTINUE_ELIGIBLE_WORK`); the other
+  54 are map entries no path returns. The two detectors read `Carrier._member` as its ordered steps (a test of the origin,
+  of a state a helper decides, of the action, then the hand-on to a method) and inventory every `refusal(...)` call of the
+  module, and the steps are replayed over the registry's actions, each step taking the actions it refuses and leaving the
+  rest for the next. The fact has its own coverage: complete-by-construction while every `refusal` call of the module is
+  placed by a step or by the method handed on to and no pair is one the tables lack, else lower-bound with the calls it
+  could not place listed. A test drives `Carrier._member` over every action and over the states of a delegation and of the
+  owner's work, and the pairs it returns are exactly the 18 read. A cause in a table that no path returns reads as an empty
+  list (planted, and `NOT_MODELLED` for the seven other actions in the real tables).
 - **What a change to the wire does.** Adding a route, a handler branch, an action, a cause, or a place that builds a refusal
   changes the page and the index: run `python tools/reference.py render` and commit `docs/reference/`.

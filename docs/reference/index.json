@@ -87,7 +87,7 @@
         "lower-bound": 213
       }
     },
-    "digest": "sha256:bdfa1fc9d49e953a6f07940471de693cacdea69237134a70e95a0a7f25856957",
+    "digest": "sha256:b5f0fc2916d8dc9d8c1cdc08a3fcf261145121b8e93c0941538018a23c797a1d",
     "records": 1029,
     "unresolved": 72
   },
@@ -3269,8 +3269,20 @@
       "fact": {
         "action": "ATTACH_LEAD",
         "cause": "ALREADY_ATTACHED",
+        "emitted_by": [],
         "reason": "PRECONDITION_STALE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3292,8 +3304,20 @@
       "fact": {
         "action": "ATTACH_LEAD",
         "cause": "CONSENT_ALREADY_USED",
+        "emitted_by": [],
         "reason": "CONSENT_ALREADY_USED_OR_MISSING",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3315,8 +3339,20 @@
       "fact": {
         "action": "ATTACH_LEAD",
         "cause": "CONSENT_EXPIRED",
+        "emitted_by": [],
         "reason": "CURRENTNESS_EXPIRED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3338,8 +3374,20 @@
       "fact": {
         "action": "ATTACH_LEAD",
         "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3361,8 +3409,20 @@
       "fact": {
         "action": "ATTACH_LEAD",
         "cause": "CONSENT_SCOPE_MISMATCH",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3384,8 +3444,20 @@
       "fact": {
         "action": "ATTACH_LEAD",
         "cause": "INVALID_INSTALLATION_OR_PROFILE",
+        "emitted_by": [],
         "reason": "PROTECTIVE_SCOPE_CHANGED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3407,8 +3479,25 @@
       "fact": {
         "action": "ATTACH_LEAD",
         "cause": "ORIGIN_NOT_ESTABLISHED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "ORIGIN_NOT_ESTABLISHED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3430,8 +3519,20 @@
       "fact": {
         "action": "ATTACH_LEAD",
         "cause": "UNKNOWN_OWNER_STATE",
+        "emitted_by": [],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3453,8 +3554,20 @@
       "fact": {
         "action": "CLOSE_ATTACHMENT",
         "cause": "CONSENT_ALREADY_USED",
+        "emitted_by": [],
         "reason": "CONSENT_ALREADY_USED_OR_MISSING",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3476,8 +3589,20 @@
       "fact": {
         "action": "CLOSE_ATTACHMENT",
         "cause": "CONSENT_EXPIRED",
+        "emitted_by": [],
         "reason": "CURRENTNESS_EXPIRED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3499,8 +3624,20 @@
       "fact": {
         "action": "CLOSE_ATTACHMENT",
         "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3522,8 +3659,20 @@
       "fact": {
         "action": "CLOSE_ATTACHMENT",
         "cause": "CONSENT_SCOPE_MISMATCH",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3545,8 +3694,20 @@
       "fact": {
         "action": "CLOSE_ATTACHMENT",
         "cause": "NOT_MODELLED",
+        "emitted_by": [],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3568,8 +3729,25 @@
       "fact": {
         "action": "CLOSE_ATTACHMENT",
         "cause": "ORIGIN_NOT_ESTABLISHED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "ORIGIN_NOT_ESTABLISHED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3591,8 +3769,25 @@
       "fact": {
         "action": "CONTINUE_ELIGIBLE_WORK",
         "cause": "DELEGATED_GRANT_UNVERIFIED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "DELEGATED_GRANT_UNVERIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3614,8 +3809,25 @@
       "fact": {
         "action": "CONTINUE_ELIGIBLE_WORK",
         "cause": "DELEGATED_INTENT_NOT_GRANTED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "DELEGATED_GRANT_UNVERIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3637,8 +3849,25 @@
       "fact": {
         "action": "CONTINUE_ELIGIBLE_WORK",
         "cause": "DELEGATION_EXPIRED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "CURRENTNESS_EXPIRED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3660,8 +3889,25 @@
       "fact": {
         "action": "CONTINUE_ELIGIBLE_WORK",
         "cause": "HEB_STALE_PREDECESSOR",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._heb_continue"
+          }
+        ],
         "reason": "PRECONDITION_STALE",
         "source": "code"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3683,8 +3929,25 @@
       "fact": {
         "action": "CONTINUE_ELIGIBLE_WORK",
         "cause": "HEB_STATE_UNKNOWN",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._heb_continue"
+          }
+        ],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "code"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3706,8 +3969,20 @@
       "fact": {
         "action": "CONTINUE_ELIGIBLE_WORK",
         "cause": "NOT_MODELLED",
+        "emitted_by": [],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3729,8 +4004,25 @@
       "fact": {
         "action": "CONTINUE_ELIGIBLE_WORK",
         "cause": "WORK_NOT_CURRENTLY_ELIGIBLE",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._heb_continue"
+          }
+        ],
         "reason": "PRECONDITION_STALE",
         "source": "code"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3752,8 +4044,25 @@
       "fact": {
         "action": "DELEGATED_CANCEL",
         "cause": "DELEGATED_GRANT_UNVERIFIED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "DELEGATED_GRANT_UNVERIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3775,8 +4084,25 @@
       "fact": {
         "action": "DELEGATED_CANCEL",
         "cause": "DELEGATED_INTENT_NOT_GRANTED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "DELEGATED_GRANT_UNVERIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3798,8 +4124,25 @@
       "fact": {
         "action": "DELEGATED_CANCEL",
         "cause": "DELEGATION_EXPIRED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "CURRENTNESS_EXPIRED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3821,8 +4164,25 @@
       "fact": {
         "action": "DELEGATED_CANCEL",
         "cause": "NOT_MODELLED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3844,8 +4204,20 @@
       "fact": {
         "action": "ISSUE_STANDING_POLICY",
         "cause": "CONSENT_ALREADY_USED",
+        "emitted_by": [],
         "reason": "CONSENT_ALREADY_USED_OR_MISSING",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3867,8 +4239,20 @@
       "fact": {
         "action": "ISSUE_STANDING_POLICY",
         "cause": "CONSENT_EXPIRED",
+        "emitted_by": [],
         "reason": "CURRENTNESS_EXPIRED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3890,8 +4274,20 @@
       "fact": {
         "action": "ISSUE_STANDING_POLICY",
         "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3913,8 +4309,20 @@
       "fact": {
         "action": "ISSUE_STANDING_POLICY",
         "cause": "CONSENT_SCOPE_MISMATCH",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3936,8 +4344,20 @@
       "fact": {
         "action": "ISSUE_STANDING_POLICY",
         "cause": "NOT_MODELLED",
+        "emitted_by": [],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3959,8 +4379,25 @@
       "fact": {
         "action": "ISSUE_STANDING_POLICY",
         "cause": "ORIGIN_NOT_ESTABLISHED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "ORIGIN_NOT_ESTABLISHED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -3982,8 +4419,20 @@
       "fact": {
         "action": "LIFT_OPERATOR_SUSPENSION",
         "cause": "CONSENT_ALREADY_USED",
+        "emitted_by": [],
         "reason": "CONSENT_ALREADY_USED_OR_MISSING",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4005,8 +4454,20 @@
       "fact": {
         "action": "LIFT_OPERATOR_SUSPENSION",
         "cause": "CONSENT_EXPIRED",
+        "emitted_by": [],
         "reason": "CURRENTNESS_EXPIRED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4028,8 +4489,20 @@
       "fact": {
         "action": "LIFT_OPERATOR_SUSPENSION",
         "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4051,8 +4524,20 @@
       "fact": {
         "action": "LIFT_OPERATOR_SUSPENSION",
         "cause": "CONSENT_SCOPE_MISMATCH",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4074,8 +4559,20 @@
       "fact": {
         "action": "LIFT_OPERATOR_SUSPENSION",
         "cause": "NOT_MODELLED",
+        "emitted_by": [],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4097,8 +4594,25 @@
       "fact": {
         "action": "LIFT_OPERATOR_SUSPENSION",
         "cause": "ORIGIN_NOT_ESTABLISHED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "ORIGIN_NOT_ESTABLISHED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4120,8 +4634,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "ACTOR_NOT_CURRENT_SUCCESSOR",
+        "emitted_by": [],
         "reason": "AUTHORITY_REFUSED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4143,8 +4669,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "ALREADY_REAFFIRMED",
+        "emitted_by": [],
         "reason": "PRECONDITION_STALE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4166,8 +4704,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "CHILD_REFUSED",
+        "emitted_by": [],
         "reason": "AUTHORITY_REFUSED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4189,8 +4739,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "CHILD_STALE",
+        "emitted_by": [],
         "reason": "PRECONDITION_STALE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4212,8 +4774,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "CHILD_UNKNOWN",
+        "emitted_by": [],
         "reason": "AUTHORITY_REFUSED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4235,8 +4809,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "CHILD_WRONG_PREDECESSOR",
+        "emitted_by": [],
         "reason": "PROTECTIVE_SCOPE_CHANGED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4258,8 +4844,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "CLASSIFICATION_MISMATCH",
+        "emitted_by": [],
         "reason": "PRECONDITION_STALE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4281,8 +4879,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "CLASSIFICATION_NOT_ROUTINE",
+        "emitted_by": [],
         "reason": "AUTHORITY_REFUSED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4304,8 +4914,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "CLASSIFICATION_TRANSITION_MISMATCH",
+        "emitted_by": [],
         "reason": "PROTECTIVE_SCOPE_CHANGED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4327,8 +4949,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "CLASSIFICATION_UNAVAILABLE",
+        "emitted_by": [],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4350,8 +4984,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "HEB_TRANSITION_INCONSISTENT",
+        "emitted_by": [],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4373,8 +5019,25 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "ORIGIN_NOT_ESTABLISHED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "ORIGIN_NOT_ESTABLISHED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4396,8 +5059,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "SOURCE_UNAVAILABLE",
+        "emitted_by": [],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4419,8 +5094,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "SUCCESSOR_NOT_CURRENT",
+        "emitted_by": [],
         "reason": "PRECONDITION_STALE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4442,8 +5129,20 @@
       "fact": {
         "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
         "cause": "UNKNOWN_OWNER_STATE",
+        "emitted_by": [],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4465,8 +5164,20 @@
       "fact": {
         "action": "REATTACH_LEAD",
         "cause": "CONSENT_ALREADY_USED",
+        "emitted_by": [],
         "reason": "CONSENT_ALREADY_USED_OR_MISSING",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4488,8 +5199,20 @@
       "fact": {
         "action": "REATTACH_LEAD",
         "cause": "CONSENT_EXPIRED",
+        "emitted_by": [],
         "reason": "CURRENTNESS_EXPIRED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4511,8 +5234,20 @@
       "fact": {
         "action": "REATTACH_LEAD",
         "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4534,8 +5269,20 @@
       "fact": {
         "action": "REATTACH_LEAD",
         "cause": "CONSENT_SCOPE_MISMATCH",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4557,8 +5304,20 @@
       "fact": {
         "action": "REATTACH_LEAD",
         "cause": "HEB_ALREADY_FENCED",
+        "emitted_by": [],
         "reason": "PRECONDITION_STALE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4580,8 +5339,20 @@
       "fact": {
         "action": "REATTACH_LEAD",
         "cause": "HEB_STALE_PREDECESSOR",
+        "emitted_by": [],
         "reason": "PRECONDITION_STALE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4603,8 +5374,25 @@
       "fact": {
         "action": "REATTACH_LEAD",
         "cause": "ORIGIN_NOT_ESTABLISHED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "ORIGIN_NOT_ESTABLISHED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4626,8 +5414,20 @@
       "fact": {
         "action": "REATTACH_LEAD",
         "cause": "UNKNOWN_OWNER_STATE",
+        "emitted_by": [],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4649,8 +5449,20 @@
       "fact": {
         "action": "REQUEST_PROFILE_CHANGE",
         "cause": "CONSENT_ALREADY_USED",
+        "emitted_by": [],
         "reason": "CONSENT_ALREADY_USED_OR_MISSING",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4672,8 +5484,20 @@
       "fact": {
         "action": "REQUEST_PROFILE_CHANGE",
         "cause": "CONSENT_EXPIRED",
+        "emitted_by": [],
         "reason": "CURRENTNESS_EXPIRED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4695,8 +5519,20 @@
       "fact": {
         "action": "REQUEST_PROFILE_CHANGE",
         "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4718,8 +5554,20 @@
       "fact": {
         "action": "REQUEST_PROFILE_CHANGE",
         "cause": "CONSENT_SCOPE_MISMATCH",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4741,8 +5589,20 @@
       "fact": {
         "action": "REQUEST_PROFILE_CHANGE",
         "cause": "NOT_MODELLED",
+        "emitted_by": [],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4764,8 +5624,25 @@
       "fact": {
         "action": "REQUEST_PROFILE_CHANGE",
         "cause": "ORIGIN_NOT_ESTABLISHED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "ORIGIN_NOT_ESTABLISHED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4787,8 +5664,20 @@
       "fact": {
         "action": "SUSPEND_GRANT",
         "cause": "CONSENT_ALREADY_USED",
+        "emitted_by": [],
         "reason": "CONSENT_ALREADY_USED_OR_MISSING",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4810,8 +5699,20 @@
       "fact": {
         "action": "SUSPEND_GRANT",
         "cause": "CONSENT_EXPIRED",
+        "emitted_by": [],
         "reason": "CURRENTNESS_EXPIRED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4833,8 +5734,20 @@
       "fact": {
         "action": "SUSPEND_GRANT",
         "cause": "CONSENT_ISSUER_UNVERIFIED",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4856,8 +5769,20 @@
       "fact": {
         "action": "SUSPEND_GRANT",
         "cause": "CONSENT_SCOPE_MISMATCH",
+        "emitted_by": [],
         "reason": "ORIGIN_UNQUALIFIED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4879,8 +5804,20 @@
       "fact": {
         "action": "SUSPEND_GRANT",
         "cause": "NOT_MODELLED",
+        "emitted_by": [],
         "reason": "SOURCE_UNAVAILABLE",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },
@@ -4902,8 +5839,25 @@
       "fact": {
         "action": "SUSPEND_GRANT",
         "cause": "ORIGIN_NOT_ESTABLISHED",
+        "emitted_by": [
+          {
+            "module": "aew.stg02.commands",
+            "symbol": "Carrier._member"
+          }
+        ],
         "reason": "ORIGIN_NOT_ESTABLISHED",
         "source": "vendored"
+      },
+      "fact_coverage": {
+        "emitted_by": {
+          "check": [
+            "tests/integration/test_reference_stg02.py::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+            "tests/integration/test_reference_stg02.py::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+            "tests/integration/test_reference_stg02.py::test_the_two_command_detectors_agree_on_the_source"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.stg02.commands:Carrier"
+        }
       },
       "family": "command-refusals"
     },

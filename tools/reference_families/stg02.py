@@ -28,6 +28,8 @@ def page(records: list[C.Record]) -> str:
     def facts(family: str) -> list[dict[str, Any]]:
         return [r.fact or {} for r in by.get(family, [])]
 
+    refusals = facts(stg02_commands.REFUSALS)
+    returned = sum(1 for f in refusals if f["emitted_by"])
     served = sum(1 for f in facts(stg02_server.FAMILY) if f["served"] and not f["test_only"])
     total = sum(1 for f in facts(stg02_server.FAMILY) if not f["test_only"])
     lines = ["# STG-02 routes, commands and refusals", "",
@@ -58,8 +60,11 @@ def page(records: list[C.Record]) -> str:
               "Each cause the lookup resolves for an action (a key of one of the two tables), with the wire reason it "
               "maps to. Source `vendored` is the loaded refusal map; source `code` is a cause the slice defines "
               "itself (`SLICE_OWNER_REASONS`). `NOT_MODELLED` is a cause of the vendored map, returned through the "
-              "same lookup as every other.", "",
-              "| Action | Cause | Reason | Source |", "|---|---|---|---|"]
-    for f in facts(stg02_commands.REFUSALS):
-        lines.append(f"| `{f['action']}` | `{f['cause']}` | `{f['reason']}` | {f['source']} |")
+              "same lookup as every other. A pair is in a table whether or not the slice returns it: `Emitted by` "
+              "lists the sites of the admission path that return it, and `-` means the slice never does. "
+              f"The slice returns {returned} of the {len(refusals)} pairs.", "",
+              "| Action | Cause | Reason | Source | Emitted by |", "|---|---|---|---|---|"]
+    for f in refusals:
+        by_sites = ", ".join(f"`{s['symbol']}`" for s in f["emitted_by"]) or "-"
+        lines.append(f"| `{f['action']}` | `{f['cause']}` | `{f['reason']}` | {f['source']} | {by_sites} |")
     return "\n".join(lines).rstrip("\n") + "\n"

@@ -16,6 +16,16 @@ defines itself), with the wire ``reason`` each maps to. ``NOT_MODELLED`` is not 
 returns it through ``refusal`` like every other cause, and it is a key of the vendored map for each action that can
 return it.
 
+**``emitted_by``.** A record is a pair the lookup resolves; whether the slice returns it is a separate fact, the sites
+of the admission path that return the pair (``{module, symbol}``; an empty list: the slice never returns it). Both
+detectors read ``Carrier._member`` as the ordered steps it takes (a test of the origin, of a state a helper decides, of
+the action, then the hand-on to a method) and inventory every ``refusal(...)`` call of the module. :func:`emitted`
+replays the steps over the registry's actions, each step taking the actions it refuses and leaving the rest for the
+next, so a site returns a pair when both its action and its cause are possible there. The fact is
+complete-by-construction only when every ``refusal`` call of the module is placed by a step or by the method handed on
+to, and no pair is one the tables lack; otherwise it is lower-bound and the calls it could not place are listed. A test
+drives ``Carrier._member`` over a battery of states and compares the pairs it returns with the pairs read.
+
 **Why the causes are complete-by-construction.** Every refusal result is built in one function. ``refusal(action,
 cause)`` looks the pair up in the two tables and fails closed (an ``AssertionError``, never a default code) when
 neither has it; the only other places that make a result with a ``reason_code`` pass a refusal's through or say there
@@ -38,6 +48,8 @@ from __future__ import annotations
 
 import ast
 import importlib
+from collections import Counter
+from collections.abc import Mapping
 from typing import Any, NamedTuple
 
 from reference_families import common as C
@@ -63,6 +75,12 @@ REFUSAL_TESTS = (
     f"{_TESTS}::test_every_refusal_result_comes_through_the_one_lookup",
     f"{_TESTS}::test_the_two_command_detectors_agree_on_the_source",
 )
+EMITTED_REGISTRY = f"{COMMAND_MODULE}:Carrier"
+EMITTED_TESTS = (
+    f"{_TESTS}::test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states",
+    f"{_TESTS}::test_every_refusal_call_of_the_module_is_placed_by_the_reading",
+    f"{_TESTS}::test_the_two_command_detectors_agree_on_the_source",
+)
 
 
 class Reading(NamedTuple):
@@ -72,6 +90,13 @@ class Reading(NamedTuple):
     unreadable: list[str]  # symbols of ``refusal`` calls whose cause could not be read
     delegation: list[str]  # the string returns of ``Carrier._delegation``
     builders: list[tuple[str, str, str]]  # (symbol, form, kind) of every place that makes a "reason_code"
+    # (symbol, first argument, cause) of every ``refusal(first, cause)`` call: the cause is the literal, ``$<method>``
+    # for a variable holding the returns of a method of the carrier, or ``?``
+    calls: list[tuple[str, str, str]]
+    # the steps of ``Carrier._member``, in order: (symbol, kind, literal, cause), the kind being ``origin-test`` (the
+    # origin is not the literal: refused), ``state-test`` (a helper's verdict is true: refused), ``action-test`` (the
+    # action is not the literal: refused) or ``hand-on`` (the literal is the method the rest go on to)
+    steps: list[tuple[str, str, str, str]]
 
 
 def _kind(value: ast.expr) -> str:
@@ -116,6 +141,88 @@ class _Builders(C.Scoped):
 def _string_returns(fn: ast.FunctionDef) -> list[str]:
     returns = [r.value for r in ast.walk(fn) if isinstance(r, ast.Return) and isinstance(r.value, ast.Constant)]
     return sorted({v.value for v in returns if isinstance(v.value, str)})
+
+
+def _self_call(node: ast.AST | None) -> str | None:
+    """``self.name(...)``: the name."""
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "self"):
+        return node.func.attr
+    return None
+
+
+def _refusal_call(node: ast.AST | None) -> ast.Call | None:
+    """The node, when it is a call of ``refusal``."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "refusal":
+        return node
+    return None
+
+
+def _cause_ref(node: ast.expr, assigned: dict[str, str]) -> str:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name) and node.id in assigned:
+        return f"${assigned[node.id]}"
+    return "?"
+
+
+def _held(fn: ast.FunctionDef) -> dict[str, str]:
+    """The names assigned a call of a method of the carrier (``e = self._delegation(...)``), and the method."""
+    held: dict[str, str] = {}
+    for node in ast.walk(fn):
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                and (method := _self_call(node.value)) is not None):
+            held[node.targets[0].id] = method
+    return held
+
+
+def _steps(symbol: str, member: ast.FunctionDef) -> list[tuple[str, str, str, str]]:
+    """What ``_member`` does with an action, in order. A statement that is none of the forms contributes no step; its
+    refusals are then unplaced calls, which the build names."""
+    held = _held(member)
+    steps: list[tuple[str, str, str, str]] = []
+    for stmt in member.body:
+        if isinstance(stmt, ast.If) and not stmt.orelse and len(stmt.body) == 1:
+            ret = stmt.body[0]
+            call = _refusal_call(ret.value) if isinstance(ret, ast.Return) else None
+            if call is None or len(call.args) < 2:
+                continue
+            cause = _cause_ref(call.args[1], held)
+            test = stmt.test
+            if isinstance(test, ast.Name) and test.id in held:
+                steps.append((symbol, "state-test", "", cause))
+            elif (isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], ast.NotEq)
+                  and isinstance(test.comparators[0], ast.Constant) and isinstance(test.comparators[0].value, str)):
+                left, literal = test.left, test.comparators[0].value
+                if (isinstance(left, ast.Subscript) and isinstance(left.slice, ast.Constant)
+                        and left.slice.value == "origin"):
+                    steps.append((symbol, "origin-test", literal, cause))
+                elif isinstance(left, ast.Name) and left.id == "action":
+                    steps.append((symbol, "action-test", literal, cause))
+        elif isinstance(stmt, ast.Return) and (method := _self_call(stmt.value)) is not None:
+            steps.append((symbol, "hand-on", method, ""))
+    return steps
+
+
+def _calls(tree: ast.Module) -> list[tuple[str, str, str]]:
+    """Every ``refusal(first, cause)`` call of the module, by the function or method it is in."""
+    found: list[tuple[str, str, str]] = []
+
+    def scan(symbol: str, fn: ast.FunctionDef) -> None:
+        held = _held(fn)
+        for node in ast.walk(fn):
+            call = _refusal_call(node)
+            if call is not None and len(call.args) >= 2:
+                found.append((symbol, ast.unparse(call.args[0]).replace('"', "'"), _cause_ref(call.args[1], held)))
+
+    for top in tree.body:
+        if isinstance(top, ast.FunctionDef):
+            scan(top.name, top)
+        elif isinstance(top, ast.ClassDef):
+            for item in top.body:
+                if isinstance(item, ast.FunctionDef):
+                    scan(f"{top.name}.{item.name}", item)
+    return sorted(found)
 
 
 def _other_returns(fn: ast.FunctionDef) -> bool:
@@ -175,7 +282,66 @@ def read(tree: ast.Module) -> Reading:
                 unreadable.append(fn.name)
     builders = _Builders()
     builders.visit(tree)
-    return Reading(origin, action, sorted(causes), sorted(set(unreadable)), delegation, sorted(builders.found))
+    steps = _steps("Carrier._member", member) if member is not None else []
+    return Reading(origin, action, sorted(causes), sorted(set(unreadable)), delegation, sorted(builders.found),
+                   _calls(tree), steps)
+
+
+def causes_of(reading: Reading, ref: str) -> list[str] | None:
+    """The causes a call can give, from its cause ref: the literal, or the returns of ``_delegation``; None when the
+    reading cannot say (a variable of another method, or an expression)."""
+    if ref == "$_delegation":
+        return list(reading.delegation)
+    return None if ref.startswith("$") or ref == "?" else [ref]
+
+
+def emitted(reading: Reading, registry: Mapping[str, Mapping[str, Any]],
+            named: set[tuple[str, str]]) -> tuple[dict[tuple[str, str], list[str]], list[str]]:
+    """The (action, cause) pairs the admission path returns, each with the symbols that return it, and why the
+    reading is not complete (empty when it is). The steps of ``_member`` are replayed over the registry's actions in
+    order, each step taking the actions it refuses and leaving the rest for the next; the method the last step hands
+    on to returns for the actions that are left. ``named``: the pairs the tables name."""
+    if reading.origin is None or reading.action is None:
+        return {}, ["the steps of Carrier._member are not where this reading looks for them (the origin and the one "
+                    "action it hands on are not found)"]
+    problems: list[str] = []
+    pairs: dict[tuple[str, str], set[str]] = {}
+    placed: Counter[tuple[str, str, str]] = Counter()
+    handed: list[tuple[str, set[str]]] = []
+    remaining = set(registry)
+
+    def returns(symbol: str, first: str, ref: str, actions: set[str]) -> None:
+        placed[(symbol, first, ref)] += 1
+        causes = causes_of(reading, ref)
+        if causes is None:
+            problems.append(f"{symbol} returns a refusal whose cause this reading cannot read ({ref})")
+            return
+        for action in actions:
+            for cause in causes:
+                pairs.setdefault((action, cause), set()).add(symbol)
+
+    for symbol, kind, literal, cause in reading.steps:
+        if kind == "origin-test":
+            taken = {a for a in remaining if registry[a]["origin"] != literal}
+            remaining -= taken
+            returns(symbol, "action", cause, taken)
+        elif kind == "state-test":
+            returns(symbol, "action", cause, set(remaining))
+        elif kind == "action-test":
+            taken = {a for a in remaining if a != literal}
+            remaining -= taken
+            returns(symbol, "action", cause, taken)
+        elif kind == "hand-on":
+            handed.append((f"{symbol.rsplit('.', 1)[0]}.{literal}", set(remaining)))
+    for symbol, actions in handed:
+        for site, first, ref in reading.calls:
+            if site == symbol and first == "i['action']":
+                returns(symbol, first, ref, actions)
+    for site, first, ref in sorted((Counter(reading.calls) - placed).elements()):
+        problems.append(f"{site} returns a refusal on a path this reading cannot place ({first}, {ref})")
+    for action, cause in sorted(set(pairs) - named):
+        problems.append(f"the code can return {cause} for {action}, which no table names (the lookup fails closed)")
+    return {pair: sorted(symbols) for pair, symbols in pairs.items()}, sorted(set(problems))
 
 
 def build(ctx: C.Context) -> list[C.Record]:
@@ -220,13 +386,18 @@ def build(ctx: C.Context) -> list[C.Record]:
         problems.append(C.unresolved_item(ADOPTED, "refusals",
                                           f"{action} is an action of the registry and has no entry in the refusal map"))
     coverage = C.lower_bound(problems) if problems else C.complete(LOOKUP, REFUSAL_TESTS)
+    named_pairs = {(action, cause) for table in (vendored, own) for action, causes in table.items() for cause in causes}
+    pairs, why_not = emitted(reading, registry, named_pairs)
+    emitted_items = [C.unresolved_item(COMMAND_MODULE, "Carrier._member", why) for why in why_not]
+    emitted_coverage = C.lower_bound(emitted_items) if emitted_items else C.complete(EMITTED_REGISTRY, EMITTED_TESTS)
     for source, table, module_name, symbol in (("vendored", vendored, ADOPTED, "refusals"),
                                                ("code", own, COMMAND_MODULE, "SLICE_OWNER_REASONS")):
         for action, causes in sorted(table.items()):
             for cause, reason in sorted(causes.items()):
                 if source == "code" and cause in vendored.get(action, {}):
                     continue  # the lookup finds the vendored one first: the pair is the vendored record's
-                fact = {"action": action, "cause": cause, "reason": reason, "source": source}
+                sites = [{"module": COMMAND_MODULE, "symbol": s} for s in pairs.get((action, cause), [])]
+                fact = {"action": action, "cause": cause, "reason": reason, "source": source, "emitted_by": sites}
                 records.append(C.Record(REFUSALS, f"{action}:{cause}", module_name, symbol, "enumerated", coverage,
-                                        fact))
+                                        fact, fact_coverage={"emitted_by": emitted_coverage}))
     return records

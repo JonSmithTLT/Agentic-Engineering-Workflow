@@ -92,7 +92,7 @@
         "lower-bound": 228
       }
     },
-    "digest": "sha256:a76e666a8781cc4ccf5b2e6a17e6ee9f41614b127aaaa41aebdcfe90f19d22d2",
+    "digest": "sha256:bcf9f33f2da0360493d8736008236cee718a24717a5373cb867ea5dcbf18a34a",
     "records": 1074,
     "unresolved": 92
   },
@@ -18371,6 +18371,8 @@
         "aew.errors",
         "aew.knowledge.evidence",
         "aew.knowledge.records",
+        "aew.policy.validation",
+        "aew.schemas",
         "aew.util"
       ]
     },

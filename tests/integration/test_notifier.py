@@ -343,8 +343,11 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_of_a_held_lock
     Here the control lock is held from just after the takeover, and the watchdog is parked before its read until the
     hold is in place, so the hold always comes first. With no hold, a hold under the lock timeout, and one past it but
     under `wedge_after_s`, the broker closes within `watchdog_wait_s`; a literal window of the lock timeout fails the
-    third. A hold past that bound leaves a broker stale by `judge`: the wait times out, and its message names the link,
-    the watchdog's read in `FileLock._wait`. Once the hold ends, the broker closes."""
+    third. A hold past that bound outlasts one timed-out read plus the next iteration's start. That is not a stale
+    broker: each timed-out read still ticks, so `judge` calls it live while each iteration stays inside
+    `wedge_after_s`, and the swallowed `LockTimeout` is what hides the supersession (review of #276, F1). The wait
+    times out, and its message names the link, the watchdog's read in `FileLock._wait`. Once the hold ends, the broker
+    closes."""
     poll = 0.25
     monkeypatch.setattr(lead_broker, "POLL_S", poll)
     root = project.root / ".aew"
@@ -361,7 +364,10 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_of_a_held_lock
     def hold_the_lock(hold_s: float) -> None:
         with FileLock(root / LOCK_REL, timeout=30):
             held.set()
-            if go.wait(30):  # timed from the watchdog's unpark, not from the lock: a slow unpark never shortens it
+            # Timed from go.set(), just before the unpark, not from taking the lock. The watchdog leaves its pause up to
+            # 50 ms later (the pause's poll), plus scheduling, and that lag shortens the hold its read meets: the third
+            # case's read times out only while the lag stays under POLL_S (review of #276, N4)
+            if go.wait(30):
                 release.wait(hold_s)
 
     def closed_record() -> dict[str, Any] | None:

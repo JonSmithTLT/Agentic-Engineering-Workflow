@@ -348,6 +348,9 @@ def test_a_lock_reached_only_through_a_receiver_whose_typing_needs_itself_is_not
         taken[label] = (member.takes_no_lock, member.lock_takers)
     assert taken == {"typed": (False, [("aew.m", "T.take")]), "cycle": (True, [])}
     assert any(name == "cyclic-receiver" and "self.a = self.a" in text for name, text in CO.CANNOT_SEE)
+    page = " ".join(CO.page(CO.records_of(inputs())).split())
+    assert page.count("a receiver whose typing needs itself (`self.a = self.a`)") == 2, (
+        "the sentence of the members section and the one of the cannot-see section both say so")
 
 
 # ----------------------------------------------------------- what a docstring is quoted for, without its citations

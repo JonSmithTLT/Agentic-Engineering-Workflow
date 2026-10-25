@@ -485,7 +485,8 @@ def page(records: list[C.Record]) -> str:
         "docstring says they run without the lock, and the wake mark's writer, reader and waiter, because the wake "
         "signal is advisory (their docstrings say nothing of a lock, so **takes no lock** is the only support there). "
         "**Takes no lock** says the static call closure of the member reaches no function that takes a lock; a call "
-        "this reading does not resolve is not followed.", ""]
+        "this reading does not resolve, such as one through a receiver whose typing needs itself (`self.a = self.a`), "
+        "is not followed.", ""]
     for r in free:
         f = r.fact or {}
         lines.append(f"### `{f['module']}:{f['symbol']}`")
@@ -503,8 +504,9 @@ def page(records: list[C.Record]) -> str:
               "SQLite's own locking, a file created with `os.O_EXCL`; a `FileLock` reached under another name (the "
               "construction is found by import source, the token reading by spelling, and the two are held to equal "
               "counts, so a renamed import fails the agreement test until it is decided); a lock opener or a lock-free "
-              "member called through a name this reading cannot resolve; and a function that works without the control "
-              "lock and is neither named by `aew.process_kind` nor declared here. Each is pinned by a probe: "
+              "member called through a name this reading cannot resolve, or through a receiver whose typing needs "
+              "itself (`self.a = self.a`); and a function that works without the control lock and is neither named by "
+              "`aew.process_kind` nor declared here. Each is pinned by a probe: "
               + "; ".join(text for _, text in CANNOT_SEE) + "."]
     return "\n".join(lines).rstrip("\n") + "\n"
 
@@ -517,6 +519,8 @@ CANNOT_SEE: tuple[tuple[str, str], ...] = (
     ("other-lock-class", "a lock class other than `aew.engine.lock.FileLock`"),
     ("computed-callee", "an opener called through `getattr`"),
     ("lock-in-a-variable", "a `FileLock` bound to another name and called by it"),
+    ("cyclic-receiver", "a call through a receiver whose typing needs itself, such as `self.a = self.a` (it is not "
+     "the typing cap, and the call is not followed)"),
 )
 
 

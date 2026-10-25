@@ -334,6 +334,22 @@ def test_a_member_that_reaches_a_lock_through_more_attributes_than_the_typing_ca
     assert "(cap `writers_flow.TYPING_DEPTH` = 3:" in str(refused.value)
 
 
+def test_a_lock_reached_only_through_a_receiver_whose_typing_needs_itself_is_not_seen_and_is_not_the_cap(monkeypatch):
+    """Review of #267, Q-4: the cycle is a third path, unlike the cap it neither fails nor marks. The same member with
+    its receiver typed (the control) takes the lock; with `self.a1 = self.a1` the call is not followed, as for any
+    receiver this reading cannot type, and `CANNOT_SEE` says so."""
+    monkeypatch.setattr(CO, "DECLARED", ())
+    taken = {}
+    for label, source in (("typed", lock_through_attributes(1)),
+                          ("cycle", lock_through_attributes(1).replace("self.a1 = T()", "self.a1 = self.a1"))):
+        prog = program({"aew.m": source})
+        sites = CO.lock_sites(prog, F.Evaluator(prog))
+        [member] = CO.members_of(prog, TYPED_DOC, {(s.module, s.symbol) for s in sites})
+        taken[label] = (member.takes_no_lock, member.lock_takers)
+    assert taken == {"typed": (False, [("aew.m", "T.take")]), "cycle": (True, [])}
+    assert any(name == "cyclic-receiver" and "self.a = self.a" in text for name, text in CO.CANNOT_SEE)
+
+
 # ----------------------------------------------------------- what a docstring is quoted for, without its citations
 
 @pytest.mark.parametrize(("sentence", "kept"), [
@@ -523,6 +539,7 @@ PROBES = {
     "other-lock-class": "OtherLock(path)",
     "computed-callee": "getattr(store, 'control_lock')('op')",
     "lock-in-a-variable": "make = FileLock\nmake(path)",
+    "cyclic-receiver": "self.a = self.a\nself.a.take(path)",
 }
 
 

@@ -42,7 +42,10 @@ WORKSPACES_NAME = "workspaces_root"  # the directory of the task workspaces (a m
 # it carries the no-chain item), or the roles reader counts a registration as run by every role. `caps()` is the one
 # list, written on the page. A tree test doubles every cap and holds the generated reference unchanged (no record is
 # lost to a cap), and another finds every cap or slice of the generator that is not listed (the sweep).
-DEPTH = 6  # calls and parameters followed in a chain
+# Calls and parameters followed in a chain. Measured, not chosen: a tree test holds the generated reference unchanged
+# when it is halved, so it is at least twice what the tree needs (the longest chain is the run directory a supervisor is
+# handed through the harness).
+DEPTH = 14
 CALLERS = 24  # call sites of one function that are evaluated; more is UNK
 # Distinct values one expression may take before it is UNK. Measured, not chosen: a tree test holds it to at least twice
 # the largest set the tree makes (the page prints that size), so a set that grows toward it is a decision and not a
@@ -92,8 +95,17 @@ def one(kind: str, text: str = "") -> Values:
     return frozenset({Val(kind, text)})
 
 
+class Cut(Exception):
+    """A cap was reached where nothing can hold the mark (the functions an expression can be, not a value): whoever
+    asked turns it into an unknown value with this reason."""
+
+
+def depth_reason() -> str:
+    return f"resolution depth limit ({DEPTH} calls or parameters)"
+
+
 def depth_limit() -> Values:
-    return unk(f"resolution depth limit ({DEPTH} calls or parameters)")
+    return unk(depth_reason())
 
 
 _peak: dict[str, int] | None = None
@@ -134,8 +146,9 @@ class Cap(NamedTuple):
 def caps(peaks: Mapping[str, int] | None = None) -> tuple[Cap, ...]:
     """The caps of the value flow and the call graph, from the constants themselves."""
     return (
-        Cap("writers_flow.DEPTH", DEPTH, "the calls and parameters one value is followed through", "chosen",
-            "the value is unknown, with the reason `resolution depth limit`"),
+        Cap("writers_flow.DEPTH", DEPTH, "the calls and parameters one value is followed through",
+            "measured, held to twice what the tree needs", "the value is unknown, with the reason `resolution depth "
+            "limit`; the keys of a mapping a callback returns are unknown with the same reason"),
         Cap("writers_flow.CALLERS", CALLERS,
             "the call sites of one function whose parameter, mapping keys or callback is read", "chosen",
             "the parameter is unknown, with the reason `more than N call sites` (the roles reader counts the "
@@ -803,7 +816,7 @@ class Evaluator:
         """The ``index``-th element of the tuple a call returns: of each ``return`` of the function it names, read in
         that function with the call's arguments bound."""
         if depth <= 0:
-            return unk("resolution depth limit")
+            return depth_limit()
         mod = self.p.modules[env.module]
         target = self.p.target(mod, self._func(env), call.func)
         if target is None:
@@ -1128,8 +1141,11 @@ class Evaluator:
         :meth:`_callables`)."""
         token = ("keys-call", env.module, str(env.func), str(id(call)))
         if token in seen or depth <= 0:
-            return frozenset() if token in seen else unk("resolution depth limit")
-        targets = self._callables(call.func, env, depth - 1, seen | {token})
+            return frozenset() if token in seen else depth_limit()
+        try:
+            targets = self._callables(call.func, env, depth - 1, seen | {token})
+        except Cut as cut:
+            return unk(f"the keys of `{_src(call)}`: {cut}")
         out: set[Val] = set()
         for target in targets:
             for ret in target.returns:
@@ -1141,9 +1157,10 @@ class Evaluator:
     def _callables(self, callee: ast.expr, env: Env, depth: int, seen: frozenset[tuple[str, ...]]) -> list[Func]:
         """The functions an expression can be when it is called: one a name, attribute or method statically resolves
         to; or a callback, a parameter or a ``self`` attribute that a constructor stored, followed to the functions
-        its callers pass. (A value read, not an edge: the reach does not follow callbacks.)"""
+        its callers pass. (A value read, not an edge: the reach does not follow callbacks.) A cap reached on the way
+        is a :class:`Cut`: the functions found so far would be a partial answer that looks complete."""
         if depth <= 0:
-            return []
+            raise Cut(depth_reason())
         mod = self.p.modules[env.module]
         func = self._func(env)
         static = self.p.target(mod, func, callee)
@@ -1154,7 +1171,10 @@ class Evaluator:
             token = ("callable", func.module, func.qual, callee.id)
             if token in seen:
                 return []
-            for caller, caller_mod, call in self.p.callers.get(func.key, [])[:CALLERS]:
+            sites = self.p.callers.get(func.key, [])
+            if len(sites) > CALLERS:
+                raise Cut(f"`{callee.id}` of `{func.qual}` has more than {CALLERS} call sites")
+            for caller, caller_mod, call in sites:
                 arg = _argument(func, callee.id, call)
                 if arg is not None:
                     found += self._callables(arg, Env(caller_mod.name, caller.key if caller else None), depth - 1,
@@ -1272,7 +1292,7 @@ class Evaluator:
         than the program reads, is UNK."""
         token = ("elements", func.module, func.qual, name)
         if token in seen or depth <= 0:
-            return frozenset() if token in seen else unk("resolution depth limit")
+            return frozenset() if token in seen else depth_limit()
         sites = self.p.callers.get(func.key, [])
         if not sites or len(sites) > CALLERS:
             return unk(f"a loop variable over `{name}`, a list this reading cannot read")

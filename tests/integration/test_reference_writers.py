@@ -375,6 +375,13 @@ def test_doubling_every_cap_changes_no_record_and_nothing_on_the_page_but_the_ca
     assert doubled.pages["writers.md"] != base.pages["writers.md"], "the caps' own section prints the doubled values"
 
 
+def test_halving_the_depth_cap_changes_no_record_so_it_is_at_least_twice_what_the_tree_needs(monkeypatch):
+    base = {r.id: r.as_json() for r in W.build(CTX).records}
+    monkeypatch.setattr(F, "DEPTH", F.DEPTH // 2)
+    halved = {r.id: r.as_json() for r in W.build(CTX).records}
+    assert halved == base, f"a chain needs more than {F.DEPTH} calls or parameters: raise the cap, and say why"
+
+
 def test_the_value_cap_is_at_least_twice_the_largest_set_the_tree_makes():
     with F.measuring() as peaks:
         W.build(CTX)

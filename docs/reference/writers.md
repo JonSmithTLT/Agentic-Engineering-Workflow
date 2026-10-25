@@ -67,6 +67,8 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/R-{}-{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
 - `local/harness/runs/R-{}-{}/events.jsonl`: written or removed by `aew.harness.runlog:_open_append` (direct: os.open)
 - `local/harness/runs/R-{}-{}/git`: written or removed by `aew.harness.containment.layout:retire_private_git` (direct: shutil.rmtree)
+- `local/harness/runs/R-{}-{}/git/index`: written or removed by `aew.harness.containment.layout:private_git` (direct: shutil.copy2)
+- `local/harness/runs/R-{}-{}/git/objects`: written or removed by `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/harness`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/heartbeat`: written or removed by `aew.harness.runlog:beat` (direct: Path.touch, atomic_write, os.open)
 - `local/harness/runs/R-{}-{}/prompt.md`: written or removed by `aew.harness.supervisor:Supervisor.start` (direct: Path.write_text)
@@ -221,7 +223,7 @@ Writer functions with a store-transaction or direct write placed under `.aew`: 7
 
 Each cap bounds how far one thing is followed, and names where its number comes from. Past a cap the reading says so: the reason is on the unresolved write, or the writer carries the no-chain item, or the registration counts as run by every role. A tree test doubles every cap and holds this page and `index.json` unchanged, so no record of this tree is lost to a cap. A refusal that lists problems is cut at a number of lines and says how many it left out, and an expression quoted in a reason is cut with `...`: those are not caps on what the reading follows.
 
-- `writers_flow.DEPTH` = 6: the calls and parameters one value is followed through; source: chosen; past it: the value is unknown, with the reason `resolution depth limit`.
+- `writers_flow.DEPTH` = 14: the calls and parameters one value is followed through; source: measured, held to twice what the tree needs; past it: the value is unknown, with the reason `resolution depth limit`; the keys of a mapping a callback returns are unknown with the same reason.
 - `writers_flow.CALLERS` = 24: the call sites of one function whose parameter, mapping keys or callback is read; source: chosen; past it: the parameter is unknown, with the reason `more than N call sites` (the roles reader counts the registration as run by every role).
 - `writers_flow.VALUES` = 40: the distinct values one expression may take; source: measured, held to twice the largest; past it: the expression is unknown, with the reason `more than N possible values`. The largest in this tree: 17.
 - `writers_flow.TYPING_DEPTH` = 3: the receivers typed through receivers (`self.a.b.run()`); source: chosen; past it: the call is not followed, as for any receiver whose class is not known, and a writer reached only through it carries the no-chain item.

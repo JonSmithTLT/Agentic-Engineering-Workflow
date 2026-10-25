@@ -482,6 +482,32 @@ def test_the_keys_of_a_mapping_passed_from_more_call_sites_than_the_cap_are_unkn
     assert [site for site in over.unresolved] == [("aew.m", "put", "Path.write_text")], "the site is marked"
 
 
+def callbacks(n: int) -> str:
+    """`run(aew_root, render)` writes a file for each key of what `render()` returns; `n` functions pass it `views`."""
+    calls = "".join(f"def c{i}(aew_root):\n    run(aew_root, views)\n\n" for i in range(n))
+    return ("def views():\n    return {'state/A.md': 'a'}\n\n"
+            "def run(aew_root, render):\n    for rel, text in render().items():\n"
+            "        (aew_root / rel).write_text(text)\n\n" + calls)
+
+
+def callback_chain(links: int) -> str:
+    """The callback is handed down `links` functions before `run` calls it."""
+    src = ("def views():\n    return {'state/A.md': 'a'}\n\n"
+           "def h0(aew_root, render):\n    for rel, text in render().items():\n"
+           "        (aew_root / rel).write_text(text)\n\n")
+    src += "".join(f"def h{k}(aew_root, render):\n    h{k - 1}(aew_root, render)\n\n" for k in range(1, links))
+    return src + f"def top(aew_root):\n    h{links - 1}(aew_root, views)\n"
+
+
+def test_the_callbacks_a_parameter_names_are_unknown_past_the_call_site_cap_and_past_the_depth_cap():
+    assert sorted(analysed(callbacks(F.CALLERS)).writers) == ["state/A.md"]
+    over = analysed(callbacks(F.CALLERS + 1))
+    assert over.writers == {} and list(over.unresolved) == [("aew.m", "run", "Path.write_text")], "the site is marked"
+    assert sorted(analysed(callback_chain(2)).writers) == ["state/A.md"]
+    deep = analysed(callback_chain(F.DEPTH + 2))
+    assert deep.writers == {} and list(deep.unresolved) == [("aew.m", "h0", "Path.write_text")], "the site is marked"
+
+
 def typed_chain(links: int) -> str:
     """`L0().nxt().nxt()...put(aew_root)`: each link's class is known only by the previous link's result annotation."""
     src = "".join(f"class L{k}:\n    def nxt(self) -> L{k + 1}:\n        return L{k + 1}()\n\n" for k in range(links))

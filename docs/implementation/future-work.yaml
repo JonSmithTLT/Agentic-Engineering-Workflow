@@ -75,7 +75,7 @@ sections:
       P1 and B2; E13'
 
   intro: |-
-    **Now, in order.** The build queue, each item on the row that carries it. **The Lead keeps it current:** this register owns the build order, and the architecture map's build order points here for it. The design queue stays in the map.
+    **Now, in order.** The build queue, each item on the row that carries it. **The Lead keeps it current:** this register owns the build order, and the architecture map's build order points here for it. The design queue stays in the map. `python tools/register.py check` holds the list to the rows: every row it names is open and targeted **Now** or **Stage**, and every row targeted **Now** is in it. A stage is named once it is queued. A change that closes or retargets a row named here edits this list in the same change.
 
     | # | Row | Item |
     |---|---|---|
@@ -89,7 +89,7 @@ sections:
     | 8 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
     | 9 | STG-13 | V-01's oracle rebuilt |
 
-    **Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today. On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace).
+    **Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today. On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace). E84 and E85 (item 5) come before H-1 and CS-4: the operator took them ahead of their milestone on 2026-10-25 (in chat).
 
     **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 - number: 2

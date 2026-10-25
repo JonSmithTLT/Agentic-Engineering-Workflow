@@ -850,24 +850,59 @@ def test_the_now_list_refuses_a_closed_a_missing_and_an_untargeted_row_and_a_now
             return intro.replace(last, f"{last}\n| {count + 1} | {rid} | x |")
         return edit
 
-    assert _with_now(add(closed)) == [f"the Now list names {closed}, which is not an open row"]
-    assert _with_now(add("Z99")) == ["the Now list names Z99, which is not an open row"]
+    edit = register.NOW_EDIT
+    assert _with_now(add(closed)) == [f"the Now list names {closed}, which is not an open row: {edit}"]
+    assert _with_now(add("Z99")) == [f"the Now list names Z99, which is not an open row: {edit}"]
     assert _with_now(add(other))[0].startswith(f"the Now list names {other}, which is targeted ")
+    assert _with_now(add(other))[0].endswith(edit)
     dropped = _with_now(lambda intro: "\n".join(
         line.replace(now_row, "STG-13") if re.match(r"\| \d+ \|", line) else line for line in intro.splitlines()))
-    assert f"{now_row} is targeted Now, but the Now list does not name it" in dropped
+    assert f"{now_row} is targeted Now, but the Now list does not name it: {edit}" in dropped
     assert _with_now(lambda intro: intro.replace("| 2 |", "| 9 |", 1)) == [
         "the Now list's item 9 is numbered out of order (expected 2)"]
     assert _with_now(lambda intro: re.sub(r"(?m)^\| \d+ \|.*\n?", "", intro)) == [
         "§1 has no Now list: its intro holds the build order as `| <n> | <row ids> | <item> |` lines"]
+    # An item that names no row (review of #273, F3).
+    assert _with_now(lambda intro: intro.replace(_now_line(intro, count), f"| {count} |  | an item with no row |")) == [
+        f"the Now list's item {count} names no row (each item names the rows that carry it)"]
 
 
-def test_check_refuses_a_now_list_that_disagrees_with_the_rows():
-    """The rule is enforced where it matters: `problems`, which `check` and CI run, carries `now_problems`."""
+def test_the_now_list_reads_an_indented_item_and_refuses_a_second_table():
+    """Review of #273, F2: a table line indented by up to three spaces is still a table line, so an item written that
+    way is read, not skipped; and §1's intro holds one table, so any other table line is refused rather than read as an
+    item. A line indented by four spaces or a tab is a Markdown code block, not part of the table."""
+    count = len(register.now_list(DATA))
+    indented = _with_now(lambda intro: intro.replace(_now_line(intro, count), "   " + _now_line(intro, count)))
+    assert indented == []
+    data = copy.deepcopy(DATA)
+    first = next(s for s in data["sections"] if s["number"] == 1)
+    first["intro"] = first["intro"].replace(_now_line(first["intro"], count),
+                                            "   " + _now_line(first["intro"], count))
+    assert [n for n, _ in register.now_list(data)] == list(range(1, count + 1))
+    second = _with_now(lambda intro: intro + "\n\n| Gate | When |\n|---|---|\n| one | two |")
+    assert second == [
+        "§1's intro has a table line that is not a Now item, its header or its separator: '| Gate | When |' (the Now "
+        "list is §1's only table)",
+        "§1's intro has a table line that is not a Now item, its header or its separator: '| one | two |' (the Now "
+        "list is §1's only table)"]
+    assert _with_now(lambda intro: intro + "\n\n    | not | a table |\n\t| nor | this |") == []
+
+
+def test_check_refuses_a_now_list_that_disagrees_with_the_rows(monkeypatch, capsys):
+    """Review of #273, F1: `check` runs `problems`, and so the Now list's rule, which before only `summary` printed. An
+    unknown id planted in item 1 makes `check` exit 1 and name it."""
     data = copy.deepcopy(DATA)
     first = next(s for s in data["sections"] if s["number"] == 1)
     first["intro"] = first["intro"].replace("| 1 |", "| 1 | Z99,", 1)
-    assert "the Now list names Z99, which is not an open row" in register.problems(data)
+    assert f"the Now list names Z99, which is not an open row: {register.NOW_EDIT}" in register.problems(data)
+    monkeypatch.setattr(register, "load", lambda: data)
+    assert register.main(["check"]) == 1
+    assert "problem: the Now list names Z99, which is not an open row" in capsys.readouterr().out
+
+
+def test_the_targets_the_now_list_may_name_are_register_targets():
+    """Review of #273, N2: `NOW_TARGETS` is its own fact (which targets may stand in the queue), kept in `TARGETS`."""
+    assert set(register.NOW_TARGETS) <= set(register.TARGETS)
 
 
 def test_the_pin_names_a_missing_a_stray_and_an_undefined_disposition(at_the_base):

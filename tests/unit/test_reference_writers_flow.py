@@ -15,6 +15,7 @@ import copy
 import re
 import sys
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -580,6 +581,13 @@ def attribute_chain(hops: int) -> str:
     return src + f"class M:\n    def __init__(self):\n        self.a1 = {first}\n" + run
 
 
+def attribute_chain_from_a_local(hops: int) -> str:
+    """`m = M(); m.a1.a2...aN.take(root)`: the same chain, rooted at a local name instead of `self`."""
+    src = attribute_chain(hops).split("    def run(self, root):")[0]
+    path = "m.a1" + "".join(f".a{k}" for k in range(2, hops + 1))
+    return src + f"\ndef main(root):\n    m = M()\n    {path}.take(root)\n"
+
+
 def returned_chain(links: int) -> str:
     """`fN().put(aew_root)` where `fN` returns `fN-1()` ... returns `K()`: no annotation names the class."""
     src = "class K:\n    def put(self, aew_root):\n        (aew_root / 'local' / 'k').write_text('x')\n\n"
@@ -626,15 +634,51 @@ def test_attributes_typed_to_the_cap_are_followed_and_one_hop_more_fails_the_rea
     assert cap_text("TYPING_DEPTH") in said and f"more than {typing_cap} hops" in said
 
 
+def test_a_local_that_roots_a_chain_of_attributes_is_one_more_hop_and_past_the_cap_fails_the_reading(typing_cap):
+    """Review of #267, Q-2: the local name is a hop of its own (the `_level` of the Name branch of `receiver_class`)."""
+    assert ("aew.m", "T.take") in edges(attribute_chain_from_a_local(typing_cap - 1))
+    said = fails_naming_the_typing_cap(attribute_chain_from_a_local(typing_cap))
+    assert cap_text("TYPING_DEPTH") in said and f"more than {typing_cap} hops" in said
+
+
 def test_a_class_a_function_returns_through_calls_to_the_cap_is_followed_and_one_more_fails_the_reading(typing_cap):
     assert ("aew.m", "K.put") in edges(returned_chain(typing_cap))
     assert cap_text("TYPING_DEPTH") in fails_naming_the_typing_cap(returned_chain(typing_cap + 1))
 
 
-def test_a_receiver_whose_typing_needs_itself_is_unknown_and_is_not_the_caps(typing_cap):
-    cycle = ("class L:\n    def nxt(self):\n        return L()\n\n"
-             "def main(aew_root):\n    a = a.nxt()\n    a.nxt()\n")
-    assert ("aew.m", "L.nxt") not in edges(cycle), "a cycle is not typed, and the reading does not fail for it"
+STEP = "class L:\n    def step(self):\n        return L()\n\n"
+
+
+def held(init: str) -> str:
+    """`M.run` calls `self.nxt.step()`; ``init`` is what `__init__` assigns."""
+    return (STEP + "class M:\n    def __init__(self):\n" + "".join(f"        {line}\n" for line in init.split(";"))
+            + "    def run(self):\n        self.nxt.step()\n")
+
+
+def locals_of(body: str) -> str:
+    return STEP + "def main(aew_root):\n" + "".join(f"    {line}\n" for line in body.split(";"))
+
+
+# Each cycle with the same code typed (the control: the call is an edge), so that a cycle that is not an edge is the
+# cycle's doing. A cycle is unknown, and it is not the cap's: three checks stop it (`_enter_typing` for a call receiver,
+# `receiver_class` for an attribute and for a local name), and every one is planted (review of #267, Q-2).
+TYPING_CYCLES = {
+    "an attribute assigned itself": (held("self.nxt = self.nxt"), held("self.nxt = L()")),
+    "two attributes assigned each other": (held("self.nxt = self.b;self.b = self.nxt"),
+                                           held("self.nxt = self.b;self.b = L()")),
+    "an attribute assigned the result of a call on itself": (held("self.nxt = L();self.nxt = self.nxt.step()"),
+                                                             held("self.nxt = L()")),
+    "a local used before it is assigned": (locals_of("a = a.step();a.step()"), locals_of("a = L();a.step()")),
+    "a local assigned a call on itself": (locals_of("cur = L();cur = cur.step();cur.step()"),
+                                          locals_of("cur = L();cur.step()")),
+}
+
+
+@pytest.mark.parametrize("name", sorted(TYPING_CYCLES))
+def test_a_receiver_whose_typing_needs_itself_is_unknown_and_is_not_the_caps(typing_cap, name):
+    cycle, typed = TYPING_CYCLES[name]
+    assert ("aew.m", "L.step") in edges(typed), "the same code typed is a call edge"
+    assert ("aew.m", "L.step") not in edges(cycle), "a cycle is not typed, and the reading does not fail for it"
 
 
 def test_a_cap_reason_names_the_cap_and_a_value_set_past_it_is_all_or_nothing():
@@ -815,50 +859,6 @@ def test_the_value_a_call_returns_through_more_calls_than_the_depth_cap_is_marke
     assert sorted(deep.writers) == ["local/fixed"] and kinds_of(deep) == {"DEPTH"}
 
 
-# Every `depth <= 0` guard of the value flow, found by AST: each is held to a planted case in this module (its test is
-# named here and must exist) or excused with its reason. F4 listed these by hand and missed one (review of #267, C-2).
-DEPTH_GUARDS = {
-    "Evaluator._call": "test_the_value_a_call_returns_through_more_calls_than_the_depth_cap_is_marked_with_the_cap",
-    "Evaluator._call_element":
-        "test_the_element_of_a_tuple_returned_through_more_calls_than_the_depth_cap_is_marked_with_the_cap",
-    "Evaluator._callables":
-        "test_a_callback_stopped_by_the_depth_cap_or_the_call_site_cap_says_so_in_the_reason_of_the_keys",
-    "Evaluator._dict_sources":
-        "test_a_dict_returned_through_more_calls_than_the_depth_cap_is_marked_with_the_cap_and_not_a_computed_segment",
-    "Evaluator._elements_of_param":
-        "test_a_list_parameter_handed_down_more_calls_than_the_depth_cap_is_marked_with_the_cap",
-    "Evaluator._keys": "test_the_keys_of_a_mapping_handed_down_more_calls_than_the_depth_cap_are_marked_with_the_cap",
-    "Evaluator._keys_of_call":
-        "test_a_callback_stopped_by_the_depth_cap_or_the_call_site_cap_says_so_in_the_reason_of_the_keys",
-    "Evaluator._param":
-        "test_a_parameter_passed_down_more_calls_than_the_depth_limit_is_unknown_and_one_within_it_is_placed",
-    "Evaluator._process_computed":
-        "test_a_sibling_named_through_more_assignments_than_the_cap_is_unresolved_and_the_reason_names_the_cap",
-    "Evaluator._typed_attribute":
-        "test_an_attribute_typed_through_more_classes_than_the_depth_cap_is_marked_with_the_cap",
-    "Program._level": "test_attributes_typed_to_the_cap_are_followed_and_one_hop_more_fails_the_reading",
-}
-
-
-def test_every_depth_guard_of_the_value_flow_is_held_to_a_planted_case_or_excused():
-    tree = ast.parse((ROOT / "tools" / "reference_families" / "writers_flow.py").read_text(encoding="utf-8"))
-    found: set[str] = set()
-
-    class Guards(C.Scoped):
-        def visit_Compare(self, node: ast.Compare) -> None:
-            left, only = node.left, node.comparators[0] if len(node.comparators) == 1 else None
-            named = isinstance(left, ast.Name) and left.id in ("depth", "_depth")
-            below = isinstance(node.ops[0], (ast.LtE, ast.Lt)) and isinstance(only, ast.Constant) and only.value == 0
-            if named and below:
-                found.add(self.symbol or "")
-            self.generic_visit(node)
-
-    Guards().visit(tree)
-    assert found == set(DEPTH_GUARDS), "decide each new guard: a planted case that marks it, or an excuse here"
-    missing = [name for name in DEPTH_GUARDS.values() if not name.startswith("excused:") and name not in globals()]
-    assert missing == []
-
-
 def exactly_callers(sites: int) -> str:
     return ("def put(path):\n    path.write_text('x')\n\n"
             + "".join(f"def c{i}(aew_root):\n    put(aew_root / 'local' / 'f{i}')\n\n" for i in range(sites)))
@@ -1013,113 +1013,354 @@ def test_the_page_lists_each_cap_with_its_value_its_source_and_what_happens_past
                                                                       if c.measured is not None])
 
 
+# ---------------------------------------------------------------------- the bounds of the generator, by one method
+# One AST walk finds every place the generator can bound how much it follows or shows, and two tests read it: the sweep
+# of numbers (a cap is in `caps()`, or the number is excused with its reason) and the depth guards (a planted case, or
+# an excuse). They were two walks with a spelling each, and each had a gap its review found: the sweep skipped 0, 1
+# and -1 and never saw a negative number, and keyed an excuse by its text in a set, so a second site of one text was
+# absorbed (#266, F-1); the guards were `depth <= 0` in one file, one per function (#267, Q-1).
+
 CAP_NAMES = re.compile(r"(DEPTH|CALLERS|VALUES|LIMIT|MAX|CAP|BOUND|BUDGET)", re.I)
 LIMIT_CALLS = frozenset({"islice", "nsmallest", "nlargest"})
+ORDERINGS = (ast.Lt, ast.LtE, ast.Gt, ast.GtE)
+SHAPE_NUMBERS = (0, 1, -1)  # an equality with these is a shape test (`len(x) == 1`); an ordering with them is a bound
 
 
-def numeric_limits(path: Path, tree: ast.Module) -> tuple[set[str], set[str], set[str]]:
-    """What in one module can bound how much the generator follows or shows: (integer constants named like a cap, at
-    module or class level, annotated or not, in any case; slices cut at a number, a constant or from the end, and
-    `islice`-like calls with a number; numbers in a comparison and integer parameter defaults)."""
+def number_of(node: ast.expr) -> int | float | None:
+    """A number literal: an integer or a float, with a unary minus or plus on it (`-5`, `+5`; never a Constant)."""
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        inner = number_of(node.operand)
+        return None if inner is None else -inner if isinstance(node.op, ast.USub) else inner
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+        return node.value
+    return None
+
+
+def holds_a_depth(node: ast.expr) -> bool:
+    """A name or attribute whose last word says it counts depth (`depth`, `_depth`, `link_depth`)."""
+    name = node.id if isinstance(node, ast.Name) else node.attr if isinstance(node, ast.Attribute) else ""
+    return "depth" in name.lower()
+
+
+class Bounds(C.Scoped):
+    """Everything in one module that can bound what the generator follows or shows.
+
+    ``numbers``: an ordering against any number (an integer or a float; 0, 1, negative and unary-plus numbers
+    included), an equality against any number but 0, 1 and -1, and a number as a parameter default (a function, an
+    async function or a lambda) but 0, counted per file and text (a second site of one text is a second entry).
+    ``guards``: a depth tested against 0 or 1 by an ordering or an equality (either side, floats too), by membership in
+    a literal that holds 0 or 1 (``depth in (0, 1)``), by negation (``not depth``) or by truth (``if depth:``, a
+    boolean operand, a conditional's test), counted per function.
+
+    Not seen, and stated (each is pinned in ``UNSEEN_BOUNDS``): a bound spelled through a local name (``limit = 5;
+    n <= limit``) or arithmetic (``n <= 2 * 25``); a depth counter that is not named for depth (``not hops``,
+    ``hops == 0``: a guard is found by its name); a number given to a call (``range(50)``, ``textwrap.shorten(s,
+    60)``, ``deque(xs, maxlen=50)``, ``xs[:min(len(xs), 50)]``), which is every ``rsplit(".", 1)`` and ``.get(k, 0)``
+    too; and a bound with no literal at all (a recursion with no depth parameter, a loop ended by a condition elsewhere,
+    a cap through an imported constant, which only the constants rule sees)."""
+
+    def __init__(self, stem: str) -> None:
+        super().__init__()
+        self.stem = stem
+        self.numbers: Counter[str] = Counter()
+        self.guards: Counter[str] = Counter()
+
+    def _guard(self) -> None:
+        self.guards[f"{self.stem}:{self.symbol or ''}"] += 1
+
+    def _truth(self, test: ast.expr) -> None:
+        if holds_a_depth(test):
+            self._guard()
+
+    def visit_Compare(self, node: ast.Compare) -> None:
+        operands = [node.left, *node.comparators]
+        for op, left, right in zip(node.ops, operands, operands[1:], strict=False):
+            values = [v for v in (number_of(left), number_of(right)) if v is not None]
+            members = [number_of(e) for e in right.elts] if isinstance(right, (ast.Tuple, ast.List, ast.Set)) else []
+            if isinstance(op, (ast.In, ast.NotIn)) and holds_a_depth(left) and any(v in (0, 1) for v in members):
+                self._guard()
+            elif any(holds_a_depth(x) for x in (left, right)) and any(v in (0, 1) for v in values):
+                self._guard()
+            elif values and (isinstance(op, ORDERINGS) or any(v not in SHAPE_NUMBERS for v in values)):
+                self.numbers[f"{self.stem}:{ast.unparse(node)}"] += 1
+        self.generic_visit(node)
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> None:
+        if isinstance(node.op, ast.Not):
+            self._truth(node.operand)
+        self.generic_visit(node)
+
+    def visit_If(self, node: ast.If) -> None:
+        self._truth(node.test)
+        self.generic_visit(node)
+
+    visit_While = visit_IfExp = visit_If
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> None:
+        for operand in node.values:
+            self._truth(operand)
+        self.generic_visit(node)
+
+    def _defaults(self, node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> None:
+        args = node.args
+        name = node.name if not isinstance(node, ast.Lambda) else "lambda"
+        named = [*zip(args.args[len(args.args) - len(args.defaults):], args.defaults, strict=True),
+                 *((a, d) for a, d in zip(args.kwonlyargs, args.kw_defaults, strict=True) if d is not None)]
+        for arg, default in named:
+            value = number_of(default)
+            if value not in (None, 0):
+                self.numbers[f"{self.stem}:{name}({arg.arg}={value})"] += 1
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._defaults(node)
+        super().visit_FunctionDef(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._defaults(node)
+        super().visit_AsyncFunctionDef(node)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        self._defaults(node)
+        self.generic_visit(node)
+
+
+def bounds_of(path: Path, tree: ast.Module) -> tuple[set[str], Counter[str], Bounds]:
+    """(number constants named like a cap, at module or class level, annotated or not, in any case; slices cut at a
+    number, a constant or from the end (any unary minus, a name too: `xs[-WORDS:]`), and `islice`-like calls with a
+    number, counted; the numbers and the depth guards)."""
     constants: set[str] = set()
-    cuts: set[str] = set()
-    literals: set[str] = set()
+    cuts: Counter[str] = Counter()
     stem = path.stem
     for scope in (tree, *(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef))):
         for node in scope.body:
-            targets: list[ast.expr] = []
+            targets: Sequence[ast.expr] = []
             if isinstance(node, ast.Assign):
                 targets, value = node.targets, node.value
             elif isinstance(node, ast.AnnAssign) and node.value is not None:
                 targets, value = [node.target], node.value
             else:
                 continue
-            if isinstance(value, ast.Constant) and type(value.value) is int:
+            if number_of(value) is not None:
                 constants |= {f"{stem}.{t.id}" for t in targets if isinstance(t, ast.Name) and CAP_NAMES.search(t.id)}
     for node in ast.walk(tree):
         if isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Slice):
             upper, lower = node.slice.upper, node.slice.lower
-            if (isinstance(upper, ast.Constant) and type(upper.value) is int) or (
-                    isinstance(upper, ast.Name) and upper.id.isupper()) or (
+            if upper is not None and number_of(upper) is not None:
+                cuts[f"{stem}:{ast.unparse(node)}"] += 1
+            elif (isinstance(upper, ast.Name) and upper.id.isupper()) or (
                     isinstance(lower, ast.UnaryOp) and isinstance(lower.op, ast.USub)):
-                cuts.add(f"{stem}:{ast.unparse(node)}")
+                cuts[f"{stem}:{ast.unparse(node)}"] += 1
         elif isinstance(node, ast.Call) and ast.unparse(node.func).split(".")[-1] in LIMIT_CALLS:
-            cuts.add(f"{stem}:{ast.unparse(node)}")
-        elif isinstance(node, ast.Compare):
-            numbers = [c for c in (node.left, *node.comparators) if isinstance(c, ast.Constant)
-                       and type(c.value) is int and c.value not in (0, 1, -1)]
-            if numbers:
-                literals.add(f"{stem}:{ast.unparse(node)}")
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            args = node.args
-            named = [*zip(args.args[len(args.args) - len(args.defaults):], args.defaults, strict=True),
-                     *((a, d) for a, d in zip(args.kwonlyargs, args.kw_defaults, strict=True) if d is not None)]
-            literals |= {f"{stem}:{node.name}({a.arg}={d.value})" for a, d in named
-                         if isinstance(d, ast.Constant) and type(d.value) is int and d.value not in (0, 1)}
-    return constants, cuts, literals
+            cuts[f"{stem}:{ast.unparse(node)}"] += 1
+    found = Bounds(stem)
+    found.visit(tree)
+    return constants, cuts, found
+
+
+def generator_bounds() -> tuple[set[str], Counter[str], Counter[str], Counter[str]]:
+    """(constants, cuts, numbers, guards) over `tools/reference_families` and `tools/reference.py`."""
+    constants: set[str] = set()
+    cuts: Counter[str] = Counter()
+    numbers: Counter[str] = Counter()
+    guards: Counter[str] = Counter()
+    for path in sorted([*(ROOT / "tools" / "reference_families").glob("*.py"), ROOT / "tools" / "reference.py"]):
+        found = bounds_of(path, ast.parse(path.read_text(encoding="utf-8")))
+        constants |= found[0]
+        cuts += found[1]
+        numbers += found[2].numbers
+        guards += found[2].guards
+    return constants, cuts, numbers, guards
+
+
+def counted(roster: dict[str, tuple[int, str]]) -> Counter[str]:
+    return Counter({key: n for key, (n, _why) in roster.items()})
 
 
 def test_every_cap_and_every_cut_of_the_generator_is_listed_or_excused_one_by_one():
     """The sweep, made mechanical, over `tools/reference_families` and `tools/reference.py`: an integer constant named
-    like a cap, a slice cut at a number or from the end, and (review of the placement pull request, F2) a number in a
-    comparison or as a parameter default, which is how three limits stayed out of it. Each is a cap of `caps()` (and so
-    on the page, with its source and what the reading does past it) or is named below with the reason it bounds nothing
-    the reading follows. A new one fails this test until it is decided."""
-    constants: set[str] = set()
-    cuts: set[str] = set()
-    literals: set[str] = set()
-    for path in sorted([*(ROOT / "tools" / "reference_families").glob("*.py"), ROOT / "tools" / "reference.py"]):
-        found = numeric_limits(path, ast.parse(path.read_text(encoding="utf-8")))
-        constants |= found[0]
-        cuts |= found[1]
-        literals |= found[2]
+    like a cap, a slice cut at a number or from the end, and a number in a comparison or as a parameter default (review
+    of the placement pull request, F2). Each is a cap of `caps()` (and so on the page, with its source and what the
+    reading does past it) or is named below, with how many sites carry that text in that file and why it bounds nothing
+    the reading follows. A new one, or a second site of an excused text, fails this test until it is decided."""
+    constants, cuts, numbers, _guards = generator_bounds()
     assert constants == {cap.name for cap in (*F.caps(), *K.caps())}
-    assert cuts == set(EXCUSED_SLICES), "decide each new cut: a cap goes in caps(), anything else is excused below"
-    assert literals == set(EXCUSED_LITERALS), "decide each new number: a cap goes in caps(), anything else is excused"
+    assert cuts == counted(EXCUSED_SLICES), "decide each new cut: a cap goes in caps(), anything else is excused below"
+    assert numbers == counted(EXCUSED_NUMBERS), "decide each new number: a cap goes in caps(), anything else is excused"
 
 
-PLANTED_LIMITS = (
+def test_every_depth_guard_of_the_generator_is_held_to_a_planted_case_or_excused():
+    """Every comparison of a depth against 0 or 1 and every `not depth`, in every module of the generator, counted per
+    function: each is held to a planted case in this module or in the roles module (its test is named here and must
+    exist) or excused with its reason. F4 listed the value flow's by hand and missed one (review of #267, C-2); the
+    first test of the class saw one spelling in one file, one per function (Q-1)."""
+    _constants, _cuts, _numbers, guards = generator_bounds()
+    assert guards == counted(DEPTH_GUARDS), "decide each new guard: a planted case that marks it, or an excuse here"
+    roles = names_of_tests("test_reference_writers_roles.py")
+    for _count, held in DEPTH_GUARDS.values():
+        if held.startswith("excused:"):
+            continue
+        module, _, name = held.partition("::")
+        assert name in (set(globals()) if module == "this" else roles), (module, name)
+
+
+PLANTED_BOUNDS = (
     "import itertools\n"
-    "NEW_LIMIT: int = 5\nmax_items = 5\nWORDS = 5\nNAMED = 'x'\n"
+    "NEW_LIMIT: int = 5\nmax_items = 5\nWORDS = 5\nNAMED = 'x'\nRATIO_CAP = 0.5\n"
     "class Box:\n    CAP = 7\n"
-    "def f(xs, depth=3, flag=1, other=None):\n"
-    "    if depth > 9 or len(xs) <= 4 or depth == 0 or len(xs) >= 1:\n"
-    "        return xs[-5:] + xs[:7] + xs[1:] + xs[:i + 1]\n"
-    "    return list(itertools.islice(xs, 5))\n"
-    "def g(*, window: int = 12):\n    return window\n")
+    "def f(xs, depth=3, flag=1, other=None, start=0):\n"
+    "    if depth > 9 or len(xs) <= 4 or depth == 0 or len(xs) >= 1 or len(xs) == 1 or len(xs) == 5:\n"
+    "        return xs[-5:] + xs[:7] + xs[1:] + xs[:i + 1] + xs[-WORDS:]\n"
+    "    if len(xs) <= 1 or len(xs) > -5 or len(xs) <= 1:\n        return list(itertools.islice(xs, 5))\n"
+    "def g(*, window: int = 12):\n    return window\n"
+    "def h(n, link_depth):\n"
+    "    if link_depth < 1 or not link_depth or link_depth <= 0 or 1 > link_depth:\n        return None\n"
+    "def k(xs, depth, hops):\n"
+    "    if depth:\n        return 1\n"
+    "    if depth in (0, 1):\n        return 2\n"
+    "    if hops or depth and xs:\n        return 3\n"
+    "    if depth <= 0.0 or len(xs) <= 50.0 or len(xs) <= +5:\n        return 4\n"
+    "    return 1 if depth else 2\n"
+    "async def a(xs, limit=50.5):\n    return limit\n"
+    "late = lambda xs, n=7: n\n")
 
 
-def test_the_sweep_sees_each_form_a_limit_can_take_and_not_the_numbers_that_bound_nothing():
-    """The forms that escaped the first sweep (review of the placement pull request, F2): a number in a comparison or a
-    parameter default, an annotated or lower-case constant, a class-level one, a slice from the end, an `islice`."""
-    constants, cuts, literals = numeric_limits(Path("m.py"), ast.parse(PLANTED_LIMITS))
-    assert constants == {"m.NEW_LIMIT", "m.max_items", "m.CAP"}, "a name that says nothing of a cap is not one"
-    assert cuts == {"m:xs[-5:]", "m:xs[:7]", "m:itertools.islice(xs, 5)"}
-    assert literals == {"m:depth > 9", "m:len(xs) <= 4", "m:f(depth=3)", "m:g(window=12)"}
+def test_the_one_method_sees_each_spelling_a_bound_can_take():
+    """The spellings that escaped the first sweeps (#264 F2, #266 F-1, #267 Q-1, review of #268 M-3): a number in a
+    comparison or a default (a function's, an async function's, a lambda's), an annotated, class-level, lower-case or
+    float constant, a slice from the end (through a literal or a name), an `islice`, an ordering against 0, 1, a
+    negative, a positive-signed or a float number, a second site of one text, a depth tested as `< 1`, `not depth`,
+    `1 >`, `<= 0.0`, `depth in (0, 1)`, `if depth:` (or as an operand or a conditional's test)."""
+    constants, cuts, found = bounds_of(Path("m.py"), ast.parse(PLANTED_BOUNDS))
+    assert constants == {"m.NEW_LIMIT", "m.max_items", "m.CAP", "m.RATIO_CAP"}, "a name with no cap in it is none"
+    assert set(cuts) == {"m:xs[-5:]", "m:xs[:7]", "m:xs[-WORDS:]", "m:itertools.islice(xs, 5)"}
+    assert set(cuts.values()) == {1}
+    assert found.numbers == Counter({
+        "m:depth > 9": 1, "m:len(xs) <= 4": 1, "m:len(xs) >= 1": 1, "m:len(xs) == 5": 1, "m:len(xs) <= 1": 2,
+        "m:len(xs) > -5": 1, "m:f(depth=3)": 1, "m:f(flag=1)": 1, "m:g(window=12)": 1, "m:len(xs) <= 50.0": 1,
+        "m:len(xs) <= +5": 1, "m:a(limit=50.5)": 1, "m:lambda(n=7)": 1}), "a second site counts twice"
+    assert found.guards == Counter({"m:f": 1, "m:h": 4, "m:k": 5}), (
+        "per function: `== 0`; `< 1`, `not`, `<= 0`, `1 >`; truth, membership, an operand, `<= 0.0`, a conditional")
+
+
+# What the one method does not see, stated in `Bounds`' docstring and pinned: each of these passes both tests, so that
+# seeing one is a decision (review of #268, M-3).
+UNSEEN_BOUNDS = (
+    "import textwrap\nfrom collections import deque\n"
+    "def f(xs, s, n, hops):\n"
+    "    limit = 5\n"
+    "    if n <= limit or n <= 2 * 25:\n        return xs\n"
+    "    if not hops or hops == 0:\n        return xs\n"
+    "    for _ in range(50):\n        xs = xs[1:]\n"
+    "    return (textwrap.shorten(s, 60), deque(xs, maxlen=50), xs[:min(len(xs), 50)])\n")
+
+
+def test_what_the_one_method_does_not_see_is_stated_and_pinned():
+    """A bound through a local name or arithmetic, a depth counter not named for depth (`not hops`, `hops == 0`), and a
+    number given to a call (`range(50)`, `textwrap.shorten(s, 60)`, `deque(xs, maxlen=50)`, `xs[:min(len(xs), 50)]`)."""
+    constants, cuts, found = bounds_of(Path("m.py"), ast.parse(UNSEEN_BOUNDS))
+    assert (constants, cuts, found.numbers, found.guards) == (set(), Counter(), Counter(), Counter())
+    said = " ".join((Bounds.__doc__ or "").split())
+    for text in ("limit = 5", "2 * 25", "not hops", "hops == 0", "range(50)", "shorten(s, 60)", "maxlen=50",
+                 "min(len(xs), 50)"):
+        assert text in said, text
 
 
 # A slice of the generator that bounds nothing it follows: what it shows (the text of an expression quoted in a reason,
 # the cut marked by `...`) or a position (the first parameter, `self` or `cls`). The refusals that list problems cut
 # through `common.shown`, which says how many it left out; its `limit` is a parameter, not a constant, so the sweep
-# does not see those cuts, and a raw `[:20]` written instead of it is seen.
-EXCUSED_SLICES = {"writers_flow:text[:57]": "an expression quoted in a reason, cut with `...`",
-                  "control_keys:target.params[:1]": "a position: the first parameter, `self` or `cls`"}
-# A number in a comparison or a default that bounds nothing the reading follows: the arity a syntactic form needs, or
-# how much of a quoted expression or of a refusal is shown (the refusal says how many it left out).
-EXCUSED_LITERALS = {
-    "common:shown(limit=20)": "how many problems a refusal lists; it says how many it left out",
-    "entry_points:len(node.elts) >= 2": "arity: a (key, value) pair",
-    "entry_points:len(words) >= 2": "arity: a command and its subcommand",
-    "writers:len(call.args) >= 2": "arity: the call has its second argument",
-    "writers:len(expr.args) >= 2": "arity: the call has its second argument",
-    "writers_text:len(arg) >= 2": "arity: the token reader's argument has a second token",
-    "writers_text:i >= 2": "a position: two tokens back, for a dotted name",
-    "writers_text:len(positional) >= 2": "arity: the call has its second argument",
-    "writers_flow:len(text) <= 60": "an expression quoted in a reason, cut with `...`",
-    "stg02_commands:len(call.args) < 2": "arity: a refusal call without its second argument, the cause, is not read",
-    "stg02_commands:len(call.args) >= 2": "arity: the call has its second argument, the cause",
-    "stg02_commands:len(node.args) < 2": "arity: a refusal call without its second argument, the cause, is not read",
+# does not see those cuts, and a raw `[:20]` written instead of it is seen. Each is (how many sites, why).
+EXCUSED_SLICES: dict[str, tuple[int, str]] = {
+    "writers_flow:text[:57]": (1, "an expression quoted in a reason, cut with `...`"),
+    "control_keys:target.params[:1]": (1, "a position: the first parameter, `self` or `cls`"),
+    "common:module.split('.')[:-1]": (1, "a position: the package of a module, its name without the last word"),
+    "concurrency:kept[:-1]": (1, "a position: a sentence without its closing colon"),
+    "modules:name.split('.')[:2]": (1, "a position: the second-level package of a module, the first two words"),
+    "writers:primitive[:-1]": (1, "a position: a primitive label without its closing `?` mark"),
 }
+# A number in a comparison or a default that bounds nothing the reading follows: the arity a syntactic form needs, a
+# position, a shape, or how much of a quoted expression or of a refusal is shown (the refusal says how many it left
+# out). Each is (how many sites of that text in that file, why).
+ARITY = "arity: the call has an argument beyond the first"
+ARITY_2 = "arity: the call has its second argument"
+POSITION = "a position: a token with one before it"
+NO_CAUSE = "arity: a refusal call without its cause, the second argument, is not read"
+EXCUSED_NUMBERS: dict[str, tuple[int, str]] = {
+    "common:ids.count(i) > 1": (1, "a duplicate: an id that occurs more than once"),
+    "common:keep < 1": (1, "a position: a relative import that climbs above the top package"),
+    "common:shown(limit=20)": (1, "how many problems a refusal lists; it says how many it left out"),
+    "concurrency:end < 0": (1, "a search result: `str.find` gives -1 for no match"),
+    "concurrency:start < 0": (1, "a search result: `str.find` gives -1 for no match"),
+    "concurrency:len(call.args) > 1": (1, ARITY),
+    "concurrency_text:i > 0": (1, POSITION),
+    "entry_points:len(node.elts) >= 2": (1, "arity: a (key, value) pair"),
+    "entry_points:len(words) >= 2": (1, "arity: a command and its subcommand"),
+    "layout_reads:len(call.args) > 1": (2, ARITY),
+    "layout_reads_text:i > 0": (1, POSITION),
+    "layout_reads_text:len(positional) > 1": (2, ARITY),
+    "stg02_commands:len(call.args) < 2": (1, NO_CAUSE),
+    "stg02_commands:len(call.args) >= 2": (1, "arity: the call has its second argument, the cause"),
+    "stg02_commands:len(node.args) < 2": (1, NO_CAUSE),
+    "writers:len(call.args) > 1": (2, ARITY),
+    "writers:len(call.args) >= 2": (1, ARITY_2),
+    "writers:len(expr.args) >= 2": (1, ARITY_2),
+    "writers_flow:len(text) <= 60": (1, "an expression quoted in a reason, cut with `...`"),
+    "writers_flow:len(text) > 1": (1, "a shape: a drive letter has a character after it (`C:`), not a bound"),
+    "writers_text:i > 0": (1, POSITION),
+    "writers_text:i >= 2": (1, "a position: two tokens back, for a dotted name"),
+    "writers_text:k > 0": (1, POSITION),
+    "writers_text:len(arg) >= 2": (1, "arity: the token reader's argument has a second token"),
+    "writers_text:len(positional) > 1": (2, ARITY),
+    "writers_text:len(positional) >= 2": (1, ARITY_2),
+}
+NESTING = "excused: nesting of brackets or braces in a backward or forward scan, with no limit"
+# A depth guard: (how many in that function, the test that plants it or why it is excused). `this::` is a test of this
+# module and `writers_roles::` one of the roles module's.
+DEPTH_GUARDS: dict[str, tuple[int, str]] = {
+    "concurrency:last_comma_outside": (1, NESTING),
+    "interfaces_dashboard_text:_slice_end": (1, NESTING),
+    "stg02_commands_text:_callee": (1, NESTING),
+    "writers_flow:_format_template": (2, NESTING),
+    "writers_text:_arguments": (3, NESTING),
+    "writers_text:_mode": (1, NESTING),
+    "writers_flow:Evaluator._call":
+        (1, "this::test_the_value_a_call_returns_through_more_calls_than_the_depth_cap_is_marked_with_the_cap"),
+    "writers_flow:Evaluator._call_element":
+        (1, "this::test_the_element_of_a_tuple_returned_through_more_calls_than_the_depth_cap_is_marked_with_the_cap"),
+    "writers_flow:Evaluator._callables":
+        (1, "this::test_a_callback_stopped_by_the_depth_cap_or_the_call_site_cap_says_so_in_the_reason_of_the_keys"),
+    "writers_flow:Evaluator._dict_sources":
+        (1, "this::test_a_dict_returned_through_more_calls_than_the_depth_cap_is_marked_"
+            "with_the_cap_and_not_a_computed_segment"),
+    "writers_flow:Evaluator._elements_of_param":
+        (1, "this::test_a_list_parameter_handed_down_more_calls_than_the_depth_cap_is_marked_with_the_cap"),
+    "writers_flow:Evaluator._keys":
+        (1, "this::test_the_keys_of_a_mapping_handed_down_more_calls_than_the_depth_cap_are_marked_with_the_cap"),
+    "writers_flow:Evaluator._keys_of_call":
+        (1, "this::test_a_callback_stopped_by_the_depth_cap_or_the_call_site_cap_says_so_in_the_reason_of_the_keys"),
+    "writers_flow:Evaluator._param":
+        (1, "this::test_a_parameter_passed_down_more_calls_than_the_depth_limit_is_"
+            "unknown_and_one_within_it_is_placed"),
+    "writers_flow:Evaluator._process_computed":
+        (1, "this::test_a_sibling_named_through_more_assignments_than_the_cap_is_"
+            "unresolved_and_the_reason_names_the_cap"),
+    "writers_flow:Evaluator._typed_attribute":
+        (1, "this::test_an_attribute_typed_through_more_classes_than_the_depth_cap_is_marked_with_the_cap"),
+    "writers_flow:Program._level":
+        (1, "this::test_attributes_typed_to_the_cap_are_followed_and_one_hop_more_fails_the_reading"),
+    "writers_roles:_Reader.paths":
+        (1, "writers_roles::test_a_chain_of_parsers_is_followed_to_the_guard_of_the_paths_and_no_further"),
+    "writers_roles:_Reader.strings":
+        (1, "writers_roles::test_a_chain_of_words_is_followed_to_the_guard_of_the_strings_and_no_further"),
+}
+
+
+def names_of_tests(path: str) -> set[str]:
+    """The test functions of a module of tests, by name, read from its source."""
+    tree = ast.parse((ROOT / "tests" / "unit" / path).read_text(encoding="utf-8"))
+    return {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
+
+
+# BOUNDS-END
 
 
 def test_the_token_reader_imports_nothing_of_the_package_and_not_the_ast():

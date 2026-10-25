@@ -57,7 +57,7 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-from aew.harness.containment import sockets
+from aew.harness.containment import egress, sockets
 from aew.harness.containment.layout import (
     DISPLAY_ENV,
     NET_SHIM,
@@ -389,30 +389,40 @@ def _candidates(inventory: Mapping[str, Any]) -> list[dict[str, Any]]:
             for c in inventory.get("candidates") or []]
 
 
-def _probe_upstream(listener: socket.socket, token: str, seen: list[str | None]) -> None:
-    """Row 1's provider upstream: answers each request with ``token`` and records the credential it carried."""
-    while True:
-        try:
-            conn, _ = listener.accept()
-        except OSError:
+class _ProbeUpstream(egress.Service):
+    """Row 1's provider upstream: answers each request with ``token`` and records the credential it carried in
+    ``seen``. A :class:`~aew.harness.containment.egress.Service`, so :meth:`close` wakes and joins its accept thread:
+    on Linux, closing a socket that another thread is blocked in ``accept`` on wakes neither, and the port stayed in
+    ``LISTEN``, answering any local connection with the token for the rest of the process (register E75)."""
+
+    name = "aew-probe-upstream"
+
+    def __init__(self, listener: socket.socket, token: str, seen: list[str | None]) -> None:
+        super().__init__(listener=listener)
+        self.token, self.seen = token, seen
+
+    def handle(self, conn: socket.socket) -> None:
+        if not self._track(conn):
+            conn.close()
             return
-        with conn:
-            try:
-                conn.settimeout(TIMEOUT_S)
-                buf = b""
-                while b"\r\n\r\n" not in buf and len(buf) < 65536:
-                    data = conn.recv(4096)
-                    if not data:
-                        break
-                    buf += data
-                fields = [line.split(b":", 1) for line in buf.split(b"\r\n\r\n")[0].split(b"\r\n")[1:]]
-                seen.append(next((v[1].strip().decode("latin-1") for v in fields
-                                  if len(v) == 2 and v[0].strip().lower() == b"authorization"), None))
-                body = token.encode()
-                conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "
-                             + str(len(body)).encode() + b"\r\nConnection: close\r\n\r\n" + body)
-            except OSError:
-                continue
+        try:
+            conn.settimeout(TIMEOUT_S)
+            buf = b""
+            while b"\r\n\r\n" not in buf and len(buf) < 65536:
+                data = conn.recv(4096)
+                if not data:
+                    break
+                buf += data
+            fields = [line.split(b":", 1) for line in buf.split(b"\r\n\r\n")[0].split(b"\r\n")[1:]]
+            self.seen.append(next((v[1].strip().decode("latin-1") for v in fields
+                                   if len(v) == 2 and v[0].strip().lower() == b"authorization"), None))
+            body = self.token.encode()
+            conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "
+                         + str(len(body)).encode() + b"\r\nConnection: close\r\n\r\n" + body)
+        except OSError:
+            pass
+        finally:
+            self._untrack(conn)
 
 
 def _echo(path: str, deadline: float, out: dict[str, Any], ended: threading.Event) -> None:
@@ -445,7 +455,7 @@ def _network(layout: Layout, *, egress_policy: Any, bridge: str | None) -> Itera
     if not layout.private_network or not layout.net_dir or sys.platform == "win32":
         yield None
         return
-    from aew.harness.containment import egress, netns, relay
+    from aew.harness.containment import netns, relay
 
     directory = layout.net_dir
     with contextlib.ExitStack() as stack:
@@ -455,12 +465,12 @@ def _network(layout: Layout, *, egress_policy: Any, bridge: str | None) -> Itera
             stack.callback(Path(directory, name).unlink, missing_ok=True)
         sentinel = ""
         if layout.network == PROXY_ONLY:
-            upstream = socket.create_server(("127.0.0.1", 0))
-            stack.callback(upstream.close)
-            threading.Thread(target=_probe_upstream, args=(upstream, state["token"], state["seen"]),
-                             name="aew-probe-upstream", daemon=True).start()
+            listener = socket.create_server(("127.0.0.1", 0))
+            upstream = _ProbeUpstream(listener, state["token"], state["seen"])
+            stack.callback(upstream.close)  # it closes the listener too
+            upstream.start()
             state["secret"], sentinel = secrets.token_hex(16), relay.sentinel()
-            target = relay.Upstream(f"http://127.0.0.1:{upstream.getsockname()[1]}/aew-probe")
+            target = relay.Upstream(f"http://127.0.0.1:{listener.getsockname()[1]}/aew-probe")
             probe_relay = relay.ProviderRelay(target, {sentinel: state["secret"]},
                                               listener=netns.listen(os.path.join(directory, PROBE_RELAY))).start()
             stack.callback(probe_relay.close)

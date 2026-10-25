@@ -13,7 +13,6 @@ the client sent.
 
 from __future__ import annotations
 
-import http.client
 import json
 import sys
 from pathlib import Path
@@ -32,6 +31,7 @@ from aewflow import (  # noqa: E402
     sample_project,
     to_commit_ready,
 )
+from dashboard_client import request as dashboard_request  # noqa: E402
 from dashboard_contract import LATER_ROUTES, expected_pending, proposed_routes  # noqa: E402
 from fake_harness import IMPL_REPORT, HarnessLab  # noqa: E402
 from invariants import assert_control_invariants  # noqa: E402
@@ -74,22 +74,15 @@ class Client:
         self.revision_of: dict[str, str] = {}  # every ETag seen on a 200, and the revision it came with
 
     def get(self, path: str, *, head: bool = False, inm: str | None = None) -> tuple[int, dict[str, str], bytes]:
-        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=60)
-        try:
-            conn.request("HEAD" if head else "GET", f"/api/v1{path}",
-                         headers={"If-None-Match": inm} if inm is not None else {})
-            resp = conn.getresponse()
-            raw = resp.read()
-            headers = {k.lower(): v for k, v in resp.getheaders()}
-        finally:
-            conn.close()
-        if resp.status == 304:  # diagnostic 2: a 304 never carries a validator the client did not send
+        status, headers, raw = dashboard_request(self.port, "HEAD" if head else "GET", f"/api/v1{path}",
+                                                 {"If-None-Match": inm} if inm is not None else {})
+        if status == 304:  # diagnostic 2: a 304 never carries a validator the client did not send
             assert inm is not None and headers["etag"] in [m.strip() for m in inm.split(",")], (path, inm, headers)
             assert raw == b""
-        if resp.status == 200 and not head:  # diagnostic 1: an ETag never stands for two revisions
+        if status == 200 and not head:  # diagnostic 1: an ETag never stands for two revisions
             revision = json.loads(raw)["control_revision"]
             assert self.revision_of.setdefault(headers["etag"], revision) == revision, (path, headers["etag"])
-        return resp.status, headers, raw
+        return status, headers, raw
 
     def ok(self, path: str, inm: str | None = None) -> tuple[str, dict[str, Any]]:
         status, headers, raw = self.get(path, inm=inm)

@@ -53,3 +53,18 @@ final counts are the counts of #266's merge.
   - **N-1** (`15dca05e`): a `setattr` with a computed name is named beside a computed key, with its probe.
 - **Open, not for this slice:** an operator or designer decision whether the data-flow map's bridge and network
   boundaries become records (above).
+- **Tracked, one point of the last review (M-5, the quick check of #268 at `23830fec`).** This is the series' last
+  pull request, so there is no next one to carry it, and the wording sits in a docstring a test reads (`Bounds`, in
+  `tests/unit/test_reference_writers_flow.py`), which the quick check was the last run over. The point, verbatim:
+  "**M-5 (minor): `Bounds`' docstring and the note state four unseen classes, and read as the whole list; five more
+  spellings pass both sweeps unstated.**" The five, none with a live instance: a number as an `or` operand (`n = n or
+  50`); a number in a membership test (`len(xs) in (50, 51)`); a number as a dict value (`{"max": 50}`); a number in a
+  walrus comparison (`(k := 50) < len(xs)`); a depth tested in a comprehension's `if` or in an `assert`. The fix line,
+  verbatim: "end the paragraph with the walk's scope said positively, so the list cannot go stale: "It reads a number in a
+  comparison, a parameter default, a slice, a call named in `LIMIT_CALLS` and a cap-named constant, and a depth counter
+  tested by its name, and nothing else." Say the same in the note." **What fixes it:** the next change to the bounds
+  walk (`Bounds`, `bounds_of` or `UNSEEN_BOUNDS`) or to `Bounds`' docstring states the scope positively, in the words
+  of the fix line, and says the same in this note's Q-1 and F-1 bullet. Until then this note says it here: the walk
+  reads a number in a comparison, a parameter default, a slice, a call named in `LIMIT_CALLS` and a cap-named
+  constant, and a depth counter tested by its name, and nothing else; the four classes above are the ones it was
+  written knowing it does not see, and the five spellings listed here are more.

@@ -14,6 +14,7 @@ import os
 import stat
 import sys
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -386,7 +387,14 @@ def test_doctor_warns_of_each_failing_class_of_abstract_socket_on_the_shared_net
     ({}, True, []),             # a sandbox that reported no tools
 ])
 def test_doctor_reports_whether_a_contained_run_finds_ripgrep_from_the_same_sandbox(monkeypatch, tools, ok, lines):
-    """The designer's RG-1: one sandbox, the containment line's, also says whether a contained run finds ``rg``."""
+    """The designer's RG-1: one sandbox, the containment line's, also says whether a contained run finds ``rg``; and a
+    WARN names the host's own ``rg`` that the sandbox does not see (#257's quick check, Q3)."""
+    which = C.shutil.which
+
+    def host_has_rg(name: str, *args: Any, **kwargs: Any) -> str | None:
+        return "/opt/hidden/rg" if name == "rg" else which(name, *args, **kwargs)
+
+    monkeypatch.setattr(C.shutil, "which", host_has_rg)
     monkeypatch.setattr(C, "supported", lambda: True)
     monkeypatch.setattr(C, "for_run", lambda **_kw: LAYOUT)
     monkeypatch.setattr(probe, "self_test", lambda *_a, **_kw: {
@@ -396,6 +404,8 @@ def test_doctor_reports_whether_a_contained_run_finds_ripgrep_from_the_same_sand
     policy = {"containment": {"mode": "allow_weaker", "network": {"mode": "shared"}}}
     got = C.doctor_checks(policy, "unsupported")
     assert got[0][0] == "containment" and [(name, status) for name, status, _ in got[1:]] == lines
+    if lines == [("ripgrep", "WARN")]:
+        assert "this host's /opt/hidden/rg is on the PATH but in a directory runs cannot see" in got[1][2]
     assert C.doctor(policy, "unsupported") == got[0][1:]
 
 
@@ -409,8 +419,8 @@ def test_the_ripgrep_line_names_where_a_run_finds_it_or_the_failing_tools_the_ca
     assert status == "WARN" and detail == (
         "a contained run finds no ripgrep on its PATH, so OpenCode's glob and grep tools fail in it: OpenCode then "
         "downloads it, which a run on a network of its own (containment.network.mode: proxy_only) cannot. Fix: CAP-1 "
-        "(AEW bringing its own tools, next in STG-05) will put a pinned ripgrep in every contained run; until then, "
-        "install ripgrep (`rg`) on this host, on the PATH")
+        "(AEW bringing its own tools) will put a pinned ripgrep in every contained run; until then, install ripgrep "
+        "(`rg`) on this host, on the PATH")
     assert "for each run, which an offline host cannot" in C.ripgrep_check(None, "shared")[1]
     status, detail = C.ripgrep_check(None, "isolated", host="/tmp/tools/rg")
     assert status == "WARN" and detail.endswith(

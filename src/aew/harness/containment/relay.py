@@ -255,7 +255,7 @@ class ProviderRelay(Service):
                 sock.close()
                 raise
         if up.scheme == "https":
-            context = self._tls or ssl.create_default_context()
+            context = self._tls or _tls_context()
             sock.settimeout(self.connect_timeout)
             try:
                 sock = context.wrap_socket(sock, server_hostname=up.host)
@@ -298,10 +298,9 @@ class ProviderRelay(Service):
             while True:
                 line = reader.line()
                 upstream.sendall(line)
-                try:
-                    size = int(line.split(b";", 1)[0].strip(), 16)
-                except ValueError:
-                    raise _Refused(400, "bad_chunk", "the request body's chunked encoding is malformed") from None
+                size = _chunk_size(line)
+                if size is None:
+                    raise _Refused(400, "bad_chunk", "the request body's chunked encoding is malformed")
                 if size == 0:
                     while True:  # the trailer section, to its empty line
                         trailer = reader.line()
@@ -403,12 +402,26 @@ class _Body:
             if self.state == "trailer":
                 self.done = not line
                 continue
-            try:
-                size = int(line.split(b";", 1)[0].strip(), 16)
-            except ValueError:
+            size = _chunk_size(line)
+            if size is None:
                 self.kind = "close"
                 return
             self.state, self.left = ("trailer", 0) if size == 0 else ("data", size + 2)
+
+
+def _chunk_size(line: bytes) -> int | None:
+    """A chunk-size line's size, or None when its size is not hex digits alone (``1*HEXDIG``, RFC 9112 §7.1).
+    ``int`` would also take a sign or underscores, and a negative size never ends its chunk (#257's quick check, Q1)."""
+    token = line.split(b";", 1)[0].strip()
+    return int(token, 16) if re.fullmatch(rb"[0-9A-Fa-f]+", token) else None
+
+
+def _tls_context() -> ssl.SSLContext:
+    """The system's default verifying context, with its floor stated: TLS 1.2 is already the default's minimum on every
+    interpreter AEW supports, set here so that a reader, or a scanner, need not know that (#257's quick check, Q2)."""
+    context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    return context
 
 
 class _Reader:

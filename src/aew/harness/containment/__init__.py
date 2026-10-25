@@ -198,7 +198,7 @@ def ripgrep_check(found: str | None, net_mode: str, *, host: str | None = None) 
                  "(runs see neither /tmp, /run nor the masked secret directories)" if host
                  else "install ripgrep (`rg`) on this host, on the PATH")
     return "WARN", (f"a contained run finds no ripgrep on its PATH, so OpenCode's glob and grep tools fail in it: "
-                    f"{why}. Fix: CAP-1 (AEW bringing its own tools, next in STG-05) will put a pinned ripgrep in "
+                    f"{why}. Fix: CAP-1 (AEW bringing its own tools) will put a pinned ripgrep in "
                     f"every contained run; until then, {meanwhile}")
 
 

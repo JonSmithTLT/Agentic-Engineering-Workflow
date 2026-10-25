@@ -298,6 +298,34 @@ def test_a_body_without_length_or_chunks_ends_only_with_the_upstream_and_one_wit
     assert not unreadable.done and unreadable.kind == "close"
 
 
+SIGNED_OR_ODD_SIZES = [b"-6", b"-07", b"-8;x", b"+5", b"1_0"]  # ``int(token, 16)`` takes each; none is 1*HEXDIG
+
+
+@pytest.mark.parametrize("size", SIGNED_OR_ODD_SIZES)
+def test_a_response_chunk_size_that_is_not_hex_digits_is_unreadable_framing_and_never_a_number(size):
+    """#257's quick check, Q1: a negative size never ended its chunk, so the tracker went round the same line for ever
+    and the answer was never forwarded. A size that is not hex digits alone is framing that cannot be read: the end
+    cannot be told, so a client's leaving counts."""
+    tracker = relay._Body(CHUNKED, "POST")
+    fed = threading.Thread(target=tracker.feed, args=(size + b"\r\nx",), daemon=True)
+    fed.start()
+    fed.join(TIMEOUT)
+    assert not fed.is_alive(), "the tracker never returned"
+    assert tracker.kind == "close" and not tracker.done
+
+
+@pytest.mark.parametrize("size", SIGNED_OR_ODD_SIZES)
+def test_a_request_chunk_size_that_is_not_hex_digits_is_refused_as_a_bad_chunk(size):
+    """#257's quick check, Q1, the request side: a negative size spun the body's reader without end. It is refused,
+    saying what was wrong."""
+    seam = Seam()
+    with relayed(seam) as (service, client, _):
+        client.sendall(b"POST /v1/responses HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n" + size + b"\r\nx")
+        answer = read_all(client)
+    assert answer.startswith(b"HTTP/1.1 400 ") and b"X-AEW-Refusal: bad_chunk" in answer
+    assert service.counts() == {"bad_chunk": 1}
+
+
 def test_an_unreachable_upstream_is_a_502_that_names_the_fixed_upstream():
     seam = Seam(error=ConnectionRefusedError(111, "synthetic: refused"))
     with relayed(seam) as (service, client, _):

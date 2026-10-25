@@ -73,7 +73,7 @@ def test_the_family_found_every_filelock_construction_the_token_reader_counts():
     constructions = sum(CT.counts(src.text, []).get(CO.LOCK[1], 0) for src in CTX.sources().values())
     sites = CO.lock_sites(PROGRAM, F.Evaluator(PROGRAM))
     placed = sum(len(r.fact["openers"]) for r in BUILT.records if r.key.startswith("lock:"))
-    assert constructions == len(sites) == placed == 4, (constructions, len(sites), placed)
+    assert constructions == len(sites) == placed == 5, (constructions, len(sites), placed)  # 5: CAP-1's register
 
 
 def test_the_live_instances_the_cannot_see_list_names_exist_in_the_tree():
@@ -140,10 +140,12 @@ KNOWN_LOCKS = {
     "local/operator/endpoint.lock": ("aew.harness.operator_endpoint", "OperatorEndpoint._claim",
                                      {"OperatorEndpoint._claim"}),
     "local/maps/registry.lock": ("aew.maps.store", "select", {"select"}),
+    # the host's capability register (STG-15, CAP-1): outside `.aew`, so unplaced, keyed by its opener
+    "unplaced:aew.capability.store:locked": ("aew.capability.store", "locked", {"locked"}),
 }
 
 
-def test_the_locks_are_the_four_the_code_was_read_to_take():
+def test_the_locks_are_the_five_the_code_was_read_to_take():
     paths = sorted(k.removeprefix("lock:") for k in RECORDS if k.startswith("lock:"))
     assert paths == sorted(["local/control.lock", *KNOWN_LOCKS])
     for path, (module, symbol, takers) in KNOWN_LOCKS.items():

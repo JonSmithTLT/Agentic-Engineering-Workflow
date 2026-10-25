@@ -16,6 +16,7 @@ table).
 from __future__ import annotations
 
 import contextlib
+import errno
 import getpass
 import json
 import os
@@ -24,7 +25,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from aew.errors import IntegrityError
+from aew.errors import IntegrityError, PermissionDenied
 from aew.util import atomic_write, utc_now
 
 FORMAT = 1
@@ -87,13 +88,27 @@ def write(state: dict[str, Any], directory: Path | None = None) -> None:
 
 @contextlib.contextmanager
 def locked(directory: Path | None = None) -> Iterator[Path]:
-    """The register's lock, held for a read-change-write of its state."""
+    """The register's lock, held for a read-change-write of its state. Where the register cannot be written, as in a
+    contained run, whose sandbox sees it read-only (CAPR-Q02), the change is refused with its own reason, never a
+    crash."""
     from aew.engine.lock import FileLock
 
     target = directory or root()
-    target.mkdir(mode=0o700, parents=True, exist_ok=True)  # the register is the operator's own, as AEW's store is
-    with FileLock(target / LOCK, timeout=LOCK_TIMEOUT_S):
+    try:
+        target.mkdir(mode=0o700, parents=True, exist_ok=True)  # the register is the operator's own, as AEW's store is
+        lock = FileLock(target / LOCK, timeout=LOCK_TIMEOUT_S)
+        lock.__enter__()
+    except OSError as exc:
+        # The OS's own words stay out of the message: errno's name says it (a contained run's checks read its output)
+        name = errno.errorcode.get(exc.errno or 0, type(exc).__name__)
+        raise PermissionDenied(f"the capability register at {target} cannot be changed from this process ({name}): "
+                               "a contained run sees it read-only, and only the operator's commands change it; `aew "
+                               "capability list` reads it", path=str(target), errno=name,
+                               reason="register_not_writable") from None
+    try:
         yield target
+    finally:
+        lock.__exit__(None, None, None)
 
 
 def payload_dir(name: str, sha256: str, directory: Path | None = None) -> Path:

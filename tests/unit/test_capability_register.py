@@ -492,3 +492,16 @@ def test_doctor_names_the_harness_a_host_prerequisite(tmp_path, monkeypatch):
     monkeypatch.setenv(BIN_ENV, str(present))
     row = next(c for c in doctor.environment_checks() if c["check"] == "harness")
     assert row["status"] == "PASS" and str(present) in row["detail"]
+
+
+def test_a_register_that_cannot_be_written_refuses_the_change_with_its_own_reason(reg, monkeypatch):
+    """CAPR-Q02's face here: where the register cannot be written (a contained run's sandbox sees it read-only; here a
+    file stands where its directory would be), a check is refused with its reason, never a crash, and the OS's own
+    words stay out of the message (a sandbox's command checks read its output for them)."""
+    blocker = reg["tmp"] / "not-a-directory"
+    blocker.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(store, "ROOT_OVERRIDE", blocker / "register")
+    with pytest.raises(errors.PermissionDenied) as exc:
+        ops.check(offline=True)
+    assert exc.value.details["reason"] == "register_not_writable" and exc.value.details["errno"]
+    assert "Read-only file system" not in exc.value.message and "Permission denied" not in exc.value.message

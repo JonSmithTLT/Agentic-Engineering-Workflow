@@ -37,6 +37,14 @@ first, with the blocked rows beside what they wait for. ``check`` keeps it curre
 has closed is stale; one row has at most one item; every open question (§4) must have its own item, and every open row
 targeted **Designer** must have one or be blocked by one (it then waits for that item's decision).
 
+**The Now list.** §1's intro holds the build order as a table, one line per item, ``| <n> | <row ids> | <item> |``,
+numbered from 1, each item naming the rows that carry it (``now_list``). It is the register's own data, and the Lead
+keeps it, adding and reordering items (designer, 2026-10-25; the rebaseline's list of 2026-10-24 stays frozen in
+``register-rebaseline-dispositions.yaml``). ``check`` holds it to the rows: every id it names is an open row targeted
+**Now** or **Stage**, and every open row targeted **Now** is named in it, so a row cannot be put in the queue in one
+place and left out of the order in the other (``now_problems``). The table is one cell, the intro, so two changes to
+it conflict; only the Lead edits it.
+
 The markdown gives every row its own block, never a table line: a ``### <id>`` heading (the row's first cell), then
 one paragraph per non-empty cell, ``**<column>:** <text>``, each between blank lines. Each section names its columns in
 an HTML comment (``<!-- columns: # | Work | ... -->``, invisible on GitHub) so the page parses back to the YAML. A cell
@@ -122,6 +130,8 @@ NOTE_NAME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)\
 SLUG_RULE = ("the branch slug is the branch's name in lower case, each run of characters other than a-z and 0-9 "
              "replaced by one hyphen, with none at either end (impl/F9a_MS3 is impl-f9a-ms3)")
 POINTER_RE = re.compile(r"^\*Later notes: `notes\.d/[^`]+/`")
+NOW_LINE_RE = re.compile(r"^\| *(\d+) *\| *([^|]*?) *\|")
+NOW_TARGETS = ("Now", "Stage")
 
 
 # libyaml's parser where PyYAML has it, as aew.util reads YAML: with the pure-Python reader one `check` of the 380 KB
@@ -485,6 +495,35 @@ def problems(data: dict[str, Any]) -> list[str]:
     if CHANGELOG_RE.search(data["preamble"]):
         out.append("the preamble carries a 'Last updated' change log: every change edits that line, so every pair of "
                    "changes conflicts; the history is `git log` on the YAML and each row's own dates")
+    return out + now_problems(data)
+
+
+def now_list(data: dict[str, Any]) -> list[tuple[int, list[str]]]:
+    """§1's Now table, as (number, the row ids it names) per line, in the table's order (the module's *The Now
+    list*)."""
+    first = next((s for s in data["sections"] if s["number"] == 1), {})
+    return [(int(m.group(1)), [i.strip() for i in m.group(2).split(",") if i.strip()])
+            for line in str(first.get("intro") or "").splitlines() if (m := NOW_LINE_RE.match(line))]
+
+
+def now_problems(data: dict[str, Any]) -> list[str]:
+    """Where §1's Now list and the rows disagree: an item numbered out of order, an id that is not an open row targeted
+    **Now** or **Stage**, or an open row targeted **Now** that the list does not name."""
+    listed = now_list(data)
+    if not listed:
+        return ["§1 has no Now list: its intro holds the build order as `| <n> | <row ids> | <item> |` lines"]
+    out = [f"the Now list's item {n} is numbered out of order (expected {i})"
+           for i, (n, _) in enumerate(listed, start=1) if n != i]
+    open_rows = {r["id"]: r for r in rows(data) if r["id"]}
+    named = [i for _, ids in listed for i in ids]
+    for i in named:
+        if i not in open_rows:
+            out.append(f"the Now list names {i}, which is not an open row")
+        elif open_rows[i]["target"] not in NOW_TARGETS:
+            out.append(f"the Now list names {i}, which is targeted {open_rows[i]['target'] or '(none)'}, not "
+                       + " or ".join(NOW_TARGETS))
+    out += [f"{i} is targeted Now, but the Now list does not name it" for i, r in sorted(open_rows.items())
+            if r["target"] == "Now" and i not in named]
     return out
 
 

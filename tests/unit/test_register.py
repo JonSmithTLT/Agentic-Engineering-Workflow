@@ -813,12 +813,61 @@ def test_the_dispositions_are_the_designers_counts():
     assert disp["targets"] == list(register.TARGETS) and disp["due_order"] == list(register.DUE_ORDER)
 
 
-def test_the_now_list_on_the_page_is_the_dispositions_in_order():
-    """§1's table is the designer's prose and the file's `now` the same list as data: the same rows in the same order
-    (the first row id of each line)."""
-    intro = DATA["sections"][0]["intro"]
-    table = [line.split("|")[2].strip().split(",")[0] for line in intro.splitlines() if re.match(r"\| \d+ \|", line)]
-    assert table == [n["row"] for n in _dispositions()["now"]]
+def test_the_now_list_names_only_open_now_or_stage_rows_and_every_now_row():
+    """§1's Now table is the register's own data, which the Lead keeps (designer, 2026-10-25): every id it names is an
+    open row targeted Now or Stage, every open row targeted Now is in it, and its items are numbered 1 to n. The
+    rebaseline's list of 2026-10-24 stays frozen in the dispositions and is no longer the page's pin."""
+    listed = register.now_list(DATA)
+    assert listed and [n for n, _ in listed] == list(range(1, len(listed) + 1))
+    assert register.now_problems(DATA) == []
+    now_rows = {r["id"] for r in register.rows(DATA) if r["target"] == "Now"}
+    assert now_rows and now_rows <= {i for _, ids in listed for i in ids}
+
+
+def _with_now(edit: Any) -> list[str]:
+    data = copy.deepcopy(DATA)
+    first = next(s for s in data["sections"] if s["number"] == 1)
+    first["intro"] = edit(first["intro"])
+    return register.now_problems(data)
+
+
+def _now_line(intro: str, n: int) -> str:
+    return next(line for line in intro.splitlines() if re.match(rf"\| {n} \|", line))
+
+
+def test_the_now_list_refuses_a_closed_a_missing_and_an_untargeted_row_and_a_now_row_left_out():
+    """Planted cases, one per refusal, each against the live register: the right case is the file itself (the test
+    above). A row the list names must be open and targeted Now or Stage, and a Now row must be named."""
+    open_ids = {r["id"] for r in register.rows(DATA)}
+    closed = next(r["id"] for r in register.rows(DATA, open_only=False) if r["id"] and r["id"] not in open_ids)
+    other = next(r["id"] for r in register.rows(DATA) if r["id"] and r["target"] not in register.NOW_TARGETS)
+    now_row = next(r["id"] for r in register.rows(DATA) if r["target"] == "Now")
+    count = len(register.now_list(DATA))
+
+    def add(rid: str) -> Any:
+        def edit(intro: str) -> str:
+            last = _now_line(intro, count)
+            return intro.replace(last, f"{last}\n| {count + 1} | {rid} | x |")
+        return edit
+
+    assert _with_now(add(closed)) == [f"the Now list names {closed}, which is not an open row"]
+    assert _with_now(add("Z99")) == ["the Now list names Z99, which is not an open row"]
+    assert _with_now(add(other))[0].startswith(f"the Now list names {other}, which is targeted ")
+    dropped = _with_now(lambda intro: "\n".join(
+        line.replace(now_row, "STG-13") if re.match(r"\| \d+ \|", line) else line for line in intro.splitlines()))
+    assert f"{now_row} is targeted Now, but the Now list does not name it" in dropped
+    assert _with_now(lambda intro: intro.replace("| 2 |", "| 9 |", 1)) == [
+        "the Now list's item 9 is numbered out of order (expected 2)"]
+    assert _with_now(lambda intro: re.sub(r"(?m)^\| \d+ \|.*\n?", "", intro)) == [
+        "§1 has no Now list: its intro holds the build order as `| <n> | <row ids> | <item> |` lines"]
+
+
+def test_check_refuses_a_now_list_that_disagrees_with_the_rows():
+    """The rule is enforced where it matters: `problems`, which `check` and CI run, carries `now_problems`."""
+    data = copy.deepcopy(DATA)
+    first = next(s for s in data["sections"] if s["number"] == 1)
+    first["intro"] = first["intro"].replace("| 1 |", "| 1 | Z99,", 1)
+    assert "the Now list names Z99, which is not an open row" in register.problems(data)
 
 
 def test_the_pin_names_a_missing_a_stray_and_an_undefined_disposition(at_the_base):

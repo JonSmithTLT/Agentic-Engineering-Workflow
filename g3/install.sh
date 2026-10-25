@@ -17,6 +17,7 @@ set -eu
 ROOT=/opt/aew-g3
 UNITS=/etc/systemd/system
 WRAPPER=/usr/local/sbin/aew-g3
+PIN_RECORD=/var/lib/aew-g3/pin.json  # StateDirectory=aew-g3, the PIN's record (pinstore.PIN_FILE)
 HERE=$(cd "$(dirname "$0")" && pwd)
 OPERATOR= WHEELHOUSE= AEW_WHEEL=
 while [ $# -gt 0 ]; do
@@ -70,6 +71,14 @@ if command -v restorecon >/dev/null 2>&1; then
 fi
 systemctl daemon-reload
 systemctl enable --now aew-g3.socket
+# The service starts at boot too, not only at its first connection: its public keys are published, and a deployment
+# value it refuses shows at boot rather than at the operator's first approval.
+systemctl enable aew-g3.service
 systemctl restart aew-g3.service
 systemctl --no-pager --lines=5 status aew-g3.service || true
-echo "install.sh: installed. Set the PIN: sudo $WRAPPER set-pin"
+# A reinstall never touches the service's state, so a PIN set before is kept.
+if [ -e "$PIN_RECORD" ]; then
+    echo "install.sh: installed. The PIN set before is kept."
+else
+    echo "install.sh: installed. Set the PIN: sudo $WRAPPER set-pin"
+fi

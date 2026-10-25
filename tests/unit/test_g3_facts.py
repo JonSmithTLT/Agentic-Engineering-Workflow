@@ -320,6 +320,19 @@ def test_the_units_install_sh_and_the_code_name_the_same_sockets_and_directories
     assert svc["RuntimeDirectory"] == [f"{cli.RUNTIME_DIR.name}/keys"] and cli.RUNTIME_DIR.parent.as_posix() == "/run"
     assert svc["ExecStart"] == [f"{root.group(1)}/venv/bin/python -I -B -m aew_g3 serve"]
     assert 'exec $ROOT/venv/bin/python -I -B -m aew_g3 "\\$@"' in install
+    pin = re.search(r"^PIN_RECORD=(\S+)", install, re.M)
+    assert pin and pin.group(1) == (cli.STATE_DIR / pinstore.PIN_FILE).as_posix()  # the reinstall's "kept" check
+
+
+def test_install_sh_enables_every_unit_that_has_an_install_section() -> None:
+    """A unit with [Install] is meant to come back after a reboot; install.sh enabling only the socket left the service
+    to its first connection, with no keys published until then (operator's VM install, #269)."""
+    install = (ROOT / "install.sh").read_bytes().decode()
+    enabled = {u for line in re.findall(r"^systemctl enable (.+)$", install, re.M) for u in line.split()
+               if u.startswith("aew-g3.")}
+    with_install = {p.name for p in (ROOT / "systemd").iterdir() if "[Install]" in p.read_bytes().decode()}
+    assert with_install == {"aew-g3.socket", "aew-g3.service"}  # control: the detector reads both units
+    assert enabled == with_install, enabled
 
 
 def test_set_fields_are_exactly_the_set_level_fields_sw02_digests() -> None:

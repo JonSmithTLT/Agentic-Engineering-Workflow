@@ -50,6 +50,9 @@ sudo /usr/local/sbin/aew-g3 set-pin
 
 The full path, because Rocky 8's `sudo` searches only its `secure_path`, which leaves out `/usr/local/sbin`.
 
+`install.sh` enables both units, so the service comes back after a reboot. A reinstall keeps the PIN, the key, the
+ledger and `etc/deployment.json`, and says so; set the PIN only after the first install.
+
 - `set-pin` reads the PIN twice from the terminal. It stores only a salted scrypt hash, and the minimum length the PIN
   was set under. Setting the PIN also ends a lockout.
 - `sudo /usr/local/sbin/aew-g3 rotate-key`, then a restart of `aew-g3.service`, retires the signing key. A record

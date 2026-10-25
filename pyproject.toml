@@ -33,6 +33,9 @@ lint = ["ruff==0.16.10", "pyright==1.1.414", "pip-audit==2.10.1"]
 # standard library. Never a runtime dependency, never on an arm host. Pinned, because the sealed analysis plan names
 # the version its draws were made with; 2.4.x is the last line with wheels for Python 3.11 (the Rocky 8 target).
 eval = ["numpy==2.4.6"]
+# The G3 approval service (g3/, STG-03, A-37) and its tests: P-256 ECDSA signing (G3-09), which the standard library
+# does not have. Never the editable install's: root installs the service into /opt/aew-g3 with its own copy (g3/README.md).
+g3 = ["cryptography>=42"]
 
 [project.scripts]
 aew = "aew.cli.main:main"
@@ -77,16 +80,20 @@ ignore = [
 "eval/m3/dogfood/dogfood.py" = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["aew"]
+known-first-party = ["aew", "aew_g3"]
 
 [tool.pyright]
 # The product code, checked as Linux and as Windows (CI runs both: platform branches are narrowed per platform).
-include = ["src"]
+# g3/ is the G3 service (STG-03), installed apart from the editable aew.
+include = ["src", "g3"]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The G3 service is its own package beside the aew one (g3/aew_g3), never in the editable install: its tests import it
+# from the checkout under test.
+pythonpath = ["g3"]
 addopts = "-ra --strict-markers"
 # G3 H4: pytest's default retention ("all", the last 3 sessions) keeps every failed test's tmp_path. Not "failed":
 # removing a passing test's directory lets the next test get the same numbered name, and a process the earlier test

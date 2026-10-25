@@ -271,6 +271,14 @@ def test_a_write_provably_outside_aew_is_a_record_with_its_root_and_a_site_in_bo
     assert not any(k.startswith("unresolved") for k in by_key)
 
 
+def test_a_site_that_is_outside_in_two_places_names_both_roots():
+    """Found by ablation of the pull request: the root is every place the site can write, not the first."""
+    a = analysed("def f(flag):\n    p = Path(os.devnull) if flag else Path(tempfile.mkdtemp())\n"
+                 "    p.write_text('x')\n")
+    [record] = [r for r in W.records_of(a) if r.key.startswith("outside:")]
+    assert record.fact["root"] == "a temporary directory; the null device"  # type: ignore[index]
+
+
 def test_the_stores_apply_step_is_the_write_mechanism_and_not_a_writer():
     """Placement PR: `ControlStore._apply` writes what a transaction staged (data from the redo record); the staging
     sites are the writers. Another function of the store that writes a path of its own is a writer."""
@@ -506,6 +514,9 @@ def test_the_callbacks_a_parameter_names_are_unknown_past_the_call_site_cap_and_
     assert sorted(analysed(callback_chain(2)).writers) == ["state/A.md"]
     deep = analysed(callback_chain(F.DEPTH + 2))
     assert deep.writers == {} and list(deep.unresolved) == [("aew.m", "h0", "Path.write_text")], "the site is marked"
+    # a callback reached by a short route and by one past the depth cap: the short one alone would look complete
+    both = analysed(callback_chain(F.DEPTH + 2) + "def direct(aew_root):\n    h0(aew_root, views)\n")
+    assert both.writers == {} and list(both.unresolved) == [("aew.m", "h0", "Path.write_text")]
 
 
 def typed_chain(links: int) -> str:
@@ -724,6 +735,16 @@ def test_a_function_that_returns_something_else_than_a_tuple_leaves_its_element_
     assert a.writers == {} and any("first directory or file name is computed" in r for r in reasons(a))
 
 
+def test_a_function_with_one_return_that_is_a_tuple_and_one_that_is_not_leaves_the_site_marked_not_half_placed():
+    """Found by ablation of the pull request: with the unreadable return dropped, the tuple's element was placed and
+    nothing said the other return was not read."""
+    a = analysed("def pair(flag, p, other):\n    if flag:\n        return p, 'x'\n    return other\n\n"
+                 "def f(aew_root, flag, other):\n    first, second = pair(flag, aew_root / 'local' / 'a', other)\n"
+                 "    (first / 'f').write_text('x')\n")
+    assert sorted(a.writers) == ["local/a/f"]
+    assert any("returns something other than a tuple literal" in r for r in reasons(a)), "the other return is marked"
+
+
 def test_a_key_of_a_dict_a_call_returns_is_its_value_whether_the_dict_is_named_or_returned_in_a_tuple():
     a = analysed("def draft(wid):\n    unit: dict = {'record': f'work/{wid}/record.md', 'other': 'state/o'}\n"
                  "    return wid, unit, 'text'\n\n"
@@ -751,7 +772,14 @@ def test_a_loop_over_literal_rows_takes_the_element_of_each_row_for_each_target(
     assert sorted(a.writers) == ["state/a", "state/b"]
 
 
-DROP = "def drop(paths):\n    for path in paths:\n        path.unlink()\n\n"
+def test_a_loop_over_rows_takes_the_element_at_the_targets_own_position_and_not_the_first():
+    """Found by ablation of the pull request: the second target of each row, not only the first."""
+    a = analysed("def f(aew_root):\n    for kind, name in (('x', 'a'), ('y', 'b')):\n"
+                 "        (aew_root / 'state' / name).write_text(kind)\n")
+    assert sorted(a.writers) == ["state/a", "state/b"]
+
+
+DROP ="def drop(paths):\n    for path in paths:\n        path.unlink()\n\n"
 
 
 def test_a_loop_over_a_list_passed_as_an_argument_takes_the_elements_the_caller_built():

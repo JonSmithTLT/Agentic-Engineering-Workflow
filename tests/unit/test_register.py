@@ -764,9 +764,11 @@ def head_problems(disp: dict[str, Any], head: dict[str, Any]) -> list[str]:
             out.append(f"{rid}: {d['into']} is not in the register")
     out += [f"{g} (a hold group) is not in the register" for g in disp["groups"] if g not in every]
     out += [f"{r} (a new row) is not in the register" for r in disp["new_rows"] if r not in every]
-    out += [f"the Now list names {n['row']}, which is not in the register" for n in disp["now"] if n["row"] not in every]
+    out += [f"the Now list names {n['row']}, which is not in the register" for n in disp["now"]
+            if n["row"] not in every]
     for rid, row in closed.items():
-        if rid not in rows and (row["By"].startswith(("held in HOLD-", "absorbed into ")) or row["By"].endswith(CITATION)):
+        by = row["By"]
+        if rid not in rows and (by.startswith(("held in HOLD-", "absorbed into ")) or by.endswith(CITATION)):
             out.append(f"{rid} was closed in the rebaseline's form but has no disposition")
     return out
 
@@ -850,7 +852,8 @@ def test_the_pin_names_a_disposition_the_register_does_not_carry_out():
     def closed_of(data: dict[str, Any]) -> dict[str, Any]:
         return next(s for s in data["sections"] if s["title"].startswith("Closed"))
 
-    for rid, by, expected in (("F40", "something else", "its By is not"), ("F9", "held in HOLD-02", "not 'held in HOLD-09'"),
+    for rid, by, expected in (("F40", "something else", "its By is not"),
+                              ("F9", "held in HOLD-02", "not 'held in HOLD-09'"),
                               ("D3", "absorbed into F12", "not 'absorbed into STG-15'")):
         changed = copy.deepcopy(head)
         next(r for r in closed_of(changed)["rows"] if r["#"] == rid)["By"] = by

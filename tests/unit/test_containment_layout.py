@@ -51,6 +51,20 @@ def run_layout(tmp_path: Path, role: str, *, scope: str = "ticket", policy: dict
                      project=str(repo), env=env if env is not None else {})
 
 
+def lead_layout(tmp_path: Path, *, scope: str = "project", network: str = L.SHARED, net_dir: str | None = None,
+                home: str | None = None, policy: dict | None = None) -> C.Layout:
+    """The Lead's layout (STG-05 CS-4): its project's working tree is its workspace, its run directory and its own
+    OpenCode state are under the project's `.aew/local`."""
+    repo, _ = repo_with_worktree(tmp_path)
+    for d in (".aew/state/log", ".aew/local/harness/runs"):
+        (repo / d).mkdir(parents=True, exist_ok=True)
+    run = repo / ".aew/local/harness/runs/lead-1"
+    return C.for_run(role="lead", scope=scope, workspace=str(repo), run_dir=run, scratch=str(run / "scratch"),
+                     bridge_dir=None, policy=policy, home=home if home is not None else str(tmp_path / "home"),
+                     project=str(repo), runs=str(run.parent), env={}, network=network, net_dir=net_dir,
+                     state_dir=str(repo / ".aew/local/harness/lead"))
+
+
 def test_argv_binds_the_root_read_only_first_then_writable_roots_then_read_only_rebinds_then_masks():
     layout = C.Layout(role="implementer", access="write", bwrap="/usr/bin/bwrap", writable=("/w1", "/w2"),
                       readonly=("/r1",), hide_dirs=("/home/u/.ssh",), hide_files=("/home/u/.netrc",))
@@ -77,19 +91,85 @@ def test_argv_binds_the_root_read_only_first_then_writable_roots_then_read_only_
     assert flags[pos["--chdir"] + 1] == "/w1"
 
 
-def test_every_archetype_but_the_lead_has_a_layout_and_an_unknown_role_has_none(tmp_path, fake_bwrap):
+def test_every_archetype_has_a_layout_the_lead_included_and_an_unknown_role_has_none(tmp_path, fake_bwrap):
     from aew.roles import ARCHETYPES
 
-    assert set(L.WORKSPACE_ACCESS) == set(ARCHETYPES) - {"lead"}  # exhaustive: a new archetype must be classified
-    with pytest.raises(ContainmentUnavailable, match="no containment layout"):
-        run_layout(tmp_path, "lead")
+    assert set(L.WORKSPACE_ACCESS) == set(ARCHETYPES)  # exhaustive: a new archetype must be classified (CS-4: the Lead)
+    assert L.WORKSPACE_ACCESS["lead"] == "write"
     with pytest.raises(ContainmentUnavailable, match="no containment layout"):
         run_layout(tmp_path / "x", "mystery")
 
 
-def test_write_access_exists_only_for_a_ticket_scope(tmp_path, fake_bwrap):
-    with pytest.raises(ContainmentUnavailable, match="only a Ticket workspace"):
-        run_layout(tmp_path, "implementer", scope="integration")
+def test_a_lead_writes_only_its_project_and_an_implementer_only_its_ticket(tmp_path, fake_bwrap, monkeypatch):
+    """A-33 §3.1: the write scopes are per role. Each writing role writes only its own scope; the other's is refused,
+    and so is any scope for a writing role nobody gave scopes."""
+    assert set(L.WRITE_SCOPES) == {r for r, a in L.WORKSPACE_ACCESS.items() if a == "write"}
+    assert lead_layout(tmp_path / "ok-lead").role == "lead"
+    assert run_layout(tmp_path / "ok-impl", "implementer", scope="ticket").access == "write"
+    with pytest.raises(ContainmentUnavailable, match="the lead role may write only a project scope, not a 'ticket'"):
+        lead_layout(tmp_path / "lead-ticket", scope="ticket")
+    with pytest.raises(ContainmentUnavailable,
+                       match="the implementer role may write only a ticket scope, not a 'project'"):
+        run_layout(tmp_path / "impl-project", "implementer", scope="project")
+    monkeypatch.setitem(L.WORKSPACE_ACCESS, "unscoped", "write")  # a writing role without scopes
+    with pytest.raises(ContainmentUnavailable, match="the unscoped role may write only no scope") as refused:
+        run_layout(tmp_path / "unscoped", "unscoped", scope="ticket")
+    assert refused.value.details["allowed"] == []
+
+
+def test_the_lead_layout_re_binds_aew_and_the_git_metadata_read_only_after_the_working_tree(tmp_path, fake_bwrap):
+    """Ruling R-2 (CS-4 outcome 2): the Lead writes its working tree, which holds the store; `.aew` and the git
+    metadata are re-bound read-only after it, so the role-bind check passes by its second clause (CB-07)."""
+    layout = lead_layout(tmp_path)
+    repo = os.path.realpath(tmp_path / "repo")
+    aew, git_dir = os.path.join(repo, ".aew"), os.path.join(repo, ".git")
+    assert layout.writable[0] == repo and layout.access == "write"
+    assert aew in layout.readonly and git_dir in layout.readonly
+    assert aew in layout.protected and os.path.join(git_dir, "HEAD") in layout.protected
+    steps = L.order(layout)
+    assert steps.index(("--bind", repo)) < steps.index(("--ro-bind", aew))
+    assert steps.index(("--bind", repo)) < steps.index(("--ro-bind", git_dir))
+    L._refuse_store_binds("lead", repo, steps)  # what for_run checked
+    # Planted: the same layout without the `.aew` re-bind (the forgotten route) is refused, naming what to re-bind.
+    without = [s for s in steps if s != ("--ro-bind", aew)]
+    with pytest.raises(ContainmentUnavailable, match="is not re-bound read-only after it") as refused:
+        L._refuse_store_binds("lead", repo, without)
+    assert refused.value.details["reason"] == "store_path_writable" and refused.value.details["needs"] == aew
+
+
+def test_the_lead_sandbox_hides_aew_local_but_its_own_run_and_state_directories(tmp_path, fake_bwrap):
+    """CS-4 outcome 2: `.aew/local` is masked whole, so no control lock and no other run's state or server socket is in
+    the Lead's sandbox; only the Lead's own run directories and its OpenCode state are bound back, writable."""
+    layout = lead_layout(tmp_path)
+    repo = os.path.realpath(tmp_path / "repo")
+    local = os.path.join(repo, ".aew", "local")
+    assert layout.hide_runs == (local,)
+    run = os.path.join(local, "harness", "runs", "lead-1")
+    under = sorted(p for p in (*layout.writable, *layout.readonly) if L._within(p, local))
+    assert under == sorted([os.path.join(local, "harness", "lead"), os.path.join(run, "git"),
+                            os.path.join(run, "harness"), os.path.join(run, "scratch")])
+    assert all(p in layout.writable for p in under)
+    assert os.path.isdir(os.path.join(local, "harness", "lead"))  # the state directory is made by for_run
+    assert mask_problems(C.bwrap_argv(layout, ["agent"]), layout.hide_runs) == []
+
+
+def test_a_private_network_layout_binds_no_resolv_conf_back_into_run_and_a_shared_one_keeps_it(tmp_path, fake_bwrap,
+                                                                                               monkeypatch):
+    """ST-27 fact 3: CS-2's bind-back of resolv.conf's target under /run was "until CS-3". A network of the run's own,
+    the Lead's included, resolves no names inside (the relay and the egress proxy resolve on the host), so only the
+    host's network keeps it."""
+    monkeypatch.setattr(L, "_resolv_exception", lambda *a, **k: ((RESOLV, L.RESOLV_WHY),))
+    shared = lead_layout(tmp_path / "shared")
+    assert shared.run_exceptions == ((RESOLV, L.RESOLV_WHY),)
+    for mode in (L.PROXY_ONLY, L.ISOLATED):
+        net = tmp_path / f"net-{mode}"
+        net.mkdir()
+        private = lead_layout(tmp_path / mode, network=mode, net_dir=str(net))
+        assert private.run_exceptions == L.RUN_EXCEPTIONS == ()
+        assert RESOLV not in private.inside_host_masks()
+        assert RESOLV not in C.bwrap_argv(private, ["agent"])
+    worker = run_layout(tmp_path / "worker", "reviewer")  # the workers' layouts follow the same rule
+    assert worker.run_exceptions == ((RESOLV, L.RESOLV_WHY),)
 
 
 def test_missing_bubblewrap_is_containment_unavailable(tmp_path, monkeypatch):
@@ -289,7 +369,9 @@ def project_layout(tmp_path: Path, role: str, *, workspace: Path | None = None, 
     for d in (".aew/state/log", ".aew/local/harness/runs"):
         (repo / d).mkdir(parents=True, exist_ok=True)
     run = run_dir or repo / ".aew/local/harness/runs/R-1"
-    return C.for_run(role=role, scope="ticket", workspace=str(workspace or ws), run_dir=run,
+    lead = role == "lead"  # the Lead's workspace is its project's working tree, in the project scope (CS-4)
+    return C.for_run(role=role, scope="project" if lead else "ticket",
+                     workspace=str(workspace or (repo if lead else ws)), run_dir=run,
                      scratch=str(scratch or run / "scratch"), bridge_dir=None, policy=None,
                      home=str(tmp_path / "home"), project=str(repo), runs=str(run.parent))
 
@@ -303,7 +385,11 @@ def test_every_roles_layout_keeps_its_writable_binds_off_the_stores_path_and_the
     described = layout.describe()
     # The check itself, over what the run records of its layout: a role added later is checked the same way.
     L._refuse_store_binds(role, repo, L.bind_order(described["writable"], described["readonly"], layout.hide_runs))
-    assert not any(L._within(w, store) or L._within(store, w) for w in layout.writable)
+    assert not any(L._within(w, store) for w in layout.writable)  # never the store, nor under it
+    holders = [w for w in layout.writable if L._within(store, w)]  # CB-07's second clause: only the Lead's tree
+    assert holders == ([repo] if role == "lead" else [])
+    if holders:  # ...and the next directory down to the store is re-bound read-only after it
+        assert os.path.join(repo, ".aew") in layout.readonly
     # .aew/local is hidden whole (the runs directory is inside it, so it is not hidden twice), and stays hidden.
     local = os.path.join(repo, ".aew", "local")
     assert layout.hide_runs == (local,)

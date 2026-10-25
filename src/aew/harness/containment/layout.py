@@ -57,15 +57,17 @@ from typing import Any
 from aew.errors import ContainmentUnavailable
 
 # What each archetype may do to the workspace (or observation) it was dispatched for. Exhaustive by design: an
-# archetype without an entry (the Lead, or a new archetype nobody classified) cannot be contained, so it is refused.
+# archetype without an entry (a new archetype nobody classified) cannot be contained, so it is refused. The Lead's
+# workspace is its project's working tree (STG-05 CS-4, CB-01).
 WORKSPACE_ACCESS: dict[str, str] = {
-    "implementer": "write",
+    "implementer": "write", "lead": "write",
     "reviewer": "read", "verifier": "read",
     "investigator": "read", "researcher": "read", "planner": "read",
     "frontier_advisor": "read",
 }
-# The scopes in which an archetype may hold write access. Anything else fails closed.
-WRITE_SCOPES = frozenset({"ticket"})
+# The scopes in which each writing archetype may hold write access (A-33 §3.1: per role): an implementer writes only
+# its Ticket's workspace, and the Lead only its project. Anything else fails closed.
+WRITE_SCOPES: dict[str, frozenset[str]] = {"implementer": frozenset({"ticket"}), "lead": frozenset({"project"})}
 
 # Credentials commonly kept in a home directory. Masked when present; a policy may add more.
 SECRET_DIRS = (".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker", ".password-store", ".config/gh",
@@ -134,10 +136,12 @@ def host_masks() -> tuple[str, ...]:
     return tuple(out)
 
 
-def run_exceptions() -> tuple[tuple[str, str], ...]:
-    """What is bound back into the ``/run`` mask, read-only, each with why: :data:`RUN_EXCEPTIONS` and the host's
-    name-resolution file (:func:`_resolv_exception`)."""
-    return RUN_EXCEPTIONS + _resolv_exception()
+def run_exceptions(network: str = SHARED) -> tuple[tuple[str, str], ...]:
+    """What is bound back into the ``/run`` mask, read-only, each with why: :data:`RUN_EXCEPTIONS`, and on the host's
+    network the host's name-resolution file (:func:`_resolv_exception`). A network of the run's own resolves no names
+    inside, its routes out being the relay and the egress proxy, which resolve on the host; so it binds none back
+    (STG-05 CS-4, ST-27 fact 3: CS-2's bind-back was "until CS-3")."""
+    return RUN_EXCEPTIONS + (_resolv_exception() if network == SHARED else ())
 
 
 def _resolv_exception(resolv: str = RESOLV_CONF, run: str = RUN) -> tuple[tuple[str, str], ...]:
@@ -145,9 +149,8 @@ def _resolv_exception(resolv: str = RESOLV_CONF, run: str = RUN) -> tuple[tuple[
     ``/run`` (``/run/systemd/resolve/stub-resolv.conf``), and with ``/run`` masked a contained harness could not
     resolve its provider's name on the host's network. So the first path on the link chain that lies under ``/run`` is
     bound back read-only, by that name, when the chain ends at a regular file; otherwise there is no exception (a
-    missing source would fail the launch). Followed as the kernel follows it, at most :data:`MAXSYMLINKS` links. A
-    private network (CS-3b) resolves no names, its routes out being the relay and the egress proxy, which resolve on
-    the host; the file is then read and unused."""
+    missing source would fail the launch). Followed as the kernel follows it, at most :data:`MAXSYMLINKS` links. Only
+    the host's network needs it (:func:`run_exceptions`)."""
     path = resolv
     for _ in range(MAXSYMLINKS + 1):
         if _within(path, run):
@@ -575,7 +578,8 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
             scratch: str | os.PathLike[str], bridge_dir: str | None, policy: dict[str, Any] | None,
             project: str | os.PathLike[str], home: str | None = None,
             runs: str | os.PathLike[str] | None = None, env: Mapping[str, str] | None = None,
-            network: str = SHARED, net_dir: str | None = None) -> Layout:
+            network: str = SHARED, net_dir: str | None = None,
+            state_dir: str | os.PathLike[str] | None = None) -> Layout:
     """The layout of a run of ``role`` in ``scope``. Creates the run's private directories (and, for a writing
     role, its private git state). Raises ``ContainmentUnavailable`` when the role has no layout, bubblewrap is
     missing, or a bind would reach the store's path. ``project`` is the authoritative project root (bound read-only
@@ -583,16 +587,20 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     is the directory holding every run's directory (hidden too, with only this run's own directories bound back).
     ``env`` is the launching environment, for the credential paths it names (default: this process's). ``network``
     is the run's network mode (:data:`NETWORK_MODES`) and ``net_dir`` the directory of its network sockets
-    (``aew.harness.containment.netns``), with its :data:`NET_SHIM` subdirectory made here."""
+    (``aew.harness.containment.netns``), with its :data:`NET_SHIM` subdirectory made here. ``state_dir`` is the role's
+    own harness state that outlives one run (the Lead's OpenCode state, kept per project: STG-05 CS-4 addendum 1),
+    made here and bound back writable like the run's own directories."""
     access = WORKSPACE_ACCESS.get(role)
     if access is None:
         raise ContainmentUnavailable(f"role {role!r} has no containment layout; its runs are refused", role=role)
     if network not in NETWORK_MODES:
         raise ContainmentUnavailable(f"network mode {network!r} is not one of {', '.join(NETWORK_MODES)}",
                                      network=network)
-    if access == "write" and scope not in WRITE_SCOPES:
-        raise ContainmentUnavailable(f"a {role} may write only a Ticket workspace, not a {scope!r} scope",
-                                     role=role, scope=scope)
+    scopes = WRITE_SCOPES.get(role, frozenset())
+    if access == "write" and scope not in scopes:
+        allowed = " or ".join(f"a {s} scope" for s in sorted(scopes)) or "no scope"
+        raise ContainmentUnavailable(f"the {role} role may write only {allowed}, not a {scope!r} scope", role=role,
+                                     scope=scope, allowed=sorted(scopes))
     bwrap = find_bwrap()
     if bwrap is None:
         raise ContainmentUnavailable("bubblewrap (bwrap) is not installed or not on PATH")
@@ -609,6 +617,9 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     mask.chmod(0o444)
     contained = {"TMPDIR": SANDBOX_TMP, "XDG_CACHE_HOME": str(cache)}
     writable = [_real(scratch), _real(harness)]
+    if state_dir is not None:
+        Path(state_dir).mkdir(parents=True, exist_ok=True)
+        writable.append(_real(state_dir))
     if access == "write":
         git_root, git_env = private_git(run, ws)
         writable.insert(0, str(ws))
@@ -638,6 +649,13 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     if access == "read":
         readonly.insert(0, str(ws))       # the workspace itself, re-bound read-only over any broader writable root
         protected.append(str(ws))
+    aew_dir = os.path.join(_real(project), ".aew")
+    if scope == "project" and access == "write" and os.path.isdir(aew_dir) and _within(aew_dir, str(ws)):
+        # Ruling R-2, the Lead's alone (only the Lead writes a project scope): its writable tree holds the project, and
+        # .aew is a read-only mount point in it, so the store's path cannot be renamed, replaced or removed (CB-07's
+        # second clause), and .aew stays unwritable. Any other writable bind that reaches the store stays refused.
+        readonly.append(aew_dir)
+        protected.append(aew_dir)
     if bridge_dir:
         readonly.append(_real(bridge_dir))
     for prefix in {sys.prefix, sys.base_prefix}:  # the interpreter behind `aew`, wherever it lives
@@ -653,8 +671,8 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     layout = Layout(role=role, access=access, bwrap=bwrap, writable=tuple(writable), readonly=tuple(readonly),
                     visible=tuple(visible), hide_runs=tuple(hide_runs), hide_dirs=hide_dirs, hide_files=hide_files,
                     mask_file=str(mask), operator_writable=tuple(operator), protected=tuple(protected),
-                    env=contained, hide_host=hide_host, display_files=display_files(home, env), network=network,
-                    net_dir=net_dir)
+                    env=contained, hide_host=hide_host, run_exceptions=run_exceptions(network),
+                    display_files=display_files(home, env), network=network, net_dir=net_dir)
     _refuse_store_binds(role, project, order(layout))
     _refuse_run_bind_backs(layout, project=_real(project), workspace=str(ws))
     return layout

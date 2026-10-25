@@ -66,7 +66,7 @@ def lead_session_refusal(command: str) -> str:
     """Why `aew capability <command>` never runs in a Lead session, and what to do instead: one text, for the
     command's own check and for the Lead broker's."""
     return (f"`aew capability {command}` is the operator's, at their own terminal; it never runs in a Lead session: "
-            "`aew capability list` reads the register")
+            f"ask the operator to run `aew capability {command}` (`aew capability list` reads the register here)")
 
 
 def refuse_lead_session(command: str, environ: dict[str, str] | None = None) -> None:

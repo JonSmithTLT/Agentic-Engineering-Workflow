@@ -408,7 +408,10 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     from aew.cli import capability_commands
     from aew.engine.custody_ops import LEAD_SESSION
 
-    if command_path(ns) in capability_commands.LEAD_KEPT_OUT:  # its own keep-out, not "run this one directly" (QC3)
+    # On the broker's own channels (a Lead session), a command kept out of one says so, not "run this one directly"
+    # (QC3); the operator's out-of-session `cli` escape keeps that text, which is true there (#281 review, F2). Both
+    # are refusals: the channel chooses the wording, never the legality.
+    if channel in INGRESS_CHANNEL.values() and command_path(ns) in capability_commands.LEAD_KEPT_OUT:
         raise errors.PermissionDenied(capability_commands.lead_session_refusal(command_name(ns).split()[-1]),
                                       reason=LEAD_SESSION)
     if not hasattr(ns, "token") or getattr(ns, "handler", None) is None:

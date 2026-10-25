@@ -146,9 +146,27 @@ def plain(sentence: str) -> str | None:
     if CITATION.search(kept):
         return None
     if kept.endswith(":"):  # it introduces a list: cut at its last comma (the clause that points at the list), or out
-        head, comma, _ = kept[:-1].rpartition(",")
-        return head + "." if comma and head else None
+        cut = last_comma_outside(kept[:-1])
+        return kept[:cut] + "." if cut else None
     return kept
+
+
+def last_comma_outside(text: str) -> int | None:
+    """The index of the last comma of ``text`` that is in no bracket and no code span, or None. A comma inside
+    ``(a stat, a read)`` is part of an aside, not the clause that points at a list (review of #267, Q-3)."""
+    found, depth, code, before = None, 0, False, ""
+    for i, ch in enumerate(text):
+        if ch == "`":  # a run of backticks (a span written ``like this``) opens or closes once
+            code = code if before == "`" else not code
+        elif not code:
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth = max(depth - 1, 0)
+            elif ch == "," and depth == 0:
+                found = i
+        before = ch
+    return found
 
 
 def says_of(doc: str | None) -> list[str]:

@@ -1197,6 +1197,7 @@ NESTING = "excused: nesting of brackets or braces in a backward or forward scan,
 # A depth guard: (how many in that function, the test that plants it or why it is excused). `this::` is a test of this
 # module and `writers_roles::` one of the roles module's.
 DEPTH_GUARDS: dict[str, tuple[int, str]] = {
+    "concurrency:last_comma_outside": (1, NESTING),
     "interfaces_dashboard_text:_slice_end": (1, NESTING),
     "stg02_commands_text:_callee": (1, NESTING),
     "writers_flow:_format_template": (2, NESTING),

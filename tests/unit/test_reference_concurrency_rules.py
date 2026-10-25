@@ -357,6 +357,21 @@ def test_a_sentence_that_introduces_a_list_is_cut_at_its_last_comma_and_one_with
     assert CO.says_of("Build runs without the lock, and that is safe:") == ["Build runs without the lock."]
 
 
+@pytest.mark.parametrize(("sentence", "kept"), [
+    ("It runs without the lock (a stat, a read):", None),
+    ("It runs without the lock, and reads ``a, b``:", "It runs without the lock."),
+    ("It runs without the lock, so a commit never waits (a stat, a read), and then [x, y]:",
+     "It runs without the lock, so a commit never waits (a stat, a read)."),
+    ("It runs without the lock (a stat, a read) and {a, b}, as follows:",
+     "It runs without the lock (a stat, a read) and {a, b}."),
+    ("It runs without the lock (a stat, a read)), then:", "It runs without the lock (a stat, a read))."),
+])
+def test_a_sentence_that_introduces_a_list_is_not_cut_at_a_comma_inside_brackets_or_a_code_span(sentence, kept):
+    """Review of #267, Q-3: the cut was the last comma of the sentence, so ``(a stat, a read):`` left ``(a stat.``."""
+    assert CO.plain(sentence) == kept
+    assert CO.says_of(sentence) == ([kept] if kept else [])
+
+
 def test_a_docstring_is_split_into_sentences_across_lines_and_paragraphs():
     doc = "First line of one\nsentence. Second one has ``a.b`` in it.\n\nThird, in another paragraph!  Fourth?"
     assert CO.sentences(doc) == ["First line of one sentence.", "Second one has ``a.b`` in it.",

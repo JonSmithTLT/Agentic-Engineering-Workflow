@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import importlib.util
 import shutil
 import sys
 from pathlib import Path
@@ -437,6 +438,26 @@ def test_every_measured_cap_is_at_least_twice_the_largest_figure_the_tree_reache
     for cap in measured:
         assert cap.value >= 2 * (cap.measured or 0), (
             f"the tree reaches {cap.measured} and the cap `{cap.name}` is {cap.value}: raise the cap, and say why")
+
+
+def test_a_hierarchy_one_level_deeper_than_the_cap_fails_check_and_render_and_names_the_cap(monkeypatch, capsys):
+    """Addendum 7: `MRO_DEPTH` bounds a list of classes, which can carry no mark, so past it the reading fails. On this
+    tree the cap one below the deepest chain of bases it follows is such a cap: `check` and `render` stop (exit 2, not
+    1: nothing differs, nothing can be generated) with the error, and `render` writes nothing."""
+    spec = importlib.util.spec_from_file_location("reference_tool_pr6", ROOT / "tools" / "reference.py")
+    assert spec is not None and spec.loader is not None
+    reference = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reference)
+    with F.measuring() as peaks:
+        W.build(CTX)
+    assert peaks["mro"] >= 2
+    before = {p.name: p.read_bytes() for p in (ROOT / "docs" / "reference").iterdir() if p.is_file()}
+    monkeypatch.setattr(F, "MRO_DEPTH", peaks["mro"] - 1)
+    for command in ("check", "render"):
+        assert reference.main([command]) == 2, command
+        said = capsys.readouterr().err
+        assert "cannot generate the reference" in said and f"(cap `writers_flow.MRO_DEPTH` = {F.MRO_DEPTH}:" in said
+    assert before == {p.name: p.read_bytes() for p in (ROOT / "docs" / "reference").iterdir() if p.is_file()}
 
 
 def test_the_caps_section_of_the_page_is_what_the_caps_say():

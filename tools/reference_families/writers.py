@@ -754,15 +754,17 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
 def cap_lines(caps: Iterable[F.Cap]) -> list[str]:
     lines = ["## Caps of the reading", "",
              "Each cap bounds how far one thing is followed, and names where its number comes from. Past a cap the "
-             "reading says so: the reason is on the unresolved write, or the writer carries the no-chain item, or the "
-             "registration counts as run by every role. A tree test doubles every cap and holds this page and "
+             "reading takes one of two arms, named on each line: a marked item (the reason is on the unresolved write, "
+             "or the writer carries the no-chain item, or the registration counts as run by every role), or, where "
+             "what the cap bounds can carry no mark, `check` and `render` fail with an error that names the cap. A "
+             "tree test doubles every cap and holds this page and "
              "`index.json` unchanged, so no record of this tree is lost to a cap. A refusal that lists problems is cut "
              "at a number of lines and says how many it left out, and an expression quoted in a reason is cut with "
              "`...`: those are not caps on what the reading follows.", ""]
     for cap in caps:
         measured = "" if cap.measured is None else f" The largest in this tree: {cap.measured}."
         lines.append(f"- `{cap.name}` = {cap.value}: {cap.bounds}; source: {cap.source}; "
-                     f"past it: {cap.past}.{measured}")
+                     f"past it ({cap.arm}): {cap.past}.{measured}")
     return [*lines, ""]
 
 

@@ -37,14 +37,16 @@ AEW_DIRECTORY = ".aew"
 ROOT_NAME = "aew_root"  # the repository's spelling of the .aew directory (checked by the family's convention test)
 REPO_NAME = "repo_root"  # the repository's working tree: a path under it is outside `.aew`
 WORKSPACES_NAME = "workspaces_root"  # the directory of the task workspaces (a method of the kernel): outside `.aew`
-# The caps of the reading. Each bounds how far one thing is followed, and past it the reading says so: a value is UNK
-# with the cap in its reason (so the site is an unresolved write), a call is not followed (a writer reached only through
-# it carries the no-chain item), or the roles reader counts a registration as run by every role. `caps()` is the one
-# list, written on the page. A tree test doubles every cap and holds the generated reference unchanged (no record is
-# lost to a cap), and another finds every cap or slice of the generator that is not listed (the sweep).
+# The caps of the reading. Each bounds how far one thing is followed, and past it the reading takes one of two arms
+# (addendum 7): a marked item (a value is UNK with the cap in its reason, so the site is an unresolved write; a call is
+# not followed, so a writer reached only through it carries the no-chain item; the roles reader counts a registration as
+# run by every role) or, where what the cap bounds can carry no mark, it fails `check` and `render` with an error that
+# names the cap. `caps()` is the one list, with the arm of each, written on the page. A tree test doubles every cap and
+# holds the generated reference unchanged (no record is lost to a cap), and another finds every cap or slice of the
+# generator that is not listed (the sweep).
 # Calls and parameters followed in a chain. Measured, not chosen: the page prints the deepest chain the tree follows
 # (the run directory a supervisor is handed through the harness) and a tree test holds the cap to at least twice it.
-# (It was 14 while a depth cut under a join read as a computed segment and hid that the tree needs 9: addendum 6.)
+# (It was 14 while a depth cut under a join read as a computed segment and hid how deep the tree goes: addendum 6.)
 DEPTH = 20
 CALLERS = 24  # call sites of one function that are evaluated; more is UNK
 # Distinct values one expression may take before it is UNK. Measured, not chosen: a tree test holds it to at least twice
@@ -170,6 +172,9 @@ def capped(values: set[Val] | Values) -> Values:
     return frozenset(values)
 
 
+MARKED, FAILS = "a marked item", "fails check"  # the two arms past a cap (addendum 7); a cap takes exactly one
+
+
 class Cap(NamedTuple):
     name: str  # the constant
     value: int
@@ -177,6 +182,7 @@ class Cap(NamedTuple):
     source: str  # where the number comes from
     past: str  # what the reading does past it
     measured: int | None = None  # the largest the tree reaches, where the reading measures it
+    arm: str = MARKED  # MARKED: an item says so; FAILS: `check` and `render` stop with an error that names the cap
 
 
 def caps(peaks: Mapping[str, int] | None = None) -> tuple[Cap, ...]:
@@ -204,8 +210,9 @@ def caps(peaks: Mapping[str, int] | None = None) -> tuple[Cap, ...]:
         Cap("writers_flow.MRO_DEPTH", MRO_DEPTH,
             "the base classes followed from a class to find where an attribute or a method is defined",
             "measured, held to twice the longest chain the tree follows",
-            "a base further than this is not followed, so what only it defines is not found; no mark can sit on a "
-            "list of classes, so a tree test fails before the tree needs half of it", peak("mro")),
+            "a list of classes can carry no mark, so the reading stops: `check` and `render` fail with an error that "
+            "names this cap, its source and its bound, and a tree test warns before the tree needs half of it",
+            peak("mro"), FAILS),
         Cap("writers_flow.FSTRING_LIMIT", FSTRING_LIMIT,
             "the alternatives of one f-string piece that are expanded into templates",
             "measured, held to twice the largest the tree makes",
@@ -696,8 +703,7 @@ class Program:
         """The class and its bases that the program holds, most derived first (a depth-first reading: enough to find
         where an attribute or a method is defined)."""
         out = [(mod, cls)]
-        if _depth >= MRO_DEPTH:  # MRO_DEPTH bases are followed
-            return out
+        bases: list[tuple[Module, str]] = []
         for base in mod.bases.get(cls, []):
             dotted = mod.aliases.resolve(base)
             if dotted is None:
@@ -708,10 +714,16 @@ class Program:
                 if located and located[1] in self.modules[located[0]].classes:
                     owner, name = self.modules[located[0]], located[1]
             if owner is not None:
-                _note("mro", _depth + 1)
-                for item in self.mro(owner, name, _depth + 1):
-                    if item not in out:
-                        out.append(item)
+                bases.append((owner, name))
+        if bases and _depth >= MRO_DEPTH:  # MRO_DEPTH bases are followed; a list of classes can carry no mark
+            raise C.ReferenceError(cap_reason("MRO_DEPTH", f"the bases of `{mod.name}.{cls}` go more than {MRO_DEPTH} "
+                                                           "levels deep, and what they define would be lost")
+                                   + ": raise the cap, and say why")
+        for owner, name in bases:
+            _note("mro", _depth + 1)
+            for item in self.mro(owner, name, _depth + 1):
+                if item not in out:
+                    out.append(item)
         return out
 
     def prop(self, mod: Module, cls: str, name: str) -> Func | None:

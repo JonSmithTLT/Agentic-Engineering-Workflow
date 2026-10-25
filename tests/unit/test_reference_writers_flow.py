@@ -670,15 +670,28 @@ def test_a_sibling_named_through_more_assignments_than_the_cap_is_unresolved_and
     assert "neither fixed nor made by the process" in reason, "and the sibling is still unplaced: both are stated"
 
 
-def test_the_bases_of_a_class_are_followed_to_the_cap_and_no_further():
-    n = F.MRO_DEPTH + 3
-    src = "class B0:\n    pass\n\n" + "".join(f"class B{i}(B{i - 1}):\n    pass\n\n" for i in range(1, n))
-    prog = program({"aew.m": src})
-    mod = prog.modules["aew.m"]
-    chain = [cls for _, cls in prog.mro(mod, f"B{n - 1}")]
-    assert chain == [f"B{n - 1 - i}" for i in range(F.MRO_DEPTH + 1)], "the class and MRO_DEPTH bases"
-    short = [cls for _, cls in prog.mro(mod, f"B{F.MRO_DEPTH}")]
-    assert short == [f"B{F.MRO_DEPTH - i}" for i in range(F.MRO_DEPTH + 1)] and short[-1] == "B0"
+def hierarchy(classes: int) -> Any:
+    src = "class B0:\n    pass\n\n" + "".join(f"class B{i}(B{i - 1}):\n    pass\n\n" for i in range(1, classes))
+    return program({"aew.m": src})
+
+
+def test_the_bases_of_a_class_are_followed_to_the_cap_and_a_hierarchy_one_level_deeper_is_refused():
+    """Addendum 7: a list of classes can carry no mark, so the arm past `MRO_DEPTH` is that the reading fails, naming
+    the cap, its source and its bound (the headroom test only warns before the tree gets there)."""
+    at = hierarchy(F.MRO_DEPTH + 1)  # the class and MRO_DEPTH bases
+    chain = [cls for _, cls in at.mro(at.modules["aew.m"], f"B{F.MRO_DEPTH}")]
+    assert chain == [f"B{F.MRO_DEPTH - i}" for i in range(F.MRO_DEPTH + 1)] and chain[-1] == "B0"
+    over = hierarchy(F.MRO_DEPTH + 2)
+    with pytest.raises(C.ReferenceError) as refused:
+        over.mro(over.modules["aew.m"], f"B{F.MRO_DEPTH + 1}")
+    assert cap_text("MRO_DEPTH") in str(refused.value) and f"more than {F.MRO_DEPTH} levels deep" in str(refused.value)
+    assert "aew.m.B1" in str(refused.value), "it names the class whose bases are cut"
+
+
+def test_every_cap_takes_exactly_one_of_the_two_arms_and_the_page_names_it():
+    caps = (*F.caps(), *K.caps())
+    assert {cap.arm for cap in caps} == {F.MARKED, F.FAILS}
+    assert [cap.name for cap in caps if cap.arm == F.FAILS] == ["writers_flow.MRO_DEPTH"], "what has no item to mark"
 
 
 def peaks_of(source: str) -> dict[str, int]:
@@ -828,7 +841,8 @@ def test_the_page_lists_each_cap_with_its_value_its_source_and_what_happens_past
     page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
     assert "## Caps of the reading" in page
     for cap in (*F.caps(), *K.caps()):
-        assert f"`{cap.name}` = {cap.value}: {cap.bounds}; source: {cap.source}; past it: {cap.past}." in page
+        said = f"`{cap.name}` = {cap.value}: {cap.bounds}; source: {cap.source}; past it ({cap.arm}): {cap.past}."
+        assert said in page
     measured = W.page(a, W.records_of(a), tuple(sorted(TOP)), F.caps(dict.fromkeys(F.MEASURED, 7)))
     assert measured.count("The largest in this tree: 7.") == len(F.MEASURED)
 

@@ -32,16 +32,16 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 | # | Row | Item |
 |---|---|---|
-| 1 | STG-12 | S12-2's PRs 4 to 10, on two builders, to the pack cut (the list is frozen) (PRs 4 to 9 merged; PR 10 building) |
+| 1 | STG-12 | S12-2's PRs 4 to 10, on two builders, to the pack cut (the list is frozen) (PRs 4 to 9 merged; PR 10 open as #268) |
 | 2 | STG-05 | the owner-only store (#256) (merged, `e78c6386`) |
 | 3 | STG-05 | CS-3b, the network namespace (#257) (merged, `d796a342`) |
 | 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register (building) |
 | 5 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
-| 6 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it (the G3 service building, G3-A first) |
+| 6 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it (the G3 service building: G3-A open as #269) |
 | 7 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
 | 8 | STG-13 | V-01's oracle rebuilt |
 
-**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today. On 2026-10-25 the operator gave the G3 service a slot of its own before CS-4's hand-off, so it is building ahead of H-1.
+**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today. On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace).
 
 **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 
@@ -842,7 +842,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** One bytes-level reader for kernel and OS text files (`/proc` and `/sys` records, mount tables, routing tables): it reads bytes, splits on `b"\n"` only, validates each record against its source's fixed format, and fails closed on a record it cannot parse. #250's mode check extends to the split. The method that closes the class, after three findings of it in one night
 
-**Source:** Review findings #250 M1 and M2 (a comm read with `str.splitlines` could forge a line), #243 F14, and #244's inventory (2026-10-24)
+**Source:** Review findings #250 M1 and M2 (a comm read with `str.splitlines` could forge a line), a finding of the same class in #243 (closed unmerged), and #244's inventory (2026-10-24)
 
 **When:** **After the trace.** Until it is built, containment builder briefs carry the rule: read such files as bytes and split on `b"\n"` only
 
@@ -866,7 +866,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** Only the two declared steps auto-run, and only under RUN (R01-38, R-DEC-04): declare the set (`ticket_start` and `ticket_request_review`, under RUN only), and test that `classify.auto_runnable`'s set equals it
 
-**Source:** STG-12's S12-4 trace, FIX claim "only the two declared steps auto-run, and only under run" (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`); the claim's deviation is the brief
+**Source:** STG-12's S12-4 trace, FIX claim "only the two declared steps auto-run, and only under run" (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`); the claim's deviation is the brief; the set is the operator's R-DEC-04 decision of 2026-10-25 (design workspace `e1f1920`)
 
 **When:** **Internal alpha**, one of the trace's FIX rows (S12-6)
 

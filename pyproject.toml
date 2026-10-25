@@ -78,9 +78,12 @@ ignore = [
 "eval/m3/spike/**" = ["S310", "E741", "UP031", "B023", "E501"]
 # The dogfood harness's Lead prompt and task texts are evaluation inputs, kept byte-for-byte as they ran.
 "eval/m3/dogfood/dogfood.py" = ["E501"]
+# The G3 confirmer runs under the host's own Python 3.6 (Rocky 8's platform-python, STG-03 G3-B): typing.List and
+# Optional are its forms, and the builtin generics and X | None that pyupgrade asks for are 3.9 and 3.10.
+"g3/aew_g3_confirm/**" = ["UP006", "UP035", "UP045"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["aew", "aew_g3"]
+known-first-party = ["aew", "aew_g3", "aew_g3_confirm"]
 
 [tool.pyright]
 # The product code, checked as Linux and as Windows (CI runs both: platform branches are narrowed per platform).
@@ -88,6 +91,8 @@ known-first-party = ["aew", "aew_g3"]
 include = ["src", "g3"]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
+# The G3 confirmer runs under the host's own Python 3.6 (STG-03 G3-B); 3.7 is the lowest pyright checks against.
+executionEnvironments = [{ root = "g3/aew_g3_confirm", pythonVersion = "3.7" }, { root = "." }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

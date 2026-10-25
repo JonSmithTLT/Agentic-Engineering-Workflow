@@ -555,6 +555,30 @@ skipped:
     tests/unit/test_g3_admin.py::test_a_reinstall_says_the_pin_is_kept_only_when_the_pin_record_exists: >-
       aew-g3's administration and start run on Linux only (A-37): root's euid and chown, getpass at a terminal,
       Unix filesystem sockets and socket activation; cli.main refuses Windows. Covered on Linux.
+    tests/integration/test_g3_confirm_process.py::test_the_confirmers_two_requests_are_the_confirm_sockets_two_routes: >-
+      the G3 confirmer's client talks to the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; the confirmer's core runs on both platforms in
+      tests/unit/test_g3_confirm.py.
+    tests/integration/test_g3_confirm_process.py::test_the_confirmer_lists_what_is_pending_and_shows_the_services_own_rendering_whole: >-
+      the G3 confirmer's client talks to the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; the confirmer's core runs on both platforms in
+      tests/unit/test_g3_confirm.py.
+    tests/integration/test_g3_confirm_process.py::test_approve_issues_one_record_and_a_retry_with_any_pin_is_not_found_and_counts_nothing: >-
+      the G3 confirmer's client talks to the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; the confirmer's core runs on both platforms in
+      tests/unit/test_g3_confirm.py.
+    tests/integration/test_g3_confirm_process.py::test_each_refusal_reaches_the_operator_as_its_own_fixed_text: >-
+      the G3 confirmer's client talks to the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; the confirmer's core runs on both platforms in
+      tests/unit/test_g3_confirm.py.
+    tests/integration/test_g3_confirm_process.py::test_no_answer_and_an_answer_without_the_g3_wire_are_unreachable_never_a_decision: >-
+      the G3 confirmer's client talks to the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; the confirmer's core runs on both platforms in
+      tests/unit/test_g3_confirm.py.
+    tests/integration/test_g3_confirm_process.py::test_a_planted_pin_never_appears_in_anything_the_confirmer_says_or_raises: >-
+      the G3 confirmer's client talks to the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; the confirmer's core runs on both platforms in
+      tests/unit/test_g3_confirm.py.
   linux:
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.

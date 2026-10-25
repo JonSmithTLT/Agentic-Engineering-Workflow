@@ -1,6 +1,6 @@
 #!/bin/sh
-# Installs AEW's G3 service (A-37, G3-14) root-owned under /opt/aew-g3 and enables its socket. Root runs it, offline,
-# from a checkout's g3/ directory:
+# Installs AEW's G3 service and its confirmer (A-37, G3-14) root-owned under /opt/aew-g3, and enables the service's
+# units. Root runs it, offline, from a checkout's g3/ directory:
 #
 #   sudo sh g3/install.sh --operator <account> --wheelhouse <dir> --aew-wheel <aew-*.whl>
 #
@@ -18,6 +18,10 @@ ROOT=/opt/aew-g3
 UNITS=/etc/systemd/system
 WRAPPER=/usr/local/sbin/aew-g3
 PIN_RECORD=/var/lib/aew-g3/pin.json  # StateDirectory=aew-g3, the PIN's record (pinstore.PIN_FILE)
+# The confirmer (G3-B) runs on the operator's desktop under the host's own Python 3 and its GTK3 bindings.
+CONFIRM=/usr/local/bin/aew-g3-confirm
+CONFIRM_PY=/usr/libexec/platform-python
+DESKTOP=/usr/share/applications/aew-g3-confirm.desktop
 HERE=$(cd "$(dirname "$0")" && pwd)
 OPERATOR= WHEELHOUSE= AEW_WHEEL=
 while [ $# -gt 0 ]; do
@@ -43,9 +47,10 @@ umask 022
 "$ROOT/venv/bin/python" -m pip install --quiet --no-index --no-compile --require-hashes \
     --find-links "$WHEELHOUSE" -r "$HERE/requirements-offline.txt"
 "$ROOT/venv/bin/python" -m pip install --quiet --no-index --no-compile --no-deps "$AEW_WHEEL"
-rm -rf "$ROOT/aew_g3"
-mkdir -p "$ROOT/aew_g3" "$ROOT/etc"
+rm -rf "$ROOT/aew_g3" "$ROOT/aew_g3_confirm"
+mkdir -p "$ROOT/aew_g3" "$ROOT/aew_g3_confirm" "$ROOT/etc"
 cp "$HERE"/aew_g3/*.py "$HERE"/aew_g3/*.json "$ROOT/aew_g3/"
+cp "$HERE"/aew_g3_confirm/*.py "$ROOT/aew_g3_confirm/"
 if [ -e "$ROOT/etc/deployment.json" ]; then
     echo "install.sh: keeping the existing $ROOT/etc/deployment.json"
 else
@@ -55,6 +60,9 @@ fi
 site=$("$ROOT/venv/bin/python" -I -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
 echo "$ROOT" > "$site/aew-g3.pth"
 "$ROOT/venv/bin/python" -I -m compileall -q "$ROOT/aew_g3" "$site"
+if [ -x "$CONFIRM_PY" ]; then
+    "$CONFIRM_PY" -I -m compileall -q "$ROOT/aew_g3_confirm"
+fi
 chown -R root:root "$ROOT"
 chmod -R go-w "$ROOT"
 
@@ -66,8 +74,17 @@ cat > "$WRAPPER" <<EOF
 exec $ROOT/venv/bin/python -I -B -m aew_g3 "\$@"
 EOF
 chmod 0755 "$WRAPPER"
+# The confirmer takes no arguments and reads no PIN from anywhere but its own window (G3-05): -I keeps PYTHONPATH and
+# the user's site out, and the install root is put on the path here, root's.
+cat > "$CONFIRM" <<EOF
+#!/bin/sh
+exec $CONFIRM_PY -I -B -c 'import sys; sys.path.insert(0, "$ROOT"); from aew_g3_confirm.window import main; sys.exit(main(sys.argv[1:]))' "\$@"
+EOF
+chmod 0755 "$CONFIRM"
+cp "$HERE/desktop/aew-g3-confirm.desktop" "$DESKTOP"
+chmod 0644 "$DESKTOP"
 if command -v restorecon >/dev/null 2>&1; then
-    restorecon -R "$ROOT" "$UNITS/aew-g3.socket" "$UNITS/aew-g3.service" "$WRAPPER"
+    restorecon -R "$ROOT" "$UNITS/aew-g3.socket" "$UNITS/aew-g3.service" "$WRAPPER" "$CONFIRM" "$DESKTOP"
 fi
 systemctl daemon-reload
 systemctl enable --now aew-g3.socket
@@ -81,4 +98,10 @@ if [ -e "$PIN_RECORD" ]; then
     echo "install.sh: installed. The PIN set before is kept."
 else
     echo "install.sh: installed. Set the PIN: sudo $WRAPPER set-pin"
+fi
+if [ -x "$CONFIRM_PY" ] && "$CONFIRM_PY" -I -c 'import gi; gi.require_version("Gtk", "3.0")' 2>/dev/null; then
+    echo "install.sh: the operator approves in the confirmer: AEW approvals among the desktop's applications, or $CONFIRM"
+else
+    echo "install.sh: the confirmer needs $CONFIRM_PY with GTK3 (Rocky 8: dnf install gtk3 python3-gobject);" \
+         "approvals wait until both are installed" >&2
 fi

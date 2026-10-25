@@ -10,8 +10,8 @@ an approval:
 4. The owner consumes the record once, at allocation.
 5. If anything fails, the action is held.
 
-This directory is part G3-A: the service and its systemd units. The confirmer (G3-B), the owners' side (G3-C) and the
-CLI client (G3-D) come next.
+This directory holds part G3-A, the service and its systemd units, and part G3-B, the confirmer. The owners' side
+(G3-C) and the CLI client (G3-D) come next.
 
 ## What runs, and as whom
 
@@ -23,6 +23,7 @@ CLI client (G3-D) come next.
 | The key, the PIN's hash, the ledger | `/var/lib/aew-g3` (`StateDirectory=`), mode 0600 | the service's account alone |
 | `request.sock`, `confirm.sock` | `/run/aew-g3/`, from `aew-g3.socket` | the operator's account only (`SocketUser=`, mode 0600, and a UID check on every request) |
 | The public keys and `issuer_ref` | `/run/aew-g3/keys/`, mode 0644 | anyone, for audit |
+| `aew_g3_confirm`, the confirmer | `/opt/aew-g3/aew_g3_confirm`, root-owned; launched by `/usr/local/bin/aew-g3-confirm` and the desktop entry "AEW approvals" | the operator, on their own desktop, outside any sandbox |
 
 The operator's editable `aew` install never runs any of it. The service takes three things from `aew`, the sealed
 O-01 command schema, the action registry, and SW-02's canonical bytes and set digest, so it derives them from their
@@ -42,6 +43,24 @@ one owner instead of copying them. It also takes AEW's typed errors. A test pins
   50.0.2. SPT carries only 47.0.0, which has published advisories, so that wheel comes from PyPI by its hash and is
   carried by hand until SPT has it (the register, STG-03). `install.sh` installs with `--no-index --require-hashes`.
 
+## The confirmer (G3-B)
+
+The window where the operator approves or declines (A-37 G3-03, G3-05). It lists the pending approvals on
+`confirm.sock`, and shows the selected one's rendering, one row per served line: a template line shows its
+`template_id`, a typed field its `field_path` and its value as JSON, an owner fact its owner, fact, observation and
+values. Every value is escaped to ASCII, so no control, bidirectional or look-alike character can disguise it. A
+rendering it cannot show exactly can only be declined. The PIN comes only from the window's own entry field: the
+confirmer takes no arguments, and reads nothing from its environment, standard input or any IPC. Each decision is sent
+once; after any outcome, the list is refreshed, and the outcome is told in fixed text, never text the service sent.
+
+- **The toolkit:** GTK3, through the host's own Python 3 and `python3-gobject` (Rocky 8: `/usr/libexec/platform-python`,
+  Python 3.6). The confirmer uses the standard library and GTK only, never `aew` or `aew_g3`, so the facts it restates
+  (the socket, the wire's header and version, the rendering's line limit, the Problem codes, root's command) are held
+  to their owners by a test.
+- **Launching it:** by hand, from "AEW approvals" among the desktop's applications, or `/usr/local/bin/aew-g3-confirm`.
+  It needs an X11 or Wayland session of the operator's own. If the host lacks GTK3 for that Python, `install.sh` says
+  so, and approvals wait until root installs `gtk3` and `python3-gobject`.
+
 ## Install (root, on the host)
 
 ```sh
@@ -52,7 +71,8 @@ sudo /usr/local/sbin/aew-g3 set-pin
 The full path, because Rocky 8's `sudo` searches only its `secure_path`, which leaves out `/usr/local/sbin`.
 
 `install.sh` enables both units, so the service comes back after a reboot. A reinstall keeps the PIN, the key, the
-ledger and `etc/deployment.json`, and says so; set the PIN only after the first install.
+ledger and `etc/deployment.json`, and says so; set the PIN only after the first install. It also installs the
+confirmer, its launcher and its desktop entry, and checks that the host's Python can load GTK3 for it.
 
 - `set-pin` reads the PIN twice from the terminal. It stores only a salted scrypt hash, and the minimum length the PIN
   was set under. Setting the PIN also ends a lockout.
@@ -76,5 +96,13 @@ ledger and `etc/deployment.json`, and says so; set the PIN only after the first 
   appears. It also checks the peer check on every request, including those http.server refuses itself, and that a
   refusal waits for the declared body. A stalled client is dropped at the request timeout. Bodies at and over
   `MAX_BODY`, a PIN that is not UTF-8 and a body nested past the parser are each held to their rule.
+- **`tests/unit/test_g3_confirm.py`:** the confirmer's restated facts against their owners, what it shows of each kind
+  of line, the renderings it refuses whole, the decisions it sends, and the outcome texts. Two static checks keep it
+  within Python 3.6: the parser at its lowest version, and a list of the later names the parser cannot see.
+- **`tests/integration/test_g3_confirm_process.py`:** the confirmer's core against the real service, on Linux: listing,
+  approving once, declining, every refusal it can draw, and a service that does not answer or is not G3's.
+- **`tests/helpers/g3_confirm_py36.py`:** the run under the host's own Python 3.6, which CI does not have, against a
+  throwaway service. On a private broadway display it also drives the real window. Its result is recorded in the pull
+  request.
 
 **Coverage:** the coverage ratchet measures `src/aew` only, so it does not count this package's lines.

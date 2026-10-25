@@ -451,7 +451,7 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `DISPOSITION_REQUIRED` | A finding or claim that policy marks for disposition has none | `disposition_missing` | Lead |
 | `CARD_CHOICE_REQUIRED` | A stage cannot choose the card a required gate needs | `card_ambiguous`, `card_missing` | Lead |
 | `DEPENDENCY_UNSATISFIED` | A unit's dependency is not met | `dependency_unmet` | Lead |
-| `OBLIGATIONS_DROPPED` | A move or promotion would lower what the work it moves must prove (EW-U05.g) | `obligations_lowered` | Lead |
+| `OBLIGATIONS_DROPPED` | A move or promotion that would lower a unit's inherited obligations is refused (EW-U05.g) | `obligations_lowered` | Lead |
 | `CONCURRENCY_LIMIT` | A concurrency bound is reached | `concurrency_bound` | Lead |
 | `STALE_CANDIDATE` | The authoritative ref moved, so the integration candidate must be rebuilt | `ref_moved` | engine |
 | `QUEUE_ORDER` | An earlier integration queue entry can integrate now | `queue_order` | engine |

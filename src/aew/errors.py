@@ -117,9 +117,9 @@ class DependencyUnsatisfied(IllegalTransition):
 
 
 class ObligationsDropped(IllegalTransition):
-    """A reorganization would lower what the work it moves still has to prove (EW-U05.g): a lower effective class, an
-    inherited non-waivable gate, or a required integration verifier. ``details["dropped"]`` names each unit and what
-    it would lose; nothing is changed."""
+    """A move or promotion that would lower a unit's inherited obligations is refused (EW-U05.g): its effective class,
+    an inherited non-waivable gate, or its integration's validation by a verifier. ``details["dropped"]`` names each
+    unit and what it would lose, and ``details["instead"]`` what the Lead may do instead; nothing is changed."""
 
     code = "OBLIGATIONS_DROPPED"
 

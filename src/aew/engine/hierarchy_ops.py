@@ -51,33 +51,46 @@ if TYPE_CHECKING:
 
 PROMOTION = {"ticket": {"story", "epic"}, "story": {"epic"}}
 MOVE_LOWERS_OBLIGATIONS = "move_lowers_obligations"  # ObligationsDropped's reason code (details["reason"])
+# The states the machine never leaves: no rule starts there. Nothing else revives a unit in one (a parent's DONE and
+# CANCELLED are its recorded closeout and cancellation, and there is no reopen; the archive takes only these states and
+# has no way back). They are the only units a move may leave out of its comparison.
+FINAL = frozenset(s for s in transitions.STATES if not transitions.allowed_from(s))
+# What the Lead may do instead of a move that would lower obligations (ObligationsDropped's details["instead"]).
+INSTEAD = (
+    {"option": "move_under_an_equal_parent", "how": "move it under a parent that requires at least as much"},
+    {"option": "create_the_parent_with_them",
+     "how": "give the new parent the floor and the gates when it is created (work create with --min-descendant-class "
+            "and --mandatory-gate)"},
+    {"option": "reclassify_first", "how": "raise a unit's own class first (work reclassify)"},
+)
 
 
 def inherited_obligations(state: dict[str, Any], work_ids: list[str], gates_policy: dict[str, Any]) -> dict[str, Any]:
     """What each unit still to be proven inherits from its ancestors, read from the owners (EW-U05.g): its effective
-    class and inherited non-waivable gates (``gates.effective_obligations``), and for a mutating Ticket the ancestors'
-    reasons its integration must be validated by a verifier (``validation.obligation``, which reads each ancestor's
-    floor on its own). A finished unit is left out: it proves nothing more, and its completion record holds what it
-    met."""
+    class and inherited non-waivable gates (``gates.effective_obligations``), and for a mutating Ticket how its
+    integration is validated, with the ancestors' reasons a verifier is required (``validation.obligation``, which
+    reads each ancestor's floor on its own). A unit in a ``FINAL`` state is left out: it is never live again, and its
+    completion record holds what it met."""
     no_path_gates: dict[str, Any] = {"risk_paths": defaultdict(list)}  # the class path follows the class compared
     out: dict[str, Any] = {}
     for wid in work_ids:
         unit = state["work"][wid]
-        if unit["state"] in H.TERMINAL:
+        if unit["state"] in FINAL:
             continue
         obligations = G.effective_obligations(state, wid, no_path_gates)
         entry: dict[str, Any] = {"effective_class": obligations["effective_class"],
                                  "non_waivable": obligations["non_waivable"]}
         if unit["kind"] == "ticket" and unit.get("mutating"):
             validation = V.obligation(state, wid, gates_policy)
-            entry["verifier"] = validation["sources"] if validation["verifier_required"] else []
+            entry["validation"] = {"mode": validation["mode"], "sources": validation["sources"]}
         out[wid] = entry
     return out
 
 
 def lowered_obligations(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     """Per unit of ``before``, what it lost in ``after`` (both from ``inherited_obligations``): a lower effective
-    class, inherited non-waivable gates, or a required integration verifier. Empty when nothing is lowered."""
+    class, inherited non-waivable gates, or an integration validated by a verifier that would be validated by checks.
+    Empty when nothing is lowered."""
     out: dict[str, Any] = {}
     for wid, was in before.items():
         now = after[wid]
@@ -87,8 +100,9 @@ def lowered_obligations(before: dict[str, Any], after: dict[str, Any]) -> dict[s
         gates = sorted(set(was["non_waivable"]) - set(now["non_waivable"]))
         if gates:
             lost["non_waivable_gates"] = gates
-        if was.get("verifier") and not now.get("verifier"):
-            lost["integration_verifier"] = was["verifier"]
+        was_mode, now_mode = ((v.get("validation") or {}).get("mode") for v in (was, now))
+        if was_mode == V.VERIFIER and now_mode != V.VERIFIER:
+            lost["integration_verifier"] = was["validation"]["sources"]
         if lost:
             out[wid] = lost
     return out
@@ -101,7 +115,7 @@ def _describe_lost(lost: dict[str, Any]) -> str:
     if "non_waivable_gates" in lost:
         parts.append("non-waivable gate(s) " + ", ".join(lost["non_waivable_gates"]))
     if "integration_verifier" in lost:
-        parts.append("its required integration verifier")
+        parts.append("its integration verifier (it would be validated by checks)")
     return "; ".join(parts)
 
 
@@ -552,19 +566,19 @@ class Hierarchy:
     def _refuse_lowered_obligations(state: dict[str, Any], before: dict[str, Any], gates_policy: dict[str, Any],
                                     what: str) -> None:
         """A reorganization preserves the proof obligations of the work it moves (EW-U05.g): no unit still to be
-        proven ends with a lower effective class, fewer inherited non-waivable gates, or without an integration
-        verifier it needed. A move or promotion that would lower any of them is refused, naming what each unit would
-        lose. Refused rather than carried: a unit's own policy binds only its descendants (ADR-0007), so a move could
-        not give the moved unit itself what its old ancestors required without a second source of obligations."""
+        proven ends with a lower effective class, fewer inherited non-waivable gates, or its integration validated by
+        checks where a verifier validated it. A move or promotion that would lower any of them is refused, naming what
+        each unit would lose and what to do instead. Refused rather than carried: a unit's own policy binds only its
+        descendants (ADR-0007), so a move could not give the moved unit itself what its old ancestors required without
+        a second source of obligations."""
         dropped = lowered_obligations(before, inherited_obligations(state, list(before), gates_policy))
         if dropped:
             raise ObligationsDropped(
-                f"{what} would lower what work below it must prove: "
+                "a move that would lower a unit's inherited obligations is refused (EW-U05.g); "
+                f"{what} would lower "
                 + "; ".join(f"{w}: {_describe_lost(lost)}" for w, lost in sorted(dropped.items()))
-                + ". Work keeps the obligations it inherits when it is reorganized (EW-U05.g): move it under a parent "
-                "that requires at least as much, give the new parent the floor and gates when it is created (`work "
-                "create` with --min-descendant-class and --mandatory-gate), or raise a unit's own class first (`work "
-                "reclassify`)", reason=MOVE_LOWERS_OBLIGATIONS, dropped=dropped)
+                + ". Instead: " + "; or ".join(o["how"] for o in INSTEAD),
+                reason=MOVE_LOWERS_OBLIGATIONS, dropped=dropped, instead=[dict(o) for o in INSTEAD])
 
     def work_move(self, *, token: str, expect_rev: int, work_id: str, parent: str | None,
                   reason: str) -> dict[str, Any]:

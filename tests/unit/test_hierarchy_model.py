@@ -6,7 +6,8 @@ from __future__ import annotations
 import pytest
 
 from aew.engine import hierarchy as H
-from aew.engine.hierarchy_ops import inherited_obligations, lowered_obligations
+from aew.engine import transitions as T
+from aew.engine.hierarchy_ops import FINAL, inherited_obligations, lowered_obligations
 
 
 def unit(kind, state, parent=None, deps=(), **extra):
@@ -89,22 +90,37 @@ def test_children_digest_tracks_ids_states_and_completion_records():
     assert base != H.children_digest(s, "S-1", {"T-1": "aaa"})
 
 
-def test_a_move_never_drops_a_verifier_that_a_higher_local_class_hides():
+def test_a_move_keeps_each_required_integration_verifier():
     """``validation.obligation`` reads each ancestor's floor on its own (a class mapping need not be monotonic), so a
-    move can take away a required integration verifier while the effective class and the gates stay the same."""
+    required integration verifier is an obligation of its own, compared apart from the effective class and the
+    gates."""
     gates_policy = {"post_integration": {"validation": {"by_class": {"2": "checks"}, "default": "verifier"}}}
     s = graph(E_1=unit("epic", "IN_PROGRESS", policy={"min_descendant_class": 1, "rationale": "r"}),
               E_2=unit("epic", "IN_PROGRESS", policy=None),
               E_3=unit("epic", "IN_PROGRESS", policy={"min_descendant_class": 1, "rationale": "r"}),
               T_1=unit("ticket", "READY", "E-1", risk_class=2, mutating=True))
     before = inherited_obligations(s, ["T-1"], gates_policy)
-    assert before["T-1"]["verifier"] == ["E-1 minimum descendant class 1, whose validation is verifier"]
-    for parent, lost in (("E-3", {}), ("E-2", {"T-1": {"integration_verifier": before["T-1"]["verifier"]}}),
-                         (None, {"T-1": {"integration_verifier": before["T-1"]["verifier"]}})):
+    sources = ["E-1 minimum descendant class 1, whose validation is verifier"]
+    assert before["T-1"]["validation"] == {"mode": "verifier", "sources": sources}
+    for parent, lost in (("E-3", {}), ("E-2", {"T-1": {"integration_verifier": sources}}),
+                         (None, {"T-1": {"integration_verifier": sources}})):
         s["work"]["T-1"]["parent"] = parent
         after = inherited_obligations(s, ["T-1"], gates_policy)
-        assert after["T-1"]["effective_class"] == before["T-1"]["effective_class"] == 2  # the class alone is blind
+        assert after["T-1"]["effective_class"] == before["T-1"]["effective_class"] == 2  # compared on its own
         assert lowered_obligations(before, after) == lost
+
+
+@pytest.mark.parametrize("kind", ["ticket", "story"])
+def test_a_move_leaves_out_exactly_the_states_the_machine_never_leaves(kind):
+    """The comparison's exclusion is read from the live machine, both ways: a unit is left out if and only if no rule
+    leaves its state. A Story's phase is derived; its final phases are its recorded closeout and cancellation, the same
+    states, which are also the only ones the archive takes."""
+    no_exit = {s for s in T.STATES if not T.allowed_from(s)}
+    assert FINAL == no_exit == T.TERMINAL == H.TERMINAL
+    for state in (T.STATES if kind == "ticket" else H.PARENT_STATES):
+        s = graph(E_1=unit("epic", "IN_PROGRESS", policy={"min_descendant_class": 2, "rationale": "r"}),
+                  X_1=unit(kind, state, "E-1", risk_class=1, mutating=False))
+        assert ("X-1" not in inherited_obligations(s, ["X-1"], {})) == (state in no_exit), state
 
 
 def test_a_move_compares_only_work_still_to_be_proven_and_names_each_loss():

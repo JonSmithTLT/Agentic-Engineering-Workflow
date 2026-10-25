@@ -49,14 +49,33 @@ MESSAGES = {
 }
 UNREACHABLE = ("The G3 service did not answer. Nothing is known to be decided: the list is refreshed, and an approval "
                "no longer listed was decided. Its state: systemctl status aew-g3.service")
+# What the window says when the list could not be read: worded for a list, never for a decision (#282 review, m2).
+LIST_MESSAGES = {
+    "PEER_NOT_PERMITTED": "The G3 service answers only the operator's own account, so this account cannot list its "
+                          "approvals. Run the confirmer as the operator, on the desktop, outside any sandbox.",
+    "G3_UNAVAILABLE": "The G3 service is holding every approval, so none is listed. Its journal names the cause: "
+                      "journalctl -u aew-g3.service",
+}
+LIST_UNREACHABLE = "The G3 service did not answer, so no approval is listed. Its state: systemctl status aew-g3.service"
 
 
 class Unreachable(Exception):
-    """No answer from the service on the socket, or an answer that is not the G3 wire's."""
+    """No usable answer from the service: none on the socket, one that is not the G3 wire's, or a refusal."""
 
 
-class NotPermitted(Unreachable):
+class Refused(Unreachable):
+    """The service refused the request with a Problem; ``code`` names it."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+class NotPermitted(Refused):
     """The service is another account's: its socket refuses this one, or it answers PEER_NOT_PERMITTED."""
+
+    def __init__(self) -> None:
+        super().__init__("PEER_NOT_PERMITTED")
 
 
 class Malformed(Exception):
@@ -89,7 +108,7 @@ def _call(sock_path: str, method: str, path: str, body: Optional[bytes]) -> Tupl
             raise Unreachable("the reply on " + sock_path + " is not the G3 wire's (" + WIRE + ")")
         return reply.status, (json.loads(raw.decode("utf-8")) if raw else None)
     except PermissionError:  # the socket is mode 0600 and another account's
-        raise NotPermitted("PermissionError on " + sock_path) from None
+        raise NotPermitted() from None
     except (OSError, http.client.HTTPException, ValueError) as e:
         raise Unreachable(type(e).__name__ + " on " + sock_path) from None
     finally:
@@ -101,9 +120,29 @@ def list_pending(sock_path: str = CONFIRM_SOCK) -> List[Dict[str, Any]]:
     status, body = _call(sock_path, "GET", PENDING_PATH, None)
     if status != 200 or not isinstance(body, list):
         code = body.get("code") if isinstance(body, dict) else None
-        refusal = NotPermitted if code == "PEER_NOT_PERMITTED" else Unreachable
-        raise refusal(MESSAGES.get(str(code), "the service answered " + str(status)))
+        if not isinstance(code, str):
+            raise Unreachable("the service answered " + str(status) + " with no Problem")
+        raise NotPermitted() if code == "PEER_NOT_PERMITTED" else Refused(code)
     return body
+
+
+def list_failure(error: Exception) -> str:
+    """What the window says when the list could not be read: a refusal's own fixed text, or that there was no answer
+    (#282 review, m2)."""
+    if isinstance(error, Refused):
+        return LIST_MESSAGES.get(error.code, "The G3 service refused the list: " + error.code + ".")
+    return LIST_UNREACHABLE
+
+
+def decision_failure(error: Exception) -> str:
+    """What the window says when a decision drew no outcome: a refusal by the socket itself, or no answer."""
+    return message(error.code) if isinstance(error, Refused) else UNREACHABLE
+
+
+def arguments_ok(argv: List[str]) -> bool:
+    """None, or the autostart entry's one start mode: nothing reaches the confirmer but the operator's typing (G3-05).
+    Checked before GTK is imported, which takes its own options out of ``sys.argv`` (#282 review, m5)."""
+    return argv in ([], [AT_LOGIN])
 
 
 def may_use(sock_path: str = CONFIRM_SOCK) -> bool:

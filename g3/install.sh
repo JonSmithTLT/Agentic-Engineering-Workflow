@@ -81,7 +81,7 @@ chmod 0755 "$WRAPPER"
 # mode. -I keeps PYTHONPATH and the user's site out, and the install root is put on the path here, root's.
 cat > "$CONFIRM" <<EOF
 #!/bin/sh
-exec $CONFIRM_PY -I -B -c 'import sys; sys.path.insert(0, "$ROOT"); from aew_g3_confirm.window import main; sys.exit(main(sys.argv[1:]))' "\$@"
+exec $CONFIRM_PY -I -B -c 'import sys; sys.path.insert(0, "$ROOT"); from aew_g3_confirm.start import main; sys.exit(main(sys.argv[1:]))' "\$@"
 EOF
 chmod 0755 "$CONFIRM"
 ln -sfn "$CONFIRM" "$CONFIRM_LINK"  # for a terminal; both desktop entries name the pinned path itself

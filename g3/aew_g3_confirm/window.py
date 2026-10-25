@@ -4,7 +4,8 @@
 The only module that imports GTK, so no CI test opens a window; the run under the host's Python drives it on a private
 broadway display (``tests/helpers/g3_confirm_py36.py``). It takes the PIN only from its own entry field, typed on its
 own window; never from its arguments, its environment, standard input or any IPC (G3-05). Each decision is sent once,
-from a worker thread, with every button held until the reply; the PIN field is cleared as the decision leaves.
+from a worker thread, with every button held until the reply; nothing refreshes the list while it is in flight. The PIN
+field is cleared as a decision leaves, whenever the shown approval changes, and when the window closes (#282, m1).
 
 One instance per desktop session (``Gtk.Application``). Started at login it has no window: it polls the pending list
 and posts one notification per pending approval, in fixed text and with no decision on it. The window is shown only
@@ -12,6 +13,7 @@ by the operator's own act, a launch from the menu or a click on a notification, 
 the poll does opens, raises or focuses it (addendum 4).
 """
 
+import signal
 import sys
 import threading
 from typing import Any, Callable, Dict, List, Optional
@@ -44,6 +46,7 @@ class Confirmer:
         self.sock_path = sock_path
         self.pending = []  # type: List[Dict[str, Any]]
         self.current = None  # type: Optional[Dict[str, Any]]
+        self.deciding = False
         self.window = Gtk.Window(title=TITLE)
         self.window.set_default_size(980, 720)
 
@@ -101,7 +104,7 @@ class Confirmer:
         self._busy(False)
         said = [notice] if notice else []
         if error is not None:
-            said.append(core.UNREACHABLE)
+            said.append(core.list_failure(error))  # a refusal's own text, or that there was no answer (#282, m2)
         elif not self.pending:
             said.append("No approval is pending.")
         self.status.set_text("\n".join(said))
@@ -112,6 +115,7 @@ class Confirmer:
         self._show(next((p for p in self.pending if core.summary(p)[0] == ref), None))
 
     def _show(self, pending: Optional[Dict[str, Any]]) -> None:
+        self.pin.set_text("")  # a PIN typed for one approval never stays for another (#282, m1)
         self.current = pending
         self.lines.clear()
         approvable = False
@@ -143,12 +147,14 @@ class Confirmer:
 
     def _decide(self, pin: Optional[str]) -> None:
         ref = core.summary(self.current or {})[0]
+        self.deciding = True
         self._busy(True)
         _in_background(lambda: core.decide(ref, pin, self.sock_path), self._decided)
 
     def _decided(self, outcome: Any, error: Optional[Exception]) -> None:
         # Every outcome refreshes the list: a decided, lost or expired approval leaves it (addendum 2 §1).
-        self._refresh(core.UNREACHABLE if error is not None else core.message(outcome))
+        self.deciding = False
+        self._refresh(core.decision_failure(error) if error is not None else core.message(outcome))
 
     # ------------------------------------------------------------------------------------------ plumbing
     def _busy(self, busy: bool) -> None:
@@ -170,6 +176,7 @@ class App:
         self.started = False
         self.app = Gtk.Application(application_id=core.APP_ID)
         self.app.connect("activate", self._on_activate)
+        self.app.connect("shutdown", self._on_shutdown)
         show = Gio.SimpleAction.new("show", None)  # a notification's click: the operator's own act
         show.connect("activate", lambda _a, _p: self.present())
         self.app.add_action(show)
@@ -194,13 +201,38 @@ class App:
             self.confirmer.window.connect("delete-event", self._on_close)
         self.confirmer.window.show_all()
         self.confirmer.window.present()
-        self.confirmer._refresh()
+        if not self.confirmer.deciding:  # a decision in flight refreshes the list itself, on its reply (#282, n3)
+            self.confirmer._refresh()
 
     def _on_close(self, window: Any, _event: Any) -> bool:
+        if self.confirmer is not None:
+            self.confirmer.pin.set_text("")  # a closed window keeps no PIN (#282, m1)
         window.hide()
         if not self.at_login:
             self.app.quit()
         return True
+
+    def _on_shutdown(self, _app: Any) -> None:
+        """An ending instance withdraws what it posted, so no notification outlives the instance that would withdraw
+        it (#282 review, m3): a desktop may keep an exited application's notifications, even across a logout."""
+        for ref in sorted(self.watch.posted):
+            self.app.withdraw_notification(core.notification_id(ref))
+        self.watch.posted = set()
+        bus = self.app.get_dbus_connection()
+        if bus is not None:
+            bus.flush_sync(None)  # the withdrawals leave before the process does
+
+    def run(self) -> int:
+        """Runs the instance until it quits. SIGTERM and SIGHUP, as at a logout, quit it the same way, through
+        ``shutdown``, so its notifications are withdrawn first (#282 review, m3)."""
+        if sys.platform != "win32":  # G3 is a Linux profile; this narrows SIGHUP for the type checker
+            for signum in (signal.SIGTERM, signal.SIGHUP):
+                GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signum, self._on_signal)
+        return self.app.run([sys.argv[0]])
+
+    def _on_signal(self) -> bool:
+        self.app.quit()
+        return False  # once is enough
 
     # ------------------------------------------------------------------------------------------ the notifications
     def _poll(self) -> bool:
@@ -224,10 +256,8 @@ class App:
 
 
 def main(argv: List[str]) -> int:
-    """Takes no argument but the autostart entry's ``--at-login``: nothing reaches the confirmer but the operator's own
-    typing (G3-05)."""
-    if argv not in ([], [core.AT_LOGIN]):
-        sys.stderr.write("aew-g3-confirm takes no arguments: the PIN is typed into its window only\n")
+    """Starts the confirmer, from ``start.main``, which has checked the arguments before GTK was imported."""
+    if not core.arguments_ok(argv):
         return 2
     at_login = argv == [core.AT_LOGIN]
     if at_login and not core.may_use():
@@ -242,4 +272,4 @@ def main(argv: List[str]) -> int:
         raise
     if at_login and app.app.get_is_remote():
         return 0  # one instance per session: a second login start never activates, so never opens, the first
-    return app.app.run([sys.argv[0]])
+    return app.run()

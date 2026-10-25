@@ -16,7 +16,22 @@ display), it also drives the real window: it lists, selects, shows every row and
 import json
 import os
 import secrets
+import subprocess
 import sys
+
+
+def child(g3_dir, confirm, entry):
+    """A child interpreter as the launcher runs one (``-I -B``), at the throwaway's socket: ``core.CONFIRM_SOCK`` is
+    set before the window module is imported, so its defaults, and so even an ablated build, never reach the
+    installed service. ``entry`` is ``start`` (the launcher's entry) or ``app`` (an instance started at login)."""
+    run = (f"import sys; sys.path.insert(0, {g3_dir!r}); from aew_g3_confirm import core; "
+           f"core.CONFIRM_SOCK = {confirm!r}; ")
+    if entry == "start":
+        run += "from aew_g3_confirm.start import main; sys.exit(main(sys.argv[1:]))"
+    else:
+        run += ("from aew_g3_confirm import window; a = window.App(True); a.app.register(None); "
+                "sys.exit(a.run())")
+    return [sys.executable, "-I", "-B", "-c", run]
 
 
 def main(argv):
@@ -43,8 +58,12 @@ def main(argv):
     done = []
     print("python", sys.version.split()[0], "| gtk", window.Gtk.get_major_version(), window.Gtk.get_minor_version())
     assert sys.version_info[:2] == (3, 6), sys.version
-    assert window.main(["--pin", "123456"]) == 2  # refused before any window or request (G3-05)
-    done.append("an argument is refused: exit 2")
+    for extra in (["--pin", "123456"], ["--name=x", core.AT_LOGIN], ["--class=y", "--g-fatal-warnings"]):
+        # As the launcher starts it, with GTK's own options too, which GTK would take out of sys.argv at import (m5)
+        p = subprocess.run(child(g3_dir, confirm, "start") + extra, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           universal_newlines=True, timeout=30)
+        assert p.returncode == 2 and "takes no arguments" in p.stderr, (extra, p.returncode, p.stderr)
+    done.append("an argument is refused before GTK is imported, GTK's own options too: exit 2")
 
     ref = ask()
     listed = core.list_pending(confirm)
@@ -104,14 +123,40 @@ def drive_window(window, core, confirm, ask, pin):
         pump(lambda expected=expected: len(app.lines) == expected, "showing " + str(expected) + " rows")
         assert app.approve.get_sensitive() and app.decline.get_sensitive()
         if decision == "DECLINE":
+            app.pin.set_text("typed-then-declined")
             app.decline.clicked()
             pump(lambda: core.MESSAGES[core.DECLINED] in app.status.get_text(), "declining")
+            assert app.pin.get_text() == "", "a PIN typed before a Decline stayed in the field (m1)"
         else:
             app.pin.set_text(pin)
             app.approve.clicked()
             assert app.pin.get_text() == "", "the PIN left the field as the decision left"
             pump(lambda: core.MESSAGES[core.APPROVED] in app.status.get_text(), "approving")
         said.append("window: " + decision.lower() + " through the window, " + str(expected) + " rows shown")
+
+    first, second = ask(), ask()  # m1: a PIN typed for one approval is gone once another is selected
+    app._refresh()
+    pump(lambda: {first, second} <= {row[0] for row in app.approvals}, "listing two")
+    refs = [row[0] for row in app.approvals]
+    app.listing.get_selection().select_path(gtk.TreePath(refs.index(first)))
+    pump(lambda: app.current is not None and core.summary(app.current)[0] == first, "selecting the first")
+    app.pin.set_text("typed-for-the-first")
+    app.listing.get_selection().select_path(gtk.TreePath(refs.index(second)))
+    pump(lambda: core.summary(app.current or {})[0] == second, "selecting the second")
+    assert app.pin.get_text() == "", "a PIN typed for one approval stayed for another (m1)"
+    for ref in (first, second):
+        assert core.decide(ref, None, confirm) == core.DECLINED
+    said.append("window: a re-selection empties the PIN field")
+
+    os.chmod(confirm, 0)  # m2: a refused list says so in its own words, not "did not answer"
+    try:
+        app._refresh()
+        pump(lambda: core.LIST_MESSAGES["PEER_NOT_PERMITTED"] in app.status.get_text(), "the refusal's own text")
+        assert core.LIST_UNREACHABLE not in app.status.get_text()
+    finally:
+        os.chmod(confirm, 0o600)
+    said.append("window: a refused list shows the refusal's own text")
+    app.window.destroy()
     return said
 
 
@@ -137,8 +182,9 @@ def drive_app(window, core, g3_dir, confirm, ask):
     login start shows no window and posts one fixed-text notification per pending approval, once, and withdraws it when
     the approval is decided; a poll never opens, raises or focuses a window, with the window closed or open; a click
     opens it; a menu launch opens the running instance's window, and a second login start does nothing; with no
-    notification service nothing fails; and on another account's socket the login start quits with nothing shown."""
-    import subprocess
+    notification service nothing fails; on another account's socket the login start quits with nothing shown; and an
+    instance sent SIGTERM withdraws what it posted."""
+    import signal
     import time
 
     gio, glib, gtk = window.Gio, window.GLib, window.Gtk
@@ -193,6 +239,23 @@ def drive_app(window, core, g3_dir, confirm, ask):
                                            lambda *a: owned.append(1), None)
     pump(lambda: owned, "owning the notification service's name")
 
+    # m3: an instance that ends withdraws what it posted; SIGTERM, as at a logout, quits it through its shutdown.
+    ended = subprocess.Popen(child(g3_dir, confirm, "app"), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                             universal_newlines=True)
+    try:
+        early = ask()
+        pump(lambda: notifies(), "the login instance's notification", 30)
+        ended.send_signal(signal.SIGTERM)
+        pump(lambda: ended.poll() is not None, "the instance's exit on SIGTERM", 30)
+        pump(lambda: any(c[0] == "CloseNotification" for c in calls), "the withdrawal as it ended")
+    finally:
+        if ended.poll() is None:
+            ended.kill()
+    assert ended.returncode == 0, (ended.returncode, ended.stderr.read())
+    assert core.decide(early, None, confirm) == core.DECLINED
+    del calls[:]
+    said.append("SIGTERM: the instance quits, and withdraws what it posted")
+
     app = window.App(True, confirm)
     app.app.register(None)
     assert not app.app.get_is_remote()
@@ -213,8 +276,7 @@ def drive_app(window, core, g3_dir, confirm, ask):
     pump(lambda: any(c[0] == "CloseNotification" for c in calls), "the withdrawal")
     said.append("decided: withdrawn")
 
-    run = [sys.executable, "-I", "-c", f"import sys; sys.path.insert(0, {g3_dir!r}); "
-           "from aew_g3_confirm.window import main; sys.exit(main(sys.argv[1:]))"]
+    run = child(g3_dir, confirm, "start")
     second = subprocess.Popen(run + [core.AT_LOGIN], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     pump(lambda: second.poll() is not None, "a second login start's exit", 30)
     assert second.returncode == 0 and app.confirmer is None and shows == [], (second.returncode, shows)
@@ -235,11 +297,26 @@ def drive_app(window, core, g3_dir, confirm, ask):
     assert shows == [], shows
     said.append("with the window open: notified, and the window not raised or focused")
 
-    app.confirmer.window.hide()
+    app.confirmer.pin.set_text("typed-then-closed")  # m1: a closed window keeps no PIN
+    app._on_close(app.confirmer.window, None)
+    assert app.confirmer.pin.get_text() == "" and not app.confirmer.window.get_visible(), "a PIN outlived the close"
+    said.append("closing the window empties the PIN field")
+    app.confirmer.deciding = True  # n3: as with a decision in flight, whose reply is still to come
+    app.confirmer._busy(True)
     menu = subprocess.Popen(run, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     pump(lambda: menu.poll() is not None and app.confirmer.window.get_visible(), "the menu launch's window", 30)
     assert menu.returncode == 0 and "present" in shows
     said.append("a menu launch opens the running instance's window")
+    deadline = time.monotonic() + 1.5
+    while time.monotonic() < deadline:  # long enough for a refresh's reply to have released the buttons
+        glib.MainContext.default().iteration(False)
+        time.sleep(0.01)
+    held = (app.confirmer.refresh, app.confirmer.listing, app.confirmer.approve, app.confirmer.decline)
+    assert not any(w.get_sensitive() for w in held), \
+        "opening the window released the buttons while a decision was in flight (n3)"
+    app.confirmer.deciding = False
+    app.confirmer._busy(False)
+    said.append("a decision in flight keeps every button held when the window is opened")
 
     gio.bus_unown_name(owner)
     toplevels = len(gtk.Window.list_toplevels())

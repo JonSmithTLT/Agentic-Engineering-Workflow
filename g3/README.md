@@ -64,6 +64,11 @@ fixed text, never text the service sent.
   list, so an approval arriving never moves the operator's selection or a half-typed PIN. Under xrdp, which is X11, a
   window could take focus, so this is the confirmer's own rule.
 - **It degrades quietly:** with no notification service, or the G3 service down, nothing fails and no dialog appears.
+  A limit: an approval polled while no notification service is up is not notified when one appears later; the next
+  approval is, and the window lists both.
+- **An ending instance withdraws its notifications,** when it quits or is sent SIGTERM or SIGHUP, as at a logout, so
+  no notification outlives the instance that would withdraw it. One the desktop restores after a crash may stay until
+  dismissed.
 - **On another account's login** the entry runs too. That account cannot use `confirm.sock`, so the confirmer exits
   at once, silently.
 - **The operator can turn it off** for themselves: a file `~/.config/autostart/org.aew.G3Confirm.desktop` holding

@@ -102,6 +102,9 @@ def test_each_refusal_reaches_the_operator_as_its_own_fixed_text(served: tuple[G
     held = _pending(rig)
     rig.clock.broken = True  # G3-11: an unreadable clock holds the decision
     reached["G3_UNAVAILABLE"] = core.decide(held, None, sock)
+    with pytest.raises(core.Refused) as held_list:  # and the list, which says so in its own words (#282, m2)
+        core.list_pending(sock)
+    assert core.list_failure(held_list.value) == core.LIST_MESSAGES["G3_UNAVAILABLE"]
     rig.clock.broken = False
     rig.clock.advance(minutes=rig.dep.approval_expiry_minutes)  # at expires_at, expired
     reached["APPROVAL_EXPIRED"] = core.decide(held, G.PIN, sock)
@@ -109,7 +112,7 @@ def test_each_refusal_reaches_the_operator_as_its_own_fixed_text(served: tuple[G
     reached["PEER_NOT_PERMITTED"] = core.decide("g3:approval:x", None, sock)
     with pytest.raises(core.NotPermitted) as listing:  # at login, the confirmer exits on it (addendum 4)
         core.list_pending(sock)
-    assert str(listing.value) == core.MESSAGES["PEER_NOT_PERMITTED"]
+    assert core.list_failure(listing.value) == core.LIST_MESSAGES["PEER_NOT_PERMITTED"]
     assert reached == {code: code for code in reached}, reached
     assert set(reached) | {"NOT_FOUND", core.APPROVED, core.DECLINED} == set(core.MESSAGES)  # each has its own text
 
@@ -124,15 +127,17 @@ def test_another_accounts_socket_is_not_permitted_and_a_service_not_yet_up_is_wa
     os.chmod(sock, 0)  # as another account sees the operator's 0600 socket
     try:
         assert not core.may_use(sock)
-        with pytest.raises(core.NotPermitted):
+        with pytest.raises(core.NotPermitted) as refused:
             core.list_pending(sock)
+        assert core.list_failure(refused.value) == core.LIST_MESSAGES["PEER_NOT_PERMITTED"]  # not "did not answer"
     finally:
         os.chmod(sock, 0o600)
     absent = str(tmp_path / "absent.sock")
     assert core.may_use(absent)
     with pytest.raises(core.Unreachable) as down:
         core.list_pending(absent)
-    assert not isinstance(down.value, core.NotPermitted)  # down is waited for, never taken for another account
+    assert not isinstance(down.value, core.Refused)  # down is waited for, never taken for another account
+    assert core.list_failure(down.value) == core.LIST_UNREACHABLE
 
 
 def test_a_successful_pending_read_writes_no_log_line_and_a_refused_one_does(

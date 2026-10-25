@@ -2,9 +2,11 @@
 owners; what it shows of a pending approval; the decisions it sends; and the Python it must run on.
 
 The confirmer runs under the host's own Python 3 (Rocky 8's platform-python, 3.6), which CI does not have. These tests
-run its code under CI's Python, and two static detectors below keep it within 3.6's language and standard library:
-the parser at its lowest version, and a list of the 3.7-and-later names the parser cannot see. The live proof is the
-run under platform-python on the Rocky 8 VM, recorded in the pull request (tests/helpers/g3_confirm_py36.py).
+run its code under CI's Python, and two static detectors below keep it within 3.6: the parser at its lowest version,
+and a list of the 3.7-and-later names the parser cannot see. Pyright, at 3.6, checks syntax only: its stubs carry no
+version guards that old (#282 review, m6). So the standard library names are held by that list and by the paths the
+run under platform-python on the Rocky 8 VM executes (tests/helpers/g3_confirm_py36.py, recorded in the pull
+request), and are not claimed complete.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import ast
 import copy
 import json
 import re
+import sys
 from typing import Any
 
 import pytest
@@ -63,7 +66,7 @@ def test_install_sh_and_both_desktop_entries_launch_the_same_confirmer_from_the_
     assert _install_value(install, "AUTOSTART") == "/etc/xdg/autostart/" + login.name
     assert 'cp "$HERE/desktop/autostart/' + login.name + '" "$AUTOSTART"' in install
     assert 'chmod 0644 "$DESKTOP" "$AUTOSTART"' in install
-    assert re.search(r"^exec \$CONFIRM_PY -I -B -c '.*from aew_g3_confirm\.window import main.*' \"\\\$@\"$",
+    assert re.search(r"^exec \$CONFIRM_PY -I -B -c '.*from aew_g3_confirm\.start import main.*' \"\\\$@\"$",
                      install, re.M)
     assert 'cp "$HERE"/aew_g3_confirm/*.py "$ROOT/aew_g3_confirm/"' in install
 
@@ -147,6 +150,30 @@ def test_approve_carries_the_pin_and_decline_carries_none_each_a_valid_decision_
     approve, decline = (json.loads(core.decision_body(p)) for p in (G.PIN, None))
     assert approve == {"decision": "APPROVE", "pin": G.PIN} and decline == {"decision": "DECLINE"}
     assert not wire.wire_errors("ApprovalDecision", approve) and not wire.wire_errors("ApprovalDecision", decline)
+
+
+def test_any_argument_but_at_login_is_refused_before_gtk_is_imported_gtks_own_options_too() -> None:
+    """G3-05, #282 review m5: PyGObject's Gtk takes its own options out of sys.argv at import, so the launcher's entry
+    checks the arguments first. CI has no GTK: a refusal here is reached without importing the window at all."""
+    from aew_g3_confirm import start
+
+    for argv in (["--name=x", "--at-login"], ["--class=y"], ["--g-fatal-warnings"], ["--pin", "123456"],
+                 [core.AT_LOGIN, core.AT_LOGIN], ["--at-login=1"]):
+        assert start.main(argv) == 2, argv
+    assert "aew_g3_confirm.window" not in sys.modules
+    assert core.arguments_ok([]) and core.arguments_ok([core.AT_LOGIN])  # control: the two it takes
+
+
+def test_a_list_that_failed_says_why_a_refusal_in_its_own_words_and_no_answer_as_none() -> None:
+    """#282 review m2: a refused list keeps its fixed text, worded for a list; only silence reads as no answer."""
+    assert core.list_failure(core.NotPermitted()) == core.LIST_MESSAGES["PEER_NOT_PERMITTED"]
+    assert core.list_failure(core.Refused("G3_UNAVAILABLE")) == core.LIST_MESSAGES["G3_UNAVAILABLE"]
+    assert core.list_failure(core.Refused("SOMETHING_NEW")) == "The G3 service refused the list: SOMETHING_NEW."
+    assert core.list_failure(core.Unreachable("OSError on x")) == core.LIST_UNREACHABLE
+    assert all("approved" not in t.lower() for t in [*core.LIST_MESSAGES.values(), core.LIST_UNREACHABLE])
+    assert core.decision_failure(core.NotPermitted()) == core.MESSAGES["PEER_NOT_PERMITTED"]
+    assert core.decision_failure(core.Unreachable("OSError on x")) == core.UNREACHABLE
+    assert set(core.LIST_MESSAGES) <= set(wire.STATUS)
 
 
 def test_an_outcome_the_table_lacks_is_named_as_sent_and_never_reads_as_approved() -> None:

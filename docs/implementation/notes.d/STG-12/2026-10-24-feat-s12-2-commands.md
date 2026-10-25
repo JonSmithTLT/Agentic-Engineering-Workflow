@@ -3,8 +3,8 @@ The reference gains three families, on one page ([`docs/reference/commands.md`](
 `stg02-routes`, `commands` and `command-refusals`, which the designer's second addendum asks for so that the trace pairs
 the commands the code admits and the causes it can refuse with mechanically.
 
-- **`stg02-routes`** (22 routes of the vendored HTTP/Problem matrix, and the two `/_test/` routes). Each carries its method,
-  its API and `served`, whether the slice's server serves it. The server's dispatch is not a table (`handle` and `_read` are
+- **`stg02-routes`** (22 routes of the vendored HTTP/Problem matrix, and the two `/_test/` routes). Each carries its method
+  and `served`, whether the slice's server serves it. The server's dispatch is not a table (`handle` and `_read` are
   `path ==` and `startswith` chains, `COMMANDS` is a constant and the owner read is a regex), so `served` is read from the
   source by two independent detectors (`ast`, and a text reading that shares no code) and tied to the matrix by exact route,
   prefix before one placeholder, or the route's regex. Six routes are served today; a test sends a request to every route of

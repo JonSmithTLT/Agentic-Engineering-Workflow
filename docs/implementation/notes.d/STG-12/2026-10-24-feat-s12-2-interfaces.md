@@ -9,7 +9,7 @@ The reference gains five families, on one page ([`docs/reference/interfaces.md`]
   each by two independent detectors (`ast` and a text reading): the functions that name a route table are the three
   declared; the one call out of a table is `ROUTES.get(route) or CONDITIONAL_HANDLERS[route]`; and every read of the
   request path (`url.path`, `h.path`) in `_handle` and `_respond` is a declared one, by form and by what consumes it
-  (nine, counted). A route served by a hand-written branch, an early return, a test on the raw target or a third table
+  (nine, counted). A route served by a hand-written branch, an early return, a test on `h.path` or a third table
   would read the path or name a table in one of those two functions, so it is a difference (the review's four plants are
   controls). Chosen against the review's options: the recogniser is extended, not the label lowered. What it does not
   see, one probe each: a test of the path inside a function those two call (`_admit`, `_conditional`, `_exchange`,

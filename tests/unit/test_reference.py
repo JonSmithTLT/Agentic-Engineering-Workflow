@@ -766,6 +766,9 @@ def test_a_module_that_nobody_registered_and_a_registered_name_with_no_file_are_
 
 
 def test_the_output_does_not_depend_on_the_order_of_the_family_list(monkeypatch):
-    """The list is alphabetical so that two additions rarely meet; the output is the same in any order."""
+    """The list is alphabetical so that two additions rarely meet; the output is the same in any order. The baseline is
+    taken before the list is patched: ``rendered()`` is cached per process, and run alone (or first on an xdist worker)
+    it would otherwise render in the reversed order too, and compare the reversed order with itself."""
+    before = rendered()
     monkeypatch.setattr(reference, "FAMILY_MODULES", tuple(reversed(reference.FAMILY_MODULES)))
-    assert reference.render_files(ROOT) == rendered()
+    assert reference.render_files(ROOT) == before

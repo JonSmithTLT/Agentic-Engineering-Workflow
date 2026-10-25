@@ -75,14 +75,31 @@ def _one_tree(common: Any, root: Path) -> None:
 def render_files(root: Path = ROOT) -> dict[str, bytes]:
     """Every file ``docs/reference/`` holds, by name under it: the bytes ``render`` writes. Raises ReferenceError when
     an owner is unreadable or the output breaks a rule (the index's invariants, the privacy and format rules)."""
+    return _render(root)[0]
+
+
+def figures(root: Path = ROOT) -> dict[str, int]:
+    """The largest figure of each measured cap over the whole render (every family that runs the evaluator): what the
+    writers page prints and the tests hold each cap to twice of."""
+    return _render(root)[1]
+
+
+def _render(root: Path) -> tuple[dict[str, bytes], dict[str, int]]:
     common, pages, families = _families()
     _one_tree(common, root)
+    from reference_families import writers_flow  # imported by _families(), so no path is needed
+
     ctx = common.Context(root)
-    records, page_text = [], {}
-    for family in families:
-        built = family.build(ctx)
-        records += built.records
-        page_text.update(built.pages)
+    records, page_text, late = [], {}, {}
+    with writers_flow.measuring() as measured:  # one block over every family: the caps are held to the whole render
+        for family in families:
+            built = family.build(ctx)
+            records += built.records
+            page_text.update(built.pages)
+            late.update(built.late)
+        for name, make in late.items():
+            page_text[name] = make()
+    figures_of_render = dict(measured)
     index = common.build_index(records)
     problems = common.index_problems(index)
     page_text[pages.GAPS] = pages.gaps_page(index)
@@ -93,7 +110,7 @@ def render_files(root: Path = ROOT) -> dict[str, bytes]:
     if problems:
         raise common.ReferenceError("the generated reference breaks its own rules:\n  "
                                     + "\n  ".join(common.shown(problems)))
-    return {name: text.encode("utf-8") for name, text in texts.items()}
+    return {name: text.encode("utf-8") for name, text in texts.items()}, figures_of_render
 
 
 def _on_disk(out: Path) -> dict[str, bytes]:

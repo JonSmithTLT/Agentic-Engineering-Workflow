@@ -560,14 +560,81 @@ def typed_chain(links: int) -> str:
     return src + "def main(aew_root):\n    L0()" + ".nxt()" * links + ".put(aew_root)\n"
 
 
-def test_a_receiver_typed_through_more_receivers_than_the_cap_is_not_followed_and_its_writer_says_so():
-    short, long = F.TYPING_DEPTH - 1, F.TYPING_DEPTH
-    reached = analysed(typed_chain(short), roots={("aew.m", "main"): {"aew"}})
-    assert reached.reach[("aew.m", f"L{short}.put")] == {"aew"}
-    cut = analysed(typed_chain(long), roots={("aew.m", "main"): {"aew"}})
-    assert ("aew.m", f"L{long}.put") not in cut.reach
-    [record] = W.records_of(cut)
-    assert any(item["why"] == W.NO_CHAIN for item in record.fact_coverage["writers"]["unresolved"])  # type: ignore[index]
+def named_chain(links: int) -> str:
+    """The same, through local names: `r1 = r0.nxt()`, `r2 = r1.nxt()`, ... `rN.put(aew_root)`."""
+    src = "".join(f"class L{k}:\n    def nxt(self) -> L{k + 1}:\n        return L{k + 1}()\n\n" for k in range(links))
+    src += f"class L{links}:\n    def put(self, aew_root):\n        (aew_root / 'local' / 'end').write_text('x')\n\n"
+    body = "    r0 = L0()\n" + "".join(f"    r{i} = r{i - 1}.nxt()\n" for i in range(1, links + 1))
+    return src + "def main(aew_root):\n" + body + f"    r{links}.put(aew_root)\n"
+
+
+def attribute_chain(hops: int) -> str:
+    """`self.a1.a2...aN.take(root)`: each attribute is an object of the next class, `take` returns a lock."""
+    src = "class T:\n    def take(self, root):\n        return FileLock(root / 'local' / 't.lock')\n\n"
+    for k in range(hops - 1, 0, -1):  # A_k holds attribute a_{k+1}: an object of the next class, the last a T
+        held = "T()" if k + 1 == hops else f"A{k + 1}()"
+        src += f"class A{k}:\n    def __init__(self):\n        self.a{k + 1} = {held}\n\n"
+    path = "self.a1" + "".join(f".a{k}" for k in range(2, hops + 1))
+    first = "T()" if hops == 1 else "A1()"
+    run = f"    def run(self, root):\n        {path}.take(root)\n"
+    return src + f"class M:\n    def __init__(self):\n        self.a1 = {first}\n" + run
+
+
+def returned_chain(links: int) -> str:
+    """`fN().put(aew_root)` where `fN` returns `fN-1()` ... returns `K()`: no annotation names the class."""
+    src = "class K:\n    def put(self, aew_root):\n        (aew_root / 'local' / 'k').write_text('x')\n\n"
+    src += "def f0():\n    return K()\n\n" + "".join(f"def f{i}():\n    return f{i - 1}()\n\n" for i in range(1, links))
+    return src + f"def main(aew_root):\n    f{links - 1}().put(aew_root)\n"
+
+
+@pytest.fixture
+def typing_cap(monkeypatch):
+    """A small cap, so a planted chain one past it is a few lines: the rule is the same at any number."""
+    monkeypatch.setattr(F, "TYPING_DEPTH", 3)
+    return 3
+
+
+def edges(source: str) -> set[tuple[str, str]]:
+    """The functions some call statically names, as the program indexes them."""
+    return set(program({"aew.m": HEAD + source}).callers)
+
+
+def fails_naming_the_typing_cap(source: str) -> str:
+    with pytest.raises(C.ReferenceError) as refused:
+        program({"aew.m": HEAD + source})
+    return str(refused.value)
+
+
+# A receiver typed through more receivers than `TYPING_DEPTH` would be a call edge dropped as if the receiver were
+# unknown, and an edge can carry no mark, so the reading fails where the cap binds (addendum 7); the three shapes are
+# the three places it counts (nested calls, named receivers and attribute hops, the class a function returns).
+
+def test_receivers_typed_through_calls_to_the_cap_are_followed_and_one_more_fails_the_reading(typing_cap):
+    assert ("aew.m", f"L{typing_cap - 1}.put") in edges(typed_chain(typing_cap - 1))
+    said = fails_naming_the_typing_cap(typed_chain(typing_cap))
+    assert cap_text("TYPING_DEPTH") in said and f"more than {typing_cap} receivers" in said
+
+
+def test_receivers_typed_through_local_names_to_the_cap_are_followed_and_one_more_fails_the_reading(typing_cap):
+    assert ("aew.m", "L1.put") in edges(named_chain(1))
+    assert cap_text("TYPING_DEPTH") in fails_naming_the_typing_cap(named_chain(2))
+
+
+def test_attributes_typed_to_the_cap_are_followed_and_one_hop_more_fails_the_reading(typing_cap):
+    assert ("aew.m", "T.take") in edges(attribute_chain(typing_cap))
+    said = fails_naming_the_typing_cap(attribute_chain(typing_cap + 1))
+    assert cap_text("TYPING_DEPTH") in said and f"more than {typing_cap} hops" in said
+
+
+def test_a_class_a_function_returns_through_calls_to_the_cap_is_followed_and_one_more_fails_the_reading(typing_cap):
+    assert ("aew.m", "K.put") in edges(returned_chain(typing_cap))
+    assert cap_text("TYPING_DEPTH") in fails_naming_the_typing_cap(returned_chain(typing_cap + 1))
+
+
+def test_a_receiver_whose_typing_needs_itself_is_unknown_and_is_not_the_caps(typing_cap):
+    cycle = ("class L:\n    def nxt(self):\n        return L()\n\n"
+             "def main(aew_root):\n    a = a.nxt()\n    a.nxt()\n")
+    assert ("aew.m", "L.nxt") not in edges(cycle), "a cycle is not typed, and the reading does not fail for it"
 
 
 def test_a_cap_reason_names_the_cap_and_a_value_set_past_it_is_all_or_nothing():
@@ -691,7 +758,8 @@ def test_the_bases_of_a_class_are_followed_to_the_cap_and_a_hierarchy_one_level_
 def test_every_cap_takes_exactly_one_of_the_two_arms_and_the_page_names_it():
     caps = (*F.caps(), *K.caps())
     assert {cap.arm for cap in caps} == {F.MARKED, F.FAILS}
-    assert [cap.name for cap in caps if cap.arm == F.FAILS] == ["writers_flow.MRO_DEPTH"], "what has no item to mark"
+    failing = ["writers_flow.MRO_DEPTH", "writers_flow.TYPING_DEPTH"]  # a list of classes, a call edge: no item to mark
+    assert sorted(cap.name for cap in caps if cap.arm == F.FAILS) == sorted(failing)
 
 
 def peaks_of(source: str) -> dict[str, int]:
@@ -715,6 +783,103 @@ def test_the_figures_the_page_prints_for_a_measured_cap_are_what_a_planted_sourc
     with F.measuring() as quiet:
         pass
     assert quiet == dict.fromkeys(F.MEASURED, 0), "a block that follows nothing measures nothing"
+
+
+def dict_chain(links: int) -> str:
+    """`d_k()['a']` where each function returns the next one's dict, beside a placed alternative."""
+    src = "def d0():\n    return {'a': 'x'}\n\n"
+    src += "".join(f"def d{k}():\n    return d{k - 1}()\n\n" for k in range(1, links))
+    return src + (f"def use(aew_root):\n    rel = 'fixed'\n    rel = d{links - 1}()['a']\n"
+                  "    (aew_root / 'local' / rel).write_text('x')\n")
+
+
+def test_a_dict_returned_through_more_calls_than_the_depth_cap_is_marked_with_the_cap_and_not_a_computed_segment():
+    """Review of #267, C-2: the cut read as "not a dict literal", then as a computed segment (`local/{}`), no reason."""
+    assert sorted(analysed(dict_chain(F.DEPTH - 2)).writers) == ["local/fixed", "local/x"]
+    deep = analysed(dict_chain(F.DEPTH + 2))
+    assert sorted(deep.writers) == ["local/fixed"] and kinds_of(deep) == {"DEPTH"}
+    assert not any("not a dict literal" in r for r in reasons(deep))
+
+
+def value_chain(links: int) -> str:
+    src = "def v0(root):\n    return root / 'local' / 'x'\n\n"
+    src += "".join(f"def v{k}(root):\n    return v{k - 1}(root)\n\n" for k in range(1, links))
+    return src + (f"def use(aew_root):\n    p = aew_root / 'local' / 'fixed'\n    p = v{links - 1}(aew_root)\n"
+                  "    p.write_text('x')\n")
+
+
+def test_the_value_a_call_returns_through_more_calls_than_the_depth_cap_is_marked_with_the_cap(monkeypatch):
+    monkeypatch.setattr(F, "DEPTH", 6)  # the receiver of `p.write_text` is typed through the chain too: stay under
+    assert sorted(analysed(value_chain(3)).writers) == ["local/fixed", "local/x"]
+    deep = analysed(value_chain(F.DEPTH + 2))
+    assert sorted(deep.writers) == ["local/fixed"] and kinds_of(deep) == {"DEPTH"}
+
+
+# Every `depth <= 0` guard of the value flow, found by AST: each is held to a planted case in this module (its test is
+# named here and must exist) or excused with its reason. F4 listed these by hand and missed one (review of #267, C-2).
+DEPTH_GUARDS = {
+    "Evaluator._call": "test_the_value_a_call_returns_through_more_calls_than_the_depth_cap_is_marked_with_the_cap",
+    "Evaluator._call_element":
+        "test_the_element_of_a_tuple_returned_through_more_calls_than_the_depth_cap_is_marked_with_the_cap",
+    "Evaluator._callables":
+        "test_a_callback_stopped_by_the_depth_cap_or_the_call_site_cap_says_so_in_the_reason_of_the_keys",
+    "Evaluator._dict_sources":
+        "test_a_dict_returned_through_more_calls_than_the_depth_cap_is_marked_with_the_cap_and_not_a_computed_segment",
+    "Evaluator._elements_of_param":
+        "test_a_list_parameter_handed_down_more_calls_than_the_depth_cap_is_marked_with_the_cap",
+    "Evaluator._keys": "test_the_keys_of_a_mapping_handed_down_more_calls_than_the_depth_cap_are_marked_with_the_cap",
+    "Evaluator._keys_of_call":
+        "test_a_callback_stopped_by_the_depth_cap_or_the_call_site_cap_says_so_in_the_reason_of_the_keys",
+    "Evaluator._param":
+        "test_a_parameter_passed_down_more_calls_than_the_depth_limit_is_unknown_and_one_within_it_is_placed",
+    "Evaluator._process_computed":
+        "test_a_sibling_named_through_more_assignments_than_the_cap_is_unresolved_and_the_reason_names_the_cap",
+    "Evaluator._typed_attribute":
+        "test_an_attribute_typed_through_more_classes_than_the_depth_cap_is_marked_with_the_cap",
+    "Program._level": "test_attributes_typed_to_the_cap_are_followed_and_one_hop_more_fails_the_reading",
+}
+
+
+def test_every_depth_guard_of_the_value_flow_is_held_to_a_planted_case_or_excused():
+    tree = ast.parse((ROOT / "tools" / "reference_families" / "writers_flow.py").read_text(encoding="utf-8"))
+    found: set[str] = set()
+
+    class Guards(C.Scoped):
+        def visit_Compare(self, node: ast.Compare) -> None:
+            left, only = node.left, node.comparators[0] if len(node.comparators) == 1 else None
+            named = isinstance(left, ast.Name) and left.id in ("depth", "_depth")
+            below = isinstance(node.ops[0], (ast.LtE, ast.Lt)) and isinstance(only, ast.Constant) and only.value == 0
+            if named and below:
+                found.add(self.symbol or "")
+            self.generic_visit(node)
+
+    Guards().visit(tree)
+    assert found == set(DEPTH_GUARDS), "decide each new guard: a planted case that marks it, or an excuse here"
+    missing = [name for name in DEPTH_GUARDS.values() if not name.startswith("excused:") and name not in globals()]
+    assert missing == []
+
+
+def exactly_callers(sites: int) -> str:
+    return ("def put(path):\n    path.write_text('x')\n\n"
+            + "".join(f"def c{i}(aew_root):\n    put(aew_root / 'local' / 'f{i}')\n\n" for i in range(sites)))
+
+
+def test_exactly_the_call_site_cap_is_read_and_one_more_is_not():
+    at = analysed(exactly_callers(F.CALLERS))
+    assert sorted(at.writers) == sorted(f"local/f{i}" for i in range(F.CALLERS)) and not reasons(at)
+    assert kinds_of(analysed(exactly_callers(F.CALLERS + 1))) == {"CALLERS"}
+
+
+def test_exactly_the_value_cap_is_read_and_one_more_is_not():
+    body = "    (aew_root / 'state' / name).write_text('x')\n"
+    at = analysed(many(body, F.VALUES))
+    assert len(at.writers) == F.VALUES and not reasons(at)
+    assert kinds_of(analysed(many(body, F.VALUES + 1))) == {"VALUES"}
+
+
+def test_the_depth_figure_of_a_chain_is_its_length_plus_one():
+    for links in (1, 4, 10):
+        assert peaks_of(chained(links))["depth"] == links + 1, links
 
 
 def test_every_cap_reason_comes_from_cap_reason_and_is_told_by_is_cap():
@@ -844,7 +1009,8 @@ def test_the_page_lists_each_cap_with_its_value_its_source_and_what_happens_past
         said = f"`{cap.name}` = {cap.value}: {cap.bounds}; source: {cap.source}; past it ({cap.arm}): {cap.past}."
         assert said in page
     measured = W.page(a, W.records_of(a), tuple(sorted(TOP)), F.caps(dict.fromkeys(F.MEASURED, 7)))
-    assert measured.count("The largest in this tree: 7.") == len(F.MEASURED)
+    assert measured.count("The largest in this render: 7.") == len([c for c in F.caps(dict.fromkeys(F.MEASURED, 7))
+                                                                      if c.measured is not None])
 
 
 CAP_NAMES = re.compile(r"(DEPTH|CALLERS|VALUES|LIMIT|MAX|CAP|BOUND|BUDGET)", re.I)

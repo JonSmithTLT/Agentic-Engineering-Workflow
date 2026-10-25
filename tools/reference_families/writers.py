@@ -762,7 +762,7 @@ def cap_lines(caps: Iterable[F.Cap]) -> list[str]:
              "at a number of lines and says how many it left out, and an expression quoted in a reason is cut with "
              "`...`: those are not caps on what the reading follows.", ""]
     for cap in caps:
-        measured = "" if cap.measured is None else f" The largest in this tree: {cap.measured}."
+        measured = "" if cap.measured is None else f" The largest in this render: {cap.measured}."
         lines.append(f"- `{cap.name}` = {cap.value}: {cap.bounds}; source: {cap.source}; "
                      f"past it ({cap.arm}): {cap.past}.{measured}")
     return [*lines, ""]
@@ -844,5 +844,8 @@ def build(ctx: C.Context) -> C.Built:
     problems = record_problems({r.id: r.as_json() for r in records}, kinds, analysis.roles, analysis.undecided)
     if problems:
         raise C.ReferenceError("the writers records break their own rules:\n  " + "\n  ".join(C.shown(problems)))
-    caps = (*F.caps(peaks), *ROLES.caps())
-    return C.Built(records=records, pages={"writers.md": page(analysis, records, TOP_LEVEL, caps)})
+
+    def written() -> str:  # the figures are the whole render's when `reference.py` runs every family under one block
+        return page(analysis, records, TOP_LEVEL, (*F.caps(peaks), *ROLES.caps()))
+
+    return C.Built(records=records, pages={"writers.md": written()}, late={"writers.md": written})

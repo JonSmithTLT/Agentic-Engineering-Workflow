@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import functools
 import importlib.util
 import shutil
 import sys
@@ -395,6 +396,29 @@ def without_the_caps_section(page: str) -> str:
     return page[:start] + page[page.index("\n## ", start):]
 
 
+@functools.cache
+def reference_tool():
+    spec = importlib.util.spec_from_file_location("reference_tool_pr6", ROOT / "tools" / "reference.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@functools.cache
+def whole_render() -> tuple[dict[str, bytes], dict[str, int]]:
+    """Every file the generator writes, and the largest figure of each measured cap over every family that runs the
+    evaluator (review of #267, C-1): what the writers page prints and what the caps are held to."""
+    return reference_tool()._render(ROOT)
+
+
+def comparable(files: dict[str, bytes]) -> dict[str, bytes]:
+    """The render without the caps' own section, which prints the values being varied."""
+    out = dict(files)
+    out["writers.md"] = without_the_caps_section(files["writers.md"].decode("utf-8")).encode("utf-8")
+    return out
+
+
 def test_doubling_every_cap_changes_no_record_and_nothing_on_the_page_but_the_caps_own_section(monkeypatch):
     """The designer's proof that a cap loses nothing silently, as a test: if any record of this tree depended on a cap,
     raising it would change the records. (At the caps the committed reference is what the code gives; doubled, it is the
@@ -409,10 +433,11 @@ def test_doubling_every_cap_changes_no_record_and_nothing_on_the_page_but_the_ca
     assert doubled.pages["writers.md"] != base.pages["writers.md"], "the caps' own section prints the doubled values"
 
 
-def test_halving_the_depth_cap_changes_no_record_so_it_is_at_least_twice_what_the_tree_needs(monkeypatch):
-    base = {r.id: r.as_json() for r in W.build(CTX).records}
+def test_halving_the_depth_cap_changes_nothing_in_the_whole_render(monkeypatch):
+    """The same measure as the figures below: every family that runs the evaluator, not the writers family alone."""
+    base = comparable(whole_render()[0])
     monkeypatch.setattr(F, "DEPTH", F.DEPTH // 2)
-    halved = {r.id: r.as_json() for r in W.build(CTX).records}
+    halved = comparable(reference_tool()._render(ROOT)[0])
     assert halved == base, f"a chain needs more than {F.DEPTH} calls or parameters: raise the cap, and say why"
 
 
@@ -430,35 +455,37 @@ def test_every_cap_the_caps_derive_is_a_constant_of_its_module():
     assert all(isinstance(getattr(module, name), int) for module, name in CAPS)
 
 
-def test_every_measured_cap_is_at_least_twice_the_largest_figure_the_tree_reaches():
-    """VALUES, FSTRING_LIMIT, MRO_DEPTH and ASSIGNMENT_DEPTH are measured, not chosen (the page prints the figure): a
-    tree that grows toward one fails here, before the cap binds, and the cap is raised on purpose."""
-    with F.measuring() as peaks:
-        W.build(CTX)
-    measured = [cap for cap in F.caps(peaks) if cap.measured is not None]
-    assert len(measured) == len(F.MEASURED) and peaks["values"] > 0
+def test_every_measured_cap_is_at_least_twice_the_largest_figure_the_whole_render_reaches():
+    """DEPTH, VALUES, FSTRING_LIMIT, MRO_DEPTH and TYPING_DEPTH are measured, not chosen (the page prints the figure,
+    over every family that runs the evaluator): a tree that grows toward one fails here, before the cap binds, and the
+    cap is raised on purpose. The layout's reads ask for more than the writers' (review of #267, C-1)."""
+    files, figures = whole_render()
+    measured = [cap for cap in F.caps(figures) if cap.measured is not None]
+    assert {cap.name for cap in measured} == {cap.name for cap in F.caps() if cap.source.startswith("measured")}
+    assert figures["values"] > 0 and figures["depth"] > 0 and figures["typing"] > 0
+    page = files["writers.md"].decode("utf-8")
     for cap in measured:
         assert cap.value >= 2 * (cap.measured or 0), (
-            f"the tree reaches {cap.measured} and the cap `{cap.name}` is {cap.value}: raise the cap, and say why")
+            f"the render reaches {cap.measured} and the cap `{cap.name}` is {cap.value}: raise the cap, and say why")
+        line = next(ln for ln in page.splitlines() if ln.startswith(f"- `{cap.name}`"))
+        assert line.endswith(f"The largest in this render: {cap.measured}."), (cap.name, line[-60:])
 
 
-def test_a_hierarchy_one_level_deeper_than_the_cap_fails_check_and_render_naming_the_cap(monkeypatch, capsys, tmp_path):
-    """Addendum 7: `MRO_DEPTH` bounds a list of classes, which can carry no mark, so past it the reading fails. On this
-    tree the cap one below the deepest chain of bases it follows is such a cap: `check` and `render` stop (exit 2, not
-    1: nothing differs, nothing can be generated) with the error, and `render` writes nothing."""
-    spec = importlib.util.spec_from_file_location("reference_tool_pr6", ROOT / "tools" / "reference.py")
-    assert spec is not None and spec.loader is not None
-    reference = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(reference)
-    with F.measuring() as peaks:
-        W.build(CTX)
-    assert peaks["mro"] >= 2
-    monkeypatch.setattr(F, "MRO_DEPTH", peaks["mro"] - 1)
+@pytest.mark.parametrize(("cap", "figure"), [("MRO_DEPTH", "mro"), ("TYPING_DEPTH", "typing")])
+def test_a_cap_with_no_item_to_mark_fails_check_and_render_naming_the_cap_where_it_binds(
+        monkeypatch, capsys, tmp_path, cap, figure):
+    """Addendum 7: `MRO_DEPTH` (a list of classes) and `TYPING_DEPTH` (a call edge) bound something that can carry no
+    mark, so past the cap the reading fails. On this tree the cap one below its figure binds: `check` and `render` stop
+    (exit 2, not 1: nothing differs, nothing can be generated) with the error, and `render` writes nothing."""
+    reference = reference_tool()
+    below = whole_render()[1][figure] - 1
+    assert below >= 1
+    monkeypatch.setattr(F, cap, below)
     for command in ("check", "render"):
         assert reference.main([command]) == 2, command
         said = capsys.readouterr().err
-        assert "cannot generate the reference" in said and f"(cap `writers_flow.MRO_DEPTH` = {F.MRO_DEPTH}:" in said
-    with pytest.raises(C.ReferenceError, match=f"more than {F.MRO_DEPTH} levels deep"):
+        assert "cannot generate the reference" in said and f"(cap `writers_flow.{cap}` = {below}:" in said
+    with pytest.raises(C.ReferenceError, match=f"more than {below} "):
         reference.render(out=tmp_path / "reference")
     assert not (tmp_path / "reference").exists(), "nothing is written when the reading fails"
 

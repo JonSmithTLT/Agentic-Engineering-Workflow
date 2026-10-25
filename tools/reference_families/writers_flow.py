@@ -44,24 +44,30 @@ WORKSPACES_NAME = "workspaces_root"  # the directory of the task workspaces (a m
 # names the cap. `caps()` is the one list, with the arm of each, written on the page. A tree test doubles every cap and
 # holds the generated reference unchanged (no record is lost to a cap), and another finds every cap or slice of the
 # generator that is not listed (the sweep).
-# Calls and parameters followed in a chain. Measured, not chosen: the page prints the deepest chain the tree follows
-# (the run directory a supervisor is handed through the harness) and a tree test holds the cap to at least twice it.
-# (It was 14 while a depth cut under a join read as a computed segment and hid how deep the tree goes: addendum 6.)
-DEPTH = 20
+# The measured caps are measured over the whole render, every family that runs the evaluator (writers, layout,
+# concurrency, ...), and not over the writers family alone: `reference.py` runs them under one `measuring()`, the
+# writers page prints the figures, and a tree test holds each cap to at least twice its figure (review of #267, C-1).
+# Calls and parameters followed in a chain (the run directory a supervisor is handed through the harness, and the
+# layout's reads). It was 14 while a depth cut under a join read as a computed segment and hid how deep the tree goes
+# (addendum 6).
+DEPTH = 32
 CALLERS = 24  # call sites of one function that are evaluated; more is UNK
-# Distinct values one expression may take before it is UNK. Measured, not chosen: a tree test holds it to at least twice
-# the largest set the tree makes (the page prints that size), so a set that grows toward it is a decision and not a
+# Distinct values one expression may take before it is UNK, so a set that grows toward the cap is a decision and not a
 # record silently lost.
-VALUES = 40
+VALUES = 60
 PLACEHOLDER = "{}"
-TYPING_DEPTH = 3  # receivers typed through receivers
-# Base classes followed from a class to find where an attribute or method is defined. Measured like VALUES: a tree test
-# holds it to at least twice the longest chain of bases the tree follows.
+# Receivers typed through receivers (`self.a.b.run()`, `Class().m().n()`): a call edge past it would be dropped as if
+# the receiver were unknown, so the reading fails instead (addendum 7). A receiver whose typing needs itself is a cycle
+# and is unknown, not a depth.
+TYPING_DEPTH = 24
+# Base classes followed from a class to find where an attribute or method is defined; past it the reading fails
+# (addendum 7).
 MRO_DEPTH = 6
 # Alternatives of one f-string piece (`f"{kind}.md"` with `kind` one of N strings) expanded into N templates; more is
-# unknown, with the cap in its reason. Measured like VALUES (review of the placement pull request, F2).
+# unknown, with the cap in its reason (review of the placement pull request, F2).
 FSTRING_LIMIT = 8
 # Assignments followed through names to see whether a sibling's name is made by the process (`_process_computed`).
+# Chosen: the tree follows none, so nothing measures it (review of #267, C-7).
 ASSIGNMENT_DEPTH = 3
 UTIL_MODULE = "aew.util"
 
@@ -141,7 +147,7 @@ def cap_unknowns(values: Values | set[Val]) -> set[Val]:
 
 _peak: dict[str, int] | None = None
 # What `measuring()` records: the figure of each measured cap.
-MEASURED = ("depth", "values", "alternatives", "mro", "assignments")
+MEASURED = ("depth", "values", "alternatives", "mro", "typing", "assignments")
 
 
 @contextmanager
@@ -193,36 +199,38 @@ def caps(peaks: Mapping[str, int] | None = None) -> tuple[Cap, ...]:
 
     return (
         Cap("writers_flow.DEPTH", DEPTH, "the calls and parameters one value is followed through",
-            "measured, held to twice what the tree needs", "the value is unknown, with the reason `resolution depth "
-            "limit` and this cap; the keys of a mapping a callback returns are unknown with the same reason",
-            peak("depth")),
+            "measured over the whole render, held to twice the deepest question", "the value is unknown, with the "
+            "reason `resolution depth limit` and this cap; the keys of a mapping a callback returns are unknown with "
+            "the same reason", peak("depth")),
         Cap("writers_flow.CALLERS", CALLERS,
             "the call sites of one function whose parameter, mapping keys or callback is read", "chosen",
             "the parameter is unknown, with a reason that says `more than N call sites` and names this cap (the roles "
             "reader counts the registration as run by every role)"),
         Cap("writers_flow.VALUES", VALUES, "the distinct values one expression may take",
-            "measured, held to twice the largest", "the expression is unknown, with a reason that says `more than N "
-            "possible values` and names this cap", peak("values")),
+            "measured over the whole render, held to twice the largest", "the expression is unknown, with a reason "
+            "that says `more than N possible values` and names this cap", peak("values")),
         Cap("writers_flow.TYPING_DEPTH", TYPING_DEPTH,
-            "the receivers typed through receivers (`self.a.b.run()`)", "chosen",
-            "the call is not followed, as for any receiver whose class is not known, and a writer reached only "
-            "through it carries the no-chain item"),
+            "the receivers typed through receivers (`self.a.b.run()`)",
+            "measured over the whole render, held to twice the deepest typing",
+            "a dropped call edge would read as an unknown receiver and can carry no mark, so the reading stops: "
+            "`check` and `render` fail with an error that names this cap, its source and its bound", peak("typing"),
+            FAILS),
         Cap("writers_flow.MRO_DEPTH", MRO_DEPTH,
             "the base classes followed from a class to find where an attribute or a method is defined",
-            "measured, held to twice the longest chain the tree follows",
+            "measured over the whole render, held to twice the longest chain",
             "a list of classes can carry no mark, so the reading stops: `check` and `render` fail with an error that "
             "names this cap, its source and its bound, and a tree test warns before the tree needs half of it",
             peak("mro"), FAILS),
         Cap("writers_flow.FSTRING_LIMIT", FSTRING_LIMIT,
             "the alternatives of one f-string piece that are expanded into templates",
-            "measured, held to twice the largest the tree makes",
+            "measured over the whole render, held to twice the largest",
             "the expression is unknown, with a reason that says `more than N alternatives of one f-string piece` and "
             "names this cap", peak("alternatives")),
         Cap("writers_flow.ASSIGNMENT_DEPTH", ASSIGNMENT_DEPTH,
             "the assignments followed through names to see whether a sibling's name is made by the process",
-            "measured, held to twice the longest chain the tree follows",
+            "chosen: the tree follows none",
             "the sibling is an unresolved write, with a reason that says `more than N assignments` and names this "
-            "cap", peak("assignments")),
+            "cap"),
     )
 
 
@@ -518,7 +526,7 @@ class Program:
 
     modules: dict[str, Module]
     callers: dict[tuple[str, str], list[tuple[Func | None, Module, ast.Call]]] = field(default_factory=dict)
-    _typing: int = 0
+    _typing_active: set[int] = field(default_factory=set)  # nodes whose typing is in progress (a cycle is unknown)
     _returned: dict[tuple[str, str], tuple[Module, str]] = field(default_factory=dict)
     _returning: set[tuple[str, str]] = field(default_factory=set)
 
@@ -558,24 +566,22 @@ class Program:
                 if func is not None and func.cls:
                     return self.method(mod, func.cls, callee.attr, skip_own=True)
                 return None
-            if self._typing >= TYPING_DEPTH:
+            if not self._enter_typing(callee):
                 return None
-            self._typing += 1
             try:  # `Class(...).method(...)`, `f(...).method(...)` with `f` typed `-> Class` or building one
                 klass = self._call_class(mod, func, callee.value, TYPING_DEPTH)
             finally:
-                self._typing -= 1
+                self._typing_active.discard(id(callee))
             if klass is not None:
                 return self.method(klass[0], klass[1], callee.attr)
             return None
         if isinstance(callee, ast.Attribute) and isinstance(callee.value, (ast.Name, ast.Attribute)):
-            if self._typing >= TYPING_DEPTH:  # typing a receiver names callees, which type their receivers
+            if not self._enter_typing(callee):  # typing a receiver names callees, which type their receivers
                 return None
-            self._typing += 1
             try:
                 klass = self.receiver_class(mod, func, callee.value, TYPING_DEPTH)
             finally:
-                self._typing -= 1
+                self._typing_active.discard(id(callee))
             if klass is not None:
                 return self.method(klass[0], klass[1], callee.attr)
         dotted = mod.aliases.resolve(callee)
@@ -604,12 +610,37 @@ class Program:
             return self.method(mod, name, "__init__")
         return None
 
+    def _enter_typing(self, callee: ast.expr) -> bool:
+        """One more receiver typed through receivers; False when the receiver's own typing needs itself (a cycle: the
+        receiver is not known, which is not the cap's doing). Past ``TYPING_DEPTH`` the call edge would be dropped, and
+        an edge can carry no mark (it reads as "the receiver is not known"), so the reading fails, naming the cap
+        (addendum 7)."""
+        if id(callee) in self._typing_active:
+            return False
+        level = len(self._typing_active) + 1
+        _note("typing", level)
+        if level > TYPING_DEPTH:
+            raise C.ReferenceError(cap_reason("TYPING_DEPTH", f"the receiver of `{_src(callee)}` is typed through more "
+                                                              f"than {TYPING_DEPTH} receivers, and the call would not "
+                                                              "be followed") + ": raise the cap, and say why")
+        self._typing_active.add(id(callee))
+        return True
+
+    @staticmethod
+    def _level(depth: int, what: ast.expr | str) -> None:
+        """The next hop of typing a receiver or the class a function returns (``depth`` counts down from the cap): the
+        same arm as :meth:`_enter_typing` when the hop would be one past ``TYPING_DEPTH``."""
+        _note("typing", TYPING_DEPTH - depth + 1)
+        if depth <= 0:
+            where = what if isinstance(what, str) else _src(what)
+            raise C.ReferenceError(cap_reason("TYPING_DEPTH", f"`{where}` is typed through more than {TYPING_DEPTH} "
+                                                              "hops, and what it names would not be followed")
+                                   + ": raise the cap, and say why")
+
     def receiver_class(self, mod: Module, func: Func | None, expr: ast.expr, depth: int) -> tuple[Module, str] | None:
         """The class of a receiver when it is evident: ``self`` (the function's class), a parameter annotated with a
         class, a local assigned a call of a class (or of a function annotated ``-> Class``), and a ``self`` attribute
         that every assignment in the class gives such a class. None otherwise (never a guess)."""
-        if depth <= 0:
-            return None
         if isinstance(expr, ast.Name):
             if expr.id in ("self", "cls") and func is not None and func.cls:
                 return mod, func.cls
@@ -618,25 +649,39 @@ class Program:
                 if expr.id in scope.annotations and expr.id not in scope.assigns:
                     return self.class_of(self.modules[scope.module], scope.annotations[expr.id])
                 if expr.id in scope.assigns:
-                    built = {self._call_class(self.modules[scope.module], scope, rhs, depth - 1)
-                             for rhs in scope.assigns[expr.id]}
+                    if id(expr) in self._typing_active:
+                        return None  # a local whose class needs itself: a cycle
+                    self._level(depth, expr)
+                    self._typing_active.add(id(expr))
+                    try:
+                        built = {self._call_class(self.modules[scope.module], scope, rhs, depth - 1)
+                                 for rhs in scope.assigns[expr.id]}
+                    finally:
+                        self._typing_active.discard(id(expr))
                     return next(iter(built)) if len(built) == 1 and None not in built else None
                 scope = scope.parent
             return None
         if isinstance(expr, ast.Attribute):
-            owner = self.receiver_class(mod, func, expr.value, depth - 1)
-            if owner is None:
-                return None
-            kinds: set[tuple[Module, str] | None] = set()
-            for m, k in self.mro(owner[0], owner[1]):
-                for source, rhs in m.attrs.get((k, expr.attr), []):
-                    holder = self.modules[source.module] if source else m
-                    if isinstance(rhs, ast.Name) and source is not None and rhs.id in source.annotations:
-                        kinds.add(self.class_of(holder, source.annotations[rhs.id]))
-                    elif isinstance(rhs, (ast.Name, ast.Attribute)):
-                        kinds.add(self.receiver_class(holder, source, rhs, depth - 1))
-                    else:
-                        kinds.add(self._call_class(holder, source, rhs, depth - 1))
+            if id(expr) in self._typing_active:
+                return None  # an attribute whose class needs itself: a cycle
+            self._level(depth, expr)
+            self._typing_active.add(id(expr))
+            try:
+                owner = self.receiver_class(mod, func, expr.value, depth - 1)
+                if owner is None:
+                    return None
+                kinds: set[tuple[Module, str] | None] = set()
+                for m, k in self.mro(owner[0], owner[1]):
+                    for source, rhs in m.attrs.get((k, expr.attr), []):
+                        holder = self.modules[source.module] if source else m
+                        if isinstance(rhs, ast.Name) and source is not None and rhs.id in source.annotations:
+                            kinds.add(self.class_of(holder, source.annotations[rhs.id]))
+                        elif isinstance(rhs, (ast.Name, ast.Attribute)):
+                            kinds.add(self.receiver_class(holder, source, rhs, depth - 1))
+                        else:
+                            kinds.add(self._call_class(holder, source, rhs, depth - 1))
+            finally:
+                self._typing_active.discard(id(expr))
             return next(iter(kinds)) if len(kinds) == 1 and None not in kinds else None
         return None
 
@@ -660,8 +705,9 @@ class Program:
         """The one class every ``return`` expression of an unannotated function builds, or None."""
         if target.key in self._returned:
             return self._returned[target.key]
-        if depth <= 0 or not target.returns or target.key in self._returning:
+        if not target.returns or target.key in self._returning:
             return None  # a function that returns itself, through any chain, types as unknown
+        self._level(depth, target.qual)
         self._returning.add(target.key)
         try:
             mod = self.modules[target.module]
@@ -873,7 +919,10 @@ class Evaluator:
         key = e.slice
         if isinstance(e.value, ast.Call) and isinstance(key, ast.Constant) and isinstance(key.value, int):
             return self._call_element(e.value, key.value, env, depth, seen)
-        sources = self._dict_sources(e.value, env, depth, seen)
+        try:
+            sources = self._dict_sources(e.value, env, depth, seen)
+        except Cut as cut:
+            return unk(f"`{_src(e)}`: {cut}")
         if sources is None:
             return unk(f"`{_src(e)}`, from a value that is not a dict literal")
         out: set[Val] = set()
@@ -912,9 +961,9 @@ class Evaluator:
         """The dict literals ``expr`` can be, each with the environment to read its values in; None when any way it can
         be bound is not one (a parameter, an attribute, an unknown call). A dict literal; a name bound in the function
         to one (``x = None`` before is skipped); a module constant; a call, or the element of a call, whose function
-        returns one."""
+        returns one. A chain deeper than ``DEPTH`` raises ``Cut``: it is the cap's, and not "not a dict literal"."""
         if depth <= 0:
-            return None
+            raise Cut(depth_reason())
         if isinstance(expr, ast.Dict):
             return [(expr, env)]
         mod = self.p.modules[env.module]

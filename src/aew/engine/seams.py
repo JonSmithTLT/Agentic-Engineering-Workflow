@@ -70,32 +70,47 @@ class StateHooks:
             hook(state, unit, change, reason)
 
 
+# A guard's role (R1 plan v4 §4.2 item 2, K1): a ``gate`` guard checks the gates a phase is entered on, whatever the
+# route into it; a ``source`` guard checks something about the edge it guards (where the unit comes from, or a hub's
+# own bound). A return from escalation rechecks the gate guards of the phase it enters (EW-U06.f).
+GATE, SOURCE = "gate", "source"
+ROLES = (GATE, SOURCE)
+
+
 class GuardRegistration(NamedTuple):
     name: str
     guard: Guard
     kinds: tuple[str, ...] = KINDS
     replace: bool = False
     query: GuardQuery | None = None  # the guard's pure form, which ``guard`` itself calls first (M4-E E4)
+    role: str | None = None  # GATE or SOURCE; ``tests/unit/test_engine_composition.py`` requires one on every entry
 
 
 class GuardTable:
     """The guard for each (guard name, unit kind). A kind-specific entry replaces the general one only when it is
     registered with ``replace=True``, so an accidental double registration is refused. A migrated guard also has its
     query (M4-E E4); an entry that replaces it without one leaves that kind unqueryable (``UNKNOWN``), never answered
-    by another kind's query."""
+    by another kind's query. Each entry has its guard's role, which a replacement keeps."""
 
     def __init__(self) -> None:
         self._table: dict[tuple[str, str], Guard] = {}
         self._queries: dict[tuple[str, str], GuardQuery] = {}
+        self._roles: dict[tuple[str, str], str | None] = {}
 
     def register(self, name: str, guard: Guard, kinds: tuple[str, ...] = KINDS, *, replace: bool = False,
-                 query: GuardQuery | None = None) -> None:
+                 query: GuardQuery | None = None, role: str | None = None) -> None:
+        if role is not None and role not in ROLES:
+            raise ValueError(f"unknown guard role {role}")
         for kind in kinds:
             if kind not in KINDS:
                 raise ValueError(f"unknown unit kind {kind}")
             if (name, kind) in self._table and not replace:
                 raise ValueError(f"guard {name} is already registered for {kind}")
+            if (name, kind) in self._table and self._roles.get((name, kind)) != role:
+                raise ValueError(f"guard {name} is a {self._roles.get((name, kind))} guard for {kind}: a replacement "
+                                 f"keeps its role, not {role}")
             self._table[(name, kind)] = guard
+            self._roles[(name, kind)] = role
             if query is None:
                 self._queries.pop((name, kind), None)
             else:
@@ -103,7 +118,7 @@ class GuardTable:
 
     def register_all(self, registrations: list[GuardRegistration]) -> None:
         for r in registrations:
-            self.register(r.name, r.guard, r.kinds, replace=r.replace, query=r.query)
+            self.register(r.name, r.guard, r.kinds, replace=r.replace, query=r.query, role=r.role)
 
     def query_for(self, name: str, unit: dict[str, Any]) -> GuardQuery | None:
         """The query form of the guard ``name`` for ``unit``'s kind, or None when it has none (not migrated)."""
@@ -111,6 +126,13 @@ class GuardTable:
 
     def queries(self) -> dict[tuple[str, str], GuardQuery]:
         return dict(self._queries)
+
+    def role_of(self, name: str, unit: dict[str, Any]) -> str | None:
+        """The role of the guard ``name`` for ``unit``'s kind (GATE or SOURCE), or None when it has none."""
+        return self._roles.get((name, kind_of(unit)))
+
+    def roles(self) -> dict[tuple[str, str], str | None]:
+        return dict(self._roles)
 
     def resolve(self, name: str, unit: dict[str, Any]) -> Guard:
         guard = self._table.get((name, kind_of(unit)))

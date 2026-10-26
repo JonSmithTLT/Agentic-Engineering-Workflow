@@ -20,11 +20,13 @@ from aew.engine import api, ports, seams
 from aew.engine.api import Engine
 from aew.engine.base import Kernel
 from aew.engine.seams import (
+    GATE,
     KIND_OPERATIONS,
     KINDS,
     MUTATING,
     NON_MUTATING,
     PARENT,
+    SOURCE,
     GuardTable,
     KindRegistry,
     kind_of,
@@ -129,8 +131,9 @@ def test_every_before_hook_is_a_query_the_guard_queries_ask(engine):
     assert found is not None and found.code == "ILLEGAL_TRANSITION"
 
 
+# The return from escalation is Gates': it rechecks the gate guards of the phase it enters (EW-U06.f).
 GENERAL = {"implementer_active": "WorkUnits", "findings_recorded": "WorkUnits",
-           "returning_from_escalation": "WorkUnits", "not_beyond_interrupted_phase": "WorkUnits",
+           "returning_from_escalation": "Gates", "not_beyond_interrupted_phase": "WorkUnits",
            "ready_for_review": "Gates", "ready_for_verification_without_review": "Gates",
            "commit_ready_without_review_or_verification": "Gates", "review_current": "Gates",
            "commit_ready_without_verification": "Gates", "all_gates_current": "Gates",
@@ -148,6 +151,42 @@ def test_the_guard_table_is_explicit_per_unit_kind(engine):
             own = kind == NON_MUTATING and name in NON_MUTATING_OWN
             expected[(name, kind)] = f"{'NonMutating' if own else owner}._guard_{name}"
     assert table == expected
+
+
+# Each guard's role (R1 plan v4 §4.2 item 2): a gate guard checks the gates a phase is entered on, a source guard the
+# edge it guards. A return from escalation rechecks the gate guards of the phase it enters (EW-U06.f).
+ROLES_BY_NAME = {"implementer_active": SOURCE, "findings_recorded": SOURCE, "returning_from_escalation": SOURCE,
+                 "not_beyond_interrupted_phase": SOURCE, "ready_for_review": GATE,
+                 "ready_for_verification_without_review": GATE, "review_current": GATE,
+                 "commit_ready_without_review_or_verification": GATE, "commit_ready_without_verification": GATE,
+                 "all_gates_current": GATE, "evidence_only_complete": GATE}
+# A non-mutating Ticket's gate entries into review and verification have no query form: its return there is refused,
+# not answered by another kind's query. Adding one is a deliberate change that updates this list.
+NON_MUTATING_UNQUERYABLE = {"ready_for_review", "ready_for_verification_without_review", "review_current"}
+
+
+def unroled(guards: GuardTable) -> list[tuple[str, str]]:
+    return sorted(key for key, role in guards.roles().items() if role not in (GATE, SOURCE))
+
+
+def test_every_guard_entry_has_a_role(engine):
+    guards = engine._units.guards
+    assert set(guards.roles()) == set(guards.table())  # every (name, kind) entry, and nothing else
+    assert unroled(guards) == []
+    assert {name for name, _ in guards.roles()} == set(ROLES_BY_NAME)  # the plan's list, both ways
+    assert all(role == ROLES_BY_NAME[name] for (name, _), role in guards.roles().items())
+    ticket = {"kind": "ticket", "mutating": False}
+    assert {n for n in NON_MUTATING_UNQUERYABLE if guards.query_for(n, ticket) is None} == NON_MUTATING_UNQUERYABLE
+    assert all(guards.query_for(n, {**ticket, "mutating": True}) for n in NON_MUTATING_UNQUERYABLE)
+    # Planted controls: a guard registered with no role is found; a replacement may not change a name's role.
+    planted = GuardTable()
+    planted.register("g", lambda *a: None, role=GATE)
+    planted.register("h", lambda *a: None, (MUTATING,))
+    assert unroled(planted) == [("h", MUTATING)]
+    with pytest.raises(ValueError, match="keeps its role"):
+        planted.register("g", lambda *a: None, (NON_MUTATING,), replace=True, role=SOURCE)
+    with pytest.raises(ValueError, match="unknown guard role"):
+        planted.register("k", lambda *a: None, role="lifecycle")
 
 
 def test_an_unknown_guard_is_refused_and_a_double_registration_is_an_error():

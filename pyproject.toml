@@ -78,9 +78,14 @@ ignore = [
 "eval/m3/spike/**" = ["S310", "E741", "UP031", "B023", "E501"]
 # The dogfood harness's Lead prompt and task texts are evaluation inputs, kept byte-for-byte as they ran.
 "eval/m3/dogfood/dogfood.py" = ["E501"]
+# The G3 confirmer runs under the host's own Python 3.6 (Rocky 8's platform-python, STG-03 G3-B): typing.List and
+# Optional are its forms, and the builtin generics and X | None that pyupgrade asks for are 3.9 and 3.10.
+"g3/aew_g3_confirm/**" = ["UP006", "UP035", "UP045"]
+# Its 3.6 run (tests/helpers/g3_confirm_py36.py): subprocess.run's capture_output= and text= are 3.7.
+"tests/helpers/g3_confirm_py36.py" = ["UP021", "UP022"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["aew", "aew_g3"]
+known-first-party = ["aew", "aew_g3", "aew_g3_confirm"]
 
 [tool.pyright]
 # The product code, checked as Linux and as Windows (CI runs both: platform branches are narrowed per platform).
@@ -88,6 +93,10 @@ known-first-party = ["aew", "aew_g3"]
 include = ["src", "g3"]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
+# The G3 confirmer runs under the host's own Python 3.6 (STG-03 G3-B), so pyright checks it as 3.6: its syntax only,
+# since the stubs carry no version guards that old (#282 review, m6); tests/unit/test_g3_confirm.py says what holds
+# the library names.
+executionEnvironments = [{ root = "g3/aew_g3_confirm", pythonVersion = "3.6" }, { root = "." }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

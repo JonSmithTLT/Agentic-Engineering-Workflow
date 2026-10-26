@@ -131,12 +131,12 @@ The Ticket machine from `aew.engine.transitions` (`RULES`, `STATES`, `TERMINAL`,
 | `commit_ready_without_review_or_verification` | mutating: `Gates._guard_commit_ready_without_review_or_verification`; non_mutating: `NonMutating._guard_commit_ready_without_review_or_verification`; parent: `Gates._guard_commit_ready_without_review_or_verification` |
 | `commit_ready_without_verification` | mutating: `Gates._guard_commit_ready_without_verification`; non_mutating: `NonMutating._guard_commit_ready_without_verification`; parent: `Gates._guard_commit_ready_without_verification` |
 | `evidence_only_complete` | mutating: `NonMutating._guard_evidence_only_complete`; non_mutating: `NonMutating._guard_evidence_only_complete`; parent: `NonMutating._guard_evidence_only_complete` |
-| `findings_recorded` | mutating: `WorkUnits._guard_findings_recorded`; non_mutating: `WorkUnits._guard_findings_recorded`; parent: `WorkUnits._guard_findings_recorded` |
+| `findings_recorded` | mutating: `WorkUnits._guard_findings_recorded` (query); non_mutating: `WorkUnits._guard_findings_recorded` (query); parent: `WorkUnits._guard_findings_recorded` (query) |
 | `implementer_active` | mutating: `WorkUnits._guard_implementer_active` (query); non_mutating: `NonMutating._guard_implementer_active`; parent: `WorkUnits._guard_implementer_active` (query) |
-| `not_beyond_interrupted_phase` | mutating: `WorkUnits._guard_not_beyond_interrupted_phase`; non_mutating: `WorkUnits._guard_not_beyond_interrupted_phase`; parent: `WorkUnits._guard_not_beyond_interrupted_phase` |
+| `not_beyond_interrupted_phase` | mutating: `WorkUnits._guard_not_beyond_interrupted_phase` (query); non_mutating: `WorkUnits._guard_not_beyond_interrupted_phase` (query); parent: `WorkUnits._guard_not_beyond_interrupted_phase` (query) |
 | `ready_for_review` | mutating: `Gates._guard_ready_for_review` (query); non_mutating: `NonMutating._guard_ready_for_review`; parent: `Gates._guard_ready_for_review` (query) |
-| `ready_for_verification_without_review` | mutating: `Gates._guard_ready_for_verification_without_review`; non_mutating: `NonMutating._guard_ready_for_verification_without_review`; parent: `Gates._guard_ready_for_verification_without_review` |
-| `returning_from_escalation` | mutating: `WorkUnits._guard_returning_from_escalation`; non_mutating: `WorkUnits._guard_returning_from_escalation`; parent: `WorkUnits._guard_returning_from_escalation` |
+| `ready_for_verification_without_review` | mutating: `Gates._guard_ready_for_verification_without_review` (query); non_mutating: `NonMutating._guard_ready_for_verification_without_review`; parent: `Gates._guard_ready_for_verification_without_review` (query) |
+| `returning_from_escalation` | mutating: `Gates._guard_returning_from_escalation` (query); non_mutating: `Gates._guard_returning_from_escalation` (query); parent: `Gates._guard_returning_from_escalation` (query) |
 | `review_current` | mutating: `Gates._guard_review_current` (query); non_mutating: `NonMutating._guard_review_current`; parent: `Gates._guard_review_current` (query) |
 
 ## Configuration document states

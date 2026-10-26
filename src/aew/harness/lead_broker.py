@@ -540,12 +540,13 @@ def run_read(engine: Any, argv: list[str], cwd: str,
     if path not in RELAYED_READS:
         raise errors.PermissionDenied(f"`aew {name}` is not relayed to a contained Lead: the operator runs it in their "
                                       "own shell", command=name, reason="not_relayed")
-    leaf = parser
+    parsers = [parser]  # every parser on the command's path, `aew`'s own options included (`--print-credential`)
     for word in name.split():
-        leaf = next(a for a in leaf._actions if isinstance(a, argparse._SubParsersAction)).choices[word]
-    extra = [a.option_strings[0] if a.option_strings else a.dest for a in leaf._actions
-             if a.dest != "help" and a.dest not in RELAYED_READS[path] and getattr(ns, a.dest, a.default) != a.default]
-    extra += ["--print-credential"] if getattr(ns, "print_credential", False) else []
+        parsers.append(next(a for a in parsers[-1]._actions if isinstance(a, argparse._SubParsersAction)).choices[word])
+    allowed = RELAYED_READS[path] | {"help", "version", "cwd"}  # `-C` is checked below: the Lead's project only
+    extra = [a.option_strings[0] if a.option_strings else a.dest for p in parsers for a in p._actions
+             if not isinstance(a, argparse._SubParsersAction) and a.dest not in allowed
+             and getattr(ns, a.dest, a.default) != a.default]
     if extra:
         raise errors.PermissionDenied(f"`aew {name}` is relayed to a contained Lead without {', '.join(extra)}",
                                       command=name, refused=extra, reason="relayed_option")

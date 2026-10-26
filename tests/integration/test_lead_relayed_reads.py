@@ -91,7 +91,8 @@ def worked(lab: HarnessLab, tmp_path: Path) -> tuple[str, str]:
 def cases(run: str, invocation: str) -> list[list[str]]:
     """Every relayed read, with its arguments."""
     out = [["status"], ["status", "--json"], ["resume"], ["resume", "--json"], ["harness", "status"],
-           ["harness", "status", invocation], ["harness", "wait", run, "--timeout", "0"], ["map", "show"],
+           ["harness", "status", invocation], ["harness", "wait", run, "--timeout", "0"], ["harness", "wait", run],
+           ["map", "show"],
            ["map", "show", "--json"], ["map", "diff", "--commit", "HEAD", "--commit", "HEAD"], ["map", "diff"]]
     assert {frozenset(worker_surface.words(a)) for a in out} == set(lead_broker.RELAYED_READS)
     return out

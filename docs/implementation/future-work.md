@@ -42,7 +42,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 8 | STG-13 | V-01's oracle rebuilt |
 | 9 | STG-14 | I-6, the resource, model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established, which is no sooner than CS-4's merge |
 
-**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today, then I-6 (STG-14, item 9). On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace). **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter and I-6's admission binding (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
+**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today, then I-6 (STG-14, item 9). On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace). **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
 
 **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 
@@ -56,7 +56,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### **V-01, the first vertical slice: before feature work resumes, and before any release**
 
-**Done when:** **The operator's outcome:** authenticate once, say "fix this", and get the published result. It is measured by V-01's rebuilt oracle (STG-13) passing on Linux; Windows is outside it, as today. **The wire track** builds the increments the slice needs: I-6, then I-7; RX-01, K-01 and P-01 selected before I-7 (made on 2026-10-25: knowledge in V-01 is history and source lookup only, K-01's H profile; a research claim reads `NOT_ESTABLISHED` until its owner qualifies it; V-01 shows the maps to agents only, with no site map view); O-02; U-01. **Research, PoCs and one mission:** research's minimum slice (an inquiry as WIS work with no Ticket, an outcome by answer, and links between a Ticket and an inquiry in both directions, in CNI's link vocabulary); PoCs as linked Tickets (contained scratch, while a PoC in the real project is an engineering Ticket linked to the inquiry); one bounded unattended mission (hours, an I-6 spend cap metered at CS-3b's provider relay, a preflight, held questions and a report). The mission counts only where the relay meters every paid route a mission's run can reach and R-01 qualifies the class, so its cap is hard there (A-42, option (a)): the relay's meter (E97) and the qualification (E98) are V-01's build items
+**Done when:** **The operator's outcome:** authenticate once, say "fix this", and get the published result. It is measured by V-01's rebuilt oracle (STG-13) passing on Linux; Windows is outside it, as today. **The wire track** builds the increments the slice needs: I-6, then I-7; RX-01, K-01 and P-01 selected before I-7 (made on 2026-10-25, among its five choices: knowledge in V-01 is history and source lookup only, K-01's H profile; a research claim reads `NOT_ESTABLISHED` until its owner qualifies it; V-01 shows the maps to agents only, with no site map view); O-02; U-01. **Research, PoCs and one mission:** research's minimum slice (an inquiry as WIS work with no Ticket, an outcome by answer, and links between a Ticket and an inquiry in both directions, in CNI's link vocabulary); PoCs as linked Tickets (contained scratch, while a PoC in the real project is an engineering Ticket linked to the inquiry); one bounded unattended mission (hours, an I-6 spend cap metered at CS-3b's provider relay, a preflight, held questions and a report). The mission counts only where the relay meters every paid route a mission's run can reach and R-01 qualifies the class, so its cap is hard there (A-42, option (a)): the relay's meter (E97) and the qualification (E98) are V-01's build items
 
 **Source:** the operator's verdict of 2026-10-11; the vertical-UAT ruling of 2026-10-23; the operator's decisions of 2026-10-24 (V-01's first row; the oracle rebuild's exemption; the first selections for RX-01, P-01 and K-01, with research, linked PoCs and one bounded mission in V-01, design workspace `f9f0c1a`); the register rebaseline (design workspace, `b598fdc`); A-40, WIS's research statements (adopted by the operator on 2026-10-25, design workspace `44156d0`), from which research's minimum slice is briefed; the operator's selection before I-7 of 2026-10-25 (design workspace `a8a5efc`); A-41, CNI's link vocabulary, and A-42, the bounded unattended mission with option (a) (both adopted by the operator on 2026-10-25, design workspace `b2ade18`), from which I-7 and the mission are briefed
 
@@ -1015,29 +1015,29 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **Internal alpha**, the same milestone as E85. E85's named outcome, "the rework round runs with no recorded findings", is closed only when this row lands, and S12-4's E85 claim closes with both
 
-**Notes:** Filed by the Lead
+**Notes:** The designer asked for this row on 2026-10-25
 
 *Later notes: `notes.d/E96/`, oldest first (`python tools/register.py show E96`).*
 
 ### E97
 
-**Work:** The provider relay's meter: it meters every paid route a mission's run can reach, from outside the metered lineage, so that usage is taken from it, and a requester's report never lowers the exposure R-01 counts
+**Work:** The provider relay's meter, A-42's first build item (MSN-00, MSN-R03): every paid route a mission's run can reach is metered from outside the metered lineage, and each paid call the relay observes is bound to the operation it was admitted under, so that usage is taken from the meter (R01-08)
 
 **Source:** A-42, the bounded unattended mission, with the operator's option (a) (adopted on 2026-10-25, design workspace `b2ade18`; MSN-R03, MSN-Q10); R01-08, IF10-13
 
-**When:** **V-01**, one of its build items. In the build order, after I-6 (STG-14), and before the qualification (E98), which judges it. Until both land, a mission's cap is issued `COOPERATIVE` and its enforcement reads `NOT_ESTABLISHED`
+**When:** **V-01**, one of its build items. In the build order, after I-6 (STG-14), and before the qualification (E98), which judges it. Until both land, a built mission's cap is issued `COOPERATIVE` and reads `NOT_ESTABLISHED` (MSN-05); and until the build serves `MSN-00` to `MSN-12`, only `MSN-Q01`'s attended runs are missions (A-42, Not claimed)
 
-**Notes:** Filed by the Lead
+**Notes:** Filed by the Lead. Held work on the same usage path: HOLD-20's F18.15 (gateway usage convergence) and HOLD-21's F25 (the cost ledger)
 
 *Later notes: `notes.d/E97/`, oldest first (`python tools/register.py show E97`).*
 
 ### E98
 
-**Work:** R-01's qualification of the paid class on a host and provider: a meter (E97) and an admission binding outside the metered lineage, an enforceable worst-case charge per paid call, and every paid route a mission's run can reach covered. Where the class qualifies, the mission's cap is issued `MANDATORY_HARD`; elsewhere it reads `NOT_ESTABLISHED`, and nothing claims it bounds spend
+**Work:** R-01's qualification of the paid class on a host and provider, A-42's second build item (MSN-00, MSN-05; R01-08, R01-09, R01-42, R01-43): where the class qualifies, a mission's cap is issued `MANDATORY_HARD`; elsewhere it reads `NOT_ESTABLISHED`
 
 **Source:** A-42 with option (a) (design workspace `b2ade18`; MSN-00, MSN-05, MSN-R03, MSN-Q10); R01-08, R01-09, R01-42, R01-43, IF10-13
 
-**When:** **V-01**, one of its build items, after the relay's meter (E97) and I-6's admission binding (STG-14)
+**When:** **V-01**, one of its build items, after the relay's meter (E97) and I-6 (STG-14)
 
 **Notes:** Filed by the Lead
 
@@ -1045,13 +1045,13 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E99
 
-**Work:** The offline install bundle. One manifest names every requirement: the Python wheels, the system packages per target operating system (for example `gtk3` and `python3-gobject` for the G3 confirmer), the pinned OpenCode build, ripgrep and the other base tools. Packaging downloads all of them into the bundle, built per target, and the install needs no network. A build's new prerequisite goes into the manifest. The intended install, one guided sequence that asks for root once: (1) unpack, install AEW into its own environment, and run a preflight that lists each prerequisite as found or missing, with the exact command, offline; (2) the system part as root (the bundle's system packages, then G3, its confirmer and their units: `g3/install.sh`, called for the operator); (3) the operator sets the PIN at their own terminal, handed to `aew-g3 set-pin`, which the installer never sees; (4) qualify and self-test, ending in one screen with each piece green or red. It resumes at the first unfinished step, refuses its root and PIN steps inside an AEW-contained session, and ends with what was installed, where, and how to undo it
+**Work:** The offline install bundle. One manifest names every requirement: the Python wheels, the system packages per target operating system (for example `gtk3` and `python3-gobject` for the G3 confirmer), the pinned OpenCode build, ripgrep and the other base tools. Packaging downloads all of them into the bundle, built per target, and the install needs no network. A build's new prerequisite goes into the manifest. The intended install, one guided sequence that asks for root once: (1) unpack and verify the signed manifest (ADR-0014), then install AEW into its own environment and run a preflight that lists each prerequisite as found or missing, with the exact command, offline; (2) the system part as root (the bundle's system packages, then G3, its confirmer and their units: `g3/install.sh`, called for the operator); (3) the operator sets the PIN at their own terminal, handed to `aew-g3 set-pin`, which the installer never sees; (4) the self-tests, ending in one screen with each piece green or red. It resumes at the first unfinished step, refuses its root and PIN steps inside an AEW-contained session and names the operator's step to run at their own terminal instead, and ends with what was installed, where, and how to undo it
 
-**Source:** The operator's decision of 2026-10-25, in chat, on G3-B's system packages: packaging bundles every requirement for an install with no internet; the installer's steps are the Lead's sketch of the same day, for Internal alpha's packaging design
+**Source:** The install and bootstrap UX v0.3, sections 5 and 5.1 (ledger IBU-12, IBU-13), and ADR-0014 (the signed manifest, verified before anything is consumed), whose build is held in HOLD-17 as F18.3 and D2; brought forward to Internal alpha by the operator's decision of 2026-10-25, in chat, on G3-B's system packages (packaging bundles every requirement for an install with no internet), and extended by the per-target system packages and the guided sequence, the Lead's sketch of the same day
 
-**When:** **Internal alpha**, as its packaging (the milestone's "an install the operator can run on their own machine and on a managed Linux host"). The designer designs it, by Internal alpha, including whether the installer may write G3's qualification record or that stays a separate act by a qualifier who is not the install's builder (G3-12)
+**When:** **Internal alpha**, as its packaging (the milestone's "an install the operator can run on their own machine and on a managed Linux host"). The designer designs it, by Internal alpha, with HOLD-17's F18.3 and D2 at that group's re-entry
 
-**Notes:** Filed by the Lead. Closest mechanisms today: CAP-1's capability register (STG-15) and H-3's bundle import (E35)
+**Notes:** Filed by the Lead. `g3/requirements-offline.txt` is the offline manifest the bundle's one manifest absorbs. Closest mechanisms today: CAP-1's capability register (STG-15) and H-3's bundle import (E35). Its decisions-due item waits until `test_register` admits a new item (#285's review, m5): the next register batch
 
 *Later notes: `notes.d/E99/`, oldest first (`python tools/register.py show E99`).*
 
@@ -1059,11 +1059,11 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** A containment policy of `required` on a host that cannot meet it never runs silently weaker: the run is refused, or it runs with the override named in its label (`weaker_because`), as the designer decides
 
-**Source:** The designer's observation of 2026-10-25 on containment's mode on Windows, sent with CS-4's addendum 4 (design workspace `910b9ee`)
+**Source:** The designer's observation of 2026-10-25 on containment's mode on Windows, in a message to the Lead beside CS-4's addendum 4; not yet in a record
 
 **When:** **Internal alpha**: the operator's own-machine trial is on Windows. The designer decides which of the two, by Internal alpha
 
-**Notes:** Filed by the Lead
+**Notes:** Filed by the Lead. Its decisions-due item waits until `test_register` admits a new item (#285's review, m5): the next register batch
 
 *Later notes: `notes.d/E100/`, oldest first (`python tools/register.py show E100`).*
 

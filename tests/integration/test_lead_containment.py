@@ -109,12 +109,13 @@ def test_the_lead_writes_its_working_tree_and_never_aew_or_the_git_metadata(lead
     before = {p: p.read_bytes() for p in (lab.repo / ".aew" / "state" / "control.json", lab.repo / ".git" / "HEAD")}
     done = lab.sh(lab.layout(), "printf edited > f.txt && printf new > g.txt && git add g.txt && "
                                 "git status --porcelain && git diff --cached --stat && git log --oneline -1 && "
-                                "{ printf x >> .aew/state/control.json; echo store=$?; } 2>/dev/null; "
-                                "{ mv .aew .aew-moved; echo rename=$?; } 2>/dev/null; "
-                                "{ printf x > .git/HEAD; echo head=$?; } 2>/dev/null")
+                                # a failed redirection's status is 1 in bash and 2 in dash: name the outcome
+                                "{ printf x >> .aew/state/control.json && echo store=written || echo store=refused; "
+                                "mv .aew .aew-moved && echo rename=done || echo rename=refused; "
+                                "printf x > .git/HEAD && echo head=written || echo head=refused; } 2>/dev/null")
     assert (lab.repo / "f.txt").read_text() == "edited" and (lab.repo / "g.txt").read_text() == "new"
     assert "g.txt" in done.stdout and "base" in done.stdout, done.stdout + done.stderr  # status, diff, log
-    assert "store=1" in done.stdout and "rename=1" in done.stdout and "head=1" in done.stdout, done.stdout
+    assert all(f"{what}=refused" in done.stdout for what in ("store", "rename", "head")), done.stdout
     assert {p: p.read_bytes() for p in before} == before
     assert (lab.repo / ".aew").is_dir() and not (lab.repo / ".aew-moved").exists()
     assert "g.txt" not in git("diff", "--cached", "--name-only", cwd=lab.repo).stdout  # the real index: untouched

@@ -100,6 +100,13 @@ def guide_of(engine: Any) -> str:
         return ""
 
 
+def refuse_unusable(provider_env: list[str], base: Mapping[str, str]) -> None:
+    """Refuses a ``--provider-env`` variable no harness could be given: the one rule, which doctor and every launch
+    share (the contained Lead's and `--print-config`'s included)."""
+    for name, why in agentenv.provider_env_problems(provider_env, base):
+        raise UsageError(f"--provider-env {name}: {why}", variable=name)
+
+
 def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = "") -> dict[str, str]:
     keep = agentenv.WINDOWS_KEEP if sys.platform == "win32" else agentenv.POSIX_KEEP
     env = {k: v for k, v in base.items() if k.upper() in keep or k.upper().startswith("XDG_")
@@ -108,8 +115,7 @@ def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = ""
     path = [p for p in (base.get("PATH") or base.get("Path") or "").split(os.pathsep) if p]
     env["PATH"] = os.pathsep.join([aew_bin, *[p for p in path if os.path.normcase(p) != os.path.normcase(aew_bin)]])
     env["PYTHONUTF8"] = "1"
-    for name, why in agentenv.provider_env_problems(provider_env, base):  # the one rule (doctor and launch share it)
-        raise UsageError(f"--provider-env {name}: {why}", variable=name)
+    refuse_unusable(provider_env, base)
     for name in provider_env:
         env[name] = str(agentenv.lookup(base, name))  # the same lookup the checks use (Windows: any case)
     agentenv.bypass_proxy_for_loopback(env)
@@ -147,6 +153,7 @@ def contained_here() -> bool:
 def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | None = None) -> dict[str, Any]:
     """What `aew opencode` would run, without starting anything (no values of environment variables)."""
     guide = guide_of(engine)
+    refuse_unusable(provider_env, os.environ)  # contained, the variables feed relays and stay out of the TUI's env
     env = tui_env(os.environ, provider_env=[] if contained_here() else provider_env, guide=guide)
     try:
         argv: list[str] | str = command(engine, extra_args or [])
@@ -382,8 +389,7 @@ class ContainedLead:
         if not os.isatty(0):
             raise UsageError("the contained Lead's TUI runs on a terminal AEW relays (STG-05 CS-4): run `aew opencode` "
                              "at a terminal")
-        for name, why in agentenv.provider_env_problems(provider_env, base):
-            raise UsageError(f"--provider-env {name}: {why}", variable=name)
+        refuse_unusable(provider_env, base)
         self.terminal = _launching_terminal()
         self.engine, self.argv, self.guide, self.base = engine, list(argv), guide, base
         self.warning_h = login_warning_h(engine.execution_policy()[0])

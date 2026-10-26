@@ -1557,6 +1557,25 @@ commands:
     refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE,
                VALIDATION_FAILED]
     note: "VALIDATION_FAILED (register_changed): the register changed since the change was shown"
+  - name: g3 request
+    home: operator-admin
+    users: [operator]
+    journeys: []
+    mutates: "yes"
+    mutates_basis: "asks the G3 service for the operator's approval of a protected command set, and submits the
+      approved set to the O-01 route"
+    lead_disposition: forbidden-to-lead
+    lead_kept_out_by: "custody_ops.refuse_in_lead_session: refused where a Lead session's environment is present,
+      before anything is read (the Lead's ruling of 2026-10-25); once CS-4 contains the Lead, request.sock is out of
+      its reach besides"
+    primitive: none
+    primitive_reason: "the G3 service and the O-01 route are outside the control engine: no engine primitive runs it"
+    keep_out_probe: [g3, request, absent-set.json, --o01, "http://127.0.0.1:9", --token-file, absent-token]
+    refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, UNAVAILABLE, USAGE,
+               VALIDATION_FAILED]
+    note: "STG-03 G3-D. OPERATOR_AUTHORIZATION_REQUIRED: the operator declined, the approval expired, or a restart
+      of the G3 service lost it; nothing was submitted. A Lead asking for an operator approval is not built (the
+      designer's question). The PIN is typed only in the confirmer"
   - name: message thread
     home: diagnostic
     users: [operator, lead]

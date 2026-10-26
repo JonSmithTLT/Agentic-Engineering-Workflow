@@ -1,11 +1,11 @@
 {
   "counts": {
     "by_coverage": {
-      "complete-by-construction": 401,
-      "lower-bound": 673
+      "complete-by-construction": 402,
+      "lower-bound": 675
     },
     "by_family": {
-      "cli-commands": 115,
+      "cli-commands": 116,
       "command-refusals": 72,
       "commands": 10,
       "concurrency": 15,
@@ -15,7 +15,7 @@
       "entry-points": 6,
       "guards": 11,
       "layout": 59,
-      "modules": 185,
+      "modules": 187,
       "reason-rules": 56,
       "schemas": 31,
       "sqlite-tables": 10,
@@ -28,7 +28,7 @@
     },
     "by_family_and_coverage": {
       "cli-commands": {
-        "complete-by-construction": 115
+        "complete-by-construction": 116
       },
       "command-refusals": {
         "complete-by-construction": 72
@@ -61,7 +61,7 @@
         "lower-bound": 59
       },
       "modules": {
-        "lower-bound": 185
+        "lower-bound": 187
       },
       "reason-rules": {
         "complete-by-construction": 56
@@ -92,8 +92,8 @@
         "lower-bound": 228
       }
     },
-    "digest": "sha256:967c94ba493fe80abe4dc0c71b7426de87108c5fbb0034a8d231b942e9a1fa9d",
-    "records": 1074,
+    "digest": "sha256:04201eabb8b5dda2a47dfa0f651f9296da4914438866952fba8f56140210eba7",
+    "records": 1077,
     "unresolved": 92
   },
   "gaps": [
@@ -1121,6 +1121,31 @@
         "surface_map": {
           "file": "docs/implementation/surface-map.yaml",
           "name": "evidence ingest",
+          "section": "commands"
+        }
+      },
+      "family": "cli-commands"
+    },
+    "cli-commands:g3 request": {
+      "anchor": {
+        "module": "aew.cli.g3_commands",
+        "symbol": "_request"
+      },
+      "basis": "declared",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_interfaces.py::test_every_surface_map_command_links_to_a_live_command_and_back",
+          "tests/integration/test_reference_interfaces.py::test_the_parser_is_built_with_every_switch_it_takes"
+        ],
+        "label": "complete-by-construction",
+        "registry": "docs/implementation/surface-map.yaml#commands"
+      },
+      "fact": {
+        "command": "g3 request",
+        "live": true,
+        "surface_map": {
+          "file": "docs/implementation/surface-map.yaml",
+          "name": "g3 request",
           "section": "commands"
         }
       },
@@ -17104,6 +17129,7 @@
       "imports": [
         "aew.cli.capability_commands",
         "aew.cli.dashboard_commands",
+        "aew.cli.g3_commands",
         "aew.cli.history_commands",
         "aew.cli.map_commands",
         "aew.cli.message_commands",
@@ -17192,6 +17218,28 @@
       "imports": [
         "aew.errors",
         "aew.util"
+      ]
+    },
+    "modules:aew.cli.g3_commands": {
+      "anchor": {
+        "module": "aew.cli.g3_commands",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/cli/g3_commands.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.cli.commands",
+        "aew.engine.custody_ops",
+        "aew.errors",
+        "aew.g3client"
       ]
     },
     "modules:aew.cli.history_commands": {
@@ -19100,6 +19148,27 @@
       },
       "family": "modules",
       "imports": []
+    },
+    "modules:aew.g3client": {
+      "anchor": {
+        "module": "aew.g3client",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/g3client.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.stg02.adopted",
+        "aew.stg02.wire"
+      ]
     },
     "modules:aew.harness": {
       "anchor": {

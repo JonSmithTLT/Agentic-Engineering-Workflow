@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.cli.commands import _add_json, _engine
-from aew.errors import OperatorAuthorizationRequired, PermissionDenied, UsageError
+from aew.errors import OperatorAuthorizationRequired, UsageError
 
 
 def register(sub: argparse._SubParsersAction) -> None:
@@ -60,13 +60,10 @@ def register(sub: argparse._SubParsersAction) -> None:
 def refuse_lead_session(command: str, environ: dict[str, str] | None = None) -> None:
     """A register command is never a Lead session's (CAPR-05). Keyed on the session's environment, so it is a
     keep-out, not authorization: the four changes take the operator endpoint's code besides."""
-    from aew.engine.custody_ops import LEAD_SESSION, LEAD_SESSION_VARS
+    from aew.engine.custody_ops import refuse_in_lead_session
 
-    present = [v for v in LEAD_SESSION_VARS if (environ if environ is not None else os.environ).get(v)]
-    if present:
-        raise PermissionDenied(f"`aew capability {command}` is the operator's, at their own terminal; it never runs "
-                               f"in a Lead session ({', '.join(present)} present)", variables=present,
-                               reason=LEAD_SESSION)
+    refuse_in_lead_session(f"`aew capability {command}` is the operator's, at their own terminal; it never runs in a "
+                           "Lead session", environ)
 
 
 def _list(a: argparse.Namespace) -> Any:

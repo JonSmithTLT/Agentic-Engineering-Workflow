@@ -138,15 +138,21 @@ def read_credential(stream: Any) -> str:
     return credential
 
 
+def refuse_in_lead_session(refusal: str, environ: dict[str, str] | None = None) -> None:
+    """Refuses where a Lead session's environment is present: ``refusal`` says what is refused and whose it is, and
+    the variables found follow it. A keep-out keyed on the environment, never authorization; every command that keeps
+    the Lead out this way calls it, so the check has one owner."""
+    present = [v for v in LEAD_SESSION_VARS if (environ if environ is not None else os.environ).get(v)]
+    if present:
+        raise PermissionDenied(f"{refusal} ({', '.join(present)} present)", variables=present, reason=LEAD_SESSION)
+
+
 def refuse_lead_session(environ: dict[str, str] | None = None) -> None:
     """S3/T1: ``aew integrate custody`` is never a Lead's command; it refuses to run where a Lead session's environment
     is present. Keyed on the environment only: the worker is legitimately spawned by the broker's process, with that
     environment stripped."""
-    present = [v for v in LEAD_SESSION_VARS if (environ if environ is not None else os.environ).get(v)]
-    if present:
-        raise PermissionDenied("`aew integrate custody` is the integration custodian's own process, started by the "
-                               "engine when it grants a lease; it never runs in a Lead session "
-                               f"({', '.join(present)} present)", variables=present, reason=LEAD_SESSION)
+    refuse_in_lead_session("`aew integrate custody` is the integration custodian's own process, started by the "
+                           "engine when it grants a lease; it never runs in a Lead session", environ)
 
 
 # ---------------------------------------------------------------------------------------------- the worker

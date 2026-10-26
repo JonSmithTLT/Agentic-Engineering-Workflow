@@ -313,7 +313,7 @@ def _masks(home: str | None, extra: list[str],
     secrets and the display's credentials in ``home``, those the launching environment ``env`` names
     (:func:`_env_masks`; default: this process's), and the policy's ``extra``."""
     candidates = [os.path.join(home, p) for p in (*SECRET_DIRS, *SECRET_FILES, *DISPLAY_FILES)] if home else []
-    candidates += _env_masks(os.environ if env is None else env)
+    candidates += _env_masks(_launching(home, env))
     candidates += [os.path.expanduser(p) for p in extra]
     dirs: list[str] = []
     files: list[str] = []
@@ -330,24 +330,55 @@ def _masks(home: str | None, extra: list[str],
     return tuple(dirs), tuple(files)
 
 
+def _launching(home: str | None, env: Mapping[str, str] | None) -> Mapping[str, str]:
+    """The launching environment ``env`` (default: this process's), with ``home`` as its home directory where it
+    names none."""
+    env = os.environ if env is None else env
+    return {"HOME": home, **env} if home else env
+
+
 def _env_masks(env: Mapping[str, str]) -> list[str]:
     """Credential paths the launching environment names rather than the home directory: the file ``XAUTHORITY`` names
     (CB-04), git's credential cache and store-helper file under a custom ``XDG_CACHE_HOME`` or ``XDG_CONFIG_HOME``,
-    and OpenCode's login and configuration under a custom ``XDG_DATA_HOME`` or ``XDG_CONFIG_HOME``, with the login
-    database ``OPENCODE_DB`` names (STG-05 CS-4: the Lead's relays read it there, ``opencode.login``). Read in the
-    process that makes the layout: a run's supervisor, whose environment is the launching CLI's without AEW's own
-    credentials (``harness_ops.supervisor_env``), or the CLI itself."""
+    and every place AEW's host side reads the operator's OpenCode from (``opencode.login.operator_masks``, their one
+    owner: STG-05 CS-4, outcome 2, the Lead's view holds no operator credential). Read in the process that makes the
+    layout: a run's supervisor, whose environment is the launching CLI's without AEW's own credentials
+    (``harness_ops.supervisor_env``), or the CLI itself."""
+    from aew.harness.opencode import login
+
     out = [env["XAUTHORITY"]] if env.get("XAUTHORITY") else []
     if env.get("XDG_CACHE_HOME"):
         out.append(os.path.join(env["XDG_CACHE_HOME"], "git", "credential"))
     if env.get("XDG_CONFIG_HOME"):
-        out += [os.path.join(env["XDG_CONFIG_HOME"], "git", "credentials"),
-                os.path.join(env["XDG_CONFIG_HOME"], "opencode")]
-    if env.get("XDG_DATA_HOME"):
-        out.append(os.path.join(env["XDG_DATA_HOME"], "opencode"))
-    if env.get("OPENCODE_DB") and os.path.isabs(env["OPENCODE_DB"]):
-        out.append(env["OPENCODE_DB"])
+        out.append(os.path.join(env["XDG_CONFIG_HOME"], "git", "credentials"))
+    dirs, files = login.operator_masks(env)
+    out += [str(p) for p in (*dirs, *files)]
     return [os.path.expanduser(p) for p in out]
+
+
+def _refuse_masks_over_the_run(env: Mapping[str, str], needed: list[tuple[str, str]]) -> None:
+    """A directory masked whole for the operator's OpenCode (:func:`_env_masks`) that is, or holds, something the
+    run needs (``needed``: its workspace, the project, the home directory, AEW's own directories, the Python
+    environment) would hide it: refused, naming what puts the directory there and the fix. Masking only the files in
+    it would not do: the login database's sidecars appear beside it after the launch."""
+    from aew.harness.opencode import login
+
+    dirs, _ = login.operator_masks(env)
+    for directory, variable in dirs.items():
+        if not os.path.isdir(directory):
+            continue
+        masked = _real(directory)
+        held = [(what, path) for what, path in needed if _within(path, masked)]
+        if held:
+            what, path = held[0]
+            where = f"{variable} puts" if variable else "by default, OpenCode keeps"
+            fix = (f"point {variable} at a directory of its own, which holds nothing else, or unset it" if variable
+                   else "keep the project and AEW outside it")
+            raise ContainmentUnavailable(
+                f"{where} the operator's OpenCode files in {masked}, which a contained run masks whole, and that "
+                f"directory is or holds {what} ({path}), which the run needs; the launch is refused. To launch, "
+                f"{fix}", directory=masked, variable=variable, holds=[{"what": w, "path": p} for w, p in held],
+                reason="opencode_mask_holds_the_run")
 
 
 def display_files(home: str | None, env: Mapping[str, str] | None = None) -> tuple[str, ...]:
@@ -643,6 +674,12 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
         os.makedirs(os.path.join(net_dir, NET_SHIM), mode=0o700, exist_ok=True)
     guarded = _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir, masks=(*hide_dirs, *hide_files),
                        host=hide_host, net_dir=net_dir)
+    needed = [("the workspace", str(ws)), ("the project", _real(project)), ("the home directory", _real(home)),
+              ("this run's directory", _real(run)), ("this run's scratch directory", _real(scratch))]
+    needed += [("the role's harness state", _real(state_dir))] if state_dir is not None else []
+    _refuse_masks_over_the_run(_launching(home, env), needed + [(w, p) for w, p in _guarded(
+        ws, project=project, runs=runs, bridge_dir=bridge_dir, masks=(), host=(), net_dir=net_dir)
+        if w != _SHARED_TMP])
     operator = []
     for raw in cfg.get("writable") or []:
         path = _real(os.path.expanduser(raw))

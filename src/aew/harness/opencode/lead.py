@@ -227,19 +227,12 @@ def _jsonc(text: str) -> Any:
     return json.loads(re.sub(r",(\s*[}\]])", r"\1", "".join(out)))
 
 
-def _operator_dir(base: Mapping[str, str], kind: str) -> Path:
-    """The operator's OpenCode directory of ``kind`` (``config`` or ``state``), from their environment."""
-    home = Path(base.get("HOME") or os.path.expanduser("~"))
-    default = {"config": home / ".config", "state": home / ".local" / "state"}[kind]
-    return Path(base.get(f"XDG_{kind.upper()}_HOME") or default) / "opencode"
-
-
 def operator_preferences(base: Mapping[str, str]) -> tuple[dict[str, Any] | None, list[str], str | None]:
     """``(preferences, plugins, unread)``: the operator's TUI preferences (OpenCode 2.0.18's ``cli.json`` in its
     configuration directory: theme, keybinds and the like, no credential) without its ``plugins``, which stay out of
     the contained Lead (A-38's CAPR-05; the designer's addendum 1, item 2); the plugins' names; and the file, when it
     could not be read. ``None`` when there is no such file."""
-    path = _operator_dir(base, "config") / "cli.json"
+    path = login.operator_dir(base, "config") / "cli.json"
     if not path.is_file():
         return None, [], None
     try:
@@ -257,7 +250,7 @@ def operator_preferences(base: Mapping[str, str]) -> tuple[dict[str, Any] | None
 def operator_mcp_servers(base: Mapping[str, str]) -> tuple[list[str], list[str]]:
     """``(names, unread)``: the MCP servers the operator's own OpenCode configuration names, which the contained Lead
     does not load, and the configuration files that could not be read. Names only."""
-    directory = _operator_dir(base, "config")
+    directory = login.operator_dir(base, "config")
     paths = [directory / name for name in CONFIG_FILES] + ([Path(base["OPENCODE_CONFIG"])]
                                                            if base.get("OPENCODE_CONFIG") else [])
     names: list[str] = []
@@ -564,7 +557,7 @@ class ContainedLead:
         """The Lead's recent and favourite models, once, as its state is created: a copy of the operator's
         ``model.json`` (model ids: no credential and no prompt), when it is a small JSON object. Never the prompt
         history, which carries other projects' prompts (the designer's addendum 1, item 3)."""
-        source = _operator_dir(self.base, "state") / "model.json"
+        source = login.operator_dir(self.base, "state") / "model.json"
         try:
             if not source.is_file() or source.stat().st_size > MODEL_SEED_MAX:
                 return

@@ -68,8 +68,8 @@ class LeadLab:
     def layout(self, **kw: Any) -> C.Layout:
         return C.for_run(role="lead", scope="project", workspace=str(self.repo), run_dir=self.run,
                          scratch=str(self.run / "scratch"), bridge_dir=None, policy=kw.pop("policy", None),
-                         home=str(self.home), project=str(self.repo), runs=str(self.run.parent), env={},
-                         state_dir=str(self.state), **kw)
+                         home=str(self.home), project=str(self.repo), runs=str(self.run.parent),
+                         env=kw.pop("env", {}), state_dir=str(self.state), **kw)
 
     def sh(self, layout: C.Layout, script: str) -> subprocess.CompletedProcess[str]:
         tree = procs.ProcessTree(layout=layout)
@@ -136,6 +136,50 @@ def test_the_operators_opencode_login_and_configuration_are_empty_from_the_leads
     lab = lead_lab
     done = lab.sh(lab.layout(), f"ls -A {lab.home}/.local/share/opencode {lab.home}/.config/opencode")
     assert "opencode.db" not in done.stdout and "opencode.json" not in done.stdout, done.stdout
+
+
+def test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_none_of_it(lead_lab):
+    """CS-4 outcome 2 (A-33 §3.1, CB-01): the Lead's view holds no operator credential, wherever the operator's
+    environment puts OpenCode: a login database of a custom path named through a link, with files SQLite keeps beside
+    it present at the launch and written after it, beside the real database and beside the link; a configuration file
+    of a custom path; and the state directory. Synthetic files only."""
+    lab = lead_lab
+    named, real = lab.root / "oc-named", lab.root / "oc-real"
+    named.mkdir()
+    real.mkdir()
+    db = real / "logins.db"
+    db.write_text("SYNTHETIC-DB\n")
+    (named / "logins.db").symlink_to(db)
+    Path(f"{db}-shm").write_text("SYNTHETIC-SHM\n")
+    config = lab.root / "cfg" / "custom.json"
+    config.parent.mkdir()
+    config.write_text('{"provider": {"x": {"options": {"apiKey": "SYNTHETIC-CONFIG"}}}}\n')
+    state = lab.home / ".local" / "state" / "opencode"
+    state.mkdir(parents=True)
+    (state / "prompt-history.jsonl").write_text("SYNTHETIC-HISTORY\n")
+    env = {"HOME": str(lab.home), "OPENCODE_DB": str(named / "logins.db"), "OPENCODE_CONFIG": str(config)}
+    ready, go = lab.run / "scratch" / "ready", lab.root / "go"
+    layout = lab.layout(env=env)
+    tree = procs.ProcessTree(layout=layout)
+    try:
+        script = (f"touch {ready}; i=0; while [ ! -e {go} ] && [ $i -lt 400 ]; do sleep 0.05; i=$((i+1)); done; "
+                  f"cat {named}/logins.db {db} {db}-shm {db}-wal {named}/logins.db-journal {config} "
+                  f"{state}/prompt-history.jsonl; echo; ls -A {named} {real} {state}; echo end")
+        proc = tree.spawn(["sh", "-c", script], cwd=str(lab.repo), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          stdin=subprocess.DEVNULL, text=True,
+                          env={"PATH": os.environ["PATH"], "HOME": str(lab.home), "LANG": "C.UTF-8", **layout.env})
+        deadline = time.monotonic() + 30
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert ready.exists(), "the sandbox never started"
+        Path(f"{db}-wal").write_text("SYNTHETIC-WAL\n")  # after the launch: as SQLite writes them while it is open
+        Path(f"{named}/logins.db-journal").write_text("SYNTHETIC-JOURNAL\n")
+        go.write_text("")
+        out, err = proc.communicate(timeout=60)
+    finally:
+        tree.close()
+    assert out.rstrip().endswith("end"), out + err
+    assert "SYNTHETIC" not in out and "logins.db" not in out and "prompt-history" not in out, out
 
 
 # ------------------------------------------------------------------------------------------- outcome 6, rows

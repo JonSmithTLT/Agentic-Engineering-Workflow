@@ -1431,9 +1431,13 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   so. A failure after the seat was taken frees the seat again.
 - **What it holds (R-2):** the working tree writable; `.aew` and the git metadata re-bound read-only; `.aew/local`
   masked except the session's run directory (`.aew/local/harness/runs/lead-<UTC>-<hex>`, its label and harness
-  state) and the Lead's OpenCode state (`.aew/local/harness/lead`, per project, kept between sessions, below); the
-  operator's OpenCode configuration and login masked wherever `XDG_CONFIG_HOME`, `XDG_DATA_HOME` or `OPENCODE_DB`
-  put them.
+  state) and the Lead's OpenCode state (`.aew/local/harness/lead`, per project, kept between sessions, below); and
+  no operator credential (A-33 §3.1, CB-01): every place AEW's host side reads the operator's OpenCode from, as the
+  operator's environment puts it, is masked (`opencode.login.operator_masks`, their one owner, which the layout and
+  the host's readers share): OpenCode's data, configuration and state directories and the directory holding the
+  login database, each whole, and the file `OPENCODE_CONFIG` names. A launch where one of those directories is, or
+  holds, the workspace, the project, the home directory or AEW's own is refused, naming the variable that puts it
+  there and the fix.
 - **Its environment:** the operator's `XDG_*` and `OPENCODE_CONFIG` are dropped; AEW's five XDG directories are set
   (configuration and runtime in the run's harness state, data, state and cache in the Lead's), with
   `OPENCODE_CONFIG_CONTENT` (the Lead projection, with the session's relays and its contained line) and
@@ -1551,7 +1555,9 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   bytes unfiltered, the window size followed, a session without a terminal refused.
 - `tests/integration/test_lead_containment.py` (Linux): the layout (the working tree writable, never `.aew` or the
   git metadata; `.aew/local` holding only the Lead's own directories; the operator's OpenCode login and
-  configuration empty); rows 1 to 6 passing with the relayed terminal and any-public egress, and rows 4 and 6
+  configuration empty, wherever the operator's environment puts them); `tests/unit/test_containment_layout.py`: every path the host side derives from the
+  operator's environment for OpenCode masked, across the environment's shapes, and a masked directory that would
+  hide what the run needs refused; rows 1 to 6 passing with the relayed terminal and any-public egress, and rows 4 and 6
   failing closed; the TUI's controlling terminal the relay's, with a `TIOCSTI` landing in its own input;
   `allow_weaker` labelled. `tests/integration/test_network_shim.py`: the shim's controlling-terminal step and its
   refusal. `tests/integration/test_containment.py`: the user-namespace refusal (mocked).

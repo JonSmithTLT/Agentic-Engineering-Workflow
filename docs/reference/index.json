@@ -92,7 +92,7 @@
         "lower-bound": 250
       }
     },
-    "digest": "sha256:0b154e658e2f4d8a07b50464d1db8009c0215597479eef3efa1e232671b04977",
+    "digest": "sha256:9daceca349d37ca77108548c29f7d32e57e9d5f629a42b41dc5490652e1989b9",
     "records": 1110,
     "unresolved": 102
   },
@@ -20192,6 +20192,7 @@
       "family": "modules",
       "imports": [
         "aew.errors",
+        "aew.harness.opencode.login",
         "aew.workspace.git"
       ]
     },

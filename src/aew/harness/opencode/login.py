@@ -28,6 +28,11 @@ from typing import Any
 
 DB = "opencode.db"
 BUSY_TIMEOUT_S = 5.0  # the operator's OpenCode holds its write lock briefly; a launch waits this long at most
+# The files SQLite keeps beside a database (its write-ahead log, the log's index, the rollback journal): they hold rows
+# not yet in the database, and appear and go while the database is open, after any launch.
+SIDECARS = ("-wal", "-shm", "-journal")
+# Where OpenCode keeps each kind of directory under the home directory when its XDG variable is unset.
+XDG_DEFAULTS = {"data": (".local", "share"), "config": (".config",), "state": (".local", "state")}
 
 
 UNKNOWN = "unknown"  # a row in a shape AEW does not know: nothing of it is read out
@@ -46,13 +51,43 @@ class Login:
     metadata: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
 
+def operator_dir(env: Mapping[str, str], kind: str) -> Path:
+    """The operator's OpenCode directory of ``kind`` (``data``, ``config`` or ``state``), from their environment:
+    ``$XDG_<KIND>_HOME/opencode``, or its default under the home directory (:data:`XDG_DEFAULTS`)."""
+    home = Path(env.get("HOME") or os.path.expanduser("~"))
+    return Path(env.get(f"XDG_{kind.upper()}_HOME") or home.joinpath(*XDG_DEFAULTS[kind])) / "opencode"
+
+
 def db_path(env: Mapping[str, str]) -> Path:
     """Where the operator's OpenCode keeps its database, from the operator's environment."""
-    data = Path(env.get("XDG_DATA_HOME") or Path(env.get("HOME") or os.path.expanduser("~")) / ".local" / "share")
     named = env.get("OPENCODE_DB")
     if named:
-        return Path(named) if os.path.isabs(named) else data / "opencode" / named
-    return data / "opencode" / DB
+        return Path(named) if os.path.isabs(named) else operator_dir(env, "data") / named
+    return operator_dir(env, "data") / DB
+
+
+def store_files(env: Mapping[str, str]) -> list[Path]:
+    """The login database and the files SQLite keeps beside it (:data:`SIDECARS`)."""
+    db = db_path(env)
+    return [db, *(db.with_name(db.name + suffix) for suffix in SIDECARS)]
+
+
+def operator_masks(env: Mapping[str, str]) -> tuple[dict[Path, str | None], list[Path]]:
+    """``({directory: the variable that puts it there, or None}, files)``: every place AEW's host side reads the
+    operator's OpenCode from,
+    as the operator's environment puts it, for a contained run to mask (``containment.layout``; STG-05 CS-4, outcome
+    2): the data, configuration and state directories; the directory holding the login database, and its real one,
+    whole, since the database's sidecars appear there after a launch; and the configuration file ``OPENCODE_CONFIG``
+    names, alone (it has no sidecars, and its directory may be the project)."""
+    dirs: dict[Path, str | None] = {}
+    for kind in XDG_DEFAULTS:
+        variable = f"XDG_{kind.upper()}_HOME"
+        dirs[operator_dir(env, kind)] = variable if env.get(variable) else None
+    db = db_path(env)
+    for directory in (db.parent, Path(os.path.realpath(db)).parent):
+        dirs.setdefault(directory, "OPENCODE_DB" if env.get("OPENCODE_DB") else dirs[operator_dir(env, "data")])
+    files = [Path(os.path.abspath(env["OPENCODE_CONFIG"]))] if env.get("OPENCODE_CONFIG") else []
+    return dirs, files
 
 
 def _read(integration: str, method: str | None, value: Any) -> Login:

@@ -36,14 +36,13 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 2 | STG-05 | the owner-only store (#256) (merged, `e78c6386`) |
 | 3 | STG-05 | CS-3b, the network namespace (#257) (merged, `d796a342`) |
 | 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register (PR 1 merged as #272, `af951c92`; PR 2 starts from CS-4's merge) |
-| 5 | E85 | two of the trace's FIX rows, taken ahead of their milestone (E84 merged as #274, `c81eb233`, and closed; E85 open as #279) |
-| 6 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
-| 7 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, building) |
-| 8 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
-| 9 | STG-13 | V-01's oracle rebuilt |
-| 10 | STG-14 | I-6, the resource, model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established, which is no sooner than CS-4's merge |
+| 5 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
+| 6 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, merged as #282, `61310fb3`; G3-D, the CLI client, building; G3-C after CS-4's merge) |
+| 7 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
+| 8 | STG-13 | V-01's oracle rebuilt |
+| 9 | STG-14 | I-6, the resource, model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established, which is no sooner than CS-4's merge |
 
-**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today, then I-6 (STG-14, item 10). On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace). E85 (item 5) comes before H-1 and CS-4: the operator took it and E84 ahead of their milestone on 2026-10-25 (in chat).
+**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today, then I-6 (STG-14, item 9). On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace). **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter and I-6's admission binding (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
 
 **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 
@@ -57,9 +56,9 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### **V-01, the first vertical slice: before feature work resumes, and before any release**
 
-**Done when:** **The operator's outcome:** authenticate once, say "fix this", and get the published result. It is measured by V-01's rebuilt oracle (STG-13) passing on Linux; Windows is outside it, as today. **The wire track** builds the increments the slice needs: I-6, then I-7; RX-01, K-01 and P-01 selected before I-7; O-02; U-01. **Research, PoCs and one mission:** research's minimum slice (an inquiry as WIS work with no Ticket, an outcome by answer, and links between a Ticket and an inquiry in both directions); PoCs as linked Tickets (contained scratch, while a PoC in the real project is an engineering Ticket linked to the inquiry); one bounded unattended mission (hours, an I-6 spend cap metered at CS-3b's provider relay, a preflight, held questions and a report)
+**Done when:** **The operator's outcome:** authenticate once, say "fix this", and get the published result. It is measured by V-01's rebuilt oracle (STG-13) passing on Linux; Windows is outside it, as today. **The wire track** builds the increments the slice needs: I-6, then I-7; RX-01, K-01 and P-01 selected before I-7 (made on 2026-10-25: knowledge in V-01 is history and source lookup only, K-01's H profile; a research claim reads `NOT_ESTABLISHED` until its owner qualifies it; V-01 shows the maps to agents only, with no site map view); O-02; U-01. **Research, PoCs and one mission:** research's minimum slice (an inquiry as WIS work with no Ticket, an outcome by answer, and links between a Ticket and an inquiry in both directions, in CNI's link vocabulary); PoCs as linked Tickets (contained scratch, while a PoC in the real project is an engineering Ticket linked to the inquiry); one bounded unattended mission (hours, an I-6 spend cap metered at CS-3b's provider relay, a preflight, held questions and a report). The mission counts only where the relay meters every paid route a mission's run can reach and R-01 qualifies the class, so its cap is hard there (A-42, option (a)): the relay's meter (E97) and the qualification (E98) are V-01's build items
 
-**Source:** the operator's verdict of 2026-10-11; the vertical-UAT ruling of 2026-10-23; the operator's decisions of 2026-10-24 (V-01's first row; the oracle rebuild's exemption; the first selections for RX-01, P-01 and K-01, with research, linked PoCs and one bounded mission in V-01, design workspace `f9f0c1a`); the register rebaseline (design workspace, `b598fdc`); A-40, WIS's research statements (adopted by the operator on 2026-10-25, design workspace `44156d0`), from which research's minimum slice is briefed
+**Source:** the operator's verdict of 2026-10-11; the vertical-UAT ruling of 2026-10-23; the operator's decisions of 2026-10-24 (V-01's first row; the oracle rebuild's exemption; the first selections for RX-01, P-01 and K-01, with research, linked PoCs and one bounded mission in V-01, design workspace `f9f0c1a`); the register rebaseline (design workspace, `b598fdc`); A-40, WIS's research statements (adopted by the operator on 2026-10-25, design workspace `44156d0`), from which research's minimum slice is briefed; the operator's selection before I-7 of 2026-10-25 (design workspace `a8a5efc`); A-41, CNI's link vocabulary, and A-42, the bounded unattended mission with option (a) (both adopted by the operator on 2026-10-25, design workspace `b2ade18`), from which I-7 and the mission are briefed
 
 ### **Internal alpha**
 
@@ -888,18 +887,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E83/`, oldest first (`python tools/register.py show E83`).*
 
-### E85
-
-**Work:** A return from escalation rechecks the gates of the phase it returns to (EW-U06.f), as the designer ruled on 2026-10-25
-
-**Source:** STG-12's S12-4 trace, FIX claim on the return from escalation (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`), which corrects family 5's claim; rulings R1-D2 and R6-1 of 2026-10-12
-
-**When:** **Now**, one of the trace's FIX rows (S12-6), taken ahead of its milestone (the operator, in chat, 2026-10-25)
-
-**Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
-
-*Later notes: `notes.d/E85/`, oldest first (`python tools/register.py show E85`).*
-
 ### E86
 
 **Work:** The order of collection decides which `conftest` a helper imports. `tests/conftest.py` and `tests/discovery/conftest.py` both load as the module `conftest`, so a helper that runs `from conftest import ...` (`tests/helpers/vertical/scripted_operator.py`) gets the discovery one when `tests/discovery` is collected first in a session, and fails with an `ImportError`
@@ -1019,6 +1006,66 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead
 
 *Later notes: `notes.d/E95/`, oldest first (`python tools/register.py show E95`).*
+
+### E96
+
+**Work:** A rework round never starts without recorded findings, by any route of Lead transitions out of a failed review (R1-D2), with the check that finds the class: over the transition table, every path of Lead-chosen edges from an origin whose direct edge to a target carries a named guard, through hubs and phase states alike and with no discharging engine event on it, runs that guard or its discharge. A planted path is found, and the run shows what it found
+
+**Source:** The designer's ruling of 2026-10-25 on an observation from #279's review (E85), which reads R1-D2 as covering a route to its end; the record stays private
+
+**When:** **Internal alpha**, the same milestone as E85. E85's named outcome, "the rework round runs with no recorded findings", is closed only when this row lands, and S12-4's E85 claim closes with both
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E96/`, oldest first (`python tools/register.py show E96`).*
+
+### E97
+
+**Work:** The provider relay's meter: it meters every paid route a mission's run can reach, from outside the metered lineage, so that usage is taken from it, and a requester's report never lowers the exposure R-01 counts
+
+**Source:** A-42, the bounded unattended mission, with the operator's option (a) (adopted on 2026-10-25, design workspace `b2ade18`; MSN-R03, MSN-Q10); R01-08, IF10-13
+
+**When:** **V-01**, one of its build items. In the build order, after I-6 (STG-14), and before the qualification (E98), which judges it. Until both land, a mission's cap is issued `COOPERATIVE` and its enforcement reads `NOT_ESTABLISHED`
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E97/`, oldest first (`python tools/register.py show E97`).*
+
+### E98
+
+**Work:** R-01's qualification of the paid class on a host and provider: a meter (E97) and an admission binding outside the metered lineage, an enforceable worst-case charge per paid call, and every paid route a mission's run can reach covered. Where the class qualifies, the mission's cap is issued `MANDATORY_HARD`; elsewhere it reads `NOT_ESTABLISHED`, and nothing claims it bounds spend
+
+**Source:** A-42 with option (a) (design workspace `b2ade18`; MSN-00, MSN-05, MSN-R03, MSN-Q10); R01-08, R01-09, R01-42, R01-43, IF10-13
+
+**When:** **V-01**, one of its build items, after the relay's meter (E97) and I-6's admission binding (STG-14)
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E98/`, oldest first (`python tools/register.py show E98`).*
+
+### E99
+
+**Work:** The offline install bundle. One manifest names every requirement: the Python wheels, the system packages per target operating system (for example `gtk3` and `python3-gobject` for the G3 confirmer), the pinned OpenCode build, ripgrep and the other base tools. Packaging downloads all of them into the bundle, built per target, and the install needs no network. A build's new prerequisite goes into the manifest. The intended install, one guided sequence that asks for root once: (1) unpack, install AEW into its own environment, and run a preflight that lists each prerequisite as found or missing, with the exact command, offline; (2) the system part as root (the bundle's system packages, then G3, its confirmer and their units: `g3/install.sh`, called for the operator); (3) the operator sets the PIN at their own terminal, handed to `aew-g3 set-pin`, which the installer never sees; (4) qualify and self-test, ending in one screen with each piece green or red. It resumes at the first unfinished step, refuses its root and PIN steps inside an AEW-contained session, and ends with what was installed, where, and how to undo it
+
+**Source:** The operator's decision of 2026-10-25, in chat, on G3-B's system packages: packaging bundles every requirement for an install with no internet; the installer's steps are the Lead's sketch of the same day, for Internal alpha's packaging design
+
+**When:** **Internal alpha**, as its packaging (the milestone's "an install the operator can run on their own machine and on a managed Linux host"). The designer designs it, by Internal alpha, including whether the installer may write G3's qualification record or that stays a separate act by a qualifier who is not the install's builder (G3-12)
+
+**Notes:** Filed by the Lead. Closest mechanisms today: CAP-1's capability register (STG-15) and H-3's bundle import (E35)
+
+*Later notes: `notes.d/E99/`, oldest first (`python tools/register.py show E99`).*
+
+### E100
+
+**Work:** A containment policy of `required` on a host that cannot meet it never runs silently weaker: the run is refused, or it runs with the override named in its label (`weaker_because`), as the designer decides
+
+**Source:** The designer's observation of 2026-10-25 on containment's mode on Windows, sent with CS-4's addendum 4 (design workspace `910b9ee`)
+
+**When:** **Internal alpha**: the operator's own-machine trial is on Windows. The designer decides which of the two, by Internal alpha
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E100/`, oldest first (`python tools/register.py show E100`).*
 
 ### E47
 
@@ -1705,6 +1752,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #274 (`c81eb233`): a move or a promotion that would lower what a moved unit still to be proven inherits is refused (`OBLIGATIONS_DROPPED`), as ADR-0007's amendment of 2026-10-25 states. Carrying the obligations instead is E87
 
 *Later notes: `notes.d/E84/`, oldest first (`python tools/register.py show E84`).*
+
+### E85
+
+**Was:** A return from escalation rechecks the gates of the phase it returns to (EW-U06.f). One of the trace's FIX rows (S12-6), taken ahead of its milestone
+
+**Closed:** 2026-10-26
+
+**By:** #279 (`32fc4ea3`): a return from escalation meets the gates of the phase it enters, and a reconcile the guard of its direct edge, as ADR-0003's amendment of 2026-10-25 states. The class by any route is E96, and E85's named outcome closes only when E96 lands (designer, 2026-10-25)
+
+*Later notes: `notes.d/E85/`, oldest first (`python tools/register.py show E85`).*
 
 ### F1
 

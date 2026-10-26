@@ -812,7 +812,8 @@ def test_display_files_and_the_xauthority_file_are_masked_by_type_when_present(t
 # The operator's environments for OpenCode: each moves where OpenCode keeps its files (STG-05 CS-4, outcome 2).
 OPENCODE_ENVS: dict[str, Callable[[Path], dict[str, str]]] = {
     "defaults": lambda t: {},
-    "xdg_moved": lambda t: {f"XDG_{k}_HOME": str(t / "xdg" / k.lower()) for k in ("DATA", "CONFIG", "STATE")},
+    "xdg_moved": lambda t: {f"XDG_{k}_HOME": str(t / "xdg" / k.lower())
+                            for k in ("DATA", "CONFIG", "STATE", "CACHE")},
     "absolute_db": lambda t: {"OPENCODE_DB": str(t / "elsewhere" / "logins.db")},
     "relative_db": lambda t: {"OPENCODE_DB": "other.db"},
     "relative_db_above": lambda t: {"OPENCODE_DB": os.path.join("..", "above.db")},
@@ -825,14 +826,15 @@ OPENCODE_ENVS: dict[str, Callable[[Path], dict[str, str]]] = {
 def operator_files(env: dict[str, str]) -> list[Path]:
     """Every path AEW's host side derives from the operator's environment to read the operator's OpenCode: the login
     database with SQLite's files beside it (``login.stored``), the configuration files (``lead.operator_preferences``,
-    ``lead.operator_mcp_servers``) and the recent models (``ContainedLead._seed_models``); and the legacy login file
-    OpenCode imports from its data directory, which the host never reads."""
+    ``lead.operator_mcp_servers``) and the recent models (``ContainedLead._seed_models``); and, which the host never
+    reads, the legacy login file OpenCode imports from its data directory and a file of its cache (addendum 4)."""
     from aew.harness.opencode import lead, login
 
     config, state = login.operator_dir(env, "config"), login.operator_dir(env, "state")
     named = [Path(env["OPENCODE_CONFIG"])] if env.get("OPENCODE_CONFIG") else []
     return [*login.store_files(env), config / "cli.json", *(config / n for n in lead.CONFIG_FILES),
-            state / "model.json", *named, login.operator_dir(env, "data") / "auth.json"]
+            state / "model.json", *named, login.operator_dir(env, "data") / "auth.json",
+            login.operator_dir(env, "cache") / "models.json"]
 
 
 @pytest.mark.parametrize("shape", list(OPENCODE_ENVS))

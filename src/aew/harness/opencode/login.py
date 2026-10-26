@@ -32,7 +32,8 @@ BUSY_TIMEOUT_S = 5.0  # the operator's OpenCode holds its write lock briefly; a 
 # not yet in the database, and appear and go while the database is open, after any launch.
 SIDECARS = ("-wal", "-shm", "-journal")
 # Where OpenCode keeps each kind of directory under the home directory when its XDG variable is unset.
-XDG_DEFAULTS = {"data": (".local", "share"), "config": (".config",), "state": (".local", "state")}
+XDG_DEFAULTS = {"data": (".local", "share"), "config": (".config",), "state": (".local", "state"),
+                "cache": (".cache",)}
 
 
 UNKNOWN = "unknown"  # a row in a shape AEW does not know: nothing of it is read out
@@ -52,8 +53,8 @@ class Login:
 
 
 def operator_dir(env: Mapping[str, str], kind: str) -> Path:
-    """The operator's OpenCode directory of ``kind`` (``data``, ``config`` or ``state``), from their environment:
-    ``$XDG_<KIND>_HOME/opencode``, or its default under the home directory (:data:`XDG_DEFAULTS`)."""
+    """The operator's OpenCode directory of ``kind`` (``data``, ``config``, ``state`` or ``cache``), from their
+    environment: ``$XDG_<KIND>_HOME/opencode``, or its default under the home directory (:data:`XDG_DEFAULTS`)."""
     home = Path(env.get("HOME") or os.path.expanduser("~"))
     return Path(env.get(f"XDG_{kind.upper()}_HOME") or home.joinpath(*XDG_DEFAULTS[kind])) / "opencode"
 
@@ -73,12 +74,12 @@ def store_files(env: Mapping[str, str]) -> list[Path]:
 
 
 def operator_masks(env: Mapping[str, str]) -> tuple[dict[Path, str | None], list[Path]]:
-    """``({directory: the variable that puts it there, or None}, files)``: every place AEW's host side reads the
-    operator's OpenCode from,
-    as the operator's environment puts it, for a contained run to mask (``containment.layout``; STG-05 CS-4, outcome
-    2): the data, configuration and state directories; the directory holding the login database, and its real one,
-    whole, since the database's sidecars appear there after a launch; and the configuration file ``OPENCODE_CONFIG``
-    names, alone (it has no sidecars, and its directory may be the project)."""
+    """``({directory: the variable that puts it there, or None}, files)``: every place the operator's OpenCode keeps
+    its login, configuration or state, as the operator's environment puts it, for a contained run to mask
+    (``containment.layout``; STG-05 CS-4, outcome 2, and addendum 4, ruling 2): its data, configuration, state and
+    cache directories; the directory holding the login database, and its real one, whole, since the database's
+    sidecars appear there after a launch; and the configuration file ``OPENCODE_CONFIG`` names, alone (it has no
+    sidecars, and its directory may be the project)."""
     dirs: dict[Path, str | None] = {}
     for kind in XDG_DEFAULTS:
         variable = f"XDG_{kind.upper()}_HOME"

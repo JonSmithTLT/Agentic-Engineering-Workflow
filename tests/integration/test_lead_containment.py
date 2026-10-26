@@ -138,6 +138,29 @@ def test_the_operators_opencode_login_and_configuration_are_empty_from_the_leads
     assert "opencode.db" not in done.stdout and "opencode.json" not in done.stdout, done.stdout
 
 
+@pytest.mark.parametrize("moved", [False, True], ids=["defaults", "xdg_moved"])
+def test_the_leads_view_holds_none_of_the_operators_opencode_state_under_the_four_xdg_bases(lead_lab, moved):
+    """CS-4 addendum 4, ruling 2: from inside the Lead's sandbox, the operator's OpenCode directory under each of the
+    XDG data, configuration, state and cache bases (their defaults, or where XDG_*_HOME moves them) is absent or empty,
+    and the Lead's own OpenCode state still works there. Synthetic files only."""
+    from aew.harness.opencode import login
+
+    lab = lead_lab
+    env = {"HOME": str(lab.home)}
+    if moved:
+        env.update({f"XDG_{k.upper()}_HOME": str(lab.root / "xdg" / k) for k in login.XDG_DEFAULTS})
+    dirs = [login.operator_dir(env, kind) for kind in login.XDG_DEFAULTS]
+    for d in dirs:
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "planted.txt").write_text("SYNTHETIC-OPERATOR-STATE\n")
+    own = lab.state / "xdg-state" / "opencode"
+    done = lab.sh(lab.layout(env=env), " ".join(f"ls -A {d};" for d in dirs)
+                  + f" cat {' '.join(f'{d}/planted.txt' for d in dirs)} 2>/dev/null;"
+                  f" mkdir -p {own} && printf mine > {own}/kv.json && cat {own}/kv.json && echo; echo end")
+    assert done.stdout.rstrip().endswith("mine\nend"), done.stdout + done.stderr  # the Lead's own state works
+    assert "planted" not in done.stdout and "SYNTHETIC" not in done.stdout, done.stdout
+
+
 def test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_none_of_it(lead_lab):
     """CS-4 outcome 2 (A-33 §3.1, CB-01): the Lead's view holds no operator credential, wherever the operator's
     environment puts OpenCode: a login database of a custom path named through a link, with files SQLite keeps beside

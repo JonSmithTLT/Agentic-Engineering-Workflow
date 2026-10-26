@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ast
 import json
+import sqlite3
 import threading
 import time
 from pathlib import Path
@@ -25,7 +26,7 @@ from aewflow import create_planned_ticket, sample_project
 from fake_harness import POLICY, HarnessLab
 from invariants import load_control
 from legality_modules import legality_modules
-from notifier import Console, raise_to, recorder, seed, until
+from notifier import Console, loop_chain, raise_to, recorder, seed, until
 from racing_read import read_json_or_none
 from test_stage_resolve import drift
 from test_stage_runner import PROBES, intervene
@@ -36,6 +37,7 @@ from aew.engine.api import Engine
 from aew.engine.primitives import PrimitiveSpec
 from aew.harness import event_spool, operator_endpoint, runlog
 from aew.harness import steering_loop as L
+from aew.history.index import INDEX_REL
 from aew.surface import contract, stage
 from aew.surface import run as R
 from aew.surface.context import SurfaceContext
@@ -640,13 +642,15 @@ def test_the_loop_runs_in_the_broker_and_stops_with_its_session(p, tmp_path):
     loop_json = p.root / ".aew/local/steering/loop.json"
     broker.start()
     try:
-        until(lambda: loop_json.exists() and len(broker.loop.executed) == 2, 30, "the first activation")
+        until(lambda: loop_json.exists() and len(broker.loop.executed) == 2, 30, "the first activation",
+              describe=loop_chain(broker))
         time.sleep(3 * lead_broker.POLL_S)  # its own commits are no wake: a second activation would show here
         assert len(broker.loop.executed) == 2
         out = broker._tool({"name": "checkpoint", "arguments": json.dumps({"expect_rev": p.rev(), "note": "Lead"}),
                             "ingress": "cli", "profile": "normal"})
         assert out["stage_result"]["ok"]
-        until(lambda: len(broker.loop.executed) == 4, 30, "the activation the Lead's commit wakes")
+        until(lambda: len(broker.loop.executed) == 4, 30, "the activation the Lead's commit wakes",
+              describe=loop_chain(broker))
     finally:
         broker.close()
     assert broker.loop._thread is not None and not broker.loop._thread.is_alive()
@@ -998,6 +1002,35 @@ def test_a_superseded_loop_writes_nothing_shared(p, monkeypatch):
     assert lp.activate().code == L.STALE_AUTHORITY
     assert (loop_json.read_bytes(), spool.read_bytes()) == before
     assert "loop" not in (Engine.discover(p.root).steering_view() or {})
+
+
+@pytest.mark.serial  # its property is timing: the loop's self-check against a held history index
+def test_a_superseded_loops_self_check_answers_from_the_hot_state_while_the_history_index_is_held(project,
+                                                                                                    monkeypatch):
+    """Review of #284, M1: the loop looked its superseded credential up in the archive, through the history index,
+    whose SQLite busy wait (30 s) ran out as a `LockTimeout` that `_authority_lost` took as "still the Lead": with the
+    index held, `broker.close()` waited 29.7 s for the loop. A takeover moves the credential out of the hot token
+    table, so the check answers from the hot state alone (`require_held_lead`): lost, within its read's lock timeout,
+    while another connection holds the index."""
+    from notifier import takeover
+
+    old_token = project.token
+    e = Engine.discover(project.root)
+    e.store.lock_timeout = 10.0  # the check's one wait, its read, and well under the index's 30 s
+    lp = L.SteeringLoop(e, generation=1, session_label="lead-a", token=lambda: old_token, poll_s=0.2)
+    root = project.root / ".aew"
+    (root / INDEX_REL).parent.mkdir(parents=True, exist_ok=True)
+    held = sqlite3.connect(root / INDEX_REL, timeout=10, isolation_level=None)  # its own take may wait, bounded
+    try:
+        held.execute("BEGIN EXCLUSIVE")
+        takeover(project, monkeypatch)
+        started = time.monotonic()
+        lost = lp._authority_lost()
+        elapsed = time.monotonic() - started
+    finally:
+        held.close()
+    assert lost == "Lead authority superseded; this credential can no longer change control state", lost
+    assert elapsed < e.store.lock_timeout, elapsed
 
 
 def test_an_activation_that_returned_control_is_never_resumed(p):

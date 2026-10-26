@@ -29,7 +29,8 @@ an iteration's counted bounds past the bound less one ``POLL_S`` of work.
 What it does not see, each a defect the reviewer reads for:
 - a ``with lock:`` over a lock that is no call (``with self._mu:``): a C lock's acquire is no call the profiler reports,
   nor one the scan names (``Beat.close``'s ``with self._mu`` waits for the beat thread's write);
-- a stall inside a plain file read or write, and any wait in C code that ``WRAPPED`` does not wrap;
+- a stall inside a plain file read or write, and any wait in C code the census neither wraps (``sqlite3.connect``) nor
+  profiles (``time.sleep``);
 - the functions of an iteration this module does not run: a pending handoff, a store read that times out (the held-lock
   test's, ``test_notifier.py``), a non-writer's lock-free read;
 - a name not in ``BLOCKING``, and a call made through a variable the scan cannot name.
@@ -105,6 +106,11 @@ def _aew_function(code: CodeType) -> str | None:
     """``module:qualname`` of AEW code, or None for any other."""
     module = _module(code.co_filename)
     return None if module is None else f"{module}:{code.co_qualname}"
+
+
+def connect_timeout(database: Any, timeout: float = 5.0, *args: Any, **kwargs: Any) -> float:
+    """The busy timeout a ``sqlite3.connect`` call gives, by position or by keyword (its default is 5.0)."""
+    return timeout
 
 
 def _caller(frame: FrameType | None) -> str | None:
@@ -226,8 +232,7 @@ def run_census(project: Any, monkeypatch: pytest.MonkeyPatch, *, check: Callable
             sys.setprofile(None)
 
     monkeypatch.setattr(lead_broker.LeadBroker, "_watchdog", watched)
-    monkeypatch.setattr(sqlite3, "connect", census.wrap("sqlite3.connect", sqlite3.connect,
-                                                         lambda *a, timeout=5.0, **k: timeout))
+    monkeypatch.setattr(sqlite3, "connect", census.wrap("sqlite3.connect", sqlite3.connect, connect_timeout))
     root = project.root / ".aew"
     broker = lead_broker.LeadBroker(Engine.discover(project.root), project.token)
     broker.start()
@@ -313,6 +318,13 @@ def test_the_scan_names_each_blocking_call_in_a_function_body(tmp_path, body, na
     namespace: dict[str, Any] = {}
     exec(compile(body, str(path), "exec"), namespace)  # noqa: S102  a planted function, compiled from its file
     assert scan(namespace["f"].__code__) == names
+
+
+@pytest.mark.parametrize(("args", "kwargs", "timeout"), [(("p", 30.0), {}, 30.0), (("p",), {"timeout": 30.0}, 30.0),
+                                                       (("p",), {}, 5.0)])
+def test_a_connections_busy_timeout_is_read_by_position_or_keyword(args, kwargs, timeout):
+    """Review of #284, N2: a positional timeout was recorded as the default, 5.0."""
+    assert connect_timeout(*args, **kwargs) == timeout
 
 
 def test_a_with_over_a_lock_that_is_no_call_is_not_seen(tmp_path):

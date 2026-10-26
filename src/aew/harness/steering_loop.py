@@ -552,11 +552,14 @@ class SteeringLoop:
         return None
 
     def _authority_lost(self) -> str | None:
-        """Why the broker's credential no longer holds the Lead seat (lost authority only), or ``None``."""
-        from aew.engine.authority import require_lead
+        """Why the broker's credential no longer holds the Lead seat (lost authority only), or ``None``. Judged from the
+        hot state alone (``require_held_lead``), never the archive: the archive's history index waits up to its own
+        30 s for another connection, and its ``LockTimeout`` here would read as "still the Lead" (review of #284,
+        M1)."""
+        from aew.engine.authority import require_held_lead
 
         try:
-            require_lead(self.engine.store.current(), self._token(), archived=self.engine.archived_credential)
+            require_held_lead(self.engine.store.current(), self._token())
         except errors.StaleAuthority as exc:
             return exc.message
         except errors.AEWError:

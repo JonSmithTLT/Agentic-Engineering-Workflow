@@ -436,7 +436,7 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_while_the_hist
     if index == "existing":
         HistoryIndex(root).sync(engine.store.current()["cold"]["root"])
     (root / INDEX_REL).parent.mkdir(parents=True, exist_ok=True)
-    held = sqlite3.connect(root / INDEX_REL, timeout=0, isolation_level=None)
+    held = sqlite3.connect(root / INDEX_REL, timeout=10, isolation_level=None)  # its own take may wait, bounded
     broker = lead_broker.LeadBroker(engine, project.token)
 
     def closed_record() -> dict[str, Any] | None:

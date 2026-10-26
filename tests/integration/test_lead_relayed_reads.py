@@ -24,6 +24,7 @@ from harness_conformance import sync_dir
 
 from aew import process_kind
 from aew.engine.api import Engine
+from aew.engine.store import ControlStore
 from aew.harness import bridge, lead_broker, procs, runlog
 
 IMPLEMENT = [
@@ -123,6 +124,17 @@ def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, 
         assert (via.returncode, CLOCK.sub("AGE", via.stdout), via.stderr) == (
             here.returncode, CLOCK.sub("AGE", here.stdout), here.stderr), argv
     assert run in relayed(lab, broker, "harness", "status").stdout  # it read the run's own record, on the host
+
+
+def test_a_relayed_read_runs_lock_free_while_a_write_holds_the_control_lock(lab, broker):
+    """Conditions 2 and 6: a relayed read runs as a non-writer (``process_kind``), lock-free as the sandbox's reads
+    are, so it answers while a write holds the control lock and never takes it; a store writer would wait for it."""
+    here = direct(lab, "status", "--json")
+    with ControlStore(lab.aew_root).control_lock("a write in progress, held by the test"):
+        started = time.monotonic()
+        via = relayed(lab, broker, "status", "--json")
+        took = time.monotonic() - started
+    assert (via.returncode, via.stdout) == (here.returncode, here.stdout) and took < 30, via.stderr
 
 
 def test_no_relayed_read_carries_a_runs_password_bridge_key_or_token(lab, broker, tmp_path):

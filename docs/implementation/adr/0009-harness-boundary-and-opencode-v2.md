@@ -1591,8 +1591,9 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   once (`LEAD_REACHABLE`, `RELAYED_READS`, `OPERATOR_ONLY`, `NOT_RELAYED`, `CONTAINED_LOCAL`), the surface map
   marking exactly the relayed set, each a read, and a command outside it, an option outside its list or a value
   that is not a name, sha256 or revision refused before anything runs; `tests/integration/test_lead_relayed_reads.py`,
-  each relayed read printing what the host prints (a heartbeat's age apart) and changing nothing under `.aew`, no
-  output carrying a planted server password, bridge key or token, a held relayed `harness wait` delaying no Lead
+  each relayed read printing what the host prints (a heartbeat's age apart) and changing nothing under `.aew`, one
+  answering while a write holds the control lock (a non-writer's lock-free read), no output carrying a planted
+  server password, bridge key or token, a held relayed `harness wait` delaying no Lead
   write and returning when its run ends, the session's close ending one in flight at once, and no read reaching
   another project. AT-14 and AT-17 run it contained, at a pseudo-terminal. `tests/integration/test_lead_containment.py`
   (Linux): the operator's OpenCode directory under each of the four XDG bases empty from inside, with the Lead's own

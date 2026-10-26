@@ -10,9 +10,11 @@ bound does not count, so the broker closed late.
 Two detectors, which must agree:
 - **The census** (run time): each blocking call the watchdog thread makes, with the bound it was given, attributed to
   the AEW function that made it, while the watchdog iterates as the current Lead and then as a superseded one. A
-  blocking call is ``sqlite3.connect`` or ``time.sleep`` (wrapped for the run), or one of ``PROFILED`` (Python-level
-  waits, seen through a profiler on the watchdog thread alone). A call made inside another (the sleeps of a
-  ``FileLock`` within its deadline) is the enclosing call's.
+  blocking call is ``sqlite3.connect`` (wrapped for the run, recording the watchdog thread's calls), one of
+  ``PROFILED`` (Python-level waits), or ``time.sleep``, the last two seen through a profiler on the watchdog thread
+  alone. The profiler sees ``time.sleep`` as a C call, without its argument, so a sleep's bound is unknown (no check
+  reads it); ``time`` itself is never patched, the shared module every thread sleeps through (``sleep_patch``). A
+  call made inside another (the sleeps of a ``FileLock`` within its deadline) is the enclosing call's.
 - **The scan** (source): each call of a name in ``BLOCKING``, and each ``with`` over one, in every AEW function the
   watchdog thread ran.
 
@@ -54,7 +56,7 @@ from notifier import takeover, until
 
 import aew
 from aew.engine.api import Engine
-from aew.engine.authority import require_lead
+from aew.engine.authority import require_held_lead, require_lead
 from aew.engine.lock import FileLock
 from aew.harness import broker_liveness, lead_broker
 
@@ -119,7 +121,7 @@ def _caller(frame: FrameType | None) -> str | None:
 class Wait:
     function: str | None  # the AEW function that made the call
     primitive: str
-    bound: float | None  # None: unbounded
+    bound: float | None  # None: unbounded, or a sleep's (not seen)
     iteration: int
 
 
@@ -131,6 +133,7 @@ PROFILED: dict[CodeType, tuple[str, Callable[[FrameType], float | None]]] = {
     threading.Thread.start.__code__: ("Thread.start", lambda f: None),
     FileLock.__enter__.__code__: ("FileLock", lambda f: f.f_locals["self"].timeout),
 }
+SLEEP = time.sleep  # the C function the profiler reports a sleep as
 
 
 @dataclass
@@ -161,6 +164,8 @@ class Census:
                 self._depth += 1
         elif event == "return" and frame.f_code in PROFILED:
             self._depth -= 1
+        elif event == "c_call" and arg is SLEEP and self._depth == 0:  # ``frame`` is the sleep's caller
+            self.waits.append(Wait(_caller(frame), "time.sleep", None, self.iteration))
 
     def wrap(self, primitive: str, real: Callable[..., Any], bound: Callable[..., float | None]) -> Callable[..., Any]:
         @functools.wraps(real)
@@ -223,7 +228,6 @@ def run_census(project: Any, monkeypatch: pytest.MonkeyPatch, *, check: Callable
     monkeypatch.setattr(lead_broker.LeadBroker, "_watchdog", watched)
     monkeypatch.setattr(sqlite3, "connect", census.wrap("sqlite3.connect", sqlite3.connect,
                                                          lambda *a, timeout=5.0, **k: timeout))
-    monkeypatch.setattr(time, "sleep", census.wrap("time.sleep", time.sleep, lambda seconds: seconds))
     root = project.root / ".aew"
     broker = lead_broker.LeadBroker(Engine.discover(project.root), project.token)
     broker.start()
@@ -283,6 +287,18 @@ def test_an_authority_check_that_reads_the_archive_is_found_waiting_on_the_histo
     assert any("aew.history.index:HistoryIndex._db makes a blocking call (connect)" in p for p in found), found
     waited = "sqlite3.connect (bound 30.0) from aew.history.index:HistoryIndex._db"
     assert any(p.startswith(waited) for p in found), found
+
+
+def test_a_sleep_on_the_watchdog_path_is_found(project, monkeypatch):
+    """The profiler's sight of ``time.sleep``, planted: a check that sleeps, where the scan finds no blocking call."""
+
+    def sleeping(state: dict[str, Any], token: str) -> Any:
+        time.sleep(0.001)
+        return require_held_lead(state, token)
+
+    found = problems(run_census(project, monkeypatch, check=sleeping))
+    assert any(p.startswith("time.sleep (bound None) from aew.harness.lead_broker:LeadBroker._authority_lost")
+               for p in found), found
 
 
 @pytest.mark.parametrize(("body", "names"), [

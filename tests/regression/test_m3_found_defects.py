@@ -91,7 +91,8 @@ def test_a_lead_session_that_ends_during_an_authority_check_is_not_superseded(mo
         if token != "the-lead-credential":
             raise errors.StaleAuthority("Lead authority superseded")
 
-    monkeypatch.setattr(lead_broker, "require_lead", require_lead)
+    monkeypatch.setattr(lead_broker, "require_lead", require_lead)  # the broker's start
+    monkeypatch.setattr(lead_broker, "require_held_lead", require_lead)  # the watchdog's check (CI on PR #281)
     monkeypatch.setattr(lead_broker, "POLL_S", 0.01)
     broker = lead_broker.LeadBroker(Engine(), "the-lead-credential")
     broker.start()

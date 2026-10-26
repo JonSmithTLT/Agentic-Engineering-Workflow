@@ -61,6 +61,7 @@ def peer_uid(conn: socket.socket) -> int | None:
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
     timeout = REQUEST_TIMEOUT_S
+    _route: str | None = None  # the route a request reached, once its peer passed
 
     @property
     def _srv(self) -> _Server:
@@ -72,6 +73,13 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         # The request line and the status only: a PIN travels only in a body, and no body is ever logged.
         sys.stderr.write(f"aew-g3 {self._srv.kind}: {format % args}\n")
+
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        # A successful pending read is not logged: the confirmer polls it every few seconds, and its lines would bury
+        # the journal's real entries (addendum 4). A refused or failed read is logged like every other request.
+        if self._route == "list_pending" and code == 200:
+            return
+        super().log_request(code, size)
 
     def _send(self, reply: Reply) -> None:
         status, body = reply
@@ -108,6 +116,7 @@ class _Handler(BaseHTTPRequestHandler):
                 break
         else:
             return self._send(wire.problem("NOT_FOUND"))
+        self._route = name
         svc = self._srv.service
         if method == "GET":
             return self._send(svc.get(match.group(1)) if name == "get" else svc.list_pending())

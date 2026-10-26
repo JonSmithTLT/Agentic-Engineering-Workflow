@@ -16,6 +16,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from aew.engine import steering
 from aew.engine.api import Engine
 from aew.engine.steering import OperatorPrincipal
 from aew.engine.store import Transition
@@ -155,6 +156,30 @@ def broker_chain(broker: Any, aew_root: Path) -> Callable[[], str]:
             lines.append(f"the liveness record: beat_at {now - record['beat_at']:.2f}s ago, watchdog_tick_at "
                          f"{now - record['watchdog_tick_at']:.2f}s ago, closed_at {record.get('closed_at')!r}, "
                          f"wedge_after_s {record['wedge_after_s']}")
+        return "\n".join(lines)
+
+    return describe
+
+
+def loop_chain(broker: Any) -> Callable[[], str]:
+    """A describer for a wait on a Lead broker's steering loop (#281 at 8e71cc4c: its first activation timed out with
+    no word on where): what it has run, its last recorded stop, and the loop thread's and the watchdog's stacks, as
+    they stand at the timeout. The loop thread in a stage's run is an activation still working (``close()`` then waits
+    for it); in ``FileLock._wait``, it waits on the control lock; in the history index, on another connection."""
+
+    def describe() -> str:
+        loop = broker.loop
+        recorded = loop.aew_root / steering.LOOP_REL
+        try:
+            stop = json.loads(recorded.read_text(encoding="utf-8")).get("stop")
+        except (OSError, ValueError):
+            stop = "(no loop.json, or racing its rewrite)"
+        thread = loop._thread
+        lines = [f"loop.executed: {[x['action'] for x in loop.executed]}", f"loop.json's stop: {stop!r}",
+                 "the loop thread: " + ("not started" if thread is None else
+                                        f"{'alive' if thread.is_alive() else 'ended'}; its stack:\n"
+                                        f"{thread_stack(thread)}"),
+                 f"the watchdog thread's stack:\n{thread_stack(broker._watch)}"]
         return "\n".join(lines)
 
     return describe

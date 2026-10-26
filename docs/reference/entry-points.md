@@ -7,14 +7,14 @@ Every AEW process entry point, from `aew.process_kind.ENTRY_POINTS`: its kind, w
 - **Kind:** store_writer
 - **Why:** the CLI the operator, the Lead and AEW's own workers (the custody worker) run: engine commands take the control lock
 - **Declares itself at:** `aew.cli.main:_main`
-- **Starts, `-m`:** `aew.engine.custody_ops:worker_argv`
+- **Starts, `-m`:** `aew.engine.custody_ops:worker_argv`, `aew.harness.lead_broker:run_read`
 - **Starts, `console-script-argv`:** `aew.dashboard.projections:Projector._search_hit`
 - **Starts, `console-script-on-PATH`:** `aew.harness.agentenv:build`, `aew.harness.opencode.lead:tui_env`
 
 ### `aew (contained Lead)`
 
 - **Kind:** non_writer
-- **Why:** the CLI inside the contained Lead's sandbox (AEW_LEAD_CONTAINED set): its Lead-authenticated commands go through the Lead broker, which holds the credential and the lock, and it reads lock-free, since the sandbox holds no control lock (`.aew/local` is masked) and `.aew` is read-only there
+- **Why:** the CLI inside the contained Lead's sandbox (AEW_LEAD_CONTAINED set): its Lead-authenticated commands go through the Lead broker, which holds the credential and the lock, and it reads lock-free, since the sandbox holds no control lock (`.aew/local` is masked) and `.aew` is read-only there; and the reads that broker relays to the host for it (lead_broker.RELAYED_READS), which read lock-free there too and write nothing
 - **Declares itself at:** `aew.cli.main:_main`
 - **Starts, `console-script-on-PATH`:** `aew.harness.agentenv:build`, `aew.harness.opencode.lead:tui_env`
 

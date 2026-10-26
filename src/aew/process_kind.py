@@ -43,7 +43,8 @@ ENTRY_POINTS: dict[str, tuple[str, str]] = {
     "aew (contained Lead)": (NON_WRITER, "the CLI inside the contained Lead's sandbox (AEW_LEAD_CONTAINED set): its "
                              "Lead-authenticated commands go through the Lead broker, which holds the credential and "
                              "the lock, and it reads lock-free, since the sandbox holds no control lock (`.aew/local` "
-                             "is masked) and `.aew` is read-only there"),
+                             "is masked) and `.aew` is read-only there; and the reads that broker relays to the host "
+                             "for it (lead_broker.RELAYED_READS), which read lock-free there too and write nothing"),
     "aew lead mcp": (NON_WRITER, "the Lead's MCP transport: it constructs no engine and forwards every call to the "
                      "Lead broker, which holds the credential"),
     "aew.harness.supervisor": (STORE_WRITER, "a run's supervisor: holds the run's credential and commits through the "

@@ -38,6 +38,9 @@ vocabulary:
       names this command
     shell-only (pending A2/A4): the Lead reaches it only by `aew` from its shell or the recovery `cli` tool;
       `partly_via` names the tools that cover some of its uses
+  relayed:
+    contained-lead: a read the contained Lead's broker runs on the host for it (lead_broker.RELAYED_READS; STG-05
+      CS-4 addendum 4), since what it reads is under the `.aew/local` its sandbox masks
   lead_dispositions:
     typed: the Lead genuinely needs it; it has a typed home (its door is typed)
     engine-owned: AEW does it deterministically; the Lead does not call it (it leaves LEAD_REACHABLE)
@@ -184,6 +187,7 @@ commands:
     probe: [status]
     door: typed
     via: [status]
+    relayed: contained-lead
     refusals: [PROJECT_NOT_FOUND, USAGE]
     note: "the operator reads a revision from it in today's adopt and takeover fallbacks"
   - name: resume
@@ -195,6 +199,7 @@ commands:
     probe: [resume]
     door: typed
     via: [resume]
+    relayed: contained-lead
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: guide
     home: product
@@ -1012,6 +1017,7 @@ commands:
       - [harness, status, "{invocation}"]
     door: typed
     via: [harness_status]
+    relayed: contained-lead
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: harness wait
     home: product
@@ -1023,6 +1029,7 @@ commands:
     probe_refused: "NOT_FOUND: the sample has no harness run (a run needs a launched harness)"
     door: typed
     via: [harness_wait]
+    relayed: contained-lead
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: harness stop
     home: product
@@ -1460,6 +1467,7 @@ commands:
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
     probe: [map, show]
+    relayed: contained-lead
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: map diff
     home: diagnostic
@@ -1468,6 +1476,7 @@ commands:
     mutates: "no"
     mutates_basis: "a read: its handler only reads the committed state or local telemetry"
     probe: [map, diff, --commit, HEAD, --commit, HEAD]
+    relayed: contained-lead
     refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: operator serve
     home: operator-admin

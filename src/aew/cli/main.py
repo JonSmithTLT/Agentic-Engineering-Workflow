@@ -181,6 +181,9 @@ def _run_main(argv: list[str]) -> int:
         parser.print_help()
         return 2
     try:
+        relayed = _relayed_read(args, argv)
+        if relayed is not None:
+            return relayed
         result, as_json = _run(args, argv, handler)
     except AEWError as exc:
         # A refusal that moved the revision by recording itself (an anomaly, M4-E E5b) says so beside the error.
@@ -201,6 +204,21 @@ def _run_main(argv: list[str]) -> int:
         return 1
     exit_status = getattr(args, "exit_status", None)  # a command whose result has its own exit status (`harness wait`)
     return int(exit_status(result)) if exit_status is not None else 0
+
+
+def _relayed_read(args: argparse.Namespace, argv: list[str]) -> int | None:
+    """Inside the contained Lead, a read its broker runs on the host (STG-05 CS-4 addendum 4: what it reads is under
+    the masked `.aew/local`): what it printed there, as it printed it, and its exit status. ``None`` otherwise."""
+    if not os.environ.get("AEW_LEAD_BROKER"):
+        return None
+    from aew.harness import lead_broker
+
+    if not lead_broker.relays(args):
+        return None
+    reply = lead_broker.relay_read(argv)
+    sys.stdout.write(reply["stdout"])
+    sys.stderr.write(reply["stderr"])
+    return int(reply["exit"])
 
 
 def _contained_refusal(exc: OSError) -> AEWError | None:

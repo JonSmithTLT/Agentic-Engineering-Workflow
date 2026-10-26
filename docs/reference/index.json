@@ -92,7 +92,7 @@
         "lower-bound": 250
       }
     },
-    "digest": "sha256:9daceca349d37ca77108548c29f7d32e57e9d5f629a42b41dc5490652e1989b9",
+    "digest": "sha256:f383396d0fd7afdcf0654e78db5d9e7994fa009a29a4a69715e264813463e953",
     "records": 1110,
     "unresolved": 102
   },
@@ -11299,6 +11299,12 @@
             "symbol": "build"
           },
           {
+            "attribution": "derived",
+            "form": "-m",
+            "module": "aew.harness.lead_broker",
+            "symbol": "run_read"
+          },
+          {
             "attribution": "unattributed",
             "form": "console-script-on-PATH",
             "module": "aew.harness.opencode.lead",
@@ -11349,7 +11355,7 @@
         ],
         "entry_point": "aew (contained Lead)",
         "kind": "non_writer",
-        "reason": "the CLI inside the contained Lead's sandbox (AEW_LEAD_CONTAINED set): its Lead-authenticated commands go through the Lead broker, which holds the credential and the lock, and it reads lock-free, since the sandbox holds no control lock (`.aew/local` is masked) and `.aew` is read-only there",
+        "reason": "the CLI inside the contained Lead's sandbox (AEW_LEAD_CONTAINED set): its Lead-authenticated commands go through the Lead broker, which holds the credential and the lock, and it reads lock-free, since the sandbox holds no control lock (`.aew/local` is masked) and `.aew` is read-only there; and the reads that broker relays to the host for it (lead_broker.RELAYED_READS), which read lock-free there too and write nothing",
         "starts": [
           {
             "attribution": "unattributed",
@@ -20398,6 +20404,7 @@
         "aew.harness.procs",
         "aew.harness.steering_loop",
         "aew.harness.tool_calls",
+        "aew.process_kind",
         "aew.surface.context",
         "aew.surface.run",
         "aew.surface.validate",

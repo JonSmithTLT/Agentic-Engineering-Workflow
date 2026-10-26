@@ -13,6 +13,11 @@ are the source.
   row 4 in the Lead's form.
 - **The CLI inside** is a non-writer (`aew (contained Lead)`): reads are lock-free, Lead commands go through the
   broker, and a write meeting the read-only store is refused (`PERMISSION_DENIED`, reason `lead_contained`).
+- **Relayed reads (addendum 4, ruling 1, option (a)):** `status`, `resume`, `harness status`, `harness wait`, `map
+  show` and `map diff` read what `.aew/local`'s mask hides, so the broker runs them on the host (`lead.read`,
+  cooperative) and returns what they print; a closed set beside `LEAD_REACHABLE` (`lead_broker.RELAYED_READS`),
+  parsed against each command's own parser, run as an argument list in a non-writer process of its own on the
+  Lead's project only, ended when the session closes. Every other command is classified (`CONTAINED_LOCAL`).
 - **The network:** `proxy_only` with any-public egress (`HTTPS_PROXY` and `HTTP_PROXY`, loopback excepted); one
   relay per provider of the operator's stored login whose key comes from a known variable (openai, anthropic,
   google), each provider's `baseURL` at its relay, its variable a sentinel inside. The stored login is read on the

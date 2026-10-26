@@ -1447,6 +1447,18 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 - **The CLI inside** is a non-writer (`aew (contained Lead)` in `process_kind`): it reads lock-free, and its
   Lead-authenticated commands go through the broker, which holds the credential and the control lock. A write that
   meets the read-only store is refused as `PERMISSION_DENIED`, reason `lead_contained`, never a traceback.
+- **Its reads of what the mask hides are relayed** (addendum 4, ruling 1, option (a); the designer's change to the
+  broker's rule): `lead_broker.RELAYED_READS`, a closed set beside `LEAD_REACHABLE` (`status`, `resume`, `harness
+  status`, `harness wait`, `map show`, `map diff`), read what is under `.aew/local` (the runs' records, the
+  notifier's and the steering loop's state, the map store). The CLI inside sends each to the broker (`lead.read`, a
+  cooperative operation), which runs it on the host and returns what it printed, as printed, with its exit status;
+  the run directories stay masked. The broker parses the request against the command's own parser, refuses an
+  option outside the command's list, a value that is not a name, a sha256 or a revision, and anything outside the
+  Lead's project, and runs `aew` with the argument list, never a shell string, in a process of its own: a
+  non-writer with no credential and no broker in its environment, which the session ends when it closes. A command
+  outside the set is refused, naming the operator's own shell; every other command without a Lead credential runs in
+  the sandbox or is the operator's (`lead_broker.CONTAINED_LOCAL`, each with why). Each relayed command's
+  surface-map entry is marked `relayed: contained-lead`.
 - **Its start, timed** (addendum 3): each stage's seconds (`version`, `logins`, `seat`, `sandbox`, `network`,
   `lead_logins`; `lead.StartStages`) go on the label as `start_s` and to the debug log. Five early starts of 15 to
   31 s on the Rocky VM went unexplained, so a recurrence names its stage.
@@ -1575,3 +1587,13 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   next request; no opencode line without a stored opencode key; the start stages timed; the provider variables in
   the environment and the start with no provider; the Lead's own login row; the preferences without their plugins; the recent models seeded
   once, never the prompt history.
+- The relayed reads (addendum 4, ruling 1): `tests/unit/test_lead_reachability.py`, every command classified exactly
+  once (`LEAD_REACHABLE`, `RELAYED_READS`, `OPERATOR_ONLY`, `NOT_RELAYED`, `CONTAINED_LOCAL`), the surface map
+  marking exactly the relayed set, each a read, and a command outside it, an option outside its list or a value
+  that is not a name, sha256 or revision refused before anything runs; `tests/integration/test_lead_relayed_reads.py`,
+  each relayed read printing what the host prints (a heartbeat's age apart) and changing nothing under `.aew`, no
+  output carrying a planted server password, bridge key or token, a held relayed `harness wait` delaying no Lead
+  write and returning when its run ends, the session's close ending one in flight at once, and no read reaching
+  another project. AT-14 and AT-17 run it contained, at a pseudo-terminal. `tests/integration/test_lead_containment.py`
+  (Linux): the operator's OpenCode directory under each of the four XDG bases empty from inside, with the Lead's own
+  state working (addendum 4, ruling 2).

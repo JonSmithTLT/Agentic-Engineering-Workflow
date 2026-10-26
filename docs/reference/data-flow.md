@@ -89,7 +89,7 @@ flowchart LR
 | Entry point | Kind | Why |
 |---|---|---|
 | `aew` | store_writer | the CLI the operator, the Lead and AEW's own workers (the custody worker) run: engine commands take the control lock |
-| `aew (contained Lead)` | non_writer | the CLI inside the contained Lead's sandbox (AEW_LEAD_CONTAINED set): its Lead-authenticated commands go through the Lead broker, which holds the credential and the lock, and it reads lock-free, since the sandbox holds no control lock (`.aew/local` is masked) and `.aew` is read-only there |
+| `aew (contained Lead)` | non_writer | the CLI inside the contained Lead's sandbox (AEW_LEAD_CONTAINED set): its Lead-authenticated commands go through the Lead broker, which holds the credential and the lock, and it reads lock-free, since the sandbox holds no control lock (`.aew/local` is masked) and `.aew` is read-only there; and the reads that broker relays to the host for it (lead_broker.RELAYED_READS), which read lock-free there too and write nothing |
 | `aew (worker run)` | non_writer | the CLI inside a worker's harness run (AEW_AGENT_ENDPOINT set): `whoami`, `check run` and `submit` go through the run's bridge, whose supervisor holds the credential and the lock; nothing else in that process may take the lock |
 | `aew dashboard serve` | non_writer | the dashboard server, long-running and read-only: it reads the store lock-free (dashboard.reader) and serializes its own publication with its endpoint lock, never the control lock |
 | `aew lead mcp` | non_writer | the Lead's MCP transport: it constructs no engine and forwards every call to the Lead broker, which holds the credential |

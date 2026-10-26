@@ -221,6 +221,10 @@ The first vertical slice against the architecture workspace's adopted STG-01 v0.
 | [Initial joint-wrapper review](stg02/reviews/review-joint-wrapper-041595cf.md) | Original test-wrapper findings |
 | [Corrected joint-wrapper review](stg02/reviews/review-joint-wrapper-f8dd097c.md) | Exact-commit wrapper recheck and limits |
 
+## The adopted contract text ([`contracts/`](contracts/README.md))
+
+The design text the operator has adopted for AEW, published under the operator's decision of 2026-10-25 (D-A): sanitised, generated copies from the private design record, each with a header naming its position and source. Nobody edits them by hand; they are regenerated whenever the adopted text changes, and `tests/unit/test_contracts_published.py` checks every copy against `MANIFEST.json`. [`contracts/README.md`](contracts/README.md) lists the positions and their files.
+
 ## The generated as-built reference ([`reference/`](reference/README.md))
 
 What the code is, enumerated from the code by `python tools/reference.py render` and kept true by `python tools/reference.py check`, which `tests/unit/test_reference.py` runs in CI. It states what the code is, never what it should be. These files are generated: change the code, then render (a pull request that changes enumerated code commits the re-render). One row per file, in file order.

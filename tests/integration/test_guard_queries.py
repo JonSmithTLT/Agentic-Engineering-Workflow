@@ -159,6 +159,37 @@ def test_guard_query_matches_execute_ready_for_review(ready):
     assert control["state"] == "REVIEW_PENDING" and control["evidence"]  # the effect ran after the query passed
 
 
+def test_guard_query_matches_execute_ready_for_verification_without_review(ready, tmp_path):
+    """RUNNING -> VERIFY_PENDING (`ready_for_verification_without_review`, its query form, R1 plan v4 §4.2 item 5):
+    refused while a review gate applies; where none does, refused until the implementation is reported, then allowed
+    and committed with its effect (the relied-on evidence pinned)."""
+    import copy
+
+    from aewflow import assign, implement
+
+    from aew.knowledge.manifest import DEFAULT_GATES
+
+    p, wid, engine = ready
+    implement(assign(p, wid))
+    answer = equivalent(engine, "work.transition", wid, {"to": "VERIFY_PENDING"},
+                        _transition(engine, p, wid, "VERIFY_PENDING"))
+    assert "independent review is required" in answer["blocking_conditions"][0]["message"]
+    gates = copy.deepcopy(DEFAULT_GATES)
+    gates["risk_paths"]["1"] = [g for g in gates["risk_paths"]["1"] if not g.startswith("review_")]
+    q = sample_project(tmp_path / "no-review", gates=gates)
+    other = create_planned_ticket(q, tmp_path)
+    impl = assign(q, other)
+    other_engine = Engine.discover(q.root)
+    answer = equivalent(other_engine, "work.transition", other, {"to": "VERIFY_PENDING"},
+                        _transition(other_engine, q, other, "VERIFY_PENDING"))
+    assert answer["reason_codes"] == ["GATE_UNSATISFIED"] and "unmet" in answer["blocking_conditions"][0]["details"]
+    implement(impl)
+    equivalent(other_engine, "work.transition", other, {"to": "VERIFY_PENDING"},
+               _transition(other_engine, q, other, "VERIFY_PENDING"))
+    control = q.ok("work", "show", other)["control"]
+    assert control["state"] == "VERIFY_PENDING" and control["evidence"]  # the effect ran after the query passed
+
+
 # ---------------------------------------------------------------------------------------------- review.ingest
 
 

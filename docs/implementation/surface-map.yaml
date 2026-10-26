@@ -1523,7 +1523,8 @@ commands:
     mutates: "yes"
     mutates_basis: "writes the health checks' results to the host's register, and fetches payloads to existing pins"
     lead_disposition: forbidden-to-lead
-    lead_kept_out_by: "capability_commands.refuse_lead_session: refused where a Lead session's environment is present"
+    lead_kept_out_by: "capability_commands.refuse_lead_session: refused where a Lead session's environment is present;
+      and lead_broker.run_cli, through capability_commands.LEAD_KEPT_OUT, on the Lead broker's channels"
     primitive: none
     primitive_reason: "host state outside the control engine: no engine primitive runs it"
     keep_out_probe: [capability, check, --offline]

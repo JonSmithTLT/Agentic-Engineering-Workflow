@@ -28,7 +28,16 @@ from aew.engine.base import TxnContext
 from aew.engine.dependencies import dependency_blockers, effective_edge_set
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
-from aew.engine.seams import GATE_CONTEXT, INGEST, INVOKE, NON_MUTATING, GuardRegistration, KindRegistration
+from aew.engine.seams import (
+    GATE,
+    GATE_CONTEXT,
+    INGEST,
+    INVOKE,
+    NON_MUTATING,
+    SOURCE,
+    GuardRegistration,
+    KindRegistration,
+)
 from aew.errors import (
     AEWError,
     ConcurrencyLimit,
@@ -654,16 +663,17 @@ class NonMutating:
         """Lead-transition guards for non-mutating Tickets (mutating Tickets keep their M1 guards): each replaces the
         general guard of the same name for this kind only. ``evidence_only_complete`` exists only here, for every
         kind (a mutating Ticket is refused by it)."""
-        own = [("implementer_active", self._guard_implementer_active),
-               ("ready_for_review", self._guard_ready_for_review),
-               ("ready_for_verification_without_review", self._guard_ready_for_verification_without_review),
-               ("review_current", self._guard_review_current),
+        own = [("implementer_active", self._guard_implementer_active, SOURCE),
+               ("ready_for_review", self._guard_ready_for_review, GATE),
+               ("ready_for_verification_without_review", self._guard_ready_for_verification_without_review, GATE),
+               ("review_current", self._guard_review_current, GATE),
                ("commit_ready_without_review_or_verification",
-                self._guard_commit_ready_without_review_or_verification),
-               ("commit_ready_without_verification", self._guard_commit_ready_without_verification),
-               ("all_gates_current", self._guard_all_gates_current)]
-        return [GuardRegistration(name, guard, (NON_MUTATING,), replace=True) for name, guard in own] + [
-            GuardRegistration("evidence_only_complete", self._guard_evidence_only_complete)]
+                self._guard_commit_ready_without_review_or_verification, GATE),
+               ("commit_ready_without_verification", self._guard_commit_ready_without_verification, GATE),
+               ("all_gates_current", self._guard_all_gates_current, GATE)]
+        return [GuardRegistration(name, guard, (NON_MUTATING,), replace=True, role=role)
+                for name, guard, role in own] + [
+            GuardRegistration("evidence_only_complete", self._guard_evidence_only_complete, role=GATE)]
 
     def _guard_implementer_active(self, ctx, work_id, unit, to) -> None:
         inv = ctx.state["invocations"].get((unit.get("execution") or {}).get("invocation") or "")

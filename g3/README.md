@@ -10,8 +10,8 @@ an approval:
 4. The owner consumes the record once, at allocation.
 5. If anything fails, the action is held.
 
-This directory holds part G3-A, the service and its systemd units, and part G3-B, the confirmer. The owners' side
-(G3-C) and the CLI client (G3-D) come next.
+This directory holds part G3-A, the service and its systemd units, and part G3-B, the confirmer. Part G3-D, the CLI
+client, is `aew g3 request`, in `aew` itself (`src/aew/g3client.py`). The owners' side (G3-C) comes next.
 
 ## What runs, and as whom
 
@@ -86,6 +86,37 @@ fixed text, never text the service sent.
   the desktop's notifications require, and run `/opt/aew-g3/bin/aew-g3-confirm`. It needs an X11 or Wayland session
   of the operator's own. If the host lacks GTK3 for that Python, `install.sh` says
   so, and approvals wait until root installs `gtk3` and `python3-gobject`.
+- **From a terminal,** it says where its window is: open on the desktop until it is closed, which ends the command,
+  or open in the instance already running, in which case the command returns at once. With no display to reach, it
+  says so in one line naming the route (the menu, or a terminal in the desktop session) and exits 3. GDK decides
+  whether a display is reachable, not the environment: with no `WAYLAND_DISPLAY`, the session's `wayland-0` is still
+  found, even from an ssh login, and the window then opens on that desktop.
+- **The window never waits on the service:** every call on `confirm.sock` runs on a worker thread, and its reply
+  comes back through the main loop, so a stalled service cannot freeze the window.
+
+## The CLI client (G3-D)
+
+```sh
+aew g3 request <set.json> --o01 http://127.0.0.1:<port> --token-file <file>
+```
+
+The operator runs it at their own terminal (A-37 G3-02, G3-07). It is never run in a Lead session: there it refuses,
+names the variables that showed a Lead session, and says to ask the operator to run it.
+- **The set** is a complete O-01 0.2 `CommandSet` in a JSON file, every member a protected action, with
+  `origin_proof_ref` and `consent_set_ref` null. Any other shape is refused before anything is sent, and the refusal
+  names what was wrong and the fix. A typed builder per action comes with that action's wiring.
+- **The approval:** the client puts a fresh proof on each member (`proof:` and 32 hex digits from `secrets`), submits
+  the set on `request.sock`, says on standard error which approval it waits for and until when, and asks the service
+  every second until the operator approves or declines in the confirmer. The wait ends at the approval's own expiry,
+  never more than ten minutes and a few seconds of grace. A decline, an expiry or a restart of the service ends it
+  with `OPERATOR_AUTHORIZATION_REQUIRED` and submits nothing. The client never sees a PIN.
+- **The submission:** the approved set goes, unchanged but for its `consent_set_ref`, to the STG-02 route
+  `POST /o01/v0/command-sets` at the `--o01` URL, which must be plain `http` on the loopback. The client first checks
+  that the consent record's `set_digest` is the SW-02 digest of exactly that set. The bearer token is read from the
+  file and goes in the `Authorization` header only: it is never printed, logged, or put in an error.
+- **The receipt** is printed. Until G3-C, the owner cannot establish G3 as the origin, so each member comes back
+  `ORIGIN_NOT_ESTABLISHED`: the client adds a fixed note that this is not a failure of the request, and that G3
+  qualifies on this host with the owners' side (G3-C) installed and every agent context contained.
 
 ## Install (root, on the host)
 
@@ -126,7 +157,9 @@ it. The confirmer starts by itself from the operator's next login.
 - **`tests/unit/test_g3_confirm.py`:** the confirmer's restated facts against their owners, what it shows of each kind
   of line, the renderings it refuses whole, the decisions it sends, and the outcome texts. For the notifications: one
   per approval, never repeated, withdrawn when it leaves the list, in fixed text; the desktop entries; and that only
-  one method shows the window, reached only by a launch or a click. Two static checks keep it within Python 3.6: the
+  one method shows the window, reached only by a launch or a click. Every socket call is handed to a worker thread,
+  and a launch's two lines (where the window is, and no display) are chosen and written before it runs. Two static
+  checks keep it within Python 3.6: the
   parser at its lowest version, and a list of the later names the parser cannot see.
 - **`tests/integration/test_g3_confirm_process.py`:** the confirmer's core against the real service, on Linux: listing,
   approving once, declining, every refusal it can draw, another account's socket, the service's log of pending reads,
@@ -134,5 +167,11 @@ it. The confirmer starts by itself from the operator's next login.
 - **`tests/helpers/g3_confirm_py36.py`:** the run under the host's own Python 3.6, which CI does not have, against a
   throwaway service. On a private broadway display and a private session bus, it also drives the real window and the
   notifications, through a stand-in notification service. Its result is recorded in the pull request.
+- **`tests/unit/test_g3client.py`:** the CLI client on both platforms: its restated facts against their owners, each
+  refused shape of set, the fresh proofs, the digest check, the bounded wait against a stand-in service, the loopback
+  URL, the token file, the O-01 route's answers with a planted token found nowhere, and the Lead-session refusal.
+- **`tests/integration/test_g3client_process.py`:** `aew g3 request` against the real service on its socket and the
+  STG-02 route on 127.0.0.1, on Linux: approved and submitted, declined, expired, lost to a restart, refused by the
+  service, and no service.
 
 **Coverage:** the coverage ratchet measures `src/aew` only, so it does not count this package's lines.

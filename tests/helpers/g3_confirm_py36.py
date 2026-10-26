@@ -84,6 +84,21 @@ def main(argv):
                            universal_newlines=True, timeout=30)
         assert p.returncode == 2 and "takes no arguments" in p.stderr, (extra, p.returncode, p.stderr)
     done.append("an argument is refused before GTK is imported, GTK's own options too: exit 2")
+    # A launch with nowhere to show a window says so and exits. No display variable, no GDK backend, and a runtime
+    # directory with no wayland-0 in it; its session bus is an absent socket, so even an ablated build that goes on
+    # can reach no instance, and no desktop.
+    bare = {k: v for k, v in os.environ.items()
+            if k not in ("DISPLAY", "WAYLAND_DISPLAY", "GDK_BACKEND", "BROADWAY_DISPLAY")}
+    bare.update(XDG_RUNTIME_DIR=runtime_dir,
+                DBUS_SESSION_BUS_ADDRESS="unix:path=" + os.path.join(runtime_dir, "no-bus"))
+    p = subprocess.run(child(g3_dir, confirm, "start"), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                       universal_newlines=True, timeout=30, env=bare)
+    # GDK says "Unable to init server" itself as Gtk is imported; the confirmer's own line is the last, and its only.
+    said = p.stderr.splitlines()
+    assert (p.returncode, p.stdout, said[-1:]) == (core.NO_DISPLAY_EXIT, "", [core.NO_DISPLAY]), \
+        (p.returncode, p.stdout, p.stderr)
+    assert all(s.startswith("Unable to init server") for s in said[:-1]), p.stderr
+    done.append("no display reachable: the one line naming the route, exit " + str(core.NO_DISPLAY_EXIT))
 
     ref = ask()
     listed = core.list_pending(confirm)
@@ -204,6 +219,8 @@ def drive_app(window, core, g3_dir, confirm, ask):
     opens it; a menu launch opens the running instance's window, and a second login start does nothing; with no
     notification service nothing fails; on another account's socket the login start quits with nothing shown; and an
     instance sent SIGTERM withdraws what it posted."""
+    import pty
+    import select
     import signal
     import time
 
@@ -279,6 +296,37 @@ def drive_app(window, core, g3_dir, confirm, ask):
         del calls[:]
         said.append(name + ": the instance quits, and withdraws what it posted")
 
+    run = child(g3_dir, confirm, "start")
+
+    def tty_launch():
+        """A launch from a terminal: its standard output is a pseudo-terminal, read until its first line."""
+        master, slave = pty.openpty()
+        p = subprocess.Popen(run, stdout=slave, stderr=subprocess.PIPE, universal_newlines=True)
+        os.close(slave)
+        got = []
+
+        def line():
+            if select.select([master], [], [], 0)[0]:
+                try:
+                    got.append(os.read(master, 4096).decode("utf-8"))
+                except OSError:
+                    pass
+            return "\n" in "".join(got) or p.poll() is not None
+        pump(line, "the terminal's line", 30)  # pumped: a running instance answers the launch on this loop
+        return p, master, "".join(got).replace("\r", "")
+
+    here, master, text = tty_launch()  # no instance yet: this one is the session's, with its own window
+    try:
+        assert text == core.OPEN_HERE + "\n", text
+        here.send_signal(signal.SIGTERM)
+        pump(lambda: here.poll() is not None, "the terminal launch's exit", 30)
+    finally:
+        if here.poll() is None:
+            here.kill()
+        os.close(master)
+    assert here.returncode == 0, (here.returncode, here.stderr.read())
+    said.append("a terminal launch says its window is open on the desktop, and that closing it ends the command")
+
     app = window.App(True, confirm)
     app.app.register(None)
     assert not app.app.get_is_remote()
@@ -299,7 +347,6 @@ def drive_app(window, core, g3_dir, confirm, ask):
     pump(lambda: any(c[0] == "CloseNotification" for c in calls), "the withdrawal")
     said.append("decided: withdrawn")
 
-    run = child(g3_dir, confirm, "start")
     second = subprocess.Popen(run + [core.AT_LOGIN], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     pump(lambda: second.poll() is not None, "a second login start's exit", 30)
     assert second.returncode == 0 and app.confirmer is None and shows == [], (second.returncode, shows)
@@ -324,10 +371,19 @@ def drive_app(window, core, g3_dir, confirm, ask):
     app._on_close(app.confirmer.window, None)
     assert app.confirmer.pin.get_text() == "" and not app.confirmer.window.get_visible(), "a PIN outlived the close"
     said.append("closing the window empties the PIN field")
-    menu = subprocess.Popen(run, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    menu = subprocess.Popen(run, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True)
     pump(lambda: menu.poll() is not None and app.confirmer.window.get_visible(), "the menu launch's window", 30)
-    assert menu.returncode == 0 and "present" in shows
-    said.append("a menu launch opens the running instance's window")
+    assert menu.returncode == 0 and "present" in shows and menu.stdout.read() == ""  # no terminal: no line
+    said.append("a menu launch opens the running instance's window, and writes nothing")
+    there, master, text = tty_launch()
+    try:
+        pump(lambda: there.poll() is not None, "the terminal launch's exit, the instance already running", 30)
+    finally:
+        if there.poll() is None:
+            there.kill()
+        os.close(master)
+    assert text == core.OPEN_THERE + "\n" and there.returncode == 0, (text, there.returncode)
+    said.append("a terminal launch with an instance running says its window is open there, and returns")
 
     # n3, through a real decision (#282 quick check, Q2): a Decline whose reply is slowed, and the window opened
     # again (a click or a launch) while it is in flight. Every button stays held until the reply, then is free.

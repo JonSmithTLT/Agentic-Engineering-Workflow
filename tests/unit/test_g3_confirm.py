@@ -239,6 +239,53 @@ def test_only_app_present_opens_raises_or_focuses_the_window_and_only_the_operat
     assert len(poll) == 2 and not {f.attr for fn in poll for f in _calls(fn)} & (SHOWS | {"_refresh"})
 
 
+def test_no_socket_call_runs_on_the_main_loop_every_one_is_handed_to_a_worker_thread() -> None:
+    """A call on confirm.sock may wait up to TIMEOUT_S; on GTK's main loop that would freeze the window. Every call of
+    core's socket functions in window.py is the body of a lambda passed to ``_in_background``, which runs it on a
+    thread and hands the result back through ``GLib.idle_add``."""
+    tree = ast.parse((PACKAGE / "window.py").read_bytes().decode())
+    socket_fns = {"list_pending", "decide", "_call"}
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+             and isinstance(n.func.value, ast.Name) and n.func.value.id == "core" and n.func.attr in socket_fns]
+    handed = {id(arg.body) for n in ast.walk(tree)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_in_background"
+              for arg in n.args[:1] if isinstance(arg, ast.Lambda)}
+    assert len(calls) == 3  # control: the refresh, the decision and the poll are found where they are
+    assert all(id(c) in handed for c in calls), [ast.dump(c.func) for c in calls if id(c) not in handed]
+    worker = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_in_background")
+    assert {"Thread", "idle_add"} <= {f.attr for f in _calls(worker)}
+
+
+# ------------------------------------------------------------------------------------------------ a launch
+@pytest.mark.parametrize("at_login, display, refused", [
+    (False, False, True), (False, True, False), (True, False, False), (True, True, False)])
+def test_a_launch_with_nowhere_to_show_its_window_says_so_and_names_the_route(
+        at_login: bool, display: bool, refused: bool) -> None:
+    line = core.display_refusal(at_login, display)
+    assert (line == core.NO_DISPLAY) if refused else line is None
+    assert "desktop's menu" in core.NO_DISPLAY and "terminal in the desktop session" in core.NO_DISPLAY
+    assert core.NO_DISPLAY_EXIT not in (0, 2)  # neither success nor the argument refusal
+
+
+@pytest.mark.parametrize("at_login, remote, terminal, line", [
+    (False, False, True, "OPEN_HERE"), (False, True, True, "OPEN_THERE"), (False, False, False, None),
+    (False, True, False, None), (True, False, True, None), (True, True, True, None)])
+def test_a_launch_from_a_terminal_says_where_its_window_is(
+        at_login: bool, remote: bool, terminal: bool, line: str | None) -> None:
+    assert core.launch_line(at_login, remote, terminal) == (getattr(core, line) if line else None)
+    assert "close its window to end this command" in core.OPEN_HERE and "already running" in core.OPEN_THERE
+
+
+def test_the_launch_lines_are_written_by_main_before_the_application_runs() -> None:
+    """window.main refuses for want of a display before it registers, and writes the terminal's line before
+    ``app.run()``: both before any approval is shown. Display is GDK's answer, never an environment variable."""
+    main = next(n for n in ast.parse((PACKAGE / "window.py").read_bytes().decode()).body
+                if isinstance(n, ast.FunctionDef) and n.name == "main")
+    order = [f.attr for f in sorted(_calls(main), key=lambda f: (f.lineno, f.col_offset))]  # in source order
+    assert order.index("display_refusal") < order.index("register") < order.index("launch_line") < order.index("run")
+    assert "get_default" in order and "environ" not in ast.dump(main)
+
+
 # ------------------------------------------------------------------------------------------------ Python 3.6
 # The 3.7-and-later language and library the parser at feature_version (3, 7) cannot see, each named: the confirmer
 # runs under Rocky 8's platform-python, 3.6.

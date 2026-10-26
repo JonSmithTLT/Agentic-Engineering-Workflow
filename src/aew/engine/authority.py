@@ -137,6 +137,10 @@ def revoke(state: dict[str, Any], token_id: str | None, reason: str) -> None:
         record["revoke_reason"] = reason
 
 
+_SUPERSEDED = "Lead authority superseded; this credential can no longer change control state"
+_VACANT = "no Lead holds authority"
+
+
 def require_lead(state: dict[str, Any], token: str, *, allow_pending: bool = False,
                  archived: ArchivedCredential | None = None) -> dict[str, Any]:
     """Return the actor record for a valid *current* Lead credential."""
@@ -146,7 +150,7 @@ def require_lead(state: dict[str, Any], token: str, *, allow_pending: bool = Fal
     lead = state["lead"]
     if record["revoked_at"] is not None or token_id != lead.get("token_id"):
         raise StaleAuthority(
-            "Lead authority superseded; this credential can no longer change control state",
+            _SUPERSEDED,
             token_generation=record["scope"].get("generation"),
             current_generation=lead["generation"],
             revoke_reason=record.get("revoke_reason"),
@@ -160,9 +164,24 @@ def require_lead(state: dict[str, Any], token: str, *, allow_pending: bool = Fal
     if lead["status"] == "handoff_pending" and not allow_pending:
         raise PermissionDenied("a Lead handoff is pending; only `aew lead handoff cancel` is allowed")
     if lead["status"] == "vacant":
-        raise StaleAuthority("no Lead holds authority")
+        raise StaleAuthority(_VACANT)
     return {"kind": "lead", "session_label": lead.get("session_label"), "generation": lead["generation"],
             "token_id": token_id}
+
+
+def require_held_lead(state: dict[str, Any], token: str) -> dict[str, Any]:
+    """``require_lead`` for a holder checking its own credential, from the hot control state alone. A credential that
+    has left the token table has lost the seat: the current Lead's credential is always in the table (``require_lead``
+    reads it there), and an ended one leaves it only for its archive (ADR-0011 R7), which could add only its reason.
+    So a holder that polls (the Lead broker's watchdog) never waits on the derived history index, whose SQLite busy
+    wait no poll's bound counts (CI on PR #281). A credential presented to the engine is still verified by
+    ``require_lead``, where an archived one is stale authority and an unknown one is refused as unknown."""
+    token_id = token_id_of(token)
+    if token_id not in state["tokens"]:
+        lead = state["lead"]
+        raise StaleAuthority(_VACANT if lead["status"] == "vacant" else _SUPERSEDED, token_id=token_id,
+                             current_generation=lead["generation"])
+    return require_lead(state, token)  # the credential is in the table: no archive is read
 
 
 def require_invocation(

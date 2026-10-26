@@ -13,6 +13,7 @@ import io
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -48,6 +49,7 @@ from aew.engine.store import LOCK_REL
 from aew.harness import broker_liveness, event_spool, lead_broker, notify, operator_client, operator_endpoint, procs
 from aew.harness import contract as K
 from aew.harness import supervisor as S
+from aew.history.index import INDEX_REL, HistoryIndex
 
 
 @pytest.fixture
@@ -409,6 +411,50 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_of_a_held_lock
         park.unlink(missing_ok=True)  # a parked watchdog would hold close() in its join
         if holder is not None:
             holder.join(30)
+        broker.close()
+
+
+@pytest.mark.serial  # its property is timing: one watchdog iteration against a held history index
+@pytest.mark.parametrize("index", ["fresh", "existing"])
+def test_a_superseded_broker_closes_within_one_watchdog_iteration_while_the_history_index_is_held(project, monkeypatch,
+                                                                                                  index):
+    """CI on PR #281 (the Windows serial lane): with no control lock held, the superseded broker's watchdog sat in the
+    history index's `executescript` past `watchdog_wait_s`. A takeover moves the old Lead's credential out of the hot
+    token table into its archive (ADR-0011 R7), and `require_lead` looks an absent credential up in the archive, whose
+    SQLite index waits up to its own 30 s busy timeout for another connection (here the broker's own steering loop,
+    syncing the same index after the same takeover). The watchdog's bound counts the control lock's wait and no other.
+
+    Here another connection holds the index from before the takeover to past the wait: a fresh index's write lock (the
+    sighting: the watchdog's schema statements wait for it), or an existing index's exclusive lock (a reader in another
+    process blocks every connection). The watchdog decides from the hot state alone, so the broker closes within one
+    iteration either way."""
+    poll = 0.25
+    monkeypatch.setattr(lead_broker, "POLL_S", poll)
+    root = project.root / ".aew"
+    engine = Engine.discover(project.root)
+    engine.store.lock_timeout = 6 * poll  # the relation, as in the held-lock test above
+    if index == "existing":
+        HistoryIndex(root).sync(engine.store.current()["cold"]["root"])
+    (root / INDEX_REL).parent.mkdir(parents=True, exist_ok=True)
+    held = sqlite3.connect(root / INDEX_REL, timeout=10, isolation_level=None)  # its own take may wait, bounded
+    broker = lead_broker.LeadBroker(engine, project.token)
+
+    def closed_record() -> dict[str, Any] | None:
+        record = broker_liveness.read(root)
+        return record if record is not None and record.get("closed_at") is not None else None
+
+    broker.start()
+    try:
+        generation = broker.generation
+        first = until(lambda: broker_liveness.read(root), what="the first beat")
+        held.execute("BEGIN IMMEDIATE" if index == "fresh" else "BEGIN EXCLUSIVE")
+        takeover(project, monkeypatch)
+        closed = until(closed_record, watchdog_wait_s(first, poll), "the superseded broker's closed_at",
+                       describe=broker_chain(broker, root))
+        assert broker.superseded
+        assert broker_liveness.judge(closed, generation=generation, poll_s=poll).reason == "closed"
+    finally:
+        held.close()  # ends the hold: the steering loop's own index read goes on, and close() joins it
         broker.close()
 
 

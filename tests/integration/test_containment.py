@@ -643,6 +643,7 @@ def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_i
     from concurrent.futures import ThreadPoolExecutor
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
+    import proxy_env
     import worker_surface
 
     w = worker_surface.worked_project(visible)
@@ -655,8 +656,11 @@ def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_i
     layout = C.for_run(role="reviewer", scope="ticket", workspace=str(ws), run_dir=run, scratch=str(run / "scratch"),
                        bridge_dir=None, policy=None, home=str(home), project=str(w.p.root), runs=str(run.parent))
     # The code under test, whichever checkout that is (an absolute PYTHONPATH outside the sandbox stays one inside).
+    # The sandbox shares the host's network, so a fetching command (`aew capability check`, online) gets the sweep's
+    # closed route, as worker_env gives the unsandboxed sweep (#281's review, N5).
     env = {"PATH": os.environ["PATH"], "PYTHONPATH": os.environ.get("PYTHONPATH", ""), "HOME": str(home),
-           "LANG": "C.UTF-8", **layout.env, "AEW_AGENT_ENDPOINT": "/tmp/aew-no-bridge/s", "AEW_AGENT_KEY": "00" * 32}
+           "LANG": "C.UTF-8", **layout.env, "AEW_AGENT_ENDPOINT": "/tmp/aew-no-bridge/s", "AEW_AGENT_KEY": "00" * 32,
+           **proxy_env.closed_route()}
 
     def run_one(argv: list[str]) -> tuple[list[str], subprocess.CompletedProcess[str]]:
         cmd = C.bwrap_argv(layout, [sys.executable, "-m", "aew", "-C", str(w.p.root), *argv], cwd=str(ws))

@@ -228,7 +228,17 @@ def _register_files(path: Path) -> dict[str, tuple[int, int]]:
 @pytest.fixture(scope="session")
 def capability_register_dir(tmp_path_factory) -> Path:
     """The session's register, and the sentinel on the host's (CAP-1 review F2): every `aew` a test starts gets the
-    session's own base (``clean_env``), and at the session's end the host's register is as the session found it."""
+    session's own base (``clean_env``), and at the session's end the host's register is as the session found it.
+
+    Its limits (#272's quick check, QC2):
+    * a child started without ``clean_env`` that keeps the host's base is seen only here, at the end, and a read
+      leaves nothing to see;
+    * where the host sets ``XDG_DATA_HOME``, a child that keeps ``HOME`` but drops ``XDG_DATA_HOME`` writes the XDG
+      default under the home directory, which is neither redirected nor watched; on Windows, where the host's
+      ``LOCALAPPDATA`` is not the profile's own local app-data folder, a child that drops it writes the profile's
+      register, also neither redirected nor watched;
+    * any real change to the host's register during the run (the operator's own command, or another suite run from a
+      commit without this fixture) fails the session, naming the files that changed."""
     global CHILD_DATA_BASE
     from aew.capability import store
 

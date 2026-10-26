@@ -19,7 +19,7 @@ from conftest import run_aew
 
 from aew import errors, operator
 from aew.capability import records, status, store
-from aew.cli.capability_commands import refuse_lead_session
+from aew.cli.capability_commands import lead_session_refusal, refuse_lead_session
 from aew.cli.main import build_parser, main
 from aew.engine.api import Engine
 from aew.engine.custody_ops import LEAD_SESSION, LEAD_SESSION_VARS
@@ -75,8 +75,16 @@ def test_the_register_changes_are_refused_by_the_lead_broker_and_its_recovery_es
             lead_broker.run_cli(object(), "token", list(argv), ".", "", channel="lead_broker")
         assert "capability register" in exc.value.message and "operator endpoint" in exc.value.message, argv
         assert "aew capability list" in exc.value.message, argv
-    with pytest.raises(errors.PermissionDenied):
+    with pytest.raises(errors.PermissionDenied) as exc:  # its own keep-out text (#272's quick check, QC3)
         lead_broker.run_cli(object(), "token", ["capability", "check", "--offline"], ".", "", channel="lead_broker")
+    assert exc.value.message == lead_session_refusal("check") and exc.value.details["reason"] == LEAD_SESSION
+    assert "run this one directly" not in exc.value.message
+    assert "ask the operator to run `aew capability check`" in exc.value.message  # a way to ask (#281 review, F3)
+    # The operator's own `cli` escape, outside any session (channel "cli"), is no Lead session: there the true text
+    # stays "run this one directly", with no lead_session reason (#281 review, F2)
+    with pytest.raises(errors.PermissionDenied) as exc:
+        lead_broker.run_cli(object(), "token", ["capability", "check", "--offline"], ".", "", channel="cli")
+    assert "run this one directly" in exc.value.message and (exc.value.details or {}).get("reason") != LEAD_SESSION
     parser = build_parser()
     for argv in (["capability", "list"], ["capability", "check"]):  # no authority: not operator-only
         assert lead_broker.refuses_locally(parser.parse_args(argv)) is None, argv
@@ -114,7 +122,33 @@ def test_the_check_refuses_in_a_lead_sessions_environment_naming_it():
     with pytest.raises(errors.PermissionDenied) as exc:
         refuse_lead_session("check", {v: "x" for v in LEAD_SESSION_VARS})
     assert exc.value.details == {"variables": list(LEAD_SESSION_VARS), "reason": LEAD_SESSION}
+    assert exc.value.message.startswith(lead_session_refusal("check"))  # the one owner's text (#281 review, N1)
     refuse_lead_session("check", {})
+
+
+def test_the_capability_commands_kept_out_of_a_lead_session_are_exactly_lead_kept_out(reg, tmp_path, monkeypatch,
+                                                                                    capsys):
+    """#281's review, N1: every `capability` leaf outside OPERATOR_REGISTER is run with a Lead session's environment;
+    those its own handler refuses as a Lead session's are exactly capability_commands.LEAD_KEPT_OUT, each in the one
+    owner's text. So a register command added later with that refusal, but not in the set, fails here, and is never
+    told "run this one directly" by the broker."""
+    from worker_surface import leaf_commands
+
+    from aew.cli import capability_commands
+
+    for name in LEAD_SESSION_VARS:
+        monkeypatch.setenv(name, "x")
+    kept: set[frozenset[str]] = set()
+    leaves = [leaf for leaf in leaf_commands() if leaf[0] == "capability"]
+    assert len(leaves) >= 6, leaves
+    for leaf in leaves:
+        if frozenset(leaf) in lead_broker.OPERATOR_REGISTER:
+            continue
+        _, _, err = _run(capsys, "-C", str(tmp_path), *leaf, "--json")
+        if err and (err["error"].get("details") or {}).get("reason") == LEAD_SESSION:
+            assert err["error"]["message"].startswith(lead_session_refusal(leaf[-1])), err
+            kept.add(frozenset(leaf))
+    assert kept == set(capability_commands.LEAD_KEPT_OUT)
 
 
 # ---------------------------------------------------------------------------------------------- the commands

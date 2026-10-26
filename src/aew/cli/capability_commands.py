@@ -57,13 +57,24 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(handler=lambda a: _change(a, "host_copies", {"on": a.setting == "on"}))
 
 
+# The register commands that keep themselves out of a Lead session without being operator-only (the four changes
+# are, in lead_broker.OPERATOR_REGISTER): the broker refuses these with their own text (#272's quick check, QC3)
+LEAD_KEPT_OUT = (frozenset({"capability", "check"}),)
+
+
+def lead_session_refusal(command: str) -> str:
+    """Why `aew capability <command>` never runs in a Lead session, and what to do instead: one text, for the
+    command's own check and for the Lead broker's."""
+    return (f"`aew capability {command}` is the operator's, at their own terminal; it never runs in a Lead session: "
+            f"ask the operator to run `aew capability {command}` (`aew capability list` reads the register here)")
+
+
 def refuse_lead_session(command: str, environ: dict[str, str] | None = None) -> None:
     """A register command is never a Lead session's (CAPR-05). Keyed on the session's environment, so it is a
     keep-out, not authorization: the four changes take the operator endpoint's code besides."""
     from aew.engine.custody_ops import refuse_in_lead_session
 
-    refuse_in_lead_session(f"`aew capability {command}` is the operator's, at their own terminal; it never runs in a "
-                           "Lead session", environ)
+    refuse_in_lead_session(lead_session_refusal(command), environ)
 
 
 def _list(a: argparse.Namespace) -> Any:

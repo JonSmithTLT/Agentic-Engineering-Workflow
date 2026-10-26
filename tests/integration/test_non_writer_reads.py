@@ -20,6 +20,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
 
+import proxy_env  # noqa: E402
 import worker_surface  # noqa: E402
 from conftest import make_git_repo, run_aew  # noqa: E402
 
@@ -129,9 +130,82 @@ def test_a_non_writers_reads_work_on_a_read_only_store_with_no_erofs_or_eacces(e
 
 
 def worker_env(root: Path) -> dict[str, str]:
-    """A worker run's environment: a bridge address of the platform's kind that nothing serves."""
+    """A worker run's environment: a bridge address of the platform's kind that nothing serves, and a proxy nothing
+    serves (``proxy_env.closed_route``), so a command that fetches (`aew capability check`, online) reaches no network
+    (#272's quick check, QC1)."""
     endpoint = r"\\.\pipe\aew-no-such-bridge-cb09" if sys.platform == "win32" else str(root / "no-bridge")
-    return {"AEW_AGENT_ENDPOINT": endpoint, "AEW_AGENT_KEY": "00" * 32}
+    return {"AEW_AGENT_ENDPOINT": endpoint, "AEW_AGENT_KEY": "00" * 32, **proxy_env.closed_route()}
+
+
+def test_a_hosts_no_proxy_never_lets_a_sweeps_child_go_around_the_closed_route(tmp_path, monkeypatch):
+    """#281's review, F1: a host NO_PROXY naming the payload source's host (both cases on POSIX) is blanked in a
+    sweep child's environment, so urllib sends that host's fetch to the closed route, never around it. Read from the
+    child's environment as `run_aew` builds it, with no fetch: planted in a fetching child, a regression would fetch
+    for real."""
+    import urllib.request
+    from urllib.parse import urlsplit
+
+    import conftest
+
+    from aew.capability import records
+
+    source = next(iter(records.shipped()["ripgrep"]["payloads"].values()))["source"]
+    host = urlsplit(source).hostname or ""
+    for name in ("NO_PROXY",) if sys.platform == "win32" else ("NO_PROXY", "no_proxy"):
+        monkeypatch.setenv(name, host)
+    child = conftest.clean_env(worker_env(tmp_path))
+    with monkeypatch.context() as m:
+        m.setattr(os, "environ", child)  # urllib reads the proxy variables from os.environ
+        proxies = urllib.request.getproxies_environment()
+        bypassed = urllib.request.proxy_bypass_environment(host, proxies)
+    assert host and proxies.get("https") == proxy_env.closed_route()["HTTPS_PROXY"], proxies
+    assert not bypassed
+
+
+def test_a_sweeps_child_that_fetches_reaches_no_network(tmp_path, monkeypatch):
+    """#272's quick check, QC1: the sweep runs `aew capability check` online, as a worker's agent could. With the
+    sweep's environment the fetch goes to the closed proxy and fails, so nothing is downloaded and no payload is
+    installed; the failure is recorded in the child's own register (its base is this test's). The host's own route
+    out is a listener here, which records any connection: the child never takes it."""
+    import socket
+    import threading
+
+    from aew.capability import records, store
+
+    listener = socket.create_server(("127.0.0.1", 0))
+    listener.settimeout(0.2)
+    reached: list[str] = []
+    stop = threading.Event()
+
+    def record() -> None:
+        while not stop.is_set():
+            try:
+                conn, _ = listener.accept()
+            except OSError:  # the accept's timeout: look at stop again
+                continue
+            reached.append("connected")
+            conn.close()
+
+    recorder = threading.Thread(target=record, daemon=True)
+    recorder.start()
+    route = f"http://127.0.0.1:{listener.getsockname()[1]}"
+    for name in ("HTTPS_PROXY", "HTTP_PROXY") if sys.platform == "win32" else ("HTTPS_PROXY", "HTTP_PROXY",
+                                                                                "https_proxy", "http_proxy"):
+        monkeypatch.setenv(name, route)
+    base = tmp_path / "base"
+    try:
+        res = run_aew("-C", str(tmp_path), "capability", "check", "--json",
+                      env={**worker_env(tmp_path), store.base_variable(): str(base)})
+    finally:
+        stop.set()
+        recorder.join()
+        listener.close()
+    assert reached == []  # the sweep's environment, not the host's route
+    assert res.returncode == 0, res.stderr
+    register = base / "aew" / "capability"
+    state = json.loads((register / store.REGISTER).read_text(encoding="utf-8"))
+    assert sorted(state["fetch_failures"]) == [f"ripgrep:{records.platform_key()}"], state["fetch_failures"]
+    assert not (register / store.PAYLOADS).exists()
 
 
 def refusal_reason(stderr: str) -> str | None:

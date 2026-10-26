@@ -2,8 +2,8 @@
 
 It is the design workspace's generator output, byte for byte, and nobody edits it by hand. The generator and its own
 check stay in the private workspace, which runs them against main. This test holds what the repository alone can hold:
-every copy is in MANIFEST.json and every entry is on disk, each copy's bytes match its sha256, and each header agrees
-with its entry. It reads only docs/contracts/.
+every copy is in MANIFEST.json and every entry is on disk, each copy's bytes match its sha256, each header agrees
+with its entry, and a JSON copy has none. It reads only docs/contracts/.
 """
 import hashlib
 import json
@@ -44,6 +44,10 @@ def problems(root: Path) -> list[str]:
         if p.endswith(".json"):
             if entry["header"] is not False:
                 found.append(f"{p}: a JSON copy must be listed with header: false")
+            try:
+                json.loads(data)
+            except ValueError:
+                found.append(f"{p}: a JSON copy must be plain JSON, with no header")
             continue
         fields = header(p, data)
         if fields is None:
@@ -137,3 +141,12 @@ def test_planted_json_copy_listed_with_a_header_is_found(tmp_path):
     copy = first(root, ".json")
     rewrite_entry(root, copy, header=True)
     assert problems(root) == [f"{copy.relative_to(root).as_posix()}: a JSON copy must be listed with header: false"]
+
+
+def test_planted_json_copy_with_a_header_is_found(tmp_path):
+    root = planted(tmp_path)
+    copy = first(root, ".json")
+    data = b"<!--\nposition: A-01\n-->\n\n" + copy.read_bytes()
+    copy.write_bytes(data)
+    rewrite_entry(root, copy, sha256=hashlib.sha256(data).hexdigest())
+    assert problems(root) == [f"{copy.relative_to(root).as_posix()}: a JSON copy must be plain JSON, with no header"]

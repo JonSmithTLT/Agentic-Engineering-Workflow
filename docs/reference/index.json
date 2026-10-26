@@ -92,7 +92,7 @@
         "lower-bound": 228
       }
     },
-    "digest": "sha256:bcf9f33f2da0360493d8736008236cee718a24717a5373cb867ea5dcbf18a34a",
+    "digest": "sha256:967c94ba493fe80abe4dc0c71b7426de87108c5fbb0034a8d231b942e9a1fa9d",
     "records": 1074,
     "unresolved": 92
   },
@@ -11727,19 +11727,19 @@
           {
             "kind": "mutating",
             "module": "aew.engine.work_ops",
-            "query": false,
+            "query": true,
             "symbol": "WorkUnits._guard_findings_recorded"
           },
           {
             "kind": "non_mutating",
             "module": "aew.engine.work_ops",
-            "query": false,
+            "query": true,
             "symbol": "WorkUnits._guard_findings_recorded"
           },
           {
             "kind": "parent",
             "module": "aew.engine.work_ops",
-            "query": false,
+            "query": true,
             "symbol": "WorkUnits._guard_findings_recorded"
           }
         ],
@@ -11821,19 +11821,19 @@
           {
             "kind": "mutating",
             "module": "aew.engine.work_ops",
-            "query": false,
+            "query": true,
             "symbol": "WorkUnits._guard_not_beyond_interrupted_phase"
           },
           {
             "kind": "non_mutating",
             "module": "aew.engine.work_ops",
-            "query": false,
+            "query": true,
             "symbol": "WorkUnits._guard_not_beyond_interrupted_phase"
           },
           {
             "kind": "parent",
             "module": "aew.engine.work_ops",
-            "query": false,
+            "query": true,
             "symbol": "WorkUnits._guard_not_beyond_interrupted_phase"
           }
         ],
@@ -11915,7 +11915,7 @@
           {
             "kind": "mutating",
             "module": "aew.engine.evidence_ops",
-            "query": false,
+            "query": true,
             "symbol": "Gates._guard_ready_for_verification_without_review"
           },
           {
@@ -11927,7 +11927,7 @@
           {
             "kind": "parent",
             "module": "aew.engine.evidence_ops",
-            "query": false,
+            "query": true,
             "symbol": "Gates._guard_ready_for_verification_without_review"
           }
         ],
@@ -11946,8 +11946,8 @@
     },
     "guards:returning_from_escalation": {
       "anchor": {
-        "module": "aew.engine.work_ops",
-        "symbol": "WorkUnits._guard_returning_from_escalation"
+        "module": "aew.engine.evidence_ops",
+        "symbol": "Gates._guard_returning_from_escalation"
       },
       "basis": "enumerated",
       "coverage": {
@@ -11961,21 +11961,21 @@
         "evaluators": [
           {
             "kind": "mutating",
-            "module": "aew.engine.work_ops",
-            "query": false,
-            "symbol": "WorkUnits._guard_returning_from_escalation"
+            "module": "aew.engine.evidence_ops",
+            "query": true,
+            "symbol": "Gates._guard_returning_from_escalation"
           },
           {
             "kind": "non_mutating",
-            "module": "aew.engine.work_ops",
-            "query": false,
-            "symbol": "WorkUnits._guard_returning_from_escalation"
+            "module": "aew.engine.evidence_ops",
+            "query": true,
+            "symbol": "Gates._guard_returning_from_escalation"
           },
           {
             "kind": "parent",
-            "module": "aew.engine.work_ops",
-            "query": false,
-            "symbol": "WorkUnits._guard_returning_from_escalation"
+            "module": "aew.engine.evidence_ops",
+            "query": true,
+            "symbol": "Gates._guard_returning_from_escalation"
           }
         ],
         "name": "returning_from_escalation"
@@ -18177,6 +18177,7 @@
         "aew.engine.ports",
         "aew.engine.seams",
         "aew.engine.transitions",
+        "aew.engine.work_ops",
         "aew.errors",
         "aew.knowledge.evidence",
         "aew.knowledge.records",
@@ -19017,6 +19018,7 @@
       "imports": [
         "aew.engine.base",
         "aew.engine.dependencies",
+        "aew.engine.dispatch",
         "aew.engine.guards",
         "aew.engine.hierarchy",
         "aew.engine.ports",

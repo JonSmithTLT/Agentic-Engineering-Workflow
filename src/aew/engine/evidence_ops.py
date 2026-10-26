@@ -23,19 +23,30 @@ from aew.engine import gates as G
 from aew.engine import transitions
 from aew.engine.authority import require_invocation
 from aew.engine.base import TxnContext
+from aew.engine.dispatch import Blocker, blocker_from, checked
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
-from aew.engine.dispatch import blocker_from, checked
 from aew.engine.guards import NotQueryable, refusal, require
 from aew.engine.guards import checked as guard_checked
 from aew.engine.seams import (
     CLASSIFY_VERIFICATION,
+    GATE,
     GATE_CONTEXT,
     INGEST,
     INVOKE,
     MUTATING,
     NON_MUTATING,
+    SOURCE,
     GuardRegistration,
     KindRegistration,
+)
+from aew.engine.work_ops import (
+    BEYOND_THE_PHASE_LEFT,
+    DIRECT_EDGE_GUARD_UNMET,
+    ENTRY_GUARD_NOT_QUERYABLE,
+    ENTRY_GUARD_UNCLASSIFIED,
+    ENTRY_GUARD_UNMET,
+    NO_ENTRY_GUARD,
+    entry_refused,
 )
 from aew.errors import (
     GateUnsatisfied,
@@ -72,7 +83,7 @@ if TYPE_CHECKING:
         RolesPort,
         WorkUnitsPort,
     )
-    from aew.engine.seams import KindRegistry
+    from aew.engine.seams import GuardTable, KindRegistry
 
 REVIEW_ROLES = {"reviewer"}
 # One read-only answer's gate contexts (M4-E E4 review, the observation): within `Gates.memo()`, a gate context asked
@@ -91,12 +102,13 @@ class Gates:
     Ticket's is computed here, a non-mutating Ticket's and a parent's by their own collaborators."""
 
     def __init__(self, k: Kernel, *, units: WorkUnitsPort, roles: RolesPort, invocations: InvocationsPort,
-                 kinds: KindRegistry, archive: ArchivePort) -> None:
+                 kinds: KindRegistry, guards: GuardTable, archive: ArchivePort) -> None:
         self.k = k
         self.units = units
         self.roles = roles
         self.invocations = invocations
         self.kinds = kinds
+        self.guards = guards  # the return from escalation rechecks the entry guards of the phase it enters
         self.archive = archive
 
     def record_meta(self, unit: dict[str, Any]) -> dict[str, Any]:
@@ -318,27 +330,34 @@ class Gates:
         return [KindRegistration(GATE_CONTEXT, MUTATING, self._ticket_gate_context)]
 
     def guard_registrations(self) -> list[GuardRegistration]:
-        """The gate-based Lead guards (mutating Tickets' M1 guards; non-mutating Tickets replace them)."""
+        """The gate-based Lead guards (mutating Tickets' M1 guards; non-mutating Tickets replace them), and the return
+        from escalation, which rechecks them (EW-U06.f)."""
         return [GuardRegistration("ready_for_review", self._guard_ready_for_review,
-                                  query=self._query_ready_for_review),
+                                  query=self._query_ready_for_review, role=GATE),
                 GuardRegistration("ready_for_verification_without_review",
-                                  self._guard_ready_for_verification_without_review),
+                                  self._guard_ready_for_verification_without_review,
+                                  query=self._query_ready_for_verification_without_review, role=GATE),
                 GuardRegistration("commit_ready_without_review_or_verification",
-                                  self._guard_commit_ready_without_review_or_verification),
-                GuardRegistration("review_current", self._guard_review_current, query=self._query_review_current),
-                GuardRegistration("commit_ready_without_verification", self._guard_commit_ready_without_verification),
+                                  self._guard_commit_ready_without_review_or_verification, role=GATE),
+                GuardRegistration("review_current", self._guard_review_current, query=self._query_review_current,
+                                  role=GATE),
+                GuardRegistration("commit_ready_without_verification", self._guard_commit_ready_without_verification,
+                                  role=GATE),
                 GuardRegistration("all_gates_current", self._guard_all_gates_current,
-                                  query=self._query_all_gates_current)]
+                                  query=self._query_all_gates_current, role=GATE),
+                GuardRegistration("returning_from_escalation", self._guard_returning_from_escalation,
+                                  query=self._query_returning_from_escalation, role=SOURCE)]
 
     def _query_ready_for_review(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
         """RUNNING -> REVIEW_PENDING (M4-E E4: its query form): a review gate applies, and the pre-review gates are
-        current for the workspace's snapshot. It records the gate context it evaluated (``found["gate_context"]``)."""
+        current for the workspace's snapshot. It records the gate context it evaluated (``found["gate_context"]``) and
+        the gates it relied on (``found["relied_on"]``)."""
         def check() -> None:
             gc = self.gate_context(state, work_id)
             if not self.review_gates(gc):
                 raise GateUnsatisfied("no review gate applies to this Ticket; advance to verification or commit-ready")
             self.require_gates(gc, self.PRE_REVIEW, what="RUNNING -> REVIEW_PENDING")
-            args.setdefault("found", {})["gate_context"] = gc
+            args.setdefault("found", {}).update(gate_context=gc, relied_on=list(self.PRE_REVIEW))
 
         return guard_checked(check)
 
@@ -347,14 +366,26 @@ class Gates:
         require(self._query_ready_for_review(ctx.state, work_id, args))
         self._ingest_implementation(ctx, work_id, unit, args["found"]["gate_context"])
 
+    def _query_ready_for_verification_without_review(self, state: dict[str, Any], work_id: str,
+                                                     args: dict[str, Any]) -> Any:
+        """RUNNING -> VERIFY_PENDING (its query form, R1 plan v4 §4.2 item 5): no review gate applies, a verification
+        gate does, and the pre-review gates are current. It records the gate context and the gates it relied on."""
+        def check() -> None:
+            gc = self.gate_context(state, work_id)
+            if self.review_gates(gc):
+                raise GateUnsatisfied("independent review is required before verification",
+                                      required=self.review_gates(gc))
+            if not self.verification_gates(gc):
+                raise GateUnsatisfied("no verification gate applies; advance to commit-ready")
+            self.require_gates(gc, self.PRE_REVIEW, what="RUNNING -> VERIFY_PENDING")
+            args.setdefault("found", {}).update(gate_context=gc, relied_on=list(self.PRE_REVIEW))
+
+        return guard_checked(check)
+
     def _guard_ready_for_verification_without_review(self, ctx, work_id, unit, to) -> None:
-        gc = self.gate_context(ctx.state, work_id)
-        if self.review_gates(gc):
-            raise GateUnsatisfied("independent review is required before verification", required=self.review_gates(gc))
-        if not self.verification_gates(gc):
-            raise GateUnsatisfied("no verification gate applies; advance to commit-ready")
-        self.require_gates(gc, self.PRE_REVIEW, what="RUNNING -> VERIFY_PENDING")
-        self._ingest_implementation(ctx, work_id, unit, gc)
+        args: dict[str, Any] = {"to": to}
+        require(self._query_ready_for_verification_without_review(ctx.state, work_id, args))
+        self._ingest_implementation(ctx, work_id, unit, args["found"]["gate_context"])
 
     def _guard_commit_ready_without_review_or_verification(self, ctx, work_id, unit, to) -> None:
         gc = self.gate_context(ctx.state, work_id)
@@ -368,12 +399,101 @@ class Gates:
         the workspace's snapshot (the review was of what is there now)."""
         def check() -> None:
             gc = self.gate_context(state, work_id)
-            self.require_gates(gc, self.PRE_REVIEW + self.review_gates(gc), what="REVIEW_PASSED -> VERIFY_PENDING")
+            relied_on = self.PRE_REVIEW + self.review_gates(gc)
+            self.require_gates(gc, relied_on, what="REVIEW_PASSED -> VERIFY_PENDING")
+            args.setdefault("found", {}).update(gate_context=gc, relied_on=relied_on)
 
         return guard_checked(check)
 
     def _guard_review_current(self, ctx, work_id, unit, to) -> None:
         require(self._query_review_current(ctx.state, work_id, {"to": to}))
+
+    # ---- the return from escalation (EW-U06.f; R1 plan v4 §4.2, option C, the designer's ruling of 2026-10-25)
+
+    def return_admitted(self, state: dict[str, Any], work_id: str, origin: str | None, to: str,
+                        args: dict[str, Any], *, alternatives: bool = True) -> Any:
+        """Whether a unit escalated from ``origin`` may return to ``to`` now: pure, and prospective (the origin is an
+        argument). In order: no later than the phase it left; through the Lead's direct edge ``origin -> to``, as that
+        edge's guard admits (its query; ``NotQueryable`` where it has none); otherwise as the phase is entered, by the
+        gate guards of the Lead's own entries into ``to`` for the unit's kind (``GATE`` in the guard table), through
+        their query forms, refused where a query is missing, and refused where those entries have no guard at all
+        (R1-D2: an unqualified return is refused). VERIFY_PENDING has two such guards, which partition by
+        whether a review gate applies: ``review_current`` when one does, else
+        ``ready_for_verification_without_review``. It records what it checked in ``args["found"]``; a refusal names
+        what the Lead may do instead (``alternatives``)."""
+        unit = self.units.unit(state, work_id)
+
+        def instead() -> list[dict[str, Any]]:
+            def admitted(d: str) -> Any:
+                return self.return_admitted(state, work_id, origin, d, {"to": d}, alternatives=False)
+
+            return self.units.hub_alternatives(state, work_id, "ESCALATED", to, admitted) if alternatives else []
+
+        if origin is None or transitions.PHASE_ORDER.get(to, 99) > transitions.PHASE_ORDER.get(origin, -1):
+            return refusal(entry_refused(work_id, "ESCALATED", to, BEYOND_THE_PHASE_LEFT,
+                                         f"{work_id} may return from escalation only to {origin} or an earlier phase",
+                                         instead=instead()))
+        if transitions.direct_lead_edge(origin, to) is not None:
+            found = self.units.direct_edge_query(state, work_id, origin, to, args)
+            if isinstance(found, Blocker):
+                guard = args["found"]["direct_guard"]
+                return refusal(entry_refused(
+                    work_id, "ESCALATED", to, DIRECT_EDGE_GUARD_UNMET,
+                    f"{work_id} left {origin}, and the guard {guard} of the direct edge {origin} -> {to} refuses it",
+                    guard=guard, refused=found, instead=instead()))
+            return found
+        entries = transitions.lead_entry_guards(to, besides="ESCALATED")
+        if not entries:
+            return refusal(entry_refused(
+                work_id, "ESCALATED", to, NO_ENTRY_GUARD,
+                f"the Lead's own entries into {to} have no guard for a return to meet", instead=instead()))
+        unclassified = [g for g in entries if self.guards.role_of(g, unit) is None]
+        gates = [g for g in entries if self.guards.role_of(g, unit) == GATE]
+        if unclassified or len(gates) > 2 or (len(gates) == 2 and set(gates) != set(self.VERIFY_PENDING_ENTRIES)):
+            return refusal(entry_refused(
+                work_id, "ESCALATED", to, ENTRY_GUARD_UNCLASSIFIED,
+                f"the entry guards of {to} for {work_id}'s kind are not classified for a return "
+                f"({unclassified or gates})", instead=instead()))
+        if not gates:
+            return None
+        guard = gates[0] if len(gates) == 1 else self.VERIFY_PENDING_ENTRIES[
+            0 if self.review_gates(self.gate_context(state, work_id)) else 1]
+        query = self.guards.query_for(guard, unit)
+        if query is None:
+            # The guard still runs on the Lead's direct edge into `to`: return to a phase that edge leaves, then take it
+            options = [{**o, "then": to} if o["option"] == "return_to" and transitions.direct_lead_edge(o["to"], to)
+                       else o for o in instead()]
+            return refusal(entry_refused(
+                work_id, "ESCALATED", to, ENTRY_GUARD_NOT_QUERYABLE,
+                f"{work_id} enters {to} as the Lead's own entry does, and its gate guard {guard} cannot be rechecked "
+                f"here: it has no query form for {work_id}'s kind", guard=guard, instead=options))
+        args.setdefault("found", {})["entry_guard"] = guard
+        found = query(state, work_id, args)
+        if isinstance(found, Blocker):
+            return refusal(entry_refused(
+                work_id, "ESCALATED", to, ENTRY_GUARD_UNMET,
+                f"{work_id} enters {to} as the Lead's own entry does, and its gate guard {guard} refuses it",
+                guard=guard, refused=found, instead=instead()))
+        return found
+
+    # The two gate guards of the Lead's entries into VERIFY_PENDING: after review, and without one.
+    VERIFY_PENDING_ENTRIES = ("review_current", "ready_for_verification_without_review")
+
+    def _query_returning_from_escalation(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
+        """ESCALATED -> ``args["to"]`` (its query form): ``return_admitted`` from the phase the unit left."""
+        return self.return_admitted(state, work_id, self.units.unit(state, work_id).get("escalated_from"), args["to"],
+                                    args)
+
+    def _guard_returning_from_escalation(self, ctx, work_id, unit, to) -> None:
+        args: dict[str, Any] = {"to": to}
+        found = self._query_returning_from_escalation(ctx.state, work_id, args)
+        if not isinstance(found, NotQueryable):
+            require(found)
+        facts = args.get("found") or {}
+        if facts.get("direct_guard"):  # the direct edge's guard runs as that edge's transition runs it
+            self.units.check_guard(facts["direct_guard"], ctx, work_id, unit, to)
+        elif facts.get("entry_guard"):  # the return relied on the gates it rechecked: pin them (R1 plan v3 §4.2 H2)
+            self.record_relied_on(ctx, unit, facts["gate_context"], facts["relied_on"])
 
     def _guard_commit_ready_without_verification(self, ctx, work_id, unit, to) -> None:
         gc = self.gate_context(ctx.state, work_id)

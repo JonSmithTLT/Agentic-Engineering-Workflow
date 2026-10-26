@@ -448,7 +448,8 @@ class Engine:
         self._queue = queue = Queue(k, invocations=invocations)
         self._inputs = inputs = Inputs(k)
         self._packs = packs = ContextPacks(k, units=units, archive=archive)
-        self._gates = gates = Gates(k, units=units, roles=roles, invocations=invocations, kinds=kinds, archive=archive)
+        self._gates = gates = Gates(k, units=units, roles=roles, invocations=invocations, kinds=kinds, guards=guards,
+                                    archive=archive)
         self._dispatch = dispatch = Dispatch(k)
         self._assurance = assurance = Assurance(k, gates=gates)
         self._work = work = WorkCommands(k, units=units, roles=roles, invocations=invocations, archive=archive,

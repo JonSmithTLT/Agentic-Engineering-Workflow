@@ -76,6 +76,9 @@ def test_handoff_without_carry_interrupts_and_reconcile_is_bounded(project, tmp_
     res = project.aew("work", "reconcile", wid, "--to", "RUNNING", "--reason", "looks fine",
                       "--token", project.token, "--expect-rev", str(project.rev()))
     assert res.returncode == 5 and res.error["code"] == "GATE_UNSATISFIED"
+    # The refusal names the phase it may be reconciled to (EW-U06.f), and the reconcile below takes it.
+    assert res.error["details"]["reason"] == "beyond_the_phase_left"
+    assert {"option": "return_to", "to": "ASSIGNED"} in res.error["details"]["instead"]
     out = project.lead("work", "reconcile", wid, "--to", "ASSIGNED", "--reason", "workspace inspected: untouched")
     assert out["inspection"]["exists"] is True and out["inspection"]["changed_since_assignment"] is False
 

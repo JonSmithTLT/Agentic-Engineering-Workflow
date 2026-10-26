@@ -92,7 +92,7 @@
         "lower-bound": 228
       }
     },
-    "digest": "sha256:967c94ba493fe80abe4dc0c71b7426de87108c5fbb0034a8d231b942e9a1fa9d",
+    "digest": "sha256:1dfad576ef11a9f489f6ff114c68e731c21e990df4d02f160c42597551cd35cf",
     "records": 1074,
     "unresolved": 92
   },
@@ -19454,10 +19454,12 @@
       },
       "family": "modules",
       "imports": [
+        "aew.cli.capability_commands",
         "aew.cli.fields",
         "aew.cli.main",
         "aew.engine.api",
         "aew.engine.authority",
+        "aew.engine.custody_ops",
         "aew.engine.dispatch",
         "aew.engine.faults",
         "aew.engine.harness_ops",

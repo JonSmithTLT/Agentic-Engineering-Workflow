@@ -9,6 +9,7 @@ built by merging into ``os.environ``).
 from __future__ import annotations
 
 import socket
+import sys
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -21,6 +22,22 @@ def proxy_env(url: str) -> dict[str, str]:
     env = {name: url for upper in PROXY_NAMES for name in (upper, upper.lower())}
     env.update({"NO_PROXY": "", "no_proxy": ""})
     return env
+
+
+_HELD: socket.socket | None = None  # closed_route's port, bound for this process's life and never listening
+
+
+def closed_route() -> dict[str, str]:
+    """The proxy variables of a child that must reach no network (a worker sweep's, #272's quick check QC1): every
+    proxy name at a bound port that never listens, held for this process's life so nobody else takes it, and no
+    NO_PROXY exception. On Windows the names are one case only, since its environment is case-insensitive and a
+    child's environment block must not hold one name twice."""
+    global _HELD
+    if _HELD is None:
+        _HELD = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        _HELD.bind(("127.0.0.1", 0))
+    env = proxy_env(f"http://127.0.0.1:{_HELD.getsockname()[1]}")
+    return {k: v for k, v in env.items() if sys.platform != "win32" or k.isupper()}
 
 
 @contextmanager

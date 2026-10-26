@@ -349,6 +349,18 @@ skipped:
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
       tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_none_of_it: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on every platform in
+      tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_the_leads_view_holds_none_of_the_operators_opencode_state_under_the_four_xdg_bases[defaults]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on every platform in
+      tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_the_leads_view_holds_none_of_the_operators_opencode_state_under_the_four_xdg_bases[xdg_moved]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on every platform in
+      tests/unit/test_containment_layout.py.
     tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_tui_exits]: >-
       the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
       CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).

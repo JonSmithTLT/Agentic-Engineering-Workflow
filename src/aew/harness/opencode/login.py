@@ -73,13 +73,12 @@ def store_files(env: Mapping[str, str]) -> list[Path]:
     return [db, *(db.with_name(db.name + suffix) for suffix in SIDECARS)]
 
 
-def operator_masks(env: Mapping[str, str]) -> tuple[dict[Path, str | None], list[Path]]:
-    """``({directory: the variable that puts it there, or None}, files)``: every place the operator's OpenCode keeps
-    its login, configuration or state, as the operator's environment puts it, for a contained run to mask
+def operator_masks(env: Mapping[str, str]) -> dict[Path, str | None]:
+    """``{directory: the variable that puts it there, or None}``: every place the operator's OpenCode keeps its login,
+    configuration or state, as the operator's environment puts it, for a contained run to mask whole
     (``containment.layout``; STG-05 CS-4, outcome 2, and addendum 4, ruling 2): its data, configuration, state and
-    cache directories; the directory holding the login database, and its real one, whole, since the database's
-    sidecars appear there after a launch; and the configuration file ``OPENCODE_CONFIG`` names, alone (it has no
-    sidecars, and its directory may be the project)."""
+    cache directories, and the directories holding the login database and the configuration file ``OPENCODE_CONFIG``
+    names, each with its real one: whole directories, as the database's sidecars appear beside it after a launch."""
     dirs: dict[Path, str | None] = {}
     for kind in XDG_DEFAULTS:
         variable = f"XDG_{kind.upper()}_HOME"
@@ -87,8 +86,11 @@ def operator_masks(env: Mapping[str, str]) -> tuple[dict[Path, str | None], list
     db = db_path(env)
     for directory in (db.parent, Path(os.path.realpath(db)).parent):
         dirs.setdefault(directory, "OPENCODE_DB" if env.get("OPENCODE_DB") else dirs[operator_dir(env, "data")])
-    files = [Path(os.path.abspath(env["OPENCODE_CONFIG"]))] if env.get("OPENCODE_CONFIG") else []
-    return dirs, files
+    if env.get("OPENCODE_CONFIG"):
+        named = Path(os.path.abspath(env["OPENCODE_CONFIG"]))
+        for directory in (named.parent, Path(os.path.realpath(named)).parent):
+            dirs.setdefault(directory, "OPENCODE_CONFIG")
+    return dirs
 
 
 def _read(integration: str, method: str | None, value: Any) -> Login:

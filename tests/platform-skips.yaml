@@ -349,7 +349,15 @@ skipped:
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
       tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
-    tests/integration/test_lead_containment.py::test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_none_of_it: >-
+    tests/integration/test_lead_containment.py::test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_none_of_it[written_in_place]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on every platform in
+      tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_none_of_it[replaced_by_rename]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on every platform in
+      tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_none_of_it[created_after]: >-
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the masked paths are tested on every platform in
       tests/unit/test_containment_layout.py.

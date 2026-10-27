@@ -142,14 +142,15 @@ def test_the_operators_opencode_login_and_configuration_are_empty_from_the_leads
 def test_the_leads_view_holds_none_of_the_operators_opencode_state_under_the_four_xdg_bases(lead_lab, moved):
     """CS-4 addendum 4, ruling 2: from inside the Lead's sandbox, the operator's OpenCode directory under each of the
     XDG data, configuration, state and cache bases (their defaults, or where XDG_*_HOME moves them) is absent or empty,
-    and the Lead's own OpenCode state still works there. Synthetic files only."""
-    from aew.harness.opencode import login
-
+    and the Lead's own OpenCode state still works there. The four bases are named here, not taken from the owner the
+    test checks (the review of #283 at b2dc3035, m2). Synthetic files only."""
     lab = lead_lab
+    bases = {"XDG_DATA_HOME": ".local/share", "XDG_CONFIG_HOME": ".config", "XDG_STATE_HOME": ".local/state",
+             "XDG_CACHE_HOME": ".cache"}
     env = {"HOME": str(lab.home)}
     if moved:
-        env.update({f"XDG_{k.upper()}_HOME": str(lab.root / "xdg" / k) for k in login.XDG_DEFAULTS})
-    dirs = [login.operator_dir(env, kind) for kind in login.XDG_DEFAULTS]
+        env.update({variable: str(lab.root / "xdg" / variable) for variable in bases})
+    dirs = [Path(env.get(variable) or lab.home / default) / "opencode" for variable, default in bases.items()]
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)
         (d / "planted.txt").write_text("SYNTHETIC-OPERATOR-STATE\n")
@@ -161,11 +162,30 @@ def test_the_leads_view_holds_none_of_the_operators_opencode_state_under_the_fou
     assert "planted" not in done.stdout and "SYNTHETIC" not in done.stdout, done.stdout
 
 
-def test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_none_of_it(lead_lab):
+def _config_written_in_place(config: Path) -> None:
+    config.write_text('{"provider": {"x": {"options": {"apiKey": "SYNTHETIC-CONFIG-WRITTEN"}}}}\n')
+
+
+def _config_replaced(config: Path) -> None:
+    saved = config.with_name(config.name + ".tmp")
+    saved.write_text('{"provider": {"x": {"options": {"apiKey": "SYNTHETIC-CONFIG-REPLACED"}}}}\n')
+    os.replace(saved, config)
+
+
+# What happens to the configuration file OPENCODE_CONFIG names once the session has started: (present at the launch,
+# what the operator's own tools then do to it).
+CONFIG_AFTER_LAUNCH = {"written_in_place": (True, _config_written_in_place),
+                       "replaced_by_rename": (True, _config_replaced),
+                       "created_after": (False, _config_written_in_place)}
+
+
+@pytest.mark.parametrize("config_after", list(CONFIG_AFTER_LAUNCH))
+def test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_none_of_it(lead_lab, config_after):
     """CS-4 outcome 2 (A-33 §3.1, CB-01): the Lead's view holds no operator credential, wherever the operator's
     environment puts OpenCode: a login database of a custom path named through a link, with files SQLite keeps beside
     it present at the launch and written after it, beside the real database and beside the link; a configuration file
-    of a custom path; and the state directory. Synthetic files only."""
+    of a custom path named through a link, written in place, replaced or created after the launch; and the state
+    directory. Synthetic files only."""
     lab = lead_lab
     named, real = lab.root / "oc-named", lab.root / "oc-real"
     named.mkdir()
@@ -174,9 +194,13 @@ def test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_n
     db.write_text("SYNTHETIC-DB\n")
     (named / "logins.db").symlink_to(db)
     Path(f"{db}-shm").write_text("SYNTHETIC-SHM\n")
-    config = lab.root / "cfg" / "custom.json"
+    config, config_real = lab.root / "cfg-named" / "custom.json", lab.root / "cfg" / "custom.json"
     config.parent.mkdir()
-    config.write_text('{"provider": {"x": {"options": {"apiKey": "SYNTHETIC-CONFIG"}}}}\n')
+    config_real.parent.mkdir()
+    config.symlink_to(config_real)
+    at_launch, change_config = CONFIG_AFTER_LAUNCH[config_after]
+    if at_launch:
+        config_real.write_text('{"provider": {"x": {"options": {"apiKey": "SYNTHETIC-CONFIG"}}}}\n')
     state = lab.home / ".local" / "state" / "opencode"
     state.mkdir(parents=True)
     (state / "prompt-history.jsonl").write_text("SYNTHETIC-HISTORY\n")
@@ -186,8 +210,9 @@ def test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_n
     tree = procs.ProcessTree(layout=layout)
     try:
         script = (f"touch {ready}; i=0; while [ ! -e {go} ] && [ $i -lt 400 ]; do sleep 0.05; i=$((i+1)); done; "
-                  f"cat {named}/logins.db {db} {db}-shm {db}-wal {named}/logins.db-journal {config} "
-                  f"{state}/prompt-history.jsonl; echo; ls -A {named} {real} {state}; echo end")
+                  f"cat {named}/logins.db {db} {db}-shm {db}-wal {named}/logins.db-journal {config} {config_real} "
+                  f"{state}/prompt-history.jsonl; echo; ls -A {named} {real} {state} {config.parent} "
+                  f"{config_real.parent}; echo end")
         proc = tree.spawn(["sh", "-c", script], cwd=str(lab.repo), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           stdin=subprocess.DEVNULL, text=True,
                           env={"PATH": os.environ["PATH"], "HOME": str(lab.home), "LANG": "C.UTF-8", **layout.env})
@@ -197,12 +222,14 @@ def test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_n
         assert ready.exists(), "the sandbox never started"
         Path(f"{db}-wal").write_text("SYNTHETIC-WAL\n")  # after the launch: as SQLite writes them while it is open
         Path(f"{named}/logins.db-journal").write_text("SYNTHETIC-JOURNAL\n")
+        change_config(config_real)  # the operator's own tools, on the file the link names
         go.write_text("")
         out, err = proc.communicate(timeout=60)
     finally:
         tree.close()
     assert out.rstrip().endswith("end"), out + err
     assert "SYNTHETIC" not in out and "logins.db" not in out and "prompt-history" not in out, out
+    assert "custom.json" not in out, out
 
 
 # ------------------------------------------------------------------------------------------- outcome 6, rows

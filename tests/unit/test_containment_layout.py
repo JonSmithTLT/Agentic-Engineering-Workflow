@@ -11,6 +11,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -809,11 +810,15 @@ def test_display_files_and_the_xauthority_file_are_masked_by_type_when_present(t
     assert run_layout(tmp_path / "bare", "reviewer", home=str(tmp_path / "empty")).display_files == ()
 
 
+# Where OpenCode keeps its directories, named here and not taken from `opencode.login`, the owner these tests check
+# (the review of #283 at b2dc3035, m2): each XDG base, with its default under the home directory.
+XDG_BASES = {"XDG_DATA_HOME": ".local/share", "XDG_CONFIG_HOME": ".config", "XDG_STATE_HOME": ".local/state",
+             "XDG_CACHE_HOME": ".cache"}
+
 # The operator's environments for OpenCode: each moves where OpenCode keeps its files (STG-05 CS-4, outcome 2).
 OPENCODE_ENVS: dict[str, Callable[[Path], dict[str, str]]] = {
     "defaults": lambda t: {},
-    "xdg_moved": lambda t: {f"XDG_{k}_HOME": str(t / "xdg" / k.lower())
-                            for k in ("DATA", "CONFIG", "STATE", "CACHE")},
+    "xdg_moved": lambda t: {variable: str(t / "xdg" / variable) for variable in XDG_BASES},
     "absolute_db": lambda t: {"OPENCODE_DB": str(t / "elsewhere" / "logins.db")},
     "relative_db": lambda t: {"OPENCODE_DB": "other.db"},
     "relative_db_above": lambda t: {"OPENCODE_DB": os.path.join("..", "above.db")},
@@ -823,34 +828,80 @@ OPENCODE_ENVS: dict[str, Callable[[Path], dict[str, str]]] = {
 }
 
 
+def opencode_dir(env: dict[str, str], variable: str) -> Path:
+    return Path(env.get(variable) or Path(env["HOME"], XDG_BASES[variable])) / "opencode"
+
+
 def operator_files(env: dict[str, str]) -> list[Path]:
-    """Every path AEW's host side derives from the operator's environment to read the operator's OpenCode: the login
-    database with SQLite's files beside it (``login.stored``), the configuration files (``lead.operator_preferences``,
-    ``lead.operator_mcp_servers``) and the recent models (``ContainedLead._seed_models``); and, which the host never
-    reads, the legacy login file OpenCode imports from its data directory and a file of its cache (addendum 4)."""
+    """Every path AEW's host side reads the operator's OpenCode from, as OpenCode 2.0.18 places it, derived here from
+    the operator's environment without the owner: the login database with SQLite's files beside it (``login.stored``),
+    the configuration files (``lead.operator_preferences``, ``lead.operator_mcp_servers``) and the recent models
+    (``ContainedLead._seed_models``); and, which the host never reads, the legacy login file OpenCode imports from its
+    data directory and a file of its cache (addendum 4). The readers are named by hand; the environment keys they ask
+    for are guarded by :func:`test_the_opencode_host_readers_ask_only_for_keys_these_environments_vary`."""
+    data, config, state, cache = (opencode_dir(env, variable) for variable in XDG_BASES)
+    named_db = env.get("OPENCODE_DB")
+    db = Path(named_db) if named_db and os.path.isabs(named_db) else data / (named_db or "opencode.db")
+    named = [Path(env["OPENCODE_CONFIG"])] if env.get("OPENCODE_CONFIG") else []
+    return [db, *(db.with_name(db.name + suffix) for suffix in ("-wal", "-shm", "-journal")), config / "cli.json",
+            *(config / name for name in ("config.json", "opencode.json", "opencode.jsonc")), state / "model.json",
+            *named, data / "auth.json", cache / "models.json"]
+
+
+class AskedFor(dict):
+    """An environment that records each key read from it."""
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__(*args)
+        self.asked: set[str] = set()
+
+    def get(self, key: str, default: Any = None) -> Any:
+        self.asked.add(key)
+        return super().get(key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        self.asked.add(key)
+        return super().__getitem__(key)
+
+    def __contains__(self, key: object) -> bool:
+        self.asked.add(str(key))
+        return super().__contains__(key)
+
+
+def test_the_opencode_host_readers_ask_only_for_keys_these_environments_vary(tmp_path):
+    """The review of #283 at b2dc3035, m2: each host reader of the operator's OpenCode asks the operator's environment
+    only for keys :data:`OPENCODE_ENVS` moves (or the home directory), so a reader that starts following another
+    variable fails here until the environments, and so the masks' test, cover it."""
+    from types import SimpleNamespace
+
     from aew.harness.opencode import lead, login
 
-    config, state = login.operator_dir(env, "config"), login.operator_dir(env, "state")
-    named = [Path(env["OPENCODE_CONFIG"])] if env.get("OPENCODE_CONFIG") else []
-    return [*login.store_files(env), config / "cli.json", *(config / n for n in lead.CONFIG_FILES),
-            state / "model.json", *named, login.operator_dir(env, "data") / "auth.json",
-            login.operator_dir(env, "cache") / "models.json"]
+    varied = {"HOME", *(k for shape in OPENCODE_ENVS.values() for k in shape(tmp_path))}
+    asked: set[str] = set()
+    for shape in OPENCODE_ENVS.values():
+        env = AskedFor({"HOME": str(tmp_path / "home"), **shape(tmp_path)})
+        login.stored(env)
+        lead.operator_preferences(env)
+        lead.operator_mcp_servers(env)
+        lead.ContainedLead._seed_models(SimpleNamespace(base=env), tmp_path / "seed")  # type: ignore[arg-type]
+        asked |= env.asked
+    assert asked - varied == set(), sorted(asked - varied)
+    # the guard sees the readers' own keys (none reads the cache, which is masked all the same)
+    assert {"OPENCODE_DB", "OPENCODE_CONFIG", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME"} <= asked
 
 
 @pytest.mark.parametrize("shape", list(OPENCODE_ENVS))
 def test_every_path_the_host_reads_the_operators_opencode_from_is_masked_from_a_contained_run(tmp_path, fake_bwrap,
                                                                                             shape):
     """STG-05 CS-4, outcome 2 (A-33 §3.1, CB-01): the Lead's view holds no operator credential. Every path the host
-    side derives from the operator's environment for OpenCode's login and configuration is masked, as a file or
-    under a directory masked whole, including one that appears only after the launch."""
-    from aew.harness.opencode import login
-
+    side derives from the operator's environment for OpenCode's login and configuration is under a directory masked
+    whole, including one that appears only after the launch."""
     home = tmp_path / "home"
     env = OPENCODE_ENVS[shape](tmp_path)  # without HOME: the layout's home directory is the operator's
     host = {"HOME": str(home), **env}
-    for kind in login.XDG_DEFAULTS:
-        login.operator_dir(host, kind).mkdir(parents=True, exist_ok=True)
-    db = login.db_path(host)
+    for variable in XDG_BASES:
+        opencode_dir(host, variable).mkdir(parents=True, exist_ok=True)
+    db = operator_files(host)[0]
     db.parent.mkdir(parents=True, exist_ok=True)
     db.write_text("SYNTHETIC\n")  # the database alone: its sidecars and the other files are absent at the launch
     if env.get("OPENCODE_CONFIG"):
@@ -858,27 +909,32 @@ def test_every_path_the_host_reads_the_operators_opencode_from_is_masked_from_a_
         Path(env["OPENCODE_CONFIG"]).write_text("{}\n")
     layout = run_layout(tmp_path, "reviewer", home=str(home), env=env)
     real = os.path.realpath
-    unmasked = [str(p) for p in operator_files(host) if real(p) not in layout.hide_files
-                and not any(L._within(real(p), d) for d in layout.hide_dirs)]
+    unmasked = [str(p) for p in operator_files(host) if not any(L._within(real(p), d) for d in layout.hide_dirs)]
     assert unmasked == [], (layout.hide_dirs, layout.hide_files)
 
 
 def test_a_directory_masked_for_opencode_never_hides_what_the_run_needs(tmp_path, fake_bwrap):
-    """STG-05 CS-4, outcome 2: the login database's directory is masked whole, so one that is the home directory or
-    the project is refused, naming the variable and the fix; the configuration file OPENCODE_CONFIG names is masked
-    alone, so it may sit in the project; a database in a directory of its own in the project is masked with it."""
+    """STG-05 CS-4, outcome 2: the directories holding the login database and the configuration file OPENCODE_CONFIG
+    names are masked whole, so one that is the home directory or the project is refused, naming the variable and the
+    fix; a database or a configuration file in a directory of its own in the project is masked with it."""
     home = tmp_path / "home"
     home.mkdir()
-    for case, (where, what) in enumerate(((home, "the home directory"), (tmp_path / "1" / "repo", "the project"))):
-        env = {"HOME": str(home), "OPENCODE_DB": str(where / "logins.db")}  # run_layout's project: <base>/repo
+    cases = [(variable, name, where, what) for variable, name in (("OPENCODE_DB", "logins.db"),
+                                                                  ("OPENCODE_CONFIG", "opencode.json"))
+             for where, what in ((home, "the home directory"), (None, "the project"))]
+    for case, (variable, name, where, what) in enumerate(cases):
+        base = tmp_path / str(case)
+        where = where or base / "repo"  # run_layout's project: <base>/repo
+        env = {"HOME": str(home), variable: str(where / name)}
         with pytest.raises(ContainmentUnavailable) as exc:
-            run_layout(tmp_path / str(case), "reviewer", home=str(home), env=env)
+            run_layout(base, "reviewer", home=str(home), env=env)
         assert exc.value.details["reason"] == "opencode_mask_holds_the_run" and exc.value.details["variable"] == \
-            "OPENCODE_DB" and f"or holds {what}" in exc.value.message, exc.value.message
-        assert "point OPENCODE_DB at a directory of its own" in exc.value.message
+            variable and f"or holds {what}" in exc.value.message, exc.value.message
+        assert f"point {variable} at a directory of its own" in exc.value.message
     repo, ws = repo_with_worktree(tmp_path / "ok")
-    config, own = repo / "opencode.json", repo / ".oc" / "logins.db"
+    config, own = repo / ".occ" / "opencode.json", repo / ".oc" / "logins.db"
     own.parent.mkdir()
+    config.parent.mkdir()
     config.write_text("{}\n")
     own.write_text("SYNTHETIC\n")
     run = tmp_path / "ok" / "run"
@@ -886,8 +942,8 @@ def test_a_directory_masked_for_opencode_never_hides_what_the_run_needs(tmp_path
                        bridge_dir=None, policy=None, home=str(home), project=str(repo),
                        env={"HOME": str(home), "OPENCODE_CONFIG": str(config), "OPENCODE_DB": str(own)})
     real = os.path.realpath
-    assert real(config) in layout.hide_files and real(own.parent) in layout.hide_dirs
-    assert real(repo) not in layout.hide_dirs
+    assert real(config.parent) in layout.hide_dirs and real(own.parent) in layout.hide_dirs
+    assert real(repo) not in layout.hide_dirs and real(config) not in layout.hide_files
 
 
 def test_every_bwrap_argv_unsets_the_display_variables_and_starts_a_new_session():

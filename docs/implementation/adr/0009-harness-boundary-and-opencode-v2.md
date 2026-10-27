@@ -1435,8 +1435,8 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   no operator credential (A-33 §3.1, CB-01): every place AEW's host side reads the operator's OpenCode from, as the
   operator's environment puts it, is masked (`opencode.login.operator_masks`, their one owner, which the layout and
   the host's readers share): OpenCode's data, configuration, state and cache directories (addendum 4, ruling 2: the
-  Lead's view holds none of the operator's OpenCode state) and the directory holding the login database, each whole,
-  at their real paths, and the file `OPENCODE_CONFIG` names. A launch where one of those directories is, or holds,
+  Lead's view holds none of the operator's OpenCode state) and the directories holding the login database and the
+  file `OPENCODE_CONFIG` names, each whole, at their real paths. A launch where one of those directories is, or holds,
   the workspace, the project, the home directory or AEW's own is refused, naming the variable that puts it there
   and the fix. The one copy from them, the recent models' `model.json`, is made on the host before the start.
 - **Its environment:** the operator's `XDG_*` and `OPENCODE_CONFIG` are dropped; AEW's five XDG directories are set

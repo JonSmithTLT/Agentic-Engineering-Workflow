@@ -351,8 +351,7 @@ def _env_masks(env: Mapping[str, str]) -> list[str]:
         out.append(os.path.join(env["XDG_CACHE_HOME"], "git", "credential"))
     if env.get("XDG_CONFIG_HOME"):
         out.append(os.path.join(env["XDG_CONFIG_HOME"], "git", "credentials"))
-    dirs, files = login.operator_masks(env)
-    out += [str(p) for p in (*dirs, *files)]
+    out += [str(p) for p in login.operator_masks(env)]
     return [os.path.expanduser(p) for p in out]
 
 
@@ -363,8 +362,7 @@ def _refuse_masks_over_the_run(env: Mapping[str, str], needed: list[tuple[str, s
     it would not do: the login database's sidecars appear beside it after the launch."""
     from aew.harness.opencode import login
 
-    dirs, _ = login.operator_masks(env)
-    for directory, variable in dirs.items():
+    for directory, variable in login.operator_masks(env).items():
         if not os.path.isdir(directory):
             continue
         masked = _real(directory)

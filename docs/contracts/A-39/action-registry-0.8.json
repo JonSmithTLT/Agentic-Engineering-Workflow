@@ -1,0 +1,471 @@
+[
+  {
+    "action": "CLOSE_ATTACHMENT",
+    "catalog_ids": [
+      "L04",
+      "C02",
+      "C05"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "HEB",
+    "status": "ADOPTED_A24_BASELINE_UNCHANGED"
+  },
+  {
+    "action": "SUSPEND_GRANT",
+    "catalog_ids": [
+      "A02"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "ADC",
+    "status": "ADOPTED_A24_BASELINE_UNCHANGED"
+  },
+  {
+    "action": "LIFT_OPERATOR_SUSPENSION",
+    "catalog_ids": [
+      "A03"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "ADC",
+    "status": "ADOPTED_A24_BASELINE_UNCHANGED"
+  },
+  {
+    "action": "ISSUE_STANDING_POLICY",
+    "catalog_ids": [
+      "P05"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "RESOURCE_POLICY_ISSUER",
+    "status": "ADOPTED_A24_BASELINE_UNCHANGED"
+  },
+  {
+    "action": "REQUEST_PROFILE_CHANGE",
+    "catalog_ids": [
+      "P02"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "IF13",
+    "status": "ADOPTED_A24_BASELINE_UNCHANGED"
+  },
+  {
+    "action": "DELEGATED_CANCEL",
+    "catalog_ids": [
+      "C19"
+    ],
+    "origin": "CURRENT_DELEGATED_GRANT",
+    "preview_runtime": "ONLY_WHEN_EXISTING_CURRENT_DELEGATION_ACTUALLY_QUALIFIES",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "HEB",
+    "status": "ADOPTED_A24_BASELINE_UNCHANGED"
+  },
+  {
+    "action": "CONTINUE_ELIGIBLE_WORK",
+    "catalog_ids": [
+      "C17"
+    ],
+    "origin": "CURRENT_DELEGATED_GRANT",
+    "preview_runtime": "ONLY_WHEN_EXISTING_CURRENT_DELEGATION_ACTUALLY_QUALIFIES",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "HEB",
+    "status": "ADOPTED_A24_BASELINE_UNCHANGED"
+  },
+  {
+    "action": "ATTACH_LEAD",
+    "catalog_ids": [
+      "L02"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION"
+  },
+  {
+    "action": "REATTACH_LEAD",
+    "catalog_ids": [
+      "L03"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION"
+  },
+  {
+    "action": "REAFFIRM_ELIGIBLE_CHILD_GRANTS",
+    "catalog_ids": [
+      "A04"
+    ],
+    "origin": "CURRENT_SUCCESSOR_GENERATION",
+    "preview_runtime": "HELD_UNLESS_QUALIFIED_SUCCESSOR_AND_ADC",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "ADC",
+    "status": "PROPOSED_ADDITION"
+  },
+  {
+    "action": "SWITCH_ACTIVE_WORK_CONTEXT",
+    "catalog_ids": [
+      "L08"
+    ],
+    "origin": "CURRENT_SUCCESSOR_GENERATION",
+    "preview_runtime": "ONLY_WHEN_CURRENT_LEAD_SESSION_ACTUALLY_QUALIFIES",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I1"
+  },
+  {
+    "action": "PREPARE_CONTEXT_HANDOFF",
+    "catalog_ids": [
+      "L11"
+    ],
+    "origin": "CURRENT_SUCCESSOR_GENERATION",
+    "preview_runtime": "ONLY_WHEN_CURRENT_LEAD_SESSION_ACTUALLY_QUALIFIES",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I1"
+  },
+  {
+    "action": "LEAD_RELEASE_OWN_SEAT",
+    "catalog_ids": [
+      "L14"
+    ],
+    "origin": "CURRENT_SUCCESSOR_GENERATION",
+    "preview_runtime": "ONLY_WHEN_CURRENT_LEAD_SESSION_ACTUALLY_QUALIFIES",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I1"
+  },
+  {
+    "action": "HANDOVER_LEAD",
+    "catalog_ids": [
+      "L05"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I1"
+  },
+  {
+    "action": "TAKEOVER_LEAD",
+    "catalog_ids": [
+      "L06"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I1"
+  },
+  {
+    "action": "CANCEL_PENDING_LEAD_HANDOFF",
+    "catalog_ids": [
+      "L13"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I1"
+  },
+  {
+    "action": "CREATE_PROPOSED_WORK",
+    "catalog_ids": [
+      "W15"
+    ],
+    "origin": "CURRENT_SUCCESSOR_GENERATION",
+    "preview_runtime": "ONLY_WHEN_CURRENT_LEAD_SESSION_ACTUALLY_QUALIFIES",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "WIS",
+    "status": "PROPOSED_ADDITION_I5"
+  },
+  {
+    "action": "DECIDE_WORK_PROPOSAL",
+    "catalog_ids": [
+      "W01",
+      "W02",
+      "W16",
+      "W17"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "WIS",
+    "status": "PROPOSED_ADDITION_I5"
+  },
+  {
+    "action": "CANCEL_OR_REPLACE_TICKET",
+    "catalog_ids": [
+      "W03"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "WIS",
+    "status": "PROPOSED_ADDITION_I5"
+  },
+  {
+    "action": "ANSWER_DECISION_NEED",
+    "catalog_ids": [
+      "W05"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "WIS",
+    "status": "PROPOSED_ADDITION_I5"
+  },
+  {
+    "action": "APPROVE_INTERFACE_CHANGE",
+    "catalog_ids": [
+      "W04"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "CNI",
+    "status": "PROPOSED_ADDITION_I5"
+  },
+  {
+    "action": "DECIDE_DISCRETIONARY_REVIEW",
+    "catalog_ids": [
+      "W07"
+    ],
+    "origin": "CURRENT_SUCCESSOR_GENERATION",
+    "preview_runtime": "ONLY_WHEN_CURRENT_LEAD_SESSION_ACTUALLY_QUALIFIES",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "AEV",
+    "status": "PROPOSED_ADDITION_I3"
+  },
+  {
+    "action": "DELEGATE_NEW_WORKER",
+    "catalog_ids": [
+      "W10"
+    ],
+    "origin": "CURRENT_SUCCESSOR_GENERATION",
+    "preview_runtime": "ONLY_WHEN_CURRENT_LEAD_SESSION_ACTUALLY_QUALIFIES",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "ADC",
+    "status": "PROPOSED_ADDITION_I3"
+  },
+  {
+    "action": "REVOKE_LINEAGE",
+    "catalog_ids": [
+      "A01"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "ADC",
+    "status": "PROPOSED_ADDITION_I3"
+  },
+  {
+    "action": "ADJUST_LEAD_AUTONOMY",
+    "catalog_ids": [
+      "A05"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "ADC",
+    "status": "PROPOSED_ADDITION_I3"
+  },
+  {
+    "action": "OVERRIDE_RISK_FLOOR",
+    "catalog_ids": [
+      "A06"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "ADC",
+    "status": "PROPOSED_ADDITION_I3"
+  },
+  {
+    "action": "AUTHORIZE_EXTERNAL_EFFECT",
+    "catalog_ids": [
+      "A09"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "ADC",
+    "status": "PROPOSED_ADDITION_I3"
+  },
+  {
+    "action": "REQUEST_HOLD_RESOLUTION",
+    "catalog_ids": [
+      "A12",
+      "C16"
+    ],
+    "origin": "CURRENT_SUCCESSOR_GENERATION",
+    "preview_runtime": "ONLY_WHEN_CURRENT_LEAD_SESSION_ACTUALLY_QUALIFIES",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "AEV",
+    "status": "PROPOSED_ADDITION_I4"
+  },
+  {
+    "action": "REQUEST_INDEPENDENT_REASSESSMENT",
+    "catalog_ids": [
+      "W06"
+    ],
+    "origin": "CURRENT_SUCCESSOR_GENERATION",
+    "preview_runtime": "ONLY_WHEN_CURRENT_LEAD_SESSION_ACTUALLY_QUALIFIES",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "AEV",
+    "status": "PROPOSED_ADDITION_I4"
+  },
+  {
+    "action": "REFER_HELD_RESULT",
+    "catalog_ids": [
+      "C15"
+    ],
+    "origin": "CURRENT_SUCCESSOR_GENERATION",
+    "preview_runtime": "ONLY_WHEN_CURRENT_LEAD_SESSION_ACTUALLY_QUALIFIES",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I4"
+  },
+  {
+    "action": "APPROVE_INTEGRATION",
+    "catalog_ids": [
+      "W09"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "CNI",
+    "status": "PROPOSED_ADDITION_I4"
+  },
+  {
+    "action": "STOP_CHILD_NOW",
+    "catalog_ids": [
+      "C03"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I2"
+  },
+  {
+    "action": "RELEASE_CHILD_TO_MANUAL",
+    "catalog_ids": [
+      "C04"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I2"
+  },
+  {
+    "action": "CANCEL_CHILD_OPERATION",
+    "catalog_ids": [
+      "C06"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I2"
+  },
+  {
+    "action": "DISCARD_HELD_RESULT",
+    "catalog_ids": [
+      "C14"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I2"
+  },
+  {
+    "action": "REQUEST_BACKGROUND_RERUN",
+    "catalog_ids": [
+      "C07"
+    ],
+    "origin": "CURRENT_SUCCESSOR_GENERATION",
+    "preview_runtime": "ONLY_WHEN_CURRENT_LEAD_SESSION_ACTUALLY_QUALIFIES",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I2"
+  },
+  {
+    "action": "ABANDON_INTERRUPTED_EXECUTION",
+    "catalog_ids": [
+      "C20"
+    ],
+    "origin": "CURRENT_SUCCESSOR_GENERATION",
+    "preview_runtime": "ONLY_WHEN_CURRENT_LEAD_SESSION_ACTUALLY_QUALIFIES",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "HEB",
+    "status": "PROPOSED_ADDITION_I2"
+  },
+  {
+    "action": "NARROW_OR_REVOKE_STANDING_POLICY",
+    "catalog_ids": [
+      "P06"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "RESOURCE_POLICY_ISSUER",
+    "status": "PROPOSED_ADDITION_I6"
+  },
+  {
+    "action": "ADOPT_MANIFEST_EDIT",
+    "catalog_ids": [
+      "P14",
+      "P04"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "IF13",
+    "status": "PROPOSED_ADDITION_I6"
+  },
+  {
+    "action": "SET_STEERING_MODE",
+    "catalog_ids": [
+      "P08"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "R01",
+    "status": "PROPOSED_ADDITION_I6"
+  },
+  {
+    "action": "REQUEST_CHARGE_RECONCILIATION",
+    "catalog_ids": [
+      "P10"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "PRESERVING_OR_INCREASING",
+    "sole_admitting_owner": "R01",
+    "status": "PROPOSED_ADDITION_I6"
+  },
+  {
+    "action": "REVOKE_HOST_QUALIFICATION",
+    "catalog_ids": [
+      "P12"
+    ],
+    "origin": "PROTECTED_G3",
+    "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+    "protection_direction": "REDUCING",
+    "sole_admitting_owner": "IF13",
+    "status": "PROPOSED_ADDITION_I6"
+  }
+]

@@ -1,0 +1,511 @@
+{
+ "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+ "set": "every source the design record's requirement index lists as current, and each current wire's adopted schema and OpenAPI",
+ "headers": {
+  ".md": "an HTML comment of key: value lines, then a blank line",
+  ".yaml": "# key: value lines, then a blank line",
+  ".json": "none: this manifest holds its fields"
+ },
+ "files": [
+  {
+   "path": "A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-01",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md",
+   "source-sha256": "cdb052e1bfb5e3b37efdf98e30a2d1fb32db332effb1a92f4f51eab91999ee6b",
+   "edits-sha256": "2cdf4600b2fcb013efb1308dd99d7a48e72e66dcc37a1a290c5ed7fdfdaf33af",
+   "header": true,
+   "sha256": "9af8f198b0f4c4f1ab4ce375b52f718b0eb83e4d283cd6b9cae835b196bf6a2b"
+  },
+  {
+   "path": "A-02/A-02__AEW-foundational-amendment-product-cohesion-operator-experience-v0.3.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-02",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-02__AEW-foundational-amendment-product-cohesion-operator-experience-v0.3.md",
+   "source-sha256": "dfc4d79af613f65d64b2866d26aef5592b4a6aeb4136aaefbc14020fba4a7c2b",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "fa866a4e9893a073a7c6bad07e12f32d881dea6d4025813d39bbb47f045c6a59"
+  },
+  {
+   "path": "A-03/A-03__AEW-foundational-amendment-research-experimentation-unattended-v0.3.1.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-03",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-03__AEW-foundational-amendment-research-experimentation-unattended-v0.3.1.md",
+   "source-sha256": "c88ec1ee1314ee4ca0b307a6c449f77a9d1778512b782a8934ff40188d63e7d6",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "eb8b9e5b1858be1501096899e28120af041de4e08e4f6f73fe70d1db32ba16cf"
+  },
+  {
+   "path": "A-04/A-04__AEW-engineering-workflow-umbrella-contract-candidate-v0.4.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-04",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-04__AEW-engineering-workflow-umbrella-contract-candidate-v0.4.md",
+   "source-sha256": "34ab99d49cc32f630870106b4ca2bfbc55a7d64947c63a4e40429761a940f764",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "4fb69646dd9edd1f0d2c6c7031443eaa18cdb57ad609cc8b0daac84ea79b3172"
+  },
+  {
+   "path": "A-05/A-05__AEW-authority-delegation-classification-contract-candidate-v0.3.1.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-05",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-05__AEW-authority-delegation-classification-contract-candidate-v0.3.1.md",
+   "source-sha256": "e9e46bdbb6cea70f9f57a0233e834bdcc3f35e39558e43405e4cc1124533611a",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "e7de78a662386fe076036c81fa6973ffeba3e950e7c2f62685c84430b7ed4dd1"
+  },
+  {
+   "path": "A-06/A-06__AEW-hosting-execution-boundary-contract-candidate-v0.3.1.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-06",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-06__AEW-hosting-execution-boundary-contract-candidate-v0.3.1.md",
+   "source-sha256": "63d361f8e455fd8e7e67ac798718dbeeb6178aa8372dd63b59abe6f98ccc48c1",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "d4ddae67f5ea2b0eb00e412ddda4467099cef4a243163b19134918c82b7750c8"
+  },
+  {
+   "path": "A-07/A-07__AEW-assurance-evidence-boundary-contract-candidate-v0.3.1.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-07",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-07__AEW-assurance-evidence-boundary-contract-candidate-v0.3.1.md",
+   "source-sha256": "d1b406557e10e31cc13a3824cfc1309f00e0c8da91b25fc3edc5d22630eb1ace",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "03e70c3088a4091ed3ba358a25660d0dcc51a84ca63dde127faf27b179c8e462"
+  },
+  {
+   "path": "A-08/A-08__AEW-work-identity-scope-boundary-contract-candidate-v0.2.1.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-08",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-08__AEW-work-identity-scope-boundary-contract-candidate-v0.2.1.md",
+   "source-sha256": "9f9f4a1fcf244525375369f0232b55c486e63090f6e84371370766175110317e",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "b692e084f30eb6874e21c14c7e2c513cc0ae20454fb656bf95ab2c4feb40ae2d"
+  },
+  {
+   "path": "A-09/A-09__AEW-coordination-native-integration-boundary-contract-candidate-v0.2.2.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-09",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-09__AEW-coordination-native-integration-boundary-contract-candidate-v0.2.2.md",
+   "source-sha256": "1f03a78cc1c6c46dbd8a415ff4b297125003bab387a4a9b28cc63a3fa958bfac",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "70fd8e97a13a160638a902129f99cc8a404f51e0e6e5a2ad60cb6ecf347a13ab"
+  },
+  {
+   "path": "A-10/A-10__AEW-api-operator-interface-semantic-boundary-contract-candidate-v0.2.2.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-10",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-10__AEW-api-operator-interface-semantic-boundary-contract-candidate-v0.2.2.md",
+   "source-sha256": "e4666fb5ee7f7b26f6e0ae514022bc771ad530af94de865055582f02a6b9165a",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "f89997fd560faa24cbb2f4a1f284133ec4958d3ba2e1e9375e709a26af2dd482"
+  },
+  {
+   "path": "A-11/A-11__AEW-AEV-G1-material-package-scope-conformance-producer-amendment-candidate-v0.2.1.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-11",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-11__AEW-AEV-G1-material-package-scope-conformance-producer-amendment-candidate-v0.2.1.md",
+   "source-sha256": "dd105fe3cde4250a96f115f4a2a2015a9b0af952df5acf4ed5b32c98e853874f",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "9c0f5faa9a717c294d369c910a5769905d40b71730a1969a0ed0bdcd50f1ac6d"
+  },
+  {
+   "path": "A-12/A-12__AEW-D01-shared-read-wire-contract-candidate-v0.3.2.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-12",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-12__AEW-D01-shared-read-wire-contract-candidate-v0.3.2.md",
+   "source-sha256": "ff5dcee48b476cc9ecd4c1fb27099de1b8a7222cf79972c4ff70aefcaae2c686",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "90254d9d7e0744ca7c439796812431bd635c268add9d367d902d9ba401bf8aea"
+  },
+  {
+   "path": "A-13/A-13__AEW-K01-Knowledge-Boundary-Contract-candidate-v0.3.3.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-13",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-13__AEW-K01-Knowledge-Boundary-Contract-candidate-v0.3.3.md",
+   "source-sha256": "747d8554d1dbdaf7e0ce358e4cff3ab75c2b7d40d226f89371f597135243a9fa",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "3ae9e1d2329f63398c76a8d8e6199937697de6c18b78ac51016a46c449b8818b"
+  },
+  {
+   "path": "A-14/A-14__AEW-P01-Project-Understanding-and-Maps-Contract-candidate-v0.2.1.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-14",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-14__AEW-P01-Project-Understanding-and-Maps-Contract-candidate-v0.2.1.md",
+   "source-sha256": "b479292f265a29738d676cb33d8b25eee098ca88a167d1d8f0600f70e52eff3e",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "b00e6f0806a62709f25b674c0e8ebc56ce15a42621d852895c147d3b06e999e2"
+  },
+  {
+   "path": "A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-15",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md",
+   "source-sha256": "7d5eed2cca49efb18e32f418821a616da2a5c4a9b2c4cb77e9a8acf2b6ba7550",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "a1a8630ee0f63f057df895b8f0d031cbe4eae7ca498d2c25f26e6caf2208507d"
+  },
+  {
+   "path": "A-16/A-16__AEW-RX01-Research-Experimentation-and-Unattended-Missions-Contract-candidate-v0.2.1.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-16",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-16__AEW-RX01-Research-Experimentation-and-Unattended-Missions-Contract-candidate-v0.2.1.md",
+   "source-sha256": "d0208ad86bb8ae56e0223556caaac8173c6d51fa3e6b62f5d72ba7a599dfd97a",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "fd22fb61407cfb50371820b29aac9e7a93c953576cca7c3b5ddd8d74282bcca4"
+  },
+  {
+   "path": "A-17/A-17__AEW-S01-Portable-Hosting-and-Deployment-Profile-Contract-candidate-v0.2.1.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-17",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-17__AEW-S01-Portable-Hosting-and-Deployment-Profile-Contract-candidate-v0.2.1.md",
+   "source-sha256": "cef474e73edc5ae5119d425d9f75130b7be8288eaa2ce77e57d64e7cc803c155",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "3c03a76c6a69d312342ed2e598767cde053d958b26db910c70ce3f4ea4353613"
+  },
+  {
+   "path": "A-18/A-18__AEW-IF13-Profile-State-and-Transition-Contract-candidate-v0.2.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-18",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-18__AEW-IF13-Profile-State-and-Transition-Contract-candidate-v0.2.md",
+   "source-sha256": "39a00d7bd733cd70fc9f93f1c8096ab6d1a647130e7b809643eb1ac447b8aff9",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "14c4182cac748427e06e8b993999207e489d76a03d9919a8d872a21fb740306a"
+  },
+  {
+   "path": "A-19/A-19__AEW-O01-Core-Operator-Intent-and-Reconciliation-Contract-candidate-v0.2.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-19",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-19__AEW-O01-Core-Operator-Intent-and-Reconciliation-Contract-candidate-v0.2.md",
+   "source-sha256": "44326bfc48b941aadd250b494c5f060e679a22a9ffbfa6ad576ca57557bcedf9",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "9bab3c02cfa41dd23163e0328380f45dcfa9607db1aa9bec092be87103c10535"
+  },
+  {
+   "path": "A-20/A-20__AEW-IF12-Model-Access-Delivery-and-Recipient-Boundary-Contract-candidate-v0.2.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-20",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-20__AEW-IF12-Model-Access-Delivery-and-Recipient-Boundary-Contract-candidate-v0.2.md",
+   "source-sha256": "0cfd34103fadcd0a78a2ca83af1b3856d8438e40646ac592fbbae4ddf87f4bb9",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "c11568462d41cd47a6580dbf105680454cc7ff87c756c04a48da266364bf5834"
+  },
+  {
+   "path": "A-21/A-21__AEW-IF10-Resource-Policy-Admissibility-and-Accounting-Interface-Contract-candidate-v0.2.1.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-21",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-21__AEW-IF10-Resource-Policy-Admissibility-and-Accounting-Interface-Contract-candidate-v0.2.1.md",
+   "source-sha256": "bcb9bda6ef87f9fb81ca176ffb02c46606da397b9b093e3f3f5ec4d11ec87dd0",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "b247f555263ac00cba99ed4bd3fbfe052be8b425a0eca29e424bc7ec8f07d1e7"
+  },
+  {
+   "path": "A-22/A-22__A22-D01-EXPANSION-v0.1.1.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-22",
+   "source": "10-adopted/RECONCILED-SOURCE-BASELINE/01-ADOPTED-SOURCE-BYTES/A-22__A22-D01-EXPANSION-v0.1.1.md",
+   "source-sha256": "5f598d32a56b7a52d064625f0cfa2d2e374e5d21c0c4a8a295afaed23244549a",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "47eed221e3cedbb21460441cd9a434e3ac9d64133d22b6c951bc4c33f6f12571"
+  },
+  {
+   "path": "A-25/SELECTION-PROFILE-AND-SUBSTITUTABILITY.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-25",
+   "source": "30-stages/STG-01-first-release-expansion/sealed/v0.5.4/STG-01-v0.5.4.zip!00-DESIGN/SELECTION-PROFILE-AND-SUBSTITUTABILITY.md",
+   "source-sha256": "4632406ec04fe9ebd48c6d47c286c079ec8a2d4ec231a8a85ebd3e3146daf303",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "fdaad9e23f996d8e764a3c82a0c36240c895c4801a1aaa9297c735722ea4fc68"
+  },
+  {
+   "path": "A-25/OWNER-PIN-RULES.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-25",
+   "source": "30-stages/STG-01-first-release-expansion/sealed/v0.5.4/STG-01-v0.5.4.zip!00-DESIGN/OWNER-PIN-RULES.md",
+   "source-sha256": "f7292e6784d3792426d29dc5937a79392fb475a29efcaac6ba48e41877cd15c6",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "3f107bf37167436944bc3b87c9b173e832d22e8917342a41a6fa6e436d986253"
+  },
+  {
+   "path": "A-25/openapi-d01-v0.3.4-REVIEW-CANDIDATE.yaml",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-25",
+   "source": "30-stages/STG-01-first-release-expansion/sealed/v0.5.4/STG-01-v0.5.4.zip!02-WIRE/openapi-d01-v0.3.4-REVIEW-CANDIDATE.yaml",
+   "source-sha256": "c291d0a7f2cb4d5e4698a904628042737a34e357622d2d3527f8ec03da368069",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "79b56100152a88a40ea31a82a205a82ce17ce9cb0969a891ff031774f43f680a"
+  },
+  {
+   "path": "A-26/g3-wire.schema.json",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-26",
+   "source": "30-stages/STG-03-G3-trusted-origin/adopted/g3-0.6.1/g3-wire.schema.json",
+   "source-sha256": "62b67dcab151f454a4af0c8f48e301299af8a90e009a1e70be81cba51f6c5e1c",
+   "edits-sha256": "none",
+   "header": false,
+   "sha256": "62b67dcab151f454a4af0c8f48e301299af8a90e009a1e70be81cba51f6c5e1c"
+  },
+  {
+   "path": "A-28/I1-PROFILE.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-28",
+   "source": "30-stages/STG-06-I1-lead-seat-lifecycle/adopted/o01-0.3-i1/I1-PROFILE.md",
+   "source-sha256": "416bec868e91bbb60bed689964e73a09db132fe34d224c4cb3e5ab76b44f5b59",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "ebd536f017394358ca48c134d1050d2a52b357d48caee49fedbcf5ec4e926242"
+  },
+  {
+   "path": "A-29/I5-PROFILE.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-29",
+   "source": "30-stages/STG-07-I5-work-and-scope-decisions/adopted/o01-0.4-i5/I5-PROFILE.md",
+   "source-sha256": "ce8817316924c6b5413a6604fd7264c3a6a2735716f6a7d09f9a890d3edf9801",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "ff7643c61eb648c4aa7da66077d68c01b267d780e97fdc5cb2be2c1a67c6e77d"
+  },
+  {
+   "path": "A-30/I3-PROFILE.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-30",
+   "source": "30-stages/STG-08-I3-adc-authority-and-grants/adopted/o01-0.5-i3/I3-PROFILE.md",
+   "source-sha256": "8cd78123a1063cd6ed4ca79ded32a16a7e36f592fb2087732109e26b7c24176e",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "ed79b8d2e920c09630e7089a21de8fc53ebc5f02fd81208d0a10bda7bbe9cae7"
+  },
+  {
+   "path": "A-31/I4-PROFILE.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-31",
+   "source": "30-stages/STG-09-I4-aev-assurance-and-holds/adopted/o01-0.6-i4/I4-PROFILE.md",
+   "source-sha256": "99ab4cc70c459b4798ce541f40e90963311be1ed7a29644aaa1963cf080d4028",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "c20e6a673dccc077588e58d1a8e57bb69f8dbc6befd12a7b3b6c2cb28849b1c9"
+  },
+  {
+   "path": "A-32/AEW-86-Action-Classification-2026-10-22.json",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-32",
+   "source": "20-register/scope/adopted/classification-2026-10-22/AEW-86-Action-Classification-2026-10-22.json",
+   "source-sha256": "67f614fc8968b3fc1d64555b516449afbccdab2d80714cee26b97af2704e2e84",
+   "edits-sha256": "none",
+   "header": false,
+   "sha256": "67f614fc8968b3fc1d64555b516449afbccdab2d80714cee26b97af2704e2e84"
+  },
+  {
+   "path": "A-33/BUILD-BRIEF-PROPOSED.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-33",
+   "source": "30-stages/STG-05-agent-containment-build/adopted/build-brief-2026-10-23/BUILD-BRIEF-PROPOSED.md",
+   "source-sha256": "60120ea70ffb685a17270567e549de41b7aeb2af3e9b4c7c28ec63c929e88c41",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "e3547302d12a63ee82889cbc5a9ca07f3b8ab7d71d5e72cdbf169dc0bbbc82b3"
+  },
+  {
+   "path": "A-34/I2-PROFILE.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-34",
+   "source": "30-stages/STG-10-I2-heb-child-execution-control/adopted/o01-0.7-i2/I2-PROFILE.md",
+   "source-sha256": "7923362bb9d2cc839d23fd12af7d6a36be9650d013680ec8a5ab8098d87e2ffe",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "d669e5bfc45d452e4feef547c49282544447c8b8a9dce3a1289360ac34decfe1"
+  },
+  {
+   "path": "A-34/action-registry-0.7.json",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-34",
+   "source": "30-stages/STG-10-I2-heb-child-execution-control/adopted/o01-0.7-i2/wire/action-registry-0.7.json",
+   "source-sha256": "1694c7d79decb2ee55f334803f15595f9e2e35974c415b50fcec976522edbe0f",
+   "edits-sha256": "none",
+   "header": false,
+   "sha256": "1694c7d79decb2ee55f334803f15595f9e2e35974c415b50fcec976522edbe0f"
+  },
+  {
+   "path": "A-34/refusal-reasons-0.7.json",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-34",
+   "source": "30-stages/STG-10-I2-heb-child-execution-control/adopted/o01-0.7-i2/wire/refusal-reasons-0.7.json",
+   "source-sha256": "8611bc29a9fbb051c9941e170ad025535e496b84cd83d9eefdbbb2131ed41fc5",
+   "edits-sha256": "none",
+   "header": false,
+   "sha256": "8611bc29a9fbb051c9941e170ad025535e496b84cd83d9eefdbbb2131ed41fc5"
+  },
+  {
+   "path": "A-37/G3-PROFILE.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-37",
+   "source": "30-stages/STG-03-G3-trusted-origin/adopted/g3-r7.1/G3-PROFILE.md",
+   "source-sha256": "701e7d3fd8c17d92b35450f14dd6177b7e77cdbd36af8b0e6254edf458f037e9",
+   "edits-sha256": "c2fef5fb122a5bfa59e7f858fbc9ff15bfe42691d594bd6c5111afacc986ee3b",
+   "header": true,
+   "sha256": "abf16630e30a8e8415a9358f191374d55f27e8eb5664857e4323954f42575809"
+  },
+  {
+   "path": "A-38/CAPR-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-38",
+   "source": "30-stages/STG-15-capability-register/adopted/capr-r2.1/CAPR-POSITION.md",
+   "source-sha256": "87a602a7b9b919c06b6a51c7916f89a534aa5051cd42fdcd83d17318bce73429",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "57f26447ad26e6815ca54e5ce024a0fe41fb4f532e61977f0ff38f7c04a17e34"
+  },
+  {
+   "path": "A-39/I6-PROFILE.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-39",
+   "source": "30-stages/STG-14-I6-resource-model-and-host-policy/adopted/o01-0.8-i6/I6-PROFILE.md",
+   "source-sha256": "e7413de4a9f82a26015e90f5d92783c90f84fcd87aefb0278d73b49d66be780f",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "2e623713c390f8c96b8db4a6a53625d71fda75e23f2921ceba45211b8f13e579"
+  },
+  {
+   "path": "A-39/action-registry-0.8.json",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-39",
+   "source": "30-stages/STG-14-I6-resource-model-and-host-policy/adopted/o01-0.8-i6/wire/action-registry-0.8.json",
+   "source-sha256": "d1da2da9afa2e932a3bc8322c0e2d294a137c27efad435c12259ddd8626113a9",
+   "edits-sha256": "none",
+   "header": false,
+   "sha256": "d1da2da9afa2e932a3bc8322c0e2d294a137c27efad435c12259ddd8626113a9"
+  },
+  {
+   "path": "A-39/refusal-reasons-0.8.json",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-39",
+   "source": "30-stages/STG-14-I6-resource-model-and-host-policy/adopted/o01-0.8-i6/wire/refusal-reasons-0.8.json",
+   "source-sha256": "9121f8d80e849a6f29124fb4bc674612e1412619b8c84174103a0963513b6da1",
+   "edits-sha256": "none",
+   "header": false,
+   "sha256": "9121f8d80e849a6f29124fb4bc674612e1412619b8c84174103a0963513b6da1"
+  },
+  {
+   "path": "A-40/WISR-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-40",
+   "source": "30-stages/STG-16-WIS-research-statements/adopted/wisr-r2.2/WISR-POSITION.md",
+   "source-sha256": "5e3d7e0c6a46a55027997b9a7af634ba242bff68687863168450991e8877a6e4",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "311f3eec8ba015a6e873199dd018515d4b009f534afdabf1a553b863733fbfcd"
+  },
+  {
+   "path": "A-41/CNIL-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-41",
+   "source": "30-stages/STG-17-selection-and-CNI-link-vocabulary/adopted/cnil-r2.1/CNIL-POSITION.md",
+   "source-sha256": "3daf281783d37848f71cb180f0feea2cf43b0e1f99b72f359143819db5ab574c",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "238308f1701d362803cfa990ba6c30759bd5801b02e480923d124dc8a14e1051"
+  },
+  {
+   "path": "A-42/MSN-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-42",
+   "source": "30-stages/STG-18-unattended-mission/adopted/msn-r2.1/MSN-POSITION.md",
+   "source-sha256": "30fcfef618d677395ed6d4301d90b584d1d62ef1eb6d21c99895d91120f5d65d",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "41480cb65fcad630968f5890e7eb914be68802ec2e9843cf91b2b4019aa906a3"
+  },
+  {
+   "path": "A-43/I7-PROFILE.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-43",
+   "source": "30-stages/STG-19-I7-research-links-and-mission-wire/adopted/o01-0.9-i7/I7-PROFILE.md",
+   "source-sha256": "5bf054e44617fcdb4991f96e5e9c79ed3ec37255cee01db2773fe9dd7cda6ee6",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "dbec0f2dbfd9e751fd5599ff493568b746706e06d78783e936a39ce5a58ba1f1"
+  },
+  {
+   "path": "A-43/action-registry-0.9.json",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-43",
+   "source": "30-stages/STG-19-I7-research-links-and-mission-wire/adopted/o01-0.9-i7/wire/action-registry-0.9.json",
+   "source-sha256": "15411e8319fc5aa338c9ce758d1cd903c5e8129cd4fe14f15659c33b5071ecb6",
+   "edits-sha256": "none",
+   "header": false,
+   "sha256": "15411e8319fc5aa338c9ce758d1cd903c5e8129cd4fe14f15659c33b5071ecb6"
+  },
+  {
+   "path": "A-43/refusal-reasons-0.9.json",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-43",
+   "source": "30-stages/STG-19-I7-research-links-and-mission-wire/adopted/o01-0.9-i7/wire/refusal-reasons-0.9.json",
+   "source-sha256": "dfbf3f7bcd5a6573bf500ba2109dae3b9736b7c7eb03cb5c7297b59f475bfafb",
+   "edits-sha256": "none",
+   "header": false,
+   "sha256": "dfbf3f7bcd5a6573bf500ba2109dae3b9736b7c7eb03cb5c7297b59f475bfafb"
+  },
+  {
+   "path": "A-25/aew-d01-read-v0.3.4-FULL.schema.json",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-25",
+   "source": "30-stages/STG-01-first-release-expansion/sealed/v0.5.4/STG-01-v0.5.4.zip!02-WIRE/aew-d01-read-v0.3.4-FULL.schema.json",
+   "source-sha256": "50bd04a0e8f10fe70bc43ffebca8a0b3b0e08872b339030d6d8dfebee180ebba",
+   "edits-sha256": "none",
+   "header": false,
+   "sha256": "50bd04a0e8f10fe70bc43ffebca8a0b3b0e08872b339030d6d8dfebee180ebba"
+  },
+  {
+   "path": "A-25/read-expansion-data.schema.json",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-25",
+   "source": "30-stages/STG-01-first-release-expansion/sealed/v0.5.4/STG-01-v0.5.4.zip!02-WIRE/read-expansion-data.schema.json",
+   "source-sha256": "c5900baee2db33a1d87507d862d99da7c15b9c5b228f9feba70f6e24ea39e9b2",
+   "edits-sha256": "none",
+   "header": false,
+   "sha256": "c5900baee2db33a1d87507d862d99da7c15b9c5b228f9feba70f6e24ea39e9b2"
+  },
+  {
+   "path": "A-43/o01-command-0.9.schema.json",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-43",
+   "source": "30-stages/STG-19-I7-research-links-and-mission-wire/adopted/o01-0.9-i7/wire/o01-command-0.9.schema.json",
+   "source-sha256": "30c5b30b7e10be0576dad071da223d79e075eebedef1beb2b1e30a2a96841009",
+   "edits-sha256": "none",
+   "header": false,
+   "sha256": "30c5b30b7e10be0576dad071da223d79e075eebedef1beb2b1e30a2a96841009"
+  },
+  {
+   "path": "A-43/openapi-o01-0.9.yaml",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-43",
+   "source": "30-stages/STG-19-I7-research-links-and-mission-wire/adopted/o01-0.9-i7/wire/openapi-o01-0.9.yaml",
+   "source-sha256": "b6118af8e366029c551181fbcb6a14af51fdc22e3a46102d9bcad5d85c58a11d",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "e37accf207e3fb734ecad0c5ecce9733cbcaae25cebcf7ac6a4aea3fc91ad1f1"
+  }
+ ]
+}

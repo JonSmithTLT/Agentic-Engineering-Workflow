@@ -10,3 +10,7 @@
 
 # The dashboard's committed frontend build (F20.5): bytes exactly as built, so BUILD.json's hashes hold.
 src/aew/dashboard/static/** -text
+
+# The published contract copies (D-A): bytes exactly as generated, so MANIFEST.json's hashes hold; generated, so a
+# pull request's diff view collapses them.
+docs/contracts/** -text linguist-generated

@@ -1,0 +1,397 @@
+{
+  "$defs": {
+    "ContinuationVector": {
+      "additionalProperties": false,
+      "properties": {
+        "axes": {
+          "additionalProperties": false,
+          "properties": {
+            "ADC": {
+              "$ref": "#/$defs/OwnerAxis"
+            },
+            "AEV": {
+              "$ref": "#/$defs/OwnerAxis"
+            },
+            "HEB": {
+              "$ref": "#/$defs/OwnerAxis"
+            },
+            "IF10": {
+              "$ref": "#/$defs/OwnerAxis"
+            },
+            "R01": {
+              "$ref": "#/$defs/OwnerAxis"
+            },
+            "WIS": {
+              "$ref": "#/$defs/OwnerAxis"
+            }
+          },
+          "required": [
+            "HEB",
+            "ADC",
+            "WIS",
+            "AEV",
+            "R01",
+            "IF10"
+          ],
+          "type": "object"
+        },
+        "binding_ref": {
+          "type": "string"
+        },
+        "generation_ref": {
+          "type": "string"
+        },
+        "informational_only": {
+          "const": true
+        },
+        "operation": {
+          "const": "CONTINUE_ELIGIBLE_WORK"
+        },
+        "work_ref": {
+          "type": "string"
+        },
+        "work_revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding_ref",
+        "work_ref",
+        "work_revision",
+        "generation_ref",
+        "operation",
+        "axes",
+        "informational_only"
+      ],
+      "type": "object"
+    },
+    "HoldRecoveryProjection": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "options_completeness": {
+                "const": "qualified_scoped"
+              }
+            },
+            "required": [
+              "options_completeness"
+            ]
+          },
+          "then": {
+            "properties": {
+              "hold_state": {
+                "const": "held"
+              },
+              "options_source_basis": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "options_source_basis": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "options_source_basis"
+            ]
+          },
+          "then": {
+            "properties": {
+              "options": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "hold_ref": {
+          "type": "string"
+        },
+        "hold_state": {
+          "enum": [
+            "held",
+            "not_established"
+          ]
+        },
+        "options": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "basis_ref": {
+                "type": "string"
+              },
+              "executable_authority": {
+                "const": false
+              },
+              "issuer_owner": {
+                "const": "AEV"
+              },
+              "kind": {
+                "enum": [
+                  "request_remediation",
+                  "request_review",
+                  "wait_for_external_event"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "option_ref": {
+                "type": "string"
+              },
+              "source_epoch": {
+                "type": "string"
+              },
+              "valid_until": {
+                "format": "date-time",
+                "type": "string"
+              }
+            },
+            "required": [
+              "option_ref",
+              "label",
+              "issuer_owner",
+              "basis_ref",
+              "source_epoch",
+              "valid_until",
+              "kind",
+              "executable_authority"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "options_completeness": {
+          "enum": [
+            "qualified_scoped",
+            "partial",
+            "unknown"
+          ]
+        },
+        "options_source_basis": {
+          "additionalProperties": false,
+          "properties": {
+            "aev_issuer_ref": {
+              "type": "string"
+            },
+            "hold_version": {
+              "type": "string"
+            },
+            "owner_epoch": {
+              "type": "string"
+            },
+            "recipient_ref": {
+              "type": "string"
+            },
+            "valid_until": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "aev_issuer_ref",
+            "hold_version",
+            "recipient_ref",
+            "valid_until",
+            "owner_epoch"
+          ],
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "hold_ref",
+        "hold_state",
+        "options",
+        "options_completeness",
+        "options_source_basis"
+      ],
+      "type": "object"
+    },
+    "OperationIndexEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "CLOSE_ATTACHMENT",
+            "SUSPEND_GRANT",
+            "LIFT_OPERATOR_SUSPENSION",
+            "ISSUE_STANDING_POLICY",
+            "REQUEST_PROFILE_CHANGE",
+            "DELEGATED_CANCEL",
+            "CONTINUE_ELIGIBLE_WORK",
+            "ATTACH_LEAD",
+            "REATTACH_LEAD",
+            "REAFFIRM_ELIGIBLE_CHILD_GRANTS"
+          ],
+          "type": "string"
+        },
+        "attachment_generation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail_path": {
+          "pattern": "^/o01/v0/owner-operations/(HEB|ADC|IF13|RESOURCE_POLICY_ISSUER)/[A-Za-z][A-Za-z0-9:._-]{2,127}$",
+          "type": "string"
+        },
+        "issued_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "operation_ref": {
+          "pattern": "^[A-Za-z][A-Za-z0-9:._-]{2,127}$",
+          "type": "string"
+        },
+        "owner": {
+          "enum": [
+            "HEB",
+            "ADC",
+            "IF13",
+            "RESOURCE_POLICY_ISSUER"
+          ]
+        },
+        "owner_epoch": {
+          "type": "string"
+        },
+        "source_version": {
+          "type": "string"
+        },
+        "subject_ref": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "owner",
+        "operation_ref",
+        "action",
+        "subject_ref",
+        "attachment_generation",
+        "issued_at",
+        "owner_epoch",
+        "source_version",
+        "detail_path"
+      ],
+      "type": "object"
+    },
+    "OwnerAxis": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "ok",
+                  "blocked"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "basis_ref": {
+                "type": "string"
+              },
+              "observed_at": {
+                "type": "string"
+              },
+              "owner_epoch": {
+                "type": "string"
+              },
+              "qualification": {
+                "const": "qualified"
+              },
+              "source_version": {
+                "type": "string"
+              },
+              "valid_until": {
+                "format": "date-time",
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "basis_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observed_at": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner_epoch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "qualification": {
+          "enum": [
+            "qualified",
+            "unqualified",
+            "not_established"
+          ]
+        },
+        "reason_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "enum": [
+            "ok",
+            "blocked",
+            "unknown"
+          ]
+        },
+        "valid_until": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "owner_epoch",
+        "source_version",
+        "basis_ref",
+        "observed_at",
+        "valid_until",
+        "qualification",
+        "reason_code"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -34,7 +34,8 @@ execution. It is a Python package (`src/aew`, CLI `aew`) plus a dashboard (`web/
 ## Docs, the ledger and the register (all test-enforced)
 
 How each of these is done is in [`docs/README.md`](docs/README.md), "Keeping this map true".
-- **Every `.md` and `.yaml` under `docs/`** (except `skills/`) is linked from `docs/README.md`.
+- **Every `.md` and `.yaml` under `docs/`** is linked from `docs/README.md`, except under `skills/`, the register's
+  `notes.d/` and `contracts/`, each reached through its own README on that page.
 - **Ingesting a design is a hard gate, not a file move:** every requirement goes into the requirements ledger, and a
   dropped one gets an explicit disposition, never silence.
 - **The register is data.** Edit `future-work.yaml` and run `python tools/register.py render`; never edit the rendered

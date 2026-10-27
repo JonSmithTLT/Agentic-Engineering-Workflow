@@ -1144,6 +1144,8 @@ NONLITERAL_ALLOWED: dict[str, frozenset[str]] = {
 # never this repository: in discovery itself, and in the integration test that runs `aew init` on a fixture project
 # laid out by them. They were left to the guard while none existed here, until D-A's docs/contracts/ (PR #288) took
 # one of their names. They come from discovery's own table; any other file that names one still reads this repository.
+# All of them are dropped from these two files, so a read of this repository under any of these names from either file
+# would be dropped too; none exists.
 _CONVENTIONS = frozenset(rel for rel, *_ in discovery.RULES)
 NOT_OURS: dict[str, frozenset[str]] = {
     "src/aew/knowledge/discovery.py": _CONVENTIONS,

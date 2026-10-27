@@ -115,8 +115,9 @@ names the variables that showed a Lead session, and says to ask the operator to 
   that the consent record's `set_digest` is the SW-02 digest of exactly that set. The bearer token is read from the
   file and goes in the `Authorization` header only: it is never printed, logged, or put in an error.
 - **The receipt** is printed. Until G3-C, the owner cannot establish G3 as the origin, so each member comes back
-  `ORIGIN_NOT_ESTABLISHED`: the client adds a fixed note that this is not a failure of the request, and that G3
-  qualifies on this host with the owners' side (G3-C) installed and every agent context contained.
+  `ORIGIN_NOT_ESTABLISHED`: the client adds a fixed note that this is not a failure of the request, and that G3 is
+  established on this host once the owners' side (G3-C) lands and every agent context, the Lead included, runs
+  contained (CS-4).
 
 ## Install (root, on the host)
 

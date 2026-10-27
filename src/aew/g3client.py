@@ -59,7 +59,7 @@ COMMAND_SETS = "/o01/v0/command-sets"
 # What the operator is told once the set was submitted and its owner did not admit it for want of G3 (fixed text).
 NOT_ESTABLISHED = (
     "Approved in the confirmer and submitted. The owner did not admit it, because G3 is not yet established on this "
-    "host: owners accept G3 consent only once the owners' side (G3-C) is installed and every agent context, the Lead "
+    "host: owners accept G3 consent only once the owners' side (G3-C) lands, and every agent context, the Lead "
     "included, runs contained (CS-4). Until then no protected action is admitted. Nothing was admitted, and nothing "
     "is wrong with the request.")
 

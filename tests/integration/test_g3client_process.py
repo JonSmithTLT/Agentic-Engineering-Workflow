@@ -18,7 +18,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +26,7 @@ import pytest
 
 from aew import g3client as C
 from aew.cli.main import main
-from aew.errors import OperatorAuthorizationRequired
+from aew.errors import OperatorAuthorizationRequired, Unavailable
 from aew.stg02 import server as SV
 from aew.stg02 import wire as W
 from tests.helpers import g3 as G
@@ -232,6 +232,26 @@ def test_an_answer_without_the_g3_wire_is_unavailable_never_a_pending_approval(
     error = _error(err)
     assert error["code"] == "UNAVAILABLE" and error["details"]["reason"] == "g3_not_g3" and code == 10
     assert "waiting for the operator" not in err
+
+
+def test_a_stalled_service_ends_the_wait_by_the_approvals_expiry_not_a_request_timeout_later(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#286 review F2, on a real socket: a service that takes a request and never answers. Each request is bounded by
+    the time left, so a one-second approval's wait ends by its expiry and the grace, not the transport's 30 s."""
+    path = str(tmp_path / "stalled.sock")
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(path)
+    listener.listen(1)
+    monkeypatch.setattr(C, "GRACE_S", 1)
+    pending = {"approval_ref": "approval:one", "expires_at": W.utc(datetime.now(UTC) + timedelta(seconds=1))}
+    started = time.monotonic()
+    try:
+        with pytest.raises(Unavailable) as e:
+            C.await_decision(pending, path)
+    finally:
+        listener.close()
+    took = time.monotonic() - started
+    assert e.value.details["reason"] == "g3_unreachable" and took < 1 + 1 + 1, took  # life, grace, and slack
 
 
 def test_no_g3_service_is_unavailable_and_says_where_to_look(

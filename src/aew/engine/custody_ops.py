@@ -147,6 +147,34 @@ def refuse_in_lead_session(refusal: str, environ: dict[str, str] | None = None) 
         raise PermissionDenied(f"{refusal} ({', '.join(present)} present)", variables=present, reason=LEAD_SESSION)
 
 
+def operator_terminal_refusal(command: str, aside: str = "") -> str:
+    """Why `aew <command>` never runs in a Lead session, and the way to ask instead."""
+    return (f"`aew {command}` is the operator's, at their own terminal; it never runs in a Lead session: ask the "
+            f"operator to run `aew {command}`" + (f" ({aside})" if aside else ""))
+
+
+REGISTER_READ = "`aew capability list` reads the register here"
+
+# The commands a Lead session's environment keeps out (their surface-map rows are forbidden-to-lead), each with what
+# its refusal adds. The command's own check and the Lead broker's channels both take the text from here, so a Lead is
+# told the same way to ask whichever way it asked, never "run this one directly" (#272 QC3; #286 review F1).
+LEAD_KEPT_OUT: dict[tuple[str, ...], str] = {
+    ("capability", "check"): REGISTER_READ,
+    ("g3", "request"): "",
+}
+
+
+def kept_out_refusal(path: frozenset[str]) -> str | None:
+    """The refusal of a command on ``LEAD_KEPT_OUT``, by its sub-command names, or None for any other command."""
+    words = next((w for w in LEAD_KEPT_OUT if frozenset(w) == path), None)
+    return None if words is None else operator_terminal_refusal(" ".join(words), LEAD_KEPT_OUT[words])
+
+
+def refuse_kept_out(words: tuple[str, ...], environ: dict[str, str] | None = None) -> None:
+    """A command on ``LEAD_KEPT_OUT`` refuses in a Lead session's environment, in its one text."""
+    refuse_in_lead_session(operator_terminal_refusal(" ".join(words), LEAD_KEPT_OUT[words]), environ)
+
+
 def refuse_lead_session(environ: dict[str, str] | None = None) -> None:
     """S3/T1: ``aew integrate custody`` is never a Lead's command; it refuses to run where a Lead session's environment
     is present. Keyed on the environment only: the worker is legitimately spawned by the broker's process, with that

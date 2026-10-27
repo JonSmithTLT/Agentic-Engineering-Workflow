@@ -242,9 +242,19 @@ def test_only_app_present_opens_raises_or_focuses_the_window_and_only_the_operat
 def test_no_socket_call_runs_on_the_main_loop_every_one_is_handed_to_a_worker_thread() -> None:
     """A call on confirm.sock may wait up to TIMEOUT_S; on GTK's main loop that would freeze the window. Every call of
     core's socket functions in window.py is the body of a lambda passed to ``_in_background``, which runs it on a
-    thread and hands the result back through ``GLib.idle_add``."""
+    thread and hands the result back through ``GLib.idle_add``. The socket functions are derived from core: ``_call``
+    and every function that reaches it (#286 review N1)."""
     tree = ast.parse((PACKAGE / "window.py").read_bytes().decode())
-    socket_fns = {"list_pending", "decide", "_call"}
+    fns = {n.name: n for n in ast.parse((PACKAGE / "core.py").read_bytes().decode()).body
+           if isinstance(n, ast.FunctionDef)}
+    socket_fns = {"_call"}
+    while True:
+        reaching = {name for name, fn in fns.items() if {getattr(c.func, "id", None) for c in ast.walk(fn)
+                                                         if isinstance(c, ast.Call)} & socket_fns}
+        if reaching <= socket_fns:
+            break
+        socket_fns |= reaching
+    assert {"list_pending", "decide"} <= socket_fns  # control: the refresh's and the decision's are found
     calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
              and isinstance(n.func.value, ast.Name) and n.func.value.id == "core" and n.func.attr in socket_fns]
     handed = {id(arg.body) for n in ast.walk(tree)

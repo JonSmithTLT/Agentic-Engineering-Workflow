@@ -119,23 +119,25 @@ def approved_set(cset: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]
 
 # ------------------------------------------------------------------------------------------------ the G3 service
 class _UnixHTTP(http.client.HTTPConnection):
-    def __init__(self, path: str) -> None:
-        super().__init__("localhost", timeout=TIMEOUT_S)
+    def __init__(self, path: str, timeout: float = TIMEOUT_S) -> None:
+        super().__init__("localhost", timeout=timeout)
         self._path = path
 
     def connect(self) -> None:
         if sys.platform == "win32":  # G3 is a Linux profile: its sockets are Unix filesystem sockets
             raise OSError("the G3 service runs on Linux only")
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(TIMEOUT_S)
+        s.settimeout(self.timeout)
         s.connect(self._path)
         self.sock = s
 
 
-def _g3(sock_path: str | None, method: str, path: str, body: Any = None) -> tuple[int, Any]:
-    """One request on ``request.sock`` (``REQUEST_SOCK``, read at call time, unless a path is given)."""
+def _g3(sock_path: str | None, method: str, path: str, body: Any = None, *,
+        timeout: float = TIMEOUT_S) -> tuple[int, Any]:
+    """One request on ``request.sock`` (``REQUEST_SOCK``, read at call time, unless a path is given), each socket
+    operation bounded by ``timeout``."""
     sock_path = sock_path or REQUEST_SOCK
-    conn = _UnixHTTP(sock_path)
+    conn = _UnixHTTP(sock_path, timeout)
     try:
         data = None if body is None else json.dumps(body).encode("utf-8")
         conn.request(method, path, body=data, headers={"Content-Type": "application/json"} if data else {})
@@ -174,21 +176,31 @@ def request_approval(cset: dict[str, Any], sock_path: str | None = None) -> dict
     return body
 
 
+def expires_at(pending: dict[str, Any]) -> datetime:
+    """The pending approval's ``expires_at``; an answer without a readable one is not G3's."""
+    try:
+        return W.parse_time(pending["expires_at"])
+    except (KeyError, AttributeError, TypeError, ValueError):  # absent, not a string, or no time
+        raise Unavailable("the G3 service's answer names no expires_at", reason="g3_not_g3") from None
+
+
 def await_decision(pending: dict[str, Any], sock_path: str | None = None, *,
                    now: Callable[[], datetime] = lambda: datetime.now(UTC),
+                   clock: Callable[[], float] = time.monotonic,
                    sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
     """Step 4: the ``ConsentRecord`` once the operator approves. A decline, an expiry, or an approval lost to a restart
     of the service refuses; the wait ends with the approval's own life, ``expires_at`` and a grace, and never later
-    than G3-02's ceiling."""
+    than G3-02's ceiling. The life left is read once from ``now`` (the service's clock); the wait is measured on
+    ``clock``, which no clock step moves, and each request is bounded by the time left (#286 review F2)."""
     ref = pending["approval_ref"]
-    try:
-        expires = W.parse_time(pending["expires_at"])
-    except (KeyError, AttributeError, TypeError, ValueError):  # absent, not a string, or no time
-        raise Unavailable("the G3 service's answer names no expires_at", reason="g3_not_g3") from None
-    started = now()
-    deadline = min((expires - started).total_seconds(), EXPIRY_CEILING_S) + GRACE_S
+    life = (expires_at(pending) - now()).total_seconds()
+    deadline = clock() + min(life, EXPIRY_CEILING_S) + GRACE_S
     while True:
-        status, body = _g3(sock_path, "GET", "/g3/v1/approval-requests/" + ref)
+        left = deadline - clock()
+        if left <= 0:
+            raise OperatorAuthorizationRequired("the approval was still undecided past its expiry; nothing was "
+                                                "submitted. Request it again", reason="expired", approval_ref=ref)
+        status, body = _g3(sock_path, "GET", "/g3/v1/approval-requests/" + ref, timeout=min(TIMEOUT_S, left))
         if status == 404:
             raise OperatorAuthorizationRequired(
                 "the approval is no longer known to the G3 service: it restarted, and a pending approval does not "
@@ -205,10 +217,7 @@ def await_decision(pending: dict[str, Any], sock_path: str | None = None, *,
         if state == "EXPIRED":
             raise OperatorAuthorizationRequired("the approval expired before the operator decided; nothing was "
                                                 "submitted. Request it again", reason="expired", approval_ref=ref)
-        if (now() - started).total_seconds() >= deadline:
-            raise OperatorAuthorizationRequired("the approval was still undecided past its expiry; nothing was "
-                                                "submitted. Request it again", reason="expired", approval_ref=ref)
-        sleep(POLL_S)
+        sleep(max(0.0, min(POLL_S, deadline - clock())))
 
 
 # ------------------------------------------------------------------------------------------------ the O-01 route
@@ -220,9 +229,12 @@ def o01_target(url: str) -> tuple[str, int]:
         raise UsageError(f"--o01 must be the O-01 route's http://127.0.0.1:<port>, on this host; got {url!r}",
                          reason="o01_not_loopback")
     try:
-        port = u.port or 80
+        port = u.port
     except ValueError:
-        raise UsageError(f"--o01 names no valid port: {url!r}", reason="o01_not_loopback") from None
+        port = None
+    if not port:  # none, empty or 0: never a default the operator did not name (#286 review F5)
+        raise UsageError(f"--o01 must name the O-01 route's port, http://127.0.0.1:<port>; got {url!r}",
+                         reason="o01_not_loopback")
     return u.hostname or "127.0.0.1", port
 
 

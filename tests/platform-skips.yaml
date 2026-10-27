@@ -613,6 +613,10 @@ skipped:
       the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
       (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
       submission run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_stalled_service_ends_the_wait_by_the_approvals_expiry_not_a_request_timeout_later: >-
+      the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
+      (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
+      submission run on both platforms in tests/unit/test_g3client.py.
     tests/integration/test_g3client_process.py::test_no_g3_service_is_unavailable_and_says_where_to_look: >-
       the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
       (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01

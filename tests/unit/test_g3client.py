@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import functools
 import http.server
 import json
 import re
@@ -23,7 +24,7 @@ import pytest
 import aew_g3
 from aew import g3client as C
 from aew.cli.main import main
-from aew.engine.custody_ops import LEAD_SESSION, LEAD_SESSION_VARS
+from aew.engine.custody_ops import LEAD_SESSION, LEAD_SESSION_VARS, kept_out_refusal
 from aew.errors import (
     NotFound,
     OperatorAuthorizationRequired,
@@ -79,6 +80,17 @@ def test_a_complete_protected_set_with_no_proofs_and_no_consent_is_accepted() ->
     ("consent_already_set", "consent_set_ref_set"),
 ])
 def test_a_set_the_client_cannot_ask_for_is_refused_whole_naming_what_and_the_fix(edit: str, reason: str) -> None:
+    with pytest.raises(ValidationFailed) as e:
+        C.check_set(_refused_set(edit))
+    assert e.value.details["reason"] == reason
+    if reason == "member_not_protected":
+        assert "Submit them apart" in e.value.message
+    if reason in ("origin_proof_ref_set", "consent_set_ref_set"):
+        assert "to null" in e.value.message
+
+
+def _refused_set(edit: str) -> Any:
+    """The operator's set, with the one departure ruling 1 refuses."""
     cs: Any = operator_set()
     if edit == "not_an_object":
         cs = [cs]
@@ -94,13 +106,7 @@ def test_a_set_the_client_cannot_ask_for_is_refused_whole_naming_what_and_the_fi
         cs["intents"][0]["origin_proof_ref"] = "proof:" + "a" * 32
     else:
         cs["consent_set_ref"] = "consent:early"
-    with pytest.raises(ValidationFailed) as e:
-        C.check_set(cs)
-    assert e.value.details["reason"] == reason
-    if reason == "member_not_protected":
-        assert "Submit them apart" in e.value.message
-    if reason in ("origin_proof_ref_set", "consent_set_ref_set"):
-        assert "to null" in e.value.message
+    return cs
 
 
 def test_each_member_gets_a_fresh_proof_from_a_secure_source_in_the_wires_form() -> None:
@@ -139,16 +145,36 @@ def test_the_set_is_submitted_only_when_the_records_digest_is_the_digest_of_that
 
 
 # ------------------------------------------------------------------------------------------------ the wait
+class _Time:
+    """The wall clock the service's expiry is read on, and the monotonic one the wait is measured on, moved together
+    by every sleep and every request's stall."""
+
+    def __init__(self) -> None:
+        self.wall, self.mono = datetime(2026, 10, 25, 12, tzinfo=UTC), 1000.0
+
+    def advance(self, s: float) -> None:
+        self.wall += timedelta(seconds=s)
+        self.mono += s
+
+
 class _Service:
-    """A stand-in for request.sock's GET: the states it answers in turn, the last repeated."""
+    """A stand-in for request.sock's GET: the states it answers in turn, the last repeated. With ``stall_s``, each
+    request takes that long, or fails at its timeout as the real transport does (``g3_unreachable``)."""
 
-    def __init__(self, states: list[Any]) -> None:
-        self.states, self.calls = states, 0
+    def __init__(self, states: list[Any], stall_s: float = 0.0, time: _Time | None = None) -> None:
+        self.states, self.calls, self.stall_s, self.time = states, 0, stall_s, time
+        self.timeouts: list[float] = []
 
-    def __call__(self, sock_path: str | None, method: str, path: str, body: Any = None) -> tuple[int, Any]:
+    def __call__(self, sock_path: str | None, method: str, path: str, body: Any = None, *,
+                 timeout: float = C.TIMEOUT_S) -> tuple[int, Any]:
         state = self.states[min(self.calls, len(self.states) - 1)]
         self.calls += 1
+        self.timeouts.append(timeout)
         assert self.calls <= 2 * C.EXPIRY_CEILING_S, "the wait never ended"  # a failure, never a hang
+        if self.stall_s and self.time is not None:
+            self.time.advance(min(self.stall_s, timeout))
+            if self.stall_s > timeout:
+                raise Unavailable("the G3 service did not answer", reason="g3_unreachable")
         if state == 404:
             return 404, {"code": "NOT_FOUND"}
         reply: dict[str, Any] = {"state": state}
@@ -157,21 +183,25 @@ class _Service:
         return 200, reply
 
 
-def _wait(monkeypatch: pytest.MonkeyPatch, states: list[Any], life_s: float = 60) -> tuple[Any, _Service, float]:
-    svc = _Service(states)
+def _wait(monkeypatch: pytest.MonkeyPatch, states: list[Any], life_s: float = 60, stall_s: float = 0.0,
+          wall_step_s: float = 0.0) -> tuple[Any, _Service, float]:
+    """The wait against the stand-in, and how long it took on the monotonic clock. ``wall_step_s`` steps the wall
+    clock at every reading after the first."""
+    t = _Time()
+    svc = _Service(states, stall_s, t)
     monkeypatch.setattr(C, "_g3", svc)
-    clock = [datetime(2026, 10, 25, 12, tzinfo=UTC)]
-    pending = {"approval_ref": "approval:one", "expires_at": W.utc(clock[0] + timedelta(seconds=life_s))}
-    slept: list[float] = []
+    pending = {"approval_ref": "approval:one", "expires_at": W.utc(t.wall + timedelta(seconds=life_s))}
+    readings = [0]
 
-    def sleep(s: float) -> None:
-        slept.append(s)
-        clock[0] += timedelta(seconds=s)
+    def now() -> datetime:
+        readings[0] += 1
+        return t.wall + timedelta(seconds=wall_step_s * (readings[0] - 1))
 
+    started = t.mono
     try:
-        return C.await_decision(pending, now=lambda: clock[0], sleep=sleep), svc, sum(slept)
+        return C.await_decision(pending, now=now, clock=lambda: t.mono, sleep=t.advance), svc, t.mono - started
     except Exception as e:  # noqa: BLE001 - the test inspects what the wait raised
-        return e, svc, sum(slept)
+        return e, svc, t.mono - started
 
 
 @pytest.mark.parametrize("status, body", [
@@ -239,6 +269,31 @@ def test_the_wait_ends_with_the_approvals_life_and_never_later_than_g3_02s_ceili
     assert isinstance(out, OperatorAuthorizationRequired) and waited <= C.EXPIRY_CEILING_S + C.GRACE_S + C.POLL_S
 
 
+@pytest.mark.parametrize("stall_s", [
+    20.0,  # slow: it would answer PENDING within its own 30 s timeout
+    60.0,  # stalled: it never answers
+])
+def test_a_slow_or_stalled_service_never_carries_the_wait_past_its_bound(
+        monkeypatch: pytest.MonkeyPatch, stall_s: float) -> None:
+    """#286 review F2: each request is bounded by the time left, so a 3-second approval's wait ends by its expiry and
+    the grace, not one request's timeout later (it was 20 s and 30 s); a service that has not answered by then did
+    not answer."""
+    out, svc, waited = _wait(monkeypatch, ["PENDING"], life_s=3, stall_s=stall_s)
+    assert isinstance(out, Unavailable) and out.details["reason"] == "g3_unreachable"
+    assert waited <= 3 + C.GRACE_S and max(svc.timeouts) <= 3 + C.GRACE_S, (waited, svc.timeouts)
+
+
+@pytest.mark.parametrize("wall_step_s", [24 * 3600.0, -24 * 3600.0])
+def test_the_wait_is_measured_on_a_clock_that_no_step_of_the_wall_clock_moves(
+        monkeypatch: pytest.MonkeyPatch, wall_step_s: float) -> None:
+    """F2: the life left is read once from the wall clock; a step of it after that, a day either way, neither ends
+    the wait early nor holds it open."""
+    out, svc, _ = _wait(monkeypatch, ["PENDING", "PENDING", "APPROVED"], wall_step_s=wall_step_s)
+    assert out == {"consent_set_ref": "consent:one"} and svc.calls == 3
+    out, _, waited = _wait(monkeypatch, ["PENDING"], life_s=30, wall_step_s=wall_step_s)
+    assert isinstance(out, OperatorAuthorizationRequired) and waited == 30 + C.GRACE_S
+
+
 # ------------------------------------------------------------------------------------------------ the O-01 route
 @pytest.mark.parametrize("url", ["http://127.0.0.1:4261", "http://localhost:4261/", "http://[::1]:4261"])
 def test_the_o01_route_is_taken_only_on_this_hosts_loopback_address(url: str) -> None:
@@ -247,7 +302,8 @@ def test_the_o01_route_is_taken_only_on_this_hosts_loopback_address(url: str) ->
 
 @pytest.mark.parametrize("url", ["https://127.0.0.1:4261", "http://example.com:4261", "http://10.0.0.5:4261",
                                  "http://user:pw@127.0.0.1:4261", "http://127.0.0.1:4261/o01", "http://127.0.0.1:x",
-                                 "http://127.0.0.1:4261/?q=1", "http://127.0.0.1:4261#f", "http://127.0.0.1:99999"])
+                                 "http://127.0.0.1:4261/?q=1", "http://127.0.0.1:4261#f", "http://127.0.0.1:99999",
+                                 "http://127.0.0.1", "http://127.0.0.1:", "http://127.0.0.1:0"])  # F5: no port
 def test_any_other_o01_url_is_refused_before_a_token_is_read(url: str) -> None:
     with pytest.raises(UsageError) as e:
         C.o01_target(url)
@@ -357,4 +413,103 @@ def test_a_lead_session_is_refused_before_anything_is_read_with_the_operators_ro
     assert main(argv) == PermissionDenied.exit_code
     err = json.loads(capsys.readouterr().err)["error"]
     assert err["code"] == "PERMISSION_DENIED" and err["details"]["reason"] == LEAD_SESSION
-    assert err["details"]["variables"] == [LEAD_SESSION_VARS[0]] and "Ask the operator to run it" in err["message"]
+    assert err["details"]["variables"] == [LEAD_SESSION_VARS[0]]
+    assert err["message"].startswith(kept_out_refusal(frozenset({"g3", "request"})) or "")  # the one owner's (F1)
+    assert "ask the operator to run `aew g3 request`" in err["message"]
+
+
+# F3: each refusal the command claims, proven through `main`, with the service and the route as recorders.
+FAR = W.utc(datetime.now(UTC) + timedelta(minutes=5))
+PENDING = (201, {"approval_ref": "approval:one", "expires_at": FAR})
+
+
+def _command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], cset: Any,
+             answers: list[tuple[int, Any]], o01: str = "http://127.0.0.1:4261") -> tuple[int, Any, str, list, list]:
+    """`aew g3 request` through `main`: the G3 service answers ``answers`` in turn; what was asked and submitted."""
+    for var in LEAD_SESSION_VARS:
+        monkeypatch.delenv(var, raising=False)
+    asked: list[tuple[str, str]] = []
+    submitted: list[Any] = []
+
+    def g3(sock_path: str | None, method: str, path: str, body: Any = None, *,
+           timeout: float = C.TIMEOUT_S) -> tuple[int, Any]:
+        asked.append((method, path))
+        assert len(asked) <= 5, "the wait went on after a refusal"  # a failure, never a hang
+        return answers[min(len(asked), len(answers)) - 1]
+
+    monkeypatch.setattr(C, "_g3", g3)
+    monkeypatch.setattr(C, "submit", lambda *a: submitted.append(a) or {"results": []})
+    monkeypatch.setattr(C, "POLL_S", 0.0)
+    set_file, token_file = tmp_path / "set.json", tmp_path / "token"
+    set_file.write_bytes(json.dumps(cset).encode())
+    token_file.write_bytes((TOKEN + "\n").encode())
+    code = main(["g3", "request", str(set_file), "--o01", o01, "--token-file", str(token_file), "--json"])
+    err = capsys.readouterr().err
+    error = json.loads(err[err.index("{"):])["error"] if "{" in err else None
+    return code, error, err, asked, submitted
+
+
+def test_the_command_asks_and_submits_a_set_it_was_given_control(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """The control for the refusals below: the same stand-ins, and a set the command asks for and submits."""
+    monkeypatch.setattr(C, "with_proofs", functools.partial(C.with_proofs, token=lambda n: "ab" * n))
+    sent = C.with_proofs(operator_set())
+    sent["consent_set_ref"] = "consent:one"
+    record = {"consent_set_ref": "consent:one", "set_digest": W.set_digest(sent)}
+    code, error, err, asked, submitted = _command(tmp_path, monkeypatch, capsys, operator_set(), [
+        PENDING, (200, {"state": "APPROVED", "consent_record": record})])
+    assert code == 0 and error is None and len(asked) == 2 and submitted[0][0] == sent
+    assert f"until {FAR}" in err
+
+
+@pytest.mark.parametrize("edit, reason", [
+    ("not_an_object", "not_a_command_set"), ("no_intents", "not_a_command_set"),
+    ("delegated_member", "member_not_protected"), ("member_not_an_object", "member_not_protected"),
+    ("proof_already_set", "origin_proof_ref_set"), ("consent_already_set", "consent_set_ref_set"),
+])
+def test_through_the_command_a_set_ruling_1_refuses_is_refused_and_the_service_is_never_asked(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], edit: str,
+        reason: str) -> None:
+    code, error, _, asked, submitted = _command(tmp_path, monkeypatch, capsys, _refused_set(edit), [PENDING])
+    assert code == ValidationFailed.exit_code and error["details"]["reason"] == reason
+    assert asked == [] and submitted == []
+
+
+@pytest.mark.parametrize("url", ["http://example.com:4261", "http://127.0.0.1", "http://127.0.0.1:",
+                                 "http://127.0.0.1:0"])
+def test_through_the_command_a_bad_o01_url_is_refused_before_the_service_is_asked(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], url: str) -> None:
+    code, error, _, asked, _ = _command(tmp_path, monkeypatch, capsys, operator_set(), [PENDING], o01=url)
+    assert code == UsageError.exit_code and error["details"]["reason"] == "o01_not_loopback" and asked == []
+
+
+def test_through_the_command_a_record_for_another_set_is_never_submitted(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """G3-07: the record's set_digest is not the digest of the set the command would send."""
+    record = {"consent_set_ref": "consent:one", "set_digest": "sha256:" + "0" * 64}
+    code, error, _, asked, submitted = _command(tmp_path, monkeypatch, capsys, operator_set(), [
+        PENDING, (200, {"state": "APPROVED", "consent_record": record})])
+    assert code == ValidationFailed.exit_code and error["details"]["reason"] == "set_digest_mismatch"
+    assert len(asked) == 2 and submitted == []
+
+
+@pytest.mark.parametrize("answer, error_code, reason", [
+    ((503, {"code": "G3_UNAVAILABLE"}), "UNAVAILABLE", "g3_unavailable"),
+    ((403, {"code": "PEER_NOT_PERMITTED"}), "PERMISSION_DENIED", "g3_peer_not_permitted"),
+])
+def test_through_the_command_a_refusal_mid_wait_ends_the_wait_at_once_and_names_its_cause(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], answer: Any,
+        error_code: str, reason: str) -> None:
+    code, error, _, asked, submitted = _command(tmp_path, monkeypatch, capsys, operator_set(), [PENDING, answer])
+    assert code != 0 and error["code"] == error_code and error["details"]["reason"] == reason
+    assert len(asked) == 2 and submitted == []  # at once: the first answer of the wait
+
+
+@pytest.mark.parametrize("expires", [None, "soon"])
+def test_through_the_command_a_pending_approval_with_no_expiry_says_nothing_of_waiting(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], expires: Any) -> None:
+    """F2: the waiting line comes only once the expiry is read, so never "until None"."""
+    code, error, err, asked, submitted = _command(tmp_path, monkeypatch, capsys, operator_set(), [
+        (201, {"approval_ref": "approval:one", "expires_at": expires})])
+    assert code == Unavailable.exit_code and error["details"]["reason"] == "g3_not_g3"
+    assert "waiting for the operator" not in err and len(asked) == 1 and submitted == []

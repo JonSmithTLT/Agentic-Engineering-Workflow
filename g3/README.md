@@ -108,10 +108,12 @@ names the variables that showed a Lead session, and says to ask the operator to 
 - **The approval:** the client puts a fresh proof on each member (`proof:` and 32 hex digits from `secrets`), submits
   the set on `request.sock`, says on standard error which approval it waits for and until when, and asks the service
   every second until the operator approves or declines in the confirmer. The wait ends at the approval's own expiry,
-  never more than ten minutes and a few seconds of grace. A decline, an expiry or a restart of the service ends it
+  never more than ten minutes and a few seconds of grace: each request to the service is bounded by the time left,
+  and the wait is measured on a clock no change of the system time moves. A decline, an expiry or a restart of the service ends it
   with `OPERATOR_AUTHORIZATION_REQUIRED` and submits nothing. The client never sees a PIN.
 - **The submission:** the approved set goes, unchanged but for its `consent_set_ref`, to the STG-02 route
-  `POST /o01/v0/command-sets` at the `--o01` URL, which must be plain `http` on the loopback. The client first checks
+  `POST /o01/v0/command-sets` at the `--o01` URL, which must be plain `http` on the loopback, with its port named
+  (before anything is asked, so a mistyped URL costs no approval). The client first checks
   that the consent record's `set_digest` is the SW-02 digest of exactly that set. The bearer token is read from the
   file and goes in the `Authorization` header only: it is never printed, logged, or put in an error.
 - **The receipt** is printed. Until G3-C, the owner cannot establish G3 as the origin, so each member comes back

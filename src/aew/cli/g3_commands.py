@@ -2,7 +2,7 @@
 
 * `request` asks the operator to approve a protected command set in the G3 confirmer, waits for the decision, and
   submits the approved set to the O-01 route (:mod:`aew.g3client`). It is the operator's, at their own terminal:
-  it refuses in a Lead session (:func:`aew.engine.custody_ops.refuse_in_lead_session`) before it reads anything, and
+  it refuses in a Lead session (:func:`aew.engine.custody_ops.refuse_kept_out`) before it reads anything, and
   once CS-4 contains the Lead, ``request.sock`` is out of its reach besides. A Lead asking for an operator approval
   is not built: that is the designer's question. Nothing here asks for the PIN, which is typed only in the confirmer.
 """
@@ -35,10 +35,9 @@ def register(sub: argparse._SubParsersAction) -> None:
 
 def _request(a: argparse.Namespace) -> Any:
     from aew import g3client as C
-    from aew.engine.custody_ops import refuse_in_lead_session
+    from aew.engine.custody_ops import refuse_kept_out
 
-    refuse_in_lead_session("`aew g3 request` is the operator's, at their own terminal; it never runs in a Lead "
-                           "session. Ask the operator to run it")
+    refuse_kept_out(("g3", "request"))
     C.o01_target(a.o01)
     token = C.read_token(a.token_file)
     path = Path(a.set_file)
@@ -52,8 +51,9 @@ def _request(a: argparse.Namespace) -> Any:
         raise ValidationFailed(f"{path} is not JSON", reason="not_a_command_set") from None
     proved = C.with_proofs(C.check_set(cset))
     pending = C.request_approval(proved)
+    C.expires_at(pending)  # read first: an answer without one is refused, and nothing is said to wait for (F2)
     sys.stderr.write(f"aew g3: waiting for the operator to approve or decline {pending['approval_ref']} in the "
-                     f"confirmer (AEW approvals), until {pending.get('expires_at')}\n")
+                     f"confirmer (AEW approvals), until {pending['expires_at']}\n")
     sys.stderr.flush()
     record = C.await_decision(pending)
     receipt = C.submit(C.approved_set(proved, record), a.o01, token)

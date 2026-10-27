@@ -107,6 +107,16 @@ def test_a_read_outside_the_relayed_set_or_with_another_option_or_value_is_refus
         assert "is not relayed to a contained Lead: the operator runs it in their own shell" in refused.value.message
 
 
+@pytest.mark.parametrize("timeout", ["inf", "nan", "1e7"])
+def test_a_relayed_wait_the_host_cannot_wait_out_is_refused_saying_what_to_pass(timeout):
+    """The review of #283 at b2dc3035, m1: a relayed `harness wait` whose --timeout is not finite, or longer than the
+    host can wait (``RELAYED_WAIT_MAX_S``), is refused before anything runs, naming the bound."""
+    with pytest.raises(errors.PermissionDenied) as refused:
+        lead_broker.run_read(object(), ["harness", "wait", "R-INV-0001-1", "--timeout", timeout], ".")
+    assert refused.value.details["reason"] == "relayed_value", refused.value.details
+    assert f"pass a finite number of seconds, at most {lead_broker.RELAYED_WAIT_MAX_S:.0f}" in refused.value.message
+
+
 def _ns(*argv: str) -> argparse.Namespace:
     return build_parser().parse_args(list(argv))
 

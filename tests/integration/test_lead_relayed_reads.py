@@ -227,6 +227,36 @@ def test_a_relayed_wait_in_flight_never_holds_the_sessions_close(lab, tmp_path, 
         (sync_dir(tmp_path) / "go").write_text("x", encoding="utf-8")
 
 
+def test_a_relayed_read_whose_wait_fails_is_ended_never_left_running(lab, broker, tmp_path, monkeypatch):
+    """Condition 6, and the review of #283 at b2dc3035, m1: whatever ends the broker's wait on a relayed read, the
+    read's process ends with it and leaves the session's tracking, so nothing the session's close would miss keeps
+    running on the host."""
+    run = launch_held_open(lab, tmp_path)
+    started: list[subprocess.Popen[str]] = []
+    communicate = subprocess.Popen.communicate
+
+    def failing(self, *args, **kw):
+        if self in started:  # the relayed read's own process: its wait fails, as an unbounded timeout's did
+            raise OverflowError("planted")
+        return communicate(self, *args, **kw)
+
+    def track(proc: subprocess.Popen[str], running: bool) -> None:
+        if running:
+            started.append(proc)
+        broker._track(proc, running)
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", failing)
+    try:
+        began = time.monotonic()
+        with pytest.raises(OverflowError):
+            lead_broker.run_read(broker.engine, ["harness", "wait", run, "--timeout", "120"], str(lab.root),
+                                 track=track)
+        assert time.monotonic() - began < 20
+        assert started and started[0].returncode is not None and not broker._reads
+    finally:
+        (sync_dir(tmp_path) / "go").write_text("x", encoding="utf-8")
+
+
 def test_a_relayed_read_runs_on_the_leads_own_project_only(lab, broker, tmp_path):
     """Condition 3: neither `-C` nor the shell's directory takes a relayed read to another project."""
     other = sample_project(tmp_path / "other")

@@ -40,6 +40,7 @@ import argparse
 import contextlib
 import io
 import json
+import math
 import os
 import re
 import subprocess
@@ -141,6 +142,10 @@ RELAYED_READS: dict[frozenset[str], frozenset[str]] = {frozenset(path.split()): 
     ("map diff", ("operands", "json")),
 )}
 RELAYED_TIMEOUT_S = 300.0  # a relayed read other than `harness wait`, whose own --timeout bounds it
+# The longest relayed `harness wait --timeout` the host can wait out: `communicate` waits in poll(2), whose timeout is
+# a C int of milliseconds (POSIX), or in threading's waits, which stop at TIMEOUT_MAX (Windows), and the relay adds
+# RELAYED_TIMEOUT_S to the command's own bound (the review of #283 at b2dc3035, m1).
+RELAYED_WAIT_MAX_S = min((2**31 - 1) / 1000, threading.TIMEOUT_MAX) - RELAYED_TIMEOUT_S
 # What a relayed read's values may be (condition 3: none names another project, a directory or an output path): a
 # stored map is named by its sha256; a commit is any revision that is not an option; anything else is a name.
 _NAME = (re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*"), "an id or name, with no path separator, that is not an option")
@@ -567,6 +572,11 @@ def run_read(engine: Any, argv: list[str], cwd: str,
                 why = RELAYED_VALUES.get(kind, _NAME)[1]
                 raise errors.PermissionDenied(f"`aew {name}`, relayed to a contained Lead, refuses {text!r}: {why}",
                                               command=name, reason="relayed_value")
+    wait = path == frozenset({"harness", "wait"})
+    if wait and not (math.isfinite(ns.timeout) and ns.timeout <= RELAYED_WAIT_MAX_S):
+        raise errors.PermissionDenied(f"`aew {name}`, relayed to a contained Lead, refuses --timeout {ns.timeout}: "
+                                      f"pass a finite number of seconds, at most {RELAYED_WAIT_MAX_S:.0f}",
+                                      command=name, reason="relayed_value")
     target = Path(cwd).resolve()
     for place in (target, *([(target / ns.cwd).resolve()] if ns.cwd else [])):
         if Engine.discover(place).aew_root != project:
@@ -576,23 +586,25 @@ def run_read(engine: Any, argv: list[str], cwd: str,
     for variable in ENV_NAMES:
         env.pop(variable, None)
     env[process_kind.LEAD_CONTAINED_ENV] = "1"  # a non-writer (process_kind): lock-free reads, nothing written
-    timeout = (float(ns.timeout) if path == frozenset({"harness", "wait"}) else 0.0) + RELAYED_TIMEOUT_S
+    timeout = (float(ns.timeout) if wait else 0.0) + RELAYED_TIMEOUT_S
     detached: dict[str, Any] = ({"creationflags": procs.CREATE_NO_WINDOW} if procs.IS_WINDOWS
                                 else {"start_new_session": True})
-    proc = subprocess.Popen([sys.executable, "-m", "aew", *argv], cwd=str(target), env=env, stdin=subprocess.DEVNULL,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", **detached)
-    if track is not None:
-        track(proc, True)
-    try:
-        out, err = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.communicate()
-        raise errors.UsageError(f"`aew {name}`, relayed for this Lead session, did not finish in {timeout:.0f} s",
-                                command=name) from None
-    finally:
+    with subprocess.Popen([sys.executable, "-m", "aew", *argv], cwd=str(target), env=env, stdin=subprocess.DEVNULL,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                          **detached) as proc:  # leaving it closes the pipes and reaps the process
         if track is not None:
-            track(proc, False)
+            track(proc, True)
+        try:
+            out, err = proc.communicate(timeout=timeout)
+        except BaseException as exc:
+            proc.kill()  # whatever ended the wait, the read's process ends with it: never left running untracked
+            if isinstance(exc, subprocess.TimeoutExpired):
+                raise errors.UsageError(f"`aew {name}`, relayed for this Lead session, did not finish in "
+                                        f"{timeout:.0f} s", command=name) from None
+            raise
+        finally:
+            if track is not None:
+                track(proc, False)
     return {"stdout": out, "stderr": err, "exit": proc.returncode}
 
 

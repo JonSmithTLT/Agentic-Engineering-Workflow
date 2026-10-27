@@ -2,8 +2,8 @@
 
 It is the design workspace's generator output, byte for byte, and nobody edits it by hand. The generator and its own
 check stay in the private workspace, which runs them against main. This test holds what the repository alone can hold:
-every copy is in MANIFEST.json and every entry is on disk, each copy's bytes match its sha256, each header agrees
-with its entry, and a JSON copy has none. It reads only docs/contracts/.
+every copy is in MANIFEST.json and every entry is on disk, each copy's bytes match its sha256, each markdown or YAML
+copy is listed with a header that agrees with its entry, and a JSON copy has none. It reads only docs/contracts/.
 """
 import hashlib
 import json
@@ -18,6 +18,11 @@ FIELDS = ("generated", "position", "source", "source-sha256", "edits-sha256")
 # The header patterns, verbatim from the generator, matched at byte 0.
 MD_HEAD = re.compile(rb'<!--\n((?:[a-z0-9-]+: [^\n]*\n)+)-->\n\n')
 YAML_HEAD = re.compile(rb'((?:# [a-z0-9-]+: [^\n]*\n)+)\n')
+# A rewritten sha256 would turn this test green and still be a hand edit, which only the workspace gate sees after
+# merge (review of #288, m4): so a failure says what to do instead.
+WHAT_TO_DO = ("docs/contracts/ is generated from the adopted design text (docs/contracts/README.md): never edit a copy "
+              "or MANIFEST.json. Restore a touched copy from main, and leave docs/contracts/ out of any sweep. A "
+              "change to the text goes to the designer, and comes back in a publication pull request.")
 
 
 def header(name: str, data: bytes) -> dict[str, str] | None:
@@ -49,6 +54,8 @@ def problems(root: Path) -> list[str]:
             except ValueError:
                 found.append(f"{p}: a JSON copy must be plain JSON, with no header")
             continue
+        if entry["header"] is not True:
+            found.append(f"{p}: a markdown or YAML copy must be listed with header: true")
         fields = header(p, data)
         if fields is None:
             found.append(f"{p}: its header does not parse")
@@ -59,7 +66,7 @@ def problems(root: Path) -> list[str]:
 
 def test_every_published_copy_matches_its_manifest_entry():
     assert (CONTRACTS / "MANIFEST.json").is_file() and (CONTRACTS / "README.md").is_file()
-    assert problems(CONTRACTS) == []
+    assert problems(CONTRACTS) == [], WHAT_TO_DO
 
 
 def test_the_manifest_lists_each_kind_of_copy():
@@ -125,6 +132,37 @@ def test_planted_header_that_disagrees_with_its_entry_is_found(tmp_path):
         rewrite_entry(root, copy, sha256=hashlib.sha256(data).hexdigest())
     assert sorted(problems(root)) == sorted(f"{first(root, s).relative_to(root).as_posix()}: its header does not match "
                                             "its MANIFEST.json entry" for s in (".md", ".yaml"))
+
+
+def test_planted_header_not_at_byte_0_is_found(tmp_path):
+    root, want = planted(tmp_path), []
+    for suffix in (".md", ".yaml"):
+        copy = first(root, suffix)
+        data = b"\n" + copy.read_bytes()
+        copy.write_bytes(data)
+        rewrite_entry(root, copy, sha256=hashlib.sha256(data).hexdigest())
+        want.append(f"{copy.relative_to(root).as_posix()}: its header does not parse")
+    assert sorted(problems(root)) == sorted(want)
+
+
+def test_planted_unparsable_yaml_header_is_found(tmp_path):
+    root = planted(tmp_path)
+    copy = first(root, ".yaml")
+    data = copy.read_bytes()
+    end = data.index(b"\n\n")
+    data = data[:end + 1] + data[end + 2:]
+    copy.write_bytes(data)
+    rewrite_entry(root, copy, sha256=hashlib.sha256(data).hexdigest())
+    assert problems(root) == [f"{copy.relative_to(root).as_posix()}: its header does not parse"]
+
+
+def test_planted_markdown_or_yaml_copy_listed_without_a_header_is_found(tmp_path):
+    root = planted(tmp_path)
+    copies = [first(root, suffix) for suffix in (".md", ".yaml")]
+    for copy in copies:
+        rewrite_entry(root, copy, header=False)
+    assert sorted(problems(root)) == sorted(f"{c.relative_to(root).as_posix()}: a markdown or YAML copy must be "
+                                            "listed with header: true" for c in copies)
 
 
 def test_planted_unparsable_header_is_found(tmp_path):

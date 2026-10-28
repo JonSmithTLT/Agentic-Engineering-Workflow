@@ -419,8 +419,12 @@ def test_a_lead_session_is_refused_before_anything_is_read_with_the_operators_ro
 
 
 # F3: each refusal the command claims, proven through `main`, with the service and the route as recorders.
-FAR = W.utc(datetime.now(UTC) + timedelta(minutes=5))
-PENDING = (201, {"approval_ref": "approval:one", "expires_at": FAR})
+
+
+def _pending() -> tuple[int, dict[str, Any]]:
+    """The service's PendingApproval, expiring five minutes from when the test runs: never a clock read at collection,
+    which a long run outlives (#286's CI at 393d753c, Windows)."""
+    return 201, {"approval_ref": "approval:one", "expires_at": W.utc(datetime.now(UTC) + timedelta(minutes=5))}
 
 
 def _command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], cset: Any,
@@ -457,9 +461,10 @@ def test_the_command_asks_and_submits_a_set_it_was_given_control(
     sent["consent_set_ref"] = "consent:one"
     record = {"consent_set_ref": "consent:one", "set_digest": W.set_digest(sent)}
     code, error, err, asked, submitted = _command(tmp_path, monkeypatch, capsys, operator_set(), [
-        PENDING, (200, {"state": "APPROVED", "consent_record": record})])
-    assert code == 0 and error is None and len(asked) == 2 and submitted[0][0] == sent
-    assert f"until {FAR}" in err
+        pending := _pending(), (200, {"state": "APPROVED", "consent_record": record})])
+    assert code == 0 and error is None, error  # a refusal here, "expired" among them, fails with its reason
+    assert len(asked) == 2 and submitted[0][0] == sent
+    assert f"until {pending[1]['expires_at']}" in err
 
 
 @pytest.mark.parametrize("edit, reason", [
@@ -470,7 +475,7 @@ def test_the_command_asks_and_submits_a_set_it_was_given_control(
 def test_through_the_command_a_set_ruling_1_refuses_is_refused_and_the_service_is_never_asked(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], edit: str,
         reason: str) -> None:
-    code, error, _, asked, submitted = _command(tmp_path, monkeypatch, capsys, _refused_set(edit), [PENDING])
+    code, error, _, asked, submitted = _command(tmp_path, monkeypatch, capsys, _refused_set(edit), [_pending()])
     assert code == ValidationFailed.exit_code and error["details"]["reason"] == reason
     assert asked == [] and submitted == []
 
@@ -479,7 +484,7 @@ def test_through_the_command_a_set_ruling_1_refuses_is_refused_and_the_service_i
                                  "http://127.0.0.1:0"])
 def test_through_the_command_a_bad_o01_url_is_refused_before_the_service_is_asked(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], url: str) -> None:
-    code, error, _, asked, _ = _command(tmp_path, monkeypatch, capsys, operator_set(), [PENDING], o01=url)
+    code, error, _, asked, _ = _command(tmp_path, monkeypatch, capsys, operator_set(), [_pending()], o01=url)
     assert code == UsageError.exit_code and error["details"]["reason"] == "o01_not_loopback" and asked == []
 
 
@@ -488,7 +493,7 @@ def test_through_the_command_a_record_for_another_set_is_never_submitted(
     """G3-07: the record's set_digest is not the digest of the set the command would send."""
     record = {"consent_set_ref": "consent:one", "set_digest": "sha256:" + "0" * 64}
     code, error, _, asked, submitted = _command(tmp_path, monkeypatch, capsys, operator_set(), [
-        PENDING, (200, {"state": "APPROVED", "consent_record": record})])
+        _pending(), (200, {"state": "APPROVED", "consent_record": record})])
     assert code == ValidationFailed.exit_code and error["details"]["reason"] == "set_digest_mismatch"
     assert len(asked) == 2 and submitted == []
 
@@ -500,7 +505,7 @@ def test_through_the_command_a_record_for_another_set_is_never_submitted(
 def test_through_the_command_a_refusal_mid_wait_ends_the_wait_at_once_and_names_its_cause(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], answer: Any,
         error_code: str, reason: str) -> None:
-    code, error, _, asked, submitted = _command(tmp_path, monkeypatch, capsys, operator_set(), [PENDING, answer])
+    code, error, _, asked, submitted = _command(tmp_path, monkeypatch, capsys, operator_set(), [_pending(), answer])
     assert code != 0 and error["code"] == error_code and error["details"]["reason"] == reason
     assert len(asked) == 2 and submitted == []  # at once: the first answer of the wait
 

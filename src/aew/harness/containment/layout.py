@@ -353,8 +353,9 @@ def _linked(dirs: list[str], files: list[str], needed: list[tuple[str, str]]) ->
     ``(dirs, one_by_one, refused)``:
 
     * a linked directory's target is masked whole, and the links in it are followed the same way;
-    * a linked file's target directory ``P`` is masked whole when every entry directly in it is such a target and it
-      neither is nor holds anything in ``needed``; otherwise each target in it is masked file by file (``one_by_one``,
+    * a linked file's target directory ``P`` is masked whole when every entry directly in it (dot entries included) is
+      such a target and it neither is nor holds anything in ``needed``, as a stow-style folder of one package's files
+      is; otherwise each target in it is masked file by file, as in a flat dotfiles folder (``one_by_one``,
       which the launch names: a file mask is a bind of that file, so a file replaced or created there during the
       session is not covered);
     * a linked directory that is or holds something in ``needed`` is ``refused`` (:func:`_refuse_masks_over_the_run`).

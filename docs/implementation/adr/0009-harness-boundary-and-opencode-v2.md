@@ -1438,9 +1438,10 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   Lead's view holds none of the operator's OpenCode state) and the directories holding the login database and the
   file `OPENCODE_CONFIG` names, each whole, at their real paths. What a link in a directory masked whole points at
   is masked where it really is, for every role (`layout._linked`, the designer's ruling on S3): a linked directory
-  whole; a linked file's directory whole where it holds only such files and nothing the run needs, otherwise the file
-  itself, and the launch says how many files it masks that way, as a file replaced or added beside them during the
-  session is not masked. Links are resolved at the launch, so a target first linked during the session is not
+  whole; a linked file's real directory whole where every entry directly in it is such a target and it neither is
+  nor holds anything the run needs (the list the refusal below checks), otherwise each linked file by itself, and the
+  launch says how many files it masks that way, as a file mask does not hold for a file replaced or added there
+  during the session (the designer places that class). Links are resolved at the launch, so a target first linked during the session is not
   covered; hard links are out of scope. A launch where one of those directories is, or holds, the workspace, the
   project, the home directory or AEW's own is refused, once, naming every such directory with the variable or the
   link that puts it there, and each fix. The one copy from them, the recent models' `model.json`, is made on the host

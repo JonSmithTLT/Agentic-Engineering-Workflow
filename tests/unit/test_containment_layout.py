@@ -1026,27 +1026,37 @@ def test_every_file_the_host_reads_the_operators_opencode_from_is_masked_at_its_
             assert not any(L._within(real(dots / ".gitconfig"), m) for m in (*layout.hide_dirs, *layout.hide_files))
 
 
+def role_layout(t: Path, role: str, home: Path) -> C.Layout:
+    """``role``'s layout over ``home``: the Lead's in its project scope, any other role's in a Ticket's."""
+    return lead_layout(t, home=str(home)) if role == "lead" else run_layout(t, role, home=str(home))
+
+
 @needs_symlinks
 def test_a_secret_a_masked_directory_links_to_is_masked_at_its_real_path_for_every_role(tmp_path, fake_bwrap):
-    """S3, the designer's ruling, in its general form: for a worker as for the Lead, a key in ~/.ssh and the
-    credentials in ~/.aws, each a link into a dotfiles directory, are masked where they really are: a directory that
-    holds only such files whole, a file beside other dotfiles by itself, which the launch line counts."""
+    """S3, the designer's ruling, in its general form: for every role, the filesystem's three shapes. Two keys in
+    ~/.ssh linked into a stow-style folder that holds only them (``~/dotfiles/ssh/.ssh``): that folder is masked whole.
+    The credentials in ~/.aws linked into a flat ``~/dotfiles`` that also holds ``.gitconfig``, which no masked
+    directory links to: only the credentials file is masked, git's configuration stays readable, and the launch line
+    counts the one file. A directory in ~/.config/gh linked to a directory elsewhere: masked whole."""
     real = os.path.realpath
-    for role in ("implementer", "reviewer", "lead"):
+    for role in sorted(L.WORKSPACE_ACCESS):
         t = tmp_path / role
         home = t / "home"
-        own, flat = home / "vault" / "ssh", home / "dotfiles"
-        for d in (home / ".ssh", home / ".aws", own, flat):
-            d.mkdir(parents=True)
-        (own / "id_synthetic").write_text("SYNTHETIC\n")
+        stow, flat, hosts = home / "dotfiles" / "ssh" / ".ssh", home / "dotfiles", home / "vault" / "gh-hosts"
+        for d in (home / ".ssh", home / ".aws", home / ".config" / "gh", stow, hosts):
+            d.mkdir(parents=True, exist_ok=True)
+        for name in ("id_ed25519", "config"):
+            (stow / name).write_text("SYNTHETIC\n")
+            (home / ".ssh" / name).symlink_to(stow / name)
         (flat / "credentials").write_text("SYNTHETIC\n")
         (flat / ".gitconfig").write_text("[user]\n")
-        (home / ".ssh" / "id_synthetic").symlink_to(own / "id_synthetic")
         (home / ".aws" / "credentials").symlink_to(flat / "credentials")
-        layout = lead_layout(t, home=str(home)) if role == "lead" else run_layout(t, role, home=str(home))
-        assert real(own) in layout.hide_dirs, role
+        (hosts / "github.com.yml").write_text("SYNTHETIC\n")
+        (home / ".config" / "gh" / "hosts").symlink_to(hosts, target_is_directory=True)
+        layout = role_layout(t, role, home)
+        assert {real(stow), real(hosts)} <= set(layout.hide_dirs), (role, layout.hide_dirs)
         assert layout.one_by_one == (real(flat / "credentials"),) and real(flat / "credentials") in layout.hide_files
-        assert not any(L._within(real(flat / ".gitconfig"), m) for m in (*layout.hide_dirs, *layout.hide_files))
+        assert not any(L._within(real(flat / ".gitconfig"), m) for m in (*layout.hide_dirs, *layout.hide_files)), role
         assert C.one_by_one_line(layout) == (
             "1 file that links in your masked credential directories point at is masked file by file, as its "
             "directory holds other files; a file replaced or added there during the session is not masked. To have "
@@ -1090,22 +1100,30 @@ def test_a_link_targets_directory_is_masked_whole_only_when_it_holds_nothing_els
 
 @needs_symlinks
 def test_a_link_in_a_masked_directory_to_a_directory_the_run_needs_is_refused_naming_the_link(tmp_path, fake_bwrap):
-    """S3, the designer's ruling: a target that is itself something the run needs (here the project) is refused, in
-    the one refusal with every other (m4), naming the link and the fix."""
-    home = tmp_path / "home"
+    """S3, the designer's ruling: for every role, a target that is itself something the run needs (here the project,
+    which is the Lead's workspace) is refused, naming the link and the fix; with a variable's refusal, it is the one
+    refusal naming both (m4)."""
+    real = os.path.realpath
+    for role in sorted(L.WORKSPACE_ACCESS):
+        t = tmp_path / role
+        home = t / "home"
+        (home / ".ssh").mkdir(parents=True)
+        (home / ".ssh" / "proj").symlink_to(t / "repo", target_is_directory=True)  # the project the helper makes
+        with pytest.raises(ContainmentUnavailable) as exc:
+            role_layout(t, role, home)
+        named = os.path.join(real(home / ".ssh"), "proj")
+        what = "the workspace" if role == "lead" else "the project"
+        assert exc.value.details["reason"] == "mask_holds_the_run" and exc.value.details["links"] == [named], role
+        assert f"or holds {what} ({real(t / 'repo')})" in exc.value.message, (role, exc.value.message)
+        assert f"take {named} out of that directory, or point it at a directory that holds nothing the run needs" \
+            in exc.value.message
+    base, home = tmp_path / "both", tmp_path / "both" / "home"
     (home / ".ssh").mkdir(parents=True)
-    base = tmp_path / "b"
-    link = home / ".ssh" / "proj"
-    link.symlink_to(base / "repo", target_is_directory=True)  # run_layout's project, made below
-    env = {"HOME": str(home), "OPENCODE_DB": str(home / "x.db")}
+    (home / ".ssh" / "proj").symlink_to(base / "repo", target_is_directory=True)
     with pytest.raises(ContainmentUnavailable) as exc:
-        run_layout(base, "reviewer", home=str(home), env=env)
-    named = os.path.join(os.path.realpath(home / ".ssh"), "proj")
-    details, message = exc.value.details, exc.value.message
-    assert details["reason"] == "mask_holds_the_run" and details["variables"] == ["OPENCODE_DB"], details
-    assert details["links"] == [named] and f"or holds the project ({os.path.realpath(base / 'repo')})" in message
-    assert f"take {named} out of that directory, or point it at a directory that holds nothing the run needs" \
-        in message
+        run_layout(base, "reviewer", home=str(home), env={"HOME": str(home), "OPENCODE_DB": str(home / "x.db")})
+    assert exc.value.details["variables"] == ["OPENCODE_DB"], exc.value.details
+    assert exc.value.details["links"] == [os.path.join(real(home / ".ssh"), "proj")]
 
 
 @needs_symlinks

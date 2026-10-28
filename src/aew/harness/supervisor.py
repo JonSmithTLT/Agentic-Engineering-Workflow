@@ -280,9 +280,11 @@ class Supervisor:
                                                            self_test=exc.details.get("self_test"))
             self._event("containment_refused", reason=exc.message)
             raise
+        line = containment.one_by_one_line(self.layout) if self.layout is not None else None
         self._event("containment", filesystem=self.record["containment"]["filesystem"],
                     process_ownership=self.record["containment"]["process_ownership"],
-                    network=self.record["containment"]["network"]["mode"])
+                    network=self.record["containment"]["network"]["mode"], **({"masked_one_by_one": line} if line
+                                                                             else {}))
         if not procs.IS_WINDOWS:
             self.tree = procs.ProcessTree(layout=self.layout, network=network)
 

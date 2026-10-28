@@ -73,23 +73,28 @@ def store_files(env: Mapping[str, str]) -> list[Path]:
     return [db, *(db.with_name(db.name + suffix) for suffix in SIDECARS)]
 
 
-def operator_masks(env: Mapping[str, str]) -> dict[Path, str | None]:
-    """``{directory: the variable that puts it there, or None}``: every place the operator's OpenCode keeps its login,
-    configuration or state, as the operator's environment puts it, for a contained run to mask whole
-    (``containment.layout``; STG-05 CS-4, outcome 2, and addendum 4, ruling 2): its data, configuration, state and
-    cache directories, and the directories holding the login database and the configuration file ``OPENCODE_CONFIG``
-    names, each with its real one: whole directories, as the database's sidecars appear beside it after a launch."""
-    dirs: dict[Path, str | None] = {}
+def operator_masks(env: Mapping[str, str]) -> dict[Path, tuple[str, ...]]:
+    """``{directory: every variable that puts OpenCode's files there, none where it is OpenCode's default}``: every
+    place the operator's OpenCode keeps its login, configuration or state, as the operator's environment puts it, for a
+    contained run to mask whole (``containment.layout``; STG-05 CS-4, outcome 2, and addendum 4, ruling 2): its data,
+    configuration, state and cache directories, and the directories holding the login database and the configuration
+    file ``OPENCODE_CONFIG`` names, each with its real one: whole directories, as the database's sidecars appear beside
+    it after a launch."""
+    dirs: dict[Path, tuple[str, ...]] = {}
+
+    def put(directory: Path, variables: tuple[str, ...]) -> None:
+        dirs[directory] = tuple(dict.fromkeys((*dirs.get(directory, ()), *variables)))
+
     for kind in XDG_DEFAULTS:
         variable = f"XDG_{kind.upper()}_HOME"
-        dirs[operator_dir(env, kind)] = variable if env.get(variable) else None
+        put(operator_dir(env, kind), (variable,) if env.get(variable) else ())
     db = db_path(env)
     for directory in (db.parent, Path(os.path.realpath(db)).parent):
-        dirs.setdefault(directory, "OPENCODE_DB" if env.get("OPENCODE_DB") else dirs[operator_dir(env, "data")])
+        put(directory, ("OPENCODE_DB",) if env.get("OPENCODE_DB") else dirs[operator_dir(env, "data")])
     if env.get("OPENCODE_CONFIG"):
         named = Path(os.path.abspath(env["OPENCODE_CONFIG"]))
         for directory in (named.parent, Path(os.path.realpath(named)).parent):
-            dirs.setdefault(directory, "OPENCODE_CONFIG")
+            put(directory, ("OPENCODE_CONFIG",))
     return dirs
 
 

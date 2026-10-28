@@ -232,6 +232,68 @@ def test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_n
     assert "custom.json" not in out, out
 
 
+# The files of the operator's OpenCode a dotfile manager links in from elsewhere (the designer's ruling on the quick
+# check of #283 at c307481a, S3): (its directory under the home directory, the file), the ones the host reads or that
+# hold a credential or other projects' prompts.
+LINKED_IN = ((".config/opencode", "opencode.json"), (".config/opencode", "config.json"),
+             (".config/opencode", "opencode.jsonc"), (".local/share/opencode", "auth.json"),
+             (".local/state/opencode", "prompt-history.jsonl"))
+
+
+@pytest.mark.parametrize("placed", ["own_directory", "beside_other_files"])
+def test_a_file_a_masked_directory_links_to_reads_empty_from_the_leads_sandbox(lead_lab, placed):
+    """CS-4 outcome 2 (A-33 §3.1, CB-01), S3: each file of the operator's OpenCode that is a link to a file outside
+    OpenCode's directories reads empty from inside the Lead's sandbox, at the link and where it really is. Where the
+    linked files' directory holds nothing else it is masked whole, so a file replaced by rename or added there after the
+    launch reads empty too; beside other dotfiles each file is masked by itself, the others stay readable, and the
+    launch line counts the files. Synthetic files only."""
+    lab = lead_lab
+    dots = lab.home / "dotfiles"
+    links, targets = [], []
+    for i, (where, name) in enumerate(LINKED_IN):
+        target = dots / (where.replace("/", "_") if placed == "own_directory" else "") / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(f"SYNTHETIC-LINKED-{i}\n")
+        link = lab.home / where / name
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.unlink(missing_ok=True)
+        link.symlink_to(target)
+        links.append(link)
+        targets.append(target)
+    (dots / ".gitconfig").write_text("[user]\n\tname = synthetic\n")  # beside them, or beside their directories
+    layout = lab.layout(env={"HOME": str(lab.home)})
+    ready, go = lab.run / "scratch" / "ready", lab.root / "go"
+    tree = procs.ProcessTree(layout=layout)
+    try:
+        reads = " ".join(str(p) for p in (*links, *targets))
+        script = (f"touch {ready}; i=0; while [ ! -e {go} ] && [ $i -lt 400 ]; do sleep 0.05; i=$((i+1)); done; "
+                  f"cat {reads} {targets[0].parent}/added.json 2>/dev/null; echo; cat {dots}/.gitconfig; echo end")
+        proc = tree.spawn(["sh", "-c", script], cwd=str(lab.repo), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          stdin=subprocess.DEVNULL, text=True,
+                          env={"PATH": os.environ["PATH"], "HOME": str(lab.home), "LANG": "C.UTF-8", **layout.env})
+        deadline = time.monotonic() + 30
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert ready.exists(), "the sandbox never started"
+        if placed == "own_directory":  # after the launch: the operator's own tools replace one and add another
+            saved = targets[0].with_name("saved.tmp")
+            saved.write_text("SYNTHETIC-REPLACED\n")
+            os.replace(saved, targets[0])
+            (targets[0].parent / "added.json").write_text("SYNTHETIC-ADDED\n")
+        go.write_text("")
+        out, err = proc.communicate(timeout=60)
+    finally:
+        tree.close()
+    assert out.rstrip().endswith("end"), out + err
+    assert "SYNTHETIC" not in out, out
+    assert "name = synthetic" in out, out  # the operator's other dotfiles stay readable, beside them or not
+    if placed == "own_directory":
+        assert layout.one_by_one == () and C.one_by_one_line(layout) is None
+    else:
+        assert set(layout.one_by_one) == {os.path.realpath(t) for t in targets}
+        assert C.one_by_one_line(layout).startswith("5 files that links in your masked credential directories")
+
+
 # ------------------------------------------------------------------------------------------- outcome 6, rows
 
 def lead_establish(lab: LeadLab, monkeypatch, *, terminal: bool = True, mode: str | None = None,

@@ -8,9 +8,10 @@ are the source.
   the git metadata are read-only; `.aew/local` is masked except the session's run directory and the Lead's own
   OpenCode state (`.aew/local/harness/lead`, per project); the operator's OpenCode configuration and login are masked
   wherever their variables put them (every place AEW's host side reads them from, one owner:
-  `opencode.login.operator_masks`), and a launch where such a directory would hide the workspace, the project, the
-  home directory or AEW's own is refused, naming the variable and the fix. Rows 1 to 6 of the self-test run first,
-  row 4 in the Lead's form.
+  `opencode.login.operator_masks`), and what a link in a masked directory points at is masked where it really is,
+  for every role; a launch where such a directory would hide the workspace, the project, the home directory or AEW's
+  own is refused, once, naming each variable or link and its fix. Rows 1 to 6 of the self-test run first, row 4 in
+  the Lead's form.
 - **The CLI inside** is a non-writer (`aew (contained Lead)`): reads are lock-free, Lead commands go through the
   broker, and a write meeting the read-only store is refused (`PERMISSION_DENIED`, reason `lead_contained`).
 - **Relayed reads (addendum 4, ruling 1, option (a)):** `status`, `resume`, `harness status`, `harness wait`, `map

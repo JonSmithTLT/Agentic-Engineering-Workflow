@@ -176,6 +176,7 @@ class Layout:
     hide_runs: tuple[str, ...] = ()          # empty tmpfs at its depth, then read-only: .aew/local, the runs dir
     hide_dirs: tuple[str, ...] = ()          # replaced by an empty tmpfs
     hide_files: tuple[str, ...] = ()         # replaced by ``mask_file``
+    one_by_one: tuple[str, ...] = ()         # link targets masked file by file (in ``hide_files``; _linked)
     mask_file: str = "/dev/null"             # an empty read-only file
     operator_writable: tuple[str, ...] = ()  # the policy's extra writable roots (also in ``writable``)
     protected: tuple[str, ...] = ()          # paths the launch self-test must find unwritable
@@ -192,6 +193,7 @@ class Layout:
         return {"role": self.role, "workspace_access": self.access, "writable": list(self.writable),
                 "readonly": list(self.readonly),
                 "hidden": [*self.hide_host, *self.hide_runs, *self.hide_dirs, *self.hide_files],
+                "masked_one_by_one": list(self.one_by_one),
                 "bound_back": [{"path": p, "why": why} for p, why in self.bind_backs()],
                 "display_files": list(self.display_files), "unset_env": list(DISPLAY_ENV), "session": "new",
                 "operator_writable": list(self.operator_writable), "network": self.network, "net_dir": self.net_dir}
@@ -309,9 +311,22 @@ def _real(path: str | os.PathLike[str]) -> str:
 
 def _masks(home: str | None, extra: list[str],
            env: Mapping[str, str] | None = None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """:func:`_mask_plan`'s directories and files, for a sandbox that needs nothing of the host but ``home`` (eval's):
+    a linked directory that is or holds ``home`` is left unmasked there, where :func:`for_run` refuses the launch."""
+    needed = [("the home directory", _real(home))] if home else []
+    dirs, files, _, _ = _mask_plan(home, extra, env, needed)
+    return dirs, files
+
+
+def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None,
+               needed: list[tuple[str, str]]) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...],
+                                                        tuple[tuple[str, str, list[tuple[str, str]]], ...]]:
     """Existing secret paths, split by type (a file cannot be masked by a tmpfs, nor a directory by /dev/null): the
     secrets and the display's credentials in ``home``, those the launching environment ``env`` names
-    (:func:`_env_masks`; default: this process's), and the policy's ``extra``."""
+    (:func:`_env_masks`; default: this process's), and the policy's ``extra``; and what the links in the directories
+    among them point at (:func:`_linked`, against ``needed``). ``(dirs, files, one_by_one, refused)``: ``one_by_one``
+    the link targets masked file by file (in ``files`` too), ``refused`` each ``(link, target, what it holds)`` whose
+    target is something the run needs."""
     candidates = [os.path.join(home, p) for p in (*SECRET_DIRS, *SECRET_FILES, *DISPLAY_FILES)] if home else []
     candidates += _env_masks(_launching(home, env))
     candidates += [os.path.expanduser(p) for p in extra]
@@ -327,7 +342,92 @@ def _masks(home: str | None, extra: list[str],
         target = dirs if os.path.isdir(path) else files if os.path.isfile(path) else None
         if target is not None and path not in target:
             target.append(path)
-    return tuple(dirs), tuple(files)
+    linked_dirs, one_by_one, refused = _linked(dirs, files, needed)
+    return (*dirs, *linked_dirs), (*files, *one_by_one), one_by_one, refused
+
+
+def _linked(dirs: list[str], files: list[str], needed: list[tuple[str, str]]) -> tuple[
+        tuple[str, ...], tuple[str, ...], tuple[tuple[str, str, list[tuple[str, str]]], ...]]:
+    """What the symlinks in a directory masked whole point at, masked where it really is when that lies outside every
+    mask (the designer's ruling on the quick check of #283 at c307481a, S3), for every role, as every secret mask is.
+    ``(dirs, one_by_one, refused)``:
+
+    * a linked directory's target is masked whole, and the links in it are followed the same way;
+    * a linked file's target directory ``P`` is masked whole when every entry directly in it is such a target and it
+      neither is nor holds anything in ``needed``; otherwise each target in it is masked file by file (``one_by_one``,
+      which the launch names: a file mask is a bind of that file, so a file replaced or created there during the
+      session is not covered);
+    * a linked directory that is or holds something in ``needed`` is ``refused`` (:func:`_refuse_masks_over_the_run`).
+
+    Its limit: links are resolved at the launch, so a target first linked during the session is not covered, nor a
+    linked file whose directory does not exist then; a directory the operator's account cannot list is not walked; hard
+    links are out of scope."""
+    linked: list[str] = []
+    targets: set[str] = set()  # every link's target, file or directory
+    by_parent: dict[str, list[str]] = {}
+    refused: dict[str, tuple[str, str, list[tuple[str, str]]]] = {}
+
+    def covered(path: str) -> bool:
+        return path in files or any(_within(path, d) for d in (*dirs, *linked))
+
+    queue = list(dirs)
+    while queue:
+        for link in _links_in(queue.pop(0)):
+            target = _real(link)
+            targets.add(target)
+            if covered(target) or target in refused:
+                continue
+            if os.path.isdir(target):
+                held = [(what, path) for what, path in needed if _within(path, target)]
+                if held:
+                    refused[target] = (link, target, held)
+                else:
+                    linked.append(target)
+                    queue.append(target)
+            else:  # a file, or none yet: its directory masked whole covers one made later
+                by_parent.setdefault(os.path.dirname(target), []).append(target)
+    one_by_one: list[str] = []
+    for parent, inside in by_parent.items():
+        if covered(parent) or not os.path.isdir(parent):
+            continue
+        try:
+            whole = {os.path.join(parent, name) for name in os.listdir(parent)} <= targets
+        except OSError:
+            whole = False  # not listed: never masked whole on a guess
+        if whole and not any(_within(path, parent) for _, path in needed):
+            linked.append(parent)
+        else:
+            one_by_one += [t for t in dict.fromkeys(inside) if os.path.isfile(t) and not covered(t)]
+    return tuple(linked), tuple(one_by_one), tuple(refused.values())
+
+
+def one_by_one_line(layout: Layout) -> str | None:
+    """The launch's one line when a link target is masked file by file (:func:`_linked`; the designer's ruling on S3):
+    how many, and what that leaves. None when there is none."""
+    n = len(layout.one_by_one)
+    if not n:
+        return None
+    files, are, theirs = ("file", "is", "its directory holds") if n == 1 else ("files", "are", "their directories hold")
+    return (f"{n} {files} that links in your masked credential directories point at {are} masked file by file, as "
+            f"{theirs} other files; a file replaced or added there during the session is not masked. To have such "
+            "files masked whole, keep them in a directory of their own")
+
+
+def _links_in(top: str) -> list[str]:
+    """Every symlink at any depth in directory ``top``, without following one (each is resolved by the caller)."""
+    out: list[str] = []
+    stack = [top]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for entry in it:
+                    if entry.is_symlink():
+                        out.append(entry.path)
+                    elif entry.is_dir(follow_symlinks=False):
+                        stack.append(entry.path)
+        except OSError:
+            continue
+    return sorted(out)
 
 
 def _launching(home: str | None, env: Mapping[str, str] | None) -> Mapping[str, str]:
@@ -355,28 +455,47 @@ def _env_masks(env: Mapping[str, str]) -> list[str]:
     return [os.path.expanduser(p) for p in out]
 
 
-def _refuse_masks_over_the_run(env: Mapping[str, str], needed: list[tuple[str, str]]) -> None:
-    """A directory masked whole for the operator's OpenCode (:func:`_env_masks`) that is, or holds, something the
-    run needs (``needed``: its workspace, the project, the home directory, AEW's own directories, the Python
-    environment) would hide it: refused, naming what puts the directory there and the fix. Masking only the files in
-    it would not do: the login database's sidecars appear beside it after the launch."""
+def _refuse_masks_over_the_run(env: Mapping[str, str], needed: list[tuple[str, str]],
+                               linked: tuple[tuple[str, str, list[tuple[str, str]]], ...] = ()) -> None:
+    """A directory masked whole that is, or holds, something the run needs (``needed``: its workspace, the project, the
+    home directory, AEW's own directories, the Python environment) would hide it: refused, once, naming every such
+    directory with what puts it there and each fix (the quick check of #283 at c307481a, m4). Two things put one
+    there: the operator's OpenCode (:func:`_env_masks`; masking only the files in it would not do, as the login
+    database's sidecars appear beside it after the launch), and a link in a masked directory whose target it is
+    (``linked``, :func:`_linked`)."""
     from aew.harness.opencode import login
 
-    for directory, variable in login.operator_masks(env).items():
+    refused: dict[str, tuple[list[str], list[tuple[str, str]]]] = {}  # directory -> (variables, what it holds)
+    for directory, variables in login.operator_masks(env).items():
         if not os.path.isdir(directory):
             continue
         masked = _real(directory)
         held = [(what, path) for what, path in needed if _within(path, masked)]
         if held:
-            what, path = held[0]
-            where = f"{variable} puts" if variable else "by default, OpenCode keeps"
-            fix = (f"point {variable} at a directory of its own, which holds nothing else, or unset it" if variable
-                   else "keep the project and AEW outside it")
-            raise ContainmentUnavailable(
-                f"{where} the operator's OpenCode files in {masked}, which a contained run masks whole, and that "
-                f"directory is or holds {what} ({path}), which the run needs; the launch is refused. To launch, "
-                f"{fix}", directory=masked, variable=variable, holds=[{"what": w, "path": p} for w, p in held],
-                reason="opencode_mask_holds_the_run")
+            named, _ = refused.setdefault(masked, ([], held))
+            named += [v for v in variables if v not in named]
+    clauses, fixes, entries = [], [], []
+    for masked, (named, held) in refused.items():
+        what, path = held[0]
+        where = (f"{' and '.join(named)} put{'s' if len(named) == 1 else ''}" if named
+                 else "by default, OpenCode keeps")
+        clauses.append(f"{where} the operator's OpenCode files in {masked}, which a contained run masks whole, and "
+                       f"that directory is or holds {what} ({path}), which the run needs")
+        fixes += [f"point {v} at a directory of its own, which holds nothing else, or unset it" for v in named] or [
+            "keep the project and AEW outside it"]
+        entries.append({"directory": masked, "variables": named, "holds": [{"what": w, "path": p} for w, p in held]})
+    for link, target, held in linked:
+        what, path = held[0]
+        clauses.append(f"{link} links to {target}, which a contained run masks whole (it masks what a link in a "
+                       f"masked directory points at), and that directory is or holds {what} ({path}), which the run "
+                       "needs")
+        fixes.append(f"take {link} out of that directory, or point it at a directory that holds nothing the run needs")
+        entries.append({"directory": target, "link": link, "holds": [{"what": w, "path": p} for w, p in held]})
+    if entries:
+        raise ContainmentUnavailable(
+            f"{'; '.join(clauses)}; the launch is refused. To launch, {'; and '.join(dict.fromkeys(fixes))}",
+            refused=entries, variables=list(dict.fromkeys(v for e in entries for v in e.get("variables", []))),
+            links=[e["link"] for e in entries if "link" in e], reason="mask_holds_the_run")
 
 
 def display_files(home: str | None, env: Mapping[str, str] | None = None) -> tuple[str, ...]:
@@ -665,19 +784,19 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
         contained.update({"PYTHONDONTWRITEBYTECODE": "1", "PYTHONPYCACHEPREFIX": str(cache / "pycache")})
     readonly, protected = _git_metadata(ws)
     home = home if home is not None else os.path.expanduser("~")
-    hide_dirs, hide_files = _masks(home, list(cfg.get("hide") or []), env)
-    hide_host = host_masks()
     if net_dir:
         net_dir = _real(net_dir)
         os.makedirs(os.path.join(net_dir, NET_SHIM), mode=0o700, exist_ok=True)
-    guarded = _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir, masks=(*hide_dirs, *hide_files),
-                       host=hide_host, net_dir=net_dir)
     needed = [("the workspace", str(ws)), ("the project", _real(project)), ("the home directory", _real(home)),
               ("this run's directory", _real(run)), ("this run's scratch directory", _real(scratch))]
     needed += [("the role's harness state", _real(state_dir))] if state_dir is not None else []
-    _refuse_masks_over_the_run(_launching(home, env), needed + [(w, p) for w, p in _guarded(
-        ws, project=project, runs=runs, bridge_dir=bridge_dir, masks=(), host=(), net_dir=net_dir)
-        if w != _SHARED_TMP])
+    needed += [(w, p) for w, p in _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir, masks=(), host=(),
+                                           net_dir=net_dir) if w != _SHARED_TMP]
+    hide_dirs, hide_files, one_by_one, refused = _mask_plan(home, list(cfg.get("hide") or []), env, needed)
+    _refuse_masks_over_the_run(_launching(home, env), needed, refused)
+    hide_host = host_masks()
+    guarded = _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir, masks=(*hide_dirs, *hide_files),
+                       host=hide_host, net_dir=net_dir)
     operator = []
     for raw in cfg.get("writable") or []:
         path = _real(os.path.expanduser(raw))
@@ -712,9 +831,10 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
         hide_runs.append(_real(runs))
     layout = Layout(role=role, access=access, bwrap=bwrap, writable=tuple(writable), readonly=tuple(readonly),
                     visible=tuple(visible), hide_runs=tuple(hide_runs), hide_dirs=hide_dirs, hide_files=hide_files,
-                    mask_file=str(mask), operator_writable=tuple(operator), protected=tuple(protected),
-                    env=contained, hide_host=hide_host, run_exceptions=run_exceptions(network),
-                    display_files=display_files(home, env), network=network, net_dir=net_dir)
+                    one_by_one=one_by_one, mask_file=str(mask), operator_writable=tuple(operator),
+                    protected=tuple(protected), env=contained, hide_host=hide_host,
+                    run_exceptions=run_exceptions(network), display_files=display_files(home, env), network=network,
+                    net_dir=net_dir)
     _refuse_store_binds(role, project, order(layout))
     _refuse_run_bind_backs(layout, project=_real(project), workspace=str(ws))
     return layout

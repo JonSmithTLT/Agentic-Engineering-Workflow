@@ -871,7 +871,11 @@ class AskedFor(dict):
 def test_the_opencode_host_readers_ask_only_for_keys_these_environments_vary(tmp_path):
     """The review of #283 at b2dc3035, m2: each host reader of the operator's OpenCode asks the operator's environment
     only for keys :data:`OPENCODE_ENVS` moves (or the home directory), so a reader that starts following another
-    variable fails here until the environments, and so the masks' test, cover it."""
+    variable fails here until the environments, and so the masks' test, cover it.
+
+    Its limit (quick check of #283 at c307481a, n2): it sees only ``get``, ``[]`` and ``in`` on the mapping it hands to
+    the four readers it calls. A key read through ``os.environ``, by iterating the mapping, or by a reader it does not
+    call is not seen."""
     from types import SimpleNamespace
 
     from aew.harness.opencode import lead, login
@@ -928,8 +932,8 @@ def test_a_directory_masked_for_opencode_never_hides_what_the_run_needs(tmp_path
         env = {"HOME": str(home), variable: str(where / name)}
         with pytest.raises(ContainmentUnavailable) as exc:
             run_layout(base, "reviewer", home=str(home), env=env)
-        assert exc.value.details["reason"] == "opencode_mask_holds_the_run" and exc.value.details["variable"] == \
-            variable and f"or holds {what}" in exc.value.message, exc.value.message
+        assert exc.value.details["reason"] == "mask_holds_the_run" and exc.value.details["variables"] == \
+            [variable] and f"or holds {what}" in exc.value.message, exc.value.message
         assert f"point {variable} at a directory of its own" in exc.value.message
     repo, ws = repo_with_worktree(tmp_path / "ok")
     config, own = repo / ".occ" / "opencode.json", repo / ".oc" / "logins.db"
@@ -944,6 +948,206 @@ def test_a_directory_masked_for_opencode_never_hides_what_the_run_needs(tmp_path
     real = os.path.realpath
     assert real(config.parent) in layout.hide_dirs and real(own.parent) in layout.hide_dirs
     assert real(repo) not in layout.hide_dirs and real(config) not in layout.hide_files
+
+
+def test_every_directory_masked_over_the_run_is_named_in_one_refusal_with_each_variable_and_its_fix(tmp_path,
+                                                                                                  fake_bwrap):
+    """Quick check of #283 at c307481a, m4: where the operator's environment puts OpenCode's files in more than one
+    directory the run needs, or more than one variable puts them in one, the one refusal names each directory with
+    every variable that puts files there, and each fix; following it never meets a second refusal."""
+    home = tmp_path / "home"
+    home.mkdir()
+    real = os.path.realpath
+    apart, together = tmp_path / "apart", tmp_path / "together"
+    for base, config in ((apart, apart / "repo" / "x.json"), (together, home / "x.json")):
+        env = {"HOME": str(home), "OPENCODE_DB": str(home / "x.db"), "OPENCODE_CONFIG": str(config)}
+        with pytest.raises(ContainmentUnavailable) as exc:
+            run_layout(base, "reviewer", home=str(home), env=env)
+        details, message = exc.value.details, exc.value.message
+        assert details["reason"] == "mask_holds_the_run" and details["variables"] == ["OPENCODE_DB", "OPENCODE_CONFIG"]
+        assert all(f"point {v} at a directory of its own, which holds nothing else, or unset it" in message
+                   for v in ("OPENCODE_DB", "OPENCODE_CONFIG")), message
+        if base == apart:
+            assert [(e["directory"], e["variables"]) for e in details["refused"]] == [
+                (real(home), ["OPENCODE_DB"]), (real(apart / "repo"), ["OPENCODE_CONFIG"])], details
+        else:
+            assert [(e["directory"], e["variables"]) for e in details["refused"]] == [
+                (real(home), ["OPENCODE_DB", "OPENCODE_CONFIG"])], details
+            assert "OPENCODE_DB and OPENCODE_CONFIG put the operator's OpenCode files in" in message
+
+
+needs_symlinks = pytest.mark.skipif(sys.platform == "win32", reason="making a symlink needs a privilege on Windows, "
+                                    "and containment is Linux's (bubblewrap); the checks are pure")
+
+# Where the files the host reads sit when the operator's dotfile manager links them into OpenCode's directories (the
+# designer's ruling on the quick check of #283 at c307481a, S3): each directory's files in a directory of their own (as
+# GNU stow's packages are), or all in one directory beside the operator's other dotfiles.
+LINKED_FROM = ("own_directory", "beside_other_files")
+
+
+@needs_symlinks
+@pytest.mark.parametrize("placed", LINKED_FROM)
+def test_every_file_the_host_reads_the_operators_opencode_from_is_masked_at_its_real_path_wherever_a_link_puts_it(
+        tmp_path, fake_bwrap, placed):
+    """S3 (the designer's ruling; CB-01): the masks' class over the filesystem as well as the environment. In every
+    environment of :data:`OPENCODE_ENVS`, each file the host reads (but the database, whose link the environment's own
+    shapes cover) is a link to a file outside OpenCode's directories, and each is masked at its real path: its
+    directory whole where that holds nothing else, otherwise the file itself."""
+    real = os.path.realpath
+    for shape, make in OPENCODE_ENVS.items():
+        t = tmp_path / shape
+        home = t / "home"
+        env = make(t)
+        host = {"HOME": str(home), **env}
+        for variable in XDG_BASES:
+            opencode_dir(host, variable).mkdir(parents=True, exist_ok=True)
+        files = operator_files(host)
+        files[0].parent.mkdir(parents=True, exist_ok=True)
+        files[0].write_text("SYNTHETIC\n")
+        dots = home / "dotfiles"
+        dots.mkdir(parents=True)
+        if placed == "beside_other_files":
+            (dots / ".gitconfig").write_text("[user]\n")
+        parents = list(dict.fromkeys(p.parent for p in files[4:]))
+        for p in files[4:]:  # every file but the database and its sidecars
+            target = dots / (str(parents.index(p.parent)) if placed == "own_directory" else "") / p.name
+            target.parent.mkdir(exist_ok=True)
+            target.write_text("SYNTHETIC\n")
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.symlink_to(target)
+        layout = run_layout(t, "reviewer", home=str(home), env=env)
+        unmasked = [str(p) for p in files
+                    if real(p) not in layout.hide_files and not any(L._within(real(p), d) for d in layout.hide_dirs)]
+        assert unmasked == [], (shape, layout.hide_dirs, layout.hide_files)
+        if placed == "own_directory":
+            assert layout.one_by_one == (), shape
+        elif not env.get("OPENCODE_CONFIG"):  # where it names one, its real directory is masked whole all the same (S2)
+            assert set(layout.one_by_one) == {real(p) for p in files[4:]}, shape
+            assert not any(L._within(real(dots / ".gitconfig"), m) for m in (*layout.hide_dirs, *layout.hide_files))
+
+
+@needs_symlinks
+def test_a_secret_a_masked_directory_links_to_is_masked_at_its_real_path_for_every_role(tmp_path, fake_bwrap):
+    """S3, the designer's ruling, in its general form: for a worker as for the Lead, a key in ~/.ssh and the
+    credentials in ~/.aws, each a link into a dotfiles directory, are masked where they really are: a directory that
+    holds only such files whole, a file beside other dotfiles by itself, which the launch line counts."""
+    real = os.path.realpath
+    for role in ("implementer", "reviewer", "lead"):
+        t = tmp_path / role
+        home = t / "home"
+        own, flat = home / "vault" / "ssh", home / "dotfiles"
+        for d in (home / ".ssh", home / ".aws", own, flat):
+            d.mkdir(parents=True)
+        (own / "id_synthetic").write_text("SYNTHETIC\n")
+        (flat / "credentials").write_text("SYNTHETIC\n")
+        (flat / ".gitconfig").write_text("[user]\n")
+        (home / ".ssh" / "id_synthetic").symlink_to(own / "id_synthetic")
+        (home / ".aws" / "credentials").symlink_to(flat / "credentials")
+        layout = lead_layout(t, home=str(home)) if role == "lead" else run_layout(t, role, home=str(home))
+        assert real(own) in layout.hide_dirs, role
+        assert layout.one_by_one == (real(flat / "credentials"),) and real(flat / "credentials") in layout.hide_files
+        assert not any(L._within(real(flat / ".gitconfig"), m) for m in (*layout.hide_dirs, *layout.hide_files))
+        assert C.one_by_one_line(layout) == (
+            "1 file that links in your masked credential directories point at is masked file by file, as its "
+            "directory holds other files; a file replaced or added there during the session is not masked. To have "
+            "such files masked whole, keep them in a directory of their own")
+        assert layout.describe()["masked_one_by_one"] == [real(flat / "credentials")]
+
+
+@needs_symlinks
+def test_a_linked_directory_is_masked_whole_at_its_target_and_the_links_in_it_are_followed(tmp_path, fake_bwrap):
+    """S3, the designer's ruling: a directory a masked directory links to is masked whole where it really is, and a
+    link inside it is followed the same way."""
+    home = tmp_path / "home"
+    agents, keys = home / "dotfiles" / "agents", home / "keys"
+    for d in (home / ".config" / "opencode", agents, keys):
+        d.mkdir(parents=True)
+    (keys / "auth.json").write_text("SYNTHETIC\n")
+    (agents / "auth.json").symlink_to(keys / "auth.json")
+    (home / ".config" / "opencode" / "agents").symlink_to(agents, target_is_directory=True)
+    layout = run_layout(tmp_path, "reviewer", home=str(home))
+    real = os.path.realpath
+    assert {real(agents), real(keys)} <= set(layout.hide_dirs) and layout.one_by_one == (), layout.hide_dirs
+
+
+@needs_symlinks
+def test_a_link_targets_directory_is_masked_whole_only_when_it_holds_nothing_else_and_nothing_the_run_needs(tmp_path):
+    """S3, the designer's rule for a linked file's directory P: whole when every entry directly in it is a link's
+    target and it neither is nor holds anything the run needs (then a target made there after the launch is masked
+    too); otherwise each target by itself, and a target absent at the launch is not masked (its stated limit)."""
+    real = os.path.realpath
+    masked, p = tmp_path / "masked", tmp_path / "p"
+    masked.mkdir()
+    p.mkdir()
+    (p / "a").write_text("SYNTHETIC\n")
+    (masked / "a").symlink_to(p / "a")
+    (masked / "later").symlink_to(p / "later")  # its target is made after the launch
+    assert L._linked([real(masked)], [], []) == ((real(p),), (), ())
+    assert L._linked([real(masked)], [], [("the workspace", real(p))]) == ((), (real(p / "a"),), ())
+    (p / "other").write_text("[user]\n")
+    assert L._linked([real(masked)], [], []) == ((), (real(p / "a"),), ())
+
+
+@needs_symlinks
+def test_a_link_in_a_masked_directory_to_a_directory_the_run_needs_is_refused_naming_the_link(tmp_path, fake_bwrap):
+    """S3, the designer's ruling: a target that is itself something the run needs (here the project) is refused, in
+    the one refusal with every other (m4), naming the link and the fix."""
+    home = tmp_path / "home"
+    (home / ".ssh").mkdir(parents=True)
+    base = tmp_path / "b"
+    link = home / ".ssh" / "proj"
+    link.symlink_to(base / "repo", target_is_directory=True)  # run_layout's project, made below
+    env = {"HOME": str(home), "OPENCODE_DB": str(home / "x.db")}
+    with pytest.raises(ContainmentUnavailable) as exc:
+        run_layout(base, "reviewer", home=str(home), env=env)
+    named = os.path.join(os.path.realpath(home / ".ssh"), "proj")
+    details, message = exc.value.details, exc.value.message
+    assert details["reason"] == "mask_holds_the_run" and details["variables"] == ["OPENCODE_DB"], details
+    assert details["links"] == [named] and f"or holds the project ({os.path.realpath(base / 'repo')})" in message
+    assert f"take {named} out of that directory, or point it at a directory that holds nothing the run needs" \
+        in message
+
+
+@needs_symlinks
+@pytest.mark.parametrize("variable", ["OPENCODE_DB", "OPENCODE_CONFIG"])
+def test_a_directory_masked_for_opencode_reached_through_a_link_never_hides_what_the_run_needs(tmp_path, fake_bwrap,
+                                                                                              variable):
+    """Quick check of #283 at c307481a, n3: the refusal holds where the variable names a link: a link to a file in the
+    home directory or in the project, or a path through a link to the home directory."""
+    home = tmp_path / "home"
+    home.mkdir()
+    name = {"OPENCODE_DB": "logins.db", "OPENCODE_CONFIG": "opencode.json"}[variable]
+    for shape in ("file_link_into_home", "dir_link_to_home", "file_link_into_project"):
+        base, links = tmp_path / shape, tmp_path / shape / "links"
+        links.mkdir(parents=True)
+        repo = base / "repo"  # run_layout's project
+        if shape == "file_link_into_home":
+            (home / name).write_text("SYNTHETIC\n")
+            (links / name).symlink_to(home / name)
+            named, what = links / name, "the home directory"
+        elif shape == "dir_link_to_home":
+            (links / "d").symlink_to(home, target_is_directory=True)
+            named, what = links / "d" / name, "the home directory"
+        else:
+            (links / name).symlink_to(repo / name)
+            named, what = links / name, "the project"
+        with pytest.raises(ContainmentUnavailable) as exc:
+            run_layout(base, "reviewer", home=str(home), env={"HOME": str(home), variable: str(named)})
+        assert exc.value.details["reason"] == "mask_holds_the_run" and exc.value.details["variables"] == [variable]
+        assert f"or holds {what}" in exc.value.message and f"point {variable} at a directory of its own" in \
+            exc.value.message, (shape, exc.value.message)
+
+
+def test_the_launch_line_counts_the_link_targets_masked_file_by_file_and_says_what_that_leaves():
+    """S3, the designer's ruling: one launch line when any link target is masked file by file, and none otherwise."""
+    bare = C.Layout(role="x", access="read", bwrap="/usr/bin/bwrap", writable=(), readonly=())
+    assert C.one_by_one_line(bare) is None and bare.describe()["masked_one_by_one"] == []
+    two = C.Layout(role="x", access="read", bwrap="/usr/bin/bwrap", writable=(), readonly=(),
+                   hide_files=("/h/d/a", "/h/d/b"), one_by_one=("/h/d/a", "/h/d/b"))
+    assert C.one_by_one_line(two) == (
+        "2 files that links in your masked credential directories point at are masked file by file, as their "
+        "directories hold other files; a file replaced or added there during the session is not masked. To have "
+        "such files masked whole, keep them in a directory of their own")
 
 
 def test_every_bwrap_argv_unsets_the_display_variables_and_starts_a_new_session():

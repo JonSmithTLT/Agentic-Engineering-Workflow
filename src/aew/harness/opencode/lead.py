@@ -497,6 +497,9 @@ class ContainedLead:
             self._record(run_dir, label)
             env = {**child_env, **{n: str(agentenv.lookup(self.base, n)) for n in self.provider_env}}
             return lead_broker.Harness(argv=self.argv, env=env, relay=False, label=label, close=lambda: None)
+        line = containment.one_by_one_line(layout)
+        if line:
+            sys.stderr.write(f"aew opencode: {line}.\n")
         network: netns.RunNetwork | None = None
         try:
             if layout.private_network:

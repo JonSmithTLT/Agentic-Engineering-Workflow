@@ -106,6 +106,25 @@ def tree_with(tmp_path: Path, files: dict[str, str]) -> Path:
 
 # ---------------------------------------------------------------------------------------------- the oracle
 
+def test_scoring_leaves_secret_files_out_of_their_directories_as_every_run_does(tmp_path, monkeypatch):
+    """STG-05 CS-4, addendum 7, ruling 6: hidden scoring's layout takes the masks every AEW run takes, in the same
+    shape: a secret file, present or not, is left out of its directory, not bound over by an empty file."""
+    from aew.harness.containment import layout as L
+
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".netrc").write_text("SYNTHETIC\n")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setattr(L, "find_bwrap", lambda: "/usr/bin/bwrap")
+    (tmp_path / "tree").mkdir()
+    (tmp_path / "scratch").mkdir()
+    layout = hidden.scoring_layout(tmp_path / "tree", tmp_path / "scratch", [])
+    real = os.path.realpath
+    assert {real(home / ".netrc"), real(home / ".git-credentials")} <= set(layout.left_out)
+    assert real(home) in layout.left_out_of and layout.hide_files == ()
+
+
 def test_the_oracle_hash_covers_its_content_and_ignores_line_ends(tmp_path):
     oracle = make_oracle(tmp_path / "h")
     first = hidden.content_sha256(oracle)

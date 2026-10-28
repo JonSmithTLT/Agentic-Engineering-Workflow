@@ -1030,8 +1030,8 @@ nested-namespace measurement, is the operator's and is not part of this amendmen
   file there, and its mask is emitted after every bind, before the tree's read-only remount (review of #244, m1).
 
 ### The display's credentials and variables (CB-04)
-- **Files:** `~/.Xauthority`, `~/.ICEauthority` and the file `XAUTHORITY` names are masked by type, like every
-  secret. So are git's credential cache (`~/.cache/git/credential`, `$XDG_CACHE_HOME/git/credential`,
+- **Files:** `~/.Xauthority`, `~/.ICEauthority` and the file `XAUTHORITY` names are masked like every secret: left
+  out of their directories (CS-4 addendum 6). So are git's credential cache (`~/.cache/git/credential`, `$XDG_CACHE_HOME/git/credential`,
   `~/.git-credential-cache`) and its store helper's file (`~/.config/git/credentials`,
   `$XDG_CONFIG_HOME/git/credentials`).
 - **Variables:** `bwrap_argv` unsets `DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`, `DBUS_SESSION_BUS_ADDRESS` and
@@ -1433,27 +1433,47 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   masked except the session's run directory (`.aew/local/harness/runs/lead-<UTC>-<hex>`, its label and harness
   state) and the Lead's OpenCode state (`.aew/local/harness/lead`, per project, kept between sessions, below); and
   no operator credential (A-33 §3.1, CB-01): every place AEW's host side reads the operator's OpenCode from, as the
-  operator's environment puts it, is masked (`opencode.login.operator_masks`, their one owner, which the layout and
-  the host's readers share): OpenCode's data, configuration, state and cache directories (addendum 4, ruling 2: the
-  Lead's view holds none of the operator's OpenCode state) and the directories holding the login database and the
-  file `OPENCODE_CONFIG` names, each whole, at their real paths. What a link in a directory masked whole points at
-  is masked where it really is, for every role (`layout._linked`, the designer's ruling on S3): a linked directory
-  whole; a linked file's real directory whole where every entry directly in it is such a target and it neither is
-  nor holds anything the run needs (the list the refusal below checks), otherwise each linked file by itself, and the
-  launch says how many files it masks that way, as a file mask does not hold for a file replaced or added there
-  during the session (the designer places that class). Links are resolved at the launch, so a target first linked during the session is not
-  covered; hard links are out of scope. A launch where one of those directories is, or holds, the workspace, the
-  project, the home directory or AEW's own is refused, once, naming every such directory with the variable or the
-  link that puts it there, and each fix. The one copy from them, the recent models' `model.json`, is made on the host
-  before the start.
+  operator's environment puts it, is masked (`opencode.login.operator_masks` and `operator_files`, their one owner,
+  which the layout and the host's readers share): OpenCode's data, configuration, state and cache directories whole
+  (addendum 4, ruling 2: the Lead's view holds none of the operator's OpenCode state), and the login database with its
+  `-wal`, `-shm` and `-journal` names and the file `OPENCODE_CONFIG` names, each where the variable puts it and where
+  it really is. The one copy from them, the recent models' `model.json`, is made on the host before the start.
+- **How a secret is masked, for every role** (`layout._mask_plan`; CS-4 addenda 6 and 7, and the operator's decisions
+  of 2026-10-28):
+  - a directory is masked whole, an empty tmpfs;
+  - anything else is left out of its directory, whether or not it exists at the launch (then the first component of
+    its path that does not exist yet): the directory is an empty tmpfs at its depth in the one bind order, every
+    other entry it holds at the launch is put back read-only (`--ro-bind-try`), a link as a link, and the directory is
+    then remounted read-only. So a replacement or a creation on the host is not seen inside;
+  - what a link in a directory masked whole points at is masked the same way: a linked directory whole, with the
+    links in it followed; anything else as a named path, so a target made after the launch is not seen either;
+  - in the run's own tree (the Lead's project, a worker's workspace) a tmpfs would make that level read-only, so a
+    file there is masked by an empty file bound over it, a directory mask there is remounted read-only (a write fails
+    instead of vanishing), and a path absent at the launch is not masked, as a mask would make it on the operator's
+    host. The launch line names each, with what put it there, what to do instead and the limits; the contained Lead's
+    CLI explains a write that meets one (below).
+
+  **The stated limits:** an entry made during the session in a directory a secret is left out of is not seen inside
+  until the next launch; an entry put back that the host replaces shows what it held at the launch until the next
+  launch (stale, never leaked); in the run's own tree, a file the host replaces by rename, or first creates there,
+  during the session is seen inside until the next launch; links are resolved at the launch, and hard links are out
+  of scope. A mask covers its path only, not a committed copy of the file (the project's history, a worker's
+  checkout). **Refused**, once, naming each case with what puts it there and its one step, which holds for every
+  contained launch: a directory masked whole that is, or holds, the workspace, the project, the home directory or
+  AEW's own (named by the variable or the link that puts it there); and the operator's OpenCode login database in the
+  run's own tree, whose sidecars OpenCode makes there as it runs. A policy writable root that holds a mask is refused
+  as before (`_refuse_unsafe_root`). On the Rocky 8 VM, a synthetic home of realistic size takes the Lead's sandbox
+  from 68 mounts to 265 and bubblewrap's start from a median of 41 ms to 180 ms.
 - **Its environment:** the operator's `XDG_*` and `OPENCODE_CONFIG` are dropped; AEW's five XDG directories are set
   (configuration and runtime in the run's harness state, data, state and cache in the Lead's), with
-  `OPENCODE_CONFIG_CONTENT` (the Lead projection, with the session's relays and its contained line) and
-  `AEW_LEAD_CONTAINED`. The broker's coordinates stay; no AEW credential and no provider key is there, which a check
+  `OPENCODE_CONFIG_CONTENT` (the Lead projection, with the session's relays and its contained line),
+  `AEW_LEAD_CONTAINED`, and the masks in its project where there are any (`AEW_LEAD_MASKS`). The broker's coordinates stay; no AEW credential and no provider key is there, which a check
   of every value against the relays' keys enforces before the start.
 - **The CLI inside** is a non-writer (`aew (contained Lead)` in `process_kind`): it reads lock-free, and its
   Lead-authenticated commands go through the broker, which holds the credential and the control lock. A write that
-  meets the read-only store is refused as `PERMISSION_DENIED`, reason `lead_contained`, never a traceback.
+  meets the read-only store is refused as `PERMISSION_DENIED`, reason `lead_contained`, never a traceback; one that
+  meets a mask in its project, reason `lead_masked`, naming the mask and what put it there. A mask is recognised by
+  its path, from `AEW_LEAD_MASKS`, not by the error, as a file mask gives `EROFS` or `EACCES` by how it is opened.
 - **Its reads of what the mask hides are relayed** (addendum 4, ruling 1, option (a); the designer's change to the
   broker's rule): `lead_broker.RELAYED_READS`, a closed set beside `LEAD_REACHABLE` (`status`, `resume`, `harness
   status`, `harness wait`, `map show`, `map diff`), read what is under `.aew/local` (the runs' records, the

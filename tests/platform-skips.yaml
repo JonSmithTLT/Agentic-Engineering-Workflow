@@ -159,7 +159,7 @@ skipped:
     tests/integration/test_containment.py::test_the_agent_cannot_write_its_live_usage: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
-    tests/integration/test_containment.py::test_secrets_are_hidden_and_a_masked_file_is_still_a_file: >-
+    tests/integration/test_containment.py::test_secrets_are_hidden_and_a_secret_file_is_left_out_of_its_directory: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
     tests/integration/test_containment.py::test_provider_config_locations_read_empty_from_inside: >-
@@ -298,28 +298,34 @@ skipped:
     tests/unit/test_containment_layout.py::test_a_layout_of_a_project_whose_aew_is_a_symlink_is_refused_where_a_writable_bind_reaches_the_link: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
-    tests/unit/test_containment_layout.py::test_every_file_the_host_reads_the_operators_opencode_from_is_masked_at_its_real_path_wherever_a_link_puts_it[own_directory]: >-
+    tests/unit/test_containment_layout.py::test_every_directory_masked_over_the_run_is_named_in_one_refusal_with_each_variable_and_its_step[a_link]: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
-    tests/unit/test_containment_layout.py::test_every_file_the_host_reads_the_operators_opencode_from_is_masked_at_its_real_path_wherever_a_link_puts_it[beside_other_files]: >-
+    tests/unit/test_containment_layout.py::test_every_file_the_host_reads_the_operators_opencode_from_is_masked_wherever_a_link_puts_it[own_directory]: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
-    tests/unit/test_containment_layout.py::test_a_secret_a_masked_directory_links_to_is_masked_at_its_real_path_for_every_role: >-
+    tests/unit/test_containment_layout.py::test_every_file_the_host_reads_the_operators_opencode_from_is_masked_wherever_a_link_puts_it[beside_other_files]: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/unit/test_containment_layout.py::test_a_secret_a_masked_directory_links_to_is_left_out_of_its_directory_for_every_role: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
     tests/unit/test_containment_layout.py::test_a_linked_directory_is_masked_whole_at_its_target_and_the_links_in_it_are_followed: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
-    tests/unit/test_containment_layout.py::test_a_link_targets_directory_is_masked_whole_only_when_it_holds_nothing_else_and_nothing_the_run_needs: >-
+    tests/unit/test_containment_layout.py::test_a_link_target_absent_at_the_launch_is_left_out_so_one_made_later_is_not_seen: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/unit/test_containment_layout.py::test_the_walk_of_links_ends_and_never_masks_or_walks_the_root_or_the_home_directory: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
     tests/unit/test_containment_layout.py::test_a_link_in_a_masked_directory_to_a_directory_the_run_needs_is_refused_naming_the_link: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
-    tests/unit/test_containment_layout.py::test_a_directory_masked_for_opencode_reached_through_a_link_never_hides_what_the_run_needs[OPENCODE_DB]: >-
+    tests/unit/test_containment_layout.py::test_a_file_opencode_names_through_a_link_is_left_out_where_the_link_and_its_target_are[OPENCODE_DB]: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
-    tests/unit/test_containment_layout.py::test_a_directory_masked_for_opencode_reached_through_a_link_never_hides_what_the_run_needs[OPENCODE_CONFIG]: >-
+    tests/unit/test_containment_layout.py::test_a_file_opencode_names_through_a_link_is_left_out_where_the_link_and_its_target_are[OPENCODE_CONFIG]: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
     tests/integration/test_containment.py::test_the_self_test_records_rows_1_to_6_on_the_label_of_a_passing_run: >-
@@ -385,10 +391,19 @@ skipped:
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the masked paths are tested on every platform in
       tests/unit/test_containment_layout.py.
-    tests/integration/test_lead_containment.py::test_a_file_a_masked_directory_links_to_reads_empty_from_the_leads_sandbox[own_directory]: >-
+    tests/integration/test_lead_containment.py::test_a_file_a_masked_directory_links_to_is_not_there_in_the_leads_sandbox[own_directory]: >-
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
-    tests/integration/test_lead_containment.py::test_a_file_a_masked_directory_links_to_reads_empty_from_the_leads_sandbox[beside_other_files]: >-
+    tests/integration/test_lead_containment.py::test_a_file_a_masked_directory_links_to_is_not_there_in_the_leads_sandbox[beside_other_files]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_secret_left_out_of_its_directory_is_not_seen_when_replaced_or_created_after_the_launch[replaced_by_rename]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_secret_left_out_of_its_directory_is_not_seen_when_replaced_or_created_after_the_launch[created_after]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_in_the_leads_project_a_mask_refuses_writes_and_aews_cli_names_it: >-
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
     tests/integration/test_lead_containment.py::test_the_leads_view_holds_none_of_the_operators_opencode_state_under_the_four_xdg_bases[defaults]: >-

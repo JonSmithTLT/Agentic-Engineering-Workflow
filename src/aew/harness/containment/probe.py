@@ -383,6 +383,7 @@ if __name__ == "__main__":
         "terminal": terminal(),
         "hide_dirs": {p: listing(p) for p in spec["hide_dirs"]},
         "hide_files": {p: reads(p) for p in spec["hide_files"]},
+        "left_out": [p for p in spec["left_out"] if os.path.lexists(p)],
         "hide_runs": {p: listing(p) for p in spec["hide_runs"]},
         "markers_visible": [m for m in spec["markers"] if os.path.lexists(m)],
         "store_shield": shield(spec.get("stores") or [], table),
@@ -624,6 +625,7 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
             "host_masks": list(_host_masks(layout)), "inside_host_masks": list(layout.inside_host_masks()),
             "var_run": VAR_RUN, "display_files": list(layout.display_files), "unset_env": list(DISPLAY_ENV),
             "hide_dirs": list(layout.hide_dirs), "hide_files": list(layout.hide_files),
+            "left_out": list(layout.left_out),
             "hide_runs": list(layout.hide_runs),
             # the markers a mask hides: a sibling run's, and the temporary directory's when it is /tmp (TMPDIR may
             # name a directory the read-only root shows; the bridge sockets live under /tmp whatever it says)
@@ -891,6 +893,9 @@ def _row5(layout: Layout, seen: dict[str, Any], *, written: tuple[Path, bytes], 
     for path, state in (seen.get("hide_files") or {}).items():
         if state not in ("absent", "empty"):
             problems.append(f"masked file {path} is {state} inside")
+    if "left_out" not in seen:
+        problems.append("the probe did not report the paths left out of their directories")
+    problems += [f"{p}, left out of its directory, is there inside" for p in seen.get("left_out") or []]
     for path, entries in (seen.get("hide_runs") or {}).items():
         own = {os.path.relpath(p, path).split(os.sep)[0] for p in (*layout.writable, *layout.readonly)
                if _within(p, path) and p != path}

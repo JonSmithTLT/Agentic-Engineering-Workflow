@@ -133,6 +133,22 @@ def test_row_2_checks_the_hosts_run_even_when_the_layout_lost_its_mask():
     assert "/run is not a read-only tmpfs inside" in row["reason"] and "/run holds what" in row["reason"]
 
 
+def test_row_5_fails_where_a_path_left_out_of_its_directory_is_there_inside(tmp_path):
+    """CS-4 addendum 6: row 5 checks the sandbox for each path the layout leaves out of its directory, not the
+    layout's word for it: one there inside fails the row, and a probe that did not report them fails it too."""
+    sentinel = tmp_path / "sentinel"
+    sentinel.write_bytes(b"x")
+    layout = L.Layout(role="reviewer", access="read", bwrap="/usr/bin/bwrap", writable=(), readonly=(),
+                      left_out=("/home/u/.netrc",), left_out_of=("/home/u",))
+    seen = {"writable": {}, "left_out": []}
+    assert probe._row5(layout, seen, written=(sentinel, b"x"), sibling=tmp_path / "s", name="n")["ok"] is True
+    there = probe._row5(layout, {**seen, "left_out": ["/home/u/.netrc"]}, written=(sentinel, b"x"),
+                        sibling=tmp_path / "s", name="n")
+    assert there["ok"] is False and "/home/u/.netrc, left out of its directory, is there inside" in there["reason"]
+    unreported = probe._row5(layout, {"writable": {}}, written=(sentinel, b"x"), sibling=tmp_path / "s", name="n")
+    assert unreported["ok"] is False and "did not report the paths left out" in unreported["reason"]
+
+
 def test_an_unreadable_table_is_an_error_the_row_fails_on(monkeypatch):
     def unreadable(**_kw):
         raise FileNotFoundError(2, "No such file or directory", "/proc/net/unix")

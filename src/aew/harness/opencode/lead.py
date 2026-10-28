@@ -497,7 +497,7 @@ class ContainedLead:
             self._record(run_dir, label)
             env = {**child_env, **{n: str(agentenv.lookup(self.base, n)) for n in self.provider_env}}
             return lead_broker.Harness(argv=self.argv, env=env, relay=False, label=label, close=lambda: None)
-        line = containment.one_by_one_line(layout)
+        line = containment.tree_masks_line(layout)
         if line:
             sys.stderr.write(f"aew opencode: {line}.\n")
         network: netns.RunNetwork | None = None
@@ -552,6 +552,8 @@ class ContainedLead:
         if created:
             self._seed_models(dirs["STATE"])
         env.update({"OPENCODE_CONFIG_CONTENT": json.dumps(config, sort_keys=True), CONTAINED_ENV: "1"})
+        if layout.tree_masks:  # so a write that meets one is explained as a mask (addendum 7)
+            env[process_kind.LEAD_MASKS_ENV] = json.dumps([list(m) for m in layout.tree_masks])
         if self.preferences is not None:  # merged over the session's own cli.json by OpenCode (addendum 1, item 2)
             env["OPENCODE_CLI_CONFIG_CONTENT"] = json.dumps(self.preferences, sort_keys=True)
         return network.harness_env(env) if network is not None else env

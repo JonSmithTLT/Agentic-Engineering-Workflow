@@ -222,21 +222,56 @@ def _relayed_read(args: argparse.Namespace, argv: list[str]) -> int | None:
 
 
 def _contained_refusal(exc: OSError) -> AEWError | None:
-    """In the contained Lead's sandbox (STG-05 CS-4, outcome 7), a write that met its read-only `.aew/` or git metadata
-    is refused by design, and says so instead of a traceback. The variable that marks the sandbox shapes this message
-    only: the kernel refused the write."""
+    """In the contained Lead's sandbox (STG-05 CS-4, outcome 7), a write that met its read-only `.aew/` or git metadata,
+    or a mask in its project (addendum 7: an operator secret masked there, read-only), is refused by design, and says so
+    instead of a traceback. A mask is recognised by its path, from the masks the layout hands the sandbox
+    (``process_kind.LEAD_MASKS_ENV``), not by the error: a file mask gives EROFS or EACCES, by how the file is opened.
+    The variables that mark the sandbox shape this message only: the kernel refused the write."""
     import errno
 
     from aew import process_kind
     from aew.errors import PermissionDenied
 
-    if exc.errno != errno.EROFS or not os.environ.get(process_kind.LEAD_CONTAINED_ENV):
+    if not os.environ.get(process_kind.LEAD_CONTAINED_ENV):
+        return None
+    met = _met_mask(exc) if exc.errno in (errno.EROFS, errno.EACCES, errno.EPERM) else None
+    if met is not None:
+        path, mask, by = met
+        return PermissionDenied(
+            f"this Lead session is contained by design: {path} is masked inside it, read-only, as an operator secret "
+            f"({mask}, put there by {by}). To change it, edit it at your own terminal, or keep the real file outside "
+            "the project (for ssh, an Include from your real ~/.ssh/config)", reason="lead_masked", path=path,
+            mask=mask, by=by)
+    if exc.errno != errno.EROFS:
         return None
     return PermissionDenied(
         f"this Lead session is contained by design: {exc.filename or 'that path'} is read-only inside it, as are "
         "`.aew/` and the git metadata. Lead-authenticated `aew` commands reach the session's broker, which writes AEW "
         "state for you; anything else that writes them is for the operator, at their own terminal",
         reason="lead_contained", path=str(exc.filename) if exc.filename else None)
+
+
+def _met_mask(exc: OSError) -> tuple[str, str, str] | None:
+    """``(the path written, the mask, what put it there)`` when a path the error names is, or lies in, one of the masks
+    the contained Lead's layout handed its sandbox; spelled as given and at its directory's real path."""
+    import json
+
+    from aew import process_kind
+
+    try:
+        masks = [(str(p), str(by)) for p, by in json.loads(os.environ.get(process_kind.LEAD_MASKS_ENV) or "[]")]
+    except (ValueError, TypeError):
+        return None
+    for name in (exc.filename, exc.filename2):
+        if not name:
+            continue
+        given = os.path.abspath(os.fsdecode(name))
+        for path in dict.fromkeys((given, os.path.join(os.path.realpath(os.path.dirname(given)),
+                                                       os.path.basename(given)))):
+            for mask, by in masks:
+                if path == mask or path.startswith(mask.rstrip("/" + os.sep) + os.sep):
+                    return path, mask, by
+    return None
 
 
 if __name__ == "__main__":

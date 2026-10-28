@@ -35,12 +35,12 @@ from aew.harness.containment.layout import (
     bwrap_argv,
     for_check,
     for_run,
-    one_by_one_line,
     retire_private_git,
+    tree_masks_line,
 )
 from aew.harness.containment.netns import NOT_PROVIDED
 
-__all__ = ["Layout", "bwrap_argv", "for_check", "for_run", "one_by_one_line", "retire_private_git", "establish",
+__all__ = ["Layout", "bwrap_argv", "for_check", "for_run", "tree_masks_line", "retire_private_git", "establish",
            "label", "normalize",
            "mode", "network", "supported", "REQUIRED", "ALLOW_WEAKER", "CONTAINED", "WORKDIR_ONLY", "PROXY_ONLY",
            "ISOLATED", "SHARED", "NOT_PROVIDED"]

@@ -8,12 +8,17 @@ are the source.
   the git metadata are read-only; `.aew/local` is masked except the session's run directory and the Lead's own
   OpenCode state (`.aew/local/harness/lead`, per project); the operator's OpenCode configuration and login are masked
   wherever their variables put them (every place AEW's host side reads them from, one owner:
-  `opencode.login.operator_masks`), and what a link in a masked directory points at is masked where it really is,
-  for every role; a launch where such a directory would hide the workspace, the project, the home directory or AEW's
-  own is refused, once, naming each variable or link and its fix. Rows 1 to 6 of the self-test run first, row 4 in
-  the Lead's form.
+  `opencode.login.operator_masks` and `operator_files`), and what a link in a masked directory points at is masked
+  too, for every role. A secret directory is masked whole; any other secret is left out of its directory, whether or
+  not it exists at the launch (addendum 6), with the directory's other entries put back read-only, so a replacement
+  or a creation on the host is not seen inside; in the run's own tree it is masked in place, read-only, and the launch
+  names it (addendum 7). Eval's raw arm and hidden scoring take the same masks. A launch where a directory masked whole
+  would hide the workspace, the project, the home directory or AEW's own, or where OpenCode's login database lies in
+  the run's own tree, is refused, once, naming each with its one step. Rows 1 to 6 of the self-test run first, row 4
+  in the Lead's form.
 - **The CLI inside** is a non-writer (`aew (contained Lead)`): reads are lock-free, Lead commands go through the
-  broker, and a write meeting the read-only store is refused (`PERMISSION_DENIED`, reason `lead_contained`).
+  broker, and a write meeting the read-only store is refused (`PERMISSION_DENIED`, reason `lead_contained`), one
+  meeting a mask in its project as that mask (reason `lead_masked`).
 - **Relayed reads (addendum 4, ruling 1, option (a)):** `status`, `resume`, `harness status`, `harness wait`, `map
   show` and `map diff` read what `.aew/local`'s mask hides, so the broker runs them on the host (`lead.read`,
   cooperative) and returns what they print; a closed set beside `LEAD_REACHABLE` (`lead_broker.RELAYED_READS`),

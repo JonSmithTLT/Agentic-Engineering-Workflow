@@ -453,7 +453,7 @@ def test_the_operators_tui_preferences_reach_the_lead_without_their_plugins_and_
     session.announce(out)
     assert "your TUI preferences come from your own OpenCode at each start; one you change in the Lead lasts this " \
            "session only; its TUI plugins are left out: synthetic-plugin, other-plugin." in out.getvalue()
-    env = session._inside({}, SimpleNamespace(env={}), tmp_path / "run", tmp_path / "state", {}, None)
+    env = session._inside({}, SimpleNamespace(env={}, tree_masks=()), tmp_path / "run", tmp_path / "state", {}, None)
     assert json.loads(env["OPENCODE_CLI_CONFIG_CONTENT"]) == prefs
     assert env["XDG_CONFIG_HOME"].startswith(str(tmp_path / "run"))  # the TUI's own writes: this session's file
     (conf / "cli.json").write_text("{not json")
@@ -475,16 +475,16 @@ def test_the_leads_recent_models_are_seeded_once_from_the_operators_and_never_th
     (theirs / "prompt-history.jsonl").write_text('{"input": "synthetic prompt of another project"}\n')
     session = contained(tmp_path)
     state = tmp_path / "state"
-    session._inside({}, SimpleNamespace(env={}), tmp_path / "run1", state, {}, None)
+    session._inside({}, SimpleNamespace(env={}, tree_masks=()), tmp_path / "run1", state, {}, None)
     seeded = state / "xdg-state" / "opencode" / "model.json"
     assert json.loads(seeded.read_text()) == models
     assert sorted(p.name for p in seeded.parent.iterdir()) == ["model.json"]
     own = {"recent": [{"providerID": "anthropic", "modelID": "synthetic"}]}
     seeded.write_text(json.dumps(own))  # the Lead's own choice since
-    session._inside({}, SimpleNamespace(env={}), tmp_path / "run2", state, {}, None)
+    session._inside({}, SimpleNamespace(env={}, tree_masks=()), tmp_path / "run2", state, {}, None)
     assert json.loads(seeded.read_text()) == own
     (theirs / "model.json").write_text(json.dumps({"recent": ["x" * lead.MODEL_SEED_MAX]}))
-    session._inside({}, SimpleNamespace(env={}), tmp_path / "run3", tmp_path / "other", {}, None)
+    session._inside({}, SimpleNamespace(env={}, tree_masks=()), tmp_path / "run3", tmp_path / "other", {}, None)
     assert not (tmp_path / "other" / "xdg-state" / "opencode" / "model.json").exists()
 
 
@@ -636,6 +636,70 @@ def test_the_cli_answers_a_read_only_store_write_with_the_typed_refusal(monkeypa
     monkeypatch.setattr(main, "_run", lambda args, argv, h: handler(args))
     assert main._run_main(["status"]) == errors.PermissionDenied.exit_code
     assert json.loads(capsys.readouterr().err)["error"]["details"]["reason"] == "lead_contained"
+
+
+def test_the_contained_lead_names_the_masks_in_its_project_at_launch_and_hands_them_to_its_sandbox(
+        tmp_path, monkeypatch, capsys, at_a_terminal):
+    """Quick check of #283 at 3ad586ed, m5, and CS-4 addendum 7: the contained Lead's launch prints the line naming
+    each mask in its project, and its sandbox gets those masks by path, so AEW's CLI there explains a write that meets
+    one. A launch with none prints nothing of them."""
+    from aew import process_kind
+    from aew.harness import containment
+
+    class Stop(Exception):
+        pass
+
+    def stop(*_: Any, **__: Any) -> None:
+        raise Stop
+
+    masks = ((str(tmp_path / "proj" / "deploy.key"), "the link /h/.ssh/deploy"),)
+    monkeypatch.setattr(projection, "lead_config", stop)  # the step after the line: the launch goes no further
+    for tree_masks in (masks, ()):
+        session = contained(tmp_path)
+        session.engine.aew_root, session.engine.repo_root = tmp_path / "root", tmp_path / "proj"
+        layout = containment.Layout(role="lead", access="write", bwrap="/usr/bin/bwrap",
+                                    writable=(str(tmp_path / "proj"),), readonly=(), tree_masks=tree_masks)
+        monkeypatch.setattr(containment, "establish",
+                            lambda layout=layout, **_: (layout, {"filesystem": "os_readonly_roots", "network": {}}))
+        with pytest.raises(Stop):
+            session(None, {})
+        err = capsys.readouterr().err
+        env = session._inside({}, layout, tmp_path / "run", tmp_path / "state", {}, None)
+        if tree_masks:
+            assert f"aew opencode: {containment.tree_masks_line(layout)}.\n" in err, err
+            assert json.loads(env[process_kind.LEAD_MASKS_ENV]) == [list(m) for m in masks]
+        else:
+            assert "masked in place" not in err and process_kind.LEAD_MASKS_ENV not in env
+
+
+@pytest.mark.parametrize("code", [errno.EROFS, errno.EACCES])
+def test_a_write_that_meets_a_mask_in_the_leads_project_is_explained_as_the_mask_by_its_path(tmp_path, monkeypatch,
+                                                                                              capsys, code):
+    """CS-4 addendum 7: inside the contained Lead, a write that meets a mask in its project (a file mask gives EROFS or
+    EACCES, by how the file is opened) is refused as that mask, recognised by its path from the masks the layout
+    handed the sandbox, and never explained as `.aew/`; with AEW's CLI the same through its typed refusal. Another
+    path keeps its own answer."""
+    from aew import process_kind
+    from aew.cli import main
+
+    mask = str(tmp_path / "p" / "keys")
+    monkeypatch.setenv(lead.CONTAINED_ENV, "1")
+    monkeypatch.setenv(process_kind.LEAD_MASKS_ENV, json.dumps([[mask, "the link /h/.ssh/keys"]]))
+    refusal = main._contained_refusal(OSError(code, "denied", os.path.join(mask, "id")))
+    assert isinstance(refusal, errors.PermissionDenied) and refusal.details["reason"] == "lead_masked"
+    assert refusal.details["mask"] == mask and refusal.details["by"] == "the link /h/.ssh/keys"
+    assert "edit it at your own terminal" in refusal.message and ".aew" not in refusal.message
+    other = main._contained_refusal(OSError(code, "denied", str(tmp_path / "p" / "keys-not")))
+    assert (other is None) if code == errno.EACCES else other.details["reason"] == "lead_contained"
+
+    def handler(_args):
+        with open(os.path.join(mask, "id"), "a"):
+            pass
+
+    monkeypatch.setattr(main, "_run", lambda args, argv, h: handler(args))
+    monkeypatch.setattr("builtins.open", lambda *a, **k: (_ for _ in ()).throw(OSError(code, "denied", a[0])))
+    assert main._run_main(["status"]) == errors.PermissionDenied.exit_code
+    assert json.loads(capsys.readouterr().err)["error"]["details"]["reason"] == "lead_masked"
 
 
 # ----------------------------------------------------------------------------- the network's tables, derived

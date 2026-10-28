@@ -67,35 +67,42 @@ def db_path(env: Mapping[str, str]) -> Path:
     return operator_dir(env, "data") / DB
 
 
-def store_files(env: Mapping[str, str]) -> list[Path]:
-    """The login database and the files SQLite keeps beside it (:data:`SIDECARS`)."""
-    db = db_path(env)
+def store_files(env: Mapping[str, str], *, real: bool = False) -> list[Path]:
+    """The login database and the files SQLite keeps beside it (:data:`SIDECARS`), where the environment puts it or,
+    with ``real``, where it really is."""
+    db = Path(os.path.realpath(db_path(env))) if real else db_path(env)
     return [db, *(db.with_name(db.name + suffix) for suffix in SIDECARS)]
 
 
 def operator_masks(env: Mapping[str, str]) -> dict[Path, tuple[str, ...]]:
-    """``{directory: every variable that puts OpenCode's files there, none where it is OpenCode's default}``: every
-    place the operator's OpenCode keeps its login, configuration or state, as the operator's environment puts it, for a
-    contained run to mask whole (``containment.layout``; STG-05 CS-4, outcome 2, and addendum 4, ruling 2): its data,
-    configuration, state and cache directories, and the directories holding the login database and the configuration
-    file ``OPENCODE_CONFIG`` names, each with its real one: whole directories, as the database's sidecars appear beside
-    it after a launch."""
-    dirs: dict[Path, tuple[str, ...]] = {}
-
-    def put(directory: Path, variables: tuple[str, ...]) -> None:
-        dirs[directory] = tuple(dict.fromkeys((*dirs.get(directory, ()), *variables)))
-
-    for kind in XDG_DEFAULTS:
+    """``{directory: the variable that puts it there, none where it is OpenCode's default}``: the operator's OpenCode
+    data, configuration, state and cache directories, as the operator's environment puts them, which a contained run
+    masks whole (``containment.layout``; STG-05 CS-4, outcome 2, and addendum 4, ruling 2). The files it keeps
+    elsewhere are :func:`operator_files`."""
+    out: dict[Path, tuple[str, ...]] = {}
+    for kind in XDG_DEFAULTS:  # two variables may put two kinds in one directory: each is named
         variable = f"XDG_{kind.upper()}_HOME"
-        put(operator_dir(env, kind), (variable,) if env.get(variable) else ())
-    db = db_path(env)
-    for directory in (db.parent, Path(os.path.realpath(db)).parent):
-        put(directory, ("OPENCODE_DB",) if env.get("OPENCODE_DB") else dirs[operator_dir(env, "data")])
+        out[operator_dir(env, kind)] = (*out.get(operator_dir(env, kind), ()), *((variable,) if env.get(variable)
+                                                                                 else ()))
+    return out
+
+
+def operator_files(env: Mapping[str, str]) -> dict[Path, tuple[str, ...]]:
+    """``{file: the variable that puts it there}``: the files of the operator's OpenCode that may lie outside
+    :func:`operator_masks`' directories, which a contained run leaves out of their directories (``containment.layout``;
+    STG-05 CS-4, addendum 6): the login database with its sidecars (:func:`store_files`), and the configuration file
+    ``OPENCODE_CONFIG`` names, each where the variable puts it and where it really is. A file may be absent: its name is
+    left out all the same, so one made during the session is not seen."""
+    out: dict[Path, tuple[str, ...]] = {}
+    data = "XDG_DATA_HOME" if env.get("XDG_DATA_HOME") else None
+    db = ("OPENCODE_DB",) if env.get("OPENCODE_DB") else (data,) if data else ()
+    for path in (*store_files(env), *store_files(env, real=True)):
+        out.setdefault(path, db)
     if env.get("OPENCODE_CONFIG"):
         named = Path(os.path.abspath(env["OPENCODE_CONFIG"]))
-        for directory in (named.parent, Path(os.path.realpath(named)).parent):
-            put(directory, ("OPENCODE_CONFIG",))
-    return dirs
+        for path in (named, Path(os.path.realpath(named))):
+            out.setdefault(path, ("OPENCODE_CONFIG",))
+    return out
 
 
 def _read(integration: str, method: str | None, value: Any) -> Login:

@@ -371,11 +371,29 @@ def test_a_lane_under_home_masks_nothing_inside_its_runs_directory(tmp_path, mon
     layout = raw.contained_layout(scratch / "repo", scratch, binary=tmp_path / "bin" / "opencode-cli")
     runs = str(scratch.parent.resolve())
     assert layout.hide_runs == (runs,)
-    inside = [p for p in (*layout.hide_dirs, *layout.hide_files) if p == runs or p.startswith(runs + os.sep)]
+    inside = [p for p in (*layout.hide_dirs, *layout.hide_files, *layout.left_out, *L._left_out_of(layout))
+              if p == runs or p.startswith(runs + os.sep)]
     assert inside == []
-    hidden = set(layout.hide_dirs) | set(layout.hide_files)
+    hidden = set(layout.hide_dirs) | set(layout.hide_files) | set(layout.left_out)
     for kept_hidden in (home / "aew-eval" / "lbq-v1", home / ".ssh", scratch.parent.parent / "ledger"):
         assert str(kept_hidden.resolve()) in hidden  # the other lane, secrets and this lane's ledger stay hidden
+
+
+def test_the_raw_arm_leaves_secret_files_and_the_homes_other_files_out_of_their_directories(tmp_path, monkeypatch):
+    """STG-05 CS-4, addendum 7, ruling 6: the raw arm's layout takes the masks every AEW run takes, in the same shape:
+    a secret file, present or not, and a home file the run does not need are left out of their directory (so a
+    replacement or a creation there is not seen), not bound over by an empty file."""
+    from aew.harness.containment import layout as L
+
+    home, scratch = lane_under_home(tmp_path, monkeypatch)
+    (home / ".netrc").write_text("SYNTHETIC\n")
+    (home / "notes.txt").write_text("SYNTHETIC\n")
+    monkeypatch.setattr(L, "find_bwrap", lambda: "/usr/bin/bwrap")
+    (tmp_path / "bin").mkdir()
+    layout = raw.contained_layout(scratch / "repo", scratch, binary=tmp_path / "bin" / "opencode-cli")
+    real = os.path.realpath
+    assert {real(home / ".netrc"), real(home / "notes.txt"), real(home / ".git-credentials")} <= set(layout.left_out)
+    assert real(home) in L._left_out_of(layout) and layout.hide_files == ()
 
 
 class _NeverStarted:

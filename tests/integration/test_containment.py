@@ -169,11 +169,13 @@ def test_the_agent_cannot_write_its_live_usage(lab):
     assert not (lab.run / "usage.live.state.json").exists()
 
 
-def test_secrets_are_hidden_and_a_masked_file_is_still_a_file(lab):
-    done = lab.sh(lab.layout(), f"ls -A {lab.home}/.ssh; cat {lab.home}/.netrc; test -f {lab.home}/.netrc && echo FILE")
+def test_secrets_are_hidden_and_a_secret_file_is_left_out_of_its_directory(lab):
+    """CS-4 addendum 6: a secret directory is empty inside, and a secret file is not there at all."""
+    done = lab.sh(lab.layout(), f"ls -A {lab.home}/.ssh; cat {lab.home}/.netrc 2>/dev/null; "
+                                f"test -e {lab.home}/.netrc || echo ABSENT")
     assert done.returncode == 0, done.stderr
     assert "SECRET" not in done.stdout and "id_key" not in done.stdout
-    assert done.stdout.strip() == "FILE"
+    assert done.stdout.strip() == "ABSENT"
 
 
 def test_provider_config_locations_read_empty_from_inside(lab):
@@ -183,11 +185,11 @@ def test_provider_config_locations_read_empty_from_inside(lab):
     (lab.home / ".claude.json.backup").write_text('{"secret": "SECRET-COPY"}\n')
     f, d = lab.home / ".claude.json", lab.home / ".config" / "anthropic"
     b = lab.home / ".claude.json.backup"
-    done = lab.sh(lab.layout("reviewer"), f"cat {f} {b}; test -f {f} && test ! -s {f} && echo FILE; "
-                                          f"test -f {b} && test ! -s {b} && echo COPY; ls -A {d}; echo END")
+    done = lab.sh(lab.layout("reviewer"), f"cat {f} {b} 2>/dev/null; test -e {f} || echo ABSENT; "
+                                          f"test -e {b} || echo ABSENT-COPY; ls -A {d}; echo END")
     assert done.returncode == 0, done.stderr
     assert "SECRET" not in done.stdout and "credentials" not in done.stdout
-    assert done.stdout.split() == ["FILE", "COPY", "END"]
+    assert done.stdout.split() == ["ABSENT", "ABSENT-COPY", "END"]
     assert f.read_text() == '{"secret": "SECRET-CFG"}\n'  # the host's own file is untouched
 
 
@@ -905,9 +907,9 @@ def test_what_a_harness_needs_runs_under_the_run_mask(lab):
 
 
 def test_display_credentials_and_variables_never_reach_a_contained_process(lab, monkeypatch):
-    """CB-04: the display's credential files (synthetic here) read empty from inside, the one XAUTHORITY names
-    included; and no display, session-bus or ssh-agent variable reaches a contained process, even one its launcher
-    hands them to. Row 3 records both."""
+    """CB-04: the display's credential files (synthetic here) are not there inside, left out of their directories
+    (CS-4 addendum 6), the one XAUTHORITY names included; and no display, session-bus or ssh-agent variable reaches a
+    contained process, even one its launcher hands them to. Row 3 records both."""
     for name in L.DISPLAY_FILES:
         (lab.home / name).write_text("SYNTHETIC-COOKIE\n")
     xauth = lab.outside / "xauth-synthetic"
@@ -916,8 +918,9 @@ def test_display_credentials_and_variables_never_reach_a_contained_process(lab, 
     row = label["self_test"]["rows"]["3"]
     assert row["ok"] and row["env_set"] == []
     expected = {os.path.realpath(p) for p in (lab.home / ".Xauthority", lab.home / ".ICEauthority", xauth)}
-    assert set(row["files"]) == expected and set(row["files"].values()) == {"empty"}
-    done = lab.sh(layout, f"cat {xauth} {lab.home}/.Xauthority; env", env=dict.fromkeys(L.DISPLAY_ENV, "synthetic"))
+    assert set(row["files"]) == expected and set(row["files"].values()) == {"absent"}
+    done = lab.sh(layout, f"cat {xauth} {lab.home}/.Xauthority 2>/dev/null; env",
+                  env=dict.fromkeys(L.DISPLAY_ENV, "synthetic"))
     assert done.returncode == 0 and "SYNTHETIC" not in done.stdout, done.stderr
     assert {line.split("=", 1)[0] for line in done.stdout.splitlines()} & set(L.DISPLAY_ENV) == set()
 
@@ -954,9 +957,10 @@ def test_each_row_fails_closed_when_its_protection_is_missing(lab, monkeypatch, 
     row, steps = {
         "row1-netns": ("1", [("--unshare-net",)]),  # the run's own network (F28 §3.6; the hand-off's outcome 4)
         "row2-run": ("2", [("--tmpfs", L.RUN), ("--remount-ro", L.RUN)]),
-        "row3-file": ("3", [("--ro-bind", str(lab.run / L.MASK_FILE), real(xauth))]),
+        # the home directory's own mask, which leaves the display's file and the other secret files out of it
+        "row3-file": ("3", [("--tmpfs", real(lab.home)), ("--remount-ro", real(lab.home))]),
         "row3-env": ("3", [("--unsetenv", "DISPLAY")]),
-        "row5-mask": ("5", [("--tmpfs", real(lab.home / ".ssh"))]),
+        "row5-mask": ("5", [("--tmpfs", real(lab.home)), ("--remount-ro", real(lab.home))]),
     }[case]
     without(monkeypatch, *steps)
     with pytest.raises(C.ContainmentUnavailable, match=f"row {row} ") as refused:

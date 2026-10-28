@@ -56,6 +56,10 @@ AGENT_ENDPOINT_ENV = "AEW_AGENT_ENDPOINT"  # aew.harness.bridge.ENV_ENDPOINT, na
 # Set in the contained Lead's sandbox (``aew.harness.opencode.lead``, which takes it from here): how AEW's own CLI
 # there behaves, never a boundary (see the module docstring).
 LEAD_CONTAINED_ENV = "AEW_LEAD_CONTAINED"
+# Set beside it to the masks in the Lead's own project, as JSON ``[[path, what put it there], ...]``
+# (``containment.layout.Layout.tree_masks``): how the CLI there explains a write that meets one (STG-05 CS-4,
+# addendum 7).
+LEAD_MASKS_ENV = "AEW_LEAD_MASKS"
 
 _declared: str | None = None
 

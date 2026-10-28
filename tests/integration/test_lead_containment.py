@@ -232,21 +232,20 @@ def test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_n
     assert "custom.json" not in out, out
 
 
-# The files of the operator's OpenCode a dotfile manager links in from elsewhere (the designer's ruling on the quick
-# check of #283 at c307481a, S3): (its directory under the home directory, the file), the ones the host reads or that
-# hold a credential or other projects' prompts.
+# The files of the operator's OpenCode a dotfile manager links in from elsewhere: (its directory under the home
+# directory, the file), the ones the host reads or that hold a credential or other projects' prompts.
 LINKED_IN = ((".config/opencode", "opencode.json"), (".config/opencode", "config.json"),
              (".config/opencode", "opencode.jsonc"), (".local/share/opencode", "auth.json"),
              (".local/state/opencode", "prompt-history.jsonl"))
 
 
 @pytest.mark.parametrize("placed", ["own_directory", "beside_other_files"])
-def test_a_file_a_masked_directory_links_to_reads_empty_from_the_leads_sandbox(lead_lab, placed):
-    """CS-4 outcome 2 (A-33 §3.1, CB-01), S3: each file of the operator's OpenCode that is a link to a file outside
-    OpenCode's directories reads empty from inside the Lead's sandbox, at the link and where it really is. Where the
-    linked files' directory holds nothing else it is masked whole, so a file replaced by rename or added there after the
-    launch reads empty too; beside other dotfiles each file is masked by itself, the others stay readable, and the
-    launch line counts the files. Synthetic files only."""
+def test_a_file_a_masked_directory_links_to_is_not_there_in_the_leads_sandbox(lead_lab, placed):
+    """CS-4 outcome 2 (A-33 §3.1, CB-01), addendum 6: each file of the operator's OpenCode that is a link to a file
+    outside OpenCode's directories is not there inside the Lead's sandbox, at the link and where it really is: it is
+    left out of its directory, so a file replaced by rename or added there after the launch is not seen either, in a
+    directory of their own or beside other dotfiles, which stay readable. Nothing lies in the Lead's project, so the
+    launch names nothing. Synthetic files only."""
     lab = lead_lab
     dots = lab.home / "dotfiles"
     links, targets = [], []
@@ -275,11 +274,10 @@ def test_a_file_a_masked_directory_links_to_reads_empty_from_the_leads_sandbox(l
         while not ready.exists() and time.monotonic() < deadline:
             time.sleep(0.05)
         assert ready.exists(), "the sandbox never started"
-        if placed == "own_directory":  # after the launch: the operator's own tools replace one and add another
-            saved = targets[0].with_name("saved.tmp")
-            saved.write_text("SYNTHETIC-REPLACED\n")
-            os.replace(saved, targets[0])
-            (targets[0].parent / "added.json").write_text("SYNTHETIC-ADDED\n")
+        saved = targets[0].with_name("saved.tmp")  # after the launch: the operator's tools replace one, add another
+        saved.write_text("SYNTHETIC-REPLACED\n")
+        os.replace(saved, targets[0])
+        (targets[0].parent / "added.json").write_text("SYNTHETIC-ADDED\n")
         go.write_text("")
         out, err = proc.communicate(timeout=60)
     finally:
@@ -287,11 +285,103 @@ def test_a_file_a_masked_directory_links_to_reads_empty_from_the_leads_sandbox(l
     assert out.rstrip().endswith("end"), out + err
     assert "SYNTHETIC" not in out, out
     assert "name = synthetic" in out, out  # the operator's other dotfiles stay readable, beside them or not
-    if placed == "own_directory":
-        assert layout.one_by_one == () and C.one_by_one_line(layout) is None
-    else:
-        assert set(layout.one_by_one) == {os.path.realpath(t) for t in targets}
-        assert C.one_by_one_line(layout).startswith("5 files that links in your masked credential directories")
+    assert {os.path.realpath(t) for t in targets} <= set(layout.left_out)
+    assert layout.tree_masks == () and C.tree_masks_line(layout) is None
+
+
+def _replaced(path: Path, text: str) -> None:
+    saved = path.with_name(path.name + ".tmp")
+    saved.write_text(text)
+    os.replace(saved, path)  # as git's store helper saves its file
+
+
+@pytest.mark.parametrize("after", ["replaced_by_rename", "created_after"])
+def test_a_secret_left_out_of_its_directory_is_not_seen_when_replaced_or_created_after_the_launch(lead_lab, after):
+    """CS-4 addendum 6, ruling 4: a secret file is left out of its directory, so the operator's tools replacing it by
+    rename (git's store helper after a push) or creating it (a first push, a first ``aws configure``) during the
+    session is not seen inside; the directory's other entries are put back, a link as a link, and stay readable.
+    Synthetic files only."""
+    lab = lead_lab
+    creds = lab.home / ".git-credentials"
+    if after == "replaced_by_rename":
+        creds.write_text("https://u:SYNTHETIC-AT-LAUNCH@example.invalid\n")
+    (lab.home / ".profile").write_text("# SAFE-PROFILE\n")
+    (lab.home / "dotfiles").mkdir()
+    (lab.home / "dotfiles" / "gitconfig").write_text("[user]\n\tname = synthetic\n")
+    (lab.home / ".gitconfig").symlink_to(lab.home / "dotfiles" / "gitconfig")
+    later = [lab.home / ".netrc", lab.home / ".config" / "git" / "credentials", lab.home / ".aws" / "credentials"]
+    layout = lab.layout(env={"HOME": str(lab.home)})
+    ready, go = lab.run / "scratch" / "ready", lab.root / "go"
+    tree = procs.ProcessTree(layout=layout)
+    try:
+        reads = " ".join(str(p) for p in (creds, *later))
+        script = (f"touch {ready}; i=0; while [ ! -e {go} ] && [ $i -lt 400 ]; do sleep 0.05; i=$((i+1)); done; "
+                  f"cat {reads} 2>/dev/null; ls -A {lab.home} {lab.home}/.config; cat {lab.home}/.profile "
+                  f"{lab.home}/.gitconfig; echo end")
+        proc = tree.spawn(["sh", "-c", script], cwd=str(lab.repo), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          stdin=subprocess.DEVNULL, text=True,
+                          env={"PATH": os.environ["PATH"], "HOME": str(lab.home), "LANG": "C.UTF-8", **layout.env})
+        deadline = time.monotonic() + 30
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert ready.exists(), "the sandbox never started"
+        if after == "replaced_by_rename":
+            _replaced(creds, "https://u:SYNTHETIC-REPLACED@example.invalid\n")
+        else:
+            creds.write_text("https://u:SYNTHETIC-CREATED@example.invalid\n")
+            for i, p in enumerate(later):
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(f"SYNTHETIC-LATER-{i}\n")
+        go.write_text("")
+        out, err = proc.communicate(timeout=60)
+    finally:
+        tree.close()
+    assert out.rstrip().endswith("end"), out + err
+    assert "SYNTHETIC" not in out and ".git-credentials" not in out and ".netrc" not in out, out
+    assert "SAFE-PROFILE" in out and "name = synthetic" in out, out  # put back, the link as a link
+
+
+def test_in_the_leads_project_a_mask_refuses_writes_and_aews_cli_names_it(lead_lab):
+    """CS-4 addendum 7, ruling 1: what a link in a masked directory brings into the Lead's own project is masked
+    there: a file by an empty file, a directory whole and read-only. Writes into either fail (``>``, ``>>``, and a
+    write in AEW's CLI, which names the mask from the masks handed to the sandbox, not by the error) and change
+    nothing on the host. Synthetic files only."""
+    lab = lead_lab
+    real = os.path.realpath
+    key, keys = lab.repo / "deploy.key", lab.repo / "keys"
+    key.write_text("SYNTHETIC-KEY\n")
+    keys.mkdir()
+    (keys / "id").write_text("SYNTHETIC-ID\n")
+    (lab.home / ".ssh").mkdir()
+    (lab.home / ".ssh" / "deploy").symlink_to(key)
+    (lab.home / ".ssh" / "keys").symlink_to(keys, target_is_directory=True)
+    layout = lab.layout(env={"HOME": str(lab.home)})
+    assert {p for p, _ in layout.tree_masks} == {real(key), real(keys)}, layout.tree_masks
+    masks = json.dumps([list(m) for m in layout.tree_masks])
+    probe = lab.root / "probe.py"
+    probe.write_text(textwrap.dedent(f"""
+        import errno, json, os, sys
+        sys.path.insert(0, {SRC!r})
+        os.environ.update({{"AEW_LEAD_CONTAINED": "1", "AEW_LEAD_MASKS": {masks!r}}})
+        from aew.cli import main
+        out = []
+        for mode, path in (("w", {str(key)!r}), ("a", {str(key)!r}), ("w", {str(keys / "new")!r})):
+            try:
+                open(path, mode).close()
+                out.append("written")
+            except OSError as exc:
+                refusal = main._contained_refusal(exc)
+                out.append([errno.errorcode[exc.errno], refusal.details["reason"] if refusal else None])
+        print("CLI", json.dumps(out))
+    """))
+    done = lab.sh(layout, f"cat {key} {keys}/id 2>/dev/null; echo x > {key}; echo rc=$?; echo y >> {key}; "
+                          f"echo rc=$?; echo z > {keys}/new; echo rc=$?; {sys.executable} -I {probe}; echo end")
+    assert done.stdout.rstrip().endswith("end"), done.stdout + done.stderr
+    assert "SYNTHETIC" not in done.stdout and "rc=0" not in done.stdout, done.stdout
+    cli = json.loads(next(line for line in done.stdout.splitlines() if line.startswith("CLI "))[4:])
+    assert [reason for _, reason in cli] == ["lead_masked"] * 3, cli
+    assert all(code in ("EROFS", "EACCES") for code, _ in cli), cli
+    assert key.read_text() == "SYNTHETIC-KEY\n" and not (keys / "new").exists()  # nothing changed on the host
 
 
 # ------------------------------------------------------------------------------------------- outcome 6, rows

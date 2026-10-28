@@ -1,0 +1,6620 @@
+# generated: do not edit; regenerated from the adopted design text (see README.md)
+# position: A-25
+# source: 30-stages/STG-01-first-release-expansion/sealed/v0.5.4/STG-01-v0.5.4.zip!02-WIRE/openapi-d01-v0.3.4-REVIEW-CANDIDATE.yaml
+# source-sha256: c291d0a7f2cb4d5e4698a904628042737a34e357622d2d3527f8ec03da368069
+# edits-sha256: none
+
+openapi: 3.1.0
+info:
+  title: AEW D-01 v0.3.4 FIRST-RELEASE EXPANSION REVIEW CANDIDATE — NOT ADOPTED
+  version: 0.3.4-review-candidate
+  description: Proposed D-01 v0.3.4 exact-match successor, 20 GETs; inherited A-23 v0.3.3 preserved as separately deployable 17-GET
+    wire; no implicit coexistence.
+servers:
+- url: https://{deployment-host}
+  variables:
+    deployment-host:
+      default: aew.invalid
+security:
+- readSession: []
+paths:
+  /v1/read/coverage:
+    get:
+      operationId: getCoverage
+      summary: J08 coverage list read
+      description: Only coverage resources. Return ReadResult; enforce current effective-recipient authorization for this read. No mutable
+        or protected effects.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadCoverage'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/waiting:
+    get:
+      operationId: getWaiting
+      summary: J01 waiting list read
+      description: Only waiting resources. Return ReadResult; enforce current effective-recipient authorization for this read. No mutable
+        or protected effects.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadWaiting'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/attention:
+    get:
+      operationId: getAttention
+      summary: J01 attention list read
+      description: Only attention resources. Return ReadResult; enforce current effective-recipient authorization for this read. No
+        mutable or protected effects.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadAttention'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/attachments:
+    get:
+      operationId: getAttachments
+      summary: J02 attachment list read
+      description: Only attachment resources. Return ReadResult; enforce current effective-recipient authorization for this read. No
+        mutable or protected effects.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadAttachments'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/attachments/{attachment_id}:
+    get:
+      operationId: getAttachmentsAttachment_Id
+      summary: J02 attachment detail read
+      description: Only attachment resources. Return ReadResult; enforce current effective-recipient authorization for this read. No
+        mutable or protected effects.
+      parameters:
+      - name: attachment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{2,256}$
+        description: Canonical unpadded base64url(UTF-8 exact identity); strictly decode once and verify canonical re-encoding. Never
+          put an unencoded slash or percent sequence in a path segment.
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadAttachmentsAttachmentId'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/work:
+    get:
+      operationId: getWork
+      summary: J03 work list read
+      description: Only work resources. Return ReadResult; enforce current effective-recipient authorization for this read. No mutable
+        or protected effects.
+      parameters:
+      - name: kind
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - epic
+          - story
+          - ticket
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadWork'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/work/{work_kind}/{work_id}:
+    get:
+      operationId: getWorkWork_KindWork_Id
+      summary: J03 work detail read
+      description: Only work resources. Return ReadResult; enforce current effective-recipient authorization for this read. No mutable
+        or protected effects.
+      parameters:
+      - name: work_kind
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-/]{0,191}$
+          enum:
+          - epic
+          - story
+          - ticket
+      - name: work_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{2,256}$
+        description: Canonical unpadded base64url(UTF-8 exact identity); strictly decode once and verify canonical re-encoding. Never
+          put an unencoded slash or percent sequence in a path segment.
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadWorkWorkKindWorkId'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/work/{work_kind}/{work_id}/packages:
+    get:
+      operationId: getWorkWork_KindWork_IdPackages
+      summary: J03 package list read
+      description: Only package resources. Return ReadResult; enforce current effective-recipient authorization for this read. No mutable
+        or protected effects.
+      parameters:
+      - name: work_kind
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-/]{0,191}$
+          enum:
+          - epic
+          - story
+          - ticket
+      - name: work_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{2,256}$
+        description: Canonical unpadded base64url(UTF-8 exact identity); strictly decode once and verify canonical re-encoding. Never
+          put an unencoded slash or percent sequence in a path segment.
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadWorkWorkKindWorkIdPackages'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/assurance/{subject_kind}/{subject_id}:
+    get:
+      operationId: getAssuranceSubject_KindSubject_Id
+      summary: J04 assurance detail read
+      description: Only assurance resources. Return ReadResult; enforce current effective-recipient authorization for this read. No
+        mutable or protected effects.
+      parameters:
+      - name: subject_kind
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-/]{0,191}$
+          enum:
+          - story
+          - ticket
+          - package
+      - name: subject_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{2,256}$
+        description: Canonical unpadded base64url(UTF-8 exact identity); strictly decode once and verify canonical re-encoding. Never
+          put an unencoded slash or percent sequence in a path segment.
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadAssuranceSubjectKindSubjectId'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/research/claims/{claim_id}:
+    get:
+      operationId: getResearchClaimsClaim_Id
+      summary: J05 claim detail read
+      description: Only claim resources. Return ReadResult; enforce current effective-recipient authorization for this read. No mutable
+        or protected effects.
+      parameters:
+      - name: claim_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{2,256}$
+        description: Canonical unpadded base64url(UTF-8 exact identity); strictly decode once and verify canonical re-encoding. Never
+          put an unencoded slash or percent sequence in a path segment.
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadResearchClaimsClaimId'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/knowledge:
+    get:
+      operationId: getKnowledge
+      summary: J05 knowledge list read
+      description: Only knowledge resources. Return ReadResult; enforce current effective-recipient authorization for this read. No
+        mutable or protected effects.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadKnowledge'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/knowledge/{knowledge_id}/versions/{version_id}:
+    get:
+      operationId: getKnowledgeKnowledge_IdVersionsVersion_Id
+      summary: J05 knowledge detail read
+      description: Only knowledge resources. Return ReadResult; enforce current effective-recipient authorization for this read. No
+        mutable or protected effects.
+      parameters:
+      - name: knowledge_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{2,256}$
+        description: Canonical unpadded base64url(UTF-8 exact identity); strictly decode once and verify canonical re-encoding. Never
+          put an unencoded slash or percent sequence in a path segment.
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{2,256}$
+        description: Canonical unpadded base64url(UTF-8 exact identity); strictly decode once and verify canonical re-encoding. Never
+          put an unencoded slash or percent sequence in a path segment.
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadKnowledgeKnowledgeIdVersionsVersionId'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/knowledge/{knowledge_id}/versions/{version_id}/activity:
+    get:
+      operationId: getKnowledgeKnowledge_IdVersionsVersion_IdActivity
+      summary: J05 knowledge_activity list read
+      description: Only knowledge_activity resources. Return ReadResult; enforce current effective-recipient authorization for this
+        read. No mutable or protected effects.
+      parameters:
+      - name: knowledge_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{2,256}$
+        description: Canonical unpadded base64url(UTF-8 exact identity); strictly decode once and verify canonical re-encoding. Never
+          put an unencoded slash or percent sequence in a path segment.
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{2,256}$
+        description: Canonical unpadded base64url(UTF-8 exact identity); strictly decode once and verify canonical re-encoding. Never
+          put an unencoded slash or percent sequence in a path segment.
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadKnowledgeKnowledgeIdVersionsVersionIdActivity'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/resolve:
+    get:
+      operationId: resolveDisclosedSubject
+      summary: Bounded recipient-qualified exact subject resolver (no graph or command effects)
+      description: For a Link with availability=navigable only; use literal exact SubjectRef fields encoded as RFC3986 query components.
+        No inferable hidden targets; requalify every read; absent or restricted 404.
+      parameters:
+      - name: kind
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - assurance_basis
+          - assurance_evidence
+          - assurance_determination
+          - hold
+          - composition_commitment
+          - dependency_conflict
+          - package
+      - name: id
+        in: query
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,191}$
+        description: Exact canonical ID in RFC3986 query encoding; query decoding is once and rejects invalid/double-encoded forms.
+      - name: revision
+        in: query
+        required: false
+        schema: &id001
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-]{0,191}$
+      - name: generation
+        in: query
+        required: false
+        schema: *id001
+      - name: package_digest
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadResolve'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/capabilities:
+    get:
+      operationId: getInstalledCapabilities
+      summary: Source-scoped installation/profile qualification and audit observation
+      description: PROPOSED ADDITIVE D-01 OPERATION. GET-only, producer-issued/source-scoped, recipient-visible and no legacy API compatibility.
+        Same D-01 v0.3.3-candidate envelope/security requirements.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadCapabilities'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/runs:
+    get:
+      operationId: getRuns
+      summary: Recipient-safe execution activity, progress and resource list
+      description: PROPOSED ADDITIVE D-01 OPERATION. GET-only, producer-issued/source-scoped, recipient-visible and no legacy API compatibility.
+        Same D-01 v0.3.3-candidate envelope/security requirements.
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadRuns'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/runs/{execution_id}:
+    get:
+      operationId: getRunDetail
+      summary: Exact disclosed execution-activity run detail
+      description: PROPOSED ADDITIVE D-01 OPERATION. GET-only, producer-issued/source-scoped, recipient-visible and no legacy API compatibility.
+        Same D-01 v0.3.3-candidate envelope/security requirements.
+      parameters:
+      - name: execution_id
+        in: path
+        required: true
+        description: Exact execution_activity ID, unpadded base64url UTF-8, D01-WR-06.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 300
+          pattern: ^[A-Za-z0-9_-]+$
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadRunDetail'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/continuation-state/{work_id}:
+    get:
+      operationId: getContinuationOwnerVector
+      summary: 'PROPOSED: getContinuationOwnerVector'
+      description: 'Candidate only; source-qualified partial truth, not execution authority. Inherit A-23 security, errors, nondisclosure,
+        no-store. EXACT version selection required: absent/incompatible version must refuse before returning a 0.3.4 body.'
+      parameters:
+      - name: work_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{2,256}$
+          minLength: 2
+          maxLength: 256
+          description: unpadded canonical base64url of exact UTF-8 identifier; decoder must reject noncanonical roundtrips
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadContinuationVector'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/owner-operations:
+    get:
+      operationId: listRecipientOwnerOperations
+      summary: 'PROPOSED: listRecipientOwnerOperations'
+      description: 'Candidate only; source-qualified partial truth, not execution authority. Inherit A-23 security, errors, nondisclosure,
+        no-store. EXACT version selection required: absent/incompatible version must refuse before returning a 0.3.4 body.'
+      parameters:
+      - name: owner
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: scope_ref
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: attachment_ref
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadOwnerOperations'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Stale/unauthorized cursor
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/read/holds/{hold_id}/recovery:
+    get:
+      operationId: getQualifiedHoldRecovery
+      summary: 'PROPOSED: getQualifiedHoldRecovery'
+      description: 'Candidate only; source-qualified partial truth, not execution authority. Inherit A-23 security, errors, nondisclosure,
+        no-store. EXACT version selection required: absent/incompatible version must refuse before returning a 0.3.4 body.'
+      parameters:
+      - name: hold_id
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{2,256}$
+          minLength: 2
+          maxLength: 256
+          description: unpadded canonical base64url of exact UTF-8 identifier; decoder must reject noncanonical roundtrips
+      - in: header
+        name: X-AEW-Wire-Version
+        required: true
+        schema:
+          const: 0.3.4
+        description: Exact D-01 successor selection; no v0.3.3 fallback or silent reinterpretation
+      responses:
+        '200':
+          description: Typed recipient-qualified source-backed read; conditional semantic checker also mandatory
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadHoldRecovery'
+        '400':
+          description: Invalid request
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Unauthenticated
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: Not found or not disclosable indistinguishably
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Owner projection unavailable
+          headers:
+            X-AEW-Wire-Version:
+              required: true
+              schema:
+                const: 0.3.4
+            Cache-Control:
+              required: true
+              schema:
+                const: private, no-store
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+components:
+  securitySchemes:
+    readSession:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Transport bearer only; privilege above agent-equivalent requires separately qualified read-principal isolation/binding,
+        not this token alone.
+  schemas:
+    SubjectRef:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - epic
+          - story
+          - ticket
+          - accepted_revision
+          - composition_commitment
+          - dependency_conflict
+          - assignment
+          - effect_grant
+          - attachment_generation
+          - execution_activity
+          - package
+          - assurance_basis
+          - assurance_evidence
+          - assurance_determination
+          - hold
+          - composed_outcome
+          - inquiry
+          - research_claim
+          - experiment
+          - premise_use
+          - attention
+          - protected_intent
+          - fact_projection
+          - coordination_message
+          - waiting_condition
+          - knowledge_record
+          - knowledge_activity
+          - release_coverage
+          - profile_capability
+          - continuation_state
+          - owner_operation_index
+          - hold_recovery
+        id:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        revision:
+          anyOf:
+          - type: string
+            pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-]{0,191}$
+          - type: 'null'
+        generation:
+          anyOf:
+          - type: string
+            pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-]{0,191}$
+          - type: 'null'
+        package_digest:
+          anyOf:
+          - type: string
+            pattern: ^sha256:[0-9a-f]{64}$
+          - type: 'null'
+      required:
+      - kind
+      - id
+      - revision
+      - generation
+      - package_digest
+      additionalProperties: false
+      description: Knowledge/coverage refs are auxiliary read projections, not new authority owners. Nullable disambiguators are explicitly
+        null when inapplicable.
+    Closure:
+      type: object
+      properties:
+        domain:
+          type: string
+          enum:
+          - accepted_revision_membership
+          - mandatory_obligation_roster
+          - applicable_hold_collection
+          - source_visibility
+          - other_governed_set
+        owner:
+          type: string
+          enum:
+          - ADC
+          - AEV
+          - CNI
+          - HEB
+          - WIS
+          - RESEARCH
+          - KNOWLEDGE
+          - IF13
+          - RESOURCE_POLICY_ISSUER
+        epoch:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        version:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        coverage_ref:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        completeness:
+          type: string
+          enum:
+          - qualified_complete
+          - qualified_scoped
+          - unknown
+          - not_disclosable
+      required:
+      - domain
+      - owner
+      - epoch
+      - version
+      - coverage_ref
+      - completeness
+      additionalProperties: false
+      description: Only governing owner can attest membership/absence. Scoped closure is never all-domain closure.
+      allOf:
+      - if:
+          properties:
+            domain:
+              enum:
+              - mandatory_obligation_roster
+              - applicable_hold_collection
+          required:
+          - domain
+        then:
+          properties:
+            owner:
+              const: AEV
+      - if:
+          properties:
+            domain:
+              const: accepted_revision_membership
+          required:
+          - domain
+        then:
+          properties:
+            owner:
+              const: WIS
+    Renewal:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - source_valid_until
+          - qualified_continuity
+          - none
+        source_proof_ref:
+          anyOf:
+          - type: string
+            pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+          - type: 'null'
+        valid_until:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+        qualified_owner:
+          anyOf:
+          - type: string
+            enum:
+            - ADC
+            - AEV
+            - CNI
+            - HEB
+            - WIS
+            - RESEARCH
+            - HOST_ASSESSOR
+            - IF10
+            - IF12
+            - AUDIT_OBSERVER
+            - IF13
+            - R01
+          - type: 'null'
+        source_epoch:
+          anyOf:
+          - type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-]{0,191}$
+          - type: 'null'
+        coverage_ref:
+          anyOf:
+          - type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-]{0,191}$
+          - type: 'null'
+        verification_method:
+          type: string
+          enum:
+          - source_attested_interval
+          - source_continuity_validation
+          - none
+        checked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+        invalidation:
+          type: string
+          enum:
+          - expiry_or_revalidation_failure
+          - source_invalidated
+          - none
+      required:
+      - kind
+      - source_proof_ref
+      - valid_until
+      - qualified_owner
+      - source_epoch
+      - coverage_ref
+      - verification_method
+      - checked_at
+      - invalidation
+      additionalProperties: false
+      description: Owner-issued renewal. Provider receipt timestamp never renews source conclusion.
+      allOf:
+      - if:
+          properties:
+            kind:
+              const: source_valid_until
+          required:
+          - kind
+        then:
+          properties:
+            source_proof_ref:
+              type: string
+            valid_until:
+              type: string
+              format: date-time
+      - if:
+          properties:
+            kind:
+              const: none
+          required:
+          - kind
+        then:
+          properties:
+            source_proof_ref:
+              type: 'null'
+            valid_until:
+              type: 'null'
+      - if:
+          properties:
+            kind:
+              enum:
+              - source_valid_until
+              - qualified_continuity
+          required:
+          - kind
+        then:
+          properties:
+            source_proof_ref:
+              type: string
+              pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-]{0,191}$
+            valid_until:
+              type: string
+              format: date-time
+            qualified_owner:
+              type: string
+              enum:
+              - ADC
+              - AEV
+              - CNI
+              - HEB
+              - WIS
+              - RESEARCH
+              - HOST_ASSESSOR
+              - IF10
+              - IF12
+              - AUDIT_OBSERVER
+              - IF13
+              - R01
+            source_epoch:
+              type: string
+              pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-]{0,191}$
+            coverage_ref:
+              type: string
+              pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-]{0,191}$
+            checked_at:
+              type: string
+              format: date-time
+            verification_method:
+              enum:
+              - source_attested_interval
+              - source_continuity_validation
+            invalidation:
+              enum:
+              - expiry_or_revalidation_failure
+              - source_invalidated
+      - if:
+          properties:
+            kind:
+              const: none
+          required:
+          - kind
+        then:
+          properties:
+            qualified_owner:
+              type: 'null'
+            source_epoch:
+              type: 'null'
+            coverage_ref:
+              type: 'null'
+            checked_at:
+              type: 'null'
+            verification_method:
+              const: none
+            invalidation:
+              const: none
+    SourceStamp:
+      type: object
+      properties:
+        owner:
+          type: string
+          enum:
+          - ADC
+          - AEV
+          - AUDIT_OBSERVER
+          - CNI
+          - HEB
+          - HOST_ASSESSOR
+          - IF10
+          - IF12
+          - IF13
+          - KNOWLEDGE
+          - R01
+          - RELEASE
+          - RESEARCH
+          - WIS
+        fact_ref:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        source_epoch:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        source_version:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        coverage_ref:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        observed_at:
+          type: string
+          format: date-time
+        qualification:
+          type: string
+          enum:
+          - qualified
+          - not_established
+          - unqualified
+        observation_state:
+          type: string
+          enum:
+          - present_current
+          - historical
+          - stale
+          - unknown
+          - unavailable
+          - unsupported
+        renewal:
+          $ref: '#/components/schemas/Renewal'
+        closures:
+          type: array
+          items:
+            $ref: '#/components/schemas/Closure'
+        authority_class:
+          type: string
+          enum:
+          - governing_determination
+          - qualified_observation
+          - unqualified_report
+        governing_owner:
+          anyOf:
+          - type: string
+            enum:
+            - ADC
+            - AEV
+            - CNI
+            - HEB
+            - WIS
+            - RESEARCH
+          - type: 'null'
+        issuer_ref:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-]{0,191}$
+        owner_coverage_class:
+          type: string
+          enum:
+          - qualified_source_basis
+          - receipt_observation
+          - accepted_operator_scope
+          - not_established
+      required:
+      - owner
+      - fact_ref
+      - source_epoch
+      - source_version
+      - coverage_ref
+      - observed_at
+      - qualification
+      - observation_state
+      - renewal
+      - closures
+      - authority_class
+      - governing_owner
+      - issuer_ref
+      - owner_coverage_class
+      additionalProperties: false
+      description: Source qualification is separate from transport uptime; exact stamp is owner-issued or qualification attributed,
+        never frontend invented.
+      allOf:
+      - if:
+          properties:
+            observation_state:
+              const: present_current
+          required:
+          - observation_state
+        then:
+          properties:
+            qualification:
+              const: qualified
+            renewal:
+              properties:
+                kind:
+                  enum:
+                  - source_valid_until
+                  - qualified_continuity
+                source_proof_ref:
+                  type: string
+              required:
+              - source_proof_ref
+      - if:
+          properties:
+            owner:
+              enum:
+              - KNOWLEDGE
+              - RELEASE
+          required:
+          - owner
+        then:
+          properties:
+            authority_class:
+              enum:
+              - qualified_observation
+              - unqualified_report
+      - if:
+          properties:
+            authority_class:
+              const: governing_determination
+          required:
+          - authority_class
+        then:
+          properties:
+            governing_owner:
+              type: string
+              enum:
+              - ADC
+              - AEV
+              - CNI
+              - HEB
+              - WIS
+              - RESEARCH
+            owner_coverage_class:
+              const: qualified_source_basis
+      - if:
+          properties:
+            authority_class:
+              const: governing_determination
+          required:
+          - authority_class
+        then:
+          properties:
+            owner:
+              enum:
+              - ADC
+              - AEV
+              - CNI
+              - HEB
+              - WIS
+              - RESEARCH
+    Disclosure:
+      type: object
+      properties:
+        form:
+          type: string
+          enum:
+          - full
+          - qualified_coarse
+          - redacted
+          - not_disclosable
+        policy_ref:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        scope_ref:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        effective_recipient_ref:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        qualified_release:
+          type: boolean
+      required:
+      - form
+      - policy_ref
+      - scope_ref
+      - effective_recipient_ref
+      - qualified_release
+      additionalProperties: false
+      description: Per effective principal+lineage/assignment/subject context. Scope_ref is opaque non-secret qualified token, not bearer
+        authority.
+    FieldSource:
+      type: object
+      properties:
+        field_path:
+          type: string
+          pattern: ^data\.[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*){0,2}$
+        source:
+          $ref: '#/components/schemas/SourceStamp'
+      required:
+      - field_path
+      - source
+      additionalProperties: false
+      description: Explicit authoritative owner source for mixed-origin consequential data fields.
+    Provenance:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - canonical_owner
+          - qualified_derivation
+          - agent_narrative
+          - imported_narrative
+          - service_observation
+        owner_or_author:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        source_ref:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+      required:
+      - kind
+      - owner_or_author
+      - source_ref
+      additionalProperties: false
+      description: Narrative always inert. No author text as authoritative decision.
+    Attribution:
+      type: object
+      properties:
+        text:
+          type: string
+        provenance:
+          $ref: '#/components/schemas/Provenance'
+        render:
+          const: inert_text
+      required:
+      - text
+      - provenance
+      - render
+      additionalProperties: false
+    Link:
+      type: object
+      properties:
+        relation:
+          type: string
+          enum:
+          - parent
+          - child
+          - depends_on
+          - package
+          - evidence
+          - determination
+          - hold
+          - claim
+          - knowledge
+          - work
+          - received_by
+          - produced_by
+          - accepted_interface
+          - source
+          - historical_generation
+        target:
+          $ref: '#/components/schemas/SubjectRef'
+        availability:
+          const: navigable
+      required:
+      - relation
+      - target
+      - availability
+      additionalProperties: false
+      description: Only currently recipient-eligible, exact resolvable, reauthorized links may be emitted. Restricted/unknown targets
+        have no Link object and no per-hidden placeholder.
+    WaitingData:
+      type: object
+      properties:
+        work:
+          $ref: '#/components/schemas/SubjectRef'
+        cause:
+          type: string
+          enum:
+          - mandatory_result
+          - qualified_hold
+          - dependency
+          - resource_conflict
+          - operator_need
+          - authority
+          - other_qualified
+          - unknown
+        basis_refs:
+          $ref: '#/components/schemas/MemberView'
+        responsible_owner:
+          type: string
+          enum:
+          - ADC
+          - AEV
+          - CNI
+          - HEB
+          - WIS
+          - RESEARCH
+        progress:
+          type: string
+          enum:
+          - blocked
+          - independent_work_allowed
+          - unknown
+        action_status:
+          type: string
+          enum:
+          - read_only
+          - no_qualified_response_path
+          - unsupported
+        narrative:
+          anyOf:
+          - $ref: '#/components/schemas/Attribution'
+          - type: 'null'
+        impact_assessment:
+          anyOf:
+          - $ref: '#/components/schemas/ImpactAssessment'
+          - type: 'null'
+      required:
+      - work
+      - cause
+      - basis_refs
+      - responsible_owner
+      - progress
+      - action_status
+      - narrative
+      additionalProperties: false
+    AttentionData:
+      type: object
+      properties:
+        work:
+          anyOf:
+          - $ref: '#/components/schemas/SubjectRef'
+          - type: 'null'
+        lane:
+          type: string
+          enum:
+          - owner_issued
+          - agent_attention
+        category:
+          type: string
+          enum:
+          - decision_need
+          - blocker
+          - clarification
+          - direction_brief
+          - expiry
+        root_lineage_ref:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        priority:
+          type: string
+          enum:
+          - owner_time_critical
+          - owner_normal
+          - agent_normal
+          - agent_summarized
+        summary_of_excess:
+          type: boolean
+        narrative:
+          $ref: '#/components/schemas/Attribution'
+      required:
+      - work
+      - lane
+      - category
+      - root_lineage_ref
+      - priority
+      - summary_of_excess
+      - narrative
+      additionalProperties: false
+      description: Priority and lane are owner-derived; agent text never sets urgency. Per root lineage aggregated flood limits.
+      allOf:
+      - if:
+          properties:
+            lane:
+              const: agent_attention
+          required:
+          - lane
+        then:
+          properties:
+            priority:
+              enum:
+              - agent_normal
+              - agent_summarized
+            category:
+              enum:
+              - clarification
+              - direction_brief
+              - blocker
+      - if:
+          properties:
+            lane:
+              const: owner_issued
+          required:
+          - lane
+        then:
+          properties:
+            priority:
+              enum:
+              - owner_time_critical
+              - owner_normal
+    AttachmentData:
+      type: object
+      properties:
+        generation:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        attachment_state:
+          type: string
+          enum:
+          - attached
+          - closed
+          - suspended
+          - preparing
+          - unknown
+        aew_lead_authority:
+          type: string
+          enum:
+          - active
+          - revoked
+          - unknown
+        custody:
+          type: string
+          enum:
+          - held
+          - draining
+          - released
+          - none
+          - unknown
+        harness_state:
+          type: string
+          enum:
+          - observed_running
+          - observed_stopped
+          - unknown
+        held_result_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubjectRef'
+        current_generation_ref:
+          anyOf:
+          - $ref: '#/components/schemas/SubjectRef'
+          - type: 'null'
+        lineage_basis:
+          anyOf:
+          - $ref: '#/components/schemas/AuthorityLineageBasis'
+          - type: 'null'
+      required:
+      - generation
+      - attachment_state
+      - aew_lead_authority
+      - custody
+      - harness_state
+      - held_result_refs
+      - current_generation_ref
+      additionalProperties: false
+      description: Closed AEW attachment does not mean model conversation or remote process killed.
+    WorkData:
+      type: object
+      properties:
+        work_kind:
+          type: string
+          enum:
+          - epic
+          - story
+          - ticket
+        accepted_revision:
+          anyOf:
+          - $ref: '#/components/schemas/SubjectRef'
+          - type: 'null'
+        parent:
+          anyOf:
+          - $ref: '#/components/schemas/SubjectRef'
+          - type: 'null'
+        child_refs:
+          $ref: '#/components/schemas/MemberView'
+        accepted_interface_refs:
+          $ref: '#/components/schemas/MemberView'
+        composition:
+          type: string
+          enum:
+          - accepted
+          - provisional
+          - blocked
+          - not_established
+          - not_applicable
+        completion:
+          type: string
+          enum:
+          - qualified_complete
+          - in_progress
+          - blocked
+          - not_established
+        narrative:
+          anyOf:
+          - $ref: '#/components/schemas/Attribution'
+          - type: 'null'
+      required:
+      - work_kind
+      - accepted_revision
+      - parent
+      - child_refs
+      - accepted_interface_refs
+      - composition
+      - completion
+      - narrative
+      additionalProperties: false
+      description: Child completion never means qualified parent completion; no default all-work ready.
+    PackageData:
+      type: object
+      properties:
+        work:
+          $ref: '#/components/schemas/SubjectRef'
+        digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        designation:
+          type: string
+          enum:
+          - provisional
+          - protected_accepted
+          - unknown
+        accepted_revision:
+          $ref: '#/components/schemas/SubjectRef'
+        g1:
+          type: string
+          enum:
+          - CONFORMING
+          - NONCONFORMING
+          - NOT_ESTABLISHED
+          - unavailable
+          - not_applicable
+        baseline_limitations:
+          type: array
+          items:
+            type: string
+        source_closure_ref:
+          anyOf:
+          - type: string
+            pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+          - type: 'null'
+      required:
+      - work
+      - digest
+      - designation
+      - accepted_revision
+      - g1
+      - baseline_limitations
+      - source_closure_ref
+      additionalProperties: false
+      description: G1 result is independently qualified under adopted D-02 when available; no assumed historical main baseline.
+      allOf:
+      - if:
+          properties:
+            g1:
+              const: CONFORMING
+          required:
+          - g1
+        then:
+          properties:
+            designation:
+              enum:
+              - provisional
+              - protected_accepted
+    AssuranceData:
+      type: object
+      properties:
+        target:
+          $ref: '#/components/schemas/SubjectRef'
+        accepted_revision:
+          $ref: '#/components/schemas/SubjectRef'
+        obligation_state:
+          type: string
+          enum:
+          - all_satisfied
+          - missing_mandatory
+          - unknown
+        hold_state:
+          type: string
+          enum:
+          - none_qualified
+          - outstanding
+          - unknown
+        readiness:
+          type: string
+          enum:
+          - qualified_clear
+          - blocked
+          - not_established
+          - historical
+        mandatory_obligations:
+          $ref: '#/components/schemas/MemberView'
+        determination_refs:
+          $ref: '#/components/schemas/MemberView'
+        applicable_hold_refs:
+          $ref: '#/components/schemas/MemberView'
+        g1_conformance:
+          type: string
+          enum:
+          - CONFORMING
+          - NONCONFORMING
+          - NOT_ESTABLISHED
+          - unavailable
+          - not_applicable
+        roster_closure:
+          $ref: '#/components/schemas/Closure'
+        hold_closure:
+          $ref: '#/components/schemas/Closure'
+      required:
+      - target
+      - accepted_revision
+      - obligation_state
+      - hold_state
+      - readiness
+      - mandatory_obligations
+      - determination_refs
+      - applicable_hold_refs
+      - g1_conformance
+      - roster_closure
+      - hold_closure
+      additionalProperties: false
+      description: Missing obligation is not HOLD. Empty visible hold list does not establish absence. Qualified-clear requires both
+        qualified complete closures.
+      allOf:
+      - if:
+          properties:
+            readiness:
+              const: qualified_clear
+          required:
+          - readiness
+        then:
+          properties:
+            obligation_state:
+              const: all_satisfied
+            hold_state:
+              const: none_qualified
+            g1_conformance:
+              enum:
+              - CONFORMING
+              - not_applicable
+            roster_closure:
+              properties:
+                completeness:
+                  const: qualified_complete
+            hold_closure:
+              properties:
+                completeness:
+                  const: qualified_complete
+    ClaimData:
+      type: object
+      properties:
+        qualification:
+          type: string
+          enum:
+          - qualified
+          - limited
+          - challenged
+          - historical
+          - not_established
+        scope_conditions:
+          type: array
+          items:
+            type: string
+        limitations:
+          type: array
+          items:
+            type: string
+        premise_use_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubjectRef'
+        evidence_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubjectRef'
+      required:
+      - qualification
+      - scope_conditions
+      - limitations
+      - premise_use_refs
+      - evidence_refs
+      additionalProperties: false
+      description: Research finding not engineering acceptance or scope authority.
+    KnowledgeData:
+      type: object
+      properties:
+        knowledge_id:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        version:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        kind:
+          type: string
+          enum:
+          - raw_history
+          - case
+          - lesson
+        admission:
+          type: string
+          enum:
+          - admitted
+          - candidate
+          - held
+          - rejected
+          - not_established
+        serving:
+          type: string
+          enum:
+          - eligible
+          - held
+          - restricted
+          - unknown
+        lifecycle:
+          type: string
+          enum:
+          - active
+          - challenged
+          - superseded
+          - historical
+          - unknown
+        work_refs:
+          $ref: '#/components/schemas/MemberView'
+        root_evidence_refs:
+          $ref: '#/components/schemas/MemberView'
+        producer_lineage:
+          anyOf:
+          - type: string
+            pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+          - type: 'null'
+        admission_basis_ref:
+          anyOf:
+          - type: string
+            pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+          - type: 'null'
+        limitations:
+          type: array
+          items:
+            type: string
+        summary:
+          $ref: '#/components/schemas/Attribution'
+      required:
+      - knowledge_id
+      - version
+      - kind
+      - admission
+      - serving
+      - lifecycle
+      - work_refs
+      - root_evidence_refs
+      - producer_lineage
+      - admission_basis_ref
+      - limitations
+      - summary
+      additionalProperties: false
+      description: Knowledge is a durable source-linked read projection. Case observation and Lesson interpretation remain distinct.
+        No model-internal learning assertion.
+      allOf:
+      - if:
+          properties:
+            admission:
+              const: admitted
+          required:
+          - admission
+        then:
+          properties:
+            admission_basis_ref:
+              type: string
+      - if:
+          properties:
+            kind:
+              const: lesson
+          required:
+          - kind
+        then:
+          properties:
+            admission:
+              not:
+                const: not_established
+    ActivityData:
+      type: object
+      properties:
+        knowledge_ref:
+          $ref: '#/components/schemas/SubjectRef'
+        agent_lineage:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        work:
+          $ref: '#/components/schemas/SubjectRef'
+        activity:
+          type: string
+          enum:
+          - selected
+          - prepared
+          - delivered
+          - cited
+          - benefit_evaluated
+        receipt_ref:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        observation_at:
+          type: string
+          format: date-time
+        benefit:
+          type: string
+          enum:
+          - not_evaluated
+          - supported
+          - not_supported
+          - inconclusive
+        basis_refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubjectRef'
+      required:
+      - knowledge_ref
+      - agent_lineage
+      - work
+      - activity
+      - receipt_ref
+      - observation_at
+      - benefit
+      - basis_refs
+      additionalProperties: false
+      description: Activity kind and benefit qualification are independent. Delivered/cited not proof of model used or was helped.
+      allOf:
+      - if:
+          properties:
+            activity:
+              not:
+                const: benefit_evaluated
+          required:
+          - activity
+        then:
+          properties:
+            benefit:
+              const: not_evaluated
+            basis_refs:
+              maxItems: 0
+      - if:
+          properties:
+            benefit:
+              enum:
+              - supported
+              - not_supported
+              - inconclusive
+          required:
+          - benefit
+        then:
+          properties:
+            activity:
+              const: benefit_evaluated
+            basis_refs:
+              minItems: 1
+    CoverageData:
+      type: object
+      properties:
+        journey:
+          type: string
+          enum:
+          - J01
+          - J02
+          - J03
+          - J04
+          - J05
+          - J06
+          - J07
+          - J08
+        channel:
+          type: string
+          enum:
+          - backend_api
+          - private_website
+        commitment:
+          type: string
+          enum:
+          - core_read
+          - bounded_read
+          - informational_only
+          - degraded_only
+          - not_committed
+        implementation:
+          type: string
+          enum:
+          - qualified_producer_available
+          - implemented_unqualified
+          - fixture_only
+          - unsupported
+          - unknown
+        qualification:
+          type: string
+          enum:
+          - provider_tested
+          - consumer_tested
+          - composed_tested
+          - runtime_qualified
+          - not_tested
+        evidence_refs:
+          type: array
+          items:
+            type: string
+            pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        gate_refs:
+          type: array
+          items:
+            type: string
+            enum:
+            - G1
+            - G2
+            - G3
+            - G4
+        qualification_basis:
+          anyOf:
+          - $ref: '#/components/schemas/QualifiedCoverageBasis'
+          - type: 'null'
+      required:
+      - journey
+      - channel
+      - commitment
+      - implementation
+      - qualification
+      - evidence_refs
+      - gate_refs
+      - qualification_basis
+      additionalProperties: false
+      description: Coverage values are evidence-bound. Never infer qualified from schema or fixture pass.
+      allOf:
+      - if:
+          properties:
+            qualification:
+              not:
+                const: not_tested
+          required:
+          - qualification
+        then:
+          properties:
+            qualification_basis:
+              $ref: '#/components/schemas/QualifiedCoverageBasis'
+            evidence_refs:
+              minItems: 1
+    Resource:
+      type: object
+      properties:
+        resource_type:
+          type: string
+          enum:
+          - waiting
+          - attention
+          - attachment
+          - work
+          - package
+          - assurance
+          - claim
+          - knowledge
+          - knowledge_activity
+          - coverage
+          - subject_detail
+          - journal_history
+          - capability
+          - run
+          - continuation_vector
+          - owner_operation_index
+          - hold_recovery
+        ref:
+          $ref: '#/components/schemas/SubjectRef'
+        source:
+          $ref: '#/components/schemas/SourceStamp'
+        disclosure:
+          $ref: '#/components/schemas/Disclosure'
+        data:
+          type: object
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+        field_sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldSource'
+      required:
+      - resource_type
+      - ref
+      - source
+      - disclosure
+      - data
+      - links
+      - field_sources
+      additionalProperties: false
+      description: Resource-specific data required and separately typed by resource_type. Owner_operation_index resources contain one
+        operation entry, NOT a collection. Collection closure is outer only.
+      allOf:
+      - if:
+          properties:
+            resource_type:
+              const: waiting
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/WaitingData'
+            ref:
+              properties:
+                kind:
+                  enum:
+                  - waiting_condition
+      - if:
+          properties:
+            resource_type:
+              const: attention
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/AttentionData'
+            ref:
+              properties:
+                kind:
+                  enum:
+                  - attention
+      - if:
+          properties:
+            resource_type:
+              const: attachment
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/AttachmentData'
+            ref:
+              properties:
+                kind:
+                  enum:
+                  - attachment_generation
+      - if:
+          properties:
+            resource_type:
+              const: work
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/WorkData'
+            ref:
+              properties:
+                kind:
+                  enum:
+                  - epic
+                  - story
+                  - ticket
+      - if:
+          properties:
+            resource_type:
+              const: package
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/PackageData'
+            ref:
+              properties:
+                kind:
+                  enum:
+                  - package
+      - if:
+          properties:
+            resource_type:
+              const: assurance
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/AssuranceData'
+            ref:
+              properties:
+                kind:
+                  enum:
+                  - assurance_basis
+      - if:
+          properties:
+            resource_type:
+              const: claim
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/ClaimData'
+            ref:
+              properties:
+                kind:
+                  enum:
+                  - research_claim
+      - if:
+          properties:
+            resource_type:
+              const: knowledge
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/KnowledgeData'
+            ref:
+              properties:
+                kind:
+                  enum:
+                  - knowledge_record
+      - if:
+          properties:
+            resource_type:
+              const: knowledge_activity
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/ActivityData'
+            ref:
+              properties:
+                kind:
+                  enum:
+                  - knowledge_activity
+      - if:
+          properties:
+            resource_type:
+              const: coverage
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/CoverageData'
+            ref:
+              properties:
+                kind:
+                  enum:
+                  - release_coverage
+      - if:
+          properties:
+            resource_type:
+              const: subject_detail
+          required:
+          - resource_type
+        then:
+          properties:
+            ref:
+              properties:
+                kind:
+                  enum:
+                  - assurance_basis
+                  - assurance_evidence
+                  - assurance_determination
+                  - hold
+                  - composition_commitment
+                  - dependency_conflict
+                  - package
+            data:
+              $ref: '#/components/schemas/SubjectDetailData'
+      - if:
+          properties:
+            resource_type:
+              const: assurance
+            data:
+              properties:
+                readiness:
+                  const: qualified_clear
+              required:
+              - readiness
+          required:
+          - resource_type
+          - data
+        then:
+          properties:
+            source:
+              properties:
+                owner:
+                  const: AEV
+                qualification:
+                  const: qualified
+                observation_state:
+                  const: present_current
+            disclosure:
+              properties:
+                form:
+                  enum:
+                  - full
+                  - qualified_coarse
+                qualified_release:
+                  const: true
+            data:
+              properties:
+                obligation_state:
+                  const: all_satisfied
+                hold_state:
+                  const: none_qualified
+                roster_closure:
+                  properties:
+                    domain:
+                      const: mandatory_obligation_roster
+                    owner:
+                      const: AEV
+                    completeness:
+                      const: qualified_complete
+                hold_closure:
+                  properties:
+                    domain:
+                      const: applicable_hold_collection
+                    owner:
+                      const: AEV
+                    completeness:
+                      const: qualified_complete
+      - if:
+          properties:
+            resource_type:
+              const: package
+          required:
+          - resource_type
+        then:
+          properties:
+            field_sources:
+              contains:
+                properties:
+                  field_path:
+                    const: data.g1
+                  source:
+                    properties:
+                      owner:
+                        const: AEV
+                required:
+                - field_path
+                - source
+              minContains: 1
+            source:
+              properties:
+                owner:
+                  const: WIS
+      - if:
+          properties:
+            resource_type:
+              const: work
+          required:
+          - resource_type
+        then:
+          properties:
+            field_sources:
+              contains:
+                properties:
+                  field_path:
+                    const: data.accepted_revision
+                  source:
+                    properties:
+                      owner:
+                        const: WIS
+                required:
+                - field_path
+                - source
+              minContains: 1
+      - if:
+          properties:
+            resource_type:
+              const: assurance
+          required:
+          - resource_type
+        then:
+          properties:
+            source:
+              properties:
+                owner:
+                  const: AEV
+      - if:
+          properties:
+            resource_type:
+              const: attachment
+          required:
+          - resource_type
+        then:
+          properties:
+            source:
+              properties:
+                owner:
+                  const: HEB
+      - if:
+          properties:
+            resource_type:
+              const: waiting
+          required:
+          - resource_type
+        then:
+          properties:
+            source:
+              properties:
+                owner:
+                  const: CNI
+      - if:
+          properties:
+            resource_type:
+              const: attention
+          required:
+          - resource_type
+        then:
+          properties:
+            source:
+              properties:
+                owner:
+                  const: CNI
+      - if:
+          properties:
+            resource_type:
+              const: claim
+          required:
+          - resource_type
+        then:
+          properties:
+            source:
+              properties:
+                owner:
+                  const: RESEARCH
+      - if:
+          properties:
+            resource_type:
+              const: work
+          required:
+          - resource_type
+        then:
+          properties:
+            source:
+              properties:
+                owner:
+                  const: CNI
+      - if:
+          properties:
+            resource_type:
+              const: knowledge
+          required:
+          - resource_type
+        then:
+          properties:
+            source:
+              properties:
+                owner:
+                  const: KNOWLEDGE
+      - if:
+          properties:
+            resource_type:
+              const: knowledge_activity
+          required:
+          - resource_type
+        then:
+          properties:
+            source:
+              properties:
+                owner:
+                  const: KNOWLEDGE
+      - if:
+          properties:
+            resource_type:
+              const: coverage
+          required:
+          - resource_type
+        then:
+          properties:
+            source:
+              properties:
+                owner:
+                  const: RELEASE
+      - if:
+          properties:
+            disclosure:
+              properties:
+                form:
+                  const: qualified_coarse
+              required:
+              - form
+          required:
+          - disclosure
+        then:
+          properties:
+            disclosure:
+              properties:
+                qualified_release:
+                  const: true
+      - if:
+          properties:
+            disclosure:
+              properties:
+                form:
+                  enum:
+                  - redacted
+                  - not_disclosable
+              required:
+              - form
+          required:
+          - disclosure
+        then:
+          properties:
+            disclosure:
+              properties:
+                qualified_release:
+                  const: false
+      - if:
+          properties:
+            resource_type:
+              const: package
+            data:
+              properties:
+                designation:
+                  const: protected_accepted
+              required:
+              - designation
+          required:
+          - resource_type
+          - data
+        then:
+          properties:
+            field_sources:
+              contains:
+                type: object
+                properties:
+                  field_path:
+                    const: data.designation
+                  source:
+                    properties:
+                      owner:
+                        const: HEB
+                      authority_class:
+                        const: governing_determination
+                      qualification:
+                        const: qualified
+                required:
+                - field_path
+                - source
+              minContains: 1
+      - if:
+          properties:
+            resource_type:
+              const: knowledge
+            data:
+              properties:
+                admission:
+                  const: admitted
+              required:
+              - admission
+          required:
+          - resource_type
+          - data
+        then:
+          properties:
+            field_sources:
+              contains:
+                type: object
+                properties:
+                  field_path:
+                    const: data.admission
+                  source:
+                    properties:
+                      authority_class:
+                        const: governing_determination
+                      qualification:
+                        const: qualified
+                required:
+                - field_path
+                - source
+              minContains: 1
+      - if:
+          properties:
+            resource_type:
+              const: knowledge_activity
+            data:
+              properties:
+                benefit:
+                  enum:
+                  - supported
+                  - not_supported
+                  - inconclusive
+              required:
+              - benefit
+          required:
+          - resource_type
+          - data
+        then:
+          properties:
+            field_sources:
+              contains:
+                type: object
+                properties:
+                  field_path:
+                    const: data.benefit
+                  source:
+                    properties:
+                      authority_class:
+                        const: governing_determination
+                      qualification:
+                        const: qualified
+                required:
+                - field_path
+                - source
+              minContains: 1
+      - if:
+          properties:
+            disclosure:
+              properties:
+                form:
+                  const: qualified_coarse
+              required:
+              - form
+          required:
+          - disclosure
+        then:
+          properties:
+            links:
+              maxItems: 0
+      - if:
+          properties:
+            resource_type:
+              const: journal_history
+          required:
+          - resource_type
+        then:
+          properties:
+            ref:
+              properties:
+                kind:
+                  const: assurance_determination
+            data:
+              $ref: '#/components/schemas/JournalHistoryData'
+            source:
+              properties:
+                owner:
+                  const: AEV
+                authority_class:
+                  const: governing_determination
+                governing_owner:
+                  const: AEV
+                qualification:
+                  const: qualified
+      - if:
+          properties:
+            resource_type:
+              const: assurance
+            data:
+              properties:
+                readiness:
+                  const: qualified_clear
+              required:
+              - readiness
+          required:
+          - resource_type
+          - data
+        then:
+          properties:
+            field_sources:
+              contains:
+                type: object
+                required:
+                - field_path
+                - source
+                properties:
+                  field_path:
+                    const: data.readiness
+                  source:
+                    properties:
+                      owner:
+                        const: AEV
+                      qualification:
+                        const: qualified
+                      authority_class:
+                        const: governing_determination
+                      owner_coverage_class:
+                        const: qualified_source_basis
+              minContains: 1
+      - if:
+          properties:
+            resource_type:
+              const: capability
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/CapabilityData'
+            ref:
+              properties:
+                kind:
+                  const: profile_capability
+      - if:
+          properties:
+            resource_type:
+              const: run
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/RunData'
+            ref:
+              properties:
+                kind:
+                  const: execution_activity
+      - if:
+          properties:
+            resource_type:
+              const: continuation_vector
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/FR_ContinuationVector'
+            ref:
+              properties:
+                kind:
+                  const: continuation_state
+          required:
+          - data
+          - ref
+      - if:
+          properties:
+            resource_type:
+              const: owner_operation_index
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/FR_OperationIndexEntry'
+            ref:
+              properties:
+                kind:
+                  const: owner_operation_index
+          required:
+          - data
+          - ref
+      - if:
+          properties:
+            resource_type:
+              const: hold_recovery
+          required:
+          - resource_type
+        then:
+          properties:
+            data:
+              $ref: '#/components/schemas/FR_HoldRecoveryProjection'
+            ref:
+              properties:
+                kind:
+                  const: hold_recovery
+          required:
+          - data
+          - ref
+    PageInfo:
+      type: object
+      properties:
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 100
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+        has_more:
+          type: boolean
+        scope:
+          type: string
+          enum:
+          - effective_recipient_view
+        membership:
+          type: string
+          enum:
+          - qualified_scoped
+          - unknown
+          - not_disclosable
+      required:
+      - page_size
+      - next_cursor
+      - has_more
+      - scope
+      - membership
+      additionalProperties: false
+      description: Pagination end is scoped to authorized view, never a global absence claim. Cursors bound to effective recipient and
+        entitlement.
+      allOf:
+      - if:
+          properties:
+            has_more:
+              const: true
+          required:
+          - has_more
+        then:
+          properties:
+            next_cursor:
+              type: string
+              pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-]{0,191}$
+      - if:
+          properties:
+            has_more:
+              const: false
+          required:
+          - has_more
+        then:
+          properties:
+            next_cursor:
+              type: 'null'
+    ReadResult:
+      type: object
+      properties:
+        wire_version:
+          const: 0.3.4
+        mode:
+          type: string
+          enum:
+          - list
+          - detail
+        outcome:
+          type: string
+          enum:
+          - provided
+          - partial
+          - historical
+          - not_established
+          - unavailable
+          - unsupported
+        projection_as_of:
+          type: string
+          format: date-time
+        continuity:
+          type: string
+          enum:
+          - source_qualified
+          - revalidate_required
+          - unknown
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
+        page:
+          anyOf:
+          - $ref: '#/components/schemas/PageInfo'
+          - type: 'null'
+        limitations:
+          type: array
+          items:
+            type: string
+            enum:
+            - redacted
+            - partial_source
+            - source_unqualified
+            - source_unavailable
+            - G1_unqualified
+            - G2_unqualified
+            - G3_unqualified
+            - G4_unqualified
+            - historical_only
+            - knowledge_receipts_missing
+        correlation_id:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        collection_basis:
+          anyOf:
+          - $ref: '#/components/schemas/SourceStamp'
+          - type: 'null'
+        effective_recipient_ref:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+        journal_selection:
+          $ref: '#/components/schemas/JournalSelection'
+      required:
+      - wire_version
+      - mode
+      - outcome
+      - projection_as_of
+      - continuity
+      - items
+      - page
+      - limitations
+      - correlation_id
+      - collection_basis
+      - effective_recipient_ref
+      additionalProperties: false
+      description: Presence is explicit. List always has page; detail has null page. Failure of identity/disclosure is a Problem response,
+        not a green empty set.
+      allOf:
+      - if:
+          properties:
+            mode:
+              const: detail
+          required:
+          - mode
+        then:
+          properties:
+            page:
+              type: 'null'
+            items:
+              maxItems: 1
+      - if:
+          properties:
+            mode:
+              const: list
+          required:
+          - mode
+        then:
+          properties:
+            page:
+              $ref: '#/components/schemas/PageInfo'
+      - if:
+          properties:
+            outcome:
+              const: unavailable
+          required:
+          - outcome
+        then:
+          properties:
+            continuity:
+              enum:
+              - revalidate_required
+              - unknown
+      - if:
+          properties:
+            mode:
+              const: detail
+            outcome:
+              const: provided
+          required:
+          - mode
+          - outcome
+        then:
+          properties:
+            items:
+              minItems: 1
+              maxItems: 1
+      - if:
+          properties:
+            mode:
+              const: detail
+            outcome:
+              const: historical
+          required:
+          - mode
+          - outcome
+        then:
+          properties:
+            items:
+              minItems: 1
+              maxItems: 1
+      - if:
+          properties:
+            continuity:
+              const: source_qualified
+          required:
+          - continuity
+        then:
+          properties:
+            items:
+              items:
+                properties:
+                  source:
+                    properties:
+                      observation_state:
+                        const: present_current
+      - if:
+          properties:
+            mode:
+              const: detail
+            outcome:
+              enum:
+              - provided
+              - partial
+              - historical
+              - not_established
+          required:
+          - mode
+          - outcome
+        then:
+          properties:
+            items:
+              minItems: 1
+              maxItems: 1
+    Problem:
+      type: object
+      properties:
+        type:
+          const: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+          enum:
+          - 400
+          - 401
+          - 404
+          - 409
+          - 503
+        code:
+          type: string
+          enum:
+          - invalid_request
+          - authentication_unqualified
+          - not_found_or_not_disclosable
+          - cursor_stale_or_unauthorized
+          - owner_unavailable
+        retry:
+          type: string
+          enum:
+          - never
+          - reauthenticate
+          - refresh_read
+          - when_source_recovers
+          - not_established
+        correlation_id:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9._:\-/]{0,191}$
+      required:
+      - type
+      - title
+      - status
+      - code
+      - retry
+      - correlation_id
+      additionalProperties: false
+      description: No hidden fact IDs, reason classes or counts in error details. 404 used for both hidden and nonexistent.
+      allOf:
+      - if:
+          properties:
+            code:
+              const: invalid_request
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 400
+            retry:
+              const: never
+      - if:
+          properties:
+            code:
+              const: authentication_unqualified
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 401
+            retry:
+              const: reauthenticate
+      - if:
+          properties:
+            code:
+              const: not_found_or_not_disclosable
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 404
+            retry:
+              const: never
+      - if:
+          properties:
+            code:
+              const: cursor_stale_or_unauthorized
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 409
+            retry:
+              const: refresh_read
+      - if:
+          properties:
+            code:
+              const: owner_unavailable
+          required:
+          - code
+        then:
+          properties:
+            status:
+              const: 503
+            retry:
+              const: when_source_recovers
+    MemberView:
+      type: object
+      properties:
+        visibility:
+          type: string
+          enum:
+          - complete_visible
+          - partial_visible
+          - members_withheld
+          - unknown
+        refs:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubjectRef'
+      required:
+      - visibility
+      - refs
+      additionalProperties: false
+      allOf:
+      - if:
+          properties:
+            visibility:
+              enum:
+              - members_withheld
+              - unknown
+          required:
+          - visibility
+        then:
+          properties:
+            refs:
+              maxItems: 0
+    SubjectDetailData:
+      type: object
+      properties:
+        target:
+          $ref: '#/components/schemas/SubjectRef'
+        record_kind:
+          type: string
+          enum:
+          - obligation
+          - hold
+          - determination
+          - evidence
+          - accepted_interface
+          - dependency_conflict
+          - package
+        summary:
+          anyOf:
+          - $ref: '#/components/schemas/Attribution'
+          - type: 'null'
+        basis_refs:
+          $ref: '#/components/schemas/MemberView'
+        status:
+          type: string
+          enum:
+          - qualified
+          - limited
+          - historical
+          - not_established
+        source_basis_ref:
+          anyOf:
+          - type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-]{0,191}$
+          - type: 'null'
+      required:
+      - target
+      - record_kind
+      - summary
+      - basis_refs
+      - status
+      - source_basis_ref
+      additionalProperties: false
+      allOf:
+      - if:
+          properties:
+            target:
+              properties:
+                kind:
+                  const: assurance_basis
+              required:
+              - kind
+          required:
+          - target
+        then:
+          properties:
+            record_kind:
+              const: obligation
+      - if:
+          properties:
+            target:
+              properties:
+                kind:
+                  const: hold
+              required:
+              - kind
+          required:
+          - target
+        then:
+          properties:
+            record_kind:
+              const: hold
+      - if:
+          properties:
+            target:
+              properties:
+                kind:
+                  const: assurance_determination
+              required:
+              - kind
+          required:
+          - target
+        then:
+          properties:
+            record_kind:
+              const: determination
+      - if:
+          properties:
+            target:
+              properties:
+                kind:
+                  const: assurance_evidence
+              required:
+              - kind
+          required:
+          - target
+        then:
+          properties:
+            record_kind:
+              const: evidence
+      - if:
+          properties:
+            target:
+              properties:
+                kind:
+                  const: composition_commitment
+              required:
+              - kind
+          required:
+          - target
+        then:
+          properties:
+            record_kind:
+              const: accepted_interface
+      - if:
+          properties:
+            target:
+              properties:
+                kind:
+                  const: dependency_conflict
+              required:
+              - kind
+          required:
+          - target
+        then:
+          properties:
+            record_kind:
+              const: dependency_conflict
+      - if:
+          properties:
+            target:
+              properties:
+                kind:
+                  const: package
+              required:
+              - kind
+          required:
+          - target
+        then:
+          properties:
+            record_kind:
+              const: package
+    ReadCoverage:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: list
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: coverage
+    ReadWaiting:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: list
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: waiting
+    ReadAttention:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: list
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: attention
+    ReadAttachments:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: list
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: attachment
+    ReadAttachmentsAttachmentId:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: detail
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: attachment
+    ReadWork:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: list
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: work
+    ReadWorkWorkKindWorkId:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: detail
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: work
+    ReadWorkWorkKindWorkIdPackages:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: list
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: package
+    ReadAssuranceSubjectKindSubjectId:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: detail
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: assurance
+    ReadResearchClaimsClaimId:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: detail
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: claim
+    ReadKnowledge:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: list
+          items:
+            items:
+              properties:
+                resource_type:
+                  enum:
+                  - knowledge
+                  - journal_history
+        required:
+        - journal_selection
+      - if:
+          properties:
+            items:
+              contains:
+                properties:
+                  resource_type:
+                    const: journal_history
+                required:
+                - resource_type
+        then:
+          properties:
+            collection_basis:
+              $ref: '#/components/schemas/SourceStamp'
+    ReadKnowledgeKnowledgeIdVersionsVersionId:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: detail
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: knowledge
+    ReadKnowledgeKnowledgeIdVersionsVersionIdActivity:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: list
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: knowledge_activity
+    ReadResolve:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: detail
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: subject_detail
+    QualifiedCoverageBasis:
+      type: object
+      additionalProperties: false
+      required:
+      - evaluating_owner
+      - issuer_ref
+      - evaluation_profile_ref
+      - scope_ref
+      - evidence_refs
+      - source_fact_ref
+      - competence_status
+      properties:
+        evaluating_owner:
+          enum:
+          - AEV
+          - ADC
+          - HEB
+          - CNI
+          - WIS
+          - RESEARCH
+        issuer_ref:
+          type: string
+          minLength: 1
+        evaluation_profile_ref:
+          type: string
+          minLength: 1
+        scope_ref:
+          type: string
+          minLength: 1
+        evidence_refs:
+          type: array
+          items:
+            type: string
+          minItems: 1
+        source_fact_ref:
+          type: string
+          minLength: 1
+        competence_status:
+          const: source_qualified
+    JournalHistoryData:
+      type: object
+      additionalProperties: false
+      required:
+      - source_determination
+      - accepted_revision
+      - work
+      - source_kind
+      - finality
+      - disposition
+      - eligibility
+      - admission
+      - benefit
+      - basis_refs
+      - summary
+      - assessment_binding
+      properties:
+        source_determination:
+          $ref: '#/components/schemas/SubjectRef'
+        accepted_revision:
+          $ref: '#/components/schemas/SubjectRef'
+        work:
+          $ref: '#/components/schemas/SubjectRef'
+        source_kind:
+          const: aev_adverse_determination
+        finality:
+          const: finalized
+        disposition:
+          const: adverse
+        eligibility:
+          const: source_owner_qualified
+        admission:
+          const: not_applicable
+        benefit:
+          const: not_claimed
+        basis_refs:
+          $ref: '#/components/schemas/MemberView'
+        summary:
+          anyOf:
+          - $ref: '#/components/schemas/Attribution'
+          - type: 'null'
+        assessment_binding:
+          type: object
+          additionalProperties: false
+          required:
+          - source_determination
+          - work
+          - accepted_revision
+          - issuer_fact_ref
+          properties:
+            source_determination:
+              $ref: '#/components/schemas/SubjectRef'
+            work:
+              $ref: '#/components/schemas/SubjectRef'
+            accepted_revision:
+              $ref: '#/components/schemas/SubjectRef'
+            issuer_fact_ref:
+              type: string
+              minLength: 1
+          description: AEV-issued assessment work/scope/determination tuple, checked locally for exact consistency; actual issuance
+            and authenticity are W1/W4.
+    ImpactAssessment:
+      type: object
+      additionalProperties: false
+      required:
+      - accepted_revision
+      - assessed_universe_ref
+      - binding_coverage_ref
+      - known_affected
+      - qualified_unaffected
+      - impact_unknown
+      - source_owner
+      - qualification
+      - unaffected_subset_basis
+      - unaffected_scope_comparison
+      properties:
+        accepted_revision:
+          type: string
+          minLength: 1
+        assessed_universe_ref:
+          type: string
+          minLength: 1
+        binding_coverage_ref:
+          type: string
+          minLength: 1
+        known_affected:
+          $ref: '#/components/schemas/MemberView'
+        qualified_unaffected:
+          $ref: '#/components/schemas/MemberView'
+        impact_unknown:
+          $ref: '#/components/schemas/MemberView'
+        source_owner:
+          const: CNI
+        qualification:
+          enum:
+          - qualified_scoped
+          - not_established
+        unaffected_subset_basis:
+          anyOf:
+          - $ref: '#/components/schemas/SourceStamp'
+          - type: 'null'
+          description: CNI proof of exact disclosed unaffected subset; absence is not evidence of independence, especially when total
+            affected universe is unknown.
+        unaffected_scope_comparison:
+          anyOf:
+          - $ref: '#/components/schemas/CNIImpactScopeComparison'
+          - type: 'null'
+          description: Mandatory CNI-qualified comparison for nonempty positive unaffected subset, including exact owner-issued binding
+            coverage; null when no positive unaffected subset is asserted.
+      allOf:
+      - if:
+          properties:
+            qualified_unaffected:
+              properties:
+                refs:
+                  minItems: 1
+              required:
+              - refs
+          required:
+          - qualified_unaffected
+        then:
+          properties:
+            unaffected_subset_basis:
+              $ref: '#/components/schemas/SourceStamp'
+            unaffected_scope_comparison:
+              $ref: '#/components/schemas/CNIImpactScopeComparison'
+    AuthorityLineageBasis:
+      type: object
+      additionalProperties: false
+      required:
+      - root_grant_ref
+      - source_owner
+      - qualification
+      - continuation
+      - authorship_roots
+      properties:
+        root_grant_ref:
+          type: string
+          minLength: 1
+        source_owner:
+          enum:
+          - ADC
+          - HEB
+        qualification:
+          enum:
+          - qualified
+          - not_established
+        continuation:
+          enum:
+          - same_root_handover
+          - issuer_qualified_new_root
+          - unknown
+        authorship_roots:
+          $ref: '#/components/schemas/MemberView'
+    JournalSelection:
+      type: object
+      additionalProperties: false
+      required:
+      - selection_kind
+      - status
+      - owner_source
+      - scope_ref
+      properties:
+        selection_kind:
+          const: aev_finalized_adverse_determination
+        status:
+          enum:
+          - qualified_scoped
+          - not_established
+        owner_source:
+          anyOf:
+          - $ref: '#/components/schemas/SourceStamp'
+          - type: 'null'
+        scope_ref:
+          type: string
+          minLength: 1
+      allOf:
+      - if:
+          properties:
+            status:
+              const: qualified_scoped
+          required:
+          - status
+        then:
+          properties:
+            owner_source:
+              $ref: '#/components/schemas/SourceStamp'
+      - if:
+          properties:
+            status:
+              const: not_established
+          required:
+          - status
+        then:
+          properties:
+            owner_source:
+              type: 'null'
+      description: An independently scoped AEV-qualified JH-P01 eligible subset, not qualification of unrelated Knowledge records; absence
+        of this producer is NOT a certified empty set.
+    CNIImpactScopeComparison:
+      type: object
+      additionalProperties: false
+      description: Exact CNI-issued comparability claim for the current impact field source, positively unaffected subset and bounded
+        binding-coverage context. W0 checks internal consistency; W1 verifies the competent authentic source.
+      required:
+      - comparison_source
+      - outcome
+      - impact_fact_ref
+      - impact_source_epoch
+      - impact_source_version
+      - impact_coverage_ref
+      - subset_fact_ref
+      - subset_source_epoch
+      - subset_source_version
+      - subset_coverage_ref
+      - accepted_revision
+      - assessed_universe_ref
+      - binding_coverage_ref
+      properties:
+        comparison_source:
+          $ref: '#/components/schemas/SourceStamp'
+        outcome:
+          const: qualified_comparable
+        impact_fact_ref:
+          type: string
+          minLength: 1
+        impact_source_epoch:
+          type: string
+          minLength: 1
+        impact_source_version:
+          type: string
+          minLength: 1
+        impact_coverage_ref:
+          type: string
+          minLength: 1
+        subset_fact_ref:
+          type: string
+          minLength: 1
+        subset_source_epoch:
+          type: string
+          minLength: 1
+        subset_source_version:
+          type: string
+          minLength: 1
+        subset_coverage_ref:
+          type: string
+          minLength: 1
+        accepted_revision:
+          type: string
+          minLength: 1
+        assessed_universe_ref:
+          type: string
+          minLength: 1
+        binding_coverage_ref:
+          type: string
+          minLength: 1
+    CapabilityData:
+      type: object
+      additionalProperties: false
+      required:
+      - capability_id
+      - profile_definition_ref
+      - requested_profile_ref
+      - observed_profile_ref
+      - effective_profile_ref
+      - effective_state
+      - controller_qualification
+      - capability_role
+      - observed_status
+      - assessment_status
+      - assessment_issuer_ref
+      - assessment_evidence_refs
+      - assessment_scope_ref
+      - assessment_source_epoch
+      - limitation_classes
+      - history_audit
+      - authority_effect
+      - installation_ref
+      - binding_epoch
+      properties:
+        capability_id:
+          type: string
+          pattern: ^[A-Z][A-Z0-9_]{1,95}$
+        profile_definition_ref:
+          type:
+          - string
+          - 'null'
+        requested_profile_ref:
+          type:
+          - string
+          - 'null'
+        observed_profile_ref:
+          type:
+          - string
+          - 'null'
+        effective_profile_ref:
+          type:
+          - string
+          - 'null'
+        effective_state:
+          enum:
+          - REQUESTED
+          - CHECKING
+          - HELD
+          - APPLYING
+          - EFFECTIVE
+          - FAILED
+          - UNKNOWN_EFFECT
+          - SUPERSEDED
+          - NOT_ESTABLISHED
+        controller_qualification:
+          enum:
+          - QUALIFIED
+          - NOT_ESTABLISHED
+        capability_role:
+          enum:
+          - FUNCTIONAL_PREREQUISITE
+          - PROTECTED_EFFECT_GATE
+          - OPTIONAL
+          - UNSPECIFIED
+        observed_status:
+          enum:
+          - FUNCTIONAL_ONLY
+          - QUALIFIED
+          - NOT_ESTABLISHED
+          - UNAVAILABLE
+          - UNSUPPORTED
+          - STALE
+          - REFUSED
+        assessment_status:
+          enum:
+          - QUALIFIED
+          - FUNCTIONAL_ONLY
+          - NOT_ESTABLISHED
+          - UNAVAILABLE
+          - UNSUPPORTED
+          - STALE
+          - REFUSED
+        assessment_issuer_ref:
+          type:
+          - string
+          - 'null'
+        assessment_evidence_refs:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+        assessment_scope_ref:
+          type:
+          - string
+          - 'null'
+        assessment_source_epoch:
+          type:
+          - string
+          - 'null'
+        limitation_classes:
+          type: array
+          uniqueItems: true
+          items:
+            enum:
+            - host_isolation
+            - operator_origin
+            - effect_route
+            - disclosure
+            - resource_meter
+            - history_integrity
+            - source_unavailable
+            - profile_transition
+            - policy_pin_drift
+            - manifest_pin_drift
+        history_audit:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/HistoryAuditObservation'
+        authority_effect:
+          const: NOT_AN_EFFECT_GRANT
+        installation_ref:
+          type: string
+          minLength: 1
+          maxLength: 192
+        binding_epoch:
+          type: string
+          minLength: 1
+          maxLength: 192
+      description: Read-only IF-13/S-01 profile-capability projection; status strings are not self-qualifying; protected admission belongs
+        to governing sources.
+      allOf:
+      - if:
+          properties:
+            assessment_status:
+              const: QUALIFIED
+          required:
+          - assessment_status
+        then:
+          properties:
+            assessment_issuer_ref:
+              type: string
+              minLength: 1
+            assessment_scope_ref:
+              type: string
+              minLength: 1
+            assessment_source_epoch:
+              type: string
+              minLength: 1
+            assessment_evidence_refs:
+              minItems: 1
+    HistoryAuditObservation:
+      type: object
+      additionalProperties: false
+      required:
+      - audit_scope_ref
+      - audit_run_ref
+      - observation
+      - protection_claim
+      - auditor_basis_ref
+      - observed_at
+      - backlog_count
+      - over_policy_count
+      - limitations
+      - observation_producer_ref
+      - inspected_scope_ref
+      - inspected_population_ref
+      - inspection_period_start
+      - inspection_period_end
+      - inspection_epoch
+      - coverage_state
+      - excluded_scope_ref
+      - claim_scope
+      properties:
+        audit_scope_ref:
+          type: string
+        audit_run_ref:
+          type:
+          - string
+          - 'null'
+        observation:
+          enum:
+          - OBSERVED_NO_FINDINGS
+          - BACKLOG
+          - OVER_POLICY
+          - UNKNOWN
+          - UNAVAILABLE
+        protection_claim:
+          enum:
+          - TAMPER_DETECTION_ONLY
+          - NOT_ESTABLISHED
+          - QUALIFIED_PROTECTED_SCOPE
+        auditor_basis_ref:
+          type:
+          - string
+          - 'null'
+        observed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        backlog_count:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+        over_policy_count:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+        limitations:
+          type: array
+          items:
+            type: string
+        observation_producer_ref:
+          type:
+          - string
+          - 'null'
+        inspected_scope_ref:
+          type:
+          - string
+          - 'null'
+        inspected_population_ref:
+          type:
+          - string
+          - 'null'
+        inspection_period_start:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        inspection_period_end:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        inspection_epoch:
+          type:
+          - string
+          - 'null'
+        coverage_state:
+          enum:
+          - INSPECTED_SET_BOUNDED
+          - REQUESTED_SCOPE_QUALIFIED_COMPLETE
+          - PARTIAL_WITH_OMISSIONS
+          - NOT_ESTABLISHED
+        excluded_scope_ref:
+          type:
+          - string
+          - 'null'
+        claim_scope:
+          enum:
+          - INSPECTED_SET_ONLY
+          - REQUESTED_SCOPE_QUALIFIED_COMPLETE
+          - UNKNOWN
+      description: Auditor-origin bounded detection observation (not independent protection). No-findings always limited to attributable
+        inspected set/period, with omissions and requested-scope incompleteness explicit. Null counters are withheld/unknown. Issuer
+        qualification requires Layer B.
+      allOf:
+      - if:
+          properties:
+            observation:
+              enum:
+              - OBSERVED_NO_FINDINGS
+              - BACKLOG
+              - OVER_POLICY
+        then:
+          properties:
+            audit_run_ref:
+              type: string
+              minLength: 1
+            observation_producer_ref:
+              type: string
+              minLength: 1
+            inspected_scope_ref:
+              type: string
+              minLength: 1
+            inspected_population_ref:
+              type: string
+              minLength: 1
+            inspection_epoch:
+              type: string
+              minLength: 1
+            inspection_period_start:
+              type: string
+              format: date-time
+            inspection_period_end:
+              type: string
+              format: date-time
+            observed_at:
+              type: string
+              format: date-time
+          not:
+            properties:
+              coverage_state:
+                const: NOT_ESTABLISHED
+      - if:
+          properties:
+            observation:
+              const: OBSERVED_NO_FINDINGS
+        then:
+          properties:
+            claim_scope:
+              enum:
+              - INSPECTED_SET_ONLY
+              - REQUESTED_SCOPE_QUALIFIED_COMPLETE
+      - if:
+          properties:
+            protection_claim:
+              const: TAMPER_DETECTION_ONLY
+        then:
+          properties:
+            claim_scope:
+              enum:
+              - INSPECTED_SET_ONLY
+              - UNKNOWN
+      - if:
+          properties:
+            claim_scope:
+              const: REQUESTED_SCOPE_QUALIFIED_COMPLETE
+          required:
+          - claim_scope
+        then:
+          properties:
+            coverage_state:
+              const: REQUESTED_SCOPE_QUALIFIED_COMPLETE
+            excluded_scope_ref:
+              type: 'null'
+            auditor_basis_ref:
+              type: string
+              minLength: 1
+      - if:
+          properties:
+            coverage_state:
+              const: REQUESTED_SCOPE_QUALIFIED_COMPLETE
+          required:
+          - coverage_state
+        then:
+          properties:
+            claim_scope:
+              const: REQUESTED_SCOPE_QUALIFIED_COMPLETE
+            excluded_scope_ref:
+              type: 'null'
+            auditor_basis_ref:
+              type: string
+              minLength: 1
+      - if:
+          properties:
+            protection_claim:
+              const: QUALIFIED_PROTECTED_SCOPE
+          required:
+          - protection_claim
+        then:
+          properties:
+            auditor_basis_ref:
+              type: string
+              minLength: 1
+            claim_scope:
+              const: REQUESTED_SCOPE_QUALIFIED_COMPLETE
+    RunData:
+      type: object
+      additionalProperties: false
+      required:
+      - invocation_ref
+      - work_ref
+      - attachment_ref
+      - phase
+      - progress_basis_ref
+      - started_at
+      - last_progress_at
+      - elapsed_observed_seconds
+      - elapsed_basis_ref
+      - custody_state
+      - custody_basis_ref
+      - resource_state
+      - resource_basis_ref
+      - source_epoch
+      - limitations
+      - authority_effect
+      - phase_observation_class
+      - phase_basis_ref
+      - stall_assessment
+      - stall_basis_ref
+      - wake_assessment
+      - wake_basis_ref
+      - remote_effect_state
+      - remote_effect_basis_ref
+      - remote_effect_domain
+      - non_model_effect_state
+      - non_model_effect_basis_ref
+      - non_model_resource_exposure
+      - non_model_resource_basis_ref
+      - whole_invocation_effect_clearance
+      - whole_invocation_resource_clearance
+      properties:
+        invocation_ref:
+          $ref: '#/components/schemas/SubjectRef'
+        work_ref:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/SubjectRef'
+        attachment_ref:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/SubjectRef'
+        phase:
+          enum:
+          - OBSERVED_ACTIVE
+          - OBSERVED_IDLE
+          - OBSERVED_FINISHED
+          - REPORTED_ACTIVE
+          - REPORTED_IDLE
+          - REPORTED_FINISHED
+          - INFERRED_ACTIVE
+          - INFERRED_IDLE
+          - INFERRED_FINISHED
+          - UNKNOWN
+          - WITHHELD
+        progress_basis_ref:
+          type:
+          - string
+          - 'null'
+        started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_progress_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        elapsed_observed_seconds:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+        elapsed_basis_ref:
+          type:
+          - string
+          - 'null'
+        custody_state:
+          enum:
+          - HEB_HELD
+          - HEB_DRAINING
+          - HEB_ATTACHED
+          - HEB_CLOSED
+          - UNKNOWN
+          - WITHHELD
+        custody_basis_ref:
+          type:
+          - string
+          - 'null'
+        resource_state:
+          $ref: '#/components/schemas/RunResourceSummary'
+        resource_basis_ref:
+          type:
+          - string
+          - 'null'
+        source_epoch:
+          type:
+          - string
+          - 'null'
+        limitations:
+          type: array
+          items:
+            enum:
+            - cooperative_only
+            - source_unqualified
+            - historical_only
+            - unknown_remote_effect
+            - custody_withheld
+            - private_usage_withheld
+            - progress_suspected
+            - partial_observation
+        authority_effect:
+          const: READ_ONLY_NO_LIFECYCLE_EFFECT
+        phase_observation_class:
+          enum:
+          - HEB_OBSERVED
+          - AGENT_REPORTED
+          - MODEL_INFERRED
+          - UNKNOWN
+          - WITHHELD
+        phase_basis_ref:
+          type:
+          - string
+          - 'null'
+        stall_assessment:
+          enum:
+          - POSSIBLE_STALL
+          - NO_STALL_OBSERVED
+          - NOT_ESTABLISHED
+          - WITHHELD
+        stall_basis_ref:
+          type:
+          - string
+          - 'null'
+        wake_assessment:
+          enum:
+          - WAKE_OVERDUE
+          - NOT_OVERDUE_OBSERVED
+          - NOT_ESTABLISHED
+          - WITHHELD
+        wake_basis_ref:
+          type:
+          - string
+          - 'null'
+        remote_effect_state:
+          enum:
+          - UNKNOWN_EFFECT
+          - POSSIBLE_EFFECT
+          - NO_EFFECT_QUALIFIED
+          - SETTLED_OBSERVED
+          - NOT_ESTABLISHED
+          - WITHHELD
+          description: Only remote effect across IF12_MODEL_DELIVERY_ONLY model-delivery calls; whole-invocation clearance remains NOT_ESTABLISHED
+        remote_effect_basis_ref:
+          type:
+          - string
+          - 'null'
+        remote_effect_domain:
+          const: IF12_MODEL_DELIVERY_ONLY
+          description: Model-provider effects across all IF-12 original model-delivery operations of this invocation, NEVER all non-model
+            effects
+        non_model_effect_state:
+          enum:
+          - NOT_ESTABLISHED
+          - UNKNOWN_EFFECT
+          - POSSIBLE_EFFECT
+          - WITHHELD
+          description: Separately attributable HEB non-model external/tool effect uncertainty; no whole-domain clear state
+        non_model_effect_basis_ref:
+          type:
+          - string
+          - 'null'
+        non_model_resource_exposure:
+          enum:
+          - UNKNOWN
+          - POSSIBLE_CHARGE
+          - UNSETTLED
+          - WITHHELD
+          description: Separately attributable R-01 resource/tool exposure outside the model-delivery accounting domain
+        non_model_resource_basis_ref:
+          type:
+          - string
+          - 'null'
+        whole_invocation_effect_clearance:
+          const: NOT_ESTABLISHED
+          description: No selected all-effects issuer/universe; model-only qualification NEVER upgrades this
+        whole_invocation_resource_clearance:
+          const: NOT_ESTABLISHED
+          description: No selected all-resource accounting universe; model-only charge closure NEVER upgrades this
+      description: Distinct phase with typed provenance, stall and wake suspicion, possible external effect, HEB custody, R-01/IF-10
+        resource facts; simultaneous conditions are permitted. Schema strings never qualify an issuer or actor. No lifecycle effect.
+      allOf:
+      - if:
+          properties:
+            phase:
+              enum:
+              - OBSERVED_ACTIVE
+              - OBSERVED_IDLE
+              - OBSERVED_FINISHED
+        then:
+          properties:
+            phase_observation_class:
+              const: HEB_OBSERVED
+      - if:
+          properties:
+            phase:
+              enum:
+              - REPORTED_ACTIVE
+              - REPORTED_IDLE
+              - REPORTED_FINISHED
+        then:
+          properties:
+            phase_observation_class:
+              const: AGENT_REPORTED
+      - if:
+          properties:
+            phase:
+              enum:
+              - INFERRED_ACTIVE
+              - INFERRED_IDLE
+              - INFERRED_FINISHED
+        then:
+          properties:
+            phase_observation_class:
+              const: MODEL_INFERRED
+      - if:
+          properties:
+            phase:
+              const: UNKNOWN
+        then:
+          properties:
+            phase_observation_class:
+              const: UNKNOWN
+      - if:
+          properties:
+            phase:
+              const: WITHHELD
+        then:
+          properties:
+            phase_observation_class:
+              const: WITHHELD
+      - if:
+          properties:
+            phase_observation_class:
+              const: HEB_OBSERVED
+          required:
+          - phase_observation_class
+        then:
+          properties:
+            phase_basis_ref:
+              type: string
+              minLength: 1
+      - if:
+          properties:
+            stall_assessment:
+              enum:
+              - POSSIBLE_STALL
+              - NO_STALL_OBSERVED
+          required:
+          - stall_assessment
+        then:
+          properties:
+            stall_basis_ref:
+              type: string
+              minLength: 1
+      - if:
+          properties:
+            wake_assessment:
+              enum:
+              - WAKE_OVERDUE
+              - NOT_OVERDUE_OBSERVED
+          required:
+          - wake_assessment
+        then:
+          properties:
+            wake_basis_ref:
+              type: string
+              minLength: 1
+      - if:
+          properties:
+            remote_effect_state:
+              enum:
+              - UNKNOWN_EFFECT
+              - POSSIBLE_EFFECT
+              - NO_EFFECT_QUALIFIED
+              - SETTLED_OBSERVED
+          required:
+          - remote_effect_state
+        then:
+          properties:
+            remote_effect_basis_ref:
+              type: string
+              minLength: 1
+      - if:
+          properties:
+            elapsed_observed_seconds:
+              type: integer
+          required:
+          - elapsed_observed_seconds
+        then:
+          properties:
+            elapsed_basis_ref:
+              type: string
+              minLength: 1
+      - if:
+          properties:
+            custody_state:
+              enum:
+              - HEB_HELD
+              - HEB_DRAINING
+              - HEB_ATTACHED
+              - HEB_CLOSED
+          required:
+          - custody_state
+        then:
+          properties:
+            custody_basis_ref:
+              type: string
+              minLength: 1
+    RunResourceSummary:
+      type: object
+      additionalProperties: false
+      required:
+      - accounting_class
+      - monetary_amount
+      - currency
+      - usage_units
+      - observation_class
+      - outstanding_exposure
+      - original_operation_ref
+      - accounting_domain
+      properties:
+        accounting_class:
+          enum:
+          - COOPERATIVE
+          - HARD_QUALIFIED
+          - NOT_APPLICABLE
+          - UNKNOWN
+          - WITHHELD
+        monetary_amount:
+          type:
+          - string
+          - 'null'
+          pattern: ^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$
+        currency:
+          type:
+          - string
+          - 'null'
+          pattern: ^[A-Z]{3}$
+        usage_units:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+        observation_class:
+          enum:
+          - SOURCE_QUALIFIED
+          - PROVIDER_OBSERVED
+          - GATEWAY_COOPERATIVE
+          - UNKNOWN
+          - WITHHELD
+        outstanding_exposure:
+          enum:
+          - NONE_QUALIFIED
+          - POSSIBLE_CHARGE
+          - UNSETTLED
+          - UNKNOWN
+          - WITHHELD
+          description: Only outstanding exposure in IF10_MODEL_DELIVERY_ONLY model-delivery accounting domain, never whole-run expenses
+        original_operation_ref:
+          type:
+          - string
+          - 'null'
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:\-]{0,191}$
+          description: Operation attributed usage, or null only when independent complete zero-operation run closure qualifies NONE_QUALIFIED.
+        accounting_domain:
+          const: IF10_MODEL_DELIVERY_ONLY
+          description: IF-10 accounting for model-delivery operations; not all other run resources or expenses
+      description: Amounts may be omitted for confidentiality; null never means zero. Owner currentness and private parent scope still
+        assessed independently.
+      allOf:
+      - if:
+          properties:
+            accounting_class:
+              const: HARD_QUALIFIED
+          required:
+          - accounting_class
+        then:
+          properties:
+            observation_class:
+              const: SOURCE_QUALIFIED
+      - if:
+          properties:
+            accounting_class:
+              const: HARD_QUALIFIED
+            outstanding_exposure:
+              not:
+                const: NONE_QUALIFIED
+          required:
+          - accounting_class
+          - outstanding_exposure
+        then:
+          properties:
+            original_operation_ref:
+              type: string
+              minLength: 1
+    ReadCapabilities:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: list
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: capability
+              required:
+              - resource_type
+      - if:
+          properties:
+            page:
+              type: object
+              properties:
+                membership:
+                  const: qualified_scoped
+              required:
+              - membership
+          required:
+          - page
+        then:
+          properties:
+            collection_basis:
+              $ref: '#/components/schemas/SourceStamp'
+              properties:
+                qualification:
+                  const: qualified
+                observation_state:
+                  const: present_current
+                owner_coverage_class:
+                  const: qualified_source_basis
+                authority_class:
+                  enum:
+                  - qualified_observation
+                  - governing_determination
+            page:
+              type: object
+          required:
+          - collection_basis
+    ReadRuns:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: list
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: run
+              required:
+              - resource_type
+      - if:
+          properties:
+            page:
+              type: object
+              properties:
+                membership:
+                  const: qualified_scoped
+              required:
+              - membership
+          required:
+          - page
+        then:
+          properties:
+            collection_basis:
+              $ref: '#/components/schemas/SourceStamp'
+              properties:
+                qualification:
+                  const: qualified
+                observation_state:
+                  const: present_current
+                owner_coverage_class:
+                  const: qualified_source_basis
+                authority_class:
+                  enum:
+                  - qualified_observation
+                  - governing_determination
+            page:
+              type: object
+          required:
+          - collection_basis
+    ReadRunDetail:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: detail
+          items:
+            items:
+              properties:
+                resource_type:
+                  const: run
+              required:
+              - resource_type
+    ReadContinuationVector:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: detail
+          items:
+            minItems: 1
+            maxItems: 1
+            items:
+              allOf:
+              - $ref: '#/components/schemas/Resource'
+              - properties:
+                  resource_type:
+                    const: continuation_vector
+                  ref:
+                    properties:
+                      kind:
+                        const: continuation_state
+                  data:
+                    $ref: '#/components/schemas/FR_ContinuationVector'
+                required:
+                - resource_type
+                - ref
+                - data
+        required:
+        - mode
+        - items
+      description: Inherited D-01 source-stamped ReadResult; semantic oracle requires external owner witnesses and recipient binding.
+    ReadOwnerOperations:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: list
+          items:
+            minItems: 0
+            maxItems: 100
+            items:
+              allOf:
+              - $ref: '#/components/schemas/Resource'
+              - properties:
+                  resource_type:
+                    const: owner_operation_index
+                  ref:
+                    properties:
+                      kind:
+                        const: owner_operation_index
+                  data:
+                    $ref: '#/components/schemas/FR_OperationIndexEntry'
+                required:
+                - resource_type
+                - ref
+                - data
+        required:
+        - mode
+        - items
+      - if:
+          properties:
+            page:
+              type: object
+              properties:
+                membership:
+                  const: qualified_scoped
+              required:
+              - membership
+          required:
+          - page
+        then:
+          properties:
+            collection_basis:
+              $ref: '#/components/schemas/SourceStamp'
+              properties:
+                qualification:
+                  const: qualified
+                observation_state:
+                  const: present_current
+          required:
+          - collection_basis
+      description: One operation per Resource. Only the outer page and collection_basis assert pagination and qualified recipient-scoped
+        membership. Entries never assert independent closure.
+    ReadHoldRecovery:
+      allOf:
+      - $ref: '#/components/schemas/ReadResult'
+      - type: object
+        properties:
+          mode:
+            const: detail
+          items:
+            minItems: 1
+            maxItems: 1
+            items:
+              allOf:
+              - $ref: '#/components/schemas/Resource'
+              - properties:
+                  resource_type:
+                    const: hold_recovery
+                  ref:
+                    properties:
+                      kind:
+                        const: hold_recovery
+                  data:
+                    $ref: '#/components/schemas/FR_HoldRecoveryProjection'
+                required:
+                - resource_type
+                - ref
+                - data
+        required:
+        - mode
+        - items
+      description: Inherited D-01 source-stamped ReadResult; semantic oracle requires external owner witnesses and recipient binding.
+    FR_ContinuationVector:
+      additionalProperties: false
+      properties:
+        axes:
+          additionalProperties: false
+          properties:
+            ADC:
+              $ref: '#/components/schemas/FR_OwnerAxis'
+            AEV:
+              $ref: '#/components/schemas/FR_OwnerAxis'
+            HEB:
+              $ref: '#/components/schemas/FR_OwnerAxis'
+            IF10:
+              $ref: '#/components/schemas/FR_OwnerAxis'
+            R01:
+              $ref: '#/components/schemas/FR_OwnerAxis'
+            WIS:
+              $ref: '#/components/schemas/FR_OwnerAxis'
+          required:
+          - HEB
+          - ADC
+          - WIS
+          - AEV
+          - R01
+          - IF10
+          type: object
+        binding_ref:
+          type: string
+        generation_ref:
+          type: string
+        informational_only:
+          const: true
+        operation:
+          const: CONTINUE_ELIGIBLE_WORK
+        work_ref:
+          type: string
+        work_revision:
+          type: string
+      required:
+      - binding_ref
+      - work_ref
+      - work_revision
+      - generation_ref
+      - operation
+      - axes
+      - informational_only
+      type: object
+    FR_HoldRecoveryProjection:
+      additionalProperties: false
+      allOf:
+      - if:
+          properties:
+            options_completeness:
+              const: qualified_scoped
+          required:
+          - options_completeness
+        then:
+          properties:
+            hold_state:
+              const: held
+            options_source_basis:
+              type: object
+      - if:
+          properties:
+            options_source_basis:
+              type: 'null'
+          required:
+          - options_source_basis
+        then:
+          properties:
+            options:
+              maxItems: 0
+      properties:
+        hold_ref:
+          type: string
+        hold_state:
+          enum:
+          - held
+          - not_established
+        options:
+          items:
+            additionalProperties: false
+            properties:
+              basis_ref:
+                type: string
+              executable_authority:
+                const: false
+              issuer_owner:
+                const: AEV
+              kind:
+                enum:
+                - request_remediation
+                - request_review
+                - wait_for_external_event
+              label:
+                type: string
+              option_ref:
+                type: string
+              source_epoch:
+                type: string
+              valid_until:
+                format: date-time
+                type: string
+            required:
+            - option_ref
+            - label
+            - issuer_owner
+            - basis_ref
+            - source_epoch
+            - valid_until
+            - kind
+            - executable_authority
+            type: object
+          type: array
+        options_completeness:
+          enum:
+          - qualified_scoped
+          - partial
+          - unknown
+        options_source_basis:
+          additionalProperties: false
+          properties:
+            aev_issuer_ref:
+              type: string
+            hold_version:
+              type: string
+            owner_epoch:
+              type: string
+            recipient_ref:
+              type: string
+            valid_until:
+              format: date-time
+              type: string
+          required:
+          - aev_issuer_ref
+          - hold_version
+          - recipient_ref
+          - valid_until
+          - owner_epoch
+          type:
+          - object
+          - 'null'
+      required:
+      - hold_ref
+      - hold_state
+      - options
+      - options_completeness
+      - options_source_basis
+      type: object
+    FR_OperationIndexEntry:
+      additionalProperties: false
+      properties:
+        action:
+          enum:
+          - CLOSE_ATTACHMENT
+          - SUSPEND_GRANT
+          - LIFT_OPERATOR_SUSPENSION
+          - ISSUE_STANDING_POLICY
+          - REQUEST_PROFILE_CHANGE
+          - DELEGATED_CANCEL
+          - CONTINUE_ELIGIBLE_WORK
+          - ATTACH_LEAD
+          - REATTACH_LEAD
+          - REAFFIRM_ELIGIBLE_CHILD_GRANTS
+          type: string
+        attachment_generation:
+          type:
+          - string
+          - 'null'
+        detail_path:
+          pattern: ^/o01/v0/owner-operations/(HEB|ADC|IF13|RESOURCE_POLICY_ISSUER)/[A-Za-z][A-Za-z0-9:._-]{2,127}$
+          type: string
+        issued_at:
+          format: date-time
+          type: string
+        operation_ref:
+          pattern: ^[A-Za-z][A-Za-z0-9:._-]{2,127}$
+          type: string
+        owner:
+          enum:
+          - HEB
+          - ADC
+          - IF13
+          - RESOURCE_POLICY_ISSUER
+        owner_epoch:
+          type: string
+        source_version:
+          type: string
+        subject_ref:
+          type: string
+      required:
+      - owner
+      - operation_ref
+      - action
+      - subject_ref
+      - attachment_generation
+      - issued_at
+      - owner_epoch
+      - source_version
+      - detail_path
+      type: object
+    FR_OwnerAxis:
+      additionalProperties: false
+      allOf:
+      - if:
+          properties:
+            state:
+              enum:
+              - ok
+              - blocked
+          required:
+          - state
+        then:
+          properties:
+            basis_ref:
+              type: string
+            observed_at:
+              type: string
+            owner_epoch:
+              type: string
+            qualification:
+              const: qualified
+            source_version:
+              type: string
+            valid_until:
+              type: string
+              format: date-time
+      properties:
+        basis_ref:
+          type:
+          - string
+          - 'null'
+        observed_at:
+          format: date-time
+          type:
+          - string
+          - 'null'
+        owner_epoch:
+          type:
+          - string
+          - 'null'
+        qualification:
+          enum:
+          - qualified
+          - unqualified
+          - not_established
+        reason_code:
+          type:
+          - string
+          - 'null'
+        source_version:
+          type:
+          - string
+          - 'null'
+        state:
+          enum:
+          - ok
+          - blocked
+          - unknown
+        valid_until:
+          format: date-time
+          type:
+          - string
+          - 'null'
+      required:
+      - state
+      - owner_epoch
+      - source_version
+      - basis_ref
+      - observed_at
+      - valid_until
+      - qualification
+      - reason_code
+      type: object
+x-aew-design-stage:
+  status: PROPOSED_NOT_ADOPTED_OR_W1_W5_QUALIFIED
+  predecessor_sha256: 9d27ae2585a1f56e09901491b26fee77227eaa810f8a900ab4981679d300cc0f

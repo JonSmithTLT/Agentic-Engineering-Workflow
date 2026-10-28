@@ -44,6 +44,7 @@ NOT_DISPATCHING = {
     "settings show",  # the configuration read projection (F46.1): a lock-free read, no transaction
     "capability add", "capability check", "capability host-copies", "capability import", "capability list",
     "capability remove",  # the host's capability register (STG-15, CAP-1): outside the control engine
+    "g3 request",  # the operator's G3 approval, then one O-01 submission over HTTP (STG-03, G3-D): no engine dispatch
     "submit", "verify classify", "verify ingest", "whoami", "work accept", "work acknowledge-input", "work cancel",
     "work close", "work create", "work depend", "work list", "work move", "work promote", "work ready",
     "work reclassify", "work reconcile", "work roles", "work show", "work staff", "work transition", "work tree",

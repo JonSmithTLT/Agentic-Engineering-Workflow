@@ -21,7 +21,13 @@ from typing import Any, Callable, Dict, List, Optional
 import gi  # pyright: ignore[reportMissingImports] - the host's python3-gobject, absent from CI
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gio, GLib, Gtk  # noqa: E402  # pyright: ignore[reportMissingImports] - after require_version
+gi.require_version("Gdk", "3.0")
+from gi.repository import (  # noqa: E402  # pyright: ignore[reportMissingImports] - after require_version
+    Gdk,
+    Gio,
+    GLib,
+    Gtk,
+)
 
 from . import core  # noqa: E402 - after GTK's version is pinned, as PyGObject requires
 
@@ -262,6 +268,12 @@ def main(argv: List[str]) -> int:
     at_login = argv == [core.AT_LOGIN]
     if at_login and not core.may_use():
         return 0  # another account's login: the socket is the operator's (addendum 4)
+    # GDK's own answer, never the environment's: with no WAYLAND_DISPLAY, libwayland still finds the session's
+    # wayland-0, even from an ssh login, so a launch there opens on the desktop.
+    refusal = core.display_refusal(at_login, Gdk.Display.get_default() is not None)
+    if refusal is not None:
+        sys.stderr.write(refusal + "\n")
+        return core.NO_DISPLAY_EXIT
     GLib.set_application_name(TITLE)
     app = App(at_login)
     try:
@@ -272,4 +284,8 @@ def main(argv: List[str]) -> int:
         raise
     if at_login and app.app.get_is_remote():
         return 0  # one instance per session: a second login start never activates, so never opens, the first
+    line = core.launch_line(at_login, app.app.get_is_remote(), sys.stdout.isatty())
+    if line is not None:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
     return app.run()

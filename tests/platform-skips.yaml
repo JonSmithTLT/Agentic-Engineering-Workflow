@@ -730,6 +730,42 @@ skipped:
       the G3 confirmer's client talks to the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
       service never runs on Windows. Covered on Linux; the confirmer's core runs on both platforms in
       tests/unit/test_g3_confirm.py.
+    tests/integration/test_g3client_process.py::test_an_approved_set_is_submitted_unchanged_with_its_consent_and_not_admitted_for_want_of_g3: >-
+      the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
+      (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
+      submission run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_decline_an_expiry_or_a_restart_submits_nothing_and_says_which[DECLINE]: >-
+      the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
+      (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
+      submission run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_decline_an_expiry_or_a_restart_submits_nothing_and_says_which[EXPIRE]: >-
+      the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
+      (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
+      submission run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_decline_an_expiry_or_a_restart_submits_nothing_and_says_which[RESTART]: >-
+      the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
+      (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
+      submission run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_set_the_service_refuses_is_reported_and_nothing_is_submitted: >-
+      the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
+      (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
+      submission run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_another_accounts_socket_is_not_permitted_and_nothing_is_submitted: >-
+      the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
+      (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
+      submission run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_an_answer_without_the_g3_wire_is_unavailable_never_a_pending_approval: >-
+      the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
+      (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
+      submission run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_stalled_service_ends_the_wait_by_the_approvals_expiry_not_a_request_timeout_later: >-
+      the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
+      (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
+      submission run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_no_g3_service_is_unavailable_and_says_where_to_look: >-
+      the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
+      (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
+      submission run on both platforms in tests/unit/test_g3client.py.
   linux:
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.

@@ -221,7 +221,7 @@ A chain of resolved calls from the function where an entry point declares itself
 
 A `with` statement's implicit `__enter__` and `__exit__` calls are not followed either, so what a context manager writes is attributed only to the roles that call it by name: the dashboard server takes its own lock file by `with self._lock():` (`aew.dashboard.service:Service.start`), and `local/dashboard/endpoint.lock` and `local/dashboard/endpoint.lock.queue` are listed under `aew` alone. The counts of writer functions reached below are lower bounds.
 
-The parser cut: 111 registrations of a command handler; handlers by role (`aew`: 109, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
+The parser cut: 112 registrations of a command handler; handlers by role (`aew`: 110, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
 Writer functions with a store-transaction or direct write placed under `.aew`: 83; reached from at least one entry point: 57.
 

@@ -129,12 +129,12 @@ def test_the_check_refuses_in_a_lead_sessions_environment_naming_it():
 def test_the_capability_commands_kept_out_of_a_lead_session_are_exactly_lead_kept_out(reg, tmp_path, monkeypatch,
                                                                                     capsys):
     """#281's review, N1: every `capability` leaf outside OPERATOR_REGISTER is run with a Lead session's environment;
-    those its own handler refuses as a Lead session's are exactly capability_commands.LEAD_KEPT_OUT, each in the one
-    owner's text. So a register command added later with that refusal, but not in the set, fails here, and is never
-    told "run this one directly" by the broker."""
+    those its own handler refuses as a Lead session's are exactly the `capability` paths on custody_ops.LEAD_KEPT_OUT,
+    each in the one owner's text. So a register command added later with that refusal, but not in the set, fails
+    here, and is never told "run this one directly" by the broker."""
     from worker_surface import leaf_commands
 
-    from aew.cli import capability_commands
+    from aew.engine import custody_ops
 
     for name in LEAD_SESSION_VARS:
         monkeypatch.setenv(name, "x")
@@ -148,7 +148,7 @@ def test_the_capability_commands_kept_out_of_a_lead_session_are_exactly_lead_kep
         if err and (err["error"].get("details") or {}).get("reason") == LEAD_SESSION:
             assert err["error"]["message"].startswith(lead_session_refusal(leaf[-1])), err
             kept.add(frozenset(leaf))
-    assert kept == set(capability_commands.LEAD_KEPT_OUT)
+    assert kept == {frozenset(w) for w in custody_ops.LEAD_KEPT_OUT if w[0] == "capability"}
 
 
 # ---------------------------------------------------------------------------------------------- the commands

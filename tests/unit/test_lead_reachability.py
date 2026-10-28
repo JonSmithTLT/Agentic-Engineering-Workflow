@@ -334,3 +334,31 @@ def test_no_message_in_aew_hands_an_operator_decision_to_whoever_reads_it():
                 if f"aew {command}" in text and "operator" not in text and text not in BARE_COMMAND_FIELDS:
                     stale.append(f"{path.name}:{line}: {text[:100]}")
     assert not stale, stale
+
+
+def test_every_forbidden_to_lead_command_is_refused_on_both_lead_channels_in_its_own_text():
+    """#286 review F1: every surface-map command whose lead_disposition is forbidden-to-lead, run by its
+    keep_out_probe through `run_cli` on each of a Lead session's channels (the relay of `lead.cli` and the typed
+    surface's `cli` escape), is refused as a Lead session's, in the one owner's text (custody_ops.LEAD_KEPT_OUT),
+    which names the way to ask; never "run this one directly". The rows and LEAD_KEPT_OUT are the same commands, so a
+    row added without its text, or a text without its row, fails here. Limits: only refusals made before the engine
+    is reached; the direct path's refusal is test_surface_map's check_keep_out."""
+    from pathlib import Path
+
+    from aew.engine import custody_ops
+    from aew.util import load_yaml
+
+    reg = load_yaml((Path(__file__).resolve().parents[2] / "docs" / "implementation" / "surface-map.yaml")
+                    .read_text(encoding="utf-8"))
+    rows = [e for e in reg["commands"] if e.get("lead_disposition") == "forbidden-to-lead"]
+    assert {e["name"] for e in rows} >= {"capability check", "g3 request"}  # control: the rows are found
+    for e in rows:
+        argv = [str(a) for a in e["keep_out_probe"]]
+        text = custody_ops.kept_out_refusal(frozenset(e["name"].split()))
+        assert text and "ask the operator to run" in text, e["name"]
+        for channel in lead_broker.INGRESS_CHANNEL.values():
+            with pytest.raises(errors.PermissionDenied) as exc:
+                lead_broker.run_cli(object(), "token", argv, ".", "", channel=channel)
+            assert exc.value.message == text and exc.value.details["reason"] == custody_ops.LEAD_SESSION, (
+                e["name"], channel, exc.value.message)
+    assert {frozenset(e["name"].split()) for e in rows} == {frozenset(w) for w in custody_ops.LEAD_KEPT_OUT}

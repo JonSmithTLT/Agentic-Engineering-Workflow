@@ -221,6 +221,10 @@ The first vertical slice against the architecture workspace's adopted STG-01 v0.
 | [Initial joint-wrapper review](stg02/reviews/review-joint-wrapper-041595cf.md) | Original test-wrapper findings |
 | [Corrected joint-wrapper review](stg02/reviews/review-joint-wrapper-f8dd097c.md) | Exact-commit wrapper recheck and limits |
 
+## The adopted contract text ([`contracts/`](contracts/README.md))
+
+The design text the operator has adopted for AEW, published under the operator's decision of 2026-10-25 (D-A): sanitised, generated copies from the private design record. Each markdown or YAML copy has a header naming its position and source, and each JSON copy has the same fields in `MANIFEST.json`. Nobody edits them by hand; they are regenerated whenever the adopted text changes, and `tests/unit/test_contracts_published.py` checks every copy against `MANIFEST.json`. [`contracts/README.md`](contracts/README.md) lists the positions and their files.
+
 ## The generated as-built reference ([`reference/`](reference/README.md))
 
 What the code is, enumerated from the code by `python tools/reference.py render` and kept true by `python tools/reference.py check`, which `tests/unit/test_reference.py` runs in CI. It states what the code is, never what it should be. These files are generated: change the code, then render (a pull request that changes enumerated code commits the re-render). One row per file, in file order.
@@ -379,7 +383,8 @@ Candidate agent skills, their specification and evaluation: [`skills/README.md`]
   decisions-due items added at one place, two new capabilities side by side. For the register, `resolve` settles them.
 - When a milestone finishes, its plan, reports and review responses move to `archive/`. An independent review's record
   moves to `archive/reviews/` and its probes to `eval/reviews/` when the review is delivered.
-- `tests/unit/test_docs_links.py` fails if a relative link breaks or a document under `docs/` (except `skills/`) is
-  missing from this page.
+- `tests/unit/test_docs_links.py` fails if a relative link breaks or a document under `docs/` is missing from this
+  page, except under `skills/`, the register's `notes.d/` and `contracts/`, each reached through its own README on this
+  page.
 - Before committing docs work, run `pytest tests/unit/test_docs_links.py tests/unit/test_requirements_ledger.py
   tests/unit/test_spec_amendments.py tests/unit/test_register.py tests/unit/test_docs_merge.py tests/test_spec_pin.py`.

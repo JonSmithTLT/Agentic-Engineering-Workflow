@@ -15,6 +15,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from aew.knowledge import discovery
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -1138,6 +1140,17 @@ NONLITERAL_ALLOWED: dict[str, frozenset[str]] = {
     # DEBRIEF_ROOT is a directory under the system temp directory, not the repository
     "eval/m3/dogfood/dogfood.py": frozenset({"DEBRIEF_ROOT / name / 'lead-1'"}),
 }
+# Paths a module names in another project, by file. Discovery's RULES are relative to the project `aew init` runs on,
+# never this repository: in discovery itself, and in the integration test that runs `aew init` on a fixture project
+# laid out by them. They were left to the guard while none existed here, until D-A's docs/contracts/ (PR #288) took
+# one of their names. They come from discovery's own table; any other file that names one still reads this repository.
+# All of them are dropped from these two files, so a read of this repository under any of these names from either file
+# would be dropped too; none exists.
+_CONVENTIONS = frozenset(rel for rel, *_ in discovery.RULES)
+NOT_OURS: dict[str, frozenset[str]] = {
+    "src/aew/knowledge/discovery.py": _CONVENTIONS,
+    "tests/integration/test_resume.py": _CONVENTIONS,
+}
 
 
 def non_core_sources() -> list[Path]:
@@ -1159,6 +1172,7 @@ def reduced_readers(sources: list[Path]) -> tuple[set[str], list[str]]:
         try:
             label = f.relative_to(ROOT).as_posix()
             refs = path_references(f.read_text(encoding="utf-8"), NONLITERAL_ALLOWED.get(label, frozenset()))
+            refs = [r for r in refs if r[0] not in NOT_OURS.get(label, frozenset())]
         except SyntaxError as exc:
             problems.append(f"{f.relative_to(ROOT).as_posix()}: cannot be parsed ({exc})")
             continue
@@ -1174,8 +1188,9 @@ def test_every_repository_file_read_outside_the_core_lanes_is_full_tier():
     input to more than the core lanes, whatever it looks like: changing it must run the full gate (review of PR #99,
     finding 4). Hardened in plan v7 §3.3 (V3-4): a literal with a ``/``, a path expression of two or more parts or
     rooted at the repository, and a glob name a file or a whole directory and cover everything below it, root-level
-    Markdown included. Paths that do not exist here (discovery's conventions for other projects, fixture projects) are
-    not ours. The fast lane's own readers (tests/unit, the spec pin) run in every tier and are left out; what reaches
+    Markdown included. Paths in other projects are not ours: a fixture project's mostly do not exist here, and
+    discovery's conventions, which one fixture project is laid out by, are listed by file from discovery's own table
+    (NOT_OURS). The fast lane's own readers (tests/unit, the spec pin) run in every tier and are left out; what reaches
     into the fast lane's test modules is the other guard's (test_nothing_outside_the_unit_lane_reaches_a_unit_module),
     and tests/durations.json, a fast-tier input, is read only by the shard partitioner, which decides balance, never
     outcomes."""
@@ -1187,17 +1202,28 @@ def test_every_repository_file_read_outside_the_core_lanes_is_full_tier():
 def test_the_hardened_docs_guard_names_the_two_cases_that_tripped_its_first_wording():
     """Plan v7 §3.3: the dogfood regression names eval/m3/dogfood, under which four Markdown files were `docs`; they
     are `full` now that eval/ is a code root. Discovery's bare "docs" (a convention for target projects) is not a
-    directory reference."""
+    directory reference, and its other conventions are not ours (NOT_OURS)."""
     dogfood = ROOT / "tests" / "regression" / "test_m3_dogfood_findings.py"
     reads = covered(path_references(dogfood.read_text(encoding="utf-8")), dogfood, _tracked())
     markdown = {"eval/m3/dogfood/README.md", "eval/m3/dogfood/rubric.md", "eval/m3/dogfood/fixture/base/README.md",
                 "eval/m3/dogfood/fixture/reference/T2/README.md"}
     assert markdown <= reads
     assert {tier.classify_path(p) for p in markdown} == {"full"}
-    discovery = ROOT / "src" / "aew" / "knowledge" / "discovery.py"
-    refs = path_references(discovery.read_text(encoding="utf-8"))
+    source = ROOT / "src" / "aew" / "knowledge" / "discovery.py"
+    refs = path_references(source.read_text(encoding="utf-8"))
     assert "docs" not in {text for text, _, _ in refs}
-    assert not any(p.startswith("docs/") for p in covered(refs, discovery, _tracked()))
+    ours = [r for r in refs if r[0] not in NOT_OURS["src/aew/knowledge/discovery.py"]]
+    assert not any(p.startswith("docs/") for p in covered(ours, source, _tracked()))
+
+
+def test_discoverys_conventions_are_not_ours_only_where_listed():
+    """NOT_OURS drops discovery's RULES only from the files it lists (PR #288): the same path named in any other
+    source is still a read of this repository's docs/contracts/, which a reduced tier may change."""
+    named, problems = reduced_readers([ROOT / p for p in NOT_OURS])
+    assert problems == [] and not any(p.startswith("docs/contracts/") for p in named)
+    here = ROOT / "tests" / "integration" / "test_sample.py"
+    reads = covered(path_references('P = "docs/contracts"\n'), here, _tracked())
+    assert "docs/contracts/README.md" in reads and tier.classify_path("docs/contracts/README.md") != "full"
 
 
 @pytest.mark.parametrize(("source", "reads"), [

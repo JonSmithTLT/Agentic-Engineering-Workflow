@@ -54,7 +54,7 @@ from typing import Any
 
 from aew import errors
 from aew.engine import dispatch, faults
-from aew.engine.authority import require_lead
+from aew.engine.authority import require_held_lead, require_lead
 from aew.harness import agentenv, bridge, broker_liveness, steering_loop, tool_calls
 from aew.util import read_text_input
 
@@ -295,10 +295,12 @@ class LeadBroker:
     def _authority_lost(self) -> str | None:
         """Why the held credential is no longer the current Lead's, or ``None`` while it is. Only lost authority
         counts: a pending handoff (or any other refusal) is the engine's to report per request, and the Lead may still
-        cancel the handoff."""
+        cancel the handoff. Judged from the hot state alone (``require_held_lead``), never the archive: every
+        watchdog iteration runs this, and its bound (``broker_liveness.wedge_threshold_s``) counts the control lock's
+        wait and no other."""
         token = self._token  # taken before the (possibly slow) read: close() may clear it meanwhile (M3-D11)
         try:
-            self._require_lead(self.engine.store.current(), token)
+            require_held_lead(self.engine.store.current(), token)
         except errors.StaleAuthority as exc:
             return exc.message
         except errors.AEWError:
@@ -484,15 +486,14 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     refusal = refuses_locally(ns)
     if refusal:
         raise errors.PermissionDenied(refusal)
-    from aew.cli import capability_commands
-    from aew.engine.custody_ops import LEAD_SESSION
+    from aew.engine.custody_ops import LEAD_SESSION, kept_out_refusal
 
-    # On the broker's own channels (a Lead session), a command kept out of one says so, not "run this one directly"
-    # (QC3); the operator's out-of-session `cli` escape keeps that text, which is true there (#281 review, F2). Both
-    # are refusals: the channel chooses the wording, never the legality.
-    if channel in INGRESS_CHANNEL.values() and command_path(ns) in capability_commands.LEAD_KEPT_OUT:
-        raise errors.PermissionDenied(capability_commands.lead_session_refusal(command_name(ns).split()[-1]),
-                                      reason=LEAD_SESSION)
+    # On the broker's own channels (a Lead session), a command kept out of one says so in its own text, not "run this
+    # one directly" (QC3; #286 review F1); the operator's out-of-session `cli` escape keeps that text, which is true
+    # there (#281 review, F2). Both are refusals: the channel chooses the wording, never the legality.
+    kept_out = kept_out_refusal(command_path(ns))
+    if channel in INGRESS_CHANNEL.values() and kept_out:
+        raise errors.PermissionDenied(kept_out, reason=LEAD_SESSION)
     if not hasattr(ns, "token") or getattr(ns, "handler", None) is None:
         raise errors.PermissionDenied("the Lead bridge runs only Lead-authenticated commands; run this one "
                                       "directly", command=sorted(command_path(ns)))

@@ -114,7 +114,22 @@ def test_a_relayed_wait_the_host_cannot_wait_out_is_refused_saying_what_to_pass(
     with pytest.raises(errors.PermissionDenied) as refused:
         lead_broker.run_read(object(), ["harness", "wait", "R-INV-0001-1", "--timeout", timeout], ".")
     assert refused.value.details["reason"] == "relayed_value", refused.value.details
-    assert f"pass a finite number of seconds, at most {lead_broker.RELAYED_WAIT_MAX_S:.0f}" in refused.value.message
+    assert f"pass a finite number of seconds, at most {lead_broker.RELAYED_WAIT_MAX_S}" in refused.value.message
+
+
+def test_a_relayed_wait_at_the_stated_bound_passes_it_and_one_second_more_is_refused(tmp_path):
+    """Quick check of #283 at c307481a, m3: the bound a refusal states is whole seconds, and a request may pass it. At
+    the bound the wait passes the check and goes on to the next, the project check, which finds no project in an empty
+    directory (so nothing runs); one second above it is refused, naming the bound."""
+    bound = lead_broker.RELAYED_WAIT_MAX_S
+    assert isinstance(bound, int)
+    with pytest.raises(errors.ProjectNotFound):
+        lead_broker.run_read(object(), ["harness", "wait", "R-INV-0001-1", "--timeout", str(bound)], str(tmp_path))
+    with pytest.raises(errors.PermissionDenied) as refused:
+        lead_broker.run_read(object(), ["harness", "wait", "R-INV-0001-1", "--timeout", str(bound + 1)], str(tmp_path))
+    assert refused.value.details["reason"] == "relayed_value", refused.value.details
+    assert f"refuses --timeout {float(bound + 1)}: pass a finite number of seconds, at most {bound}" \
+        in refused.value.message
 
 
 def _ns(*argv: str) -> argparse.Namespace:

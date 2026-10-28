@@ -144,8 +144,9 @@ RELAYED_READS: dict[frozenset[str], frozenset[str]] = {frozenset(path.split()): 
 RELAYED_TIMEOUT_S = 300.0  # a relayed read other than `harness wait`, whose own --timeout bounds it
 # The longest relayed `harness wait --timeout` the host can wait out: `communicate` waits in poll(2), whose timeout is
 # a C int of milliseconds (POSIX), or in threading's waits, which stop at TIMEOUT_MAX (Windows), and the relay adds
-# RELAYED_TIMEOUT_S to the command's own bound (the review of #283 at b2dc3035, m1).
-RELAYED_WAIT_MAX_S = min((2**31 - 1) / 1000, threading.TIMEOUT_MAX) - RELAYED_TIMEOUT_S
+# RELAYED_TIMEOUT_S to the command's own bound (the review of #283 at b2dc3035, m1). Rounded down to whole seconds,
+# so the bound a refusal states is one a request may pass (quick check of #283 at c307481a, m3).
+RELAYED_WAIT_MAX_S = math.floor(min((2**31 - 1) / 1000, threading.TIMEOUT_MAX) - RELAYED_TIMEOUT_S)
 # What a relayed read's values may be (condition 3: none names another project, a directory or an output path): a
 # stored map is named by its sha256; a commit is any revision that is not an option; anything else is a name.
 _NAME = (re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*"), "an id or name, with no path separator, that is not an option")
@@ -575,7 +576,7 @@ def run_read(engine: Any, argv: list[str], cwd: str,
     wait = path == frozenset({"harness", "wait"})
     if wait and not (math.isfinite(ns.timeout) and ns.timeout <= RELAYED_WAIT_MAX_S):
         raise errors.PermissionDenied(f"`aew {name}`, relayed to a contained Lead, refuses --timeout {ns.timeout}: "
-                                      f"pass a finite number of seconds, at most {RELAYED_WAIT_MAX_S:.0f}",
+                                      f"pass a finite number of seconds, at most {RELAYED_WAIT_MAX_S}",
                                       command=name, reason="relayed_value")
     target = Path(cwd).resolve()
     for place in (target, *([(target / ns.cwd).resolve()] if ns.cwd else [])):

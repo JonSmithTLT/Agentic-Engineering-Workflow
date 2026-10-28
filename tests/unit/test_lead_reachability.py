@@ -53,11 +53,15 @@ def every_command() -> dict[frozenset[str], argparse.ArgumentParser]:
 
 def test_every_command_is_classified_once_for_the_contained_lead():
     """STG-05 CS-4 addendum 4, ruling 1, condition 1: every command is Lead-reachable, relayed for the contained Lead
-    (RELAYED_READS), operator-only, a typed-surface transport or, with why, not relayed (CONTAINED_LOCAL), and in
-    exactly one of them. A relayed read takes no Lead credential, and each option it may carry is one of its own."""
+    (RELAYED_READS), operator-only, a typed-surface transport, kept out of a Lead session (custody_ops.LEAD_KEPT_OUT,
+    its one owner: #286 review F1) or, with why, not relayed (CONTAINED_LOCAL), and in exactly one of them. A relayed
+    read takes no Lead credential, and each option it may carry is one of its own."""
+    from aew.engine import custody_ops
+
     commands = every_command()
     classes = {"LEAD_REACHABLE": set(lead_broker.LEAD_REACHABLE), "RELAYED_READS": set(lead_broker.RELAYED_READS),
                "OPERATOR_ONLY": set(lead_broker.OPERATOR_ONLY), "NOT_RELAYED": set(lead_broker.NOT_RELAYED),
+               "LEAD_KEPT_OUT": {frozenset(words) for words in custody_ops.LEAD_KEPT_OUT},
                "CONTAINED_LOCAL": set(lead_broker.CONTAINED_LOCAL)}
     placed = {path: [name for name, members in classes.items() if path in members] for path in commands}
     assert {" ".join(sorted(p)): c for p, c in placed.items() if len(c) != 1} == {}

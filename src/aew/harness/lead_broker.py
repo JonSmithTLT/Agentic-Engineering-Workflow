@@ -158,7 +158,8 @@ _LOCAL = "a read of committed state, which the sandbox shows read-only: it runs 
 _HERE = "it reports on the environment it runs in: in the sandbox, the sandbox's"
 _WRITER = "it writes under `.aew`, which a non-writer is refused: the operator runs it"
 # Every command without a Lead credential that is not relayed, with why (the classification RELAYED_READS's test walks;
-# OPERATOR_ONLY and NOT_RELAYED hold the rest).
+# OPERATOR_ONLY and NOT_RELAYED hold the rest, and custody_ops.LEAD_KEPT_OUT, their one owner, the commands a Lead
+# session keeps out: #286 review F1).
 CONTAINED_LOCAL: dict[frozenset[str], str] = {frozenset(path.split()): why for path, why in (
     ("authority list", _LOCAL), ("context show", _LOCAL + " (it renders the pack, as in a worker's sandbox)"),
     ("dispatch explain", _LOCAL), ("gate show", _LOCAL), ("guide", _LOCAL), ("invoke show", _LOCAL),
@@ -173,7 +174,6 @@ CONTAINED_LOCAL: dict[frozenset[str], str] = {frozenset(path.split()): why for p
     ("dashboard status", "the operator's dashboard, found from its endpoint under `.aew/local`, which the sandbox "
                          "masks: there it reports none running, and the operator sees it at their own terminal"),
     ("context pack", _WRITER), ("history compact", _WRITER), ("history reindex", _WRITER),
-    ("capability check", "it records its check in the operator's capability register: the operator runs it"),
     ("init", "the operator's own"), ("lead session", "the operator's own: it starts a Lead session"),
     ("opencode", "the operator's own: it starts a Lead session"),
     ("check run", "a worker run's, through its run's bridge"), ("submit", "a worker run's, through its run's bridge"),

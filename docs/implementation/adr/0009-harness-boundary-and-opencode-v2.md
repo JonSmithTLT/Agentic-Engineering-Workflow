@@ -1464,7 +1464,8 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   Lead's project, and runs `aew` with the argument list, never a shell string, in a process of its own: a
   non-writer with no credential and no broker in its environment, which the session ends when it closes. A command
   outside the set is refused, naming the operator's own shell; every other command without a Lead credential runs in
-  the sandbox or is the operator's (`lead_broker.CONTAINED_LOCAL`, each with why). Each relayed command's
+  the sandbox or is the operator's (`lead_broker.CONTAINED_LOCAL`, each with why), or is kept out of a Lead session
+  (`custody_ops.LEAD_KEPT_OUT`, their one owner). Each relayed command's
   surface-map entry is marked `relayed: contained-lead`.
 - **Its start, timed** (addendum 3): each stage's seconds (`version`, `logins`, `seat`, `sandbox`, `network`,
   `lead_logins`; `lead.StartStages`) go on the label as `start_s` and to the debug log. Five early starts of 15 to
@@ -1595,7 +1596,8 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   the environment and the start with no provider; the Lead's own login row; the preferences without their plugins; the recent models seeded
   once, never the prompt history.
 - The relayed reads (addendum 4, ruling 1): `tests/unit/test_lead_reachability.py`, every command classified exactly
-  once (`LEAD_REACHABLE`, `RELAYED_READS`, `OPERATOR_ONLY`, `NOT_RELAYED`, `CONTAINED_LOCAL`), the surface map
+  once (`LEAD_REACHABLE`, `RELAYED_READS`, `OPERATOR_ONLY`, `NOT_RELAYED`, `custody_ops.LEAD_KEPT_OUT`,
+  `CONTAINED_LOCAL`), the surface map
   marking exactly the relayed set, each a read, and a command outside it, an option outside its list or a value
   that is not a name, sha256 or revision refused before anything runs; `tests/integration/test_lead_relayed_reads.py`,
   each relayed read printing what the host prints (a heartbeat's age apart) and changing nothing under `.aew`, one

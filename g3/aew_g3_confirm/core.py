@@ -151,6 +151,29 @@ def may_use(sock_path: str = CONFIRM_SOCK) -> bool:
     return not os.path.exists(sock_path) or os.access(sock_path, os.R_OK | os.W_OK)
 
 
+# What a launch says before any approval is shown (the operator's first run, 2026-10-25): from an ssh terminal the
+# window opened on the desktop while the terminal said nothing, which read as a hang. Fixed text, never the service's.
+OPEN_HERE = "AEW approvals is open on the desktop; close its window to end this command."
+OPEN_THERE = "AEW approvals was already running; its window is open on the desktop."
+NO_DISPLAY = ("AEW approvals has no desktop to show its window on: open AEW approvals from the desktop's menu, or run "
+              "this from a terminal in the desktop session.")
+NO_DISPLAY_EXIT = 3
+
+
+def display_refusal(at_login: bool, display: bool) -> Optional[str]:
+    """The line, for standard error, when a launch has nowhere to show its window: it then exits ``NO_DISPLAY_EXIT``
+    rather than wait unseen. A start at login shows no window, so it never refuses for want of one."""
+    return None if at_login or display else NO_DISPLAY
+
+
+def launch_line(at_login: bool, remote: bool, terminal: bool) -> Optional[str]:
+    """The line, for standard output, that tells a launch from a terminal where its window is: this instance's own,
+    which ends when it is closed, or the one already running in the session."""
+    if at_login or not terminal:
+        return None
+    return OPEN_THERE if remote else OPEN_HERE
+
+
 class Watch:
     """Which notifications to post and withdraw (addendum 4): one per pending ``approval_ref``, posted once, withdrawn
     when its approval leaves the list (decided, expired, or lost to a restart). Only a successful list is given here:

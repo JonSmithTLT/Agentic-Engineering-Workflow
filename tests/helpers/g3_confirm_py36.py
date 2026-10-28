@@ -20,17 +20,30 @@ import subprocess
 import sys
 
 
-def child(g3_dir, confirm, entry):
-    """A child interpreter as the launcher runs one (``-I -B``), at the throwaway's socket: ``core.CONFIRM_SOCK`` is
-    set before the window module is imported, so its defaults, and so even an ablated build, never reach the
-    installed service. ``entry`` is ``start`` (the launcher's entry) or ``app`` (an instance started at login)."""
+def child(g3_dir, confirm, entry, patch=True):
+    """A child interpreter as the launcher runs one (``-I -B``), at the throwaway's socket, so that it, and even an
+    ablated build, never reaches the installed service: ``core.CONFIRM_SOCK`` is set before the window module is
+    imported, which binds its defaults, and ``core``'s own functions, whose defaults were bound at its import, get the
+    throwaway's socket too (#282 quick check, Q1). ``entry`` is ``start`` (the launcher's entry), ``app`` (an instance
+    started at login), or ``audit``, which exits 3 if any default in ``core`` or ``window`` still names the installed
+    socket. ``patch=False`` leaves the defaults alone: the audit's control, which must find them."""
     run = (f"import sys; sys.path.insert(0, {g3_dir!r}); from aew_g3_confirm import core; "
-           f"core.CONFIRM_SOCK = {confirm!r}; ")
+           "installed = core.CONFIRM_SOCK; ")
+    if patch:
+        run += (f"core.CONFIRM_SOCK = {confirm!r}; core.may_use.__defaults__ = ({confirm!r},); "
+                f"core.list_pending.__defaults__ = ({confirm!r},); core.decide.__defaults__ = ({confirm!r},); ")
     if entry == "start":
         run += "from aew_g3_confirm.start import main; sys.exit(main(sys.argv[1:]))"
-    else:
+    elif entry == "app":
         run += ("from aew_g3_confirm import window; a = window.App(True); a.app.register(None); "
                 "sys.exit(a.run())")
+    else:
+        run += ("from aew_g3_confirm import window; import inspect; "
+                "fns = [f for m in (core, window) for _, o in inspect.getmembers(m) "
+                "for f in ([o] + [v for _, v in inspect.getmembers(o, inspect.isfunction)] if inspect.isclass(o) "
+                "else [o]) if inspect.isfunction(f)]; "
+                "left = [f.__qualname__ for f in fns if installed in (f.__defaults__ or ())]; "
+                "print('defaults at the installed socket:', left, 'of', len(fns)); sys.exit(3 if left else 0)")
     return [sys.executable, "-I", "-B", "-c", run]
 
 
@@ -58,12 +71,34 @@ def main(argv):
     done = []
     print("python", sys.version.split()[0], "| gtk", window.Gtk.get_major_version(), window.Gtk.get_minor_version())
     assert sys.version_info[:2] == (3, 6), sys.version
+    for patch, code in ((True, 0), (False, 3)):  # Q1: no child default names the installed socket; control: unpatched
+        p = subprocess.run(child(g3_dir, confirm, "audit", patch), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           universal_newlines=True, timeout=30)
+        assert p.returncode == code, (patch, p.returncode, p.stdout, p.stderr)
+        if not patch:
+            assert all(n in p.stdout for n in ("may_use", "list_pending", "decide", "App.__init__")), p.stdout
+    done.append("a child's defaults all name the throwaway's socket (the unpatched control finds them)")
     for extra in (["--pin", "123456"], ["--name=x", core.AT_LOGIN], ["--class=y", "--g-fatal-warnings"]):
         # As the launcher starts it, with GTK's own options too, which GTK would take out of sys.argv at import (m5)
         p = subprocess.run(child(g3_dir, confirm, "start") + extra, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                            universal_newlines=True, timeout=30)
         assert p.returncode == 2 and "takes no arguments" in p.stderr, (extra, p.returncode, p.stderr)
     done.append("an argument is refused before GTK is imported, GTK's own options too: exit 2")
+    # A launch with nowhere to show a window says so and exits. No display variable, no GDK backend, and a runtime
+    # directory with no wayland-0 in it; its session bus is an absent socket, so even an ablated build that goes on
+    # can reach no instance, and no desktop.
+    bare = {k: v for k, v in os.environ.items()
+            if k not in ("DISPLAY", "WAYLAND_DISPLAY", "GDK_BACKEND", "BROADWAY_DISPLAY")}
+    bare.update(XDG_RUNTIME_DIR=runtime_dir,
+                DBUS_SESSION_BUS_ADDRESS="unix:path=" + os.path.join(runtime_dir, "no-bus"))
+    p = subprocess.run(child(g3_dir, confirm, "start"), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                       universal_newlines=True, timeout=30, env=bare)
+    # GDK says "Unable to init server" itself as Gtk is imported; the confirmer's own line is the last, and its only.
+    said = p.stderr.splitlines()
+    assert (p.returncode, p.stdout, said[-1:]) == (core.NO_DISPLAY_EXIT, "", [core.NO_DISPLAY]), \
+        (p.returncode, p.stdout, p.stderr)
+    assert all(s.startswith("Unable to init server") for s in said[:-1]), p.stderr
+    done.append("no display reachable: the one line naming the route, exit " + str(core.NO_DISPLAY_EXIT))
 
     ref = ask()
     listed = core.list_pending(confirm)
@@ -184,6 +219,8 @@ def drive_app(window, core, g3_dir, confirm, ask):
     opens it; a menu launch opens the running instance's window, and a second login start does nothing; with no
     notification service nothing fails; on another account's socket the login start quits with nothing shown; and an
     instance sent SIGTERM withdraws what it posted."""
+    import pty
+    import select
     import signal
     import time
 
@@ -239,22 +276,56 @@ def drive_app(window, core, g3_dir, confirm, ask):
                                            lambda *a: owned.append(1), None)
     pump(lambda: owned, "owning the notification service's name")
 
-    # m3: an instance that ends withdraws what it posted; SIGTERM, as at a logout, quits it through its shutdown.
-    ended = subprocess.Popen(child(g3_dir, confirm, "app"), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                             universal_newlines=True)
+    # m3: an instance that ends withdraws what it posted; SIGTERM and SIGHUP, as a logout is expected to send, each quit
+    # it through its shutdown (#282 quick check, Q3: both signals, each with an instance of its own).
+    for signum in (signal.SIGTERM, signal.SIGHUP):
+        name = signal.Signals(signum).name
+        ended = subprocess.Popen(child(g3_dir, confirm, "app"), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                 universal_newlines=True)
+        try:
+            early = ask()
+            pump(lambda: notifies(), "the login instance's notification", 30)
+            ended.send_signal(signum)
+            pump(lambda ended=ended: ended.poll() is not None, "the instance's exit on " + name, 30)
+            pump(lambda: any(c[0] == "CloseNotification" for c in calls), "the withdrawal as it ended on " + name)
+        finally:
+            if ended.poll() is None:
+                ended.kill()
+        assert ended.returncode == 0, (name, ended.returncode, ended.stderr.read())
+        assert core.decide(early, None, confirm) == core.DECLINED
+        del calls[:]
+        said.append(name + ": the instance quits, and withdraws what it posted")
+
+    run = child(g3_dir, confirm, "start")
+
+    def tty_launch():
+        """A launch from a terminal: its standard output is a pseudo-terminal, read until its first line."""
+        master, slave = pty.openpty()
+        p = subprocess.Popen(run, stdout=slave, stderr=subprocess.PIPE, universal_newlines=True)
+        os.close(slave)
+        got = []
+
+        def line():
+            if select.select([master], [], [], 0)[0]:
+                try:
+                    got.append(os.read(master, 4096).decode("utf-8"))
+                except OSError:
+                    pass
+            return "\n" in "".join(got) or p.poll() is not None
+        pump(line, "the terminal's line", 30)  # pumped: a running instance answers the launch on this loop
+        return p, master, "".join(got).replace("\r", "")
+
+    here, master, text = tty_launch()  # no instance yet: this one is the session's, with its own window
     try:
-        early = ask()
-        pump(lambda: notifies(), "the login instance's notification", 30)
-        ended.send_signal(signal.SIGTERM)
-        pump(lambda: ended.poll() is not None, "the instance's exit on SIGTERM", 30)
-        pump(lambda: any(c[0] == "CloseNotification" for c in calls), "the withdrawal as it ended")
+        assert text == core.OPEN_HERE + "\n", text
+        here.send_signal(signal.SIGTERM)
+        pump(lambda: here.poll() is not None, "the terminal launch's exit", 30)
     finally:
-        if ended.poll() is None:
-            ended.kill()
-    assert ended.returncode == 0, (ended.returncode, ended.stderr.read())
-    assert core.decide(early, None, confirm) == core.DECLINED
-    del calls[:]
-    said.append("SIGTERM: the instance quits, and withdraws what it posted")
+        if here.poll() is None:
+            here.kill()
+        os.close(master)
+    assert here.returncode == 0, (here.returncode, here.stderr.read())
+    said.append("a terminal launch says its window is open on the desktop, and that closing it ends the command")
 
     app = window.App(True, confirm)
     app.app.register(None)
@@ -276,7 +347,6 @@ def drive_app(window, core, g3_dir, confirm, ask):
     pump(lambda: any(c[0] == "CloseNotification" for c in calls), "the withdrawal")
     said.append("decided: withdrawn")
 
-    run = child(g3_dir, confirm, "start")
     second = subprocess.Popen(run + [core.AT_LOGIN], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     pump(lambda: second.poll() is not None, "a second login start's exit", 30)
     assert second.returncode == 0 and app.confirmer is None and shows == [], (second.returncode, shows)
@@ -301,22 +371,44 @@ def drive_app(window, core, g3_dir, confirm, ask):
     app._on_close(app.confirmer.window, None)
     assert app.confirmer.pin.get_text() == "" and not app.confirmer.window.get_visible(), "a PIN outlived the close"
     said.append("closing the window empties the PIN field")
-    app.confirmer.deciding = True  # n3: as with a decision in flight, whose reply is still to come
-    app.confirmer._busy(True)
-    menu = subprocess.Popen(run, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    menu = subprocess.Popen(run, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True)
     pump(lambda: menu.poll() is not None and app.confirmer.window.get_visible(), "the menu launch's window", 30)
-    assert menu.returncode == 0 and "present" in shows
-    said.append("a menu launch opens the running instance's window")
-    deadline = time.monotonic() + 1.5
-    while time.monotonic() < deadline:  # long enough for a refresh's reply to have released the buttons
-        glib.MainContext.default().iteration(False)
-        time.sleep(0.01)
-    held = (app.confirmer.refresh, app.confirmer.listing, app.confirmer.approve, app.confirmer.decline)
-    assert not any(w.get_sensitive() for w in held), \
-        "opening the window released the buttons while a decision was in flight (n3)"
-    app.confirmer.deciding = False
-    app.confirmer._busy(False)
-    said.append("a decision in flight keeps every button held when the window is opened")
+    assert menu.returncode == 0 and "present" in shows and menu.stdout.read() == ""  # no terminal: no line
+    said.append("a menu launch opens the running instance's window, and writes nothing")
+    there, master, text = tty_launch()
+    try:
+        pump(lambda: there.poll() is not None, "the terminal launch's exit, the instance already running", 30)
+    finally:
+        if there.poll() is None:
+            there.kill()
+        os.close(master)
+    assert text == core.OPEN_THERE + "\n" and there.returncode == 0, (text, there.returncode)
+    said.append("a terminal launch with an instance running says its window is open there, and returns")
+
+    # n3, through a real decision (#282 quick check, Q2): a Decline whose reply is slowed, and the window opened
+    # again (a click or a launch) while it is in flight. Every button stays held until the reply, then is free.
+    c = app.confirmer
+    pump(lambda: c.refresh.get_sensitive() and len(c.approvals) > 0, "the opened window's list")
+    c.listing.get_selection().select_path(gtk.TreePath(0))
+    pump(lambda: c.decline.get_sensitive(), "a selected approval")
+    real_decide = core.decide
+    core.decide = lambda *a: (time.sleep(2), real_decide(*a))[1]  # the reply is 2 s away
+    try:
+        c.decline.clicked()
+        pump(lambda: c.deciding, "the decision leaving")
+        app.present()  # as a notification's click while the decision is in flight
+        deadline = time.monotonic() + 1.2
+        while time.monotonic() < deadline:  # long enough for a refresh's reply to release the buttons
+            glib.MainContext.default().iteration(False)
+            time.sleep(0.01)
+            assert c.deciding, "the reply came early: the decision is no longer in flight"
+        held = (c.refresh, c.listing, c.approve, c.decline, c.pin)
+        assert not any(w.get_sensitive() for w in held), "opening the window released the buttons mid-decision (n3)"
+        pump(lambda: not c.deciding and core.MESSAGES[core.DECLINED] in c.status.get_text(), "the reply", 15)
+        pump(lambda: c.refresh.get_sensitive() and c.listing.get_sensitive(), "the buttons free after the reply")
+    finally:
+        core.decide = real_decide
+    said.append("a decision in flight keeps every button held when the window is opened, and frees them on its reply")
 
     gio.bus_unown_name(owner)
     toplevels = len(gtk.Window.list_toplevels())

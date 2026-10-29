@@ -468,6 +468,26 @@
    "sha256": "dfbf3f7bcd5a6573bf500ba2109dae3b9736b7c7eb03cb5c7297b59f475bfafb"
   },
   {
+   "path": "A-44/BOY-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-44",
+   "source": "30-stages/STG-20-blocked-on-you/adopted/boy-r2.1/BOY-POSITION.md",
+   "source-sha256": "dac0af44189be147b3e2243ab730d8c19f35dec79034fd418b024fc05bed2118",
+   "edits-sha256": "1281a691bdba757900d48dc6885a95b3ab216944557cf61cbed3099af0b299a2",
+   "header": true,
+   "sha256": "006638459fecb81060e882884f2ef28c7d14fa1288785b1805bc83f19777956a"
+  },
+  {
+   "path": "A-45/O02-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-45",
+   "source": "30-stages/STG-21-O02-independent-outage-reader/adopted/o02-r2.1/O02-POSITION.md",
+   "source-sha256": "d6d40c4aa7e442dfdf02839a0dca087982b7d0012bca2b250c2c294fd230b7a5",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "126237b71fb36785b8606a5934abfb6b02089bbc8609ce861a42dce6dd10df59"
+  },
+  {
    "path": "A-25/aew-d01-read-v0.3.4-FULL.schema.json",
    "generated": "do not edit; regenerated from the adopted design text (see README.md)",
    "position": "A-25",

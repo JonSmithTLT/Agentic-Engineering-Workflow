@@ -1164,7 +1164,8 @@ def test_a_secret_that_cannot_be_left_out_of_its_directory_is_named_as_its_own_c
         "needs root, or a directory you cannot read")
 
 
-def test_a_launch_over_bubblewraps_argument_limit_is_refused_before_it_starts(tmp_path, fake_bwrap, monkeypatch):
+def test_a_launch_over_bubblewraps_argument_limit_is_refused_before_it_starts(tmp_path, fake_bwrap, monkeypatch,
+                                                                              tmp_unmasked):
     """CS-4 addendum 9 (quick check 4 of #283, m13): bubblewrap 0.4.0 takes at most 9,000 arguments, and each entry put
     back in a directory a secret is left out of takes three. Over the limit the launch is refused before bubblewrap
     starts, at the layout and at every start, naming each directory whose entries are put back, with how many, and the

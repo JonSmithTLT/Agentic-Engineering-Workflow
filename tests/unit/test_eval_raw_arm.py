@@ -369,10 +369,12 @@ def test_a_lane_under_home_masks_nothing_inside_its_runs_directory(tmp_path, mon
 
     home, scratch = lane_under_home(tmp_path, monkeypatch)
     monkeypatch.setattr(L, "find_bwrap", lambda: "/usr/bin/bwrap")
+    # tmp_path lies under /tmp on Linux, which the sandbox's own /tmp hides whole, so nothing under it would be emitted
+    monkeypatch.setattr(L, "SANDBOX_TMP", "/sandbox-tmp")
     (tmp_path / "bin").mkdir()
     layout = raw.contained_layout(scratch / "repo", scratch, binary=tmp_path / "bin" / "opencode-cli")
     runs = str(scratch.parent.resolve())
-    assert layout.hide_runs == (runs,)
+    assert layout.hide_runs == (runs,) and str(home.resolve()) in L._left_out_of(layout)
     inside = [p for p in (*layout.hide_dirs, *layout.hide_files, *layout.left_out, *L._left_out_of(layout))
               if p == runs or p.startswith(runs + os.sep)]
     assert inside == []

@@ -31,6 +31,7 @@ import os
 import stat
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -56,9 +57,12 @@ def wedge_threshold_s(lock_timeout: float, poll_s: float) -> float:
 
 
 class Beat:
-    """The broker's beat thread. :meth:`tick` is the watchdog's: it records a completed iteration (memory only)."""
+    """The broker's beat thread. :meth:`tick` is the watchdog's: it records a completed iteration (memory only).
+    ``clock`` (the stamps) and ``idle`` (the event the thread waits on between beats, set to stop it) are the broker's
+    test seams, passed through (``LeadBroker``): the real ones by default."""
 
-    def __init__(self, aew_root: Path, *, generation: int, poll_s: float, wedge_after_s: float) -> None:
+    def __init__(self, aew_root: Path, *, generation: int, poll_s: float, wedge_after_s: float,
+                 clock: Callable[[], float] = time.time, idle: Callable[[], threading.Event] = threading.Event) -> None:
         self.aew_root = Path(aew_root)
         self.generation = generation
         self.poll_s = poll_s
@@ -66,14 +70,15 @@ class Beat:
         self.pid = os.getpid()
         self.process_started = procs.started_at(self.pid)
         self.start_id = procs.start_id(self.pid)
-        self._tick_at = time.time()
-        self._stop = threading.Event()
+        self._clock = clock
+        self._tick_at = clock()
+        self._stop = idle()
         self._mu = threading.Lock()  # a beat and the closing write never interleave
         self._closed = False
         self._thread = threading.Thread(target=self._run, name="aew-lead-broker-beat", daemon=True)
 
     def tick(self) -> None:
-        self._tick_at = time.time()
+        self._tick_at = self._clock()
 
     def start(self) -> None:
         self._write(None)
@@ -90,7 +95,7 @@ class Beat:
             current = read(self.aew_root)
             if current is None or (current["pid"], current.get("start_id"), current["process_started"]) == (
                     self.pid, self.start_id, self.process_started):
-                self._write_locked(time.time())
+                self._write_locked(self._clock())
         if self._thread.is_alive() and threading.current_thread() is not self._thread:
             self._thread.join(max(1.0, 2 * self.poll_s))
 
@@ -105,7 +110,7 @@ class Beat:
 
     def _write_locked(self, closed_at: float | None) -> None:
         record: dict[str, Any] = {"schema": SCHEMA, "pid": self.pid, "process_started": self.process_started,
-                                  "start_id": self.start_id, "generation": self.generation, "beat_at": time.time(),
+                                  "start_id": self.start_id, "generation": self.generation, "beat_at": self._clock(),
                                   "watchdog_tick_at": self._tick_at, "wedge_after_s": self.wedge_after_s}
         if closed_at is not None:
             record["closed_at"] = closed_at

@@ -17,6 +17,14 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 ## Owed, soonest first
 
+### STG-03
+
+**Due by:** Contained · **Owner:** designer · **Needs:** design
+
+**What:** One G3 addendum, which G3-C's brief needs first: the scope of G3-12's rule that every Lead launch path runs the contained profile and its self-test, and how an owner judges G3-12 when it consumes a consent
+
+**Blocks:** -
+
 ### E99
 
 **Due by:** Internal alpha · **Owner:** designer · **Needs:** design

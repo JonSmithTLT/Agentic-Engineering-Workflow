@@ -13,6 +13,13 @@ intro: |
   material go in a later note on the item's row ([`notes.d/<row>/`](notes.d/README.md)), which `python tools/register.py
   show <row>` prints beside the item: two changes that both extend one `what` conflict, two notes never do.
 items:
+- row: STG-03
+  needs: design
+  owner: designer
+  due: Contained
+  what: 'One G3 addendum, which G3-C''s brief needs first: the scope of G3-12''s rule that every Lead launch path runs the
+    contained profile and its self-test, and how an owner judges G3-12 when it consumes a consent'
+
 - row: E99
   needs: design
   owner: designer

@@ -341,9 +341,11 @@ def test_broker_liveness_verdicts_on_a_stepped_broker(project, tmp_path, monkeyp
         elif case == "slow_read_is_not_stale":
             tick = record["watchdog_tick_at"]
             with FileLock(root / LOCK_REL):
+                clock.advance(poll)  # an iteration that ticked before its read would show this
                 n = stepped.begin_watchdog()
                 until(stepped.in_lock_wait, step_guard_s(), "the watchdog's read to wait for the control lock")
-                clock.advance(first["wedge_after_s"] - poll)  # all of the bound but one POLL_S: past 2 x POLL_S
+                # Since the last tick, all of the bound but one POLL_S: far past 2 x POLL_S, a stale beat's bound
+                clock.advance(first["wedge_after_s"] - 2 * poll)
                 held = stepped.beat()  # the beat goes on under the control lock: it never reads the store
                 assert held["watchdog_tick_at"] == tick and held["beat_at"] == clock()  # the read still waits
                 assert broker_liveness.judge(held, generation=generation, poll_s=poll, now=clock()) is None, held
@@ -354,6 +356,7 @@ def test_broker_liveness_verdicts_on_a_stepped_broker(project, tmp_path, monkeyp
             hold.write_text("hold", encoding="utf-8")
             monkeypatch.setenv("AEW_PAUSE", f"harness.lead_broker.watchdog={hold}")
             try:
+                clock.advance(poll)
                 n = stepped.begin_watchdog()
                 until(Path(f"{hold}.reached").exists, step_guard_s(), "the watchdog to wedge")
                 clock.advance(first["wedge_after_s"] + poll)  # past the bound

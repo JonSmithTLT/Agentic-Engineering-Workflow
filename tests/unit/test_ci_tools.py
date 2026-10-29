@@ -742,9 +742,12 @@ def test_the_lanes_job_takes_its_shards_and_durations_from_the_tier_job_and_only
     restore = [s for s in tier_steps if str(s.get("uses", "")).startswith("actions/cache/")]
     assert [s["uses"] for s in restore] == ["actions/cache/restore@v6"]  # the tier job never saves
     assert restore[0]["with"]["restore-keys"] == "shard-durations-"
+    # where the assurance job saved it, or the restore never finds it (an entry is keyed by its path too), and where
+    # the sizer reads it
+    saved = next(s for s in jobs["assurance"]["steps"] if s.get("uses") == "actions/cache/save@v6")
+    assert restore[0]["with"]["path"] == saved["with"]["path"]
     shards = next(s for s in tier_steps if s.get("id") == "shards")
-    assert "tools/ci/shard_plan.py" in shards["run"] and restore[0]["with"]["path"] in shards["run"].replace(
-        "$RUNNER_TEMP", "${{ runner.temp }}")
+    assert "tools/ci/shard_plan.py" in shards["run"] and f"--history {restore[0]['with']['path']} " in shards["run"]
     upload = next(s for s in tier_steps if s.get("with", {}).get("name") == "shard-durations")
     assert "if" not in upload  # every run uploads the one table its shards cut
     lanes = jobs["lanes"]
@@ -955,6 +958,46 @@ def test_the_sizer_reads_the_lanes_jobs_deadlines_where_ci_yml_sets_them_and_wri
     assert shard_plan.main(["--history", str(tmp_path / "none.json"), "--seed", str(seed), "--durations-out",
                             str(table), "--github-output", str(out)]) == 0  # the cache missed: the fallback
     assert json.loads(table.read_text(encoding="utf-8"))["shards"] == committed()["shards"]
+
+
+def _lines(value: object) -> list[str]:
+    """A multi-line action input as actions/cache reads it (``getInputAsArray``: each line trimmed, blanks dropped)."""
+    return [line.strip() for line in str(value or "").splitlines() if line.strip()]
+
+
+def _feeds(save_key: str, restore: dict) -> bool:
+    """Whether an entry saved under ``save_key`` can be what ``restore`` finds: its `key` matches exactly, each of its
+    `restore-keys` as a prefix. An expression can expand to anything, so a key is known only up to its first one."""
+    if save_key == str(restore["key"]):
+        return True
+    known = save_key.split("${{", 1)[0]
+    return any(known.startswith(p) or (known != save_key and p.startswith(known))
+               for p in (k.split("${{", 1)[0] for k in _lines(restore.get("restore-keys"))))
+
+
+def test_every_cache_restore_reads_at_the_path_its_key_familys_save_wrote_or_it_never_finds_it():
+    """actions/cache versions an entry by its paths as written, after `${{ }}` is expanded, as well as by its key: a
+    restore at another path misses every entry of its key family. The tier job restored the shard-durations history at
+    `${{ runner.temp }}/shard-history/` while the assurance job saved it at `shard-history/`, so every run from #235 on
+    sized its lanes from the fallback (run 40633312391: "Cache not found", 48 lane jobs). Across every workflow, each
+    restore's key or restore-keys prefix matches at least one save, and every save it matches wrote the same paths."""
+    steps = []
+    for workflow in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        for job_name, job in (yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"] or {}).items():
+            for step in job.get("steps") or []:
+                uses = str(step.get("uses", ""))
+                if uses.startswith("actions/cache"):
+                    steps.append((f"{workflow.name} {job_name}", uses.split("@")[0], step.get("with") or {}))
+    # `actions/cache` itself restores and saves at one path
+    saves = [(where, w) for where, uses, w in steps if uses in ("actions/cache", "actions/cache/save")]
+    restores = [(where, w) for where, uses, w in steps if uses in ("actions/cache", "actions/cache/restore")]
+    assert restores and saves
+    for where, w in restores:
+        fed = [(by, s) for by, s in saves if _feeds(str(s["key"]), w)]
+        assert fed, f"{where}: no save writes a key its key or restore-keys match, so the restore always misses"
+        for by, s in fed:
+            assert _lines(w["path"]) == _lines(s["path"]), (
+                f"{where} restores {_lines(w['path'])}, but {by} saves the family at {_lines(s['path'])}")
 
 
 # ------------------------------------------------------------------ the tiered gate (CI redesign P1)

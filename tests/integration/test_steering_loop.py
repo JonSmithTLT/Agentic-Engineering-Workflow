@@ -152,6 +152,42 @@ HANG_S = 60.0  # a guard against a hang on an event, never a timing expectation
 NO_LOOK = 3600.0  # the coarse look out of the way: what a test waits on can only come from a wake or a commit
 
 
+def activation_wait_s(lp: L.SteeringLoop) -> float:
+    """How long a test waits for an activation of ``lp`` to show: the poll that wakes it, one wait for the control lock
+    at its own store's lock timeout (``ControlStore``'s, 60 s by default: each tick reads and commits under that lock),
+    and one more poll for its work. A literal 30 s sat below a single lock wait (the flake audit at c71ebc7e, §3 row
+    12: "timed out waiting for the first activation", Windows, 2026-10-26)."""
+    return lp.engine.store.lock_timeout + 2 * lp.poll_s
+
+
+class Looks:
+    """Counts the loop's quiet looks: a poll that no wake ended and that found nothing moved (``_changed`` false). The
+    loop looks only between activations and with no wake pending, so once it has looked quietly, whatever came
+    before (a commit included) has had its chance to start an activation. A test that claims nothing more happened
+    waits for one such look, never a sleep a slow runner can end too early (the flake audit's rank 4); ``HANG_S``
+    only bounds a hang."""
+
+    def __init__(self, lp: L.SteeringLoop) -> None:
+        self.quiet = 0
+        self._cv = threading.Condition()
+        self._real = lp._changed
+        lp._changed = self._changed  # type: ignore[method-assign]
+
+    def _changed(self) -> bool:
+        changed = self._real()
+        if not changed:
+            with self._cv:
+                self.quiet += 1
+                self._cv.notify_all()
+        return changed
+
+    def another(self) -> None:
+        """Wait for a quiet look that starts after this call."""
+        with self._cv:
+            seen = self.quiet
+            assert self._cv.wait_for(lambda: self.quiet > seen, HANG_S), "the loop never looked again"
+
+
 def loop(project: Any, projector: Any = None, *, executor: Any = None, clock: Any = None,
          coarse_s: float = NO_LOOK) -> L.SteeringLoop:
     e = Engine.discover(project.root)
@@ -639,18 +675,19 @@ def test_the_loop_runs_in_the_broker_and_stops_with_its_session(p, tmp_path):
     broker = lead_broker.LeadBroker(Engine.discover(p.root), p.token)
     assert broker.loop is not None
     broker.loop._project = Scripted(notes)
+    looks = Looks(broker.loop)
     loop_json = p.root / ".aew/local/steering/loop.json"
     broker.start()
     try:
-        until(lambda: loop_json.exists() and len(broker.loop.executed) == 2, 30, "the first activation",
-              describe=loop_chain(broker))
-        time.sleep(3 * lead_broker.POLL_S)  # its own commits are no wake: a second activation would show here
+        until(lambda: loop_json.exists() and len(broker.loop.executed) == 2, activation_wait_s(broker.loop),
+              "the first activation", describe=loop_chain(broker))
+        looks.another()  # its own commits are no wake: a second activation would have run before this look
         assert len(broker.loop.executed) == 2
         out = broker._tool({"name": "checkpoint", "arguments": json.dumps({"expect_rev": p.rev(), "note": "Lead"}),
                             "ingress": "cli", "profile": "normal"})
         assert out["stage_result"]["ok"]
-        until(lambda: len(broker.loop.executed) == 4, 30, "the activation the Lead's commit wakes",
-              describe=loop_chain(broker))
+        until(lambda: len(broker.loop.executed) == 4, activation_wait_s(broker.loop),
+              "the activation the Lead's commit wakes", describe=loop_chain(broker))
     finally:
         broker.close()
     assert broker.loop._thread is not None and not broker.loop._thread.is_alive()
@@ -803,7 +840,8 @@ def test_no_new_action_starts_once_the_broker_is_closing(p):
     release = threading.Event()
     broker.start()
     try:
-        until(lambda: len(broker.loop.executed) == 2, 30, "the first activation")
+        until(lambda: len(broker.loop.executed) == 2, activation_wait_s(broker.loop), "the first activation",
+              describe=loop_chain(broker))
         real_drain = broker.server.drain
         draining = threading.Event()
 
@@ -820,7 +858,11 @@ def test_no_new_action_starts_once_the_broker_is_closing(p):
         assert draining.wait(HANG_S), "close() never reached the drain"
         Engine.discover(p.root).checkpoint(token=p.token, expect_rev=p.rev(), note="another actor's commit",
                                            next_action=None)
-        time.sleep(3 * lead_broker.POLL_S)
+        # close() asked the loop to stop before its drain, so the loop ends whatever wakes it, and once it has ended
+        # nothing more can start: its end, never a sleep, says when to count, while the drain still holds close()
+        assert broker.loop._thread is not None
+        broker.loop._thread.join(HANG_S)
+        assert not broker.loop._thread.is_alive(), "the loop went on after close() began"
         ran_while_closing = len(broker.loop.executed) - 2
         release.set()
         closer.join(30)
@@ -838,12 +880,13 @@ def test_the_loops_own_commits_never_restart_the_envelope(p, endpoint):
     wid = Engine.discover(p.root).work_create(token=p.token, expect_rev=p.rev(), kind="ticket", title="Unplanned",
                                               risk_class=1)["id"]  # not READY: its assignment is always refused
     lp = loop(p, Scripted(lambda rev: [action("probe_start", {"expect_rev": rev, "work_id": wid})]))
+    looks = Looks(lp)
     lp.start()
     try:
         path = p.root / ".aew/local/steering/loop.json"  # the loop replaces it; a racing read is "not yet"
-        until(lambda: ((read_json_or_none(path) or {}).get("stop") or {}).get("code") == L.REPETITION, 30,
-              "the repetition stop")
-        time.sleep(3 * lp.poll_s)  # nothing moves now: no further activation
+        until(lambda: ((read_json_or_none(path) or {}).get("stop") or {}).get("code") == L.REPETITION,
+              activation_wait_s(lp), "the repetition stop")
+        looks.another()  # nothing moves now: a further activation would have run before this look
     finally:
         lp.close()
     assert [x["action"] for x in lp.executed] == ["probe_start"] * 2, lp.executed

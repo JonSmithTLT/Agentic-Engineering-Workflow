@@ -17,6 +17,14 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 ## Owed, soonest first
 
+### E99
+
+**Due by:** Internal alpha · **Owner:** designer · **Needs:** design
+
+**What:** The offline install bundle's design, with its one manifest of every requirement, downloaded into the bundle, and an install that needs no network
+
+**Blocks:** -
+
 ### E4
 
 **Due by:** Unscheduled · **Owner:** operator · **Needs:** decision

@@ -17,8 +17,8 @@ items:
   needs: design
   owner: designer
   due: Internal alpha
-  what: The offline install bundle's design, with its one manifest of every requirement, the bundle built per target, and
-    the guided install that needs no network
+  what: The offline install bundle's design, with its one manifest of every requirement, downloaded into the bundle, and
+    an install that needs no network
 
 - row: E4
   needs: decision

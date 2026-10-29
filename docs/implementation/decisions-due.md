@@ -21,7 +21,7 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Due by:** Internal alpha · **Owner:** designer · **Needs:** design
 
-**What:** The offline install bundle's design, with its one manifest of every requirement, the bundle built per target, and the guided install that needs no network
+**What:** The offline install bundle's design, with its one manifest of every requirement, downloaded into the bundle, and an install that needs no network
 
 **Blocks:** -
 

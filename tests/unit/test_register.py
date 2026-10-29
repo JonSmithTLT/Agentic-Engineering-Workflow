@@ -807,8 +807,8 @@ def _the_rebaselines_sides(due: dict[str, Any], fates: dict[str, Any]) -> tuple[
 
 def _the_rebaselines_items_stand(due: dict[str, Any], fates: dict[str, Any]) -> bool:
     """The items are exactly the rebaseline's kept ones, when only the rows it gave a decisions-due fate are read
-    (#285's review, m5). An item on any other row is not this pin's to judge, and `due_problems` judges only that the
-    item's row is open and has one item."""
+    (#285's review, m5). An item on any other row is not this pin's to judge: `due_problems` judges it by the
+    register's rules (its row open, one item per row, its fields in their vocabularies, the list in order)."""
     items, kept = _the_rebaselines_sides(due, fates)
     return items == kept
 
@@ -817,7 +817,10 @@ def test_the_dispositions_are_the_designers_counts():
     """SUMMARY.md of the record: 21 closed outright, 9 absorbed, 125 held in 16 groups, 38 kept; three stage rows;
     24 decisions-due items, of which 3 stay. On those 24 rows the live list is pinned both ways: each of the 3 kept rows
     has its item, and none of the 21 dropped rows has one. It no longer pins the live list's whole membership: an item
-    on a row outside the 24 (E99's, filed after the rebaseline) is not refused here (#285's review, m5)."""
+    on a row outside the 24 (E99's, filed after the rebaseline) is not refused here (#285's review, m5). Its limit: on
+    the live list, a kept item's removal (its decision made, or its row closed) and any later item on E19, the one
+    dropped row still open, need this pin changed (#290's review, m1; the next register batch reads the record's own
+    commit instead)."""
     disp = _dispositions()
     kinds = Counter(d["disposition"] for d in disp["rows"].values())
     assert (kinds["close"], kinds["absorb"], kinds["hold"], kinds["keep"], len(disp["rows"])) == (21, 9, 125, 38, 193)
@@ -827,7 +830,8 @@ def test_the_dispositions_are_the_designers_counts():
     assert (fates["drop"], len(disp["decisions_due"])) == (21, 24)
     on_fate_rows, kept = _the_rebaselines_sides(DUE, disp["decisions_due"])
     assert _the_rebaselines_items_stand(DUE, disp["decisions_due"]), (
-        f"the live items' rows on the 24 fate rows {on_fate_rows}, the kept rows {kept}")
+        f"the live items on the 24 fate rows: missing {sorted(set(kept) - set(on_fate_rows))}, "
+        f"extra {sorted(set(on_fate_rows) - set(kept))}")
     assert disp["targets"] == list(register.TARGETS) and disp["due_order"] == list(register.DUE_ORDER)
 
 
@@ -853,9 +857,9 @@ def test_the_rebaselines_pin_still_refuses_a_missing_kept_item():
         {"items": [_item(k) for k in kept if k != r]}, fates)] == []
 
 
-def test_the_rebaselines_pin_admits_an_item_on_a_row_it_never_saw():
+def test_the_rebaselines_pin_admits_an_item_on_a_row_it_gave_no_fate():
     fates, kept, _ = _the_rebaselines_fates()
-    new_row = "E998"  # any id the rebaseline gave no fate, as E99's item is, and no other line here names
+    new_row = "E998"  # any id the rebaseline gave no fate (a later row, as E99 is, or a kept row with none, as E35 is)
     assert new_row not in fates
     assert _the_rebaselines_items_stand({"items": [*map(_item, kept), _item(new_row)]}, fates)
 

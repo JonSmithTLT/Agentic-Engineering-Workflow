@@ -296,7 +296,8 @@ def test_a_remaining_step_with_no_step_runner_is_named_as_such(project, monkeypa
     nothing."""
     p = project
     sid = crashed_stage(p, monkeypatch, "probe_notes", "checkpoint", call_no=2)
-    monkeypatch.delitem(stage.STEP_RUNNERS, "checkpoint")
+    # A copy without it, never the live table, whose restored key would go to its end (as test_escalation_return's)
+    monkeypatch.setattr(stage, "STEP_RUNNERS", {p: r for p, r in stage.STEP_RUNNERS.items() if p != "checkpoint"})
     row = unfinished(p)[sid]
     assert row["checks"]["contract"]["status"] == "ok" and row["failing"] == ["runners"]
     assert row["checks"]["runners"]["status"] == "no_step_runner"

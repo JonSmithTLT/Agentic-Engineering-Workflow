@@ -32,6 +32,18 @@ Nothing here gates a change. A lane that cannot fit is a warning, and it gets th
 
     python tools/ci/shard_plan.py --history history.json --seed tests/durations.json --durations-out durations.json \
         [--github-output "$GITHUB_OUTPUT"] [--summary "$GITHUB_STEP_SUMMARY"]
+
+With ``--reference`` it sizes the nightly's reference lane instead (nightly.yml `reference`: the whole suite on each
+runner, one process per shard), from the nightly's own history of its shards: each runner gets the fewest shards whose
+slowest estimated shard is at most :data:`REFERENCE_TARGET_S` (``reference_matrix``). Never from the merge gate's
+history: there a test runs beside its platform's other xdist workers, and under coverage on Linux, so the gate's table
+put the 10-25 reference run's tests at 1.36x (Windows) and 2.8x (Linux) their serial time, and sized the lane at 15
+Linux and more than 16 Windows shards where 5 and 11 fit (measured 2026-10-28). With no history yet, the runners share
+what the account's concurrent jobs leave beside the nightly's other jobs, never more.
+
+    python tools/ci/shard_plan.py --reference --history history.json --seed tests/durations.json \
+        --durations-out durations.json --runner ubuntu-latest:3.11 --runner windows-latest:3.13 \
+        [--github-output "$GITHUB_OUTPUT"] [--summary "$GITHUB_STEP_SUMMARY"]
 """
 
 from __future__ import annotations
@@ -283,6 +295,112 @@ def plan(history: Mapping[str, Any] | None, seed: Mapping[str, Any], deadlines: 
         return fallback(seed, deadlines, jobs, f"the history could not be used ({type(exc).__name__}: {exc})")
 
 
+REFERENCE_LANE = update_durations.ALL_LANES  # the history keeps a reference session's outside time under this lane
+# The reference lane's rule since E26 (nightly.yml, `reference-plan`): grow the count when a shard nears 45 minutes,
+# never the timeout.
+REFERENCE_RULE_S = 45 * 60.0
+# Measured: the same tests' time in each Windows reference shard, 2026-10-24 against 10-25 (two green nights' lane
+# reports), was 0.893 to 1.089 times as long: a night may run a shard 9% over its estimate.
+REFERENCE_NIGHT_VARIANCE = 1.09
+# The most a reference shard's estimate may be: on a night that slow, it still ends before the rule's 45 minutes.
+REFERENCE_TARGET_S = REFERENCE_RULE_S / REFERENCE_NIGHT_VARIANCE
+
+
+def fallback_split(minutes: Mapping[str, float], jobs: int) -> dict[str, int]:
+    """``jobs`` shards split over the platforms by their estimated minutes (largest remainder; at least one each, at
+    most MAX_SHARDS each)."""
+    if not sum(minutes.values()):
+        minutes = dict.fromkeys(minutes, 1.0)  # a table that times none of them: an even split
+    total = sum(minutes.values())
+    share = {p: max(1.0, jobs * m / total) for p, m in minutes.items()}
+    counts = {p: max(1, math.floor(s)) for p, s in share.items()}
+    for p in sorted(share, key=lambda q: (counts[q] - share[q], q)):
+        if sum(counts.values()) >= jobs:
+            break
+        counts[p] += 1
+    return {p: min(MAX_SHARDS, n) for p, n in counts.items()}
+
+
+def reference_plan(history: Mapping[str, Any] | None, seed: Mapping[str, Any], runners: Sequence[tuple[str, str, str]],
+                   target_s: float = REFERENCE_TARGET_S, why: str = "", jobs: int = CONCURRENT_JOBS
+                   ) -> tuple[list[Sizing], dict[str, Any], str, list[str]]:
+    """Each reference runner's shards: the fewest whose slowest shard, estimated from the history's medians (its tests'
+    seconds in one process, plus the session's time outside them), is at most ``target_s``. With no usable history
+    the runners share ``jobs`` (what the account's concurrent jobs leave beside the nightly's others) by their minutes
+    in the committed table, balanced on it: measured under xdist, it cannot size a serial shard, but it splits the
+    jobs, until a night's passing shards are recorded."""
+    platforms = [p for _, _, p in runners]
+    tests = (history or {}).get("lanes") or {}
+    if not history or not history.get("runs") or not all(tests.get(p) for p in platforms):
+        lanes_module = _lanes_module()
+        minutes = {}
+        for p in platforms:
+            durations = lanes_module.durations_for(p, seed)
+            minutes[p] = sum(lanes_module.weights(sorted(durations), durations).values()) / 60
+        counts = fallback_split(minutes, jobs)
+        sizings = [Sizing(p, REFERENCE_LANE, counts[p], 0, 0.0, target_s) for p in platforms]
+        split = ", ".join(f"{p} {counts[p]}" for p in platforms)
+        source = (f"no usable reference history ({why or 'it has no tests for a platform the lane runs on'}): the "
+                  f"{jobs} jobs the account's {CONCURRENT_JOBS} leave, split by tests/durations.json's minutes "
+                  f"({split}) and balanced on it")
+        return sizings, run_table(seed.get("platforms") or {}, sizings, source), source, [source]
+    durations_table = update_durations.table(dict(history))
+    lanes_module = _lanes_module()
+    sizings, warnings = [], []
+    for platform in platforms:
+        kept = ((history.get("overhead") or {}).get(platform) or {}).get(REFERENCE_LANE) or []
+        s = size_lane(platform, REFERENCE_LANE, sorted(tests[platform]),
+                      lanes_module.durations_for(platform, durations_table), 1,
+                      statistics.median(kept) if kept else DEFAULT_OUTSIDE_S, target_s)
+        sizings.append(s)
+        if s.warning:
+            warnings.append(f"{platform} reference: {s.warning}")
+    runs = history["runs"]
+    source = f"the median of {len(runs)} nightly reference run(s), the last {runs[-1]}"
+    return sizings, run_table(durations_table["platforms"], sizings, source), source, warnings
+
+
+def reference_matrix(sizings: Sequence[Sizing], runners: Sequence[tuple[str, str, str]]) -> dict[str, Any]:
+    """The `reference` job's matrix: per runner, shards 1..N of N."""
+    count = {s.platform: s.shards for s in sizings}
+    return {"include": [{"os": os_, "python": python, "shard": k, "of": count[platform]}
+                        for os_, python, platform in runners for k in range(1, count[platform] + 1)]}
+
+
+def starting_jobs(workflow: Path, besides: str) -> int:
+    """At least how many jobs of ``workflow`` start with the run beside ``besides`` (each job that needs none, a matrix
+    counted by its axes, or else by its include list), so they share the account's concurrent jobs with it."""
+    import yaml
+
+    total = 0
+    for name, job in ((yaml.safe_load(workflow.read_text(encoding="utf-8")) or {}).get("jobs") or {}).items():
+        if name == besides or job.get("needs"):
+            continue
+        axes = {k: v for k, v in ((job.get("strategy") or {}).get("matrix") or {}).items()
+                if k not in ("include", "exclude") and isinstance(v, list)}
+        include = ((job.get("strategy") or {}).get("matrix") or {}).get("include")
+        total += math.prod(len(v) for v in axes.values()) if axes else len(include) if isinstance(include, list) else 1
+    return total
+
+
+def reference_summary(sizings: Sequence[Sizing], source: str, warnings: Sequence[str], target_s: float,
+                      beside: int) -> tuple[str, list[str]]:
+    jobs = sum(s.shards for s in sizings)
+    lines = ["## Reference shards (tools/ci/shard_plan.py --reference)", "",
+             f"Sized from {source}. Each shard's estimate is at most {target_s / 60:.1f} minutes.", "",
+             "| Platform | Shards | Tests | Slowest shard (est.) |", "|---|---|---|---|"]
+    lines += [f"| {s.platform} | {s.shards} | {s.tests or '-'} | "
+              f"{f'{s.slowest_s / 60:.1f} min' if s.tests else '-'} |" for s in sizings]
+    out = list(warnings)
+    if jobs + beside > CONCURRENT_JOBS:
+        out.append(f"the nightly starts {jobs} reference jobs beside at least {beside} others, more than the account's "
+                   f"{CONCURRENT_JOBS} concurrent jobs: some queue")
+    lines += ["", f"{jobs} reference jobs beside at least {beside} others."]
+    if out:
+        lines += ["", "### Warnings (reported, never gating)", ""] + [f"- {w}" for w in out]
+    return "\n".join(lines) + "\n", out
+
+
 def matrix(sizings: Sequence[Sizing], jobs: Sequence[tuple[str, str, str, tuple[str, ...]]]) -> dict[str, Any]:
     """The `lanes` job's matrix: per runner and lane, shards 1..N of N."""
     count = {(s.platform, s.lane): s.shards for s in sizings}
@@ -335,6 +453,31 @@ def summary(sizings: Sequence[Sizing], source: str, warnings: Sequence[str], ext
     return "\n".join(lines) + "\n", out
 
 
+def reference_main(args: argparse.Namespace, seed: Mapping[str, Any]) -> int:
+    runners = []
+    for spec in args.runner:
+        os_, _, python = spec.partition(":")
+        if os_ not in PLATFORM_OF_OS or not python:
+            raise SystemExit(f"--runner {spec}: expected OS:PYTHON with OS one of {', '.join(PLATFORM_OF_OS)}")
+        runners.append((os_, python, PLATFORM_OF_OS[os_]))
+    history, why = update_durations.read_history(args.history, of="the nightly's reference shards")
+    beside = starting_jobs(args.workflows / "nightly.yml", besides="reference-plan")
+    sizings, durations_table, source, warnings = reference_plan(history, seed, runners, REFERENCE_TARGET_S, why,
+                                                                jobs=CONCURRENT_JOBS - beside)
+    update_durations.write_json(args.durations_out, durations_table)
+    text, warnings = reference_summary(sizings, source, warnings, REFERENCE_TARGET_S, beside)
+    if args.github_output:
+        with args.github_output.open("a", encoding="utf-8") as fh:
+            fh.write(f"reference_matrix={json.dumps(reference_matrix(sizings, runners), separators=(',', ':'))}\n")
+    if args.summary:
+        with args.summary.open("a", encoding="utf-8") as fh:
+            fh.write(text)
+    print(text)
+    for w in warnings:
+        print(f"::warning title=reference shards::{w}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--history", type=Path, required=True, metavar="FILE", help="the rolling history (may be missing)")
@@ -345,8 +488,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--workflows", type=Path, default=WORKFLOWS, metavar="DIR")
     ap.add_argument("--github-output", type=Path, metavar="FILE", help="append lanes_matrix=<json> here")
     ap.add_argument("--summary", type=Path, metavar="FILE", help="append the Markdown summary here")
+    ap.add_argument("--reference", action="store_true",
+                    help="size the nightly's reference lane (nightly.yml `reference`) from its own history")
+    ap.add_argument("--runner", action="append", default=[], metavar="OS:PYTHON",
+                    help="with --reference: a runner the reference lane runs on (repeat for each)")
     args = ap.parse_args(argv)
     seed = json.loads(args.seed.read_text(encoding="utf-8"))
+    if args.reference:
+        if not args.runner:
+            ap.error("--reference needs --runner")
+        return reference_main(args, seed)
     history, why = update_durations.read_history(args.history)
     jobs = lane_jobs(args.workflows)
     sizings, durations_table, source, warnings = plan(history, seed, lanes_deadlines(args.workflows), jobs, why)

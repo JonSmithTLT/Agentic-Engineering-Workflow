@@ -348,7 +348,10 @@ def test_a_return_with_no_guard_to_recheck_is_refused_and_names_one_that_has(tmp
     plants = {
         "entry_guard_unclassified": lambda: monkeypatch.setattr(
             guards, "role_of", lambda name, unit: None if name == "ready_for_review" else role_of(name, unit)),
-        "no_entry_guard": lambda: monkeypatch.delitem(T.RULES, ("RUNNING", "REVIEW_PENDING")),
+        # A copy without the edge, never the live table: undoing a delitem puts the key back at the table's end
+        # (nightly 2026-10-26..28: the guide's RUNNING moves reordered for the rest of the process).
+        "no_entry_guard": lambda: monkeypatch.setattr(T, "RULES", {
+            edge: rule for edge, rule in T.RULES.items() if edge != ("RUNNING", "REVIEW_PENDING")}),
     }
     for reason, plant in plants.items():
         p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")

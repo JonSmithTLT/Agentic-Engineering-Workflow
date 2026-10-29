@@ -56,6 +56,7 @@ import pytest
 from notifier import takeover, until
 
 import aew
+from aew.engine import faults
 from aew.engine.api import Engine
 from aew.engine.authority import require_held_lead, require_lead
 from aew.engine.lock import FileLock
@@ -140,6 +141,7 @@ PROFILED: dict[CodeType, tuple[str, Callable[[FrameType], float | None]]] = {
     FileLock.__enter__.__code__: ("FileLock", lambda f: f.f_locals["self"].timeout),
 }
 SLEEP = time.sleep  # the C function the profiler reports a sleep as
+TICK = broker_liveness.Beat.tick.__code__  # an iteration's last step, once its authority check found the Lead current
 
 
 @dataclass
@@ -147,6 +149,7 @@ class Census:
     ran: dict[str, CodeType] = field(default_factory=dict)
     waits: list[Wait] = field(default_factory=list)
     iteration: int = 0
+    completed: int = 0  # the last iteration whose authority check found the Lead current: it reached Beat.tick
     watch: int | None = None  # the watchdog thread's identifier
     broker: Any = None  # the bound's terms derive from it
     _depth: int = 0  # > 0 while a recorded wait is in progress: what it calls is inside it
@@ -155,6 +158,8 @@ class Census:
     def profile(self, frame: FrameType, event: str, arg: Any) -> None:
         if event == "call":
             code = frame.f_code
+            if code is TICK:
+                self.completed = self.iteration
             if code not in self._codes:  # each function once: the profiler runs on every call
                 self._codes.add(code)
                 name = _aew_function(code)
@@ -237,9 +242,12 @@ def run_census(project: Any, monkeypatch: pytest.MonkeyPatch, *, check: Callable
     broker = lead_broker.LeadBroker(Engine.discover(project.root), project.token)
     broker.start()
     try:
-        # A generous window: the profiler slows each iteration's read, and this is no timing claim
-        until(lambda: census.iteration >= 3, 60, "three watchdog iterations as the current Lead")
-        current = census.iteration
+        # Three iterations whose authority checks found this Lead current: each of those checks read the state before
+        # the takeover, so the one that sees it belongs to a later iteration, wherever the takeover lands. Counting an
+        # iteration from its stop wait's start raced the takeover against that wait (nightly 2026-10-26..28: iteration
+        # 3's own check saw it, 3 > 3). A generous window: the profiler slows each iteration's read.
+        until(lambda: census.completed >= 3, 60, "three watchdog iterations completed as the current Lead")
+        current = census.completed
         takeover(project, monkeypatch)
         until(lambda: (broker_liveness.read(root) or {}).get("closed_at"), 60, "the superseded broker's closed_at")
         assert broker.superseded and census.iteration > current
@@ -304,6 +312,75 @@ def test_a_sleep_on_the_watchdog_path_is_found(project, monkeypatch):
     found = problems(run_census(project, monkeypatch, check=sleeping))
     assert any(p.startswith("time.sleep (bound None) from aew.harness.lead_broker:LeadBroker._authority_lost")
                for p in found), found
+
+
+class Lockstep:
+    """The census's worst interleaving, forced in place of the scheduler's: the watchdog holds at its pause point
+    (between an iteration's stop wait and its authority check) while ``run_census`` looks, and goes on only when the
+    look finds the census not ready. Once it is ready, the watchdog stays held until the takeover has committed, so the
+    takeover always lands before the check of the iteration that was open when ``run_census`` decided."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._cv = threading.Condition()
+        self._held = 0  # the iteration held at the pause point, 0 while none is
+        self._free = False  # the takeover committed: the watchdog runs on unheld
+        self.landed = 0  # the iteration held when the takeover committed
+        real_pause, real_until, real_takeover = faults.pause, until, takeover
+        this = sys.modules[__name__]
+        reached = 0
+
+        def pause(point: str, **kwargs: Any) -> None:
+            nonlocal reached
+            if point != "harness.lead_broker.watchdog":
+                return real_pause(point, **kwargs)
+            reached += 1  # once per iteration, after its stop wait
+            profile = sys.getprofile()
+            sys.setprofile(None)  # the census never sees the hold
+            try:
+                with self._cv:
+                    self._held = reached
+                    self._cv.notify_all()
+                    assert self._cv.wait_for(lambda: self._free or not self._held, 60), "never released"
+                    self._held = 0
+            finally:
+                sys.setprofile(profile)
+            return None
+
+        def looked(predicate: Callable[[], Any], timeout: float = 30.0, what: str = "the condition",
+                   **kwargs: Any) -> Any:
+            if self._free:
+                return real_until(predicate, timeout, what, **kwargs)
+            deadline = time.monotonic() + timeout
+            with self._cv:
+                while self._cv.wait_for(lambda: self._held, max(0.0, deadline - time.monotonic())):
+                    result = predicate()
+                    if result:
+                        return result  # decided: the watchdog stays held through the takeover
+                    self._held = 0
+                    self._cv.notify_all()
+            raise AssertionError(f"timed out waiting for {what}")
+
+        def taken_over(project: Any, mp: pytest.MonkeyPatch) -> None:
+            real_takeover(project, mp)
+            with self._cv:
+                self.landed, self._free = self._held, True
+                self._cv.notify_all()
+
+        monkeypatch.setattr(faults, "pause", pause)
+        monkeypatch.setattr(this, "until", looked)
+        monkeypatch.setattr(this, "takeover", taken_over)
+
+
+def test_the_takeover_is_seen_in_a_later_iteration_wherever_it_lands(project, monkeypatch):
+    """Nightly 2026-10-26..28 (the Linux single-process lane): ``run_census`` took over as soon as iteration 3's stop
+    wait had started, and a takeover that committed before iteration 3's authority check was seen by that check, in
+    iteration 3 itself (``3 > 3``). Forced here on every run: the takeover commits while the watchdog is held before
+    the check of the iteration open when ``run_census`` decided, and that check sees it, in a later iteration than the
+    last one the census counted as the current Lead's."""
+    lock = Lockstep(monkeypatch)
+    census = run_census(project, monkeypatch)
+    assert census.broker.superseded and census.iteration == lock.landed > census.completed, (
+        census.iteration, lock.landed, census.completed)
 
 
 @pytest.mark.parametrize(("body", "names"), [

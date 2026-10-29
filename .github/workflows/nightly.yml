@@ -30,29 +30,54 @@ jobs:
           key: shard-durations-restore-only
           restore-keys: shard-durations-
 
+  reference-plan:
+    # The reference lane's shards, computed for every run (tools/ci/shard_plan.py --reference), as the merge gate's are
+    # (ci.yml, register E44), but from this lane's own history: one process per shard measures a test's serial time,
+    # and the gate's xdist workers (with coverage, on Linux) put the suite at 1.4x (Windows) and 2.8x (Linux) of it.
+    # The rule since E26 is to grow the count when a shard nears 45 minutes, never the timeout: each shard's estimate
+    # stays at most the rule less a night's measured variance (shard_plan.REFERENCE_TARGET_S, derived there), so a
+    # night that slow still ends it before 45. With no history yet, the runners share what the account's concurrent
+    # jobs leave beside this workflow's other jobs, never more. Static counts (4 Linux, 8 Windows, sized 2026-10-09)
+    # ran out on 10-26 and 10-28. One table for the whole run: every shard of a runner must cut the same partition.
+    name: reference shards (tools/ci/shard_plan.py --reference)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.reference_matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: PyYAML and pytest, for the partition's weights (tests/helpers/lanes.py)
+        run: python -m pip install "PyYAML>=6.0" "pytest>=8"
+      - name: The reference shards' durations history (the nightly's own, newest)
+        uses: actions/cache/restore@v6
+        with:
+          path: reference-history/history.json
+          key: reference-durations-restore-only
+          restore-keys: reference-durations-
+      - id: plan
+        run: >-
+          python tools/ci/shard_plan.py --reference --history reference-history/history.json
+          --seed tests/durations.json --durations-out "$RUNNER_TEMP/reference-durations/durations.json"
+          --runner ubuntu-latest:3.11 --runner windows-latest:3.13
+          --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: reference-durations
+          path: ${{ runner.temp }}/reference-durations/
+          retention-days: 30
+
   reference:
-    # The whole suite serially: no xdist. Re-proves daily that parallel lanes change no outcome; the merge gate's
-    # shards balance on `main`'s own history instead (ci.yml, register E44). The suite is split into duration-balanced
-    # shards (tests/helpers/lanes.py, `--shard k/N`), each well inside the job timeout; `reference-assurance` below
-    # proves the shards together ran every collected test exactly once. Grow `of` when a shard nears 45 minutes,
-    # never the timeout (E26). Sized on 2026-10-09 (strategy §8): 113 test-minutes on Linux, 294 on Windows.
+    # The whole suite serially: no xdist. Re-proves daily that parallel lanes change no outcome. The suite is split
+    # into duration-balanced shards (tests/helpers/lanes.py, `--shard k/N`), as many as `reference-plan` sized;
+    # `reference-assurance` below proves the shards together ran every collected test exactly once.
     name: reference serial ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
+    needs: reference-plan
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - {os: ubuntu-latest, python: "3.11", shard: 1, of: 4}
-          - {os: ubuntu-latest, python: "3.11", shard: 2, of: 4}
-          - {os: ubuntu-latest, python: "3.11", shard: 3, of: 4}
-          - {os: ubuntu-latest, python: "3.11", shard: 4, of: 4}
-          - {os: windows-latest, python: "3.13", shard: 1, of: 8}
-          - {os: windows-latest, python: "3.13", shard: 2, of: 8}
-          - {os: windows-latest, python: "3.13", shard: 3, of: 8}
-          - {os: windows-latest, python: "3.13", shard: 4, of: 8}
-          - {os: windows-latest, python: "3.13", shard: 5, of: 8}
-          - {os: windows-latest, python: "3.13", shard: 6, of: 8}
-          - {os: windows-latest, python: "3.13", shard: 7, of: 8}
-          - {os: windows-latest, python: "3.13", shard: 8, of: 8}
+      matrix: ${{ fromJSON(needs.reference-plan.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 64
@@ -69,9 +94,16 @@ jobs:
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: reference-durations
+          path: ${{ runner.temp }}/reference-durations
+      # `--durations-file=`, one word (ci.yml's lanes job: a separate word counts as a test path)
       - run: >-
           python -m pytest -q -p no:cacheprovider -p no:xdist --durations=30
-          --shard ${{ matrix.shard }}/${{ matrix.of }} --test-timeout 600 --session-deadline 3600
+          --shard ${{ matrix.shard }}/${{ matrix.of }}
+          "--durations-file=${{ runner.temp }}/reference-durations/durations.json"
+          --test-timeout 600 --session-deadline 3600
           "--lane-report=${{ runner.temp }}/nightly-reports/reference-${{ runner.os }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
         if: always()
@@ -106,6 +138,36 @@ jobs:
         if: always()
         run: >-
           python tools/ci/discovery_ratchet.py reference-reports --event schedule --summary "$GITHUB_STEP_SUMMARY"
+      # The reference shards' history, which `reference-plan` sizes the next night from: each shard whose session
+      # passed adds its tests' times (each keeps its last five). A passing shard's durations are valid whatever the
+      # other shards did, so a red night still records its green shards; a failed shard's session never moves a
+      # duration, and a shard the deadline ended writes no report, so it records nothing (`--passed-only`). It never
+      # fails the nightly, and is saved only when written, at the one path the plan restores it from.
+      - name: The reference shards' durations history so far
+        if: success() || failure()
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          path: reference-history/history.json
+          key: reference-durations-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: reference-durations-
+      - id: durations
+        name: This night's passing shards join the history
+        if: success() || failure()
+        continue-on-error: true
+        run: >-
+          python tools/ci/update_durations.py reference-reports --history reference-history/history.json
+          --out reference-history/durations.json --passed-only
+          --run-label "${{ github.run_id }}/${{ github.run_attempt }} ${{ github.sha }}"
+      - name: Save the history for the next nights
+        if: >-
+          (success() || failure()) && steps.durations.outcome == 'success'
+          && hashFiles('reference-history/history.json') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: reference-history/history.json
+          key: reference-durations-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Every shard job succeeded
         if: always()
         run: |
@@ -325,8 +387,8 @@ jobs:
           test "${{ needs.matrix-extra.result }}" = success
 
   report:
-    needs: [shard-history, reference, reference-assurance, walk-extended, race-repeat, crash-extended, matrix-extra,
-            matrix-extra-assurance]
+    needs: [shard-history, reference-plan, reference, reference-assurance, walk-extended, race-repeat, crash-extended,
+            matrix-extra, matrix-extra-assurance]
     # A scheduled job that hits its timeout-minutes ends `cancelled`, not `failed`: on a scheduled run either is a
     # failure of nightly assurance and opens (or updates) the issue. Nothing supersedes a scheduled run, so a
     # cancellation here is never a newer push; pull-request runs never reach this job.

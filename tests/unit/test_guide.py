@@ -69,6 +69,26 @@ def test_the_guide_follows_the_post_integration_policy_and_names_unconfigured_ch
     assert "Checks not configured yet (their gates stay blocked): unit." in text
 
 
+def test_the_guide_reads_the_table_in_its_written_order_whatever_the_dicts_order(monkeypatch):
+    """Nightly 2026-10-26..28: a test deleted an edge of the live table and monkeypatch put it back at the table's end,
+    so for the rest of that process the guide listed RUNNING's moves in another order than a fresh `aew` did (the
+    OpenCode Lead tests compare the two). With the table in the order that undo leaves it, the guide, the next steps
+    and the Lead's entry guards are what they are in a fresh process."""
+    def ordered() -> tuple[str, dict[str, str], dict[str, list[str]]]:
+        return (guide.render(DEFAULT_GATES, DEFAULT_CHECKS), {s: T.next_steps(s) for s in T.STATES},
+                {s: T.lead_entry_guards(s) for s in T.STATES})
+
+    fresh = ordered()
+    edge = ("RUNNING", "REVIEW_PENDING")
+    reordered = {e: r for e, r in T.RULES.items() if e != edge}
+    reordered[edge] = T.RULES[edge]  # where `dictionary[key] = value`, monkeypatch's undo of a delitem, puts it
+    monkeypatch.setattr(T, "RULES", reordered)
+    assert list(T.RULES)[-1] == edge
+    assert list(T.allowed_from("RUNNING"))[:3] == ["REVIEW_PENDING", "VERIFY_PENDING", "COMMIT_READY"]
+    assert ordered() == fresh
+    assert fresh[0] in DOC.read_text(encoding="utf-8")
+
+
 def test_the_committed_lead_guide_matches_what_aew_renders_for_its_defaults():
     """docs/guides/lead-guide.md is the guide for a project on AEW's default policy (`aew init`). It is
     generated, never edited: if this fails, regenerate it from `guide.render(DEFAULT_GATES, DEFAULT_CHECKS)`."""

@@ -258,23 +258,42 @@ def test_a_lane_report_records_the_run_attempt_that_wrote_it(tmp_path):
 
 
 def test_the_nightly_reference_job_is_sharded_and_aggregated():
-    """Structure of .github/workflows/nightly.yml: every OS lists shards 1..N of one N, each under its timeout
-    (`PRE_G3A_TIMEOUT_MIN` plus the session deadline's clearance), and the aggregate (which `report` waits for) requires
-    both platforms."""
+    """Structure of .github/workflows/nightly.yml: `reference-plan` sizes the shards (shard_plan.py --reference), every
+    OS gets shards 1..N of one N, each under its timeout (`PRE_G3A_TIMEOUT_MIN` plus the session deadline's clearance)
+    and cutting the plan's one table, and the aggregate (which `report` waits for) requires both platforms."""
     jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"]
-    reference = jobs["reference"]
+    reference, plan = jobs["reference"], jobs["reference-plan"]
     # split the job further instead of raising the timeout (E26); G3a's clearance is the one addition
     assert reference["timeout-minutes"] <= PRE_G3A_TIMEOUT_MIN["nightly.yml"]["reference"] + DEADLINE_MARGINS_MIN
+    assert reference["needs"] == "reference-plan"
+    assert reference["strategy"]["matrix"] == "${{ fromJSON(needs.reference-plan.outputs.matrix) }}"
+    assert plan["outputs"]["matrix"] == "${{ steps.plan.outputs.reference_matrix }}"
+    sizing = next(s for s in plan["steps"] if s.get("id") == "plan")["run"]
+    assert "tools/ci/shard_plan.py --reference" in sizing
+    runners = [tuple(spec.split(":")) for spec in re.findall(r"--runner (\S+)", sizing)]
+    assert {os_ for os_, _ in runners} == {"ubuntu-latest", "windows-latest"}
+    sizings = [shard_plan.Sizing(shard_plan.PLATFORM_OF_OS[os_], "all", n, 0, 0.0, 0.0)
+               for (os_, _), n in zip(runners, (3, 5), strict=True)]
     per_os: dict[str, list[tuple[int, int]]] = {}
-    for entry in reference["strategy"]["matrix"]["include"]:
+    for entry in shard_plan.reference_matrix(sizings, [(o, p, shard_plan.PLATFORM_OF_OS[o]) for o, p in runners])[
+            "include"]:
         per_os.setdefault(entry["os"], []).append((entry["shard"], entry["of"]))
-    assert set(per_os) == {"ubuntu-latest", "windows-latest"}
+        assert set(entry) == {"os", "python", "shard", "of"}  # what the job reads from its matrix
     for os_name, shards in per_os.items():
         counts = {n for _, n in shards}
         assert len(counts) == 1, f"{os_name}: shards disagree on the shard count"
         assert sorted(k for k, _ in shards) == list(range(1, counts.pop() + 1)), f"{os_name}: a shard is missing"
     steps = "\n".join(str(step.get("run", "")) for step in reference["steps"])
     assert "--shard ${{ matrix.shard }}/${{ matrix.of }}" in steps and "-p no:xdist" in steps
+    # one table for the whole run: the plan's, which every shard downloads (`--durations-file=` as one word)
+    assert '"--durations-file=${{ runner.temp }}/reference-durations/durations.json"' in steps
+    assert '--durations-out "$RUNNER_TEMP/reference-durations/durations.json"' in sizing
+    upload = next(s for s in plan["steps"] if "upload-artifact" in s.get("uses", ""))
+    download = next(s for s in reference["steps"] if "download-artifact" in s.get("uses", ""))
+    assert upload["with"]["name"] == download["with"]["name"] == "reference-durations" and "if" not in upload
+    # a shard's estimate stays inside the session's own deadline
+    target = float(re.search(r"--target-minutes (\S+)", sizing).group(1))
+    assert 60 * target < float(re.search(r"--session-deadline (\d+)", steps).group(1))
     assert "matrix.shard" in steps.split("--lane-report")[1], "each shard needs its own lane report"
     uploads = [step["with"]["name"] for step in reference["steps"] if "upload-artifact" in step.get("uses", "")]
     assert uploads and all("matrix.shard" in name for name in uploads)
@@ -741,15 +760,122 @@ def test_the_lanes_job_takes_its_shards_and_durations_from_the_tier_job_and_only
 
 def test_the_nightly_reads_the_history_every_night_so_a_week_without_ci_does_not_evict_it():
     """GitHub removes a cache entry nobody has read for seven days (review of #235, F1: no CI run from 2026-10-13 to
-    10-21). The nightly restores the newest history and never saves one."""
+    10-21). The nightly restores the merge gate's newest history and never saves one. Its reference shards' history is
+    its own, restored and saved at one path: actions/cache keys an entry by its path too, so a restore at another path
+    never finds what was saved."""
     nightly = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
     assert "schedule" in nightly[True]
     steps = [s for job in nightly["jobs"].values() for s in job.get("steps") or []]
     caches = [s for s in steps if str(s.get("uses", "")).startswith("actions/cache")]
-    assert [s["uses"] for s in caches] == ["actions/cache/restore@v6"]
+    gate = [s for s in caches if s["with"].get("restore-keys") == "shard-durations-"]
+    assert [s["uses"] for s in gate] == ["actions/cache/restore@v6"]
     ci = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
     saved = next(s for s in ci["assurance"]["steps"] if s.get("uses") == "actions/cache/save@v6")
-    assert saved["with"]["key"].startswith(caches[0]["with"]["restore-keys"])
+    assert saved["with"]["key"].startswith(gate[0]["with"]["restore-keys"])
+    assert gate[0]["with"]["path"] == saved["with"]["path"]
+    own = [s for s in caches if s not in gate]
+    assert [s["uses"] for s in own] == ["actions/cache/restore@v6", "actions/cache/restore@v6",
+                                        "actions/cache/save@v6"]  # the plan's read; the aggregate's read and save
+    assert {s["with"].get("restore-keys") for s in own[:2]} == {"reference-durations-"}
+    assert own[2]["with"]["key"] == "reference-durations-${{ github.run_id }}-${{ github.run_attempt }}"
+    assert len({s["with"]["path"] for s in own}) == 1
+    runs = "\n".join(str(s.get("run", "")) for s in steps)
+    assert runs.count(f"--history {own[0]['with']['path']}") == 2  # the plan reads it, the update writes it
+
+
+REFERENCE_RUNNERS = [("ubuntu-latest", "3.11", "linux"), ("windows-latest", "3.13", "win32")]
+
+
+def reference_history(durations: dict[str, float], outside_s: float = 45.0) -> dict:
+    """A reference history of one night on both platforms: one process per shard, so no xdist workers."""
+    return {"schema": update_durations.HISTORY_SCHEMA, "runs": ["night"],
+            "platforms": {p: {n: [d] for n, d in durations.items()} for _, _, p in REFERENCE_RUNNERS},
+            "lanes": {p: {n: "integration" for n in durations} for _, _, p in REFERENCE_RUNNERS},
+            "overhead": {p: {"all": [outside_s]} for _, _, p in REFERENCE_RUNNERS}}
+
+
+def test_the_reference_lane_gets_the_fewest_shards_whose_slowest_estimate_is_at_most_its_target():
+    """One process per shard: 8000 s of tests is four shards of 2000 s (plus 45 s outside them) under a 40 minute
+    target, where the merge gate's four xdist workers would have put it in one."""
+    tests = {f"tests/integration/test_x.py::t{i}": 100.0 for i in range(80)}
+    sizings, table, source, warnings = shard_plan.reference_plan(reference_history(tests), {}, REFERENCE_RUNNERS,
+                                                                 2400.0)
+    assert [(s.platform, s.shards, s.slowest_s) for s in sizings] == [("linux", 4, 2045.0), ("win32", 4, 2045.0)]
+    assert not warnings and table["platforms"]["linux"] == tests and "nightly reference" in source
+    assert shard_plan.slowest_shard_s(sorted(tests), tests, 3, 1, 45.0) > 2400.0  # three would not fit
+    one_long = {**tests, "tests/integration/test_y.py::long": 2500.0}
+    lane = shard_plan.reference_plan(reference_history(one_long), {}, REFERENCE_RUNNERS, 2400.0)[0][0]
+    assert "alone is estimated" in lane.warning  # no count fits: a warning, never a gate
+
+
+def test_with_no_reference_history_every_runner_runs_the_most_shards_and_says_why():
+    """The committed table was measured under xdist (and coverage on Linux), so it cannot size a serial shard: the
+    first night, or one after the cache is gone, runs the most shards, and records its passing ones for the next."""
+    seed = committed(platforms={"linux": {ALL[0]: 1.0}})
+    for history in (None, {"schema": update_durations.HISTORY_SCHEMA, "runs": [], "platforms": {}}):
+        sizings, table, source, warnings = shard_plan.reference_plan(history, seed, REFERENCE_RUNNERS, 2400.0,
+                                                                     "no history of the nightly's reference shards")
+        assert [s.shards for s in sizings] == [shard_plan.MAX_SHARDS] * 2
+        assert warnings == [source] and "no usable reference history" in source
+        assert table["platforms"] == seed["platforms"]
+
+
+def test_the_reference_plan_writes_the_jobs_matrix_and_the_one_table_its_shards_cut(tmp_path):
+    history, seed = tmp_path / "history.json", tmp_path / "seed.json"
+    history.write_text(json.dumps(reference_history({ALL[0]: 60.0, ALL[2]: 30.0})), encoding="utf-8")
+    seed.write_text(json.dumps(committed()), encoding="utf-8")
+    out, summary_md, table = tmp_path / "out.txt", tmp_path / "summary.md", tmp_path / "run" / "durations.json"
+    assert shard_plan.main(["--reference", "--history", str(history), "--seed", str(seed), "--durations-out",
+                            str(table), "--runner", "ubuntu-latest:3.11", "--runner", "windows-latest:3.13",
+                            "--target-minutes", "40", "--github-output", str(out), "--summary", str(summary_md)]) == 0
+    line = out.read_text(encoding="utf-8").strip()
+    assert line.startswith("reference_matrix=") and "\n" not in line
+    assert json.loads(line.split("=", 1)[1])["include"] == [
+        {"os": "ubuntu-latest", "python": "3.11", "shard": 1, "of": 1},
+        {"os": "windows-latest", "python": "3.13", "shard": 1, "of": 1}]
+    assert json.loads(table.read_text(encoding="utf-8"))["platforms"]["win32"] == {ALL[0]: 60.0, ALL[2]: 30.0}
+    assert "| linux | 1 | 2 |" in summary_md.read_text(encoding="utf-8")
+    with pytest.raises(SystemExit):
+        shard_plan.main(["--reference", "--history", str(history), "--seed", str(seed), "--durations-out",
+                         str(table), "--target-minutes", "40"])  # no runner
+
+
+def test_the_jobs_that_start_with_the_run_are_counted_by_their_matrix(tmp_path):
+    """Beside the reference shards, against the account's concurrent jobs: a matrix by its axes, else its include
+    list; a job that needs another starts later; the plan job is done before the shards start."""
+    workflow = tmp_path / "w.yml"
+    workflow.write_text(yaml.safe_dump({"jobs": {
+        "reference-plan": {}, "reference": {"needs": "reference-plan"}, "one": {},
+        "axes": {"strategy": {"matrix": {"os": ["a", "b"], "block": [1, 2, 3], "include": [{"os": "a", "x": 1}]}}},
+        "listed": {"strategy": {"matrix": {"include": [{"os": "a"}, {"os": "b"}]}}},
+        "after": {"needs": ["axes"]}}}), encoding="utf-8")
+    assert shard_plan.starting_jobs(workflow, besides="reference-plan") == 1 + 6 + 2
+    text, warnings = shard_plan.reference_summary([shard_plan.Sizing("linux", "all", 30, 1, 1.0, 2400.0)], "s", [],
+                                                  2400.0, beside=11)
+    assert any("concurrent jobs" in w for w in warnings) and "30 reference jobs beside at least 11" in text
+
+
+def test_a_reference_night_records_only_its_passing_shards_and_their_time_under_the_lane_all(tmp_path):
+    lanes = {n: "fast" for n in ALL}
+    green = timed_report("win32", None, {ALL[0]: 2.0}, wall_s=50.0, workers=None, lanes=lanes, shard="1/2")
+    red = timed_report("win32", None, {ALL[2]: 900.0}, wall_s=950.0, workers=None, lanes=lanes, shard="2/2")
+    red["exitstatus"] = 1
+    reports = tmp_path / "reports"
+    for i, r in enumerate((green, red)):
+        (reports / f"shard-{i}").mkdir(parents=True)
+        (reports / f"shard-{i}" / "reference.json").write_text(json.dumps(r), encoding="utf-8")
+    history, out = tmp_path / "h" / "history.json", tmp_path / "h" / "durations.json"
+    assert update_durations.main([str(reports), "--history", str(history), "--out", str(out), "--passed-only",
+                                  "--run-label", "1/1 sha"]) == 0
+    kept = json.loads(history.read_text(encoding="utf-8"))
+    assert kept["platforms"]["win32"] == {ALL[0]: [2.0]} and kept["overhead"]["win32"] == {"all": [48.0]}
+    assert kept["lanes"]["win32"] == lanes and update_durations.history_problem(kept) is None
+    red["exitstatus"] = green["exitstatus"] = 1
+    for i, r in enumerate((green, red)):
+        (reports / f"shard-{i}" / "reference.json").write_text(json.dumps(r), encoding="utf-8")
+    history.unlink()
+    assert update_durations.main([str(reports), "--history", str(history), "--out", str(out), "--passed-only"]) == 0
+    assert not history.exists()  # no session passed: nothing to save
 
 
 def test_the_sizer_reads_the_lanes_jobs_deadlines_where_ci_yml_sets_them_and_writes_what_the_run_needs(tmp_path):

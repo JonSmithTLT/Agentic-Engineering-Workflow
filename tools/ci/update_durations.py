@@ -15,6 +15,10 @@ count).
     python tools/ci/update_durations.py REPORT_DIR --history history.json --seed tests/durations.json \
         --out durations.json --run-label "<run id>/<attempt> <sha>"
 
+The nightly keeps a history of its own the same way, from its reference shards (``--passed-only``, no seed): one
+process per shard measures a test's serial time, which the merge gate's xdist workers (and coverage, on Linux) do not
+(``shard_plan.py --reference``).
+
 Without ``--history``, it merges lane reports into the table at ``--out`` directly, for a table made from runs that are
 not `main`'s: its shard counts are kept and its ``sized_from`` dropped, and entries for tests no longer collected are
 dropped.
@@ -39,6 +43,7 @@ DURATIONS_SCHEMA = "aew/test-durations/v1"
 HISTORY_SCHEMA = "aew/test-durations-history/v1"
 REPORT_SCHEMA = "aew/lane-report/v1"
 AUTOPSY_DIR = "autopsy"  # a hang's autopsy in a report directory is never a lane report (check_assurance.py)
+ALL_LANES = "all"  # what a session of no one lane (the nightly's reference shards) is kept under (check_assurance's)
 # How many green `main` runs a test's duration is the median of: enough that one slow runner does not move the
 # table, few enough that a test made slower or faster shows within a working day of pushes (E44).
 KEEP = 5
@@ -108,12 +113,12 @@ def history_problem(data: Any) -> str | None:
     return f"its {', '.join(wrong)} {'is' if len(wrong) == 1 else 'are'} not of a history's shape" if wrong else None
 
 
-def read_history(path: Path) -> tuple[dict[str, Any] | None, str]:
-    """(the history at ``path``, "") or (None, why there is none to use)."""
+def read_history(path: Path, of: str = "green `main` runs") -> tuple[dict[str, Any] | None, str]:
+    """(the history at ``path``, "") or (None, why there is none to use); ``of`` names the runs it keeps."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return None, "no history of green `main` runs (a first run, or the cache gone)"
+        return None, f"no history of {of} (a first run, or the cache gone)"
     except (OSError, ValueError) as exc:
         return None, f"the history could not be read ({type(exc).__name__})"
     problem = history_problem(data)
@@ -160,7 +165,7 @@ def merge_history(history: dict[str, Any], reports: list[dict[str, Any]], label:
     outside: dict[str, dict[str, float]] = {}
     remaining: dict[str, dict[str, float]] = {}
     for r in reports:
-        platform = r["platform"]
+        platform, lane = r["platform"], r.get("lane") or ALL_LANES
         table = out.setdefault("platforms", {}).setdefault(platform, {})
         collected.setdefault(platform, set()).update(r["collected"])
         lanes.setdefault(platform, {}).update(r.get("lanes") or {})
@@ -169,10 +174,10 @@ def merge_history(history: dict[str, Any], reports: list[dict[str, Any]], label:
         spent = outside_tests_s(r)
         if spent is not None:
             per_lane = outside.setdefault(platform, {})
-            per_lane[r["lane"]] = max(per_lane.get(r["lane"], 0.0), spent)
+            per_lane[lane] = max(per_lane.get(lane, 0.0), spent)
         if _number(r.get("job_remaining_s")):
             left = remaining.setdefault(platform, {})
-            left[r["lane"]] = min(left.get(r["lane"], float("inf")), float(r["job_remaining_s"]))
+            left[lane] = min(left.get(lane, float("inf")), float(r["job_remaining_s"]))
         for nid, res in r["results"].items():
             if res["outcome"] != "skipped":
                 table[nid] = [*table.get(nid, []), round(float(res["duration"]), 2)][-keep:]
@@ -224,8 +229,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--history", type=Path, help="the rolling history to add this run to (read, then rewritten)")
     ap.add_argument("--seed", type=Path, help="the table a missing history starts from (tests/durations.json)")
     ap.add_argument("--run-label", default="", help="recorded in the history's last runs")
+    ap.add_argument("--passed-only", action="store_true",
+                    help="add only the reports of sessions that passed (the nightly's reference shards: a red night "
+                         "still records its green shards, and a failed or killed one never moves a duration)")
     args = ap.parse_args(argv)
     reports = load_reports(args.reports)
+    if args.passed_only:
+        reports = [r for r in reports if r.get("exitstatus") == 0]
+        if not reports:
+            print("no session passed: nothing added")
+            return 0
     platforms = ", ".join(sorted({r["platform"] for r in reports}))
     if args.history:
         seed = json.loads(args.seed.read_text(encoding="utf-8")) if args.seed else {}

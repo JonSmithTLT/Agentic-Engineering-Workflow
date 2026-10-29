@@ -71,10 +71,30 @@ def test_partition_is_total_disjoint_and_deterministic():
         flat = [n for b in bins for n in b]
         assert sorted(flat) == sorted(ids) and len(flat) == len(set(flat))
         assert bins == lanes.partition(list(reversed(ids)), dict(durations), shards)  # input order irrelevant
-    mean = statistics.fmean(durations.values())
-    weight = {n: durations.get(n, mean) for n in ids}
+    weight = lanes.weights(ids, durations)
     loads = [sum(weight[n] for n in b) for b in lanes.partition(ids, durations, 4)]
     assert max(loads) - min(loads) <= max(weight.values()) + 1e-9  # greedy LPT: within one test of balance
+
+
+def test_an_untimed_test_weighs_what_its_file_then_its_directory_then_the_suite_takes():
+    """The nightly of 2026-10-28: the suite's mean put 2,516 untimed tests at 6.02 s each, about ten times their cost,
+    and a new unit test costs a unit test's time."""
+    durations = {"tests/unit/test_a.py::x": 0.2, "tests/unit/test_a.py::y": 0.4, "tests/unit/test_b.py::x": 0.6,
+                 "tests/integration/test_c.py::x": 30.0}
+    new = ["tests/unit/test_a.py::z", "tests/unit/test_new.py::x", "tests/regression/test_new.py::x"]
+    weight = lanes.weights([*durations, *new], durations)
+    assert weight["tests/unit/test_a.py::z"] == pytest.approx(0.3)  # its file's
+    assert weight["tests/unit/test_new.py::x"] == pytest.approx(0.4)  # its directory's
+    assert weight["tests/regression/test_new.py::x"] == pytest.approx(statistics.fmean(durations.values()))
+    assert {n: weight[n] for n in durations} == durations  # a recorded one is its own
+
+
+def test_tests_recorded_at_zero_are_spread_over_the_shards_never_piled_into_one():
+    """A weight of 0 never raises a shard's load, so every such test went to the same shard: all 2,147 recorded zeros
+    of the 10-25 nightly ran in its Windows shard 1/8 (2,806 tests, about 660 in each other)."""
+    durations = {f"tests/unit/test_z.py::t{i}": 0.0 for i in range(30)}
+    assert [len(b) for b in lanes.partition(list(durations), durations, 3)] == [10, 10, 10]
+    assert set(lanes.weights(list(durations), durations).values()) == {lanes.LEAST_WEIGHT_S}
 
 
 def test_partition_without_durations_is_round_robin_by_nodeid():

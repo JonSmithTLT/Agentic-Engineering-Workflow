@@ -38,6 +38,8 @@ DURATIONS_SCHEMA = "aew/test-durations/v1"
 # report writer in the teardown report's user properties (xdist sends those to the controller).
 CLI_CALLS: Counter[str] = Counter()
 CLI_CALLS_PROPERTY = "aew_cli_calls"
+# A recorded 0.0 is a test under 5 ms (tools/ci/update_durations.py keeps 0.01 s): it weighs that much, not nothing.
+LEAST_WEIGHT_S = 0.005
 
 
 def count_cli_call() -> None:
@@ -100,13 +102,34 @@ def parse_shard(spec: str) -> tuple[int, int]:
     return k, n
 
 
+def _directory(nodeid: str) -> str:
+    return "/".join(nodeid.split("::")[0].split("/")[:2])  # tests/unit, tests/integration, ...
+
+
 def weights(nodeids: Sequence[str], durations: Mapping[str, float]) -> dict[str, float]:
-    """Each test's weight in :func:`partition`: its recorded duration, or the mean of the recorded ones. The median of
-    a suite of millisecond tests is 0, which piled every new test into one shard (equal weights = round-robin by
-    nodeid). ``tools/ci/shard_plan.py`` estimates shards with the same weights (review of #235, F6)."""
-    known = [durations[n] for n in nodeids if n in durations]
-    default = statistics.fmean(known) if known else 1.0
-    return {n: float(durations.get(n, default)) for n in nodeids}
+    """Each test's weight in :func:`partition`: its recorded duration, else the mean of its file's recorded tests, else
+    of its directory's, else of all of them; and never less than :data:`LEAST_WEIGHT_S`.
+
+    The mean of all put the nightly's 2,516 untimed tests at 6.02 s each (about ten times what they took), so a few new
+    tests moved half the suite between shards (nightly 2026-10-28). The file, then the directory, came closest on the
+    10-25 reference run's tests that 10-28 added: x0.74 their total on Windows and x1.01 on Linux, against x3.15 and
+    x2.93 for the mean (a new unit test costs a unit test's time). A weight of 0 piles every such test into one shard,
+    whose load it never raises: all 2,147 recorded zeros went to the 10-25 nightly's Windows shard 1/8 (2,806 tests,
+    against about 660 in each other shard). The median is 0 for a suite of millisecond tests. ``tools/ci/shard_plan.py``
+    estimates shards with the same weights (review of #235, F6)."""
+    known = {n: float(durations[n]) for n in nodeids if n in durations}
+    default = statistics.fmean(known.values()) if known else 1.0
+    by_file: dict[str, list[float]] = {}
+    by_directory: dict[str, list[float]] = {}
+    for n, d in known.items():
+        by_file.setdefault(n.split("::")[0], []).append(d)
+        by_directory.setdefault(_directory(n), []).append(d)
+
+    def estimate(n: str) -> float:
+        peers = by_file.get(n.split("::")[0]) or by_directory.get(_directory(n))
+        return statistics.fmean(peers) if peers else default
+
+    return {n: max(known[n] if n in known else estimate(n), LEAST_WEIGHT_S) for n in nodeids}
 
 
 def partition(nodeids: Sequence[str], durations: Mapping[str, float], shards: int) -> list[list[str]]:

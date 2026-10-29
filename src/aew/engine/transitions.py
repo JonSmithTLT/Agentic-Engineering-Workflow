@@ -126,6 +126,17 @@ for _dst in ("RUNNING", "REVIEW_PENDING", "VERIFY_PENDING"):
 for _dst in ("ASSIGNED", "RUNNING", "REVIEW_PENDING", "REVIEW_PASSED", "VERIFY_PENDING", "VERIFIED", "COMMIT_READY"):
     RULES[("INTERRUPTED", _dst)] = Rule("reconcile", reason_required=True, guard="not_beyond_interrupted_phase")
 
+# The table's order as written above, fixed once it is built. What reads the table in order (the guide's moves, the
+# next steps a refusal names, a hub's alternatives) reads it through `edges`, never in the dict's insertion order: a
+# key deleted and put back (a test's plant undone) goes to the end, and the order would change for the rest of the
+# process (nightly 2026-10-26..28).
+_AUTHORED = {edge: i for i, edge in enumerate(RULES)}
+
+
+def edges() -> list[tuple[tuple[str, str], Rule]]:
+    """The table's edges in its written order; an edge it did not have when built comes after them."""
+    return sorted(RULES.items(), key=lambda e: _AUTHORED.get(e[0], len(_AUTHORED)))
+
 
 def direct_lead_edge(origin: str | None, to: str) -> Rule | None:
     """The Lead's own edge from ``origin`` to ``to`` (a ``transition`` rule), if the table has one: what a unit that
@@ -137,7 +148,7 @@ def direct_lead_edge(origin: str | None, to: str) -> Rule | None:
 def lead_entry_guards(to: str, besides: str | None = None) -> list[str]:
     """The guards of the Lead's own edges into ``to``, each once, in table order; ``besides`` leaves out the edge from
     that state (a hub's own return into ``to``)."""
-    return list(dict.fromkeys(r.guard for (src, dst), r in RULES.items()
+    return list(dict.fromkeys(r.guard for (src, dst), r in edges()
                               if dst == to and src != besides and r.via == "transition" and r.guard))
 
 
@@ -177,4 +188,4 @@ def check(frm: str, to: str, via: str) -> Rule:
 
 
 def allowed_from(frm: str) -> dict[str, str]:
-    return {dst: r.via for (src, dst), r in RULES.items() if src == frm}
+    return {dst: r.via for (src, dst), r in edges() if src == frm}

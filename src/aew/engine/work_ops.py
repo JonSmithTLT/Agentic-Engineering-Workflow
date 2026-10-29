@@ -269,8 +269,8 @@ class WorkUnits:
         """What the Lead may do instead of taking ``hub -> to``: each other phase the hub returns to that ``admitted``
         (the hub guard's query, asked without alternatives) admits now, then the hub's other exits (the Lead's
         unguarded edges out of it), all read from the transition table."""
-        returns = [d for (s, d), r in transitions.RULES.items() if s == hub and r.guard and d != to]
-        exits = [d for (s, d), r in transitions.RULES.items() if s == hub and r.via == "transition" and not r.guard]
+        returns = [d for (s, d), r in transitions.edges() if s == hub and r.guard and d != to]
+        exits = [d for (s, d), r in transitions.edges() if s == hub and r.via == "transition" and not r.guard]
         return [{"option": "return_to", "to": d} for d in returns if admitted(d) is None] + [
             {"option": "leave_to", "to": exits}]
 

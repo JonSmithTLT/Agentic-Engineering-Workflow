@@ -24,14 +24,15 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from host_env import GUARDED, launching_names
 
 from aew.harness import containment as C
 from aew.harness import procs
 from aew.harness.containment import layout as L
 from aew.harness.containment import netns, probe, sockets
 
-pytestmark = pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
-                                reason="Linux bubblewrap containment (Windows: workdir separation only)")
+pytestmark = [pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
+                                 reason="Linux bubblewrap containment (Windows: workdir separation only)"), GUARDED]
 
 GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid", "GIT_COMMITTER_NAME": "t",
            "GIT_COMMITTER_EMAIL": "t@example.invalid"}
@@ -82,11 +83,19 @@ class Lab:
         (self.home / ".netrc").write_text("machine m login l password SECRET-NETRC\n")
         self.run = root / "runs" / "R-1"  # like a harness run: its parent, every run's directory, is hidden
 
+    def launching_env(self) -> dict[str, str]:
+        """This process's environment with the lab's home as the launching one, and none of the host's variables that
+        name secret paths: the host's own HOME would name its OpenCode directories, and one absent there (a CI runner
+        has no ~/.local) leaves the host's home out, with the lab under it put back read-only (``host_env``)."""
+        names = launching_names()
+        return {**{k: v for k, v in os.environ.items() if k not in names}, "HOME": str(self.home)}
+
     def layout(self, role: str = "implementer", **kw) -> C.Layout:
         self.run.mkdir(parents=True, exist_ok=True)
         return C.for_run(role=role, scope=kw.pop("scope", "ticket"), workspace=str(self.ws), run_dir=self.run,
                          scratch=str(self.run / "scratch"), bridge_dir=None, policy=kw.pop("policy", None),
-                         home=str(self.home), project=str(self.repo), runs=str(self.run.parent))
+                         home=str(self.home), project=str(self.repo), runs=str(self.run.parent),
+                         env=self.launching_env())
 
     def sh(self, layout: C.Layout, script: str, *, cwd: Path | None = None,
            env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -169,11 +178,13 @@ def test_the_agent_cannot_write_its_live_usage(lab):
     assert not (lab.run / "usage.live.state.json").exists()
 
 
-def test_secrets_are_hidden_and_a_masked_file_is_still_a_file(lab):
-    done = lab.sh(lab.layout(), f"ls -A {lab.home}/.ssh; cat {lab.home}/.netrc; test -f {lab.home}/.netrc && echo FILE")
+def test_secrets_are_hidden_and_a_secret_file_is_left_out_of_its_directory(lab):
+    """CS-4 addendum 6: a secret directory is empty inside, and a secret file is not there at all."""
+    done = lab.sh(lab.layout(), f"ls -A {lab.home}/.ssh; cat {lab.home}/.netrc 2>/dev/null; "
+                                f"test -e {lab.home}/.netrc || echo ABSENT")
     assert done.returncode == 0, done.stderr
     assert "SECRET" not in done.stdout and "id_key" not in done.stdout
-    assert done.stdout.strip() == "FILE"
+    assert done.stdout.strip() == "ABSENT"
 
 
 def test_provider_config_locations_read_empty_from_inside(lab):
@@ -183,11 +194,11 @@ def test_provider_config_locations_read_empty_from_inside(lab):
     (lab.home / ".claude.json.backup").write_text('{"secret": "SECRET-COPY"}\n')
     f, d = lab.home / ".claude.json", lab.home / ".config" / "anthropic"
     b = lab.home / ".claude.json.backup"
-    done = lab.sh(lab.layout("reviewer"), f"cat {f} {b}; test -f {f} && test ! -s {f} && echo FILE; "
-                                          f"test -f {b} && test ! -s {b} && echo COPY; ls -A {d}; echo END")
+    done = lab.sh(lab.layout("reviewer"), f"cat {f} {b} 2>/dev/null; test -e {f} || echo ABSENT; "
+                                          f"test -e {b} || echo ABSENT-COPY; ls -A {d}; echo END")
     assert done.returncode == 0, done.stderr
     assert "SECRET" not in done.stdout and "credentials" not in done.stdout
-    assert done.stdout.split() == ["FILE", "COPY", "END"]
+    assert done.stdout.split() == ["ABSENT", "ABSENT-COPY", "END"]
     assert f.read_text() == '{"secret": "SECRET-CFG"}\n'  # the host's own file is untouched
 
 
@@ -270,7 +281,15 @@ def test_the_role_packs_git_commands_work_on_the_private_index_and_store(lab):
 
 # ------------------------------------------------------------------ the launch self-test
 
-def test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_over_the_host(lab):
+@pytest.mark.parametrize("host", ["this_host", "runner_like"])
+def test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_over_the_host(lab, monkeypatch, host):
+    """``runner_like`` (#283's CI at 59707278): a host whose home holds the lab but no ~/.local, and whose
+    XDG_CONFIG_HOME is set elsewhere, as on a CI runner. The lab's layout takes none of it, so the planted root is
+    caught by the check this test is written for."""
+    if host == "runner_like":
+        (lab.root / "runner-config").mkdir()
+        monkeypatch.setenv("HOME", str(lab.root))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(lab.root / "runner-config"))
     good = lab.layout()
     assert probe.self_test(good, sentinel_dir=lab.outside, sibling_dir=lab.root)["ok"] is True
     broken = dataclasses.replace(good, writable=(*good.writable, "/"))  # a broad writable bind over everything
@@ -348,7 +367,7 @@ def test_the_self_test_fails_a_layout_that_reaches_control_state_tmp_or_another_
 def test_launch_fails_closed_without_bubblewrap_unless_the_policy_allows_weaker(lab, monkeypatch):
     monkeypatch.setenv("PATH", str(lab.root / "empty"))
     args = dict(role="implementer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
-                scratch=str(lab.run / "scratch"), bridge_dir=None, project=str(lab.repo))
+                scratch=str(lab.run / "scratch"), bridge_dir=None, project=str(lab.repo), env=lab.launching_env())
     with pytest.raises(C.ContainmentUnavailable, match="bubblewrap"):
         C.establish(**args, policy=None)
     layout, label = C.establish(**args, policy={"containment": {"mode": "allow_weaker"}})
@@ -359,7 +378,7 @@ def test_launch_fails_closed_without_bubblewrap_unless_the_policy_allows_weaker(
 def test_establish_labels_a_contained_run_truthfully(lab):
     layout, label = C.establish(role="reviewer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
                                 scratch=str(lab.run / "scratch"), bridge_dir=None, policy=None,
-                                project=str(lab.repo))
+                                project=str(lab.repo), env=lab.launching_env())
     assert layout is not None
     assert label["filesystem"] == "os_readonly_roots" and label["process_ownership"] == "pid_namespace"
     # F28 decision 1: a contained run's network is a namespace of its own by default, and row 1 says so; with no relay
@@ -375,7 +394,8 @@ def test_establish_on_the_hosts_network_says_so_and_claims_nothing(lab):
     """F28 §3.1: ``shared`` is an explicit weaker choice, labelled for what it is, and row 1 claims nothing for it."""
     layout, label = C.establish(role="reviewer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
                                 scratch=str(lab.run / "scratch"), bridge_dir=None,
-                                policy={"containment": {"network": {"mode": "shared"}}}, project=str(lab.repo))
+                                policy={"containment": {"network": {"mode": "shared"}}}, project=str(lab.repo),
+                                env=lab.launching_env())
     assert layout is not None and layout.net_dir is None and "--unshare-net" not in C.bwrap_argv(layout, ["true"])
     assert label["network"]["mode"] == "shared"
     assert label["self_test"]["rows"]["1"] == {"name": "network", "ok": True, "reason": None, "mode": "shared",
@@ -654,7 +674,8 @@ def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_i
     home = visible / "home"
     home.mkdir()
     layout = C.for_run(role="reviewer", scope="ticket", workspace=str(ws), run_dir=run, scratch=str(run / "scratch"),
-                       bridge_dir=None, policy=None, home=str(home), project=str(w.p.root), runs=str(run.parent))
+                       bridge_dir=None, policy=None, home=str(home), project=str(w.p.root), runs=str(run.parent),
+                       env={"HOME": str(home)})
     # The code under test, whichever checkout that is (an absolute PYTHONPATH outside the sandbox stays one inside).
     # The sandbox shares the host's network, so a fetching command (`aew capability check`, online) gets the sweep's
     # closed route, as worker_env gives the unsandboxed sweep (#281's review, N5).
@@ -723,7 +744,7 @@ def test_a_readers_fingerprint_in_its_sandbox_equals_the_writers(lab, state):
     lab.run.mkdir(parents=True, exist_ok=True)
     layout = C.for_run(role="reviewer", scope="ticket", workspace=str(ws), run_dir=lab.run,
                        scratch=str(lab.run / "scratch"), bridge_dir=None, policy=None, home=str(lab.home),
-                       project=str(lab.repo), runs=str(lab.run.parent))
+                       project=str(lab.repo), runs=str(lab.run.parent), env=lab.launching_env())
     objects = worker_surface.objects(lab.repo)
     # The code under test, whichever checkout that is (an absolute PYTHONPATH outside the sandbox stays one inside).
     res = lab.sh(layout, f"PYTHONPATH={os.environ.get('PYTHONPATH', '')} {sys.executable} -c '{_READER_FINGERPRINT}' "
@@ -785,17 +806,17 @@ def without(monkeypatch, *steps: tuple[str, ...]) -> None:
     monkeypatch.setattr(probe, "bwrap_argv", argv)
 
 
-def test_the_self_test_records_rows_1_to_5_on_the_label_of_a_passing_run(lab, monkeypatch):
-    """CB-12's rows 1 to 5 pass on the real layout and are on the label with their facts: the run's own network (row
+def test_the_self_test_records_rows_1_to_6_on_the_label_of_a_passing_run(lab, monkeypatch):
+    """CB-12's rows 1 to 6 pass on the real layout and are on the label with their facts: the run's own network (row
     1, F28 §3.6), /run a read-only tmpfs holding nothing the layout did not put there, the kernel's socket table read
     with the probe's own listener in it and no reachable socket of a failing class (D-CS2-2), no abstract socket of the
     host's listed inside (D-CS2-5), what the table cannot show named (D-CS2-3), no display credential or variable, no
-    controlling terminal, and every bind and mask holding. The table's size and the check's time are printed: its
-    cost, on CI and on the Rocky VM (`-s`)."""
+    controlling terminal, every bind and mask holding, and the store's path shielded (row 6, STG-05 CS-4). The table's
+    size and the check's time are printed: its cost, on CI and on the Rocky VM (`-s`)."""
     layout, label = establish(lab, monkeypatch)
     assert layout is not None and label["filesystem"] == "os_readonly_roots"
     rows = label["self_test"]["rows"]
-    assert sorted(rows) == ["1", "2", "3", "4", "5"]
+    assert sorted(rows) == ["1", "2", "3", "4", "5", "6"]
     assert {n: r["reason"] for n, r in rows.items() if not r["ok"]} == {}
     assert rows["2"]["host_masks"][L.RUN] == {"type": "tmpfs", "readonly": True, "extra": []}
     assert rows["2"]["table"] > 0 and rows["2"]["not_covered"] == list(sockets.NOT_COVERED)
@@ -905,9 +926,9 @@ def test_what_a_harness_needs_runs_under_the_run_mask(lab):
 
 
 def test_display_credentials_and_variables_never_reach_a_contained_process(lab, monkeypatch):
-    """CB-04: the display's credential files (synthetic here) read empty from inside, the one XAUTHORITY names
-    included; and no display, session-bus or ssh-agent variable reaches a contained process, even one its launcher
-    hands them to. Row 3 records both."""
+    """CB-04: the display's credential files (synthetic here) are not there inside, left out of their directories
+    (CS-4 addendum 6), the one XAUTHORITY names included; and no display, session-bus or ssh-agent variable reaches a
+    contained process, even one its launcher hands them to. Row 3 records both."""
     for name in L.DISPLAY_FILES:
         (lab.home / name).write_text("SYNTHETIC-COOKIE\n")
     xauth = lab.outside / "xauth-synthetic"
@@ -916,8 +937,9 @@ def test_display_credentials_and_variables_never_reach_a_contained_process(lab, 
     row = label["self_test"]["rows"]["3"]
     assert row["ok"] and row["env_set"] == []
     expected = {os.path.realpath(p) for p in (lab.home / ".Xauthority", lab.home / ".ICEauthority", xauth)}
-    assert set(row["files"]) == expected and set(row["files"].values()) == {"empty"}
-    done = lab.sh(layout, f"cat {xauth} {lab.home}/.Xauthority; env", env=dict.fromkeys(L.DISPLAY_ENV, "synthetic"))
+    assert set(row["files"]) == expected and set(row["files"].values()) == {"absent"}
+    done = lab.sh(layout, f"cat {xauth} {lab.home}/.Xauthority 2>/dev/null; env",
+                  env=dict.fromkeys(L.DISPLAY_ENV, "synthetic"))
     assert done.returncode == 0 and "SYNTHETIC" not in done.stdout, done.stderr
     assert {line.split("=", 1)[0] for line in done.stdout.splitlines()} & set(L.DISPLAY_ENV) == set()
 
@@ -954,9 +976,10 @@ def test_each_row_fails_closed_when_its_protection_is_missing(lab, monkeypatch, 
     row, steps = {
         "row1-netns": ("1", [("--unshare-net",)]),  # the run's own network (F28 §3.6; the hand-off's outcome 4)
         "row2-run": ("2", [("--tmpfs", L.RUN), ("--remount-ro", L.RUN)]),
-        "row3-file": ("3", [("--ro-bind", str(lab.run / L.MASK_FILE), real(xauth))]),
+        # the home directory's own mask, which leaves the display's file and the other secret files out of it
+        "row3-file": ("3", [("--tmpfs", real(lab.home)), ("--remount-ro", real(lab.home))]),
         "row3-env": ("3", [("--unsetenv", "DISPLAY")]),
-        "row5-mask": ("5", [("--tmpfs", real(lab.home / ".ssh"))]),
+        "row5-mask": ("5", [("--tmpfs", real(lab.home)), ("--remount-ro", real(lab.home))]),
     }[case]
     without(monkeypatch, *steps)
     with pytest.raises(C.ContainmentUnavailable, match=f"row {row} ") as refused:
@@ -964,6 +987,26 @@ def test_each_row_fails_closed_when_its_protection_is_missing(lab, monkeypatch, 
     assert refused.value.details["self_test"]["rows"][row]["ok"] is False
     layout, label = establish(lab, monkeypatch, mode="allow_weaker")
     assert layout is None and label["self_test"]["rows"][row]["ok"] is False
+
+
+def test_a_kernel_that_allows_no_user_namespace_is_refused_naming_the_setting_and_the_fix(lab, monkeypatch, tmp_path):
+    """ST-27 fact 5 (STG-05 CS-4), mocked: bubblewrap that is not setuid cannot start where `user.max_user_namespaces`
+    is 0, and says only "Creating new namespace failed". The refusal names the setting and the fix; where the limit is
+    not 0, bubblewrap's own words stand alone. (The real case is run on the Rocky VM once the operator sets it.)"""
+    limit = tmp_path / "max_user_namespaces"
+    monkeypatch.setattr(probe, "USERNS_LIMIT", str(limit))
+    failing = [sys.executable, "-c", "import sys; sys.stderr.write('bwrap: Creating new namespace failed: No space "
+               "left on device\\n'); sys.exit(1)"]  # bubblewrap 0.4.0's words for ENOSPC from clone(CLONE_NEWUSER)
+    monkeypatch.setattr(probe, "bwrap_argv", lambda layout, cmd, **kw: failing)
+    for value, named in (("0\n", True), ("15000\n", False)):
+        limit.write_text(value)
+        with pytest.raises(C.ContainmentUnavailable) as refused:
+            establish(lab, monkeypatch)
+        message = refused.value.message
+        assert "Creating new namespace failed" in message
+        assert ("user.max_user_namespaces = 0" in message and "sysctl -w user.max_user_namespaces=" in message
+                and "containment.mode: allow_weaker" in message) is named, message
+        assert ("max_user_namespaces" in message) is named
 
 
 # A launcher with a controlling terminal: it leads a new session (start_new_session) and opens a pseudo-terminal the

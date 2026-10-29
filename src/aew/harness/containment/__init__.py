@@ -36,10 +36,12 @@ from aew.harness.containment.layout import (
     for_check,
     for_run,
     retire_private_git,
+    tree_masks_line,
 )
 from aew.harness.containment.netns import NOT_PROVIDED
 
-__all__ = ["Layout", "bwrap_argv", "for_check", "for_run", "retire_private_git", "establish", "label", "normalize",
+__all__ = ["Layout", "bwrap_argv", "for_check", "for_run", "tree_masks_line", "retire_private_git", "establish",
+           "label", "normalize",
            "mode", "network", "supported", "REQUIRED", "ALLOW_WEAKER", "CONTAINED", "WORKDIR_ONLY", "PROXY_ONLY",
            "ISOLATED", "SHARED", "NOT_PROVIDED"]
 
@@ -108,13 +110,16 @@ def normalize(value: Any) -> dict[str, Any]:
 
 def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: str, bridge_dir: str | None,
               policy: dict[str, Any] | None, project: str | None = None, env: Mapping[str, str] | None = None,
-              bridge: str | None = None, egress_policy: Any = None) -> tuple[Layout | None, dict[str, Any]]:
+              bridge: str | None = None, egress_policy: Any = None, state_dir: str | None = None,
+              relayed_terminal: Mapping[str, Any] | None = None) -> tuple[Layout | None, dict[str, Any]]:
     """The run's layout, self-tested, and its label. ``(None, weaker label)`` when containment is unavailable and
     the policy allows that; raises ``ContainmentUnavailable`` when the policy requires it. ``env`` is the launching
     environment, for the credential paths and sockets it names (default: this process's). The layout's network is the
     policy's (:func:`.netns.mode`), with a fresh network directory when it is a namespace of its own (removed again
     when the launch is refused, and otherwise the caller's to remove); ``bridge`` (the run's bridge socket) and
-    ``egress_policy`` (its egress allowlist, or None) are what the self-test's row 1 checks."""
+    ``egress_policy`` (its egress allowlist, or None) are what the self-test's row 1 checks. The Lead's session
+    (STG-05 CS-4) passes its own OpenCode ``state_dir`` (``layout.for_run``) and its ``relayed_terminal``
+    (``probe.self_test``: row 4's Lead form)."""
     from aew.harness.containment import netns, probe
 
     wanted = mode(policy)
@@ -132,16 +137,22 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
         if project is None:  # the store check (STG-05 CB-07) and the control lock's mask (CBF-1) need it
             raise ContainmentUnavailable("a contained run needs its project root, to keep its writable binds off "
                                          "AEW's store and the control lock out of its sandbox; none was given")
-        layout = for_run(role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch,
-                         bridge_dir=bridge_dir, policy=settings, project=project, runs=run_dir.parent, env=env,
-                         network=net_mode, net_dir=net_dir)
         # Next to the workspace: visible to the sandbox (read-only) and outside every writable root. (The run's own
-        # directory is hidden behind the runs mask, where a write would fail for the wrong reason.) The bridge's
-        # directory holds the run's own socket, and the network directory the run's own relay and egress proxy, which
-        # the inventory lists as its own.
-        test = probe.self_test(layout, sentinel_dir=Path(workspace).parent, sibling_dir=Path(workspace).parent,
-                               own=tuple(d for d in (bridge_dir, layout.net_dir) if d), env=env,
-                               egress_policy=egress_policy if net_mode == PROXY_ONLY else None, bridge=bridge)
+        # directory is hidden behind the runs mask, where a write would fail for the wrong reason.) Made before the
+        # layout, so a workspace's parent that a secret is left out of puts it back (quick check 4 of #283, m12).
+        sentinel = probe.new_sentinel(Path(workspace).parent)
+        try:
+            layout = for_run(role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch,
+                             bridge_dir=bridge_dir, policy=settings, project=project, runs=run_dir.parent, env=env,
+                             network=net_mode, net_dir=net_dir, state_dir=state_dir)
+            # The bridge's directory holds the run's own socket, and the network directory the run's own relay and
+            # egress proxy, which the inventory lists as its own.
+            test = probe.self_test(layout, sentinel_dir=Path(workspace).parent, sibling_dir=Path(workspace).parent,
+                                   own=tuple(d for d in (bridge_dir, layout.net_dir) if d), env=env,
+                                   egress_policy=egress_policy if net_mode == PROXY_ONLY else None, bridge=bridge,
+                                   relayed_terminal=relayed_terminal, spec_dir=run_dir / "harness", sentinel=sentinel)
+        finally:
+            sentinel.unlink(missing_ok=True)
         if not test["ok"]:
             raise ContainmentUnavailable(f"containment self-test failed: {test['reason']}", self_test=recorded(test))
     except ContainmentUnavailable as exc:

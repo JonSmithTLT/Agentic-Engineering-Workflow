@@ -181,6 +181,9 @@ def _run_main(argv: list[str]) -> int:
         parser.print_help()
         return 2
     try:
+        relayed = _relayed_read(args, argv)
+        if relayed is not None:
+            return relayed
         result, as_json = _run(args, argv, handler)
     except AEWError as exc:
         # A refusal that moved the revision by recording itself (an anomaly, M4-E E5b) says so beside the error.
@@ -189,12 +192,86 @@ def _run_main(argv: list[str]) -> int:
         return exc.exit_code
     except KeyboardInterrupt:
         return 130
+    except OSError as exc:
+        refusal = _contained_refusal(exc)
+        if refusal is None:
+            raise
+        sys.stderr.write(json.dumps({"ok": False, "error": refusal.to_dict()}, indent=2, default=str) + "\n")
+        return refusal.exit_code
     if result is not None:
         emit(result, as_json=as_json)
     if isinstance(result, dict) and result.get("ok") is False:
         return 1
     exit_status = getattr(args, "exit_status", None)  # a command whose result has its own exit status (`harness wait`)
     return int(exit_status(result)) if exit_status is not None else 0
+
+
+def _relayed_read(args: argparse.Namespace, argv: list[str]) -> int | None:
+    """Inside the contained Lead, a read its broker runs on the host (STG-05 CS-4 addendum 4: what it reads is under
+    the masked `.aew/local`): what it printed there, as it printed it, and its exit status. ``None`` otherwise."""
+    if not os.environ.get("AEW_LEAD_BROKER"):
+        return None
+    from aew.harness import lead_broker
+
+    if not lead_broker.relays(args):
+        return None
+    reply = lead_broker.relay_read(argv)
+    sys.stdout.write(reply["stdout"])
+    sys.stderr.write(reply["stderr"])
+    return int(reply["exit"])
+
+
+def _contained_refusal(exc: OSError) -> AEWError | None:
+    """In the contained Lead's sandbox (STG-05 CS-4, outcome 7), a write that met its read-only `.aew/` or git metadata,
+    or a mask in its project (addendum 7: an operator secret masked there, read-only), is refused by design, and says so
+    instead of a traceback. A mask is recognised by its path, from the masks the layout hands the sandbox
+    (``process_kind.LEAD_MASKS_ENV``), not by the error: a file mask gives EROFS or EACCES, by how the file is opened.
+    The variables that mark the sandbox shape this message only: the kernel refused the write."""
+    import errno
+
+    from aew import process_kind
+    from aew.errors import PermissionDenied
+
+    if not os.environ.get(process_kind.LEAD_CONTAINED_ENV):
+        return None
+    met = _met_mask(exc) if exc.errno in (errno.EROFS, errno.EACCES, errno.EPERM) else None
+    if met is not None:
+        path, mask, by = met
+        return PermissionDenied(
+            f"this Lead session is contained by design: {path} is masked inside it, read-only, as an operator secret "
+            f"({mask}, put there by {by}). To change it, edit it at your own terminal, or keep the real file outside "
+            "the project (for ssh, an Include from your real ~/.ssh/config)", reason="lead_masked", path=path,
+            mask=mask, by=by)
+    if exc.errno != errno.EROFS:
+        return None
+    return PermissionDenied(
+        f"this Lead session is contained by design: {exc.filename or 'that path'} is read-only inside it, as are "
+        "`.aew/` and the git metadata. Lead-authenticated `aew` commands reach the session's broker, which writes AEW "
+        "state for you; anything else that writes them is for the operator, at their own terminal",
+        reason="lead_contained", path=str(exc.filename) if exc.filename else None)
+
+
+def _met_mask(exc: OSError) -> tuple[str, str, str] | None:
+    """``(the path written, the mask, what put it there)`` when a path the error names is, or lies in, one of the masks
+    the contained Lead's layout handed its sandbox; spelled as given and at its directory's real path."""
+    import json
+
+    from aew import process_kind
+
+    try:
+        masks = [(str(p), str(by)) for p, by in json.loads(os.environ.get(process_kind.LEAD_MASKS_ENV) or "[]")]
+    except (ValueError, TypeError):
+        return None
+    for name in (exc.filename, exc.filename2):
+        if not name:
+            continue
+        given = os.path.abspath(os.fsdecode(name))
+        for path in dict.fromkeys((given, os.path.join(os.path.realpath(os.path.dirname(given)),
+                                                       os.path.basename(given)))):
+            for mask, by in masks:
+                if path == mask or path.startswith(mask.rstrip("/" + os.sep) + os.sep):
+                    return path, mask, by
+    return None
 
 
 if __name__ == "__main__":

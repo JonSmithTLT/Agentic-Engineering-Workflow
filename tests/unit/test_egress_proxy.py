@@ -434,6 +434,24 @@ def test_a_request_that_is_not_a_well_formed_connect_is_refused_before_any_dns(r
     assert "sys." not in body  # the proxy's own words, never the interpreter's
 
 
+@pytest.mark.parametrize(("raw", "named"), [
+    (b"GET http://docs.example/guide?x=1 HTTP/1.1\r\nHost: docs.example\r\n\r\n", "https://docs.example/guide?x=1"),
+    (b"POST http://docs.example/ HTTP/1.1\r\n\r\n", "https://docs.example/"),
+    (b"GET /guide HTTP/1.1\r\nHost: docs.example\r\n\r\n", None),  # origin-form: there is no URL to name
+], ids=["get", "post", "origin-form"])
+def test_a_plain_http_request_is_told_the_https_form_the_proxy_serves(raw, named):
+    """STG-05 CS-4 (the designer's condition): the contained Lead's HTTP_PROXY sends a plain-http fetch here, and the
+    refusal names the https:// form of what it asked for, which the proxy tunnels."""
+    resolve, spy = Resolver({"docs.example": ["8.8.8.8"]}), ConnectSpy()
+    status, reason, body = refusal(EgressProxy(AnyPublic(), resolve=resolve, connect=spy, is_local=never_local), raw)
+    assert (status, reason) == (405, "method") and resolve.calls == [] and spy.calls == []
+    assert body.startswith("this egress proxy serves CONNECT only")
+    if named:
+        assert body.endswith(f"plain http:// is not relayed; ask for {named} instead")
+    else:
+        assert "https://" not in body
+
+
 def test_a_silent_client_is_answered_and_closed_after_the_header_timeout():
     proxy = EgressProxy(AnyPublic(), resolve=Resolver(), connect=ConnectSpy(), header_timeout=0.2)
     with served(proxy) as client:

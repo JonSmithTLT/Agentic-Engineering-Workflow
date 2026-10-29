@@ -17,10 +17,12 @@ from pathlib import Path
 from typing import Any
 
 import fake_opencode
+import lead_session
 import pytest
 from aewflow import create_planned_ticket
 from fake_harness import HarnessLab, credential_hits
 from harness_conformance import IMPLEMENT, PROVIDER_SECRET, FakeOpenCodeDriver, evidence_of, sync_dir
+from lead_session import KEYS
 from proxy_env import RecordingProxy, proxy_env
 
 from aew.harness import runlog
@@ -78,6 +80,14 @@ def refused_launch(lab: HarnessLab, tmp_path: Path, reason_code: str = "incompat
     assert record["status"] == "launch_failed" and record["reason_code"] == reason_code, record
     assert lab.ok("invoke", "show", "INV-0001")["status"] == "active" and not evidence_of(lab, wid)
     return res.error["message"]
+
+
+def two_at_once(lab: HarnessLab) -> None:
+    """`mutating_concurrency: 2`: two implementer runs may hold their workspaces at once."""
+    gates = lab.root / ".aew" / "policy" / "gates.yaml"
+    gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "mutating_concurrency": 2}),
+                     encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
 
 
 # ---------------------------------------------------------------------------------------------- projection
@@ -567,16 +577,139 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
 
 @pytest.mark.skipif(not __import__("sys").platform.startswith("linux"), reason="/proc: Linux only")
 def test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell(lab, tmp_path):
-    """ADR-0009 residual (independent review, area 2, F3), asserted as it is rather than as hoped. The agent's own
-    environment carries no provider secret and no server password, but the harness server is its shell's parent, runs
-    as the same user and, contained or not, in the same PID namespace: its environment (the provider key the policy
-    names, the server password) is one read of /proc/<parent>/environ away. No AEW credential is ever there. Closing
-    this needs the server outside the agent's user or namespace (register); until then it is documented, and this
-    test fails the day it stops being true, so the ADR is updated with it."""
-    script(lab, [{"do": "read_parent_environ", "pid": "ppid", "names": ["OPENAI_API_KEY", "OPENCODE_PASSWORD"]}])
+    """ADR-0009 residual (independent review, area 2, F3; ST-38, STG-05 CS-4), asserted as it is rather than as hoped.
+    The agent's own environment carries no provider secret and no server password, but the harness server is its
+    shell's parent, runs as the same user and in the same PID namespace: its environment is one read of
+    /proc/<parent>/environ away. On a run with its own network, what is there is the provider variable's sentinel,
+    never the key's value (the relay outside holds that), and the server's password, which is new per launch and
+    opens only that run's server (the next test). No AEW credential is ever there. The Lead's session has the same
+    shape (tests/integration/test_lead_contained_session.py). This test fails the day it stops being true, so the
+    ADR is updated with it."""
+    script(lab, [{"do": "read_parent_environ", "pid": "ppid", "names": ["OPENAI_API_KEY", "OPENCODE_PASSWORD"],
+                  "forbid_sha256": [hashlib.sha256(PROVIDER_SECRET.encode()).hexdigest()]}])
     launch(lab, tmp_path)
     lab.wait(RUN)
     parent = lab.step(RUN, 0)
     assert parent["readable"] is True, parent
+    assert lab.record(RUN)["containment"]["network"]["mode"] == "proxy_only"  # a run with its own network
     assert parent["names_present"] == ["OPENAI_API_KEY", "OPENCODE_PASSWORD"], parent
+    assert parent["sentinel_names"] == ["OPENAI_API_KEY"] and parent["forbidden_present"] is False, parent
     assert parent["has_credential"] is False and parent["has_lead_var"] is False
+    # The Lead's session: its TUI's parent is the shim, whose environment is the TUI's. Each stored provider's
+    # variable holds its relay's sentinel; opencode's key is not relayed, so it is not there at all.
+    _, steps = lead_session.agent_session(tmp_path / "lead", [
+        {"do": "read_parent_environ", "pid": "ppid", "names": sorted(netns.PROVIDER_KEY_ENV.values()),
+         "forbid_sha256": [hashlib.sha256(v.encode()).hexdigest() for v in (*KEYS.values(), lead_session.SECRET)]}],
+        logins=KEYS)
+    shim = steps[0]
+    assert shim["readable"] is True, shim
+    assert shim["names_present"] == shim["sentinel_names"] == ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"], shim
+    assert shim["forbidden_present"] is False and shim["has_credential"] is False and shim["has_lead_var"] is False
+
+
+@pytest.mark.skipif(not __import__("sys").platform.startswith("linux"), reason="/proc: Linux only")
+def test_a_servers_password_is_new_per_launch_and_never_written_outside_its_run_directory(lab, tmp_path):
+    """ST-38 (STG-05 CS-4): the password in the server's environment (the residual above) is drawn per launch, so the
+    one an agent reads opens only its own run's server, and no file outside that run's directory holds it. The agent
+    copies what it read into its run's own directory so the scan has something to look for; the password itself never
+    reaches this test's output."""
+    two_at_once(lab)
+    runs = []
+    for run in ("R-INV-0001-1", "R-INV-0002-1"):
+        saved = harness_dir(lab, run) / "seen-password"  # the run's harness state: writable inside, and its own
+        script(lab, [{"do": "read_parent_environ", "pid": "ppid", "names": ["OPENCODE_PASSWORD"],
+                      "save_name": "OPENCODE_PASSWORD", "save_to": str(saved)}, *IMPLEMENT], key=run)
+        assert launch(lab, tmp_path)[2] == run
+        lab.wait(run)
+        assert lab.step(run, 0)["names_present"] == ["OPENCODE_PASSWORD"]
+        runs.append((run, saved.read_text(encoding="utf-8")))
+    (_, first), (_, second) = runs
+    assert len(first) >= 32 and first != second  # drawn per launch
+    for run, password in runs:
+        own = runlog.run_dir(lab.aew_root, run)
+        hits = [p for p in tmp_path.rglob("*") if p.is_file() and own not in p.parents
+                and password.encode() in p.read_bytes()]
+        assert hits == [], f"{run}'s server password is in {len(hits)} file(s) outside its run directory"
+
+
+@pytest.mark.skipif(not __import__("sys").platform.startswith("linux"), reason="a run's own network: Linux only")
+def test_no_context_reaches_another_runs_server_socket_or_loopback_port(lab, tmp_path):
+    """ST-38 (STG-05 CS-4): no context but a run's own supervisor reaches its server, so the password opens nothing
+    else. Run A holds while run B, and then the Lead's session, try A's server socket (in A's network directory under
+    the host's /tmp, which every sandbox replaces with its own) and a loopback port on the host. Each sandbox's
+    loopback is its own network namespace's: A's server port there is A's alone, and in the Lead's, which has no
+    server leg, nothing listens at it. Every connect fails; from the host, A's socket answers (a live run's)."""
+    import glob
+    import socket
+    import time
+
+    two_at_once(lab)
+    a, b = "R-INV-0001-1", "R-INV-0002-1"
+    ready, go = harness_dir(lab, a) / "ready", harness_dir(lab, a) / "go"
+    script(lab, [{"do": "wait_file", "path": str(go), "ready": str(ready), "timeout": 300}, *IMPLEMENT], key=a)
+    host = socket.create_server(("127.0.0.1", 0))  # any service on the host's loopback
+    port = host.getsockname()[1]
+    before = set(glob.glob("/tmp/aew-net-*"))  # noqa: S108  # where netns.private_dir makes them
+    try:
+        assert launch(lab, tmp_path)[2] == a
+        deadline = time.monotonic() + 120
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert ready.exists(), lab.record(a)
+        servers = sorted(p for p in (os.path.join(d, netns.SERVER) for d in set(glob.glob("/tmp/aew-net-*")) - before)
+                         if os.path.exists(p))  # A's, and any other run's that started meanwhile
+        live = []
+        for path in servers:
+            with socket.socket(socket.AF_UNIX) as probe:  # pyright: ignore[reportAttributeAccessIssue]
+                live.append(probe.connect_ex(path) == 0)
+        assert any(live), servers
+        tries = [*({"do": "connect", "unix": p} for p in servers), {"do": "connect", "tcp": ["127.0.0.1", port]}]
+        script(lab, [*tries, *IMPLEMENT], key=b)
+        assert launch(lab, tmp_path)[2] == b
+        lab.wait(b)
+        from_run = [lab.step(b, i) for i in range(len(tries))]
+        _, steps = lead_session.agent_session(tmp_path / "lead", [
+            *tries, {"do": "connect", "tcp": ["127.0.0.1", netns.SERVER_PORT]}])
+        from_lead = [steps[i] for i in range(len(tries) + 1)]
+    finally:
+        go.write_text("x", encoding="utf-8")
+        host.close()
+    lab.wait(a)
+    refused = [{"connected": False, "error": "ENOENT"}] * len(servers) + [{"connected": False, "error": "ECONNREFUSED"}]
+    assert from_run == refused, from_run
+    assert from_lead == [*refused, {"connected": False, "error": "ECONNREFUSED"}], from_lead
+
+
+@pytest.mark.skipif(not __import__("sys").platform.startswith("linux"), reason="containment: Linux only")
+def test_no_route_closing_control_is_a_harness_permission_rule(lab, tmp_path):
+    """ST-38 (STG-05 CS-4): nothing AEW relies on for the four routes (a G3 approval, an owner's fact, a credential
+    beyond the run, a way out) is a harness permission rule. The fake server here, and the Lead's fake TUI, apply none:
+    each step is the raw tool action, as under a harness whose rules allow every tool. A worker's run and the Lead's
+    session still pass rows 1 to 6, the store refuses a write, the host's loopback is out of reach, and no AEW
+    credential is in reach. The masks, the store and the network have their own tests (test_containment.py), and the
+    terminal's route is row 4 and test_lead_containment.py's TIOCSTI test: none of them runs a permission rule."""
+    import socket
+
+    host = socket.create_server(("127.0.0.1", 0))
+    port = host.getsockname()[1]
+    try:
+        def tries(store: Path) -> list[dict[str, Any]]:
+            return [{"do": "write", "files": {str(store / "route-probe.txt"): "x"}},
+                    {"do": "connect", "tcp": ["127.0.0.1", port]},
+                    {"do": "read_parent_environ", "pid": "ppid", "names": []}]
+
+        script(lab, [*tries(lab.aew_root), *IMPLEMENT])
+        launch(lab, tmp_path)
+        lab.wait(RUN)
+        rows = lab.record(RUN)["containment"]["self_test"]["rows"]
+        from_run = [lab.step(RUN, i) for i in range(3)]
+        done, steps = lead_session.agent_session(tmp_path / "lead", lambda lead: tries(lead.aew_root))
+        lead_rows = done["result"]["containment"]["self_test"]["rows"]
+    finally:
+        host.close()
+    for seen, rows_seen in ((from_run, rows), ([steps[i] for i in range(3)], lead_rows)):
+        assert sorted(rows_seen) == list("123456") and all(r["ok"] for r in rows_seen.values()), rows_seen
+        write, reach, parent = seen
+        assert write["wrote"] == [] and set(write["refused"].values()) == {"EROFS"}, write
+        assert reach == {"connected": False, "error": "ECONNREFUSED"}, reach
+        assert parent["has_credential"] is False, parent

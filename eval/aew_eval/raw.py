@@ -285,7 +285,12 @@ def contained_layout(repo: Path, scratch: Path, *, binary: Path) -> Any:
     keep, design = layout_paths(scratch, binary=binary)
     hide_dirs, hide_files = hidden_around(home, keep)
     hide_dirs = [*hide_dirs, *design]
-    secret_dirs, secret_files = L._masks(str(home), [])  # noqa: SLF001 (the same secret masks as every AEW run)
+    runs = os.path.realpath(scratch.parent)
+    writable = (os.path.realpath(repo), os.path.realpath(state))
+    # the same secret masks as every AEW run, and the home entries the run does not need left out of their directories
+    # the same way (STG-05 CS-4, addenda 6 and 7, ruling 6); none inside the runs directory, which is hidden whole
+    plan = L._masks(str(home), [f for f in hide_files if not (f == runs or _under(f, runs))],  # noqa: SLF001
+                    written=writable)
     mask = scratch.parent / f".{scratch.name}.aew-mask"  # outside the writable roots, and itself hidden inside
     if not mask.exists():
         mask.write_bytes(b"")
@@ -298,16 +303,13 @@ def contained_layout(repo: Path, scratch: Path, *, binary: Path) -> Any:
     # mask file, a check's leftovers) is already hidden, and a mask inside that tmpfs would create its own mount point
     # there, a visible entry the confidentiality probe rightly refuses. When the lane lives under the home directory
     # (<home>/aew-eval/<experiment>/out/work/<run>), the home scan lists those siblings, so they are dropped here.
-    runs = os.path.realpath(scratch.parent)
-    beside = [p for p in {*hide_dirs, *secret_dirs, *hide_files, *secret_files} if p == runs or _under(p, runs)]
-    dirs = outermost({*hide_dirs, *secret_dirs} - set(beside))
+    beside = [p for p in {*hide_dirs, *plan.dirs} if p == runs or _under(p, runs)]
+    dirs = outermost({*hide_dirs, *plan.dirs} - set(beside))
     # the run's own mask file is never itself masked: binding it over itself would leave an entry in the hidden runs
     # directory
-    files = [f for f in sorted({*hide_files, *secret_files} - set(beside))
-             if not any(_under(f, d) for d in dirs) and f != os.path.realpath(mask)]
-    return L.Layout(role="eval-raw", access="write", bwrap=bwrap,
-                    writable=(os.path.realpath(repo), os.path.realpath(state)), readonly=tuple(readonly),
-                    hide_runs=(os.path.realpath(scratch.parent),), hide_dirs=tuple(dirs), hide_files=tuple(files),
+    files = [f for f in plan.files if not any(_under(f, d) for d in dirs) and f != os.path.realpath(mask)]
+    return L.Layout(role="eval-raw", access="write", bwrap=bwrap, writable=writable, readonly=tuple(readonly),
+                    hide_runs=(runs,), **{**plan.fields(), "hide_dirs": tuple(dirs), "hide_files": tuple(files)},
                     mask_file=str(mask), env={"TMPDIR": L.SANDBOX_TMP})
 
 
@@ -329,7 +331,9 @@ def verify_layout(layout: Any, scratch: Path) -> dict[str, Any]:
     from aew.harness.containment.probe import self_test
 
     integrity = self_test(layout, sentinel_dir=scratch.parent, sibling_dir=scratch.parent)
-    spec = {"dirs": list(layout.hide_dirs), "files": list(layout.hide_files) + design_files(),
+    # a path left out of its directory is absent inside, which the probe counts as hidden (it cannot be opened)
+    masked = [*layout.hide_files, *layout.left_out]
+    spec = {"dirs": list(layout.hide_dirs), "files": masked + design_files(),
             "runs": {r: [scratch.name] for r in layout.hide_runs}}  # only this run's own directory shows there
     try:
         done = subprocess.run(bwrap_argv(layout, [sys.executable, "-I", "-c", _CONFIDENTIALITY, json.dumps(spec)]),
@@ -342,8 +346,8 @@ def verify_layout(layout: Any, scratch: Path) -> dict[str, Any]:
     reason = integrity.get("reason") or (None if visible == [] else
                                          f"hidden paths visible from inside: {visible}" if visible else
                                          "the confidentiality probe did not run")
-    return {"ok": ok, "reason": reason, "hidden_dirs": len(layout.hide_dirs), "hidden_files": len(layout.hide_files),
-            "design_files_checked": len(spec["files"]) - len(layout.hide_files)}
+    return {"ok": ok, "reason": reason, "hidden_dirs": len(layout.hide_dirs), "hidden_files": len(masked),
+            "design_files_checked": len(spec["files"]) - len(masked)}
 
 
 # ---------------------------------------------------------------------------------------------- the arm

@@ -47,6 +47,95 @@ def test_every_lead_authenticated_command_is_classified_exactly_once():
     assert reachable <= commands, f"no such commands: {sorted(map(sorted, reachable - commands))}"
 
 
+def every_command() -> dict[frozenset[str], argparse.ArgumentParser]:
+    return {frozenset(path): p for path, p in leaves(build_parser(recall_search=True, coordination_reads=True))}
+
+
+def test_every_command_is_classified_once_for_the_contained_lead():
+    """STG-05 CS-4 addendum 4, ruling 1, condition 1: every command is Lead-reachable, relayed for the contained Lead
+    (RELAYED_READS), operator-only, a typed-surface transport, kept out of a Lead session (custody_ops.LEAD_KEPT_OUT,
+    its one owner: #286 review F1) or, with why, not relayed (CONTAINED_LOCAL), and in exactly one of them. A relayed
+    read takes no Lead credential, and each option it may carry is one of its own."""
+    from aew.engine import custody_ops
+
+    commands = every_command()
+    classes = {"LEAD_REACHABLE": set(lead_broker.LEAD_REACHABLE), "RELAYED_READS": set(lead_broker.RELAYED_READS),
+               "OPERATOR_ONLY": set(lead_broker.OPERATOR_ONLY), "NOT_RELAYED": set(lead_broker.NOT_RELAYED),
+               "LEAD_KEPT_OUT": {frozenset(words) for words in custody_ops.LEAD_KEPT_OUT},
+               "CONTAINED_LOCAL": set(lead_broker.CONTAINED_LOCAL)}
+    placed = {path: [name for name, members in classes.items() if path in members] for path in commands}
+    assert {" ".join(sorted(p)): c for p, c in placed.items() if len(c) != 1} == {}
+    named = set().union(*classes.values())
+    assert named <= set(commands), f"no such commands: {sorted(map(sorted, named - set(commands)))}"
+    for path, options in lead_broker.RELAYED_READS.items():
+        dests = {a.dest for a in commands[path]._actions}
+        assert "token" not in dests and options <= dests, (sorted(path), sorted(options - dests))
+
+
+def test_the_surface_map_marks_exactly_the_relayed_reads_and_each_is_a_read():
+    """Condition 1 and 8: each relayed command's surface-map entry says it is relayed for the contained Lead, and
+    declares it mutates nothing (condition 2's registry half; the store's half is the integration test's)."""
+    from pathlib import Path
+
+    from aew.util import load_yaml
+
+    path = Path(__file__).resolve().parents[2] / "docs" / "implementation" / "surface-map.yaml"
+    entries = load_yaml(path.read_text(encoding="utf-8"))["commands"]
+    flagged = {frozenset(e["name"].split()): e for e in entries if e.get("relayed") == "contained-lead"}
+    assert set(flagged) == set(lead_broker.RELAYED_READS)
+    assert {e["name"]: e["mutates"] for e in flagged.values() if e["mutates"] != "no"} == {}
+
+
+@pytest.mark.parametrize(("argv", "reason"), [
+    (["history", "compact"], "not_relayed"),
+    (["work", "list"], "not_relayed"),  # a read the sandbox runs itself
+    (["plan", "accept", "T-0001", "--revision", "1", "--expect-rev", "3"], "not_relayed"),  # a Lead command
+    (["--print-credential", "status"], "relayed_option"),
+    (["status", "--json"], "relayed_option"),  # with `json` taken from status's options below
+    (["map", "show", "--root", "/; touch x"], "relayed_value"),  # a stored map's sha256, never a path or a shell
+    (["map", "diff", "--root", "../maps", "--commit", "HEAD"], "relayed_value"),
+    (["map", "show", "--commit=--output=/tmp/x"], "relayed_value"),  # never an option for git
+    (["harness", "wait", "../../../etc", "--timeout", "0"], "relayed_value"),  # a run id, never a path
+    (["harness", "status", "INV-0001/.."], "relayed_value"),
+])
+def test_a_read_outside_the_relayed_set_or_with_another_option_or_value_is_refused_before_anything_runs(
+        argv, reason, monkeypatch):
+    """Conditions 3 and 5: the broker parses the request against the command's own parser. A command outside the set
+    is refused, naming the operator's route; a relayed one with an option it may not carry, or a value that could name
+    a directory, an output path or an option, is refused. None starts a process (the engine is never reached)."""
+    monkeypatch.setitem(lead_broker.RELAYED_READS, frozenset({"status"}), frozenset({"work_id"}))
+    with pytest.raises(errors.PermissionDenied) as refused:
+        lead_broker.run_read(object(), argv, ".")
+    assert refused.value.details["reason"] == reason, refused.value.details
+    if reason == "not_relayed":
+        assert "is not relayed to a contained Lead: the operator runs it in their own shell" in refused.value.message
+
+
+@pytest.mark.parametrize("timeout", ["inf", "nan", "1e7"])
+def test_a_relayed_wait_the_host_cannot_wait_out_is_refused_saying_what_to_pass(timeout):
+    """The review of #283 at b2dc3035, m1: a relayed `harness wait` whose --timeout is not finite, or longer than the
+    host can wait (``RELAYED_WAIT_MAX_S``), is refused before anything runs, naming the bound."""
+    with pytest.raises(errors.PermissionDenied) as refused:
+        lead_broker.run_read(object(), ["harness", "wait", "R-INV-0001-1", "--timeout", timeout], ".")
+    assert refused.value.details["reason"] == "relayed_value", refused.value.details
+    assert f"pass a finite number of seconds, at most {lead_broker.RELAYED_WAIT_MAX_S}" in refused.value.message
+
+
+def test_a_relayed_wait_at_the_stated_bound_passes_it_and_one_second_more_is_refused(tmp_path):
+    """Quick check of #283 at c307481a, m3: the bound a refusal states is whole seconds, and a request may pass it. At
+    the bound the wait passes the check and goes on to the next, the project check, which finds no project in an empty
+    directory (so nothing runs); one second above it is refused, naming the bound."""
+    bound = lead_broker.RELAYED_WAIT_MAX_S
+    assert isinstance(bound, int)
+    with pytest.raises(errors.ProjectNotFound):
+        lead_broker.run_read(object(), ["harness", "wait", "R-INV-0001-1", "--timeout", str(bound)], str(tmp_path))
+    with pytest.raises(errors.PermissionDenied) as refused:
+        lead_broker.run_read(object(), ["harness", "wait", "R-INV-0001-1", "--timeout", str(bound + 1)], str(tmp_path))
+    assert refused.value.details["reason"] == "relayed_value", refused.value.details
+    assert f"refuses --timeout {float(bound + 1)}: pass a finite number of seconds, at most {bound}" \
+        in refused.value.message
+
+
 def _ns(*argv: str) -> argparse.Namespace:
     return build_parser().parse_args(list(argv))
 

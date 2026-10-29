@@ -159,7 +159,7 @@ skipped:
     tests/integration/test_containment.py::test_the_agent_cannot_write_its_live_usage: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
-    tests/integration/test_containment.py::test_secrets_are_hidden_and_a_masked_file_is_still_a_file: >-
+    tests/integration/test_containment.py::test_secrets_are_hidden_and_a_secret_file_is_left_out_of_its_directory: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
     tests/integration/test_containment.py::test_provider_config_locations_read_empty_from_inside: >-
@@ -210,7 +210,10 @@ skipped:
     tests/integration/test_containment.py::test_the_role_packs_git_commands_work_on_the_private_index_and_store: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
-    tests/integration/test_containment.py::test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_over_the_host: >-
+    tests/integration/test_containment.py::test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_over_the_host[this_host]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_over_the_host[runner_like]: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
     tests/integration/test_containment.py::test_the_self_test_finds_rg_where_a_run_sees_it_and_not_where_only_the_host_has_it: >-
@@ -260,6 +263,18 @@ skipped:
     tests/integration/test_opencode_adapter.py::test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell: >-
       reads /proc/<parent>/environ, which Windows has no equivalent of (a same-user process can read another's
       memory there instead: ADR-0009 residual). Covered on Linux.
+    tests/integration/test_opencode_adapter.py::test_a_servers_password_is_new_per_launch_and_never_written_outside_its_run_directory: >-
+      the agent reads the password from /proc/<parent>/environ (ST-38, STG-05 CS-4), which Windows has no equivalent
+      of. Covered on Linux.
+    tests/integration/test_opencode_adapter.py::test_no_context_reaches_another_runs_server_socket_or_loopback_port: >-
+      a run's own network namespace and server socket, and the contained Lead, are Linux's (ST-38, STG-05 CS-4);
+      Windows has no containment and records workdir_separation_only. Covered on Linux.
+    tests/integration/test_opencode_adapter.py::test_no_route_closing_control_is_a_harness_permission_rule: >-
+      the routes' closing controls (the sandbox, its network and the contained Lead) are Linux's (ST-38, STG-05 CS-4);
+      Windows has no containment and records workdir_separation_only. Covered on Linux.
+    tests/integration/test_containment.py::test_a_kernel_that_allows_no_user_namespace_is_refused_naming_the_setting_and_the_fix: >-
+      user namespaces and bubblewrap are Linux's (ST-27 fact 5, STG-05 CS-4); Windows has no containment. Covered on
+      Linux.
     tests/unit/test_operator_endpoint.py::test_the_peer_check_refuses_another_principal_before_any_challenge: >-
       the operator endpoint's peer check reads POSIX peer credentials (SO_PEERCRED); on Windows the named pipe's access
       list stands in and every record is labelled guarantee dev (M4-E plan v3 §2.1). Covered on Linux.
@@ -286,7 +301,37 @@ skipped:
     tests/unit/test_containment_layout.py::test_a_layout_of_a_project_whose_aew_is_a_symlink_is_refused_where_a_writable_bind_reaches_the_link: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
-    tests/integration/test_containment.py::test_the_self_test_records_rows_1_to_5_on_the_label_of_a_passing_run: >-
+    tests/unit/test_containment_layout.py::test_every_directory_masked_over_the_run_is_named_in_one_refusal_with_each_variable_and_its_step[a_link]: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/unit/test_containment_layout.py::test_every_file_the_host_reads_the_operators_opencode_from_is_masked_wherever_a_link_puts_it[own_directory]: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/unit/test_containment_layout.py::test_every_file_the_host_reads_the_operators_opencode_from_is_masked_wherever_a_link_puts_it[beside_other_files]: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/unit/test_containment_layout.py::test_a_secret_a_masked_directory_links_to_is_left_out_of_its_directory_for_every_role: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/unit/test_containment_layout.py::test_a_linked_directory_is_masked_whole_at_its_target_and_the_links_in_it_are_followed: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/unit/test_containment_layout.py::test_a_link_target_absent_at_the_launch_is_left_out_so_one_made_later_is_not_seen: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/unit/test_containment_layout.py::test_the_walk_of_links_ends_and_never_masks_or_walks_the_root_or_the_home_directory: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/unit/test_containment_layout.py::test_a_link_in_a_masked_directory_to_a_directory_the_run_needs_is_refused_naming_the_link: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/unit/test_containment_layout.py::test_a_file_opencode_names_through_a_link_is_left_out_where_the_link_and_its_target_are[OPENCODE_DB]: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/unit/test_containment_layout.py::test_a_file_opencode_names_through_a_link_is_left_out_where_the_link_and_its_target_are[OPENCODE_CONFIG]: >-
+      making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
+      Covered on Linux.
+    tests/integration/test_containment.py::test_the_self_test_records_rows_1_to_6_on_the_label_of_a_passing_run: >-
       Linux bubblewrap containment (STG-05 CS-2, CS-3b); Windows has no OS filesystem or network containment. Covered
       on Linux (CI and the Rocky 8 lane); the rows' judgement is tested on every platform in
       tests/unit/test_containment_probe.py.
@@ -303,6 +348,133 @@ skipped:
     tests/integration/test_network_shim.py::test_a_leg_that_cannot_be_set_up_stops_the_harness_from_starting: >-
       the shim runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has no network containment.
       Covered on Linux.
+    tests/integration/test_network_shim.py::test_the_ctty_step_makes_standard_input_the_harnesss_controlling_terminal_and_a_ctrl_c_reaches_it_once: >-
+      a controlling terminal (setsid, TIOCSCTTY) and /proc/self/stat are POSIX's and Linux's, and the shim's ctty step
+      serves the Lead's contained TUI (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on Linux.
+    tests/integration/test_network_shim.py::test_a_ctty_step_that_cannot_take_the_terminal_stops_the_harness_from_starting: >-
+      the shim's ctty step is POSIX's and serves only the Lead's contained TUI (STG-05 CS-4); the Windows Lead runs
+      labelled not contained. Covered on Linux.
+    tests/integration/test_lead_containment.py::test_the_lead_writes_its_working_tree_and_never_aew_or_the_git_metadata: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_from_the_leads_sandbox_aew_local_holds_only_its_own_directories: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_the_operators_opencode_login_and_configuration_are_empty_from_the_leads_sandbox: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_the_leads_self_test_passes_rows_1_to_6_with_its_relayed_terminal_and_any_public_egress: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_row_6_fails_closed_when_the_aew_re_bind_is_missing_from_the_leads_sandbox: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_row_4_for_the_lead_fails_closed_without_the_shims_controlling_terminal_step: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_a_lead_that_falls_back_to_allow_weaker_is_labelled_so: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the layout and the rows' judgement are tested on every platform in
+      tests/unit/test_containment_layout.py and tests/unit/test_containment_probe.py.
+    tests/integration/test_lead_containment.py::test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_none_of_it[written_in_place]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on every platform in
+      tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_none_of_it[replaced_by_rename]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on every platform in
+      tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_wherever_the_operators_environment_puts_opencode_the_leads_view_holds_none_of_it[created_after]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on every platform in
+      tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_file_a_masked_directory_links_to_is_not_there_in_the_leads_sandbox[own_directory]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_file_a_masked_directory_links_to_is_not_there_in_the_leads_sandbox[beside_other_files]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_secret_left_out_of_its_directory_is_not_seen_when_replaced_or_created_after_the_launch[replaced_by_rename]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_secret_left_out_of_its_directory_is_not_seen_when_replaced_or_created_after_the_launch[created_after]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_secret_file_that_is_a_link_is_unseen_at_both_paths_when_its_target_is_replaced[lead]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_secret_file_that_is_a_link_is_unseen_at_both_paths_when_its_target_is_replaced[implementer]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_secret_file_that_is_a_link_is_unseen_at_both_paths_when_its_target_is_replaced[reviewer]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_in_the_leads_project_a_mask_refuses_writes_and_aews_cli_names_it: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_the_leads_view_holds_none_of_the_operators_opencode_state_under_the_four_xdg_bases[defaults]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on every platform in
+      tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_the_leads_view_holds_none_of_the_operators_opencode_state_under_the_four_xdg_bases[xdg_moved]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on every platform in
+      tests/unit/test_containment_layout.py.
+    tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_tui_exits]: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_tui_crashes]: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_sandbox_is_killed]: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_broker_is_killed]: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_reaper_is_killed]: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_operators_terminal_is_restored_on_every_ending[the_terminal_hangs_up]: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_relay_passes_bytes_unfiltered: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_window_size_follows_the_operators_terminal: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_terminal_relay.py::test_the_relay_refuses_a_session_without_a_terminal_and_starts_nothing: >-
+      the terminal relay (a pseudo-terminal, termios, SIGWINCH) is POSIX's and serves the contained Lead (STG-05
+      CS-4); the Windows Lead runs on its console, labelled not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_lead_containment.py::test_the_tuis_controlling_terminal_is_the_relays_and_tiocsti_reaches_only_its_own_input: >-
+      Linux bubblewrap containment of the Lead with its terminal relay (STG-05 CS-4); the Windows Lead runs labelled
+      not contained. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_lead_contained_session.py::test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_relayed_terminal: >-
+      Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
+      (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its host side runs on
+      every platform in tests/unit/test_lead_contained.py.
+    tests/integration/test_lead_contained_session.py::test_every_provider_in_the_stored_login_has_its_own_relay_and_the_sandbox_holds_only_sentinels: >-
+      Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
+      (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its host side runs on
+      every platform in tests/unit/test_lead_contained.py.
+    tests/unit/test_containment_netns.py::test_the_leads_refreshing_login_has_its_own_upstream_and_its_sentinel_is_for_the_login_store_not_a_variable: >-
+      the Lead's relays listen on socket files (AF_UNIX), and the Lead's network is Linux's (STG-05 CS-4); the Windows
+      Lead runs labelled not contained. Covered on Linux.
+    tests/integration/test_lead_contained_session.py::test_the_chatgpt_login_is_relayed_as_stored_and_an_expired_one_says_what_refreshes_it: >-
+      Linux bubblewrap containment of the Lead's session (STG-05 CS-4, addendum 1); the Windows Lead runs labelled not
+      contained, with the operator's own OpenCode login. Covered on Linux (CI and the Rocky 8 lane); its host side runs
+      on every platform in tests/unit/test_lead_contained.py.
+    tests/integration/test_lead_contained_session.py::test_a_lead_whose_containment_fails_is_refused_under_required_and_runs_labelled_under_allow_weaker: >-
+      Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
+      (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its host side runs on
+      every platform in tests/unit/test_lead_contained.py.
     tests/integration/test_network_shim.py::test_a_termination_reaches_the_harness_and_the_shim_ends_with_it: >-
       the shim forwards POSIX signals, and runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has
       no network containment. Covered on Linux.
@@ -637,5 +809,11 @@ skipped:
       the session job object is Windows'; Linux defines the session's set by the subreaper and start times
       (test_the_session_set_follows_parents_by_start_time_and_never_takes_in_a_reused_pid, and the deadline and
       abnormal-exit tests in tests/integration/test_hang_autopsy.py). Covered on Windows.
+    tests/integration/test_opencode_lead.py::test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker: >-
+      the Lead runs not contained only where there is no bubblewrap (Windows); on Linux it runs contained (STG-05
+      CS-4), and tests/integration/test_lead_contained_session.py covers this guarantee there. Covered on Windows.
+    tests/integration/test_opencode_lead.py::test_a_provider_key_reaches_the_lead_only_when_passed_explicitly: >-
+      the Lead runs not contained only where there is no bubblewrap (Windows); on Linux it runs contained (STG-05
+      CS-4), and tests/integration/test_lead_contained_session.py covers this guarantee there. Covered on Windows.
 # Pinned xfail/xpass outcomes (platform -> nodeid -> reason). None: M1 has no known failures.
 xfail: {}

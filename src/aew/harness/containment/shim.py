@@ -13,6 +13,10 @@ the layout binds in (``layout.Layout.net_dir``):
 It holds no credential and no authority: it moves bytes, both ways, as they come (a ``sendall`` that blocks is the
 backpressure; one side's end of stream is passed on as a half-close, and the connection ends when both have ended).
 
+For the Lead's TUI (STG-05 CS-4) its spec also says ``ctty``: standard input is the terminal relay's pseudo-terminal,
+and the shim makes it its controlling terminal before it starts the TUI (:func:`take_terminal`). A Lead on the host's
+network runs under the shim too, with no legs, for that step alone.
+
 It runs as the harness's parent inside the one sandbox, so the two share its network namespace: ``python -I -c
 <this file's text> <spec> -- <harness argv>`` (``netns.shim_argv``). Its listeners are bound before the harness
 starts, it passes its standard streams to the harness, and it exits with the harness's status. It never execs away:
@@ -129,6 +133,30 @@ def listen(spec: dict[str, Any]) -> list[socket.socket]:
     return out
 
 
+def take_terminal() -> None:
+    """The ``ctty`` step (STG-05 CS-4, ruling R-7): make standard input, the relay's pseudo-terminal, this process's
+    controlling terminal, in a session of its own, so the harness it starts inherits it. Under bubblewrap's
+    ``--new-session`` the sandbox starts with none, and this process does not lead that session, so ``setsid`` succeeds.
+    Then a ``TIOCSTI`` from inside reaches only that terminal's own input. Checked on this process itself: its
+    controlling terminal (``/proc/self/stat`` field 7) must be standard input's device. Raises ``OSError`` otherwise."""
+    if sys.platform == "win32":
+        raise OSError("a controlling terminal is POSIX's")
+    import fcntl
+    import termios
+
+    try:
+        os.setsid()
+    except OSError:
+        pass  # already a session's leader (outside bubblewrap): TIOCSCTTY below decides
+    fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+    rdev = os.fstat(0).st_rdev
+    with open("/proc/self/stat", "rb") as f:
+        nr = int(f.read().rsplit(b")", 1)[1].split()[4])
+    major, minor = os.major(rdev), os.minor(rdev)
+    if nr != (minor & 0xFF) | (major << 8) | ((minor & ~0xFF) << 12):
+        raise OSError(f"the controlling terminal ({nr}) is not standard input's ({major},{minor})")
+
+
 def main(argv: list[str]) -> int:
     try:
         spec, child = parse(argv)
@@ -136,8 +164,22 @@ def main(argv: list[str]) -> int:
     except (OSError, ValueError, KeyError, TypeError) as exc:
         sys.stderr.write(f"aew network shim: a leg could not be set up, so the harness was not started: {exc}\n")
         return EXIT_SETUP
+    if spec.get("ctty"):
+        try:
+            take_terminal()
+        except OSError as exc:
+            sys.stderr.write("aew network shim: standard input could not be made the controlling terminal, so the "
+                             f"harness was not started: {exc}\n")
+            return EXIT_SETUP
     proc = subprocess.Popen(child)  # noqa: S603  # the harness argv the supervisor's adapter gave
-    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):  # pyright: ignore[reportAttributeAccessIssue]
+    # On a terminal of its own the harness is in this process's foreground group, so the terminal's own signals reach
+    # it directly: forwarding them as well would double them (a handler, not SIG_IGN, which the harness would inherit).
+    forwarded = ((signal.SIGTERM, signal.SIGHUP) if spec.get("ctty")  # pyright: ignore[reportAttributeAccessIssue]
+                 else (signal.SIGTERM, signal.SIGINT, signal.SIGHUP))  # pyright: ignore[reportAttributeAccessIssue]
+    for sig in forwarded:  # pyright: ignore[reportAttributeAccessIssue]
         signal.signal(sig, lambda s, _f: proc.send_signal(s))
+    if spec.get("ctty"):
+        for sig in (signal.SIGINT, signal.SIGQUIT):  # pyright: ignore[reportAttributeAccessIssue]
+            signal.signal(sig, lambda _s, _f: None)
     code = proc.wait()
     return 128 - code if code < 0 else code

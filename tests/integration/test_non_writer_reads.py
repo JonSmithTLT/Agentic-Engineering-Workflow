@@ -328,6 +328,27 @@ def test_the_cli_inside_a_worker_run_reads_lock_free_and_refuses_a_mutation_befo
     assert not lock.exists()
 
 
+def test_the_cli_inside_the_contained_lead_reads_lock_free_and_refuses_a_lock_taking_command_before_the_lock(tmp_path):
+    """STG-05 CS-4: the contained Lead's sandbox holds no control lock (`.aew/local` is masked) and a read-only `.aew`,
+    so the CLI there is a non-writer: its reads (the Lead's shell `aew status`, `/aew-resume`'s inline `aew resume`)
+    work lock-free, and a command that would take the lock is refused before it opens it. Its Lead-authenticated
+    commands go to the broker (tests/integration/test_lead_contained_session.py)."""
+    from aewflow import sample_project
+
+    p = sample_project(tmp_path)
+    lock = p.root / ".aew" / LOCK_REL
+    lock.unlink()
+    env = {process_kind.LEAD_CONTAINED_ENV: "1"}
+    before = worker_surface.snapshot(p.root / ".aew")
+    for args in (["status", "--json"], ["resume", "--json"], ["lead", "show"], ["harness", "status"], ["guide"]):
+        res = run_aew("-C", str(p.root), *args, env=env)
+        assert res.returncode == 0, (args, res.stderr)
+    assert worker_surface.changes(before, worker_surface.snapshot(p.root / ".aew")) == []
+    compact = run_aew("-C", str(p.root), "history", "compact", env=env)
+    assert compact.error["details"]["reason"] == "non_writer_process", compact.stderr
+    assert not lock.exists()
+
+
 def test_every_engine_read_goes_through_the_one_place_that_chooses_lock_free_for_a_non_writer():
     """Mechanical (method, not instance): ``ControlStore.current`` picks ``read`` or ``read_committed`` by the
     process's kind, so no code outside the store calls ``store.read()`` itself; the one exception is the manifest's
@@ -424,7 +445,8 @@ def test_nothing_but_the_store_names_the_control_locks_path():
 def test_every_module_that_runs_as_a_process_is_in_the_entry_point_table_and_every_row_is_one():
     """Both ways (a table pinned against the live tree): every `python -m` module (``if __name__ == "__main__"``, or a
     package's ``__main__.py``) other than the CLI's is a dotted row, and every dotted row is such a module; every
-    other row is a role the CLI's own ``cli_entry_point`` gives some command, in a worker's run or not."""
+    other row is a role the CLI's own ``cli_entry_point`` gives some command, in a worker's run, in the contained
+    Lead's sandbox (STG-05 CS-4) or neither."""
     import ast
     import tomllib
 
@@ -441,7 +463,7 @@ def test_every_module_that_runs_as_a_process_is_in_the_entry_point_table_and_eve
     cli = {"aew.__main__"} | {target.split(":")[0] for target in scripts.values()}
     assert cli <= modules  # the console script's module and `python -m aew` are among them
     roles = {process_kind.cli_entry_point(list(w), env) for w in worker_surface.leaf_commands()
-             for env in ({}, worker_env(Path("p")))}
+             for env in ({}, worker_env(Path("p")), {process_kind.LEAD_CONTAINED_ENV: "1"})}
     rows = set(process_kind.ENTRY_POINTS)
     assert {r for r in rows if "." in r} == modules - cli
     assert {r for r in rows if "." not in r} == roles

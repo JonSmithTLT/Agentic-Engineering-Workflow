@@ -90,7 +90,7 @@ The functions and classes that work without the control lock, and what the code 
 
 ### `aew.engine.store:ControlStore.read_committed`
 
-- named by aew.process_kind: `ControlStore.read_committed`; takes no lock: yes; reached from `aew`, `aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.harness.supervisor`
+- named by aew.process_kind: `ControlStore.read_committed`; takes no lock: yes; reached from `aew`, `aew (contained Lead)`, `aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.harness.supervisor`
 - observes: The committed state as the control file holds it, **without the control lock and without recovery**: a reader's view.
 - says (symbol): The committed state as the control file holds it, **without the control lock and without recovery**: a reader's view.
 - says (symbol): What a lock-free reader may observe is a committed revision whose staged record files are not applied yet (the window recovery closes under the lock); such a reader treats a record that is missing or does not match its pin as a stale view to report, never as something to repair.

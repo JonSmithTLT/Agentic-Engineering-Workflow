@@ -73,7 +73,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `decision` | `decision.schema.json` | 17 | 10 |
 | `disposition` | `disposition.schema.json` | 36 | 15 |
 | `evidence` | `evidence.schema.json` | 128 | 46 |
-| `execution` | `execution.schema.json` | 56 | 7 |
+| `execution` | `execution.schema.json` | 58 | 7 |
 | `gates` | `gates.schema.json` | 72 | 21 |
 | `guardrails` | `guardrails.schema.json` | 16 | 3 |
 | `history` | `history.schema.json` | 12 | 9 |

@@ -187,12 +187,35 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
             if s["pid"] == "gppid":  # a Lead session's harness runs under its reaper; the broker is one level up
                 pid = int(Path(f"/proc/{pid}/stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()[1])
             data = Path(f"/proc/{pid}/environ").read_bytes().decode("latin-1")
-            present = {item.split("=", 1)[0] for item in data.split("\x00") if "=" in item}
+            values = dict(item.split("=", 1) for item in data.split("\x00") if "=" in item)
+            names = set(s.get("names") or []) & set(values)
+            forbid = set(s.get("forbid_sha256") or [])
+            if s.get("save_name") in values and s.get("save_to"):  # into the run's own directory, for a scan's sake
+                Path(s["save_to"]).write_text(values[s["save_name"]], encoding="utf-8")
             return {"readable": True, "has_credential": bool(__import__("re").search(CRED, data)),
                     "has_lead_var": "AEW_LEAD_TOKEN" in data,
-                    "names_present": sorted(present & set(s.get("names") or []))}  # names only, never values
+                    "names_present": sorted(names),  # names only, never values
+                    # STG-05 CS-4 (ST-38): which of them hold a provider relay's sentinel, and whether any value is
+                    # one of the forbidden ones, by its sha256
+                    "sentinel_names": sorted(n for n in names if values[n].startswith("aew-relay-")),
+                    "forbidden_present": any(__import__("hashlib").sha256(v.encode("latin-1")).hexdigest() in forbid
+                                             for v in values.values())}
         except OSError as exc:
             return {"readable": False, "error": str(exc)}
+    if do == "connect":  # a tool call that tries to reach a socket: {"tcp": [host, port]} or {"unix": path}
+        import socket
+
+        try:
+            if s.get("unix"):
+                family = socket.AF_UNIX  # pyright: ignore[reportAttributeAccessIssue]  # POSIX only, as is the step
+                with socket.socket(family, socket.SOCK_STREAM) as sock:
+                    sock.settimeout(5)
+                    sock.connect(s["unix"])
+            else:
+                socket.create_connection((s["tcp"][0], int(s["tcp"][1])), timeout=5).close()
+            return {"connected": True}
+        except OSError as exc:
+            return {"connected": False, "error": errno.errorcode.get(exc.errno or 0, type(exc).__name__)}
     if do == "scan":  # look for any credential string in files the agent can reach
         out = run([sys.executable, "-c", SCAN, CRED, s["out"], *s["roots"]])
         hits = Path(s["out"]).read_text(encoding="utf-8").split("\n") if Path(s["out"]).exists() else []

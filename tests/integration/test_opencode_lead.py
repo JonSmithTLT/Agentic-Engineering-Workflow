@@ -3,7 +3,8 @@
 A V2 TUI running its own server (`--standalone`) gives every session its own environment as the shell
 environment, so the environment `aew opencode` gives the TUI is exactly what the Lead's model and its shell
 commands can see. A fake TUI (the fake agent behind an `opencode` launcher) records it and acts as the Lead's
-model would: through `aew`, reaching the Lead broker.
+model would: through `aew`, reaching the Lead broker. The session's own path here is the one where the Lead runs not
+contained (Windows); on Linux it runs contained (tests/integration/test_lead_contained_session.py, STG-05 CS-4).
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from aewflow import sample_project
 from conftest import run_aew
 from fake_harness import AGENT, HarnessLab, contains_credential, credential_hits
 
-from aew.harness.opencode import projection
+from aew.harness.opencode import lead, projection
 
 SECRET = "sk-provider-secret-must-not-reach-the-lead-model"
 LAUNCHER = """import json, pathlib, sys
@@ -67,6 +68,13 @@ def guide_of(lab) -> str:
     return Engine.discover(lab.root).lead_guide()
 
 
+# Where the Lead runs not contained (Windows). On Linux it runs contained, on a relayed terminal, and the same
+# guarantees are tests/integration/test_lead_contained_session.py's (STG-05 CS-4).
+UNCONTAINED_PATH = pytest.mark.skipif(lead.contained_here(), reason="the Lead runs contained on Linux: "
+                                      "tests/integration/test_lead_contained_session.py covers this path there")
+
+
+@UNCONTAINED_PATH
 def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab, tmp_path):
     sync = tmp_path / "sync"
     sync.mkdir(exist_ok=True)
@@ -79,6 +87,7 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
     assert res.returncode == 0, res.stderr
     out = res.json
     assert (out["exit"], out["seat"], out["opencode"]) == (0, "held by your AEW_LEAD_TOKEN", "2.0.18")
+    assert out["containment"]["filesystem"] == "workdir_separation_only"  # labelled not contained (STG-05 CS-4)
     assert argv == ["--standalone", str(lab.root)]
     env = json.loads((sync / "env").read_text())
     for blob in (json.dumps(env), (sync / "child").read_text(), (sync / "shell").read_text()):
@@ -93,6 +102,7 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
     assert steps[4]["stdout_json"]["lead_note"] == "dispatch T-0001 with --launch"
 
 
+@UNCONTAINED_PATH
 def test_a_provider_key_reaches_the_lead_only_when_passed_explicitly(lab, tmp_path):
     sync = tmp_path / "sync"
     sync.mkdir(exist_ok=True)

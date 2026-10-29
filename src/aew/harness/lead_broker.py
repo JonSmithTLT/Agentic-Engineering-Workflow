@@ -40,10 +40,15 @@ import argparse
 import contextlib
 import io
 import json
+import math
 import os
+import re
+import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -59,8 +64,10 @@ ENV_NAMES = (ENV_ENDPOINT, ENV_KEY)
 OPERATIONS: bridge.Operations = {"lead.cli": {"argv": list, "cwd": str, "stdin": str},
                                  "lead.whoami": {},  # does this session hold Lead authority? (M3-D10)
                                  # one typed Lead surface call (F15.1): arguments are JSON text
-                                 "lead.tool": {"name": str, "arguments": str, "ingress": str, "profile": str}}
-COOPERATIVE = frozenset({"lead.tool"})
+                                 "lead.tool": {"name": str, "arguments": str, "ingress": str, "profile": str},
+                                 # one read relayed for the contained Lead (RELAYED_READS)
+                                 "lead.read": {"argv": list, "cwd": str}}
+COOPERATIVE = frozenset({"lead.tool", "lead.read"})
 INGRESS_CHANNEL = {"mcp": "lead_mcp", "cli": "lead_broker"}  # provenance only, never legality
 
 CREDENTIAL_EMITTING = (frozenset({"lead", "acquire"}), frozenset({"lead", "takeover"}), frozenset({"lead", "release"}),
@@ -120,6 +127,59 @@ LEAD_REACHABLE = frozenset(frozenset(path.split()) for path in (
 DISPATCHES = (frozenset({"work", "assign"}), frozenset({"work", "dispatch"}), frozenset({"work", "redispatch"}),
               frozenset({"invoke", "create"}))
 POLL_S = 1.0
+
+# The reads a contained Lead relays to its broker, which runs them on the host (STG-05 CS-4 addendum 4, ruling 1). What
+# they read is under `.aew/local`, which the Lead's sandbox masks whole: the runs' records, the notifier's and the
+# steering loop's state, the map store. Each maps to the options it may carry; any other option, `-C` outside the
+# Lead's project and `--print-credential` are refused. Map's `--root` names a stored map by its sha256, never a
+# directory. A closed list beside LEAD_REACHABLE: a test walks the parser so that every command is classified.
+RELAYED_READS: dict[frozenset[str], frozenset[str]] = {frozenset(path.split()): frozenset(dests) for path, dests in (
+    ("status", ("work_id", "json")),
+    ("resume", ("json",)),
+    ("harness status", ("invocation",)),
+    ("harness wait", ("run", "any_", "timeout")),
+    ("map show", ("commit", "root", "section", "json")),
+    ("map diff", ("operands", "json")),
+)}
+RELAYED_TIMEOUT_S = 300.0  # a relayed read other than `harness wait`, whose own --timeout bounds it
+# The longest relayed `harness wait --timeout` the host can wait out: `communicate` waits in poll(2), whose timeout is
+# a C int of milliseconds (POSIX), or in threading's waits, which stop at TIMEOUT_MAX (Windows), and the relay adds
+# RELAYED_TIMEOUT_S to the command's own bound (the review of #283 at b2dc3035, m1). Rounded down to whole seconds,
+# so the bound a refusal states is one a request may pass (quick check of #283 at c307481a, m3).
+RELAYED_WAIT_MAX_S = math.floor(min((2**31 - 1) / 1000, threading.TIMEOUT_MAX) - RELAYED_TIMEOUT_S)
+# What a relayed read's values may be (condition 3: none names another project, a directory or an output path): a
+# stored map is named by its sha256; a commit is any revision that is not an option; anything else is a name.
+_NAME = (re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*"), "an id or name, with no path separator, that is not an option")
+RELAYED_VALUES: dict[str, tuple[re.Pattern[str], str]] = {
+    "root": (re.compile(r"[0-9a-f]{64}"), "a stored map is named by its sha256"),
+    "commit": (re.compile(r"[^-\x00][^\x00]*"), "a revision that is not an option"),
+}
+_LOCAL = "a read of committed state, which the sandbox shows read-only: it runs there, lock-free"
+_HERE = "it reports on the environment it runs in: in the sandbox, the sandbox's"
+_WRITER = "it writes under `.aew`, which a non-writer is refused: the operator runs it"
+# Every command without a Lead credential that is not relayed, with why (the classification RELAYED_READS's test walks;
+# OPERATOR_ONLY and NOT_RELAYED hold the rest, and custody_ops.LEAD_KEPT_OUT, their one owner, the commands a Lead
+# session keeps out: #286 review F1).
+CONTAINED_LOCAL: dict[frozenset[str], str] = {frozenset(path.split()): why for path, why in (
+    ("authority list", _LOCAL), ("context show", _LOCAL + " (it renders the pack, as in a worker's sandbox)"),
+    ("dispatch explain", _LOCAL), ("gate show", _LOCAL), ("guide", _LOCAL), ("invoke show", _LOCAL),
+    ("history links", _LOCAL), ("history list", _LOCAL), ("history log", _LOCAL), ("history show", _LOCAL),
+    ("history search", _LOCAL + " (its derived index is rebuilt privately)"),
+    ("integrate breaker status", _LOCAL), ("lead show", _LOCAL), ("message list", _LOCAL), ("message thread", _LOCAL),
+    ("plan lint", _LOCAL), ("role list", _LOCAL), ("role show", _LOCAL), ("role validate", _LOCAL),
+    ("settings show", _LOCAL), ("work list", _LOCAL), ("work ready", _LOCAL), ("work roles", _LOCAL),
+    ("work show", _LOCAL), ("work tree", _LOCAL),
+    ("capability list", "a read of the operator's capability register, which the sandbox shows read-only"),
+    ("doctor", _HERE), ("harness config", _HERE),
+    ("dashboard status", "the operator's dashboard, found from its endpoint under `.aew/local`, which the sandbox "
+                         "masks: there it reports none running, and the operator sees it at their own terminal"),
+    ("context pack", _WRITER), ("history compact", _WRITER), ("history reindex", _WRITER),
+    ("init", "the operator's own"), ("lead session", "the operator's own: it starts a Lead session"),
+    ("opencode", "the operator's own: it starts a Lead session"),
+    ("check run", "a worker run's, through its run's bridge"), ("submit", "a worker run's, through its run's bridge"),
+    ("whoami", "a worker run's, through its run's bridge"),
+    ("integrate custody", "AEW's own custody worker, started by the engine"),
+)}
 
 
 def command_path(ns: argparse.Namespace) -> frozenset[str]:
@@ -184,6 +244,8 @@ class LeadBroker:
         self.server = bridge.BridgeServer(self.handle, OPERATIONS, COOPERATIVE)
         self.superseded: str | None = None
         self._stop = threading.Event()
+        self._reads: set[subprocess.Popen[str]] = set()  # the relayed reads in flight (RELAYED_READS)
+        self._reads_lock = threading.Lock()
         self._watch = threading.Thread(target=self._watchdog, name="aew-lead-broker-watch", daemon=True)
         # The liveness record the operator endpoint watches (M4-E E7a; amendment 1, M2, R2-m3): its own thread, never
         # reading the store, with the wedge threshold of this broker's own store (R4-m1).
@@ -214,6 +276,7 @@ class LeadBroker:
             self.loop.request_stop()
         self._stop.set()
         self.server.close()
+        self._end_reads()  # a relayed read in flight (a long `harness wait`) ends with the session, never holds it
         self.server.drain(60)
         if self._watch.is_alive():
             self._watch.join(60)  # a check in progress finishes before the credential goes (M3-D11)
@@ -262,6 +325,8 @@ class LeadBroker:
     def handle(self, op: str, args: dict[str, Any]) -> Any:
         if op == "lead.tool":  # cooperative: it takes the serialization itself
             return self._tool(args)
+        if op == "lead.read":  # cooperative: a read in a process of its own, needing no Lead authority
+            return run_read(self.engine, list(args["argv"]), args["cwd"], track=self._track)
         problem = self._authority_lost()
         if problem:
             self.superseded = problem
@@ -274,6 +339,20 @@ class LeadBroker:
 
     def _run_cli(self, argv: list[str], cwd: str, stdin: str) -> dict[str, Any]:
         return run_cli(self.engine, self._token, argv, cwd, stdin, channel="lead_broker")
+
+    def _track(self, proc: subprocess.Popen[str], running: bool) -> None:
+        with self._reads_lock:
+            if not running:
+                self._reads.discard(proc)
+            elif self._stop.is_set():  # the session is closing: no new read starts
+                proc.kill()
+            else:
+                self._reads.add(proc)
+
+    def _end_reads(self) -> None:
+        with self._reads_lock:
+            for proc in self._reads:
+                proc.kill()
 
     # ------------------------------------------------------------------ the typed surface (F15.1)
 
@@ -450,6 +529,105 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     return {"result": result, "json": bool(getattr(ns, "json", False))}
 
 
+def run_read(engine: Any, argv: list[str], cwd: str,
+             track: Callable[[subprocess.Popen[str], bool], None] | None = None) -> dict[str, Any]:
+    """Run one read relayed for the contained Lead (``RELAYED_READS``; STG-05 CS-4 addendum 4, ruling 1) on the host,
+    and return what it printed, as it printed it, with its exit status. The request is parsed against the command's
+    own parser, and runs as an argument list, never a shell string, on the Lead's project only, in a process of its
+    own: a non-writer, reading lock-free as in the sandbox, with no credential and no broker in its environment, so a
+    long read holds nothing of the session's. ``track`` is told when that process starts and ends, so the session
+    ends it when it closes."""
+    from aew import process_kind
+    from aew.cli.main import build_parser, coordination_reads_for, recall_search_for
+    from aew.engine.api import Engine
+    from aew.engine.harness_ops import scrubbed_env
+    from aew.harness import procs
+
+    project = getattr(engine, "aew_root", None) or Path(cwd)  # as run_cli builds it
+    parser = build_parser(recall_search=recall_search_for(argv, aew_root=project),
+                          coordination_reads=coordination_reads_for(argv, aew_root=project))
+    noise = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(noise), contextlib.redirect_stdout(noise):
+            ns = parser.parse_args(argv)
+    except SystemExit:
+        raise errors.UsageError(f"invalid command: {noise.getvalue().strip()[-400:]}") from None
+    path, name = command_path(ns), command_name(ns)
+    if path not in RELAYED_READS:
+        raise errors.PermissionDenied(f"`aew {name}` is not relayed to a contained Lead: the operator runs it in their "
+                                      "own shell", command=name, reason="not_relayed")
+    parsers = [parser]  # every parser on the command's path, `aew`'s own options included (`--print-credential`)
+    for word in name.split():
+        parsers.append(next(a for a in parsers[-1]._actions if isinstance(a, argparse._SubParsersAction)).choices[word])
+    allowed = RELAYED_READS[path] | {"help", "version", "cwd"}  # `-C` is checked below: the Lead's project only
+    extra = [a.option_strings[0] if a.option_strings else a.dest for p in parsers for a in p._actions
+             if not isinstance(a, argparse._SubParsersAction) and a.dest not in allowed
+             and getattr(ns, a.dest, a.default) != a.default]
+    if extra:
+        raise errors.PermissionDenied(f"`aew {name}` is relayed to a contained Lead without {', '.join(extra)}",
+                                      command=name, refused=extra, reason="relayed_option")
+    for dest in sorted(RELAYED_READS[path]):
+        value = getattr(ns, dest, None)
+        values: list[Any] = value if isinstance(value, list) else [] if value is None else [value]
+        for kind, text in (values if dest == "operands" else [(dest, v) for v in values]):  # map diff's are pairs
+            if isinstance(text, str) and not _relayed_value_ok(kind, text):
+                why = RELAYED_VALUES.get(kind, _NAME)[1]
+                raise errors.PermissionDenied(f"`aew {name}`, relayed to a contained Lead, refuses {text!r}: {why}",
+                                              command=name, reason="relayed_value")
+    wait = path == frozenset({"harness", "wait"})
+    if wait and not (math.isfinite(ns.timeout) and ns.timeout <= RELAYED_WAIT_MAX_S):
+        raise errors.PermissionDenied(f"`aew {name}`, relayed to a contained Lead, refuses --timeout {ns.timeout}: "
+                                      f"pass a finite number of seconds, at most {RELAYED_WAIT_MAX_S}",
+                                      command=name, reason="relayed_value")
+    target = Path(cwd).resolve()
+    for place in (target, *([(target / ns.cwd).resolve()] if ns.cwd else [])):
+        if Engine.discover(place).aew_root != project:
+            raise errors.PermissionDenied("a read relayed for this Lead session runs on its own project only",
+                                          project=str(project), reason="relayed_project")
+    env = procs.engine_imports(scrubbed_env())  # the broker's own `aew`, and no credential
+    for variable in ENV_NAMES:
+        env.pop(variable, None)
+    env[process_kind.LEAD_CONTAINED_ENV] = "1"  # a non-writer (process_kind): lock-free reads, nothing written
+    timeout = (float(ns.timeout) if wait else 0.0) + RELAYED_TIMEOUT_S
+    detached: dict[str, Any] = ({"creationflags": procs.CREATE_NO_WINDOW} if procs.IS_WINDOWS
+                                else {"start_new_session": True})
+    with subprocess.Popen([sys.executable, "-m", "aew", *argv], cwd=str(target), env=env, stdin=subprocess.DEVNULL,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+                          **detached) as proc:  # leaving it closes the pipes and reaps the process
+        if track is not None:
+            track(proc, True)
+        try:
+            out, err = proc.communicate(timeout=timeout)
+        except BaseException as exc:
+            proc.kill()  # whatever ended the wait, the read's process ends with it: never left running untracked
+            if isinstance(exc, subprocess.TimeoutExpired):
+                raise errors.UsageError(f"`aew {name}`, relayed for this Lead session, did not finish in "
+                                        f"{timeout:.0f} s", command=name) from None
+            raise
+        finally:
+            if track is not None:
+                track(proc, False)
+    return {"stdout": out, "stderr": err, "exit": proc.returncode}
+
+
+def _relayed_value_ok(kind: str, text: str) -> bool:
+    return RELAYED_VALUES.get(kind, _NAME)[0].fullmatch(text) is not None
+
+
+def relays(args: argparse.Namespace) -> bool:
+    """Inside the contained Lead (``AEW_LEAD_CONTAINED``, with its broker's coordinates), a read its broker runs on the
+    host (``RELAYED_READS``)."""
+    from aew import process_kind
+
+    return (bool(os.environ.get(process_kind.LEAD_CONTAINED_ENV)) and bool(os.environ.get(ENV_ENDPOINT))
+            and command_path(args) in RELAYED_READS)
+
+
+def relay_read(argv: list[str]) -> dict[str, Any]:
+    """Client side: send one relayed read to this Lead session's broker, from the shell's working directory."""
+    return bridge.call("lead.read", {"argv": list(argv), "cwd": str(Path.cwd().resolve())}, env_names=ENV_NAMES)
+
+
 def _expand_fields(argv: list[str], parser: argparse.ArgumentParser, stdin: io.StringIO, cwd: str) -> list[str]:
     """``--fields FILE|-`` expanded as the ``aew`` client does, with this call's stdin and a FILE read from its
     directory, before anything is parsed or checked. A shell command relayed through ``lead.cli`` arrives already
@@ -499,12 +677,40 @@ def routes(args: argparse.Namespace) -> bool:
             and bool(os.environ.get(ENV_ENDPOINT)) and command_path(args) not in NOT_RELAYED)
 
 
+@dataclass
+class Harness:
+    """What a contained Lead session runs (STG-05 CS-4): ``argv`` with ``env``, on the terminal relay when ``relay``
+    (``procs.run_session_tree``); ``label`` is the session's containment label, and ``close`` ends what the session
+    holds outside its sandbox (its network)."""
+
+    argv: list[str]
+    env: dict[str, str]
+    relay: bool
+    label: dict[str, Any]
+    close: Callable[[], None]
+
+
+def require_credential(acquire: bool) -> None:
+    """A Lead session needs the Lead credential, from the operator's shell or a vacant seat (``--acquire``): refused
+    before anything starts. ``aew opencode`` asks this before its contained Lead's own checks (U29)."""
+    if not acquire and not os.environ.get("AEW_LEAD_TOKEN"):
+        raise errors.UsageError("a Lead session needs the Lead credential: set AEW_LEAD_TOKEN in your own shell "
+                                "(it is removed from the session's environment), or take a vacant seat with "
+                                "--acquire (the credential then exists only inside this session)")
+
+
 def run_session(engine: Any, command: list[str], *, acquire: bool, session_label: str | None,
-                keep_seat: bool, env: dict[str, str] | None = None) -> dict[str, Any]:
+                keep_seat: bool, env: dict[str, str] | None = None,
+                contained: Callable[[str | None, dict[str, str]], Harness] | None = None) -> dict[str, Any]:
     """``aew lead session``: broker the Lead credential for one Lead harness session.
 
     ``env`` is the harness's environment (default: the caller's, minus every credential variable). A harness
     adapter passes a curated one (``aew opencode``); the broker's coordinates are added either way.
+
+    ``contained`` (the contained Lead, STG-05 CS-4) is called once the broker serves, with the broker's private
+    directory (which the sandbox binds in) and that environment, and returns what to run instead of ``command``: in
+    its sandbox, or, where the policy allows a weaker run, as it is, labelled so. When it refuses (containment
+    required and not established), nothing runs, and a seat this session acquired is released again.
     """
     from aew.engine.harness_ops import scrubbed_env
     from aew.harness.procs import harden_current_process, run_session_tree
@@ -512,26 +718,38 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     if not command:
         raise errors.UsageError("name the Lead's harness command after `--`, e.g. `aew lead session -- opencode-cli`")
     harden_current_process()  # this process holds the Lead credential (Linux: not inspectable by its child)
+    require_credential(acquire)
     held = os.environ.pop("AEW_LEAD_TOKEN", "")  # in memory only: never inherited by git, hooks or any child
     if acquire:
         token = engine.lead_acquire(expect_rev=engine.store.current()["revision"], session_label=session_label)["token"]
     else:
         token = held
-        if not token:
-            raise errors.UsageError("a Lead session needs the Lead credential: set AEW_LEAD_TOKEN in your own shell "
-                                    "(it is removed from the session's environment), or take a vacant seat with "
-                                    "--acquire (the credential then exists only inside this session)")
     broker = LeadBroker(engine, token)
     # Every launch this session's broker relays or its steering loop makes runs in this process and reads its
     # environment: a refusal for a missing provider variable says so (review of PR #214, F2).
     with agentenv.session_host("this Lead session (`aew opencode` or `aew lead session`)"):
         broker.start()
         child_env = {**(scrubbed_env() if env is None else scrubbed_env(env)), **broker.env}
+        harness = None
+        if contained is not None:
+            try:
+                harness = contained(broker.server.private_dir, child_env)
+            except BaseException:
+                broker.close()
+                if acquire and not broker.superseded:  # nothing ran: the seat this session took is free again
+                    with contextlib.suppress(errors.AEWError):
+                        engine.lead_release(token=token, expect_rev=engine.store.current()["revision"])
+                raise
         try:
-            code, ownership = run_session_tree(command, env=child_env, cwd=str(engine.repo_root))
+            code, ownership = run_session_tree(harness.argv if harness else command,
+                                               env=harness.env if harness else child_env, cwd=str(engine.repo_root),
+                                               relay=bool(harness and harness.relay))
         finally:
+            if harness is not None:
+                harness.close()
             broker.close()
-    out: dict[str, Any] = {"ok": True, "exit": code, "superseded": broker.superseded, "processes": ownership}
+    out: dict[str, Any] = {"ok": True, "exit": code, "superseded": broker.superseded, "processes": ownership,
+                           **({"containment": harness.label} if harness is not None else {})}
     state = engine.store.current()
     if acquire and not broker.superseded:
         active = sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active")

@@ -303,18 +303,81 @@ class CheckTrees:
             return len(self._trees)
 
 
+# What the contained Lead's TUI sets on the operator's terminal and its own exit resets, in its order (OpenCode 2.0.18,
+# captured on the Rocky 8 VM; STG-05 CS-4): synchronized output first, which a kill in mid-frame leaves on and some
+# terminals then stop drawing, then the SGR attributes, modifyOtherKeys, the mouse modes, bracketed paste, the alternate
+# screen, palette notifications, the title, the cursor's colour, the pointer's shape, the cursor's style and the cursor.
+# The terminal relay writes it on every ending, after the TUI's own (a second reset of a mode is harmless; termios
+# cannot hold these).
+TERMINAL_LEAVE = (b"\x1b[?2026l\x1b[0m\x1b[>4;0m\x1b[?1003l\x1b[?1002l\x1b[?1000l\x1b[?1006l\x1b[?2004l\x1b[?1049l"
+                  b"\x1b[?2031l\x1b]0;\x07\x1b]12;default\x07\x1b]112\x07\x1b]22;\x1b\\\x1b[0 q\x1b[?25h")
+
 # Linux: the parent of an interactive session's harness. It becomes a child subreaper, so every descendant of the
 # harness that detaches (a double fork, `setsid`, `nohup ... &`) is re-parented to it instead of to init. When the
 # harness exits, or the session's process dies (its control pipe closes), it kills every descendant it has, reaps them
 # until it has none, and reports on its result pipe: "clean" (none left), "survivors" (some outlived a 10 s kill loop)
 # or "unowned" (the subreaper could not be set). It stays in the session's process group and on its terminal.
+#
+# Its third argument is its mode, which only run_session_tree gives. "plain": the harness runs on the session's own
+# terminal. "relay" (the contained Lead, STG-05 CS-4): the reaper owns a pseudo-terminal and the harness runs on it,
+# in a session of its own, so the operator's terminal is never open in the harness. The reaper copies the terminal's
+# settings and size to it, sets the operator's terminal raw, and moves bytes both ways as they come (nothing filtered:
+# the clipboard, paste and the mouse pass), with each SIGWINCH passed on as the new size. On every ending (the harness's
+# exit, the session's death, SIGHUP when the terminal closes, SIGTERM) it gives the terminal back first: it writes
+# TERMINAL_LEAVE and restores the saved settings, then ends the harness's processes.
 _SESSION_REAPER = r"""
 import ctypes, os, signal, subprocess, sys, threading, time
-ctl, res = int(sys.argv[1]), int(sys.argv[2])
+ctl, res, mode = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
 signal.signal(signal.SIGINT, lambda *_: None)   # Ctrl-C is the harness's; a handler is reset in the harness at exec
 signal.signal(signal.SIGQUIT, lambda *_: None)
 owned = ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) == 0   # PR_SET_CHILD_SUBREAPER
 lock = threading.Lock()
+LEAVE = __TERMINAL_LEAVE__
+master = saved = pump = None
+stop_at = [float("inf")]   # the relay's pump stops reading at this monotonic time
+
+def write_all(fd, data):
+    while data:
+        data = data[os.write(fd, data):]
+
+def winsize(*_):
+    try:
+        fcntl.ioctl(master, termios.TIOCSWINSZ, fcntl.ioctl(0, termios.TIOCGWINSZ, bytes(8)))
+    except OSError:
+        pass
+
+def relay():
+    inputs = [0, master]
+    while master in inputs and time.monotonic() < stop_at[0]:
+        if stop_at[0] < float("inf") and 0 in inputs:
+            inputs.remove(0)   # ending: what the operator types now is for their shell
+        for fd in select.select(inputs, [], [], 0.05)[0]:
+            try:
+                data = os.read(fd, 65536)
+            except OSError:   # EIO: every holder of the slave has closed it, or the terminal hung up
+                data = b""
+            if not data:
+                inputs.remove(fd)
+                continue
+            try:
+                write_all(master if fd == 0 else 1, data)
+            except OSError:
+                if fd == master:
+                    return   # the operator's terminal is gone
+
+def give_back(drain):
+    # On the harness's own exit its last bytes (its own reset) are drained first, for half a second at most.
+    stop_at[0] = time.monotonic() + (0.5 if drain else 0)
+    if pump is not None:
+        pump.join(1.0)
+    try:
+        write_all(1, LEAVE)
+    except OSError:
+        pass
+    try:
+        termios.tcsetattr(0, termios.TCSADRAIN, saved)
+    except (OSError, termios.error):
+        pass
 
 def descendants():
     kids = {}
@@ -333,8 +396,10 @@ def descendants():
             todo.append(c)
     return out
 
-def finish(code):
+def finish(code, drain=False):
     with lock:  # once: the harness's exit and the session's death may race
+        if saved is not None:
+            give_back(drain)
         deadline, left = time.monotonic() + 10, True
         while time.monotonic() < deadline:
             for pid in descendants():
@@ -349,17 +414,42 @@ def finish(code):
                 left = False
                 break
             time.sleep(0.02)
-        os.write(res, b"unowned" if not owned else b"survivors" if left else b"clean")
+        try:
+            os.write(res, b"unowned" if not owned else b"survivors" if left else b"clean")
+        except OSError:
+            pass   # EPIPE: the session's process is gone, and its traceback would land on the operator's terminal
         os._exit(code)
 
-harness = subprocess.Popen(sys.argv[3:])
+if mode == "relay":
+    import fcntl, select, termios, tty
+    terminal = termios.tcgetattr(0)
+    master, slave = os.openpty()
+    termios.tcsetattr(slave, termios.TCSANOW, terminal)
+    winsize()
+    harness = subprocess.Popen(sys.argv[4:], stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
+    os.close(slave)
+    saved = terminal
+    # After the harness has started (it would inherit SIG_IGN): with the session's process gone, the terminal may
+    # have gone back to the shell, and this group's writes and tcsetattr must still reach it.
+    signal.signal(signal.SIGTTOU, signal.SIG_IGN)
+    signal.signal(signal.SIGWINCH, winsize)
+    for sig in (signal.SIGHUP, signal.SIGTERM):
+        signal.signal(sig, lambda s, _f: threading.Thread(target=finish, args=(128 + s,), daemon=True).start())
+    try:
+        tty.setraw(0, termios.TCSANOW)   # not TCSAFLUSH: what the operator typed ahead reaches the harness
+        pump = threading.Thread(target=relay, daemon=True)
+        pump.start()
+    except BaseException:
+        finish(70)
+else:
+    harness = subprocess.Popen(sys.argv[4:])
 threading.Thread(target=lambda: (os.read(ctl, 1), finish(137)), daemon=True).start()
 rc = harness.wait()
-finish(rc if rc >= 0 else 128 - rc)
-"""
+finish(rc if rc >= 0 else 128 - rc, drain=True)
+""".replace("__TERMINAL_LEAVE__", repr(TERMINAL_LEAVE))
 
 
-def run_session_tree(argv: list[str], *, env: dict[str, str], cwd: str) -> tuple[int, str]:
+def run_session_tree(argv: list[str], *, env: dict[str, str], cwd: str, relay: bool = False) -> tuple[int, str]:
     """Run an interactive session's harness (the Lead's TUI, ADR-0009) on the caller's terminal or console, and own
     every process it starts: none outlives the harness, or this process. Returns ``(exit code, ownership)``, where
     ownership is ``"clean"`` when nothing it started is still running, ``"survivors"`` when something could not be
@@ -370,7 +460,12 @@ def run_session_tree(argv: list[str], *, env: dict[str, str], cwd: str) -> tuple
     * **Linux:** :data:`_SESSION_REAPER` (above) parents the harness as a child subreaper, so a descendant that
       detaches is still found and ended. Processes started through another service (cron, ``at``, a user systemd
       unit) are not descendants and are outside any process ownership (ADR-0009 residual).
+    * **relay** (Linux; the contained Lead, STG-05 CS-4): the harness runs on the reaper's pseudo-terminal, not on
+      the caller's terminal, which standard input must be (``OSError`` otherwise). The reaper gives the terminal back
+      on every ending; if the reaper itself is killed, this process does, from the settings it saved first.
     """
+    if relay and not sys.platform.startswith("linux"):
+        raise ValueError("the terminal relay is Linux's (the contained Lead)")
     if sys.platform == "win32":  # pragma: windows-only
         job = _k32.CreateJobObjectW(None, None)
         if not job:
@@ -405,13 +500,18 @@ def run_session_tree(argv: list[str], *, env: dict[str, str], cwd: str) -> tuple
             _k32.CloseHandle(job)  # kill-on-close: anything still in the job ends with its last handle
     if not sys.platform.startswith("linux"):  # pragma: no cover (Linux and Windows are the supported hosts)
         return subprocess.call(argv, env=env, cwd=cwd), "unowned"
-    ctl_r, ctl_w = os.pipe()  # pragma: posix-only
+    import termios  # pragma: posix-only
+
+    if relay and not os.isatty(0):
+        raise OSError("the terminal relay needs a terminal on standard input")
+    saved = termios.tcgetattr(0) if relay else None
+    ctl_r, ctl_w = os.pipe()
     res_r, res_w = os.pipe()
     try:
         # `-I`: started in the project with the session's environment, it imports the standard library only (no cwd,
         # no PYTHON* variable, no user site), while the harness it starts still gets that environment unchanged.
-        reaper = subprocess.Popen([sys.executable, "-I", "-c", _SESSION_REAPER, str(ctl_r), str(res_w), *argv], env=env,
-                                  cwd=cwd, pass_fds=(ctl_r, res_w))
+        reaper = subprocess.Popen([sys.executable, "-I", "-c", _SESSION_REAPER, str(ctl_r), str(res_w),
+                                   "relay" if relay else "plain", *argv], env=env, cwd=cwd, pass_fds=(ctl_r, res_w))
     except BaseException:
         for fd in (ctl_r, ctl_w, res_r, res_w):
             os.close(fd)
@@ -424,8 +524,14 @@ def run_session_tree(argv: list[str], *, env: dict[str, str], cwd: str) -> tuple
         os.close(ctl_w)  # if this process is interrupted, the reaper ends the session's processes itself
         reaper.wait()
         with os.fdopen(res_r, "rb") as res:
-            ownership = res.read().decode("ascii", "replace") or "survivors"
-    return code, ownership
+            reported = res.read().decode("ascii", "replace")
+        if saved is not None and not reported:  # the reaper was killed before it gave the terminal back
+            try:
+                os.write(1, TERMINAL_LEAVE)
+                termios.tcsetattr(0, termios.TCSADRAIN, saved)
+            except (OSError, termios.error):
+                pass
+    return code, reported or "survivors"
 
 
 def process_chain(limit: int = 6) -> list[str]:

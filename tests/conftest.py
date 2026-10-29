@@ -24,6 +24,7 @@ import lanes  # noqa: E402  (CI lanes, shards, lane reports; docs/implementation
 import session_deadline  # noqa: E402  (--session-deadline: CI keeps the evidence before a job timeout: G3 H3)
 import watchdog  # noqa: E402  (--test-timeout: a hung test fails by name with every thread's stack)
 from discovery import capture as discovery_capture  # noqa: E402  (D2: docs/implementation/vertical-uat.md §8)
+from host_env import host_env_guard  # noqa: E402,F401  (GUARDED: a module's layouts never read the host's home)
 from lanes import process_isolation  # noqa: E402,F401  (autouse: no test leaks AEW_* env or cwd)
 from worker_coverage import pytest_sessionfinish  # noqa: E402,F401  (a worker saves coverage before teardown)
 

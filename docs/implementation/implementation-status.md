@@ -282,7 +282,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **Status:** **Linux: built (M4-B).** Windows: workdir separation only
 
-**Acceptance evidence / next action:** Linux: a bubblewrap sandbox per run from its role, applied to every harness process and check, fail closed with a launch self-test; filesystem integrity, not confidentiality (ADR-0009, M4-B amendment). Workers' runs get a network of their own, `proxy_only` by default: the provider relay and the egress allowlist are their only routes out (F28; STG-05 CS-3b, ADR-0009's amendment of 2026-10-24; its live lane passed that day). The Lead's harness on it is CS-4's. Windows: `workdir_separation_only`, labelled on every run and in `aew doctor`. Real-repository dogfood stays Linux-only and waits on the gate's remaining conditions (`future-work.md` §1)
+**Acceptance evidence / next action:** Linux: a bubblewrap sandbox per run from its role, applied to every harness process and check, fail closed with a launch self-test; filesystem integrity, not confidentiality (ADR-0009, M4-B amendment). Workers' runs get a network of their own, `proxy_only` by default: the provider relay and the egress allowlist are their only routes out (F28; STG-05 CS-3b, ADR-0009's amendment of 2026-10-24; its live lane passed that day). The Lead's OpenCode TUI runs contained too: a self-tested `lead` sandbox on a network of its own, with a relay per stored provider login and any-public egress, on a terminal AEW relays (STG-05 CS-4, ADR-0009's amendment of 2026-10-25). Windows: `workdir_separation_only`, labelled on every run and in `aew doctor`. Real-repository dogfood stays Linux-only and waits on the gate's remaining conditions (`future-work.md` §1)
 
 ### R1 Reviewer
 

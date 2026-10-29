@@ -216,14 +216,15 @@ def scoring_layout(tree: Path, scratch: Path, hide: list[Path]) -> Any:
     bwrap = L.find_bwrap()
     if bwrap is None:
         raise Invalid("scoring needs bubblewrap on Linux; nothing scores uncontained there")
-    dirs, files = L._masks(os.path.expanduser("~"), [])  # noqa: SLF001 (the same secret masks as every run)
-    hidden_dirs = [*dirs, *(os.path.realpath(p) for p in hide if p.is_dir())]
+    writable = (os.path.realpath(tree), os.path.realpath(scratch))
+    # the same secret masks as every run (STG-05 CS-4, addenda 6 and 7, ruling 6)
+    plan = L._masks(os.path.expanduser("~"), [], written=writable)  # noqa: SLF001
+    hidden_dirs = [*plan.dirs, *(os.path.realpath(p) for p in hide if p.is_dir())]
     mask = scratch / ".aew-mask"
     mask.write_bytes(b"")
     readonly = sorted({os.path.realpath(p) for p in (sys.prefix, sys.base_prefix) if p and os.path.isdir(p)})
-    return L.Layout(role="eval-scoring", access="write", bwrap=bwrap,
-                    writable=(os.path.realpath(tree), os.path.realpath(scratch)), readonly=tuple(readonly),
-                    hide_dirs=tuple(dict.fromkeys(hidden_dirs)), hide_files=files, mask_file=str(mask),
+    return L.Layout(role="eval-scoring", access="write", bwrap=bwrap, writable=writable, readonly=tuple(readonly),
+                    **{**plan.fields(), "hide_dirs": tuple(dict.fromkeys(hidden_dirs))}, mask_file=str(mask),
                     env={"TMPDIR": L.SANDBOX_TMP, "PYTHONDONTWRITEBYTECODE": "1"})
 
 

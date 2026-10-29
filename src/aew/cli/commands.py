@@ -214,14 +214,17 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(handler=_lead_mcp)
 
     p = sub.add_parser("opencode", help="the Lead's OpenCode TUI as a Lead session: its model never sees the Lead "
-                                        "credential or, by default, any provider key (ADR-0009)")
+                                        "credential or, by default, any provider key (ADR-0009); on Linux it runs "
+                                        "contained, at a terminal (STG-05 CS-4)")
     p.add_argument("--acquire", action="store_true",
                    help="take the vacant seat in-process (the credential then exists only in this session)")
     p.add_argument("--session-label")
     p.add_argument("--keep-seat", action="store_true", help="with --acquire: do not release the seat at exit")
     p.add_argument("--provider-env", action="append", default=[], metavar="NAME",
-                   help="pass this provider variable to the Lead's OpenCode (its shell can then read it); by default "
-                        "the Lead's model uses the credentials OpenCode stores (`opencode auth login`)")
+                   help="use this provider variable for the Lead's model: on Linux it feeds that provider's relay on "
+                        "the host and the Lead's shell sees a placeholder; elsewhere it is passed to the Lead's "
+                        "OpenCode, whose shell can then read it. By default the Lead's model uses the logins OpenCode "
+                        "stores (`opencode auth login`)")
     p.add_argument("--print-config", action="store_true",
                    help="print the Lead projection and the environment names; start nothing")
     p.add_argument("opencode_args", nargs=argparse.REMAINDER, help="-- further OpenCode TUI arguments")

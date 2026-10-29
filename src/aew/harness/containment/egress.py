@@ -414,7 +414,11 @@ class EgressProxy(Service):
         except (UnicodeDecodeError, ValueError):
             raise _Refused(400, "bad_request", "the request line is not METHOD target HTTP/1.1") from None
         if method != "CONNECT":
-            raise _Refused(405, "method", "this egress proxy serves CONNECT only (F28 §3.4)")
+            # A plain-HTTP request through the proxy (the Lead's HTTP_PROXY, STG-05 CS-4) is told its HTTPS form,
+            # which the proxy does serve (the designer's condition on CS-4's plan).
+            https = f": plain http:// is not relayed; ask for https://{target[7:200]} instead" \
+                if target.startswith("http://") else ""
+            raise _Refused(405, "method", f"this egress proxy serves CONNECT only (F28 §3.4){https}")
         if version not in ("HTTP/1.1", "HTTP/1.0"):
             raise _Refused(400, "bad_request", f"unsupported version {version!r}")
         try:

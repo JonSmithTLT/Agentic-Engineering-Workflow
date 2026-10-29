@@ -13,6 +13,13 @@ intro: |
   material go in a later note on the item's row ([`notes.d/<row>/`](notes.d/README.md)), which `python tools/register.py
   show <row>` prints beside the item: two changes that both extend one `what` conflict, two notes never do.
 items:
+- row: E99
+  needs: design
+  owner: designer
+  due: Internal alpha
+  what: The offline install bundle's design, with its one manifest of every requirement, the bundle built per target, and
+    the guided install that needs no network
+
 - row: E4
   needs: decision
   owner: operator

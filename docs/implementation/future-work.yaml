@@ -1213,7 +1213,7 @@ sections:
   - '#': E100
     Work: An explicit `required` containment mode on a host that cannot meet it refuses the launch, on every platform. An
       unset mode still runs weaker, and its label's `weaker_because` names the platform
-    Source: The designer's decision of 2026-10-26, `30-stages/STG-05-agent-containment-build/handoff/RESPONSE-E100-required-on-an-unqualified-host-designer.md`
+    Source: The designer's decision of 2026-10-25, `30-stages/STG-05-agent-containment-build/handoff/RESPONSE-E100-required-on-an-unqualified-host-designer.md`
       in the design workspace
     When: '**Internal alpha**, before the Windows trial: a build row; it needs a builder after CS-4 merges'
     Notes: 'Filed by the Lead. Its decisions-due item waits until `test_register` admits a new item (#285''s review, m5):

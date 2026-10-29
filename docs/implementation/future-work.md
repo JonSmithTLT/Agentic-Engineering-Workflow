@@ -1059,7 +1059,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** An explicit `required` containment mode on a host that cannot meet it refuses the launch, on every platform. An unset mode still runs weaker, and its label's `weaker_because` names the platform
 
-**Source:** The designer's decision of 2026-10-26, `30-stages/STG-05-agent-containment-build/handoff/RESPONSE-E100-required-on-an-unqualified-host-designer.md` in the design workspace
+**Source:** The designer's decision of 2026-10-25, `30-stages/STG-05-agent-containment-build/handoff/RESPONSE-E100-required-on-an-unqualified-host-designer.md` in the design workspace
 
 **When:** **Internal alpha**, before the Windows trial: a build row; it needs a builder after CS-4 merges
 

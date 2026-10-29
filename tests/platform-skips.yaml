@@ -210,7 +210,10 @@ skipped:
     tests/integration/test_containment.py::test_the_role_packs_git_commands_work_on_the_private_index_and_store: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
-    tests/integration/test_containment.py::test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_over_the_host: >-
+    tests/integration/test_containment.py::test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_over_the_host[this_host]: >-
+      Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
+      workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_containment.py::test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_over_the_host[runner_like]: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
     tests/integration/test_containment.py::test_the_self_test_finds_rg_where_a_run_sees_it_and_not_where_only_the_host_has_it: >-
@@ -401,6 +404,15 @@ skipped:
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
     tests/integration/test_lead_containment.py::test_a_secret_left_out_of_its_directory_is_not_seen_when_replaced_or_created_after_the_launch[created_after]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_secret_file_that_is_a_link_is_unseen_at_both_paths_when_its_target_is_replaced[lead]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_secret_file_that_is_a_link_is_unseen_at_both_paths_when_its_target_is_replaced[implementer]: >-
+      Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
+      Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_containment.py::test_a_secret_file_that_is_a_link_is_unseen_at_both_paths_when_its_target_is_replaced[reviewer]: >-
       Linux bubblewrap containment of the Lead (STG-05 CS-4); the Windows Lead runs labelled not contained. Covered on
       Linux (CI and the Rocky 8 lane); the masked paths are tested on Linux in tests/unit/test_containment_layout.py.
     tests/integration/test_lead_containment.py::test_in_the_leads_project_a_mask_refuses_writes_and_aews_cli_names_it: >-

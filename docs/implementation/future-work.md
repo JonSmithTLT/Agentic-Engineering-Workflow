@@ -37,7 +37,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 3 | STG-05 | CS-3b, the network namespace (#257) (merged, `d796a342`) |
 | 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register (PR 1 merged as #272, `af951c92`; PR 2 starts from CS-4's merge) |
 | 5 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
-| 6 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, merged as #282, `61310fb3`; G3-D, the CLI client, building; G3-C after CS-4's merge) |
+| 6 | STG-05, STG-03 | CS-4, the Lead contained, with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, merged as #282, `61310fb3`; G3-D, the CLI client, merged as #286, `21ea8674`; G3-C after CS-4's merge) |
 | 7 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
 | 8 | STG-13 | V-01's oracle rebuilt |
 | 9 | STG-14 | I-6, the resource, model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established, which is no sooner than CS-4's merge |
@@ -1021,7 +1021,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E97
 
-**Work:** The provider relay's meter, A-42's first build item (MSN-00, MSN-R03): every paid route a mission's run can reach is metered from outside the metered lineage, and each paid call the relay observes is bound to the operation it was admitted under, so that usage is taken from the meter (R01-08)
+**Work:** The provider relay's meter, one of A-42's two build items (MSN-00, MSN-R03): every paid route a mission's run can reach is metered from outside the metered lineage, and each paid call the relay observes is bound to the operation it was admitted under, so that usage is taken from the meter (MSN-12, R01-08; the rule's second half is MSN-12's)
 
 **Source:** A-42, the bounded unattended mission, with the operator's option (a) (adopted on 2026-10-25, design workspace `b2ade18`; MSN-R03, MSN-Q10); R01-08, IF10-13
 
@@ -1033,7 +1033,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E98
 
-**Work:** R-01's qualification of the paid class on a host and provider, A-42's second build item (MSN-00, MSN-05; R01-08, R01-09, R01-42, R01-43): where the class qualifies, a mission's cap is issued `MANDATORY_HARD`; elsewhere it reads `NOT_ESTABLISHED`
+**Work:** R-01's qualification of the paid class on a host and provider, one of A-42's two build items (MSN-00, MSN-05; R01-08, R01-09, R01-42, R01-43): where the class qualifies, a mission's cap is issued `MANDATORY_HARD`; elsewhere it reads `NOT_ESTABLISHED`
 
 **Source:** A-42 with option (a) (design workspace `b2ade18`; MSN-00, MSN-05, MSN-R03, MSN-Q10); R01-08, R01-09, R01-42, R01-43, IF10-13
 
@@ -1049,7 +1049,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The install and bootstrap UX v0.3, sections 5 and 5.1 (ledger IBU-12, IBU-13), and ADR-0014 (the signed manifest, verified before anything is consumed), whose build is held in HOLD-17 as F18.3 and D2; brought forward to Internal alpha by the operator's decision of 2026-10-25, in chat, on G3-B's system packages (packaging bundles every requirement for an install with no internet), and extended by the per-target system packages and the guided sequence, the Lead's sketch of the same day
 
-**When:** **Internal alpha**, as its packaging (the milestone's "an install the operator can run on their own machine and on a managed Linux host"). The designer designs it, by Internal alpha, with HOLD-17's F18.3 and D2 at that group's re-entry
+**When:** **Internal alpha**, as its packaging (the milestone's "an install the operator can run on their own machine and on a managed Linux host"). The designer designs it, by Internal alpha. F18.3 and D2 stay held in HOLD-17; E99's design takes IBU-12, IBU-13 and ADR-0014 as its inputs, and names at the group's exit how F18.3 and D2 are absorbed
 
 **Notes:** Filed by the Lead. `g3/requirements-offline.txt` is the offline manifest the bundle's one manifest absorbs. Closest mechanisms today: CAP-1's capability register (STG-15) and H-3's bundle import (E35). Its decisions-due item waits until `test_register` admits a new item (#285's review, m5): the next register batch
 
@@ -1057,11 +1057,11 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E100
 
-**Work:** A containment policy of `required` on a host that cannot meet it never runs silently weaker: the run is refused, or it runs with the override named in its label (`weaker_because`), as the designer decides
+**Work:** An explicit `required` containment mode on a host that cannot meet it refuses the launch, on every platform. An unset mode still runs weaker, and its label's `weaker_because` names the platform
 
-**Source:** The designer's observation of 2026-10-25 on containment's mode on Windows, in a message to the Lead beside CS-4's addendum 4; not yet in a record
+**Source:** The designer's decision of 2026-10-25, `30-stages/STG-05-agent-containment-build/handoff/RESPONSE-E100-required-on-an-unqualified-host-designer.md` in the design workspace
 
-**When:** **Internal alpha**: the operator's own-machine trial is on Windows. The designer decides which of the two, by Internal alpha
+**When:** **Internal alpha**, before the Windows trial: a build row; it needs a builder after CS-4 merges
 
 **Notes:** Filed by the Lead. Its decisions-due item waits until `test_register` admits a new item (#285's review, m5): the next register batch
 

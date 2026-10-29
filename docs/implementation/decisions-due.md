@@ -57,4 +57,12 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Blocks:** -
 
+### E110
+
+**Due by:** Unscheduled · **Owner:** operator · **Needs:** decision
+
+**What:** A-44's Q9 and Q10, which are put to the operator with slice S7's probe data (E109), and where slice S8 is placed, which rests on them
+
+**Blocks:** -
+
 ## Blocked until then

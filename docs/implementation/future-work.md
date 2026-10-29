@@ -1067,6 +1067,126 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E100/`, oldest first (`python tools/register.py show E100`).*
 
+### E101
+
+**Work:** Blocked-on-you's slice S1, the approvals view (A-44): a per-host record of each approval that `aew g3 request` starts, written and pruned only by that client; one attention module, whose single tier table gives every item its tier, lane, order and occurrence key; the waiting items first in the overview, on dashboard contract 0.1.3 unchanged; the same items in `aew status` with the site stopped; and the stale 403 reason corrected to name the dashboard half of the typed-surface projection, which E18 tracks. Nothing in it decides, answers or approves, and the dashboard never connects to G3
+
+**Source:** A-44, blocked-on-you revision 2.1 (adopted by the operator on 2026-10-28 with Q1 to Q8 as recommended; design workspace `f2a561d`, tag `STG-20-boy-r2.1`), its slice S1 and Q1: `BOY-00` to `BOY-07` (with `BOY-02.a`, `BOY-03.a`, `BOY-03.b`, `BOY-04.a` and `BOY-05.a` to `BOY-05.e`) and `BOY-14`, with the gate rows that check them; the ids as D1 indexes them (design workspace `03eac0b`)
+
+**When:** **Contained** (Q1), the first of A-44's slices. Each slice starts after CS-4's merge, which is done (#283), so Q8's earlier start no longer arises
+
+**Notes:** Filed by the Lead. It draws the hold-group members it serves out of their holds (Q1): F41.14 item 12's dashboard half (HOLD-09), F20 (HOLD-12, with S2) and F43's producer (HOLD-10). Which rules each slice builds is the Lead's reading of the slices table
+
+*Later notes: `notes.d/E101/`, oldest first (`python tools/register.py show E101`).*
+
+### E102
+
+**Work:** Blocked-on-you's slice S2 (A-44): the `/waiting` read, `GET /api/v1/waiting` in dashboard contract 0.1.4 (one additive route, which renews C0 once), serving each item with its source record and that source's outcome and read time; and the Lead's open steering requests in the agent lane, in fixed words and never copied
+
+**Source:** A-44 (design workspace `f2a561d`), its slice S2, its contract 0.1.4 interface, Q1 and Q2: `BOY-04`, `BOY-04.a` and `BOY-08.e`, with the gate rows that check them
+
+**When:** **Contained** (Q1), after S1 (E101) and the C0 renewal. After CS-4's merge, which is done (#283), so Q8's earlier start no longer arises
+
+**Notes:** Filed by the Lead. With S1, it draws F20 out of HOLD-12 (Q1). The contract file and its C0 renewal are the web developer's (`BOY-R10`). Q2: D-01's three gaps (a category for a pending G3 approval, a raised-at time and a where-to-answer relation) are written into the D-01 revision shared with O-02, and the dashboard's own route serves until hold group 12 converges
+
+*Later notes: `notes.d/E102/`, oldest first (`python tools/register.py show E102`).*
+
+### E103
+
+**Work:** Blocked-on-you's slice S2w, the hidden tab (A-44): while the site's tab is hidden, its title counts the backend's waiting items, a second icon marks a blocked-on-you one, and a failed read or an unknown source never shows a bare count; a dismissal is browser-local and binds the item's occurrence key; and an opt-in browser notification stands in only while the desktop notifier is not delivering, never for a G3 approval
+
+**Source:** A-44 (design workspace `f2a561d`), its slice S2w and Q1: `BOY-10`, `BOY-13`, `BOY-13.a` and `BOY-13.b`, with the gate rows that check them
+
+**When:** **Contained** (Q1), after S2 (E102). After CS-4's merge, which is done (#283), so Q8's earlier start no longer arises
+
+**Notes:** Filed by the Lead. Owned by the web developer (`BOY-R10`). It draws F20.6 out of HOLD-12 in part (Q1)
+
+*Later notes: `notes.d/E103/`, oldest first (`python tools/register.py show E103`).*
+
+### E104
+
+**Work:** Blocked-on-you's slice S3, the default desktop notifier (A-44): `aew notify desktop`, written by `aew init` as the default `notify.command`; a new `unavailable` state (no command, a command that is not executable, or the default with no session bus), shown once with its fix; Run's gate refusing the default while it reports `unavailable`; the `aew/notify-event/v2` payload, which carries no agent text, beside v1 unchanged; and the partition, in which the confirmer alone announces G3 approvals
+
+**Source:** A-44 (design workspace `f2a561d`), its slice S3, Q4 and Q6: `BOY-11`, `BOY-12`, `BOY-12.a`, `BOY-12.b` (but its withdrawal and replace-in-place, which are S4's), `BOY-12.c` and `BOY-12.d`, with the gate rows that check them
+
+**When:** **V-01** (Q4), after S1 (E101). After CS-4's merge, which is done (#283), so Q8's earlier start no longer arises
+
+**Notes:** Filed by the Lead. **Q6 changes decision 1's precondition** (Run's notifier precondition): Run's gate refuses the shipped default while it reports `unavailable`, at the raise and at each Run activation, with a fix that names both ways back (`BOY-12.d`). A command the operator wrote keeps today's check, that it is executable, and `failed` refuses nothing. The refusal and `aew init`'s default land together in this slice. It draws F15.5's notifier clause out of HOLD-19. On Windows the notifier reads `unavailable` in V-01; the toast is E99's (Q7)
+
+*Later notes: `notes.d/E104/`, oldest first (`python tools/register.py show E104`).*
+
+### E105
+
+**Work:** Blocked-on-you's slice S4 (A-44): AEW's desktop notification is withdrawn when its item clears, and an attention notification is replaced in place, one per combining key
+
+**Source:** A-44 (design workspace `f2a561d`), its slice S4 and Q4: `BOY-12.b`'s withdrawal and replace-in-place, with the gate rows that check them
+
+**When:** **V-01** (Q4), after S3 (E104). After CS-4's merge, which is done (#283), so Q8's earlier start no longer arises
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E105/`, oldest first (`python tools/register.py show E105`).*
+
+### E106
+
+**Work:** Blocked-on-you's slice S5, the Lead's ask (A-44): one broker door, relayed to the contained Lead (candidate `aew ask`), that derives who asked and writes a committed question record that grants nothing and needs no steering mode or expected revision; one open question per root lineage, a newer ask superseding it; the same door withdraws the Lead's own open steering requests; and the steering loop reads a commit that only records an ask as moving nothing of its envelope
+
+**Source:** A-44 (design workspace `f2a561d`), its slice S5, Q3 and Q4: `BOY-08`, `BOY-08.a` to `BOY-08.d` and `BOY-08.f`, with the gate rows that check them
+
+**When:** **V-01** (Q4), after S2 (E102) and S3 (E104), and after CAP-1's PR 2 if both change the Lead's surface classification. After CS-4's merge, which is done (#283), so Q8's earlier start no longer arises
+
+**Notes:** Filed by the Lead. It draws F15.9's always-present part out of HOLD-10. Q3: the door's requirement is written into A-06's next revision. The door is a relayed command, not a 16th tool, so the Lead's tool list keeps its bytes (`BOY-R06`)
+
+*Later notes: `notes.d/E106/`, oldest first (`python tools/register.py show E106`).*
+
+### E107
+
+**Work:** Blocked-on-you's slice S6, the fallback when the Lead goes quiet (A-44): AEW raises one "your turn" item itself when its loop has stopped for a silent Lead, or when the Lead has made no call for T with nothing running. It runs in host code with fixed text and AEW's attribution, folds into any open item for that Lead, never rises above attention, and only notifies: it stops, restarts and steers nothing
+
+**Source:** A-44 (design workspace `f2a561d`), its slice S6, Q4 and Q5 (which selects it into `R-DEC-03`'s built set): `BOY-09` and `BOY-09.a` to `BOY-09.c`, with the gate rows that check them
+
+**When:** **V-01** (Q4), after S2 (E102) and S4 (E105). After CS-4's merge, which is done (#283), so Q8's earlier start no longer arises
+
+**Notes:** Filed by the Lead. U1 stays held in HOLD-15 (Q4). T is an execution-policy tripwire, 300 s by default, until the trial's measurement replaces it (`BOY-09.c`)
+
+*Later notes: `notes.d/E107/`, oldest first (`python tools/register.py show E107`).*
+
+### E108
+
+**Work:** The independent outage reader (A-45): `aew read <route>`, the operator's own command, run outside AEW's sandbox, answers D-01 0.3.4's twenty reads from the store with no service running: twelve served and eight `unsupported`, each saying where its fact is read instead. Every stamp is `historical` or `stale`, never current; an empty list reads "none committed as of" the read's time, never "none pending"; and it has no effect: it admits, queues and resumes nothing. It is a declared non-writer: it takes no lock, runs no recovery and writes nothing. Its pull request carries its surface-map entry
+
+**Source:** A-45, O-02 revision 2.1 (adopted by the operator on 2026-10-28, design workspace `4f20c7d`; Q1 to Q3 confirmed, `2c538f6`; tag `STG-21-o02-r2.1`): `O02-00` to `O02-10`, the non-writer's `O02-01.a` and `O02-01.b` among them, and its gate, `O02-Q01` to `O02-Q08`; the ids as D1 indexes them (design workspace `3c68d57`)
+
+**When:** **V-01**, after CS-4's merge, which is done (#283). Exempt from the hold: adopted documents cover it. Its gate, `O02-Q01` to `O02-Q08` run host by host, is G4's proof: a host's G4 record needs a built reader that passed the gate there and G3-12's containment holding there (`O02-09`). So G4 now waits on this build and on that condition, and Windows never qualifies (map v1.20)
+
+**Notes:** Filed by the Lead. **`O02-11` binds other builds:** an operator need that an outage must show is a committed store record. Blocked-on-you's question record is one (E106); its G3 approval records stay per host, and the reader names them as a source it did not read (`O02-06.b`)
+
+*Later notes: `notes.d/E108/`, oldest first (`python tools/register.py show E108`).*
+
+### E109
+
+**Work:** Blocked-on-you's slice S7 (A-44): a probe of OpenCode 2.0.18, with no product code, of what AEW can observe of the Lead's TUI: whether AEW can attach to the TUI's own server, whether a session reads as active while a permission ask is pending, and whether forms persist. Its data is what A-44's Q9 and Q10 are asked with
+
+**Source:** A-44 (design workspace `f2a561d`), its slice S7, for the chat-only and pending-ask cases, which the fallback (S6, E107) shows only as "your turn" until S7 and S8 (`BOY-R08`; the position's Risks)
+
+**When:** **Evaluation**, as A-44's slices table places it: a probe with no product code. It waits only on CS-4, which has merged (#283)
+
+**Notes:** Filed by the Lead. No hold-group member is drawn out by it
+
+*Later notes: `notes.d/E109/`, oldest first (`python tools/register.py show E109`).*
+
+### E110
+
+**Work:** Blocked-on-you's slice S8 (A-44): the Lead's harness waits shown as items, for the chat-only and pending-ask cases
+
+**Source:** A-44 (design workspace `f2a561d`), its slice S8, after S7 (E109) and the operator's answer to Q9 or Q10 (`BOY-R08`)
+
+**When:** **Unscheduled**: A-44's slices table leaves its milestone to the operator, who places it once S7's data and the answer to Q9 or Q10 are in. Its decisions-due item names what the operator owes
+
+**Notes:** Filed by the Lead. A new row with no milestone, because the adopted position leaves its placement to the operator
+
+*Later notes: `notes.d/E110/`, oldest first (`python tools/register.py show E110`).*
+
 ### E47
 
 **Work:** Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do), a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the classifier with a test pinning the case; repeated wall-clock violations on `main` open or update a CI-health issue

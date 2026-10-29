@@ -14,7 +14,9 @@ are the source.
   or a creation on the host is not seen inside; in the run's own tree it is masked in place, read-only, and the launch
   names it (addendum 7). Eval's raw arm and hidden scoring take the same masks. A launch where a directory masked whole
   would hide the workspace, the project, the home directory or AEW's own, or where OpenCode's login database lies in
-  the run's own tree, is refused, once, naming each with its one step. Rows 1 to 6 of the self-test run first, row 4
+  the run's own tree, is refused, once, naming each with its one step; so is a policy writable root that holds a
+  secret's path, whether or not the secret exists (addendum 8), and a launch whose bubblewrap command would pass
+  bubblewrap 0.4.0's 9,000 arguments (addendum 9). Rows 1 to 6 of the self-test run first, row 4
   in the Lead's form.
 - **The CLI inside** is a non-writer (`aew (contained Lead)`): reads are lock-free, Lead commands go through the
   broker, and a write meeting the read-only store is refused (`PERMISSION_DENIED`, reason `lead_contained`), one

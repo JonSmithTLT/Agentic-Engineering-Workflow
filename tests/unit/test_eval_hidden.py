@@ -22,6 +22,9 @@ sys.path.insert(0, str(ROOT / "eval"))
 
 from aew_eval import arms, fixture, hidden, prereg, runner  # noqa: E402
 from aew_eval.schemas import Invalid  # noqa: E402
+from host_env import GUARDED, clean_launching_env  # noqa: E402
+
+pytestmark = GUARDED
 
 FIX = {"write": "calc.py", "content": "def add(a, b):\n    return a + b\n"}
 WRONG = {"write": "NOTES.md", "content": "looked at it\n"}
@@ -32,6 +35,15 @@ def checks(tree, run):
     ran = run([sys.executable, "-c", "import calc; print(calc.add(2, 3))"])
     yield "add(2, 3) is 5", ran.stdout.strip() == "5", ran
 '''
+
+
+@pytest.fixture(autouse=True)
+def synthetic_home(tmp_path_factory, monkeypatch) -> Path:
+    """Scoring builds its layout from this process's environment: a home of the test's own, none of the host's
+    (tests/helpers/host_env.py)."""
+    home = tmp_path_factory.mktemp("home")
+    clean_launching_env(monkeypatch, home)
+    return home
 
 
 def make_oracle(hidden_root: Path, cid: str = "C1", checks: str = CHECKS) -> Path:
@@ -114,8 +126,7 @@ def test_scoring_leaves_secret_files_out_of_their_directories_as_every_run_does(
     home = tmp_path / "home"
     home.mkdir()
     (home / ".netrc").write_text("SYNTHETIC\n")
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("USERPROFILE", str(home))
+    clean_launching_env(monkeypatch, home)  # scoring reads this process's environment: none of the host's
     monkeypatch.setattr(L, "find_bwrap", lambda: "/usr/bin/bwrap")
     (tmp_path / "tree").mkdir()
     (tmp_path / "scratch").mkdir()

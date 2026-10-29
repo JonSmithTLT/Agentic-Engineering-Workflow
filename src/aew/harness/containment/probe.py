@@ -561,10 +561,19 @@ def planted_egress(policy: Any, host_port: int) -> tuple[str, str]:
     return UNLISTED, "on no allowlist"
 
 
+def new_sentinel(directory: Path) -> Path:
+    """A sentinel for :func:`self_test` in ``directory``, made before the layout is: where that directory is one a
+    secret is left out of (a workspace directly under the home), the layout then puts it back, read-only, and row 5's
+    append meets it (quick check 4 of #283, m12). :func:`self_test` removes it."""
+    sentinel = directory / f".aew-containment-probe-{secrets.token_hex(8)}.sentinel"
+    sentinel.write_bytes(secrets.token_hex(16).encode())
+    return sentinel
+
+
 def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tuple[str, ...] = (),
               env: Mapping[str, str] | None = None, egress_policy: Any = None,
               bridge: str | None = None, relayed_terminal: Mapping[str, Any] | None = None,
-              spec_dir: Path | None = None) -> dict[str, Any]:
+              spec_dir: Path | None = None, sentinel: Path | None = None) -> dict[str, Any]:
     """Run the probe in ``layout``. Returns ``{"ok": bool, "reason": str | None, "rows": {...}, "tools": {...}, ...}``;
     never raises for a containment failure (the caller decides by policy). ``tools`` says where, on the launching
     environment's ``PATH``, the sandbox finds each tool a harness needs from the host (``{"rg": path or None}``).
@@ -575,10 +584,11 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tup
     owns, through the shim's controlling-terminal step, as the Lead's TUI runs on its relay's; row 4 checks that this
     terminal is the probe's controlling terminal and that ``forbid``, the launching terminal's device, is not open
     inside. Its standard input is that terminal, so its spec is a file in ``spec_dir``, which the sandbox must show
-    (the run's own harness directory; default ``sentinel_dir``)."""
+    (the run's own harness directory; default ``sentinel_dir``). ``sentinel`` is one :func:`new_sentinel` made before
+    the layout (default: one made now in ``sentinel_dir``)."""
     with _network(layout, egress_policy=egress_policy, bridge=bridge) as net:
         return _self_test(layout, sentinel_dir=sentinel_dir, sibling_dir=sibling_dir, own=own, env=env, net=net,
-                          relayed_terminal=relayed_terminal, spec_dir=spec_dir)
+                          relayed_terminal=relayed_terminal, spec_dir=spec_dir, sentinel=sentinel)
 
 
 def tty_nr(major: int, minor: int) -> int:
@@ -607,14 +617,14 @@ def _stores(layout: Layout) -> list[dict[str, Any]]:
 
 def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tuple[str, ...],
                env: Mapping[str, str] | None, net: dict[str, Any] | None,
-               relayed_terminal: Mapping[str, Any] | None = None, spec_dir: Path | None = None) -> dict[str, Any]:
+               relayed_terminal: Mapping[str, Any] | None = None, spec_dir: Path | None = None,
+               sentinel: Path | None = None) -> dict[str, Any]:
     from aew.harness.containment import netns
 
     name = f".aew-containment-probe-{secrets.token_hex(8)}"
-    sentinel = sentinel_dir / f"{name}.sentinel"
+    sentinel = sentinel or new_sentinel(sentinel_dir)
     sibling = sibling_dir / f"{name}.sibling"
-    content = secrets.token_hex(16).encode()
-    sentinel.write_bytes(content)
+    content = sentinel.read_bytes()
     markers = _markers(layout, name)
     extra = [str(m) for m in markers] + [str(Path(v) / ".aew") for v in layout.visible
                                          if (Path(v) / ".aew").is_dir()]

@@ -1451,18 +1451,34 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
     file there is masked by an empty file bound over it, a directory mask there is remounted read-only (a write fails
     instead of vanishing), and a path absent at the launch is not masked, as a mask would make it on the operator's
     host. The launch line names each, with what put it there, what to do instead and the limits; the contained Lead's
-    CLI explains a write that meets one (below).
+    CLI explains a write that meets one (below);
+  - where a secret's directory is `/`, or one the account cannot list, the secret cannot be left out of it, as the
+    directory cannot be listed or replaced: it takes a file mask where it exists and none where it is absent, and the
+    launch line names it as its own case (addendum 8, ruling 2.1);
+  - the launch self-test's sentinel next to the workspace is made before the layout is planned, so where the
+    workspace's parent is a directory a secret is left out of (a project directly under the home), the layout puts it
+    back read-only and row 5's append meets it (quick check 4 of #283, m12).
 
   **The stated limits:** an entry made during the session in a directory a secret is left out of is not seen inside
   until the next launch; an entry put back that the host replaces shows what it held at the launch until the next
   launch (stale, never leaked); in the run's own tree, a file the host replaces by rename, or first creates there,
   during the session is seen inside until the next launch; links are resolved at the launch, and hard links are out
   of scope. A mask covers its path only, not a committed copy of the file (the project's history, a worker's
-  checkout). **Refused**, once, naming each case with what puts it there and its one step, which holds for every
+  checkout). Where a secret's directory is `/` or one the account cannot list, a file there replaced or first created
+  during the session is seen inside until the next launch: a write there by the operator's own tools needs root, or a
+  directory the operator cannot read, which §10 excludes (addendum 8, ruling 2.1). bubblewrap 0.4.0 takes at most
+  9,000 arguments (its maximum), and each entry put back takes three, so the directories secrets are left out of can
+  put back about 2,950 entries in all (addendum 9). **Refused**, once, naming each case with what puts it there and its one step, which holds for every
   contained launch: a directory masked whole that is, or holds, the workspace, the project, the home directory or
   AEW's own (named by the variable or the link that puts it there); and the operator's OpenCode login database in the
-  run's own tree, whose sidecars OpenCode makes there as it runs. A policy writable root that holds a mask is refused
-  as before (`_refuse_unsafe_root`). On the Rocky 8 VM, a synthetic home of realistic size takes the Lead's sandbox
+  run's own tree, whose sidecars OpenCode makes there as it runs. A launch whose bubblewrap command would pass 9,000
+  arguments is refused before bubblewrap starts, at the layout and at every start, naming each directory whose entries
+  are put back, with how many, and the step: move entries out of the largest into a subdirectory (addendum 9). A policy
+  writable root that holds a secret's path is refused whether or not the secret exists, as a path left out is a mask
+  (addendum 8, ruling 1): so `~/.cache`, `~/.config` and `~/.local` are refused as roots on every host. The refusal
+  names each secret by what it is and its path, gives the exact entry to list instead where the root holds a directory
+  with nothing protected in it, and holds for every contained launch, workers included (`_refuse_unsafe_root`). On the
+  Rocky 8 VM, a synthetic home of realistic size takes the Lead's sandbox
   from 68 mounts to 265 and bubblewrap's start from a median of 41 ms to 180 ms.
 - **Its environment:** the operator's `XDG_*` and `OPENCODE_CONFIG` are dropped; AEW's five XDG directories are set
   (configuration and runtime in the run's harness state, data, state and cache in the Lead's), with

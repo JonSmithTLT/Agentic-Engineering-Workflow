@@ -25,11 +25,13 @@ from pathlib import Path
 
 import pytest
 from conftest import git, make_git_repo
+from host_env import GUARDED
 
 from aew.engine.api import AEW_GITIGNORE, Engine
 from aew.engine.store import STORE_REL
 from aew.harness.containment import layout as containment
 
+pytestmark = GUARDED
 ROOT = Path(__file__).resolve().parents[2]
 NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 

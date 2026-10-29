@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from host_env import GUARDED
 
 from aew.errors import ContainmentUnavailable
 from aew.harness import containment as C
@@ -28,8 +29,9 @@ from aew.harness import procs
 from aew.harness.containment import egress, netns, probe
 from aew.harness.containment import layout as L
 
-pytestmark = pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
-                                reason="Linux bubblewrap containment (Windows: the Lead runs labelled not contained)")
+pytestmark = [pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
+                                 reason="Linux bubblewrap containment (Windows: the Lead runs labelled not contained)"),
+              GUARDED]
 
 SRC = str(Path(procs.__file__).resolve().parents[2])
 GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid", "GIT_COMMITTER_NAME": "t",
@@ -339,6 +341,51 @@ def test_a_secret_left_out_of_its_directory_is_not_seen_when_replaced_or_created
     assert out.rstrip().endswith("end"), out + err
     assert "SYNTHETIC" not in out and ".git-credentials" not in out and ".netrc" not in out, out
     assert "SAFE-PROFILE" in out and "name = synthetic" in out, out  # put back, the link as a link
+
+
+@pytest.mark.parametrize("role", ["lead", "implementer", "reviewer"])
+def test_a_secret_file_that_is_a_link_is_unseen_at_both_paths_when_its_target_is_replaced(lead_lab, role):
+    """Quick check 4 of #283, m8 (CS-4 addendum 5 ruling 4's linked file, for the named files): a dotfile manager's
+    ``~/.netrc -> ~/dotfiles/netrc`` is left out at the link and at its target, for every role, and stays unseen when
+    the target is replaced by rename during the session; the flat folder's other files stay readable. Synthetic files
+    only."""
+    lab = lead_lab
+    dots = lab.home / "dotfiles"
+    dots.mkdir()
+    (dots / "netrc").write_text("machine m password SYNTHETIC-AT-LAUNCH\n")
+    (dots / "gitconfig").write_text("[user]\n\tname = synthetic\n")
+    (lab.home / ".netrc").symlink_to(dots / "netrc")
+    (lab.home / ".gitconfig").symlink_to(dots / "gitconfig")
+    env = {"HOME": str(lab.home)}
+    if role == "lead":
+        cwd, run, layout = lab.repo, lab.run, lab.layout(env=env)
+    else:
+        cwd, run = lab.root / f"ws-{role}", lab.repo / ".aew" / "local" / "harness" / "runs" / f"R-{role}"
+        assert git("worktree", "add", "-q", "-b", f"b-{role}", str(cwd), cwd=lab.repo).returncode == 0
+        layout = C.for_run(role=role, scope="ticket", workspace=str(cwd), run_dir=run, scratch=str(run / "scratch"),
+                           bridge_dir=None, policy=None, home=str(lab.home), project=str(lab.repo),
+                           runs=str(run.parent), env=env)
+    ready, go = run / "scratch" / "ready", lab.root / "go"
+    tree = procs.ProcessTree(layout=layout)
+    try:
+        script = (f"touch {ready}; i=0; while [ ! -e {go} ] && [ $i -lt 400 ]; do sleep 0.05; i=$((i+1)); done; "
+                  f"cat {lab.home}/.netrc {dots}/netrc 2>/dev/null; cat {lab.home}/.gitconfig {dots}/gitconfig; "
+                  "echo end")
+        proc = tree.spawn(["sh", "-c", script], cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          stdin=subprocess.DEVNULL, text=True,
+                          env={"PATH": os.environ["PATH"], "HOME": str(lab.home), "LANG": "C.UTF-8", **layout.env})
+        deadline = time.monotonic() + 30
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert ready.exists(), "the sandbox never started"
+        _replaced(dots / "netrc", "machine m password SYNTHETIC-REPLACED\n")
+        go.write_text("")
+        out, err = proc.communicate(timeout=60)
+    finally:
+        tree.close()
+    assert out.rstrip().endswith("end"), out + err
+    assert "SYNTHETIC" not in out, out
+    assert out.count("name = synthetic") == 2, out  # the folder's other file, at the link and at its own path
 
 
 def test_in_the_leads_project_a_mask_refuses_writes_and_aews_cli_names_it(lead_lab):

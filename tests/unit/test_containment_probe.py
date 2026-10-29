@@ -240,6 +240,33 @@ def test_doctor_names_a_socket_whose_holder_cannot_be_identified_and_the_remedy(
     assert "stop that process, move its socket under a masked path, or set containment.mode: allow_weaker" in detail
 
 
+def test_establish_makes_the_self_tests_sentinel_before_the_layout_lists_its_directory(tmp_path, monkeypatch):
+    """Quick check 4 of #283, m12: a workspace directly under the home has the home for its parent, a directory a
+    secret is left out of. The sentinel next to the workspace is made before the layout lists that directory, so the
+    layout puts it back and row 5's append meets it; it is gone after the launch."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    seen: dict[str, Any] = {}
+
+    def planned(**_kw: Any) -> L.Layout:
+        seen["at_layout"] = sorted(p.name for p in tmp_path.glob(".aew-containment-probe-*.sentinel"))
+        return LAYOUT
+
+    def tested(_layout: L.Layout, **kw: Any) -> dict[str, Any]:
+        seen["sentinel"] = kw["sentinel"]
+        return {"ok": True, "reason": None, "rows": {}}
+
+    monkeypatch.setattr(C, "supported", lambda: True)
+    monkeypatch.setattr(C, "for_run", planned)
+    monkeypatch.setattr(probe, "self_test", tested)
+    monkeypatch.setattr(probe, "mechanism", lambda _layout: "bubblewrap 0.4.0")
+    layout, _ = C.establish(role="reviewer", scope="ticket", workspace=str(ws), run_dir=tmp_path / "run",
+                            scratch=str(tmp_path / "run" / "s"), bridge_dir=None,
+                            policy={"containment": {"network": {"mode": "shared"}}}, project=str(tmp_path), env={})
+    assert layout is LAYOUT and seen["sentinel"].parent == tmp_path
+    assert seen["at_layout"] == [seen["sentinel"].name] and not seen["sentinel"].exists()
+
+
 def test_row_2_records_what_the_host_could_not_check():
     """A socket path the launcher could not check (an error other than its absence) is on the label, with its class
     and why, and so is each of the launching user's processes it could not read (review of #244)."""

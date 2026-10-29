@@ -24,14 +24,15 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from host_env import GUARDED, launching_names
 
 from aew.harness import containment as C
 from aew.harness import procs
 from aew.harness.containment import layout as L
 from aew.harness.containment import netns, probe, sockets
 
-pytestmark = pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
-                                reason="Linux bubblewrap containment (Windows: workdir separation only)")
+pytestmark = [pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
+                                 reason="Linux bubblewrap containment (Windows: workdir separation only)"), GUARDED]
 
 GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid", "GIT_COMMITTER_NAME": "t",
            "GIT_COMMITTER_EMAIL": "t@example.invalid"}
@@ -82,11 +83,19 @@ class Lab:
         (self.home / ".netrc").write_text("machine m login l password SECRET-NETRC\n")
         self.run = root / "runs" / "R-1"  # like a harness run: its parent, every run's directory, is hidden
 
+    def launching_env(self) -> dict[str, str]:
+        """This process's environment with the lab's home as the launching one, and none of the host's variables that
+        name secret paths: the host's own HOME would name its OpenCode directories, and one absent there (a CI runner
+        has no ~/.local) leaves the host's home out, with the lab under it put back read-only (``host_env``)."""
+        names = launching_names()
+        return {**{k: v for k, v in os.environ.items() if k not in names}, "HOME": str(self.home)}
+
     def layout(self, role: str = "implementer", **kw) -> C.Layout:
         self.run.mkdir(parents=True, exist_ok=True)
         return C.for_run(role=role, scope=kw.pop("scope", "ticket"), workspace=str(self.ws), run_dir=self.run,
                          scratch=str(self.run / "scratch"), bridge_dir=None, policy=kw.pop("policy", None),
-                         home=str(self.home), project=str(self.repo), runs=str(self.run.parent))
+                         home=str(self.home), project=str(self.repo), runs=str(self.run.parent),
+                         env=self.launching_env())
 
     def sh(self, layout: C.Layout, script: str, *, cwd: Path | None = None,
            env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -272,7 +281,15 @@ def test_the_role_packs_git_commands_work_on_the_private_index_and_store(lab):
 
 # ------------------------------------------------------------------ the launch self-test
 
-def test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_over_the_host(lab):
+@pytest.mark.parametrize("host", ["this_host", "runner_like"])
+def test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_over_the_host(lab, monkeypatch, host):
+    """``runner_like`` (#283's CI at 59707278): a host whose home holds the lab but no ~/.local, and whose
+    XDG_CONFIG_HOME is set elsewhere, as on a CI runner. The lab's layout takes none of it, so the planted root is
+    caught by the check this test is written for."""
+    if host == "runner_like":
+        (lab.root / "runner-config").mkdir()
+        monkeypatch.setenv("HOME", str(lab.root))
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(lab.root / "runner-config"))
     good = lab.layout()
     assert probe.self_test(good, sentinel_dir=lab.outside, sibling_dir=lab.root)["ok"] is True
     broken = dataclasses.replace(good, writable=(*good.writable, "/"))  # a broad writable bind over everything
@@ -350,7 +367,7 @@ def test_the_self_test_fails_a_layout_that_reaches_control_state_tmp_or_another_
 def test_launch_fails_closed_without_bubblewrap_unless_the_policy_allows_weaker(lab, monkeypatch):
     monkeypatch.setenv("PATH", str(lab.root / "empty"))
     args = dict(role="implementer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
-                scratch=str(lab.run / "scratch"), bridge_dir=None, project=str(lab.repo))
+                scratch=str(lab.run / "scratch"), bridge_dir=None, project=str(lab.repo), env=lab.launching_env())
     with pytest.raises(C.ContainmentUnavailable, match="bubblewrap"):
         C.establish(**args, policy=None)
     layout, label = C.establish(**args, policy={"containment": {"mode": "allow_weaker"}})
@@ -361,7 +378,7 @@ def test_launch_fails_closed_without_bubblewrap_unless_the_policy_allows_weaker(
 def test_establish_labels_a_contained_run_truthfully(lab):
     layout, label = C.establish(role="reviewer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
                                 scratch=str(lab.run / "scratch"), bridge_dir=None, policy=None,
-                                project=str(lab.repo))
+                                project=str(lab.repo), env=lab.launching_env())
     assert layout is not None
     assert label["filesystem"] == "os_readonly_roots" and label["process_ownership"] == "pid_namespace"
     # F28 decision 1: a contained run's network is a namespace of its own by default, and row 1 says so; with no relay
@@ -377,7 +394,8 @@ def test_establish_on_the_hosts_network_says_so_and_claims_nothing(lab):
     """F28 §3.1: ``shared`` is an explicit weaker choice, labelled for what it is, and row 1 claims nothing for it."""
     layout, label = C.establish(role="reviewer", scope="ticket", workspace=str(lab.ws), run_dir=lab.run,
                                 scratch=str(lab.run / "scratch"), bridge_dir=None,
-                                policy={"containment": {"network": {"mode": "shared"}}}, project=str(lab.repo))
+                                policy={"containment": {"network": {"mode": "shared"}}}, project=str(lab.repo),
+                                env=lab.launching_env())
     assert layout is not None and layout.net_dir is None and "--unshare-net" not in C.bwrap_argv(layout, ["true"])
     assert label["network"]["mode"] == "shared"
     assert label["self_test"]["rows"]["1"] == {"name": "network", "ok": True, "reason": None, "mode": "shared",
@@ -656,7 +674,8 @@ def test_every_command_a_worker_can_run_works_in_its_sandbox_or_is_refused_for_i
     home = visible / "home"
     home.mkdir()
     layout = C.for_run(role="reviewer", scope="ticket", workspace=str(ws), run_dir=run, scratch=str(run / "scratch"),
-                       bridge_dir=None, policy=None, home=str(home), project=str(w.p.root), runs=str(run.parent))
+                       bridge_dir=None, policy=None, home=str(home), project=str(w.p.root), runs=str(run.parent),
+                       env={"HOME": str(home)})
     # The code under test, whichever checkout that is (an absolute PYTHONPATH outside the sandbox stays one inside).
     # The sandbox shares the host's network, so a fetching command (`aew capability check`, online) gets the sweep's
     # closed route, as worker_env gives the unsandboxed sweep (#281's review, N5).
@@ -725,7 +744,7 @@ def test_a_readers_fingerprint_in_its_sandbox_equals_the_writers(lab, state):
     lab.run.mkdir(parents=True, exist_ok=True)
     layout = C.for_run(role="reviewer", scope="ticket", workspace=str(ws), run_dir=lab.run,
                        scratch=str(lab.run / "scratch"), bridge_dir=None, policy=None, home=str(lab.home),
-                       project=str(lab.repo), runs=str(lab.run.parent))
+                       project=str(lab.repo), runs=str(lab.run.parent), env=lab.launching_env())
     objects = worker_surface.objects(lab.repo)
     # The code under test, whichever checkout that is (an absolute PYTHONPATH outside the sandbox stays one inside).
     res = lab.sh(layout, f"PYTHONPATH={os.environ.get('PYTHONPATH', '')} {sys.executable} -c '{_READER_FINGERPRINT}' "

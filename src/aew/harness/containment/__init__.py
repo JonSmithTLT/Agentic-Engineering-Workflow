@@ -137,17 +137,22 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
         if project is None:  # the store check (STG-05 CB-07) and the control lock's mask (CBF-1) need it
             raise ContainmentUnavailable("a contained run needs its project root, to keep its writable binds off "
                                          "AEW's store and the control lock out of its sandbox; none was given")
-        layout = for_run(role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch,
-                         bridge_dir=bridge_dir, policy=settings, project=project, runs=run_dir.parent, env=env,
-                         network=net_mode, net_dir=net_dir, state_dir=state_dir)
         # Next to the workspace: visible to the sandbox (read-only) and outside every writable root. (The run's own
-        # directory is hidden behind the runs mask, where a write would fail for the wrong reason.) The bridge's
-        # directory holds the run's own socket, and the network directory the run's own relay and egress proxy, which
-        # the inventory lists as its own.
-        test = probe.self_test(layout, sentinel_dir=Path(workspace).parent, sibling_dir=Path(workspace).parent,
-                               own=tuple(d for d in (bridge_dir, layout.net_dir) if d), env=env,
-                               egress_policy=egress_policy if net_mode == PROXY_ONLY else None, bridge=bridge,
-                               relayed_terminal=relayed_terminal, spec_dir=run_dir / "harness")
+        # directory is hidden behind the runs mask, where a write would fail for the wrong reason.) Made before the
+        # layout, so a workspace's parent that a secret is left out of puts it back (quick check 4 of #283, m12).
+        sentinel = probe.new_sentinel(Path(workspace).parent)
+        try:
+            layout = for_run(role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch,
+                             bridge_dir=bridge_dir, policy=settings, project=project, runs=run_dir.parent, env=env,
+                             network=net_mode, net_dir=net_dir, state_dir=state_dir)
+            # The bridge's directory holds the run's own socket, and the network directory the run's own relay and
+            # egress proxy, which the inventory lists as its own.
+            test = probe.self_test(layout, sentinel_dir=Path(workspace).parent, sibling_dir=Path(workspace).parent,
+                                   own=tuple(d for d in (bridge_dir, layout.net_dir) if d), env=env,
+                                   egress_policy=egress_policy if net_mode == PROXY_ONLY else None, bridge=bridge,
+                                   relayed_terminal=relayed_terminal, spec_dir=run_dir / "harness", sentinel=sentinel)
+        finally:
+            sentinel.unlink(missing_ok=True)
         if not test["ok"]:
             raise ContainmentUnavailable(f"containment self-test failed: {test['reason']}", self_test=recorded(test))
     except ContainmentUnavailable as exc:

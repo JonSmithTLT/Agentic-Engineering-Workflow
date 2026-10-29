@@ -29,6 +29,9 @@ sys.path.insert(0, str(ROOT / "eval"))
 from aew_eval import arms, fixture, prereg, profiles, raw, retention, runner  # noqa: E402
 from aew_eval.ledger import AttemptLedger  # noqa: E402
 from aew_eval.schemas import Invalid, validate  # noqa: E402
+from host_env import GUARDED, clean_launching_env  # noqa: E402
+
+pytestmark = GUARDED
 
 FIELDS = [{"field": "tool.name", "transform": "none"}, {"field": "tool.state.input.command", "transform": "prefix_300"}]
 
@@ -353,8 +356,7 @@ def lane_under_home(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     (work.parent / "ledger").mkdir()
     (home / "aew-eval" / "lbq-v1" / "out" / "floor").mkdir(parents=True)
     (home / ".ssh").mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("USERPROFILE", str(home))
+    clean_launching_env(monkeypatch, home)  # the arm reads this process's environment: none of the host's
     return home, scratch
 
 
@@ -382,18 +384,25 @@ def test_a_lane_under_home_masks_nothing_inside_its_runs_directory(tmp_path, mon
 def test_the_raw_arm_leaves_secret_files_and_the_homes_other_files_out_of_their_directories(tmp_path, monkeypatch):
     """STG-05 CS-4, addendum 7, ruling 6: the raw arm's layout takes the masks every AEW run takes, in the same shape:
     a secret file, present or not, and a home file the run does not need are left out of their directory (so a
-    replacement or a creation there is not seen), not bound over by an empty file."""
+    replacement or a creation there is not seen), not bound over by an empty file. A secret path the launching
+    environment names outside the home (here XDG_CONFIG_HOME, as on a CI runner) is left out the same way. The plan is
+    what is checked: where ``tmp_path`` lies under ``/tmp`` (CI), the sandbox's own ``/tmp`` hides the home whole, so
+    the emitted directories rightly leave it out."""
     from aew.harness.containment import layout as L
 
     home, scratch = lane_under_home(tmp_path, monkeypatch)
     (home / ".netrc").write_text("SYNTHETIC\n")
     (home / "notes.txt").write_text("SYNTHETIC\n")
+    config = tmp_path / "xdg-config"  # outside the synthetic home
+    config.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
     monkeypatch.setattr(L, "find_bwrap", lambda: "/usr/bin/bwrap")
     (tmp_path / "bin").mkdir()
     layout = raw.contained_layout(scratch / "repo", scratch, binary=tmp_path / "bin" / "opencode-cli")
     real = os.path.realpath
-    assert {real(home / ".netrc"), real(home / "notes.txt"), real(home / ".git-credentials")} <= set(layout.left_out)
-    assert real(home) in L._left_out_of(layout) and layout.hide_files == ()
+    assert {real(home / ".netrc"), real(home / "notes.txt"), real(home / ".git-credentials"), real(config / "git"),
+            real(config / "opencode")} <= set(layout.left_out)
+    assert {real(home), real(config)} <= set(layout.left_out_of) and layout.hide_files == ()
 
 
 class _NeverStarted:

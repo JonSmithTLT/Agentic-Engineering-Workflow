@@ -11,12 +11,14 @@ import sys
 from dataclasses import replace
 
 import pytest
+from host_env import GUARDED
 
 from aew.errors import ContainmentUnavailable, ValidationFailed
 from aew.harness.containment import layout as L
 from aew.harness.containment import netns, relay
 from aew.harness.containment.egress import Allowlist
 
+pytestmark = GUARDED
 KEY = "synthetic-provider-key-cs3b"
 BASE = L.Layout(role="implementer", access="write", bwrap="/usr/bin/bwrap", writable=("/w",), readonly=())
 

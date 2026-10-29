@@ -2,7 +2,7 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 403,
-      "lower-bound": 710
+      "lower-bound": 712
     },
     "by_family": {
       "cli-commands": 116,
@@ -24,7 +24,7 @@
       "tools": 16,
       "transitions": 94,
       "usage-live-states": 3,
-      "writers": 250
+      "writers": 252
     },
     "by_family_and_coverage": {
       "cli-commands": {
@@ -89,12 +89,12 @@
         "lower-bound": 3
       },
       "writers": {
-        "lower-bound": 250
+        "lower-bound": 252
       }
     },
-    "digest": "sha256:36e6318b09611d2ea0dc1a3e607d16d57684fc7b44fe74ff61e248bca72cb2ae",
-    "records": 1113,
-    "unresolved": 102
+    "digest": "sha256:aa38d666dfa58c78478ef082a72aed40536348c86363cbc919f35a5b17f1c415",
+    "records": 1115,
+    "unresolved": 103
   },
   "gaps": [
     {
@@ -483,6 +483,12 @@
     },
     {
       "family": "writers",
+      "module": "aew.harness.containment",
+      "symbol": "establish",
+      "why": "Path.unlink of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
+    },
+    {
+      "family": "writers",
       "module": "aew.harness.containment.probe",
       "symbol": "_markers",
       "why": "Path.mkdir of a path this reading cannot place: a loop variable over `layout.hide_runs`"
@@ -509,13 +515,13 @@
       "family": "writers",
       "module": "aew.harness.containment.probe",
       "symbol": "_self_test",
-      "why": "Path.write_bytes of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
+      "why": "Path.write_text of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
     },
     {
       "family": "writers",
       "module": "aew.harness.containment.probe",
-      "symbol": "_self_test",
-      "why": "Path.write_text of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
+      "symbol": "new_sentinel",
+      "why": "Path.write_bytes of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
     },
     {
       "family": "writers",
@@ -41259,23 +41265,6 @@
       },
       "family": "writers"
     },
-    "writers:outside:aew.harness.containment.probe:_self_test:Path.write_bytes": {
-      "anchor": {
-        "module": "aew.harness.containment.probe",
-        "symbol": "_self_test"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": []
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "Path.write_bytes",
-        "root": "a temporary directory; the repository's working tree"
-      },
-      "family": "writers"
-    },
     "writers:outside:aew.harness.containment.probe:_self_test:Path.write_text": {
       "anchor": {
         "module": "aew.harness.containment.probe",
@@ -41289,6 +41278,23 @@
       "fact": {
         "mechanism": "direct",
         "primitive": "Path.write_text",
+        "root": "a temporary directory; the repository's working tree"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.containment.probe:new_sentinel:Path.write_bytes": {
+      "anchor": {
+        "module": "aew.harness.containment.probe",
+        "symbol": "new_sentinel"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.write_bytes",
         "root": "a temporary directory; the repository's working tree"
       },
       "family": "writers"
@@ -41324,6 +41330,23 @@
         "mechanism": "direct",
         "primitive": "shutil.rmtree",
         "root": "a temporary directory"
+      },
+      "family": "writers"
+    },
+    "writers:outside:aew.harness.containment:establish:Path.unlink": {
+      "anchor": {
+        "module": "aew.harness.containment",
+        "symbol": "establish"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.unlink",
+        "root": "the repository's working tree"
       },
       "family": "writers"
     },
@@ -43976,29 +43999,6 @@
       },
       "family": "writers"
     },
-    "writers:unresolved:aew.harness.containment.probe:_self_test:Path.write_bytes": {
-      "anchor": {
-        "module": "aew.harness.containment.probe",
-        "symbol": "_self_test"
-      },
-      "basis": "static",
-      "coverage": {
-        "label": "lower-bound",
-        "unresolved": [
-          {
-            "module": "aew.harness.containment.probe",
-            "symbol": "_self_test",
-            "why": "Path.write_bytes of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
-          }
-        ]
-      },
-      "fact": {
-        "mechanism": "direct",
-        "primitive": "Path.write_bytes",
-        "reason": "`InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
-      },
-      "family": "writers"
-    },
     "writers:unresolved:aew.harness.containment.probe:_self_test:Path.write_text": {
       "anchor": {
         "module": "aew.harness.containment.probe",
@@ -44018,6 +44018,52 @@
       "fact": {
         "mechanism": "direct",
         "primitive": "Path.write_text",
+        "reason": "`InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.harness.containment.probe:new_sentinel:Path.write_bytes": {
+      "anchor": {
+        "module": "aew.harness.containment.probe",
+        "symbol": "new_sentinel"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.harness.containment.probe",
+            "symbol": "new_sentinel",
+            "why": "Path.write_bytes of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.write_bytes",
+        "reason": "`InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
+      },
+      "family": "writers"
+    },
+    "writers:unresolved:aew.harness.containment:establish:Path.unlink": {
+      "anchor": {
+        "module": "aew.harness.containment",
+        "symbol": "establish"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew.harness.containment",
+            "symbol": "establish",
+            "why": "Path.unlink of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
+          }
+        ]
+      },
+      "fact": {
+        "mechanism": "direct",
+        "primitive": "Path.unlink",
         "reason": "`InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal"
       },
       "family": "writers"

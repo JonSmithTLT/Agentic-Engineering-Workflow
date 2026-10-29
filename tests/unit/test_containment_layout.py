@@ -6,6 +6,7 @@ tests/integration/test_containment.py.
 
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
 import sys
@@ -14,11 +15,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from host_env import GUARDED
 
 from aew.errors import ContainmentUnavailable
 from aew.harness import containment as C
 from aew.harness import procs
 from aew.harness.containment import layout as L
+
+pytestmark = GUARDED
 
 
 @pytest.fixture
@@ -408,7 +412,7 @@ def project_layout(tmp_path: Path, role: str, *, workspace: Path | None = None, 
     return C.for_run(role=role, scope="project" if lead else "ticket",
                      workspace=str(workspace or (repo if lead else ws)), run_dir=run,
                      scratch=str(scratch or run / "scratch"), bridge_dir=None, policy=None,
-                     home=str(tmp_path / "home"), project=str(repo), runs=str(run.parent))
+                     home=str(tmp_path / "home"), project=str(repo), runs=str(run.parent), env={})
 
 
 @pytest.mark.parametrize("role", sorted(L.WORKSPACE_ACCESS))
@@ -532,7 +536,7 @@ def test_an_operator_root_inside_a_readers_workspace_is_not_bound_so_the_workspa
         run = tmp_path / f"run-{role}"
         layout = C.for_run(role=role, scope="ticket", workspace=str(ws), run_dir=run, scratch=str(run / "scratch"),
                            bridge_dir=None, policy={"writable": [str(build)]}, home=str(tmp_path / "home"),
-                           project=str(repo))
+                           project=str(repo), env={})
         assert (os.path.realpath(build) in layout.writable) is bound, role
         assert (os.path.realpath(build) in layout.operator_writable) is bound, role
 
@@ -543,7 +547,7 @@ def test_a_missing_aew_local_is_made_and_hidden_and_a_project_with_no_aew_has_no
     run = tmp_path / "run"
     kwargs = {"role": "reviewer", "scope": "ticket", "workspace": str(ws), "run_dir": run,
               "scratch": str(run / "scratch"), "bridge_dir": None, "policy": None, "home": str(tmp_path / "home"),
-              "project": str(repo)}
+              "project": str(repo), "env": {}}
     assert C.for_run(**kwargs).hide_runs == ()  # not an AEW root: nothing made there
     assert not (repo / ".aew").exists()
     (repo / ".aew" / "state").mkdir(parents=True)
@@ -1065,7 +1069,8 @@ def test_inside_the_runs_own_tree_every_mask_is_made_in_place_read_only_and_name
     assert real(later) not in flags
     line = C.tree_masks_line(layout)
     assert line is not None and f"{real(config)} (OPENCODE_CONFIG)" in line and f"{real(keys)} (containment.hide)" \
-        in line and f"not there at launch, so not masked: {real(later)} (containment.hide)" in line, line
+        in line and "not there at launch, so not masked; if it appears during the session, the run sees it until the " \
+        f"next launch: {real(later)} (containment.hide)" in line, line
     assert "A file the host replaces by rename, or first creates there, during the session is seen inside until the " \
         "next launch" in line and "edit it at your own terminal" in line and "an Include" in line
     assert layout.describe()["tree_masks"][0] == {"path": layout.tree_masks[0][0], "by": layout.tree_masks[0][1]}
@@ -1094,7 +1099,140 @@ def test_a_policy_writable_root_that_holds_a_mask_is_refused_naming_it(tmp_path,
         with pytest.raises(ContainmentUnavailable, match="would let every contained run write") as exc:
             run_layout(tmp_path / secret.name, "implementer", home=str(home),
                        policy={"writable": [str(root)], "hide": [str(secret)]})
-        assert os.path.join(real(root), secret.name) in [e["path"] for e in exc.value.details["exposes"]]
+        assert {"what": "a containment.hide entry, a secret path left out of the sandbox whether or not it exists",
+                "path": os.path.join(real(root), secret.name)} in exc.value.details["exposes"]
+
+
+@pytest.mark.parametrize("cache", ["absent", "present"])
+def test_a_writable_root_over_a_secret_names_what_the_secret_is_and_keeps_its_one_step(tmp_path, fake_bwrap, cache):
+    """CS-4 addendum 8, ruling 1: the refusal of a policy writable root names each secret it would expose by what it
+    is as well as by path, whether git's credential cache is absent (left out) or there (masked whole), and keeps the
+    one step it gives. Quick check 4 of #283, m11: the step names the exact entry to list instead, a directory in the
+    root that holds nothing protected, in the operator's own spelling, and the refusal applies to workers too."""
+    home = tmp_path / "home"
+    (home / ".cache" / "pip").mkdir(parents=True)
+    secret = home / ".cache" / "git"
+    if cache == "present":
+        secret = secret / "credential"
+        secret.mkdir(parents=True)
+    raw = str(home / ".cache")
+    with pytest.raises(ContainmentUnavailable, match="would let every contained run write") as exc:
+        run_layout(tmp_path, "implementer", home=str(home), env={"HOME": str(home)}, policy={"writable": [raw]})
+    kind = "a secret path left out of the sandbox whether or not it exists" if cache == "absent" else "a masked secret"
+    assert {"what": f"git's credential cache, {kind}", "path": os.path.realpath(secret)} \
+        in exc.value.details["exposes"], exc.value.details
+    assert f"git's credential cache, {kind} ({os.path.realpath(secret)})" in exc.value.message
+    assert "~/.cache/<tool>" in exc.value.message
+    assert exc.value.details["instead"] == f"{raw}/pip"
+    assert exc.value.message.endswith(f"in containment.writable in the execution policy: here, {raw + '/pip'!r} in "
+                                      f"place of {raw!r}, or take {raw!r} out. This applies to every contained "
+                                      "launch, workers included.")
+
+
+def test_a_secret_that_cannot_be_left_out_of_its_directory_is_named_as_its_own_case(tmp_path, fake_bwrap,
+                                                                                    monkeypatch):
+    """Quick check 4 of #283, m9 (CS-4 addendum 8, ruling 2.1): a secret whose directory is ``/``, or one this account
+    cannot list, cannot be left out of it: it takes a file mask where it exists, none where it is absent, and the
+    launch line names it as its own case with its limit, never as the tree the run writes."""
+    home = tmp_path / "home"
+    home.mkdir()
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    (locked / "token").write_text("SYNTHETIC\n")
+    listing = os.scandir
+
+    def scandir(path: Any = ".") -> Any:  # as for a directory with x but not r for this account
+        if os.path.realpath(path) == os.path.realpath(locked):
+            raise PermissionError(13, "Permission denied", str(path))
+        return listing(path)
+
+    monkeypatch.setattr(L.os, "scandir", scandir)
+    top = os.path.abspath(os.sep + "aew-test-absent-under-the-root")
+    layout = run_layout(tmp_path, "implementer", home=str(home),
+                        policy={"hide": [str(locked / "token"), str(locked / "later"), top]})
+    token, later = (os.path.join(os.path.realpath(locked), n) for n in ("token", "later"))
+    assert layout.fixed_masks == ((token, "containment.hide"),) and token in layout.hide_files
+    assert set(layout.fixed_absent) == {(later, "containment.hide"), (top, "containment.hide")}
+    assert layout.tree_masks == layout.tree_absent == () and token not in layout.left_out
+    absent = ("not there at launch, so not masked; if it appears during the session, the run sees it until the next "
+              "launch")
+    assert C.tree_masks_line(layout) == (
+        "masked in place, read-only, as it cannot be left out of its directory (/, or one this account cannot list): "
+        f"{token} (containment.hide); {absent}, as it cannot be left out of its directory (/, or one this account "
+        f"cannot list): {', '.join(f'{p} (containment.hide)' for p, _ in layout.fixed_absent)}. A file replaced or "
+        "first created there during the session is seen inside until the next launch; a write there by your own tools "
+        "needs root, or a directory you cannot read")
+
+
+def test_a_launch_over_bubblewraps_argument_limit_is_refused_before_it_starts(tmp_path, fake_bwrap, monkeypatch):
+    """CS-4 addendum 9 (quick check 4 of #283, m13): bubblewrap 0.4.0 takes at most 9,000 arguments, and each entry put
+    back in a directory a secret is left out of takes three. Over the limit the launch is refused before bubblewrap
+    starts, at the layout and at every start, naming each directory whose entries are put back, with how many, and the
+    step: move entries out of the largest into a subdirectory."""
+    assert L.BWRAP_MAX_ARGS == 9000
+    home = tmp_path / "home"
+    (home / ".config" / "app").mkdir(parents=True)
+    for i in range(12):
+        (home / f"entry-{i}").write_text("")
+    layout = run_layout(tmp_path / "a", "implementer", home=str(home))
+    count = len(C.bwrap_argv(layout, [], cwd="/w")) - 1
+    monkeypatch.setattr(L, "BWRAP_MAX_ARGS", count - 1)
+    with pytest.raises(ContainmentUnavailable, match="more than the") as exc:
+        run_layout(tmp_path / "b", "implementer", home=str(home))
+    real = os.path.realpath
+    held = exc.value.details["put_back"]
+    assert exc.value.details["reason"] == "bwrap_argument_limit" and exc.value.details["arguments"] == count
+    assert list(held)[0] == real(home) and held[real(home)] >= 12 and held[real(home / ".config")] == 1
+    assert f"{real(home)} ({held[real(home)]} entries), {real(home / '.config')} (1 entries)" in exc.value.message
+    assert exc.value.message.endswith(f"To launch, move entries out of {real(home)} into a subdirectory, so it has "
+                                      "fewer to put back. This applies to every contained launch, workers included")
+    monkeypatch.setattr(L, "BWRAP_MAX_ARGS", count)  # at the limit the layout is made; one more argument is not run
+    layout = run_layout(tmp_path / "c", "implementer", home=str(home))
+    with pytest.raises(ContainmentUnavailable, match="bwrap|bubblewrap"):
+        C.bwrap_argv(layout, ["true"], cwd="/w")
+
+
+def test_every_secret_the_home_lists_says_what_it_is():
+    """CS-4 addendum 8, ruling 1: a refusal names a secret by what it is, so each name the home's lists hold has its
+    description, and none is described that the lists do not hold."""
+    assert set(L.SECRET_WHAT) == {*L.SECRET_DIRS, *L.SECRET_FILES, *L.DISPLAY_FILES}
+    assert all(L.SECRET_WHAT.values())
+
+
+def test_a_layout_a_test_builds_from_the_hosts_own_home_fails_that_test(tmp_path, monkeypatch, fake_bwrap):
+    """#283's CI at 59707278: a layout a test builds from the host's own HOME or XDG variables depends on that host's
+    home. The suite's guard (tests/helpers/host_env.py) fails such a test, naming what came from the host; a synthetic
+    launching environment passes."""
+    import host_env
+
+    monkeypatch.setattr(host_env, "HOST", {"HOME": "/host/home", "XDG_CONFIG_HOME": "/host/config", "PATH": "/bin"})
+    monkeypatch.setenv("HOME", "/host/home")
+    repo, ws = repo_with_worktree(tmp_path)
+    run = tmp_path / "run"
+    with pytest.raises(pytest.fail.Exception, match="built from the host's own HOME: pass env="):
+        C.for_run(role="reviewer", scope="ticket", workspace=str(ws), run_dir=run, scratch=str(run / "s"),
+                  bridge_dir=None, policy=None, home=str(tmp_path / "home"), project=str(repo))
+    with pytest.raises(pytest.fail.Exception, match="built from the host's own XDG_CONFIG_HOME"):
+        L._launching(str(tmp_path / "home"), {"XDG_CONFIG_HOME": "/host/config"})
+    assert L._launching(str(tmp_path / "home"), {"PATH": "/bin"}) == {"HOME": str(tmp_path / "home"), "PATH": "/bin"}
+
+
+def test_every_test_module_that_builds_a_layout_takes_the_host_environment_guard():
+    """#283's CI at 59707278 (the class of quick check 4's M3): a module whose tests build a containment layout
+    themselves takes ``host_env.GUARDED`` in its ``pytestmark``, so none of its layouts reads the host's home."""
+    builders = {"for_run", "_masks", "_mask_plan", "contained_layout", "scoring_layout"}
+    tests = Path(__file__).resolve().parents[1]
+    unguarded = []
+    for path in sorted(tests.rglob("test_*.py")):
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        builds = any(isinstance(n, ast.Call) and (getattr(n.func, "attr", None) or getattr(n.func, "id", None))
+                     in builders for n in ast.walk(tree))
+        marked = any(isinstance(n, ast.Assign) and any(getattr(t, "id", None) == "pytestmark" for t in n.targets)
+                     and "GUARDED" in (ast.get_source_segment(source, n.value) or "") for n in tree.body)
+        if builds and not marked:
+            unguarded.append(path.relative_to(tests).as_posix())
+    assert unguarded == []
 
 
 @pytest.mark.parametrize("inside", ["none", pytest.param("a_link", marks=pytest.mark.skipif(
@@ -1371,9 +1509,10 @@ def test_the_launch_line_names_each_mask_in_the_runs_own_tree_with_what_put_it_t
                    tree_absent=(("/p/b", "containment.hide"),))
     assert C.tree_masks_line(two) == (
         "masked in place, read-only, in the tree this run writes: /p/a (the link /h/.ssh/a); not there at launch, so "
-        "not masked: /p/b (containment.hide). A file the host replaces by rename, or first creates there, during the "
-        "session is seen inside until the next launch. To change one, edit it at your own terminal, or keep the real "
-        "file outside that tree (for ssh, an Include from your real ~/.ssh/config)")
+        "not masked; if it appears during the session, the run sees it until the next launch: /p/b (containment.hide). "
+        "A file the host replaces by rename, or first creates there, during the session is seen inside until the next "
+        "launch. To change one, edit it at your own terminal, or keep the real file outside that tree (for ssh, an "
+        "Include from your real ~/.ssh/config)")
 
 
 def test_a_workers_containment_event_carries_the_launch_line_of_the_masks_in_its_workspace(tmp_path, monkeypatch):

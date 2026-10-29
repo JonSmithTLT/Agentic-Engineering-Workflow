@@ -51,6 +51,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from fnmatch import fnmatchcase
@@ -87,6 +88,20 @@ SECRET_FILES = (".netrc", ".git-credentials", ".pgpass", ".pypirc", ".npmrc",
 # The display's credential files (STG-05 CB-04): masked like the secret files, plus the file the launching XAUTHORITY
 # names (:func:`_env_masks`). The launch self-test's row 3 finds each unreadable from inside.
 DISPLAY_FILES = (".Xauthority", ".ICEauthority")
+# What each of them is, for a refusal that names one (CS-4 addendum 8, ruling 1): exhaustive, a test holds it so.
+SECRET_WHAT = {
+    ".ssh": "ssh's keys", ".gnupg": "GnuPG's keys", ".aws": "the AWS CLI's credentials",
+    ".azure": "the Azure CLI's credentials", ".kube": "kubectl's credentials", ".docker": "Docker's registry logins",
+    ".password-store": "pass's password store", ".config/gh": "the GitHub CLI's login",
+    ".config/gcloud": "the Google Cloud CLI's credentials", ".local/share/opencode": "OpenCode's logins and data",
+    ".config/opencode": "OpenCode's configuration", ".codex": "Codex's login", ".claude": "Claude Code's sessions",
+    ".config/anthropic": "an Anthropic credential", ".cache/git/credential": "git's credential cache",
+    ".git-credential-cache": "git's credential cache", ".netrc": "netrc's logins",
+    ".git-credentials": "git's stored credentials", ".pgpass": "PostgreSQL's passwords",
+    ".pypirc": "PyPI's upload credentials", ".npmrc": "npm's tokens", ".claude.json": "Claude Code's configuration",
+    ".config/git/credentials": "git's stored credentials", ".Xauthority": "the X display's cookie",
+    ".ICEauthority": "the ICE session's cookie",
+}
 # What no contained process gets (CB-04): the display, and the operator's session bus and ssh agent. bubblewrap unsets
 # them on every sandbox's argv, whichever allow-list built its environment; agentenv.POSIX_KEEP keeps none of them.
 DISPLAY_ENV = ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "SSH_AUTH_SOCK")
@@ -187,6 +202,10 @@ class Layout:
     # not masked as absent at the launch
     tree_masks: tuple[tuple[str, str], ...] = ()
     tree_absent: tuple[tuple[str, str], ...] = ()
+    # (path, what put it there): the same where a secret's directory is / or cannot be listed, so the secret cannot be
+    # left out of it (CS-4 addendum 8, ruling 2.1); the launch line names these as their own case
+    fixed_masks: tuple[tuple[str, str], ...] = ()
+    fixed_absent: tuple[tuple[str, str], ...] = ()
     mask_file: str = "/dev/null"             # an empty read-only file
     operator_writable: tuple[str, ...] = ()  # the policy's extra writable roots (also in ``writable``)
     protected: tuple[str, ...] = ()          # paths the launch self-test must find unwritable
@@ -263,7 +282,36 @@ def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] |
         out += ["--remount-ro", path]
     if cwd is not None:
         out += ["--chdir", os.fspath(cwd)]
-    return [*out, "--", *argv]
+    out = [*out, "--", *argv]
+    _refuse_too_many_arguments(layout, out)  # counted before bubblewrap starts (CS-4 addendum 9)
+    return out
+
+
+# bubblewrap 0.4.0 (EL8) takes at most this many arguments after its own name: one more and it exits with "bwrap:
+# Exceeded maximum number of arguments 9000" (its maximum; measured on 0.4.0, 9,000 start and 9,001 are refused). Each
+# entry put back in a directory a secret is left out of takes three (CS-4 addendum 9).
+BWRAP_MAX_ARGS = 9000
+
+
+def _refuse_too_many_arguments(layout: Layout, argv: list[str]) -> None:
+    """CS-4 addendum 9: a bubblewrap command ``argv`` over :data:`BWRAP_MAX_ARGS` is refused before bubblewrap
+    starts, naming each directory whose entries are put back, with how many, and the step: move entries out of the
+    largest into a subdirectory."""
+    count = len(argv) - 1
+    if count <= BWRAP_MAX_ARGS:
+        return
+    masked = set(_left_out_of(layout))
+    held = Counter(os.path.dirname(p) for p in (*layout.put_back, *(p for p, _ in layout.put_back_links))
+                   if os.path.dirname(p) in masked).most_common()
+    listed = ", ".join(f"{d} ({n} entries)" for d, n in held) or "none"
+    step = (f"move entries out of {held[0][0]} into a subdirectory, so it has fewer to put back" if held else
+            "list fewer secret paths or writable roots")
+    raise ContainmentUnavailable(
+        f"this launch needs {count} arguments for bubblewrap, more than the {BWRAP_MAX_ARGS} bubblewrap 0.4.0 takes: "
+        "each entry of a directory a secret is left out of is put back on its own, with three, and the directories "
+        f"whose entries are put back are {listed}; the launch is refused before bubblewrap starts. To launch, {step}. "
+        "This applies to every contained launch, workers included",
+        arguments=count, limit=BWRAP_MAX_ARGS, put_back=dict(held), reason="bwrap_argument_limit")
 
 
 def _hidden_with_its_tree(layout: Layout, path: str) -> bool:
@@ -373,13 +421,17 @@ class MaskPlan:
     put_back_links: tuple[tuple[str, str], ...] = ()
     tree_masks: tuple[tuple[str, str], ...] = ()
     tree_absent: tuple[tuple[str, str], ...] = ()
+    fixed_masks: tuple[tuple[str, str], ...] = ()
+    fixed_absent: tuple[tuple[str, str], ...] = ()
     refused: tuple[dict[str, Any], ...] = ()
+    what: tuple[tuple[str, str], ...] = ()  # (each path above, what the secret there is): for a refusal that names it
 
     def fields(self) -> dict[str, Any]:
         """The :class:`Layout` fields of these masks."""
         return {"hide_dirs": self.dirs, "hide_files": self.files, "left_out": self.left_out,
                 "left_out_of": self.left_out_of, "put_back": self.put_back, "put_back_links": self.put_back_links,
-                "tree_masks": self.tree_masks, "tree_absent": self.tree_absent}
+                "tree_masks": self.tree_masks, "tree_absent": self.tree_absent, "fixed_masks": self.fixed_masks,
+                "fixed_absent": self.fixed_absent}
 
 
 HOME_LIST = "the home directory's secret paths"  # what names a path of SECRET_DIRS, SECRET_FILES or DISPLAY_FILES
@@ -401,7 +453,9 @@ def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None
       launch, and a directory masked whole there is read-only too; a path absent at the launch is not masked, as a mask
       would make it on the host. The launch names each, with what put it there (``tree_masks``, ``tree_absent``;
       :func:`tree_masks_line`; the operator's decisions of 2026-10-28). The same where the directory is ``/`` or cannot
-      be listed. The operator's OpenCode login database there refuses the launch: OpenCode makes its sidecars beside
+      be listed, named as its own case (``fixed_masks``, ``fixed_absent``; CS-4 addendum 8, ruling 2.1): a write there
+      by the operator's own tools needs root, or a directory the operator cannot read. The operator's OpenCode login
+      database in the run's own tree refuses the launch: OpenCode makes its sidecars beside
       it as it runs, which hold login rows, and no mask covers them.
 
     Its limits: an entry made during the session in a directory a secret is left out of is not seen inside until the
@@ -412,22 +466,25 @@ def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None
 
     launching = _launching(home, env)
     by: dict[str, str] = {}  # each masked path -> what put it there
+    what: dict[str, str] = {}  # each masked path -> what the secret there is
     dirs: list[str] = []
     leave: list[str] = []
 
-    def named(path: str, source: str) -> None:
+    def named(path: str, source: str, secret: str) -> None:
         if os.path.isdir(path):
             real = _real(path)
             by.setdefault(real, f"the link {path}" if os.path.islink(path) else source)
+            what.setdefault(real, f"what {path} links to" if os.path.islink(path) else secret)
             dirs.append(real)
             return
         entries = _left_out(path)
         for i, entry in enumerate(entries):  # the first as named, each other through the link before it
             by.setdefault(entry, source if i == 0 else f"the link {entries[i - 1]}")
+            what.setdefault(entry, secret if i == 0 else f"what {entries[i - 1]} links to")
         leave.extend(entries)
 
-    for raw, source in _named(home, extra, launching):
-        named(raw, source)
+    for raw, source, secret in _named(home, extra, launching):
+        named(raw, source, secret)
     dirs = list(dict.fromkeys(dirs))
     opencode: dict[str, list[str]] = {}  # the operator's OpenCode directories, real, with what puts each there
     for directory, variables in login.operator_masks(launching).items():
@@ -443,9 +500,10 @@ def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None
     linked, targets, refused_links = _linked(dirs, needed, skip={r["directory"] for r in refused})
     for link, target in linked:
         by.setdefault(target, f"the link {link}")
+        what.setdefault(target, f"what {link} links to")
         dirs.append(target)
     for link, target in targets:
-        named(target, f"the link {link}")
+        named(target, f"the link {link}", f"what {link} links to")
     refused += refused_links
 
     def within(path: str, roots: list[str] | tuple[str, ...]) -> bool:
@@ -488,27 +546,32 @@ def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None
             except OSError:
                 continue  # gone since it was listed
     in_place = [p for p in dict.fromkeys(in_place) if not os.path.islink(p)]  # a link's target is named itself
+    in_tree = [p for p in in_place if within(os.path.dirname(p), written)]  # the rest: under / or unlistable
     files = [p for p in in_place if os.path.lexists(p) and not os.path.isdir(p)]
     tree_dirs = [d for d in dirs if within(d, written)]
-    return MaskPlan(dirs=tuple(dirs), files=tuple(files),
-                    left_out=tuple(os.path.join(p, n) for p in listed for n in dict.fromkeys(left[p])),
+    listed_out = tuple(os.path.join(p, n) for p in listed for n in dict.fromkeys(left[p]))
+    return MaskPlan(dirs=tuple(dirs), files=tuple(files), left_out=listed_out,
                     left_out_of=tuple(listed), put_back=tuple(put_back), put_back_links=tuple(links),
-                    tree_masks=tuple((p, by[p]) for p in (*tree_dirs, *files)),
-                    tree_absent=tuple((p, by[p]) for p in in_place if not os.path.lexists(p)),
-                    refused=tuple(refused))
+                    tree_masks=tuple((p, by[p]) for p in (*tree_dirs, *(f for f in files if f in in_tree))),
+                    tree_absent=tuple((p, by[p]) for p in in_tree if not os.path.lexists(p)),
+                    fixed_masks=tuple((p, by[p]) for p in files if p not in in_tree),
+                    fixed_absent=tuple((p, by[p]) for p in in_place if p not in in_tree and not os.path.lexists(p)),
+                    refused=tuple(refused), what=tuple((p, what[p]) for p in (*dirs, *files, *listed_out)))
 
 
-def _named(home: str | None, extra: list[str], env: Mapping[str, str]) -> list[tuple[str, str]]:
-    """Every named secret path, absolute and as named, with what names it: :data:`SECRET_DIRS`, :data:`SECRET_FILES`
-    and :data:`DISPLAY_FILES` in ``home`` and the copies beside a secret file there (:func:`_prefixed_files`), the paths
-    the launching environment ``env`` names (:func:`_env_masks`), and the policy's ``extra``."""
-    out = [(os.path.join(home, p), HOME_LIST) for p in (*SECRET_DIRS, *SECRET_FILES, *DISPLAY_FILES)] if home else []
-    out += [(p, HOME_LIST) for p in _prefixed_files(home)]
-    out += [*_env_masks(env), *((os.path.expanduser(p), POLICY_HIDE) for p in extra)]
-    seen: dict[str, str] = {}
-    for path, source in out:
-        seen.setdefault(os.path.abspath(path), source)
-    return list(seen.items())
+def _named(home: str | None, extra: list[str], env: Mapping[str, str]) -> list[tuple[str, str, str]]:
+    """Every named secret path, absolute and as named, with what names it and what it is: :data:`SECRET_DIRS`,
+    :data:`SECRET_FILES` and :data:`DISPLAY_FILES` in ``home`` (:data:`SECRET_WHAT`) and the copies beside a secret file
+    there (:func:`_prefixed_files`), the paths the launching environment ``env`` names (:func:`_env_masks`), and the
+    policy's ``extra``."""
+    out = [(os.path.join(home, p), HOME_LIST, SECRET_WHAT[p]) for p in (*SECRET_DIRS, *SECRET_FILES, *DISPLAY_FILES)] \
+        if home else []
+    out += [(p, HOME_LIST, f"a copy of {SECRET_WHAT['.claude.json']}") for p in _prefixed_files(home)]
+    out += [*_env_masks(env), *((os.path.expanduser(p), POLICY_HIDE, "a containment.hide entry") for p in extra)]
+    seen: dict[str, tuple[str, str]] = {}
+    for path, source, secret in out:
+        seen.setdefault(os.path.abspath(path), (source, secret))
+    return [(path, source, secret) for path, (source, secret) in seen.items()]
 
 
 def _left_out(raw: str) -> list[str]:
@@ -587,19 +650,31 @@ def _linked(dirs: list[str], needed: list[tuple[str, str]], *, skip: set[str]) -
 
 def tree_masks_line(layout: Layout) -> str | None:
     """The launch's one line when a secret path lies in the run's own tree (:func:`_mask_plan`; CS-4 addendum 7 and the
-    operator's decisions of 2026-10-28): each mask there and each path not masked as absent, with what put it there,
-    what to do instead, and the limits. None when there is none."""
+    operator's decisions of 2026-10-28), or in a directory it cannot be left out of, ``/`` or one this account cannot
+    list (addendum 8, ruling 2.1): each mask there and each path not masked as absent, with what put it there, what to
+    do instead, and the limits. None when there is none."""
     def listed(entries: tuple[tuple[str, str], ...]) -> str:
         return ", ".join(f"{p} ({by})" for p, by in entries)
 
-    if not layout.tree_masks and not layout.tree_absent:
-        return None
+    # the operator's words for a path absent at the launch
+    absent = ("not there at launch, so not masked; if it appears during the session, the run sees it until the next "
+              "launch")
+    out = []
     parts = [f"masked in place, read-only, in the tree this run writes: {listed(layout.tree_masks)}"] \
         if layout.tree_masks else []
-    parts += [f"not there at launch, so not masked: {listed(layout.tree_absent)}"] if layout.tree_absent else []
-    return (f"{'; '.join(parts)}. A file the host replaces by rename, or first creates there, during the session is "
-            "seen inside until the next launch. To change one, edit it at your own terminal, or keep the real file "
-            "outside that tree (for ssh, an Include from your real ~/.ssh/config)")
+    parts += [f"{absent}: {listed(layout.tree_absent)}"] if layout.tree_absent else []
+    if parts:
+        out.append(f"{'; '.join(parts)}. A file the host replaces by rename, or first creates there, during the "
+                   "session is seen inside until the next launch. To change one, edit it at your own terminal, or keep "
+                   "the real file outside that tree (for ssh, an Include from your real ~/.ssh/config)")
+    fixed = [f"masked in place, read-only, as it cannot be left out of its directory (/, or one this account cannot "
+             f"list): {listed(layout.fixed_masks)}"] if layout.fixed_masks else []
+    fixed += [f"{absent}, as it cannot be left out of its directory (/, or one this account cannot list): "
+              f"{listed(layout.fixed_absent)}"] if layout.fixed_absent else []
+    if fixed:
+        out.append(f"{'; '.join(fixed)}. A file replaced or first created there during the session is seen inside "
+                   "until the next launch; a write there by your own tools needs root, or a directory you cannot read")
+    return ". ".join(out) or None
 
 
 def _links_in(top: str) -> list[str]:
@@ -626,9 +701,9 @@ def _launching(home: str | None, env: Mapping[str, str] | None) -> Mapping[str, 
     return {"HOME": home, **env} if home else env
 
 
-def _env_masks(env: Mapping[str, str]) -> list[tuple[str, str]]:
+def _env_masks(env: Mapping[str, str]) -> list[tuple[str, str, str]]:
     """Credential paths the launching environment names rather than the home directory, each with the variable that
-    names it: the file ``XAUTHORITY`` names
+    names it and what it is: the file ``XAUTHORITY`` names
     (CB-04), git's credential cache and store-helper file under a custom ``XDG_CACHE_HOME`` or ``XDG_CONFIG_HOME``,
     and every place AEW's host side reads the operator's OpenCode from (``opencode.login.operator_masks`` and
     ``operator_files``, their one owner: STG-05 CS-4, outcome 2, the Lead's view holds no operator credential). Read in
@@ -636,14 +711,20 @@ def _env_masks(env: Mapping[str, str]) -> list[tuple[str, str]]:
     credentials (``harness_ops.supervisor_env``), or the CLI itself."""
     from aew.harness.opencode import login
 
-    out = [(env["XAUTHORITY"], "XAUTHORITY")] if env.get("XAUTHORITY") else []
+    out = [(env["XAUTHORITY"], "XAUTHORITY", SECRET_WHAT[".Xauthority"])] if env.get("XAUTHORITY") else []
     if env.get("XDG_CACHE_HOME"):
-        out.append((os.path.join(env["XDG_CACHE_HOME"], "git", "credential"), "XDG_CACHE_HOME"))
+        out.append((os.path.join(env["XDG_CACHE_HOME"], "git", "credential"), "XDG_CACHE_HOME",
+                    SECRET_WHAT[".cache/git/credential"]))
     if env.get("XDG_CONFIG_HOME"):
-        out.append((os.path.join(env["XDG_CONFIG_HOME"], "git", "credentials"), "XDG_CONFIG_HOME"))
-    for path, variables in (*login.operator_masks(env).items(), *login.operator_files(env).items()):
-        out.append((str(path), " and ".join(variables) or "the operator's OpenCode"))
-    return [(os.path.expanduser(p), source) for p, source in out]
+        out.append((os.path.join(env["XDG_CONFIG_HOME"], "git", "credentials"), "XDG_CONFIG_HOME",
+                    SECRET_WHAT[".config/git/credentials"]))
+    for path, variables in login.operator_masks(env).items():
+        out.append((str(path), " and ".join(variables) or "the operator's OpenCode", "OpenCode's own directory"))
+    for path, variables in login.operator_files(env).items():
+        out.append((str(path), " and ".join(variables) or "the operator's OpenCode",
+                    "OpenCode's configuration file" if variables == ("OPENCODE_CONFIG",) else
+                    "OpenCode's login database"))
+    return [(os.path.expanduser(p), source, secret) for p, source, secret in out]
 
 
 def _refuse_masks(refused: tuple[dict[str, Any], ...], home: str | None) -> None:
@@ -772,9 +853,9 @@ def _git_metadata(workspace: Path) -> tuple[list[str], list[str]]:
 
 
 def _guarded(ws: Path, *, project: str | os.PathLike[str] | None, runs: str | os.PathLike[str] | None,
-             bridge_dir: str | None, masks: tuple[str, ...],
+             bridge_dir: str | None, masks: tuple[tuple[str, str], ...],
              host: tuple[str, ...] = (RUN,), net_dir: str | None = None,
-             left_out: tuple[str, ...] = ()) -> list[tuple[str, str]]:
+             left_out: tuple[tuple[str, str], ...] = ()) -> list[tuple[str, str]]:
     """(what, path) for every location an operator's writable root must neither equal, contain nor lie under. The
     shared temporary directory is listed separately (``_SHARED_TMP``): only containing it, or reaching one of AEW's
     own directories in it, exposes other runs."""
@@ -797,8 +878,9 @@ def _guarded(ws: Path, *, project: str | os.PathLike[str] | None, runs: str | os
     for prefix in {sys.prefix, sys.base_prefix}:
         if prefix:
             out.append(("the Python environment AEW runs from", _real(prefix)))
-    out += [("a masked secret", m) for m in masks]
-    out += [("a secret path, left out of the sandbox whether or not it exists", p) for p in left_out]
+    # each secret named by what it is, so the refusal says why (CS-4 addendum 8, ruling 1)
+    out += [(f"{secret}, a masked secret", p) for p, secret in masks]
+    out += [(f"{secret}, a secret path left out of the sandbox whether or not it exists", p) for p, secret in left_out]
     # R-1 binds nothing back into /run but measured exceptions: an operator root there would be one (the Lead,
     # 2026-10-23, on CS-2's plan, Q6), and one containing it would show it all again.
     out += [("the host's runtime directory, masked whole (STG-05 CB-03, ruling R-1)", _real(h)) for h in host]
@@ -831,12 +913,31 @@ def _refuse_unsafe_root(raw: str, root: str, guarded: list[tuple[str, str]], *, 
         exposed.append(("every other workspace (the workspaces root)", workspaces))
     if exposed:
         listed = "; ".join(f"{what} ({path})" for what, path in exposed[:4])
+        instead = _narrower(raw, root, guarded)
+        exact = f": here, {instead!r} in place of {raw!r}, or take {raw!r} out" if instead else ""
         raise ContainmentUnavailable(
             f"policy containment.writable root {raw!r} ({root}) would let every contained run write {listed}. "
             "Containment protects these, so this root is refused and runs cannot launch. List a narrower directory "
             "that holds none of them instead, such as a build output or cache directory (for example "
-            "<project>/build, or ~/.cache/<tool>), in containment.writable in the execution policy.",
-            root=raw, resolved=root, exposes=[{"what": w, "path": p} for w, p in exposed])
+            f"<project>/build, or ~/.cache/<tool>), in containment.writable in the execution policy{exact}. This "
+            "applies to every contained launch, workers included.",
+            root=raw, resolved=root, exposes=[{"what": w, "path": p} for w, p in exposed], instead=instead)
+
+
+def _narrower(raw: str, root: str, guarded: list[tuple[str, str]]) -> str | None:
+    """The exact entry to list in place of a refused writable root (quick check 4 of #283, m11): the first directory
+    in it, in the operator's own spelling, that is not, holds no and lies under no path containment protects. None
+    where it has none."""
+    try:
+        with os.scandir(root) as it:
+            names = sorted(e.name for e in it if e.is_dir(follow_symlinks=False))
+    except OSError:
+        return None
+    for name in names:
+        path = os.path.join(root, name)
+        if not any(_within(p, path) or _within(path, p) for what, p in guarded if what != _SHARED_TMP):
+            return f"{raw.rstrip('/')}/{name}"
+    return None
 
 
 STORE = (".aew", "state")  # the store, relative to the project root (aew.engine.store.STORE_REL under the AEW root)
@@ -1004,8 +1105,10 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     plan = _mask_plan(home, list(cfg.get("hide") or []), env, needed, tuple(writable))
     _refuse_masks(plan.refused, home)
     hide_host = host_masks()
-    guarded = _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir, masks=(*plan.dirs, *plan.files),
-                       host=hide_host, net_dir=net_dir, left_out=plan.left_out)
+    secret = dict(plan.what)
+    guarded = _guarded(ws, project=project, runs=runs, bridge_dir=bridge_dir,
+                       masks=tuple((p, secret[p]) for p in (*plan.dirs, *plan.files)), host=hide_host, net_dir=net_dir,
+                       left_out=tuple((p, secret[p]) for p in plan.left_out))
     operator = []
     for raw, path in roots:
         _refuse_unsafe_root(raw, path, guarded, workspaces=str(ws.parent))
@@ -1043,4 +1146,5 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
                     net_dir=net_dir)
     _refuse_store_binds(role, project, order(layout))
     _refuse_run_bind_backs(layout, project=_real(project), workspace=str(ws))
+    bwrap_argv(layout, [], cwd=ws)  # the layout's own arguments, counted before any bubblewrap starts (addendum 9)
     return layout

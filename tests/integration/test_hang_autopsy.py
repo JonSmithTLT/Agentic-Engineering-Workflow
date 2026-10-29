@@ -25,6 +25,10 @@ from racing_read import read_text_or_none
 HELPERS = Path(lanes.__file__).resolve().parent
 NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {}
 DEADLINE_EXIT = 70
+# The margin the lanes run their session deadline with. Where the controller's own exit is what a test checks, the
+# sentinel acts only two of these after the deadline, so a runner slow to collect is not ended for it (a Windows run
+# of 2026-10-24, under 3 s margins). A test of the sentinel acting sets its own small margin.
+MARGIN = f"{bounds.DEADLINE_MARGIN_S:g}"
 
 CONFTEST = f'''
 import sys
@@ -238,7 +242,7 @@ def test_outlives_the_session():
 
 def test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_controller_exits_by_itself(tmp_path):
     hangs = tmp_path / "hangs"
-    proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "5", "--session-deadline-margin", "3",
+    proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "5", "--session-deadline-margin", MARGIN,
                  "-p", "no:xdist")
     assert proc.returncode == DEADLINE_EXIT, proc.stdout + proc.stderr
     session = session_dir(hangs)
@@ -320,9 +324,9 @@ def test_the_deadline_ends_only_the_sessions_own_processes(tmp_path, monkeypatch
         # The deadline counts from the session's start, so it leaves room for xdist's workers to start cold; the
         # margin leaves the controller time to finish after its workers exit, before the sentinel would act (an
         # earlier 3 s margin let a slow controller be ended by the sentinel, which is that path working, not this).
-        deadline, margin = ("20", "10") if "-n" in mode else ("8", "3")
+        deadline = "20" if "-n" in mode else "8"
         proc = inner(project(tmp_path, SESSION_SET), hangs, "--session-deadline", deadline,
-                     "--session-deadline-margin", margin, *mode)
+                     "--session-deadline-margin", MARGIN, *mode)
         session = session_dir(hangs)
         why = f"{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
         assert proc.returncode == DEADLINE_EXIT, why
@@ -378,7 +382,8 @@ NO_WINDOW = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
 def test_waits_while_its_controller_is_killed():
     child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"], **NO_WINDOW)
     (OUT / "child.pid").write_text(str(child.pid), encoding="utf-8")
-    (OUT / "controller.pid").write_text(str(os.getpid()), encoding="utf-8")
+    (OUT / "controller.pid.part").write_text(str(os.getpid()), encoding="utf-8")
+    os.replace(OUT / "controller.pid.part", OUT / "controller.pid")  # last, and whole: the outer test waits on it
     threading.Event().wait(200)
 '''
 
@@ -394,7 +399,9 @@ def test_a_controller_killed_abruptly_leaves_no_session_process_alive(tmp_path, 
     try:
         other_id = proctree.identity(other.pid)
         assert other_id is not None
-        bounds.bounded_wait("test.inner_started", lambda: (out / "child.pid").exists(), seconds=120,
+        # controller.pid is the inner test's last file, so both are there (a CI run of 2026-10-24 waited for
+        # child.pid alone and read controller.pid before it was written)
+        bounds.bounded_wait("test.inner_started", lambda: (out / "controller.pid").exists(), seconds=120,
                             gone=lambda: session.poll() is not None)
         child = alive_identity(out / "child.pid")
         controller = alive_identity(out / "controller.pid")

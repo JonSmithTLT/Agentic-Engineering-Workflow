@@ -53,26 +53,25 @@ def _seam_calls() -> tuple[set[tuple[str, str, str]], list[str]]:
     """Every call in ``src/aew`` to a seam name that passes ``clock=``, and every one that forwards ``**`` keywords."""
     passed: set[tuple[str, str, str]] = set()
     forwarded: list[str] = []
+
+    def visit(rel: str, node: ast.AST, scope: tuple[str, ...]) -> None:
+        for child in ast.iter_child_nodes(node):
+            inner = scope
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                inner = (*scope, child.name)
+            if isinstance(child, ast.Call):
+                func = child.func
+                name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+                if name in SEAM:
+                    for kw in child.keywords:
+                        if kw.arg == "clock":
+                            passed.add((rel, ".".join(scope), ast.unparse(kw.value)))
+                        elif kw.arg is None:
+                            forwarded.append(f"{rel}:{child.lineno}")
+            visit(rel, child, inner)
+
     for path in sorted(SRC.rglob("*.py")):
-        rel = path.relative_to(SRC).as_posix()
-
-        def visit(node: ast.AST, scope: tuple[str, ...]) -> None:
-            for child in ast.iter_child_nodes(node):
-                inner = scope
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                    inner = (*scope, child.name)
-                if isinstance(child, ast.Call):
-                    func = child.func
-                    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
-                    if name in SEAM:
-                        for kw in child.keywords:
-                            if kw.arg == "clock":
-                                passed.add((rel, ".".join(scope), ast.unparse(kw.value)))
-                            elif kw.arg is None:
-                                forwarded.append(f"{rel}:{child.lineno}")
-                visit(child, inner)
-
-        visit(ast.parse(path.read_text(encoding="utf-8")), ())
+        visit(path.relative_to(SRC).as_posix(), ast.parse(path.read_text(encoding="utf-8")), ())
     return passed, forwarded
 
 

@@ -32,6 +32,7 @@ import re
 import sqlite3
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path, PurePath
@@ -259,10 +260,14 @@ def check_maps_request(route: str, query: dict[str, str], matched: dict[str, str
 class Projector:
     """Every projection of one snapshot. Nothing here writes."""
 
-    def __init__(self, snapshot: Snapshot, *, route: str | None = None, maps: MapsReader | None = None) -> None:
+    def __init__(self, snapshot: Snapshot, *, route: str | None = None, maps: MapsReader | None = None,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self.s = snapshot
         self.route = route  # the contract route being answered: it decides the envelope's version
         self.maps = maps  # the server's maps reader and its caches (the maps routes; register F20.8)
+        # What the history search's deadline is read from and judged by, down to the engine's substrate: the real
+        # monotonic clock unless a test drives it (only the server passes it on).
+        self.clock = clock
         self.state = snapshot.state
         self.engine = snapshot.engine
         self.archive = snapshot.engine.archive
@@ -966,13 +971,13 @@ class Projector:
         chosen = sorted(set(kinds))
         query = {"terms": list(terms), "kinds": chosen, "since": since, "until": until, "limit": n}
         root_h = str(self.state["cold"]["root"]["head_h"])
-        deadline = time.monotonic() + SEARCH_DEADLINE_S
+        deadline = self.clock() + SEARCH_DEADLINE_S  # a reading of this clock, judged only by it
         try:
             out = self.engine.history_search_committed(
                 self.state, list(terms), kinds=chosen or None, since=since, until=until, limit=n,
                 deadline=deadline, budget_s=SEARCH_BUILD_S, budget_docs=SEARCH_BUILD_DOCS,
                 candidates=SEARCH_CANDIDATES, enabled=self.s.history_search, fts5=recall.fts5_available(),
-                fence_token=lambda snippets: fence_token(query, root_h, snippets))
+                fence_token=lambda snippets: fence_token(query, root_h, snippets), clock=self.clock)
         except errors.UsageError as exc:
             raise InvalidRequest(exc.message) from None
         except errors.CapabilityUnavailable as exc:  # the engine's own guard, behind the capability's
@@ -1006,7 +1011,7 @@ class Projector:
         hid, subject = str(hit["id"]), hit.get("subject")
         link: dict[str, Any] | None = None
         if hit["kind"] == "evidence":
-            if time.monotonic() < deadline:
+            if self.clock() < deadline:
                 try:
                     link = entity(hid, "evidence") if self._evidence_exists(hid) else None
                 except Exception:  # whatever would fail the route fails the link: never a link to a 500

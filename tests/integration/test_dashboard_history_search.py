@@ -12,17 +12,23 @@ The fixture history is built once per module (two archived investigations whose 
 verified Ticket cancelled after review), and every test works on its own copy of that project with its own server.
 While a dashboard search runs in this process, the substrate's three destructive sites are instrumented to fail the
 test (every CLI repair runs as its own process).
+
+Every server here judges the search's deadline and catch-up budget by a ``FakeClock`` the test drives (the
+``DashboardServer(clock=)`` seam). It stands still unless a test moves it, so no answer depends on how fast the machine
+is (the nightly's null link, run 40889389245, was a slow runner passing the real deadline). The deadline's own tests
+move it at the point they are about, and one runs on the real clock, the production default.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import sqlite3
 import sys
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
@@ -132,12 +138,29 @@ class Gate:
         return error_body("SESSION_REQUIRED") if self.closed else None
 
 
-class Served:
-    """One dashboard server on one project, validating every 200 against the contract."""
+class FakeClock:
+    """The search's clock as a test drives it: it reads ``now``, which moves only by ``advance``. It starts far
+    below any reading of the real monotonic clock, so a deadline judged by the real one instead is already past."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+class Served:
+    """One dashboard server on one project, validating every 200 against the contract. Its search runs on ``clock``:
+    a fresh ``FakeClock`` that never moves unless the test moves it, or the real one where a test asks for it."""
+
+    def __init__(self, root: Path, clock: Callable[[], float] | None = None) -> None:
         self.gate = Gate()
-        self.server = DashboardServer(Engine.discover(root), authenticator=self.gate, validate_with=CONTRACT)
+        self.clock = clock if clock is not None else FakeClock()
+        self.server = DashboardServer(Engine.discover(root), authenticator=self.gate, validate_with=CONTRACT,
+                                      clock=self.clock)
         self.server.start()
 
     def get(self, path: str, *, head: bool = False, inm: str | None = None) -> tuple[int, dict[str, str], bytes]:
@@ -161,8 +184,8 @@ class Served:
 
 
 @contextmanager
-def served(root: Path) -> Iterator[Served]:
-    s = Served(root)
+def served(root: Path, clock: Callable[[], float] | None = None) -> Iterator[Served]:
+    s = Served(root, clock)
     try:
         yield s
     finally:
@@ -214,23 +237,6 @@ def codes(body: dict[str, Any]) -> list[str]:
 
 def ids(body: dict[str, Any]) -> list[str]:
     return [h["id"] for h in body["data"]["hits"]]
-
-
-SEARCH_ATTEMPTS = 5  # each request keeps what its catch-up indexed, so the next has less to do
-
-
-def found(s: Served, path: str) -> dict[str, Any]:
-    """The search at ``path`` as answered by a request the deadline did not cut short. A search answers within its
-    deadline and keeps what it indexed, saying ``SEARCH_TIME_BUDGET`` when the deadline stopped it, so a later
-    request completes it (as ``test_a_history_beyond_the_build_budget_is_partial_and_completes_over_later_requests``
-    relies on). A loaded runner can spend the whole deadline on one catch-up (main's run 40056126762: the apply
-    window's second search), and what a search finds must not depend on that. A real slowdown still fails: every
-    attempt is cut short. The deadline's own tests use ``s.ok`` and ``timed``."""
-    for _ in range(SEARCH_ATTEMPTS):
-        body = s.ok(path)
-        if "SEARCH_TIME_BUDGET" not in codes(body):
-            return body
-    raise AssertionError(f"all {SEARCH_ATTEMPTS} searches were cut short by the deadline: {body['data']['coverage']}")
 
 
 @pytest.fixture(autouse=True)
@@ -334,7 +340,7 @@ def test_the_switch_is_read_from_the_snapshot_adopted_only(built, tmp_path):
         caps = s.ok("/capabilities")["data"]
         assert caps["history_search"] == {"state": "AVAILABLE", "reasons": []}
         assert s.get("/capabilities")[1]["etag"] != tag and "history_search" not in before["data"]
-        assert built["record"] in ids(found(s, q("Quokkafacts")))
+        assert built["record"] in ids(s.ok(q("Quokkafacts")))
         switch_off(p)
         assert "history_search" not in s.ok("/capabilities")["data"]
         status, body = s.json(q("Quokkafacts"))
@@ -391,7 +397,7 @@ def test_each_kind_of_record_is_found_with_both_labels_the_fence_and_a_live_link
              ("Reviewed the diff", built["evidence"]["review"], "evidence", "evidence")]
     with served(p.root) as s:
         for term, record_id, kind, link_kind in cases:
-            body = found(s, q(term))
+            body = s.ok(q(term))
             data = body["data"]
             assert body["schema_version"] == "0.1.3" and data["coverage"]["complete"] is True, data["coverage"]
             assert "not admitted Knowledge" in data["label"] and "not current evidence" in data["trust_label"]
@@ -404,12 +410,12 @@ def test_each_kind_of_record_is_found_with_both_labels_the_fence_and_a_live_link
             route = "/evidence/" if link_kind == "evidence" else "/history/"
             assert s.get(route + record_id)[0] == 200, (term, record_id)
             assert data["query"] == {"terms": [term], "kinds": [], "since": None, "until": None, "limit": 10}
-        filtered = found(s, q("sharedmarker", kind=["unit", "evidence", "unit"], limit=50))["data"]
+        filtered = s.ok(q("sharedmarker", kind=["unit", "evidence", "unit"], limit=50))["data"]
         assert filtered["query"]["kinds"] == ["evidence", "unit"]
         assert set(ids({"data": filtered})) == {built["investigation"], built["record"], built["investigation2"],
                                                 built["record2"]}
-        assert found(s, q("sharedmarker", kind="audit"))["data"]["hits"] == []
-        assert found(s, q("Quokkafacts", since="2999-01-01T00:00:00.000Z"))["data"]["hits"] == []
+        assert s.ok(q("sharedmarker", kind="audit"))["data"]["hits"] == []
+        assert s.ok(q("Quokkafacts", since="2999-01-01T00:00:00.000Z"))["data"]["hits"] == []
 
 
 def test_head_answers_as_get_and_its_catch_up_only_appends(built, tmp_path):
@@ -432,9 +438,7 @@ def test_head_answers_as_get_and_its_catch_up_only_appends(built, tmp_path):
 
 
 def moved_search(p: Project, s: Served) -> dict[str, Any]:
-    # Never ``found``: its callers stage the race inside this one request, so a repeat would answer a later snapshot,
-    # and a moved answer needs no complete search.
-    body = s.ok(q("Quokkafacts"))
+    body = s.ok(q("Quokkafacts"))  # one request: its callers stage the race inside it
     assert "SEARCH_HISTORY_MOVED" in codes(body) and body["data"]["coverage"]["complete"] is False
     return body
 
@@ -453,7 +457,7 @@ def test_the_apply_window_is_a_moved_history_and_invents_nothing(built, tmp_path
         assert set(ids(body)) <= {built["record"]}  # what was indexed, every hit authenticated
         assert capture(p) == before
         tail.write_bytes(new)
-        assert built["record"] in ids(found(s, q("Quokkafacts")))
+        assert built["record"] in ids(s.ok(q("Quokkafacts")))
 
 
 def test_a_commit_between_the_snapshot_and_the_tail_read_is_a_moved_history(built, tmp_path, monkeypatch):
@@ -492,12 +496,12 @@ def test_a_foreign_watermark_is_reported_and_kept_until_the_cli_rebuilds(built, 
         conn.execute("UPDATE meta SET value = ? WHERE key = 'h'", ("c" * 64,))
     before = capture(p)
     with served(p.root) as s:
-        body = found(s, q("Quokkafacts"))
+        body = s.ok(q("Quokkafacts"))
         assert codes(body) == ["SEARCH_SUBSTRATE_FOREIGN"] and body["data"]["hits"] == []
         assert capture(p) == before
         p.ok("history", "search", "Quokkafacts")  # the CLI's next search rebuilds it, as before
         for _ in range(20):
-            body = found(s, q("Quokkafacts"))
+            body = s.ok(q("Quokkafacts"))
             if body["data"]["coverage"]["complete"]:
                 break
         assert ids(body) == [built["record"]]
@@ -518,14 +522,14 @@ def test_a_forged_row_invents_nothing_is_reported_stale_and_is_not_reset(built, 
         conn.execute(f"UPDATE docs SET {column} = ? WHERE rowid = ?", (value, rowid))  # noqa: S608
     before = capture(p)
     with served(p.root) as s:
-        body = found(s, q("Quokkafacts", **kw))
+        body = s.ok(q("Quokkafacts", **kw))
         assert body["data"]["hits"] == [] and "SEARCH_SUBSTRATE_STALE" in codes(body)
         assert capture(p) == before
         p.ok("history", "search", "Quokkafacts")  # the CLI resets it; its next searches rebuild
         for _ in range(20):
             if not p.ok("history", "search", "Quokkafacts")["coverage_incomplete"]:
                 break
-        assert ids(found(s, q("Quokkafacts"))) == [built["record"]]
+        assert ids(s.ok(q("Quokkafacts"))) == [built["record"]]
 
 
 def test_an_injected_text_row_invents_nothing(built, tmp_path):
@@ -538,7 +542,7 @@ def test_an_injected_text_row_invents_nothing(built, tmp_path):
         conn.execute("INSERT INTO doc_text (rowid, text) VALUES (?, 'injectedwallaby')", (cur.lastrowid,))
     before = capture(p)
     with served(p.root) as s:
-        body = found(s, q("injectedwallaby"))
+        body = s.ok(q("injectedwallaby"))
         assert body["data"]["hits"] == [] and "SEARCH_SUBSTRATE_STALE" in codes(body)
     assert capture(p) == before
 
@@ -553,7 +557,7 @@ def test_a_corrupt_file_or_another_version_is_unusable_and_kept(built, tmp_path,
         substrate(p).write_bytes(b"this is not a database" * 100)
     before = capture(p)
     with served(p.root) as s:
-        body = found(s, q("Quokkafacts"))
+        body = s.ok(q("Quokkafacts"))
         assert codes(body) == ["SEARCH_SUBSTRATE_UNUSABLE"] and body["data"]["hits"] == []
     assert capture(p) == before
 
@@ -574,7 +578,7 @@ def test_damage_found_during_the_catch_up_is_unusable_and_the_file_is_kept(built
 
     monkeypatch.setattr(recall.Substrate, "_flush", broken)
     with served(p.root) as s:
-        body = found(s, q("Quokkafacts"))
+        body = s.ok(q("Quokkafacts"))
     assert codes(body) == ["SEARCH_SUBSTRATE_UNUSABLE"] and body["data"]["hits"] == []
     assert capture(p) == before
 
@@ -592,12 +596,10 @@ def test_a_history_beyond_the_build_budget_is_partial_and_completes_over_later_r
                                                                                          monkeypatch):
     p = copy_of(built, tmp_path)
     shutil.rmtree(substrate(p).parent)
-    monkeypatch.setattr(P, "SEARCH_BUILD_DOCS", 2)
-    monkeypatch.setattr(P, "SEARCH_DEADLINE_S", 30.0)  # only the build budget stops it
+    monkeypatch.setattr(P, "SEARCH_BUILD_DOCS", 2)  # the clock stands still: only this budget stops a catch-up
     with served(p.root) as s:
         through: list[int] = []
         for _ in range(40):
-            # Not `found`: every answer here is asserted, and a repeat past a SEARCH_TIME_BUDGET would hide one.
             body = s.ok(q("sharedmarker", limit=50))
             through.append(body["data"]["coverage"]["indexed_through"] or 0)
             if body["data"]["coverage"]["complete"]:
@@ -611,133 +613,118 @@ def test_the_candidate_budget_stops_verification(built, tmp_path, monkeypatch):
     p = copy_of(built, tmp_path)
     monkeypatch.setattr(P, "SEARCH_CANDIDATES", 2)
     with served(p.root) as s:
-        body = found(s, q("sharedmarker", limit=50))
+        body = s.ok(q("sharedmarker", limit=50))
     assert codes(body) == ["SEARCH_CANDIDATE_BUDGET"] and len(body["data"]["hits"]) == 2
 
 
-def test_found_asks_again_only_while_the_deadline_cuts_the_search_short(built, tmp_path, monkeypatch):
-    """``found`` is bounded and strict: a search the deadline cuts short every time fails after ``SEARCH_ATTEMPTS``
-    requests, with its coverage; one cut short once is answered by the next request, complete."""
-    p = copy_of(built, tmp_path)
-    asked: list[str] = []
-    ok, every = Served.ok, P.SEARCH_DEADLINE_S
-
-    def cut_short(times: int) -> Any:
-        def ask(self: Served, path: str) -> dict[str, Any]:
-            monkeypatch.setattr(P, "SEARCH_DEADLINE_S", 0.0 if len(asked) < times else every)
-            asked.append(path)
-            return ok(self, path)
-        return ask
-
-    with served(p.root) as s:
-        monkeypatch.setattr(Served, "ok", cut_short(SEARCH_ATTEMPTS))
-        with pytest.raises(AssertionError, match="cut short by the deadline"):
-            found(s, q("Quokkafacts"))
-        assert len(asked) == SEARCH_ATTEMPTS
-        asked.clear()
-        monkeypatch.setattr(Served, "ok", cut_short(1))
-        body = found(s, q("Quokkafacts"))
-    assert len(asked) == 2 and built["record"] in ids(body) and body["data"]["coverage"]["complete"]
-
-
-@contextmanager
-def deadline(monkeypatch, seconds: float) -> Iterator[None]:
-    with monkeypatch.context() as m:
-        m.setattr(P, "SEARCH_DEADLINE_S", seconds)
-        yield
-
-
-class Clock:
-    """One search request as ``timed`` measured it, every span in seconds; its repr is the whole breakdown."""
-
-    def __init__(self, started: float, ended: float, seen: dict[str, float]) -> None:
-        self.request_s = ended - started
-        self.before_s = seen["deadline"] - seen["window"] - started  # until the projection started the deadline
-        self.searched_s = seen["searched"] - seen["deadline"]  # the engine's search returned, from the deadline
-        self.overshoot_s = seen["projected"] - seen["deadline"]  # the projection returned, from the deadline
-        self.after_s = ended - seen["projected"]  # the response, and this test's own contract check
-
-    def __repr__(self) -> str:
-        return (f"request {self.request_s:.3f} s: {self.before_s:.3f} s before the deadline started; the search "
-                f"returned {self.searched_s:+.3f} s and the projection {self.overshoot_s:+.3f} s from the deadline; "
-                f"{self.after_s:.3f} s after it")
-
-
-def timed(s: Served, path: str) -> tuple[Clock, dict[str, Any]]:
-    """The search at ``path``, timed from where its deadline starts. The projection starts it, so the request
-    before that (the connection, the snapshot) and after the projection returns (the response, and the contract
-    check ``Served.ok`` makes) are not the search's time, however long a loaded runner makes them (#243's CI: 5.9 s,
-    against the 1.5 s the catch-up's entries took). The clock records them, so a failure says where the time went,
-    but no test bounds them: only the client's 60 s timeout does."""
-    seen: dict[str, float] = {}
-    search, project = Engine.history_search_committed, P.Projector.history_search
-
-    def searched(self: Engine, *args: Any, **kwargs: Any) -> Any:
-        seen.update(deadline=kwargs["deadline"], window=P.SEARCH_DEADLINE_S)
-        try:
-            return search(self, *args, **kwargs)
-        finally:
-            seen["searched"] = time.monotonic()
-
-    def projected(self: P.Projector, *args: Any, **kwargs: Any) -> Any:
-        try:
-            return project(self, *args, **kwargs)
-        finally:
-            seen["projected"] = time.monotonic()
-
-    with pytest.MonkeyPatch.context() as m:
-        m.setattr(Engine, "history_search_committed", searched)
-        m.setattr(P.Projector, "history_search", projected)
-        started = time.monotonic()
-        body = s.ok(path)
-        ended = time.monotonic()
-    return Clock(started, ended, seen), body
-
-
-# An assertion against a hang, not a timing benchmark. Measured from the deadline (``timed``), it covers what may
-# follow the deadline inside the handler: the entry or the wait in progress, the commit of what was read before it
-# (a catch-up keeps that, or a slow history would never advance), and the interrupted query.
-TOLERANCE_S = 3.0
-
-
-def test_a_slow_catch_up_stops_at_the_deadline(built, tmp_path, monkeypatch):
-    """The catch-up checks the deadline between entries, so it never begins one after it: each entry here takes over
-    half the deadline, so two outlast it and the history's third is never read, however loaded the machine. What
-    was read before the deadline is kept, and the answer says the deadline cut the search short."""
+def test_a_slow_catch_up_stops_at_its_own_budget_within_the_deadline(built, tmp_path, monkeypatch):
+    """The catch-up's seconds (``SEARCH_BUILD_S``) are judged by the search's clock too: each entry here takes half
+    of them, so the second spends them and the third is never read, while the deadline is still ahead. What was read
+    is kept, and the answer says the build budget, not the deadline, cut it short."""
     p = copy_of(built, tmp_path)
     shutil.rmtree(substrate(p).parent)
     entries = committed_root(p)["count"]
-    per_entry = P.SEARCH_DEADLINE_S / 2 + 0.05  # two entries outlast the deadline
-    slow, read = recall.Substrate.documents, []
+    clock, slow, read = FakeClock(), recall.Substrate.documents, []
 
     def documents(self, entry):
         read.append(entry["id"])
-        time.sleep(per_entry)
+        clock.advance(P.SEARCH_BUILD_S / 2)
         return slow(self, entry)
 
     monkeypatch.setattr(recall.Substrate, "documents", documents)
-    monkeypatch.setattr(P, "SEARCH_BUILD_S", 30.0)  # only the deadline stops it
-    with served(p.root) as s:
-        clock, body = timed(s, q("Quokkafacts"))
+    with served(p.root, clock) as s:
+        body = s.ok(q("Quokkafacts"))
     coverage = body["data"]["coverage"]
-    assert entries > 2 and 1 <= len(read) <= 2, (entries, read)
+    assert P.SEARCH_BUILD_S < P.SEARCH_DEADLINE_S and entries > 2 and len(read) == 2, (entries, read)
     assert coverage["indexed_through"] == len(read) and not coverage["complete"], coverage
-    assert "SEARCH_TIME_BUDGET" in codes(body)
-    assert clock.overshoot_s < per_entry + TOLERANCE_S, clock
+    assert codes(body) == ["SEARCH_BUILD_BUDGET"]
 
 
-def test_a_busy_file_is_waited_on_only_until_the_deadline(built, tmp_path):
+def test_a_slow_catch_up_stops_at_the_deadline(built, tmp_path, monkeypatch):
+    """The catch-up checks the deadline between entries, so it never begins one after it: each entry here takes half
+    the deadline on the search's clock, so the second ends at the deadline and the history's third is never read.
+    What was read before the deadline is kept, and the answer says the deadline cut the search short."""
     p = copy_of(built, tmp_path)
+    shutil.rmtree(substrate(p).parent)
+    entries = committed_root(p)["count"]
+    clock, slow, read = FakeClock(), recall.Substrate.documents, []
+
+    def documents(self, entry):
+        read.append(entry["id"])
+        clock.advance(P.SEARCH_DEADLINE_S / 2)
+        return slow(self, entry)
+
+    monkeypatch.setattr(recall.Substrate, "documents", documents)
+    monkeypatch.setattr(P, "SEARCH_BUILD_S", math.inf)  # only the deadline stops it
+    with served(p.root, clock) as s:
+        body = s.ok(q("Quokkafacts"))
+    coverage = body["data"]["coverage"]
+    assert entries > 2 and len(read) == 2, (entries, read)
+    assert coverage["indexed_through"] == len(read) and not coverage["complete"], coverage
+    assert codes(body) == ["SEARCH_TIME_BUDGET"]
+
+
+def test_a_busy_file_is_waited_on_only_until_the_deadline(built, tmp_path, monkeypatch):
+    """A read waits for another process's commit for ``READ_WAIT_S`` or the time left, whichever is less: with a
+    quarter of ``READ_WAIT_S`` left when the engine's search starts, every wait SQLite is given is that quarter."""
+    p = copy_of(built, tmp_path)
+    clock, left = FakeClock(), recall.READ_WAIT_S / 4
+    search, wait, waits = recall.Substrate.search, recall.Substrate._wait, []
+
+    def late(self, *args, **kwargs):
+        clock.advance(P.SEARCH_DEADLINE_S - left)  # the request spent all but ``left`` before the search began
+        return search(self, *args, **kwargs)
+
+    def recorded(self):
+        waits.append(wait(self))
+        return waits[-1]
+
+    monkeypatch.setattr(recall.Substrate, "search", late)
+    monkeypatch.setattr(recall.Substrate, "_wait", recorded)
     holder = sqlite3.connect(substrate(p), isolation_level=None)
     try:
         holder.execute("BEGIN EXCLUSIVE")  # another process writing: even a read must wait
-        with served(p.root) as s:
-            clock, body = timed(s, q("Quokkafacts"))
+        with served(p.root, clock) as s:
+            body = s.ok(q("Quokkafacts"))
         holder.execute("ROLLBACK")
     finally:
         holder.close()
-    assert clock.overshoot_s < TOLERANCE_S, clock
-    assert "SEARCH_SUBSTRATE_BUSY" in codes(body) and body["data"]["hits"] == []
+    assert codes(body) == ["SEARCH_SUBSTRATE_BUSY"] and body["data"]["hits"] == []
+    assert waits and all(w == pytest.approx(left) for w in waits), waits
+
+
+def test_on_the_real_clock_the_deadline_is_a_reading_of_it_and_bounds_every_wait(built, tmp_path, monkeypatch):
+    """The production clock once, end to end (every other test here drives a ``FakeClock``): the deadline the engine
+    is given is a ``time.monotonic`` reading taken during the request, and each wait SQLite is given for a busy file
+    is at most the time left just before it was asked for. Nothing here bounds how long the machine takes."""
+    p = copy_of(built, tmp_path)
+    search, wait, deadlines, waits = Engine.history_search_committed, recall.Substrate._wait, [], []
+
+    def searched(self, *args, **kwargs):
+        deadlines.append(kwargs["deadline"])
+        return search(self, *args, **kwargs)
+
+    def bounded(self):
+        left = self._deadline - time.monotonic()  # read before the wait's own reading, so no less is left here
+        waits.append((wait(self), left))
+        return waits[-1][0]
+
+    monkeypatch.setattr(Engine, "history_search_committed", searched)
+    monkeypatch.setattr(recall.Substrate, "_wait", bounded)
+    holder = sqlite3.connect(substrate(p), isolation_level=None)
+    try:
+        holder.execute("BEGIN EXCLUSIVE")  # another process writing: even a read must wait
+        with served(p.root, time.monotonic) as s:
+            started = time.monotonic()
+            body = s.ok(q("Quokkafacts"))
+            ended = time.monotonic()
+        holder.execute("ROLLBACK")
+    finally:
+        holder.close()
+    assert codes(body) == ["SEARCH_SUBSTRATE_BUSY"] and body["data"]["hits"] == []
+    assert len(deadlines) == 1
+    assert started + P.SEARCH_DEADLINE_S <= deadlines[0] <= ended + P.SEARCH_DEADLINE_S
+    assert waits and all(w <= min(recall.READ_WAIT_S, max(0.0, left)) for w, left in waits), waits
 
 
 def test_the_ranked_query_is_interrupted_at_the_deadline_never_as_damage(built, tmp_path, monkeypatch):
@@ -745,6 +732,7 @@ def test_the_ranked_query_is_interrupted_at_the_deadline_never_as_damage(built, 
     unusable, the substrate is untouched, and the catch-up's connection never had a handler."""
     p = copy_of(built, tmp_path)
     before = capture(p)
+    clock = FakeClock()
     handlers: dict[str, list[Any]] = {"catch_up": [], "query": []}
     phase = threading.local()
 
@@ -765,32 +753,42 @@ def test_the_ranked_query_is_interrupted_at_the_deadline_never_as_damage(built, 
             return catch_up(self, *args, **kwargs)
         finally:
             phase.name = "query"
-            time.sleep(0.4)  # the deadline passes before the query runs
+            clock.advance(P.SEARCH_DEADLINE_S)  # the deadline passes before the query runs
 
     monkeypatch.setattr(recall.Substrate, "_connect", connect)
     monkeypatch.setattr(recall.Substrate, "catch_up", tracked)
     monkeypatch.setattr(recall, "PROGRESS_STEPS", 1)
-    with deadline(monkeypatch, 0.3), served(p.root) as s:
+    with served(p.root, clock) as s:
         body = s.ok(q("Quokkafacts"))
     assert codes(body) == ["SEARCH_TIME_BUDGET"], codes(body)
     assert handlers["catch_up"] == [] and len(handlers["query"]) == 1
     assert capture(p) == before
 
 
+def test_the_ranked_query_runs_to_its_end_while_the_deadline_is_ahead(built, tmp_path, monkeypatch):
+    """The progress handler judges the deadline by the search's clock too: called at every step of the ranked query,
+    with the deadline still ahead, it never interrupts it."""
+    p = copy_of(built, tmp_path)
+    monkeypatch.setattr(recall, "PROGRESS_STEPS", 1)
+    with served(p.root) as s:
+        body = s.ok(q("Quokkafacts"))
+    assert codes(body) == [] and ids(body) == [built["record"]]
+
+
 def test_the_hits_verified_before_the_deadline_are_kept(built, tmp_path, monkeypatch):
     p = copy_of(built, tmp_path)
-    candidate = recall.Substrate._candidate
+    clock, candidate = FakeClock(), recall.Substrate._candidate
     verified: list[str] = []
 
     def slow(self, *args, **kwargs):
         out = candidate(self, *args, **kwargs)
         verified.append(out if isinstance(out, str) else out["id"])
         if len(verified) == 2:
-            time.sleep(0.5)  # the deadline passes after two hits
+            clock.advance(P.SEARCH_DEADLINE_S)  # the deadline passes after two hits
         return out
 
     monkeypatch.setattr(recall.Substrate, "_candidate", slow)
-    with deadline(monkeypatch, 0.4), served(p.root) as s:
+    with served(p.root, clock) as s:
         body = s.ok(q("sharedmarker", limit=50))
     assert codes(body) == ["SEARCH_TIME_BUDGET"] and ids(body) == verified[:2] and len(verified) == 2
 
@@ -818,8 +816,8 @@ def test_a_query_over_the_servers_bound_is_414_and_fts_syntax_is_matched_literal
     with served(p.root) as s:
         assert s.json(q(*["y" * 200] * 11))[0] == 414
         for terms in (["NEAR(quokkafacts zanzibar)"], ["quokka*"], ["text:quokkafacts"], ['"'], ["(", ")"]):
-            assert found(s, q(*terms))["data"]["hits"] == [], terms
-        assert ids(found(s, q('"quokkafacts"'))) == [built["record"]]
+            assert s.ok(q(*terms))["data"]["hits"] == [], terms
+        assert ids(s.ok(q('"quokkafacts"'))) == [built["record"]]
 
 
 def test_snippets_arrive_inert_no_content_closes_the_fence_and_credentials_stay_out(built, tmp_path):
@@ -827,7 +825,7 @@ def test_snippets_arrive_inert_no_content_closes_the_fence_and_credentials_stay_
     with served(p.root) as s:
         _, _, raw = s.get(q("desrever"))  # the snippet's window holds the escapes and the fence attempt
         data = json.loads(raw)["data"]
-        assert found(s, q(TAIL))["data"]["hits"] == []
+        assert s.ok(q(TAIL))["data"]["hits"] == []
     snippet = data["hits"][0]["snippet"]
     fence = data["fence"]
     body = snippet[len(fence["open"]):-len(fence["close"])]
@@ -868,7 +866,7 @@ def test_no_search_takes_the_control_lock_or_changes_control_state(built, tmp_pa
     control = p.root / ".aew/state/control.yaml"
     before = control.read_bytes()
     with served(p.root) as s, FileLock(p.root / ".aew" / LOCK_REL, timeout=5):
-        assert built["record"] in ids(found(s, q("Quokkafacts")))
+        assert built["record"] in ids(s.ok(q("Quokkafacts")))
         assert s.get(q("Quokkafacts"), head=True)[0] == 200
     assert control.read_bytes() == before
 
@@ -877,7 +875,7 @@ def test_search_never_touches_knowledge(built, tmp_path):
     """Raw history is not admitted Knowledge (the change note's §6): no hit has a Knowledge kind or links there."""
     p = copy_of(built, tmp_path)
     with served(p.root) as s:
-        data = found(s, q("sharedmarker", limit=50))["data"]
+        data = s.ok(q("sharedmarker", limit=50))["data"]
     assert {h["kind"] for h in data["hits"]} <= set(recall.KINDS)
     assert all(h["expand"]["link"] is None or h["expand"]["link"]["kind"] in ("history", "evidence")
                for h in data["hits"])
@@ -903,7 +901,7 @@ def test_the_acceptance_projects_search_variant_serves_the_search(tmp_path):
     with served(Path(record["root"])) as s:
         assert s.ok("/capabilities")["data"]["history_search"]["state"] == "AVAILABLE"
         for _ in range(10):
-            body = found(s, q(record["search_term"], limit=50))
+            body = s.ok(q(record["search_term"], limit=50))
             if body["data"]["coverage"]["complete"]:
                 break
         assert body["data"]["hits"] and body["data"]["coverage"]["complete"]
@@ -922,7 +920,7 @@ def test_a_forged_watermark_count_is_a_coverage_reason_for_the_dashboard_and_the
         conn.execute("UPDATE meta SET value = ? WHERE key = 'count'", (count,))
     before = capture(p)
     with served(p.root) as s:
-        body = found(s, q("Quokkafacts"))
+        body = s.ok(q("Quokkafacts"))
         assert codes(body) == ["SEARCH_SUBSTRATE_UNUSABLE"] and body["data"]["hits"] == []
         assert body["data"]["coverage"]["indexed_through"] is None
         assert capture(p) == before
@@ -934,7 +932,7 @@ def test_a_forged_watermark_count_is_a_coverage_reason_for_the_dashboard_and_the
         for _ in range(20):
             if not p.ok("history", "search", "Quokkafacts")["coverage_incomplete"]:
                 break
-        assert ids(found(s, q("Quokkafacts"))) == [built["record"]]
+        assert ids(s.ok(q("Quokkafacts"))) == [built["record"]]
 
 
 def test_an_unadopted_edit_after_the_snapshot_is_answered_from_the_snapshot(built, tmp_path, monkeypatch):
@@ -956,7 +954,7 @@ def test_an_unadopted_edit_after_the_snapshot_is_answered_from_the_snapshot(buil
 
     monkeypatch.setattr(HistoryCommands, "history_search_committed", edit_first)
     with served(p.root) as s:
-        body = s.ok(q("Quokkafacts"))  # never ``found``: the edit lands inside this request, so a repeat is off
+        body = s.ok(q("Quokkafacts"))  # the edit lands inside this request
         assert edited and ids(body) == [built["record"]] and body["data"]["coverage"]["complete"]
         status, after = s.json(q("Quokkafacts"))  # the next snapshot sees the unadopted edit: off, the template's
         assert (status, after["code"]) == (400, "INVALID_REQUEST")
@@ -982,51 +980,49 @@ def many_evidence_hits(monkeypatch, built, copies: int = 50) -> None:
 
 def test_many_evidence_links_are_memoized_and_stay_within_the_deadline(built, tmp_path, monkeypatch):
     """m3: each archived unit's bundle is read once per request however many of its evidence hits there are (a cheap
-    existence check, no evidence body read), so fifty links cost two bundle reads and the request stays within the
-    deadline plus a small margin."""
+    existence check, no evidence body read), so fifty links cost two bundle reads and every link is checked within
+    the deadline."""
     from aew.engine.archive_ops import Archive
 
     p = copy_of(built, tmp_path)
     many_evidence_hits(monkeypatch, built)
-    bundle, reads = Archive.bundle, []
+    clock, bundle, reads = FakeClock(), Archive.bundle, []
 
     def slow_bundle(self, state, work_id):
         reads.append(work_id)
-        time.sleep(0.1)  # unmemoized, fifty links would take five seconds
+        clock.advance(P.SEARCH_DEADLINE_S / 10)  # unmemoized, every link after the tenth would be null
         return bundle(self, state, work_id)
 
     monkeypatch.setattr(Archive, "bundle", slow_bundle)
-    with served(p.root) as s:
-        s.ok(q("sharedmarker", limit=50))  # warm the server and the substrate
-        reads.clear()
-        clock, body = timed(s, q("sharedmarker", limit=50))
+    with served(p.root, clock) as s:
+        body = s.ok(q("sharedmarker", limit=50))
     hits = body["data"]["hits"]
     assert len(hits) == 50
     assert all((h["expand"]["link"] or {}).get("id") == h["id"] and h["expand"]["link"]["kind"] == "evidence"
                for h in hits), [h["expand"]["link"] for h in hits][:3]
     assert sorted(reads) == sorted({built["investigation"], built["investigation2"]})
-    assert clock.overshoot_s < 1.5, clock
 
 
 def test_evidence_links_after_the_deadline_are_null(built, tmp_path, monkeypatch):
+    """The first unit's bundle read outlives the deadline: the link it was read for stands, and every link after it
+    is null, the other unit's included, whose bundle is never read."""
     from aew.engine.archive_ops import Archive
 
     p = copy_of(built, tmp_path)
     many_evidence_hits(monkeypatch, built)
-    bundle = Archive.bundle
+    clock, bundle, reads = FakeClock(), Archive.bundle, []
 
     def slow_bundle(self, state, work_id):
-        time.sleep(1.0)  # longer than the deadline: the first unit's read outlives it
+        reads.append(work_id)
+        clock.advance(P.SEARCH_DEADLINE_S)  # the deadline passes during the first unit's read
         return bundle(self, state, work_id)
 
-    with served(p.root) as s:
-        s.ok(q("sharedmarker", limit=50))  # warm, before the slow bundle
-        monkeypatch.setattr(Archive, "bundle", slow_bundle)
-        with deadline(monkeypatch, 0.8):  # room for the engine's search on a busy machine (re-review nit)
-            clock, body = timed(s, q("sharedmarker", limit=50))
+    monkeypatch.setattr(Archive, "bundle", slow_bundle)
+    with served(p.root, clock) as s:
+        body = s.ok(q("sharedmarker", limit=50))
     links = [h["expand"]["link"] for h in body["data"]["hits"]]
-    assert len(links) == 50 and links.count(None) >= 48  # at most the one unit read before the deadline passed
-    assert clock.overshoot_s < 1.0 + 1.5, clock  # the unit read in progress outlives the deadline by its 1 s
+    assert len(links) == 50 and links[0] is not None and links.count(None) == 49, links[:3]
+    assert len(reads) == 1
 
 
 def test_a_cli_search_of_a_forged_count_held_open_elsewhere_reports_and_never_crashes(built, tmp_path):
@@ -1062,11 +1058,11 @@ def test_a_tampered_sibling_record_nulls_the_link_and_no_link_leads_to_a_500(bui
     files[0].write_bytes(files[0].read_bytes() + b"\ntampered\n")
     with served(p.root) as s:
         assert s.get("/evidence/" + impl)[0] == 500  # the route itself is unchanged in this PR
-        body = found(s, q("subtract implemented"))
+        body = s.ok(q("subtract implemented"))
         hit = next(h for h in body["data"]["hits"] if h["id"] == impl)
         assert hit["expand"]["link"] is None
         for term in ("subtract implemented", "Reviewed the diff", "sharedmarker", "Quokkafacts"):
-            for h in found(s, q(term, limit=50))["data"]["hits"]:
+            for h in s.ok(q(term, limit=50))["data"]["hits"]:
                 link = h["expand"]["link"]
                 if link is not None:
                     route = "/evidence/" if link["kind"] == "evidence" else "/history/"

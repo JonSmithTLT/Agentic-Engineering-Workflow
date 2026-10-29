@@ -421,8 +421,9 @@ class DashboardServer:
 
     def __init__(self, engine: Engine, *, authenticator: Authenticator, port: int = 0,
                  validate_with: Contract | None = None, sessions: S.SessionTable | None = None,
-                 static_root: Path | None = None) -> None:
+                 static_root: Path | None = None, clock: Callable[[], float] = time.monotonic) -> None:
         self.engine = engine
+        self.clock = clock  # the history search's deadline clock, for every projector (the tests drive it)
         self.reader = StateReader(engine)
         self.maps = MapsReader(engine.aew_root)  # the maps routes' lock-free reader and its caches (F20.8)
         self.authenticator = authenticator
@@ -788,7 +789,7 @@ class DashboardServer:
                 snapshot, route, matched, query = self._conditional(url, route, matched, query, template_refusal)
             else:
                 snapshot = self.reader.snapshot()
-            projector = P.Projector(snapshot, route=route, maps=self.maps)
+            projector = P.Projector(snapshot, route=route, maps=self.maps, clock=self.clock)
             try:
                 body = (ROUTES.get(route) or CONDITIONAL_HANDLERS[route])(projector, query, matched)
             except CursorError as exc:

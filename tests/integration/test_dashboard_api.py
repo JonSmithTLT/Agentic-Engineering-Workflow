@@ -11,7 +11,9 @@ from __future__ import annotations
 import http.client
 import json
 import logging
+import shutil
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -120,9 +122,29 @@ def world(tmp_path_factory) -> World:
     engine = Engine.discover(p.root)
     w.server = DashboardServer(engine, authenticator=OpenAccess(), validate_with=CONTRACT)
     w.server.start()
+    built = p.rev()
     yield w
     w.server.stop()
     assert_control_invariants(p)
+    assert p.rev() == built, "a test committed to the module's world: give it `own_world`"
+
+
+@pytest.fixture
+def own_world(world: World, tmp_path: Path) -> Iterator[World]:
+    """A copy of the world, with its own server, for a test that commits to it. The module's world stays as built
+    whatever order the tests run in: under ``--dist worksteal`` a worker can run a stolen earlier test after one that
+    committed, and the scope and rollup tests then counted its unit (a Windows CI run, census row 2)."""
+    from conftest import Project
+
+    dst = tmp_path / "repo"
+    shutil.copytree(world.p.root, dst)
+    w = World(Project(dst, token=world.p.token), tmp_path)
+    w.ids = dict(world.ids)
+    w.server = DashboardServer(Engine.discover(dst), authenticator=OpenAccess(), validate_with=CONTRACT)
+    w.server.start()
+    yield w
+    w.server.stop()
+    assert_control_invariants(w.p)
 
 
 def concrete(world: World, route: str) -> str:
@@ -263,7 +285,8 @@ def test_work_filters_select_a_scope_and_archived_work_is_an_explicit_query(worl
     assert [i["id"] for i in tickets] == [world.ids["open"]]
 
 
-def test_work_pages_by_cursor_to_exhaustion_and_the_cursor_dies_with_the_revision(world):
+def test_work_pages_by_cursor_to_exhaustion_and_the_cursor_dies_with_the_revision(own_world):
+    world = own_world  # it commits a unit: never to the module's world
     first = world.ok("/work?limit=2", "WorkListResponse")["data"]
     assert len(first["items"]) == 2 and first["next_cursor"]
     seen = [i["id"] for i in first["items"]]
@@ -375,7 +398,8 @@ def test_an_unreadable_history_index_discloses_no_storage_path(world, monkeypatc
     assert "history.sqlite" in caplog.text and "PermissionError" in caplog.text
 
 
-def test_a_history_cursor_survives_appends_and_never_expires(world):
+def test_a_history_cursor_survives_appends_and_never_expires(own_world):
+    world = own_world  # it commits an investigation: never to the module's world
     first = world.ok("/history?limit=1", "HistoryListResponse")["data"]
     cursor = first["next_cursor"]
     newest_before = first["items"][0]["seq"]

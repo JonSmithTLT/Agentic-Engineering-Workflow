@@ -35,9 +35,10 @@ jobs:
     # (ci.yml, register E44), but from this lane's own history: one process per shard measures a test's serial time,
     # and the gate's xdist workers (with coverage, on Linux) put the suite at 1.4x (Windows) and 2.8x (Linux) of it.
     # The rule since E26 is to grow the count when a shard nears 45 minutes, never the timeout: each shard's estimate
-    # stays at most 40, so a shard 10% over its estimate (the 10-28 deadline shards ran 1.05 to 1.10 times their
-    # 10-25 times) still ends before 45. Static counts (4 Linux, 8 Windows, sized 2026-10-09) ran out on 10-26 and
-    # 10-28. One table for the whole run: every shard of a runner must cut the same partition.
+    # stays at most the rule less a night's measured variance (shard_plan.REFERENCE_TARGET_S, derived there), so a
+    # night that slow still ends it before 45. With no history yet, the runners share what the account's concurrent
+    # jobs leave beside this workflow's other jobs, never more. Static counts (4 Linux, 8 Windows, sized 2026-10-09)
+    # ran out on 10-26 and 10-28. One table for the whole run: every shard of a runner must cut the same partition.
     name: reference shards (tools/ci/shard_plan.py --reference)
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -60,7 +61,7 @@ jobs:
         run: >-
           python tools/ci/shard_plan.py --reference --history reference-history/history.json
           --seed tests/durations.json --durations-out "$RUNNER_TEMP/reference-durations/durations.json"
-          --runner ubuntu-latest:3.11 --runner windows-latest:3.13 --target-minutes 40
+          --runner ubuntu-latest:3.11 --runner windows-latest:3.13
           --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:
@@ -138,8 +139,10 @@ jobs:
         run: >-
           python tools/ci/discovery_ratchet.py reference-reports --event schedule --summary "$GITHUB_STEP_SUMMARY"
       # The reference shards' history, which `reference-plan` sizes the next night from: each shard whose session
-      # passed adds its tests' times (each keeps its last five), so a red night still records its green shards, and a
-      # failed or killed session never moves a duration. It never fails the nightly, and is saved only when written.
+      # passed adds its tests' times (each keeps its last five). A passing shard's durations are valid whatever the
+      # other shards did, so a red night still records its green shards; a failed shard's session never moves a
+      # duration, and a shard the deadline ended writes no report, so it records nothing (`--passed-only`). It never
+      # fails the nightly, and is saved only when written, at the one path the plan restores it from.
       - name: The reference shards' durations history so far
         if: success() || failure()
         continue-on-error: true

@@ -88,11 +88,13 @@ jobs:
           retention-days: 30
       # The shard sizing (register E44): only `main`'s green push runs save the history (the assurance job), so this
       # restores the newest of them. The key itself is never saved; a miss falls back to the committed table and
-      # twice its counts (the nightly restores the history every night, so a quiet week does not evict it).
+      # twice its counts (the nightly restores the history every night, so a quiet week does not evict it). At the
+      # save's path: actions/cache keys an entry by its path too, so a restore anywhere else always misses (until this
+      # restore used it, every run sized from the fallback; test_ci_tools checks every restore against its saves).
       - name: The shard-durations history of main's green push runs (newest)
         uses: actions/cache/restore@v6
         with:
-          path: ${{ runner.temp }}/shard-history/history.json
+          path: shard-history/history.json
           key: shard-durations-restore-only
           restore-keys: shard-durations-
       - name: PyYAML, for the lanes job's deadline as ci.yml sets it (tests/helpers/bounds.py)
@@ -100,7 +102,7 @@ jobs:
       - id: shards
         name: Each lane's shard count, and the durations its shards balance on (tools/ci/shard_plan.py)
         run: >-
-          python tools/ci/shard_plan.py --history "$RUNNER_TEMP/shard-history/history.json"
+          python tools/ci/shard_plan.py --history shard-history/history.json
           --seed tests/durations.json --durations-out "$RUNNER_TEMP/shard-durations/durations.json"
           --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
       # One table for the whole run: every shard of a lane must cut the same partition (assurance proves it ran each

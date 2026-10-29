@@ -2827,15 +2827,18 @@ def test_new_surface_fails_when_the_code_stops_keeping_the_lead_out(monkeypatch)
 
 def test_a_launcher_is_resolved_without_starting_anything():
     """PR 215 fifth review, finding 3: the real spawner (`custody_ops.spawn_worker`) is an honest launcher, resolved by
-    capturing the argv it would start: no process starts, and nothing is written outside a temporary directory."""
-    before = _git(ROOT, "status", "--porcelain", "--ignored", "--untracked-files=all")
+    capturing the argv it would start: no process starts, and nothing is written outside a temporary directory. The
+    status reads leave out ignored files: under xdist another worker's bytecode lands in the shared checkout at any
+    moment (the nightly of 2026-10-17). A file written anywhere git would track still shows, and ``probe-root`` is
+    checked by name."""
+    before = _git(ROOT, "status", "--porcelain", "--untracked-files=all")
     entry = {"launcher": {"code": "aew.engine.custody_ops:spawn_worker"}}
     assert launcher_problem("integrate custody", entry) is None
     with capture_spawns() as captured:
         with pytest.raises(_Captured):
             subprocess.Popen(["aew", "status"])
     assert captured == [["aew", "status"]]
-    assert _git(ROOT, "status", "--porcelain", "--ignored", "--untracked-files=all") == before
+    assert _git(ROOT, "status", "--porcelain", "--untracked-files=all") == before
     assert not (ROOT / "probe-root").exists()
 
 

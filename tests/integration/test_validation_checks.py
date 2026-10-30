@@ -22,7 +22,8 @@ from invariants import assert_control_invariants, load_control
 
 from aew.engine import validation_ops as VO
 from aew.engine.api import Engine
-from aew.errors import GateUnsatisfied
+from aew.errors import ContainmentUnavailable, GateUnsatisfied
+from aew.harness import containment
 from aew.knowledge import evidence as E
 from aew.policy import checks as C
 from aew.util import dump_yaml, load_yaml
@@ -213,6 +214,91 @@ def test_a_diagnostic_run_is_advisory_only(calc, tmp_path):
     assert not [e for e in E.scan(calc.root / ".aew", wid)[0] if e["producer"].get("kind") == "engine"]
     res = calc.aew("integrate", "publish", wid, "--token", calc.token, "--expect-rev", str(calc.rev()))
     assert res.returncode != 0  # advisory results never satisfy validation
+    assert_control_invariants(calc)
+
+
+SELF_TEST_FAILED = "the probe's stand-in failure"
+
+
+def no_check_runs(monkeypatch) -> list:
+    """Stand in for the check runner, recording each check a run starts: nothing is spawned."""
+    started: list = []
+
+    def run(cfg, workspace, **kw):
+        started.append(cfg)
+        return {"outcome": "ran", "exit_code": 0, "duration_s": 0.0, "log": "", "command": ["stand-in"],
+                "spawn_errno": None}
+
+    monkeypatch.setattr(VO.C, "run", run)
+    return started
+
+
+def test_a_run_aew_cannot_contain_is_refused_under_required_whatever_its_flags(calc, tmp_path, monkeypatch):
+    """DV-1: under ``required``, a diagnostic run whose sandbox cannot be established is refused as an authoritative
+    one is, with the same infrastructure code and detail: no check starts, and nothing is left running."""
+    policy(calc, checks=SMOKE)
+    wid = prepared(calc, tmp_path)
+    started = no_check_runs(monkeypatch)
+    monkeypatch.setattr(containment, "supported", lambda: True)  # the policy's mode resolves to required here
+
+    def establish(self, *, workspace, run_dir):  # what containment.establish raises under required
+        raise ContainmentUnavailable(f"containment self-test failed: {SELF_TEST_FAILED}",
+                                     self_test={"ok": False, "reason": SELF_TEST_FAILED})
+
+    monkeypatch.setattr(VO.Validation, "establish", establish)
+    assert engine(calc)._validation.containment_available()
+    out = validate(calc, wid, diagnostic=True)
+    assert out["diagnostic"] and not out["ok"] and out["unavailable"] == "CONTAINMENT_SELF_TEST_FAILED", out
+    diagnostic = integ(calc, wid)["diagnostic_run"]
+    assert diagnostic["state"] == "unavailable" and integ(calc, wid)["status"] == "prepared"
+    out = validate(calc, wid)
+    assert out["unavailable"] and out["code"] == "CONTAINMENT_SELF_TEST_FAILED", out
+    authoritative = integ(calc, wid)["current_validation_run"]
+    assert (diagnostic["reason"], diagnostic["detail"]) == (authoritative["reason"], authoritative["detail"])
+    assert diagnostic["detail"] == f"containment self-test failed: {SELF_TEST_FAILED}"
+    assert started == []
+    for run in (diagnostic, authoritative):
+        assert not list((calc.root / ".aew" / VO.STAGING / run["id"]).glob("*.json"))  # nothing staged
+    # A diagnostic run is never a breaker event (PR #91 re-review, finding 2); the authoritative one is.
+    assert [f["run"] for f in control(calc)["queue"]["validation_breaker"]["failures"]] == [authoritative["id"]]
+    assert_control_invariants(calc)
+
+
+@pytest.mark.parametrize("diagnostic", [False, True], ids=["authoritative", "diagnostic"])
+def test_under_required_a_host_that_cannot_contain_pins_no_run_whatever_its_flags(calc, tmp_path, monkeypatch,
+                                                                                   diagnostic):
+    """DV-1: where the policy requires containment and the host has none (``required`` off Linux), either kind of run
+    is refused before anything is pinned, and the refusal does not point at a diagnostic run the same rule refuses."""
+    policy(calc, checks=SMOKE)
+    wid = prepared(calc, tmp_path)
+    monkeypatch.setattr(containment, "supported", lambda: False)
+    monkeypatch.setattr(containment, "mode", lambda policy: containment.REQUIRED)  # as off Linux under required
+    rev, before = calc.rev(), entry(calc, wid)
+    with pytest.raises(VO.ValidationContainmentUnavailable) as refused:
+        validate(calc, wid, diagnostic=diagnostic)
+    assert "containment.mode: required" in refused.value.message, refused.value.message
+    assert "--diagnostic" not in refused.value.message, refused.value.message
+    assert calc.rev() == rev and entry(calc, wid) == before
+    assert not {"current_validation_run", "diagnostic_run"} & set(integ(calc, wid))
+
+
+def test_under_allow_weaker_a_diagnostic_run_goes_ahead_labelled_with_the_containment_it_had(calc, tmp_path,
+                                                                                               monkeypatch):
+    """DV-1: where the policy allows weaker runs, a diagnostic run whose sandbox could not be established goes ahead,
+    and its advisory record and the command's result both carry the label it ran under, with why it was weaker."""
+    policy(calc, checks=SMOKE, execution={"containment": {"mode": "allow_weaker"}})
+    wid = prepared(calc, tmp_path)
+    weaker = containment.label(contained=False, reason=f"containment self-test failed: {SELF_TEST_FAILED}")
+    # What containment.establish returns under allow_weaker when the sandbox cannot be established.
+    monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (None, weaker))
+    out = validate(calc, wid, diagnostic=True)
+    assert out["diagnostic"] and out["advisory"][0]["result"] == "pass", out
+    assert out["containment"] == weaker and out["containment"]["filesystem"] == "workdir_separation_only", out
+    assert out["containment"]["weaker_because"] == f"containment self-test failed: {SELF_TEST_FAILED}"
+    run = integ(calc, wid)["diagnostic_run"]
+    assert run["state"] == "advisory" and run["containment"] == weaker
+    record = load_yaml((calc.root / ".aew" / run["record"]["path"]).read_text(encoding="utf-8"))
+    assert record["containment"] == weaker  # the immutable record keeps it
     assert_control_invariants(calc)
 
 
@@ -587,6 +673,36 @@ def test_linux_checks_run_contained_and_a_write_to_the_candidate_is_refused(calc
     assert ev["method"]["containment"] == "os_readonly_roots"
     assert ev["method"]["network"] == "isolated"  # F28 §3.8: a check's default, recorded with its evidence
     assert calc.lead("integrate", "publish", wid)["state"] == "DONE"
+    assert_control_invariants(calc)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
+                    reason="Linux bubblewrap containment")
+def test_linux_a_run_whose_launch_self_test_fails_is_refused_under_required_whatever_its_flags(calc, tmp_path,
+                                                                                                monkeypatch):
+    """DV-1, through the real ``containment.establish`` and its layout: under ``required`` (Linux's default), a launch
+    self-test that fails refuses a diagnostic run as it refuses an authoritative one, and no check starts."""
+    from aew.harness.containment import probe
+
+    policy(calc, checks=SMOKE)
+    wid = prepared(calc, tmp_path)
+    started, tested = no_check_runs(monkeypatch), []
+
+    def self_test(layout, **kw):
+        tested.append(layout)
+        return {"ok": False, "reason": SELF_TEST_FAILED}
+
+    monkeypatch.setattr(probe, "self_test", self_test)
+    assert engine(calc)._validation.containment_available()
+    out = validate(calc, wid, diagnostic=True)
+    assert out["diagnostic"] and out["unavailable"] == "CONTAINMENT_SELF_TEST_FAILED", out
+    diagnostic = integ(calc, wid)["diagnostic_run"]
+    out = validate(calc, wid)
+    assert out["unavailable"] and out["code"] == "CONTAINMENT_SELF_TEST_FAILED", out
+    authoritative = integ(calc, wid)["current_validation_run"]
+    assert diagnostic["state"] == authoritative["state"] == "unavailable"
+    assert diagnostic["detail"] == authoritative["detail"] == f"containment self-test failed: {SELF_TEST_FAILED}"
+    assert len(tested) == 2 and started == []
     assert_control_invariants(calc)
 
 

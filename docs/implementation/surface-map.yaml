@@ -1231,7 +1231,8 @@ commands:
       lands: C5b
       reason: "the custodian's work: the engine spawns a custodian for a prepared candidate. Keep-out at A4"
     owner: pending (A1)
-    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+    refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE,
+               VALIDATION_CONTAINMENT_UNAVAILABLE]
     note: "recovery only, while no custody worker has registered for the candidate"
   - name: integrate custody
     home: internal

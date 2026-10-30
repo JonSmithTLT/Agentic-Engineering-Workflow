@@ -579,6 +579,12 @@ def test_a_killed_supervisor_leaves_a_non_final_sample(rig):
     run_to_end(rig, adapter)
     adapter._meter_stop.set()  # the supervisor is killed: nothing takes a final sample
     adapter._meter_wake.set()
+    meter = adapter._meter_thread
+    assert meter is not None
+    # A poll in flight still writes when it returns: it ends here, never inside a later test's patch of write_live
+    # (an unjoined meter's late sample there is the census's `2 == 1`). The adapter's own bound for its meter's end.
+    meter.join(A.METER_FINAL_S)
+    assert not meter.is_alive(), "the stopped meter's thread never ended"
     sample = rig.live()
     assert sample["state"] == "live" and sample["prompt_state"] == "posted"
 
@@ -588,10 +594,11 @@ def test_a_killed_supervisor_leaves_a_non_final_sample(rig):
 
 def test_live_seq_strictly_increases(rig, monkeypatch):
     written: list[dict[str, Any]] = []
-    real = runlog.write_live
+    real, live = runlog.write_live, rig.run_dir / runlog.LIVE_FILE
 
     def record(path: Path, sample: dict[str, Any]) -> None:
-        written.append(sample)
+        if Path(path) == live:  # this run's file only: the patch is process-wide, and another run's meter may write
+            written.append(sample)
         real(path, sample)
 
     monkeypatch.setattr(runlog, "write_live", record)

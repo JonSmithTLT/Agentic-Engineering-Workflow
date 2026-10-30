@@ -94,7 +94,6 @@ LOCK_WORKER = HELPERS / "lock_worker.py"
 FAIR_HOLD_S = 0.1
 FAIR_TAKES = 12
 FAIR_MAX_RUN = 2  # one take more than strict alternation: a waiter descheduled for a whole hold before it queued
-FAIR_MAX_WAIT_HOLDS = 3  # a fair wait is one hold plus about two polls; the slack is a slow runner's scheduling
 
 
 def runs_before_last(order: str) -> list[int]:
@@ -112,9 +111,11 @@ def runs_before_last(order: str) -> list[int]:
 def test_two_takers_of_the_lock_alternate_so_a_waiter_gets_it_within_about_one_hold(tmp_path):
     """Liveness (ADR-0001, amendment 2026-10-23): two processes take the lock back to back. A waiter is served within
     about one hold, not after the holder's whole loop: no holder takes it more than twice in a row while the other
-    waits, and no wait reaches a few holds. With more takers the wait grows (the ADR's table). Before the turnstile,
-    polling alone let a releaser re-lock within microseconds, so one racer ran its whole loop while the other waited
-    (the nightly's LockTimeout, 2026-10-23)."""
+    waits, so a wait spans at most two of the other's holds. With more takers the wait grows (the ADR's table).
+    Before the turnstile, polling alone let a releaser re-lock within microseconds, so one racer ran its whole loop
+    while the other waited (the nightly's LockTimeout, 2026-10-23). The order is the property; the waits' seconds are
+    reported, never bounded: a slow runner that deschedules a holder lengthens a wait without any unfairness (a
+    Windows run of 2026-10-25 failed at 0.309 s on a perfectly alternating order)."""
     lock, order, go = tmp_path / "control.lock", tmp_path / "order.txt", tmp_path / "go"
     order.write_text("", encoding="utf-8")
     env = dict(os.environ)
@@ -143,9 +144,8 @@ def test_two_takers_of_the_lock_alternate_so_a_waiter_gets_it_within_about_one_h
     assert sorted(taken) == sorted("AB" * FAIR_TAKES)
     run = max(runs_before_last(taken))
     longest = max(w for ws in waits.values() for w in ws)
-    assert run <= FAIR_MAX_RUN and longest < FAIR_MAX_WAIT_HOLDS * FAIR_HOLD_S, (
-        f"order {taken}: a run of {run} takes while the other waited; the longest wait {longest:.3f} s, "
-        f"{longest / FAIR_HOLD_S:.1f} holds")
+    assert run <= FAIR_MAX_RUN, (f"order {taken}: a run of {run} takes while the other waited; the longest wait "
+                                 f"{longest:.3f} s, {longest / FAIR_HOLD_S:.1f} holds")
 
 
 def test_stale_revision_from_another_process(tmp_path):

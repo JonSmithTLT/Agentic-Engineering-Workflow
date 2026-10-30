@@ -785,12 +785,13 @@ def test_a_request_with_a_body_answered_busy_never_has_its_body_read_as_a_second
     inner = _inner_read(live)
     outer = f"GET / HTTP/1.1\r\nHost: {live.host}\r\nContent-Length: {len(inner)}\r\n\r\n".encode("latin-1")
     slots = live.server._slots  # noqa: SLF001 (the in-flight bound, filled in-process)
-    _wait_for_slots(live, SV.MAX_IN_FLIGHT)
     held = 0
-    while slots.acquire(blocking=False):
-        held += 1
     try:
-        assert held == SV.MAX_IN_FLIGHT
+        # Each slot is waited for, never counted missing: a previous test's handler gives its slot back once its
+        # answer is on the wire, within its send's own timeout (a CI run of 2026-10-24: 15 == 16).
+        for _ in range(SV.MAX_IN_FLIGHT):
+            assert slots.acquire(timeout=SV.SOCKET_TIMEOUT_S), f"a slot stayed held: {held} of {SV.MAX_IN_FLIGHT}"
+            held += 1
         status, headers, raw = _one_answer_then_the_end(live, outer + inner)
     finally:
         for _ in range(held):

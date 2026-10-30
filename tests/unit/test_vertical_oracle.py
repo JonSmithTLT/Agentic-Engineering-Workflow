@@ -189,7 +189,11 @@ TAKERS = (ROOT / "tests" / "acceptance" / "test_vertical_path.py",
 
 def workaround_keys(sources: list[str]) -> set[str]:
     """The step keys passed to ``.workaround(`` in ``sources``: a string literal, or either branch of a conditional.
-    Static: a key passed in a variable, or a call in another module, is not seen."""
+    Static: a key passed in a variable, or a call in another module, is not seen.
+
+    The limit: this proves that a ``.workaround(`` call naming the step exists in the two files, not that the call is
+    reached (a guard around it that never holds passes; review of #306, Q1). The runtime evidence is the vertical
+    lane's ledger, whose fallbacks list each step taken today's way (``answer:plan``, ``answer:publish``)."""
     found: set[str] = set()
     for text in sources:
         for node in ast.walk(ast.parse(text)):

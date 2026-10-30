@@ -11,8 +11,9 @@ outcome (§1) stands as a release requirement. Its path is row V01-01's 13 steps
 each citing its A-32 catalog IDs and the O-01 action, D-01 route or local surface that serves it, with its state
 derived from the code's own registries, never kept by hand. The frozen instrument (its `IDEAL_PATH`, the proposed
 `aew settings set` and `aew preflight`, and the fallbacks for the old surfaces) is retired. Where this page describes
-it, in the ledgers `main` uploaded before the rebuild, and in the vertical-path shifts plan (v15), it stands as history. It runs on pushes to `main` and on
-dispatch only (§5), and its thresholds and mode are unchanged, except the PIN rule (§4).
+it, in the ledgers `main` uploaded before the rebuild, and in the vertical-path shifts plan (v15), it stands as
+history. It runs on pushes to `main` and on dispatch only (§5), and its thresholds and mode are unchanged, except the
+PIN rule (§4).
 
 **Spec v2** carries the amendments the operator approved on 2026-10-11 (Q8: every listed amendment; Q1(e): Windows
 outside the enforced gate; Q3: publish by console approval). §7 lists each one and where it is implemented.

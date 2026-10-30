@@ -37,12 +37,12 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 3 | STG-05 | CS-3b, the network namespace (#257) (merged, `d796a342`) |
 | 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register (PR 1 merged as #272, `af951c92`; PR 2 is next, now that CS-4 has merged) |
 | 5 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
-| 6 | STG-05, STG-03 | CS-4, the Lead contained (merged as #283, `da547f9a`), with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, merged as #282, `61310fb3`; G3-D, the CLI client, merged as #286, `21ea8674`; G3-C next, once the designer's G3 addendum on G3-12 is in, which its brief needs first) |
+| 6 | STG-05, STG-03, E112 | CS-4, the Lead contained (merged as #283, `da547f9a`), with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, merged as #282, `61310fb3`; G3-D, the CLI client, merged as #286, `21ea8674`; G3-C after E112, G3 addendum 7's ruling 1, which merges before G3-C starts) |
 | 7 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
 | 8 | STG-13 | V-01's oracle rebuilt |
 | 9 | STG-14 | I-6, the resource, model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established: CS-4 has merged (#283), and G3 is still established on no host (map v1.20, design workspace `0717159`) |
 
-**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today, then I-6 (STG-14, item 9). On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace). **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
+**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today, then I-6 (STG-14, item 9). On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it was building ahead of H-1, beside CS-4, as the operator's decision of 2026-10-23 placed it (design workspace). **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
 
 **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 
@@ -100,7 +100,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 **Source (governing):** A-37 (G3 revision 7.1); the register rebaseline (design workspace, `b598fdc`)
 
-**Belongs to or gated by:** **Stage.** STG-03; built beside STG-05's CS-4, which merged as #283 (`da547f9a`). G3-C, the owners' side, is next, after the designer's G3 addendum on G3-12
+**Belongs to or gated by:** **Stage.** STG-03; built beside STG-05's CS-4; G3-C, the owners' side, waits for E112, G3 addendum 7's ruling 1
 
 **Notes:** One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23).
 
@@ -1153,7 +1153,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E108
 
-**Work:** The independent outage reader (A-45): `aew read <route>`, the operator's own command, run outside AEW's sandbox, answers D-01 0.3.4's twenty reads from the store with no service running: twelve served and eight `unsupported`, each saying where its fact is read instead. Every stamp is `historical` or `stale`, never current; an empty list reads "none committed as of" the read's time, never "none pending"; and it has no effect: it admits, queues and resumes nothing. It is a declared non-writer: it takes no lock, runs no recovery and writes nothing. Its pull request carries its surface-map entry
+**Work:** The independent outage reader (A-45): `aew read <route>`, the operator's own command, run outside AEW's sandbox, answers D-01 0.3.4's twenty reads from the store with no service running: twelve served and eight `unsupported`, each saying where its fact is read instead. No stamp is `present_current` or `qualified` (`O02-05`); an empty list reads "none committed as of" the read's time, never "none pending"; and it has no effect: it admits, queues and resumes nothing. It is a declared non-writer: it takes no lock, runs no recovery and writes nothing. Its pull request carries its surface-map entry
 
 **Source:** A-45, O-02 revision 2.1 (adopted by the operator on 2026-10-28, design workspace `4f20c7d`; Q1 to Q3 confirmed, `2c538f6`; tag `STG-21-o02-r2.1`): `O02-00` to `O02-10`, the non-writer's `O02-01.a` and `O02-01.b` among them, and its gate, `O02-Q01` to `O02-Q08`; the ids as D1 indexes them (design workspace `3c68d57`)
 
@@ -1165,7 +1165,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E109
 
-**Work:** Blocked-on-you's slice S7 (A-44): a probe of OpenCode 2.0.18, with no product code, of what AEW can observe of the Lead's TUI: whether AEW can attach to the TUI's own server, whether a session reads as active while a permission ask is pending, and whether forms persist. Its data is what A-44's Q9 and Q10 are asked with
+**Work:** Blocked-on-you's slice S7 (A-44): a probe of OpenCode 2.0.18, with no product code, of what AEW can observe of the Lead's TUI: whether AEW can attach to the TUI's own server, whether the TUI attaches to a server that requires AEW's per-launch credential, whether a session reads as active while a permission ask is pending, and whether forms persist. Its data is what A-44's Q9 and Q10 are asked with
 
 **Source:** A-44 (design workspace `f2a561d`), its slice S7, for the chat-only and pending-ask cases, which the fallback (S6, E107) shows only as "your turn" until S7 and S8 (`BOY-R08`; the position's Risks)
 
@@ -1186,6 +1186,54 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. A new row with no milestone, because the adopted position leaves its placement to the operator
 
 *Later notes: `notes.d/E110/`, oldest first (`python tools/register.py show E110`).*
+
+### E111
+
+**Work:** The shard sizer's follow-ons from the reviews of #291 (the nightly's three causes) and #292 (the tier job's history path): seventeen points on the shard sizing and the fit pin's inputs, the cache paths and the transition table's order guard. They are #291's M1 to M5 and N1 to N7 and #292's F1 and N1 to N4, each fixed by its review's fix line, which this row's note quotes. #291's N7 is done by #292, apart from #292's N3
+
+**Source:** The review of #291 at `be1ac0b8` (merged as `c71ebc7e`) and the review of #292 at `1bd70090` (merged as `e6b76141`), both of 2026-10-29; #298's review, m3, which gave them this row
+
+**When:** **Unscheduled**, as #298's review (m3) places it. Owners: the hang-and-flake plan's G3a-r2, the job budgets (the sizing, the fit pin and the cache-path points), and G3d1, the global-state guard (the transition table's order)
+
+**Notes:** Filed by the Lead. A row of its own, because E44, the shard sizer's row, is closed (review guide §7), and E75's Work is one wall-clock flake. Both pull requests merged moments after their reviews' CLEAR, so none of these was fixed in them
+
+*Later notes: `notes.d/E111/`, oldest first (`python tools/register.py show E111`).*
+
+### E112
+
+**Work:** G3 addendum 7's ruling 1, a build against STG-05 before G3-C: under `required`, every launch whose containment fails is refused, whatever command or flag started it (`G3-12`). **The general Lead command:** under `required` on Linux, the default, `aew lead session` is refused with `CONTAINMENT_UNAVAILABLE` in its handler, before the credential is read and before any seat moves, and the message names `aew opencode`, the contained Lead, and `containment.mode: allow_weaker`. Under `allow_weaker`, and on Windows, it runs labelled not contained: its label is written to `label.json` in a `lead-<UTC>-<hex>` run directory by the writer `aew opencode` uses, the "runs NOT contained" line is printed, and the context is entered in the register of weaker contexts. `run_session`'s `contained` becomes required, so every caller says how its harness runs. **The register of weaker contexts** (ruling 2's, built here): per host and per operator UID, outside every project and every sandbox's writable binds. A weaker context's owning host process writes its entry before the context's first process starts, and the entry stays live until that process has ended and its tree is reaped clean. Contained launches write nothing, and on Linux a weaker launch whose entry cannot be written is refused. **The launch census:** a static test holds every process start in `src/` and `eval/` to a pinned table, and classifies each outcome (contained, weaker and registered, or not an agent context, with its reason) and each branch where containment fails, which under `required` refuses (DV-2). **DV-5, the census's failure-branch half:** every `ProcessTree(` and `run_session_tree(` construction in `src` takes a containment decision or is allowlisted with its reason, and every `except ContainmentUnavailable` re-raises or refuses under `required`. The `run_session` guard is the backstop, and the handler's early refusal stays, so no seat moves. Eval has no policy: its lanes register as weaker contexts while they run. **DV-4, under `required`, checks spawn only in a layout:** the operator's own `aew check run` runs its checks contained, or refuses naming `allow_weaker`. Under `allow_weaker` and on Windows, it runs labelled weaker and registers. The backstop is a refusal in `policy/checks.py` for any check spawned with no layout under `required`, whatever started it. **In the same pull request:** the labs of Linux CI's Lead-session tests, the live lane and the dogfood set `allow_weaker` for those tests only; the docs follow the ruling; the surface map's `lead session` row gains `CONTAINMENT_UNAVAILABLE`; and the usage error names `aew opencode`. Each rule is checked with a planted failure, as the addendum lists them
+
+**Source:** G3 addendum 7, ruling 1, with ruling 2's register of weaker contexts (the designer, 2026-10-29; design workspace `891f067`, `30-stages/STG-03-G3-trusted-origin/handoff/HANDOFF-G3-ADDENDUM-7-when-an-owner-may-accept-G3.md`), which applies `G3-12` and A-33 and changes no adopted text; the designer's rulings DV-2, DV-4 and DV-5 of 2026-10-29 (design workspace `891f067` and `ae9570d`)
+
+**When:** **Now.** It merges before G3-C starts, because G3-C reads both the refusal and the register (addendum 7). §1's item 6 puts G3-C after it
+
+**Notes:** Filed by the Lead. Ruling 2, the standing by which an owner accepts G3, is G3-C's and goes into its brief, not this row. **One more for the census** (found on 2026-10-30; the designer is told): off Linux, the weaker label that `aew opencode` returns carries no `weaker_because` (`src/aew/harness/opencode/lead.py:203` at `45b247e5`). The follow-on the addendum leaves to the Lead, a headless contained OpenCode Lead, is E113
+
+*Later notes: `notes.d/E112/`, oldest first (`python tools/register.py show E112`).*
+
+### E113
+
+**Work:** A headless contained OpenCode Lead, which would let the live lane exercise containment
+
+**Source:** G3 addendum 7, ruling 1's tests and docs (the designer, 2026-10-29; design workspace `891f067`): "a follow-on for the Lead to place"
+
+**When:** **Unscheduled**, against STG-05, after E112. Owner: the Lead, to place when a headless Lead is needed
+
+**Notes:** Filed by the Lead. Once E112 merges, the live lane's lab sets `allow_weaker` until this is built
+
+*Later notes: `notes.d/E113/`, oldest first (`python tools/register.py show E113`).*
+
+### E114
+
+**Work:** Report an argument-limit refusal at a check's spawn as the refusal it is. It surfaces as `VALIDATION_INTERRUPTED`, because the spawn in `src/aew/policy/checks.py` (`:93` at `45b247e5`) catches only `OSError`, and the refusal, `ContainmentUnavailable` with the reason `bwrap_argument_limit` (`src/aew/harness/containment/layout.py:309` at `45b247e5`), is not one
+
+**Source:** The designer's ruling of 2026-10-29 (design workspace `ae9570d`), which sends it to the register as a public minor: "It still refuses, so it is a reporting defect"
+
+**When:** **Contained.** A public minor, fixed in E112's pull request, whose backstop changes the same spawn in `policy/checks.py`. Owner: E112's builder
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E114/`, oldest first (`python tools/register.py show E114`).*
 
 ### E47
 

@@ -1402,7 +1402,7 @@ sections:
     Source: 'G3 addendum 7, ruling 1''s tests and docs (the designer, 2026-10-29; design workspace `891f067`): "a follow-on
       for the Lead to place"'
     When: '**Unscheduled**, against STG-05, after E112. Owner: the Lead, to place when a headless Lead is needed'
-    Notes: Filed by the Lead. Until it is built, the live lane's lab sets `allow_weaker` (E112)
+    Notes: Filed by the Lead. Once E112 merges, the live lane's lab sets `allow_weaker` until this is built
 
   - '#': E114
     Work: Report an argument-limit refusal at a check's spawn as the refusal it is. It surfaces as `VALIDATION_INTERRUPTED`,

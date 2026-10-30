@@ -1219,7 +1219,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **Unscheduled**, against STG-05, after E112. Owner: the Lead, to place when a headless Lead is needed
 
-**Notes:** Filed by the Lead. Until it is built, the live lane's lab sets `allow_weaker` (E112)
+**Notes:** Filed by the Lead. Once E112 merges, the live lane's lab sets `allow_weaker` until this is built
 
 *Later notes: `notes.d/E113/`, oldest first (`python tools/register.py show E113`).*
 

@@ -42,7 +42,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 8 | STG-13 | V-01's oracle rebuilt |
 | 9 | STG-14 | I-6, the resource, model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established: CS-4 has merged (#283), and G3 is still established on no host (map v1.20, design workspace `0717159`) |
 
-**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today, then I-6 (STG-14, item 9). On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it is building ahead of H-1, beside CS-4 as the operator's decision of 2026-10-23 placed it (design workspace). **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
+**Contention for a slot:** STG-05's slices came first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today, then I-6 (STG-14, item 9). On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it was building ahead of H-1, beside CS-4, as the operator's decision of 2026-10-23 placed it (design workspace). **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
 
 **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 
@@ -1153,7 +1153,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E108
 
-**Work:** The independent outage reader (A-45): `aew read <route>`, the operator's own command, run outside AEW's sandbox, answers D-01 0.3.4's twenty reads from the store with no service running: twelve served and eight `unsupported`, each saying where its fact is read instead. Every stamp is `historical` or `stale`, never current; an empty list reads "none committed as of" the read's time, never "none pending"; and it has no effect: it admits, queues and resumes nothing. It is a declared non-writer: it takes no lock, runs no recovery and writes nothing. Its pull request carries its surface-map entry
+**Work:** The independent outage reader (A-45): `aew read <route>`, the operator's own command, run outside AEW's sandbox, answers D-01 0.3.4's twenty reads from the store with no service running: twelve served and eight `unsupported`, each saying where its fact is read instead. No stamp is `present_current` or `qualified` (`O02-05`); an empty list reads "none committed as of" the read's time, never "none pending"; and it has no effect: it admits, queues and resumes nothing. It is a declared non-writer: it takes no lock, runs no recovery and writes nothing. Its pull request carries its surface-map entry
 
 **Source:** A-45, O-02 revision 2.1 (adopted by the operator on 2026-10-28, design workspace `4f20c7d`; Q1 to Q3 confirmed, `2c538f6`; tag `STG-21-o02-r2.1`): `O02-00` to `O02-10`, the non-writer's `O02-01.a` and `O02-01.b` among them, and its gate, `O02-Q01` to `O02-Q08`; the ids as D1 indexes them (design workspace `3c68d57`)
 
@@ -1165,7 +1165,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E109
 
-**Work:** Blocked-on-you's slice S7 (A-44): a probe of OpenCode 2.0.18, with no product code, of what AEW can observe of the Lead's TUI: whether AEW can attach to the TUI's own server, whether a session reads as active while a permission ask is pending, and whether forms persist. Its data is what A-44's Q9 and Q10 are asked with
+**Work:** Blocked-on-you's slice S7 (A-44): a probe of OpenCode 2.0.18, with no product code, of what AEW can observe of the Lead's TUI: whether AEW can attach to the TUI's own server, whether the TUI attaches to a server that requires AEW's per-launch credential, whether a session reads as active while a permission ask is pending, and whether forms persist. Its data is what A-44's Q9 and Q10 are asked with
 
 **Source:** A-44 (design workspace `f2a561d`), its slice S7, for the chat-only and pending-ask cases, which the fallback (S6, E107) shows only as "your turn" until S7 and S8 (`BOY-R08`; the position's Risks)
 
@@ -1186,6 +1186,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. A new row with no milestone, because the adopted position leaves its placement to the operator
 
 *Later notes: `notes.d/E110/`, oldest first (`python tools/register.py show E110`).*
+
+### E111
+
+**Work:** The shard sizer's follow-ons from the reviews of #291 (the nightly's three causes) and #292 (the tier job's history path): seventeen points on the shard sizing and the fit pin's inputs, the cache paths and the transition table's order guard. They are #291's M1 to M5 and N1 to N7 and #292's F1 and N1 to N4, each fixed by its review's fix line, which this row's note quotes. #291's N7 is done by #292, apart from #292's N3
+
+**Source:** The review of #291 at `be1ac0b8` (merged as `c71ebc7e`) and the review of #292 at `1bd70090` (merged as `e6b76141`), both of 2026-10-29; #298's review, m3, which gave them this row
+
+**When:** **Unscheduled**, as #298's review (m3) places it. Owners: the hang-and-flake plan's G3a-r2, the job budgets (the sizing, the fit pin and the cache-path points), and G3d1, the global-state guard (the transition table's order)
+
+**Notes:** Filed by the Lead. A row of its own, because E44, the shard sizer's row, is closed (review guide §7), and E75's Work is one wall-clock flake. Both pull requests merged moments after their reviews' CLEAR, so none of these was fixed in them
+
+*Later notes: `notes.d/E111/`, oldest first (`python tools/register.py show E111`).*
 
 ### E47
 

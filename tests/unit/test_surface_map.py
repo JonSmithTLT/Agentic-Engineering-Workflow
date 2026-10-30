@@ -28,7 +28,6 @@ import io
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -52,7 +51,7 @@ from aew.surface.context import NORMAL
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "docs" / "implementation" / "surface-map.yaml"
 DOC = ROOT / "docs" / "implementation" / "surface-map.md"
-VERTICAL = ROOT / "tests" / "acceptance" / "test_vertical_path.py"
+VERTICAL = ROOT / "tests" / "helpers" / "vertical" / "oracle.py"
 REPORT_ENV = "AEW_SURFACE_MAP_REPORT"  # a directory: each report check writes surface-map-<check>.json there
 
 ENFORCE, REPORT = "enforce", "report"
@@ -67,7 +66,7 @@ CHECKS: dict[str, str] = {
     "door": ENFORCE,  # a Lead-reachable command names its door; a typed door is proved by its primitive
     "disposition": ENFORCE,  # a Lead-reachable command names its disposition; `typed` only with a proved typed door
     "new_surface": ENFORCE,  # outside the baseline: a decided disposition, honoured by the live code
-    "ideal_path": ENFORCE,  # every ideal-path command is registered, or listed as proposed
+    "ideal_path": ENFORCE,  # every command V-01's path names is registered, and none is listed as proposed
     "codes": ENFORCE,  # every refusal code exists in aew.errors
     "refusal_floor": ENFORCE,  # refusals include the codes the command's own arguments imply
     "owner": REPORT,  # A1: the projection's owner (operator, lead, mechanical) of each Lead lifecycle operation
@@ -207,9 +206,11 @@ def error_codes() -> set[str]:
 
 
 @cache
-def ideal_path() -> dict[str, dict[str, str]]:
-    """The vertical UAT's IDEAL_PATH table, from the module itself (the plan amends it there; nobody copies it)."""
-    spec = importlib.util.spec_from_file_location("g1_vertical_path", VERTICAL)
+def ideal_path() -> dict[str, list[str]]:
+    """The `aew` commands V-01's oracle names on its path, by step, from the module itself (STG-13; nobody copies
+    them): each step's local surfaces. The rest of a step is an O-01 action or a D-01 route, which the oracle checks
+    against their own registries."""
+    spec = importlib.util.spec_from_file_location("g1_vertical_oracle", VERTICAL)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     path = list(sys.path)
@@ -217,7 +218,8 @@ def ideal_path() -> dict[str, dict[str, str]]:
         spec.loader.exec_module(module)
     finally:
         sys.path[:] = path  # its imports may extend sys.path; nothing here outlives the read
-    return {step: dict(row) for step, row in module.IDEAL_PATH.items()}
+    return {s.key: [" ".join(i.command) for i in s.serves if isinstance(i, module.Local) and i.command]
+            for s in module.STEPS}
 
 
 def worker_commands() -> set[str]:
@@ -589,32 +591,19 @@ def check_new_surface(reg: dict[str, Any]) -> list[str]:
 
 
 def check_ideal_path(reg: dict[str, Any]) -> list[str]:
+    """Every command V-01's path names is live and registered: the path names no proposed command (STG-13), so the
+    registry lists none under `proposed`."""
     commands = by_name(reg, "cli")
-    proposed = {p["name"]: p for p in reg.get("proposed") or []}
-    out, named = [], set()
-    for step, row in ideal_path().items():
-        if not row["input"].startswith("aew "):
-            continue  # a chat line to the Lead, not a command
-        argv = shlex.split(row["input"])[1:]
-        leaf = resolve(argv)
-        if row["status"] == "PROPOSED":
-            candidate = next((p for p in proposed if argv[:len(p.split())] == p.split()), None)
-            if candidate is None:
-                out.append(f"ideal path `{step}` ({row['input']}) is PROPOSED but not listed under `proposed`")
-            else:
-                named.add(candidate)
-                if step not in (proposed[candidate].get("ideal_path") or []):
-                    out.append(f"proposed `{candidate}` does not name ideal-path row `{step}`")
-            continue
-        if leaf is None:
-            out.append(f"ideal path `{step}` ({row['input']}) names no live command")
-        elif leaf not in commands:
-            out.append(f"ideal path `{step}` ({row['input']}) names `aew {leaf}`, which is not registered")
-    for name in proposed:
-        if name in live_commands():
-            out.append(f"proposed `aew {name}` exists now: move it to `commands`, and its ideal-path rows to EXISTS")
-        elif name not in named:
-            out.append(f"proposed `aew {name}` is named by no PROPOSED ideal-path row")
+    out = []
+    for step, names in ideal_path().items():
+        for name in names:
+            leaf = resolve(name.split())
+            if leaf is None:
+                out.append(f"ideal path `{step}` (aew {name}) names no live command")
+            elif leaf not in commands:
+                out.append(f"ideal path `{step}` (aew {name}) names `aew {leaf}`, which is not registered")
+    out += [f"proposed `aew {p.get('name')}`: V-01's path names no proposed command (STG-13); remove it"
+            for p in reg.get("proposed") or []]
     return out
 
 
@@ -2013,12 +2002,8 @@ def test_the_walk_and_the_ideal_path_are_the_live_ones():
     assert {"history search", "message thread", "message unseen"} <= set(commands)
     assert {" ".join(sorted(p)) for p in lead_broker.LEAD_REACHABLE} <= {" ".join(sorted(c.split())) for c in commands}
     rows = ideal_path()
-    assert resolve(shlex.split(rows["raise"]["input"])[1:]) == "lead mode raise"
-    assert resolve(shlex.split(rows["open"]["input"])[1:]) == "opencode"
+    assert len(rows) == 13 and rows["init"] == ["init"] and resolve(["init"]) == "init"
     assert worker_commands() == {"whoami", "check run", "submit"}
-    # A tripwire: when slice C2 builds `aew preflight`, move it from `proposed` to `commands` in surface-map.yaml and
-    # drop this line.
-    assert resolve(["preflight"]) is None, "`aew preflight` exists now: move it from `proposed` to `commands`"
 
 
 # Each enforced check fails, naming the item, on the drift it exists to catch.
@@ -2122,10 +2107,9 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
      "new `aew integrate custody` (engine-owned): name its `primitive`"),
     ("new_surface", lambda r: _new(r, "integrate custody", lead_disposition="engine-owned", primitive="none"),
      "`primitive: none` needs its `primitive_reason`"),
-    ("ideal_path", _drop("cli", "opencode"), "names `aew opencode`, which is not registered"),
-    ("ideal_path", lambda r: r.update(proposed=[]), "is PROPOSED but not listed under `proposed`"),
-    ("ideal_path", lambda r: r["proposed"].append({"name": "init", "ideal_path": []}),
-     "proposed `aew init` exists now"),
+    ("ideal_path", _drop("cli", "init"), "names `aew init`, which is not registered"),
+    ("ideal_path", lambda r: r.update(proposed=[{"name": "preflight"}]),
+     "proposed `aew preflight`: V-01's path names no proposed command"),
     ("codes", lambda r: _entry(r, "init")["refusals"].append("SEAT_HELD"), "SEAT_HELD is not a code in aew.errors"),
     ("refusal_floor", lambda r: _entry(r, "plan accept").update(refusals=["USAGE"]),
      "`aew plan accept`: its arguments imply refusals ['PERMISSION_DENIED', 'STALE_AUTHORITY', 'STALE_REVISION']"),
@@ -2797,13 +2781,18 @@ def test_a_home_covers_a_state_selected_use_only_if_it_starts_there(monkeypatch)
 
 
 def test_the_ideal_path_check_reads_the_vertical_module(tmp_path, monkeypatch):
-    """The check reads IDEAL_PATH from the vertical UAT's module: a row added to a copy of the module, with the reader
-    pointed at the copy, is named."""
+    """The check reads V-01's path from the oracle's module: a step added to a copy of the module, with the reader
+    pointed at the copy, is named; so is a command under `proposed`, which the path no longer has."""
+    reg = copy.deepcopy(load())
+    assert check_ideal_path(reg) == []
+    reg["proposed"] = [{"name": "settings set"}]
+    assert check_ideal_path(reg) == ["proposed `aew settings set`: V-01's path names no proposed command (STG-13); "
+                                     "remove it"]
     text = VERTICAL.read_text(encoding="utf-8")
-    anchor = "IDEAL_PATH: dict[str, dict[str, str]] = {\n"
+    anchor = "STEPS: tuple[Step, ...] = (\n"
     assert text.count(anchor) == 1
-    copy_path = tmp_path / "test_vertical_path_copy.py"
-    row = '    "teleport": {"input": "aew work teleport", "status": EXISTS, "ideal": "x"},' + chr(10)
+    copy_path = tmp_path / "oracle_copy.py"
+    row = '    Step(14, "teleport", _s("V1"), ("X01",), (Local("X01", None, ("work", "teleport")),), ()),' + chr(10)
     copy_path.write_text(text.replace(anchor, anchor + row), encoding="utf-8")
     monkeypatch.setattr(_sys_module(), "VERTICAL", copy_path)
     ideal_path.cache_clear()

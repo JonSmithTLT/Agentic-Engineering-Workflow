@@ -15,6 +15,12 @@ ones, or ones whose owner is not stated, are the operator's); two operator count
 endpoint's lifetime and a per-action console challenge on Windows; the Lead's containment label, with per-platform
 minimums that only ratchet up; and Windows outside the enforced gate, its unqualified state leading every verdict and
 summary it prints (the operator, Q1(e)).
+
+The PIN rule is the operator's decision of 2026-10-24 (F1), landed with V-01's oracle (STG-13): every PIN entry is
+recorded with its step and the named action it confirms. One that confirms a named action, within the scenario's
+budget (one per G3-protected step on its path, ``vertical.oracle.pin_budget``), is an approval, listed apart from the
+decisions; one that confirms no named action, or goes over the budget, is counted. "Authenticate at most once" counts
+AEW's own sign-ins (the startup unlock, the website login). The ledger also records each step's derived state.
 """
 
 from __future__ import annotations
@@ -60,8 +66,9 @@ HARD_LIMITS = ("semantic_conflict", "evidence_mismatch", "publish_needs_decision
 PUBLISH_CONSOLE_ATTRIBUTION = False
 
 # Containment (spec v2): every run's label and the Lead's, each at or above its platform's minimum. The order runs from
-# weakest to strongest; `None` is no label recorded (today's Lead, uncontained on every platform). The minimums only
-# ratchet up: `tests/unit/test_vertical_ledger.py` pins every earlier value and fails if one is ever lowered.
+# weakest to strongest; `None` is no label recorded. Since CS-4 (#283) the Lead's session records its label on both
+# platforms, and the Lead's minimums are still `None` until the operator raises them. The minimums only ratchet up:
+# `tests/unit/test_vertical_ledger.py` pins every earlier value and fails if one is ever lowered.
 LABEL_ORDER: tuple[str | None, ...] = (None, "workdir_separation_only", "os_readonly_roots")
 WORKERS, LEAD = "workers", "lead"
 CONTAINMENT_MINIMUM: dict[str, dict[str, str | None]] = {
@@ -117,13 +124,13 @@ def _starts(words: tuple[str, ...], prefixes: tuple[tuple[str, ...], ...]) -> bo
 
 def enforce_blockers(*, lead_label_wired: bool) -> list[str]:
     """Why ``VERTICAL_MODE`` may not be ``enforce`` yet (vertical-uat.md §5; review of #213, F1): the gate cannot be
-    enforced while the Lead is uncontained on an enforced platform, which today it is everywhere. Each enforced
-    platform needs a Lead minimum above "no label", and the test must read the Lead's label from the product
-    (``scripted_operator.lead_label``), not the hard-coded ``None`` it returns today."""
-    out = [f"{p}: the Lead's containment minimum is no label (the Lead is uncontained)"
+    enforced while an enforced platform's Lead minimum is no label, which holds no Lead to any containment. Each
+    enforced platform needs a Lead minimum above "no label" (the operator's to raise), and the test must read the
+    Lead's label from the product (``scripted_operator.lead_label``), never assume one."""
+    out = [f"{p}: the Lead's containment minimum is no label (it holds the Lead to nothing)"
            for p in ENFORCED_PLATFORMS if CONTAINMENT_MINIMUM[p][LEAD] is None]
     if not lead_label_wired:
-        out.append("the Lead's label is not read from the product (scripted_operator.lead_label returns None)")
+        out.append("the Lead's label is not read from the product (scripted_operator.lead_label)")
     return out
 
 
@@ -240,12 +247,16 @@ def owner_of(decision: dict[str, Any]) -> str:
 
 
 class Ledger:
-    def __init__(self, scenario: str, *, steering: bool = False, platform: str | None = None) -> None:
+    def __init__(self, scenario: str, *, steering: bool = False, platform: str | None = None,
+                 pin_budget: int = 0) -> None:
         self.scenario = scenario
         self.steering = steering
         self.platform = platform or ("win32" if sys.platform == "win32" else "linux")
+        self.pin_budget = pin_budget  # one per G3-protected step on the scenario's path (vertical.oracle.pin_budget)
         self.entries: list[dict[str, Any]] = []
-        self.pins: dict[str, int] = {}  # PIN entries per endpoint lifetime
+        self.approvals: list[dict[str, Any]] = []  # PINs that confirmed a named action within the budget
+        self.sign_ins: list[dict[str, Any]] = []  # AEW's own sign-ins (the startup unlock, the website login)
+        self.steps: list[dict[str, Any]] = []  # each step of the path with its derived state (vertical.oracle)
         self.decisions: list[dict[str, Any]] = []
         self.hard_limits: dict[str, dict[str, Any]] = {}
         self.observations: list[dict[str, Any]] = []
@@ -278,25 +289,40 @@ class Ledger:
 
     # ------------------------------------------------------------------ classification
 
-    def pin_entered(self, endpoint: str, *, step: str) -> None:
-        """The operator typed the PIN into the console of ``endpoint`` (one endpoint lifetime: one project, one login
-        session). "Authenticate at most once": the first entry in that lifetime is allowed and recorded; every further
-        one is counted (``pin_reentries``). Never under ``credentials``: the PIN is the operator's own secret, not an
-        AEW credential (spec v2). The auto-opened console itself is not a step and is never counted."""
-        n = self.pins.get(endpoint, 0) + 1
-        self.pins[endpoint] = n
-        if n == 1:
-            self.observe("pin_entered", step=step, endpoint=endpoint, note="the first in this endpoint's lifetime")
+    def pin_entered(self, *, step: str, action: str | None) -> None:
+        """The operator typed the PIN at the confirmer, at ``step``, confirming ``action`` (the operator's decision of
+        2026-10-24, F1). A PIN that confirms a named action, within the scenario's budget, is an approval: listed
+        apart from the decisions, never counted. One that confirms no named action, or goes over the budget, is
+        counted (``pin_reentries``). Never under ``credentials``: the PIN is the operator's own secret, not an AEW
+        credential (spec v2).
+
+        The limit: the budget is checked as a total for the path, not per step. An approval is not matched to an
+        unconsumed G3 action of the path, so two PINs at one step pass while another G3 step took none. No PIN is
+        entered yet (no confirmer exists to observe); the slice that wires the confirmer matches each approval to its
+        step's action (vertical-uat.md §4)."""
+        entry = {"step": step, "action": action}
+        if not action:
+            self.count("pin_reentries", entry, actor="operator", step=step, note="a PIN that confirms no named action")
+        elif len(self.approvals) >= self.pin_budget:
+            self.count("pin_reentries", {**entry, "budget": self.pin_budget}, actor="operator", step=step,
+                       note="a PIN over the scenario's budget")
         else:
-            self.count("pin_reentries", {"endpoint": endpoint, "entry": n}, actor="operator", step=step,
-                       note="the PIN again while the same endpoint lives")
+            self.approvals.append({"seq": self._next(), **entry})
+
+    def sign_in(self, kind: str, *, step: str) -> None:
+        """One of AEW's own sign-ins (``kind``: the startup unlock, the website login). "Authenticate at most once":
+        the first is recorded; every further one is counted (``pin_reentries``)."""
+        self.sign_ins.append({"seq": self._next(), "kind": kind, "step": step})
+        if len(self.sign_ins) > 1:
+            self.count("pin_reentries", {"sign_in": kind, "entry": len(self.sign_ins)}, actor="operator", step=step,
+                       note="a sign-in beyond the once")
 
     def console_challenge(self, operation: str, *, step: str) -> None:
         """A per-action challenge at the operator console (a one-time code typed back at the requesting terminal) that
         stands in for "authenticate once": an operator-principal operation that is not a decision (configure, open).
-        On Windows it is ``windows_console_challenges`` (spec v2). On Linux, where the PIN authenticates once, it is
-        an authentication beyond the once, counted under ``pin_reentries``. A decision confirmed at the console (the
-        steering raise, every Q9 item) is a decision on every platform and never comes here."""
+        On Windows it is ``windows_console_challenges`` (spec v2). On Linux it confirms no named action, so it is
+        counted under ``pin_reentries`` (the PIN rule). A decision confirmed at the console (the steering raise, every
+        Q9 item) is a decision on every platform and never comes here."""
         evidence = {"operation": operation}
         if self.platform == "win32":
             self.count("windows_console_challenges", evidence, actor="operator", step=step)
@@ -406,8 +432,9 @@ class Ledger:
         return {"schema": "aew/vertical-ledger/v2", "scenario": self.scenario, "mode": VERTICAL_MODE,
                 "platform": self.platform, "qualification": self.qualification(), "steering": self.steering,
                 "counts": self.counts(),
-                "thresholds": THRESHOLDS, "decisions": self.decisions, "hard_limits": self.hard_limits,
-                "entries": self.entries, "observations": self.observations}
+                "thresholds": THRESHOLDS, "decisions": self.decisions, "pin_budget": self.pin_budget,
+                "approvals": self.approvals, "sign_ins": self.sign_ins, "steps": self.steps,
+                "hard_limits": self.hard_limits, "entries": self.entries, "observations": self.observations}
 
     def verdict_text(self, problems: list[str]) -> str:
         """A failed verdict as the test prints it: on Windows it leads with the unqualified state and the conditions
@@ -424,7 +451,13 @@ class Ledger:
                   f"mode {VERTICAL_MODE})",
                   "operator: " + "  ".join(f"{k} {c[k]}" for k in OPERATOR_COUNTERS),
                   "lead:     " + "  ".join(f"{k} {c[k]}" for k in LEAD_COUNTERS),
-                  "decisions: " + ("; ".join(decision_line(d) for d in self.decisions) or "none")]
+                  "decisions: " + ("; ".join(decision_line(d) for d in self.decisions) or "none"),
+                  f"approvals (PIN budget {self.pin_budget}): "
+                  + ("; ".join(f"{a['step']} {a['action']}" for a in self.approvals) or "none")]
+        if self.steps:  # each step of the path, as far as the code has built it (vertical.oracle)
+            lines.append("steps: " + "; ".join(
+                f"{s['step']} {s['state']}" + (f" [{', '.join(s['held_by'])}]" if s.get("held_by") else "")
+                for s in self.steps)[:400])
         if others:
             lines.append("not the operator's: " + "; ".join(f"{o.get('decision')} [owner {o.get('owner')}]"
                                                              for o in others))

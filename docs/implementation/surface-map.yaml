@@ -69,15 +69,9 @@ refusal_status:
   inventory: partial
   structured: pending (A2)
 
-# Commands the vertical UAT's ideal path names that do not exist yet (its PROPOSED rows). When one is built it moves
-# to `commands`, and the test fails until it does.
-proposed:
-  - name: settings set
-    ideal_path: [configure, change_model]
-    note: "one operator action that validates and saves a setting (register F46.2, slice B3)"
-  - name: preflight
-    ideal_path: [preflight]
-    note: "readiness before any Ticket, naming the cause and the fix (register F47.4, slice C2)"
+# Commands the vertical UAT's path names that do not exist yet. V-01's oracle (STG-13) names none: its steps cite
+# adopted actions, and the proposed names `settings set` and `preflight` were retired with the frozen path.
+proposed: []
 
 # The A1 slice plan's dispositions (reviewed CLEAR, section 2.1): the typed tools and `resolve` choices planned as
 # homes of still-undecided commands, before they exist. Each still-undecided command carries `planned: {disposition,

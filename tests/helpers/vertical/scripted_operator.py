@@ -1,9 +1,10 @@
 """The scripted operator of the vertical UAT: only what a human types at a fresh terminal, every input and output kept.
 
 The operator knows what the product's documentation tells a user (``docs/guides/quickstart.md``, ``opencode.md``) and
-nothing of AEW's internals. Each step is first attempted the ideal way (the test module's ``IDEAL_PATH``); only when
-that attempt is observed to fail does the operator fall back to today's workaround, and every fallback is recorded
-with its evidence (the ideal input, what it answered, and what was typed instead). So the ledger stops counting
+nothing of AEW's internals. Each step of the path is V-01's oracle's (``vertical.oracle``), its state derived from the
+code. A step that has not landed is taken today's way, and the fallback is recorded with its evidence (the step's
+citation, its derived state and what holds it, and what was typed instead); a step that has landed and that the
+operator has no driver for yet is recorded as ``no_driver``, which fails the verdict. So the ledger stops counting
 ceremony as soon as the product no longer needs it.
 
 **The setup boundary** (docs/implementation/vertical-uat.md): setup is ``aew init`` and the project's first
@@ -40,9 +41,20 @@ from fake_opencode import TUI_SCRIPT, write_launcher
 from aew.harness import runlog
 from aew.util import dump_yaml
 from vertical import lead as _lead  # noqa: F401  (the Lead runs in its TUI; this declares its bounds here too)
-from vertical import workers
+from vertical import oracle, workers
 from vertical.chat import Gone, Mailbox
-from vertical.ledger import CONTAINMENT_MINIMUM, HELD, LEAD, NOT_EXERCISED, NOT_REFUSED, WORKERS, Ledger, at_least
+from vertical.ledger import (
+    CONTAINMENT_MINIMUM,
+    HELD,
+    LABEL_ORDER,
+    LEAD,
+    NOT_EXERCISED,
+    NOT_REFUSED,
+    WORKERS,
+    Ledger,
+    _json_objects,
+    at_least,
+)
 
 # Declared and nested under the vertical lane's --test-timeout (G3 H5): the operator's waits fail first, by name, and
 # record why the Lead was silent (`lead_silent`).
@@ -90,6 +102,7 @@ class Operator:
     on_ask: dict[str, Callable[[dict[str, Any]], None]] = field(default_factory=dict)
     in_setup: bool = True
     closers: list[Callable[[], None]] = field(default_factory=list)  # in-process terminals the test opened
+    steering_console: Any = None  # the operator endpoint's console, once a raise started it (one per run)
     session_id: str = ""  # the current Lead session's per-open id (its records carry it; review of #213, I1)
     chat_errors_at_open: int = 0  # the operator's chat read errors before the current session opened
 
@@ -115,6 +128,20 @@ class Operator:
 
     def fallback(self, step: str, ideal: str, observed: str, instead: str) -> None:
         self.ledger.observe("fallback", step=step, ideal=ideal, observed=observed[-600:], fallback=instead)
+
+    def workaround(self, key: str, instead: str, *, step: str = "") -> None:
+        """Step ``key`` of the oracle's path is about to be taken today's way (``instead``). While the step has not
+        landed that is a fallback, its evidence the step's citation and derived state; once it has landed it is
+        ``no_driver``: the operator still lacks the step's driver, which the verdict names."""
+        found = oracle.state_of(key)
+        cited = "; ".join(f"{p['catalog']} {p.get('action') or p.get('route') or p.get('act')}" for p in found["parts"])
+        if oracle.landed(found["state"]):
+            self.ledger.observe("no_driver", step=step or key, oracle_step=found["step"], state=found["state"],
+                                instead=instead)
+            return
+        held = f", held by {', '.join(found['held_by'])}" if found.get("held_by") else ""
+        self.fallback(step or key, f"step {found['step']} ({cited or 'no serving surface'})",
+                      f"{found['state']}{held}", instead)
 
     def export(self, step: str, name: str, value: str) -> None:
         self.shell_env[name] = value
@@ -248,6 +275,12 @@ class Operator:
                 if hook is not None:
                     hook(msg)
                 self.check_heads(f"before answering {label}")
+                # Steps 5 and 7 are G3 approvals through the confirmer; while they have not landed the operator
+                # answers in chat, which is their fallback (review of #306, F1).
+                if label == "plan":
+                    self.workaround("plan", "the plan approved in chat to the Lead", step="answer:plan")
+                elif label == "publish":
+                    self.workaround("publish", "the publish approved in chat to the Lead", step="answer:publish")
                 answer = self.answers.get(label, "yes")
                 self.ledger.decision(str(msg.get("text")), answer, label=label, asked_by="lead",
                                      detail=msg.get("detail"))
@@ -377,17 +410,27 @@ def lead_events(lab: HarnessLab) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-# Whether `lead_label` reads the Lead's label from the product. False while it returns the hard-coded `None`; the slice
-# that records the Lead's label sets it, and `enforce` is refused until it is True (ledger.enforce_blockers; F1).
-LEAD_LABEL_WIRED = False
+# Whether `lead_label` reads the Lead's label from the product; `enforce` is refused until it does
+# (ledger.enforce_blockers; review of #213, F1). It does since CS-4 (#283) records the Lead session's label.
+LEAD_LABEL_WIRED = True
 
 
 def lead_label(lab: HarnessLab) -> str | None:
-    """The Lead session's containment label. Nothing records one today: the Lead is uncontained on every platform, so
-    it is ``None`` (no label). B4 (Linux) and B5 (Windows) give the Lead a label and read it here, raising the Lead's
-    minimum with it (spec v2: the minimums only ratchet up)."""
-    del lab
-    return None
+    """The Lead sessions' containment label, as the product records it (CS-4, #283): each session's ``label.json``
+    beside its ``lead-*`` run directory, and the ``containment`` its ``aew opencode`` answered with when it ended (on
+    every platform). The weakest of them; ``None`` when no session recorded one (none started, or each was killed
+    before it answered)."""
+    labels: list[Any] = []
+    runs = runlog.run_dir(lab.aew_root, "x").parent
+    for f in sorted(runs.glob("lead-*/label.json")) if runs.is_dir() else []:
+        labels.append((json.loads(f.read_text(encoding="utf-8")) or {}).get("filesystem"))
+    for out in sorted(Path(lab.tmp).glob("session-*.out")):
+        for answer in _json_objects(out.read_text(encoding="utf-8", errors="replace"))[0]:
+            if isinstance(answer.get("containment"), dict):
+                labels.append(answer["containment"].get("filesystem"))
+    if not labels:
+        return None
+    return min(labels, key=lambda label: LABEL_ORDER.index(label) if label in LABEL_ORDER else -1)
 
 
 def containment(lab: HarnessLab, ledger: Ledger) -> list[str]:
@@ -407,7 +450,8 @@ def containment(lab: HarnessLab, ledger: Ledger) -> list[str]:
         return []
     ledger.hard_limit("containment", NOT_REFUSED if weaker else HELD, labels=labels, lead=lead, minimum=want,
                       **({"weaker": weaker} if weaker else {}),
-                      **({} if lead else {"lead_note": "no label recorded for the Lead (uncontained today)"}))
+                      **({} if lead else {"lead_note": "no session recorded the Lead's label (none started, or each "
+                                                       "was killed before it answered)"}))
     return weaker
 
 

@@ -7,6 +7,12 @@ asserts. Nothing here is xfailed, skipped or softened; the job is in shadow (``V
 gate, until the operator flips it. Windows is outside the enforced gate (the operator, Q1(e)): its job keeps running
 and reporting, and every verdict it prints leads with its unqualified state and the conditions still open.
 
+The path is V-01's acceptance oracle (``vertical/oracle.py``): row V01-01's 13 steps, each with its state derived from
+the code's own registries and recorded in the ledger, and each scenario's PIN budget derived from its path (STG-13).
+Each step the operator takes (every G3 step among them, `test_vertical_oracle.py` checks) goes through the oracle: while
+it has not landed it is taken today's way and counted as a fallback with its derived state, and once it has landed
+without a driver it is `no_driver`. The Lead's own steps (ask, work, result) are measured by the Lead's counters.
+
 The actors are all scripted and offline: the operator (``vertical/scripted_operator.py``: only what a human types),
 the Lead (``vertical/lead.py``: no AEW knowledge, inside the fake OpenCode TUI that the real ``aew opencode`` starts,
 talking to the real broker over MCP), and the workers (``vertical/workers.py``: the fake harness making a real fix
@@ -17,7 +23,6 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -26,7 +31,7 @@ from typing import Any
 import pytest
 from conftest import git, run_aew
 from notifier import recorder
-from vertical import workers
+from vertical import oracle, workers
 from vertical.chat import Mailbox
 from vertical.ledger import HELD, NOT_EXERCISED, NOT_REFUSED, REBUILT, UNNAMED, V1_DECISIONS, Ledger, diagnoses
 from vertical.scripted_operator import (
@@ -48,56 +53,17 @@ from aew.harness import runlog
 pytestmark = [pytest.mark.acceptance("VUAT"), pytest.mark.autopsy(tmp_path=False)]
 
 OUT_ENV = "AEW_VERTICAL_OUT"  # where the ledgers go (CI uploads them); default: the test's own tmp_path
-EXISTS, PROPOSED = "exists", "PROPOSED"
-
-# The ideal path: what a user would ideally type at each step. Names that do not exist yet are PROPOSED; the plan for
-# the vertical-path shifts amends this table, nobody else. Each step is attempted as written first; a fallback to
-# today's workaround fires only after that attempt is observed to fail, and is recorded with its evidence.
-IDEAL_PATH: dict[str, dict[str, str]] = {
-    "init": {"input": "aew init", "status": EXISTS,
-             "ideal": "initializes the project; confers no authority"},
-    "configure": {"input": 'aew settings set checks.unit.command "python -m pytest -q tests"', "status": PROPOSED,
-                  "ideal": "one command that validates and saves a setting; saving is the adoption"},
-    # Spec v2: opening AEW opens the operator console, which asks for the PIN at most once per endpoint lifetime
-    # (per project, per login session). The auto-opened console is not a counted step. Until B1, the ideal attempt
-    # fails and today's fallback (the credential in AEW_LEAD_TOKEN) is counted as before.
-    "open": {"input": "aew opencode", "status": EXISTS,
-             "ideal": "opens the operator console, which asks for the PIN (at most once per endpoint lifetime), then "
-                      "the Lead session, and runs preflight (PROPOSED behaviour): no credential, no variable, no "
-                      "seat to manage"},
-    "ask": {"input": workers.REQUEST, "status": EXISTS, "ideal": "a chat line to the Lead"},
-    "decide": {"input": "yes", "status": EXISTS,
-               "ideal": "answers only real judgements: the plan, and the publish (unless a grant covers it)"},
-    "exit": {"input": "/exit", "status": EXISTS, "ideal": "ends the Lead session; work in flight is untouched"},
-    "reopen": {"input": "aew opencode", "status": EXISTS,
-               "ideal": "resumes without a takeover or a credential, and says where things stand in words; the "
-                        "console's PIN is asked again only by a new endpoint (PROPOSED behaviour)"},
-    "preflight": {"input": "aew preflight", "status": PROPOSED,
-                  "ideal": "readiness: fails before any Ticket exists, naming the cause and the fix"},
-    "change_model": {"input": "aew settings set execution.roles.implementer.model other/cheaper-model",
-                     "status": PROPOSED,
-                     "ideal": "one operator action that validates and saves; no raw YAML, no adopt, no restart"},
-    "raise": {"input": "aew lead mode raise run", "status": EXISTS,
-              "ideal": "the operator raises the Lead's steering mode at the operator endpoint: a decision, confirmed "
-                       "on the endpoint's console on every platform (never a console challenge)"},
-}
 
 
 # ---------------------------------------------------------------------------------------------- the operator's steps
 
 
-def ideal_argv(step: str) -> list[str]:
-    return shlex.split(IDEAL_PATH[step]["input"])[1:]
-
-
 def configure(op: Operator, *, steering: bool = False, cause: str | None = None) -> None:
-    """Setup: the check command and the harness, the ideal way first. ``cause`` puts a V3 cause into the operator's
-    first configuration; ``steering`` adds what Run needs (a starting mode, a notifier, hard deadlines)."""
-    res = op.type("configure", ideal_argv("configure"))
-    if res.returncode == 0:
-        return
-    instead = "edit .aew/policy/checks.yaml and execution.yaml, aew lead acquire, aew manifest adopt (quickstart)"
-    op.fallback("configure", IDEAL_PATH["configure"]["input"], res.stderr or res.stdout, instead)
+    """Setup's step 2 (configure), today's way while it has not landed: the check command and the harness in the
+    policy files, then an acquire and an adopt (quickstart). ``cause`` puts a V3 cause into the operator's first
+    configuration; ``steering`` adds what Run needs (a starting mode, a notifier, hard deadlines)."""
+    op.workaround("configure", "edit .aew/policy/checks.yaml and execution.yaml, aew lead acquire, aew manifest adopt "
+                               "(quickstart)")
     command = (["{python}", "-c", "open('check-output.txt', 'w').write('x')"] if cause == "check-changes-snapshot"
                else ["{python}", "-c", STAMP_CHECK] if cause == "stamp" else workers.UNIT)
 
@@ -129,29 +95,25 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
 
 
 def open_session(op: Operator, step: str, *, steering: bool = False):
-    """``aew opencode`` (the ``open`` or ``reopen`` row), the ideal way first; today's fallback is the credential in
-    AEW_LEAD_TOKEN (quickstart). The operator's terminal is one shell: a variable exported earlier is still set."""
-    row = "reopen" if step == "reopen" else "open"
-    spec = lead_spec(op.lab, steering=steering)
-    session = op.open_session(step, ideal_argv(row), spec)
-    first = op.first_words(session)
-    console_opened(op, step)
-    if first is not None:
-        return session, first
-    op.fallback(step, IDEAL_PATH[row]["input"], session.output(), "export AEW_LEAD_TOKEN=<credential>; aew opencode")
+    """Step 3 (open), or step 10 (reopen) from the same shell, today's way while it has not landed: the credential in
+    AEW_LEAD_TOKEN, then ``aew opencode`` (quickstart). The operator's terminal is one shell: a variable exported
+    earlier is still set."""
+    op.workaround("reopen" if step == "reopen" else "open", "export AEW_LEAD_TOKEN=<credential>; aew opencode",
+                  step=step)
     if op.shell_env.get("AEW_LEAD_TOKEN") != op.credential:
         op.export(step, "AEW_LEAD_TOKEN", op.credential)
-    session = op.open_session(step, ideal_argv(row), lead_spec(op.lab, steering=steering))
+    session = op.open_session(step, ["opencode"], lead_spec(op.lab, steering=steering))
     first = op.first_words(session)
+    console_opened(op, step)
     assert first is not None, f"the Lead session did not start: {session.output()[-2000:]}"
     return session, first
 
 
 def console_opened(op: Operator, step: str) -> None:
-    """Whether opening AEW opened the operator console (spec v2, the ``open`` row): an endpoint is live for the
-    project that the test did not start in-process. Recorded, never counted: the auto-opened console is not a step.
-    The PIN it asks for is counted by ``Ledger.pin_entered`` (at most once per endpoint lifetime), wired with the
-    console by B1; nothing opens one before B1."""
+    """Whether opening AEW opened the operator console (spec v2): an endpoint is live for the project that the test
+    did not start in-process. Recorded, never counted: the auto-opened console is not a step. A PIN it asks for is
+    recorded by ``Ledger.pin_entered`` with the action it confirms (the PIN rule), once a confirmer exists to observe;
+    nothing opens one today."""
     from aew.harness import operator_client
 
     found = operator_client.status(op.lab.aew_root)
@@ -160,15 +122,20 @@ def console_opened(op: Operator, step: str) -> None:
                       endpoint={k: found.get(k) for k in ("pid", "started_at")} if opened else None)
 
 
-def setup_operator(tmp_path: Path, scenario: str, *, steering: bool = False, **world: Any) -> Operator:
+def setup_operator(tmp_path: Path, scenario: str, *, steering: bool = False, also: tuple[str, ...] = (),
+                   **world: Any) -> Operator:
+    """A fresh world, and the ledger of ``scenario``'s path (its id's V1..V4; V1's for any other): each step's derived
+    state, and the PIN budget the path gives (``also``: V3's open, when its path gets that far)."""
     lab = new_world(tmp_path, **world)
-    ledger = Ledger(scenario, steering=steering)
+    steps = oracle.path(scenario[:2] if scenario[:2] in oracle.INHERITS else "V1", steering=steering, also=also)
+    ledger = Ledger(scenario, steering=steering, pin_budget=oracle.pin_budget(steps))
+    ledger.steps = oracle.derive(steps)
     chat = Mailbox(tmp_path / "sync" / "chat", "operator",
                    on_error=lambda path, exc: ledger.observe("chat_read_error", file=path.name,
                                                              error=f"{type(exc).__name__}: {exc}"[:300]))
     op = Operator(lab, ledger, tmp_path, chat)
     op.allowed_heads.add(git("rev-parse", "main", cwd=lab.root))
-    res = op.type("init", ideal_argv("init"))
+    res = op.type("init", ["init"])  # step 1, served by `aew init`
     assert res.returncode == 0, res.stderr
     return op
 
@@ -215,12 +182,21 @@ def result_problems(op: Operator) -> list[str]:
     return problems
 
 
-def verdict(op: Operator, *, decisions: tuple[str, ...] | None = V1_DECISIONS,
-            limits: tuple[str, ...] = ("publish_needs_decision", "containment")) -> list[str]:
-    problems = [f"{k} = {n} (must be 0)" for k, n in op.ledger.over().items()]
+def path_problems(op: Operator) -> list[str]:
+    """Every fallback the operator took (a step that has not landed, or a refused workaround), and every landed step
+    the operator still has no driver for."""
+    problems = []
     fallbacks = [o.get("step") for o in op.ledger.operator_fallbacks()]
     if fallbacks:  # any operator fallback fails the gate, whatever counter (if any) it touched
         problems.append(f"the operator fell back to today's workaround at: {', '.join(map(str, fallbacks))}")
+    problems += [f"step {o['oracle_step']} ({o['step']}) is {o['state']}, and the operator has no driver for it yet"
+                 for o in op.ledger.observations if o["kind"] == "no_driver"]
+    return problems
+
+
+def verdict(op: Operator, *, decisions: tuple[str, ...] | None = V1_DECISIONS,
+            limits: tuple[str, ...] = ("publish_needs_decision", "containment")) -> list[str]:
+    problems = [f"{k} = {n} (must be 0)" for k, n in op.ledger.over().items()] + path_problems(op)
     labels = tuple(d["label"] for d in op.ledger.decisions)
     if decisions is not None and labels != decisions:
         problems.append(f"operator decisions {list(labels)} (must be exactly {list(decisions)})")
@@ -321,17 +297,23 @@ def run_v1_path(op: Operator, *, steering: bool = False) -> None:
     """Setup, open the Lead session, ask for the fix, answer the Lead until the result, close the session."""
     configure(op, steering=steering)
     op.in_setup = False
-    if steering:
-        raise_steering(op)
     session, _ = open_session(op, "open", steering=steering)
+    if steering:  # a raise names the Lead generation its open established, so it follows the open
+        raise_steering(op)
     op.say("ask", workers.REQUEST)
     op.converse(session)
     finish(op, session)
 
 
-def v1_decisions(op: Operator) -> tuple[str, ...]:
-    """V1's decisions; a steering-on run also has the operator's raise, a decision that is not V1's to count."""
-    return (("steering_mode",) if op.ledger.steering else ()) + V1_DECISIONS
+def v1_decisions(op: Operator, *, reopened: bool = False) -> tuple[str, ...]:
+    """V1's decisions, in the order they are taken. A steering-on run also has the operator's raise after the open,
+    and, when the run reopened, again after the reopen (between the plan and the publish), each a decision that is not
+    V1's to count."""
+    raised = ("steering_mode",) if op.ledger.steering else ()
+    if not reopened:
+        return raised + V1_DECISIONS
+    plan, publish = V1_DECISIONS
+    return (*raised, plan, *raised, publish)
 
 
 @pytest.mark.parametrize("steering", [False, True], ids=["steering-off", "steering-on"])
@@ -526,9 +508,9 @@ def run_v2(op: Operator, gate: Path, *, how: str, steering: bool, fresh: bool) -
     facts: dict[str, Any] = {"how": how, "terminal": "fresh" if fresh else "same shell"}
     configure(op, steering=steering)
     op.in_setup = False
+    session, _ = open_session(op, "open", steering=steering)
     if steering:
         raise_steering(op)
-    session, _ = open_session(op, "open", steering=steering)
     op.say("ask", workers.REQUEST)
     op.converse(session, stop=ready.exists)  # until the implementer announces that it is running
     facts["implementer_running"] = ready.exists()
@@ -539,6 +521,8 @@ def run_v2(op: Operator, gate: Path, *, how: str, steering: bool, fresh: bool) -
     facts["run_after_reopen"] = run_status(op, "R-INV-0001-1")
     facts["state_after_reopen"] = ((run_aew_json(op, "work", "show", "T-0001") or {}).get("control") or {}).get(
         "state")
+    if steering:  # the reopen started a new Lead generation and the raised mode lapsed with the old one (I6-R01)
+        raise_steering(op)
     op.say("reopen:ask", "Where do things stand?")
     gate.write_text("go", encoding="utf-8")  # the implementer finishes only now, after the reopen
     op.converse(session)
@@ -549,16 +533,13 @@ def run_v2(op: Operator, gate: Path, *, how: str, steering: bool, fresh: bool) -
 
 
 def reopen(op: Operator, *, steering: bool):
-    """Open AEW again from a fresh terminal, nothing carried over. The ideal step first (`aew opencode`); then the
-    way opencode.md documents starting the Lead (`aew opencode --acquire`); then the takeover a refusal asks for, at
-    the operator's own terminal, with its new credential handed to the session (quickstart, "Losing the session")."""
+    """Step 10 (reopen) from a fresh terminal, nothing carried over, today's way while it has not landed: the way
+    opencode.md documents starting the Lead (`aew opencode --acquire`); when that is refused, the takeover the refusal
+    asks for, at the operator's own terminal, with its new credential handed to the session (quickstart, "Losing the
+    session")."""
     op.shell_env.clear()
     op.typed("reopen:terminal", "(a new terminal)")
-    session = op.open_session("reopen", ideal_argv("reopen"), lead_spec(op.lab, steering=steering))
-    first = op.first_words(session)
-    if first is not None:
-        return session, first
-    op.fallback("reopen", IDEAL_PATH["reopen"]["input"], session.output(), "aew opencode --acquire (opencode.md)")
+    op.workaround("reopen", "aew opencode --acquire (opencode.md)")
     session = op.open_session("reopen:acquire", ["opencode", "--acquire"], lead_spec(op.lab, steering=steering))
     first = op.first_words(session)
     if first is not None:
@@ -586,7 +567,7 @@ def test_v2_closing_and_reopening_with_work_active_costs_the_operator_nothing(tm
         facts = run_v2(op, gate, how=how, steering=steering, fresh=True)
     finally:
         write_out(op, request)
-    problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op) + v2_problems(facts)
+    problems = verdict(op, decisions=v1_decisions(op, reopened=True)) + result_problems(op) + v2_problems(facts)
     assert_verdict(op, problems)
 
 
@@ -623,7 +604,7 @@ def test_v2_forced_kill_mid_stage_finishes_through_abandon_reconcile_redispatch(
         op.ledger.observe("v2", **facts)
     finally:
         write_out(op, request)
-    problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op)
+    problems = verdict(op, decisions=v1_decisions(op, reopened=True)) + result_problems(op)
     if not facts.get("held_mid_stage"):
         problems.append("the session was not killed mid-stage (the launch hook never held)")
     for step in ("refusal_names_a_step", "reconcile", "redispatch"):
@@ -645,7 +626,7 @@ def test_v2_extra_same_shell_reopen_is_not_v2s_verdict(tmp_path, world, request)
         facts = run_v2(op, gate, how="exit", steering=False, fresh=False)
     finally:
         write_out(op, request)
-    problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op) + v2_problems(facts)
+    problems = verdict(op, decisions=v1_decisions(op, reopened=True)) + result_problems(op) + v2_problems(facts)
     assert_verdict(op, problems)
 
 
@@ -705,7 +686,9 @@ def v2_problems(facts: dict[str, Any]) -> list[str]:
 
 
 # Each case's cause and fix are regular expressions over what readiness says: the specific variable, model id, path or
-# session, and the specific instruction (review of PR #211, F6: a loose word must not pass).
+# session, and the specific instruction (review of PR #211, F6: a loose word must not pass). Readiness is step 11
+# (P03, `/v1/read/capabilities`); until it lands they are measured on doctor's report, which is not V3's verdict, and
+# its driver judges readiness by them (a cause and a fix named, or `accept_as_typed`).
 V3_CASES: dict[str, dict[str, Any]] = {
     # A provider variable the policy names is not set where AEW launches.
     "provider-env-unset": {"cause": r"VUAT_PROVIDER_KEY",
@@ -746,31 +729,21 @@ def v3_setup(op: Operator, case: str) -> None:
 
 @pytest.mark.parametrize("case", sorted(V3_CASES))
 def test_v3_preflight_names_the_cause_and_the_fix_before_any_ticket(tmp_path, world, request, case):
-    op = setup_operator(tmp_path, f"V3-{case}")
+    op = setup_operator(tmp_path, f"V3-{case}", also=("open",) if case == "stale-lead-session" else ())
     world.append(op)
     want = V3_CASES[case]
     problems: list[str] = []
     try:
         v3_setup(op, case)
         op.in_setup = False
-        res = op.type("preflight", ideal_argv("preflight"))
-        said = res.stdout + res.stderr
-        if res.returncode != 0 and "invalid choice: 'preflight'" in said:
-            op.fallback("preflight", IDEAL_PATH["preflight"]["input"], said, "aew doctor (structural health only)")
+        op.workaround("preflight", "aew doctor (structural health only)")
         doctor = op.type("preflight:doctor", ["doctor"])
-        accepted = bool(want.get("accept_as_typed")) and res.returncode == 0
-        op.ledger.observe("v3", case=case, preflight_exit=res.returncode, preflight=said[-1500:],
-                          doctor_exit=doctor.returncode,
-                          doctor_names_cause=diagnoses(doctor.stdout + doctor.stderr, want["cause"]),
-                          operator_input_was_the_harness_id=bool(want.get("accept_as_typed")),
-                          accepted_as_typed=accepted)
-        if not accepted:
-            if res.returncode == 0:
-                problems.append(f"readiness passed with the cause in place: {said[-300:]}")
-            elif not diagnoses(said, want["cause"]):
-                problems.append(f"readiness did not name the cause {want['cause']}: {said[-300:]}")
-            elif not diagnoses(said, want["fix"]):
-                problems.append(f"readiness did not name the fix {want['fix']}: {said[-300:]}")
+        said = doctor.stdout + doctor.stderr
+        op.ledger.observe("v3", case=case, readiness=oracle.state_of("preflight")["state"],
+                          doctor_exit=doctor.returncode, doctor_names_cause=diagnoses(said, want["cause"]),
+                          doctor_names_fix=diagnoses(said, want["fix"]),
+                          operator_input_was_the_harness_id=bool(want.get("accept_as_typed")))
+        problems += path_problems(op)
         launched = launched_anything(op)
         if launched:
             problems.append(f"something was launched before any Ticket: {launched}")
@@ -799,17 +772,14 @@ def test_v4_changing_a_setting_is_one_action_that_validates_and_saves(tmp_path, 
         configure(op)
         op.in_setup = False
         session, _ = open_session(op, "open")
-        res = op.type("change_model", ideal_argv("change_model"))
-        if res.returncode != 0:
-            op.fallback("change_model", IDEAL_PATH["change_model"]["input"], res.stderr or res.stdout,
-                        "edit .aew/policy/execution.yaml; aew manifest adopt")
+        op.workaround("setting", "edit .aew/policy/execution.yaml; aew manifest adopt", step="change_model")
 
-            def route(doc: dict[str, Any]) -> None:
-                doc["profiles"]["cheaper"] = dict(CHEAPER)
-                doc["routing"].setdefault("archetypes", {})["implementer"] = "cheaper"
+        def route(doc: dict[str, Any]) -> None:
+            doc["profiles"]["cheaper"] = dict(CHEAPER)
+            doc["routing"].setdefault("archetypes", {})["implementer"] = "cheaper"
 
-            op.edit_policy("change_model", "execution.yaml", route)
-            op.adopt("change_model:adopt", "the implementer runs on the cheaper model")
+        op.edit_policy("change_model", "execution.yaml", route)
+        op.adopt("change_model:adopt", "the implementer runs on the cheaper model")
         op.say("ask", workers.REQUEST)
         op.converse(session)
         finish(op, session)
@@ -827,19 +797,25 @@ def test_v4_changing_a_setting_is_one_action_that_validates_and_saves(tmp_path, 
 
 
 def raise_steering(op: Operator) -> None:
-    """The operator raises the steering mode to Run at the operator endpoint: a decision, not a lifecycle step. The
-    endpoint runs in its own terminal and `aew lead mode raise run` in another, with the code typed back; both
-    terminals are this process (the in-process channel AT-1 uses on Windows), the endpoint and its code are real."""
+    """Step 13 (raise) today's way while it has not landed on an adopted wire (F5: today's command serves it with no
+    adopted action): the operator raises the steering mode to Run at the operator endpoint, a decision, not a
+    lifecycle step. The endpoint runs in its own terminal and `aew lead mode raise run` in another, with the code typed
+    back; both terminals are this process (the in-process channel AT-1 uses on Windows), the endpoint and its code are
+    real. The endpoint starts with the first raise, and a later raise (after a reopen) uses it again."""
     from notifier import Console
 
     from aew.engine.api import Engine
     from aew.harness import operator_client, operator_endpoint
 
-    console = Console()
-    endpoint = operator_endpoint.OperatorEndpoint(Engine.discover(op.root), console=console, dev=True, timeout=30)
-    endpoint.start()
-    op.closers.append(endpoint.close)
-    op.typed("steering:serve", "aew operator serve --dev")
+    op.workaround("raise", "aew operator serve; aew lead mode raise run, the code typed back")
+    if op.steering_console is None:
+        op.steering_console = Console()
+        endpoint = operator_endpoint.OperatorEndpoint(Engine.discover(op.root), console=op.steering_console, dev=True,
+                                                      timeout=30)
+        endpoint.start()
+        op.closers.append(endpoint.close)
+        op.typed("steering:serve", "aew operator serve --dev")
+    console = op.steering_console
     op.typed("steering:raise", "aew lead mode raise run")
     try:
         out = operator_client.request_raise(op.lab.aew_root, "run", ask=lambda prompt: console.code())

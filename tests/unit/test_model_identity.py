@@ -6,7 +6,6 @@ from __future__ import annotations
 import pytest
 
 from aew.errors import UsageError, ValidationFailed
-from aew.engine.api import _model_refs_doctor
 from aew.harness import models, registry
 from aew.harness.base import HarnessAdapter
 from aew.harness.opencode.adapter import OpenCodeAdapter
@@ -76,11 +75,36 @@ def test_a_model_of_a_routing_provider_is_written_as_the_harness_lists_it():
     ({"model": "/model-a"}, "model_id_malformed"),
     ({"model": "vendor/"}, "model_id_malformed"),
     ({"provider": "vendor", "model": "model a"}, "model_id_malformed"),
+    ({"model": "openai/MODEL_ID"}, "model_id_placeholder"),
+    ({"model": "openai/YOUR_MODEL_ID"}, "model_id_placeholder"),
+    ({"model": "openai/<model>"}, "model_id_placeholder"),
+    ({"model": "openai/<id>suffix"}, "model_id_placeholder"),
+    ({"model": "openai/<id"}, "model_id_placeholder"),
+    ({"model": "openai/id>"}, "model_id_placeholder"),
+    ({"model": "<openai>/model"}, "model_id_placeholder"),
 ])
 def test_a_model_id_that_maps_to_no_pair_is_refused_with_its_reason(profile, reason):
     with pytest.raises(ValidationFailed) as refused:
         pin(policy(standard=profile))
     assert refused.value.details["reason"] == reason and refused.value.details["field"] == "profiles.standard.model"
+    if reason == "model_id_placeholder":
+        assert refused.value.details["value"] == profile["model"]
+        assert "opencode models" in refused.value.message
+        assert "profiles.standard.model" in refused.value.message
+        assert "full provider/model ID" in refused.value.message
+
+
+def test_a_placeholder_in_the_explicit_provider_part_is_refused():
+    with pytest.raises(ValidationFailed) as refused:
+        pin(policy(standard={"provider": "<openai>", "model": "model"}))
+    assert refused.value.details["reason"] == "model_id_placeholder"
+    assert refused.value.details["value"] == "<openai>"
+    assert "profiles.standard.model" in refused.value.message
+
+
+@pytest.mark.parametrize("model", ["openai/model-id", "openai/myMODEL_IDmodel", "openai/myidmodel"])
+def test_legitimate_model_and_id_substrings_are_not_placeholders(model):
+    assert models.from_profile(None, model).harness_ref == model
 
 
 def test_the_leads_model_override_uses_the_same_rule():
@@ -153,11 +177,3 @@ def test_a_providers_own_model_id_that_begins_with_its_name_is_written_in_full()
     OpenCode prints as ``router/router/auto`` is written in full."""
     assert (pin(policy(standard={"provider": "router", "model": "router/auto"}))["model"]) == "auto"
     assert (pin(policy(standard={"model": "router/router/auto"}))["model"]) == "router/auto"
-
-
-@pytest.mark.parametrize("model", ["openai/MODEL_ID", "openai/<id>"])
-def test_doctor_rejects_literal_placeholder_model_references(model):
-    status, detail = _model_refs_doctor(policy(standard={"model": model}))
-    assert status == "FAIL"
-    assert "profiles.standard.model" in detail
-    assert "replace" in detail and "actual harness-listed provider/model reference" in detail

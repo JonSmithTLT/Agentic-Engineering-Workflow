@@ -10,9 +10,10 @@ source (``tests/live/f9a_delivery_probe/``, including its shell scripts):
   the fast tier on every platform. "Absolute path" means what ``HOST_PATHS`` lists: a drive path, a UNC prefix, a
   home or user directory (``/home/``, ``/Users/``, ``/root/``, ``~/``, ``%APPDATA%``, ``%USERPROFILE%``) and a path
   under a POSIX system root (``/tmp/``, ``/var/``, ``/opt/``, ``/srv/``, ``/mnt/``, ``/run/``, ``/etc/``);
-- no word of an account's name, run locally on the commit before pushing and skipped in CI, where the account is the runner's
-  and means nothing. It names no account itself: it asks the operating system for the local account, and reads any
-  other account the probe ran under (the VM's) from ``AEW_EVIDENCE_PRIVATE_WORDS`` in the author's environment.
+- no word of an account's name, run locally on the commit before pushing and skipped in CI, where the account is the
+  runner's and means nothing. It names no account itself: it asks the operating system for the local account, and
+  reads any other account the probe ran under (the VM's) from ``AEW_EVIDENCE_PRIVATE_WORDS`` in the author's
+  environment.
 """
 
 from __future__ import annotations

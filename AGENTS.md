@@ -73,6 +73,9 @@ run checks the merged result (testing strategy §3). If `main` goes red, fixing 
 
 - **The repository is public.** Commit nothing that names a private project, host or person, and no credentials.
   Secret-scan every change before committing it, and the branch's commits before pushing.
+- **A gate reads the commit, and its own exit code decides.** A gate (a secret scan, a test run, a check) runs on the
+  commit or the staged change, never on the working tree alone. Run it on its own, never through a pipe: piped, the
+  last command's exit code is the one that counts, so a failing gate can pass.
 - **Security findings stay private until fixed.** Never describe an unfixed vulnerability in an issue, a pull
   request or a commit message.
 - Test lanes, the CI gate and the rules for adding tests are in

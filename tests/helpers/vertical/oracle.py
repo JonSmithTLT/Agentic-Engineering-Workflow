@@ -270,9 +270,3 @@ def registry_disagreements(steps: Iterable[Step] = STEPS, facts: Facts | None = 
     return [f"step {s.n} ({s.key}): {i.action} is {i.origin} on the path and {facts.registry[i.action]} in the registry"
             for s in steps for i in s.serves
             if isinstance(i, Wire) and i.action in facts.registry and facts.registry[i.action] != i.origin]
-
-
-def summary_line(records: Iterable[dict[str, Any]]) -> str:
-    """The steps on one line: each step's number, key and state, and what holds it."""
-    return "; ".join(f"{r['step']} {r['key']} {r['state']}" + (f" [{', '.join(r['held_by'])}]" if r.get("held_by")
-                                                                else "") for r in records)

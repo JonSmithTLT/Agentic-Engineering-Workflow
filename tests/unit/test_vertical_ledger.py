@@ -108,13 +108,39 @@ def test_the_lead_is_held_to_its_minimum_and_a_weaker_run_label_fails(tmp_path):
         d = runlog.run_dir(aew_root, run)
         d.mkdir(parents=True)
         runlog.write_record(d, {"run": run, "containment": {"filesystem": label}})
+    lab = SimpleNamespace(aew_root=aew_root, tmp=tmp_path)
     led = L.Ledger("unit", platform="linux")
-    assert containment(SimpleNamespace(aew_root=aew_root), led) == ["R-INV-0002-1"]
+    assert containment(lab, led) == ["R-INV-0002-1"]
     found = led.hard_limits["containment"]
     assert found["outcome"] == L.NOT_REFUSED and found["lead"] is None and "lead_note" in found
     win = L.Ledger("unit", platform="win32")
-    assert containment(SimpleNamespace(aew_root=aew_root), win) == []  # both at or above Windows' minimum
+    assert containment(lab, win) == []  # both at or above Windows' minimum
     assert win.hard_limits["containment"]["outcome"] == L.HELD
+
+
+def test_the_leads_label_is_read_from_what_its_sessions_recorded(tmp_path):
+    """Since CS-4 (#283) the product records each Lead session's label: its ``label.json`` beside a ``lead-*`` run,
+    and the ``containment`` that ``aew opencode`` answered with. The weakest is the Lead's; none recorded is no label;
+    a label outside the order is weaker than every minimum."""
+    import json
+    from types import SimpleNamespace
+
+    from vertical import scripted_operator as S
+
+    from aew.harness import runlog
+
+    aew_root = tmp_path / ".aew"
+    lab = SimpleNamespace(aew_root=aew_root, tmp=tmp_path)
+    assert S.lead_label(lab) is None and S.LEAD_LABEL_WIRED is True
+    d = runlog.run_dir(aew_root, "lead-20261030T000000Z-1")
+    d.mkdir(parents=True)
+    (d / "label.json").write_text(json.dumps({"filesystem": "os_readonly_roots"}), encoding="utf-8")
+    assert S.lead_label(lab) == "os_readonly_roots"
+    answer = {"ok": True, "exit": 0, "containment": {"filesystem": "workdir_separation_only"}}
+    (tmp_path / "session-0.out").write_text("starting\n" + json.dumps(answer, indent=2) + "\n", encoding="utf-8")
+    assert S.lead_label(lab) == "workdir_separation_only"  # the weaker session is the Lead's
+    (tmp_path / "session-1.out").write_text(json.dumps({"containment": {"filesystem": "new_kind"}}), encoding="utf-8")
+    assert S.lead_label(lab) == "new_kind" and not L.at_least("new_kind", None)
 
 
 def test_the_vertical_uat_stays_in_shadow_until_the_operator_flips_it():
@@ -157,17 +183,42 @@ def test_the_verdict_on_windows_leads_with_its_state_and_drops_no_problem():
     assert all(p in linux for p in problems)
 
 
-def test_the_pin_counts_once_per_endpoint_lifetime_and_never_as_a_credential():
-    """Authenticate at most once: the first PIN in an endpoint's lifetime is allowed; any further one while it lives
-    is counted. A new endpoint (another project, another login session) is a new lifetime."""
-    led = L.Ledger("unit", platform="linux")
-    led.pin_entered("endpoint-a", step="open")
-    assert led.counts()["pin_reentries"] == 0 and led.counts()["credentials"] == 0
-    led.pin_entered("endpoint-b", step="open")
-    assert led.counts()["pin_reentries"] == 0
-    led.pin_entered("endpoint-a", step="configure")
-    assert led.counts()["pin_reentries"] == 1 and led.over() == {"pin_reentries": 1}
-    assert [o["endpoint"] for o in led.observations if o["kind"] == "pin_entered"] == ["endpoint-a", "endpoint-b"]
+def test_a_pin_that_confirms_a_named_action_within_the_budget_is_an_approval():
+    """The PIN rule (the operator's decision of 2026-10-24, F1): each PIN is recorded with its step and the action it
+    confirms. Within the budget it is an approval, listed apart from the decisions and never counted, nor ever under
+    `credentials`."""
+    led = L.Ledger("unit", platform="linux", pin_budget=3)
+    for step, action in (("open", "ATTACH_LEAD"), ("plan", "DECIDE_WORK_PROPOSAL"), ("publish", "APPROVE_INTEGRATION")):
+        led.pin_entered(step=step, action=action)
+    assert led.over() == {} and led.counts()["credentials"] == 0 and led.decisions == []
+    assert [(a["step"], a["action"]) for a in led.approvals] == [
+        ("open", "ATTACH_LEAD"), ("plan", "DECIDE_WORK_PROPOSAL"), ("publish", "APPROVE_INTEGRATION")]
+    assert led.to_json()["approvals"] == led.approvals and led.to_json()["pin_budget"] == 3
+    assert ("approvals (PIN budget 3): open ATTACH_LEAD; plan DECIDE_WORK_PROPOSAL; publish APPROVE_INTEGRATION"
+            in led.summary())
+
+
+def test_a_pin_that_confirms_no_named_action_or_goes_over_the_budget_fails():
+    led = L.Ledger("unit", platform="linux", pin_budget=1)
+    led.pin_entered(step="open", action=None)  # wrong: confirms nothing
+    assert led.over() == {"pin_reentries": 1} and led.approvals == []
+    led.pin_entered(step="open", action="ATTACH_LEAD")
+    led.pin_entered(step="reopen", action="REATTACH_LEAD")  # over the budget of 1
+    assert led.over() == {"pin_reentries": 2} and [a["action"] for a in led.approvals] == ["ATTACH_LEAD"]
+    assert [e["note"] for e in led.entries] == ["a PIN that confirms no named action",
+                                                "a PIN over the scenario's budget"]
+    none = L.Ledger("unit", platform="linux")  # missing: no budget, so any PIN is over it
+    none.pin_entered(step="open", action="ATTACH_LEAD")
+    assert none.over() == {"pin_reentries": 1}
+
+
+def test_authenticate_at_most_once_counts_aews_own_sign_ins():
+    led = L.Ledger("unit", platform="linux", pin_budget=3)
+    led.sign_in("startup unlock", step="open")
+    assert led.over() == {}
+    led.sign_in("website login", step="result")
+    assert led.over() == {"pin_reentries": 1} and [s["kind"] for s in led.sign_ins] == ["startup unlock",
+                                                                                         "website login"]
 
 
 def test_a_console_challenge_is_counted_on_windows_and_beyond_the_once_on_linux():
@@ -322,7 +373,7 @@ def test_a_limit_the_run_never_reached_is_not_exercised_never_a_safety_regressio
     led = L.Ledger("unit")
     aew_root = tmp_path / ".aew"
     aew_root.mkdir()
-    assert containment(SimpleNamespace(aew_root=aew_root), led) == []
+    assert containment(SimpleNamespace(aew_root=aew_root, tmp=tmp_path), led) == []
     assert led.hard_limits["containment"]["outcome"] == L.NOT_EXERCISED != L.NOT_REFUSED
     assert L.NOT_EXERCISED in L.OUTCOMES
 
@@ -347,18 +398,19 @@ def test_every_operator_fallback_is_listed_and_the_document_says_it_fails_the_ve
 # ---------------------------------------------------------------------------------------------- review of #213
 
 
-def test_enforce_is_refused_while_the_lead_is_uncontained_on_an_enforced_platform():
-    """§5: `VERTICAL_MODE` cannot be `enforce` while the Lead is uncontained on an enforced platform, nor while the
-    test assumes the Lead's label instead of reading it (F1). Today both block it; whenever the mode is `enforce`,
-    nothing may."""
+def test_enforce_is_refused_while_a_lead_minimum_is_no_label_on_an_enforced_platform():
+    """§5: `VERTICAL_MODE` cannot be `enforce` while an enforced platform's Lead minimum is no label, nor while the
+    test assumes the Lead's label instead of reading it (F1). The label is read since CS-4; the Linux minimum, the
+    operator's to raise, still blocks it. Whenever the mode is `enforce`, nothing may."""
     from vertical import scripted_operator
 
     blockers = L.enforce_blockers(lead_label_wired=scripted_operator.LEAD_LABEL_WIRED)
     if L.VERTICAL_MODE == "enforce":
         assert blockers == [], blockers
     else:
-        assert any("linux" in b for b in blockers) and any("lead_label" in b for b in blockers)
-    assert "No `enforce` while the Lead is uncontained." in DOC.read_text(encoding="utf-8")
+        assert any("linux" in b for b in blockers) and not any("lead_label" in b for b in blockers)
+    assert any("lead_label" in b for b in L.enforce_blockers(lead_label_wired=False))
+    assert "No `enforce` while a Lead minimum is no label." in DOC.read_text(encoding="utf-8")
 
 
 def _ticking(lead: _Lead, decisions: list[dict]) -> None:

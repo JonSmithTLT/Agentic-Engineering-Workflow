@@ -174,8 +174,9 @@ the checks by being labelled diagnostic? No, by construction):
   definition, saying what implementation state it observes or repairs, for whom, and why no supported normal workflow
   needs it.
 
-The registry also lists, under `proposed`, the commands the vertical UAT's ideal path (`IDEAL_PATH`) names that do not
-exist yet. When one is built, it moves to `commands`.
+The registry also has a `proposed` list, for commands the vertical UAT's path names that do not exist yet. V-01's
+oracle (`tests/helpers/vertical/oracle.py`, STG-13) names none, because each of its steps cites an adopted action, so
+the list is empty.
 
 **A `resolve` home is proved by its pair** (the A1 slice plan, reviewed CLEAR, §2.1 item 4). `resolve` runs one
 primitive per call, chosen by its `choice`, so its `expands_to` alone would accept it as the home of any of them. A
@@ -315,7 +316,7 @@ That check becomes `enforce` at A4.
 ## The checks
 
 The test (fast lane; `aew` in process, git subprocesses with no window) builds the live parser with every switched
-command registered. The probe runs one surface per test, so xdist spreads it and a failure names its own test. It reads the live tool catalog, the primitive declarations and the vertical UAT's `IDEAL_PATH`, and runs
+command registered. The probe runs one surface per test, so xdist spreads it and a failure names its own test. It reads the live tool catalog, the primitive declarations and V-01's path (`vertical/oracle.py`), and runs
 each check.
 
 - An `enforce` check fails, naming every item it finds.
@@ -337,7 +338,7 @@ each check.
 | `door` | enforce | a Lead-reachable command names no door; a door outside the vocabulary; a typed door not proved (above); a `via` or `partly_via` tool not built on the normal profile, or not running the entry's `primitive`; a primitive that is not the command's; a command `resolve` homes without `via_choices`, or naming a (choice, subject kind) pair that is not in `RESOLVE_CHOICE_PRIMITIVE` or does not run its primitive; `via_choices` on any other command |
 | `disposition` | enforce | a Lead-reachable command names no `lead_disposition`, or one outside the vocabulary; `typed` without a typed door, or a typed door without `typed` |
 | `new_surface` | enforce | an entry outside the baseline breaks the standing rule: Lead-reachable and undecided; mutating with no credential and no mechanism keeping the Lead out (`lead_kept_out_by` with a decided disposition, `OPERATOR_ONLY`, or `internal` with its `launcher`); `typed` without a proved typed door, or still in `LEAD_REACHABLE`; `engine-owned` or `forbidden-to-lead` without its `primitive` (or `none` with a reason), still in `LEAD_REACHABLE`, or run by a typed tool |
-| `ideal_path` | enforce | an existing ideal-path command is not registered; a PROPOSED one is not under `proposed`; a proposed command exists now |
+| `ideal_path` | enforce | a command V-01's path names is not live or not registered; any command is listed under `proposed` |
 | `codes` | enforce | a refusal code is not a code in `aew.errors` |
 | `refusal_floor` | enforce | an entry omits a refusal its own arguments imply |
 | `owner` | report | a Lead lifecycle operation (a Lead-reachable command, a mutating tool) has no owner: until A1 puts `owner` in the projection |
@@ -361,7 +362,7 @@ each check.
 Each enforced check also has a test that feeds it the drift it exists to catch and asserts that it names the item.
 Each check that reads the code also has an **ablation**: the code input loses the property, by monkeypatching the
 live constant or function, and the check must name it. The inputs ablated include the worker bridge's operations,
-`OPERATOR_ONLY`, `LEAD_REACHABLE`, a tool's `expands_to` and `mutates`, the tool catalog, `IDEAL_PATH`, an error
+`OPERATOR_ONLY`, `LEAD_REACHABLE`, a tool's `expands_to` and `mutates`, the tool catalog, V-01's path, an error
 code, the launcher, a guard keyed on the wrong variable, a refusal that is not the session's, and a command that
 stops writing what its `mutates_proof` shows. The pins and the shrink-only lists are ablated too. So no check can
 pass by reading a copy of what it guards, or by passing whatever happens.

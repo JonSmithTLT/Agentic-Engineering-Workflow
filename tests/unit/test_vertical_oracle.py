@@ -124,6 +124,29 @@ def test_the_derivation_stops_when_the_carriers_admission_cannot_be_read(monkeyp
         O.code_facts.cache_clear()
 
 
+def test_a_step_taken_todays_way_is_a_fallback_until_it_lands_and_then_has_no_driver(monkeypatch):
+    """The scripted operator takes a step that has not landed today's way, a fallback whose evidence is the step's
+    citation and derived state; once the step lands, the same workaround is `no_driver`, which fails the verdict."""
+    from vertical import ledger as L
+    from vertical import scripted_operator as S
+
+    op = S.Operator.__new__(S.Operator)
+    op.ledger = L.Ledger("unit")
+    op.workaround("setting", "edit execution.yaml; aew manifest adopt", step="change_model")
+    (fallback,) = op.ledger.operator_fallbacks()
+    assert fallback["step"] == "change_model" and fallback["ideal"] == "step 12 (P14 ADOPT_MANIFEST_EDIT)"
+    assert fallback["observed"] == "not built, held by G3"
+    op.workaround("configure", "edit the policy files")
+    assert op.ledger.operator_fallbacks()[-1]["ideal"] == "step 2 (L10 NO_COMMAND)"
+    landed = _facts(registry={**O.code_facts().registry, "ADOPT_MANIFEST_EDIT": O.code_facts().admitted_origin},
+                    owner_action="ADOPT_MANIFEST_EDIT")
+    monkeypatch.setattr(O, "code_facts", lambda: landed)
+    op.workaround("setting", "edit execution.yaml; aew manifest adopt", step="change_model")
+    assert len(op.ledger.operator_fallbacks()) == 2
+    (missing,) = [o for o in op.ledger.observations if o["kind"] == "no_driver"]
+    assert (missing["oracle_step"], missing["state"]) == (12, O.REACHES_OWNER)
+
+
 def test_each_scenarios_pin_budget_is_derived_from_its_path():
     """The operator's decision of 2026-10-24 (F1), with the matrix's budgets since A-39: V1 3, V2 4, V3 0 or 1 (open,
     if its path gets that far), V4 4, plus 1 for the raise. Derived from the path: these are what the derivation

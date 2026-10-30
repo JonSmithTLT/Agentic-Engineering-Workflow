@@ -6,12 +6,13 @@ when the job is green. This page holds its thresholds; the test module pins the 
 `tests/unit/test_vertical_ledger.py` checks that the two agree, so **changing a threshold means changing this page,
 which needs the operator.** It is an implementation document, not a design.
 
-**Frozen as a baseline** (the designer's ruling of 2026-10-23; the trigger change is the operator's, the same day). Its
-outcome (§1) stands as a release requirement, and the instrument is to be re-derived from the adopted actions, each
-ideal-path step citing the action and the surface that serves it. Until then no change amends `IDEAL_PATH` or the
-fallbacks for the old surfaces (a row that `tests/unit/test_surface_map.py` moves to EXISTS once its proposed command is
-built still moves), it runs on pushes to `main` and on dispatch only (§5), and its thresholds and mode stay as they
-are. The workflow and the test module are retired in the pull request that lands the re-derived one, not before.
+**Re-derived as V-01's acceptance oracle** (STG-13; the designer's ruling of 2026-10-23, V-UAT-3 and V-UAT-5). Its
+outcome (§1) stands as a release requirement. Its path is row V01-01's 13 steps (`tests/helpers/vertical/oracle.py`),
+each citing its A-32 catalog IDs and the O-01 action, D-01 route or local surface that serves it, with its state
+derived from the code's own registries, never kept by hand. The frozen instrument (its `IDEAL_PATH`, the proposed
+`aew settings set` and `aew preflight`, and the fallbacks for the old surfaces) is retired. Where this page describes
+it, and in the ledgers `main` uploaded before the rebuild, it stands as history. It runs on pushes to `main` and on
+dispatch only (§5), and its thresholds and mode are unchanged, except the PIN rule (§4).
 
 **Spec v2** carries the amendments the operator approved on 2026-10-11 (Q8: every listed amendment; Q1(e): Windows
 outside the enforced gate; Q3: publish by console approval). §7 lists each one and where it is implemented.
@@ -38,14 +39,21 @@ attention on rediscovering AEW.
 input and output is recorded. The script knows what the product's documentation tells a user, and nothing of AEW's
 internals.
 
-- **The ideal path** is a named table in the test module (`IDEAL_PATH`): for each step, the command or chat line a
-  user would ideally type. Names that do not exist yet are marked `PROPOSED`. The plan for the vertical-path shifts
-  amends that table; nobody else does.
-- **A fallback fires only after the ideal step was attempted and observed to fail**, never pre-emptively, and every
-  fallback is a ledger entry with its evidence (the ideal input, what it answered, what was typed instead). So the
-  ledger stops counting ceremony as soon as the product no longer needs it. Today's fallbacks are the documented
-  workarounds (`docs/guides/quickstart.md`): acquire, then copy the credential into `AEW_LEAD_TOKEN`; an
-  `--expect-rev` read from `status`; a takeover; an adopt after editing YAML.
+- **The ideal path** is V-01's row V01-01 (`vertical/oracle.py`, `STEPS`). It names no proposed command, and
+  `tests/unit/test_vertical_oracle.py` fails on one. Each step's state is derived:
+  - a wire action from the vendored O-01 registry and the carrier's own admission: not built, registry only,
+    admitted, or reaches an owner;
+  - a D-01 read from the routes the STG-02 server serves;
+  - a local step from its surface (`aew init`; the harness's own exit is outside AEW).
+
+  A step is as far as its weakest part, and names what holds it (G3, I4-06, I4-B7) until it lands. A newly built
+  surface moves its step with no edit to the path. The ledger records each step's state (`steps`).
+- **A fallback fires only for a step that has not landed**, and every fallback is a ledger entry with its evidence:
+  the step's citation, its derived state and what holds it, and what was typed instead. So the ledger stops counting
+  ceremony as soon as the product no longer needs it. Today's fallbacks are the documented workarounds
+  (`docs/guides/quickstart.md`): acquire, then copy the credential into `AEW_LEAD_TOKEN`; an `--expect-rev` read from
+  `status`; a takeover; an adopt after editing YAML. A step that has landed but has no driver in the scripted operator
+  yet is recorded as `no_driver`, and fails the verdict like a fallback.
 - **The setup boundary.** Setup is `aew init` and the project's first configuration (its check command and its
   harness), before the first Lead session opens. A policy file edited by hand in setup is recorded, not counted under
   `raw_yaml`; one edited after setup counts. Everything else in setup (an acquire, a credential, a separate adopt) is
@@ -124,16 +132,15 @@ installed tool: its variables are not the operator's.
   the configured value is not a diagnosis (`failing_entries`, `diagnoses`), for preflight and for the doctor fact the
   ledger records. A refusal in the CLI's JSON shape (`{"ok": false, "error": {code, message, details}}`) is one failing
   entry, its message and details; a JSON answer with `ok: true` never is.
-- **Opening AEW (v2).** The ideal `open` step is `aew opencode`, which opens the operator console (when no endpoint is
-  live for the project) and the console asks for the operator's PIN. **The auto-opened console is not a counted
-  step**: the test records whether it opened (`open.console`). The PIN is counted under "authenticate at most once"
-  (§4, `pin_reentries`). Until the endpoint becomes the operator session, no console opens, the ideal attempt fails,
-  and today's fallback (the credential in `AEW_LEAD_TOKEN`) is counted as before. `configure` opens the console the
-  same way if it runs first. The steering `raise` stays a decision confirmed at the endpoint's console on every
-  platform.
-- **V2's reopen.** The ideal step is `aew opencode` with nothing carried over. When it fails, the operator opens the
-  Lead the way `docs/guides/opencode.md` documents (`aew opencode --acquire`), and when that is refused, takes the
-  seat over at their own terminal and hands the new credential to the session (quickstart, "Losing the session"):
+- **Opening AEW.** The `open` step is L01 and L02 (`ATTACH_LEAD`), through a G3 client and the confirmer, whose PIN
+  approves the attach (§4, the PIN rule). The test records whether a console endpoint came up (`open.console`), never
+  counted. Until the step lands, the operator opens the Lead today's way (the credential in `AEW_LEAD_TOKEN`, then
+  `aew opencode`), counted as a fallback. `configure` (step 2) is A-39's setup act at the console, with no O-01 command
+  and no PIN. The steering `raise` (step 13, `SET_STEERING_MODE`) is a decision on every platform.
+- **V2's reopen.** The step is L03 (`REATTACH_LEAD`), with the reads that say where things stand, from a fresh
+  terminal with nothing carried over. Until it lands, the operator opens the Lead the way `docs/guides/opencode.md`
+  documents (`aew opencode --acquire`), and when that is refused, takes the seat over at their own terminal and hands
+  the new credential to the session (quickstart, "Losing the session"):
   every step counted, and an INTERRUPTED Ticket or a reconcile recorded as evidence. A reopen from the same shell,
   where the first open's exported credential is still set, is an extra measurement (its own test), never V2's
   verdict. A forced variant kills the session while a stage is half done (the fake harness holds the implementer's
@@ -168,7 +175,7 @@ the end and writes its ledger before it asserts.
 | `seat_operations` | acquire, release or reacquire, by hand |
 | `lifecycle_steps` | any operator command or chat line that pushes a lifecycle stage. Approving the plan and the publish are decisions, not steps. |
 | `manifest_adopts` | any separate adopt step |
-| `pin_reentries` | "Authenticate at most once" (v2): the operator's PIN, entered in the operator console, is allowed once per endpoint lifetime (per project, per login session; "session open" is that lifetime). Any further entry while the same endpoint lives is counted, and so is a per-action console challenge on Linux. Never under `credentials`: the PIN is the operator's own secret. |
+| `pin_reentries` | The PIN rule (below): a PIN that confirms no named action, a PIN over the scenario's budget, and each of AEW's own sign-ins (the startup unlock, the website login) beyond the first ("authenticate at most once"); and a per-action console challenge on Linux. Never under `credentials`: the PIN is the operator's own secret. |
 | `windows_console_challenges` | (v2) each per-action challenge at the operator console on Windows (a one-time code typed back) for an operator-principal operation that is not a decision, such as configure or open, standing in for "authenticate once" until Windows qualifies. A decision confirmed at the console (the steering raise, every re-authenticated item) is a decision on every platform, never a challenge. |
 
 **Any operator fallback fails the verdict.** Every fallback the operator took (each a ledger entry with its evidence)
@@ -183,6 +190,20 @@ settle that ownership. **v2:** only operator-owned decisions are the operator's.
 Lead or the mechanism is never put to the operator, and the summary lists it apart ("not the operator's"). Every
 question that does reach the operator is compared, whatever owner it names, so a question cannot leave the
 comparison by its label.
+
+**The PIN rule** (the operator's decision of 2026-10-24 on F1; it replaces v2's "once per endpoint lifetime"):
+- every PIN entry is recorded with its step and the named action it confirms;
+- a G3 PIN that confirms a named action is an **approval**, not a re-entry; a PIN that confirms no named action fails;
+- each scenario has a **PIN budget**: one per G3-protected step on its path, derived from the path, never kept by hand
+  (`oracle.pin_budget`). Since A-39 that is V1 3 (open, plan, publish), V2 4 (V1's, plus reopen), V3 0 or 1 (open, if
+  its path gets that far), V4 4 (V1's, plus the setting), plus 1 for each raise on the path. A PIN over the budget
+  fails;
+- "authenticate at most once" keeps counting AEW's own sign-ins: the startup unlock and the website login;
+- approvals are listed apart from the operator's decisions (`approvals`), so V1's decisions stay exactly `plan` and
+  `publish`.
+
+No confirmer exists to observe yet, so today no PIN is entered and the approvals are empty; each step's fallback is
+counted instead.
 
 **Lead counters (all must be 0):**
 
@@ -217,8 +238,9 @@ after the publish approval.
 
 **Containment minimums (they only ratchet up):** labels run from weakest to strongest: no label (`none`),
 `workdir_separation_only`, `os_readonly_roots` (`LABEL_ORDER`). A minimum may only be raised, with this page and the
-operator; `tests/unit/test_vertical_ledger.py` pins every earlier value and fails if one is lowered. Today's Lead has
-no label on any platform (it is uncontained): B4 raises the Linux Lead's minimum, B5 the Windows one.
+operator; `tests/unit/test_vertical_ledger.py` pins every earlier value and fails if one is lowered. Since CS-4 (#283)
+each Lead session records its label on both platforms, and the test reads it from the product (`lead_label`). The
+Lead's minimums stay `none` until the operator raises them.
 
 | Platform | Actor | Minimum | Since |
 |---|---|---|---|
@@ -245,10 +267,10 @@ no label on any platform (it is uncontained): B4 raises the Linux Lead's minimum
   today). **The enforced gate is Linux only** (v2, the operator's Q1(e)): Windows is UNQUALIFIED and excluded from it,
   its job keeps running and reporting, and its state leads every verdict and summary it prints (the status above).
   `tests/unit/test_ci_tools.py` proves the Windows job stays in the matrix.
-- **No `enforce` while the Lead is uncontained.** `VERTICAL_MODE` cannot be `enforce` while the Lead is uncontained on
-  an enforced platform: each enforced platform's Lead minimum must be above `none`, and the test must read the Lead's
-  label from the product rather than assume none (`enforce_blockers`, which `tests/unit/test_vertical_ledger.py`
-  checks whenever the mode is `enforce`). Today both conditions block it.
+- **No `enforce` while a Lead minimum is no label.** `VERTICAL_MODE` cannot be `enforce` while an enforced platform's
+  Lead minimum is `none`, which holds the Lead to nothing, nor while the test assumes the Lead's label instead of
+  reading it from the product (`enforce_blockers`, which `tests/unit/test_vertical_ledger.py` checks whenever the mode
+  is `enforce`). The test reads the label since CS-4; the Linux minimum, the operator's to raise, still blocks it.
 - **Harness faults are not product results.** The chat between the scripted actors survives a failed read (retried
   within its bound, the message never skipped) and records it (`chat_read_error`, `lead.listener_error`); the
   listener's own records are best-effort, so recording an error never ends it. A Lead session that stays alive and
@@ -284,17 +306,17 @@ Approved by the operator on 2026-10-11 (Q8: every listed amendment). Each thresh
 | The scripted Lead supplies the projection's `judgment_inputs`, where present | §2; `vertical/lead.py` (`judged`) |
 | `decisions_required` counts operator-owned decisions only; until the projection states owners, "owner not stated" and today's behaviour | §2, §4; `vertical/lead.py` (`own_decision`), `vertical/ledger.py` (`owner_of`, `not_the_operators`) |
 | The evidence-mismatch sub-scenario no longer relies on `__pycache__` | **already met** in v1 (the check rewrites the tracked `ledger/build-stamp.txt`) |
-| The `open` row opens the operator console and asks for the PIN; the auto-opened console is not counted; until then the ideal attempt fails and today's fallback is counted | §3; the test module (`IDEAL_PATH`, `console_opened`) |
+| The `open` row opens the operator console and asks for the PIN; the auto-opened console is not counted; until then the ideal attempt fails and today's fallback is counted | retired with the frozen path (STG-13): `open` is step 3 of V-01's path (§3), and `console_opened` still records a console |
 | A live-UAT check of auto-open | §6, the live variant |
-| The PIN under "authenticate at most once": at most 1 per endpoint lifetime, any further entry counted | §4 `pin_reentries`; `Ledger.pin_entered` |
+| The PIN under "authenticate at most once": at most 1 per endpoint lifetime, any further entry counted | replaced by the PIN rule (§4; the operator's decision of 2026-10-24); `Ledger.pin_entered`, `Ledger.sign_in` |
 | A `windows_console_challenges` counter, threshold 0 | §4; `Ledger.console_challenge` |
 | Windows outside the enforced gate, its unqualified state explicit (the operator, Q1(e)) | the status above, §5; `ENFORCED_PLATFORMS`, `windows_lines` |
 | The containment limit includes the Lead's label and only ratchets up | §4; `CONTAINMENT_MINIMUM`, `LABEL_ORDER`, `scripted_operator.containment` |
 | From B1, publish is checked as console-approved and attributed to the operator. This one derives from the operator's Q3 answer (2026-10-11), not from the Q8 list; thresholds are the operator's | §4 `publish_needs_decision`; `PUBLISH_CONSOLE_ATTRIBUTION` (false until B1) |
 
-The PIN, the console challenge and the console attribution have no event to observe until the endpoint becomes the
-operator session: their counters read 0 and the attribution check stays off until then. That slice wires its console
-to `pin_entered`, `console_challenge` and the attribution check, and changes this page if a rule needs to.
+The PIN, the console challenge and the console attribution have no event to observe until a confirmer exists (G3):
+their counters read 0 and the attribution check stays off until then. The slice that builds it wires its confirmer to
+`pin_entered`, `console_challenge` and the attribution check, and changes this page if a rule needs to.
 
 ## 8. The discovery layer, D2: the output and text rules (DX1)
 

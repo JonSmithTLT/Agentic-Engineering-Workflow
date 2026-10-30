@@ -468,13 +468,17 @@ class OpenCodeAdapter(HarnessAdapter):
                 match = None
             if match is not None:
                 variants = [v.get("id") for v in match.get("variants") or []]
+                # Each refusal of the pin, here and the catalog's below, names the way on: a new invocation where the
+                # pin must change, a relaunch where the cause is outside it (ADR-0010; CS-4 addendum 11; #304 m1).
                 if "variant" in ref and ref["variant"] not in variants:
                     raise HarnessIncompatible(
                         f"model {ref['providerID']}/{ref['id']} has no variant {ref['variant']!r} (the pinned effort); "
-                        f"it offers {variants or 'none'}", model=ref)
+                        f"it offers {variants or 'none'}; dispatch a new invocation with --profile or --model, or with "
+                        "another --effort (a relaunch reuses this one's pin, ADR-0010)", model=ref)
                 if match.get("enabled") is False:
-                    raise HarnessIncompatible(f"model {ref['providerID']}/{ref['id']} is disabled in this OpenCode",
-                                              model=ref)
+                    raise HarnessIncompatible(f"model {ref['providerID']}/{ref['id']} is disabled in this OpenCode; "
+                                              "enable it in OpenCode and relaunch, or dispatch a new invocation with "
+                                              "--profile or --model", model=ref)
                 return {"catalog_wait_s": round(now - t0, 3), "catalog_size": len(catalog), "variants": variants}
             if catalog and first_seen is None:
                 first_seen = now
@@ -485,7 +489,9 @@ class OpenCodeAdapter(HarnessAdapter):
                     f"({len(catalog)} models from {providers or 'no provider'} after {now - t0:.0f}s"
                     + ("; it is listed only because AEW names it in the server's configuration, to send it through "
                        "the run's provider relay (F28 §3.5)" if declared else "")
-                    + "); check the execution policy and the provider variables it names", model=ref,
+                    + "); check the execution policy and the provider variables it names; if the pinned model is what "
+                      "is wrong, dispatch a new invocation with --profile or --model (a relaunch reuses this one's "
+                      "pin, ADR-0010); otherwise fix the variable and relaunch", model=ref,
                     # Timing-dependent (the catalog fills in asynchronously): never read as a lasting incompatibility
                     # (M4-E E8a; PR #185 review, F1).
                     launch_cause=CATALOG_TIMEOUT)

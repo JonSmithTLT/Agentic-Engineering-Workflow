@@ -7,6 +7,7 @@ refusal of a write to the read-only store. The sandbox itself is Linux's
 from __future__ import annotations
 
 import errno
+import fnmatch
 import io
 import json
 import os
@@ -517,6 +518,65 @@ def test_the_contained_lead_config_points_each_relayed_provider_at_its_relay_and
 def test_a_contained_line_without_relays_or_egress_says_it_reaches_nothing():
     line = projection.lead_contained_text({"filesystem": "os_readonly_roots", "network": {"mode": "isolated"}})
     assert "The session reaches nothing outside it." in line
+
+
+# ------------------------------------------- addendum 11: a command that asks is requested, and nothing is loosened
+
+def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str:
+    """OpenCode's evaluation for these patterns: the last rule whose action and resource match wins, with `*` as the
+    only wildcard. fnmatch's `[...]` classes and OpenCode's optional trailing ` *` (a bare `aew` matches `aew *`) are
+    not modelled (#304 review, n2)."""
+    out = "ask"
+    for r in rules:
+        if fnmatch.fnmatchcase(action, r["action"]) and fnmatch.fnmatchcase(resource, r["resource"]):
+            out = r["effect"]
+    return out
+
+
+def test_the_lead_rules_are_unchanged_a_command_still_asks_and_an_edit_or_a_subagent_is_denied():
+    """Addendum 11 changes the Lead's text, never its rules. The shell runs `aew` and read-only git; any other
+    command, the tests and a commit among them, asks the operator; an edit and a subagent are denied. Nothing else is
+    allowed or denied, and a contained session's rules are the same."""
+    rules = projection.lead_config()["agents"][projection.LEAD_AGENT]["permissions"]
+    assert projection.lead_config(contained=LABEL)["agents"][projection.LEAD_AGENT]["permissions"] == rules
+    assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "allow"} == {
+        ("read", "*"), ("glob", "*"), ("grep", "*"), ("question", "*"), (f"{projection.LEAD_MCP_SERVER}_*", "*"),
+        ("shell", "aew *"), ("shell", "git status*"), ("shell", "git diff*"), ("shell", "git log*"),
+        ("shell", "git show*")}
+    assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "deny"} == {("edit", "*"), ("subagent", "*")}
+    # The asks are AEW's own, never OpenCode's default for an unmatched action (#304 review, n1).
+    assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "ask"} == {("*", "*"), ("shell", "*")}
+    for command in ("aew status", "git status --short", "git diff HEAD", "git log -1", "git show HEAD"):
+        assert effect(rules, "shell", command) == "allow", command
+    for command in ("python -m pytest -q", "bash scripts/check.sh", "git commit -m wip", "git push", "rm -rf build"):
+        assert effect(rules, "shell", command) == "ask", command
+    assert effect(rules, "edit", "src/aew/cli/main.py") == "deny" and effect(rules, "subagent", "general") == "deny"
+    assert effect(rules, "webfetch", "https://example.com") == "ask"
+
+
+def test_the_lead_text_requests_a_command_that_asks_and_keeps_edits_and_commits_with_invocations():
+    """Addendum 11: two sentences, read together, made the Lead refuse a command its rules ask about ("a permission
+    approval wouldn't override them", the operator's trial of 2026-10-30). The text now says to request such a command
+    and run it once the operator approves, that an approval is not working around a refusal, and that a refusal is a
+    deny rule's or the containment's, never retried another way. Edits and commits stay with invocations.
+
+    The request is the command itself: OpenCode's prompt is the one approval, and a yes typed in chat is not a second
+    gate. The Lead may say in a line what it is about to run, but does not wait for a reply (#304 review, m2)."""
+    system = projection.LEAD_SYSTEM
+    assert "anything else needs the operator" not in system
+    assert ("Any other command asks the operator's permission first: when the operator asks for one, such as running "
+            "the tests or a script, or one is needed to do what they asked, request it by running it: OpenCode asks "
+            "the operator, and it runs once they approve. That prompt is the approval: you may say in a line what you "
+            "are about to run, but do not wait for a reply in chat first. If they decline, do not try it another "
+            "way.") in system
+    assert "You cannot edit files in this session" in system
+    assert "Editing files and committing stay with invocations, whatever the command: dispatch one for them." in system
+    line = projection.lead_contained_text(LABEL)
+    assert "Do not work around a refusal:" not in line
+    assert line.endswith("A refusal is what a deny rule or this containment returns. Do not work around one: tell the "
+                         "operator what you needed and why, so they can do it at their own terminal or widen AEW's "
+                         "containment settings where a setting exists. Running a command the operator approved is not "
+                         "working around anything.")
 
 
 # ----------------------------------------------------------------------- the broker's outcomes for a contained run

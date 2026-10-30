@@ -478,12 +478,17 @@ def test_a_commit_between_the_snapshot_and_the_tail_read_is_a_moved_history(buil
         assert landed and capture(p) == before
 
 
+def rolled_tail() -> bytes:
+    """The tail a seal leaves: it follows a sealed segment the snapshot's root does not know."""
+    return M.render_file(sealed=False, seq=2, start={"count": M.SEGMENT_SIZE, "h": "a" * 64},
+                         prev={"seq": 1, "sha256": "b" * 64}, entries=[]).encode("utf-8")
+
+
 def test_a_rollover_between_the_snapshot_and_the_tail_read_is_a_moved_history(built, tmp_path, monkeypatch):
     """The tail a seal leaves: it follows a sealed segment the snapshot's root does not know."""
     p = copy_of(built, tmp_path)
     before = capture(p)
-    rolled = M.render_file(sealed=False, seq=2, start={"count": M.SEGMENT_SIZE, "h": "a" * 64},
-                           prev={"seq": 1, "sha256": "b" * 64}, entries=[]).encode("utf-8")
+    rolled = rolled_tail()
     with served(p.root) as s:
         monkeypatch.setattr(History, "tail_bytes", lambda self: rolled)
         moved_search(p, s)
@@ -664,10 +669,15 @@ def test_a_slow_catch_up_stops_at_the_deadline(built, tmp_path, monkeypatch):
     assert codes(body) == ["SEARCH_TIME_BUDGET"]
 
 
-def test_a_busy_file_is_waited_on_only_until_the_deadline(built, tmp_path, monkeypatch):
+@pytest.mark.parametrize("moved", [False, True], ids=["caught_up", "moved"])
+def test_a_busy_file_is_waited_on_only_until_the_deadline(built, tmp_path, monkeypatch, moved):
     """A read waits for another process's commit for ``READ_WAIT_S`` or the time left, whichever is less: with a
-    quarter of ``READ_WAIT_S`` left when the engine's search starts, every wait SQLite is given is that quarter."""
+    quarter of ``READ_WAIT_S`` left when the engine's search starts, every wait SQLite is given is that quarter. A
+    moved history has no catch-up, so its one wait is judged by the clock ``search`` itself took (#294 review, n1)."""
     p = copy_of(built, tmp_path)
+    if moved:
+        rolled = rolled_tail()
+        monkeypatch.setattr(History, "tail_bytes", lambda self: rolled)
     clock, left = FakeClock(), recall.READ_WAIT_S / 4
     search, wait, waits = recall.Substrate.search, recall.Substrate._wait, []
 
@@ -689,8 +699,34 @@ def test_a_busy_file_is_waited_on_only_until_the_deadline(built, tmp_path, monke
         holder.execute("ROLLBACK")
     finally:
         holder.close()
-    assert codes(body) == ["SEARCH_SUBSTRATE_BUSY"] and body["data"]["hits"] == []
-    assert waits and all(w == pytest.approx(left) for w in waits), waits
+    expected = ["SEARCH_SUBSTRATE_BUSY", "SEARCH_HISTORY_MOVED"] if moved else ["SEARCH_SUBSTRATE_BUSY"]
+    assert codes(body) == expected and body["data"]["hits"] == []
+    assert len(waits) == (1 if moved else 2), waits  # the catch-up's open, then the query's; moved: the query's only
+    assert all(w == pytest.approx(left) for w in waits), waits
+
+
+def test_a_catch_up_called_alone_waits_on_a_busy_file_only_until_its_deadline(built, tmp_path, monkeypatch):
+    """``catch_up`` takes the clock its deadline was read from, as ``search`` does (#294 review, n1): called on its own
+    with a quarter of ``READ_WAIT_S`` left, the one wait SQLite is given is that quarter."""
+    p = copy_of(built, tmp_path)
+    clock, left = FakeClock(), recall.READ_WAIT_S / 4
+    wait, waits = recall.Substrate._wait, []
+
+    def recorded(self):
+        waits.append(wait(self))
+        return waits[-1]
+
+    monkeypatch.setattr(recall.Substrate, "_wait", recorded)
+    built_substrate = recall.Substrate(p.root / ".aew", lambda entry: {})  # busy: no entry is ever read
+    holder = sqlite3.connect(substrate(p), isolation_level=None)
+    try:
+        holder.execute("BEGIN EXCLUSIVE")  # another process writing: even a read must wait
+        out = built_substrate.catch_up(committed_root(p), None, may_reset=False, deadline=clock() + left,
+                                       clock=clock)
+        holder.execute("ROLLBACK")
+    finally:
+        holder.close()
+    assert out["reason"] == "busy" and waits == [pytest.approx(left)], (out, waits)
 
 
 def test_on_the_real_clock_the_deadline_is_a_reading_of_it_and_bounds_every_wait(built, tmp_path, monkeypatch):

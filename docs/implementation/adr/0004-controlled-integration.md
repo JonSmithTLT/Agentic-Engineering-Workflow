@@ -353,6 +353,8 @@ The M4-E plan v3 §2.3, built by E6a. Everything above holds, except where this 
     label.
   - A run that staged none records that its sandbox was never established and nothing ran in one. An absent label
     never reads as contained.
+  - The limit: a run staged before this change and settled after it has no staged label, so its record says that its
+    sandbox was never established. That under-claims, and never reads as contained.
   - A diagnostic run's result carries the same label.
 - **Unchanged:** what an authoritative run proves, and the diagnostic run's own slot. An advisory run never produces
   evidence, never changes state and never feeds the breaker.

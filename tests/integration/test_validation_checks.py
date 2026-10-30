@@ -109,6 +109,10 @@ def test_checks_mode_validates_and_publishes_with_no_model(calc, tmp_path, conta
     assert out["ok"] and out["result"] == "pass" and out["integration"] == "validated", out
     run = integ(calc, wid)["current_validation_run"]
     assert run["state"] == "committed" and run["id"].startswith("IV-")
+    # The committed run's records keep the label it staged (DV-7). Only its filesystem is compared: the stand-in's
+    # network is a string, which the record keeps normalized.
+    assert run["containment"] == record_of(calc, run)["containment"], run
+    assert run["containment"]["filesystem"] == "os_readonly_roots", run
     evs = {e["id"]: e for e in E.scan(calc.root / ".aew", wid)[0]}
     for eid in out["evidence"]:
         ev = evs[eid]

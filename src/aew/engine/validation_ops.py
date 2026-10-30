@@ -515,7 +515,7 @@ class Validation:
         finally:
             timer.cancel()
         after = self.invocations.snapshot_of(workspace, integ["workspace_id"])
-        finished = {"run": run["id"], "identity": run["identity"], "containment": label,
+        finished = {"run": run["id"], "identity": run["identity"],
                     "before": before, "after": after,
                     "mutated": before["relevant_inputs_fingerprint"] != after["relevant_inputs_fingerprint"],
                     "results": [{"check_id": r["check_id"], "file": r["file"],

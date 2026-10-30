@@ -1381,11 +1381,11 @@ sections:
       and the handler''s early refusal stays, so no seat moves. Eval has no policy: its lanes register as weaker contexts
       while they run. **DV-4, under `required`, checks spawn only in a layout:** the operator''s own `aew check run` runs
       its checks contained, or refuses naming `allow_weaker`. Under `allow_weaker` and on Windows, it runs labelled weaker
-      and registers. The backstop is a refusal in `policy/checks.py` for a check spawned with no layout under `required`,
-      and it also closes the supervisor''s start window. **In the same pull request:** the labs of Linux CI''s Lead-session
-      tests, the live lane and the dogfood set `allow_weaker` for those tests only; the docs follow the ruling; the surface
-      map''s `lead session` row gains `CONTAINMENT_UNAVAILABLE`; and the usage error names `aew opencode`. Each rule is
-      checked with a planted failure, as the addendum lists them'
+      and registers. The backstop is a refusal in `policy/checks.py` for any check spawned with no layout under `required`,
+      whatever started it. **In the same pull request:** the labs of Linux CI''s Lead-session tests, the live lane and the
+      dogfood set `allow_weaker` for those tests only; the docs follow the ruling; the surface map''s `lead session` row
+      gains `CONTAINMENT_UNAVAILABLE`; and the usage error names `aew opencode`. Each rule is checked with a planted failure,
+      as the addendum lists them'
     Source: G3 addendum 7, ruling 1, with ruling 2's register of weaker contexts (the designer, 2026-10-29; design workspace
       `891f067`, `30-stages/STG-03-G3-trusted-origin/handoff/HANDOFF-G3-ADDENDUM-7-when-an-owner-may-accept-G3.md`), which
       applies `G3-12` and A-33 and changes no adopted text; the designer's rulings DV-2, DV-4 and DV-5 of 2026-10-29 (design

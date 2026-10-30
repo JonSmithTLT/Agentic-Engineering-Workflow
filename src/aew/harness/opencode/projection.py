@@ -313,8 +313,8 @@ def lead_contained_text(label: Mapping[str, Any]) -> str:
         + (["public addresses over https through `HTTPS_PROXY`"] if net.get("egress_policy") == "any_public" else [])
     return (f"- This Lead session is contained (`{label.get('filesystem')}`, network `{net.get('mode')}`): only the "
             "working tree is writable. `.aew/` and the git metadata are read-only, so a commit fails here, while "
-            "`git status`, `diff` and `log` work and your Lead `aew` commands still reach the broker, which writes "
-            "AEW state for you. The session reaches " + (" and ".join(reach) or "nothing outside it")
+            "`git status`, `diff`, `log` and `show` work and your Lead `aew` commands still reach the broker, which "
+            "writes AEW state for you. The session reaches " + (" and ".join(reach) or "nothing outside it")
             + ". The desktop, the clipboard bus, browser tools and private or host addresses are refused by design. "
             "A refusal is what a deny rule or this containment returns. Do not work around one: tell the operator "
             "what you needed and why, so they can do it at their own terminal or widen AEW's containment settings "

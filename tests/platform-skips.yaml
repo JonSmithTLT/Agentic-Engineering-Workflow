@@ -66,6 +66,11 @@ skipped:
     tests/integration/test_validation_checks.py::test_linux_checks_run_contained_and_a_write_to_the_candidate_is_refused: >-
       checks-mode validation runs under Linux bubblewrap containment (M4-D5); Windows has none, and refuses checks
       mode (VALIDATION_CONTAINMENT_UNAVAILABLE, tested). Covered on Linux.
+    tests/integration/test_validation_checks.py::test_linux_a_run_whose_launch_self_test_fails_is_refused_under_required_whatever_its_flags: >-
+      the real containment.establish builds a bubblewrap layout, Linux's alone, and Windows' policy is always
+      allow_weaker (containment.mode). Covered on Linux; on Windows
+      test_a_run_aew_cannot_contain_is_refused_under_required_whatever_its_flags runs the same refusal with establish
+      stood in for.
     tests/integration/test_authority.py::test_operator_authorized_takeover_supersedes_everyone: >-
       POSIX pty operator path; a Windows console would appear on the desktop. Covered on Linux; on Windows
       the refusal path runs and AT-1 substitutes the terminal channel in-process.

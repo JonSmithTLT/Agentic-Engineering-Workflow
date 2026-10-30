@@ -18,7 +18,10 @@ state keeps the current run and the ids.
 
 **Fail closed without immutable source.** Checks mode produces satisfying evidence only where containment makes the
 integration worktree read-only for the whole run (Linux, ``os_readonly_roots``, self-tested). Elsewhere it is refused
-before anything is pinned; ``--diagnostic`` runs the checks for information only, and never produces evidence.
+before anything is pinned. Where the policy allows weaker runs, ``--diagnostic`` runs the checks for information only,
+labelled with the containment they had, and never produces evidence. Under ``required``, a run AEW cannot contain is
+refused whatever its flags: before anything is pinned where the host cannot contain, and as an infrastructure failure
+where the run's sandbox cannot be established.
 
 **Three kinds of result.** A FAIL is VERIFICATION_FAILED (the existing COMMIT_READY edge, taken by this command from
 its own evidence: no verifier evidence is ever manufactured). Inconclusive (a timeout, or a changed candidate) takes the
@@ -267,13 +270,18 @@ class Validation:
         self._require_validatable(state, work_id)
         ob = self.obligation(state, work_id)
         self._require_checks_mode(ob, work_id)
-        if not diagnostic and not self.containment_available():
+        # Under ``required``, a run AEW cannot contain is refused whatever its flags; a diagnostic run goes ahead on a
+        # host that cannot contain only where the policy allows weaker runs, labelled with what it had (DV-1).
+        required = containment.mode(self.k.policy("execution")) == containment.REQUIRED
+        if not self.containment_available() and (not diagnostic or required):
             label = containment.label(contained=False)
+            instead = (". The execution policy requires containment (containment.mode: required), so no run of the "
+                       "checks starts here, diagnostic or not" if required else ", or run `aew integrate validate "
+                       "--diagnostic` for advisory results that never satisfy validation")
             raise ValidationContainmentUnavailable(
                 f"checks-mode validation needs containment that keeps the candidate immutable while the checks run, "
                 f"and this host has {label['filesystem']}: a check could change the source, run against the change and "
-                "restore it, unseen. Validate this Ticket with the post-integration verifier, or run `aew integrate "
-                "validate --diagnostic` for advisory results that never satisfy validation",
+                f"restore it, unseen. Validate this Ticket with the post-integration verifier{instead}",
                 filesystem=label["filesystem"], next="dispatch the post-integration verifier")
         rev = expect_rev
         while True:
@@ -456,9 +464,8 @@ class Validation:
         layout, label = None, containment.label(contained=False)
         try:
             layout, label = self.establish(workspace=workspace, run_dir=directory)
-        except ContainmentUnavailable as exc:
-            if not run.get("diagnostic"):
-                return {"infra": V.classify_containment_failure(exc), "detail": exc.message}
+        except ContainmentUnavailable as exc:  # raised only under ``required``: refused whatever the run's flags (DV-1)
+            return {"infra": V.classify_containment_failure(exc), "detail": exc.message}
         if not run.get("diagnostic") and label.get("filesystem") != containment.CONTAINED:
             return {"infra": "CONTAINMENT_UNAVAILABLE", "detail": "the run's sandbox was not established"}
         env = self._check_env(layout)
@@ -590,6 +597,7 @@ class Validation:
                 current["advisory"] = [{k: r[k] for k in ("check_id", "result", "reason", "exit_code")}
                                        for r in staged["results"]]
                 current["advisory_mutated"] = staged["mutated"]
+                current["containment"] = containment.normalize(staged["containment"])  # what the run had, as labelled
                 self._terminate(ctx, work_id, current, "advisory")
                 ctx.summary = f"{work_id} diagnostic run {run['id']}: advisory only, no evidence"
             else:
@@ -613,7 +621,8 @@ class Validation:
                        next=f"`aew integrate validate {work_id}` starts a run under the current identity")
             return out
         if run.get("diagnostic"):
-            out.update(diagnostic=True, advisory=current["advisory"], mutated=staged["mutated"])
+            out.update(diagnostic=True, advisory=current["advisory"], mutated=staged["mutated"],
+                       containment=current["containment"])
             return out
         integ = self.units.unit(ctx.state, work_id).get("integration") or {}
         out.update(result=current["result"], evidence=evidence_ids, transition=change,

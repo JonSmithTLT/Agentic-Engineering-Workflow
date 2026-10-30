@@ -578,8 +578,8 @@ def _register_integration(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("--wait", action="store_true", help="wait for a run already validating this candidate, up to its "
                                                        "deadline, instead of refusing")
     q.add_argument("--diagnostic", action="store_true",
-                   help="run the checks for information only (also where containment is unavailable): advisory "
-                        "results, never evidence, never a state change")
+                   help="run the checks for information only (also where the policy allows weaker runs): advisory "
+                        "results, labelled with the containment they had, never evidence, never a state change")
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).integrate_validate(
         token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, wait=a.wait, diagnostic=a.diagnostic))

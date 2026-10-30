@@ -1223,6 +1223,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E113/`, oldest first (`python tools/register.py show E113`).*
 
+### E114
+
+**Work:** Report an argument-limit refusal at a check's spawn as the refusal it is. It surfaces as `VALIDATION_INTERRUPTED`, because the spawn in `src/aew/policy/checks.py` (`:93` at `45b247e5`) catches only `OSError`, and the refusal, `ContainmentUnavailable` with the reason `bwrap_argument_limit` (`src/aew/harness/containment/layout.py:309`), is not one
+
+**Source:** The designer's ruling of 2026-10-29 (design workspace `ae9570d`), which sends it to the register as a public minor: "It still refuses, so it is a reporting defect"
+
+**When:** **Unscheduled.** A public minor. E112's backstop changes the same spawn in `policy/checks.py`
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E114/`, oldest first (`python tools/register.py show E114`).*
+
 ### E47
 
 **Work:** Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do), a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the classifier with a test pinning the case; repeated wall-clock violations on `main` open or update a CI-health issue

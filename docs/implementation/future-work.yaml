@@ -1404,6 +1404,15 @@ sections:
     When: '**Unscheduled**, against STG-05, after E112. Owner: the Lead, to place when a headless Lead is needed'
     Notes: Filed by the Lead. Until it is built, the live lane's lab sets `allow_weaker` (E112)
 
+  - '#': E114
+    Work: Report an argument-limit refusal at a check's spawn as the refusal it is. It surfaces as `VALIDATION_INTERRUPTED`,
+      because the spawn in `src/aew/policy/checks.py` (`:93` at `45b247e5`) catches only `OSError`, and the refusal, `ContainmentUnavailable`
+      with the reason `bwrap_argument_limit` (`src/aew/harness/containment/layout.py:309`), is not one
+    Source: 'The designer''s ruling of 2026-10-29 (design workspace `ae9570d`), which sends it to the register as a public
+      minor: "It still refuses, so it is a reporting defect"'
+    When: '**Unscheduled.** A public minor. E112''s backstop changes the same spawn in `policy/checks.py`'
+    Notes: Filed by the Lead
+
   - '#': E47
     Work: 'Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do),
       a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the

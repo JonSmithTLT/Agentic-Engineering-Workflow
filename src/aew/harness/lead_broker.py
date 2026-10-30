@@ -234,7 +234,14 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
 class LeadBroker:
     """Holds one Lead credential in memory and serves the Lead bridge for one project."""
 
-    def __init__(self, engine: Any, token: str) -> None:
+    def __init__(self, engine: Any, token: str, *, clock: Callable[[], float] = time.time,
+                 idle: Callable[[], threading.Event] = threading.Event) -> None:
+        """``clock`` and ``idle`` are test seams, the real ones by default, and no production caller passes either (the
+        flake audit's seam #3): ``clock`` stamps the liveness record, and ``idle`` makes the events the watchdog and the
+        beat thread wait on between iterations, each set to stop its loop. A test passes an event whose ``wait`` returns
+        when the test steps it, so each iteration runs when the test says, never after POLL_S of real time. Never an
+        option, setting or variable an agent can reach: a slowed or faked watchdog would change what the operator is
+        told."""
         self.engine = engine
         self._token = token
         state = engine.store.current()
@@ -243,7 +250,7 @@ class LeadBroker:
         self.session_label = state["lead"].get("session_label")
         self.server = bridge.BridgeServer(self.handle, OPERATIONS, COOPERATIVE)
         self.superseded: str | None = None
-        self._stop = threading.Event()
+        self._stop = idle()
         self._reads: set[subprocess.Popen[str]] = set()  # the relayed reads in flight (RELAYED_READS)
         self._reads_lock = threading.Lock()
         self._watch = threading.Thread(target=self._watchdog, name="aew-lead-broker-watch", daemon=True)
@@ -252,7 +259,7 @@ class LeadBroker:
         root = getattr(engine, "aew_root", None)
         self._beat = None if root is None else broker_liveness.Beat(
             root, generation=self.generation, poll_s=POLL_S, wedge_after_s=broker_liveness.wedge_threshold_s(
-                getattr(engine.store, "lock_timeout", 60.0), POLL_S))
+                getattr(engine.store, "lock_timeout", 60.0), POLL_S), clock=clock, idle=idle)
         # The steering loop (M4-E E7b; plan v3 E7, M8.1): it runs here, beside the Lead's tools, on its own thread and
         # engine, acting for this session's credential and generation.
         self.loop = None if root is None else steering_loop.SteeringLoop(

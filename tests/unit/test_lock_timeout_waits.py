@@ -80,15 +80,9 @@ OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast
 NOTIFIER = "tests/integration/test_notifier.py"
 LIVENESS = "test_broker_liveness_is_local_and_beats_every_poll"
 _BEAT = "the beat thread writes the record every POLL_S and never reads the store (broker_liveness.Beat, R2-m3)"
-_WEDGED = ("it runs in the wedged case only, whose lock timeout is 0.5: wedge_threshold_s(0.5, 0.25) is 1.0 s, far "
-           "below its 10 s (the scan bounds the function by the larger timeout it injects, the other cases' 10.0)")
 # The waits at or below the scan's bound that are right, and why: {(path, function, what): (how many sites, why)}.
 EXCUSED = {
     (NOTIFIER, LIVENESS, "a second beat"): (1, _BEAT),
-    (NOTIFIER, LIVENESS, "a whole liveness record"): (2, _BEAT),  # the slow read's and the wedged case's
-    (NOTIFIER, LIVENESS, "the watchdog to wedge"): (1, _WEDGED),
-    (NOTIFIER, LIVENESS, "the wedge to be judged"): (1, _WEDGED),
-    (NOTIFIER, LIVENESS, "the watchdog to recover"): (1, _WEDGED),
 }
 
 

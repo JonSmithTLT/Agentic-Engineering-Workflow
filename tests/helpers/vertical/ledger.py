@@ -67,13 +67,13 @@ PUBLISH_CONSOLE_ATTRIBUTION = False
 
 # Containment (spec v2): every run's label and the Lead's, each at or above its platform's minimum. The order runs from
 # weakest to strongest; `None` is no label recorded. Since CS-4 (#283) the Lead's session records its label on both
-# platforms, and the Lead's minimums are still `None` until the operator raises them. The minimums only ratchet up:
-# `tests/unit/test_vertical_ledger.py` pins every earlier value and fails if one is ever lowered.
+# platforms, and the operator raised the Lead's minimums to those labels on 2026-10-30 (#308). The minimums only
+# ratchet up: `tests/unit/test_vertical_ledger.py` pins every earlier value and fails if one is ever lowered.
 LABEL_ORDER: tuple[str | None, ...] = (None, "workdir_separation_only", "os_readonly_roots")
 WORKERS, LEAD = "workers", "lead"
 CONTAINMENT_MINIMUM: dict[str, dict[str, str | None]] = {
-    "linux": {WORKERS: "os_readonly_roots", LEAD: None},
-    "win32": {WORKERS: "workdir_separation_only", LEAD: None},
+    "linux": {WORKERS: "os_readonly_roots", LEAD: "os_readonly_roots"},
+    "win32": {WORKERS: "workdir_separation_only", LEAD: "workdir_separation_only"},
 }
 
 # Windows is outside the enforced gate (the operator, Q1(e); temporary). Its job keeps running and reporting, and

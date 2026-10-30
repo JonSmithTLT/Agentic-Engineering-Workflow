@@ -4,9 +4,9 @@ A scenario is **not measured** when it ended before its verdict: its ledger says
 wrote no ledger at all (a crash or a timeout before its ``finally``), or its ledger cannot be read. It counts in no
 counter and against no threshold, and the summary's first line gives the count, so an always-red check says when it
 measured nothing (the designer's addendum 1 to the oracle's hand-off, outcome 9). On a platform outside the enforced
-gate (Windows, the operator's Q1(e)) that line leads with its unqualified state, the count after it. The scenarios
-are the test cases of the lane's JUnit report. Without a readable report the count is unknown, and the line says so
-and why. It reports, and gates nothing.
+gate (Windows, the operator's Q1(e)) that line leads with its unqualified state, the count after it, and the
+conditions still open follow it, before any scenario. The scenarios are the test cases of the lane's JUnit report.
+Without a readable report the count is unknown, and the line says so and why. It reports, and gates nothing.
 
 The limits: a worker death under ``--max-worker-restart 0`` ends the session but pytest still writes its report,
 which holds only the scenarios that ran; the count is of those, and the ones that never started are absent (only a
@@ -26,7 +26,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
-from vertical.ledger import ENFORCED_PLATFORMS, WINDOWS_UNQUALIFIED, ledger_dir_name
+from vertical.ledger import ENFORCED_PLATFORMS, WINDOWS_UNQUALIFIED, ledger_dir_name, windows_lines
 
 JUNIT = "junit.xml"
 LEDGER, SUMMARY = "vertical-ledger.json", "vertical-summary.txt"
@@ -112,6 +112,7 @@ def report(directory: Path) -> str:
     state = "" if platform in ENFORCED_PLATFORMS else f"{WINDOWS_UNQUALIFIED}. "  # Q1(e): it leads, on Windows
     counted = {o: sum(1 for r in found if r["outcome"] == o) for o in (PASSED, FAILED, TEARDOWN, UNKNOWN)}
     lines = [f"### {state}vertical ({platform}): {head}", "",
+             *([] if platform in ENFORCED_PLATFORMS else [*windows_lines(), ""]),  # Q1(e): the conditions too
              f"measured {total - unmeasured}: " + ", ".join(f"{n} {o}" for o, n in counted.items() if n), "",
              *([f"not scenarios (no ledger by design): {'; '.join(apart)}", ""] if apart else []),
              "| Scenario | Result | Lead label | Why not measured |", "|---|---|---|---|"]

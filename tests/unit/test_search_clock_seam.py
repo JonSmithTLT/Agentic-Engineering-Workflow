@@ -2,10 +2,14 @@
 
 The dashboard's history search reads its deadline from a clock and judges it, and the catch-up's ``budget_s``, by the
 same clock, down to the engine's substrate. The clock is a keyword parameter with the real monotonic clock as its
-default, so that a test can drive it. These pin that production never chooses it: every default is
-``time.monotonic``, every parameter is keyword-only, and no call in ``src/aew`` passes a clock except the five that
-hand their own caller's clock on. Nothing an agent can set (a request field, a CLI option, an environment variable, a
-configuration key) reaches it.
+default, so that a test can drive it. These pin that production does not choose it: every default is
+``time.monotonic``, every parameter is keyword-only, and every direct call in ``src/aew`` that names a seam passes
+``clock=`` only where it hands its own caller's clock on (the five pass-throughs), and never forwards ``**`` keywords
+into one.
+
+What the scan does not see (#294 review, m1): a seam called through an alias or a ``functools.partial``, a seam
+reached through ``getattr`` by name, a ``clock`` or ``_clock`` attribute written after construction, and code outside
+``src/aew``. None exists at the review's head; a change that adds one is for its review to catch.
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ from __future__ import annotations
 import ast
 import inspect
 import time
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 import pytest
@@ -49,8 +54,14 @@ def test_a_substrate_judges_by_the_real_clock_until_a_search_passes_one():
     assert Substrate(Path("unused"), lambda entry: {})._clock is time.monotonic
 
 
-def _seam_calls() -> tuple[set[tuple[str, str, str]], list[str]]:
-    """Every call in ``src/aew`` to a seam name that passes ``clock=``, and every one that forwards ``**`` keywords."""
+def _src() -> Iterator[tuple[str, str]]:
+    for path in sorted(SRC.rglob("*.py")):
+        yield path.relative_to(SRC).as_posix(), path.read_text(encoding="utf-8")
+
+
+def _seam_calls(sources: Iterable[tuple[str, str]]) -> tuple[set[tuple[str, str, str]], list[str]]:
+    """Every direct call by a seam's name that passes ``clock=``, and every one that forwards ``**`` keywords, in
+    ``sources`` (each a path relative to ``src/aew`` and its text)."""
     passed: set[tuple[str, str, str]] = set()
     forwarded: list[str] = []
 
@@ -70,15 +81,58 @@ def _seam_calls() -> tuple[set[tuple[str, str, str]], list[str]]:
                             forwarded.append(f"{rel}:{child.lineno}")
             visit(rel, child, inner)
 
-    for path in sorted(SRC.rglob("*.py")):
-        visit(path.relative_to(SRC).as_posix(), ast.parse(path.read_text(encoding="utf-8")), ())
+    for rel, text in sources:
+        visit(rel, ast.parse(text), ())
     return passed, forwarded
 
 
-def test_no_call_in_src_chooses_the_search_clock_it_only_passes_its_callers_on():
-    """A new call that passes a clock (a production caller choosing one, or a value read from a request, the
-    environment or configuration) fails here by name, and so does a call that could carry one in ``**`` keywords.
-    ``DashboardServer``'s own callers (the ``serve`` command's service) pass none, so the root is its default."""
-    passed, forwarded = _seam_calls()
-    assert passed == PASS_THROUGH
-    assert forwarded == []
+def _violations(sources: Iterable[tuple[str, str]]) -> list[str]:
+    passed, forwarded = _seam_calls(sources)
+    return ([f"passes a clock it was not handed: {site}" for site in sorted(passed - PASS_THROUGH)]
+            + [f"no longer hands its caller's clock on: {site}" for site in sorted(PASS_THROUGH - passed)]
+            + [f"forwards ** keywords into a seam: {where}" for where in forwarded])
+
+
+def test_no_direct_call_in_src_chooses_the_search_clock_it_only_passes_its_callers_on():
+    """A new direct call that passes a clock, a pass-through that stops passing one, or a call that forwards ``**``
+    keywords into a seam fails here by name. ``DashboardServer``'s own caller (the ``serve`` command's service) passes
+    none, so the root is its default. The scan's blind spots are in the module's docstring."""
+    assert _violations(_src()) == []
+
+
+# The five pass-throughs, planted as the smallest sources the scan reads as each one.
+PLANTED = {
+    "dashboard/server.py": "class DashboardServer:\n    def _respond(self):\n"
+                           "        return P.Projector(snapshot, clock=self.clock)\n",
+    "dashboard/projections.py": "class Projector:\n    def history_search(self):\n"
+                                "        return self.engine.history_search_committed(state, clock=self.clock)\n",
+    "engine/api.py": "class Engine:\n    def history_search_committed(self, *, clock):\n"
+                     "        return self._history.history_search_committed(state, clock=clock)\n",
+    "engine/history_ops.py": "class HistoryCommands:\n    def history_search_committed(self, *, clock):\n"
+                             "        return self._substrate().search(query, clock=clock)\n",
+    "engine/recall.py": "class Substrate:\n    def search(self, *, clock):\n"
+                        "        return self.catch_up(root, tail, clock=clock)\n",
+}
+SERVICE = "dashboard/service.py"
+
+
+def test_the_scan_reads_planted_pass_throughs_as_right():
+    assert _violations(PLANTED.items()) == []
+
+
+@pytest.mark.parametrize("call, violation", [
+    ("DashboardServer(engine, authenticator=table, clock=lambda: 0.0)",
+     "passes a clock it was not handed: ('dashboard/service.py', 'Service.__init__', 'lambda: 0.0')"),
+    ("DashboardServer(engine, authenticator=table, **options)",
+     "forwards ** keywords into a seam: dashboard/service.py:3"),
+], ids=["a_literal_clock", "a_keyword_forward"])
+def test_the_scan_names_a_planted_caller_that_chooses_or_forwards_a_clock(call, violation):
+    service = f"class Service:\n    def __init__(self, engine, table, options):\n        self.server = {call}\n"
+    assert _violations([*PLANTED.items(), (SERVICE, service)]) == [violation]
+
+
+def test_the_scan_names_a_planted_pass_through_that_no_longer_passes_the_clock():
+    stopped = PLANTED["engine/history_ops.py"].replace(", clock=clock)", ")")
+    assert _violations({**PLANTED, "engine/history_ops.py": stopped}.items()) == [
+        "no longer hands its caller's clock on: ('engine/history_ops.py', "
+        "'HistoryCommands.history_search_committed', 'clock')"]

@@ -8,8 +8,10 @@ gate (Windows, the operator's Q1(e)) that line leads with its unqualified state,
 are the test cases of the lane's JUnit report. Without a readable report the count is unknown, and the line says so
 and why. It reports, and gates nothing.
 
-The limits: a worker that dies without pytest writing its report leaves the count unknown (the ledgers found are
-listed, never taken as the total). Only the #213 hang diagnosis records ``NOT_A_SCENARIO`` (it writes no ledger by
+The limits: a worker death under ``--max-worker-restart 0`` ends the session but pytest still writes its report,
+which holds only the scenarios that ran; the count is of those, and the ones that never started are absent (only a
+run that wrote no readable report reads unknown).
+Only the #213 hang diagnosis records ``NOT_A_SCENARIO`` (it writes no ledger by
 design); any test that records it is listed apart, with its result, never hidden.
 
 Usage: ``python -m vertical.report <ledgers directory>`` (with ``tests/helpers`` on the path); it reads

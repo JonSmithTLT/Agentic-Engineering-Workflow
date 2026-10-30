@@ -8,7 +8,7 @@ oracle's hand-off:
   threshold.
 - **The lane's report.** It leads the run's summary with the not-measured count, from the JUnit report's scenarios
   (`vertical/report.py`).
-- **The #213 hang diagnosis fails on Linux, on its own assertions** (ITEMS 27): with the Lead contained, its
-  autopsy finds no `events-*` from the TUI. The designer ruled it a test-fixture fix, in a later PR.
+- **The #213 hang diagnosis fails on Linux, on its own assertions:** with the Lead contained, its autopsy finds no
+  `events-*` from the TUI. It is tracked for a test-fixture fix in a later pull request (the designer's ruling).
 - **The Lead's label on Linux** is read from the contained session's record. The operator's Lead minimums wait on the
   dispatched Linux run's reading.

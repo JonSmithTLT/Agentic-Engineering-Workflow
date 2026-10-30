@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -299,8 +300,11 @@ def test_broker_liveness_verdicts_on_a_stepped_broker(project, tmp_path, monkeyp
     inside `store.lock_timeout + 2 x POLL_S`, however far past 2 x POLL_S (a stale beat's bound) that is; a watchdog
     stopped past it is stale while the beat goes on, and live again once it goes on.
 
-    Safe under xdist: no thread runs on real time (each iteration waits for its step), and the project, its control
-    lock and its liveness record are this test's own."""
+    Safe under xdist: no stepped assertion depends on real time (each iteration waits for its step). The broker's
+    steering loop still runs on its own real-time thread, on this test's project only, and every wait on it is a hang
+    guard. The project, its control lock and its liveness record are this test's own, and the process-wide values it
+    sets, `AEW_PAUSE` (the wedged case) and `aew.operator.authorize` (the takeover's), are this worker's own, restored
+    by `monkeypatch`."""
     poll = lead_broker.POLL_S
     root = project.root / ".aew"
     engine = Engine.discover(project.root)
@@ -389,8 +393,11 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_of_a_held_lock
     supersession (review of #276, F1), for as many iterations as the hold outlasts. The first iteration after the hold
     closes the broker.
 
-    Safe under xdist: no thread runs on real time (a read past its lock timeout gives up at its first try), and the
-    project, its control lock and its liveness record are this test's own."""
+    Safe under xdist: no stepped assertion depends on real time (a read past its lock timeout gives up at its first
+    try). The broker's steering loop still runs on its own real-time thread, on this test's project only, and every
+    wait on it is a hang guard. The project, its control lock and its liveness record are this test's own, and the
+    process-wide value it sets, `aew.operator.authorize` (the takeover's), is this worker's own, restored by
+    `monkeypatch`."""
     root = project.root / ".aew"
     engine = Engine.discover(project.root)
     if hold in PAST:
@@ -409,6 +416,10 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_of_a_held_lock
                 clock.advance(poll)
                 n = stepped.begin_watchdog()
                 until(stepped.in_lock_wait, step_guard_s(), "the watchdog's read to wait for the control lock")
+                # What a timed-out wait reports (review of #276): the watchdog's read, waiting out the lock
+                described = broker_chain(broker, root)()
+                assert "broker.superseded: None" in described and "in _authority_lost" in described, described
+                assert re.search(r'lock\.py", line \d+, in _wait\b', described), described
             stepped.finish_watchdog(n)  # the read takes the released lock and reads the takeover
         else:
             if hold in PAST:
@@ -435,9 +446,10 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_while_the_hist
                                                                                                   index):
     """CI on PR #281 (the Windows serial lane): with no control lock held, the superseded broker's watchdog sat in the
     history index's `executescript` past `watchdog_wait_s`. A takeover moves the old Lead's credential out of the hot
-    token table into its archive (ADR-0011 R7), and `require_lead` looks an absent credential up in the archive, whose
-    SQLite index waits up to its own 30 s busy timeout for another connection (here the broker's own steering loop,
-    syncing the same index after the same takeover). The watchdog's bound counts the control lock's wait and no other.
+    token table into its archive (ADR-0011 R7), and `require_lead` looked an absent credential up in the archive, whose
+    SQLite index waited up to its own 30 s busy timeout for another connection (there the broker's own steering loop,
+    which synced the same index after the same takeover until #284 took the archive out of both checks). The
+    watchdog's bound counts the control lock's wait and no other.
 
     Here another connection holds the index from before the takeover to past the iteration: a fresh index's write lock
     (the sighting: the watchdog's schema statements wait for it), or an existing index's exclusive lock (a reader in
@@ -445,7 +457,10 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_while_the_hist
     the takeover closes the broker either way (stepped: the flake audit's seam #3). A watchdog that looked in the
     archive would come back from that iteration still open, once the index's busy timeout gave up.
 
-    Safe under xdist: no thread runs on real time, and the project and its history index are this test's own."""
+    Safe under xdist: no stepped assertion depends on real time. The broker's steering loop still runs on its own
+    real-time thread, on this test's project only, and every wait on it is a hang guard. The project and its history
+    index are this test's own, and the process-wide value it sets, `aew.operator.authorize` (the takeover's), is this
+    worker's own, restored by `monkeypatch`."""
     root = project.root / ".aew"
     engine = Engine.discover(project.root)
     if index == "existing":
@@ -466,7 +481,7 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_while_the_hist
         assert closed is not None and closed["closed_at"] == clock()
         assert broker_liveness.judge(closed, generation=generation, poll_s=poll, now=clock()).reason == "closed"
     finally:
-        held.close()  # ends the hold: the steering loop's own index read goes on, and close() joins it
+        held.close()  # ends the hold; since #284 neither the watchdog's check nor the loop's reads the index
         broker.close()
 
 

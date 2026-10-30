@@ -8,9 +8,10 @@ what the operator is told about the broker, so:
 - no production code passes either: the scan of ``src/aew`` finds one call that names them, the broker passing its own
   to its Beat.
 
-What the scan does not see, each a defect the reviewer reads for: a call through ``**kwargs`` it cannot name (it fails
-on any ``**`` in such a call instead), an alias of either class, ``functools.partial``, and an attribute assigned after
-construction.
+The scan reads ``src/aew`` only. What it does not see, each a defect the reviewer reads for, pinned in ``MISSED``: an
+alias of either class, ``functools.partial``, an attribute assigned after construction, a subclass's
+``super().__init__(..., clock=)``, and an explicit ``LeadBroker.__init__(..., clock=)``. A call through ``**kwargs``
+it cannot name fails the scan instead.
 """
 
 from __future__ import annotations
@@ -76,3 +77,19 @@ def test_no_production_code_passes_a_seam():
 ])
 def test_the_scan_finds_a_seam_passed(source, expected):
     assert seam_calls(source, "x.py") == expected
+
+
+# The spellings the scan does not see (the module docstring): each passes a seam, and the scan finds nothing.
+MISSED = {
+    "alias": "Broker = LeadBroker\nBroker(engine, token, clock=fake)\n",
+    "partial": "functools.partial(LeadBroker, clock=fake)(engine, token)\n",
+    "set_later": "broker = LeadBroker(engine, token)\nbroker._beat._clock = fake\n",
+    "subclass": "class Slow(LeadBroker):\n    def __init__(self, engine, token):\n"
+                "        super().__init__(engine, token, clock=fake)\n",
+    "explicit_init": "LeadBroker.__init__(broker, engine, token, idle=Steps)\n",
+}
+
+
+@pytest.mark.parametrize("spelling", sorted(MISSED))
+def test_the_spellings_the_scan_does_not_see_stay_pinned(spelling):
+    assert seam_calls(MISSED[spelling], "x.py") == set()

@@ -109,3 +109,17 @@ def test_the_operators_session_runs_on_a_terminal_it_owns_on_linux(tmp_path):
     assert (master is None) == IS_WINDOWS
     if not IS_WINDOWS:  # on Windows NUL is a character device, which isatty reports as one: the check is Linux's
         assert code == 0, err.read_text(encoding="utf-8", errors="replace")
+
+
+def test_a_test_that_is_not_a_scenario_is_listed_apart_and_never_counted(tmp_path):
+    """The #213 hang diagnosis writes no ledger by design: it records the not-a-scenario property, and the report lists
+    it apart, so it is never "not measured" on a run that measured everything."""
+    _lane(tmp_path, {"test_v1": _scenario(None)})
+    junit = tmp_path / "junit.xml"
+    extra = (f'<testcase classname="t" name="test_g3"><properties><property name="{R.NOT_A_SCENARIO}" '
+             'value="the #213 hang diagnosis"/></properties><failure message="x"/></testcase>')
+    junit.write_text(junit.read_text(encoding="utf-8").replace("</testsuite>", extra + "</testsuite>"),
+                     encoding="utf-8")
+    text = R.report(tmp_path)
+    assert text.startswith("### vertical (linux): not measured: 0 of 1\n")
+    assert "not scenarios (no ledger by design): test_g3 (failed; the #213 hang diagnosis)" in text

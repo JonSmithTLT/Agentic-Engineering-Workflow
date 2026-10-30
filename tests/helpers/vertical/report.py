@@ -23,26 +23,34 @@ from vertical.ledger import ledger_dir_name
 JUNIT = "junit.xml"
 LEDGER, SUMMARY = "vertical-ledger.json", "vertical-summary.txt"
 MEASURED_PASSED, MEASURED_FAILED, NOT_MEASURED = "passed", "failed", "not measured"
+# The JUnit property a test of the lane that is not a scenario records (``record_property``): it writes no ledger by
+# design (the #213 hang diagnosis), so it is listed apart and never counted as not measured.
+NOT_A_SCENARIO = "vertical_not_a_scenario"
 
 
-def cases(junit: Path) -> list[tuple[str, bool]] | None:
-    """Each test case of the JUnit report: its name, and whether pytest passed it; None when there is no report."""
+def cases(junit: Path) -> list[tuple[str, bool, str | None]] | None:
+    """Each test case of the JUnit report: its name, whether pytest passed it, and why it is not a scenario (None for
+    a scenario); None when there is no report."""
     if not junit.is_file():
         return None
     out = []
     # The lane's own JUnit report, written by this job's pytest a step earlier: not untrusted input
     for case in ET.parse(junit).getroot().iter("testcase"):  # noqa: S314  (this job's own pytest output)
         failed = any(child.tag in ("failure", "error") for child in case)
-        out.append((str(case.get("name")), not failed))
+        apart = next((p.get("value") for p in case.iter("property") if p.get("name") == NOT_A_SCENARIO), None)
+        out.append((str(case.get("name")), not failed, apart))
     return out
 
 
-def rows(directory: Path) -> tuple[list[dict[str, Any]], bool]:
-    """Each scenario's outcome, and whether the JUnit report gave the scenarios (else the ledgers found do)."""
-    found = cases(directory / JUNIT)
-    if found is None:
-        found = [(d.name, False) for d in sorted(directory.iterdir()) if (d / LEDGER).is_file()] \
+def rows(directory: Path) -> tuple[list[dict[str, Any]], bool, list[str]]:
+    """Each scenario's outcome, whether the JUnit report gave the scenarios (else the ledgers found do), and the test
+    cases that are not scenarios, each with its result."""
+    every = cases(directory / JUNIT)
+    if every is None:
+        every = [(d.name, False, None) for d in sorted(directory.iterdir()) if (d / LEDGER).is_file()] \
             if directory.is_dir() else []
+    apart = [f"{name} ({'passed' if passed else 'failed'}; {why})" for name, passed, why in every if why]
+    found = [(name, passed) for name, passed, why in every if not why]
     out = []
     for name, passed in found:
         path = directory / ledger_dir_name(name) / LEDGER
@@ -56,11 +64,11 @@ def rows(directory: Path) -> tuple[list[dict[str, Any]], bool]:
         containment = ((ledger or {}).get("hard_limits") or {}).get("containment") or {}
         out.append({"scenario": name, "outcome": outcome, "why": why, "lead_label": containment.get("lead"),
                     "platform": (ledger or {}).get("platform")})
-    return out, cases(directory / JUNIT) is not None
+    return out, (directory / JUNIT).is_file(), apart
 
 
 def report(directory: Path) -> str:
-    found, from_junit = rows(directory)
+    found, from_junit, apart = rows(directory)
     total = len(found)
     unmeasured = [r for r in found if r["outcome"] == NOT_MEASURED]
     passed = sum(1 for r in found if r["outcome"] == MEASURED_PASSED)
@@ -72,6 +80,7 @@ def report(directory: Path) -> str:
              f"measured {total - len(unmeasured)}: {passed} passed their verdict, "
              f"{total - len(unmeasured) - passed} failed it"
              + ("" if from_junit else " (no JUnit report: the scenarios are the ledgers found)"), "",
+             *([f"not scenarios (no ledger by design): {'; '.join(apart)}", ""] if apart else []),
              "| Scenario | Result | Lead label | Why not measured |", "|---|---|---|---|"]
     lines += [f"| {r['scenario']} | {r['outcome']} | {r['lead_label'] or '-'} | {r['why'][:160] or '-'} |"
               for r in found]

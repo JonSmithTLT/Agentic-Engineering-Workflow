@@ -44,6 +44,7 @@ from vertical.ledger import (
     diagnoses,
     ledger_dir_name,
 )
+from vertical.report import NOT_A_SCENARIO
 from vertical.scripted_operator import (
     Operator,
     containment,
@@ -840,7 +841,8 @@ def raise_steering(op: Operator) -> None:
 # ---------------------------------------------------------------------------------------------- G3: #213, rebuilt
 
 
-def test_g3_the_213_listener_death_is_diagnosed_from_the_kept_files_alone(tmp_path, world, request, monkeypatch):
+def test_g3_the_213_listener_death_is_diagnosed_from_the_kept_files_alone(tmp_path, world, request, monkeypatch,
+                                                                       record_property):
     """The hang-and-flake diagnosis plan's own test (G3, "the real case"). In #213 the vertical lane hung for 30
     minutes once: the Lead's chat listener, in the fake TUI **subprocess**, died with no trace, under a chat bound
     (1800 s) equal to the lane's --test-timeout, and the evidence was deleted with tmp_path.
@@ -857,6 +859,7 @@ def test_g3_the_213_listener_death_is_diagnosed_from_the_kept_files_alone(tmp_pa
     from fake_harness import SCRIPTS_ENV
     from vertical import scripted_operator
 
+    record_property(NOT_A_SCENARIO, "the #213 hang diagnosis: it writes no ledger")  # the lane's report lists it apart
     op = setup_operator(tmp_path, "G3-213")
     world.append(op)
     configure(op)

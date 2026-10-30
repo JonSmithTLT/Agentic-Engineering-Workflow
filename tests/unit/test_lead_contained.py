@@ -558,12 +558,17 @@ def test_the_lead_text_requests_a_command_that_asks_and_keeps_edits_and_commits_
     """Addendum 11: two sentences, read together, made the Lead refuse a command its rules ask about ("a permission
     approval wouldn't override them", the operator's trial of 2026-10-30). The text now says to request such a command
     and run it once the operator approves, that an approval is not working around a refusal, and that a refusal is a
-    deny rule's or the containment's, never retried another way. Edits and commits stay with invocations."""
+    deny rule's or the containment's, never retried another way. Edits and commits stay with invocations.
+
+    The request is the command itself: OpenCode's prompt is the one approval, and a yes typed in chat is not a second
+    gate. The Lead may say in a line what it is about to run, but does not wait for a reply (#304 review, m2)."""
     system = projection.LEAD_SYSTEM
     assert "anything else needs the operator" not in system
     assert ("Any other command asks the operator's permission first: when the operator asks for one, such as running "
-            "the tests or a script, or one is needed to do what they asked, request it, and run it once they approve. "
-            "If they decline, do not try it another way.") in system
+            "the tests or a script, or one is needed to do what they asked, request it by running it: OpenCode asks "
+            "the operator, and it runs once they approve. That prompt is the approval: you may say in a line what you "
+            "are about to run, but do not wait for a reply in chat first. If they decline, do not try it another "
+            "way.") in system
     assert "You cannot edit files in this session" in system
     assert "Editing files and committing stay with invocations, whatever the command: dispatch one for them." in system
     line = projection.lead_contained_text(LABEL)

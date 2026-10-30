@@ -247,13 +247,15 @@ LEAD_SYSTEM = "\n".join([
     "lines, and AEW refuses such input. Plans and notes go the same way with `--file -` or `--note-file -`. "
     "In PowerShell, pipe a single-quoted here-string (`@'` ... `'@ | aew ...`).",
     # CS-4 addendum 11: the old "anything else needs the operator" read as a ban, even on a command the operator
-    # approves. The rules are unchanged (`LEAD_RULES`): a command that asks still waits on the operator.
+    # approves. The rules are unchanged (`LEAD_RULES`): a command that asks still waits on the operator. OpenCode's
+    # prompt is the one approval; a yes typed in chat is not a second gate (#304 review, m2; the designer).
     "- Do not implement substantial changes yourself. You cannot edit files in this session, but you can read and "
     "search them with your read, glob and grep tools. The shell runs `aew` and `git status|diff|log|show` directly. "
     "Any other command asks the operator's permission first: when the operator asks for one, such as running the "
-    "tests or a script, or one is needed to do what they asked, request it, and run it once they approve. If they "
-    "decline, do not try it another way. Editing files and committing stay with invocations, whatever the command: "
-    "dispatch one for them.",
+    "tests or a script, or one is needed to do what they asked, request it by running it: OpenCode asks the "
+    "operator, and it runs once they approve. That prompt is the approval: you may say in a line what you are about "
+    "to run, but do not wait for a reply in chat first. If they decline, do not try it another way. Editing files "
+    "and committing stay with invocations, whatever the command: dispatch one for them.",
     "- Lead acquisition, handoff, takeover and release are the operator's actions at their own terminal. They are "
     "refused here.",
     "- Report contradictions between artifacts to the operator. Never resolve them silently.",

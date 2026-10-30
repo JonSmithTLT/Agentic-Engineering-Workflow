@@ -233,34 +233,62 @@ def no_check_runs(monkeypatch) -> list:
     return started
 
 
-def test_a_run_aew_cannot_contain_is_refused_under_required_whatever_its_flags(calc, tmp_path, monkeypatch):
+def raising(reason: str):
+    """What ``containment.establish`` raises under ``required`` when the launch self-test fails for ``reason``."""
+    def establish(self, *, workspace, run_dir):
+        raise ContainmentUnavailable(f"containment self-test failed: {reason}",
+                                     self_test={"ok": False, "reason": reason})
+    return establish
+
+
+TIMED_OUT = "TimeoutExpired: the probe's stand-in timeout"
+# Each way a run's sandbox can fail under ``required``: the stand-in for ``establish``, the infrastructure code the run
+# ends with, and its detail. ``weaker_label`` is ``establish`` returning a weaker label under ``required``, which its
+# contract rules out: the run is refused there all the same.
+CANNOT_CONTAIN = {
+    "self_test_failed": (raising(SELF_TEST_FAILED), "CONTAINMENT_SELF_TEST_FAILED",
+                         f"containment self-test failed: {SELF_TEST_FAILED}"),
+    "self_test_timed_out": (raising(TIMED_OUT), "SANDBOX_SETUP_TRANSIENT",
+                            f"containment self-test failed: {TIMED_OUT}"),
+    "weaker_label": (lambda self, *, workspace, run_dir: (None, containment.label(contained=False)),
+                     "CONTAINMENT_UNAVAILABLE", "the run's sandbox was not established"),
+}
+
+
+@pytest.mark.parametrize("cause", sorted(CANNOT_CONTAIN))
+def test_a_run_aew_cannot_contain_is_refused_under_required_whatever_its_flags(calc, tmp_path, monkeypatch, cause):
     """DV-1: under ``required``, a diagnostic run whose sandbox cannot be established is refused as an authoritative
-    one is, with the same infrastructure code and detail: no check starts, and nothing is left running."""
+    one is, with the same infrastructure code and detail. It is refused once, never retried, even for the transient
+    code; its result says why and what to do; no check starts, and nothing is left running."""
+    stand_in, code, detail = CANNOT_CONTAIN[cause]
     policy(calc, checks=SMOKE)
     wid = prepared(calc, tmp_path)
-    started = no_check_runs(monkeypatch)
+    started, calls = no_check_runs(monkeypatch), []
     monkeypatch.setattr(containment, "supported", lambda: True)  # the policy's mode resolves to required here
 
-    def establish(self, *, workspace, run_dir):  # what containment.establish raises under required
-        raise ContainmentUnavailable(f"containment self-test failed: {SELF_TEST_FAILED}",
-                                     self_test={"ok": False, "reason": SELF_TEST_FAILED})
+    def establish(self, *, workspace, run_dir):
+        calls.append(run_dir)
+        return stand_in(self, workspace=workspace, run_dir=run_dir)
 
     monkeypatch.setattr(VO.Validation, "establish", establish)
     assert engine(calc)._validation.containment_available()
     out = validate(calc, wid, diagnostic=True)
-    assert out["diagnostic"] and not out["ok"] and out["unavailable"] == "CONTAINMENT_SELF_TEST_FAILED", out
+    assert out["diagnostic"] and not out["ok"] and out["unavailable"] == code, out
+    assert out["detail"] == detail and f"aew integrate validate {wid} --diagnostic" in out["next"], out
+    assert len(calls) == 1 and integ(calc, wid)["validation_runs"]["ids"] == [out["run"]]  # once: no retry
     diagnostic = integ(calc, wid)["diagnostic_run"]
     assert diagnostic["state"] == "unavailable" and integ(calc, wid)["status"] == "prepared"
     out = validate(calc, wid)
-    assert out["unavailable"] and out["code"] == "CONTAINMENT_SELF_TEST_FAILED", out
+    assert out["unavailable"] and out["code"] == code, out
     authoritative = integ(calc, wid)["current_validation_run"]
     assert (diagnostic["reason"], diagnostic["detail"]) == (authoritative["reason"], authoritative["detail"])
-    assert diagnostic["detail"] == f"containment self-test failed: {SELF_TEST_FAILED}"
+    assert diagnostic["detail"] == detail
     assert started == []
-    for run in (diagnostic, authoritative):
-        assert not list((calc.root / ".aew" / VO.STAGING / run["id"]).glob("*.json"))  # nothing staged
-    # A diagnostic run is never a breaker event (PR #91 re-review, finding 2); the authoritative one is.
-    assert [f["run"] for f in control(calc)["queue"]["validation_breaker"]["failures"]] == [authoritative["id"]]
+    runs = integ(calc, wid)["validation_runs"]["ids"]
+    for run_id in runs:
+        assert not list((calc.root / ".aew" / VO.STAGING / run_id).glob("*.json"))  # nothing staged
+    # A diagnostic run is never a breaker event (PR #91 re-review, finding 2); each authoritative attempt is.
+    assert [f["run"] for f in control(calc)["queue"]["validation_breaker"]["failures"]] == runs[1:]
     assert_control_invariants(calc)
 
 
@@ -268,7 +296,8 @@ def test_a_run_aew_cannot_contain_is_refused_under_required_whatever_its_flags(c
 def test_under_required_a_host_that_cannot_contain_pins_no_run_whatever_its_flags(calc, tmp_path, monkeypatch,
                                                                                    diagnostic):
     """DV-1: where the policy requires containment and the host has none (``required`` off Linux), either kind of run
-    is refused before anything is pinned, and the refusal does not point at a diagnostic run the same rule refuses."""
+    is refused before anything is pinned. The refusal names what works there, in containment's own words, and not a
+    diagnostic run or the verifier, whose launch the same rule refuses."""
     policy(calc, checks=SMOKE)
     wid = prepared(calc, tmp_path)
     monkeypatch.setattr(containment, "supported", lambda: False)
@@ -278,6 +307,9 @@ def test_under_required_a_host_that_cannot_contain_pins_no_run_whatever_its_flag
         validate(calc, wid, diagnostic=diagnostic)
     assert "containment.mode: required" in refused.value.message, refused.value.message
     assert "--diagnostic" not in refused.value.message, refused.value.message
+    assert containment.NO_CONTAINMENT_REMEDY in refused.value.message, refused.value.message
+    assert "post-integration verifier" not in refused.value.message, refused.value.message
+    assert refused.value.details["next"] == containment.NO_CONTAINMENT_REMEDY, refused.value.details
     assert calc.rev() == rev and entry(calc, wid) == before
     assert not {"current_validation_run", "diagnostic_run"} & set(integ(calc, wid))
 
@@ -285,7 +317,9 @@ def test_under_required_a_host_that_cannot_contain_pins_no_run_whatever_its_flag
 def test_under_allow_weaker_a_diagnostic_run_goes_ahead_labelled_with_the_containment_it_had(calc, tmp_path,
                                                                                                monkeypatch):
     """DV-1: where the policy allows weaker runs, a diagnostic run whose sandbox could not be established goes ahead,
-    and its advisory record and the command's result both carry the label it ran under, with why it was weaker."""
+    and its advisory record and the command's result both carry the label it ran under, with why it was weaker. The
+    stand-in is Linux's weaker label: on Windows, ``establish``'s weaker label has no ``weaker_because``, and the run
+    carries the label as it is."""
     policy(calc, checks=SMOKE, execution={"containment": {"mode": "allow_weaker"}})
     wid = prepared(calc, tmp_path)
     weaker = containment.label(contained=False, reason=f"containment self-test failed: {SELF_TEST_FAILED}")
@@ -299,6 +333,25 @@ def test_under_allow_weaker_a_diagnostic_run_goes_ahead_labelled_with_the_contai
     assert run["state"] == "advisory" and run["containment"] == weaker
     record = load_yaml((calc.root / ".aew" / run["record"]["path"]).read_text(encoding="utf-8"))
     assert record["containment"] == weaker  # the immutable record keeps it
+    assert_control_invariants(calc)
+
+
+def test_a_diagnostic_run_abandoned_at_its_commit_keeps_the_containment_it_had(calc, tmp_path, monkeypatch):
+    """STG-05: a diagnostic run whose checks ran, then abandoned at its commit (here, its lease lost), keeps on its
+    immutable record the containment label it ran under, as an advisory run does."""
+    policy(calc, checks=SMOKE, execution={"containment": {"mode": "allow_weaker"}})
+    wid = prepared(calc, tmp_path)
+    started = no_check_runs(monkeypatch)
+    weaker = containment.label(contained=False, reason=f"containment self-test failed: {SELF_TEST_FAILED}")
+    monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (None, weaker))
+    monkeypatch.setattr(VO.Validation, "_pin_problem",
+                        lambda self, state, work_id, unit, run: ("LEASE_LOST", "the lease moved (a stand-in)"))
+    out = validate(calc, wid, diagnostic=True)
+    assert out["abandoned"] == "LEASE_LOST" and not out["ok"] and len(started) == 1, out
+    run = integ(calc, wid)["diagnostic_run"]
+    assert run["state"] == "abandoned" and run["containment"] == weaker, run
+    record = load_yaml((calc.root / ".aew" / run["record"]["path"]).read_text(encoding="utf-8"))
+    assert record["containment"] == weaker
     assert_control_invariants(calc)
 
 

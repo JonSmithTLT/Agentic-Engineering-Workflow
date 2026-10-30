@@ -275,14 +275,18 @@ class Validation:
         required = containment.mode(self.k.policy("execution")) == containment.REQUIRED
         if not self.containment_available() and (not diagnostic or required):
             label = containment.label(contained=False)
-            instead = (". The execution policy requires containment (containment.mode: required), so no run of the "
-                       "checks starts here, diagnostic or not" if required else ", or run `aew integrate validate "
-                       "--diagnostic` for advisory results that never satisfy validation")
-            raise ValidationContainmentUnavailable(
-                f"checks-mode validation needs containment that keeps the candidate immutable while the checks run, "
-                f"and this host has {label['filesystem']}: a check could change the source, run against the change and "
-                f"restore it, unseen. Validate this Ticket with the post-integration verifier{instead}",
-                filesystem=label["filesystem"], next="dispatch the post-integration verifier")
+            why = (f"checks-mode validation needs containment that keeps the candidate immutable while the checks run, "
+                   f"and this host has {label['filesystem']}: a check could change the source, run against the change "
+                   "and restore it, unseen")
+            if required:  # the verifier's launch is refused here too: name what works, in containment's own words
+                message = (f"{why}. The execution policy requires containment (containment.mode: required), so no run "
+                           f"of the checks starts here, diagnostic or not: {containment.NO_CONTAINMENT_REMEDY}")
+                then = containment.NO_CONTAINMENT_REMEDY
+            else:
+                message = (f"{why}. Validate this Ticket with the post-integration verifier, or run `aew integrate "
+                           "validate --diagnostic` for advisory results that never satisfy validation")
+                then = "dispatch the post-integration verifier"
+            raise ValidationContainmentUnavailable(message, filesystem=label["filesystem"], next=then)
         rev = expect_rev
         while True:
             state = self.k.store.current()
@@ -379,9 +383,11 @@ class Validation:
                 attempt += 1
                 expect_rev = self._rev()
                 continue
-            if diagnostic:
+            if diagnostic:  # what was refused, why, and what to do (the run's record keeps the same detail)
                 return {"ok": False, "work_id": work_id, "run": run["id"], "diagnostic": True, "unavailable": code,
-                        "revision": self._rev()}
+                        "detail": outcome.get("detail") or "", "revision": self._rev(),
+                        "next": f"fix what the detail names, then run `aew integrate validate {work_id} --diagnostic` "
+                                "again"}
             current = (self.k.store.current()["work"][work_id].get("integration") or {}).get(CURRENT)
             return self._release_unavailable(who, None, work_id, current, why=f"{code}: "
                                              + ("the circuit breaker is open" if breaker_open
@@ -466,7 +472,10 @@ class Validation:
             layout, label = self.establish(workspace=workspace, run_dir=directory)
         except ContainmentUnavailable as exc:  # raised only under ``required``: refused whatever the run's flags (DV-1)
             return {"infra": V.classify_containment_failure(exc), "detail": exc.message}
-        if not run.get("diagnostic") and label.get("filesystem") != containment.CONTAINED:
+        # Under ``required`` this holds at this line by itself, whatever the run's flags: ``establish`` returning a
+        # weaker label there would be refused here, not run (STG-05).
+        required = containment.mode(self.k.policy("execution")) == containment.REQUIRED
+        if (not run.get("diagnostic") or required) and label.get("filesystem") != containment.CONTAINED:
             return {"infra": "CONTAINMENT_UNAVAILABLE", "detail": "the run's sandbox was not established"}
         env = self._check_env(layout)
         trees = procs.CheckTrees()
@@ -591,6 +600,8 @@ class Validation:
                 abandoned = problem
                 if problem[0] not in NOT_INFRA and not run.get("diagnostic"):  # an expiry counts, as in _abandon
                     current["breaker_open"] = self._breaker_record(state, work_id, run["id"], problem[0])
+                if run.get("diagnostic"):  # its checks ran: the record says under what, as an advisory run's does
+                    current["containment"] = containment.normalize(staged["containment"])
                 self._terminate(ctx, work_id, current, "abandoned", reason=problem[0], detail=problem[1])
                 ctx.summary = f"{work_id} validation run {run['id']} abandoned: {problem[0]}"
             elif run.get("diagnostic"):

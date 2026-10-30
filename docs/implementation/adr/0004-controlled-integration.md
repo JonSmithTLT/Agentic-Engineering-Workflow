@@ -333,3 +333,18 @@ The M4-E plan v3 §2.3, built by E6a. Everything above holds, except where this 
 - **The schema stays `aew/control/v2`.** The worker's `start_id` is optional; an engine from before it refuses a state
   that carries one.
 - The decision, the other records and the residuals are in ADR-0009's amendment of 2026-10-23.
+
+## Amendment 2026-10-30 — a run AEW cannot contain is refused under `required`, whatever flag it was given (STG-05)
+
+- **What changes:** the M4-D5 amendment's containment item, for `--diagnostic`, in checks-mode validation:
+  a run AEW cannot contain is refused under `required`, whatever flag it was given.
+  - Where the host cannot contain, the run is refused before anything is pinned, with
+    `VALIDATION_CONTAINMENT_UNAVAILABLE` naming what works there.
+  - Where the run's sandbox cannot be established, it is refused as an infrastructure failure, before any check
+    starts.
+- **`--diagnostic`** runs the checks labelled weaker only where the policy allows weaker runs (`allow_weaker`, and
+  Windows, whose mode is always that). Its run's record, kept immutable, and the command's result carry the
+  containment label the run had.
+- **Unchanged:** the authoritative path, and the diagnostic run's own slot. An advisory run never produces evidence,
+  never changes state and never feeds the breaker.
+- **Tests:** `tests/integration/test_validation_checks.py`.

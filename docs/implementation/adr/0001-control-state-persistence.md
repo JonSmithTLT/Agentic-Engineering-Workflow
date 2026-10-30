@@ -174,6 +174,8 @@ The nightly's race repetition failed on 2026-10-23 (Windows): one of two racing 
     (serial) runs two real processes, 12 takes each, with 100 ms holds. Outside the survivor's final run, no taker
     holds the lock more than twice in a row while the other waits, and every wait is under three holds. Run against
     the old polling loop, it fails with one taker holding the lock 12 times in a row.
+    - Since 2026-10-29 (#296), the test bounds the order only. The waits are reported, never bounded: a descheduled
+      holder lengthens a wait without any unfairness.
   - In `tests/unit/test_store.py`:
     - the turnstile is free while the lock is held, and after a taker times out;
     - a taker that cannot open the lock lets the turnstile go. Every synchronous way out does. Two narrow windows

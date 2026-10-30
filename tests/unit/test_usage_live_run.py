@@ -582,8 +582,9 @@ def test_a_killed_supervisor_leaves_a_non_final_sample(rig):
     meter = adapter._meter_thread
     assert meter is not None
     # A poll in flight still writes when it returns: it ends here, never inside a later test's patch of write_live
-    # (an unjoined meter's late sample there is the census's `2 == 1`). The adapter's own bound for its meter's end.
-    meter.join(A.METER_FINAL_S)
+    # (an unjoined meter's late sample there is the census's `2 == 1`). Nothing cancels that poll on this path, so its
+    # end has no bound of the adapter's: the join waits for it, guarded only against a hang (#296 review, F1).
+    meter.join(HANG_S)
     assert not meter.is_alive(), "the stopped meter's thread never ended"
     sample = rig.live()
     assert sample["state"] == "live" and sample["prompt_state"] == "posted"

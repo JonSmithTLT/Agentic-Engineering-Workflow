@@ -2830,7 +2830,8 @@ def test_a_launcher_is_resolved_without_starting_anything():
     capturing the argv it would start: no process starts, and nothing is written outside a temporary directory. The
     status reads leave out ignored files: under xdist another worker's bytecode lands in the shared checkout at any
     moment (the nightly of 2026-10-17). A file written anywhere git would track still shows, and ``probe-root`` is
-    checked by name."""
+    checked by name: the spawner's own write is a ``*.log`` (ignored), so that check, not the status reads, is what
+    sees it."""
     before = _git(ROOT, "status", "--porcelain", "--untracked-files=all")
     entry = {"launcher": {"code": "aew.engine.custody_ops:spawn_worker"}}
     assert launcher_problem("integrate custody", entry) is None

@@ -1,9 +1,11 @@
 """Helpers for the operator notifier's tests (M4-E E7a): a recording notifier, adopting a policy with a notifier, the
-operator's raise as the endpoint commits it, seeding control state, a bounded wait that can say why it timed out, and
-the wait on a Lead broker's watchdog with what to say."""
+operator's raise as the endpoint commits it, seeding control state, a bounded wait that can say why it timed out, the
+wait on a Lead broker's watchdog with what to say, and a Lead broker whose watchdog and beat the test steps on a clock
+it moves."""
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import re
@@ -19,8 +21,8 @@ from typing import Any
 from aew.engine import steering
 from aew.engine.api import Engine
 from aew.engine.steering import OperatorPrincipal
-from aew.engine.store import Transition
-from aew.harness import broker_liveness, procs
+from aew.engine.store import ControlStore, Transition
+from aew.harness import broker_liveness, lead_broker, procs
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -183,6 +185,134 @@ def loop_chain(broker: Any) -> Callable[[], str]:
         return "\n".join(lines)
 
     return describe
+
+
+LOOK_S = 0.05  # how often a wait for a stepped thread looks whether the thread has ended, which notifies nothing
+
+
+def step_guard_s() -> float:
+    """How long a test waits for one stepped iteration to come back: a hang guard, never a timing assertion. It is one
+    watchdog iteration's own bound (``broker_liveness.wedge_threshold_s``) at the control store's default lock timeout,
+    the longest wait an iteration makes in production, whatever lock timeout a test injects; a stepped iteration starts
+    when the test releases it, so no stop wait comes first."""
+    default = inspect.signature(ControlStore).parameters["lock_timeout"].default
+    return broker_liveness.wedge_threshold_s(default, lead_broker.POLL_S)
+
+
+class Clock:
+    """A wall clock the test moves (``LeadBroker(clock=)``). It starts at the real time, so the record's stamps are
+    ones ``broker_liveness.read`` takes, and moves only when the test advances it."""
+
+    def __init__(self) -> None:
+        self.now = time.time()
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> float:
+        self.now += seconds
+        return self.now
+
+
+class Steps(threading.Event):
+    """The event a Lead broker's watchdog or beat thread waits on between iterations (``LeadBroker(idle=Steps)``),
+    stepped by the test: each ``wait`` returns once the test releases one iteration, or once the event is set (the loop
+    is to stop), never because time passed. An iteration is done when its loop is back in ``wait``, or its thread has
+    ended (a superseded watchdog returns)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._cv = threading.Condition()
+        self._released = 0  # iterations released and not yet begun
+        self._granted = 0  # iterations released in all: the n-th is done once ``_done`` reaches n
+        self._done = 0
+        self._running = False
+
+    def wait(self, timeout: float | None = None) -> bool:
+        """The loop's side. ``timeout`` (its POLL_S) is not waited out: the test steps the loop."""
+        with self._cv:
+            if self._running:
+                self._running, self._done = False, self._done + 1
+                self._cv.notify_all()
+            self._cv.wait_for(lambda: self._released > 0 or self.is_set())
+            if self.is_set():
+                return True
+            self._released -= 1
+            self._running = True
+            return False
+
+    def set(self) -> None:
+        super().set()
+        with self._cv:
+            self._cv.notify_all()
+
+    def release(self) -> int:
+        """Let the loop begin one iteration, and return its number, for :meth:`finish`."""
+        with self._cv:
+            self._released += 1
+            self._granted += 1
+            self._cv.notify_all()
+            return self._granted
+
+    def finish(self, n: int, thread: threading.Thread) -> None:
+        """Wait until iteration ``n`` is done, within ``step_guard_s()``; past it, fail with the thread's stack."""
+        guard = step_guard_s()
+        deadline = time.monotonic() + guard
+        with self._cv:
+            while self._done < n and thread.is_alive():
+                if time.monotonic() > deadline:
+                    raise AssertionError(f"iteration {n} of {thread.name} did not come back within {guard} s (a hang "
+                                         f"guard); its stack:\n{thread_stack(thread)}")
+                self._cv.wait(LOOK_S)
+
+
+class Stepped:
+    """A Lead broker whose watchdog and beat thread iterate only when the test steps them, stamping the liveness record
+    from a clock the test moves (``LeadBroker(clock=, idle=)``, the flake audit's seam #3). Nothing here waits for time
+    to pass: each wait is for an iteration the test released, bounded by ``step_guard_s()``."""
+
+    def __init__(self, engine: Engine, token: str) -> None:
+        self.clock = Clock()
+        self.broker = lead_broker.LeadBroker(engine, token, clock=self.clock, idle=Steps)
+        self.root = Path(engine.aew_root)
+
+    def _steps(self, event: threading.Event) -> Steps:
+        assert isinstance(event, Steps)
+        return event
+
+    def begin_watchdog(self) -> int:
+        """Release one watchdog iteration without waiting for it; :meth:`finish_watchdog` waits."""
+        return self._steps(self.broker._stop).release()
+
+    def finish_watchdog(self, n: int) -> None:
+        self._steps(self.broker._stop).finish(n, self.broker._watch)
+
+    def watchdog(self) -> None:
+        """One watchdog iteration, waited for: back in its stop wait, or ended (superseded)."""
+        self.finish_watchdog(self.begin_watchdog())
+
+    def beat(self) -> dict[str, Any]:
+        """One beat, waited for, and the record it wrote (no other writer runs meanwhile: a whole record)."""
+        beat = self.broker._beat
+        assert beat is not None
+        steps = self._steps(beat._stop)
+        steps.finish(steps.release(), beat._thread)
+        record = broker_liveness.read(self.root)
+        assert record is not None, "the beat wrote no record broker_liveness.read takes"
+        return record
+
+    def in_lock_wait(self) -> bool:
+        """Whether the watchdog's read is waiting for the control lock (``FileLock._wait``)."""
+        stack = thread_stack(self.broker._watch)
+        return re.search(r'[\\/]engine[\\/]lock\.py", line \d+, in _wait\b', stack) is not None
+
+    def loop_ended(self) -> None:
+        """Wait for the broker's steering loop to end, as it does once it sees the takeover (``STALE_AUTHORITY``): from
+        then on it takes the control lock no more."""
+        loop = self.broker.loop
+        assert loop is not None and loop._thread is not None
+        loop._thread.join(step_guard_s())
+        assert not loop._thread.is_alive(), f"the steering loop did not end; its stack:\n{thread_stack(loop._thread)}"
 
 
 def takeover(project: Any, monkeypatch: Any) -> None:

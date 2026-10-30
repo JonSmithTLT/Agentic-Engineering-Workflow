@@ -12,11 +12,9 @@ from __future__ import annotations
 import io
 import json
 import os
-import re
 import sqlite3
 import subprocess
 import sys
-import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -26,6 +24,7 @@ from aewflow import create_planned_ticket, sample_project
 from fake_harness import POLICY, HarnessLab
 from notifier import (
     Console,
+    Stepped,
     adopt,
     broker_chain,
     dead_pid,
@@ -35,6 +34,7 @@ from notifier import (
     recorder,
     request,
     script,
+    step_guard_s,
     takeover,
     until,
     watchdog_wait_s,
@@ -256,20 +256,17 @@ def test_notifier_child_inherits_no_endpoint_handle(project, tmp_path, serve, mo
 # ---------------------------------------------------------------------------------------------- broker liveness
 
 
-@pytest.mark.serial  # its property is timing: a beat every POLL_S, staleness after 2 x POLL_S
-@pytest.mark.parametrize("case", ["clean_close_is_not_a_crash", "superseded_is_not_a_crash", "slow_read_is_not_stale",
-                                  "wedged_watchdog_is_stale"])
-def test_broker_liveness_is_local_and_beats_every_poll(project, tmp_path, monkeypatch, case):
-    """M2, R2-m3, R3-n2, R4-m1: the broker's beat thread writes `.aew/local/lead/broker.json` every POLL_S (local,
-    never control state, and never reading the store). A clean close or a supersession writes `closed_at` and is never
-    a crash; a watchdog iteration waiting on the control lock for longer than 3 x POLL_S but less than the lock timeout
-    is not stale; a watchdog stopped past `store.lock_timeout + 2 x POLL_S` is stale while the beat goes on."""
+@pytest.mark.serial  # the smoke test on real threads and the real clock: a beat every POLL_S, a real supersession
+def test_broker_liveness_is_local_and_beats_every_poll(project, monkeypatch):
+    """M2, R2-m3, on real threads and the real clock: the broker's beat thread writes `.aew/local/lead/broker.json`
+    every POLL_S (local, never control state), and once a takeover supersedes the broker its watchdog writes
+    `closed_at`, which is never a crash. The one case of the broker's liveness that still waits for real time (the
+    flake audit's rank 2): the cases below step the same threads, on a clock the test moves."""
     poll = 0.25
     monkeypatch.setattr(lead_broker, "POLL_S", poll)
     root = project.root / ".aew"
     engine = Engine.discover(project.root)
-    engine.store.lock_timeout = 0.5 if case == "wedged_watchdog_is_stale" else 10.0  # the broker's own store
-    revision = project.rev()
+    engine.store.lock_timeout = 10.0  # the broker's own store
     broker = lead_broker.LeadBroker(engine, project.token)
     broker.start()
     try:
@@ -279,142 +276,160 @@ def test_broker_liveness_is_local_and_beats_every_poll(project, tmp_path, monkey
         assert first["wedge_after_s"] == pytest.approx(engine.store.lock_timeout + 2 * poll)
         until(lambda: (broker_liveness.read(root) or first)["beat_at"] > first["beat_at"], 5, "a second beat")
         assert broker_liveness.judge(broker_liveness.read(root), generation=generation, poll_s=poll) is None
+        takeover(project, monkeypatch)
+        # The watchdog's next iteration may first wait out the control lock: the wait is the broker's own bound for one
+        # iteration (wedge_after_s, which judge holds to), never a literal at or below it (f41b001e)
+        closed = until(lambda: (broker_liveness.read(root) or {}).get("closed_at") and broker_liveness.read(root),
+                       watchdog_wait_s(first, poll), "the superseded broker's closed_at",
+                       describe=broker_chain(broker, root))
+        assert broker.superseded
+        assert broker_liveness.judge(closed, generation=generation, poll_s=poll).reason == "closed"
+        assert broker_liveness.judge(closed, generation=generation + 1, poll_s=poll) is None  # not the current
+    finally:
+        broker.close()
+    assert "beat_at" not in (root / "state/control.yaml").read_text(encoding="utf-8")  # local, never control state
+
+
+@pytest.mark.parametrize("case", ["clean_close_is_not_a_crash", "superseded_is_not_a_crash", "slow_read_is_not_stale",
+                                  "wedged_watchdog_is_stale"])
+def test_broker_liveness_verdicts_on_a_stepped_broker(project, tmp_path, monkeypatch, case):
+    """M2, R2-m3, R3-n2, R4-m1, one stepped iteration at a time on a clock the test moves (the flake audit's seam #3):
+    the beat writes the local record on each step and never reads the store; a clean close or a supersession writes
+    `closed_at` and is never a crash; a watchdog iteration waiting on the control lock is not stale while it stays
+    inside `store.lock_timeout + 2 x POLL_S`, however far past 2 x POLL_S (a stale beat's bound) that is; a watchdog
+    stopped past it is stale while the beat goes on, and live again once it goes on.
+
+    Safe under xdist: no thread runs on real time (each iteration waits for its step), and the project, its control
+    lock and its liveness record are this test's own."""
+    poll = lead_broker.POLL_S
+    root = project.root / ".aew"
+    engine = Engine.discover(project.root)
+    revision = project.rev()
+    stepped = Stepped(engine, project.token)
+    broker, clock = stepped.broker, stepped.clock
+    broker.start()
+    try:
+        generation = broker.generation
+        first = broker_liveness.read(root)  # Beat.start writes it before its thread starts: a whole record
+        assert first is not None and (first["pid"], first["generation"]) == (os.getpid(), generation)
+        assert first["beat_at"] == first["watchdog_tick_at"] == clock()
+        assert first["wedge_after_s"] == pytest.approx(engine.store.lock_timeout + 2 * poll)
+        clock.advance(poll)
+        assert stepped.beat()["beat_at"] == clock()  # a beat on each step, stamped from the clock
+        clock.advance(poll)
+        stepped.watchdog()  # an iteration that finds this Lead current, and ticks
+        record = stepped.beat()
+        assert record["watchdog_tick_at"] == clock()
+        assert broker_liveness.judge(record, generation=generation, poll_s=poll, now=clock()) is None
 
         if case == "clean_close_is_not_a_crash":
             broker.close()
             closed = broker_liveness.read(root)
-            assert closed is not None and closed["closed_at"] is not None
-            assert broker_liveness.judge(closed, generation=generation, poll_s=poll).reason == "closed"
+            assert closed is not None and closed["closed_at"] == clock()
+            assert broker_liveness.judge(closed, generation=generation, poll_s=poll, now=clock()).reason == "closed"
             gone = dict(closed, pid=dead_pid())  # even once its process is gone: a clean end, never a crash
-            assert broker_liveness.judge(gone, generation=generation, poll_s=poll).reason == "closed"
+            assert broker_liveness.judge(gone, generation=generation, poll_s=poll, now=clock()).reason == "closed"
         elif case == "superseded_is_not_a_crash":
             takeover(project, monkeypatch)
-            # The watchdog's next iteration may first wait out the control lock: the wait is the broker's own bound
-            # for one iteration (wedge_after_s, which judge holds to), never a literal at or below it (f41b001e)
-            closed = until(lambda: (broker_liveness.read(root) or {}).get("closed_at") and broker_liveness.read(root),
-                           watchdog_wait_s(first, poll), "the superseded broker's closed_at",
-                           describe=broker_chain(broker, root))
-            assert broker.superseded
-            assert broker_liveness.judge(closed, generation=generation, poll_s=poll).reason == "closed"
+            clock.advance(poll)
+            stepped.watchdog()  # the iteration that reads the takeover ends the watchdog
+            closed = broker_liveness.read(root)
+            assert broker.superseded and not broker._watch.is_alive()
+            assert closed is not None and closed["closed_at"] == clock()
+            assert broker_liveness.judge(closed, generation=generation, poll_s=poll, now=clock()).reason == "closed"
             assert broker_liveness.judge(closed, generation=generation + 1, poll_s=poll) is None  # not the current
         elif case == "slow_read_is_not_stale":
-            hold_s = 6 * poll  # > 3 x POLL_S, < the lock timeout
-            with FileLock(root / LOCK_REL, timeout=10):
-                held = time.monotonic()
-                while time.monotonic() - held < hold_s:
-                    record = broker_liveness.read(root)
-                    assert broker_liveness.judge(record, generation=generation, poll_s=poll) is None, record
-                    time.sleep(poll / 4)
-                # The beat goes on under the control lock, so any read here can race its rewrite: wait for a whole one
-                record = until(lambda: broker_liveness.read(root), 10, "a whole liveness record")
-                assert time.time() - record["watchdog_tick_at"] > 3 * poll  # it really waited
             tick = record["watchdog_tick_at"]
-            # A read racing the broker's rewrite is None for a moment on Windows: that moment is "not yet". Going on is
-            # one watchdog iteration, which may wait out the control lock: the same bound as the superseded case's
-            until(lambda: (broker_liveness.read(root) or record)["watchdog_tick_at"] > tick,
-                  watchdog_wait_s(first, poll), "the watchdog to go on", describe=broker_chain(broker, root))
+            with FileLock(root / LOCK_REL):
+                clock.advance(poll)  # an iteration that ticked before its read would show this
+                n = stepped.begin_watchdog()
+                until(stepped.in_lock_wait, step_guard_s(), "the watchdog's read to wait for the control lock")
+                # Since the last tick, all of the bound but one POLL_S: far past 2 x POLL_S, a stale beat's bound
+                clock.advance(first["wedge_after_s"] - 2 * poll)
+                held = stepped.beat()  # the beat goes on under the control lock: it never reads the store
+                assert held["watchdog_tick_at"] == tick and held["beat_at"] == clock()  # the read still waits
+                assert broker_liveness.judge(held, generation=generation, poll_s=poll, now=clock()) is None, held
+            stepped.finish_watchdog(n)  # the read takes the released lock, finds the Lead current, and ticks
+            assert stepped.beat()["watchdog_tick_at"] == clock() > tick
         else:
             hold = tmp_path / "wedge"
             hold.write_text("hold", encoding="utf-8")
             monkeypatch.setenv("AEW_PAUSE", f"harness.lead_broker.watchdog={hold}")
             try:
-                until(Path(f"{hold}.reached").exists, 10, "the watchdog to wedge")
-                verdict = until(lambda: broker_liveness.judge(broker_liveness.read(root), generation=generation,
-                                                              poll_s=poll), 10, "the wedge to be judged")
-                assert verdict.reason == "stale" and ":tick:" in verdict.occurrence
-                record = until(lambda: broker_liveness.read(root), 10, "a whole liveness record")
-                assert time.time() - record["beat_at"] < 2 * poll + 1  # the beat went on: only the watchdog stopped
+                clock.advance(poll)
+                n = stepped.begin_watchdog()
+                until(Path(f"{hold}.reached").exists, step_guard_s(), "the watchdog to wedge")
+                clock.advance(first["wedge_after_s"] + poll)  # past the bound
+                wedged = stepped.beat()
+                verdict = broker_liveness.judge(wedged, generation=generation, poll_s=poll, now=clock())
+                assert verdict is not None and verdict.reason == "stale" and ":tick:" in verdict.occurrence, wedged
+                assert wedged["beat_at"] == clock()  # the beat went on: only the watchdog stopped
             finally:
                 hold.unlink()
-            until(lambda: broker_liveness.judge(broker_liveness.read(root), generation=generation,
-                                                poll_s=poll) is None, 10, "the watchdog to recover")
+            stepped.finish_watchdog(n)  # the wedge ends: the iteration goes on, and ticks
+            assert broker_liveness.judge(stepped.beat(), generation=generation, poll_s=poll, now=clock()) is None
     finally:
         broker.close()
     assert project.rev() == revision or case == "superseded_is_not_a_crash"  # beats are never commits
     assert "beat_at" not in (root / "state/control.yaml").read_text(encoding="utf-8")  # local, never control state
 
 
-@pytest.mark.serial  # its property is timing: one watchdog iteration against a held control lock
-@pytest.mark.parametrize("hold", ["no_hold", "under_lock_timeout", "past_lock_timeout", "past_the_iteration_bound"])
-def test_a_superseded_broker_closes_within_one_watchdog_iteration_of_a_held_lock(project, tmp_path, monkeypatch,
-                                                                                 hold):
-    """Main's run at f41b001e (the Windows serial lane): the superseded case gave the broker 10 s for `closed_at` with
-    a lock timeout of 10.0, below the broker's own bound for one watchdog iteration. A watchdog read that waits out the
-    control lock is "still the Lead" (`_authority_lost` swallows the `LockTimeout`), so only the next iteration acts.
+PAST = {"past_lock_timeout": 1, "past_the_iteration_bound": 2}  # how many of the watchdog's reads give up on the hold
 
-    Here the control lock is held from just after the takeover, and the watchdog is parked before its read until the
-    hold is in place, so the hold always comes first. With no hold, a hold under the lock timeout, and one past it but
-    under `wedge_after_s`, the broker closes within `watchdog_wait_s`; a literal window of the lock timeout fails the
-    third. A hold past that bound outlasts one timed-out read plus the next iteration's start. That is not a stale
-    broker: each timed-out read still ticks, so `judge` calls it live while each iteration stays inside
-    `wedge_after_s`, and the swallowed `LockTimeout` is what hides the supersession (review of #276, F1). The wait
-    times out, and its message names the link, the watchdog's read in `FileLock._wait`. Once the hold ends, the broker
-    closes."""
-    poll = 0.25
-    monkeypatch.setattr(lead_broker, "POLL_S", poll)
+
+@pytest.mark.parametrize("hold", ["no_hold", "under_lock_timeout", *PAST])
+def test_a_superseded_broker_closes_within_one_watchdog_iteration_of_a_held_lock(project, monkeypatch, hold):
+    """Main's run at f41b001e: a watchdog read that waits out the control lock is "still the Lead" (`_authority_lost`
+    swallows the `LockTimeout`), so only the next iteration acts. Here each iteration is stepped (the flake audit's
+    seam #3) and the control lock is held from after the takeover, so the order is forced, never raced.
+
+    With no hold, or a hold the read waits for and then gets (under its lock timeout), the iteration after the takeover
+    closes the broker. A hold the read gives up on (past its lock timeout) leaves the broker open, its watchdog
+    ticking, so `judge` calls it live: no iteration is stale, and the swallowed `LockTimeout` is what hides the
+    supersession (review of #276, F1), for as many iterations as the hold outlasts. The first iteration after the hold
+    closes the broker.
+
+    Safe under xdist: no thread runs on real time (a read past its lock timeout gives up at its first try), and the
+    project, its control lock and its liveness record are this test's own."""
     root = project.root / ".aew"
     engine = Engine.discover(project.root)
-    # The relation, not the scale (10.0 would make 27 s of holds). At 6 x POLL_S, the past-the-bound wait ends
-    # (lock timeout + 4 x POLL_S) mid-way through the watchdog's second read (+ POLL_S to 2 x lock timeout + POLL_S):
-    # a late watchdog or a late sampler has 3 x POLL_S either way before the stack is sampled between reads
-    engine.store.lock_timeout = 6 * poll
-    broker = lead_broker.LeadBroker(engine, project.token)
-    park = tmp_path / "park"
-    held, go, release = threading.Event(), threading.Event(), threading.Event()
-    holder: threading.Thread | None = None
-
-    def hold_the_lock(hold_s: float) -> None:
-        with FileLock(root / LOCK_REL, timeout=30):
-            held.set()
-            # Timed from go.set(), just before the unpark, not from taking the lock. The watchdog leaves its pause up to
-            # 50 ms later (the pause's poll), plus scheduling, and that lag shortens the hold its read meets: the third
-            # case's read times out only while the lag stays under POLL_S (review of #276, N4)
-            if go.wait(30):
-                release.wait(hold_s)
-
-    def closed_record() -> dict[str, Any] | None:
-        record = broker_liveness.read(root)
-        return record if record is not None and record.get("closed_at") is not None else None
-
+    if hold in PAST:
+        # The read gives up at its first try against the hold (FileLock checks its deadline after each try): past its
+        # lock timeout, however long the hold, with no real wait
+        engine.store.lock_timeout = 0.0
+    stepped = Stepped(engine, project.token)
+    broker, clock, poll = stepped.broker, stepped.clock, lead_broker.POLL_S
     broker.start()
     try:
         generation = broker.generation
-        first = until(lambda: broker_liveness.read(root), what="the first beat")
-        lock_s, wait_s = engine.store.lock_timeout, watchdog_wait_s(first, poll)
-        assert first["wedge_after_s"] == pytest.approx(lock_s + 2 * poll)
-        hold_s = {"no_hold": None, "under_lock_timeout": lock_s / 2,
-                  "past_lock_timeout": (lock_s + first["wedge_after_s"]) / 2,  # one timed-out read, then the next
-                  "past_the_iteration_bound": 30.0}[hold]  # ended below by `release`, once the wait has timed out
-        park.write_text("park", encoding="utf-8")
-        monkeypatch.setenv("AEW_PAUSE", f"harness.lead_broker.watchdog={park}")
-        until(Path(f"{park}.reached").exists, wait_s, "the watchdog to park")  # within its iteration
         takeover(project, monkeypatch)
-        if hold_s is not None:
-            holder = threading.Thread(target=hold_the_lock, args=(hold_s,), name="test-lock-holder", daemon=True)
-            holder.start()
-            assert held.wait(10), "the test never took the control lock"
-        go.set()
-        park.unlink()  # the watchdog's read now meets the hold
-        if hold == "past_the_iteration_bound":
-            with pytest.raises(AssertionError) as timed_out:
-                until(closed_record, wait_s, "the superseded broker's closed_at", describe=broker_chain(broker, root))
-            message = str(timed_out.value)
-            assert "broker.superseded: None" in message and "in _authority_lost" in message, message
-            assert re.search(r'lock\.py", line \d+, in _wait\b', message), message  # waiting out the lock
-            release.set()
-        closed = until(closed_record, wait_s, "the superseded broker's closed_at", describe=broker_chain(broker, root))
-        assert broker.superseded
-        assert broker_liveness.judge(closed, generation=generation, poll_s=poll).reason == "closed"
+        stepped.loop_ended()  # from here only the watchdog's reads and the test's hold take the control lock
+        if hold == "under_lock_timeout":
+            with FileLock(root / LOCK_REL):
+                clock.advance(poll)
+                n = stepped.begin_watchdog()
+                until(stepped.in_lock_wait, step_guard_s(), "the watchdog's read to wait for the control lock")
+            stepped.finish_watchdog(n)  # the read takes the released lock and reads the takeover
+        else:
+            if hold in PAST:
+                with FileLock(root / LOCK_REL):
+                    for _ in range(PAST[hold]):
+                        clock.advance(poll)
+                        stepped.watchdog()  # its read gives up on the hold
+                        record = stepped.beat()
+                        # Still the Lead: the LockTimeout was swallowed and the iteration ticked, so judge calls it live
+                        assert broker.superseded is None and record["watchdog_tick_at"] == clock(), record
+                        assert broker_liveness.judge(record, generation=generation, poll_s=poll, now=clock()) is None
+            clock.advance(poll)
+            stepped.watchdog()  # the first iteration after the takeover, or after the hold
+        closed = broker_liveness.read(root)
+        assert broker.superseded and not broker._watch.is_alive()
+        assert closed is not None and closed["closed_at"] == clock()
+        assert broker_liveness.judge(closed, generation=generation, poll_s=poll, now=clock()).reason == "closed"
     finally:
-        go.set()
-        release.set()
-        park.unlink(missing_ok=True)  # a parked watchdog would hold close() in its join
-        if holder is not None:
-            holder.join(30)
         broker.close()
 
 
-@pytest.mark.serial  # its property is timing: one watchdog iteration against a held history index
 @pytest.mark.parametrize("index", ["fresh", "existing"])
 def test_a_superseded_broker_closes_within_one_watchdog_iteration_while_the_history_index_is_held(project, monkeypatch,
                                                                                                   index):
@@ -424,35 +439,32 @@ def test_a_superseded_broker_closes_within_one_watchdog_iteration_while_the_hist
     SQLite index waits up to its own 30 s busy timeout for another connection (here the broker's own steering loop,
     syncing the same index after the same takeover). The watchdog's bound counts the control lock's wait and no other.
 
-    Here another connection holds the index from before the takeover to past the wait: a fresh index's write lock (the
-    sighting: the watchdog's schema statements wait for it), or an existing index's exclusive lock (a reader in another
-    process blocks every connection). The watchdog decides from the hot state alone, so the broker closes within one
-    iteration either way."""
-    poll = 0.25
-    monkeypatch.setattr(lead_broker, "POLL_S", poll)
+    Here another connection holds the index from before the takeover to past the iteration: a fresh index's write lock
+    (the sighting: the watchdog's schema statements wait for it), or an existing index's exclusive lock (a reader in
+    another process blocks every connection). The watchdog decides from the hot state alone, so the one iteration after
+    the takeover closes the broker either way (stepped: the flake audit's seam #3). A watchdog that looked in the
+    archive would come back from that iteration still open, once the index's busy timeout gave up.
+
+    Safe under xdist: no thread runs on real time, and the project and its history index are this test's own."""
     root = project.root / ".aew"
     engine = Engine.discover(project.root)
-    engine.store.lock_timeout = 6 * poll  # the relation, as in the held-lock test above
     if index == "existing":
         HistoryIndex(root).sync(engine.store.current()["cold"]["root"])
     (root / INDEX_REL).parent.mkdir(parents=True, exist_ok=True)
     held = sqlite3.connect(root / INDEX_REL, timeout=10, isolation_level=None)  # its own take may wait, bounded
-    broker = lead_broker.LeadBroker(engine, project.token)
-
-    def closed_record() -> dict[str, Any] | None:
-        record = broker_liveness.read(root)
-        return record if record is not None and record.get("closed_at") is not None else None
-
+    stepped = Stepped(engine, project.token)
+    broker, clock, poll = stepped.broker, stepped.clock, lead_broker.POLL_S
     broker.start()
     try:
         generation = broker.generation
-        first = until(lambda: broker_liveness.read(root), what="the first beat")
         held.execute("BEGIN IMMEDIATE" if index == "fresh" else "BEGIN EXCLUSIVE")
         takeover(project, monkeypatch)
-        closed = until(closed_record, watchdog_wait_s(first, poll), "the superseded broker's closed_at",
-                       describe=broker_chain(broker, root))
-        assert broker.superseded
-        assert broker_liveness.judge(closed, generation=generation, poll_s=poll).reason == "closed"
+        clock.advance(poll)
+        stepped.watchdog()
+        closed = broker_liveness.read(root)
+        assert broker.superseded and not broker._watch.is_alive()
+        assert closed is not None and closed["closed_at"] == clock()
+        assert broker_liveness.judge(closed, generation=generation, poll_s=poll, now=clock()).reason == "closed"
     finally:
         held.close()  # ends the hold: the steering loop's own index read goes on, and close() joins it
         broker.close()

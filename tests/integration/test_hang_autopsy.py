@@ -266,7 +266,7 @@ def test_the_ci_jobs_deadline_caps_the_session_and_the_exit_names_it(tmp_path):
     import time
 
     hangs = tmp_path / "hangs"
-    proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "600", "--session-deadline-margin", "3",
+    proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "600", "--session-deadline-margin", MARGIN,
                  "-p", "no:xdist", extra_env={"AEW_JOB_DEADLINE": str(int(time.time()) + 6)})
     assert proc.returncode == DEADLINE_EXIT, proc.stdout + proc.stderr
     assert "the session reached the CI job's deadline (AEW_JOB_DEADLINE" in proc.stdout + proc.stderr, proc.stdout

@@ -95,7 +95,7 @@ sections:
     | 3 | STG-05 | CS-3b, the network namespace (#257) (merged, `d796a342`) |
     | 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register (PR 1 merged as #272, `af951c92`; PR 2 is next, now that CS-4 has merged) |
     | 5 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
-    | 6 | STG-05, STG-03 | CS-4, the Lead contained (merged as #283, `da547f9a`), with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, merged as #282, `61310fb3`; G3-D, the CLI client, merged as #286, `21ea8674`; G3-C next, once the designer's G3 addendum on G3-12 is in, which its brief needs first) |
+    | 6 | STG-05, STG-03 | CS-4, the Lead contained (merged as #283, `da547f9a`), with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, merged as #282, `61310fb3`; G3-D, the CLI client, merged as #286, `21ea8674`; G3-C after E112, G3 addendum 7's ruling 1, which merges before G3-C starts) |
     | 7 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
     | 8 | STG-13 | V-01's oracle rebuilt |
     | 9 | STG-14 | I-6, the resource, model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established: CS-4 has merged (#283), and G3 is still established on no host (map v1.20, design workspace `0717159`) |
@@ -270,8 +270,8 @@ sections:
   - '#': STG-03
     Work: The G3 service build, beside CS-4, briefed from A-37 (G3 revision 7.1)
     Source (governing): A-37 (G3 revision 7.1); the register rebaseline (design workspace, `b598fdc`)
-    Belongs to or gated by: '**Stage.** STG-03; built beside STG-05''s CS-4, which merged as #283 (`da547f9a`). G3-C, the
-      owners'' side, is next, after the designer''s G3 addendum on G3-12'
+    Belongs to or gated by: '**Stage.** STG-03; built beside STG-05''s CS-4; G3-C, the owners'' side, waits for E112, G3
+      addendum 7''s ruling 1'
     Notes: One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23).
 
   - '#': STG-05
@@ -1360,6 +1360,49 @@ sections:
     Notes: Filed by the Lead. A row of its own, because E44, the shard sizer's row, is closed (review guide §7), and E75's
       Work is one wall-clock flake. Both pull requests merged moments after their reviews' CLEAR, so none of these was fixed
       in them
+
+  - '#': E112
+    Work: 'G3 addendum 7''s ruling 1, a build against STG-05 before G3-C: under `required`, every launch whose containment
+      fails is refused, whatever command or flag started it (`G3-12`). **The general Lead command:** under `required` on
+      Linux, the default, `aew lead session` is refused with `CONTAINMENT_UNAVAILABLE` in its handler, before the credential
+      is read and before any seat moves, and the message names `aew opencode`, the contained Lead, and `containment.mode:
+      allow_weaker`. Under `allow_weaker`, and on Windows, it runs labelled not contained: its label is written to `label.json`
+      in a `lead-<UTC>-<hex>` run directory by the writer `aew opencode` uses, the "runs NOT contained" line is printed,
+      and the context is entered in the register of weaker contexts. `run_session`''s `contained` becomes required, so every
+      caller says how its harness runs. **The register of weaker contexts** (ruling 2''s, built here): per host and per
+      operator UID, outside every project and every sandbox''s writable binds. A weaker context''s owning host process writes
+      its entry before the context''s first process starts, and the entry stays live until that process has ended and its
+      tree is reaped clean. Contained launches write nothing, and on Linux a weaker launch whose entry cannot be written
+      is refused. **The launch census:** a static test holds every process start in `src/` and `eval/` to a pinned table,
+      and classifies each outcome (contained, weaker and registered, or not an agent context, with its reason) and each
+      branch where containment fails, which under `required` refuses (DV-2). **DV-5, the census''s failure-branch half:**
+      every `ProcessTree(` and `run_session_tree(` construction in `src` takes a containment decision or is allowlisted
+      with its reason, and every `except ContainmentUnavailable` re-raises or refuses. The `run_session` guard is the backstop,
+      and the handler''s early refusal stays, so no seat moves. Eval has no policy: its lanes register as weaker contexts
+      while they run. **DV-4, under `required`, checks spawn only in a layout:** the operator''s own `aew check run` runs
+      its checks contained, or refuses naming `allow_weaker`. Under `allow_weaker` and on Windows, it runs labelled weaker
+      and registers. The backstop is a refusal in `policy/checks.py` for a check spawned with no layout under `required`,
+      and it also closes the supervisor''s start window. **In the same pull request:** the labs of Linux CI''s Lead-session
+      tests, the live lane and the dogfood set `allow_weaker` for those tests only; the docs follow the ruling; the surface
+      map''s `lead session` row gains `CONTAINMENT_UNAVAILABLE`; and the usage error names `aew opencode`. Each rule is
+      checked with a planted failure, as the addendum lists them'
+    Source: G3 addendum 7, ruling 1, with ruling 2's register of weaker contexts (the designer, 2026-10-29; design workspace
+      `891f067`, `30-stages/STG-03-G3-trusted-origin/handoff/HANDOFF-G3-ADDENDUM-7-when-an-owner-may-accept-G3.md`), which
+      applies `G3-12` and A-33 and changes no adopted text; the designer's rulings DV-2, DV-4 and DV-5 of 2026-10-29 (design
+      workspace `891f067` and `ae9570d`)
+    When: '**Contained.** It merges before G3-C starts, because G3-C reads both the refusal and the register (addendum 7).
+      §1''s item 6 puts G3-C after it'
+    Notes: 'Filed by the Lead. Ruling 2, the standing by which an owner accepts G3, is G3-C''s and goes into its brief,
+      not this row. **One more for the census** (found on 2026-10-30; the designer is told): off Linux, the weaker label
+      that `aew opencode` returns carries no `weaker_because` (`src/aew/harness/opencode/lead.py:203` at `45b247e5`). The
+      follow-on the addendum leaves to the Lead, a headless contained OpenCode Lead, is E113'
+
+  - '#': E113
+    Work: A headless contained OpenCode Lead, which would let the live lane exercise containment
+    Source: 'G3 addendum 7, ruling 1''s tests and docs (the designer, 2026-10-29; design workspace `891f067`): "a follow-on
+      for the Lead to place"'
+    When: '**Unscheduled**, against STG-05, after E112. Owner: the Lead, to place when a headless Lead is needed'
+    Notes: Filed by the Lead. Until it is built, the live lane's lab sets `allow_weaker` (E112)
 
   - '#': E47
     Work: 'Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do),

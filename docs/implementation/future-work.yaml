@@ -95,12 +95,12 @@ sections:
     | 3 | STG-05 | CS-3b, the network namespace (#257) (merged, `d796a342`) |
     | 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register (PR 1 merged as #272, `af951c92`; PR 2 is next, now that CS-4 has merged) |
     | 5 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
-    | 6 | STG-05, STG-03 | CS-4, the Lead contained (merged as #283, `da547f9a`), with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, merged as #282, `61310fb3`; G3-D, the CLI client, merged as #286, `21ea8674`; G3-C after E112, G3 addendum 7's ruling 1, which merges before G3-C starts) |
+    | 6 | STG-05, STG-03, E112 | CS-4, the Lead contained (merged as #283, `da547f9a`), with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, merged as #282, `61310fb3`; G3-D, the CLI client, merged as #286, `21ea8674`; G3-C after E112, G3 addendum 7's ruling 1, which merges before G3-C starts) |
     | 7 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
     | 8 | STG-13 | V-01's oracle rebuilt |
     | 9 | STG-14 | I-6, the resource, model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established: CS-4 has merged (#283), and G3 is still established on no host (map v1.20, design workspace `0717159`) |
 
-    **Contention for a slot:** STG-05's slices came first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today, then I-6 (STG-14, item 9). On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it was building ahead of H-1, beside CS-4, as the operator's decision of 2026-10-23 placed it (design workspace). **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
+    **Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today, then I-6 (STG-14, item 9). On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it was building ahead of H-1, beside CS-4, as the operator's decision of 2026-10-23 placed it (design workspace). **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
 
     **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 - number: 2
@@ -1377,21 +1377,21 @@ sections:
       and classifies each outcome (contained, weaker and registered, or not an agent context, with its reason) and each
       branch where containment fails, which under `required` refuses (DV-2). **DV-5, the census''s failure-branch half:**
       every `ProcessTree(` and `run_session_tree(` construction in `src` takes a containment decision or is allowlisted
-      with its reason, and every `except ContainmentUnavailable` re-raises or refuses. The `run_session` guard is the backstop,
-      and the handler''s early refusal stays, so no seat moves. Eval has no policy: its lanes register as weaker contexts
-      while they run. **DV-4, under `required`, checks spawn only in a layout:** the operator''s own `aew check run` runs
-      its checks contained, or refuses naming `allow_weaker`. Under `allow_weaker` and on Windows, it runs labelled weaker
-      and registers. The backstop is a refusal in `policy/checks.py` for any check spawned with no layout under `required`,
-      whatever started it. **In the same pull request:** the labs of Linux CI''s Lead-session tests, the live lane and the
-      dogfood set `allow_weaker` for those tests only; the docs follow the ruling; the surface map''s `lead session` row
-      gains `CONTAINMENT_UNAVAILABLE`; and the usage error names `aew opencode`. Each rule is checked with a planted failure,
-      as the addendum lists them'
+      with its reason, and every `except ContainmentUnavailable` re-raises or refuses under `required`. The `run_session`
+      guard is the backstop, and the handler''s early refusal stays, so no seat moves. Eval has no policy: its lanes register
+      as weaker contexts while they run. **DV-4, under `required`, checks spawn only in a layout:** the operator''s own
+      `aew check run` runs its checks contained, or refuses naming `allow_weaker`. Under `allow_weaker` and on Windows,
+      it runs labelled weaker and registers. The backstop is a refusal in `policy/checks.py` for any check spawned with
+      no layout under `required`, whatever started it. **In the same pull request:** the labs of Linux CI''s Lead-session
+      tests, the live lane and the dogfood set `allow_weaker` for those tests only; the docs follow the ruling; the surface
+      map''s `lead session` row gains `CONTAINMENT_UNAVAILABLE`; and the usage error names `aew opencode`. Each rule is
+      checked with a planted failure, as the addendum lists them'
     Source: G3 addendum 7, ruling 1, with ruling 2's register of weaker contexts (the designer, 2026-10-29; design workspace
       `891f067`, `30-stages/STG-03-G3-trusted-origin/handoff/HANDOFF-G3-ADDENDUM-7-when-an-owner-may-accept-G3.md`), which
       applies `G3-12` and A-33 and changes no adopted text; the designer's rulings DV-2, DV-4 and DV-5 of 2026-10-29 (design
       workspace `891f067` and `ae9570d`)
-    When: '**Contained.** It merges before G3-C starts, because G3-C reads both the refusal and the register (addendum 7).
-      §1''s item 6 puts G3-C after it'
+    When: '**Now.** It merges before G3-C starts, because G3-C reads both the refusal and the register (addendum 7). §1''s
+      item 6 puts G3-C after it'
     Notes: 'Filed by the Lead. Ruling 2, the standing by which an owner accepts G3, is G3-C''s and goes into its brief,
       not this row. **One more for the census** (found on 2026-10-30; the designer is told): off Linux, the weaker label
       that `aew opencode` returns carries no `weaker_because` (`src/aew/harness/opencode/lead.py:203` at `45b247e5`). The
@@ -1407,10 +1407,11 @@ sections:
   - '#': E114
     Work: Report an argument-limit refusal at a check's spawn as the refusal it is. It surfaces as `VALIDATION_INTERRUPTED`,
       because the spawn in `src/aew/policy/checks.py` (`:93` at `45b247e5`) catches only `OSError`, and the refusal, `ContainmentUnavailable`
-      with the reason `bwrap_argument_limit` (`src/aew/harness/containment/layout.py:309`), is not one
+      with the reason `bwrap_argument_limit` (`src/aew/harness/containment/layout.py:309` at `45b247e5`), is not one
     Source: 'The designer''s ruling of 2026-10-29 (design workspace `ae9570d`), which sends it to the register as a public
       minor: "It still refuses, so it is a reporting defect"'
-    When: '**Unscheduled.** A public minor. E112''s backstop changes the same spawn in `policy/checks.py`'
+    When: '**Contained.** A public minor, fixed in E112''s pull request, whose backstop changes the same spawn in `policy/checks.py`.
+      Owner: E112''s builder'
     Notes: Filed by the Lead
 
   - '#': E47

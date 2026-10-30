@@ -488,6 +488,16 @@
    "sha256": "126237b71fb36785b8606a5934abfb6b02089bbc8609ce861a42dce6dd10df59"
   },
   {
+   "path": "A-46/U01-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-46",
+   "source": "30-stages/STG-22-U01-upgrade-and-recovery/adopted/u01-r3/U01-POSITION.md",
+   "source-sha256": "b72f69849bb7bb17381ee98b09590a23d0f7260603c81a5f5ab2674deef8c07c",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "86d56cd517b602525c5f26ddc066c7277261619aad68d0014720bdf34d07f0aa"
+  },
+  {
    "path": "A-25/aew-d01-read-v0.3.4-FULL.schema.json",
    "generated": "do not edit; regenerated from the adopted design text (see README.md)",
    "position": "A-25",

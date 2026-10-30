@@ -257,6 +257,7 @@ class Ledger:
         self.approvals: list[dict[str, Any]] = []  # PINs that confirmed a named action within the budget
         self.sign_ins: list[dict[str, Any]] = []  # AEW's own sign-ins (the startup unlock, the website login)
         self.steps: list[dict[str, Any]] = []  # each step of the path with its derived state (vertical.oracle)
+        self.not_measured: dict[str, Any] | None = None  # set when the scenario errored before its verdict
         self.decisions: list[dict[str, Any]] = []
         self.hard_limits: dict[str, dict[str, Any]] = {}
         self.observations: list[dict[str, Any]] = []
@@ -308,6 +309,13 @@ class Ledger:
                        note="a PIN over the scenario's budget")
         else:
             self.approvals.append({"seq": self._next(), **entry})
+
+    def ended_by(self, error: BaseException | None) -> None:
+        """How the scenario's body ended, before its verdict: ``error`` is the exception that escaped it (the Lead did
+        not start, setup raised), or None. A scenario that errored is **not measured**, never read as a red verdict:
+        its ledger and its summary say so first (an always-red check says when it measured nothing; STG-13)."""
+        if error is not None:
+            self.not_measured = {"error": redact(f"{type(error).__name__}: {error}")[:400]}
 
     def sign_in(self, kind: str, *, step: str) -> None:
         """One of AEW's own sign-ins (``kind``: the startup unlock, the website login). "Authenticate at most once":
@@ -424,14 +432,19 @@ class Ledger:
         return out
 
     def over(self) -> dict[str, int]:
-        """The counters above their threshold (the zero assertions)."""
+        """The counters above their threshold (the zero assertions). A scenario not measured is held to no threshold
+        (the designer's addendum 1 to the oracle's hand-off, outcome 9)."""
+        if self.not_measured is not None:
+            return {}
         found = self.counts()
         return {c: n for c, n in found.items() if n > THRESHOLDS[c] and (self.steering or c not in STEERING_ONLY)}
 
     def to_json(self) -> dict[str, Any]:
+        # A scenario not measured counts in no counter: its entries stay as evidence, its counts are null.
         return {"schema": "aew/vertical-ledger/v2", "scenario": self.scenario, "mode": VERTICAL_MODE,
                 "platform": self.platform, "qualification": self.qualification(), "steering": self.steering,
-                "counts": self.counts(),
+                "measured": self.not_measured is None, "not_measured": self.not_measured,
+                "counts": self.counts() if self.not_measured is None else None,
                 "thresholds": THRESHOLDS, "decisions": self.decisions, "pin_budget": self.pin_budget,
                 "approvals": self.approvals, "sign_ins": self.sign_ins, "steps": self.steps,
                 "hard_limits": self.hard_limits, "entries": self.entries, "observations": self.observations}
@@ -447,11 +460,16 @@ class Ledger:
         c = self.counts()
         others = self.not_the_operators()
         lines = [] if self.enforced() else windows_lines()
-        lines += [f"vertical UAT {self.scenario} ({self.platform}, steering {'on' if self.steering else 'off'}, "
-                  f"mode {VERTICAL_MODE})",
-                  "operator: " + "  ".join(f"{k} {c[k]}" for k in OPERATOR_COUNTERS),
-                  "lead:     " + "  ".join(f"{k} {c[k]}" for k in LEAD_COUNTERS),
-                  "decisions: " + ("; ".join(decision_line(d) for d in self.decisions) or "none"),
+        if self.not_measured is not None:  # before anything it counted: none of it is a verdict
+            lines.append(f"NOT MEASURED (errored before its verdict): {self.not_measured['error']}"[:300])
+        lines.append(f"vertical UAT {self.scenario} ({self.platform}, steering {'on' if self.steering else 'off'}, "
+                     f"mode {VERTICAL_MODE})")
+        if self.not_measured is None:
+            lines += ["operator: " + "  ".join(f"{k} {c[k]}" for k in OPERATOR_COUNTERS),
+                      "lead:     " + "  ".join(f"{k} {c[k]}" for k in LEAD_COUNTERS)]
+        else:
+            lines.append("counters: none counted (not measured)")
+        lines += ["decisions: " + ("; ".join(decision_line(d) for d in self.decisions) or "none"),
                   f"approvals (PIN budget {self.pin_budget}): "
                   + ("; ".join(f"{a['step']} {a['action']}" for a in self.approvals) or "none")]
         if self.steps:  # each step of the path, as far as the code has built it (vertical.oracle)
@@ -502,6 +520,12 @@ class Ledger:
         path.write_text(text + "\n", encoding="utf-8")
         (directory / "vertical-summary.txt").write_text(self.summary() + "\n", encoding="utf-8")
         return path
+
+
+def ledger_dir_name(test_name: str) -> str:
+    """The directory a scenario's ledger is written to, from its test's name (``test_x[a-b]`` is ``test_x-a-b``):
+    the writer and the lane's report both use it."""
+    return test_name.replace("[", "-").replace("]", "").replace("/", "-")
 
 
 def decision_line(d: dict[str, Any]) -> str:

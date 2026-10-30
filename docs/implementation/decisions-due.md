@@ -17,6 +17,14 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 ## Owed, soonest first
 
+### STG-03
+
+**Due by:** Contained · **Owner:** designer · **Needs:** design
+
+**What:** One G3 addendum, which G3-C's brief needs first: the scope of G3-12's rule that every Lead launch path runs the contained profile and its self-test, and how an owner judges G3-12 when it consumes a consent
+
+**Blocks:** -
+
 ### E99
 
 **Due by:** Internal alpha · **Owner:** designer · **Needs:** design
@@ -46,6 +54,14 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 **Due by:** Unscheduled · **Owner:** operator · **Needs:** decision
 
 **What:** Whether the Windows integration lane gets a fifth shard (one more job per full run under the 40-job cap; the Lead's recommendation) or the integration suite is made faster, so that no Windows shard runs close to its session deadline
+
+**Blocks:** -
+
+### E110
+
+**Due by:** Unscheduled · **Owner:** operator · **Needs:** decision
+
+**What:** A-44's Q9 and Q10, which are put to the operator with slice S7's probe data (E109), and where slice S8 is placed, which rests on them
 
 **Blocks:** -
 

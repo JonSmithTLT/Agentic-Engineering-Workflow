@@ -230,8 +230,9 @@ def test_the_decisions_due_view_is_what_its_yaml_renders_and_is_current():
 
 
 # The rebaseline left no open question (§4 is empty) and no row targeted **Designer**, so the rules about them are
-# proved on a copy of the register with one of each planted: Q99, a question, and E999, a Designer row.
-QUESTION, DESIGNER_ROW = "Q99", "E999"
+# proved on a copy of the register with one of each planted: Q99, a question, and E999, a Designer row. E997 is an open
+# row planted with an item of its own, so that no live row's decision or closing moves these tests (#290's review, m1).
+QUESTION, DESIGNER_ROW, OPEN_ROW = "Q99", "E999", "E997"
 
 
 def _with_a_question_and_a_designer_row() -> dict[str, Any]:
@@ -243,22 +244,33 @@ def _with_a_question_and_a_designer_row() -> dict[str, Any]:
     return register.normalize(data)
 
 
+def _with_an_open_row(data: dict[str, Any]) -> dict[str, Any]:
+    follow_ups = next(s for s in data["sections"] if s["number"] == 6)
+    follow_ups["rows"].append({"#": OPEN_ROW, "Work": "x", "Source": "x", "When": "**Unscheduled**", "Notes": ""})
+    return data
+
+
 def _item(row: str, **extra: Any) -> dict[str, Any]:
     return {"row": row, "needs": "decision", "owner": "designer", "due": "Unscheduled", "what": "x"} | extra
 
 
+def _with_items(due: dict[str, Any], *items: dict[str, Any]) -> dict[str, Any]:
+    return {**due, "items": register.normalize_due({"items": [*due["items"], *items]})["items"]}
+
+
 def test_an_item_goes_stale_when_its_row_or_a_blocked_row_closes():
-    data = copy.deepcopy(DATA)
+    data, due = _with_an_open_row(copy.deepcopy(DATA)), _with_items(DUE, _item(OPEN_ROW))
+    assert not [p for p in register.due_problems(data, due) if OPEN_ROW in p]  # open, so its item stands
+    planted = next(i for i in due["items"] if i["row"] == OPEN_ROW)
+    planted["blocks"] = ["F2"]  # closed in M4-B
+    assert any(f"({OPEN_ROW}): blocks F2, which is closed" in p for p in register.due_problems(data, due))
+    planted.pop("blocks")
     closed = next(s for s in data["sections"] if s["title"].startswith("Closed"))
     follow_ups = next(s for s in data["sections"] if s["number"] == 6)
-    e72 = next(r for r in follow_ups["rows"] if r["#"] == "E72")
-    follow_ups["rows"].remove(e72)
-    closed["rows"].append({c: "x" for c in closed["columns"]} | {closed["columns"][0]: "E72"})
-    problems = register.due_problems(data, DUE)
-    assert any("E72 is closed" in p for p in problems), problems
-    due = copy.deepcopy(DUE)
-    due["items"][0]["blocks"] = ["F2"]  # closed in M4-B
-    assert any("blocks F2, which is closed" in p for p in register.due_problems(DATA, due))
+    follow_ups["rows"] = [r for r in follow_ups["rows"] if r["#"] != OPEN_ROW]
+    closed["rows"].append({c: "x" for c in closed["columns"]} | {closed["columns"][0]: OPEN_ROW})
+    problems = register.due_problems(data, due)
+    assert any(f"{OPEN_ROW} is closed" in p for p in problems), problems
 
 
 def test_every_open_question_and_designer_row_has_an_item():
@@ -287,13 +299,12 @@ def test_the_view_lists_the_soonest_first():
 
 def test_a_question_needs_its_own_item_and_a_blocked_designer_row_waits_for_its_blocker():
     """PR #104 review, 1: an open question is covered only by its own item; a **Designer** row may instead be blocked by
-    one (F6 waited for Q4's decision)."""
-    data, due = _with_a_question_and_a_designer_row(), copy.deepcopy(DUE)
-    other = next(i for i in due["items"] if i["row"] == "E4")
-    other["blocks"] = [QUESTION]  # another item blocking the question is no item of the question's own
+    one (F6 waited for Q4's decision). The other item is a planted row's, never a live one (#290's review, m1)."""
+    data = _with_an_open_row(_with_a_question_and_a_designer_row())
+    due = _with_items(DUE, _item(OPEN_ROW, blocks=[QUESTION]))  # another item blocking the question is not its own
     assert any(f"{QUESTION} is an open question with no item of its own" in p for p in register.due_problems(data, due))
-    other.pop("blocks")
-    due["items"] = register.normalize_due({"items": [*due["items"], _item(QUESTION, blocks=[DESIGNER_ROW])]})["items"]
+    next(i for i in due["items"] if i["row"] == OPEN_ROW).pop("blocks")
+    due = _with_items(due, _item(QUESTION, blocks=[DESIGNER_ROW]))
     assert register.due_problems(data, due) == []  # the Designer row is blocked by the question's item
 
 
@@ -670,6 +681,10 @@ def test_the_register_reads_the_same_with_libyaml_and_the_pure_python_reader(whi
 DISPOSITIONS = register.YAML.with_name("register-rebaseline-dispositions.yaml")
 CITATION = "(register rebaseline, design workspace `b598fdc`)"
 REBASELINE_DAY = "2026-10-24"
+# The commit that carried the rebaseline out ("Register: rebaseline", 2026-10-24). Its decisions-due list is the one the
+# rebaseline left, exactly its kept items. The dispositions name only the commit they were made from
+# (``register_commit``), so this one is named here (#290's review, m1).
+REBASELINE_COMMIT = "872947103345660b37c77da8e1cc0caedc6cb6e0"
 
 
 def _dispositions() -> dict[str, Any]:
@@ -773,20 +788,30 @@ def head_problems(disp: dict[str, Any], head: dict[str, Any]) -> list[str]:
     return out
 
 
-@pytest.fixture(scope="module")
-def at_the_base() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    """The dispositions with the register and decisions-due as they were at ``register_commit``. Like the frozen-tag
-    check of ``test_spec_pin``, it needs the history: CI's core jobs fetch it all, and a shallow clone skips."""
-    disp = _dispositions()
-    commit = disp["register_commit"]
+def _read_at(commit: str, *paths: Path) -> list[Any]:
+    """Each of ``paths`` as it was at ``commit``. Like the frozen-tag check of ``test_spec_pin``, it needs the history:
+    CI's core jobs fetch it all, and a shallow clone skips."""
     if shutil.which("git") is None or not (register.ROOT / ".git").exists():
         pytest.skip("not a git checkout")
     if register._git(register.ROOT, "cat-file", "-e", f"{commit}^{{commit}}").returncode:
         pytest.skip(f"commit {commit[:8]} is not in this clone (a shallow clone)")
-    shown = [register._git(register.ROOT, "show", f"{commit}:{p.relative_to(register.ROOT).as_posix()}")
-             for p in (register.YAML, register.DUE_YAML)]
+    shown = [register._git(register.ROOT, "show", f"{commit}:{p.relative_to(register.ROOT).as_posix()}") for p in paths]
     assert all(s.returncode == 0 for s in shown), [s.stderr for s in shown]
-    return disp, register._load(shown[0].stdout), register._load(shown[1].stdout)
+    return [register._load(s.stdout) for s in shown]
+
+
+@pytest.fixture(scope="module")
+def at_the_base() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """The dispositions with the register and decisions-due as they were at ``register_commit``."""
+    disp = _dispositions()
+    base, base_due = _read_at(disp["register_commit"], register.YAML, register.DUE_YAML)
+    return disp, base, base_due
+
+
+@pytest.fixture(scope="module")
+def due_as_the_rebaseline_left_it() -> dict[str, Any]:
+    """decisions-due at ``REBASELINE_COMMIT``."""
+    return _read_at(REBASELINE_COMMIT, register.DUE_YAML)[0]
 
 
 def test_every_open_row_at_the_rebaselines_base_has_one_disposition_and_every_disposition_names_one(at_the_base):
@@ -815,12 +840,8 @@ def _the_rebaselines_items_stand(due: dict[str, Any], fates: dict[str, Any]) -> 
 
 def test_the_dispositions_are_the_designers_counts():
     """SUMMARY.md of the record: 21 closed outright, 9 absorbed, 125 held in 16 groups, 38 kept; three stage rows;
-    24 decisions-due items, of which 3 stay. On those 24 rows the live list is pinned both ways: each of the 3 kept rows
-    has its item, and none of the 21 dropped rows has one. It no longer pins the live list's whole membership: an item
-    on a row outside the 24 (E99's, filed after the rebaseline) is not refused here (#285's review, m5). Its limit: on
-    the live list, a kept item's removal (its decision made, or its row closed) and any later item on E19, the one
-    dropped row still open, need this pin changed (#290's review, m1; the next register batch reads the record's own
-    commit instead)."""
+    24 decisions-due items, of which 3 stay. Which 3 stay is pinned against the list the rebaseline left, never the live
+    one (`test_the_rebaseline_left_exactly_its_kept_items`)."""
     disp = _dispositions()
     kinds = Counter(d["disposition"] for d in disp["rows"].values())
     assert (kinds["close"], kinds["absorb"], kinds["hold"], kinds["keep"], len(disp["rows"])) == (21, 9, 125, 38, 193)
@@ -828,11 +849,22 @@ def test_the_dispositions_are_the_designers_counts():
     assert sorted(disp["new_rows"]) == ["STG-03", "STG-13", "STG-15"]
     fates = Counter(f["fate"] for f in disp["decisions_due"].values())
     assert (fates["drop"], len(disp["decisions_due"])) == (21, 24)
-    on_fate_rows, kept = _the_rebaselines_sides(DUE, disp["decisions_due"])
-    assert _the_rebaselines_items_stand(DUE, disp["decisions_due"]), (
-        f"the live items on the 24 fate rows: missing {sorted(set(kept) - set(on_fate_rows))}, "
-        f"extra {sorted(set(on_fate_rows) - set(kept))}")
     assert disp["targets"] == list(register.TARGETS) and disp["due_order"] == list(register.DUE_ORDER)
+
+
+def test_the_rebaseline_left_exactly_its_kept_items(due_as_the_rebaseline_left_it):
+    """The decisions-due fates, compared with the list at ``REBASELINE_COMMIT`` rather than the live one (#290's
+    review, m1): there each of the 3 kept rows has its item, none of the 21 dropped rows has one, and the list holds
+    nothing else. A later change to the live list, such as a kept item removed when its decision is made or its row
+    closes, or an item on E19 (the one dropped row still open), is not this pin's: `due_problems` judges it by the
+    register's rules."""
+    fates = _dispositions()["decisions_due"]
+    on_fate_rows, kept = _the_rebaselines_sides(due_as_the_rebaseline_left_it, fates)
+    assert _the_rebaselines_items_stand(due_as_the_rebaseline_left_it, fates), (
+        f"at {REBASELINE_COMMIT[:8]}, the items on the 24 fate rows: missing {sorted(set(kept) - set(on_fate_rows))}, "
+        f"extra {sorted(set(on_fate_rows) - set(kept))}")
+    left = sorted(i["row"] for i in due_as_the_rebaseline_left_it["items"])
+    assert left == kept, f"at {REBASELINE_COMMIT[:8]}, the list holds {left}; the rebaseline kept {kept}"
 
 
 # The pin's three cases, planted on synthetic item lists over the frozen fates; the live decisions-due file is not read.

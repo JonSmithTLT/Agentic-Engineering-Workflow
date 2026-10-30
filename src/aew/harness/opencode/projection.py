@@ -246,9 +246,14 @@ LEAD_SYSTEM = "\n".join([
     "write it as a block (`goal: |-` and indented lines): unquoted, YAML would cut the text at ` #` and join "
     "lines, and AEW refuses such input. Plans and notes go the same way with `--file -` or `--note-file -`. "
     "In PowerShell, pipe a single-quoted here-string (`@'` ... `'@ | aew ...`).",
+    # CS-4 addendum 11: the old "anything else needs the operator" read as a ban, even on a command the operator
+    # approves. The rules are unchanged (`LEAD_RULES`): a command that asks still waits on the operator.
     "- Do not implement substantial changes yourself. You cannot edit files in this session, but you can read and "
-    "search them with your read, glob and grep tools. The shell runs `aew` and `git status|diff|log|show`; anything "
-    "else needs the operator.",
+    "search them with your read, glob and grep tools. The shell runs `aew` and `git status|diff|log|show` directly. "
+    "Any other command asks the operator's permission first: when the operator asks for one, such as running the "
+    "tests or a script, or one is needed to do what they asked, request it, and run it once they approve. If they "
+    "decline, do not try it another way. Editing files and committing stay with invocations, whatever the command: "
+    "dispatch one for them.",
     "- Lead acquisition, handoff, takeover and release are the operator's actions at their own terminal. They are "
     "refused here.",
     "- Report contradictions between artifacts to the operator. Never resolve them silently.",
@@ -311,8 +316,9 @@ def lead_contained_text(label: Mapping[str, Any]) -> str:
             "`git status`, `diff` and `log` work and your Lead `aew` commands still reach the broker, which writes "
             "AEW state for you. The session reaches " + (" and ".join(reach) or "nothing outside it")
             + ". The desktop, the clipboard bus, browser tools and private or host addresses are refused by design. "
-            "Do not work around a refusal: tell the operator what you needed and why, so they can do it at their own "
-            "terminal or widen AEW's containment settings where a setting exists.")
+            "A refusal is what a deny rule or this containment returns. Do not work around one: tell the operator "
+            "what you needed and why, so they can do it at their own terminal or widen AEW's containment settings "
+            "where a setting exists. Running a command the operator approved is not working around anything.")
 
 
 def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,

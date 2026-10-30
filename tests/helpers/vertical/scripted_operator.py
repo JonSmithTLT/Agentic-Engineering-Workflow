@@ -102,6 +102,7 @@ class Operator:
     on_ask: dict[str, Callable[[dict[str, Any]], None]] = field(default_factory=dict)
     in_setup: bool = True
     closers: list[Callable[[], None]] = field(default_factory=list)  # in-process terminals the test opened
+    steering_console: Any = None  # the operator endpoint's console, once a raise started it (one per run)
     session_id: str = ""  # the current Lead session's per-open id (its records carry it; review of #213, I1)
     chat_errors_at_open: int = 0  # the operator's chat read errors before the current session opened
 
@@ -274,6 +275,12 @@ class Operator:
                 if hook is not None:
                     hook(msg)
                 self.check_heads(f"before answering {label}")
+                # Steps 5 and 7 are G3 approvals through the confirmer; while they have not landed the operator
+                # answers in chat, which is their fallback (review of #306, F1).
+                if label == "plan":
+                    self.workaround("plan", "the plan approved in chat to the Lead", step="answer:plan")
+                elif label == "publish":
+                    self.workaround("publish", "the publish approved in chat to the Lead", step="answer:publish")
                 answer = self.answers.get(label, "yes")
                 self.ledger.decision(str(msg.get("text")), answer, label=label, asked_by="lead",
                                      detail=msg.get("detail"))

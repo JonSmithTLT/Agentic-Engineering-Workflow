@@ -11,7 +11,7 @@ outcome (§1) stands as a release requirement. Its path is row V01-01's 13 steps
 each citing its A-32 catalog IDs and the O-01 action, D-01 route or local surface that serves it, with its state
 derived from the code's own registries, never kept by hand. The frozen instrument (its `IDEAL_PATH`, the proposed
 `aew settings set` and `aew preflight`, and the fallbacks for the old surfaces) is retired. Where this page describes
-it, and in the ledgers `main` uploaded before the rebuild, it stands as history. It runs on pushes to `main` and on
+it, in the ledgers `main` uploaded before the rebuild, and in the vertical-path shifts plan (v15), it stands as history. It runs on pushes to `main` and on
 dispatch only (§5), and its thresholds and mode are unchanged, except the PIN rule (§4).
 
 **Spec v2** carries the amendments the operator approved on 2026-10-11 (Q8: every listed amendment; Q1(e): Windows
@@ -175,7 +175,7 @@ the end and writes its ledger before it asserts.
 | `seat_operations` | acquire, release or reacquire, by hand |
 | `lifecycle_steps` | any operator command or chat line that pushes a lifecycle stage. Approving the plan and the publish are decisions, not steps. |
 | `manifest_adopts` | any separate adopt step |
-| `pin_reentries` | The PIN rule (below): a PIN that confirms no named action, a PIN over the scenario's budget, and each of AEW's own sign-ins (the startup unlock, the website login) beyond the first ("authenticate at most once"); and a per-action console challenge on Linux. Never under `credentials`: the PIN is the operator's own secret. |
+| `pin_reentries` | Counted under the PIN rule from the merge of pull request #306 on `main`; before it, under v2's rule (a PIN entered again while one endpoint lived), so `main`'s series is never read across the two. The PIN rule (below): a PIN that confirms no named action, a PIN over the scenario's budget, and each of AEW's own sign-ins (the startup unlock, the website login) beyond the first ("authenticate at most once"); and a per-action console challenge on Linux. Never under `credentials`: the PIN is the operator's own secret. |
 | `windows_console_challenges` | (v2) each per-action challenge at the operator console on Windows (a one-time code typed back) for an operator-principal operation that is not a decision, such as configure or open, standing in for "authenticate once" until Windows qualifies. A decision confirmed at the console (the steering raise, every re-authenticated item) is a decision on every platform, never a challenge. |
 
 **Any operator fallback fails the verdict.** Every fallback the operator took (each a ledger entry with its evidence)
@@ -196,14 +196,19 @@ comparison by its label.
 - a G3 PIN that confirms a named action is an **approval**, not a re-entry; a PIN that confirms no named action fails;
 - each scenario has a **PIN budget**: one per G3-protected step on its path, derived from the path, never kept by hand
   (`oracle.pin_budget`). Since A-39 that is V1 3 (open, plan, publish), V2 4 (V1's, plus reopen), V3 0 or 1 (open, if
-  its path gets that far), V4 4 (V1's, plus the setting), plus 1 for each raise on the path. A PIN over the budget
-  fails;
+  its path gets that far), V4 4 (V1's, plus the setting), plus 1 for each raise on the path. A raise names the Lead
+  generation its open or reopen established, and the raised mode lapses with that generation, so a steering-on path
+  raises after its open and again after its reopen: V1 4, V2 6, V4 5 (the designer's ruling of 2026-10-30). A PIN
+  over the budget fails. The budget is checked as a total for the path: an approval is not yet matched to an
+  unconsumed G3 action of the path, which the slice that wires the confirmer adds;
 - "authenticate at most once" keeps counting AEW's own sign-ins: the startup unlock and the website login;
 - approvals are listed apart from the operator's decisions (`approvals`), so V1's decisions stay exactly `plan` and
   `publish`.
 
-No confirmer exists to observe yet, so today no PIN is entered and the approvals are empty; each step's fallback is
-counted instead.
+No confirmer exists to observe yet, so today no PIN is entered and the approvals are empty. Each G3 step the operator
+takes (open, plan, publish, reopen, the setting, each raise) is counted as a fallback instead: plan and publish, which
+the operator answers in chat, are recorded as fallbacks as well as decisions. `tests/unit/test_vertical_oracle.py`
+fails when a G3 step on a scenario's path does not go through the oracle.
 
 **Lead counters (all must be 0):**
 

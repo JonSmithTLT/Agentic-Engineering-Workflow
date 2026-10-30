@@ -8,7 +8,8 @@ V-01's acceptance oracle, from row V01-01 as it stood at the build's start (the 
   attempts on them. The surface map's `proposed` list held only those two, so it is empty.
 - **The PIN rule** (the operator's decision of 2026-10-24) is in `vertical-uat.md` §4. Each PIN is recorded with its
   step and action, and is an approval within the budget derived from the path. The derivation gives the matrix's
-  budgets: V1 3, V2 4, V3 0 or 1, V4 4, plus 1 per raise.
+  budgets: V1 3, V2 4, V3 0 or 1, V4 4, plus 1 per raise. A raise follows each open and reopen (the designer's ruling
+  of 2026-10-30), so with steering on V1 is 4, V2 6 and V4 5. `pin_reentries` counts under the rule from #306's merge.
 - **This row's earlier two notes are settled here.** The lines that said the Lead is uncontained are re-derived:
   `lead_label` reads the label CS-4 records for each Lead session, and `LEAD_LABEL_WIRED` is true. The Lead's
   minimums stay `none`, since raising one is the operator's.

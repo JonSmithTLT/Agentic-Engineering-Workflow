@@ -79,6 +79,9 @@ class Step(NamedTuple):
     catalog: tuple[str, ...]  # the row's A-32 IDs for the step
     serves: tuple[Wire | Read | Local, ...]
     held_by: tuple[str, ...]  # the row's "Held by", reported until the step lands
+    # The steps it follows: it occurs once after each of them on the path, never on its own (a raise names the Lead
+    # generation its open or reopen established; the designer's ruling of 2026-10-30)
+    after: tuple[str, ...] = ()
 
 
 def _s(*tags: str) -> frozenset[str]:
@@ -109,12 +112,16 @@ STEPS: tuple[Step, ...] = (
           Read("C18", "/v1/read/continuation-state/{work_id}"), Read("L07", "/v1/read/attachments")), ("G3",)),
     Step(11, "preflight", _s("V3"), ("P03",), (Read("P03", "/v1/read/capabilities"),), ()),
     Step(12, "setting", _s("V4"), ("P04", "P14"), (Wire("P14", "ADOPT_MANIFEST_EDIT", G3, "A-39"),), ("G3",)),
-    Step(13, "raise", _s("steering"), ("P08",), (Wire("P08", "SET_STEERING_MODE", G3, "A-39"),), ("G3",)),
+    # A raised mode lapses when its Lead generation ends (I6-R01), and a reopen starts a new one, so a steering-on path
+    # raises after its open and again after its reopen, one PIN each (the designer's ruling of 2026-10-30).
+    Step(13, "raise", _s("steering"), ("P08",), (Wire("P08", "SET_STEERING_MODE", G3, "A-39"),), ("G3",),
+         after=("open", "reopen")),
 )
 STEP = {s.key: s for s in STEPS}
 
 # V2 and V4 are V1's path plus their own steps (vertical-uat.md §3); V3 is setup plus readiness, and the open step only
-# when its path gets that far (`also`). A path lists its steps in step order, not the order a scenario takes them.
+# when its path gets that far (`also`). A path lists its steps in step order, not the order a scenario takes them,
+# except that a step with `after` follows each step it names.
 INHERITS: dict[str, tuple[str, ...]] = {"V1": ("V1",), "V2": ("V1", "V2"), "V3": ("V3",), "V4": ("V1", "V4")}
 
 
@@ -170,10 +177,18 @@ def code_facts() -> Facts:
     if reading.origin is None or reading.action is None:
         raise RuntimeError("the carrier's admission (Carrier._member) is not where the reference's reader looks: the "
                            "oracle cannot derive the wire states")
-    routes = sorted({str(r["route"]) for r in adopted.matrix() if r["api"] == "D01"})
-    served = stg02_server.tie(routes, stg02_server.read(ast.parse(inspect.getsource(server)), vars(server))).served
-    return Facts({a: r["origin"] for a, r in adopted.registry().items()}, reading.origin, reading.action,
-                 frozenset(routes), frozenset(served), cli_commands(build_parser()))
+    # Every route of the matrix is tied, so a string the reader cannot tie to one is a route it cannot read: the
+    # derivation stops on it rather than read a served route as not built.
+    tied = stg02_server.tie(sorted({str(r["route"]) for r in adopted.matrix()}),
+                            stg02_server.read(ast.parse(inspect.getsource(server)), vars(server)))
+    if tied.unresolved:
+        raise RuntimeError("the server's dispatch names what the reference's reader cannot tie to a route: "
+                           + "; ".join(tied.unresolved))
+    routes = frozenset(str(r["route"]) for r in adopted.matrix() if r["api"] == "D01")
+    # Both switches on, as every walk that classifies commands builds it (build_parser's docstring).
+    commands_ = cli_commands(build_parser(recall_search=True, coordination_reads=True))
+    return Facts({a: r["origin"] for a, r in adopted.registry().items()}, reading.origin, reading.action, routes,
+                 frozenset(tied.served) & routes, commands_)
 
 
 # ---------------------------------------------------------------------------------------------- the derivation
@@ -225,10 +240,16 @@ def state_of(key: str, facts: Facts | None = None) -> dict[str, Any]:
 
 def path(scenario: str, *, steering: bool = False, also: tuple[str, ...] = (),
          steps: Iterable[Step] = STEPS) -> tuple[Step, ...]:
-    """The scenario's steps: the ones the row tags with it (V2 and V4 inherit V1's), setup's, the raise when steering
-    is on, and ``also`` (V3's open, when its path gets that far)."""
+    """The scenario's steps: the ones the row tags with it (V2 and V4 inherit V1's), setup's, ``also`` (V3's open, when
+    its path gets that far), and, when steering is on, the raise after each open and reopen."""
+    steps = tuple(steps)
     tags = {"all", *INHERITS[scenario], *(("steering",) if steering else ())}
-    return tuple(s for s in steps if s.scenarios & tags or s.key in also)
+    out: list[Step] = []
+    for s in steps:
+        if not s.after and (s.scenarios & tags or s.key in also):
+            out.append(s)
+            out += [t for t in steps if s.key in t.after and t.scenarios & tags]
+    return tuple(out)
 
 
 def g3_protected(step: Step) -> bool:
@@ -248,7 +269,11 @@ ACTION = re.compile(r"[A-Z][A-Z0-9_]*")
 
 def proposed_names(steps: Iterable[Step] = STEPS, facts: Facts | None = None) -> list[str]:
     """Every name on the path that nothing adopted or built carries: a CLI surface the CLI does not have, a route that
-    is no route of the vendored D-01 matrix, an action neither in the registry nor placed by an adoption."""
+    is no route of the vendored D-01 matrix, an action neither in the registry nor placed by an adoption.
+
+    The limit: an action the registry lacks is "placed by an adoption" when its step cites one (``A-\\d+``); its name is
+    not checked against the adopted contract, which is not in this repository. A misspelled unregistered name passes,
+    and its step stays "not built" after the registry gains the real name."""
     facts = facts or code_facts()
     out = []
     for s in steps:

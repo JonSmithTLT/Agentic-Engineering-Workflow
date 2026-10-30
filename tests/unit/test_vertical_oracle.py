@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -95,6 +96,9 @@ def test_a_proposed_name_on_the_path_fails():
                      "step 12 (setting): SETTINGS_SET is neither in the O-01 registry nor placed by an adoption"]
     # Missing: a step that names nothing proposes nothing (configure has no serving surface yet).
     assert O.proposed_names([O.STEP["configure"]]) == []
+    # A switched command is a command of the CLI: the parser is built with both switches on (review of #306, N3).
+    switched = O.Step(14, "recall", O._s("V1"), ("X01",), (O.Local("X01", None, ("history", "search")),), ())
+    assert O.proposed_names([switched]) == []
 
 
 def test_each_registered_action_has_the_origin_the_row_gives_it():
@@ -120,8 +124,21 @@ def test_the_derivation_stops_when_the_carriers_admission_cannot_be_read(monkeyp
     try:
         with pytest.raises(RuntimeError, match="cannot derive the wire states"):
             O.code_facts()
+        # A server dispatch string the reader cannot tie to a route of the matrix stops it too (review of #306, N5).
+        from aew.stg02 import server
+
+        planted = inspect.getsource(server).replace('if path == "/v1/read/waiting":',
+                                                    'if path == "/v1/read/bogus" or path == "/v1/read/waiting":')
+        untied = SimpleNamespace(read=lambda tree, values: real_server.read(ast.parse(planted), values),
+                                 tie=real_server.tie)
+        monkeypatch.setattr(O, "readers", lambda: (real_commands, untied))
+        O.code_facts.cache_clear()
+        with pytest.raises(RuntimeError, match="/v1/read/bogus"):
+            O.code_facts()
     finally:
         O.code_facts.cache_clear()
+    monkeypatch.undo()
+    assert O.code_facts().served  # the real tree ties every string
 
 
 def test_a_step_taken_todays_way_is_a_fallback_until_it_lands_and_then_has_no_driver(monkeypatch):
@@ -149,15 +166,65 @@ def test_a_step_taken_todays_way_is_a_fallback_until_it_lands_and_then_has_no_dr
 
 def test_each_scenarios_pin_budget_is_derived_from_its_path():
     """The operator's decision of 2026-10-24 (F1), with the matrix's budgets since A-39: V1 3, V2 4, V3 0 or 1 (open,
-    if its path gets that far), V4 4, plus 1 for the raise. Derived from the path: these are what the derivation
-    gives, not inputs."""
+    if its path gets that far), V4 4, plus 1 per raise, and a raise after each open and reopen (the designer's ruling
+    of 2026-10-30): with steering on V1 4, V2 6, V4 5. Derived from the path: these are what the derivation gives, not
+    inputs."""
     budgets = {sc: O.pin_budget(O.path(sc)) for sc in O.INHERITS}
     assert budgets == {"V1": 3, "V2": 4, "V3": 0, "V4": 4}
     assert O.pin_budget(O.path("V3", also=("open",))) == 1
-    assert all(O.pin_budget(O.path(sc, steering=True)) == budgets[sc] + 1 for sc in ("V1", "V2", "V4"))
+    assert {sc: O.pin_budget(O.path(sc, steering=True)) for sc in ("V1", "V2", "V4")} == {"V1": 4, "V2": 6, "V4": 5}
+    keys = [s.key for s in O.path("V2", steering=True)]
+    assert keys.count("raise") == 2 and keys[keys.index("open") + 1] == "raise" == keys[keys.index("reopen") + 1]
+    assert "raise" not in [s.key for s in O.path("V2")] + [s.key for s in O.path("V3", steering=True)]
     assert [s.key for s in O.path("V1") if O.g3_protected(s)] == ["open", "plan", "publish"]
     assert [s.key for s in O.path("V4") if O.g3_protected(s)] == ["open", "plan", "publish", "setting"]
     assert "configure" in {s.key for s in O.path("V1")} and not O.g3_protected(O.STEP["configure"])  # A-39: no PIN
+
+
+ROOT = Path(__file__).resolve().parents[2]
+# Where the scripted operator takes the path's steps: the acceptance module and the operator's own helper.
+TAKERS = (ROOT / "tests" / "acceptance" / "test_vertical_path.py",
+          ROOT / "tests" / "helpers" / "vertical" / "scripted_operator.py")
+
+
+def workaround_keys(sources: list[str]) -> set[str]:
+    """The step keys passed to ``.workaround(`` in ``sources``: a string literal, or either branch of a conditional.
+    Static: a key passed in a variable, or a call in another module, is not seen."""
+    found: set[str] = set()
+    for text in sources:
+        for node in ast.walk(ast.parse(text)):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "workaround"
+                    and node.args):
+                arg = node.args[0]
+                for value in (arg.body, arg.orelse) if isinstance(arg, ast.IfExp) else (arg,):
+                    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                        found.add(value.value)
+    return found
+
+
+def g3_steps_skipping_the_oracle(keys: set[str], steps=O.STEPS) -> dict[str, set[str]]:
+    """Each scenario's G3-protected steps that no ``workaround`` call takes (review of #306, F1)."""
+    out = {}
+    for sc in ("V1", "V2", "V4"):
+        for steering in (False, True):
+            missing = {s.key for s in O.path(sc, steering=steering, steps=steps) if O.g3_protected(s)} - keys
+            if missing:
+                out[f"{sc}{' steering' if steering else ''}"] = missing
+    return out
+
+
+def test_every_g3_step_the_operator_takes_goes_through_the_oracle():
+    """Every G3-protected step of V1, V2 and V4 (with steering off and on) that the scripted operator takes goes
+    through the oracle (`Operator.workaround`): a fallback while it has not landed, `no_driver` once it has. Planted:
+    a module that takes plan only through chat is named, and so is a G3 step added to the row in a fixture."""
+    keys = workaround_keys([p.read_text(encoding="utf-8") for p in TAKERS])
+    assert g3_steps_skipping_the_oracle(keys) == {}
+    assert {"open", "plan", "publish", "reopen", "setting", "raise"} <= keys
+    assert g3_steps_skipping_the_oracle(keys - {"plan"}) == {sc: {"plan"} for sc in (
+        "V1", "V1 steering", "V2", "V2 steering", "V4", "V4 steering")}
+    extra = O.Step(14, "extra", O._s("V1"), ("X01",), (O.Wire("X01", "CLOSE_ATTACHMENT", O.G3, "A-25"),), ("G3",))
+    assert g3_steps_skipping_the_oracle(keys, (*O.STEPS, extra))["V1"] == {"extra"}
+    assert workaround_keys(['op.workaround("a" if x else "b", "y")', "op.workaround(key, 'y')"]) == {"a", "b"}
 
 
 def test_a_step_added_to_a_path_moves_its_budget_with_no_edit():

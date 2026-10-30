@@ -9,7 +9,9 @@ and reporting, and every verdict it prints leads with its unqualified state and 
 
 The path is V-01's acceptance oracle (``vertical/oracle.py``): row V01-01's 13 steps, each with its state derived from
 the code's own registries and recorded in the ledger, and each scenario's PIN budget derived from its path (STG-13).
-A step that has not landed is taken today's way and counted as a fallback with its derived state.
+Each step the operator takes (every G3 step among them, `test_vertical_oracle.py` checks) goes through the oracle: while
+it has not landed it is taken today's way and counted as a fallback with its derived state, and once it has landed
+without a driver it is `no_driver`. The Lead's own steps (ask, work, result) are measured by the Lead's counters.
 
 The actors are all scripted and offline: the operator (``vertical/scripted_operator.py``: only what a human types),
 the Lead (``vertical/lead.py``: no AEW knowledge, inside the fake OpenCode TUI that the real ``aew opencode`` starts,
@@ -62,7 +64,7 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
     configuration; ``steering`` adds what Run needs (a starting mode, a notifier, hard deadlines)."""
     op.workaround("configure", "edit .aew/policy/checks.yaml and execution.yaml, aew lead acquire, aew manifest adopt "
                                "(quickstart)")
-    command =(["{python}", "-c", "open('check-output.txt', 'w').write('x')"] if cause == "check-changes-snapshot"
+    command = (["{python}", "-c", "open('check-output.txt', 'w').write('x')"] if cause == "check-changes-snapshot"
                else ["{python}", "-c", STAMP_CHECK] if cause == "stamp" else workers.UNIT)
 
     def checks(doc: dict[str, Any]) -> None:
@@ -295,17 +297,23 @@ def run_v1_path(op: Operator, *, steering: bool = False) -> None:
     """Setup, open the Lead session, ask for the fix, answer the Lead until the result, close the session."""
     configure(op, steering=steering)
     op.in_setup = False
-    if steering:
-        raise_steering(op)
     session, _ = open_session(op, "open", steering=steering)
+    if steering:  # a raise names the Lead generation its open established, so it follows the open
+        raise_steering(op)
     op.say("ask", workers.REQUEST)
     op.converse(session)
     finish(op, session)
 
 
-def v1_decisions(op: Operator) -> tuple[str, ...]:
-    """V1's decisions; a steering-on run also has the operator's raise, a decision that is not V1's to count."""
-    return (("steering_mode",) if op.ledger.steering else ()) + V1_DECISIONS
+def v1_decisions(op: Operator, *, reopened: bool = False) -> tuple[str, ...]:
+    """V1's decisions, in the order they are taken. A steering-on run also has the operator's raise after the open,
+    and, when the run reopened, again after the reopen (between the plan and the publish), each a decision that is not
+    V1's to count."""
+    raised = ("steering_mode",) if op.ledger.steering else ()
+    if not reopened:
+        return raised + V1_DECISIONS
+    plan, publish = V1_DECISIONS
+    return (*raised, plan, *raised, publish)
 
 
 @pytest.mark.parametrize("steering", [False, True], ids=["steering-off", "steering-on"])
@@ -500,9 +508,9 @@ def run_v2(op: Operator, gate: Path, *, how: str, steering: bool, fresh: bool) -
     facts: dict[str, Any] = {"how": how, "terminal": "fresh" if fresh else "same shell"}
     configure(op, steering=steering)
     op.in_setup = False
+    session, _ = open_session(op, "open", steering=steering)
     if steering:
         raise_steering(op)
-    session, _ = open_session(op, "open", steering=steering)
     op.say("ask", workers.REQUEST)
     op.converse(session, stop=ready.exists)  # until the implementer announces that it is running
     facts["implementer_running"] = ready.exists()
@@ -513,6 +521,8 @@ def run_v2(op: Operator, gate: Path, *, how: str, steering: bool, fresh: bool) -
     facts["run_after_reopen"] = run_status(op, "R-INV-0001-1")
     facts["state_after_reopen"] = ((run_aew_json(op, "work", "show", "T-0001") or {}).get("control") or {}).get(
         "state")
+    if steering:  # the reopen started a new Lead generation and the raised mode lapsed with the old one (I6-R01)
+        raise_steering(op)
     op.say("reopen:ask", "Where do things stand?")
     gate.write_text("go", encoding="utf-8")  # the implementer finishes only now, after the reopen
     op.converse(session)
@@ -557,7 +567,7 @@ def test_v2_closing_and_reopening_with_work_active_costs_the_operator_nothing(tm
         facts = run_v2(op, gate, how=how, steering=steering, fresh=True)
     finally:
         write_out(op, request)
-    problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op) + v2_problems(facts)
+    problems = verdict(op, decisions=v1_decisions(op, reopened=True)) + result_problems(op) + v2_problems(facts)
     assert_verdict(op, problems)
 
 
@@ -594,7 +604,7 @@ def test_v2_forced_kill_mid_stage_finishes_through_abandon_reconcile_redispatch(
         op.ledger.observe("v2", **facts)
     finally:
         write_out(op, request)
-    problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op)
+    problems = verdict(op, decisions=v1_decisions(op, reopened=True)) + result_problems(op)
     if not facts.get("held_mid_stage"):
         problems.append("the session was not killed mid-stage (the launch hook never held)")
     for step in ("refusal_names_a_step", "reconcile", "redispatch"):
@@ -616,7 +626,7 @@ def test_v2_extra_same_shell_reopen_is_not_v2s_verdict(tmp_path, world, request)
         facts = run_v2(op, gate, how="exit", steering=False, fresh=False)
     finally:
         write_out(op, request)
-    problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op) + v2_problems(facts)
+    problems = verdict(op, decisions=v1_decisions(op, reopened=True)) + result_problems(op) + v2_problems(facts)
     assert_verdict(op, problems)
 
 
@@ -791,18 +801,21 @@ def raise_steering(op: Operator) -> None:
     adopted action): the operator raises the steering mode to Run at the operator endpoint, a decision, not a
     lifecycle step. The endpoint runs in its own terminal and `aew lead mode raise run` in another, with the code typed
     back; both terminals are this process (the in-process channel AT-1 uses on Windows), the endpoint and its code are
-    real."""
+    real. The endpoint starts with the first raise, and a later raise (after a reopen) uses it again."""
     from notifier import Console
 
     from aew.engine.api import Engine
     from aew.harness import operator_client, operator_endpoint
 
     op.workaround("raise", "aew operator serve; aew lead mode raise run, the code typed back")
-    console = Console()
-    endpoint = operator_endpoint.OperatorEndpoint(Engine.discover(op.root), console=console, dev=True, timeout=30)
-    endpoint.start()
-    op.closers.append(endpoint.close)
-    op.typed("steering:serve", "aew operator serve --dev")
+    if op.steering_console is None:
+        op.steering_console = Console()
+        endpoint = operator_endpoint.OperatorEndpoint(Engine.discover(op.root), console=op.steering_console, dev=True,
+                                                      timeout=30)
+        endpoint.start()
+        op.closers.append(endpoint.close)
+        op.typed("steering:serve", "aew operator serve --dev")
+    console = op.steering_console
     op.typed("steering:raise", "aew lead mode raise run")
     try:
         out = operator_client.request_raise(op.lab.aew_root, "run", ask=lambda prompt: console.code())

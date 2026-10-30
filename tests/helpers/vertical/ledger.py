@@ -294,7 +294,12 @@ class Ledger:
         2026-10-24, F1). A PIN that confirms a named action, within the scenario's budget, is an approval: listed
         apart from the decisions, never counted. One that confirms no named action, or goes over the budget, is
         counted (``pin_reentries``). Never under ``credentials``: the PIN is the operator's own secret, not an AEW
-        credential (spec v2)."""
+        credential (spec v2).
+
+        The limit: the budget is checked as a total for the path, not per step. An approval is not matched to an
+        unconsumed G3 action of the path, so two PINs at one step pass while another G3 step took none. No PIN is
+        entered yet (no confirmer exists to observe); the slice that wires the confirmer matches each approval to its
+        step's action (vertical-uat.md §4)."""
         entry = {"step": step, "action": action}
         if not action:
             self.count("pin_reentries", entry, actor="operator", step=step, note="a PIN that confirms no named action")

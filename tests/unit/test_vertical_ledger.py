@@ -74,13 +74,16 @@ def doc_minimums(ledger_section: str) -> dict[str, dict[str, str | None]]:
     return out
 
 
-# Every minimum the spec has ever pinned (spec v1, #211; spec v2, the operator's Q8 approval, 2026-10-11). A minimum
-# only ratchets up: a later value may be higher, never lower. Append a row when one is raised; never edit or remove one.
+# Every minimum the spec has ever pinned (spec v1, #211; spec v2, the operator's Q8 approval, 2026-10-11; #308, the
+# operator's decision of 2026-10-30). A minimum only ratchets up: a later value may be higher, never lower. Append a
+# row when one is raised; never edit or remove one.
 MINIMUM_HISTORY: tuple[tuple[str, str, str, str | None], ...] = (
     ("v1", "linux", L.WORKERS, "os_readonly_roots"),
     ("v1", "win32", L.WORKERS, "workdir_separation_only"),
     ("v2", "linux", L.LEAD, None),
     ("v2", "win32", L.LEAD, None),
+    ("#308", "linux", L.LEAD, "os_readonly_roots"),  # the operator's decision of 2026-10-30
+    ("#308", "win32", L.LEAD, "workdir_separation_only"),
 )
 
 
@@ -92,6 +95,8 @@ def test_the_containment_minimums_only_ratchet_up():
         assert L.at_least(now, earlier), f"{platform} {actor}: {now} is below {earlier} ({version})"
     assert {(p, a) for _, p, a, _ in MINIMUM_HISTORY} == {(p, a) for p in L.CONTAINMENT_MINIMUM
                                                           for a in L.CONTAINMENT_MINIMUM[p]}
+    lowered = {**L.CONTAINMENT_MINIMUM["linux"], L.LEAD: "workdir_separation_only"}  # planted: a lowering fails
+    assert any(not L.at_least(lowered[a], earlier) for _, p, a, earlier in MINIMUM_HISTORY if p == "linux")
     assert L.at_least("os_readonly_roots", "workdir_separation_only") and not L.at_least(None, "os_readonly_roots")
     assert not L.at_least("something_new", None)  # a label outside the order is never taken as meeting a minimum
 
@@ -110,12 +115,27 @@ def test_the_lead_is_held_to_its_minimum_and_a_weaker_run_label_fails(tmp_path):
         runlog.write_record(d, {"run": run, "containment": {"filesystem": label}})
     lab = SimpleNamespace(aew_root=aew_root, tmp=tmp_path)
     led = L.Ledger("unit", platform="linux")
-    assert containment(lab, led) == ["R-INV-0002-1"]
+    # No Lead session recorded a label: below the Lead's minimum on both platforms since #308
+    assert containment(lab, led) == ["R-INV-0002-1", L.LEAD]
     found = led.hard_limits["containment"]
     assert found["outcome"] == L.NOT_REFUSED and found["lead"] is None and "lead_note" in found
     win = L.Ledger("unit", platform="win32")
-    assert containment(lab, win) == []  # both at or above Windows' minimum
-    assert win.hard_limits["containment"]["outcome"] == L.HELD
+    assert containment(lab, win) == [L.LEAD]  # both runs at or above Windows' minimum; the Lead has no label
+    d = runlog.run_dir(aew_root, "lead-20261030T000000Z-1")
+    d.mkdir(parents=True)
+    (d / "label.json").write_text('{"filesystem": "os_readonly_roots"}', encoding="utf-8")
+    win = L.Ledger("unit", platform="win32")
+    assert containment(lab, win) == [] and win.hard_limits["containment"]["outcome"] == L.HELD
+    assert containment(lab, L.Ledger("unit", platform="linux")) == ["R-INV-0002-1"]  # the Lead now meets it
+    # No worker run, a Lead label: the Lead is judged alone (review of #308, m1), never "not exercised"
+    alone = SimpleNamespace(aew_root=tmp_path / "alone" / ".aew", tmp=tmp_path / "alone")
+    d = runlog.run_dir(alone.aew_root, "lead-20261030T000000Z-1")
+    d.mkdir(parents=True)
+    (d / "label.json").write_text('{"filesystem": "workdir_separation_only"}', encoding="utf-8")
+    led = L.Ledger("unit", platform="linux")
+    assert containment(alone, led) == [L.LEAD] and led.hard_limits["containment"]["outcome"] == L.NOT_REFUSED
+    win = L.Ledger("unit", platform="win32")
+    assert containment(alone, win) == [] and win.hard_limits["containment"]["outcome"] == L.HELD
 
 
 def test_the_leads_label_is_read_from_what_its_sessions_recorded(tmp_path):
@@ -398,18 +418,17 @@ def test_every_operator_fallback_is_listed_and_the_document_says_it_fails_the_ve
 # ---------------------------------------------------------------------------------------------- review of #213
 
 
-def test_enforce_is_refused_while_a_lead_minimum_is_no_label_on_an_enforced_platform():
+def test_enforce_is_refused_while_a_lead_minimum_is_no_label_on_an_enforced_platform(monkeypatch):
     """§5: `VERTICAL_MODE` cannot be `enforce` while an enforced platform's Lead minimum is no label, nor while the
-    test assumes the Lead's label instead of reading it (F1). The label is read since CS-4; the Linux minimum, the
-    operator's to raise, still blocks it. Whenever the mode is `enforce`, nothing may."""
+    test assumes the Lead's label instead of reading it (F1). The label is read since CS-4 and the Linux minimum is
+    raised since #308, so neither blocks it now; the switch to `enforce` stays the operator's (the mode is unchanged).
+    A lowered minimum or an unwired label would block it again (planted)."""
     from vertical import scripted_operator
 
-    blockers = L.enforce_blockers(lead_label_wired=scripted_operator.LEAD_LABEL_WIRED)
-    if L.VERTICAL_MODE == "enforce":
-        assert blockers == [], blockers
-    else:
-        assert any("linux" in b for b in blockers) and not any("lead_label" in b for b in blockers)
+    assert L.enforce_blockers(lead_label_wired=scripted_operator.LEAD_LABEL_WIRED) == []
     assert any("lead_label" in b for b in L.enforce_blockers(lead_label_wired=False))
+    monkeypatch.setitem(L.CONTAINMENT_MINIMUM, "linux", {**L.CONTAINMENT_MINIMUM["linux"], L.LEAD: None})
+    assert any("linux" in b for b in L.enforce_blockers(lead_label_wired=True))
     assert "No `enforce` while a Lead minimum is no label." in DOC.read_text(encoding="utf-8")
 
 

@@ -168,7 +168,8 @@ false`, `Ledger.ended_by`), and it counts in no counter and against no threshold
 (`aew/vertical-ledger/v2`) `counts` is null when `measured` is false. The limit: every exception escaping a
 scenario's body is classed so, including AEW's own refusal at the open, the reopen or setup, and the reason recorded
 names it. The run's summary (`vertical/report.py`) gives the not-measured count first (on Windows, after its
-unqualified state, on the same line), and a run where every scenario is not measured says so in its first words.
+unqualified state, on the same line, with the conditions still open next, before any scenario), and a run where
+every scenario is not measured says so in its first words.
 Without a readable JUnit report the count is unknown, and the summary says so. It reports, and gates nothing.
 
 **Operator counters (all must be 0):**
@@ -238,8 +239,8 @@ fails when a G3 step on a scenario's path does not go through the oracle.
 **Hard limits that the zeros must not buy.** Each is its own assertion, and the ledger keeps its failures apart:
 `did_not_refuse` (a safety regression), `refused_without_naming` (an explanation gap), `rebuilt_not_published` (a
 conflicting change carried on with, rebuilt and re-verifying, instead of refused) and `not_exercised` (the run
-never reached the limit's step: no harness run, no publish, no check). `did_not_refuse` means the protected action
-actually went ahead. Every one of them fails the test; only `held` passes.
+never reached the limit's step: no harness run and no Lead label, no publish, no check). `did_not_refuse` means the
+protected action actually went ahead. Every one of them fails the test; only `held` passes.
 
 | Hard limit | Sub-scenario | Holds when |
 |---|---|---|
@@ -256,14 +257,14 @@ after the publish approval.
 `workdir_separation_only`, `os_readonly_roots` (`LABEL_ORDER`). A minimum may only be raised, with this page and the
 operator; `tests/unit/test_vertical_ledger.py` pins every earlier value and fails if one is lowered. Since CS-4 (#283)
 each Lead session records its label on both platforms, and the test reads it from the product (`lead_label`). The
-Lead's minimums stay `none` until the operator raises them.
+operator raised the Lead's minimums on 2026-10-30, to the label each platform's Lead records (#308).
 
 | Platform | Actor | Minimum | Since |
 |---|---|---|---|
 | Linux | workers | `os_readonly_roots` | v1 |
-| Linux | lead | `none` | v2 |
+| Linux | lead | `os_readonly_roots` | #308 |
 | Windows | workers | `workdir_separation_only` | v1 |
-| Windows | lead | `none` | v2 |
+| Windows | lead | `workdir_separation_only` | #308 |
 
 ## 5. Where it lives and how it gates
 
@@ -287,8 +288,10 @@ Lead's minimums stay `none` until the operator raises them.
   `tests/unit/test_ci_tools.py` proves the Windows job stays in the matrix.
 - **No `enforce` while a Lead minimum is no label.** `VERTICAL_MODE` cannot be `enforce` while an enforced platform's
   Lead minimum is `none`, which holds the Lead to nothing, nor while the test assumes the Lead's label instead of
-  reading it from the product (`enforce_blockers`, which `tests/unit/test_vertical_ledger.py` checks whenever the mode
-  is `enforce`). The test reads the label since CS-4; the Linux minimum, the operator's to raise, still blocks it.
+  reading it from the product (`enforce_blockers`, which `tests/unit/test_vertical_ledger.py` asserts is empty, with
+  a planted lowered minimum and an unwired label each blocking it). The test reads the label since CS-4, and the
+  Linux Lead's minimum is above `none` since #308, so neither condition blocks it now; switching to `enforce` stays
+  the operator's decision.
 - **Harness faults are not product results.** The chat between the scripted actors survives a failed read (retried
   within its bound, the message never skipped) and records it (`chat_read_error`, `lead.listener_error`); the
   listener's own records are best-effort, so recording an error never ends it. A Lead session that stays alive and

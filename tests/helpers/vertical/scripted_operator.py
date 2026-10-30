@@ -466,7 +466,9 @@ def lead_label(lab: HarnessLab) -> str | None:
 
 
 def containment(lab: HarnessLab, ledger: Ledger) -> list[str]:
-    """Every harness run's containment label and the Lead's, each at or above this platform's minimum (spec v2)."""
+    """Every harness run's containment label and the Lead's, each at or above this platform's minimum (spec v2).
+    With no worker run the Lead is judged alone; the limit is not exercised only when there is neither a worker run
+    nor a Lead label (review of #308, m1)."""
     runs = runlog.run_dir(lab.aew_root, "x").parent
     want = CONTAINMENT_MINIMUM[ledger.platform]
     labels = {}
@@ -477,8 +479,9 @@ def containment(lab: HarnessLab, ledger: Ledger) -> list[str]:
     weaker = sorted(r for r, label in labels.items() if not at_least(label, want[WORKERS]))
     if not at_least(lead, want[LEAD]):
         weaker.append(LEAD)
-    if not labels:
-        ledger.hard_limit("containment", NOT_EXERCISED, minimum=want, lead=lead, note="no harness run was launched")
+    if not labels and lead is None:
+        ledger.hard_limit("containment", NOT_EXERCISED, minimum=want, lead=lead,
+                          note="no harness run was launched and no session recorded the Lead's label")
         return []
     ledger.hard_limit("containment", NOT_REFUSED if weaker else HELD, labels=labels, lead=lead, minimum=want,
                       **({"weaker": weaker} if weaker else {}),

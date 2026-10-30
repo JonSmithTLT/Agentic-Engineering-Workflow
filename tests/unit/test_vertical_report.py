@@ -148,6 +148,21 @@ def test_on_windows_the_summary_leads_with_its_unqualified_state(tmp_path):
                                                   " (nothing was measured)")
 
 
+def test_on_windows_the_conditions_still_open_come_before_the_first_scenario(tmp_path):
+    """Q1(e) conformance (#307's quick check, noted): every Windows summary leads with its unqualified state and the
+    conditions still open, so the conditions sit at the top, before the table and the first ledger's block."""
+    failed = L.Ledger("V1", platform="win32")
+    failed.ended_by(None)
+    _lane(tmp_path, {"test_v1": failed})
+    lines = R.report(tmp_path).splitlines()
+    conditions = next(i for i, line in enumerate(lines) if "open conditions:" in line)
+    assert all(c in lines[conditions] for c in L.WINDOWS_OPEN_CONDITIONS)
+    assert sum(L.WINDOWS_UNQUALIFIED in line for line in lines[:conditions]) == 1  # stated once (review of #308, n1)
+    assert conditions < lines.index("| Scenario | Result | Lead label | Why not measured |") < lines.index("```")
+    _lane(tmp_path, {"test_v1": _scenario(None)})  # an enforced platform carries none
+    assert "open conditions:" not in R.report(tmp_path)
+
+
 def test_a_reason_or_a_ledger_that_would_break_the_table_never_does(tmp_path):
     """Review of #307, F3 and F4: a multi-line reason with a pipe stays one cell; an unreadable ledger is not measured;
     an unreadable JUnit report is an unknown count."""

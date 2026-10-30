@@ -112,7 +112,7 @@ def report(directory: Path) -> str:
     state = "" if platform in ENFORCED_PLATFORMS else f"{WINDOWS_UNQUALIFIED}. "  # Q1(e): it leads, on Windows
     counted = {o: sum(1 for r in found if r["outcome"] == o) for o in (PASSED, FAILED, TEARDOWN, UNKNOWN)}
     lines = [f"### {state}vertical ({platform}): {head}", "",
-             *([] if platform in ENFORCED_PLATFORMS else [*windows_lines(), ""]),  # Q1(e): the conditions too
+             *([] if platform in ENFORCED_PLATFORMS else [*windows_lines()[1:], ""]),  # Q1(e): the open conditions
              f"measured {total - unmeasured}: " + ", ".join(f"{n} {o}" for o, n in counted.items() if n), "",
              *([f"not scenarios (no ledger by design): {'; '.join(apart)}", ""] if apart else []),
              "| Scenario | Result | Lead label | Why not measured |", "|---|---|---|---|"]

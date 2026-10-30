@@ -74,8 +74,9 @@ def doc_minimums(ledger_section: str) -> dict[str, dict[str, str | None]]:
     return out
 
 
-# Every minimum the spec has ever pinned (spec v1, #211; spec v2, the operator's Q8 approval, 2026-10-11). A minimum
-# only ratchets up: a later value may be higher, never lower. Append a row when one is raised; never edit or remove one.
+# Every minimum the spec has ever pinned (spec v1, #211; spec v2, the operator's Q8 approval, 2026-10-11; #308, the
+# operator's decision of 2026-10-30). A minimum only ratchets up: a later value may be higher, never lower. Append a
+# row when one is raised; never edit or remove one.
 MINIMUM_HISTORY: tuple[tuple[str, str, str, str | None], ...] = (
     ("v1", "linux", L.WORKERS, "os_readonly_roots"),
     ("v1", "win32", L.WORKERS, "workdir_separation_only"),
@@ -126,6 +127,15 @@ def test_the_lead_is_held_to_its_minimum_and_a_weaker_run_label_fails(tmp_path):
     win = L.Ledger("unit", platform="win32")
     assert containment(lab, win) == [] and win.hard_limits["containment"]["outcome"] == L.HELD
     assert containment(lab, L.Ledger("unit", platform="linux")) == ["R-INV-0002-1"]  # the Lead now meets it
+    # No worker run, a Lead label: the Lead is judged alone (review of #308, m1), never "not exercised"
+    alone = SimpleNamespace(aew_root=tmp_path / "alone" / ".aew", tmp=tmp_path / "alone")
+    d = runlog.run_dir(alone.aew_root, "lead-20261030T000000Z-1")
+    d.mkdir(parents=True)
+    (d / "label.json").write_text('{"filesystem": "workdir_separation_only"}', encoding="utf-8")
+    led = L.Ledger("unit", platform="linux")
+    assert containment(alone, led) == [L.LEAD] and led.hard_limits["containment"]["outcome"] == L.NOT_REFUSED
+    win = L.Ledger("unit", platform="win32")
+    assert containment(alone, win) == [] and win.hard_limits["containment"]["outcome"] == L.HELD
 
 
 def test_the_leads_label_is_read_from_what_its_sessions_recorded(tmp_path):

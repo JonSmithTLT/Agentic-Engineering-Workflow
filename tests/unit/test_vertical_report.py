@@ -157,6 +157,7 @@ def test_on_windows_the_conditions_still_open_come_before_the_first_scenario(tmp
     lines = R.report(tmp_path).splitlines()
     conditions = next(i for i, line in enumerate(lines) if "open conditions:" in line)
     assert all(c in lines[conditions] for c in L.WINDOWS_OPEN_CONDITIONS)
+    assert sum(L.WINDOWS_UNQUALIFIED in line for line in lines[:conditions]) == 1  # stated once (review of #308, n1)
     assert conditions < lines.index("| Scenario | Result | Lead label | Why not measured |") < lines.index("```")
     _lane(tmp_path, {"test_v1": _scenario(None)})  # an enforced platform carries none
     assert "open conditions:" not in R.report(tmp_path)

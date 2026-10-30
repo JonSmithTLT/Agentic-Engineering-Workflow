@@ -239,8 +239,8 @@ fails when a G3 step on a scenario's path does not go through the oracle.
 **Hard limits that the zeros must not buy.** Each is its own assertion, and the ledger keeps its failures apart:
 `did_not_refuse` (a safety regression), `refused_without_naming` (an explanation gap), `rebuilt_not_published` (a
 conflicting change carried on with, rebuilt and re-verifying, instead of refused) and `not_exercised` (the run
-never reached the limit's step: no harness run, no publish, no check). `did_not_refuse` means the protected action
-actually went ahead. Every one of them fails the test; only `held` passes.
+never reached the limit's step: no harness run and no Lead label, no publish, no check). `did_not_refuse` means the
+protected action actually went ahead. Every one of them fails the test; only `held` passes.
 
 | Hard limit | Sub-scenario | Holds when |
 |---|---|---|
@@ -288,9 +288,10 @@ operator raised the Lead's minimums on 2026-10-30, to the label each platform's 
   `tests/unit/test_ci_tools.py` proves the Windows job stays in the matrix.
 - **No `enforce` while a Lead minimum is no label.** `VERTICAL_MODE` cannot be `enforce` while an enforced platform's
   Lead minimum is `none`, which holds the Lead to nothing, nor while the test assumes the Lead's label instead of
-  reading it from the product (`enforce_blockers`, which `tests/unit/test_vertical_ledger.py` checks whenever the mode
-  is `enforce`). The test reads the label since CS-4, and the Linux Lead's minimum is above `none` since #308, so
-  neither condition blocks it now; switching to `enforce` stays the operator's decision.
+  reading it from the product (`enforce_blockers`, which `tests/unit/test_vertical_ledger.py` asserts is empty, with
+  a planted lowered minimum and an unwired label each blocking it). The test reads the label since CS-4, and the
+  Linux Lead's minimum is above `none` since #308, so neither condition blocks it now; switching to `enforce` stays
+  the operator's decision.
 - **Harness faults are not product results.** The chat between the scripted actors survives a failed read (retried
   within its bound, the message never skipped) and records it (`chat_read_error`, `lead.listener_error`); the
   listener's own records are best-effort, so recording an error never ends it. A Lead session that stays alive and

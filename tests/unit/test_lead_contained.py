@@ -523,7 +523,9 @@ def test_a_contained_line_without_relays_or_egress_says_it_reaches_nothing():
 # ------------------------------------------- addendum 11: a command that asks is requested, and nothing is loosened
 
 def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str:
-    """OpenCode's evaluation, wildcards included: the last rule whose action and resource match wins."""
+    """OpenCode's evaluation for these patterns: the last rule whose action and resource match wins, with `*` as the
+    only wildcard. fnmatch's `[...]` classes and OpenCode's optional trailing ` *` (a bare `aew` matches `aew *`) are
+    not modelled (#304 review, n2)."""
     out = "ask"
     for r in rules:
         if fnmatch.fnmatchcase(action, r["action"]) and fnmatch.fnmatchcase(resource, r["resource"]):
@@ -542,6 +544,8 @@ def test_the_lead_rules_are_unchanged_a_command_still_asks_and_an_edit_or_a_suba
         ("shell", "aew *"), ("shell", "git status*"), ("shell", "git diff*"), ("shell", "git log*"),
         ("shell", "git show*")}
     assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "deny"} == {("edit", "*"), ("subagent", "*")}
+    # The asks are AEW's own, never OpenCode's default for an unmatched action (#304 review, n1).
+    assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "ask"} == {("*", "*"), ("shell", "*")}
     for command in ("aew status", "git status --short", "git diff HEAD", "git log -1", "git show HEAD"):
         assert effect(rules, "shell", command) == "allow", command
     for command in ("python -m pytest -q", "bash scripts/check.sh", "git commit -m wip", "git push", "rm -rf build"):

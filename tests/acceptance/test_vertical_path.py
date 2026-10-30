@@ -293,9 +293,11 @@ def world(tmp_path):
     made: list[Operator] = []
     yield made
     for op in made:
-        op.lab.cleanup()
-        for close in op.closers:
-            close()
+        try:
+            op.lab.cleanup()
+        finally:  # the sessions' terminals close even when the cleanup raises
+            for close in op.closers:
+                close()
 
 
 def run_aew_json(op: Operator, *args: str) -> Any:

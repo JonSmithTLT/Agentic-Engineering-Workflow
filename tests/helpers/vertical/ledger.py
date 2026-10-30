@@ -313,7 +313,12 @@ class Ledger:
     def ended_by(self, error: BaseException | None) -> None:
         """How the scenario's body ended, before its verdict: ``error`` is the exception that escaped it (the Lead did
         not start, setup raised), or None. A scenario that errored is **not measured**, never read as a red verdict:
-        its ledger and its summary say so first (an always-red check says when it measured nothing; STG-13)."""
+        its ledger and its summary say so first, after Windows' unqualified lines (an always-red check says when it
+        measured nothing; STG-13).
+
+        The limit: every exception escaping the body is classed so, including AEW's own refusal at the open, the
+        reopen or setup, which is a step of the path rather than "a reason outside" it (addendum 1); the reason
+        recorded names it, so a reader can tell the two apart."""
         if error is not None:
             self.not_measured = {"error": redact(f"{type(error).__name__}: {error}")[:400]}
 

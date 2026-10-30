@@ -163,9 +163,13 @@ the end and writes its ledger before it asserts.
 
 **Not measured is never a fail** (the designer's addendum 1 to the oracle's hand-off, outcome 9). A scenario that ends
 before its verdict for a reason outside the path's steps (the harness fails to start, the scripted actors' own setup
-is refused, a timeout) is **not measured**: its ledger says so first (`measured: false`, `Ledger.ended_by`), and it
-counts in no counter and against no threshold. The run's summary (`vertical/report.py`) gives the not-measured count
-first, and a run where every scenario is not measured says so in its first words. It reports, and gates nothing.
+is refused, a timeout) is **not measured**: its ledger says so first, after Windows' unqualified lines (`measured:
+false`, `Ledger.ended_by`), and it counts in no counter and against no threshold. In the ledger's schema
+(`aew/vertical-ledger/v2`) `counts` is null when `measured` is false. The limit: every exception escaping a
+scenario's body is classed so, including AEW's own refusal at the open, the reopen or setup, and the reason recorded
+names it. The run's summary (`vertical/report.py`) gives the not-measured count first (on Windows, after its
+unqualified state, on the same line), and a run where every scenario is not measured says so in its first words.
+Without a readable JUnit report the count is unknown, and the summary says so. It reports, and gates nothing.
 
 **Operator counters (all must be 0):**
 

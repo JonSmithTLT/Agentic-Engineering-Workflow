@@ -69,7 +69,7 @@ def test_the_lanes_report_leads_with_the_not_measured_count(tmp_path):
                      "test_v3[stale]": None})
     text = R.report(tmp_path)
     assert text.splitlines()[0] == "### vertical (linux): not measured: 2 of 3"
-    assert "measured 1: 0 passed their verdict, 1 failed it" in text
+    assert "measured 1: 1 failed" in text
     assert "| test_v1[steering-off] | failed | os_readonly_roots | - |" in text  # the Lead's label, as recorded
     assert "| test_v2[exit] | not measured | - | AssertionError: the Lead session did not start" in text
     assert "| test_v3[stale] | not measured | - | no ledger (it ended before its verdict" in text
@@ -79,14 +79,17 @@ def test_the_lanes_report_leads_with_the_not_measured_count(tmp_path):
 def test_a_run_that_measured_nothing_says_so_in_its_first_words(tmp_path):
     _lane(tmp_path, {f"test_v{n}": _scenario(AssertionError(LEAD_DID_NOT_START)) for n in range(3)})
     assert R.report(tmp_path).startswith("### vertical (linux): not measured: 3 of 3 (nothing was measured)")
-    assert R.report(tmp_path / "absent").startswith("### vertical (")  # no output at all reports, never raises
+    assert "not measured: unknown" in R.report(tmp_path / "absent").splitlines()[0]  # no output: reports, never raises
 
 
 def test_the_report_without_a_junit_report_counts_the_ledgers_it_finds(tmp_path):
     _lane(tmp_path, {"test_v1": _scenario(None), "test_v2": _scenario(AssertionError("setup raised"))})
     (tmp_path / "junit.xml").unlink()
     text = R.report(tmp_path)
-    assert text.startswith("### vertical (linux): not measured: 1 of 2") and "no JUnit report" in text
+    first = text.splitlines()[0]
+    assert first.startswith("### vertical (linux): not measured: unknown (pytest wrote no readable JUnit report")
+    assert first.endswith("2 ledgers found, 1 of them not measured")  # the ledgers are listed, never the total
+    assert "| test_v1 | verdict unknown |" in text and "measured 1: 1 verdict unknown" in text
     assert json.loads((tmp_path / "test_v2" / "vertical-ledger.json").read_text(encoding="utf-8"))["counts"] is None
 
 
@@ -123,3 +126,45 @@ def test_a_test_that_is_not_a_scenario_is_listed_apart_and_never_counted(tmp_pat
     text = R.report(tmp_path)
     assert text.startswith("### vertical (linux): not measured: 0 of 1\n")
     assert "not scenarios (no ledger by design): test_g3 (failed; the #213 hang diagnosis)" in text
+
+
+def test_with_no_report_and_no_ledger_the_count_is_unknown_never_zero(tmp_path):
+    """Review of #307, F1: a run that left nothing says the count is unknown, never "0 of 0"; a JUnit report with no
+    case says nothing was measured."""
+    (tmp_path / "out").mkdir()
+    first = R.report(tmp_path / "out").splitlines()[0]
+    assert "not measured: unknown" in first and "0 ledgers found" in first
+    (tmp_path / "out" / "junit.xml").write_text("<testsuites><testsuite/></testsuites>", encoding="utf-8")
+    assert R.report(tmp_path / "out").splitlines()[0].endswith("not measured: 0 of 0 (nothing was measured)")
+
+
+def test_on_windows_the_summary_leads_with_its_unqualified_state(tmp_path):
+    """Review of #307, F2 (the operator's Q1(e)): outside the enforced gate the first words are the unqualified state,
+    the count after it on the same line."""
+    win = L.Ledger("V1", platform="win32")
+    win.ended_by(RuntimeError("setup raised"))
+    _lane(tmp_path, {"test_v1": win})
+    assert R.report(tmp_path).splitlines()[0] == (f"### {L.WINDOWS_UNQUALIFIED}. vertical (win32): not measured: 1 of 1"
+                                                  " (nothing was measured)")
+
+
+def test_a_reason_or_a_ledger_that_would_break_the_table_never_does(tmp_path):
+    """Review of #307, F3 and F4: a multi-line reason with a pipe stays one cell; an unreadable ledger is not measured;
+    an unreadable JUnit report is an unknown count."""
+    _lane(tmp_path, {"test_v1": _scenario(AssertionError("first line | a pipe\nsecond line")),
+                     "test_v2": _scenario(None)})
+    (tmp_path / "test_v2" / "vertical-ledger.json").write_text("{not json", encoding="utf-8")
+    text = R.report(tmp_path)
+    assert "| test_v1 | not measured | - | AssertionError: first line \\| a pipe second line |" in text
+    assert "| test_v2 | not measured | - | unreadable ledger |" in text
+    (tmp_path / "junit.xml").write_text("<testsuites", encoding="utf-8")
+    assert "not measured: unknown" in R.report(tmp_path).splitlines()[0]
+
+
+def test_a_teardown_error_is_never_read_as_a_failed_verdict(tmp_path):
+    """Review of #307, F8: a scenario that passed its call and errored in its teardown reads so, never "failed"."""
+    _lane(tmp_path, {"test_v1": _scenario(None)}, passed=frozenset({"test_v1"}))
+    junit = tmp_path / "junit.xml"
+    junit.write_text(junit.read_text(encoding="utf-8").replace(
+        "</testcase>", '<error message="failed on teardown with &quot;OSError&quot;"/></testcase>'), encoding="utf-8")
+    assert "| test_v1 | passed, errored in teardown |" in R.report(tmp_path)

@@ -1654,6 +1654,8 @@ def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_led
     assert summaries["if"] == "always()" and "GITHUB_STEP_SUMMARY" in summaries["run"]
     assert summaries["env"]["PYTHONPATH"] == "tests/helpers"
     assert '"--junitxml=${{ runner.temp }}/vertical/junit.xml"' in run["run"]
+    out = run["env"]["AEW_VERTICAL_OUT"]  # the report reads the directory the ledgers and the JUnit report go to
+    assert f'"{out}"' in summaries["run"] and f'"--junitxml={out}/junit.xml"' in run["run"]
     assert not upload["with"]["name"].startswith("lane-report-")  # assurance downloads lane-report-* only
     assert VERTICAL_MODE == "shadow"
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")

@@ -233,6 +233,19 @@ def no_check_runs(monkeypatch) -> list:
     return started
 
 
+def record_of(calc, run: dict) -> dict:
+    """A terminal run's immutable record, read from disk."""
+    return load_yaml((calc.root / ".aew" / run["record"]["path"]).read_text(encoding="utf-8"))
+
+
+def weaker_establish(monkeypatch) -> dict:
+    """What ``containment.establish`` returns under ``allow_weaker`` when the sandbox cannot be established (Linux's
+    weaker label, which says why)."""
+    weaker = containment.label(contained=False, reason=f"containment self-test failed: {SELF_TEST_FAILED}")
+    monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (None, weaker))
+    return weaker
+
+
 def raising(reason: str):
     """What ``containment.establish`` raises under ``required`` when the launch self-test fails for ``reason``."""
     def establish(self, *, workspace, run_dir):
@@ -243,15 +256,17 @@ def raising(reason: str):
 
 TIMED_OUT = "TimeoutExpired: the probe's stand-in timeout"
 # Each way a run's sandbox can fail under ``required``: the stand-in for ``establish``, the infrastructure code the run
-# ends with, and its detail. ``weaker_label`` is ``establish`` returning a weaker label under ``required``, which its
-# contract rules out: the run is refused there all the same.
+# ends with, its detail, how many authoritative attempts it gets (the transient code's one retry, as a literal), and
+# the label its records keep. ``weaker_label`` is ``establish`` returning a weaker label under ``required``, which its
+# contract rules out: the run is refused there all the same, and its records say what it was given.
 CANNOT_CONTAIN = {
     "self_test_failed": (raising(SELF_TEST_FAILED), "CONTAINMENT_SELF_TEST_FAILED",
-                         f"containment self-test failed: {SELF_TEST_FAILED}"),
+                         f"containment self-test failed: {SELF_TEST_FAILED}", 1, VO.NOT_ESTABLISHED),
     "self_test_timed_out": (raising(TIMED_OUT), "SANDBOX_SETUP_TRANSIENT",
-                            f"containment self-test failed: {TIMED_OUT}"),
+                            f"containment self-test failed: {TIMED_OUT}", 2, VO.NOT_ESTABLISHED),
     "weaker_label": (lambda self, *, workspace, run_dir: (None, containment.label(contained=False)),
-                     "CONTAINMENT_UNAVAILABLE", "the run's sandbox was not established"),
+                     "CONTAINMENT_UNAVAILABLE", "the run's sandbox was not established", 1,
+                     containment.label(contained=False)),
 }
 
 
@@ -259,8 +274,9 @@ CANNOT_CONTAIN = {
 def test_a_run_aew_cannot_contain_is_refused_under_required_whatever_its_flags(calc, tmp_path, monkeypatch, cause):
     """DV-1: under ``required``, a diagnostic run whose sandbox cannot be established is refused as an authoritative
     one is, with the same infrastructure code and detail. It is refused once, never retried, even for the transient
-    code; its result says why and what to do; no check starts, and nothing is left running."""
-    stand_in, code, detail = CANNOT_CONTAIN[cause]
+    code, while the authoritative run keeps its attempts; its result says why and what to do; its records keep the
+    label it staged, or say its sandbox was never established; no check starts, and nothing is left running."""
+    stand_in, code, detail, attempts, recorded = CANNOT_CONTAIN[cause]
     policy(calc, checks=SMOKE)
     wid = prepared(calc, tmp_path)
     started, calls = no_check_runs(monkeypatch), []
@@ -275,18 +291,21 @@ def test_a_run_aew_cannot_contain_is_refused_under_required_whatever_its_flags(c
     out = validate(calc, wid, diagnostic=True)
     assert out["diagnostic"] and not out["ok"] and out["unavailable"] == code, out
     assert out["detail"] == detail and f"aew integrate validate {wid} --diagnostic" in out["next"], out
+    assert "`aew doctor`'s containment line" in out["next"] and out["containment"] == recorded, out
     assert len(calls) == 1 and integ(calc, wid)["validation_runs"]["ids"] == [out["run"]]  # once: no retry
     diagnostic = integ(calc, wid)["diagnostic_run"]
     assert diagnostic["state"] == "unavailable" and integ(calc, wid)["status"] == "prepared"
+    assert diagnostic["containment"] == record_of(calc, diagnostic)["containment"] == recorded
     out = validate(calc, wid)
     assert out["unavailable"] and out["code"] == code, out
     authoritative = integ(calc, wid)["current_validation_run"]
     assert (diagnostic["reason"], diagnostic["detail"]) == (authoritative["reason"], authoritative["detail"])
-    assert diagnostic["detail"] == detail
+    assert diagnostic["detail"] == detail and authoritative["containment"] == recorded
     assert started == []
     runs = integ(calc, wid)["validation_runs"]["ids"]
-    for run_id in runs:
-        assert not list((calc.root / ".aew" / VO.STAGING / run_id).glob("*.json"))  # nothing staged
+    assert len(runs) == 1 + attempts and authoritative["infra_attempt"] == attempts, runs
+    for run_id in runs:  # no check result staged (only the label, where the sandbox was established)
+        assert not [f for f in (calc.root / ".aew" / VO.STAGING / run_id).glob("*.json") if f.name != VO.LABEL]
     # A diagnostic run is never a breaker event (PR #91 re-review, finding 2); each authoritative attempt is.
     assert [f["run"] for f in control(calc)["queue"]["validation_breaker"]["failures"]] == runs[1:]
     assert_control_invariants(calc)
@@ -322,9 +341,7 @@ def test_under_allow_weaker_a_diagnostic_run_goes_ahead_labelled_with_the_contai
     carries the label as it is."""
     policy(calc, checks=SMOKE, execution={"containment": {"mode": "allow_weaker"}})
     wid = prepared(calc, tmp_path)
-    weaker = containment.label(contained=False, reason=f"containment self-test failed: {SELF_TEST_FAILED}")
-    # What containment.establish returns under allow_weaker when the sandbox cannot be established.
-    monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (None, weaker))
+    weaker = weaker_establish(monkeypatch)
     out = validate(calc, wid, diagnostic=True)
     assert out["diagnostic"] and out["advisory"][0]["result"] == "pass", out
     assert out["containment"] == weaker and out["containment"]["filesystem"] == "workdir_separation_only", out
@@ -348,10 +365,86 @@ def test_a_diagnostic_run_abandoned_at_its_commit_keeps_the_containment_it_had(c
                         lambda self, state, work_id, unit, run: ("LEASE_LOST", "the lease moved (a stand-in)"))
     out = validate(calc, wid, diagnostic=True)
     assert out["abandoned"] == "LEASE_LOST" and not out["ok"] and len(started) == 1, out
+    assert out["containment"] == weaker and f"`aew integrate validate {wid} --diagnostic`" in out["next"], out
     run = integ(calc, wid)["diagnostic_run"]
     assert run["state"] == "abandoned" and run["containment"] == weaker, run
-    record = load_yaml((calc.root / ".aew" / run["record"]["path"]).read_text(encoding="utf-8"))
-    assert record["containment"] == weaker
+    assert record_of(calc, run)["containment"] == weaker
+    assert_control_invariants(calc)
+
+
+GHOST = {"ghost": {"configured": True, "command": ["aew-no-such-executable-dv7"], "cwd": ".", "timeout_s": 60}}
+
+
+def test_a_diagnostic_run_ended_unavailable_after_a_check_ran_keeps_the_containment_it_had(calc, tmp_path,
+                                                                                         monkeypatch):
+    """DV-7: under ``allow_weaker``, a diagnostic run's first check runs under its weaker label and its second cannot
+    start: the run ends unavailable, and its records and result keep the label it staged."""
+    policy(calc, checks={**SMOKE, **GHOST}, post=["smoke", "ghost"],
+           execution={"containment": {"mode": "allow_weaker"}})
+    wid = prepared(calc, tmp_path)
+    weaker = weaker_establish(monkeypatch)
+    started: list = []
+
+    def run(cfg, workspace, **kw):  # the first check runs (stood in for); the second cannot start
+        started.append(cfg)
+        if len(started) == 1:
+            return {"outcome": "ran", "exit_code": 0, "duration_s": 0.0, "log": "", "command": ["stand-in"],
+                    "spawn_errno": None}
+        return {"outcome": "spawn_failed", "exit_code": None, "duration_s": 0.0, "log": "spawn failed: ENOENT",
+                "command": cfg["command"], "spawn_errno": errno.ENOENT}
+
+    monkeypatch.setattr(VO.C, "run", run)
+    out = validate(calc, wid, diagnostic=True)
+    assert out["diagnostic"] and out["unavailable"] and len(started) == 2, out
+    assert out["containment"] == weaker and "`aew doctor`" not in out["next"], out  # not a containment code
+    run_ = integ(calc, wid)["diagnostic_run"]
+    assert run_["state"] == "unavailable" and run_["containment"] == record_of(calc, run_)["containment"] == weaker
+    assert_control_invariants(calc)
+
+
+def test_a_diagnostic_run_whose_executor_died_keeps_the_containment_it_had(calc, tmp_path, monkeypatch):
+    """DV-7: a diagnostic run whose executor died after its sandbox was established is abandoned by the next command,
+    which never had that sandbox: the records keep the label the run staged, and the result names its own command."""
+    from aew.engine.faults import InjectedFault
+
+    policy(calc, checks=SMOKE, execution={"containment": {"mode": "allow_weaker"}})
+    wid = prepared(calc, tmp_path)
+    weaker = weaker_establish(monkeypatch)
+    monkeypatch.setenv("AEW_FAULT", "validate.before_check")
+    monkeypatch.setenv("AEW_FAULT_MODE", "raise")
+    with pytest.raises(InjectedFault):
+        validate(calc, wid, diagnostic=True)
+    monkeypatch.delenv("AEW_FAULT")
+    monkeypatch.setattr(VO.Validation, "establish", raising("never asked: the run is not established again"))
+    monkeypatch.setattr(VO, "executor_alive", lambda run: False)
+    out = validate(calc, wid, diagnostic=True)
+    assert out["abandoned"] == "VALIDATION_INTERRUPTED" and out["containment"] == weaker, out
+    assert out["next"] == f"`aew integrate validate {wid} --diagnostic` starts a new run", out
+    run = integ(calc, wid)["diagnostic_run"]
+    assert run["state"] == "abandoned" and run["containment"] == record_of(calc, run)["containment"] == weaker
+    assert_control_invariants(calc)
+
+
+def test_a_diagnostic_run_ended_by_retiring_its_candidate_keeps_the_containment_it_had(calc, tmp_path, monkeypatch):
+    """DV-7: a diagnostic run still marked running when its candidate is retired is ended by the finalizer, in
+    another process (the Lead's command), which never had its sandbox: the records keep the label the run staged."""
+    from aew.engine.faults import InjectedFault
+
+    policy(calc, checks=SMOKE, post=["unit"], execution={"containment": {"mode": "allow_weaker"}})
+    wid = prepared(calc, tmp_path)
+    weaker = weaker_establish(monkeypatch)
+    monkeypatch.setenv("AEW_FAULT", "validate.before_check")
+    monkeypatch.setenv("AEW_FAULT_MODE", "raise")
+    with pytest.raises(InjectedFault):
+        validate(calc, wid, diagnostic=True)
+    monkeypatch.delenv("AEW_FAULT")
+    assert integ(calc, wid)["diagnostic_run"]["state"] == "running"
+    calc.lead("verify", "ingest", wid, "--evidence", verify(calc, wid, scope="integration", goal_result="fail"))
+    unit = control(calc)["work"][wid]
+    record = unit.get("integration") or (unit.get("integration_history") or [{}])[-1]
+    run = record["diagnostic_run"]
+    assert run["state"] == "abandoned" and run["reason"] == "SUPERSEDED", run
+    assert run["containment"] == record_of(calc, run)["containment"] == weaker
     assert_control_invariants(calc)
 
 

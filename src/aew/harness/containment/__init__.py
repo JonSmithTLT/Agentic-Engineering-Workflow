@@ -42,14 +42,16 @@ from aew.harness.containment.netns import NOT_PROVIDED
 
 __all__ = ["Layout", "bwrap_argv", "for_check", "for_run", "tree_masks_line", "retire_private_git", "establish",
            "label", "normalize",
-           "mode", "network", "supported", "REQUIRED", "ALLOW_WEAKER", "NO_CONTAINMENT_REMEDY", "CONTAINED",
-           "WORKDIR_ONLY", "PROXY_ONLY",
+           "mode", "network", "supported", "REQUIRED", "ALLOW_WEAKER", "ALLOW_WEAKER_REMEDY", "NO_CONTAINMENT_REMEDY",
+           "CONTAINED", "WORKDIR_ONLY", "PROXY_ONLY",
            "ISOLATED", "SHARED", "NOT_PROVIDED"]
 
 REQUIRED, ALLOW_WEAKER = "required", "allow_weaker"
-# What works where the policy requires containment and the platform has none: the one wording of it, for
-# :func:`establish`'s refusal and every other refusal on that condition (STG-05).
-NO_CONTAINMENT_REMEDY = "run on Linux, or set containment.mode: allow_weaker to run labelled workdir_separation_only"
+# The operator's choice to run labelled weaker, as every remedy that offers it words it (the probe's included); and
+# what works where the policy requires containment and the platform has none, for :func:`establish`'s refusal and
+# every other refusal on that condition, validation's and the custodian's (STG-05).
+ALLOW_WEAKER_REMEDY = "set containment.mode: allow_weaker to run labelled workdir_separation_only"
+NO_CONTAINMENT_REMEDY = f"run on Linux, or {ALLOW_WEAKER_REMEDY}"
 CONTAINED = "os_readonly_roots"          # OS-enforced: only the layout's writable roots can be written
 WORKDIR_ONLY = "workdir_separation_only"  # separate directories, nothing enforced
 

@@ -71,6 +71,11 @@ if TYPE_CHECKING:
     from aew.engine.ports import GatesPort, InvocationsPort, QueuePort, WorkUnitsPort
 
 STAGING = "local/validation"
+# The run's containment label, staged in its directory as soon as its sandbox is established, before anything runs in
+# it: every terminal path records this file, and none works the label out again (STG-05, DV-7).
+LABEL = "label.json"
+# What a run's records say when it staged no label: its sandbox was never established. Never read as contained.
+NOT_ESTABLISHED = {"established": False, "detail": "the run's sandbox was never established, and nothing ran in one"}
 RUNS_DIR = "validation-runs"
 TERMINAL = ("committed", "abandoned", "unavailable", "advisory")
 # Abandon reasons that are not infrastructure: the identity or the authority moved, so a fresh run is in order.
@@ -259,9 +264,12 @@ class Validation:
                                              why=f"{exc.details.get('code_reason') or exc.code}: {exc.message}")
         if not self.containment_available():
             label = containment.label(contained=False)
+            # Under ``required`` the verifier's launch is refused here too: name what works, in containment's words.
+            required = containment.mode(self.k.policy("execution")) == containment.REQUIRED
+            then = containment.NO_CONTAINMENT_REMEDY if required else "validate it with the post-integration verifier"
             return self._release_unavailable(who, None, work_id, current, why=(
                 f"VALIDATION_CONTAINMENT_UNAVAILABLE: this host has {label['filesystem']}, which cannot keep the "
-                "candidate immutable while the checks run; validate it with the post-integration verifier"))
+                f"candidate immutable while the checks run; {then}"))
         return self._validate(who, self._rev(), work_id, wait=True, diagnostic=False)
 
     def _validate(self, who: Principal, expect_rev: int, work_id: str, *, wait: bool,
@@ -384,10 +392,13 @@ class Validation:
                 expect_rev = self._rev()
                 continue
             if diagnostic:  # what was refused, why, and what to do (the run's record keeps the same detail)
+                doctor = ("`aew doctor`'s containment line shows this host's sandbox self-test; "
+                          if code in V.CONTAINMENT_FAILURES else "")
                 return {"ok": False, "work_id": work_id, "run": run["id"], "diagnostic": True, "unavailable": code,
-                        "detail": outcome.get("detail") or "", "revision": self._rev(),
-                        "next": f"fix what the detail names, then run `aew integrate validate {work_id} --diagnostic` "
-                                "again"}
+                        "detail": outcome.get("detail") or "", "containment": self._recorded_label(run["id"]),
+                        "revision": self._rev(),
+                        "next": f"{doctor}fix what the detail names, then run `aew integrate validate {work_id} "
+                                "--diagnostic` again"}
             current = (self.k.store.current()["work"][work_id].get("integration") or {}).get(CURRENT)
             return self._release_unavailable(who, None, work_id, current, why=f"{code}: "
                                              + ("the circuit breaker is open" if breaker_open
@@ -467,16 +478,17 @@ class Validation:
         workspace = integ["workspace"]
         directory = self._staging(run["id"])
         directory.mkdir(parents=True, exist_ok=True)
-        layout, label = None, containment.label(contained=False)
         try:
             layout, label = self.establish(workspace=workspace, run_dir=directory)
         except ContainmentUnavailable as exc:  # raised only under ``required``: refused whatever the run's flags (DV-1)
             return {"infra": V.classify_containment_failure(exc), "detail": exc.message}
+        # Staged before anything can run in it: every terminal path, this process's or another's, records it (DV-7).
+        atomic_write(directory / LABEL, json.dumps(label, indent=2, sort_keys=True))
         # Under ``required`` this holds at this line by itself, whatever the run's flags: ``establish`` returning a
         # weaker label there would be refused here, not run (STG-05).
         required = containment.mode(self.k.policy("execution")) == containment.REQUIRED
         if (not run.get("diagnostic") or required) and label.get("filesystem") != containment.CONTAINED:
-            return {"infra": "CONTAINMENT_UNAVAILABLE", "detail": "the run's sandbox was not established"}
+            return {"infra": V.CONTAINMENT_UNAVAILABLE, "detail": "the run's sandbox was not established"}
         env = self._check_env(layout)
         trees = procs.CheckTrees()
         remaining = (_parse(run["deadline_at"]) - _now()).total_seconds()
@@ -570,8 +582,17 @@ class Validation:
             results.append(json.loads(path.read_text(encoding="utf-8")))
         if [r["check_id"] for r in results] != [c["check_id"] for c in run["checks"]]:
             return None
-        return {"results": results, "mutated": finished["mutated"], "before": finished["before"],
-                "containment": finished.get("containment")}
+        return {"results": results, "mutated": finished["mutated"], "before": finished["before"]}
+
+    def _recorded_label(self, run_id: str) -> dict[str, Any]:
+        """The containment label the run staged when its sandbox was established (:data:`LABEL`), as its records keep
+        it; :data:`NOT_ESTABLISHED` where it staged none, which never reads as contained (DV-7)."""
+        try:
+            label = json.loads((self._staging(run_id) / LABEL).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return dict(NOT_ESTABLISHED)
+        return containment.normalize(label) if isinstance(label, dict) and label.get("filesystem") \
+            else dict(NOT_ESTABLISHED)
 
     def _commit(self, who: Principal, work_id: str, run: dict[str, Any], staged: dict[str, Any]) -> dict[str, Any]:
         """Transaction 2, in the same command as transaction 1: it re-verifies everything pinned rather than relying
@@ -600,15 +621,12 @@ class Validation:
                 abandoned = problem
                 if problem[0] not in NOT_INFRA and not run.get("diagnostic"):  # an expiry counts, as in _abandon
                     current["breaker_open"] = self._breaker_record(state, work_id, run["id"], problem[0])
-                if run.get("diagnostic"):  # its checks ran: the record says under what, as an advisory run's does
-                    current["containment"] = containment.normalize(staged["containment"])
                 self._terminate(ctx, work_id, current, "abandoned", reason=problem[0], detail=problem[1])
                 ctx.summary = f"{work_id} validation run {run['id']} abandoned: {problem[0]}"
             elif run.get("diagnostic"):
                 current["advisory"] = [{k: r[k] for k in ("check_id", "result", "reason", "exit_code")}
                                        for r in staged["results"]]
                 current["advisory_mutated"] = staged["mutated"]
-                current["containment"] = containment.normalize(staged["containment"])  # what the run had, as labelled
                 self._terminate(ctx, work_id, current, "advisory")
                 ctx.summary = f"{work_id} diagnostic run {run['id']}: advisory only, no evidence"
             else:
@@ -628,8 +646,11 @@ class Validation:
         out: dict[str, Any] = {"ok": abandoned is None, "work_id": work_id, "run": run["id"],
                                "revision": ctx.session.committed_revision}
         if abandoned:
+            flag = " --diagnostic" if run.get("diagnostic") else ""
             out.update(abandoned=abandoned[0], detail=abandoned[1],
-                       next=f"`aew integrate validate {work_id}` starts a run under the current identity")
+                       next=f"`aew integrate validate {work_id}{flag}` starts a run under the current identity")
+            if run.get("diagnostic"):
+                out.update(diagnostic=True, containment=self._recorded_label(run["id"]))
             return out
         if run.get("diagnostic"):
             out.update(diagnostic=True, advisory=current["advisory"], mutated=staged["mutated"],
@@ -683,7 +704,7 @@ class Validation:
         """One sealed engine ``check_result`` per check, bound to the candidate, the snapshot, the check's definition,
         the check set, the obligation binding and the run."""
         plan = unit.get("plan") or {}
-        label = staged.get("containment") or {}
+        label = self._recorded_label(run["id"])  # the staged label, as the run's record keeps it (DV-7)
         out = []
         for r in staged["results"]:
             result = "inconclusive" if staged["mutated"] else r["result"]
@@ -754,8 +775,7 @@ class Validation:
 
     # ------------------------------------------------------------------ terminal runs and infrastructure
 
-    @staticmethod
-    def _terminate(ctx: Any, work_id: str, run: dict[str, Any], to: str, *, reason: str | None = None,
+    def _terminate(self, ctx: Any, work_id: str, run: dict[str, Any], to: str, *, reason: str | None = None,
                    detail: str | None = None) -> None:
         """Make the current run terminal and keep it as an immutable record (created once, never rewritten). Hot
         state keeps the run as it ended, with the record's path and digest."""
@@ -765,10 +785,12 @@ class Validation:
             run["reason"] = reason
         if detail:
             run["detail"] = detail
-        Validation._write_record(ctx, work_id, run)
+        self._write_record(ctx, work_id, run)
 
-    @staticmethod
-    def _write_record(ctx: Any, work_id: str, run: dict[str, Any]) -> None:
+    def _write_record(self, ctx: Any, work_id: str, run: dict[str, Any]) -> None:
+        """The run's immutable record, with the containment label it staged: every terminal path, the commit,
+        ``_end_infra``, ``_abandon`` and the finalizer, ends here (DV-7)."""
+        run["containment"] = self._recorded_label(run["id"])
         path = f"work/{work_id}/{RUNS_DIR}/{run['id']}.yaml"
         text = dump_yaml({"schema": "aew/validation-run/v1", **{k: v for k, v in run.items() if k != "record"}})
         ctx.session.write(path, text)
@@ -816,6 +838,11 @@ class Validation:
                 current["breaker_open"] = self._breaker_record(ctx.state, work_id, run_id, reason)
             self._terminate(ctx, work_id, current, "abandoned", reason=reason, detail=detail)
             ctx.summary = f"{work_id} validation run {run_id} abandoned: {reason}"
+        if current.get("diagnostic"):  # no attempt bound applies to it, and its own command starts the next one
+            return {"ok": False, "work_id": work_id, "run": run_id, "diagnostic": True, "abandoned": reason,
+                    "detail": detail, "containment": current["containment"],
+                    "revision": ctx.session.committed_revision,
+                    "next": f"`aew integrate validate {work_id} --diagnostic` starts a new run"}
         return {"ok": False, "work_id": work_id, "run": run_id, "abandoned": reason, "detail": detail,
                 "revision": ctx.session.committed_revision,
                 "next": f"`aew integrate validate {work_id}` starts a new run within the attempt bound"}

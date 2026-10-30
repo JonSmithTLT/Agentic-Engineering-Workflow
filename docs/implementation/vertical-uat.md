@@ -168,7 +168,8 @@ false`, `Ledger.ended_by`), and it counts in no counter and against no threshold
 (`aew/vertical-ledger/v2`) `counts` is null when `measured` is false. The limit: every exception escaping a
 scenario's body is classed so, including AEW's own refusal at the open, the reopen or setup, and the reason recorded
 names it. The run's summary (`vertical/report.py`) gives the not-measured count first (on Windows, after its
-unqualified state, on the same line), and a run where every scenario is not measured says so in its first words.
+unqualified state, on the same line, with the conditions still open next, before any scenario), and a run where
+every scenario is not measured says so in its first words.
 Without a readable JUnit report the count is unknown, and the summary says so. It reports, and gates nothing.
 
 **Operator counters (all must be 0):**

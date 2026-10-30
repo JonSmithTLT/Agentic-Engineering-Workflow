@@ -217,7 +217,8 @@ def test_a_launch_behind_a_proxy_runs_and_no_loopback_call_reaches_the_proxy(lab
 def test_a_model_the_harness_does_not_offer_fails_closed(lab, tmp_path):
     """On Linux the relay projection names the pinned model in the server's configuration, so the server lists it even
     though its catalog does not offer it (as 2.0.18 does): the launch still refuses it, and says why it is listed. Its
-    next step is a new invocation: a relaunch reuses the invocation's pinned model (ADR-0010; CS-4 addendum 11)."""
+    next step names both ways on: a new invocation when the pinned model is wrong, since a relaunch reuses the pin
+    (ADR-0010; CS-4 addendum 11), and a relaunch when a variable was (#304 review, m1)."""
     lab.env["AEW_OPENCODE_CATALOG_SETTLE_S"] = "1"
     script(lab, IMPLEMENT, models=[{"id": "cheaper-model", "providerID": "other", "enabled": True, "variants": []}])
     # Timing-dependent (the catalog's wait ran out), so never a lasting incompatibility (M4-E E8a; PR #185, F1).
@@ -225,8 +226,9 @@ def test_a_model_the_harness_does_not_offer_fails_closed(lab, tmp_path):
     assert "fakeprov/fake-model is not offered" in message
     relayed = lab.record(RUN)["containment"]["network"]["mode"] == "proxy_only"
     assert ("listed only because AEW names it" in message) == relayed, message
-    assert message.endswith("then dispatch a new invocation: this one's model is pinned, and a relaunch tries the "
-                            "same model again"), message
+    assert message.endswith("check the execution policy and the provider variables it names; if the pinned model is "
+                            "what is wrong, dispatch a new invocation with --profile or --model (a relaunch reuses "
+                            "this one's pin, ADR-0010); otherwise fix the variable and relaunch"), message
 
 
 def test_on_linux_a_provider_key_that_would_reach_the_sandbox_another_way_refuses_the_launch(lab, tmp_path):
@@ -245,9 +247,23 @@ def test_on_linux_a_provider_key_that_would_reach_the_sandbox_another_way_refuse
 
 
 def test_a_missing_effort_variant_fails_closed(lab, tmp_path):
+    """The effort is in the pin, so only a new invocation changes it (ADR-0010; #304 review, m1)."""
     script(lab, IMPLEMENT, models=[{"id": "fake-model", "providerID": "fakeprov", "enabled": True,
                                     "variants": [{"id": "low"}]}])
-    assert "no variant 'high'" in refused_launch(lab, tmp_path)
+    message = refused_launch(lab, tmp_path)
+    assert "no variant 'high'" in message
+    assert message.endswith("; dispatch a new invocation with --profile or --model, or with another --effort (a "
+                            "relaunch reuses this one's pin, ADR-0010)"), message
+
+
+def test_a_disabled_model_fails_closed_and_names_both_ways_on(lab, tmp_path):
+    """A model the server lists but has disabled: the operator enables it and relaunches, or the Lead dispatches a new
+    invocation with another model (#304 review, m1)."""
+    script(lab, IMPLEMENT, models=[{"id": "fake-model", "providerID": "fakeprov", "enabled": False,
+                                    "variants": [{"id": "high"}]}])
+    message = refused_launch(lab, tmp_path)
+    assert message.endswith("fakeprov/fake-model is disabled in this OpenCode; enable it in OpenCode and relaunch, or "
+                            "dispatch a new invocation with --profile or --model"), message
 
 
 @pytest.mark.parametrize("knobs, expected", [

@@ -63,7 +63,7 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-from aew.harness.containment import egress, sockets
+from aew.harness.containment import ALLOW_WEAKER_REMEDY, egress, sockets
 from aew.harness.containment.layout import (
     DISPLAY_ENV,
     NET_SHIM,
@@ -86,8 +86,7 @@ USERNS_LIMIT = "/proc/sys/user/max_user_namespaces"
 # Row 2's words for a reachable socket of the launching user's whose holder cannot be identified (D-CS2-6), which
 # `aew doctor` shows with the row's reason
 UNIDENTIFIED_REMEDY = (" (its holder, a process of the launching user's, cannot be identified, so it counts as a "
-                       "credential: stop that process, move its socket under a masked path, or set containment.mode: "
-                       "allow_weaker to run labelled workdir_separation_only)")
+                       f"credential: stop that process, move its socket under a masked path, or {ALLOW_WEAKER_REMEDY})")
 # Row 1: addresses that are never routed anywhere real, TEST-NET-1 (RFC 5737) and IPv6's documentation prefix
 # (RFC 3849), which a connection out of a namespace with only its loopback cannot reach at all (F28 §1, P1: at once,
 # ENETUNREACH); a name on no allowlist, and never resolvable (.invalid, RFC 6761); and how long the probe waits for the
@@ -967,8 +966,7 @@ def _start_hint() -> str:
         return ""
     return ("; this kernel allows no user namespace (user.max_user_namespaces = 0), and bubblewrap needs one. Ask "
             "the machine's administrator to raise it (sysctl -w user.max_user_namespaces=<n>, and the same line in a "
-            "file under /etc/sysctl.d to keep it), or set containment.mode: allow_weaker to run labelled "
-            "workdir_separation_only")
+            f"file under /etc/sysctl.d to keep it), or {ALLOW_WEAKER_REMEDY}")
 
 
 def mechanism(layout: Layout) -> str:

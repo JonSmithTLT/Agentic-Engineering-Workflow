@@ -25,6 +25,7 @@ import hashlib
 import json
 from typing import Any
 
+from aew.errors import ContainmentUnavailable
 from aew.policy import checks as C
 
 VERIFIER, CHECKS = "verifier", "checks"
@@ -130,13 +131,19 @@ def classify_spawn_failure(spawn_errno: int | None) -> str:
     return "CHECK_SPAWN_FAILED"
 
 
+# The reason codes of a run whose sandbox could not be established: :func:`classify_containment_failure`'s, and
+# CONTAINMENT_UNAVAILABLE's other use, a sandbox the run's mode refuses (``validation_ops``, after ``establish``).
+SELF_TEST_FAILED, CONTAINMENT_UNAVAILABLE = "CONTAINMENT_SELF_TEST_FAILED", ContainmentUnavailable.code
+CONTAINMENT_FAILURES = frozenset({SANDBOX_SETUP_TRANSIENT, SELF_TEST_FAILED, CONTAINMENT_UNAVAILABLE})
+
+
 def classify_containment_failure(exc: Any) -> str:
     """The reason code of a sandbox that could not be established for the run. A self-test that timed out is the
     allow-listed transient case; a self-test that failed, or a missing bubblewrap, is not retried."""
     test = (getattr(exc, "details", None) or {}).get("self_test") or {}
     if "TimeoutExpired" in str(test.get("reason") or ""):
         return SANDBOX_SETUP_TRANSIENT
-    return "CONTAINMENT_SELF_TEST_FAILED" if test else "CONTAINMENT_UNAVAILABLE"
+    return SELF_TEST_FAILED if test else CONTAINMENT_UNAVAILABLE
 
 
 def policy_problems(gates_policy: dict[str, Any]) -> list[str]:

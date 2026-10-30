@@ -50,7 +50,7 @@ from aew.engine import stage_intents as SI
 from aew.engine import validation_ops as VO
 from aew.engine.api import Engine
 from aew.errors import AEWError, IllegalTransition, PermissionDenied, StaleAuthority
-from aew.harness import procs
+from aew.harness import containment, procs
 
 CRED = A.TOKEN_RE
 
@@ -307,6 +307,24 @@ def test_custodian_routes_but_never_accepts_verifier_reports(tmp_path, monkeypat
         assert_control_invariants(p)
     finally:
         lab.cleanup()
+
+
+def test_under_required_a_custodian_on_a_host_that_cannot_contain_names_what_works_there(tmp_path, custody,
+                                                                                       monkeypatch):
+    """STG-05: where the policy requires containment and the host has none (``required`` off Linux), the custodian
+    pins nothing and releases the lease naming what works there, in containment's own words: never the
+    post-integration verifier, whose launch the same policy refuses there."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid, custodian, _out = prepared(p, tmp_path)
+    monkeypatch.setattr(containment, "supported", lambda: False)
+    monkeypatch.setattr(containment, "mode", lambda policy: containment.REQUIRED)  # as off Linux under required
+    out = engine(p)._validation.custody_validate(credential=custody[custodian], work_id=wid)
+    assert out["unavailable"] and out["why"].endswith(containment.NO_CONTAINMENT_REMEDY), out
+    assert "post-integration verifier" not in out["why"], out
+    assert "current_validation_run" not in control(p)["work"][wid]["integration"]
+    assert entry(p, wid)["state"] == "AWAITING_DISPOSITION" and lease(p) is None
+    assert_control_invariants(p)
 
 
 @pytest.mark.parametrize("ending", ["takeover", "defer"])

@@ -2,7 +2,7 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 403,
-      "lower-bound": 712
+      "lower-bound": 713
     },
     "by_family": {
       "cli-commands": 116,
@@ -24,7 +24,7 @@
       "tools": 16,
       "transitions": 94,
       "usage-live-states": 3,
-      "writers": 252
+      "writers": 253
     },
     "by_family_and_coverage": {
       "cli-commands": {
@@ -89,11 +89,11 @@
         "lower-bound": 3
       },
       "writers": {
-        "lower-bound": 252
+        "lower-bound": 253
       }
     },
-    "digest": "sha256:aa38d666dfa58c78478ef082a72aed40536348c86363cbc919f35a5b17f1c415",
-    "records": 1115,
+    "digest": "sha256:e0f837f03a76f7d0dcaa0de31e090d83114dc1268b47ddf6a72ca7a6a62d8474",
+    "records": 1116,
     "unresolved": 103
   },
   "gaps": [
@@ -15951,6 +15951,10 @@
           },
           {
             "module": "aew.engine.validation_ops",
+            "symbol": "Validation._recorded_label"
+          },
+          {
+            "module": "aew.engine.validation_ops",
             "symbol": "Validation._staged"
           },
           {
@@ -20335,6 +20339,7 @@
       },
       "family": "modules",
       "imports": [
+        "aew.harness.containment",
         "aew.harness.containment.egress",
         "aew.harness.containment.layout",
         "aew.harness.containment.netns",
@@ -21525,6 +21530,7 @@
       },
       "family": "modules",
       "imports": [
+        "aew.errors",
         "aew.policy.checks"
       ]
     },
@@ -40716,6 +40722,66 @@
             "via": [
               "Path.unlink",
               "Path.write_text"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/validation/{}/label.json": {
+      "anchor": {
+        "module": "aew.engine.validation_ops",
+        "symbol": "Validation._execute"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/validation/{}/label.json",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "mechanism": "direct",
+            "module": "aew.engine.validation_ops",
+            "symbol": "Validation._execute",
+            "via": [
+              "atomic_write"
             ]
           }
         ]

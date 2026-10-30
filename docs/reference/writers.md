@@ -145,6 +145,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/validation/{}/git/objects`: written or removed by `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
 - `local/validation/{}/harness`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/validation/{}/harness/.aew-containment-probe-{}.spec.json`: written or removed by `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
+- `local/validation/{}/label.json`: written or removed by `aew.engine.validation_ops:Validation._execute` (direct: atomic_write)
 - `local/validation/{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/validation/{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/validation/{}/{}.json`: written or removed by `aew.engine.validation_ops:Validation._one_check` (direct: atomic_write)

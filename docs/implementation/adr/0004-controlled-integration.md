@@ -333,3 +333,29 @@ The M4-E plan v3 §2.3, built by E6a. Everything above holds, except where this 
 - **The schema stays `aew/control/v2`.** The worker's `start_id` is optional; an engine from before it refuses a state
   that carries one.
 - The decision, the other records and the residuals are in ADR-0009's amendment of 2026-10-23.
+
+## Amendment 2026-10-30 — a run AEW cannot contain is refused under `required`, whatever flag it was given (STG-05)
+
+- **What changes:** the M4-D5 amendment's containment item, for `--diagnostic`, in checks-mode validation:
+  a run AEW cannot contain is refused under `required`, whatever flag it was given.
+  - Where the host cannot contain, the run is refused before anything is pinned, with
+    `VALIDATION_CONTAINMENT_UNAVAILABLE` naming what works there. The custodian's release names the same.
+  - Where the run's sandbox cannot be established, it is refused as an infrastructure failure, before any check
+    starts.
+- **`--diagnostic`** runs the checks labelled weaker only where the policy allows weaker runs (`allow_weaker`, and
+  Windows, whose mode is always that).
+- **Every run's record says what containment it had** (DV-7). A record must not read as contained when its run was
+  not (A-06's HEB-X20, AEW-FR-23.e).
+  - A validation run stages its containment label with the run (`label.json` in its directory) as soon as its sandbox
+    is established, before any check's process starts.
+  - Every terminal path records that staged label on the run's record, kept immutable: the commit, an infrastructure
+    failure, an abandonment and the finalizer. None works it out again. The check results' evidence binds the same
+    label.
+  - A run that staged none records that its sandbox was never established and nothing ran in one. An absent label
+    never reads as contained.
+  - The limit: a run staged before this change and settled after it has no staged label, so its record says that its
+    sandbox was never established. That under-claims, and never reads as contained.
+  - A diagnostic run's result carries the same label.
+- **Unchanged:** what an authoritative run proves, and the diagnostic run's own slot. An advisory run never produces
+  evidence, never changes state and never feeds the breaker.
+- **Tests:** `tests/integration/test_validation_checks.py`.

@@ -485,7 +485,10 @@ class OpenCodeAdapter(HarnessAdapter):
                     f"({len(catalog)} models from {providers or 'no provider'} after {now - t0:.0f}s"
                     + ("; it is listed only because AEW names it in the server's configuration, to send it through "
                        "the run's provider relay (F28 §3.5)" if declared else "")
-                    + "); check the execution policy and the provider variables it names", model=ref,
+                    # A relaunch reuses the invocation's pinned model, so the next step is a new one (ADR-0010; CS-4
+                    # addendum 11).
+                    + "); check the execution policy and the provider variables it names, then dispatch a new "
+                      "invocation: this one's model is pinned, and a relaunch tries the same model again", model=ref,
                     # Timing-dependent (the catalog fills in asynchronously): never read as a lasting incompatibility
                     # (M4-E E8a; PR #185 review, F1).
                     launch_cause=CATALOG_TIMEOUT)

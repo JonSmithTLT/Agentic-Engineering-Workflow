@@ -40,8 +40,10 @@ from aew.errors import ValidationFailed
 SEP = "/"
 # Why a model id maps to no provider/model pair: the `reason` of every ModelIdRefused, and the codes a configuration
 # projection reports as `identity_error.code` (register F46.1).
-MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT = "model_id_malformed", "model_id_no_provider", "model_id_provider_conflict"
-REFUSAL_REASONS = (MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT)
+MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT, PLACEHOLDER = (
+    "model_id_malformed", "model_id_no_provider", "model_id_provider_conflict", "model_id_placeholder")
+REFUSAL_REASONS = (MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT, PLACEHOLDER)
+PLACEHOLDER_IDS = frozenset(("MODEL_ID", "<id>"))
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,15 @@ def _bad(text: str) -> bool:
     return not text or any(c.isspace() for c in text)
 
 
+def _identity(catalog_id: str, provider: str, model: str, field: str) -> ModelIdentity:
+    if model in PLACEHOLDER_IDS:
+        raise ModelIdRefused(
+            f"{field}: {catalog_id!r} is a literal placeholder model reference; replace it with an actual "
+            "harness-listed provider/model reference", reason=PLACEHOLDER, field=field, value=catalog_id,
+            provider=provider, model=model)
+    return ModelIdentity(catalog_id, provider, model)
+
+
 def from_profile(provider: str | None, model: str, *, field: str = "model") -> ModelIdentity:
     """The identity of a profile's ``provider`` and ``model`` as typed (``field`` names the model's field in the
     message: ``profiles.standard.model``, ``--model``)."""
@@ -89,12 +100,12 @@ def from_profile(provider: str | None, model: str, *, field: str = "model") -> M
             raise ModelIdRefused(f"{field}: {raw!r} names no provider: write the id exactly as the harness lists it "
                                  f"(provider/{raw}), or set the profile's provider", reason=NO_PROVIDER,
                                  field=field, value=raw)
-        return ModelIdentity(raw, head, rest)
+        return _identity(raw, head, rest, field)
     provider = str(provider)
     if not sep:
-        return ModelIdentity(raw, provider, raw)
+        return _identity(raw, provider, raw, field)
     if head == provider:
-        return ModelIdentity(raw, provider, rest)
+        return _identity(raw, provider, rest, field)
     suggestions = [f"{head}{SEP}{rest}", f"{provider}{SEP}{raw}"]
     raise ModelIdRefused(
         f"{field}: {raw!r} carries the provider prefix {head!r}, but the profile's provider is {provider!r}. Did you "

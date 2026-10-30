@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 
 from aew.errors import UsageError, ValidationFailed
+from aew.engine.api import _model_refs_doctor
 from aew.harness import models, registry
 from aew.harness.base import HarnessAdapter
 from aew.harness.opencode.adapter import OpenCodeAdapter
@@ -152,3 +153,11 @@ def test_a_providers_own_model_id_that_begins_with_its_name_is_written_in_full()
     OpenCode prints as ``router/router/auto`` is written in full."""
     assert (pin(policy(standard={"provider": "router", "model": "router/auto"}))["model"]) == "auto"
     assert (pin(policy(standard={"model": "router/router/auto"}))["model"]) == "router/auto"
+
+
+@pytest.mark.parametrize("model", ["openai/MODEL_ID", "openai/<id>"])
+def test_doctor_rejects_literal_placeholder_model_references(model):
+    status, detail = _model_refs_doctor(policy(standard={"model": model}))
+    assert status == "FAIL"
+    assert "profiles.standard.model" in detail
+    assert "replace" in detail and "actual harness-listed provider/model reference" in detail

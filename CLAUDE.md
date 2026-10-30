@@ -85,6 +85,6 @@ The lanes, the CI tiers, the static checks and the local commands are in
 - Never use a bare `git stash`: other sessions share the stash stack. Use a WIP commit instead.
 - Use `git -C <path>` rather than `cd` when several checkouts or worktrees are in play.
 - **Secret scan before every commit and push, as a gate.** Run gitleaks on its own, never piped and never in the same
-  command as the commit, and check its exit code: each changed file before committing
-  (`gitleaks dir --no-banner --redact <file>`), and the branch's own commits before pushing
+  command as the commit, and check its exit code: the staged change before committing
+  (`gitleaks git --pre-commit --staged --no-banner --redact .`), and the branch's own commits before pushing
   (`gitleaks git --no-banner --redact --log-opts="origin/main..HEAD --no-merges" .`).

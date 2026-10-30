@@ -28,6 +28,6 @@ committed. A fuller copy of the raw data, with at least every run's posts and ev
 and the probe's source, in CI's fast tier: no drive path, no UNC prefix, no home or user directory (POSIX `home`,
 macOS `Users`, `root`, a home-relative path, or the Windows `APPDATA` and `USERPROFILE` variables), no path under a
 POSIX system root (`tmp`, `var`, `opt`, `srv`, `mnt`, `run`, `etc`), and no `location`, `directory` or `binary` key.
-The test's `HOST_PATHS` lists the exact patterns. Locally before committing, it also checks
+The test's `HOST_PATHS` lists the exact patterns. Locally, on the commit before pushing, it also checks
 for no word of the local account's name, nor of any other account the probe ran under that the author names in
 `AEW_EVIDENCE_PRIVATE_WORDS`.

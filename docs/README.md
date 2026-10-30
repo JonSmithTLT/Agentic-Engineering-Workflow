@@ -386,5 +386,6 @@ Candidate agent skills, their specification and evaluation: [`skills/README.md`]
 - `tests/unit/test_docs_links.py` fails if a relative link breaks or a document under `docs/` is missing from this
   page, except under `skills/`, the register's `notes.d/` and `contracts/`, each reached through its own README on this
   page.
-- Before committing docs work, run `pytest tests/unit/test_docs_links.py tests/unit/test_requirements_ledger.py
+- Before pushing docs work, on the commit (a worktree at it, or with `git status --porcelain` empty), run
+  `pytest tests/unit/test_docs_links.py tests/unit/test_requirements_ledger.py
   tests/unit/test_spec_amendments.py tests/unit/test_register.py tests/unit/test_docs_merge.py tests/test_spec_pin.py`.

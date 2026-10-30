@@ -73,6 +73,12 @@ run checks the merged result (testing strategy §3). If `main` goes red, fixing 
 
 - **The repository is public.** Commit nothing that names a private project, host or person, and no credentials.
   Secret-scan every change before committing it, and the branch's commits before pushing.
+- **A gate reads the commit, and its own exit code decides.** A gate (a secret scan, test run or check whose result
+  decides a commit, a push or a merge) reads exactly what the commit holds: the commit, or before committing the
+  staged change, never a file the commit does not hold. A test run or a check counts in a checkout of the commit (a
+  worktree at it, or with `git status --porcelain` empty). Run it alone in its command and read its exit code: through
+  a pipe, or with another command after it, the last command's exit code is the one that counts, so a failing gate
+  can pass. For long output, write it to a file and read the file in the next step.
 - **Security findings stay private until fixed.** Never describe an unfixed vulnerability in an issue, a pull
   request or a commit message.
 - Test lanes, the CI gate and the rules for adding tests are in

@@ -295,7 +295,8 @@ class HistoryCommands:
                                  since: str | None = None, until: str | None = None,
                                  limit: int = recall.LIMIT_DEFAULT, deadline: float, budget_s: float,
                                  budget_docs: int, candidates: int, enabled: bool, fts5: bool,
-                                 fence_token: Callable[[list[str]], str] | None = None) -> dict[str, Any]:
+                                 fence_token: Callable[[list[str]], str] | None = None,
+                                 clock: Callable[[], float] = time.monotonic) -> dict[str, Any]:
         """:meth:`history_search` for a reader that never takes the control lock (the dashboard, register F20.8 S2),
         answering from ``state``, the committed state it already read.
 
@@ -311,7 +312,8 @@ class HistoryCommands:
         or a rollover sealed a segment the root does not know), there is no catch-up: the answer is what is already
         indexed, with ``history_moved``. Either way the substrate is searched with ``may_reset=False``, under the
         caller's ``deadline``, catch-up budget and candidate budget, and the fence takes its token from
-        ``fence_token``. Candidates are proven by ``History.pinned_entry``, which accepts a longer tail."""
+        ``fence_token``. Candidates are proven by ``History.pinned_entry``, which accepts a longer tail. ``clock`` is
+        the one ``deadline`` was read from, passed through so the substrate judges it by the same clock."""
         if not enabled:
             raise CapabilityUnavailable("raw-history search is off: the adopted execution policy does not set "
                                         "recall.raw_history_search: explicit", reason="switched_off")
@@ -343,7 +345,7 @@ class HistoryCommands:
         out = self._substrate().search(query, root=root, tail=tail, kinds=kinds, since=since, until=until,
                                        limit=limit, may_reset=False, budget_s=budget_s, budget_docs=budget_docs,
                                        deadline=deadline, candidates=candidates, fence_token=fence_token,
-                                       moved=moved)
+                                       moved=moved, clock=clock)
         return {"query": {"terms": list(terms), "kinds": kinds, "since": since, "until": until, "limit": limit},
                 **out}
 

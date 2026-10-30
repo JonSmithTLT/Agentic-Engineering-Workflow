@@ -361,9 +361,12 @@ class Substrate:
         self.path = aew_root / SUBSTRATE_REL
         self.history = History(aew_root)
         self.record = record
-        # The monotonic time by which a search must answer (None: no deadline, the CLI's). Every SQLite wait is then
-        # the lesser of ``READ_WAIT_S`` and the time left (register F20.8, S2).
+        # The time by which a search must answer, a reading of ``_clock`` (None: no deadline, the CLI's). Every SQLite
+        # wait is then the lesser of ``READ_WAIT_S`` and the time left (register F20.8, S2).
         self._deadline: float | None = None
+        # What the deadline and the catch-up's ``budget_s`` are judged by: the caller's clock, the real monotonic one
+        # unless a test drives it. The deadline is compared only against the clock it was read from.
+        self._clock: Callable[[], float] = time.monotonic
 
     # ------------------------------------------------------------------ the file
 
@@ -371,7 +374,7 @@ class Substrate:
         """How long a read may wait for another process's commit: ``READ_WAIT_S``, or less when a deadline is near."""
         if self._deadline is None:
             return READ_WAIT_S
-        return max(0.0, min(READ_WAIT_S, self._deadline - time.monotonic()))
+        return max(0.0, min(READ_WAIT_S, self._deadline - self._clock()))
 
     def _connect(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -503,14 +506,16 @@ class Substrate:
 
     def catch_up(self, root: dict[str, Any], tail: bytes | None, *, may_reset: bool = True,
                  budget_s: float | None = None, budget_docs: int | None = None,
-                 deadline: float | None = None) -> dict[str, Any]:
+                 deadline: float | None = None, clock: Callable[[], float] = time.monotonic) -> dict[str, Any]:
         """Index the entries after the watermark through ``root`` (``tail``: the tail's bytes, copied with the root
         under the control lock), in batches, until done or the build budget is spent. ``{"complete", "reason",
         "added", "through"}``; the next call resumes from the watermark.
 
         ``budget_s`` and ``budget_docs`` default to ``BUILD_BUDGET_S`` and ``BUILD_BUDGET_DOCS``; ``deadline`` (a
-        ``time.monotonic()`` value) also stops it between entries (``time_budget``). With ``may_reset=False`` it never
-        deletes or resets anything: a damaged or foreign substrate is reported (``unusable``, ``foreign``) and kept."""
+        reading of ``clock``) also stops it between entries (``time_budget``). ``clock`` judges ``budget_s`` and the
+        deadline. With ``may_reset=False`` it never deletes or resets anything: a damaged or foreign substrate is
+        reported (``unusable``, ``foreign``) and kept."""
+        self._clock = clock
         if deadline is not None:
             self._deadline = deadline
         try:
@@ -556,7 +561,7 @@ class Substrate:
 
     def _catch_up(self, conn: sqlite3.Connection, root: dict[str, Any], tail: bytes | None, *,
                   budget_s: float | None, budget_docs: int | None, may_reset: bool = True) -> dict[str, Any]:
-        started = time.monotonic()
+        started = self._clock()
         mark = self._watermark(conn)
         target = {"count": root["count"], "h": root["head_h"]}
         if mark == target or mark["count"] > target["count"]:  # current, or another process indexed a later root
@@ -574,10 +579,10 @@ class Substrate:
                 if batch_docs >= BATCH_DOCS:
                     mark = self._flush(conn, mark, batch)
                     added, batch, batch_docs = added + batch_docs, [], 0
-                if budget_s is not None and time.monotonic() - started >= budget_s:
+                if budget_s is not None and self._clock() - started >= budget_s:
                     reason = "budget"
                     break
-                if self._deadline is not None and time.monotonic() >= self._deadline:
+                if self._deadline is not None and self._clock() >= self._deadline:
                     reason = "time_budget"
                     break
         except IntegrityError:
@@ -699,17 +704,19 @@ class Substrate:
                since: str | None, until: str | None, limit: int, may_reset: bool = True,
                budget_s: float | None = None, budget_docs: int | None = None, deadline: float | None = None,
                candidates: int | None = None, fence_token: Callable[[list[str]], str] | None = None,
-               moved: bool = False) -> dict[str, Any]:
+               moved: bool = False, clock: Callable[[], float] = time.monotonic) -> dict[str, Any]:
         """Catch up within the budget, then answer from what is indexed, every hit authenticated (see the module).
 
         The keyword arguments after ``limit`` are the lock-free reader's (register F20.8, S2); their defaults are the
         CLI's behaviour. ``may_reset=False``: nothing is deleted or reset (see :meth:`catch_up`); a stale row is
         reported, a damaged file is ``unusable`` and no hit is served from it. ``budget_s``, ``budget_docs``: the
-        catch-up's budget. ``deadline`` (``time.monotonic()``): every phase stops by it (``time_budget``), the ranked
-        query through SQLite's progress handler on this query's connection only, and the hits verified before it are
-        kept. ``candidates``: at most this many rows are verified (``candidate_budget``). ``fence_token``: the fence's
-        token from the inert snippets, instead of a random one. ``moved``: the caller's history moved under its
-        snapshot, so there is no catch-up and no file is created; the answer is what is already indexed."""
+        catch-up's budget. ``deadline`` (a reading of ``clock``): every phase stops by it (``time_budget``), the
+        ranked query through SQLite's progress handler on this query's connection only, and the hits verified before
+        it are kept. ``candidates``: at most this many rows are verified (``candidate_budget``). ``fence_token``: the
+        fence's token from the inert snippets, instead of a random one. ``moved``: the caller's history moved under
+        its snapshot, so there is no catch-up and no file is created; the answer is what is already indexed.
+        ``clock``: what the deadline and ``budget_s`` are judged by; only a test passes one, to drive them."""
+        self._clock = clock
         if deadline is not None:
             self._deadline = deadline
 
@@ -722,7 +729,7 @@ class Substrate:
             build: dict[str, Any] = {"complete": False, "reason": "history_moved", "added": 0, "through": None}
         else:
             build = self.catch_up(root, tail, may_reset=may_reset, budget_s=budget_s, budget_docs=budget_docs,
-                                  deadline=deadline)
+                                  deadline=deadline, clock=clock)
         reasons = [build["reason"]] if build["reason"] else []
         if build["reason"] in ("foreign", "unusable"):  # only without may_reset: nothing it may answer from
             return result([], reasons, None, 0)
@@ -740,7 +747,7 @@ class Substrate:
         if deadline is not None:
             def progress() -> int:  # this query's connection only, never the catch-up's (review n2)
                 nonlocal interrupted
-                if time.monotonic() >= deadline:
+                if clock() >= deadline:
                     interrupted = True
                     return 1
                 return 0
@@ -777,7 +784,7 @@ class Substrate:
                     for row in rows:
                         if len(hits) >= limit:
                             break
-                        if deadline is not None and time.monotonic() >= deadline:
+                        if deadline is not None and clock() >= deadline:
                             reasons.append("time_budget")
                             stop = True
                             break

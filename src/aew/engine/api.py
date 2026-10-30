@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from pathlib import Path
@@ -1263,14 +1264,16 @@ class Engine:
                                  since: str | None = None, until: str | None = None, limit: int = 10,
                                  deadline: float, budget_s: float, budget_docs: int, candidates: int,
                                  enabled: bool, fts5: bool,
-                                 fence_token: Callable[[list[str]], str] | None = None) -> dict[str, Any]:
+                                 fence_token: Callable[[list[str]], str] | None = None,
+                                 clock: Callable[[], float] = time.monotonic) -> dict[str, Any]:
         """The same search for a lock-free reader of committed ``state`` (the dashboard, register F20.8 S2): it never
-        resets, discards or deletes the substrate, and answers within ``deadline``. ``enabled`` and ``fts5`` are the
-        caller's snapshot's answers, never re-read here."""
+        resets, discards or deletes the substrate, and answers within ``deadline``, a reading of ``clock``. ``enabled``
+        and ``fts5`` are the caller's snapshot's answers, never re-read here."""
         return self._history.history_search_committed(state, terms, kinds=kinds, since=since, until=until,
                                                       limit=limit, deadline=deadline, budget_s=budget_s,
                                                       budget_docs=budget_docs, candidates=candidates,
-                                                      enabled=enabled, fts5=fts5, fence_token=fence_token)
+                                                      enabled=enabled, fts5=fts5, fence_token=fence_token,
+                                                      clock=clock)
 
     def migrate(self, *, token: str, expect_rev: int) -> dict[str, Any]:
         return self._migration.migrate(token=token, expect_rev=expect_rev)

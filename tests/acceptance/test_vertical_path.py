@@ -33,7 +33,18 @@ from conftest import git, run_aew
 from notifier import recorder
 from vertical import oracle, workers
 from vertical.chat import Mailbox
-from vertical.ledger import HELD, NOT_EXERCISED, NOT_REFUSED, REBUILT, UNNAMED, V1_DECISIONS, Ledger, diagnoses
+from vertical.ledger import (
+    HELD,
+    NOT_EXERCISED,
+    NOT_REFUSED,
+    REBUILT,
+    UNNAMED,
+    V1_DECISIONS,
+    Ledger,
+    diagnoses,
+    ledger_dir_name,
+)
+from vertical.report import NOT_A_SCENARIO
 from vertical.scripted_operator import (
     Operator,
     containment,
@@ -146,9 +157,11 @@ def merge_lead(op: Operator) -> None:
 
 
 def write_out(op: Operator, request: pytest.FixtureRequest) -> Path:
+    """Write the scenario's ledger. Called from the ``finally`` around its body: an exception escaping the body (the
+    Lead did not start, setup raised) is in flight here, and makes the scenario not measured (STG-13, addendum 1)."""
+    op.ledger.ended_by(sys.exc_info()[1])
     base = Path(os.environ.get(OUT_ENV) or op.tmp / "vertical-out")
-    name = request.node.name.replace("[", "-").replace("]", "").replace("/", "-")
-    out = base / name
+    out = base / ledger_dir_name(request.node.name)
     op.ledger.observe("transcript", operator=op.transcript)
     op.ledger.write(out)
     print("\n" + op.ledger.summary())
@@ -280,9 +293,11 @@ def world(tmp_path):
     made: list[Operator] = []
     yield made
     for op in made:
-        op.lab.cleanup()
-        for close in op.closers:
-            close()
+        try:
+            op.lab.cleanup()
+        finally:  # the sessions' terminals close even when the cleanup raises
+            for close in op.closers:
+                close()
 
 
 def run_aew_json(op: Operator, *args: str) -> Any:
@@ -828,7 +843,8 @@ def raise_steering(op: Operator) -> None:
 # ---------------------------------------------------------------------------------------------- G3: #213, rebuilt
 
 
-def test_g3_the_213_listener_death_is_diagnosed_from_the_kept_files_alone(tmp_path, world, request, monkeypatch):
+def test_g3_the_213_listener_death_is_diagnosed_from_the_kept_files_alone(tmp_path, world, request, monkeypatch,
+                                                                       record_property):
     """The hang-and-flake diagnosis plan's own test (G3, "the real case"). In #213 the vertical lane hung for 30
     minutes once: the Lead's chat listener, in the fake TUI **subprocess**, died with no trace, under a chat bound
     (1800 s) equal to the lane's --test-timeout, and the evidence was deleted with tmp_path.
@@ -845,6 +861,7 @@ def test_g3_the_213_listener_death_is_diagnosed_from_the_kept_files_alone(tmp_pa
     from fake_harness import SCRIPTS_ENV
     from vertical import scripted_operator
 
+    record_property(NOT_A_SCENARIO, "the #213 hang diagnosis: it writes no ledger")  # the lane's report lists it apart
     op = setup_operator(tmp_path, "G3-213")
     world.append(op)
     configure(op)

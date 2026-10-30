@@ -67,6 +67,30 @@ EXIT_S = bounds.declare("vertical.exit", 120, within="vertical.conversation", la
                         why="the operator's wait for a session to end after /exit or a kill")
 
 
+def start_on_terminal(argv: list[str], *, env: dict[str, str], stdout: Any,
+                      stderr: Any) -> tuple[subprocess.Popen[bytes], int | None]:
+    """Start what the operator types at their terminal, and return it with the master of its terminal (None on
+    Windows). On Linux the contained Lead's TUI runs on a terminal AEW relays (STG-05 CS-4, ``os.isatty(0)``), so the
+    operator's terminal is a pseudo-terminal this test owns, as an operator's terminal is theirs: its slave is the
+    process's stdin, closed here once the process holds it; its master stays open while the process lives and is
+    closed when it ends (``Session.close``). Nothing writes to the slave (the relay writes the harness's output to
+    stdout), so the master needs no reader. The process leads its own session (POSIX), so the lab ends its whole tree.
+    On Windows it has no terminal (no relay; the Lead is not contained there) and opens no console window."""
+    master, stdin = os.openpty() if not IS_WINDOWS else (None, subprocess.DEVNULL)
+    kwargs: dict[str, Any] = ({"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS
+                              else {"start_new_session": True})
+    try:
+        proc = subprocess.Popen(argv, env=env, stdin=stdin, stdout=stdout, stderr=stderr, **kwargs)
+    except BaseException:
+        if master is not None:
+            os.close(master)
+        raise
+    finally:
+        if master is not None:
+            os.close(stdin)
+    return proc, master
+
+
 @dataclass
 class Session:
     """One ``aew opencode`` the operator started: its process, and where its terminal output went."""
@@ -75,9 +99,16 @@ class Session:
     out: Path
     err: Path
     pidfile: Path
+    tty: int | None = None  # the master of the pseudo-terminal the session runs on (Linux), while it is open
 
     def ended(self) -> bool:
         return self.proc.poll() is not None
+
+    def close(self) -> None:
+        """Close the session's terminal once the session has ended (its process waited for); a no-op after."""
+        if self.tty is not None:
+            os.close(self.tty)
+            self.tty = None
 
     def output(self) -> str:
         return (self.out.read_text(encoding="utf-8", errors="replace") if self.out.exists() else "") + \
@@ -214,16 +245,15 @@ class Operator:
         lead_spec = self.new_session(lead_spec)
         n = len(self.lab.sessions)
         out, err = self.tmp / f"session-{n}.out", self.tmp / f"session-{n}.err"
-        kwargs: dict[str, Any] = ({"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS
-                                  else {"start_new_session": True})
         env = clean_env({**self.lab.env, **self.shell_env})
         autopsy.register_workdir(out)  # the session's terminal output is kept if the test fails (G3 H4)
         autopsy.register_workdir(err)
         with out.open("wb") as o, err.open("wb") as e:
-            proc = subprocess.Popen([sys.executable, "-m", "aew", "-C", str(self.root), *argv], env=env,
-                                    stdin=subprocess.DEVNULL, stdout=o, stderr=e, **kwargs)
+            proc, master = start_on_terminal([sys.executable, "-m", "aew", "-C", str(self.root), *argv], env=env,
+                                             stdout=o, stderr=e)
         self.lab.sessions.append(proc)  # type: ignore[arg-type]  (the lab kills it at teardown if still running)
-        session = Session(proc, out, err, Path(lead_spec["pidfile"]))
+        session = Session(proc, out, err, Path(lead_spec["pidfile"]), master)
+        self.closers.append(session.close)  # at teardown, after the lab has ended the session's tree
         self.typed(step, "aew " + " ".join(argv), argv)
         return session
 
@@ -311,9 +341,11 @@ class Operator:
                 os.killpg(session.proc.pid, signal.SIGKILL)
             self.typed("kill", "(the Lead session is killed)")
         try:
-            return session.proc.wait(EXIT_S)
+            code = session.proc.wait(EXIT_S)
         except subprocess.TimeoutExpired:
-            return None
+            return None  # still running: the lab ends it at teardown, then its terminal is closed
+        session.close()
+        return code
 
     def cache_workaround(self, msg: dict[str, Any]) -> bool:
         """U14's workaround, only after the gate was observed to refuse (the Lead stuck on GATE_UNSATISFIED while the

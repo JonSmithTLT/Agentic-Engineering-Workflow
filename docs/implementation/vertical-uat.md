@@ -161,6 +161,16 @@ input or call; credentials redacted). It also writes and prints a one-screen sum
 ledgers go to `AEW_VERTICAL_OUT` (CI uploads them), else the test's own temporary directory. A scenario always runs to
 the end and writes its ledger before it asserts.
 
+**Not measured is never a fail** (the designer's addendum 1 to the oracle's hand-off, outcome 9). A scenario that ends
+before its verdict for a reason outside the path's steps (the harness fails to start, the scripted actors' own setup
+is refused, a timeout) is **not measured**: its ledger says so first, after Windows' unqualified lines (`measured:
+false`, `Ledger.ended_by`), and it counts in no counter and against no threshold. In the ledger's schema
+(`aew/vertical-ledger/v2`) `counts` is null when `measured` is false. The limit: every exception escaping a
+scenario's body is classed so, including AEW's own refusal at the open, the reopen or setup, and the reason recorded
+names it. The run's summary (`vertical/report.py`) gives the not-measured count first (on Windows, after its
+unqualified state, on the same line), and a run where every scenario is not measured says so in its first words.
+Without a readable JUnit report the count is unknown, and the summary says so. It reports, and gates nothing.
+
 **Operator counters (all must be 0):**
 
 | Counter | What counts |
@@ -263,7 +273,9 @@ Lead's minimums stay `none` until the operator raises them.
   `tests/unit/test_ci_tools.py` proves both.
 - **Its own workflow, in shadow.** The `vertical` job (`vertical.yml`, Linux and Windows; outside `ci.yml`, so its red
   never colours the merge gate's run) runs on every push to `main` and on dispatch, uploads the ledgers and summaries
-  as artifacts (`vertical-ledger-<OS>`), and writes the summaries to the run's summary page. It does not run on pull
+  as artifacts (`vertical-ledger-<OS>`), and writes the lane's report, the not-measured count first, then the
+  summaries, to the run's summary page. On Linux the operator's session runs on a pseudo-terminal the test owns, the
+  terminal CS-4's contained Lead requires (`start_on_terminal`). It does not run on pull
   requests (operator, 2026-10-23): it is red on `main`, so on a pull request its result says nothing about that pull
   request, while `main`'s runs keep the ledger's time series. A running one is never cancelled; its runs share one
   group, so when pushes land close together GitHub keeps only the newest pending one (`ci`'s push runs, by contrast,

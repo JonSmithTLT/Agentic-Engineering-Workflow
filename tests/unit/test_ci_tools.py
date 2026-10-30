@@ -1648,8 +1648,14 @@ def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_led
     assert run["env"]["AEW_VERTICAL_OUT"] == "${{ runner.temp }}/vertical"
     upload = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact"))
     assert upload["if"] == "always()" and upload["with"]["path"] == "${{ runner.temp }}/vertical/"
-    summaries = next(s for s in job["steps"] if "vertical-summary.txt" in str(s.get("run", "")))
+    # The lane's report leads the run's summary with the not-measured count, then each ledger's summary (STG-13,
+    # addendum 1); its scenarios are the JUnit report's test cases.
+    summaries = next(s for s in job["steps"] if "python -m vertical.report" in str(s.get("run", "")))
     assert summaries["if"] == "always()" and "GITHUB_STEP_SUMMARY" in summaries["run"]
+    assert summaries["env"]["PYTHONPATH"] == "tests/helpers"
+    assert '"--junitxml=${{ runner.temp }}/vertical/junit.xml"' in run["run"]
+    out = run["env"]["AEW_VERTICAL_OUT"]  # the report reads the directory the ledgers and the JUnit report go to
+    assert f'"{out}"' in summaries["run"] and f'"--junitxml={out}/junit.xml"' in run["run"]
     assert not upload["with"]["name"].startswith("lane-report-")  # assurance downloads lane-report-* only
     assert VERTICAL_MODE == "shadow"
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")

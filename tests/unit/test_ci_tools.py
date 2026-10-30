@@ -1380,6 +1380,12 @@ NOT_OURS: dict[str, frozenset[str]] = {
 }
 
 
+def ours(label: str, refs: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
+    """A source's path references without the ones NOT_OURS lists for it: the guard's one copy of the rule, which its
+    planted test exercises too (quick check of PR #288, m1)."""
+    return [r for r in refs if r[0] not in NOT_OURS.get(label, frozenset())]
+
+
 def non_core_sources() -> list[Path]:
     sources = [*(ROOT / "src").rglob("*.py"), *(ROOT / "tools").rglob("*.py"), *(ROOT / "eval").rglob("*.py"),
                ROOT / "tests" / "conftest.py", *(ROOT / "tests" / "helpers").rglob("*.py"),
@@ -1399,7 +1405,7 @@ def reduced_readers(sources: list[Path]) -> tuple[set[str], list[str]]:
         try:
             label = f.relative_to(ROOT).as_posix()
             refs = path_references(f.read_text(encoding="utf-8"), NONLITERAL_ALLOWED.get(label, frozenset()))
-            refs = [r for r in refs if r[0] not in NOT_OURS.get(label, frozenset())]
+            refs = ours(label, refs)
         except SyntaxError as exc:
             problems.append(f"{f.relative_to(ROOT).as_posix()}: cannot be parsed ({exc})")
             continue
@@ -1439,17 +1445,23 @@ def test_the_hardened_docs_guard_names_the_two_cases_that_tripped_its_first_word
     source = ROOT / "src" / "aew" / "knowledge" / "discovery.py"
     refs = path_references(source.read_text(encoding="utf-8"))
     assert "docs" not in {text for text, _, _ in refs}
-    ours = [r for r in refs if r[0] not in NOT_OURS["src/aew/knowledge/discovery.py"]]
-    assert not any(p.startswith("docs/") for p in covered(ours, source, _tracked()))
+    kept = ours("src/aew/knowledge/discovery.py", refs)
+    assert not any(p.startswith("docs/") for p in covered(kept, source, _tracked()))
 
 
 def test_discoverys_conventions_are_not_ours_only_where_listed():
     """NOT_OURS drops discovery's RULES only from the files it lists (PR #288): the same path named in any other
-    source is still a read of this repository's docs/contracts/, which a reduced tier may change."""
+    source is still a read of this repository's docs/contracts/, which a reduced tier may change. The planted source
+    goes through the guard's own filter, so a filter widened to every file fails here (quick check of PR #288, m1).
+    Its limit: this proves `ours()`; that the guard filters only through `ours()` is held by the module having no
+    second filter, not by this test (review of PR #295, n1)."""
     named, problems = reduced_readers([ROOT / p for p in NOT_OURS])
     assert problems == [] and not any(p.startswith("docs/contracts/") for p in named)
+    refs = path_references('P = "docs/contracts"\n')
+    assert ours("tests/integration/test_sample.py", refs) == refs
+    assert ours("tests/integration/test_resume.py", refs) == []
     here = ROOT / "tests" / "integration" / "test_sample.py"
-    reads = covered(path_references('P = "docs/contracts"\n'), here, _tracked())
+    reads = covered(refs, here, _tracked())
     assert "docs/contracts/README.md" in reads and tier.classify_path("docs/contracts/README.md") != "full"
 
 
@@ -2682,8 +2694,8 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     fast = next(s for s in jobs["core"]["steps"] if str(s.get("name", "")).startswith("fast lane"))
     # Exactly the fast step's flags, xdist included, so both sides of the premise are measured the same way (review
     # of #232, F1 and F6); each job keeps its own deadline, report and hang directory (G3).
-    ours, theirs = pytest_flags(lane["run"]), pytest_flags(fast["run"])
-    assert ours == theirs and "-n" in ours, (ours, theirs)
+    base_flags, fast_flags = pytest_flags(lane["run"]), pytest_flags(fast["run"])
+    assert base_flags == fast_flags and "-n" in base_flags, (base_flags, fast_flags)
     assert "--session-deadline 960" in lane["run"] and '"--hang-dir=${{ runner.temp }}/fastbase/hangs"' in lane["run"]
     assert lane["env"]["COVERAGE_FILE"] == "${{ runner.temp }}/fastbase/.coverage"
     assert lane["env"]["PYTHONPATH"] == "${{ runner.temp }}/base/src"  # absolute: the base's code, not the merge's

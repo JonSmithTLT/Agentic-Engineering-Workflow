@@ -7,6 +7,7 @@ import builtins
 import shutil
 
 from aew import doctor, util
+from aew.engine.api import _model_refs_doctor
 
 
 def _by_name(checks):
@@ -49,3 +50,15 @@ def test_outside_a_project_the_project_check_is_unavailable_and_the_report_rende
     assert lines[0] == f"aew {report['aew_version']} (spec set {report['spec_set']})"
     assert lines[-1] == f"doctor: {report['failures']} failure(s)"
     assert any(line.startswith("project") and "UNAVAILABLE" in line for line in lines)
+
+
+def test_model_refs_refusal_is_reported_by_the_doctor_with_the_policy_fix():
+    status, detail = _model_refs_doctor(
+        {"harness": "opencode", "profiles": {"standard": {"model": "openai/<id"}}}
+    )
+    assert status == "FAIL"
+    assert "profiles.standard.model" in detail
+    assert "openai/<id" in detail
+    assert "opencode models" in detail
+    assert "full provider/model ID" in detail
+    assert "dispatch with these profiles is refused" in detail

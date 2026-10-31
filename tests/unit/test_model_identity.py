@@ -75,11 +75,43 @@ def test_a_model_of_a_routing_provider_is_written_as_the_harness_lists_it():
     ({"model": "/model-a"}, "model_id_malformed"),
     ({"model": "vendor/"}, "model_id_malformed"),
     ({"provider": "vendor", "model": "model a"}, "model_id_malformed"),
+    ({"model": "openai/MODEL_ID"}, "model_id_malformed"),
+    ({"model": "openai/YOUR_MODEL_ID"}, "model_id_malformed"),
+    ({"model": "openai/<model>"}, "model_id_malformed"),
+    ({"model": "openai/<id>suffix"}, "model_id_malformed"),
+    ({"model": "openai/<id"}, "model_id_malformed"),
+    ({"model": "openai/id>"}, "model_id_malformed"),
+    ({"model": "<openai>/model"}, "model_id_malformed"),
 ])
 def test_a_model_id_that_maps_to_no_pair_is_refused_with_its_reason(profile, reason):
     with pytest.raises(ValidationFailed) as refused:
         pin(policy(standard=profile))
     assert refused.value.details["reason"] == reason and refused.value.details["field"] == "profiles.standard.model"
+    if reason == "model_id_malformed" and ("<" in profile["model"] or ">" in profile["model"] or
+                                           "MODEL_ID" in profile["model"] or "YOUR_MODEL_ID" in profile["model"]):
+        assert refused.value.details["value"] == profile["model"]
+        assert "opencode models" in refused.value.message
+        assert "profiles.standard.model" in refused.value.message
+        assert "full provider/model ID" in refused.value.message
+
+
+def test_a_placeholder_in_the_explicit_provider_part_is_refused():
+    with pytest.raises(ValidationFailed) as refused:
+        pin(policy(standard={"provider": "<openai>", "model": "model"}))
+    assert refused.value.details["reason"] == "model_id_malformed"
+    assert refused.value.details["value"] == "<openai>"
+    assert refused.value.details["field"] == "profiles.standard.provider"
+    assert refused.value.details["model"] == "model"
+
+
+def test_catalog_and_listing_placeholders_are_provider_owned_ids():
+    assert models.from_catalog("vendor", "MODEL_ID").model == "MODEL_ID"
+    assert models.from_listing("vendor/MODEL_ID").model == "MODEL_ID"
+
+
+@pytest.mark.parametrize("model", ["openai/model-id", "openai/myMODEL_IDmodel", "openai/myidmodel"])
+def test_legitimate_model_and_id_substrings_are_not_placeholders(model):
+    assert models.from_profile(None, model).harness_ref == model
 
 
 def test_the_leads_model_override_uses_the_same_rule():

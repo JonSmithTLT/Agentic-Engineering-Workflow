@@ -40,8 +40,10 @@ from aew.errors import ValidationFailed
 SEP = "/"
 # Why a model id maps to no provider/model pair: the `reason` of every ModelIdRefused, and the codes a configuration
 # projection reports as `identity_error.code` (register F46.1).
-MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT = "model_id_malformed", "model_id_no_provider", "model_id_provider_conflict"
+MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT = (
+    "model_id_malformed", "model_id_no_provider", "model_id_provider_conflict")
 REFUSAL_REASONS = (MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT)
+PLACEHOLDER_WORDS = frozenset(("MODEL_ID", "YOUR_MODEL_ID"))
 
 
 @dataclass(frozen=True)
@@ -75,10 +77,32 @@ def _bad(text: str) -> bool:
     return not text or any(c.isspace() for c in text)
 
 
+def _is_placeholder(text: str) -> bool:
+    return any(char in text for char in "<>") or any(
+        part in PLACEHOLDER_WORDS for part in text.split(SEP))
+
+
+def _placeholder(text: str, field: str, provider: str | None = None, model: str | None = None) -> ModelIdRefused:
+    return ModelIdRefused(
+        f"{field}: {text!r} is a literal placeholder value; replace it with a real provider/model "
+        "ID. Find one with `opencode models`, then paste the full provider/model ID into this policy key",
+        reason=MALFORMED, field=field, value=text, provider=provider, model=model if model is not None else text)
+
+
+def _identity(catalog_id: str, provider: str, model: str, field: str) -> ModelIdentity:
+    return ModelIdentity(catalog_id, provider, model)
+
+
 def from_profile(provider: str | None, model: str, *, field: str = "model") -> ModelIdentity:
     """The identity of a profile's ``provider`` and ``model`` as typed (``field`` names the model's field in the
     message: ``profiles.standard.model``, ``--model``)."""
+    provider_text = str(provider) if provider is not None else None
+    if provider_text is not None and _is_placeholder(provider_text):
+        raise _placeholder(provider_text, f"{field.rsplit('.', 1)[0]}.provider" if "." in field else "provider",
+                           provider_text, str(model))
     raw = str(model)
+    if _is_placeholder(raw):
+        raise _placeholder(raw, field, provider_text, raw)
     head, sep, rest = raw.partition(SEP)
     if _bad(raw) or (sep and (not head or not rest)):
         raise ModelIdRefused(f"{field}: {raw!r} is not a model id: write it exactly as the harness lists it "
@@ -89,12 +113,12 @@ def from_profile(provider: str | None, model: str, *, field: str = "model") -> M
             raise ModelIdRefused(f"{field}: {raw!r} names no provider: write the id exactly as the harness lists it "
                                  f"(provider/{raw}), or set the profile's provider", reason=NO_PROVIDER,
                                  field=field, value=raw)
-        return ModelIdentity(raw, head, rest)
+        return _identity(raw, head, rest, field)
     provider = str(provider)
     if not sep:
-        return ModelIdentity(raw, provider, raw)
+        return _identity(raw, provider, raw, field)
     if head == provider:
-        return ModelIdentity(raw, provider, rest)
+        return _identity(raw, provider, rest, field)
     suggestions = [f"{head}{SEP}{rest}", f"{provider}{SEP}{raw}"]
     raise ModelIdRefused(
         f"{field}: {raw!r} carries the provider prefix {head!r}, but the profile's provider is {provider!r}. Did you "
@@ -106,13 +130,20 @@ def from_profile(provider: str | None, model: str, *, field: str = "model") -> M
 
 def from_listing(listed: str) -> ModelIdentity:
     """An id as OpenCode lists or prints it (``provider/model``)."""
-    return from_profile(None, listed, field="listed id")
+    raw = str(listed)
+    head, sep, rest = raw.partition(SEP)
+    if _bad(raw) or not sep or not head or not rest:
+        raise ModelIdRefused(f"listed id: {raw!r} is not a model id: write it exactly as the harness lists it "
+                             "(provider/model, for example vendor/model-name)", reason=MALFORMED,
+                             field="listed id", value=raw)
+    return _identity(raw, head, rest, "listed id")
 
 
 def from_catalog(provider: str, listed: str) -> ModelIdentity:
     """An id as a provider's own catalog lists it (``GET /v1/models``): bare, under that provider, never stripped,
     even when it contains ``/`` (a routing provider's ``vendor/model``)."""
-    if _bad(str(provider)) or SEP in str(provider) or _bad(str(listed)):
+    provider_text, listed_text = str(provider), str(listed)
+    if _bad(provider_text) or SEP in provider_text or _bad(listed_text):
         raise ModelIdRefused(f"catalog entry {provider!r}/{listed!r} is not a provider and a model id",
                              reason=MALFORMED, field="catalog", value=str(listed))
-    return ModelIdentity(str(listed), str(provider), str(listed))
+    return ModelIdentity(listed_text, provider_text, listed_text)

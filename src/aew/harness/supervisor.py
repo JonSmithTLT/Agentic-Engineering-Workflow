@@ -440,7 +440,13 @@ class Supervisor:
                                 "relaunch reads the key from the process that launches it: from inside a Lead session "
                                 "(`aew opencode`, `aew lead session`) that is the session's own, so restart it from a "
                                 "terminal with the new key first")
-        return self._finish(K.CRASHED, f"harness exited with {code} without recording its expected output")
+        reason = f"harness exited with {code} without recording its expected output"
+        detail = status.get("detail")
+        if isinstance(detail, str) and detail:
+            reason += f"; harness outcome: {detail}"
+            if any(marker in detail.lower() for marker in ("content.filter", "content_filter", "content-filter")):
+                reason += ". Relaunch; if the refusal repeats, change the prompt or model"
+        return self._finish(K.CRASHED, reason)
 
     def _evidence(self, *, kinds: bool = False) -> list[Any]:
         wid = self.record.get("work_unit")

@@ -124,11 +124,14 @@ class Harness:
     def _g_not_live(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:
         runs = facts["inv"].get("runs") or []
         previous = runs[-1] if runs else None
+        invocation = facts["invocation"]
         if previous and not facts.get("replace") and runlog.may_be_live(
                 runlog.run_dir(self.k.aew_root, previous["run"]), previous["launched_at"]):
             return blocker_from(RunLive(
-                f"{previous['run']} may still be running; stop it (`aew harness stop {previous['run']}`) "
-                "or relaunch with --replace (its credential is revoked either way)", run=previous["run"]))
+                 f"{previous['run']} may still be running; stop it (`aew harness stop {previous['run']} "
+                  "--fields - <<'EOF'\nreason: superseded run is still live\nEOF`) "
+                 f"or relaunch with `aew harness launch {invocation} --expect-rev <revision from aew status> "
+                 f"--replace` (its credential is revoked either way)", run=previous["run"]))
         return None
 
     def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False) -> dict[str, Any]:
@@ -190,7 +193,8 @@ class Harness:
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
             except OSError as exc:
                 raise HarnessLaunchFailed(f"{run} was recorded but its supervisor could not start: {exc}; relaunch "
-                                          "with `aew harness launch` (the credential rotates)", **base,
+                                           f"with `aew harness launch {inv_id} --expect-rev <revision from aew "
+                                           "status>` (the credential rotates)", **base,
                                           **_launcher_code()) from None
         faults.hit("harness.launch.after_spawn")
         handoff = {"credential": credential, "run": run, "invocation": inv_id,
@@ -214,7 +218,8 @@ class Harness:
         if custody is None:  # no acknowledgement at all: make sure no process holds the credential
             proc.kill()
             raise HarnessLaunchFailed(f"{run}'s supervisor never acknowledged custody; it was stopped. Relaunch "
-                                      "with `aew harness launch` (the credential rotates)", **out, **_launcher_code())
+                                      f"with `aew harness launch {inv_id} --expect-rev <revision from aew status>` "
+                                      "(the credential rotates)", **out, **_launcher_code())
         if not custody["custody"]:
             raise HarnessLaunchFailed(f"{run}'s supervisor refused custody: {custody.get('reason')}", **out,
                                       reason=custody.get("reason"), **_acknowledged_code(custody))
@@ -534,8 +539,9 @@ class Harness:
                                             f"latest run {inv['runs'][-1]['run']})")
                 status, _ = runlog.observed_status(directory)
                 if status not in (K.STARTING, K.RUNNING):
-                    raise IllegalTransition(f"{run} is {status}; relaunch with `aew harness launch` to continue its "
-                                            "invocation")
+                    raise IllegalTransition(
+                        f"{run} is {status}; relaunch with `aew harness launch {inv_id} --expect-rev "
+                        f"<revision from aew status>` to continue its invocation")
             entry = next(r for r in inv["runs"] if r["run"] == run)
             name, text = self._record_request(entry, kind, payload)
             revision = s.commit(Transition(op=f"harness.{kind}", actor=actor, summary=f"{kind} requested for {run}",
@@ -661,13 +667,18 @@ class Harness:
                     "provider_env"))]  # else the names this run was launched with
                 action = (f"{run} ended because the model provider rejected the credential: check the key in "
                           f"{', '.join(names) or 'the variables'} (the execution policy's provider_env), then "
-                          f"relaunch with `aew harness launch {inv_id} --expect-rev N`, or cancel it with "
-                          f"`aew invoke cancel {inv_id}`. A relaunch starts a new harness server with the key from "
+                          f"relaunch with `aew harness launch {inv_id} --expect-rev <revision from aew status>`, or "
+                          f"cancel it with `aew invoke cancel {inv_id} --expect-rev <revision from aew status> "
+                                        "--fields - <<'EOF'\nreason: provider credential rejected\nEOF`. A relaunch "
+                                        "starts a new "
+                          "harness server with the key from "
                           "the environment of the process that launches it; inside a Lead session that is the "
                           "session's own, so restart `aew opencode` with the new key first")
             else:
                 action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
-                          f"--expect-rev N` (its credential rotates) or cancel it with `aew invoke cancel {inv_id}`")
+                           f"--expect-rev <revision from aew status>` (its credential rotates) or cancel it with "
+                            f"`aew invoke cancel {inv_id} --expect-rev <revision from aew status> "
+                            "--fields - <<'EOF'\nreason: harness run ended\nEOF`")
             out.append({"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"], "run": run,
                         "status": status, "reason": (record or {}).get("reason"), "evidence": evidence,
                         "action": action})
@@ -807,7 +818,8 @@ def send_route(project: str, snapshot: str, when: str) -> str:
     on, launched_on = project == X.MESSAGING_ENABLED, snapshot == X.MESSAGING_ENABLED
     if on != launched_on:
         if SNAPSHOT_RECORDED or not on:  # project off: a relaunched run reads as launched off, so it agrees
-            remedy = "Relaunch the run (`aew harness launch`) and send to the new run"
+            remedy = ("Relaunch the run (`aew harness launch <INV> --expect-rev <revision from aew status>`) and "
+                      "send to the new run")
         else:  # project on, before MS4: every run reads as launched off, so a relaunch would be refused the same way
             remedy = ("This AEW version cannot yet launch a run with coordination messaging on (F9-A MS4 adds it), so "
                       "until then `harness send` needs messaging switched off: ask the operator")

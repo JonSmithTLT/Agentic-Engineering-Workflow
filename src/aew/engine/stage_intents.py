@@ -452,14 +452,19 @@ class StageIntents:
                 if observed == K.UNCONFIRMED:  # the credential died with the launcher: relaunching is the remedy
                     return {"status": "no_supervisor", "run": run, "observed": observed,
                             "message": f"step {step_n} recorded {run}, but no supervisor ever recorded it: the launch "
-                                       "failed. Relaunch it with `aew harness launch` (the credential rotates), or "
-                                       "abandon"}
+                                       "failed. Relaunch it with `aew harness launch <INV> --expect-rev <revision from "
+                                       "aew status>` "
+                                       "(the credential rotates), or cancel it with `aew invoke cancel <INV> "
+                                       "--expect-rev <revision from aew status> --fields - <<'EOF'\n"
+                                       "reason: stage launch failed\nEOF`"}
                 # The run started and ended (it may have finished its work): still not a stage to complete, but a
                 # relaunch could redo finished work (#166 review, finding 3).
                 return {"status": "not_live", "run": run, "observed": observed,
                         "message": f"step {step_n} recorded {run}, and its run ended ({observed}): the stage stops "
                                    f"here. Read `harness_status` and the run's report before deciding whether to "
-                                   "relaunch it (`aew harness launch`) or go on from its evidence"}
+                                   "relaunch it (`aew harness launch <INV> --expect-rev <revision from aew status>`) "
+                                   "or cancel it with `aew invoke cancel <INV> --expect-rev <revision from aew status> "
+                                    "--fields - <<'EOF'\nreason: stage run ended\nEOF` or go on from its evidence"}
         return {"status": OK, "runs": list(runs), "message": "its launching step's run is held by its supervisor"}
 
     # ------------------------------------------------------------------ the step finalizer

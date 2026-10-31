@@ -257,6 +257,12 @@ class OpenCodeAdapter(HarnessAdapter):
         """Further operations a subclass needs (tests: an impossible one proves the probe fails closed)."""
         return ()
 
+    def _relaunch_command(self) -> str:
+        """The complete command for recovering this invocation's run."""
+        contract = getattr(self, "contract", None)
+        invocation = contract.invocation if contract is not None else "<INV>"
+        return f"`aew harness launch {invocation} --expect-rev <revision from aew status>`"
+
     def launch(self, contract: LaunchContract, agent_env: dict[str, str]) -> dict[str, Any]:
         self.contract = contract
         self.state_dir = self.run_dir / "harness"
@@ -474,11 +480,12 @@ class OpenCodeAdapter(HarnessAdapter):
                     raise HarnessIncompatible(
                         f"model {ref['providerID']}/{ref['id']} has no variant {ref['variant']!r} (the pinned effort); "
                         f"it offers {variants or 'none'}; dispatch a new invocation with --profile or --model, or with "
-                        "another --effort (a relaunch reuses this one's pin, ADR-0010)", model=ref)
+                        f"another --effort (a relaunch reuses this one's pin, ADR-0010; use {self._relaunch_command()} "
+                        "for fixing the environment)", model=ref)
                 if match.get("enabled") is False:
                     raise HarnessIncompatible(f"model {ref['providerID']}/{ref['id']} is disabled in this OpenCode; "
-                                              "enable it in OpenCode and relaunch, or dispatch a new invocation with "
-                                              "--profile or --model", model=ref)
+                                              f"enable it in OpenCode and relaunch with {self._relaunch_command()}, "
+                                              "or dispatch a new invocation with --profile or --model", model=ref)
                 return {"catalog_wait_s": round(now - t0, 3), "catalog_size": len(catalog), "variants": variants}
             if catalog and first_seen is None:
                 first_seen = now
@@ -490,8 +497,8 @@ class OpenCodeAdapter(HarnessAdapter):
                     + ("; it is listed only because AEW names it in the server's configuration, to send it through "
                        "the run's provider relay (F28 §3.5)" if declared else "")
                     + "); check the execution policy and the provider variables it names; if the pinned model is what "
-                      "is wrong, dispatch a new invocation with --profile or --model (a relaunch reuses this one's "
-                      "pin, ADR-0010); otherwise fix the variable and relaunch", model=ref,
+                       f"is wrong, dispatch a new invocation with --profile or --model (a relaunch reuses this one's "
+                       f"pin, ADR-0010; otherwise fix the variable and use {self._relaunch_command()})", model=ref,
                     # Timing-dependent (the catalog fills in asynchronously): never read as a lasting incompatibility
                     # (M4-E E8a; PR #185 review, F1).
                     launch_cause=CATALOG_TIMEOUT)
@@ -543,7 +550,7 @@ class OpenCodeAdapter(HarnessAdapter):
         with self._lock:  # recorded first, so a poll never mistakes the previous turn's idle for this one's
             if self.turn == "ended":  # nothing watches an ended run: reviving it would leave it hanging (audit I3)
                 raise HarnessError("this run's harness turn has ended, so the message was not delivered; "
-                                   "relaunch the run to continue it (`aew harness launch`)")
+                                   f"relaunch the run to continue it ({self._relaunch_command()})")
             self.sent.append(mid)
             self.turn = "running"
             self._idle_seen = None

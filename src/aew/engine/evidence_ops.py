@@ -49,6 +49,7 @@ from aew.engine.work_ops import (
     entry_refused,
 )
 from aew.errors import (
+    AEWError,
     GateUnsatisfied,
     IllegalTransition,
     NotFound,
@@ -1208,6 +1209,22 @@ class EvidenceCommands:
             else:
                 integ = unit.get("integration") or {}
                 if unit["state"] != "COMMIT_READY" or integ.get("status") != "prepared":
+                    if (unit["state"] == "COMMIT_READY" and integ.get("status") == "validated"
+                            and integ.get("post_integration_evidence") == evidence_id):
+                        # A passing integration verification is already ingested. The candidate remains under
+                        # its live lease until publication; do not suggest ingesting the report again.
+                        scratch = copy.deepcopy(state)
+                        self.queue.sync(scratch)
+                        try:
+                            lease = self.queue.require_live_lease(scratch, work_id, "publishing")
+                        except AEWError:
+                            pass
+                        else:
+                            if lease is not None:
+                                raise IllegalTransition(
+                                    f"{work_id}'s integration verification is already ingested and its candidate is "
+                                    f"leased for publishing; publish it directly with `aew integrate publish {work_id} "
+                                    "--expect-rev N` (do not ingest again)")
                     raise IllegalTransition(f"{work_id} has no prepared integration candidate")
                 self.gates.require_current_binding(unit)
                 # A VALIDATED entry's report is accepted under a fresh lease, granted in the ingest's own commit (M4-E

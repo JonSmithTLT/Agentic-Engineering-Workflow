@@ -745,8 +745,10 @@ def test_guard_query_matches_execute_verify_ingest_integration(tmp_path):
     assert args["found"]["integration_status"] == integ["status"] == "validated"
     answer = equivalent(engine, "verify.ingest.integration", wid, {"evidence": report},
                         _verify_ingest(engine, p, wid, report, "integration"))
-    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "no prepared integration candidate" in (
+    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "verification is already ingested" in (
         answer["blocking_conditions"][0]["message"])
+    assert "candidate is leased for publishing" in answer["blocking_conditions"][0]["message"]
+    assert f"aew integrate publish {wid} --expect-rev N" in answer["blocking_conditions"][0]["message"]
 
 
 # ------------------------------------------------------------------------------------- integrate.publish (M4-E E4b)

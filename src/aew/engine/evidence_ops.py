@@ -695,7 +695,14 @@ class EvidenceCommands:
                 slot = "execute"
                 current = state["invocations"].get(unit.get("implementer_invocation") or "")
                 if current and current["status"] == "active":
-                    raise IllegalTransition(f"{unit['implementer_invocation']} is still active; cancel it first")
+                    invocation = unit["implementer_invocation"]
+                    raise IllegalTransition(
+                        f"{invocation} is still active; cancel it with:\n\n```sh\n"
+                        f"aew invoke cancel {invocation} "
+                        "--expect-rev <revision from aew status> --fields - <<'EOF'\n"
+                        "reason: 'why this active invocation must end'\n"
+                        "EOF\n```"
+                    )
                 self.units.require_plan_binding(state, work_id)
                 self.units.require_dispatch_binding(state, work_id)
             elif st == "REVIEW_PENDING":

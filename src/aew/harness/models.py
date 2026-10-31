@@ -114,7 +114,7 @@ def from_profile(provider: str | None, model: str, *, field: str = "model") -> M
                                  f"(provider/{raw}), or set the profile's provider", reason=NO_PROVIDER,
                                  field=field, value=raw)
         return _identity(raw, head, rest, field)
-    provider = provider_text
+    provider = str(provider)
     if not sep:
         return _identity(raw, provider, raw, field)
     if head == provider:

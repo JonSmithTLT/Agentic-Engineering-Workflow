@@ -40,9 +40,9 @@ from aew.errors import ValidationFailed
 SEP = "/"
 # Why a model id maps to no provider/model pair: the `reason` of every ModelIdRefused, and the codes a configuration
 # projection reports as `identity_error.code` (register F46.1).
-MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT, PLACEHOLDER = (
-    "model_id_malformed", "model_id_no_provider", "model_id_provider_conflict", "model_id_placeholder")
-REFUSAL_REASONS = (MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT, PLACEHOLDER)
+MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT = (
+    "model_id_malformed", "model_id_no_provider", "model_id_provider_conflict")
+REFUSAL_REASONS = (MALFORMED, NO_PROVIDER, PROVIDER_CONFLICT)
 PLACEHOLDER_WORDS = frozenset(("MODEL_ID", "YOUR_MODEL_ID"))
 
 
@@ -82,16 +82,14 @@ def _is_placeholder(text: str) -> bool:
         part in PLACEHOLDER_WORDS for part in text.split(SEP))
 
 
-def _placeholder(text: str, field: str, provider: str | None = None) -> ModelIdRefused:
+def _placeholder(text: str, field: str, provider: str | None = None, model: str | None = None) -> ModelIdRefused:
     return ModelIdRefused(
-        f"{field}: {text!r} is a literal placeholder model reference; replace it with a real provider/model "
+        f"{field}: {text!r} is a literal placeholder value; replace it with a real provider/model "
         "ID. Find one with `opencode models`, then paste the full provider/model ID into this policy key",
-        reason=PLACEHOLDER, field=field, value=text, provider=provider, model=text)
+        reason=MALFORMED, field=field, value=text, provider=provider, model=model if model is not None else text)
 
 
 def _identity(catalog_id: str, provider: str, model: str, field: str) -> ModelIdentity:
-    if _is_placeholder(catalog_id):
-        raise _placeholder(catalog_id, field, provider)
     return ModelIdentity(catalog_id, provider, model)
 
 
@@ -100,10 +98,11 @@ def from_profile(provider: str | None, model: str, *, field: str = "model") -> M
     message: ``profiles.standard.model``, ``--model``)."""
     provider_text = str(provider) if provider is not None else None
     if provider_text is not None and _is_placeholder(provider_text):
-        raise _placeholder(provider_text, field, provider_text)
+        raise _placeholder(provider_text, f"{field.rsplit('.', 1)[0]}.provider" if "." in field else "provider",
+                           provider_text, str(model))
     raw = str(model)
     if _is_placeholder(raw):
-        raise _placeholder(raw, field, provider_text)
+        raise _placeholder(raw, field, provider_text, raw)
     head, sep, rest = raw.partition(SEP)
     if _bad(raw) or (sep and (not head or not rest)):
         raise ModelIdRefused(f"{field}: {raw!r} is not a model id: write it exactly as the harness lists it "
@@ -131,17 +130,19 @@ def from_profile(provider: str | None, model: str, *, field: str = "model") -> M
 
 def from_listing(listed: str) -> ModelIdentity:
     """An id as OpenCode lists or prints it (``provider/model``)."""
-    return from_profile(None, listed, field="listed id")
+    raw = str(listed)
+    head, sep, rest = raw.partition(SEP)
+    if _bad(raw) or not sep or not head or not rest:
+        raise ModelIdRefused(f"listed id: {raw!r} is not a model id: write it exactly as the harness lists it "
+                             "(provider/model, for example vendor/model-name)", reason=MALFORMED,
+                             field="listed id", value=raw)
+    return _identity(raw, head, rest, "listed id")
 
 
 def from_catalog(provider: str, listed: str) -> ModelIdentity:
     """An id as a provider's own catalog lists it (``GET /v1/models``): bare, under that provider, never stripped,
     even when it contains ``/`` (a routing provider's ``vendor/model``)."""
     provider_text, listed_text = str(provider), str(listed)
-    if _is_placeholder(provider_text):
-        raise _placeholder(provider_text, "catalog", provider_text)
-    if _is_placeholder(listed_text):
-        raise _placeholder(listed_text, "catalog", provider_text)
     if _bad(provider_text) or SEP in provider_text or _bad(listed_text):
         raise ModelIdRefused(f"catalog entry {provider!r}/{listed!r} is not a provider and a model id",
                              reason=MALFORMED, field="catalog", value=str(listed))

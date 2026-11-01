@@ -2688,7 +2688,7 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     # only with a changed fast-lane test module: docs plus durations has no premise to check (PR #163 review, V7-2)
     assert base["if"] == "needs.changes.outputs.decision == 'fast' && needs.changes.outputs.modules == 'true'"
     assert outputs["modules"] == "${{ steps.tier.outputs.modules }}"
-    assert base["runs-on"] == "ubuntu-latest"
+    assert base["runs-on"] == LINUX_IMAGE
     step, setup = strategy_fast_lane_minutes()
     # at least twice the slowest step plus setup, plus the session deadline's clearance (G3, 2026-10-12)
     assert base["timeout-minutes"] == PRE_G3A_TIMEOUT_MIN["ci.yml"]["fastbase"] + DEADLINE_MARGINS_MIN
@@ -2714,6 +2714,42 @@ def test_fastbase_runs_the_whole_fast_lane_at_the_base_in_its_own_job():
     assert core["timeout-minutes"] == PRE_G3A_TIMEOUT_MIN["ci.yml"]["core"] + DEADLINE_MARGINS_MIN
     core_runs = "\n".join(str(s.get("run", "")) for s in core["steps"])
     assert "worktree" not in core_runs and "^1" not in core_runs and "fastbase" not in str(core)
+
+
+# The image every Linux job runs on, not `ubuntu-latest` (operator, 2026-11-01: "Pin 24.04, qualify 26.04";
+# testing-and-ci-strategy.md §4, "Linux runner image"). Matrix `os` stays the label `ubuntu-latest`: job names, shard
+# sizing (shard_plan.PLATFORM_OF_OS) and cost_record's budget key on it, and a matrix job maps it to the image.
+LINUX_IMAGE = "ubuntu-24.04"
+MATRIX_RUNS_ON = "${{ matrix.os == 'ubuntu-latest' && '" + LINUX_IMAGE + "' || matrix.os }}"
+
+
+def test_every_linux_job_in_every_workflow_runs_on_the_pinned_image_never_ubuntu_latest():
+    """Each job's runner is the pinned image, or the matrix mapping whose every `os` label resolves to the image or to
+    a non-Linux runner. A generated matrix (shard_plan) takes its labels from PLATFORM_OF_OS, which it enforces."""
+    def resolved(label: str) -> str:
+        return LINUX_IMAGE if label == "ubuntu-latest" else label
+
+    checked = []
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        for name, job in yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"].items():
+            where = f"{path.name}: {name}"
+            if "runs-on" not in job:
+                assert "uses" in job, where  # a called workflow: its jobs are checked in its own file
+                continue
+            runs_on = job["runs-on"]
+            if runs_on.startswith("${{"):
+                assert runs_on == MATRIX_RUNS_ON, (where, runs_on)
+                matrix = job["strategy"]["matrix"]
+                labels = (set(shard_plan.PLATFORM_OF_OS) if isinstance(matrix, str)
+                          else set(matrix.get("os", [])) | {e["os"] for e in matrix.get("include", []) if "os" in e})
+                assert labels, where
+            else:
+                labels = {runs_on}
+            for label in labels:
+                runner = resolved(label) if runs_on.startswith("${{") else label
+                assert runner == LINUX_IMAGE or not runner.startswith("ubuntu"), (where, label, runner)
+            checked.append(where)
+    assert any(n.startswith("ci.yml: ") for n in checked) and any(n.startswith("nightly.yml: ") for n in checked)
 
 
 def test_assurance_requires_the_runtime_checks_by_path_and_reports_them_in_shadow():

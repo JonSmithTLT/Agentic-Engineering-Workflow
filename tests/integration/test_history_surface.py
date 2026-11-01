@@ -277,7 +277,8 @@ def test_a_crash_before_the_audit_is_recorded_leaves_the_history_as_it_was(tmp_p
 def test_recording_needs_the_lead_and_the_revision(tmp_path):
     p = sample_project(tmp_path)
     finished_ticket(p, tmp_path)
-    assert p.aew("history", "audit", env={"AEW_LEAD_TOKEN": p.token}).error["code"] == "USAGE"
+    p.ok("history", "audit", env={"AEW_LEAD_TOKEN": p.token})  # the credential alone: advisory, nothing recorded
+    assert "verified" not in hot(p)["cold"]
     stale = p.aew("history", "audit", "--expect-rev", str(p.rev() - 1), env={"AEW_LEAD_TOKEN": p.token})
     assert stale.error["code"] == "STALE_REVISION"
     forged = p.aew("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": "aew1.T-0000.nope"})

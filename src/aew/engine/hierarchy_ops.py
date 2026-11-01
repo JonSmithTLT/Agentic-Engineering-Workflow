@@ -30,6 +30,7 @@ from aew.errors import (
     ObligationsDropped,
     UsageError,
 )
+from aew.harness.contract import EXPECT_REV
 from aew.knowledge import evidence as E
 from aew.knowledge.records import KIND_PREFIX, format_id
 from aew.policy import validation as V
@@ -283,7 +284,8 @@ class Hierarchy:
                 raise UsageError("a Story/Epic has only review and verification gates; its Tickets do the work")
             if slot == "verify" and (unit.get("parent_verification") or {}).get("awaiting_classification"):
                 raise IllegalTransition(f"{work_id}'s last parent verification failed; classify it first "
-                                        f"(`aew verify classify {work_id}`)")
+                                        f"(`aew verify classify {work_id} --as <CLASS> --reason <reason> "
+                                        f"{EXPECT_REV}`)")
             facts["slot"] = slot
         return checked(check)
 
@@ -452,8 +454,8 @@ class Hierarchy:
             backlog = self.history.audit_backlog(state) if unit["kind"] == "epic" else None
             if backlog:  # ADR-0011: Epic closeout requires at least an incremental audit through the current root
                 raise GateUnsatisfied(f"{work_id}: an Epic closes only once the history is audited through the current "
-                                      f"root ({backlog} entries are unverified): run `aew history audit --expect-rev "
-                                      "N`, then close it", unverified=backlog)
+                                      f"root ({backlog} entries are unverified): run `aew history audit {EXPECT_REV}`, "
+                                      "then close it", unverified=backlog)
             self.gates.record_relied_on(ctx, unit, gc, list(gc["gates"]))
             decision = self.k.new_decision(ctx, "closeout", f"{work_id} closed: {unit['title']}", work_unit=work_id,
                                          reason=reason)

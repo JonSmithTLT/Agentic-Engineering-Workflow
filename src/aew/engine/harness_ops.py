@@ -709,11 +709,12 @@ class Harness:
             gc = self.gates.gate_context(state, wid)
             to = ("REVIEW_PENDING" if self.gates.review_gates(gc)
                   else "VERIFY_PENDING" if self.gates.verification_gates(gc) else "COMMIT_READY")
-            step = f"`aew work transition {wid} --to {to}`"
+            step = f"`aew work transition {wid} --to {to} {K.EXPECT_REV}`"
         except AEWError:
-            step = f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY` (as its gates require)"
+            step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY {K.EXPECT_REV}` (as "
+                    "its gates require)")
         if unit["state"] == "ASSIGNED":
-            return f"`aew work transition {wid} --to RUNNING`, then {step}"
+            return f"`aew work transition {wid} --to RUNNING {K.EXPECT_REV}`, then {step}"
         return step
 
     def implementation_blocker(self, state: dict[str, Any], wid: str) -> str | None:

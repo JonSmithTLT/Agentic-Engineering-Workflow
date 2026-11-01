@@ -283,7 +283,8 @@ class Assignment:
             # investigator/researcher/planner card, read-only observation, no workspace (ADR-0008).
             return blocker_from(IllegalTransition(
                 f"{work_id} is a non-mutating (evidence-only) Ticket; it never receives a mutation workspace or an "
-                f"implementer. Dispatch it with `aew work dispatch {work_id}` (the M2 non-mutating path)"))
+                f"implementer. Dispatch it with `aew work dispatch {work_id} {K.EXPECT_REV}` (the M2 non-mutating "
+                "path)"))
         facts["archetype"] = "implementer"
         return None
 

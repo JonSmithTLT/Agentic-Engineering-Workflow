@@ -12,6 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from aew.harness.contract import EXPECT_REV
+
 # (relative path, is_dir, suggested class, confidence, reason)
 RULES: list[tuple[str, bool, str, str, str]] = [
     ("docs/adr", True, "decisions", "high", "conventional ADR directory"),
@@ -63,8 +65,9 @@ def open_questions_for(candidates: list[dict[str, Any]]) -> str:
     for c in candidates:
         lines.append(
             f"- {c['id']} `{c['path']}`: suggested **{c['suggested_class']}** ({c['confidence']} confidence; "
-            f"{c['reason']}). The operator accepts it with `aew authority accept {c['id']} --class <class>` or "
-            f"rejects it with `aew authority reject {c['id']}`."
+            f"{c['reason']}). The operator accepts it with `aew authority accept {c['id']} --class "
+            f"<contracts|decisions|schemas|source|orientation> {EXPECT_REV}` or rejects it with "
+            f"`aew authority reject {c['id']} {EXPECT_REV}`."
         )
     lines += ["", "## Unknown project knowledge", "",
               "- Project overview, architecture, ownership and build/test commands are not yet established "

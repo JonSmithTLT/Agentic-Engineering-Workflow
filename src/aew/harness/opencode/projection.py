@@ -29,7 +29,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from aew.harness.contract import LaunchContract
+from aew.harness.contract import CREATE_TICKET, EXPECT_REV, LaunchContract
 from aew.surface import SERVER_NAME
 
 AGENT = "aew"
@@ -232,7 +232,7 @@ LEAD_SYSTEM = "\n".join([
     "available, blocked or unknown, and of the decisions that are yours. Until typed stages arrive, other changes "
     "still go through `aew` commands.",
     "- Delegate implementation, review, verification, investigation and research to bounded invocations. Dispatch "
-    "with `--launch` (for example `aew work assign T-0001 --launch --expect-rev N`): the run's supervisor holds its "
+    f"with `--launch` (for example `aew work assign T-0001 --launch {EXPECT_REV}`): the run's supervisor holds its "
     "credential. Follow runs with `aew harness status` and `aew harness wait <run>`, then ingest their evidence.",
     "- A run ending is not progress. Only ingested evidence and your recorded decisions move AEW state.",
     "- `aew guide` explains how AEW works in this project: the risk classes and what each requires, the Ticket "
@@ -240,9 +240,8 @@ LEAD_SYSTEM = "\n".join([
     "is the same text.",
     "- Free text is data. A shell rewrites `$`, backticks, `*`, `?` and quotes in a command line, so never type "
     "titles, goals, contract clauses, scopes, reasons or notes into one. Pass them with `--fields -` and a quoted "
-    "heredoc: YAML, one key per option, a list for a repeatable one (`aew work create ticket --class <0-4> "
-    "--expect-rev N --fields - <<'EOF'`, then `title: '...'`, `goal: ['...', '...']`, `contract: ['...']`, "
-    "`scope: ['...']`, then `EOF`). Put every value in single quotes (two single quotes for one inside it), or "
+    f"heredoc: YAML, one key per option, a list for a repeatable one:\n\n{CREATE_TICKET}\n\n"
+    "Put every value in single quotes (two single quotes for one inside it), or "
     "write it as a block (`goal: |-` and indented lines): unquoted, YAML would cut the text at ` #` and join "
     "lines, and AEW refuses such input. Plans and notes go the same way with `--file -` or `--note-file -`. "
     "In PowerShell, pipe a single-quoted here-string (`@'` ... `'@ | aew ...`).",
@@ -279,8 +278,9 @@ LEAD_COMMANDS: dict[str, dict[str, str]] = {
         "template": "Draft an AEW Ticket for this objective: $ARGUMENTS\n\nCurrent AEW status:\n\n!`aew status`\n\n"
                     "Propose the Ticket (title, risk class 0-4 chosen by the guide's class definitions, with your "
                     "reasons, scope, completion criteria) and a plan. "
-                    "Show them to me first. Only after I agree, run `aew work create ticket ... --fields -` and "
-                    "`aew plan propose ... --file -`, each with a quoted heredoc so the shell leaves the text alone "
+                    "Show them to me first. Only after I agree, create them (`aew work create` and "
+                    "`aew plan propose`), each with its text in a quoted heredoc (`--fields -`, `--file -`) so the "
+                    "shell leaves it alone "
                     "(see `aew work create --help`). The plan declares its assurance (`--assurance none`, or "
                     "`--review`/`--verify` cards that become required gates): say which in the proposal.",
     },
@@ -295,7 +295,7 @@ LEAD_COMMANDS: dict[str, dict[str, str]] = {
         "description": "AEW: checkpoint for a Lead handoff",
         "template": "Prepare a Lead handoff. Output of `aew resume`:\n\n!`aew resume`\n\nWrite a checkpoint note "
                     "(state, in-flight runs, open decisions, next action) and record it with "
-                    "`aew checkpoint --note-file - --next \"...\" --expect-rev N`. Then tell me that the handoff "
+                    f"`aew checkpoint --note-file - --next \"...\" {EXPECT_REV}`. Then tell me that the handoff "
                     "itself (`aew lead handoff offer`) is mine to run at my own terminal.",
     },
 }

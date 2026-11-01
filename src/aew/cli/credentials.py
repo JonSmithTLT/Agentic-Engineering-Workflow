@@ -18,7 +18,9 @@ import os
 import sys
 from typing import Any
 
+from aew.coordination.layout import INVOCATION_RE
 from aew.errors import UsageError
+from aew.harness import contract as K
 
 KEYS = ("token", "offer", "invocation_token", "session_url")
 ISSUING = (frozenset({"lead", "acquire"}), frozenset({"lead", "takeover"}), frozenset({"lead", "handoff", "offer"}),
@@ -59,7 +61,7 @@ def before(args: argparse.Namespace) -> None:
         raise UsageError(
             "this command issues a credential, and AEW writes credentials only to your terminal; this process has "
             "none (a harness tool call, a pipe or a scheduled job). Run it yourself at a terminal, or, from a script "
-            "that keeps the credential safe, run `aew --print-credential ...` to get it on standard output")
+            "that keeps the credential safe, run `aew --print-credential <command>` to get it on standard output")
 
 
 def deliver(result: Any, args: argparse.Namespace) -> Any:
@@ -71,19 +73,8 @@ def deliver(result: Any, args: argparse.Namespace) -> Any:
         return result
     out = _open_terminal()
     if out is None:  # the terminal went away between the check and now
-        raise UsageError(
-            "a credential was issued but your terminal is gone, so it was not written anywhere; recover with "
-            "the operator-authorized takeover at an interactive terminal with:\n\n```sh\n"
-            "aew lead takeover --expect-rev <revision from aew status> --fields - <<'EOF'\n"
-            "reason: 'why takeover is required'\n"
-            "EOF\n```\n"
-            "or cancel the invocation with:\n\n```sh\n"
-            "aew invoke cancel <invocation> "
-            "--expect-rev <revision from aew status> --fields - <<'EOF'\n"
-            "reason: 'why this invocation must end'\n"
-            "EOF\n```\n"
-            "or cancel a handoff with `aew lead handoff cancel --expect-rev <revision from aew status>`"
-        )
+        raise UsageError("a credential was issued but your terminal is gone, so it was not written anywhere. "
+                         + " ".join(_recovery(key, result, args) for key in found), lost=sorted(found))
     with out:
         out.write("\n==== AEW CREDENTIAL (keep it out of any agent's reach) ====\n")
         for key, value in found.items():
@@ -91,6 +82,26 @@ def deliver(result: Any, args: argparse.Namespace) -> Any:
         out.write("\n")
         out.flush()
     return {**result, **dict.fromkeys(found, WRITTEN)}
+
+
+def _recovery(key: str, result: dict[str, Any], args: argparse.Namespace) -> str:
+    """How to recover from losing the credential ``key`` names: by its kind, never its value (#311 review, F1)."""
+    if key == "token":
+        return ("The Lead credential is lost: recover with the operator-authorized takeover at an interactive "
+                "terminal:\n\n" + K.fields_command(f"aew lead takeover {K.EXPECT_REV}", "reason",
+                                                    "the issued Lead credential was lost") + "\n")
+    if key == "offer":
+        return ("The handoff offer's secret is lost: cancel the offer with "
+                f"`aew lead handoff cancel {K.EXPECT_REV}`, then offer again.")
+    if key == "invocation_token":
+        invocation = result.get("invocation")
+        if not (isinstance(invocation, str) and INVOCATION_RE.match(invocation)):
+            invocation = "<invocation from aew harness status>"
+        return (f"The invocation credential of {invocation} is lost: cancel the invocation with:\n\n"
+                + K.fields_command(f"aew invoke cancel {invocation} {K.EXPECT_REV}", "reason",
+                                   "its credential was lost") + "\n")
+    again = "`aew dashboard serve`" if getattr(args, "dashboard_cmd", None) == "serve" else "`aew dashboard open`"
+    return f"The dashboard's session URL is lost: run {again} again for a new one."
 
 
 def write_to_terminal(label: str, value: str) -> None:

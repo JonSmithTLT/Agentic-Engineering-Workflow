@@ -25,6 +25,7 @@ from aew.errors import (
     UsageError,
     ValidationFailed,
 )
+from aew.harness.contract import EXPECT_REV, fields_block
 from aew.knowledge.records import KIND_PREFIX, format_id, plan_record, work_unit_record
 from aew.util import glob_any, sha256_file, sha256_text, utc_now
 from aew.workspace import git
@@ -431,7 +432,8 @@ class WorkUnits:
         problem = self.plan_binding_problem(state, work_id)
         if problem:
             raise GateUnsatisfied(f"{work_id}'s accepted plan is stale under its ancestors' current plans; "
-                                  f"`aew plan reconfirm {work_id} --reason ...` or a new plan revision first",
+                                  f"`aew plan reconfirm {work_id} --reason <reason> {EXPECT_REV}` or a new plan "
+                                  "revision first",
                                   binding=problem)
 
     def require_dispatch_binding(self, state: dict[str, Any], work_id: str) -> None:
@@ -534,8 +536,8 @@ class WorkCommands:
             if found is not None:
                 raise ValidationFailed(
                     f"--mandatory-gate {found.message}. {GR.HOW_TO_STATE[0].upper()}{GR.HOW_TO_STATE[1:]}, for "
-                    f"example `aew work create {a['kind']} --class <0-4> --mandatory-gate check:<check id> "
-                    "--expect-rev <revision from aew status> --fields -` with `title:` on standard input",
+                    "example:\n\n" + fields_block(f"aew work create {a['kind']} --class <0-4> --mandatory-gate "
+                                                   f"check:<check id> {EXPECT_REV}", {"title": "<title>"}),
                     gate=gate, candidates=list(found.candidates))
 
     @staticmethod

@@ -519,26 +519,65 @@ def _secret_ask() -> re.Pattern[str]:
 
 # The per-session hidden-input form (the designer's decision of 2026-11-01, CS-4 addendum 12): a snippet that reads a
 # credential's value where nothing echoes it and sets it for the session only is the safe path, not an ask to copy one.
-HIDDEN_READ = re.compile(r"\bread\s+-[A-Za-z]*s[A-Za-z]*\b|\bRead-Host\b[^;|\n]*-(?:AsSecureString|MaskInput)\b",
-                         re.IGNORECASE)
+COMMANDS = re.compile(r"\s*(?:;|&&|\|\|)\s*")  # one line's commands, in order
 PERSISTENT_SET = re.compile(r"\bsetx\b|SetEnvironmentVariable|\[Environment\]", re.IGNORECASE)
 FILE_WRITE = re.compile(r">|\b(?:Out-File|Add-Content|Set-Content|tee)\b|\.bashrc|\.profile|\.zshrc|\$PROFILE",
                         re.IGNORECASE)
+# A whole-environment dump prints every value: bare `env`, `set`, `printenv`, `export -p`, `declare -p` (on its own or
+# piped), or PowerShell's `env:` drive listed.
+DUMP = re.compile(r"^(?:env|set|printenv|export\s+-p|(?:declare|typeset)\s+-\w*p\w*)\s*(?:$|\|)"
+                  r"|\b(?:Get-ChildItem|gci|dir|ls|Get-Item)\s+env:", re.IGNORECASE)
+
+
+def _reads_hidden(command: str, name: str) -> bool:
+    """Whether ``command`` reads ``name``'s value where nothing echoes it: bash `read` with `-s` whose last word is
+    ``name``, or PowerShell `$env:name = Read-Host ... -MaskInput`."""
+    n = re.escape(name)
+    read = re.search(r"(?:^|[\s`])read\s+(.*)$", command)
+    if read:
+        words = read.group(1).split()
+        options = [w for w in words[:-1] if w.startswith("-") and not w.startswith("--")]
+        return words[-1:] == [name] and any("s" in w[1:] for w in options)
+    return bool(re.search(rf"\$env:{n}\s*=\s*Read-Host\b[^;|]*-MaskInput\b", command, re.IGNORECASE))
+
+
+def _reads_secure(commands: list[str], name: str) -> bool:
+    """Whether ``name`` is set from a SecureString the operator typed: `$v = Read-Host ... -AsSecureString`, then
+    `$env:name = ...SecureStringToBSTR($v)...` in a later command."""
+    n = re.escape(name)
+    for i, command in enumerate(commands):
+        read = re.search(r"\$(\w+)\s*=\s*Read-Host\b[^;|]*-AsSecureString\b", command, re.IGNORECASE)
+        if read and any(re.search(rf"\$env:{n}\s*=\s*[^;|]*SecureStringToBSTR\(\s*\${read.group(1)}\s*\)", later,
+                                  re.IGNORECASE) for later in commands[i + 1:]):
+            return True
+    return False
 
 
 def per_session_hidden(snippet: str, name: str) -> bool:
     """Whether ``snippet`` (one line: a command, or a guide's line of code) is the per-session hidden-input form for
-    the credential ``name``, on all five of the decision's conditions: (1) the value is read by a hidden-input form
-    (bash `read -s`, PowerShell `Read-Host -AsSecureString` or `-MaskInput`, which the SecureString conversion
-    follows); (2) it is exported or set for the session only; (3) no literal value appears; (4) nothing is written to a
-    startup or profile file, or to any other file; (5) the value is never echoed."""
+    the credential ``name``, on all five of the decision's conditions: (1) ``name``'s value is read by a hidden-input
+    form (bash `read -s` naming it, PowerShell `$env:name = Read-Host -MaskInput`, or `Read-Host -AsSecureString` and
+    its conversion assigned to `$env:name`); (2) it is exported or set for the session only; (3) no literal value
+    appears; (4) nothing is written to a startup or profile file, or to any other file; (5) the value is never
+    echoed: no printer naming it (`echo`, `printf`, `printenv`, `declare -p`, `Write-Output` and the like), no bare
+    `$name` or `$env:name` as a command, no whole-environment dump.
+
+    Limits (review of #316, m2): the line is read, not run. An alias, a function, `eval`, a command held in a
+    variable, or a value printed by a program the line starts is not seen; the hidden read is bound to ``name``, not
+    to what a later command does with the value."""
     n = re.escape(name)
+    # the line's code (its code spans, or all of it), one command at a time, without a trailing comment (`# bash`)
+    code = "; ".join(re.findall(r"`([^`]+)`", snippet)) or snippet
+    commands = [c for c in (re.sub(r"\s+#.*$", "", c).strip() for c in COMMANDS.split(code)) if c]
     literal = re.compile(rf"\b{n}=(?!\$)\S|\$env:{n}\s*=\s*['\"]|--token(?![-\w])[ \t]*(?:=|[ \t])[ \t]*(?!-)\S",
                          re.IGNORECASE)
-    echoed = re.compile(rf"\b(?:echo|printf|print|Write-Host|Write-Output|cat)\b[^;|\n]*{n}", re.IGNORECASE)
-    return (bool(HIDDEN_READ.search(snippet)) and name.lower() in snippet.lower()
+    printer = re.compile(rf"\b(?:echo|printf|print|printenv|Write-Host|Write-Output|cat)\b[^;|\n]*{n}"
+                         rf"|\b(?:declare|typeset)\s+-\w*p\w*\b[^;|\n]*{n}", re.IGNORECASE)
+    bare = re.compile(rf"[\"']?\$(?:env:)?\{{?{n}\}}?[\"']?", re.IGNORECASE)
+    echoed = any(printer.search(c) or bare.fullmatch(c) or DUMP.search(c) for c in commands)
+    return ((any(_reads_hidden(c, name) for c in commands) or _reads_secure(commands, name))
             and not PERSISTENT_SET.search(snippet) and not literal.search(snippet)
-            and not FILE_WRITE.search(snippet) and not echoed.search(snippet))
+            and not FILE_WRITE.search(snippet) and not echoed)
 
 
 def o_secret(text: str, plane: str) -> list[str]:

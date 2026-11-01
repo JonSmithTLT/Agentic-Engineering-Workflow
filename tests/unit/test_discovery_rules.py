@@ -271,6 +271,20 @@ NEAR_MISSES = {
     "an inline --token value": f"{HIDDEN_BASH}; aew checkpoint --token literal-value",
     "a persistent variable": "[Environment]::SetEnvironmentVariable('AEW_LEAD_TOKEN', "
                              "(Read-Host 'Lead token' -AsSecureString), 'User')",
+    # Review of #316, m2: the hidden read must set the credential itself, and every printer counts.
+    "a hidden read of another name, the value unmasked": '$x = Read-Host "pin" -MaskInput; '
+                                                         '$env:AEW_LEAD_TOKEN = Read-Host "Lead token"',
+    "a hidden read of another name, the value from a file": "read -rs junk; "
+                                                            "export AEW_LEAD_TOKEN=$(cat ~/lead-token.txt)",
+    "a SecureString of another variable": '$s = Read-Host "pin" -AsSecureString; $env:AEW_LEAD_TOKEN = '
+                                          "[Runtime.InteropServices.Marshal]::PtrToStringBSTR("
+                                          "[Runtime.InteropServices.Marshal]::SecureStringToBSTR($t))",
+    "printenv": f"{HIDDEN_BASH}; printenv AEW_LEAD_TOKEN",
+    "declare -p, no redirect": f"{HIDDEN_BASH}; declare -p AEW_LEAD_TOKEN",
+    "a bare PowerShell expression": '$env:AEW_LEAD_TOKEN = Read-Host "Lead token" -MaskInput; $env:AEW_LEAD_TOKEN',
+    "a bare bash expansion": f'{HIDDEN_BASH}; "$AEW_LEAD_TOKEN"',
+    "a whole-environment dump": f"{HIDDEN_BASH}; env | sort",
+    "PowerShell's env: drive": '$env:AEW_LEAD_TOKEN = Read-Host "Lead token" -MaskInput; Get-ChildItem env:',
 }
 
 
@@ -286,6 +300,12 @@ def test_o_secret_passes_the_per_session_hidden_forms_and_trips_on_each_near_mis
     for miss, snippet in NEAR_MISSES.items():
         assert found(Output(site="unit", text=ASK + snippet), "O-SECRET"), miss
         assert not rules.per_session_hidden(snippet, "AEW_LEAD_TOKEN"), miss
+    # One line, two asks: the hidden form for the Lead credential exempts no ask for another credential beside it.
+    two = (f"Set AEW_LEAD_TOKEN with `{HIDDEN_BASH}`, then paste your AEW_INVOCATION_TOKEN too")
+    assert found(Output(site="unit", text=two), "O-SECRET") == ["asks to paste AEW_INVOCATION_TOKEN"]
+    for shell, form in lead_credential.forms("SYNTHETIC_API_KEY", "SYNTHETIC_API_KEY").items():  # any name's forms
+        assert rules.per_session_hidden(form, "SYNTHETIC_API_KEY"), shell
+        assert not rules.per_session_hidden(form, "OTHER"), shell
 
 
 def test_the_static_scan_still_reports_a_guide_line_with_a_literal_token():

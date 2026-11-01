@@ -515,7 +515,13 @@ class Hierarchy:
             state = ctx.state
             unit = self.units.unit(state, work_id)
             if not H.is_parent(unit):
-                raise IllegalTransition("cancel a Ticket with `aew work transition --to CANCELLED --reason ...`")
+                raise IllegalTransition(
+                    f"cancel a Ticket with:\n\n```sh\n"
+                    f"aew work transition {work_id} --to CANCELLED "
+                    "--expect-rev <revision from aew status> --fields - <<'EOF'\n"
+                    "reason: 'why this Ticket must end'\n"
+                    "EOF\n```"
+                )
             if unit["state"] in H.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
             open_desc = [d for d in H.descendants(state, work_id) if state["work"][d]["state"] not in H.TERMINAL]

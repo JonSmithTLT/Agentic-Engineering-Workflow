@@ -259,8 +259,8 @@ def preamble(c: LaunchContract) -> str:
     kinds = ", ".join(c.expected_kinds) or "none"
     # Only the commands this role may use: a reviewer told about `aew check run` tried it and was refused (UAT
     # 2026-09-30, R-INV-0007-1).
-    commands = ", ".join([*(["`aew check run <check id>`"] if "check.run" in c.operations else []),
-                          "`aew submit --kind <kind> --file <report file>`", "`aew whoami`"])
+    commands = ", ".join([*(["`aew check run <check>`"] if "check.run" in c.operations else []),
+                          "`aew submit --kind <kind> --file <file>`", "`aew whoami`"])
     lines = [
         f"# AEW harness run {c.run}",
         "",
@@ -286,7 +286,7 @@ def preamble(c: LaunchContract) -> str:
         lines.append(f"- Your private scratch directory is `{c.scratch}` (also `AEW_SCRATCH` in your environment). "
                      "Write reports and any other file you need outside the workspace there, and nowhere else: a "
                      "file left in the workspace changes the work under evaluation. Submit with "
-                     "`aew submit --kind <kind> --file <report file>`, or pipe the report with `--file -`.")
+                     "`aew submit --kind <kind> --file <that file>`, or pipe the report with `--file -`.")
     return "\n".join(lines)
 
 

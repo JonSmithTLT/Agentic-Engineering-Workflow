@@ -14,6 +14,7 @@ import pytest
 from conftest import IS_WINDOWS, Project, clean_env, git, run_aew
 
 from aew.errors import IllegalTransition, ValidationFailed
+from aew.harness import contract as K
 
 
 def control_bytes(p: Project) -> bytes:
@@ -370,7 +371,7 @@ def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leave
     prepare_and_validate(q, wid2)
     res = q.aew("lead", "acquire", "--expect-rev", str(q.rev()))
     assert res.error["details"]["interrupted_work"] == [] and res.error["details"]["active_invocations"] == []
-    assert f"`aew integrate reconcile {wid2}`" in res.error["message"], res.error
+    assert f"`aew integrate reconcile {wid2} {K.EXPECT_REV}`" in res.error["message"], res.error
 
 
 def test_token_issued_in_one_process_verified_in_another(project):

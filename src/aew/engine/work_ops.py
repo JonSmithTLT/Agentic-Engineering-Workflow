@@ -199,8 +199,9 @@ class WorkUnits:
         def check() -> None:
             unit = self.unit(state, work_id)
             if unit["kind"] != "ticket":
-                raise IllegalTransition("Story/Epic state is derived from child work (WC §8); the Lead closes one "
-                                        "with `aew work close` and cancels one with `aew work cancel`")
+                raise IllegalTransition(f"Story/Epic state is derived from child work (WC §8); the Lead closes one "
+                                        f"with `aew work close {work_id} --reason <reason> {EXPECT_REV}` and cancels "
+                                        f"one with `aew work cancel {work_id} --reason <reason> {EXPECT_REV}`")
             rule = transitions.check(unit["state"], str(to), "transition")
             if rule.reason_required and not (reason and reason.strip()):
                 raise UsageError(f"{unit['state']} -> {to} requires --reason")

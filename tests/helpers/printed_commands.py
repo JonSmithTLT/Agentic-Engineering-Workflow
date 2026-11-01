@@ -65,9 +65,13 @@ PLACEHOLDERS: dict[str, str] = {
     "<run>": "R-INV-0012-1",
     "<candidate>": "C-001",  # an authority candidate
     "<card>": "default",  # a role card
-    "<check id>": "unit",
+    "<check id>": "unit",  # the same, as each text spells it
+    "<check-id>": "unit",
+    "<check>": "unit",
     "<kind>": "implementation_report",  # an expected output's kind
-    "<report file>": "report.md",
+    "<file>": "report.md",  # a report file, as each text spells it
+    "<that file>": "report.md",
+    "<your-report.md>": "report.md",
     "<0-4>": "2",  # a risk class
     "<STATE>": "REVIEW_PENDING",
     "<CLASS>": "LOCAL_IMPLEMENTATION_DEFECT",  # a verification failure's classification

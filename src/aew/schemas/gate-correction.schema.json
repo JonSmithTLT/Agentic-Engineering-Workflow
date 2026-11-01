@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aew/gate-correction/v1",
+  "title": "AEW gate correction",
+  "description": "ITEMS 55 (operator, option (b), 2026-11-01; designer, addenda 2 and 3): a Story's or Epic's mandatory gate that can never be satisfied, replaced on the record by one that can (`aew work gate-replace`). Written once, immutable, beside the unit (`work/<S>/gate-corrections/<GC>.yaml`) and pointed to from its control-state policy. The unit's own record is never rewritten.",
+  "type": "object",
+  "required": ["schema", "id", "work_unit", "replaced", "with", "reason", "by", "generation", "expected_revision", "rev",
+               "at", "stale_invocations"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "aew/gate-correction/v1"},
+    "id": {"type": "string", "pattern": "^GC-[0-9]{4,}$"},
+    "work_unit": {"description": "The Story or Epic whose mandatory gate was replaced.", "type": "string", "minLength": 1},
+    "replaced": {"description": "The gate that could never be satisfied.", "type": "string", "minLength": 1},
+    "with": {"description": "The gate that carries its standard, which passes the predicate.", "type": "string", "minLength": 1},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "by": {"description": "The actor: the Lead, or the operator through the Lead seat.", "type": "object"},
+    "generation": {"description": "The Lead generation that replaced it.", "type": "integer", "minimum": 1},
+    "expected_revision": {"description": "The control revision the write expected (an expected-revision write).", "type": "integer", "minimum": 0},
+    "rev": {"description": "The control revision the replacement committed.", "type": "integer", "minimum": 1},
+    "at": {"type": "string"},
+    "stale_invocations": {
+      "description": "Every descendant invocation that was active, whose context pack the replacement changed, with the commands that re-dispatch it (addendum 3).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["invocation", "work_id", "role", "commands", "fields"],
+        "additionalProperties": false,
+        "properties": {
+          "invocation": {"type": "string"},
+          "work_id": {"type": "string"},
+          "role": {"type": ["string", "null"]},
+          "commands": {"type": "array", "items": {"type": "string"}},
+          "fields": {"type": "object", "additionalProperties": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

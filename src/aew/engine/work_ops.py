@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 from aew import profile
 from aew.engine import dependencies as deps
+from aew.engine import gate_ops as GR
+from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import transitions
 from aew.engine.base import TxnContext
@@ -14,7 +16,15 @@ from aew.engine.dependencies import readiness_blockers, recompute_readiness
 from aew.engine.dispatch import Blocker
 from aew.engine.guards import NotQueryable, checked, refusal, require
 from aew.engine.seams import SOURCE, GuardRegistration
-from aew.errors import DependencyUnsatisfied, GateUnsatisfied, GitError, IllegalTransition, NotFound, UsageError
+from aew.errors import (
+    DependencyUnsatisfied,
+    GateUnsatisfied,
+    GitError,
+    IllegalTransition,
+    NotFound,
+    UsageError,
+    ValidationFailed,
+)
 from aew.knowledge.records import KIND_PREFIX, format_id, plan_record, work_unit_record
 from aew.util import glob_any, sha256_file, sha256_text, utc_now
 from aew.workspace import git
@@ -503,6 +513,7 @@ class WorkCommands:
         records the unit it would create as ``found["work_id"]`` and ``found["unit"]``; ``work_id`` is unused."""
         def check() -> None:
             self._check_create_arguments(args)
+            self._check_mandatory_gates(args)
             lead = state.get("lead") or {}
             actor = {"kind": "lead", "session_label": lead.get("session_label"), "generation": lead.get("generation")}
             scratch = {**state, "work": dict(state["work"]), "counters": dict(state.get("counters") or {}),
@@ -511,6 +522,21 @@ class WorkCommands:
             args.setdefault("found", {}).update(work_id=wid, unit=unit)
 
         return checked(check)
+
+    def _check_mandatory_gates(self, a: dict[str, Any]) -> None:
+        """A Story's or Epic's mandatory gate must be one some descendant can satisfy (ITEMS 55, designer decision 1;
+        addenda 1 and 2): a prose standard named as a gate would read MISSING on every descendant, for ever."""
+        if a.get("kind") == "ticket" or not a.get("mandatory_gates"):
+            return
+        catalogue = self.roles.gate_catalogue()
+        for gate in a["mandatory_gates"]:
+            found = G.unsatisfiable_inherited(gate, catalogue)
+            if found is not None:
+                raise ValidationFailed(
+                    f"--mandatory-gate {found.message}. {GR.HOW_TO_STATE[0].upper()}{GR.HOW_TO_STATE[1:]}, for "
+                    f"example `aew work create {a['kind']} --class <0-4> --mandatory-gate check:<check id> "
+                    "--expect-rev <revision from aew status> --fields -` with `title:` on standard input",
+                    gate=gate, candidates=list(found.candidates))
 
     @staticmethod
     def _check_create_arguments(a: dict[str, Any]) -> None:

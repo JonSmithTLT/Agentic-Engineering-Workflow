@@ -22,6 +22,7 @@ from aew.engine import transitions
 from aew.engine.base import TxnContext
 from aew.errors import AEWError, IllegalTransition, NotFound, PermissionDenied, UsageError, ValidationFailed
 from aew.operator import require_operator_attribution
+from aew.policy import checks as C
 from aew.policy import consistency
 from aew.util import load_yaml, sha256_bytes
 
@@ -378,13 +379,25 @@ class Roles:
         inv["allowed_operations"] = restrict.get("operations")
         inv["allowed_checks"] = restrict.get("checks")
 
+    def gate_catalogue(self) -> G.Catalogue:
+        """What a gate name's suffix resolves against now (ITEMS 55, addendum 1): read again at every use, at a
+        write, at dispatch and in doctor, because the catalogue and the checks change. A specialty's candidates are
+        ``_specialty_requirement``'s."""
+        catalog = self.role_catalog()
+        specialties = {c.meta["specialty"] for c in catalog.cards.values() if c.meta.get("specialty")}
+        return G.Catalogue(
+            cards=frozenset(catalog.cards),
+            specialties={s: tuple(self._specialty_requirement(catalog, s, "")["candidates"]) for s in specialties},
+            checks=C.current_definitions(self.k.policy("checks"), self.k.policy("guardrails")),
+            local_checks=tuple(self.k.policy("gates").get("local_checks") or []))
+
     def policy_problems(self) -> list[str]:
         """Contradictions between the policy files and what the engine can evaluate (``policy.consistency``).
 
         Empty when a policy file is itself invalid: that is reported on its own, and nothing can be compared."""
         try:
             gates, checks = self.k.policy("gates"), self.k.policy("checks")
-            specialties = {c.meta["specialty"] for c in self.role_catalog().cards.values() if c.meta.get("specialty")}
+            catalogue, guardrails = self.gate_catalogue(), self.k.policy("guardrails")
         except AEWError:
             return []
-        return consistency.problems(gates, checks, specialties)
+        return consistency.problems(gates, checks, catalogue, guardrails)

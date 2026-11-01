@@ -113,6 +113,7 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
                             "blockers": [], "anomalies": _anomalies(state, subject)}
     _stage_decisions(part, state, subject)
     _anomaly_decisions(part)
+    _gate_decisions(part, engine, state, subject)
     if subject == "project":
         return part
     unit = engine.status(subject)["work_unit"]  # hot, or archived as it stands now
@@ -162,6 +163,27 @@ def _anomaly_decisions(part: dict[str, Any]) -> None:
                                   "cli": ["work", "dispose", a["id"], "--choice",
                                           "<accept_risk|follow_up|not_applicable>", "--rationale", "<why>",
                                           "--expect-rev", r]})
+
+
+def _gate_decisions(part: dict[str, Any], engine: Any, state: dict[str, Any], subject: str) -> None:
+    """A parent's mandatory gate that can never be satisfied is the Lead's to replace on the record (ITEMS 55; designer,
+    addendum 4): a decision naming the item, whose replacement gate is the Lead's judgment (no default), and a blocker
+    whose details say why, the candidates, the units stuck on it and the live invocations a replacement would make
+    stale (its preview, addendum 3)."""
+    try:
+        items = engine.gate_items(subject, state=state)
+    except AEWError:  # the catalogue or policy cannot be read now: doctor says so
+        items = []
+    for i in items:
+        part["decisions"].append({
+            "decision": "REPLACE_GATE", "tool": "resolve", "evidence": [i["id"]],
+            "arguments": {"expect_rev": part["revision"], "subject": i["id"], "choice": "replace_gate"},
+            "availability": AVAILABLE if i["replaceable"] else BLOCKED,
+            "cli": ["lead", "tool", "resolve", "--arguments", "-"]})
+        part["blockers"].append(_blocker(
+            "GATE_UNSATISFIABLE", f"{i['work_id']}'s mandatory gate `{i['gate']}` can never be satisfied: {i['why']}",
+            {k: i[k] for k in ("id", "work_id", "gate", "candidates", "replaceable", "stuck_units",
+                               "stale_invocations")}))
 
 
 def _dispose(item: dict[str, Any], rev: int) -> dict[str, Any]:

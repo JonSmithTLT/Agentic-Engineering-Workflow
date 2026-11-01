@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
+from aew.engine import gate_ops
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import validation_ops as VO
@@ -96,6 +97,13 @@ class Resume:
         except AEWError:
             actions.append("fix invalid policy/checks.yaml")
         actions.extend(f"fix the policy: {problem}" for problem in self.roles.policy_problems())
+        try:  # ITEMS 55: a parent's gate that can never be satisfied, and the route that settles it
+            items = gate_ops.open_items(state, self.roles.gate_catalogue())
+        except AEWError:  # reported by doctor
+            items = []
+        actions.extend(f"{i['work_id']}: mandatory gate `{i['gate']}` can never be satisfied ({i['why']}): "
+                       + (gate_ops.remedy(i["work_id"], i["gate"]) if i["replaceable"] else
+                          "changing it is the operator's decision") for i in items)
         for wid, u in sorted(state["work"].items()):
             actions.extend(f"{wid}: {a}" for a in self.kinds.resolve(NEXT_ACTIONS, u)(state, wid, u))
         for sid, si in sorted((state.get("stage_intents") or {}).items()):  # rule 8 (M4-E E3c): never inferred

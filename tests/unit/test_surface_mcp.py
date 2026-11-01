@@ -46,8 +46,10 @@ class Spy:
 # below and A1-0's measurement spike both call it, so the spike's figures are the cap's own (the A1 slice plan, reviewed
 # CLEAR, §3.4 and §7 `test_a1_rows_measured`). The plan's §7 calls the cap `test_surface_cap`; it is
 # `test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_budget`.
-NORMAL_BYTES_PIN = 11_694  # decision 7's whole-surface pin (E6a); unchanged in A1 until the designer answers G3
-RESOLVE_BYTES_PIN = 771
+# Decision 7's whole-surface pin: 11,694 at E6a, unchanged in A1 until the designer answers G3; 11,741 with ITEMS 55's
+# `replace_gate` choice and its `replacement` field (designer, addendum 4: measured against §2.6's stop line, +47 B).
+NORMAL_BYTES_PIN = 11_741
+RESOLVE_BYTES_PIN = 818
 
 
 def advertised_bytes(listing: dict[str, Any]) -> int:
@@ -96,7 +98,8 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_bu
     # Under §2.6's 11,900-byte stop line with every M4-E tool built: `resolve` with E5b's dispositions takes exactly the
     # 771 bytes the plan measured for it (5,135 bytes at E3c; 7,996 at E5a; 9,991 at E5b, its two stages' rows exactly
     # as catalogued since F15.1, so the projection with every tool built is unchanged; 11,694 at E6a, the two
-    # integration rows as catalogued plus `verification_evidence`, leaving E6b's `publish_if_clean` under the line).
+    # integration rows as catalogued plus `verification_evidence`, leaving E6b's `publish_if_clean` under the line;
+    # 11,741 with ITEMS 55's `replace_gate` and `replacement`, `resolve` then 818 bytes).
     assert size <= NORMAL_BYTES_PIN, f"the normal advertised surface grew past E6a's {size} bytes"
     assert advertised_bytes(by_name["resolve"]) <= RESOLVE_BYTES_PIN
     assert all("title" not in t["annotations"] for t in normal["tools"])  # trimmed (plan v3 §2.6)

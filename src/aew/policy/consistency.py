@@ -5,28 +5,30 @@ the files agree with each other and with what the engine can evaluate. A contrad
 gate that can never be satisfied (the Q7 shakedown: ``gates.yaml`` required a check ``unit`` that ``checks.yaml`` no
 longer defined, and every mutating Ticket blocked with ``unit`` MISSING and no explanation).
 
-``problems`` is pure: it takes the parsed files and the reviewer specialties of the role catalog, and returns one
-plain sentence per contradiction, naming the file, the entry and the consequence.
+``problems`` is pure: it takes the parsed files and the role catalogue's facts (``gates.Catalogue``), and returns one
+plain sentence per contradiction, naming the file, the entry and the consequence. Whether a gate can be satisfied on a
+unit type is ``gates.unsatisfiable``, the evaluators' own dispatch (ITEMS 55, designer decision 1): there is no list
+of gate names here.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from aew.engine import gates as G
 from aew.policy import validation as V
 
-# The gates each unit type has an evaluator for (engine/gates.py, nonmutating_ops, hierarchy_ops).
-MUTATING = {"accepted_plan", "local_checks", "self_review", "review_r1", "verification_goal_backwards",
-            "verification_contract"}
-NON_MUTATING = {"accepted_plan", "execute_record", "review_r1", "verification_goal_backwards",
-                "verification_contract"}
-PARENT = {"accepted_plan", "children_complete", "review_r1", "verification_goal_backwards", "verification_contract"}
-PATH_TABLES = (("risk_paths", "mutating Tickets", MUTATING), ("non_mutating_paths", "non-mutating Tickets",
-                                                                NON_MUTATING),
-               ("parent_paths", "Stories and Epics", PARENT))
+PATH_TABLES = (("risk_paths", G.MUTATING), ("non_mutating_paths", G.NON_MUTATING), ("parent_paths", G.PARENT))
 
 
-def problems(gates: dict[str, Any], checks: dict[str, Any], specialties: set[str]) -> list[str]:
+def _defined(catalogue: G.Catalogue, checks: dict[str, Any]) -> G.Catalogue:
+    """The catalogue as this check judges a check id: defined in checks.yaml. A defined check that is not configured
+    yet is a project still being set up, not a contradiction between the files; its gates say so when evaluated."""
+    return catalogue._replace(checks={c: "" for c in [*catalogue.checks, *(checks.get("checks") or {})]})
+
+
+def problems(gates: dict[str, Any], checks: dict[str, Any], catalogue: G.Catalogue,
+             guardrails: dict[str, Any] | None = None) -> list[str]:
     out: list[str] = []
     defined = set(checks.get("checks") or {})
     for where, ids in (("local_checks", gates.get("local_checks") or []),
@@ -36,20 +38,26 @@ def problems(gates: dict[str, Any], checks: dict[str, Any], specialties: set[str
                 out.append(f"policy/gates.yaml {where} names check `{check_id}`, which policy/checks.yaml does not "
                            f"define: every gate that needs it stays MISSING. Define it in checks.yaml or remove it "
                            f"from {where}.")
-    for table, label, known in PATH_TABLES:
+    judged = _defined(catalogue, checks)
+    for table, utype in PATH_TABLES:
         for cls, path in sorted((gates.get(table) or {}).items()):
             for gate in path or []:
-                if gate in known:
-                    continue
-                if gate.startswith("review_") and gate[len("review_"):] in specialties:
-                    continue
-                why = (f"no reviewer card has specialty `{gate[len('review_'):]}`"
-                       if gate.startswith("review_") else f"AEW has no evaluator for it on {label}")
-                out.append(f"policy/gates.yaml {table}[{cls}] requires gate `{gate}`, but {why}: nothing can satisfy "
-                           "it, so those units can never complete.")
+                if gate == "local_checks" and utype == G.MUTATING:
+                    continue  # its ids are judged above, where the list is
+                found = G.unsatisfiable(gate, utype, judged)
+                if found is not None:
+                    out.append(f"policy/gates.yaml {table}[{cls}] requires gate `{gate}`, but {found.why}: nothing "
+                               f"can satisfy it, so those units ({utype}) can never complete.")
+    # A guardrail's review trigger names a gate as well (``guardrails.evaluate``): a card, or a specialty.
+    for trigger in (guardrails or {}).get("review_triggers") or []:
+        gate = (f"{G.REVIEW_CARD_PREFIX}{trigger['card']}" if trigger.get("card")
+                else f"{G.REVIEW_GATES_PREFIX}{trigger['name']}")
+        found = G.unsatisfiable(gate, G.MUTATING, judged)
+        if found is not None:
+            out.append(f"policy/guardrails.yaml review_triggers `{trigger['name']}` requires gate `{gate}`, but "
+                       f"{found.why}: a change it matches can never complete.")
     out += [f"policy/gates.yaml {p}" for p in V.policy_problems(gates)]
-    all_known = MUTATING | NON_MUTATING | PARENT
     for gate in gates.get("waivable_gates") or []:
-        if gate not in all_known and not (gate.startswith("review_") and gate[len("review_"):] in specialties):
+        if all(G.unsatisfiable(gate, utype, judged) is not None for utype in G.UNIT_TYPES):
             out.append(f"policy/gates.yaml waivable_gates lists `{gate}`, which is not a gate AEW evaluates.")
     return out

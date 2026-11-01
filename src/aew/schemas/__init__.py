@@ -37,6 +37,7 @@ SCHEMAS = {
     "pricing": "pricing.schema.json",  # the price table, the manifest's optional policy.pricing (F25 R4)
     "stage-intent": "stage-intent.schema.json",  # the StageIntent journal (M4-E E3)
     "disposition": "disposition.schema.json",  # a disposition of a finding, claim or anomaly (M4-E E5b)
+    "gate-correction": "gate-correction.schema.json",  # a parent's mandatory gate replaced on the record (ITEMS 55)
     "ticket-field-registry": "ticket-field-registry.schema.json",  # Ticket field groups (F4 S1, ADR-0016 §1)
     "coordination-message": "coordination-message.schema.json",  # a Lead-worker message (F9-A, ADR-0017)
     "coordination-marker": "coordination-marker.schema.json",  # "a thread exists" (F9-A D-31)

@@ -39,6 +39,10 @@ REASONS: dict[str, Reason] = {
     "GIT_DRIVER_UNTRUSTED": Reason(
         "the dispatch base assigns a git filter driver that execution policy does not trust: AEW will not run it on "
         "agent-written files, and without it would read and commit those files differently"),
+    # A unit's inherited gate that can never be satisfied on its type (ITEMS 55, designer decision 1's backstop).
+    "GATE_UNSATISFIABLE": Reason(
+        "an inherited mandatory gate can never be satisfied on this unit: nothing the dispatch produces could complete "
+        "it; the ancestor that set it replaces it on the record (`aew work gate-replace`)"),
     # Protected conditions (plan assurance v0.4 §10).
     "PROTECTED_CONDITION_OVERLAP": Reason(
         "a protected path lies inside the Ticket's mutation scope: the scope grants a change the policy forbids",

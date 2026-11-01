@@ -87,6 +87,11 @@ SPECS: dict[str, PrimitiveSpec] = {s.primitive_id: s for s in (
     # required finding and never moves a unit.
     PrimitiveSpec("work.dispose", JUDGMENT_BEARING, ("disposition",), ("gates",), (), "control_state",
                   "expected_revision", None),
+    # A parent's mandatory gate that can never be satisfied, replaced on the record (ITEMS 55: operator, option (b);
+    # designer, addendum 4): through `resolve`'s `replace_gate`, one transaction under the caller's expected revision.
+    # Its guard is the queryable one: the predicate on the new gate, and the operator's five conditions.
+    PrimitiveSpec("work.gate_replace", JUDGMENT_BEARING, ("gate_replacement",), ("gates", "checks", "roles"), (),
+                  "control_state", "expected_revision", "work.gate_replace"),
     # Integration (ADR-0004), driven by the M4-D queue: prepare's legality, and the lease it grants, is the
     # ``integrate.prepare`` dispatch decision; publish and post-integration verification run under that lease. The
     # grant mints the custodian's custody credential (M4-E E6a: `credential`), whose worker the granting process then
@@ -172,6 +177,7 @@ NOT_STEPS: dict[str, str] = {
     "message.send": "it commits nothing (a coordination message is recorded on its thread, not in a transition)",
     "stage.resolve": "it resolves another stage's journal; a stage never runs inside one",
     "work.dispose": "a disposition is one judgment in one transaction, made through `resolve`: never a stage step",
+    "work.gate_replace": "a replacement is one judgment in one transaction, made through `resolve`: never a stage step",
 }
 # Primitives that share their commit op with another: the dispatch decision the commit recorded (its entrypoint)
 # says which one committed (#140 re-review: the three creations are chosen by the unit's kind, not by the caller).

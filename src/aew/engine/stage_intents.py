@@ -409,7 +409,7 @@ class StageIntents:
                                                 "primitive moved it)"}
             else:
                 checks["subject"] = {"status": OK, "message": f"{subject['id']} is as the last step left it"}
-        checks["launch"] = self._launch_check(steps[-1] if steps else None)
+        checks["launch"] = self._launch_check(steps[-1] if steps else None, si["id"])
         checks["rebinds"] = {"status": OK, "message": f"{len(si['rebound'])} of {MAX_REBINDS} continues used"} if (
             len(si["rebound"]) < MAX_REBINDS) else {"status": "exhausted",
                                                      "message": f"continued {MAX_REBINDS} times already"}
@@ -437,7 +437,7 @@ class StageIntents:
         """:meth:`recheck` of the unfinished intent ``intent`` (NOT_FOUND when it has ended or never existed)."""
         return self.recheck(state, self._active(state, intent), contract_digest=contract_digest, plan=plan)
 
-    def _launch_check(self, last: dict[str, Any] | None) -> dict[str, Any]:
+    def _launch_check(self, last: dict[str, Any] | None, intent: str) -> dict[str, Any]:
         """The run of a launching last step: its supervisor must still hold it (starting or running). No record
         means no supervisor ever ran; any other status means the run is not live. Only the last committed step can
         hold a run that never started: the executor runs no further step until a launch is in its supervisor's
@@ -449,17 +449,29 @@ class StageIntents:
             observed, _ = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
             if observed not in LIVE_RUN:
                 step_n = last["n"] if last else "?"
+                inv = K.invocation_of_run(run) or "<invocation from aew harness status>"
+                relaunch = f"`aew harness launch {inv} --expect-rev <revision from aew status>`"
+                cancel_command = f"aew invoke cancel {inv} --expect-rev <revision from aew status>"
                 if observed == K.UNCONFIRMED:  # the credential died with the launcher: relaunching is the remedy
+                    # The stage's own remedies stay first: relaunch, or abandon the intent (an invoke cancel ends the
+                    # invocation but leaves the intent unresolved; #313 review, F4).
+                    abandon = K.fields_command(
+                        f"aew stage abandon {intent} --expect-rev <revision from aew status>",
+                        "rationale", "stage launch failed")
+                    cancel = K.fields_command(cancel_command, "reason", "stage launch failed")
                     return {"status": "no_supervisor", "run": run, "observed": observed,
                             "message": f"step {step_n} recorded {run}, but no supervisor ever recorded it: the launch "
-                                       "failed. Relaunch it with `aew harness launch` (the credential rotates), or "
-                                       "abandon"}
+                                       f"failed. Relaunch it with {relaunch} (the credential rotates), or abandon the "
+                                       f"stage with:\n\n{abandon}\n\nto end its invocation as "
+                                       f"well, cancel it with:\n\n{cancel}"}
                 # The run started and ended (it may have finished its work): still not a stage to complete, but a
                 # relaunch could redo finished work (#166 review, finding 3).
+                cancel = K.fields_command(cancel_command, "reason", "stage run ended")
                 return {"status": "not_live", "run": run, "observed": observed,
                         "message": f"step {step_n} recorded {run}, and its run ended ({observed}): the stage stops "
                                    f"here. Read `harness_status` and the run's report before deciding whether to "
-                                   "relaunch it (`aew harness launch`) or go on from its evidence"}
+                                   f"relaunch it ({relaunch}), cancel its invocation with:\n\n{cancel}\n\n"
+                                   "or go on from its evidence"}
         return {"status": OK, "runs": list(runs), "message": "its launching step's run is held by its supervisor"}
 
     # ------------------------------------------------------------------ the step finalizer

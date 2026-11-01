@@ -88,13 +88,14 @@ def test_send_route_decides_every_cell_and_refuses_all_but_the_request_file(when
     assert "not yet available" in refused.value.message and "nothing was sent" in refused.value.message
     for project, snapshot in ((ON, OFF), (OFF, ON)):
         with pytest.raises(MessagingSnapshotMismatch) as refused:
-            send_route(project, snapshot, when)
+            send_route(project, snapshot, when, invocation="INV-0007")
         assert refused.value.details == {"project": project, "snapshot": snapshot, "when": when}
         if project == ON:  # before MS4 a relaunch never clears it: every run reads as launched off
             assert "relaunch" not in refused.value.message.lower()
             assert "needs messaging switched off" in refused.value.message
         else:  # the project is off: a relaunched run reads as launched off, so it agrees with the project
-            assert "Relaunch the run (`aew harness launch`)" in refused.value.message
+            assert ("Relaunch the run (`aew harness launch INV-0007 --expect-rev <revision from aew status>`)"
+                    in refused.value.message)
             assert "needs messaging switched off" not in refused.value.message
 
 

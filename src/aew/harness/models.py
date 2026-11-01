@@ -20,9 +20,19 @@ A provider's own catalog (``GET /v1/models``) lists bare ids, which are never st
 result carries the raw catalog identity, AEW's pair, and the harness reference, so a chooser (register F46.3) fills
 the id from the catalog and never prefixes or strips anything itself.
 
+**An operator-typed reference that is template text is refused** before any launch, naming the field and the
+fix: :func:`from_profile` (a profile, ``--model``) refuses a ``provider`` or ``model`` that contains ``<`` or ``>``, or
+has ``MODEL_ID`` or ``YOUR_MODEL_ID`` as a whole ``/``-separated segment. The rule is exactly that and no more:
+the match is case-sensitive, so other spellings of template text pass (``model_id``, ``your-model-id``, ``$MODEL_ID``,
+``{model}``, ``[model]``, ``TODO``), and the configuration projection's own grammar (``engine/configuration.py``,
+``MODEL_ID``) is stricter than this rule (review of PR #309, F5). :func:`from_listing` and :func:`from_catalog` take
+what the harness or the provider lists and never apply it: a provider's own id is its own.
+
 **What a chooser writes back: ``model: <harness_ref>``, with no separate ``provider``**
 (:meth:`ModelIdentity.profile_fields`). Only that form round-trips: ``from_profile(None, x.harness_ref)`` is ``x``'s
-pair for every identity ``x`` this module returns. The split pair does not, for a model whose own id contains ``/``:
+pair for every identity ``x`` this module returns, except an id the provider lists that reads as template text
+(``vendor/MODEL_ID``): the listing accepts it and the profile rule refuses it (review of PR #309, F3). The split pair
+does not round-trip either, for a model whose own id contains ``/``:
 ``from_catalog("router", "maker/model-b")`` is the pair ``(router, maker/model-b)``, and a profile
 ``{provider: router, model: maker/model-b}`` is refused as a conflicting prefix (review of PR #214, F3).
 
@@ -82,27 +92,39 @@ def _is_placeholder(text: str) -> bool:
         part in PLACEHOLDER_WORDS for part in text.split(SEP))
 
 
-def _placeholder(text: str, field: str, provider: str | None = None, model: str | None = None) -> ModelIdRefused:
-    return ModelIdRefused(
-        f"{field}: {text!r} is a literal placeholder value; replace it with a real provider/model "
-        "ID. Find one with `opencode models`, then paste the full provider/model ID into this policy key",
-        reason=MALFORMED, field=field, value=text, provider=provider, model=model if model is not None else text)
-
-
-def _identity(catalog_id: str, provider: str, model: str, field: str) -> ModelIdentity:
-    return ModelIdentity(catalog_id, provider, model)
+def _placeholder(text: str, field: str, provider: str | None = None, model: str | None = None, *,
+                 of_provider: str | None = None) -> ModelIdRefused:
+    """The refusal for template text in ``field``; ``of_provider`` is the model's field when ``field`` is the
+    provider's, whose next step differs (a full provider/model id there is not a provider, review of PR #309, F1).
+    The listing command is OpenCode's, the one harness built in; the field names where the value was typed (F2)."""
+    if of_provider is not None:
+        step = ("replace it with the provider id alone (the part before the first `/` in `opencode models`), or "
+                f"remove `provider` and write the full provider/model ID in {of_provider}")
+    else:
+        step = ("replace it with a real provider/model ID. Find one with `opencode models`, then write the full "
+                f"provider/model ID in {field}")
+    return ModelIdRefused(f"{field}: {text!r} is a literal placeholder value; {step}", reason=MALFORMED, field=field,
+                          value=text, provider=provider, model=model if model is not None else text)
 
 
 def from_profile(provider: str | None, model: str, *, field: str = "model") -> ModelIdentity:
     """The identity of a profile's ``provider`` and ``model`` as typed (``field`` names the model's field in the
-    message: ``profiles.standard.model``, ``--model``)."""
+    message: ``profiles.standard.model``, ``--model``). Template text in either is refused first (see the module
+    docstring for exactly what counts); the rest is :func:`_pair`."""
     provider_text = str(provider) if provider is not None else None
     if provider_text is not None and _is_placeholder(provider_text):
         raise _placeholder(provider_text, f"{field.rsplit('.', 1)[0]}.provider" if "." in field else "provider",
-                           provider_text, str(model))
+                           provider_text, str(model), of_provider=field)
     raw = str(model)
     if _is_placeholder(raw):
         raise _placeholder(raw, field, provider_text, raw)
+    return _pair(provider, model, field)
+
+
+def _pair(provider: str | None, model: str, field: str) -> ModelIdentity:
+    """The one parse of a provider and a model as typed or listed: shared by :func:`from_profile` and
+    :func:`from_listing`, so the split lives once (review of PR #309, F4)."""
+    raw = str(model)
     head, sep, rest = raw.partition(SEP)
     if _bad(raw) or (sep and (not head or not rest)):
         raise ModelIdRefused(f"{field}: {raw!r} is not a model id: write it exactly as the harness lists it "
@@ -113,12 +135,12 @@ def from_profile(provider: str | None, model: str, *, field: str = "model") -> M
             raise ModelIdRefused(f"{field}: {raw!r} names no provider: write the id exactly as the harness lists it "
                                  f"(provider/{raw}), or set the profile's provider", reason=NO_PROVIDER,
                                  field=field, value=raw)
-        return _identity(raw, head, rest, field)
+        return ModelIdentity(raw, head, rest)
     provider = str(provider)
     if not sep:
-        return _identity(raw, provider, raw, field)
+        return ModelIdentity(raw, provider, raw)
     if head == provider:
-        return _identity(raw, provider, rest, field)
+        return ModelIdentity(raw, provider, rest)
     suggestions = [f"{head}{SEP}{rest}", f"{provider}{SEP}{raw}"]
     raise ModelIdRefused(
         f"{field}: {raw!r} carries the provider prefix {head!r}, but the profile's provider is {provider!r}. Did you "
@@ -130,13 +152,7 @@ def from_profile(provider: str | None, model: str, *, field: str = "model") -> M
 
 def from_listing(listed: str) -> ModelIdentity:
     """An id as OpenCode lists or prints it (``provider/model``)."""
-    raw = str(listed)
-    head, sep, rest = raw.partition(SEP)
-    if _bad(raw) or not sep or not head or not rest:
-        raise ModelIdRefused(f"listed id: {raw!r} is not a model id: write it exactly as the harness lists it "
-                             "(provider/model, for example vendor/model-name)", reason=MALFORMED,
-                             field="listed id", value=raw)
-    return _identity(raw, head, rest, "listed id")
+    return _pair(None, listed, "listed id")
 
 
 def from_catalog(provider: str, listed: str) -> ModelIdentity:

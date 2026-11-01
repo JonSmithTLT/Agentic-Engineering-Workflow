@@ -539,9 +539,11 @@ class _Projector:
             pair = X.model_pair(self.document, key, registry.model_identity if rule == BY_ADAPTER else None)
         except ModelIdRefused as exc:
             suggestion = next((s for s in exc.details.get("suggestions") or [] if _model_id(s) is None), None)
+            # the refusal names the field it refused: the provider's when template text is typed there (PR #309, F6)
+            refused = "provider" if str(exc.details.get("field")).endswith(".provider") else "model"
             return none | {"identity_error": {
                 "code": str(exc.details.get("reason")), "withheld_reason": None,
-                "field_path": P.encode(("profiles", key, "model"), self.document), "suggestion": suggestion,
+                "field_path": P.encode(("profiles", key, refused), self.document), "suggestion": suggestion,
                 "hint": MODEL_ID_HINT}}
         found = pair.as_dict()
         if any(credential_shaped(v) for v in found.values()):

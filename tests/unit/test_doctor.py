@@ -62,3 +62,13 @@ def test_model_refs_refusal_is_reported_by_the_doctor_with_the_policy_fix():
     assert "opencode models" in detail
     assert "full provider/model ID" in detail
     assert "dispatch with these profiles is refused" in detail
+
+
+def test_model_refs_refusal_of_a_placeholder_provider_is_followed_by_a_pass():
+    """The provider key's advice (the provider id alone) is accepted by the doctor, with the reference not doubled."""
+    status, detail = _model_refs_doctor(
+        {"harness": "opencode", "profiles": {"standard": {"provider": "<provider>", "model": "gpt-x"}}})
+    assert status == "FAIL" and "profiles.standard.provider" in detail and "provider id alone" in detail
+    status, detail = _model_refs_doctor(
+        {"harness": "opencode", "profiles": {"standard": {"provider": "openai", "model": "gpt-x"}}})
+    assert (status, detail) == ("PASS", "the harness is given standard: openai/gpt-x")

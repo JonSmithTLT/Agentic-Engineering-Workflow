@@ -511,8 +511,8 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     if getattr(ns, "print_credential", False):
         raise errors.PermissionDenied("--print-credential is refused in a Lead session: a credential never goes "
                                       "into the Lead's transcript")
-    if ns.token:
-        raise errors.UsageError("do not pass --token in a Lead session: the session holds the Lead credential")
+    if ns.token is not None:  # the client refuses it first; the typed `cli` tool's argv reaches only this check
+        raise lead_credential.token_value_refusal(lead_session=True)
     if any(p <= path for p in DISPATCHES) and not getattr(ns, "launch", False):
         raise errors.PermissionDenied(
             "in a Lead session, dispatch with --launch: without it the dispatch prints an invocation credential "

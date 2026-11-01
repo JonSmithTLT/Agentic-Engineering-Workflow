@@ -328,8 +328,8 @@ def test_every_approved_amendment_is_listed_and_the_pycache_one_is_marked_met():
 def test_an_operator_input_counts_every_piece_of_machinery_it_carries():
     led = L.Ledger("unit")
     credential = "aew1.tk_" + "0" * 16 + "." + "A" * 24
-    led.operator_input(f"aew manifest adopt --token {credential} --expect-rev 3", step="s",
-                       argv=["manifest", "adopt", "--token", "<credential>", "--expect-rev", "3"])
+    led.operator_input("aew manifest adopt --expect-rev 3", step="s", argv=["manifest", "adopt", "--expect-rev", "3"])
+    led.operator_input(credential, step="s:prompt")  # typed at the hidden prompt
     led.operator_input("aew lead acquire --expect-rev 0", step="s", argv=["lead", "acquire", "--expect-rev", "0"],
                        shown=f"token {credential}")
     led.operator_input("send this to R-INV-0003-1", step="s")

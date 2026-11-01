@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
-from aew.cli.commands import _add_json, _engine, _lead_token
+from aew.cli.commands import _add_json, _engine, _lead_token, add_token
 
 
 def _text(result: dict[str, Any], as_json: bool) -> Any:
@@ -66,7 +66,7 @@ def register(sub: argparse._SubParsersAction) -> None:
                         "(none:0 before the first selection); never the control revision")
     q.add_argument("--replace-nondeterministic", action="store_true",
                    help="select even though the selected map's commit regenerated to different bytes")
-    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
+    add_token(q)
     _add_json(q)
     q.set_defaults(handler=_generate)
 
@@ -75,7 +75,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("evidence_id", metavar="EVIDENCE-ID")
     q.add_argument("--expect-map-rev", metavar="EPOCH:REV", required=True,
                    help="the map registry's revision this selection is based on, as `aew map show` prints it")
-    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
+    add_token(q)
     _add_json(q)
     q.set_defaults(handler=_select_architecture)
 

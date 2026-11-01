@@ -1643,3 +1643,11 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   another project. AT-14 and AT-17 run it contained, at a pseudo-terminal. `tests/integration/test_lead_containment.py`
   (Linux): the operator's OpenCode directory under each of the four XDG bases empty from inside, with the Lead's own
   state working (addendum 4, ruling 2).
+
+## Amendment 2026-11-01 — `--token` takes no value (STG-05 CS-4 addendum 12)
+
+- The explicit-credential CLI path in the Consequences is `AEW_INVOCATION_TOKEN` and `AEW_LEAD_TOKEN`: `--token` takes
+  no value, at the operator's terminal and in a Lead session alike (ADR-0005's amendment of 2026-11-01). The broker's
+  refusal of an explicit `--token` stands, with the shared refusal (reason `token_on_command_line`).
+- Without `--acquire` and without `AEW_LEAD_TOKEN`, `aew lead session` and `aew opencode` ask for the Lead credential
+  at the operator's hidden prompt before the session starts, and the broker holds what is typed, in memory only.

@@ -181,8 +181,10 @@ def test_fields_expansion_keeps_every_broker_check(held, argv, stdin, code, beca
 
 def test_the_cli_escape_refuses_a_token(held):
     p, wid, engine, broker = held
-    out = call("cli", {"argv": ["checkpoint", "--token", "x", "--expect-rev", str(_rev(engine))]}, profile="recovery")
+    argv = ["checkpoint", "--token", "x", "--expect-rev", str(_rev(engine))]  # a --token value, refused
+    out = call("cli", {"argv": argv}, profile="recovery")
     assert not out["ok"] and out["stopped"]["error"]["code"] == "USAGE"
+    assert out["stopped"]["error"]["details"]["reason"] == "token_on_command_line"
 
 
 def test_the_bridge_key_is_not_a_lead_credential(held):

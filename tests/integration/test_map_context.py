@@ -54,7 +54,7 @@ def select_map(p: Project) -> dict[str, Any]:
         shutil.rmtree(p.root / MAPS / "registry.json", ignore_errors=True)
         (p.root / MAPS / "registry.json").unlink(missing_ok=True)
         rev = map_rev(p)
-    return p.ok("map", "generate", "--token", p.token, "--select", "--expect-map-rev", rev, "--json")
+    return p.ok("map", "generate", "--select", "--expect-map-rev", rev, "--json", env={"AEW_LEAD_TOKEN": p.token})
 
 
 def advance_main(p: Project, name: str) -> str:
@@ -222,7 +222,8 @@ def test_when_the_maps_commit_is_gone_as_well_the_pinned_slice_keeps_the_pack(tm
     p = sample_project(tmp_path)
     switch_on(p)
     side = git("commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "a commit no ref holds", cwd=p.root)
-    p.ok("map", "generate", "--token", p.token, "--commit", side, "--select", "--expect-map-rev", map_rev(p), "--json")
+    p.ok("map", "generate", "--commit", side, "--select", "--expect-map-rev", map_rev(p), "--json",
+         env={"AEW_LEAD_TOKEN": p.token})
     wid = create_investigation(p, tmp_path, title="Survey")
     inv = p.lead("work", "dispatch", wid)["invocation"]
     entry, text = slices.pinned(invocations(p)[inv]["pack"]["sources"]), pack_text(p, inv)
@@ -247,13 +248,14 @@ def test_architecture_selection_records_an_existing_discovery_record_and_refuses
     research = complete_investigation(p, create_investigation(p, tmp_path, title="Library", card="researcher"),
                                       kind="research_record")
     rev = map_rev(p)
-    missing = p.aew("map", "select-architecture", "EV-NOPE", "--token", p.token, "--expect-map-rev", rev)
+    missing = p.aew("map", "select-architecture", "EV-NOPE", "--expect-map-rev", rev, env={"AEW_LEAD_TOKEN": p.token})
     assert missing.returncode == 2 and missing.error["code"] == "NOT_FOUND"
-    wrong = p.aew("map", "select-architecture", research, "--token", p.token, "--expect-map-rev", rev)
+    wrong = p.aew("map", "select-architecture", research, "--expect-map-rev", rev, env={"AEW_LEAD_TOKEN": p.token})
     assert wrong.error["code"] == "VALIDATION_FAILED" and wrong.error["details"]["reason"] == "not_discovery_evidence"
-    ok = p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", rev, "--json")
+    ok = p.ok("map", "select-architecture", discovery, "--expect-map-rev", rev, "--json",
+              env={"AEW_LEAD_TOKEN": p.token})
     assert ok["architecture"]["evidence_id"] == discovery and ok["architecture"]["freshness"]["status"] == "CURRENT"
-    stale = p.aew("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", rev)
+    stale = p.aew("map", "select-architecture", discovery, "--expect-map-rev", rev, env={"AEW_LEAD_TOKEN": p.token})
     assert stale.returncode == 3 and stale.error["details"]["domain"] == "map_revision"
     shown = p.ok("map", "show", "--json")  # no structural map yet: still reported, never refused
     assert shown["status"] == "UNAVAILABLE" and shown["architecture"]["evidence_id"] == discovery
@@ -281,10 +283,12 @@ def test_architecture_selection_never_touches_control_state_or_control_revision(
     discovery = complete_investigation(p, create_investigation(p, tmp_path, title="Architecture survey"))
     control = p.root / ".aew" / "state" / "control.yaml"
     rev, state, files = p.rev(), control.read_bytes(), aew_files(p)
-    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    p.ok("map", "select-architecture", discovery, "--expect-map-rev", map_rev(p), "--json",
+         env={"AEW_LEAD_TOKEN": p.token})
     assert (p.rev(), control.read_bytes(), aew_files(p)) == (rev, state, files)
     registry = (p.root / MAPS / "registry.json").read_bytes()
-    stale = p.aew("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", "none:0")
+    stale = p.aew("map", "select-architecture", discovery, "--expect-map-rev", "none:0",
+                  env={"AEW_LEAD_TOKEN": p.token})
     assert stale.returncode == 3 and stale.error["details"]["domain"] == "map_revision"
     assert (p.rev(), control.read_bytes(), aew_files(p)) == (rev, state, files)
     assert (p.root / MAPS / "registry.json").read_bytes() == registry  # a refused selection writes nothing
@@ -314,7 +318,7 @@ def test_an_invocation_credential_is_refused_architecture_selection(tmp_path):
     p = sample_project(tmp_path)
     role, _ = dispatch(p, create_investigation(p, tmp_path))
     record = submit_record(role, "discovery_record")["evidence"]
-    res = p.aew("map", "select-architecture", record, "--token", role.token, "--expect-map-rev", "none:0")
+    res = p.aew("map", "select-architecture", record, "--expect-map-rev", "none:0", env={"AEW_LEAD_TOKEN": role.token})
     assert res.returncode == 4 and res.error["code"] == "PERMISSION_DENIED"
     assert not (p.root / MAPS / "registry.json").exists()
 

@@ -1380,7 +1380,8 @@ def build_sample(base: Path) -> Sample:
                  ["plan", "propose", "T-0001", "--file", str(base / "plan.md"), "--assurance", "none"],
                  ["plan", "accept", "T-0001", "--revision", "1"],
                  ["work", "assign", "T-0001"]):
-        code, out, err = run_cli(root, ["--print-credential", *argv, "--token", token, "--expect-rev", rev()])
+        code, out, err = run_cli(root, ["--print-credential", *argv, "--expect-rev", rev()],
+                                 env={"AEW_LEAD_TOKEN": token})
         assert code == 0, (argv, err)
         invocation_token = json.loads(out).get("invocation_token") or invocation_token
     assert invocation_token, "work assign issued no invocation credential"

@@ -96,7 +96,7 @@ def test_an_agent_cannot_send_a_prompt_to_another_run_by_writing_a_request_file(
     _never_acted_on(lab, "R-INV-0002-1", "R-INV-0001-1", "agent-written.json")
     assert not (victim_dir / "harness" / "inbox.jsonl").exists()
     # The Lead's own message is delivered.
-    lab.ok("harness", "send", "R-INV-0001-1", "--text", "Lead message", "--token", lab.project.token)
+    lab.ok("harness", "send", "R-INV-0001-1", "--text", "Lead message", env={"AEW_LEAD_TOKEN": lab.project.token})
     inbox = victim_dir / "harness" / "inbox.jsonl"
     lab.until(lambda: (read_text_or_none(inbox) or "").strip(), what="the Lead's message")
     assert [json.loads(line)["text"] for line in inbox.read_text(encoding="utf-8").splitlines()] == ["Lead message"]
@@ -108,7 +108,7 @@ def test_a_lead_request_is_acted_on_once_and_only_as_recorded(lab, tmp_path):
     _victim_and_other(lab, tmp_path)
     run = "R-INV-0001-1"
     victim_dir = runlog.run_dir(lab.aew_root, run)
-    lab.ok("harness", "send", run, "--text", "first", "--token", lab.project.token)
+    lab.ok("harness", "send", run, "--text", "first", env={"AEW_LEAD_TOKEN": lab.project.token})
     inbox = victim_dir / "harness" / "inbox.jsonl"
     lab.until(lambda: (read_text_or_none(inbox) or "").strip(), what="the Lead's message")
     entry = next(r for r in lab.ok("invoke", "show", "INV-0001")["runs"] if r["run"] == run)["requests"][0]
@@ -154,7 +154,7 @@ def test_health_fails_when_a_field_changes_type():
 # ------------------------------------------------------------------------------------------------ B1: plan order
 
 def _refused_cli(p, *args):
-    res = p.aew(*args, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 

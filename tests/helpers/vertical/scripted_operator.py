@@ -204,8 +204,9 @@ class Operator:
 
         rev = self.rev()  # read from `aew status`, as the quickstart says
         self.typed(f"{step}:status", "aew status")
-        self.typed(step, f'aew manifest adopt --reason "{reason}" --token {self.credential} --expect-rev {rev}',
-                   ["manifest", "adopt", "--reason", reason, "--token", "<credential>", "--expect-rev", str(rev)])
+        self.typed(step, f'aew manifest adopt --reason "{reason}" --expect-rev {rev}',
+                   ["manifest", "adopt", "--reason", reason, "--expect-rev", str(rev)])
+        self.typed(f"{step}:prompt", self.credential)  # at the hidden prompt it asks with (CS-4 addendum 12)
         Engine.discover(self.root).manifest_adopt(token=self.credential, expect_rev=rev, reason=reason,
                                                   authorization={"authorized_by": "operator-tty"})
 

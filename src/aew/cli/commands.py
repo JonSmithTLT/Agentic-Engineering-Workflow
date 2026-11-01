@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 from typing import Any
 
@@ -26,10 +25,11 @@ def _engine(args: argparse.Namespace):
 
 
 def _lead_token(args: argparse.Namespace) -> str:
-    token = getattr(args, "token", None) or os.environ.get("AEW_LEAD_TOKEN")
-    if not token:
-        raise UsageError("Lead credential required: pass --token or set AEW_LEAD_TOKEN")
-    return token
+    """The Lead credential: the one a Lead session's broker set on ``args``, else the operator's
+    (``lead_credential.required``: the variable, the hidden prompt, or a refusal that says how)."""
+    from aew import lead_credential
+
+    return getattr(args, "token", None) or lead_credential.required()
 
 
 def operator_attribution(by: str, text: str) -> dict[str, str] | None:
@@ -50,8 +50,16 @@ def _add_json(p: argparse.ArgumentParser) -> None:
     p.add_argument("--json", action="store_true", help="machine-readable output")
 
 
+def add_token(p: argparse.ArgumentParser) -> None:
+    """A Lead-authenticated command: it takes the Lead credential from ``AEW_LEAD_TOKEN`` or the hidden prompt
+    (``aew.lead_credential``). ``--token`` stays registered, out of the help, so that ``args.token`` marks the command
+    (``lead_broker.routes``) and carries the broker's credential; given a value on the command line it is refused
+    (``main``)."""
+    p.add_argument("--token", help=argparse.SUPPRESS)
+
+
 def _add_lead(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
+    add_token(p)
     p.add_argument("--expect-rev", type=int, required=True, help="control revision this decision is based on")
 
 
@@ -200,7 +208,7 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--profile", choices=["normal", "recovery"], default="normal",
                    help="the surface profile; the generic cli escape is offered only on recovery")
     q.add_argument("--list", action="store_true", help="list the catalog: kinds, classes, status, profiles")
-    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN); never inside a Lead session")
+    add_token(q)
     q.set_defaults(handler=_lead_tool)
 
     from aew.cli import operator_commands
@@ -339,8 +347,6 @@ def _lead_tool(args: argparse.Namespace) -> Any:
         except ValueError:
             raise AdapterInputError("INVALID_ARGUMENTS", f"{args.name}: --arguments is not a JSON object") from None
         if client.in_session():
-            if args.token:
-                raise UsageError("do not pass --token in a Lead session: the session holds the Lead credential")
             return client.forward(args.name, arguments, ingress="cli", profile=args.profile)
         return _lead_tool_here(args, arguments)
     except AdapterInputError as exc:
@@ -351,12 +357,16 @@ def _lead_tool(args: argparse.Namespace) -> Any:
 
 def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
     """Outside a Lead session: the runner in this process, with the operator's own credential (ADR-0005)."""
+    from aew import lead_credential
     from aew.harness import lead_broker
-    from aew.surface import run
+    from aew.surface import contract, run
     from aew.surface.context import SurfaceContext
 
     engine = _engine(args)
-    token = args.token or os.environ.get("AEW_LEAD_TOKEN") or ""
+    tool = contract.TOOLS.get(args.name)
+    # a query or a wait reads, and needs no credential; anything else asks for it (an unknown name: the runner refuses)
+    reads = tool is None or tool.kind in ("query", "wait")
+    token = (lead_credential.optional() if reads else lead_credential.required()) or ""
 
     def cli(argv: list[str], stdin: str) -> dict[str, Any]:
         return lead_broker.run_cli(engine, token, argv, str(engine.repo_root), stdin, channel="cli")

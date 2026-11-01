@@ -126,7 +126,7 @@ def test_the_lead_bridge_refuses_what_would_put_a_credential_in_the_session(lab,
         {"do": "lead", "args": ["lead", "release"]},
         {"do": "lead", "args": ["work", "assign", wid]},                    # would print an invocation credential
         {"do": "lead", "args": ["work", "dispatch", inv, "--launch"]},      # custody goes to the run's supervisor
-        {"do": "lead", "args": ["checkpoint", "--next", "x", "--token", "{FORGED_CREDENTIAL}"]},
+        {"do": "lead", "args": ["checkpoint", "--next", "x"], "env": {"AEW_LEAD_TOKEN": "{FORGED_CREDENTIAL}"}},
         {"do": "bridge_payload", "bridge": "lead", "request": {"op": "lead.cli", "args": {
             "argv": ["lead", "show"], "cwd": str(lab.root), "stdin": ""}}},
         {"do": "aew", "args": ["--print-credential", "lead", "show"]},  # a credential never goes onto this stdout

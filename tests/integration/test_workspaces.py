@@ -50,7 +50,7 @@ def test_serial_mutating_cap(project, tmp_path):
     t1 = planned_ticket(project, tmp_path)
     t2 = planned_ticket(project, tmp_path, title="Independent change")
     project.lead("work", "assign", t1)
-    res = project.aew("work", "assign", t2, "--token", project.token, "--expect-rev", str(project.rev()))
+    res = project.aew("work", "assign", t2, "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 5 and res.error["code"] == "CONCURRENCY_LIMIT"
     assert res.error["details"]["holding"] == [t1]
     # Cancelling the holder releases the slot.
@@ -74,7 +74,7 @@ def test_handoff_without_carry_interrupts_and_reconcile_is_bounded(project, tmp_
     control = project.ok("work", "show", wid)["control"]
     assert control["state"] == "INTERRUPTED" and control["interrupted_from"] == "ASSIGNED"
     res = project.aew("work", "reconcile", wid, "--to", "RUNNING", "--reason", "looks fine",
-                      "--token", project.token, "--expect-rev", str(project.rev()))
+                      "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 5 and res.error["code"] == "GATE_UNSATISFIED"
     # The refusal names the phase it may be reconciled to (EW-U06.f), and the reconcile below takes it.
     assert res.error["details"]["reason"] == "beyond_the_phase_left"
@@ -125,7 +125,7 @@ def test_concurrent_mutating_tickets_work_in_their_own_workspaces_and_integrate_
     roles = [assign(p, wid) for wid in tickets]
     assert len({r.workspace for r in roles}) == n  # one worktree each
     extra = create_planned_ticket(p, tmp_path, title="One too many")
-    res = p.aew("work", "assign", extra, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("work", "assign", extra, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "CONCURRENCY_LIMIT" and sorted(res.error["details"]["holding"]) == sorted(tickets)
     assert res.error["details"]["cap"] == n
     assert_control_invariants(p)
@@ -165,7 +165,7 @@ def test_concurrent_tickets_that_change_the_same_lines_conflict_at_integration_a
     to_commit_ready(p, tmp_path, wid=second, files={"calc/core.py": "def add(a, b):\n    return sum((a, b))\n"})
     integrate(p, first)
     head = git("rev-parse", "main", cwd=p.root)
-    res = p.aew("integrate", "prepare", second, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("integrate", "prepare", second, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     out = res.json
     assert res.returncode == 1 and out["ok"] is False and out["integration"]["status"] == "conflict"
     assert out["integration"]["conflict_paths"] == ["calc/core.py"]
@@ -212,7 +212,7 @@ def test_lowering_the_cap_drains_admitted_work_and_only_gates_new_admissions(tmp
     implement(roles[0], _own_change(0))  # and it keeps working
     newcomer = create_planned_ticket(p, tmp_path, title="Arrives after the cap was lowered")
     for wid in tickets:  # drain: refused at 4, 3, 2 and 1 live workspaces (the new cap is 1)
-        res = p.aew("work", "assign", newcomer, "--token", p.token, "--expect-rev", str(p.rev()))
+        res = p.aew("work", "assign", newcomer, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
         assert res.error["code"] == "CONCURRENCY_LIMIT" and res.error["details"]["cap"] == 1, res.stderr
         p.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "draining after the cap was lowered")
         assert_control_invariants(p)

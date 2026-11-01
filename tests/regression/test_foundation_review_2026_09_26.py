@@ -46,7 +46,7 @@ def test_publish_rechecks_new_required_role_gate(tmp_path):
     p.as_operator('work_staff', work_id=wid, review=['security_reviewer'], selected_by='operator', pin=True)
     gates = p.ok('gate', 'show', wid)
     assert gates['gates']['review_card:security_reviewer']['status'] == 'MISSING'
-    result = p.aew('integrate', 'publish', wid, '--token', p.token, '--expect-rev', str(p.rev()))
+    result = p.aew('integrate', 'publish', wid, '--expect-rev', str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert result.returncode != 0, ('Published DONE with an unfulfilled operator-pinned review obligation: '
                                     + result.stdout)
 
@@ -58,7 +58,7 @@ def test_non_mutating_ticket_cannot_publish_source_while_mutation_slot_is_busy(t
     assign(p, holder)
     wid = create_planned_ticket(p, tmp_path, title='Evidence-only work', extra=('--non-mutating',))
     # M1 may reject assignment of this unsupported path, or enforce evidence-only behavior.
-    result = p.aew('work', 'assign', wid, '--token', p.token, '--expect-rev', str(p.rev()))
+    result = p.aew('work', 'assign', wid, '--expect-rev', str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     if result.returncode:
         return
     from aewflow import Role, implement, review, verify

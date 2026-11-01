@@ -4,16 +4,12 @@ from __future__ import annotations
 
 import argparse
 
-from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token
-from aew.errors import UsageError
+from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, add_token
 
 
 def _audit(a: argparse.Namespace):
     """Advisory unless it is recorded: recording is a Lead mutation, so it names the revision it is based on."""
     if a.expect_rev is None:
-        if a.token:
-            raise UsageError("recording an audit is a Lead mutation: pass --expect-rev too (or drop --token for an "
-                             "advisory audit)")
         return _engine(a).history_audit(full=a.full)
     return _engine(a).history_audit(full=a.full, token=_lead_token(a), expect_rev=a.expect_rev)
 
@@ -79,8 +75,9 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False) ->
     q = hsub.add_parser("audit", help="verify the history incrementally (or --full); with --expect-rev the Lead "
                                       "records it and advances the verified root")
     q.add_argument("--full", action="store_true", help="verify everything, not only what is new since the last audit")
-    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN), to record the audit")
-    q.add_argument("--expect-rev", type=int, help="control revision: records the audit (a Lead mutation)")
+    add_token(q)
+    q.add_argument("--expect-rev", type=int, help="control revision: records the audit (a Lead mutation, with the "
+                                                  "Lead credential)")
     _add_json(q)
     q.set_defaults(handler=_audit)
 

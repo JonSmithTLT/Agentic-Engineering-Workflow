@@ -557,5 +557,5 @@ Each row's witness, found by the static scan over `e993fd7`'s product and guides
 | U10 | No static text names `aew harness runs`: the specification's known gap. |
 | U15 | O-ENV: `static:lead-system+guide`. |
 | U27 (O-IDS) | The specification's witness, an `expect_rev: N` in a static text, never existed: no text at `e993fd7` contains it. The `N` reached the Lead through the runtime hints `--expect-rev N`, which D2 captures: `O-IDS tool:status\|result` and `O-IDS cli:aew status\|result`. Those keys are U27's witness. |
-| U29 | O-SECRET: `cli:aew opencode\|USAGE` and `cli:aew lead session\|USAGE` ("set AEW_LEAD_TOKEN"), captured in every run by a fast-lane test; statically, `--token <credential>` in the quickstart and `opencode.md`. |
+| U29 | O-SECRET: `cli:aew opencode\|USAGE` and `cli:aew lead session\|USAGE` ("set AEW_LEAD_TOKEN"), captured in every run by a fast-lane test. Statically, none since CS-4 addendum 12: the guides show the per-session hidden-input form, which O-SECRET passes (the designer, 2026-11-01). |
 | U31 | O-IDS: `aew harness wait <run>` in `LEAD_SYSTEM`, the guide and `lead-guide.md`. |

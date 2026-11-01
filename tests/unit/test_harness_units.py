@@ -264,7 +264,9 @@ def test_only_uncredentialed_lead_commands_route_to_a_lead_session(monkeypatch):
     monkeypatch.setenv(lead_broker.ENV_ENDPOINT, "ep")
     assert lead_broker.routes(lead_cmd)
     assert not lead_broker.routes(_parse("status"))  # read-only: runs locally
-    assert not lead_broker.routes(_parse("checkpoint", "--expect-rev", "3", "--token", "t"))  # explicit credential
+    held = _parse("checkpoint", "--expect-rev", "3")
+    held.token = "t"  # a credential of its own, as the broker sets one
+    assert not lead_broker.routes(held)
     monkeypatch.setenv("AEW_LEAD_TOKEN", "t")
     assert not lead_broker.routes(lead_cmd)
 

@@ -138,7 +138,7 @@ def test_lead_stop_ends_the_run_but_not_the_invocation(lab, tmp_path, sync):
     run = out["launch"]["run"]
     lab.until(lambda: (sync / "ready").exists(), what="ready")
     rev = lab.project.rev()
-    lab.ok("harness", "stop", run, "--reason", "wrong approach", "--token", lab.project.token)
+    lab.ok("harness", "stop", run, "--reason", "wrong approach", env={"AEW_LEAD_TOKEN": lab.project.token})
     done = lab.wait(run)
     assert done["status"] == "terminated" and done["reason"] == "stopped: wrong approach"
     # The stop request itself is recorded (independent review R1); the invocation is unchanged.
@@ -170,7 +170,7 @@ def test_stopping_a_run_ends_its_running_check_and_records_nothing(lab, tmp_path
     run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
     lab.until(lambda: beat.exists(), what="the check running")
     started = time.monotonic()
-    lab.ok("harness", "stop", run, "--reason", "check cut short", "--token", lab.project.token)
+    lab.ok("harness", "stop", run, "--reason", "check cut short", env={"AEW_LEAD_TOKEN": lab.project.token})
     assert lab.wait(run)["status"] == "terminated"
     assert time.monotonic() - started < 60  # not the check's own timeout
     last = beat.read_text()
@@ -203,7 +203,7 @@ def test_a_check_in_flight_when_its_run_ends_starts_nothing(lab, tmp_path, sync)
     lab.script("R-INV-0001-1", [{"do": "check", "id": "unit"}])
     run = lab.lead("work", "assign", wid, "--launch", env={"AEW_PAUSE": f"checks.before_spawn={gate}"})["launch"]["run"]
     lab.until(lambda: Path(str(gate) + ".reached").exists(), what="the check registered and held before its start")
-    lab.ok("harness", "stop", run, "--reason", "ended mid-check", "--token", lab.project.token)
+    lab.ok("harness", "stop", run, "--reason", "ended mid-check", env={"AEW_LEAD_TOKEN": lab.project.token})
     assert lab.wait(run)["status"] == "terminated"
     gate.unlink()  # the held request now carries on, after its run ended
     time.sleep(2.0)
@@ -369,7 +369,8 @@ def test_a_message_too_long_to_deliver_is_refused_before_it_is_recorded(lab, tmp
     rev = lab.project.rev()
     message = tmp_path / "message.txt"
     message.write_text("é" * (MAX_SEND_CHARS + 1), encoding="utf-8")
-    res = lab.aew("harness", "send", out["launch"]["run"], "--file", str(message), "--token", lab.project.token)
+    res = lab.aew("harness", "send", out["launch"]["run"], "--file", str(message),
+                  env={"AEW_LEAD_TOKEN": lab.project.token})
     assert res.error["code"] == "USAGE" and str(MAX_SEND_CHARS) in res.error["message"]
     assert lab.project.rev() == rev
     lab.lead("invoke", "cancel", out["invocation"], "--reason", "stop the test run")

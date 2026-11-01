@@ -448,7 +448,7 @@ def test_the_apply_window_is_a_moved_history_and_invents_nothing(built, tmp_path
     p = copy_of(built, tmp_path)
     tail = p.root / ".aew" / M.TAIL_REL
     old = tail.read_bytes()
-    p.ok("history", "audit", "--token", p.token, "--expect-rev", str(p.rev()))  # appends an entry
+    p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})  # appends an entry
     new = tail.read_bytes()
     tail.write_bytes(old)
     before = capture(p)
@@ -469,7 +469,7 @@ def test_a_commit_between_the_snapshot_and_the_tail_read_is_a_moved_history(buil
     def commit_first(self: History) -> bytes | None:
         if not landed:
             landed.append(True)
-            p.ok("history", "audit", "--token", p.token, "--expect-rev", str(p.rev()))  # a longer tail
+            p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})  # a longer tail
         return read(self)
 
     with served(p.root) as s:

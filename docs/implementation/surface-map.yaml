@@ -1627,7 +1627,7 @@ tools:
     journeys: [V1, V2, V3, V4]
     mutates: "no"
     mutates_basis: contract.Tool.mutates
-    probe: [lead, tool, status, --token, "{token}"]
+    probe: [lead, tool, status]
     refusals: []
   - name: resume
     home: product
@@ -1635,7 +1635,7 @@ tools:
     journeys: [V1, V2, V3, V4]
     mutates: "no"
     mutates_basis: contract.Tool.mutates
-    probe: [lead, tool, resume, --token, "{token}"]
+    probe: [lead, tool, resume]
     refusals: []
   - name: work_show
     home: product
@@ -1643,7 +1643,7 @@ tools:
     journeys: []
     mutates: "no"
     mutates_basis: contract.Tool.mutates
-    probe: [lead, tool, work_show, --arguments, '{"work_id": "{ticket}"}', --token, "{token}"]
+    probe: [lead, tool, work_show, --arguments, '{"work_id": "{ticket}"}']
     refusals: []
   - name: explain
     home: recovery
@@ -1651,7 +1651,7 @@ tools:
     journeys: [V1, V2]
     mutates: "no"
     mutates_basis: contract.Tool.mutates
-    probe: [lead, tool, explain, --arguments, '{"work_id": "{ticket}"}', --token, "{token}"]
+    probe: [lead, tool, explain, --arguments, '{"work_id": "{ticket}"}']
     refusals: []
     note: "the Lead's counted fallback when nothing is offered"
   - name: harness_status
@@ -1660,7 +1660,7 @@ tools:
     journeys: []
     mutates: "no"
     mutates_basis: contract.Tool.mutates
-    probe: [lead, tool, harness_status, --token, "{token}"]
+    probe: [lead, tool, harness_status]
     refusals: []
   - name: harness_wait
     home: product
@@ -1668,7 +1668,7 @@ tools:
     journeys: [V1, V2, V4]
     mutates: "no"
     mutates_basis: contract.Tool.mutates
-    probe: [lead, tool, harness_wait, --arguments, '{"runs": ["R-INV-0001-1"], "timeout_s": 1}', --token, "{token}"]
+    probe: [lead, tool, harness_wait, --arguments, '{"runs": ["R-INV-0001-1"], "timeout_s": 1}']
     probe_refused: "refused: the sample has no harness run (a run needs a launched harness)"
     refusals: []
   - name: checkpoint

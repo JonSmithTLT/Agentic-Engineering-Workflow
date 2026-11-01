@@ -32,7 +32,7 @@ def ticket(p, tmp_path, *, cls=1, scope=("calc/**", "tests/**"), extra=(), affec
 
 def refused(p, *args):
     rev = p.rev()
-    res = p.aew(*args, "--token", p.token, "--expect-rev", str(rev))
+    res = p.aew(*args, "--expect-rev", str(rev), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 5, res.stdout
     assert p.rev() == rev  # a refused dispatch commits nothing
     return res.error
@@ -157,7 +157,8 @@ def test_a_tickets_own_acceptance_check_must_pass_before_it_completes(tmp_path):
     implement(impl, SUBTRACT_PATCH)  # passes `unit`, the policy's local check
 
     def commit_ready_refusal():
-        res = p.aew("work", "transition", wid, "--to", "COMMIT_READY", "--token", p.token, "--expect-rev", str(p.rev()))
+        res = p.aew("work", "transition", wid, "--to", "COMMIT_READY", "--expect-rev", str(p.rev()),
+                    env={"AEW_LEAD_TOKEN": p.token})
         assert res.returncode != 0, res.stdout
         return res.error
 
@@ -165,8 +166,8 @@ def test_a_tickets_own_acceptance_check_must_pass_before_it_completes(tmp_path):
     assert missing["code"] == "GATE_UNSATISFIED" and missing["details"]["unmet"] == {"acceptance_checks": "MISSING"}
     assert impl.check("acceptance")["result"] == "fail"
     assert commit_ready_refusal()["details"]["unmet"] == {"acceptance_checks": "FAILED"}
-    waiver = p.aew("gate", "waive", wid, "--gate", "acceptance_checks", "--reason", "x", "--token", p.token,
-                   "--expect-rev", str(p.rev()))
+    waiver = p.aew("gate", "waive", wid, "--gate", "acceptance_checks", "--reason", "x",
+                   "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert waiver.returncode != 0 and "non-waivable" in waiver.error["message"]
 
     set_policy(p, "checks", lambda c: c["checks"]["acceptance"].update(command=c["checks"]["unit"]["command"]))
@@ -195,8 +196,8 @@ def test_reclassify_needs_a_reason_a_valid_class_and_an_unfinished_unit(tmp_path
 
 def test_class0_assertions_are_refused_on_other_classes(tmp_path):
     p = sample_project(tmp_path)
-    res = p.aew("work", "create", "ticket", "--title", "x", "--class", "1", *ALL_ASSERTIONS, "--token", p.token,
-                "--expect-rev", str(p.rev()))
+    res = p.aew("work", "create", "ticket", "--title", "x", "--class", "1", *ALL_ASSERTIONS,
+                "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 2 and res.error["code"] == "USAGE"
 
 
@@ -317,7 +318,7 @@ def test_a_decision_refuses_a_record_or_plan_edited_outside_aew(tmp_path):
     record = p.root / ".aew" / p.ok("work", "show", wid)["control"]["record"]
     edit(record, lambda m: m.update(class0_assertions=["inputs_complete", "no_consequential_boundary",
                                                        "transformation_clear"]))
-    res = p.aew("work", "assign", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("work", "assign", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "INTEGRITY_ERROR" and "record" in res.error["message"], res.stderr
     assert p.aew("dispatch", "explain", wid, "--json").error["code"] == "INTEGRITY_ERROR"
 
@@ -326,7 +327,7 @@ def test_a_decision_refuses_a_record_or_plan_edited_outside_aew(tmp_path):
     assert "LINT_AFFECTED_PROTECTED" in codes(refused(p2, "work", "assign", wid2))
     plan = p2.root / ".aew" / p2.ok("work", "show", wid2)["control"]["plan"]["path"]
     edit(plan, lambda m: m.update(affected_paths=["calc/core.py"]))
-    res = p2.aew("work", "assign", wid2, "--token", p2.token, "--expect-rev", str(p2.rev()))
+    res = p2.aew("work", "assign", wid2, "--expect-rev", str(p2.rev()), env={"AEW_LEAD_TOKEN": p2.token})
     assert res.error["code"] == "INTEGRITY_ERROR" and "accepted plan" in res.error["message"], res.stderr
     assert p2.ok("work", "show", wid2)["control"]["invocations"] == []
 
@@ -349,7 +350,7 @@ def test_an_acceptance_check_on_a_non_mutating_ticket_is_refused(tmp_path):
     """D3: it would be recorded and never run."""
     p = sample_project(tmp_path)
     res = p.aew("work", "create", "ticket", "--title", "Survey", "--class", "1", "--non-mutating", "--goal", "g",
-                "--acceptance-check", "unit", "--token", p.token, "--expect-rev", str(p.rev()))
+                "--acceptance-check", "unit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "USAGE" and "non-mutating" in res.error["message"], res.stderr
 
 

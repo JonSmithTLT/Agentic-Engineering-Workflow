@@ -143,7 +143,8 @@ def binary_command() -> list[str]:
     path = Path(configured) if configured else default_binary()
     if path is None or not path.exists():
         raise HarnessIncompatible(f"no OpenCode binary: {BIN_ENV} names the OpenCode CLI "
-                                  f"(tested: {', '.join(capabilities.TESTED_VERSIONS)}); {agentenv.env_fix(BIN_ENV)}",
+                                  f"(tested: {', '.join(capabilities.TESTED_VERSIONS)}); "
+                                  f"{agentenv.env_fix(BIN_ENV, secret=False)}",
                                   looked_for=str(path) if path else None)
     return [sys.executable, str(path)] if path.suffix == ".py" else [str(path)]
 

@@ -60,7 +60,7 @@ def test_dirty_authoritative_path_blocks_publication(calc, tmp_path):
     core = calc.root / "calc/core.py"
     core.write_text(core.read_text() + "# someone's local edit\n", encoding="utf-8", newline="\n")
     before = main_commit(calc)
-    res = calc.aew("integrate", "publish", wid, "--token", calc.token, "--expect-rev", str(calc.rev()))
+    res = calc.aew("integrate", "publish", wid, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.error["code"] == "INTEGRITY_ERROR"
     assert main_commit(calc) == before and core.read_text().endswith("# someone's local edit\n")
 
@@ -73,14 +73,14 @@ def test_unintegrated_dependency_stays_blocked(calc, tmp_path):
     control = state_of(calc, t2)
     assert control["state"] == "BLOCKED"
     assert control["blocked_by"] == [{"kind": "dependency", "id": t1, "reason": "not_integrated"}]
-    res = calc.aew("work", "assign", t2, "--token", calc.token, "--expect-rev", str(calc.rev()))
+    res = calc.aew("work", "assign", t2, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.error["code"] == "ILLEGAL_TRANSITION"
 
     # Published but crashed before DONE: the output is in the lineage, but required integration
     # validation has not been recorded as complete -> still blocked.
     prepare_and_validate(calc, t1)
-    res = calc.aew("integrate", "publish", t1, "--token", calc.token, "--expect-rev", str(calc.rev()),
-                   env={"AEW_FAULT": "integrate.before_done"})
+    res = calc.aew("integrate", "publish", t1, "--expect-rev", str(calc.rev()),
+                   env={"AEW_LEAD_TOKEN": calc.token, "AEW_FAULT": "integrate.before_done"})
     assert res.returncode == 86
     assert state_of(calc, t1)["state"] == "COMMIT_READY"
     calc.ok("work", "list")  # reads (with recovery) do not change control state
@@ -104,7 +104,7 @@ def test_dependency_requires_output_in_recorded_snapshot(calc, tmp_path):
     # Lineage rewritten below T1's integrated commit: DONE alone is not enough.
     after = main_commit(calc)
     git("update-ref", "refs/heads/main", before, cwd=calc.root)
-    res = calc.aew("work", "assign", t3, "--token", calc.token, "--expect-rev", str(calc.rev()))
+    res = calc.aew("work", "assign", t3, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.error["code"] == "DEPENDENCY_UNSATISFIED"
     assert res.error["details"]["blockers"][0]["reason"] == "not_in_source_snapshot"
     git("update-ref", "refs/heads/main", after, cwd=calc.root)
@@ -120,7 +120,7 @@ def test_moved_ref_makes_candidate_stale(calc, tmp_path):
     git("add", "NOTES.txt", cwd=calc.root)
     git("commit", "-q", "-m", "third-party commit", cwd=calc.root)
     moved = main_commit(calc)
-    res = calc.aew("integrate", "publish", wid, "--token", calc.token, "--expect-rev", str(calc.rev()))
+    res = calc.aew("integrate", "publish", wid, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.json["rebuilt"] is True and res.json["integration"]["base"] == moved
     assert main_commit(calc) == moved
     retired = state_of(calc, wid)["integration_history"][-1]
@@ -139,7 +139,7 @@ def test_superseded_lead_cannot_publish(calc, tmp_path):
     offer = calc.lead("lead", "handoff", "offer")["offer"]
     calc.token = calc.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(calc.rev()))["token"]
     before = main_commit(calc)
-    res = calc.aew("integrate", "publish", wid, "--token", old, "--expect-rev", str(calc.rev()))
+    res = calc.aew("integrate", "publish", wid, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": old})
     assert res.error["code"] == "STALE_AUTHORITY"
     assert main_commit(calc) == before
 
@@ -150,8 +150,8 @@ def test_superseded_lead_cannot_publish(calc, tmp_path):
 def test_crash_during_publish_reconciles(calc, tmp_path, point):
     wid, _ = to_commit_ready(calc, tmp_path)
     integ = prepare_and_validate(calc, wid)
-    res = calc.aew("integrate", "publish", wid, "--token", calc.token, "--expect-rev", str(calc.rev()),
-                   env={"AEW_FAULT": point})
+    res = calc.aew("integrate", "publish", wid, "--expect-rev", str(calc.rev()),
+                   env={"AEW_LEAD_TOKEN": calc.token, "AEW_FAULT": point})
     assert res.returncode == 86
     expected_ref = integ["base"] if point == "integrate.after_publishing_record" else integ["candidate"]
     assert main_commit(calc) == expected_ref
@@ -168,7 +168,7 @@ def test_merge_conflict_is_recorded_not_forced(calc, tmp_path):
     core = calc.root / "calc/core.py"
     core.write_text("def add(a, b):\n    return b + a\n", encoding="utf-8", newline="\n")
     git("commit", "-q", "-am", "conflicting change", cwd=calc.root)
-    out = calc.aew("integrate", "prepare", wid, "--token", calc.token, "--expect-rev", str(calc.rev()))
+    out = calc.aew("integrate", "prepare", wid, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
     assert out.returncode == 1 and out.json["ok"] is False
     control = state_of(calc, wid)
     assert control["state"] == "COMMIT_READY" and control["integration"]["status"] == "conflict"

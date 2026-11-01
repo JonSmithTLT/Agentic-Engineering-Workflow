@@ -85,11 +85,11 @@ def required(*, instead: str = "") -> str:
         return token
     alternative = f" Or {instead}." if instead else ""
     if in_session():
-        raise UsageError("the Lead credential is needed, and nothing asks for it inside an AEW session: its "
+        raise UsageError("Lead credential required, and nothing asks for it inside an AEW session: its "
                          "Lead-authenticated commands go through the session's broker. Run this command at your own "
                          f"terminal instead.{alternative}", reason="lead_credential_required")
     if not can_prompt():
-        raise UsageError(f"the Lead credential is needed: {how_to_set()}{alternative}",
+        raise UsageError(f"Lead credential required: {how_to_set()}{alternative}",
                          reason="lead_credential_required", forms=dict(SECURE_FORMS))
     from aew import operator
     from aew.harness.procs import process_chain

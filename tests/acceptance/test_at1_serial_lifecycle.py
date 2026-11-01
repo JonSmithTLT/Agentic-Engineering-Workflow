@@ -92,8 +92,8 @@ def test_serial_lifecycle_session_destruction_and_reconstruction(tmp_path):
     # --- Operator-authorized takeover; in-flight work is reconciled, never assumed complete ----
     p.token = operator_takeover(p, "Lead session destroyed (AT-1)")
     assert p.ok("lead", "show")["generation"] == 2
-    res = p.aew("work", "transition", t2, "--to", "CANCELLED", "--reason", "x", "--token", lost_token,
-                "--expect-rev", str(p.rev()))
+    res = p.aew("work", "transition", t2, "--to", "CANCELLED", "--reason", "x",
+                "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": lost_token})
     assert res.error["code"] == "STALE_AUTHORITY"
     control = p.ok("work", "show", t2)["control"]
     assert control["state"] == "INTERRUPTED" and control["interrupted_from"] == "RUNNING"

@@ -79,7 +79,8 @@ def test_a_scope_glob_with_a_comma_is_refused_saying_to_repeat_the_option(tmp_pa
     p = sample_project(tmp_path)
     rev = p.rev()
     ticket = ["work", "create", "ticket", "--title", "Fix negatives", "--class", "0", "--goal", "negatives print -$1"]
-    res = p.aew(*ticket, "--scope", "calc/core.py,tests/test_core.py", "--token", p.token, "--expect-rev", str(rev))
+    res = p.aew(*ticket, "--scope", "calc/core.py,tests/test_core.py", "--expect-rev", str(rev),
+                env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     message = res.error["message"]
     assert "calc/core.py,tests/test_core.py" in message and "repeat --scope" in message, message
@@ -162,7 +163,7 @@ def test_after_a_reviewer_run_the_next_action_names_the_review_ingest(lab, tmp_p
 
 
 def _refusal(p, *args, stdin=None) -> str:
-    res = p.aew(*args, "--token", p.token, "--expect-rev", str(p.rev()), input=stdin)
+    res = p.aew(*args, "--expect-rev", str(p.rev()), input=stdin, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error["message"]
 

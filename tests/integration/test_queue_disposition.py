@@ -269,5 +269,6 @@ def test_queue_commands_refuse_what_they_cannot_do(calc, tmp_path):
     assert refused(calc, "integrate", "reorder", wid, "--before", wid, "--reason", "x")["code"] == "ILLEGAL_TRANSITION"
     other = create_planned_ticket(calc, tmp_path, title="Not committed yet")
     assert refused(calc, "integrate", "defer", other, "--reason", "x")["code"] == "ILLEGAL_TRANSITION"
-    assert calc.aew("integrate", "defer", wid, "--token", calc.token).returncode != 0  # --reason is required
+    assert calc.aew("integrate", "defer", wid,
+                    env={"AEW_LEAD_TOKEN": calc.token}).returncode != 0  # --reason is required
     assert_control_invariants(calc)

@@ -529,7 +529,7 @@ def stopping_a_run_ends_every_process_it_started(lab, driver, tmp_path):
     lab.until(lambda: (sync / "ready").exists(), what="ready")
     watches = [watch_agent_pid(lab, run, int((sync / n).read_text())) for n in ("orphan", "agent")]
     assert all(w.alive() for w in watches)
-    lab.ok("harness", "stop", run, "--reason", "conformance", "--token", lab.project.token)
+    lab.ok("harness", "stop", run, "--reason", "conformance", env={"AEW_LEAD_TOKEN": lab.project.token})
     assert lab.wait(run)["status"] == "terminated"
     lab.until(lambda: not any(w.alive() for w in watches), 30, "every harness process gone")
 

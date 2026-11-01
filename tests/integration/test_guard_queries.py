@@ -431,8 +431,8 @@ def test_guard_query_matches_execute_a_state_hooks_refusal(tmp_path, to):
     p = sample_project(tmp_path)
     wid, _ = to_commit_ready(p, tmp_path)
     prepare_and_validate(p, wid)
-    crashed = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()),
-                    env={"AEW_FAULT": "integrate.after_publishing_record"})
+    crashed = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()),
+                    env={"AEW_LEAD_TOKEN": p.token, "AEW_FAULT": "integrate.after_publishing_record"})
     assert crashed.returncode == 86
     engine = Engine.discover(p.root)
     assert engine.store.read()["work"][wid]["integration"]["status"] == "publishing"

@@ -322,5 +322,5 @@ def close_parent(p: Project, wid: str) -> str:
     p.lead("review", "ingest", wid, "--evidence", parent_review(p, wid))
     p.lead("verify", "ingest", wid, "--evidence", parent_verify(p, wid))
     if p.ok("work", "show", wid)["control"]["kind"] == "epic":
-        p.ok("history", "audit", "--token", p.token, "--expect-rev", str(p.rev()))
+        p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     return p.lead("work", "close", wid, "--reason", "acceptance gates passed")["decision"]

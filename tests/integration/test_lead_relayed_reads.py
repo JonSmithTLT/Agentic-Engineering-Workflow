@@ -84,7 +84,8 @@ def worked(lab: HarnessLab, tmp_path: Path) -> tuple[str, str]:
     run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
     lab.project.lead("work", "transition", wid, "--to", "RUNNING")
     assert lab.wait(run)["status"] == "ended_with_evidence", lab.record(run)
-    lab.ok("map", "generate", "--select", "--expect-map-rev", "none:0", "--json", "--token", lab.project.token)
+    lab.ok("map", "generate", "--select", "--expect-map-rev", "none:0", "--json",
+           env={"AEW_LEAD_TOKEN": lab.project.token})
     return run, run.removeprefix("R-").rsplit("-", 1)[0]
 
 

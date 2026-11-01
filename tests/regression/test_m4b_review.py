@@ -241,7 +241,7 @@ def test_dispatch_on_a_base_that_needs_an_untrusted_filter_is_refused_until_trus
     p.lead("plan", "propose", "--assurance", "none", wid, "--file", str(plan), "--affected", "calc/core.py")
     p.lead("plan", "accept", wid, "--revision", "1")
     rev = p.rev()
-    res = p.aew("work", "assign", wid, "--token", p.token, "--expect-rev", str(rev))
+    res = p.aew("work", "assign", wid, "--expect-rev", str(rev), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 5 and p.rev() == rev, res.stdout
     err = res.error
     assert "GIT_DRIVER_UNTRUSTED" in err["details"]["reason_codes"]
@@ -254,5 +254,5 @@ def test_dispatch_on_a_base_that_needs_an_untrusted_filter_is_refused_until_trus
     policy.setdefault("containment", {})["trusted_git_drivers"] = ["lfs"]
     path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
     p.pin_policy()
-    res = p.aew("work", "assign", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("work", "assign", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert "GIT_DRIVER_UNTRUSTED" not in (res.stdout + res.stderr), res.stdout

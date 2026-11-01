@@ -484,15 +484,17 @@ def test_aew_stage_continue_and_abandon_are_the_resolve_tool(project, monkeypatc
     StageResult as the typed `resolve`."""
     p = project
     sid = crashed_stage(p, monkeypatch, "probe_notes", "checkpoint", call_no=2)
-    res = p.aew("stage", "abandon", sid, "--rationale", "from the shell", "--token", p.token,
-                "--expect-rev", str(p.rev()))
+    res = p.aew("stage", "abandon", sid, "--rationale", "from the shell",
+                "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 0, res.stderr
     out = res.json
     assert out["surface"] == "aew/surface/v1" and out["tool"] == "resolve" and out["ok"]
     assert out["stage_intent_id"] == sid and out["result"]["status"] == "ABANDONED"
-    res = p.aew("stage", "continue", sid, "--rationale", "again", "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("stage", "continue", sid, "--rationale", "again", "--expect-rev", str(p.rev()),
+                env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 1 and res.json["stopped"]["boundary"] == "not_found"  # a StageResult, ok false
-    blank = p.aew("stage", "abandon", sid, "--rationale", "  ", "--token", p.token, "--expect-rev", str(p.rev()))
+    blank = p.aew("stage", "abandon", sid, "--rationale", "  ", "--expect-rev", str(p.rev()),
+                  env={"AEW_LEAD_TOKEN": p.token})
     assert blank.returncode != 0 and blank.error["code"] == "INVALID_ARGUMENTS"
 
 

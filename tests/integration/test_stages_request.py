@@ -282,7 +282,8 @@ def test_a_marked_finding_holds_the_ingest_until_the_lead_disposes_of_it(lab_pro
     evidence = review(p, wid, findings=[MINOR])
     engine = Engine.discover(p.root)
     rev = p.rev()
-    refused = p.aew("review", "ingest", wid, "--evidence", evidence, "--token", p.token, "--expect-rev", str(rev))
+    refused = p.aew("review", "ingest", wid, "--evidence", evidence, "--expect-rev", str(rev),
+                    env={"AEW_LEAD_TOKEN": p.token})
     assert refused.returncode != 0 and "DISPOSITION_REQUIRED" in (refused.stdout + refused.stderr)
     answer = engine.guard_query("review.ingest", wid, {"evidence": evidence})
     assert answer["availability"] == "BLOCKED" and answer["reason_codes"] == ["DISPOSITION_REQUIRED"]
@@ -339,7 +340,8 @@ def test_an_ingested_marked_finding_holds_the_next_advance(tmp_path):
     implement(impl, {**SUBTRACT_PATCH, "calc/extra.py": "X = 1\n"})
     p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     passing = review(p, wid, resolved=[f"{failing}#F2"])
-    refused = p.aew("review", "ingest", wid, "--evidence", passing, "--token", p.token, "--expect-rev", str(p.rev()))
+    refused = p.aew("review", "ingest", wid, "--evidence", passing, "--expect-rev", str(p.rev()),
+                    env={"AEW_LEAD_TOKEN": p.token})
     assert refused.returncode != 0 and "DISPOSITION_REQUIRED" in (refused.stdout + refused.stderr)
     p.lead("work", "dispose", f"{failing}#F1", "--choice", "follow_up", "--follow-up",
            create_planned_ticket(p, tmp_path, title="Rename"), "--rationale", "renamed separately")
@@ -463,7 +465,8 @@ def test_a_lead_call_refused_with_workspace_mutated_records_an_anomaly(tmp_path)
     p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     impl.write({"calc/core.py": "def add(a, b):\n    return a + b + 0\n"})
     rev = p.rev()
-    res = p.aew("invoke", "create", wid, "--role", "reviewer", "--token", p.token, "--expect-rev", str(rev))
+    res = p.aew("invoke", "create", wid, "--role", "reviewer", "--expect-rev", str(rev),
+                env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0 and "WORKSPACE_MUTATED" in (res.stdout + res.stderr)
     assert p.rev() == rev + 1
     [an] = control(p)["anomalies"].values()

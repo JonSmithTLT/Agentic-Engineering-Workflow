@@ -77,7 +77,8 @@ def test_superseded_plan_integration_report_cannot_validate_new_candidate(tmp_pa
     assert old['workspace_id'] != new['workspace_id']
     assert (old['candidate_snapshot']['relevant_inputs_fingerprint']
             == new['candidate_snapshot']['relevant_inputs_fingerprint'])
-    result = p.aew('verify', 'ingest', wid, '--evidence', old_report, '--token', p.token, '--expect-rev', str(p.rev()))
+    result = p.aew('verify', 'ingest', wid, '--evidence', old_report, '--expect-rev', str(p.rev()),
+                   env={"AEW_LEAD_TOKEN": p.token})
     publication = p.lead('integrate', 'publish', wid) if result.returncode == 0 else None
     assert result.returncode != 0, (
         'Old-plan evidence from a revoked invocation validated and published the replacement candidate',

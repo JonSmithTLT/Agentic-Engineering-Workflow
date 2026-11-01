@@ -51,7 +51,7 @@ def doctor(p):
 
 
 def refused(p, *args):
-    res = p.aew(*args, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -147,7 +147,8 @@ def test_lead_overrides_are_recorded_and_never_widen_authority(tmp_path):
     assert (got["provider"], got["model"], got["effort"], got["selected_by"]) == ("other", "m-x", "low", "lead")
     assert p.ok("invoke", "show", out["invocation"])["role"] == "implementer"  # a model choice is not authority
     inv = create_investigation(p, tmp_path, title="Survey")
-    res = p.aew("work", "dispatch", inv, "--profile", "light", "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("work", "dispatch", inv, "--profile", "light", "--expect-rev", str(p.rev()),
+                env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 0, res.stderr
     assert pin(p, res.json["invocation"])["profile"] == "light"
     redo = p.lead("work", "redispatch", inv, "--reason", "needs a stronger model", "--profile", "review")

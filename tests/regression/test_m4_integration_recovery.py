@@ -28,12 +28,12 @@ def test_after_a_post_cas_crash_a_later_operator_commit_does_not_strand_the_tick
     p = sample_project(tmp_path)
     a, _ = to_commit_ready(p, tmp_path)
     integ = prepare_and_validate(p, a)
-    res = p.aew("integrate", "publish", a, "--token", p.token, "--expect-rev", str(p.rev()),
-                env={"AEW_FAULT": "integrate.after_cas"})
+    res = p.aew("integrate", "publish", a, "--expect-rev", str(p.rev()),
+                env={"AEW_LEAD_TOKEN": p.token, "AEW_FAULT": "integrate.after_cas"})
     assert res.returncode == 86 and main_commit(p) == integ["candidate"]
     core = p.root / "calc/core.py"
     core.write_text(core.read_text() + "# operator note\n", encoding="utf-8", newline="\n")
-    res = p.aew("integrate", "reconcile", a, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("integrate", "reconcile", a, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "INTEGRITY_ERROR", res.stderr
     assert "Stash" in res.error["message"] and "commit/stash" not in res.error["message"]
     assert "calc/core.py" in res.error["details"]["paths"]
@@ -57,7 +57,7 @@ def test_a_failed_ref_update_with_an_unmoved_ref_keeps_the_candidate(tmp_path):
     lock.parent.mkdir(parents=True, exist_ok=True)
     lock.write_bytes(b"")
     try:
-        res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+        res = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     finally:
         lock.unlink()
     assert res.error["code"] == "GIT_ERROR", res.stderr
@@ -77,7 +77,7 @@ def test_a_candidate_whose_worktree_is_gone_is_refused_clearly_and_can_be_prepar
     shutil.rmtree(integ["workspace"])
     subprocess.run(["git", "worktree", "prune"], cwd=p.root, check=True, capture_output=True,
                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "GATE_UNSATISFIED" and "integrate prepare" in res.error["message"], res.stderr
     assert "Traceback" not in res.stderr
     again = p.lead("integrate", "prepare", wid)

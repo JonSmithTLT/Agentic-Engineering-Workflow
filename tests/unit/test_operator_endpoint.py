@@ -179,7 +179,7 @@ def test_a_raise_lasts_only_for_the_generation_it_was_granted_to(project):
     assert record["legality_digest"].startswith("sha256:") and record["operational_digest"].startswith("sha256:")
     assert record["revision"] == out["revision"] == engine.store.read()["revision"]
     assert record["by"]["principal"]["endpoint"]["pid"] == os.getpid()
-    project.ok("lead", "release", "--token", project.token, "--expect-rev", str(project.rev()))
+    project.ok("lead", "release", "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
     project.token = project.ok("lead", "acquire", "--expect-rev", str(project.rev()))["token"]
     view = engine.steering_view()
     assert view["effective"] == "crawl" and view["ended_override"]["mode"] == "walk"
@@ -258,8 +258,8 @@ def test_a_lead_lowers_its_mode(project):
     refused = run_tool(engine, ctx, "steering", {"expect_rev": project.rev(), "action": "lower", "mode": "walk"},
                        token=project.token)
     assert not refused["ok"] and refused["stopped"]["error"]["code"] == "ILLEGAL_TRANSITION"
-    res = run_aew("-C", str(project.root), "lead", "mode", "lower", "walk", "--token", project.token,
-                  "--expect-rev", str(project.rev()))
+    res = run_aew("-C", str(project.root), "lead", "mode", "lower", "walk",
+                  "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode != 0 and "is not lower" in res.stderr
     assert_control_invariants(project)
 

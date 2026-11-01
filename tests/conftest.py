@@ -178,7 +178,7 @@ class Project:
 
     def lead(self, *args: str) -> Any:
         """Run a Lead mutation with the current token and revision."""
-        return self.ok(*args, "--token", self.token, "--expect-rev", str(self.rev()))
+        return self.ok(*args, "--expect-rev", str(self.rev()), env={"AEW_LEAD_TOKEN": self.token})
 
     def adopt_policy(self, reason: str = "the operator's reviewed policy edit") -> Any:
         """Accept a manifest or policy edit made in the test, as the operator would: `aew manifest adopt`, confirmed at

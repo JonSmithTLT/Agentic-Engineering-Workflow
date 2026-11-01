@@ -438,7 +438,8 @@ def test_map_commands_change_nothing_outside_local_maps_and_never_the_control_re
     rev = project.rev()
     aew = project.root / ".aew"
     before = files_outside_maps(aew)
-    first = project.ok("map", "generate", "--token", project.token, "--select", "--expect-map-rev", "none:0", "--json")
+    first = project.ok("map", "generate", "--select", "--expect-map-rev", "none:0", "--json",
+                       env={"AEW_LEAD_TOKEN": project.token})
     assert first["selected"] and first["map_revision"].endswith(":1")
     shown = project.ok("map", "show", "--json")
     assert shown["status"] == "AVAILABLE" and shown["root"] == first["root"] and shown["selected"]
@@ -447,7 +448,7 @@ def test_map_commands_change_nothing_outside_local_maps_and_never_the_control_re
     assert project.ok("map", "show", "--root", first["root"], "--json")["root"] == first["root"]
     same = project.ok("map", "diff", "--root", first["root"], "--commit", "HEAD", "--json")
     assert same["identical"] and not any(s["changed"] for s in same["sections"].values())
-    again = project.ok("map", "generate", "--token", project.token, "--json")  # idempotent, not selected
+    again = project.ok("map", "generate", "--json", env={"AEW_LEAD_TOKEN": project.token})  # idempotent, not selected
     assert again["root"] == first["root"] and not again["selected"] and "nondeterministic" not in again
     text = project.aew("map", "show")
     assert text.returncode == 0 and "status: AVAILABLE" in text.stdout
@@ -457,33 +458,37 @@ def test_map_commands_change_nothing_outside_local_maps_and_never_the_control_re
 
 
 def test_a_selection_is_refused_on_a_stale_map_revision_in_its_own_domain(project):
-    out = project.ok("map", "generate", "--token", project.token, "--select", "--expect-map-rev", "none:0", "--json")
-    res = project.aew("map", "generate", "--token", project.token, "--select", "--expect-map-rev", "none:0")
+    out = project.ok("map", "generate", "--select", "--expect-map-rev", "none:0", "--json",
+                     env={"AEW_LEAD_TOKEN": project.token})
+    res = project.aew("map", "generate", "--select", "--expect-map-rev", "none:0",
+                      env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 3
     error = res.error
     assert error["code"] == "STALE_REVISION" and error["details"]["domain"] == "map_revision"
     assert error["details"]["current"] == out["map_revision"]
-    bad = project.aew("map", "generate", "--token", project.token, "--select", "--expect-map-rev", "7")
+    bad = project.aew("map", "generate", "--select", "--expect-map-rev", "7", env={"AEW_LEAD_TOKEN": project.token})
     assert bad.returncode == 2 and bad.error["code"] == "USAGE"
-    assert project.aew("map", "generate", "--token", project.token, "--select").error["code"] == "USAGE"
+    assert project.aew("map", "generate", "--select", env={"AEW_LEAD_TOKEN": project.token}).error["code"] == "USAGE"
 
 
 def test_a_regenerated_selected_commit_with_other_bytes_is_reported_never_a_lock_out(project):
-    out = project.ok("map", "generate", "--token", project.token, "--select", "--expect-map-rev", "none:0", "--json")
+    out = project.ok("map", "generate", "--select", "--expect-map-rev", "none:0", "--json",
+                     env={"AEW_LEAD_TOKEN": project.token})
     registry_path = project.root / ".aew" / store.REGISTRY_REL
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
     fake = "f" * 64  # as if an earlier run of the same generator had produced other bytes for this commit
     registry["selected"]["structural"].update(sha256=fake, root=store.artifact_rel(fake))
     registry_path.write_text(json.dumps(registry), encoding="utf-8")
-    report = project.ok("map", "generate", "--token", project.token, "--json")
+    report = project.ok("map", "generate", "--json", env={"AEW_LEAD_TOKEN": project.token})
     assert report["nondeterministic"] == {"code": "MAP_ARTIFACT_NONDETERMINISTIC", "selected": fake,
                                           "generated": out["root"], "source_revision": out["source_revision"]}
-    refused = project.aew("map", "generate", "--token", project.token, "--select", "--expect-map-rev",
-                          out["map_revision"])
+    refused = project.aew("map", "generate", "--select", "--expect-map-rev",
+                          out["map_revision"], env={"AEW_LEAD_TOKEN": project.token})
     assert refused.returncode == 6 and refused.error["code"] == "MAP_ARTIFACT_NONDETERMINISTIC"
     assert json.loads(registry_path.read_text(encoding="utf-8")) == registry  # left as it is
-    replaced = project.ok("map", "generate", "--token", project.token, "--select", "--expect-map-rev",
-                          out["map_revision"], "--replace-nondeterministic", "--json")
+    replaced = project.ok("map", "generate", "--select", "--expect-map-rev",
+                          out["map_revision"], "--replace-nondeterministic", "--json",
+                          env={"AEW_LEAD_TOKEN": project.token})
     assert replaced["selected"] and replaced["root"] == out["root"]
     log = (project.root / ".aew" / store.LOG_REL).read_text(encoding="utf-8").splitlines()
     last = json.loads(log[-1])
@@ -492,7 +497,8 @@ def test_a_regenerated_selected_commit_with_other_bytes_is_reported_never_a_lock
 
 
 def test_a_corrupt_selected_map_is_unavailable_to_show_and_refused_by_root(project):
-    out = project.ok("map", "generate", "--token", project.token, "--select", "--expect-map-rev", "none:0", "--json")
+    out = project.ok("map", "generate", "--select", "--expect-map-rev", "none:0", "--json",
+                     env={"AEW_LEAD_TOKEN": project.token})
     (project.root / ".aew" / store.artifact_rel(out["root"])).write_bytes(b"{}")
     shown = project.ok("map", "show", "--json")
     assert shown == {"ok": True, "status": "UNAVAILABLE", "reason": "corrupt", "map_revision": out["map_revision"]}
@@ -517,7 +523,7 @@ def test_map_diff_compares_section_by_section_and_stores_nothing(project):
 def test_an_invocation_credential_is_refused_map_generate(tmp_path):
     p = sample_project(tmp_path)
     role, _ = dispatch(p, create_investigation(p, tmp_path))
-    res = p.aew("map", "generate", "--token", role.token, "--select", "--expect-map-rev", "none:0")
+    res = p.aew("map", "generate", "--select", "--expect-map-rev", "none:0", env={"AEW_LEAD_TOKEN": role.token})
     assert res.returncode == 4 and res.error["code"] == "PERMISSION_DENIED"
     assert not (p.root / ".aew" / store.MAPS_REL).exists()
     res = p.aew("map", "generate")

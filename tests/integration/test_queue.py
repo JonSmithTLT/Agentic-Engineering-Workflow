@@ -47,7 +47,7 @@ def entry(p, wid):
 
 
 def refused(p, *args):
-    res = p.aew(*args, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -143,7 +143,7 @@ def test_a_conflict_releases_the_lease_and_never_blocks_the_entries_behind_it(tm
     to_commit_ready(p, tmp_path, wid=b, files={"calc/core.py": "def add(a, b):\n    return sum((a, b))\n"})
     to_commit_ready(p, tmp_path, wid=c, files=_own_change(9))
     integrate(p, a)
-    res = p.aew("integrate", "prepare", b, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("integrate", "prepare", b, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.json["integration"]["status"] == "conflict"
     qid, e = entry(p, b)
     assert e["state"] == "AWAITING_DISPOSITION" and e["disposition"]["reason"] == "conflict"
@@ -184,7 +184,7 @@ def test_a_stale_candidate_keeps_its_place_and_its_lease(calc, tmp_path):
     (calc.root / "NOTES.md").write_text("an unrelated commit\n", encoding="utf-8", newline="\n")
     git("add", "NOTES.md", cwd=calc.root)
     git("commit", "-q", "-m", "unrelated", cwd=calc.root)
-    res = calc.aew("integrate", "publish", wid, "--token", calc.token, "--expect-rev", str(calc.rev()))
+    res = calc.aew("integrate", "publish", wid, "--expect-rev", str(calc.rev()), env={"AEW_LEAD_TOKEN": calc.token})
     assert res.json["rebuilt"] is True
     _, after = entry(calc, wid)
     assert after["state"] == "LEASED" and after["seq"] == before["seq"] and after["rebuilds_used"] == 1

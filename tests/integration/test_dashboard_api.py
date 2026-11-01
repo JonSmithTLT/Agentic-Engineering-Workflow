@@ -112,13 +112,13 @@ def world(tmp_path_factory) -> World:
     open_ticket = create_planned_ticket(p, tmp, title="Add apply()", extra=("--parent", story))
     blocked = create_planned_ticket(p, tmp, title="Add compose()", extra=("--parent", story))
     p.lead("work", "depend", blocked, "--add", f"{open_ticket}:mutating", "--reason", "compose needs apply")
-    p.ok("history", "audit", "--token", p.token, "--expect-rev", str(p.rev()))
+    p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     p.lead("work", "move", done, "--parent", epic, "--reason", "regrouped under the Epic")
     w.ids = {"epic": epic, "story": story, "done": done, "investigation": inv, "open": open_ticket,
              "blocked": blocked}
     # a selected structural map, for the maps routes the sweeps cover (contract 0.1.3; register F20.8)
-    w.ids["map"] = p.ok("map", "generate", "--token", p.token, "--select", "--expect-map-rev", "none:0",
-                        "--json")["root"]
+    w.ids["map"] = p.ok("map", "generate", "--select", "--expect-map-rev", "none:0",
+                        "--json", env={"AEW_LEAD_TOKEN": p.token})["root"]
     engine = Engine.discover(p.root)
     w.server = DashboardServer(engine, authenticator=OpenAccess(), validate_with=CONTRACT)
     w.server.start()

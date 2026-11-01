@@ -218,7 +218,8 @@ def world(tmp_path_factory) -> Iterator[World]:
     w.head = commit_file(w.p, "calc/extra.py", "X = 1\n", "add calc/extra.py")
     w.older = generate(w.p, commit=first)
     w.selected = generate(w.p, select=True)
-    w.p.ok("map", "select-architecture", w.discovery, "--token", w.p.token, "--expect-map-rev", map_rev(w.p), "--json")
+    w.p.ok("map", "select-architecture", w.discovery, "--expect-map-rev", map_rev(w.p), "--json",
+           env={"AEW_LEAD_TOKEN": w.p.token})
     with served(w.p) as client:
         w.client = client
         yield w
@@ -391,7 +392,7 @@ def test_an_inputs_list_with_a_4_kib_path_at_a_page_boundary_pages_to_its_end(la
 def test_a_control_commit_does_not_expire_a_maps_cursor(world):
     cursor = world.client.data("/maps/structural?limit=1")["next_cursor"]
     p = world.p
-    p.ok("history", "audit", "--token", p.token, "--expect-rev", str(p.rev()))
+    p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert world.client.data(f"/maps/structural?limit=1&cursor={cursor}")["items"]
 
 
@@ -738,7 +739,8 @@ def test_the_architecture_reference_stale_unavailable_none_and_a_hanging_git(lab
     with served(p) as client:
         assert client.data("/maps")["architecture"] is None
         discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
-        p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+        p.ok("map", "select-architecture", discovery, "--expect-map-rev", map_rev(p), "--json",
+             env={"AEW_LEAD_TOKEN": p.token})
         arch = client.data("/maps")["architecture"]
         assert arch["freshness"]["status"] == "CURRENT" and arch["freshness"]["reasons"] == []
         assert client.data("/maps")["structural"]["reasons"][0]["code"] == "MAP_NONE"  # still no structural map
@@ -786,7 +788,8 @@ def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on
     ``test_a_lock_free_read_in_a_commits_apply_window_is_history_moved``."""
     p, tmp = lab
     discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
-    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    p.ok("map", "select-architecture", discovery, "--expect-map-rev", map_rev(p), "--json",
+         env={"AEW_LEAD_TOKEN": p.token})
     control = p.root / ".aew" / CONTROL_REL
     if failure == "history_moved":
         earlier = control.read_bytes()
@@ -838,7 +841,8 @@ def test_a_locked_index_on_a_warm_read_is_unknown_not_a_500(lab):
     p, tmp = lab
     generate(p, select=True)
     discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
-    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    p.ok("map", "select-architecture", discovery, "--expect-map-rev", map_rev(p), "--json",
+         env={"AEW_LEAD_TOKEN": p.token})
     with served(p) as client:
         assert client.data("/maps")["architecture"]["freshness"]["status"] == "CURRENT"
         assert client.get("/history")[0] == 200  # a plain reader syncs and keeps the index
@@ -866,7 +870,8 @@ def test_damaged_history_is_unavailable_not_busy(lab, monkeypatch):
     history record is damage: the reference stays ``ARCHITECTURE_UNAVAILABLE``, as before the lock-free mode."""
     p, tmp = lab
     discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
-    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    p.ok("map", "select-architecture", discovery, "--expect-map-rev", map_rev(p), "--json",
+         env={"AEW_LEAD_TOKEN": p.token})
     with served(p) as client:
         assert client.data("/maps")["architecture"]["freshness"]["status"] == "CURRENT"
         engine = client.server.engine
@@ -899,7 +904,8 @@ def test_history_damage_the_lock_free_sync_finds_is_unavailable_not_read_again_l
     later" (which a damaged history would say for good)."""
     p, tmp = lab
     discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
-    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    p.ok("map", "select-architecture", discovery, "--expect-map-rev", map_rev(p), "--json",
+         env={"AEW_LEAD_TOKEN": p.token})
     _tamper_one_tail_entry(p)
     with served(p) as client:
         client.server.engine.archive._synced = None
@@ -939,7 +945,8 @@ def _apply_window(p: Project, tmp: Path, *, applied: bool = False) -> str:
     the history. The selected architecture evidence is archived. With ``applied``, the marker stays: the same bytes
     are then a rollback of the tail after the apply finished (review of #178, finding G)."""
     discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
-    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    p.ok("map", "select-architecture", discovery, "--expect-map-rev", map_rev(p), "--json",
+         env={"AEW_LEAD_TOKEN": p.token})
     tail = p.root / ".aew" / HM.TAIL_REL
     earlier = tail.read_bytes()
     complete_investigation(p, create_investigation(p, tmp, title="Survey again"))
@@ -1006,7 +1013,8 @@ def test_on_posix_a_history_tail_that_cannot_be_read_is_damage_not_busy(lab):
     moment; ``EACCES`` (and ``EIO`` and the like) persist, and are damage: ``UNAVAILABLE``, never "read again later"."""
     p, tmp = lab
     discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
-    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    p.ok("map", "select-architecture", discovery, "--expect-map-rev", map_rev(p), "--json",
+         env={"AEW_LEAD_TOKEN": p.token})
     tail = p.root / ".aew" / HM.TAIL_REL
     (p.root / ".aew" / HI.INDEX_REL).unlink(missing_ok=True)
     tail.chmod(0)
@@ -1034,7 +1042,8 @@ def test_a_failed_sync_over_a_history_that_has_since_caught_up_is_history_moved_
     ``/maps`` says "read again later", never ``UNAVAILABLE``, and the next poll answers ``CURRENT``."""
     p, tmp = lab
     discovery = complete_investigation(p, create_investigation(p, tmp, title="Survey"))
-    p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev", map_rev(p), "--json")
+    p.ok("map", "select-architecture", discovery, "--expect-map-rev", map_rev(p), "--json",
+         env={"AEW_LEAD_TOKEN": p.token})
     (p.root / ".aew" / HI.INDEX_REL).unlink(missing_ok=True)
     real = HI.HistoryIndex.sync
     calls = {"sync": 0}
@@ -1524,7 +1533,8 @@ def test_conditional_replays_and_what_changes_a_maps_validator(lab):
         after_select = tag("/maps")
         assert after_select != after_commit
         assert tag("/project") == project_tag and tag("/work") == work_tag  # 0.1.2 validators: a selection alone
-        p.ok("history", "audit", "--token", p.token, "--expect-rev", str(p.rev()))  # an unrelated control commit
+        p.ok("history", "audit", "--expect-rev", str(p.rev()),
+             env={"AEW_LEAD_TOKEN": p.token})  # an unrelated control commit
         after_audit = tag("/maps")
         assert after_audit != after_select
         registry = maps_dir(p) / "registry.json"

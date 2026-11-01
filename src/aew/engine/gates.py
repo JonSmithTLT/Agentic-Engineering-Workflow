@@ -34,6 +34,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, NamedTuple
 
+from aew.engine import hierarchy as H
 from aew.policy import checks as C
 from aew.policy import validation as V
 
@@ -159,12 +160,33 @@ def unsatisfiable(gate: str, utype: str = MUTATING, catalogue: Catalogue | None 
     return None
 
 
-def unsatisfiable_inherited(gate: str, catalogue: Catalogue) -> Unsatisfiable | None:
-    """A parent's mandatory gate, at the write (``work create``): refused only when no descendant type can satisfy it
-    (addendum 2, ruling 1: a change-only gate passes through to mutating descendants). One function, so the rule
-    changes in one place. The refusal is the mutating Ticket's, whose evaluator has every kind."""
-    found = [unsatisfiable(gate, t, catalogue) for t in UNIT_TYPES]
-    return None if any(f is None for f in found) else found[0]
+UNDER = {"ticket": "a Ticket", "story": "a Story", "epic": "an Epic"}
+
+
+def descendant_types(kind: str) -> tuple[str, ...]:
+    """The unit types that can sit under a unit of ``kind``: ``hierarchy.PARENT_KINDS`` read the other way (a Story's
+    are Tickets; an Epic's are Stories and Tickets)."""
+    kinds: set[str] = set()
+    frontier = {kind}
+    while frontier:
+        frontier = {c for c, parents in H.PARENT_KINDS.items() if parents & frontier} - kinds
+        kinds |= frontier
+    types = {t for c in kinds for t in ((MUTATING, NON_MUTATING) if c == "ticket" else (PARENT,))}
+    return tuple(t for t in UNIT_TYPES if t in types)
+
+
+def unsatisfiable_inherited(gate: str, kind: str, catalogue: Catalogue) -> Unsatisfiable | None:
+    """A mandatory gate set on a unit of ``kind``, which every descendant inherits (``effective_obligations``):
+    refused when any unit type that can sit under it can neither satisfy it nor pass it through (addendum 2, ruling
+    1: a change-only gate passes through to mutating descendants; ITEMS 55 review F1). Every writer and the
+    replacement's conditions call this one function, so the rule changes in one place."""
+    for utype in descendant_types(kind):
+        if utype != MUTATING and change_only(gate):
+            continue
+        found = unsatisfiable(gate, utype, catalogue)
+        if found is not None:
+            return found._replace(why=f"a {utype} can sit under {UNDER[kind]} and inherits it, and {found.why}")
+    return None
 
 
 def with_acceptance_checks(obligations: dict[str, Any], declared: list[str]) -> dict[str, Any]:

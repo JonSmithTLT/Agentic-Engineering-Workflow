@@ -26,6 +26,7 @@ from aewflow import (
     verify,
 )
 from discovery import rules
+from fake_harness import HarnessLab
 from invariants import assert_control_invariants, load_control
 
 from aew.engine import gate_ops
@@ -101,22 +102,32 @@ def no_command_findings(text: str) -> None:
 
 
 def test_work_create_refuses_a_gate_no_descendant_can_satisfy_and_accepts_every_kind(tmp_path):
+    """Refused when any unit type that can sit under the parent can neither satisfy the gate nor pass it through
+    (review F1): `children_complete` and `execute_record` strand the Tickets under a Story or an Epic."""
     p = sample_project(tmp_path)
-    for gate, why in [(PROSE, "AEW has no gate of that kind"), ("review_prose_standard", "specialty `prose_standard`"),
-                      ("review_card:ghost", "no card `ghost`"), ("verify_card:ghost", "no card `ghost`"),
-                      ("check:lint", "`lint` is not defined and configured")]:
+    for kind, gate, why in [
+            ("story", PROSE, "AEW has no gate of that kind"),
+            ("story", "review_prose_standard", "specialty `prose_standard`"),
+            ("story", "review_card:ghost", "no card `ghost`"), ("story", "verify_card:ghost", "no card `ghost`"),
+            ("story", "check:lint", "`lint` is not defined and configured"),
+            ("story", "children_complete", "a mutating Ticket can sit under a Story"),
+            ("story", "execute_record", "a mutating Ticket can sit under a Story"),
+            ("epic", "children_complete", "a mutating Ticket can sit under an Epic"),
+            ("epic", "execute_record", "a mutating Ticket can sit under an Epic")]:
         before = p.rev()
-        out = err(p, "work", "create", "story", "--title", "Objective", "--class", "1", "--mandatory-gate", gate)
+        out = err(p, "work", "create", kind, "--title", "Objective", "--class", "1", "--mandatory-gate", gate)
         assert out["code"] == "VALIDATION_FAILED" and out["details"]["gate"] == gate, out
         assert f"gate `{gate}` can never be satisfied: " in out["message"] and why in out["message"], out["message"]
         assert "`check:<check id>`" in out["message"] and "`--goal`, `--contract`" in out["message"]
         assert out["details"]["candidates"], out  # the kinds or the resolving names that exist
         no_command_findings(out["message"])
         assert p.rev() == before  # nothing written
-    every = [*dict.fromkeys(g for t in G.UNIT_TYPES for g in G.FIXED[t]), "review_r1", "review_security",
-             "review_card:security_reviewer", "verify_card:verifier", "check:unit", "check:guardrails"]
-    story = create_unit(p, "story", "Every kind", extra=tuple(x for g in every for x in ("--mandatory-gate", g)))
-    assert load_control(p.root)["work"][story]["policy"]["mandatory_gates"] == every
+    # every kind a mutating Ticket evaluates: the other unit types have it too, or it passes through to them
+    every = [*G.FIXED[G.MUTATING], "review_r1", "review_security", "review_card:security_reviewer",
+             "verify_card:verifier", "check:unit", "check:guardrails"]
+    for kind in ("story", "epic"):
+        unit = create_unit(p, kind, "Every kind", extra=tuple(x for g in every for x in ("--mandatory-gate", g)))
+        assert load_control(p.root)["work"][unit]["policy"]["mandatory_gates"] == every
     assert_control_invariants(p)
 
 
@@ -147,22 +158,52 @@ def test_doctor_resume_and_status_name_a_stuck_parent_its_owner_and_the_route(tm
 
 
 def test_dispatch_refuses_a_child_whose_inherited_gate_can_never_be_satisfied(tmp_path):
+    """The backstop on two kinds of entrypoint (review F4): a mutating Ticket's assignment and a non-mutating
+    Ticket's dispatch. The launch of an invocation already in flight is the next test."""
     p = sample_project(tmp_path)
     story = create_unit(p, "story", "Objective")
     child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
+    look = create_investigation(p, tmp_path, parent=story)
     seed(p, story, [PROSE])
-    before = p.rev()
-    out = err(p, "work", "assign", child)
-    assert out["code"] == "DISPATCH_REFUSED" and gate_ops.REASON in out["details"]["reason_codes"], out
-    blockers = {b["code"]: b for b in out["details"]["blocking_conditions"]}
-    stuck = blockers[gate_ops.REASON]
-    assert stuck["details"]["items"] == [gate_ops.item_id(story, PROSE)] and stuck["details"]["owners"] == [story]
-    assert f"{child} inherits gate `{PROSE}` from {story}, which can never be satisfied" in stuck["message"]
-    assert "choice `replace_gate`" in stuck["message"]
-    no_command_findings(stuck["message"])
-    assert p.rev() == before
+    for wid, args in [(child, ("work", "assign", child)), (look, ("work", "dispatch", look))]:
+        before = p.rev()
+        out = err(p, *args)
+        assert out["code"] == "DISPATCH_REFUSED" and gate_ops.REASON in out["details"]["reason_codes"], (args, out)
+        blockers = {b["code"]: b for b in out["details"]["blocking_conditions"]}
+        stuck = blockers[gate_ops.REASON]
+        assert stuck["details"]["items"] == [gate_ops.item_id(story, PROSE)] and stuck["details"]["owners"] == [story]
+        assert f"{wid} inherits gate `{PROSE}` from {story}, which can never be satisfied" in stuck["message"]
+        assert "choice `replace_gate`" in stuck["message"]
+        no_command_findings(stuck["message"])
+        assert p.rev() == before
     explained = p.ok("dispatch", "explain", child, "--json")
     assert gate_ops.REASON in explained["reason_codes"] and not explained["allowed"]
+
+
+def test_a_launch_of_an_invocation_in_flight_under_a_stuck_parent_is_refused(tmp_path):
+    """Review F4: an invocation dispatched before its parent's gate was written is not launched or relaunched; the
+    fake harness makes the launch otherwise possible, so only the backstop refuses it."""
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path)
+    try:
+        p = lab.project
+        story = create_unit(p, "story", "Objective")
+        child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
+        inv = lab.lead("work", "assign", child)["invocation"]
+        p.lead("work", "transition", child, "--to", "RUNNING")
+        seed(p, story, [PROSE])
+        # the pack renders the inherited gates, so this one is refused as changed; an invocation dispatched while the
+        # gate already stood (before this change refused it) holds the pack it would regenerate now
+        changed = lab.lead_res("harness", "launch", inv).error
+        engine = Engine.discover(p.root)
+        with engine.store.session() as s:
+            s.state["invocations"][inv]["pack"]["sha256"] = changed["details"]["now"]
+            s.commit(Transition(op="test.seed", actor={"kind": "test"}, summary="dispatched before ITEMS 55"))
+        before = p.rev()
+        out = lab.lead_res("harness", "launch", inv).error
+        assert out["code"] == "DISPATCH_REFUSED" and out["details"]["reason_codes"] == [gate_ops.REASON], out
+        assert p.rev() == before and not p.ok("invoke", "show", inv).get("runs")
+    finally:
+        lab.cleanup()
 
 
 # ---------------------------------------------------------------------------------------------- the replacement
@@ -177,8 +218,10 @@ def test_each_refusal_of_the_replacement_names_its_condition_and_changes_nothing
         # condition 2: a gate that can be satisfied stays the operator's decision
         (gate_ops.item_id(story, "review_r1"), "check:unit", None, "OPERATOR_AUTHORIZATION_REQUIRED",
          "this route does not apply"),
-        # the replacement fails the predicate
+        # the replacement fails the predicate, on the Story or on a unit type under it (review F1)
         (stuck, "review_prose_standard", None, "VALIDATION_FAILED", "specialty `prose_standard`"),
+        (stuck, "children_complete", None, "VALIDATION_FAILED", "a mutating Ticket can sit under a Story"),
+        (stuck, "execute_record", None, "VALIDATION_FAILED", "a mutating Ticket can sit under a Story"),
         # the old gate is not on that unit
         (gate_ops.item_id(story, "review_security"), "check:unit", None, "NOT_FOUND", "is not a mandatory gate of"),
         # replacing with a gate the unit already has would drop one
@@ -200,6 +243,26 @@ def test_each_refusal_of_the_replacement_names_its_condition_and_changes_nothing
         assert refused.value.code == "INVALID_ARGUMENTS" and refused.value.details["violations"] == [
             "replacement: required for choice replace_gate" if replacement is None else "replacement: blank"]
     assert not (p.root / ".aew" / "work" / story / "gate-corrections").exists()
+
+
+def test_a_parent_gate_only_another_unit_type_evaluates_is_stuck_and_replaceable_on_the_record(tmp_path):
+    """Review F1: a Story written with `children_complete` (a parent's own gate) strands its Tickets. The backstop,
+    doctor and status name this route, and the route accepts it."""
+    p = sample_project(tmp_path)
+    story = create_unit(p, "story", "Objective")
+    child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
+    seed(p, story, ["children_complete"])
+    item = gate_ops.item_id(story, "children_complete")
+    stuck = {b["code"]: b for b in err(p, "work", "assign", child)["details"]["blocking_conditions"]}[gate_ops.REASON]
+    assert stuck["details"]["items"] == [item] and "choice `replace_gate`" in stuck["message"], stuck
+    found = doctor(p)
+    assert found["status"] == "FAIL" and item in found["detail"] and "choice `replace_gate`" in found["detail"]
+    [decision] = status_items(p)
+    assert decision["availability"] == "AVAILABLE", decision
+    out = resolve(p, item, "check:unit")
+    assert out["ok"] and out["result"]["mandatory_gates"] == ["check:unit"], out
+    assert gate_ops.REASON not in p.ok("dispatch", "explain", child, "--json")["reason_codes"]
+    assert_control_invariants(p)
 
 
 def test_the_s0001_shape_end_to_end_only_the_replaced_gate_re_evaluates(tmp_path):

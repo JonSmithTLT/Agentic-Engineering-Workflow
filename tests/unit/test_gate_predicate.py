@@ -8,11 +8,14 @@ pass": a card that exists may never be launched, so only the names that can neve
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from aew.engine import gates as G
+from aew.engine import hierarchy as H
 
 FP, PLAN = "fp-1", 1
 CATALOGUE = G.Catalogue(cards=frozenset({"security_reviewer", "code_reviewer", "verifier"}),
@@ -49,6 +52,29 @@ def _evidence(catalogue: G.Catalogue) -> tuple[dict[str, Any], list[dict[str, An
     return invocations, out
 
 
+ENGINE = Path(G.__file__).parent
+# Where each evidence unit's evaluator is given its fixed gates' statuses (``special``): the production callers.
+SPECIAL_TABLES = {G.NON_MUTATING: ("nonmutating_ops.py", "evidence_gate_context"),
+                  G.PARENT: ("hierarchy_ops.py", "_parent_gate_context")}
+
+
+def special_keys(utype: str) -> list[str]:
+    """The keys of the ``special`` table ``utype``'s production caller builds, read from its source (review F2)."""
+    module, function = SPECIAL_TABLES[utype]
+    tree = ast.parse((ENGINE / module).read_text(encoding="utf-8"))
+    [fn] = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == function]
+    [table] = [n.value for n in ast.walk(fn) if isinstance(n, ast.Assign) and isinstance(n.value, ast.Dict)
+               and [getattr(x, "id", None) for x in n.targets] == ["special"]]
+    return [k.value for k in table.keys if isinstance(k, ast.Constant)]
+
+
+@pytest.mark.parametrize("utype", sorted(SPECIAL_TABLES))
+def test_each_evidence_units_special_table_is_its_fixed_gates_less_the_verification_gates(utype):
+    """Decision 1: the predicate reads ``FIXED``; an evidence unit's evaluator evaluates a fixed name only if its caller
+    put it in ``special``. A name in one and not the other fails here, so the two cannot disagree."""
+    assert sorted(special_keys(utype)) == sorted(g for g in G.FIXED[utype] if g not in G.VERIFICATION_GATES)
+
+
 def _statuses(gates: list[str], utype: str, catalogue: G.Catalogue) -> dict[str, str]:
     invocations, evidence = _evidence(catalogue)
     kind, mutating = {G.MUTATING: ("ticket", True), G.NON_MUTATING: ("ticket", False), G.PARENT: ("story", None)}[utype]
@@ -64,7 +90,7 @@ def _statuses(gates: list[str], utype: str, catalogue: G.Catalogue) -> dict[str,
         for e in evidence:  # an evidence unit's reports are scoped to it
             if e["kind"] == "verification":
                 e["verification"]["scope"] = "parent" if utype == G.PARENT else "ticket"
-        special = {g: {"status": G.CURRENT} for g in G.FIXED[utype] if g not in G.VERIFICATION_GATES}
+        special = {g: {"status": G.CURRENT} for g in special_keys(utype)}  # what the production caller builds
         results = G.evaluate_evidence_unit(state, "W-1", evidence, obligations=obligations, special=special,
                                            is_current=lambda e: True)
     return {g: r["status"] for g, r in results.items()}
@@ -144,14 +170,47 @@ def test_a_suffix_that_does_not_resolve_is_named_with_the_candidates(gate, why, 
     assert G.unsatisfiable(gate, G.MUTATING) is None  # without a catalogue, only the kind is judged
 
 
-def test_a_parent_gate_is_refused_only_when_no_descendant_type_can_satisfy_it():
-    """Addendum 2: a change-only gate passes through to mutating descendants, so a Story may require `check:unit`;
-    `execute_record` is a non-mutating Ticket's. Only a name no unit type has is refused at the write."""
-    for gate in ("check:unit", "local_checks", "self_review", "acceptance_checks", "post_integration_verifier",
-                 "execute_record", "children_complete", "review_security"):
-        assert G.unsatisfiable_inherited(gate, CATALOGUE) is None, gate
-    for gate in ("the targeted tests pass", "check:ghost", "review_prose_standard"):
-        assert G.unsatisfiable_inherited(gate, CATALOGUE) is not None, gate
+def test_a_parent_gate_is_refused_when_any_unit_type_under_it_can_neither_satisfy_nor_pass_it():
+    """Addendum 2: a change-only gate passes through to mutating descendants, so a Story may require `check:unit`.
+    Review F1: `execute_record` (a non-mutating Ticket's) and `children_complete` (a parent's own) strand the mutating
+    Tickets under any parent, so both are refused there."""
+    for kind in ("story", "epic"):
+        for gate in ("check:unit", "local_checks", "self_review", "acceptance_checks", "post_integration_verifier",
+                     "review_security", "review_card:verifier", "accepted_plan", *G.VERIFICATION_GATES):
+            assert G.unsatisfiable_inherited(gate, kind, CATALOGUE) is None, (kind, gate)
+        for gate in ("the targeted tests pass", "check:ghost", "review_prose_standard", "execute_record",
+                     "children_complete"):
+            found = G.unsatisfiable_inherited(gate, kind, CATALOGUE)
+            assert found is not None and G.UNDER[kind] in found.why, (kind, gate)
+    assert G.descendant_types("story") == (G.MUTATING, G.NON_MUTATING)
+    assert G.descendant_types("epic") == G.UNIT_TYPES and G.descendant_types("ticket") == ()
+
+
+def _child(kind: str, utype: str) -> dict[str, Any]:
+    if utype == G.PARENT:
+        return {"kind": "story", "risk_class": 1, "parent": kind}
+    return {"kind": "ticket", "mutating": utype == G.MUTATING, "risk_class": 1, "parent": kind}
+
+
+def test_every_gate_a_parent_may_set_binds_or_passes_through_on_every_unit_type_under_it():
+    """The walk (review F1's class): every fixed name and every prefix with a resolving suffix, for each parent kind
+    and each unit type ``hierarchy.PARENT_KINDS`` lets sit under it. A gate the write accepts is, on that child,
+    either one its evaluator can satisfy or one ``effective_obligations`` passes through; a gate the write refuses
+    is neither on some child. So the write and the descendants' obligations cannot disagree."""
+    names = [*dict.fromkeys(g for t in G.UNIT_TYPES for g in G.FIXED[t]), "review_r1", "review_security",
+             "review_card:verifier", "verify_card:verifier", "check:unit"]
+    for kind in sorted(k for k, parents in H.PARENT_KINDS.items() if k != "ticket"):
+        for gate in names:
+            stuck = []
+            for utype in G.descendant_types(kind):
+                state = {"work": {kind: {"kind": kind, "risk_class": 1, "parent": None,
+                                         "policy": {"mandatory_gates": [gate]}},
+                                  "W-1": _child(kind, utype)}}
+                o = G.effective_obligations(state, "W-1", {"risk_paths": {"1": []}})
+                if gate not in o["pass_through"] and G.unsatisfiable(gate, utype, CATALOGUE) is not None:
+                    stuck.append(utype)
+            accepted = G.unsatisfiable_inherited(gate, kind, CATALOGUE) is None
+            assert accepted == (stuck == []), (kind, gate, stuck)
 
 
 def test_a_change_only_gate_inherited_by_a_unit_that_integrates_no_change_passes_through():

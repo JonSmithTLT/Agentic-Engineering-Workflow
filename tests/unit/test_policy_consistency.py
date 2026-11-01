@@ -39,14 +39,17 @@ def test_a_gate_with_no_evaluator_for_its_unit_type_is_reported():
 
 
 def test_a_path_table_gate_whose_suffix_does_not_resolve_is_reported():
-    """ITEMS 55, addendum 1: a card gate needs the card, and `check:<id>` needs the check defined."""
+    """ITEMS 55, addendum 1: a card gate needs the card, and `check:<id>` needs the check defined and configured, as
+    `work create` judges it (review F3): `unit` is defined in the default checks.yaml but not configured."""
     gates = copy.deepcopy(DEFAULT_GATES)
     gates["risk_paths"]["2"] = [*gates["risk_paths"]["2"], "review_card:nobody", "check:lint", "check:unit"]
     found = problems(gates, DEFAULT_CHECKS, catalogue(cards=("someone",)))
     assert any("`review_card:nobody`" in f and "no card `nobody`" in f and "review_card:someone" not in f
                for f in found), found
     assert any("`check:lint`" in f and "not defined and configured" in f for f in found), found
-    assert not any("`check:unit`" in f for f in found), found  # defined: configuring it is the project's setup
+    assert any("`check:unit`" in f and "not defined and configured" in f for f in found), found
+    configured = catalogue(cards=("someone",))._replace(checks={"unit": "sha-unit"})
+    assert not any("`check:unit`" in f for f in problems(gates, DEFAULT_CHECKS, configured))
 
 
 def test_a_guardrail_review_trigger_that_can_never_be_satisfied_is_reported():

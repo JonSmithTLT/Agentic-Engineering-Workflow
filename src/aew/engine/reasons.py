@@ -42,7 +42,7 @@ REASONS: dict[str, Reason] = {
     # A unit's inherited gate that can never be satisfied on its type (ITEMS 55, designer decision 1's backstop).
     "GATE_UNSATISFIABLE": Reason(
         "an inherited mandatory gate can never be satisfied on this unit: nothing the dispatch produces could complete "
-        "it; the ancestor that set it replaces it on the record (`aew work gate-replace`)"),
+        "it; the ancestor that set it replaces it on the record (`resolve`, choice `replace_gate`)"),
     # Protected conditions (plan assurance v0.4 §10).
     "PROTECTED_CONDITION_OVERLAP": Reason(
         "a protected path lies inside the Ticket's mutation scope: the scope grants a change the policy forbids",

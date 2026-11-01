@@ -89,7 +89,7 @@ ENTRYPOINTS: dict[str, Entrypoint] = {e.name: e for e in (
                 "git.drivers"),
                "a reviewer or verifier of a Story's or Epic's acceptance"),
     Entrypoint("harness.launch", "cli", ("harness", "launch"),
-               ("launch.launchable", "launch.pack", "launch.not_live", *MUTATION),
+               ("launch.launchable", "launch.pack", "launch.not_live", "gates.satisfiable", *MUTATION),
                "a harness run for an active invocation (launch or relaunch): the credential is rotated to it"),
     Entrypoint("integrate.prepare", "cli", ("integrate", "prepare"),
                ("integrate.ticket", "integrate.gates", "queue.order", "queue.lease"),

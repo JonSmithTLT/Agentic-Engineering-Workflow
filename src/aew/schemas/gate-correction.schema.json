@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "aew/gate-correction/v1",
   "title": "AEW gate correction",
-  "description": "ITEMS 55 (operator, option (b), 2026-11-01; designer, addenda 2 and 3): a Story's or Epic's mandatory gate that can never be satisfied, replaced on the record by one that can (`aew work gate-replace`). Written once, immutable, beside the unit (`work/<S>/gate-corrections/<GC>.yaml`) and pointed to from its control-state policy. The unit's own record is never rewritten.",
+  "description": "ITEMS 55 (operator, option (b), 2026-11-01; designer, addenda 2 to 4): a Story's or Epic's mandatory gate that can never be satisfied, replaced on the record by one that can (the typed `resolve` tool, choice `replace_gate`). Written once, immutable, beside the unit (`work/<S>/gate-corrections/<GC>.yaml`) and pointed to from its control-state policy. The unit's own record is never rewritten.",
   "type": "object",
   "required": ["schema", "id", "work_unit", "replaced", "with", "reason", "by", "generation", "expected_revision", "rev",
                "at", "stale_invocations"],

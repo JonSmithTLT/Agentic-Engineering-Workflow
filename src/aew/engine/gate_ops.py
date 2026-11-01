@@ -79,6 +79,18 @@ def remedy(owner: str, gate: str) -> str:
             "the live invocations it would make stale")
 
 
+def replaceable(state: dict[str, Any], owner: str, gate: str, catalogue: G.Catalogue) -> bool:
+    """Condition 2, as the replacement judges it: ``owner``'s gate can never be satisfied under it."""
+    return G.unsatisfiable_inherited(gate, state["work"][owner]["kind"], catalogue) is not None
+
+
+def route(owner: str, gate: str, can_replace: bool) -> str:
+    """What settles an item: this route, or, for a gate every unit type under ``owner`` can satisfy, the operator
+    (doctor and the backstop say the same; review F1)."""
+    return remedy(owner, gate) if can_replace else (
+        f"every unit type under {owner} can satisfy it, so changing it is the operator's decision, not this route")
+
+
 def owners(state: dict[str, Any], work_id: str, gate: str) -> list[str]:
     """The ancestors of ``work_id`` that set ``gate`` as a mandatory gate, nearest first."""
     return [a for a in H.ancestors(state, work_id)
@@ -126,9 +138,9 @@ def stale_invocations(state: dict[str, Any], work_id: str, gate: str) -> list[di
 
 
 def open_items(state: dict[str, Any], catalogue: G.Catalogue) -> list[dict[str, Any]]:
-    """Every live parent's mandatory gate that no descendant can satisfy, and every gate a live unit inherits that its
-    own type can never satisfy: one item per (parent, gate), with the units stuck on it, whether this route can
-    replace it (condition 2), and the invocations a replacement would make stale (its preview)."""
+    """Every live parent's mandatory gate that some unit type under it can never satisfy, and every gate a live unit
+    inherits that its own type can never satisfy: one item per (parent, gate), with the units stuck on it, whether
+    this route can replace it (condition 2), and the invocations a replacement would make stale (its preview)."""
     items: dict[tuple[str, str], dict[str, Any]] = {}
 
     def item(owner: str, gate: str, why: str, candidates: list[str]) -> dict[str, Any]:
@@ -136,7 +148,7 @@ def open_items(state: dict[str, Any], catalogue: G.Catalogue) -> list[dict[str, 
         if found is None:
             found = items[(owner, gate)] = {
                 "id": item_id(owner, gate), "work_id": owner, "gate": gate, "why": why, "candidates": candidates,
-                "replaceable": G.unsatisfiable_inherited(gate, catalogue) is not None, "stuck_units": [],
+                "replaceable": replaceable(state, owner, gate, catalogue), "stuck_units": [],
                 "stale_invocations": stale_invocations(state, owner, gate)}
         return found
 
@@ -144,7 +156,7 @@ def open_items(state: dict[str, Any], catalogue: G.Catalogue) -> list[dict[str, 
         if unit.get("state") in H.TERMINAL:
             continue
         for gate in (unit.get("policy") or {}).get("mandatory_gates") or []:
-            found = G.unsatisfiable_inherited(gate, catalogue)
+            found = G.unsatisfiable_inherited(gate, unit["kind"], catalogue)
             if found is not None:
                 item(wid, gate, found.why, list(found.candidates))
         for s in stuck(state, wid, catalogue):
@@ -159,10 +171,8 @@ def doctor(state: dict[str, Any], catalogue: G.Catalogue) -> tuple[str, str]:
     lines = []
     for i in open_items(state, catalogue):
         units = f" (stuck: {', '.join(i['stuck_units'])})" if i["stuck_units"] else ""
-        how = (remedy(i["work_id"], i["gate"]) if i["replaceable"] else
-               "it can be satisfied on another unit type, so changing it is the operator's decision, not this route")
         lines.append(f"{i['work_id']} sets mandatory gate `{i['gate']}`{units}, which can never be satisfied: "
-                     f"{i['why']}; {how}.")
+                     f"{i['why']}; {route(i['work_id'], i['gate'], i['replaceable'])}.")
     if not lines:
         return "PASS", "every live unit's inherited gates can be satisfied"
     return "FAIL", " ".join(lines)
@@ -184,10 +194,13 @@ class GateRepair:
     def guard_satisfiable(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> list[Blocker] | None:
         """A unit whose inherited gate can never be satisfied on its type is not dispatched: nothing it produces could
         complete it (decision 1's backstop, for state written before the refusal at the write)."""
-        found = stuck(state, work_id, self.roles.gate_catalogue())
+        catalogue = self.roles.gate_catalogue()
+        found = stuck(state, work_id, catalogue)
         return [Blocker(REASON, f"{work_id} inherits gate `{s['gate']}` from {', '.join(s['owners'])}, which can never "
                                 f"be satisfied on a {s['unit_type']}: {s['why']}. Nothing this dispatch produces could "
-                                "complete it; " + "; ".join(remedy(o, s["gate"]) for o in s["owners"]),
+                                "complete it; " + "; ".join(
+                                    route(o, s["gate"], replaceable(state, o, s["gate"], catalogue))
+                                    for o in s["owners"]),
                         {"gate": s["gate"], "owners": s["owners"], "candidates": s["candidates"],
                          "items": [item_id(o, s["gate"]) for o in s["owners"]]})
                 for s in found] or None
@@ -233,12 +246,12 @@ class GateRepair:
                                + f". {owner}'s mandatory gates: " + (", ".join(f"`{g}`" for g in gates) or "none"),
                                work_id=owner, gate=gate, mandatory_gates=gates, set_by=set_by)
             catalogue = self.roles.gate_catalogue()
-            if G.unsatisfiable_inherited(gate, catalogue) is None:
+            if G.unsatisfiable_inherited(gate, unit["kind"], catalogue) is None:
                 raise OperatorAuthorizationRequired(
                     f"`{gate}` can be satisfied, so this route does not apply: it replaces only a gate that can never "
                     "be satisfied (ITEMS 55, option (b), condition 2). Changing or dropping any other gate stays the "
                     "operator's decision", work_id=owner, gate=gate)
-            found = G.unsatisfiable_inherited(replacement, catalogue)
+            found = G.unsatisfiable_inherited(replacement, unit["kind"], catalogue)
             if found is not None:
                 raise ValidationFailed(f"the replacement {found.message}; {HOW_TO_STATE}", work_id=owner,
                                        gate=replacement, candidates=list(found.candidates))

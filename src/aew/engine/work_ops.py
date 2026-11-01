@@ -524,13 +524,13 @@ class WorkCommands:
         return checked(check)
 
     def _check_mandatory_gates(self, a: dict[str, Any]) -> None:
-        """A Story's or Epic's mandatory gate must be one some descendant can satisfy (ITEMS 55, designer decision 1;
-        addenda 1 and 2): a prose standard named as a gate would read MISSING on every descendant, for ever."""
+        """A Story's or Epic's mandatory gate must be one every unit type under it can satisfy or pass through (ITEMS
+        55, designer decision 1; addenda 1 and 2; review F1): any other name reads MISSING on a descendant, for ever."""
         if a.get("kind") == "ticket" or not a.get("mandatory_gates"):
             return
         catalogue = self.roles.gate_catalogue()
         for gate in a["mandatory_gates"]:
-            found = G.unsatisfiable_inherited(gate, catalogue)
+            found = G.unsatisfiable_inherited(gate, a["kind"], catalogue)
             if found is not None:
                 raise ValidationFailed(
                     f"--mandatory-gate {found.message}. {GR.HOW_TO_STATE[0].upper()}{GR.HOW_TO_STATE[1:]}, for "

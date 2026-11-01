@@ -43,8 +43,13 @@ CTX = SurfaceContext.outside_session()
 PROSE = "the targeted tests pass and the module stays under 300 lines"
 
 
+def lead_env(p) -> dict[str, str]:
+    """The Lead credential in the environment, never on the command line (CS-4 addendum 12)."""
+    return {"AEW_LEAD_TOKEN": p.token}
+
+
 def err(p, *args: str) -> dict[str, Any]:
-    res = p.aew(*args, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew(*args, "--expect-rev", str(p.rev()), env=lead_env(p))
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -332,8 +337,7 @@ def test_the_s0001_shape_end_to_end_only_the_replaced_gate_re_evaluates(tmp_path
 
     # addendum 3: the running child is re-dispatched, and its new pack shows the new gate and the correction
     inv = live[0]
-    p.ok("invoke", "cancel", inv, "--reason", stale["fields"]["reason"], "--token", p.token,
-         "--expect-rev", str(p.rev()))
+    p.ok("invoke", "cancel", inv, "--reason", stale["fields"]["reason"], "--expect-rev", str(p.rev()), env=lead_env(p))
     card = state["invocations"][inv]["card"]["id"]
     fresh = p.lead("invoke", "create", running, "--card", card)["invocation"]
     shown = p.aew("context", "show", fresh)

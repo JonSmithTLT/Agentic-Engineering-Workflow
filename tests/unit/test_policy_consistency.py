@@ -62,6 +62,11 @@ def test_a_guardrail_review_trigger_that_can_never_be_satisfied_is_reported():
 
 
 def test_a_waivable_gate_that_does_not_exist_is_reported():
-    gates = dict(DEFAULT_GATES, waivable_gates=["review_r1", "made_up"])
+    gates = dict(DEFAULT_GATES, waivable_gates=["review_r1", "made_up", "check:unit"])
     assert problems(gates, DEFAULT_CHECKS, catalogue()) == [
-        "policy/gates.yaml waivable_gates lists `made_up`, which is not a gate AEW evaluates."]
+        "policy/gates.yaml waivable_gates lists `made_up`, which is not a gate AEW evaluates.",
+        "policy/gates.yaml waivable_gates lists `check:unit`, which can never be satisfied: check `unit` is not "
+        "defined and configured in policy/checks.yaml."]
+    # judged by the same predicate as the path tables (review F3): a configured `unit` makes `check:unit` one
+    configured = catalogue()._replace(checks={"unit": "sha-unit"})
+    assert [f for f in problems(gates, DEFAULT_CHECKS, configured) if "check:unit" in f] == []

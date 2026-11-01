@@ -51,7 +51,10 @@ def problems(gates: dict[str, Any], checks: dict[str, Any], catalogue: G.Catalog
             out.append(f"policy/guardrails.yaml review_triggers `{trigger['name']}` requires gate `{gate}`, but "
                        f"{found.why}: a change it matches can never complete.")
     out += [f"policy/gates.yaml {p}" for p in V.policy_problems(gates)]
-    for gate in gates.get("waivable_gates") or []:  # whether AEW has the kind: a waiver names no suffix's state
-        if all(G.unsatisfiable(gate, utype) is not None for utype in G.UNIT_TYPES):
-            out.append(f"policy/gates.yaml waivable_gates lists `{gate}`, which is not a gate AEW evaluates.")
+    for gate in gates.get("waivable_gates") or []:
+        found = [G.unsatisfiable(gate, utype, catalogue) for utype in G.UNIT_TYPES]
+        if all(f is not None for f in found):
+            known = next((f for f, utype in zip(found, G.UNIT_TYPES, strict=True) if G.gate_kind(gate, utype)), None)
+            out.append(f"policy/gates.yaml waivable_gates lists `{gate}`, which " + (
+                "is not a gate AEW evaluates." if known is None else f"can never be satisfied: {known.why}."))
     return out

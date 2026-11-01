@@ -322,3 +322,27 @@ def test_an_epics_change_only_gates_bind_its_tickets_and_never_wait_a_storys_own
     close_parent(p, story)  # its reviewer and verifier are dispatched, and it closes
     assert p.ok("work", "show", story)["control"]["state"] == "DONE"
     assert_control_invariants(p)
+
+
+def test_an_archived_parent_pins_its_correction_record(tmp_path):
+    """The correction record is pinned as a disposition is: archival carries it into the parent's bundle, so a full
+    history verification detects an altered one."""
+    from aew.engine.archive_ops import pinned_records
+    from aew.errors import IntegrityError
+
+    p = sample_project(tmp_path)
+    story = create_unit(p, "story", "Objective")
+    seed(p, story, [PROSE])
+    assert resolve(p, gate_ops.item_id(story, PROSE), "check:unit")["ok"]
+    [pointer] = load_control(p.root)["work"][story]["policy"]["corrections"]
+    p.lead("work", "cancel", story, "--reason", "the objective moved elsewhere")
+    engine = Engine.discover(p.root)
+    entry = next(e for e in engine.archive.index(engine.store.current()).list(kind="unit") if e["id"] == story)
+    raw = (p.root / ".aew" / entry["path"]).read_bytes()
+    assert (pointer["path"], pointer["sha256"]) in pinned_records(entry, raw)
+    assert engine.history_audit(full=True)["ok"]
+    record = p.root / ".aew" / pointer["path"]
+    record.write_bytes(record.read_bytes().replace(b"check:unit", b"check:lint"))
+    with pytest.raises(IntegrityError) as exc:
+        Engine.discover(p.root).history_audit(full=True)
+    assert any(pointer["path"] in problem for problem in exc.value.details["audit"]["problems"])

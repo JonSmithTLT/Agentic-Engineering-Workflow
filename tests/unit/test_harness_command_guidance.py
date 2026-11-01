@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import argparse
 import re
+import shlex
 import sys
 import threading
 from collections.abc import Callable
@@ -22,6 +24,7 @@ from aew.errors import (
     HarnessLaunchFailed,
     IllegalTransition,
     MessagingSnapshotMismatch,
+    UsageError,
 )
 from aew.harness import contract as harness_contract
 from aew.harness import runlog
@@ -30,25 +33,57 @@ from aew.harness.opencode import adapter as adapter_module
 ROOT = Path(__file__).parents[2]
 
 
-def _parse(command: str) -> None:
-    """Parse a command rendered by a diagnostic, including its fields document."""
-    command = command.replace("`", "").replace("<revision from aew status>", "17")
-    command, _, document = command.partition(" <<'EOF'")
-    document = document.split("\nEOF", 1)[0].lstrip("\n")
-    tokens = command.split()
+REVISION = "<revision from aew status>"
+BLOCK = re.compile(r"```sh\n(.*?)\n```", flags=re.DOTALL)
+BODY_LINE = re.compile(r"(reason|rationale): '(.+)'")
+PLACEHOLDER = re.compile(r"<[^<>\s][^<>]*>")
+
+
+def _parse(command: str, *, fenced: bool) -> argparse.Namespace:
+    """Parse a command as a reader would run it, after filling the revision with 17. A fenced block must close with a
+    line that is exactly ``EOF`` and carry a single-quoted ``reason:`` or ``rationale:`` body, which goes through
+    ``fields.expand``; an inline command is one line. Any other ``<...>`` left over is an unfilled placeholder."""
+    filled = command.replace(REVISION, "17")
+    head, sep, rest = filled.partition(" <<'EOF'")
+    body = None
+    if fenced:
+        assert sep and rest.startswith("\n") and rest.endswith("\nEOF"), f"heredoc not closed by EOF: {command!r}"
+        body = rest[1:-len("EOF")]
+        [line] = body.splitlines()
+        match = BODY_LINE.fullmatch(line)
+        assert match, f"the body is not one single-quoted value: {line!r}"
+    else:
+        assert not sep and "\n" not in command, f"an inline command is one line: {command!r}"
+    assert not PLACEHOLDER.search(head + (body or "")), f"an unfilled placeholder is left in {command!r}"
+    tokens = shlex.split(head)
     assert tokens.pop(0) == "aew"
     parser = build_parser()
     old_stdin = sys.stdin
     try:
-        sys.stdin = StringIO(document)
-        parser.parse_args(fields.expand(tokens, parser))
+        sys.stdin = StringIO(body or "")
+        args = parser.parse_args(fields.expand(tokens, parser))
     finally:
         sys.stdin = old_stdin
+    if body is not None:
+        key, value = BODY_LINE.fullmatch(body.strip()).groups()
+        assert getattr(args, key) == value, (key, getattr(args, key), value)
+    if "--expect-rev" in tokens:
+        assert args.expect_rev == 17
+    return args
 
 
-def _commands(message: str) -> list[str]:
-    """Return every complete command printed in a runtime message."""
-    return re.findall(r"`(aew [^`]*)`", message, flags=re.DOTALL)
+def _commands(message: str) -> list[tuple[str, bool]]:
+    """Every complete command a runtime message prints: each fenced ``sh`` block, then each inline code span outside
+    the blocks. The pair is the command and whether it is fenced."""
+    fenced = [(block, True) for block in BLOCK.findall(message)]
+    rest = BLOCK.sub("", message)
+    assert "EOF" not in rest and "<<" not in rest, f"a heredoc outside a fenced block: {message!r}"
+    return fenced + [(span, False) for span in re.findall(r"`(aew [^`]*)`", rest)]
+
+
+def _id_of(args: argparse.Namespace) -> str | None:
+    """The run, invocation or stage intent a parsed command names (None: a command that takes none)."""
+    return next((v for v in (getattr(args, k, None) for k in ("invocation", "run", "intent")) if v), None)
 
 
 class _NoCustodyProcess:
@@ -142,7 +177,7 @@ def _stage(monkeypatch: pytest.MonkeyPatch, tmp: Path, status: str) -> str:
     stages.k = SimpleNamespace(aew_root=tmp)
     monkeypatch.setattr(runlog, "run_dir", lambda *_args: tmp)
     monkeypatch.setattr(runlog, "observed_status", lambda *_args: (status, None))
-    return stages._launch_check({"n": 2, "outputs": {"runs": ["RUN-1"]}})["message"]
+    return stages._launch_check({"n": 2, "outputs": {"runs": ["R-INV-0012-1"]}}, "SI-0003")["message"]
 
 
 def _resume(monkeypatch: pytest.MonkeyPatch, tmp: Path, record: dict[str, object] | None) -> str:
@@ -194,35 +229,114 @@ def _adapter_ended(_monkeypatch: pytest.MonkeyPatch, _tmp: Path) -> str:
 def _send_route(monkeypatch: pytest.MonkeyPatch, _tmp: Path) -> str:
     monkeypatch.setattr("aew.engine.harness_ops.SNAPSHOT_RECORDED", True)
     with pytest.raises(MessagingSnapshotMismatch) as raised:
-        send_route("disabled", "enabled", "next-step")
+        send_route("disabled", "enabled", "next-step", invocation=harness_contract.invocation_of_run("R-INV-0012-1"))
     return str(raised.value)
 
 
+_PROVIDER_AUTH = {"reason_code": harness_contract.PROVIDER_AUTH_FAILED,
+                  "contract": {"extra": {"provider_env": ["API_KEY"]}}}
+
+
 @pytest.mark.parametrize(
-    "case",
+    "case, named",
     [
-        pytest.param(_live_run, id="live-run-stop-and-replace"),
-        pytest.param(_post_commit, id="post-commit-launch-failure"),
-        pytest.param(_no_custody, id="no-custody-acknowledgement"),
-        pytest.param(_current_run, id="current-run-refusal"),
-        pytest.param(lambda m, t: _resume(m, t, None), id="ended-run-cancel"),
-        pytest.param(lambda m, t: _resume(m, t, {"reason_code": harness_contract.PROVIDER_AUTH_FAILED,
-                                                 "contract": {"extra": {"provider_env": ["API_KEY"]}}}),
-                          id="provider-auth-cancel"),
-        pytest.param(lambda m, t: _stage(m, t, harness_contract.UNCONFIRMED), id="stage-launch-failure"),
-        pytest.param(lambda m, t: _stage(m, t, "ended"), id="stage-run-ended"),
-        pytest.param(_send_route, id="messaging-snapshot-mismatch"),
-        pytest.param(_adapter_variant, id="adapter-variant-refusal"),
-        pytest.param(_adapter_disabled, id="adapter-disabled-refusal"),
-        pytest.param(_adapter_timeout, id="adapter-catalog-timeout"),
-        pytest.param(_adapter_ended, id="adapter-ended-turn"),
+        # `named` is every run, invocation and stage intent the message's commands must name, exactly: a command that
+        # prints a placeholder where the code knows the id, or names the wrong one, fails (#313 review, F1).
+        pytest.param(_live_run, {"RUN-1", "INV-1"}, id="live-run-stop-and-replace"),
+        pytest.param(_post_commit, {"INV-1"}, id="post-commit-launch-failure"),
+        pytest.param(_no_custody, {"INV-1"}, id="no-custody-acknowledgement"),
+        pytest.param(_current_run, {"INV-1"}, id="current-run-refusal"),
+        pytest.param(lambda m, t: _resume(m, t, None), {"INV-1"}, id="ended-run-cancel"),
+        pytest.param(lambda m, t: _resume(m, t, _PROVIDER_AUTH), {"INV-1"}, id="provider-auth-cancel"),
+        pytest.param(lambda m, t: _stage(m, t, harness_contract.UNCONFIRMED), {"INV-0012", "SI-0003"},
+                     id="stage-launch-failure"),
+        pytest.param(lambda m, t: _stage(m, t, "ended"), {"INV-0012"}, id="stage-run-ended"),
+        pytest.param(_send_route, {"INV-0012"}, id="messaging-snapshot-mismatch"),
+        pytest.param(_adapter_variant, {"INV-1234"}, id="adapter-variant-refusal"),
+        pytest.param(_adapter_disabled, {"INV-1234"}, id="adapter-disabled-refusal"),
+        pytest.param(_adapter_timeout, {"INV-1234"}, id="adapter-catalog-timeout"),
+        pytest.param(_adapter_ended, {"INV-1234"}, id="adapter-ended-turn"),
     ],
 )
 def test_changed_guidance_renders_parser_accepted_commands(
-    case: Callable[[pytest.MonkeyPatch, Path], str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    case: Callable[[pytest.MonkeyPatch, Path], str], named: set[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     message = case(monkeypatch, tmp_path)
     commands = _commands(message)
     assert commands
-    for command in commands:
-        _parse(command)
+    ids = {_id_of(_parse(command, fenced=fenced)) for command, fenced in commands}
+    assert ids - {None} == named, message
+
+
+@pytest.mark.parametrize("fenced", [True, False])
+def test_the_parse_check_refuses_a_broken_printed_command(fenced: bool) -> None:
+    """The check itself fails on each defect it exists for: an unterminated heredoc, an unquoted or wrong-key body,
+    a placeholder left unfilled, and a heredoc inside a code span."""
+    good = "aew invoke cancel INV-1 --expect-rev <revision from aew status> --fields - <<'EOF'\nreason: 'why'\nEOF"
+    if fenced:
+        assert _parse(good, fenced=True).reason == "why"
+        for broken in (good.removesuffix("\nEOF"), good.replace("'why'", "why"), good.replace("INV-1", "<INV>"),
+                       good.replace("reason:", "why:"), good + "\nEOF2"):
+            with pytest.raises((AssertionError, SystemExit, UsageError)):
+                _parse(broken, fenced=True)
+    else:
+        with pytest.raises(AssertionError):
+            _parse(good, fenced=False)
+
+
+def test_a_stage_launch_failure_keeps_the_stages_own_abandon_remedy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """The stage's remedy is abandoning the intent; an `invoke cancel` alone leaves it unresolved and the subject
+    blocked (#313 review, F4). The abandon command comes with its revision and a `rationale:` body."""
+    message = _stage(monkeypatch, tmp_path, harness_contract.UNCONFIRMED)
+    abandon = [args for command, fenced in _commands(message)
+               if (args := _parse(command, fenced=fenced)).__dict__.get("stage_cmd") == "abandon"]
+    assert [(a.intent, a.expect_rev, a.rationale) for a in abandon] == [("SI-0003", 17, "stage launch failed")]
+    assert len(message) < 2000  # the intent keeps its stopped error's message[:2000]
+
+
+def test_a_relaunch_hint_without_an_invocation_names_where_to_find_one() -> None:
+    """With no id in reach the placeholder names its source; it is never a bare `<INV>` (#313 review, F1)."""
+    with pytest.raises(MessagingSnapshotMismatch) as raised:
+        send_route("disabled", "enabled", "next-step")
+    assert "aew harness launch <invocation from aew harness status> --expect-rev" in raised.value.message
+    assert "<INV>" not in raised.value.message
+
+
+def test_a_quote_in_a_printed_reason_is_escaped_so_the_body_still_parses() -> None:
+    block = harness_contract.fields_command("aew invoke cancel INV-1 --expect-rev <revision from aew status>",
+                                            "reason", "it's done")
+    [(command, fenced)] = _commands(block)
+    assert fenced and "reason: 'it''s done'" in command
+    filled = command.replace(REVISION, "17")
+    head, _, rest = filled.partition(" <<'EOF'\n")
+    parser = build_parser()
+    old_stdin = sys.stdin
+    try:
+        sys.stdin = StringIO(rest.removesuffix("\nEOF"))
+        args = parser.parse_args(fields.expand(shlex.split(head)[1:], parser))
+    finally:
+        sys.stdin = old_stdin
+    assert args.reason == "it's done"
+
+
+def test_harness_send_hands_the_runs_invocation_to_the_route_it_refuses_with(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`harness send` knows the run it was given, so its mismatch refusal names that run's invocation (#313 review,
+    F1). The route is decided inside `_lead_request`'s admit; this drives it with a run whose snapshot disagrees."""
+    harness = Harness.__new__(Harness)
+    harness.coordination = SimpleNamespace(project_switch=lambda _state: "disabled")
+    monkeypatch.setattr("aew.engine.harness_ops.run_messaging_snapshot", lambda _entry: "enabled")
+    monkeypatch.setattr("aew.engine.harness_ops.SNAPSHOT_RECORDED", True)
+    admitted: list[Callable[[dict[str, object], dict[str, object]], None]] = []
+
+    def capture(_token: str, _run: str, _kind: str, _payload: dict[str, str], *, current: bool, admit: Callable[
+            [dict[str, object], dict[str, object]], None]) -> dict[str, object]:
+        admitted.append(admit)
+        return {}
+
+    monkeypatch.setattr(harness, "_lead_request", capture, raising=False)
+    harness.harness_send(token="token", run="R-INV-0012-1", text="hello")
+    with pytest.raises(MessagingSnapshotMismatch) as raised:
+        admitted[0]({}, {"run": "R-INV-0012-1"})
+    assert "`aew harness launch INV-0012 --expect-rev <revision from aew status>`" in raised.value.message

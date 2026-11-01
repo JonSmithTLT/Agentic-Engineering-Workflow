@@ -127,11 +127,11 @@ class Harness:
         invocation = facts["invocation"]
         if previous and not facts.get("replace") and runlog.may_be_live(
                 runlog.run_dir(self.k.aew_root, previous["run"]), previous["launched_at"]):
+            stop = K.fields_command(f"aew harness stop {previous['run']}", "reason", "superseded run is still live")
             return blocker_from(RunLive(
-                 f"{previous['run']} may still be running; stop it (`aew harness stop {previous['run']} "
-                  "--fields - <<'EOF'\nreason: superseded run is still live\nEOF`) "
-                 f"or relaunch with `aew harness launch {invocation} --expect-rev <revision from aew status> "
-                 f"--replace` (its credential is revoked either way)", run=previous["run"]))
+                f"{previous['run']} may still be running; stop it with:\n\n{stop}\n\n"
+                f"or relaunch with `aew harness launch {invocation} --expect-rev <revision from aew status> "
+                "--replace` (its credential is revoked either way)", run=previous["run"]))
         return None
 
     def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False) -> dict[str, Any]:
@@ -587,7 +587,8 @@ class Harness:
                              "Put the material in a file in the agent's workspace and send its path instead")
 
         def admit(state: dict[str, Any], entry: dict[str, Any]) -> None:
-            send_route(self.coordination.project_switch(state), run_messaging_snapshot(entry), when)
+            send_route(self.coordination.project_switch(state), run_messaging_snapshot(entry), when,
+                       invocation=K.invocation_of_run(entry["run"]))
 
         # Only `next-step` reaches a request file (send_route), so its payload is unchanged and the supervisor posts
         # every request-file send as `steer`.
@@ -665,20 +666,20 @@ class Harness:
                         provider_env = []
                 names = provider_env or [str(n) for n in _list(_field(_field(record, "contract"), "extra").get(
                     "provider_env"))]  # else the names this run was launched with
+                cancel = K.fields_command(f"aew invoke cancel {inv_id} --expect-rev <revision from aew status>",
+                                          "reason", "provider credential rejected")
                 action = (f"{run} ended because the model provider rejected the credential: check the key in "
                           f"{', '.join(names) or 'the variables'} (the execution policy's provider_env), then "
                           f"relaunch with `aew harness launch {inv_id} --expect-rev <revision from aew status>`, or "
-                          f"cancel it with `aew invoke cancel {inv_id} --expect-rev <revision from aew status> "
-                                        "--fields - <<'EOF'\nreason: provider credential rejected\nEOF`. A relaunch "
-                                        "starts a new "
-                          "harness server with the key from "
+                          f"cancel it with:\n\n{cancel}\n\nA relaunch starts a new harness server with the key from "
                           "the environment of the process that launches it; inside a Lead session that is the "
                           "session's own, so restart `aew opencode` with the new key first")
             else:
+                cancel = K.fields_command(f"aew invoke cancel {inv_id} --expect-rev <revision from aew status>",
+                                          "reason", "harness run ended")
                 action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
-                           f"--expect-rev <revision from aew status>` (its credential rotates) or cancel it with "
-                            f"`aew invoke cancel {inv_id} --expect-rev <revision from aew status> "
-                            "--fields - <<'EOF'\nreason: harness run ended\nEOF`")
+                          f"--expect-rev <revision from aew status>` (its credential rotates) or cancel it with:"
+                          f"\n\n{cancel}")
             out.append({"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"], "run": run,
                         "status": status, "reason": (record or {}).get("reason"), "evidence": evidence,
                         "action": action})
@@ -808,18 +809,19 @@ def run_messaging_snapshot(run_entry: dict[str, Any]) -> str:
     return X.MESSAGING_DISABLED
 
 
-def send_route(project: str, snapshot: str, when: str) -> str:
+def send_route(project: str, snapshot: str, when: str, *, invocation: str | None = None) -> str:
     """The path a ``harness send`` takes, from the project's adopted messaging switch and the run's launch snapshot
     (F9-A plan v4 amendment 2 §3.1, §3.3): ``"request"``, the supervisor request file, only when both are off and the
     timing is ``next-step``. Every other case is refused, the mismatch first: it is the more specific fail-closed reason
     and says what to do, so it wins over a timing's own refusal. The remedy is to relaunch the run, which a project
     switched off always allows; with the project switched on, a relaunch helps only once MS4 records snapshots, and
-    until then sending needs messaging switched off (``SNAPSHOT_RECORDED``)."""
+    until then sending needs messaging switched off (``SNAPSHOT_RECORDED``). ``invocation`` is the run's, for the
+    relaunch command the remedy prints."""
     on, launched_on = project == X.MESSAGING_ENABLED, snapshot == X.MESSAGING_ENABLED
     if on != launched_on:
         if SNAPSHOT_RECORDED or not on:  # project off: a relaunched run reads as launched off, so it agrees
-            remedy = ("Relaunch the run (`aew harness launch <INV> --expect-rev <revision from aew status>`) and "
-                      "send to the new run")
+            remedy = (f"Relaunch the run (`aew harness launch {invocation or '<invocation from aew harness status>'} "
+                      "--expect-rev <revision from aew status>`) and send to the new run")
         else:  # project on, before MS4: every run reads as launched off, so a relaunch would be refused the same way
             remedy = ("This AEW version cannot yet launch a run with coordination messaging on (F9-A MS4 adds it), so "
                       "until then `harness send` needs messaging switched off: ask the operator")

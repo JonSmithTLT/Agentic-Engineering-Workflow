@@ -176,6 +176,14 @@ def invocation_of_run(run: str) -> str | None:
     return head if run.startswith("R-") and sep and n.isdigit() and head else None
 
 
+def fields_command(command: str, key: str, value: str) -> str:
+    """A printed command whose free text goes through ``--fields -``, as a fenced block: the heredoc on its own lines,
+    ``EOF`` alone on the last, and the value single-quoted. A code span would run the terminator into the sentence
+    and a Markdown renderer would join its lines (the convention of ``evidence_ops``; #313 review, F2)."""
+    quoted = value.replace("'", "''")  # a single-quoted YAML scalar doubles its own quote
+    return f"```sh\n{command} --fields - <<'EOF'\n{key}: '{quoted}'\nEOF\n```"
+
+
 @dataclass
 class LaunchContract:
     run: str

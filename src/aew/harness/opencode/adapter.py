@@ -260,7 +260,7 @@ class OpenCodeAdapter(HarnessAdapter):
     def _relaunch_command(self) -> str:
         """The complete command for recovering this invocation's run."""
         contract = getattr(self, "contract", None)
-        invocation = contract.invocation if contract is not None else "<INV>"
+        invocation = contract.invocation if contract is not None else "<invocation from aew harness status>"
         return f"`aew harness launch {invocation} --expect-rev <revision from aew status>`"
 
     def launch(self, contract: LaunchContract, agent_env: dict[str, str]) -> dict[str, Any]:
@@ -480,8 +480,8 @@ class OpenCodeAdapter(HarnessAdapter):
                     raise HarnessIncompatible(
                         f"model {ref['providerID']}/{ref['id']} has no variant {ref['variant']!r} (the pinned effort); "
                         f"it offers {variants or 'none'}; dispatch a new invocation with --profile or --model, or with "
-                        f"another --effort (a relaunch reuses this one's pin, ADR-0010; use {self._relaunch_command()} "
-                        "for fixing the environment)", model=ref)
+                        "another --effort (a relaunch reuses this one's pin, ADR-0010); once OpenCode offers the "
+                        f"variant, relaunch with {self._relaunch_command()}", model=ref)
                 if match.get("enabled") is False:
                     raise HarnessIncompatible(f"model {ref['providerID']}/{ref['id']} is disabled in this OpenCode; "
                                               f"enable it in OpenCode and relaunch with {self._relaunch_command()}, "
@@ -497,8 +497,9 @@ class OpenCodeAdapter(HarnessAdapter):
                     + ("; it is listed only because AEW names it in the server's configuration, to send it through "
                        "the run's provider relay (F28 §3.5)" if declared else "")
                     + "); check the execution policy and the provider variables it names; if the pinned model is what "
-                       f"is wrong, dispatch a new invocation with --profile or --model (a relaunch reuses this one's "
-                       f"pin, ADR-0010; otherwise fix the variable and use {self._relaunch_command()})", model=ref,
+                      "is wrong, dispatch a new invocation with --profile or --model (a relaunch reuses this one's "
+                      f"pin, ADR-0010); otherwise fix the variable and relaunch with {self._relaunch_command()}",
+                    model=ref,
                     # Timing-dependent (the catalog fills in asynchronously): never read as a lasting incompatibility
                     # (M4-E E8a; PR #185 review, F1).
                     launch_cause=CATALOG_TIMEOUT)

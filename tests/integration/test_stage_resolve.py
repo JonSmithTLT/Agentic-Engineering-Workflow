@@ -430,8 +430,10 @@ def test_continue_never_completes_a_stage_over_a_run_that_never_started(project,
                 assert "Read `harness_status` and the run's report before deciding" in error["message"]
                 assert "the launch failed" not in error["message"]
             else:
-                assert ("the launch failed. Relaunch it with `aew harness launch <INV> --expect-rev "
+                invocation = load_control(p.root)["work"][wid]["implementer_invocation"]
+                assert (f"the launch failed. Relaunch it with `aew harness launch {invocation} --expect-rev "
                         "<revision from aew status>`") in error["message"]
+                assert f"aew stage abandon {sid} --expect-rev <revision from aew status>" in error["message"]
             assert error["details"]["committed"] is True
             assert si["status"] == "STOPPED_AT_BOUNDARY" and si["stopped"]["boundary"] == "launch_failed"
             assert si["stopped"]["n"] == 2 and si["resolution"]["choice"] == "continue"

@@ -42,7 +42,15 @@ class ContextPacks:
                           "plan": (a.get("plan") or {}).get("accepted"),
                           "goal_backwards": (meta.get("acceptance") or {}).get("goal_backwards", [])})
         obligations = G.effective_obligations(state, wid, {"risk_paths": {str(c): [] for c in range(5)}})
-        return chain, {"non_waivable": obligations["non_waivable"], "floor": obligations["floor"]}
+        inherited: dict[str, Any] = {"non_waivable": obligations["non_waivable"], "floor": obligations["floor"]}
+        # A gate replaced on the record is shown with its correction, so the replaced name never reads as current
+        # (ITEMS 55, addendum 2). Absent when there is none, so every other pack is unchanged.
+        corrections = [{"unit": anc, **{k: c[k] for k in ("id", "replaced", "with")}}
+                       for anc in reversed(H.ancestors(state, wid))
+                       for c in (state["work"][anc].get("policy") or {}).get("corrections") or []]
+        if corrections:
+            inherited["corrections"] = corrections
+        return chain, inherited
 
     def _input_summaries(self, inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         out = []

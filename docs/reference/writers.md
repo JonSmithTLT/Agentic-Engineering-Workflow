@@ -212,6 +212,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `work/{}/coordination/{}.jsonl`: written or removed by `aew.engine.coordination_ops:Coordination._write` (direct: open); `aew.engine.coordination_ops:_append_line` (direct: open); `aew.engine.coordination_ops:_truncate` (direct: open)
 - `work/{}/coordination/{}.seal-{}.yaml`: written or removed by `aew.history.store:prewrite` (direct: create_exclusive)
 - `work/{}/dispositions/{}.yaml`: written or removed by `aew.engine.disposition_ops:Dispositions._write` (store-transaction: session.write)
+- `work/{}/gate-corrections/{}.yaml`: written or removed by `aew.engine.gate_ops:GateRepair._write` (store-transaction: session.write)
 - `work/{}/plan-v{}.md`: written or removed by `aew.engine.work_ops:WorkUnits.propose` (store-transaction: session.write)
 - `work/{}/stage-intents/{}.yaml`: written or removed by `aew.engine.stage_intents:StageIntents._end` (store-transaction: session.write)
 - `work/{}/validation-runs/{}.yaml`: written or removed by `aew.engine.validation_ops:Validation._write_record` (store-transaction: session.write)
@@ -224,7 +225,7 @@ A `with` statement's implicit `__enter__` and `__exit__` calls are not followed 
 
 The parser cut: 112 registrations of a command handler; handlers by role (`aew`: 110, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
-Writer functions with a store-transaction or direct write placed under `.aew`: 83; reached from at least one entry point: 57.
+Writer functions with a store-transaction or direct write placed under `.aew`: 84; reached from at least one entry point: 57.
 
 - `aew` (store_writer): 49 writer functions (24 write the store, 25 only under `local/`)
 - `aew (contained Lead)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
@@ -244,7 +245,7 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 
 - `writers_flow.DEPTH` = 32: the calls and parameters one value is followed through; source: measured over the whole render, held to twice the deepest question; past it (a marked item): the value is unknown, with the reason `resolution depth limit` and this cap; the keys of a mapping a callback returns are unknown with the same reason. The largest in this render: 16.
 - `writers_flow.CALLERS` = 24: the call sites of one function whose parameter, mapping keys or callback is read; source: chosen; past it (a marked item): the parameter is unknown, with a reason that says `more than N call sites` and names this cap (the roles reader counts the registration as run by every role).
-- `writers_flow.VALUES` = 64: the distinct values one expression may take; source: measured over the whole render, held to twice the largest; past it (a marked item): the expression is unknown, with a reason that says `more than N possible values` and names this cap. The largest in this render: 31.
+- `writers_flow.VALUES` = 64: the distinct values one expression may take; source: measured over the whole render, held to twice the largest; past it (a marked item): the expression is unknown, with a reason that says `more than N possible values` and names this cap. The largest in this render: 32.
 - `writers_flow.TYPING_DEPTH` = 24: the receivers typed through receivers (`self.a.b.run()`); source: measured over the whole render, held to twice the deepest typing; past it (fails check): a dropped call edge would read as an unknown receiver and can carry no mark, so the reading stops: `check` and `render` fail with an error that names this cap, its source and its bound. The largest in this render: 11.
 - `writers_flow.MRO_DEPTH` = 6: the base classes followed from a class to find where an attribute or a method is defined; source: measured over the whole render, held to twice the longest chain; past it (fails check): a list of classes can carry no mark, so the reading stops: `check` and `render` fail with an error that names this cap, its source and its bound, and a tree test warns before the tree needs half of it. The largest in this render: 3.
 - `writers_flow.FSTRING_LIMIT` = 8: the alternatives of one f-string piece that are expanded into templates; source: measured over the whole render, held to twice the largest; past it (a marked item): the expression is unknown, with a reason that says `more than N alternatives of one f-string piece` and names this cap. The largest in this render: 4.

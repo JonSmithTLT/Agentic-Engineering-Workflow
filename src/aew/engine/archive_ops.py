@@ -107,6 +107,7 @@ def pinned_records(entry: dict[str, Any], raw: bytes,
         pins.append((unit["completion_record"], unit["completion_sha256"]))
     pins += [(s["path"], s["sha256"]) for s in unit.get("stage_intents") or []]  # its ended stages (M4-E E3)
     pins += [(d["path"], d["sha256"]) for d in unit.get("dispositions") or []]  # its dispositions (M4-E E5b)
+    pins += [(c["path"], c["sha256"]) for c in (unit.get("policy") or {}).get("corrections") or []]  # ITEMS 55
     pins += [(p["seal"], p["sha256"]) for p in unit.get(coordination.UNIT_KEY) or []]  # its sealed threads (F9-A)
     return sorted(set(pins))
 

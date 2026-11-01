@@ -857,11 +857,13 @@ def test_linux_a_run_whose_launch_self_test_fails_is_refused_under_required_what
 
 
 def test_a_policy_choosing_checks_with_no_checks_is_inconsistent(calc):
+    from aew.engine.gates import Catalogue
     from aew.policy import consistency, validation
 
     gates = {"post_integration": {"verification": True, "checks": [], "validation": "checks"}}
     assert validation.policy_problems(gates)
-    assert any("checks-mode" in p for p in consistency.problems(gates, {"checks": {}}, set()))
+    empty = Catalogue(cards=frozenset(), specialties={}, checks={}, local_checks=())
+    assert any("checks-mode" in p for p in consistency.problems(gates, {"checks": {}}, empty))
 
 
 # ---------------------------------------------------------------------------------- PR #91 review findings

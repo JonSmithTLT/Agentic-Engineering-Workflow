@@ -445,8 +445,8 @@ and fails on any code missing here or listed here and no longer defined, so the 
 - the typed surface's input refusals, `aew.surface.errors.CODES`.
 
 The scan also finds codes that are not refusals: the assurance lint, Class 0 eligibility and dispatch blocker codes
-(`LINT_*`, `CLASS0_*`, `ACCEPTANCE_INPUT_IN_SCOPE`, `INHERITED_ELEVATED_OBLIGATION`, `GIT_DRIVER_UNTRUSTED`,
-`PROTECTED_CONDITION_OVERLAP`). They are entries in a refusal's details or a decision's reason codes, never a
+(`LINT_*`, `CLASS0_*`, `ACCEPTANCE_INPUT_IN_SCOPE`, `INHERITED_ELEVATED_OBLIGATION`, `GATE_UNSATISFIABLE`,
+`GIT_DRIVER_UNTRUSTED`, `PROTECTED_CONDITION_OVERLAP`). They are entries in a refusal's details or a decision's reason codes, never a
 refusal's code, so the test pins them as a named list outside the registry; one that is no longer written, or that
 this registry lists, fails it.
 

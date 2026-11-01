@@ -326,6 +326,9 @@ def _hierarchy(p: PackInputs) -> list[str]:
         lines += ["", "Inherited obligations: non-waivable gates " + (", ".join(p.inherited.get("non_waivable") or [])
                                                                        or "none")
                   + (f"; minimum class floor {p.inherited['floor']}" if p.inherited.get("floor") is not None else "")]
+    for c in (p.inherited or {}).get("corrections") or []:
+        lines.append(f"- corrected on the record ({c['id']}): {c['unit']}'s gate `{c['replaced']}` was replaced by "
+                     f"`{c['with']}`; `{c['replaced']}` no longer applies")
     return lines
 
 

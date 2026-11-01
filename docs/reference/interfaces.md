@@ -46,7 +46,7 @@ Outside the API:
 | `harness_status` | query | MECHANICAL | built | no | no | - |
 | `harness_wait` | wait | MECHANICAL | built | no | no | - |
 | `integration_publish` | decision | JUDGMENT_BEARING | built | yes | yes | `verify.ingest.integration`, `integrate.publish`, `invoke.create.mutating`, `dispatch.launch` |
-| `resolve` | stage | JUDGMENT_BEARING | built | yes | no | `stage.resolve`, `work.dispose` |
+| `resolve` | stage | JUDGMENT_BEARING | built | yes | no | `stage.resolve`, `work.dispose`, `work.gate_replace` |
 | `resume` | query | MECHANICAL | built | no | no | - |
 | `status` | query | MECHANICAL | built | no | no | - |
 | `steering` | stage | MECHANICAL | built | yes | no | `steering` |
@@ -74,6 +74,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `disposition` | `disposition.schema.json` | 36 | 15 |
 | `evidence` | `evidence.schema.json` | 128 | 46 |
 | `execution` | `execution.schema.json` | 58 | 7 |
+| `gate-correction` | `gate-correction.schema.json` | 20 | 17 |
 | `gates` | `gates.schema.json` | 72 | 21 |
 | `guardrails` | `guardrails.schema.json` | 16 | 3 |
 | `history` | `history.schema.json` | 12 | 9 |

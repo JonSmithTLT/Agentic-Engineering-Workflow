@@ -268,6 +268,13 @@ def test_a_decision_never_carries_a_default():
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
     ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "follow_up", "follow_up": "not a ticket",
                  "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
+    # ITEMS 55, addendum 4: only replace_gate takes, and needs, a replacement that is not blank
+    ("resolve", {"expect_rev": 1, "subject": "S-0001#gate:x", "choice": "replace_gate", "rationale": "r"}, NORMAL,
+     "INVALID_ARGUMENTS"),
+    ("resolve", {"expect_rev": 1, "subject": "S-0001#gate:x", "choice": "replace_gate", "replacement": " ",
+                 "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
+    ("resolve", {"expect_rev": 1, "subject": "ANM-0001", "choice": "accept_risk", "replacement": "check:unit",
+                 "rationale": "r"}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", {"bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
     ("status", ["not", "an", "object"], NORMAL, "INVALID_ARGUMENTS"),
     ("explain", {}, NORMAL, "INVALID_ARGUMENTS"),  # names neither a unit, an invocation nor a stage
@@ -392,7 +399,8 @@ def test_every_staged_primitive_is_declared():
 
 
 # The engine methods the `resolve` runner calls first, by the primitive it runs (aew.surface.stage.resolve_stage).
-_FIRST_CALL = {"work_dispose": "work.dispose", "stage_intent": "stage.resolve"}
+_FIRST_CALL = {"work_dispose": "work.dispose", "stage_intent": "stage.resolve",
+               "work_gate_replace": "work.gate_replace"}
 
 
 class _Called(Exception):
@@ -450,7 +458,8 @@ def test_resolve_choice_primitive_pairs():
     mapping = contract.RESOLVE_CHOICE_PRIMITIVE
     assert resolve_pair_problems(mapping) == []
     assert {p: sorted({c for (c, _), q in mapping.items() if q == p}) for p in set(mapping.values())} == {
-        "stage.resolve": ["abandon", "continue"], "work.dispose": ["accept_risk", "follow_up", "not_applicable"]}
+        "stage.resolve": ["abandon", "continue"], "work.dispose": ["accept_risk", "follow_up", "not_applicable"],
+        "work.gate_replace": ["replace_gate"]}
     # Differential: a pair that disagrees with the runner, or a choice the mapping loses, is named.
     swapped = {**mapping, ("accept_risk", "finding"): "stage.resolve"}
     assert any("(accept_risk, finding) maps to 'stage.resolve', but the resolve runner runs 'work.dispose'" in p

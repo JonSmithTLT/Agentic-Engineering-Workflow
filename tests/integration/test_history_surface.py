@@ -236,8 +236,8 @@ def test_an_audit_continues_incrementally_when_the_root_moves_before_it_records(
     gate.write_text("", encoding="utf-8")
     kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {"start_new_session": True}
     proc = subprocess.Popen(
-        [sys.executable, "-m", "aew", "-C", str(p.root), "history", "audit", "--token", p.token, "--expect-rev",
-         str(p.rev())], env=clean_env({"AEW_PAUSE": f"history.audit_after_verify={gate}"}),
+        [sys.executable, "-m", "aew", "-C", str(p.root), "history", "audit", "--expect-rev", str(p.rev())],
+        env=clean_env({"AEW_LEAD_TOKEN": p.token, "AEW_PAUSE": f"history.audit_after_verify={gate}"}),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True, encoding="utf-8",
         **kwargs)
     try:

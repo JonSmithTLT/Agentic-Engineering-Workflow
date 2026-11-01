@@ -256,9 +256,10 @@ def test_the_cli_asks_the_operator_exactly_when_the_record_names_them(project, m
     monkeypatch.chdir(project.root)
     cand = next(c["id"] for c in project.ok("authority", "list")["candidates"] if c["status"] == "proposed")
     wid = project.lead("work", "create", "ticket", "--title", "t", "--class", "1")["id"]
-    assert main(["authority", "accept", cand, "--class", "decisions", "--decided-by", by, "--token", project.token,
+    monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
+    assert main(["authority", "accept", cand, "--class", "decisions", "--decided-by", by,
                  "--expect-rev", str(project.rev())]) == 0
-    assert main(["work", "staff", wid, "--review", "security_reviewer", "--by", by, "--token", project.token,
+    assert main(["work", "staff", wid, "--review", "security_reviewer", "--by", by,
                  "--expect-rev", str(project.rev())]) == 0
     decisions = "".join(f.read_text(encoding="utf-8") for f in (project.root / ".aew/decisions").glob("*.md"))
     if by == "operator":

@@ -12,8 +12,10 @@ FORGED = "aew1.tk_" + "0" * 16 + "." + "S" * 43
 
 
 def test_command_words_keep_no_option_or_value():
-    assert profile.command_words(["-C", "/some/dir", "work", "assign", "T-0001", "--token", FORGED]) == "work assign"
-    assert profile.command_words(["--token", FORGED, "status"]) == ""
+    # a value the CLI refuses is still never kept: the record is made for a refused command too
+    assigned = ["-C", "/some/dir", "work", "assign", "T-0001", "--token", FORGED]  # a --token value, refused
+    assert profile.command_words(assigned) == "work assign"
+    assert profile.command_words(["--token", FORGED, "status"]) == ""  # a --token value, refused
     assert profile.command_words(["resume", "--json"]) == "resume"
     assert profile.command_words(["harness", "wait", "R-INV-0001-1"]) == "harness wait"
 
@@ -40,8 +42,10 @@ def test_phases_are_exclusive(monkeypatch):
 def test_a_profiled_command_writes_one_record_without_its_arguments(tmp_path, monkeypatch):
     out = tmp_path / "profile.jsonl"
     monkeypatch.setenv(profile.ENV, str(out))
-    code = cli.main(["-C", str(tmp_path), "checkpoint", "--next", "x", "--token", FORGED, "--expect-rev", "0"])
-    assert code != 0  # not a project: the command fails, and is still recorded
+    argv = ["-C", str(tmp_path), "checkpoint", "--next", "x", "--expect-rev", "0",
+            "--token", FORGED]  # a --token value, refused
+    code = cli.main(argv)
+    assert code != 0  # the command is refused, and is still recorded
     [line] = out.read_text(encoding="utf-8").splitlines()
     record = json.loads(line)
     assert (record["schema"], record["command"], record["exit"]) == (profile.SCHEMA, "checkpoint", code)

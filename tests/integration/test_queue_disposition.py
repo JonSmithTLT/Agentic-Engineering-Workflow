@@ -31,8 +31,8 @@ def entry(p, wid):
     return next(((qid, e) for qid, e in q.get("entries", {}).items() if e["work"] == wid), (None, None))
 
 
-def run(p, *args, **kw):
-    return p.aew(*args, "--token", p.token, "--expect-rev", str(p.rev()), **kw)
+def run(p, *args, env=None, **kw):
+    return p.aew(*args, "--expect-rev", str(p.rev()), env={**(env or {}), "AEW_LEAD_TOKEN": p.token}, **kw)
 
 
 def refused(p, *args):

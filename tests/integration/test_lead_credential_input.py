@@ -40,6 +40,24 @@ def test_a_token_value_on_the_command_line_is_refused_before_anything_runs(proje
     assert project.rev() == rev
 
 
+def test_inside_a_lead_session_a_token_value_is_refused_before_the_broker_is_asked(project: Project, monkeypatch,
+                                                                                    capsys):
+    """In a Lead session the session holds the credential: the refusal says so, and nothing reaches the broker (its
+    coordinates here lead nowhere)."""
+    import json
+
+    from aew.cli.main import main
+
+    rev = project.rev()
+    argv = ["-C", str(project.root), *CHECKPOINT, "--token", "x", "--expect-rev", str(rev)]  # a --token value, refused
+    with monkeypatch.context() as m:
+        m.setenv("AEW_LEAD_BROKER", "unreachable")
+        assert main(argv) == 2
+    error = json.loads(capsys.readouterr().err)["error"]
+    assert error["details"]["reason"] == "token_on_command_line" and "Lead session holds" in error["message"]
+    assert project.rev() == rev
+
+
 def test_off_a_terminal_a_command_without_the_credential_refuses_with_the_per_session_forms(project: Project):
     """No terminal (as a harness tool call runs, and as every test's CLI runs): the refusal says how to give the
     credential safely, each form with the shell it is for, and why only for the session; nothing ran."""

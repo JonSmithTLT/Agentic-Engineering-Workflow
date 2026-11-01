@@ -139,12 +139,12 @@ def map_rev(p: Project) -> str:
 
 
 def generate(p: Project, *, commit: str | None = None, select: bool = False) -> str:
-    args = ["map", "generate", "--token", p.token, "--json"]
+    args = ["map", "generate", "--json"]
     if commit:
         args += ["--commit", commit]
     if select:
         args += ["--select", "--expect-map-rev", map_rev(p)]
-    return p.ok(*args)["root"]
+    return p.ok(*args, env={"AEW_LEAD_TOKEN": p.token})["root"]
 
 
 def commit_file(p: Project, rel: str, text: str, message: str) -> str:

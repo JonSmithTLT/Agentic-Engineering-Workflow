@@ -199,13 +199,17 @@ class HarnessLab:
         return res.json
 
     def lead_args(self, *args: str) -> list[str]:
-        return [*args, "--token", self.project.token, "--expect-rev", str(self.project.rev())]
+        return [*args, "--expect-rev", str(self.project.rev())]
+
+    def lead_env(self, env: dict[str, str] | None) -> dict[str, str]:
+        """The Lead credential the way the operator gives it, in the environment."""
+        return {"AEW_LEAD_TOKEN": self.project.token, **(env or {})}
 
     def lead(self, *args: str, env: dict[str, str] | None = None) -> Any:
-        return self.ok(*self.lead_args(*args), env=env)
+        return self.ok(*self.lead_args(*args), env=self.lead_env(env))
 
     def lead_res(self, *args: str, env: dict[str, str] | None = None):
-        return self.aew(*self.lead_args(*args), env=env)
+        return self.aew(*self.lead_args(*args), env=self.lead_env(env))
 
     def wait(self, run: str, timeout: float = 120) -> dict[str, Any]:
         from conftest import (

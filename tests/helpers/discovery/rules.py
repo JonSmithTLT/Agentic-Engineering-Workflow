@@ -517,11 +517,39 @@ def _secret_ask() -> re.Pattern[str]:
     return re.compile(SECRET_ASK.pattern.replace("{names}", names), re.IGNORECASE)
 
 
+# The per-session hidden-input form (the designer's decision of 2026-11-01, CS-4 addendum 12): a snippet that reads a
+# credential's value where nothing echoes it and sets it for the session only is the safe path, not an ask to copy one.
+HIDDEN_READ = re.compile(r"\bread\s+-[A-Za-z]*s[A-Za-z]*\b|\bRead-Host\b[^;|\n]*-(?:AsSecureString|MaskInput)\b",
+                         re.IGNORECASE)
+PERSISTENT_SET = re.compile(r"\bsetx\b|SetEnvironmentVariable|\[Environment\]", re.IGNORECASE)
+FILE_WRITE = re.compile(r">|\b(?:Out-File|Add-Content|Set-Content|tee)\b|\.bashrc|\.profile|\.zshrc|\$PROFILE",
+                        re.IGNORECASE)
+
+
+def per_session_hidden(snippet: str, name: str) -> bool:
+    """Whether ``snippet`` (one line: a command, or a guide's line of code) is the per-session hidden-input form for
+    the credential ``name``, on all five of the decision's conditions: (1) the value is read by a hidden-input form
+    (bash `read -s`, PowerShell `Read-Host -AsSecureString` or `-MaskInput`, which the SecureString conversion
+    follows); (2) it is exported or set for the session only; (3) no literal value appears; (4) nothing is written to a
+    startup or profile file, or to any other file; (5) the value is never echoed."""
+    n = re.escape(name)
+    literal = re.compile(rf"\b{n}=(?!\$)\S|\$env:{n}\s*=\s*['\"]|--token(?![-\w])[ \t]*(?:=|[ \t])[ \t]*(?!-)\S",
+                         re.IGNORECASE)
+    echoed = re.compile(rf"\b(?:echo|printf|print|Write-Host|Write-Output|cat)\b[^;|\n]*{n}", re.IGNORECASE)
+    return (bool(HIDDEN_READ.search(snippet)) and name.lower() in snippet.lower()
+            and not PERSISTENT_SET.search(snippet) and not literal.search(snippet)
+            and not FILE_WRITE.search(snippet) and not echoed.search(snippet))
+
+
 def o_secret(text: str, plane: str) -> list[str]:
     """§2.2, m4: a PIN asked for anywhere but the operator console; a code asked for anywhere but the requesting
-    terminal (so never of a model); a credential the reader is asked to set, copy or pass."""
+    terminal (so never of a model); a credential the reader is asked to set, copy or pass, unless the line asking is
+    the per-session hidden-input form (:func:`per_session_hidden`)."""
     problems = []
     for m in _secret_ask().finditer(text):
+        start, end = text.rfind("\n", 0, m.start()) + 1, text.find("\n", m.end())
+        if per_session_hidden(text[start:] if end < 0 else text[start:end], m.group("what")):
+            continue
         if not NEGATION.search(m.group("between")) and not NEGATION.search(text[max(0, m.start() - 12):m.start()]):
             problems.append(f"asks to {m.group(1).lower()} {m.group('what')}")
     if plane != CONSOLE and PIN_ASK.search(text):

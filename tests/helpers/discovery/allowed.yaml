@@ -62,7 +62,7 @@ allowed:
   - static:docs/guides/opencode.md|aew harness status [INV]
   - static:docs/guides/opencode.md|aew harness stop R-INV-0001-1 --reason "..."
   - static:docs/guides/opencode.md|aew harness wait R-INV-0001-1 --timeout 110
-  - static:docs/guides/opencode.md|aew manifest adopt --reason ... --token <credential> --expect-rev N
+  - static:docs/guides/opencode.md|aew manifest adopt --reason ... --expect-rev <revision from aew status>
   - static:docs/guides/quickstart.md|aew authority accept C-001 --class decisions --expect-rev N
   - static:docs/guides/quickstart.md|aew context show INV-0001
   - static:docs/guides/quickstart.md|aew evidence ingest T-0001 --evidence <id> --expect-rev N
@@ -81,7 +81,7 @@ allowed:
   - static:docs/guides/quickstart.md|aew invoke create T-0001 --scope integration --expect-rev N
   - static:docs/guides/quickstart.md|aew lead acquire --expect-rev 0 --session-label lead-1
   - static:docs/guides/quickstart.md|aew lead takeover --reason "..." --expect-rev N
-  - static:docs/guides/quickstart.md|aew manifest adopt --reason "configured the test command" --token <credential> --expect-rev 1
+  - static:docs/guides/quickstart.md|aew manifest adopt --reason "configured the test command" --expect-rev <revision from aew status>
   - static:docs/guides/quickstart.md|aew migrate --expect-rev N
   - static:docs/guides/quickstart.md|aew plan accept S-0001 --revision 1 --expect-rev N
   - static:docs/guides/quickstart.md|aew plan accept T-0001 --revision 1 --expect-rev N
@@ -480,8 +480,6 @@ allowed:
   - cli:aew map generate|USAGE
   - cli:aew opencode|USAGE
   - cli:aew whoami|USAGE
-  - static:docs/guides/opencode.md|aew manifest adopt --reason ... --token <credential> --expect-rev N
-  - static:docs/guides/quickstart.md|aew manifest adopt --reason "configured the test command" --token <credential> --expect-rev 1
   - static:pack:implementer|asks to set AEW_INVOCATION_TOKEN
   - static:pack:investigator|asks to set AEW_INVOCATION_TOKEN
   - static:pack:planner|asks to set AEW_INVOCATION_TOKEN
@@ -490,4 +488,12 @@ allowed:
   - static:pack:verifier|asks to set AEW_INVOCATION_TOKEN
   O-ENV:
   - static:lead-system+guide
-residuals: []
+residuals:
+- rule: O-IDS
+  site: static:docs/guides/opencode.md|aew manifest adopt --reason ... --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "yes accept the two O-IDS entries"'
+  reason: re-key of the pre-existing allowed entry; the line changed only because CS-4 addendum 12 removed --token
+- rule: O-IDS
+  site: static:docs/guides/quickstart.md|aew manifest adopt --reason "configured the test command" --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "yes accept the two O-IDS entries"'
+  reason: re-key of the pre-existing allowed entry; the line changed only because CS-4 addendum 12 removed --token

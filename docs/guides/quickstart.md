@@ -21,7 +21,7 @@ cd <repo>                       # the main worktree, on the authoritative branch
 aew init                        # discovers authority *candidates*; confers no authority
 $EDITOR .aew/policy/checks.yaml # configure the real test command; gates stay blocked until you do
 aew lead acquire --expect-rev 0 --session-label lead-1   # shows the Lead credential ONCE, on your terminal
-aew manifest adopt --reason "configured the test command" --expect-rev <revision from aew status>   # asks for the Lead credential, hidden
+aew manifest adopt --reason "configured the test command" --expect-rev 1   # asks for the Lead credential, hidden
 ```
 
 The policy files under `.aew/policy/` are pinned like `project.yaml`: after any edit, every Lead change is refused until
@@ -49,6 +49,8 @@ $s = Read-Host "Lead token" -AsSecureString; $env:AEW_LEAD_TOKEN = [Runtime.Inte
 Set it for this shell session only: a persistent variable reaches every process you start, and a startup file is a
 plain file in your home directory, like history. A Lead session removes it from its harness's environment and holds
 the credential in its broker's memory; `--acquire` takes a vacant seat instead. The credential is never written to disk.
+Once a Lead session (`aew opencode`, `aew lead session`) is running, AEW never asks for the Lead credential inside the
+Lead's own window: a prompt there is not AEW's.
 
 A command that issues a credential writes it only to your terminal, never to standard output, and the JSON result says
 `"(written to your terminal)"` instead. With no terminal (a pipe, a harness tool call) it is refused before anything is

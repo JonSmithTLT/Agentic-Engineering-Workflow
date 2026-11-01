@@ -1,11 +1,14 @@
-"""No text AEW shows suggests a credential as a command-line value (STG-05 CS-4 addendum 12, ruling 3's static test),
-and none offers a persistent one (the designer's ruling of 2026-10-30): every parser's help, and the operator guides.
-No test passes `--token` with a value either, except the refusal's own tests (the Lead's condition for the migration).
+"""No text AEW shows suggests the Lead credential, or a provider key, as a command-line value (STG-05 CS-4 addendum
+12, ruling 3's static test), and none offers a persistent one (the designer's ruling of 2026-10-30): every parser's
+help, the operator guides, and the refusals for a missing credential or provider key. No test passes `--token` with a
+value either, except the refusal's own tests (the Lead's condition for the migration).
 
 What counts, each with a planted control (a right case, a wrong case and a missing case):
 - `--token` followed by a value, in help text or in a guide's code (a code span or a fenced block);
-- an `export AEW_LEAD_TOKEN=` line, anywhere;
-- `SetEnvironmentVariable` or `setx` with a credential's name, anywhere: a persistent variable reaches every process.
+- an `export NAME=` line or a `$env:NAME = '...'` assignment, anywhere, for a credential's or a secret's name;
+- `SetEnvironmentVariable` or `setx` with such a name, anywhere: a persistent variable reaches every process.
+
+A known limit: `--invocation-token` (a scripted role's credential) still takes a value; the register tracks it.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ FORM_GUIDES = ("docs/guides/quickstart.md", "docs/guides/opencode.md")
 MARKER = "# a --token value, refused"
 
 TOKEN_VALUE = re.compile(r"--token(?![-\w])[ \t]*(?:=|[ \t])[ \t]*(?!-)\S")
-EXPORT = re.compile(r"\bexport\s+AEW_LEAD_TOKEN\s*=")
+EXPORT = re.compile(r"\bexport\s+(?P<a>\w+)\s*=|\$env:(?P<b>\w+)\s*=\s*['\"]", re.IGNORECASE)
 PERSISTENT = re.compile(r"SetEnvironmentVariable\s*\(\s*['\"]?(?P<a>\w+)|\bsetx(?:\.exe)?\s+(?P<b>\w+)", re.IGNORECASE)
 SECRET_NAME = re.compile(r"TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL", re.IGNORECASE)
 SPAN = re.compile(r"`([^`\n]+)`")
@@ -48,12 +51,16 @@ def problems(text: str, *, markdown: bool) -> list[str]:
     """What ``text`` suggests: a credential's value on a command line, or a persistent credential."""
     code = code_of(text) if markdown else [text]
     found = [f"--token with a value: {m.group(0)!r}" for c in code for m in TOKEN_VALUE.finditer(c)]
-    found += [f"an export line: {m.group(0)!r}" for m in EXPORT.finditer(text)]
-    for m in PERSISTENT.finditer(text):
-        name = m.group("a") or m.group("b")
-        if name in CREDENTIAL_ENV or SECRET_NAME.search(name):
-            found.append(f"a persistent credential: {m.group(0)!r}")
+    found += [f"a value assigned: {m.group(0)!r}" for m in EXPORT.finditer(text)
+              if secret(m.group("a") or m.group("b"))]
+    found += [f"a persistent credential: {m.group(0)!r}" for m in PERSISTENT.finditer(text)
+              if secret(m.group("a") or m.group("b"))]
     return found
+
+
+def secret(name: str) -> bool:
+    """Whether a variable's name is a credential's (an AEW one) or reads as a secret's (a provider key)."""
+    return name.upper() in CREDENTIAL_ENV or bool(SECRET_NAME.search(name))
 
 
 def missing_forms(text: str) -> list[str]:
@@ -127,6 +134,25 @@ def test_the_refusals_give_each_form_and_suggest_no_value_on_a_command_line():
         assert problems(refusal.replace("--token takes no value", ""), markdown=False) == []
 
 
+def test_a_refusal_for_a_missing_provider_key_gives_the_per_session_forms_for_its_name_and_no_value():
+    """Review of #316, M2: a provider key is a secret, and its refusal (`aew doctor`, a refused launch) gives the
+    per-session forms with the key's own name, outside a Lead session and inside one; only a variable that holds no
+    secret (`BIN_ENV`, a path) keeps the plain form."""
+    from aew.harness import agentenv
+    from aew.harness.opencode.adapter import BIN_ENV
+
+    name = "SYNTHETIC_PROVIDER_API_KEY"
+    texts = [agentenv.provider_env_problems([name], {})[0][1], agentenv.env_fix(name)]
+    with agentenv.session_host("this Lead session (`aew opencode` or `aew lead session`)"):
+        texts += [agentenv.provider_env_problems([name], {})[0][1], agentenv.env_fix(name)]
+    for text in texts:
+        assert problems(text, markdown=False) == [], text
+        assert all(form in text for form in lead_credential.forms(name, name).values()), text
+    plain = agentenv.env_fix(BIN_ENV, secret=False)
+    assert not secret(BIN_ENV) and problems(plain, markdown=False) == []
+    assert problems(plain.replace(BIN_ENV, name), markdown=False)  # the control: the plain form, for a secret, trips
+
+
 def test_no_test_passes_a_token_value_except_the_refusals_own_tests():
     """The migration's guard: the credential reaches a test's CLI the way it reaches the operator's, by the
     variable; a `--token` value appears only where a test checks that it is refused, marked so."""
@@ -149,7 +175,9 @@ def test_the_static_check_finds_each_wrong_case_and_passes_the_right_one():
     wrong = {
         "```bash\naew manifest adopt --token <credential> --expect-rev 1\n```": "--token with a value",
         "Run `aew checkpoint --token=$T`.": "--token with a value",
-        "export AEW_LEAD_TOKEN=$T": "an export line",
+        "export AEW_LEAD_TOKEN=$T": "a value assigned",
+        "export OPENAI_API_KEY=$K": "a value assigned",
+        "In PowerShell, $env:VENDOR_KEY = '...'": "a value assigned",
         "[Environment]::SetEnvironmentVariable('AEW_LEAD_TOKEN', $t, 'User')": "a persistent credential",
         "setx OPENAI_API_KEY synthetic": "a persistent credential",
     }
@@ -157,6 +185,7 @@ def test_the_static_check_finds_each_wrong_case_and_passes_the_right_one():
         assert [p.split(":")[0] for p in problems(text, markdown=True)] == [kind], text
     assert problems("aew checkpoint --token SYNTHETIC", markdown=False)  # help text: all of it is code
     assert not problems("[Environment]::SetEnvironmentVariable('PATH', $p, 'User')", markdown=True)
+    assert not problems("export PATH=$HOME/bin:$PATH; $env:AEW_OPENCODE_BIN = 'C:/opencode.exe'", markdown=True)
 
 
 def test_the_forms_check_finds_a_missing_form_and_a_prompt_shown_second():

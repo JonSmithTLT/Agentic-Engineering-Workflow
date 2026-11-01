@@ -92,7 +92,7 @@
         "lower-bound": 253
       }
     },
-    "digest": "sha256:79494cc3d18482b83e23a2fd496e0d4bce271bb485b0f3a101547c7cc74b8a06",
+    "digest": "sha256:9477d73eb753b7469830c761c2b5aa086838ce97c3a55fc9af33a6be880b80cb",
     "records": 1117,
     "unresolved": 103
   },
@@ -20153,7 +20153,8 @@
       "family": "modules",
       "imports": [
         "aew.harness.bridge",
-        "aew.harness.contract"
+        "aew.harness.contract",
+        "aew.lead_credential"
       ]
     },
     "modules:aew.harness.base": {
@@ -21184,6 +21185,7 @@
       "imports": [
         "aew.errors",
         "aew.harness.contract",
+        "aew.harness.lead_broker",
         "aew.harness.procs",
         "aew.operator",
         "aew.process_kind"

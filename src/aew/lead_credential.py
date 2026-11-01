@@ -10,10 +10,15 @@ A value on a command line lands in the shell's history file, and so does an ``ex
   (the designer, 2026-10-30): :data:`PER_SESSION_WHY` says why;
 * ``--token`` with a value is refused (:func:`token_value_refusal`), naming the prompt and the variable.
 
+This covers the Lead credential. A provider key's refusal gives the same per-session forms for its own name
+(:func:`forms`, ``agentenv.env_fix``). ``--invocation-token`` (a scripted role's credential) still takes a value: a
+known limit, tracked in the register.
+
 Inside an AEW session (a Lead session, the contained Lead, a worker's run: :func:`in_session`) nothing asks: the
 contained Lead's harness has a terminal of its own, the relay's, and a prompt there would ask the operator to type the
-credential into a process the agent started. Its Lead-authenticated commands go through the session's broker instead.
-The variables :func:`in_session` reads are how AEW's own processes behave, never a boundary (``aew.process_kind``); so
+credential into a process the agent started. A Lead session's Lead-authenticated commands go through its broker
+instead; a worker's run has none, since a Lead command is the Lead's (:func:`session_kind` words the refusal for each).
+The variables :func:`session_kind` reads are how AEW's own processes behave, never a boundary (``aew.process_kind``); so
 the prompt also needs standard input to be the terminal, and it names who asked, as the operator's authorization
 prompt does (:func:`operator.challenge`).
 
@@ -28,24 +33,33 @@ import sys
 from aew.errors import UsageError
 
 ENV = "AEW_LEAD_TOKEN"
-# The per-session forms, one per shell, each run once as written with a synthetic value before it went into this text
-# where the shell was at hand (Lead log #94).
-SECURE_FORMS = {
-    "bash": "read -rsp 'Lead token: ' AEW_LEAD_TOKEN; echo; export AEW_LEAD_TOKEN",
-    "PowerShell 7": '$env:AEW_LEAD_TOKEN = Read-Host "Lead token" -MaskInput',
-    "Windows PowerShell 5.1": '$s = Read-Host "Lead token" -AsSecureString; $env:AEW_LEAD_TOKEN = '
-                              "[Runtime.InteropServices.Marshal]::PtrToStringBSTR("
-                              "[Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)); Remove-Variable s",
-}
+
+
+def forms(name: str = ENV, label: str = "Lead token") -> dict[str, str]:
+    """The per-session forms that set the secret variable ``name``, one per shell, asking with ``label``. The one
+    owner of these forms: the Lead credential's (:data:`SECURE_FORMS`) and a provider key's (``agentenv.env_fix``).
+    Each was run once as written, with a synthetic value, before it went into this text where the shell was at hand
+    (Lead log #94)."""
+    return {
+        "bash": f"read -rsp '{label}: ' {name}; echo; export {name}",
+        "PowerShell 7": f'$env:{name} = Read-Host "{label}" -MaskInput',
+        "Windows PowerShell 5.1": f'$s = Read-Host "{label}" -AsSecureString; $env:{name} = '
+                                  "[Runtime.InteropServices.Marshal]::PtrToStringBSTR("
+                                  "[Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)); Remove-Variable s",
+    }
+
+
+SECURE_FORMS = forms()
 PER_SESSION_WHY = ("for this shell session only: a persistent variable reaches every process you start, and a "
                    "startup file is a plain file in your home directory, like history")
 
 _prompted: str | None = None  # what the operator typed at this process's prompt: one command's, in memory only
 
 
-def secure_forms() -> str:
-    """The per-session forms, one line each, as a refusal or a guide shows them."""
-    return "\n".join(f"  {shell}: {form}" for shell, form in SECURE_FORMS.items())
+def secure_forms(name: str = ENV) -> str:
+    """The per-session forms for ``name``, one line each, as a refusal or a guide shows them."""
+    shown = SECURE_FORMS if name == ENV else forms(name, name)
+    return "\n".join(f"  {shell}: {form}" for shell, form in shown.items())
 
 
 def how_to_set() -> str:
@@ -54,14 +68,26 @@ def how_to_set() -> str:
             f"{PER_SESSION_WHY}. These forms echo nothing and leave nothing in history:\n{secure_forms()}")
 
 
-def in_session(env: os._Environ[str] | dict[str, str] | None = None) -> bool:
-    """Whether this process runs inside an AEW session: a Lead session's broker coordinates, the contained Lead's
-    marker, or a worker run's credential or bridge (``contract.CREDENTIAL_ENV``, the Lead credential itself apart)."""
+def session_kind(env: os._Environ[str] | dict[str, str] | None = None) -> str | None:
+    """``"lead"`` inside a Lead session (its broker's coordinates, or the contained Lead's marker), ``"worker"`` inside
+    a worker's run (its credential or bridge: the rest of ``contract.CREDENTIAL_ENV``, the Lead credential itself
+    apart), None outside any AEW session."""
     from aew import process_kind
     from aew.harness.contract import CREDENTIAL_ENV
+    from aew.harness.lead_broker import ENV_NAMES
 
     env = os.environ if env is None else env
-    return any(env.get(name) for name in (*CREDENTIAL_ENV, process_kind.LEAD_CONTAINED_ENV) if name != ENV)
+    lead = (*ENV_NAMES, process_kind.LEAD_CONTAINED_ENV)
+    if any(env.get(name) for name in lead):
+        return "lead"
+    if any(env.get(name) for name in CREDENTIAL_ENV if name not in lead and name != ENV):
+        return "worker"
+    return None
+
+
+def in_session(env: os._Environ[str] | dict[str, str] | None = None) -> bool:
+    """Whether this process runs inside an AEW session of either kind (:func:`session_kind`)."""
+    return session_kind(env) is not None
 
 
 def can_prompt() -> bool:
@@ -84,10 +110,16 @@ def required(*, instead: str = "") -> str:
     if token:
         return token
     alternative = f" Or {instead}." if instead else ""
-    if in_session():
+    kind = session_kind()
+    if kind == "worker":  # a worker's run has no broker and no terminal of its own (review of #316, m6)
+        raise UsageError("Lead credential required, and nothing asks for it inside an AEW session: this is a worker's "
+                         "run, and a Lead-authenticated command is the Lead's, not this run's. Say what it is needed "
+                         "for in the evidence this run submits, and the Lead decides.",
+                         reason="lead_credential_required", session="worker")
+    if kind == "lead":
         raise UsageError("Lead credential required, and nothing asks for it inside an AEW session: its "
                          "Lead-authenticated commands go through the session's broker. Run this command at your own "
-                         f"terminal instead.{alternative}", reason="lead_credential_required")
+                         f"terminal instead.{alternative}", reason="lead_credential_required", session="lead")
     if not can_prompt():
         raise UsageError(f"Lead credential required: {how_to_set()}{alternative}",
                          reason="lead_credential_required", forms=dict(SECURE_FORMS))
@@ -101,7 +133,7 @@ def required(*, instead: str = "") -> str:
         f"  requested by : {who}\n"
         "If you did not start this command yourself, press Enter to refuse.\n"
         f"{operator.RELAY_WARNING}\n"
-        "Lead token: ").strip()
+        "Lead token: ", what="the Lead credential").strip()
     if not typed:
         raise UsageError("no Lead credential was entered", reason="lead_credential_required")
     _prompted = typed

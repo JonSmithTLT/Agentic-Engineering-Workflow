@@ -46,9 +46,15 @@ def test_a_provider_variable_a_harness_cannot_get_is_named_with_its_fix_and_neve
     assert CREDENTIAL not in text
 
 
-def test_the_fix_for_an_unset_provider_variable_names_both_shells():
+def test_the_fix_for_an_unset_provider_variable_gives_each_shells_per_session_form_and_never_a_value():
+    """A provider key is a secret: the fix sets it for the shell session with a form that echoes nothing and leaves
+    nothing in history, never as a value on a command line (CS-4 addendum 12; review of #316, M2)."""
+    from aew import lead_credential
+
     [(_, text)] = agentenv.provider_env_problems(["VENDOR_KEY"], {})
-    assert "export VENDOR_KEY=" in text and "$env:VENDOR_KEY = " in text
+    forms = lead_credential.forms("VENDOR_KEY", "VENDOR_KEY")
+    assert all(f"  {shell}: {form}" in text for shell, form in forms.items())
+    assert "export VENDOR_KEY=" not in text and "$env:VENDOR_KEY = '" not in text
 
 
 def test_a_set_provider_variable_is_no_problem():

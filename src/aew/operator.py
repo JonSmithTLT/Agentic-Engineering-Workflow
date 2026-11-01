@@ -82,16 +82,23 @@ def has_terminal() -> bool:
     return True
 
 
+# What a prompt that ends unanswered says: (timed out, terminal closed). The authorization prompt's own words.
+AUTHORIZATION_ENDS = ("operator authorization timed out", "terminal closed before authorization")
+
+
 def ask(prompt: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> str:
     """Write ``prompt`` to the controlling terminal and return the line the operator types, or raise
     ``OperatorAuthorizationRequired`` when this process has no terminal. Never reads argv, environment or stdin."""
     return _ask_windows(prompt, timeout) if IS_WINDOWS else _ask_posix(prompt, timeout)
 
 
-def ask_hidden(prompt: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> str:
+def ask_hidden(prompt: str, *, what: str, timeout: float = DEFAULT_TIMEOUT_S) -> str:
     """:func:`ask` for a secret: what the operator types is never echoed (CS-4 addendum 12, the Lead credential's
-    prompt). The Windows console read never echoes; on POSIX the terminal's echo is off while it reads."""
-    return _ask_windows(prompt, timeout) if IS_WINDOWS else _ask_posix(prompt, timeout, hidden=True)
+    prompt). The Windows console read never echoes; on POSIX the terminal's echo is off while it reads. ``what`` names
+    the secret in the refusal when the prompt times out or the terminal closes (review of #316, m6)."""
+    ends = (f"the prompt for {what} timed out", f"terminal closed before {what} was entered")
+    return _ask_windows(prompt, timeout, ends=ends) if IS_WINDOWS else _ask_posix(prompt, timeout, hidden=True,
+                                                                                  ends=ends)
 
 
 def authorize(text: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, str]:
@@ -111,7 +118,8 @@ def _no_terminal(detail: str) -> OperatorAuthorizationRequired:
     )
 
 
-def _ask_posix(prompt: str, timeout: float, *, hidden: bool = False) -> str:  # pragma: posix-only
+def _ask_posix(prompt: str, timeout: float, *, hidden: bool = False,
+               ends: tuple[str, str] = AUTHORIZATION_ENDS) -> str:  # pragma: posix-only
     import select
     import termios
 
@@ -134,13 +142,13 @@ def _ask_posix(prompt: str, timeout: float, *, hidden: bool = False) -> str:  # 
         while b"\n" not in buf and b"\r" not in buf:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise PermissionDenied("operator authorization timed out")
+                raise PermissionDenied(ends[0])
             ready, _, _ = select.select([fd], [], [], remaining)
             if not ready:
                 continue
             chunk = os.read(fd, 256)
             if not chunk:
-                raise PermissionDenied("terminal closed before authorization")
+                raise PermissionDenied(ends[1])
             buf += chunk
         os.write(fd, b"\n")
         return buf.decode("utf-8", "replace").splitlines()[0] if buf.strip() else ""
@@ -150,7 +158,8 @@ def _ask_posix(prompt: str, timeout: float, *, hidden: bool = False) -> str:  # 
         os.close(fd)
 
 
-def _ask_windows(prompt: str, timeout: float) -> str:  # pragma: windows-only
+def _ask_windows(prompt: str, timeout: float, *,
+                 ends: tuple[str, str] = AUTHORIZATION_ENDS) -> str:  # pragma: windows-only
     import ctypes
     import msvcrt
 
@@ -169,7 +178,7 @@ def _ask_windows(prompt: str, timeout: float) -> str:  # pragma: windows-only
         deadline = time.monotonic() + timeout
         while True:
             if time.monotonic() > deadline:
-                raise PermissionDenied("operator authorization timed out")
+                raise PermissionDenied(ends[0])
             if not msvcrt.kbhit():
                 time.sleep(0.02)
                 continue

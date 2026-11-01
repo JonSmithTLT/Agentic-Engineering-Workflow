@@ -60,19 +60,29 @@ def lookup(env: Mapping[str, str], name: str) -> str | None:
     return next((v for k, v in env.items() if k.upper() == folded), None)
 
 
-def env_fix(name: str) -> str:
+def env_fix(name: str, *, secret: bool = True) -> str:
     """How to give a launch the variable ``name``, naming whose environment matters. A launch reads the environment of
     the process that makes it: the terminal's `aew` command, or a running Lead session (with its steering loop), which
-    keeps the environment it was started with."""
-    shells = f"export {name}=...; in PowerShell, $env:{name} = '...'"
+    keeps the environment it was started with.
+
+    A secret (a provider key) is set for the shell session only, with the per-session forms that echo nothing and
+    leave nothing in history (``lead_credential.forms``, their one owner; CS-4 addendum 12, review of #316, M2): never
+    a value on a command line. ``secret=False`` is for a variable that holds no secret (``BIN_ENV``, a path)."""
+    from aew import lead_credential
+
+    if secret:
+        where, how = (", for that shell session only, with a form that echoes nothing and leaves nothing in history "
+                      "(below)", f"\n{lead_credential.secure_forms(name)}")
+    else:
+        where, how = f" (export {name}=...; in PowerShell, $env:{name} = '...')", ""
     if _SESSION_HOST:
         return (f"{_SESSION_HOST[-1]} started without {name}, and a running session keeps the environment it started "
-                f"with, so setting {name} elsewhere does not reach it: set {name} in a terminal ({shells}), then "
-                "restart `aew opencode` (or `aew lead session`) from that terminal")
-    return (f"set {name} in the terminal you start AEW from ({shells}), then run the command again there. A Lead "
+                f"with, so setting {name} elsewhere does not reach it: set {name} in a terminal{where}, then "
+                f"restart `aew opencode` (or `aew lead session`) from that terminal{how}")
+    return (f"set {name} in the terminal you start AEW from{where}, then run the command again there. A Lead "
             f"session (`aew opencode`, `aew lead session`) that is already running keeps the environment it started "
             f"with, and launches made by the Lead or its steering loop read that one: restart it from the terminal "
-            f"where {name} is set")
+            f"where {name} is set{how}")
 
 
 def provider_env_problems(names: list[str], env: Mapping[str, str]) -> list[tuple[str, str]]:

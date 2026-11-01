@@ -142,13 +142,102 @@ def test_inside_an_aew_session_nothing_asks_for_the_credential(monkeypatch):
         raise AssertionError("the prompt was shown")
 
     monkeypatch.setattr(operator, "ask_hidden", asked)
-    for name in ("AEW_LEAD_CONTAINED", "AEW_LEAD_BROKER", "AEW_AGENT_ENDPOINT", "AEW_INVOCATION_TOKEN"):
+    kinds = {"AEW_LEAD_CONTAINED": "lead", "AEW_LEAD_BROKER": "lead", "AEW_AGENT_ENDPOINT": "worker",
+             "AEW_INVOCATION_TOKEN": "worker"}
+    for name, kind in kinds.items():
         monkeypatch.setenv(name, "1")
         assert lead_credential.in_session() and not lead_credential.can_prompt()
-        with pytest.raises(UsageError, match="nothing asks for it inside an AEW session"):
+        with pytest.raises(UsageError, match="nothing asks for it inside an AEW session") as refused:
             lead_credential.required()
+        # Each kind is told what to do instead (review of #316, m6): a Lead session has its broker and the operator a
+        # terminal; a worker's run has neither, and a Lead command is not the run's to make.
+        assert refused.value.details["session"] == kind
+        assert ("go through the session's broker" in refused.value.message) == (kind == "lead"), name
+        assert ("evidence this run submits" in refused.value.message) == (kind == "worker"), name
         monkeypatch.delenv(name)
     assert lead_credential.can_prompt()  # the control: the same process outside a session would ask
+    assert lead_credential.session_kind({lead_credential.ENV: "synthetic"}) is None  # the credential is no session
+
+
+def test_a_credential_prompt_that_ends_unanswered_says_so_and_the_authorization_prompt_keeps_its_words(monkeypatch):
+    """The hidden prompt's timeout (or a closed terminal) names the Lead credential, not an operator authorization
+    (review of #316, m6); the authorization prompt's own refusal is unchanged."""
+    from aew import operator
+    from aew.errors import PermissionDenied
+
+    def ends_unanswered(prompt, timeout, **kw):
+        raise PermissionDenied(kw.get("ends", operator.AUTHORIZATION_ENDS)[0])
+
+    monkeypatch.delenv(lead_credential.ENV, raising=False)
+    monkeypatch.setattr(lead_credential, "can_prompt", lambda: True)
+    monkeypatch.setattr(operator, "_ask_windows", ends_unanswered)
+    monkeypatch.setattr(operator, "_ask_posix", ends_unanswered)
+    with pytest.raises(PermissionDenied, match="^the prompt for the Lead credential timed out$"):
+        lead_credential.required()
+    with pytest.raises(PermissionDenied, match="^operator authorization timed out$"):
+        operator.authorize("TAKE OVER")
+
+
+def test_a_lead_session_started_at_the_prompt_holds_what_was_typed(monkeypatch):
+    """`aew lead session` and `aew opencode` ask the same way, and the broker holds what is typed (review of #316,
+    m3): it takes the answer from the prompt once, and nothing of it is left behind for another command."""
+    from aew import operator
+    from aew.harness import lead_broker, procs
+    from aew.harness.contract import CREDENTIAL_ENV
+
+    held: list[str] = []
+
+    class Broker:
+        env: dict = {}
+        superseded = None
+        server = None
+
+        def __init__(self, engine, token):
+            held.append(token)
+
+        def start(self):
+            pass
+
+        def close(self):
+            pass
+
+    class Store:
+        def current(self):
+            return {"revision": 0, "invocations": {}}
+
+    class Engine:
+        repo_root = "."
+        store = Store()
+
+    for name in (*CREDENTIAL_ENV, "AEW_LEAD_CONTAINED"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(lead_credential, "can_prompt", lambda: True)
+    monkeypatch.setattr(operator, "ask_hidden", lambda prompt, **k: "synthetic-typed\n")
+    monkeypatch.setattr(lead_broker, "LeadBroker", Broker)
+    monkeypatch.setattr(procs, "harden_current_process", lambda: None)
+    monkeypatch.setattr(procs, "run_session_tree", lambda command, **k: (0, "clean"))
+    lead_broker.run_session(Engine(), ["harness"], acquire=False, session_label=None, keep_seat=False, env={})
+    assert held == ["synthetic-typed"]
+    assert lead_credential.take_prompted() == ""  # the broker took it; nothing is left for another command
+
+
+def test_two_commands_in_one_process_each_ask(project: Project, monkeypatch, capsys):
+    """What the prompt took is for that command only (review of #316, m3): a second command in the same process (an
+    in-process caller of `main`) asks again rather than reusing the first one's answer."""
+    from aew import operator
+    from aew.cli.main import main
+    from aew.harness.contract import CREDENTIAL_ENV
+
+    asked: list[str] = []
+    for name in (*CREDENTIAL_ENV, "AEW_LEAD_CONTAINED"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(lead_credential, "can_prompt", lambda: True)
+    monkeypatch.setattr(operator, "ask_hidden", lambda prompt, **k: asked.append(prompt) or project.token)
+    for _ in range(2):
+        assert main(["-C", str(project.root), *CHECKPOINT, "--expect-rev", str(project.rev())]) == 0, \
+            capsys.readouterr().err
+    assert len(asked) == 2
+    assert lead_credential.take_prompted() == ""
 
 
 def test_what_the_prompt_took_is_for_one_command_only(monkeypatch):

@@ -88,6 +88,13 @@ SECRET_FILES = (".netrc", ".git-credentials", ".pgpass", ".pypirc", ".npmrc",
 # The display's credential files (STG-05 CB-04): masked like the secret files, plus the file the launching XAUTHORITY
 # names (:func:`_env_masks`). The launch self-test's row 3 finds each unreadable from inside.
 DISPLAY_FILES = (".Xauthority", ".ICEauthority")
+# Shell and REPL history files (CS-4 addendum 12, ruling 1): a credential once typed on a command line stays there, so
+# each is masked like the secret files, plus the file the launching HISTFILE names (:func:`_env_masks`). The host's own
+# shell writes its history outside the sandbox. Windows masks nothing yet: PSReadLine's history under %APPDATA% is a
+# known gap there, under the workdir_separation_only label, until a Windows backend masks home secrets.
+HISTORY_FILES = (".bash_history", ".zsh_history", ".zhistory", ".sh_history", ".local/share/fish/fish_history",
+                 ".python_history", ".node_repl_history", ".psql_history", ".mysql_history", ".sqlite_history",
+                 ".rediscli_history", ".lesshst", ".local/share/powershell/PSReadLine/ConsoleHost_history.txt")
 # What each of them is, for a refusal that names one (CS-4 addendum 8, ruling 1): exhaustive, a test holds it so.
 SECRET_WHAT = {
     ".ssh": "ssh's keys", ".gnupg": "GnuPG's keys", ".aws": "the AWS CLI's credentials",
@@ -101,6 +108,13 @@ SECRET_WHAT = {
     ".pypirc": "PyPI's upload credentials", ".npmrc": "npm's tokens", ".claude.json": "Claude Code's configuration",
     ".config/git/credentials": "git's stored credentials", ".Xauthority": "the X display's cookie",
     ".ICEauthority": "the ICE session's cookie",
+    ".bash_history": "bash's history", ".zsh_history": "zsh's history", ".zhistory": "zsh's history",
+    ".sh_history": "the shell's history", ".local/share/fish/fish_history": "fish's history",
+    ".python_history": "Python's REPL history", ".node_repl_history": "Node's REPL history",
+    ".psql_history": "psql's history", ".mysql_history": "the MySQL client's history",
+    ".sqlite_history": "the SQLite shell's history", ".rediscli_history": "redis-cli's history",
+    ".lesshst": "less's search history",
+    ".local/share/powershell/PSReadLine/ConsoleHost_history.txt": "PowerShell's history",
 }
 # What no contained process gets (CB-04): the display, and the operator's session bus and ssh agent. bubblewrap unsets
 # them on every sandbox's argv, whichever allow-list built its environment; agentenv.POSIX_KEEP keeps none of them.
@@ -140,6 +154,7 @@ MASK_FILE = ".aew-mask"
 # Inside the sandbox /tmp is a fresh, private tmpfs: nothing else shares it, so the usual shared-/tmp risks (S108)
 # do not apply. The bridge socket lives under the host's /tmp for the same reason (bridge.private_address).
 SANDBOX_TMP = "/tmp"  # noqa: S108  # <run dir>/.aew-mask: the empty file bound over file secrets
+SANDBOX_OWN = ("/dev", "/proc")  # the sandbox's own (bubblewrap's --dev and --proc): nothing of the host's is there
 
 
 def host_masks() -> tuple[str, ...]:
@@ -434,7 +449,7 @@ class MaskPlan:
                 "fixed_absent": self.fixed_absent}
 
 
-HOME_LIST = "the home directory's secret paths"  # what names a path of SECRET_DIRS, SECRET_FILES or DISPLAY_FILES
+HOME_LIST = "the home directory's secret paths"  # what names a path of the home directory's lists (_named)
 POLICY_HIDE = "containment.hide"
 
 
@@ -561,11 +576,11 @@ def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None
 
 def _named(home: str | None, extra: list[str], env: Mapping[str, str]) -> list[tuple[str, str, str]]:
     """Every named secret path, absolute and as named, with what names it and what it is: :data:`SECRET_DIRS`,
-    :data:`SECRET_FILES` and :data:`DISPLAY_FILES` in ``home`` (:data:`SECRET_WHAT`) and the copies beside a secret file
-    there (:func:`_prefixed_files`), the paths the launching environment ``env`` names (:func:`_env_masks`), and the
-    policy's ``extra``."""
-    out = [(os.path.join(home, p), HOME_LIST, SECRET_WHAT[p]) for p in (*SECRET_DIRS, *SECRET_FILES, *DISPLAY_FILES)] \
-        if home else []
+    :data:`SECRET_FILES`, :data:`DISPLAY_FILES` and :data:`HISTORY_FILES` in ``home`` (:data:`SECRET_WHAT`) and the
+    copies beside a secret file there (:func:`_prefixed_files`), the paths the launching environment ``env`` names
+    (:func:`_env_masks`), and the policy's ``extra``."""
+    out = [(os.path.join(home, p), HOME_LIST, SECRET_WHAT[p])
+           for p in (*SECRET_DIRS, *SECRET_FILES, *DISPLAY_FILES, *HISTORY_FILES)] if home else []
     out += [(p, HOME_LIST, f"a copy of {SECRET_WHAT['.claude.json']}") for p in _prefixed_files(home)]
     out += [*_env_masks(env), *((os.path.expanduser(p), POLICY_HIDE, "a containment.hide entry") for p in extra)]
     seen: dict[str, tuple[str, str]] = {}
@@ -704,14 +719,19 @@ def _launching(home: str | None, env: Mapping[str, str] | None) -> Mapping[str, 
 def _env_masks(env: Mapping[str, str]) -> list[tuple[str, str, str]]:
     """Credential paths the launching environment names rather than the home directory, each with the variable that
     names it and what it is: the file ``XAUTHORITY`` names
-    (CB-04), git's credential cache and store-helper file under a custom ``XDG_CACHE_HOME`` or ``XDG_CONFIG_HOME``,
-    and every place AEW's host side reads the operator's OpenCode from (``opencode.login.operator_masks`` and
-    ``operator_files``, their one owner: STG-05 CS-4, outcome 2, the Lead's view holds no operator credential). Read in
-    the process that makes the layout: a run's supervisor, whose environment is the launching CLI's without AEW's own
-    credentials (``harness_ops.supervisor_env``), or the CLI itself."""
+    (CB-04), the history file ``HISTFILE`` names (CS-4 addendum 12; never one under ``/dev`` or ``/proc``, which the
+    sandbox has its own of: ``HISTFILE=/dev/null`` is how a shell keeps none), git's credential cache and store-helper
+    file under a custom ``XDG_CACHE_HOME`` or ``XDG_CONFIG_HOME``, and every place AEW's host side reads the operator's
+    OpenCode from (``opencode.login.operator_masks`` and ``operator_files``, their one owner: STG-05 CS-4, outcome 2,
+    the Lead's view holds no operator credential). Read in the process that makes the layout: a run's supervisor, whose
+    environment is the launching CLI's without AEW's own credentials (``harness_ops.supervisor_env``), or the CLI
+    itself."""
     from aew.harness.opencode import login
 
     out = [(env["XAUTHORITY"], "XAUTHORITY", SECRET_WHAT[".Xauthority"])] if env.get("XAUTHORITY") else []
+    histfile = os.path.expanduser(env.get("HISTFILE") or "")
+    if histfile and not any(_within(p, d) for p in (histfile, os.path.realpath(histfile)) for d in SANDBOX_OWN):
+        out.append((histfile, "HISTFILE", "the shell's history"))
     if env.get("XDG_CACHE_HOME"):
         out.append((os.path.join(env["XDG_CACHE_HOME"], "git", "credential"), "XDG_CACHE_HOME",
                     SECRET_WHAT[".cache/git/credential"]))

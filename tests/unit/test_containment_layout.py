@@ -848,6 +848,37 @@ def test_display_files_and_the_xauthority_file_are_masked_by_type(tmp_path, fake
     assert run_layout(tmp_path / "bare", "reviewer", home=str(tmp_path / "empty")).display_files == ()
 
 
+# The names CS-4 addendum 12's ruling 1 lists, written here and not taken from `L.HISTORY_FILES`, the owner this checks.
+RULED_HISTORIES = (".bash_history", ".zsh_history", ".zhistory", ".sh_history", ".local/share/fish/fish_history",
+                   ".python_history", ".node_repl_history", ".psql_history", ".mysql_history", ".sqlite_history",
+                   ".rediscli_history", ".lesshst", ".local/share/powershell/PSReadLine/ConsoleHost_history.txt")
+
+
+@pytest.mark.parametrize("role", ["reviewer", "implementer", "lead"])
+def test_every_shell_and_repl_history_is_masked_for_every_role_with_the_file_histfile_names(tmp_path, fake_bwrap, role):
+    """CS-4 addendum 12, ruling 1: each history the ruling names, and the file the launching HISTFILE names, is masked
+    as a secret file is (left out of its directory), for every role, with what it is; a HISTFILE under the sandbox's
+    own /dev (`HISTFILE=/dev/null`, a shell keeping none) names nothing to mask."""
+    assert set(RULED_HISTORIES) <= set(L.HISTORY_FILES)
+    home = tmp_path / "home"
+    for rel in RULED_HISTORIES:
+        (home / rel).parent.mkdir(parents=True, exist_ok=True)
+        (home / rel).write_text("synthetic history\n")
+    histfile = tmp_path / "elsewhere" / "custom_history"
+    histfile.parent.mkdir()
+    histfile.write_text("synthetic history\n")
+    make = (lambda env: lead_layout(tmp_path / f"l{len(env)}", home=str(home), env=env)) if role == "lead" else \
+        (lambda env: run_layout(tmp_path / f"r{len(env)}", role, home=str(home), env=env))
+    layout = make({"HISTFILE": str(histfile)})
+    real = os.path.realpath
+    assert {real(home / rel) for rel in RULED_HISTORIES} | {real(histfile)} <= set(layout.left_out)
+    named = {p: (source, what) for p, source, what in L._named(str(home), [], {"HISTFILE": str(histfile)})}
+    assert named[os.path.abspath(histfile)] == ("HISTFILE", "the shell's history")
+    assert all(named[os.path.abspath(home / rel)][1].endswith("history") for rel in RULED_HISTORIES)
+    for nothing in ("/dev/null", "/proc/self/fd/1", ""):
+        assert [m for m in L._env_masks({"HISTFILE": nothing}) if m[1] == "HISTFILE"] == [], nothing
+
+
 # Where OpenCode keeps its directories, named here and not taken from `opencode.login`, the owner these tests check
 # (the review of #283 at b2dc3035, m2): each XDG base, with its default under the home directory.
 XDG_BASES = {"XDG_DATA_HOME": ".local/share", "XDG_CONFIG_HOME": ".config", "XDG_STATE_HOME": ".local/state",
@@ -1196,7 +1227,7 @@ def test_a_launch_over_bubblewraps_argument_limit_is_refused_before_it_starts(tm
 def test_every_secret_the_home_lists_says_what_it_is():
     """CS-4 addendum 8, ruling 1: a refusal names a secret by what it is, so each name the home's lists hold has its
     description, and none is described that the lists do not hold."""
-    assert set(L.SECRET_WHAT) == {*L.SECRET_DIRS, *L.SECRET_FILES, *L.DISPLAY_FILES}
+    assert set(L.SECRET_WHAT) == {*L.SECRET_DIRS, *L.SECRET_FILES, *L.DISPLAY_FILES, *L.HISTORY_FILES}
     assert all(L.SECRET_WHAT.values())
 
 

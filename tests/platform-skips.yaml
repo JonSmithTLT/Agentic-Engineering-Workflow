@@ -510,6 +510,18 @@ skipped:
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); the display masks, the unset variables and the environment builders are tested on every
       platform in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_credential_input.py::test_at_a_terminal_the_command_asks_at_a_hidden_prompt_and_proceeds[credential]: >-
+      a pseudo-terminal that is the command's controlling terminal is POSIX's (CS-4 addendum 12). Covered on Linux;
+      the Windows console read never echoes (operator._ask_windows), and when the prompt is offered is tested on every
+      platform in the same file.
+    tests/integration/test_lead_credential_input.py::test_at_a_terminal_the_command_asks_at_a_hidden_prompt_and_proceeds[empty]: >-
+      a pseudo-terminal that is the command's controlling terminal is POSIX's (CS-4 addendum 12). Covered on Linux;
+      the Windows console read never echoes (operator._ask_windows), and when the prompt is offered is tested on every
+      platform in the same file.
+    tests/integration/test_containment.py::test_no_shell_or_repl_history_is_readable_inside_and_the_self_test_row_covers_each: >-
+      Linux bubblewrap containment (STG-05 CS-4 addendum 12); Windows has no OS filesystem containment, and its
+      PowerShell history is a known gap under workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane); the
+      history masks, HISTFILE's included, are tested on every platform in tests/unit/test_containment_layout.py.
     tests/integration/test_containment.py::test_no_credential_reaches_git_inside_the_sandbox: >-
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); the store helper's files are in the layout's masks on every platform

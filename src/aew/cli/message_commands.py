@@ -8,9 +8,9 @@ without it. The worker's own commands (`reply`, `read`, `wait`) are MS4's.
 from __future__ import annotations
 
 import argparse
-import os
 
-from aew.cli.commands import _add_json, _engine
+from aew import lead_credential
+from aew.cli.commands import _add_json, _engine, add_token
 
 
 def register(sub: argparse._SubParsersAction) -> None:
@@ -31,8 +31,7 @@ def register(sub: argparse._SubParsersAction) -> None:
 
     q = msub.add_parser("unseen", help="sealed worker messages beyond the Lead's attention list, recovered from their "
                                        "seals; with the Lead's credential they are recorded as shown")
-    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN): records the listed messages as shown, so "
-                                   "the next commit clears the omitted count")
+    add_token(q)
     _add_json(q)
     q.set_defaults(handler=lambda a: _engine(a).message_unseen(
-        token=a.token or os.environ.get("AEW_LEAD_TOKEN") or None))
+        token=a.token or lead_credential.optional()))

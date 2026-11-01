@@ -320,7 +320,7 @@ def test_the_cli_inside_a_worker_run_reads_lock_free_and_refuses_a_mutation_befo
         assert res.returncode == 0, (args, res.stderr)
     assert worker_surface.changes(before, worker_surface.snapshot(p.root / ".aew")) == []  # no pack, no lock
     mutation = run_aew("-C", str(p.root), "work", "create", "ticket", "--title", "x", "--class", "1",
-                       "--token", p.token, "--expect-rev", str(rev), env=env)
+                       "--expect-rev", str(rev), env={**(env or {}), "AEW_LEAD_TOKEN": p.token})
     assert mutation.error["code"] == "PERMISSION_DENIED", mutation.stderr
     assert mutation.error["details"]["reason"] == "non_writer_process"
     whoami = run_aew("-C", str(p.root), "whoami", env=env)  # to the bridge, which is not there: never the store

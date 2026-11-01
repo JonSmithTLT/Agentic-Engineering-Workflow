@@ -336,6 +336,13 @@ skipped:
     tests/unit/test_containment_layout.py::test_a_file_opencode_names_through_a_link_is_left_out_where_the_link_and_its_target_are[OPENCODE_CONFIG]: >-
       making a symlink needs a privilege on Windows, and containment is Linux's (bubblewrap); the check is pure.
       Covered on Linux.
+    tests/unit/test_containment_layout.py::test_a_secret_that_links_into_the_sandboxs_own_dev_or_proc_masks_nothing_there[reviewer]: >-
+      making a symlink needs a privilege on Windows, and /dev and /proc are Linux's (bubblewrap's own); the check is
+      pure. Covered on Linux.
+    tests/unit/test_containment_layout.py::test_a_secret_that_links_into_the_sandboxs_own_dev_or_proc_masks_nothing_there[implementer]: >-
+      as the reviewer's case: a symlink needs a privilege on Windows, and /dev and /proc are Linux's. Covered on Linux.
+    tests/unit/test_containment_layout.py::test_a_secret_that_links_into_the_sandboxs_own_dev_or_proc_masks_nothing_there[lead]: >-
+      as the reviewer's case: a symlink needs a privilege on Windows, and /dev and /proc are Linux's. Covered on Linux.
     tests/integration/test_containment.py::test_the_self_test_records_rows_1_to_6_on_the_label_of_a_passing_run: >-
       Linux bubblewrap containment (STG-05 CS-2, CS-3b); Windows has no OS filesystem or network containment. Covered
       on Linux (CI and the Rocky 8 lane); the rows' judgement is tested on every platform in
@@ -510,6 +517,18 @@ skipped:
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); the display masks, the unset variables and the environment builders are tested on every
       platform in tests/unit/test_containment_layout.py.
+    tests/integration/test_lead_credential_input.py::test_at_a_terminal_the_command_asks_at_a_hidden_prompt_and_proceeds[credential]: >-
+      a pseudo-terminal that is the command's controlling terminal is POSIX's (CS-4 addendum 12). Covered on Linux;
+      the Windows console read never echoes (operator._ask_windows), and when the prompt is offered is tested on every
+      platform in the same file.
+    tests/integration/test_lead_credential_input.py::test_at_a_terminal_the_command_asks_at_a_hidden_prompt_and_proceeds[empty]: >-
+      a pseudo-terminal that is the command's controlling terminal is POSIX's (CS-4 addendum 12). Covered on Linux;
+      the Windows console read never echoes (operator._ask_windows), and when the prompt is offered is tested on every
+      platform in the same file.
+    tests/integration/test_containment.py::test_no_shell_or_repl_history_is_readable_inside_and_the_self_test_row_covers_each: >-
+      Linux bubblewrap containment (STG-05 CS-4 addendum 12); Windows has no OS filesystem containment, and its
+      PowerShell history is a known gap under workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane); the
+      history masks, HISTFILE's included, are tested on every platform in tests/unit/test_containment_layout.py.
     tests/integration/test_containment.py::test_no_credential_reaches_git_inside_the_sandbox: >-
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); the store helper's files are in the layout's masks on every platform

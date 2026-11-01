@@ -627,6 +627,19 @@ def test_identity_null_when_model_withheld(engine):
     assert row["identity_error"]["field_path"] == "/profiles/standard/model"
 
 
+def test_identity_error_names_the_provider_field_when_template_text_is_refused_there(engine):
+    """PR #309, F6: `MODEL_ID` passes the projection's grammar and is refused by the identity rule on the provider
+    field, so the error points at `provider`, not `model`; a refused model keeps pointing at `model`."""
+    policy = only_profiles({"a": {"provider": "MODEL_ID", "model": "vendor-model"},
+                            "b": {"provider": "vendor", "model": "vendor/MODEL_ID"}})
+    out = execution(configured(engine, policy))
+    rows = by_name(out)
+    assert rows["a"]["identity_error"]["code"] == "model_id_malformed"
+    assert rows["a"]["identity_error"]["field_path"] == "/profiles/a/provider"
+    assert rows["b"]["identity_error"]["code"] == "model_id_malformed"
+    assert rows["b"]["identity_error"]["field_path"] == "/profiles/b/model"
+
+
 def test_identity_error_code_matches_withheld(engine):
     """D2: every `field_withheld` error's `withheld_reason` is its field's own `withheld`."""
     policy = only_profiles({

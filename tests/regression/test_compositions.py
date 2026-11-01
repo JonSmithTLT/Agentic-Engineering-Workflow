@@ -35,8 +35,8 @@ def main_commit(p):
 
 
 def crash_after_publishing_record(p, wid):
-    res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()),
-                env={"AEW_FAULT": "integrate.after_publishing_record"})
+    res = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()),
+                env={"AEW_LEAD_TOKEN": p.token, "AEW_FAULT": "integrate.after_publishing_record"})
     assert res.returncode == 86
     assert unit(p, wid)["integration"]["status"] == "publishing"
 
@@ -60,7 +60,7 @@ def test_interleaved_writer_makes_finalization_stale_before_any_git_side_effect(
     stale_rev = p.rev()
     p.lead("checkpoint", "--next", "another Lead write lands in between")
     before = (p.root / "calc/core.py").read_bytes()
-    res = p.aew("integrate", "reconcile", wid, "--token", p.token, "--expect-rev", str(stale_rev))
+    res = p.aew("integrate", "reconcile", wid, "--expect-rev", str(stale_rev), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "STALE_REVISION"
     assert main_commit(p) == integ["base"]
     assert (p.root / "calc/core.py").read_bytes() == before
@@ -98,7 +98,7 @@ def test_regression_after_validation_supersedes_the_candidate_and_the_new_work_i
     assert u["integration"] is None
     assert u["integration_history"][-1]["status"] == "superseded"
     impl = back_to_commit_ready_with(p, wid, MULTIPLY_PATCH)
-    res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "ILLEGAL_TRANSITION" and impl.workspace.exists()
     new = prepare_and_validate(p, wid)
     assert new["attempt"] == old["attempt"] + 1 and new["binding"]["commit_ready_seq"] == 2
@@ -115,7 +115,7 @@ def test_state_cannot_leave_commit_ready_while_a_publish_is_pending(tmp_path):
     crash_after_publishing_record(p, wid)
     for to in ("RUNNING", "CANCELLED", "REPLAN_REQUIRED"):
         res = p.aew("work", "transition", wid, "--to", to, "--reason", "try to abandon the publish",
-                    "--token", p.token, "--expect-rev", str(p.rev()))
+                    "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
         assert res.error["code"] == "ILLEGAL_TRANSITION", (to, res.stderr)
         assert "integrate reconcile" in res.error["message"]
     assert p.lead("integrate", "reconcile", wid)["state"] == "DONE"
@@ -148,7 +148,7 @@ def test_candidate_bound_to_an_earlier_acceptance_is_superseded_at_publish(tmp_p
     with engine.store.session() as s:  # simulate a record bound to an earlier COMMIT_READY
         s.state["work"][wid]["commit_ready_seq"] += 1
         s.commit(Transition(op="test.legacy_state", actor={"kind": "test"}))
-    res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "STALE_CANDIDATE"
     assert main_commit(p) == integ["base"]
     u = unit(p, wid)
@@ -181,7 +181,7 @@ def test_repeated_replan_and_interruption_cycles_keep_the_serial_boundary(tmp_pa
         assert res.returncode != 0, res.stdout
     second = create_planned_ticket(p, tmp_path, title="Second mutating ticket")
     impl2 = assign(p, second)
-    res = p.aew("work", "assign", first, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("work", "assign", first, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "CONCURRENCY_LIMIT"
     offer = p.lead("lead", "handoff", "offer")["offer"]
     p.token = p.ok("lead", "handoff", "accept", "--offer", offer, "--expect-rev", str(p.rev()))["token"]
@@ -293,9 +293,11 @@ def test_lead_override_of_an_operator_pin_goes_through_a_recorded_decision(tmp_p
     assert entry["selected_by"] == "operator" and entry["pinned"] is True
     assign(p, wid)
     p.lead("invoke", "cancel", unit(p, wid)["implementer_invocation"], "--reason", "fresh bounded attempt")
-    res = p.aew("invoke", "create", wid, "--card", "python_engineer", "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("invoke", "create", wid, "--card", "python_engineer", "--expect-rev", str(p.rev()),
+                env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "PERMISSION_DENIED" and "work staff" in res.error["message"]
-    res = p.aew("work", "staff", wid, "--execute", "python_engineer", "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("work", "staff", wid, "--execute", "python_engineer", "--expect-rev", str(p.rev()),
+                env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "PERMISSION_DENIED"  # no reason: the pin stands
     out = p.lead("work", "staff", wid, "--execute", "python_engineer", "--reason", "operator agreed: Python work")
     assert out["decision"]
@@ -329,7 +331,7 @@ def test_long_lived_engine_never_serves_an_older_manifest(tmp_path):
 def test_first_resume_after_a_crash_mid_manifest_apply_shows_the_committed_authority(tmp_path):
     proj, candidate = _authority_project(tmp_path)
     res = proj.aew("authority", "accept", candidate["id"], "--class", "decisions",
-                   "--token", proj.token, "--expect-rev", str(proj.rev()), env={"AEW_FAULT": "txn.mid_apply"})
+                   "--expect-rev", str(proj.rev()), env={"AEW_LEAD_TOKEN": proj.token, "AEW_FAULT": "txn.mid_apply"})
     assert res.returncode == 86
     first = proj.ok("resume", "--json")
     assert [a["path"] for a in first["accepted_authority"]] == ["docs/adr/"]
@@ -346,7 +348,7 @@ def test_prepare_refuses_a_workspace_index_that_hides_edits(tmp_path):
     p = sample_project(tmp_path)
     wid, impl = to_commit_ready(p, tmp_path)
     git("update-index", "--assume-unchanged", "calc/core.py", cwd=impl.workspace)
-    res = p.aew("integrate", "prepare", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("integrate", "prepare", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "INTEGRITY_ERROR" and "calc/core.py" in res.error["details"]["paths"]
     assert unit(p, wid)["integration"] is None
     assert git("ls-files", "-v", "calc/core.py", cwd=impl.workspace).startswith("h ")  # flags are not cleared for us
@@ -437,7 +439,8 @@ def test_review_from_a_superseded_plan_is_not_accepted_for_identical_new_work(tm
     replan(p, wid, tmp_path, 2)
     implement(assign(p, wid))  # identical bytes -> identical fingerprint
     p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
-    res = p.aew("review", "ingest", wid, "--evidence", old_review, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("review", "ingest", wid, "--evidence", old_review, "--expect-rev", str(p.rev()),
+                env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "GATE_UNSATISFIED" and {"plan", "workspace"} <= set(res.error["details"])
     u = unit(p, wid)
     assert u["state"] == "REVIEW_PENDING" and not u.get("findings")
@@ -460,7 +463,7 @@ def test_publication_refuses_a_validation_record_not_produced_for_the_candidate(
     with engine.store.session() as sess:
         sess.state["work"][wid]["integration"]["post_integration_evidence"] = ticket_scope_report
         sess.commit(Transition(op="test.legacy_state", actor={"kind": "test"}))
-    res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] in {"GATE_UNSATISFIED"}, res.stderr
     assert main_commit(p) == integ["base"]
 
@@ -518,7 +521,7 @@ def test_prepare_refuses_staged_content_found_nowhere_else(tmp_path):
     core.write_text(evaluated + "# staged elsewhere\n", encoding="utf-8", newline="\n")
     git("add", "calc/core.py", cwd=impl.workspace)
     core.write_text(evaluated, encoding="utf-8", newline="\n")  # the evaluated snapshot is unchanged
-    res = p.aew("integrate", "prepare", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("integrate", "prepare", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "INTEGRITY_ERROR" and res.error["details"]["paths"] == ["calc/core.py"]
     assert "# staged elsewhere" in git("show", ":calc/core.py", cwd=impl.workspace)
     git("restore", "--staged", "calc/core.py", cwd=impl.workspace)  # the operator drops the staged version
@@ -542,7 +545,7 @@ def test_publication_enforces_an_obligation_added_after_validation(tmp_path):
     wid, _ = to_commit_ready(p, tmp_path)
     integ = prepare_and_validate(p, wid)
     p.as_operator("work_staff", work_id=wid, review=["security_reviewer"], selected_by="operator", pin=True)
-    res = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "GATE_UNSATISFIED" and "review_card:security_reviewer" in res.error["details"]["unmet"]
     u = unit(p, wid)
     assert u["state"] == "COMMIT_READY" and u["integration"]["status"] == "validated"
@@ -557,7 +560,7 @@ def test_an_obligation_added_during_an_interrupted_publish_withdraws_it_cleanly(
     integ = prepare_and_validate(p, wid)
     crash_after_publishing_record(p, wid)
     p.as_operator("work_staff", work_id=wid, review=["security_reviewer"], selected_by="operator", pin=True)
-    res = p.aew("integrate", "reconcile", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("integrate", "reconcile", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "GATE_UNSATISFIED"
     u = unit(p, wid)
     assert u["integration"]["status"] == "validated" and "publishing_at" not in u["integration"]
@@ -570,7 +573,7 @@ def test_m1_never_assigns_a_non_mutating_ticket(tmp_path):
     """Foundation review: an evidence-only Ticket gets no mutation workspace or implementer in M1."""
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path, title="Evidence-only work", extra=("--non-mutating",))
-    res = p.aew("work", "assign", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("work", "assign", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "ILLEGAL_TRANSITION" and "M2" in res.error["message"]
     u = unit(p, wid)
     assert u["state"] == "READY" and u["workspace"] is None and u["invocations"] == []
@@ -586,14 +589,15 @@ def test_an_assignment_committed_by_a_crashed_process_is_recovered_by_cancel_and
     recorded reason and dispatches a fresh implementer, and the Ticket completes."""
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
-    res = p.aew("work", "assign", wid, "--token", p.token, "--expect-rev", str(p.rev()),
-                env={"AEW_FAULT": "txn.after_replace"})
+    res = p.aew("work", "assign", wid, "--expect-rev", str(p.rev()),
+                env={"AEW_LEAD_TOKEN": p.token, "AEW_FAULT": "txn.after_replace"})
     assert res.returncode == 86 and "invocation_token" not in res.stdout  # committed, credential never delivered
     u = unit(p, wid)
     orphan = u["implementer_invocation"]
     assert u["state"] == "ASSIGNED" and u["workspace"]["status"] == "active"
     assert_control_invariants(p)
-    res = p.aew("invoke", "create", wid, "--role", "implementer", "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew("invoke", "create", wid, "--role", "implementer", "--expect-rev", str(p.rev()),
+                env={"AEW_LEAD_TOKEN": p.token})
     assert res.error["code"] == "ILLEGAL_TRANSITION" and orphan in res.error["message"]
     p.lead("invoke", "cancel", orphan, "--reason", "implementer credential lost in a crash")
     assert p.ok("invoke", "show", orphan)["status"] == "cancelled"

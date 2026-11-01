@@ -2,7 +2,7 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 404,
-      "lower-bound": 716
+      "lower-bound": 717
     },
     "by_family": {
       "cli-commands": 116,
@@ -15,7 +15,7 @@
       "entry-points": 7,
       "guards": 11,
       "layout": 72,
-      "modules": 189,
+      "modules": 190,
       "reason-rules": 56,
       "schemas": 32,
       "sqlite-tables": 10,
@@ -61,7 +61,7 @@
         "lower-bound": 72
       },
       "modules": {
-        "lower-bound": 189
+        "lower-bound": 190
       },
       "reason-rules": {
         "complete-by-construction": 56
@@ -92,8 +92,8 @@
         "lower-bound": 254
       }
     },
-    "digest": "sha256:495672b354528fef8fe59c16ca16501ce37710e73fa6d18d68c4f4c7a6ca7c05",
-    "records": 1120,
+    "digest": "sha256:d306b3d466312df31e4803d9140975bb31452a2c166525c77e9abf1076e16b82",
+    "records": 1121,
     "unresolved": 104
   },
   "gaps": [
@@ -18157,6 +18157,7 @@
         "aew.errors",
         "aew.harness.lead_broker",
         "aew.harness.opencode.lead",
+        "aew.lead_credential",
         "aew.operator",
         "aew.surface",
         "aew.surface.client",
@@ -18274,8 +18275,7 @@
       },
       "family": "modules",
       "imports": [
-        "aew.cli.commands",
-        "aew.errors"
+        "aew.cli.commands"
       ]
     },
     "modules:aew.cli.main": {
@@ -18304,6 +18304,7 @@
         "aew.engine.recall",
         "aew.errors",
         "aew.harness.lead_broker",
+        "aew.lead_credential",
         "aew.process_kind",
         "aew.profile"
       ]
@@ -18345,7 +18346,8 @@
       },
       "family": "modules",
       "imports": [
-        "aew.cli.commands"
+        "aew.cli.commands",
+        "aew.lead_credential"
       ]
     },
     "modules:aew.cli.operator_commands": {
@@ -20255,7 +20257,8 @@
       "family": "modules",
       "imports": [
         "aew.harness.bridge",
-        "aew.harness.contract"
+        "aew.harness.contract",
+        "aew.lead_credential"
       ]
     },
     "modules:aew.harness.base": {
@@ -20591,6 +20594,7 @@
         "aew.harness.procs",
         "aew.harness.steering_loop",
         "aew.harness.tool_calls",
+        "aew.lead_credential",
         "aew.process_kind",
         "aew.surface.context",
         "aew.surface.run",
@@ -21266,6 +21270,30 @@
       },
       "family": "modules",
       "imports": []
+    },
+    "modules:aew.lead_credential": {
+      "anchor": {
+        "module": "aew.lead_credential",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/lead_credential.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.contract",
+        "aew.harness.lead_broker",
+        "aew.harness.procs",
+        "aew.operator",
+        "aew.process_kind"
+      ]
     },
     "modules:aew.maps": {
       "anchor": {

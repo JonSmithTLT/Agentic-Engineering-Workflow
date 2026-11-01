@@ -529,7 +529,7 @@ def stopping_a_run_ends_every_process_it_started(lab, driver, tmp_path):
     lab.until(lambda: (sync / "ready").exists(), what="ready")
     watches = [watch_agent_pid(lab, run, int((sync / n).read_text())) for n in ("orphan", "agent")]
     assert all(w.alive() for w in watches)
-    lab.ok("harness", "stop", run, "--reason", "conformance", "--token", lab.project.token)
+    lab.ok("harness", "stop", run, "--reason", "conformance", env={"AEW_LEAD_TOKEN": lab.project.token})
     assert lab.wait(run)["status"] == "terminated"
     lab.until(lambda: not any(w.alive() for w in watches), 30, "every harness process gone")
 
@@ -631,8 +631,8 @@ def a_read_only_role_cannot_change_its_observation(lab, driver, tmp_path):
 def an_agent_cannot_perform_lead_operations(lab, driver, tmp_path):
     _, inv, run = launch_ticket(lab, driver, tmp_path, [
         {"do": "aew", "args": ["work", "transition", "T-0001", "--to", "REVIEW_PENDING", "--expect-rev", "99"]},
-        {"do": "aew", "args": ["invoke", "cancel", "INV-0001", "--reason", "x", "--expect-rev", "99",
-                               "--token", "{FORGED_CREDENTIAL}"]},
+        {"do": "aew", "args": ["invoke", "cancel", "INV-0001", "--reason", "x", "--expect-rev", "99"],
+         "env": {"AEW_LEAD_TOKEN": "{FORGED_CREDENTIAL}"}},
         {"do": "aew", "args": ["lead", "acquire", "--expect-rev", "99"]}])
     rev = lab.project.rev()
     lab.wait(run)

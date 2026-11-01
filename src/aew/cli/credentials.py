@@ -71,8 +71,19 @@ def deliver(result: Any, args: argparse.Namespace) -> Any:
         return result
     out = _open_terminal()
     if out is None:  # the terminal went away between the check and now
-        raise UsageError("a credential was issued but your terminal is gone, so it was not written anywhere; "
-                         "recover with `aew lead takeover` at a terminal (or cancel the invocation or handoff)")
+        raise UsageError(
+            "a credential was issued but your terminal is gone, so it was not written anywhere; recover with "
+            "the operator-authorized takeover at an interactive terminal with:\n\n```sh\n"
+            "aew lead takeover --expect-rev <revision from aew status> --fields - <<'EOF'\n"
+            "reason: 'why takeover is required'\n"
+            "EOF\n```\n"
+            "or cancel the invocation with:\n\n```sh\n"
+            "aew invoke cancel <invocation> "
+            "--expect-rev <revision from aew status> --fields - <<'EOF'\n"
+            "reason: 'why this invocation must end'\n"
+            "EOF\n```\n"
+            "or cancel a handoff with `aew lead handoff cancel --expect-rev <revision from aew status>`"
+        )
     with out:
         out.write("\n==== AEW CREDENTIAL (keep it out of any agent's reach) ====\n")
         for key, value in found.items():

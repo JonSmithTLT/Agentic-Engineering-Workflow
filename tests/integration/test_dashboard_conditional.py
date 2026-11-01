@@ -134,7 +134,8 @@ def world(tmp_path_factory):
     _, knowledge = w.client.ok("/knowledge")
     assert evidence["data"]["items"] and knowledge["data"]["items"], "the world needs evidence and a decision"
     # a selected structural map, for the maps routes (contract 0.1.3; register F20.8)
-    root = p.ok("map", "generate", "--token", p.token, "--select", "--expect-map-rev", "none:0", "--json")["root"]
+    root = p.ok("map", "generate", "--select", "--expect-map-rev", "none:0", "--json",
+                env={"AEW_LEAD_TOKEN": p.token})["root"]
     w.paths = {"/work/{id}": f"/work/{w.ticket}", "/runs/{id}": f"/runs/{w.invocation}",
                "/evidence/{id}": f"/evidence/{evidence['data']['items'][0]['id']}",
                "/knowledge/{id}": f"/knowledge/{knowledge['data']['items'][0]['id']}",
@@ -280,7 +281,7 @@ def test_control_revision_alone_changes_the_validator(world):
     the revision is part of the representation."""
     p = world.lab.project
     tags = {path: world.client.ok(path) for path in ("/project", "/capabilities")}
-    p.ok("history", "audit", "--token", p.token, "--expect-rev", str(p.rev()))
+    p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     for path, (tag, body) in tags.items():
         new_tag, new = world.client.ok(path, inm=tag)
         assert new_tag != tag and new["data"] == body["data"]
@@ -318,7 +319,8 @@ def test_the_frontends_two_diagnostics_hold_across_changes(world):
     client = Client(world.server.port)
     held = {route: client.ok(path_of(world, route))[0] for route in served_routes()}
     changes = [lambda: None, lambda: p.lead("work", "create", "ticket", "--title", "More work", "--class", "1"),
-               lambda: p.ok("history", "audit", "--token", p.token, "--expect-rev", str(p.rev())), lambda: None]
+               lambda: p.ok("history", "audit", "--expect-rev", str(p.rev()),
+                            env={"AEW_LEAD_TOKEN": p.token}), lambda: None]
     for change in changes:
         change()
         for route in served_routes():

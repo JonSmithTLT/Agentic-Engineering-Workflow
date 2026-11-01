@@ -225,7 +225,7 @@ def test_a_goal_is_stored_as_intended_or_refused_never_truncated(tmp_path):
 
     def create(text: str):
         return p.aew("work", "create", "ticket", "--class", "1", "--title", "t", "--fields", "-",
-                     "--token", p.token, "--expect-rev", str(p.rev()), input=text)
+                     "--expect-rev", str(p.rev()), input=text, env={"AEW_LEAD_TOKEN": p.token})
 
     intended = "Finish #1 with $5.00"
     refused = create(f"goal: {intended}\n")
@@ -302,5 +302,5 @@ def test_a_post_integration_check_counts_only_under_its_current_definition(tmp_p
     wid, _ = to_commit_ready(p, tmp_path)
     prepare_and_validate(p, wid)
     _redefine_check(p, "unit", command=["{python}", "-c", "raise SystemExit(1)"])
-    refused = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()))
+    refused = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert refused.returncode != 0 and "post-integration" in refused.error["message"], refused.stdout

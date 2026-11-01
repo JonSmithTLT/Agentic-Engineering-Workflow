@@ -258,6 +258,72 @@ def test_o_secret_flags_a_credential_asked_of_any_reader(plane):
     assert key in allowed.load()  # listed until the product drops the line; its key stays stable
 
 
+# The designer's decision of 2026-11-01 (CS-4 addendum 12): each line asks to set the credential, so only the snippet
+# decides. The near misses each break one of the exemption's five conditions.
+ASK = "Set AEW_LEAD_TOKEN for this session: "
+HIDDEN_BASH = "read -rsp 'Lead token: ' AEW_LEAD_TOKEN; echo; export AEW_LEAD_TOKEN"
+NEAR_MISSES = {
+    "a literal value": "export AEW_LEAD_TOKEN=literal-value",
+    "read without -s": "read -rp 'Lead token: ' AEW_LEAD_TOKEN; echo; export AEW_LEAD_TOKEN",
+    "Read-Host unmasked": '$env:AEW_LEAD_TOKEN = Read-Host "Lead token"',
+    "an append to a startup file": f"{HIDDEN_BASH}; declare -p AEW_LEAD_TOKEN >> ~/.bashrc",
+    "an echo of the value": f'{HIDDEN_BASH}; echo "$AEW_LEAD_TOKEN"',
+    "an inline --token value": f"{HIDDEN_BASH}; aew checkpoint --token literal-value",
+    "a persistent variable": "[Environment]::SetEnvironmentVariable('AEW_LEAD_TOKEN', "
+                             "(Read-Host 'Lead token' -AsSecureString), 'User')",
+    # Review of #316, m2: the hidden read must set the credential itself, and every printer counts.
+    "a hidden read of another name, the value unmasked": '$x = Read-Host "pin" -MaskInput; '
+                                                         '$env:AEW_LEAD_TOKEN = Read-Host "Lead token"',
+    "a hidden read of another name, the value from a file": "read -rs junk; "
+                                                            "export AEW_LEAD_TOKEN=$(cat ~/lead-token.txt)",
+    "a SecureString of another variable": '$s = Read-Host "pin" -AsSecureString; $env:AEW_LEAD_TOKEN = '
+                                          "[Runtime.InteropServices.Marshal]::PtrToStringBSTR("
+                                          "[Runtime.InteropServices.Marshal]::SecureStringToBSTR($t))",
+    "printenv": f"{HIDDEN_BASH}; printenv AEW_LEAD_TOKEN",
+    "declare -p, no redirect": f"{HIDDEN_BASH}; declare -p AEW_LEAD_TOKEN",
+    "a bare PowerShell expression": '$env:AEW_LEAD_TOKEN = Read-Host "Lead token" -MaskInput; $env:AEW_LEAD_TOKEN',
+    "a bare bash expansion": f'{HIDDEN_BASH}; "$AEW_LEAD_TOKEN"',
+    "a whole-environment dump": f"{HIDDEN_BASH}; env | sort",
+    "PowerShell's env: drive": '$env:AEW_LEAD_TOKEN = Read-Host "Lead token" -MaskInput; Get-ChildItem env:',
+}
+
+
+def test_o_secret_passes_the_per_session_hidden_forms_and_trips_on_each_near_miss():
+    """The differential test: the forms addendum 12 ships (lead_credential's, as the guides and refusals show them)
+    pass, and each near miss still trips O-SECRET. Without the ask the same lines say nothing (the control)."""
+    from aew import lead_credential
+
+    for shell, form in lead_credential.SECURE_FORMS.items():
+        assert found(Output(site="unit", text=ASK + form), "O-SECRET") == [], shell
+        assert found(Output(site="unit", text=form), "O-SECRET") == [], shell
+    assert found(Output(site="unit", text=ASK), "O-SECRET") == ["asks to set AEW_LEAD_TOKEN"]
+    for miss, snippet in NEAR_MISSES.items():
+        assert found(Output(site="unit", text=ASK + snippet), "O-SECRET"), miss
+        assert not rules.per_session_hidden(snippet, "AEW_LEAD_TOKEN"), miss
+    # One line, two asks: the hidden form for the Lead credential exempts no ask for another credential beside it.
+    two = (f"Set AEW_LEAD_TOKEN with `{HIDDEN_BASH}`, then paste your AEW_INVOCATION_TOKEN too")
+    assert found(Output(site="unit", text=two), "O-SECRET") == ["asks to paste AEW_INVOCATION_TOKEN"]
+    for shell, form in lead_credential.forms("SYNTHETIC_API_KEY", "SYNTHETIC_API_KEY").items():  # any name's forms
+        assert rules.per_session_hidden(form, "SYNTHETIC_API_KEY"), shell
+        assert not rules.per_session_hidden(form, "OTHER"), shell
+
+
+def test_the_static_scan_still_reports_a_guide_line_with_a_literal_token():
+    """The planted control: a guide that shows the per-session forms has no O-SECRET finding; the same guide with a
+    seeded literal-token line is reported, at that line's ask."""
+    from aew import lead_credential
+
+    site = "docs/guides/planted.md"
+    forms = "\n".join(["```bash", *lead_credential.SECURE_FORMS.values(), "```"])
+
+    def secrets(text: str) -> list[str]:
+        return [f.key for f in static.scan({site: text}) if f.rule == "O-SECRET" and site in f.key]
+
+    assert secrets(f"For this session only:\n{forms}\n") == []
+    seeded = f"For this session only:\n{forms}\n```bash\nexport AEW_LEAD_TOKEN=literal-value\n```\n"
+    assert secrets(seeded) == [f"O-SECRET {static.STATIC}{site}|asks to export AEW_LEAD_TOKEN"]
+
+
 def test_the_identity_check_aborts_on_another_checkouts_aew(tmp_path):
     """Spec §5, J2 (review of #218, m7): the discovery lane judges only the commit under test."""
     from pathlib import Path
@@ -814,6 +880,6 @@ def test_the_static_texts_add_no_new_key_of_an_enforced_rule():
 def test_the_committed_allow_list_is_well_formed_and_sorted():
     text = allowed.PATH.read_text(encoding="utf-8")
     keys, residuals = allowed.parse(text)
-    assert keys and not residuals
+    assert keys and set(residuals) <= keys  # an accepted residual (the operator's, with its decision) is listed too
     assert text == allowed.render(keys, residuals.values())
     assert all(" " in k and k.split(" ", 1)[0] in modes.RULES for k in keys)

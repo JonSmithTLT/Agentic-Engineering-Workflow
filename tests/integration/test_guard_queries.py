@@ -431,8 +431,8 @@ def test_guard_query_matches_execute_a_state_hooks_refusal(tmp_path, to):
     p = sample_project(tmp_path)
     wid, _ = to_commit_ready(p, tmp_path)
     prepare_and_validate(p, wid)
-    crashed = p.aew("integrate", "publish", wid, "--token", p.token, "--expect-rev", str(p.rev()),
-                    env={"AEW_FAULT": "integrate.after_publishing_record"})
+    crashed = p.aew("integrate", "publish", wid, "--expect-rev", str(p.rev()),
+                    env={"AEW_LEAD_TOKEN": p.token, "AEW_FAULT": "integrate.after_publishing_record"})
     assert crashed.returncode == 86
     engine = Engine.discover(p.root)
     assert engine.store.read()["work"][wid]["integration"]["status"] == "publishing"
@@ -745,8 +745,10 @@ def test_guard_query_matches_execute_verify_ingest_integration(tmp_path):
     assert args["found"]["integration_status"] == integ["status"] == "validated"
     answer = equivalent(engine, "verify.ingest.integration", wid, {"evidence": report},
                         _verify_ingest(engine, p, wid, report, "integration"))
-    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "no prepared integration candidate" in (
+    assert answer["reason_codes"] == ["ILLEGAL_TRANSITION"] and "verification is already ingested" in (
         answer["blocking_conditions"][0]["message"])
+    assert "candidate is leased for publishing" in answer["blocking_conditions"][0]["message"]
+    assert f"aew integrate publish {wid} --expect-rev N" in answer["blocking_conditions"][0]["message"]
 
 
 # ------------------------------------------------------------------------------------- integrate.publish (M4-E E4b)

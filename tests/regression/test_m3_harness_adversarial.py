@@ -302,7 +302,7 @@ def test_two_leads_race_to_launch_the_same_invocation(lab, tmp_path, sync):
     lab.script(R1, [touch(sync / "ready"), wait(sync / "go")])
     lab.script(R2, [touch(sync / "ready"), wait(sync / "go")])
     rev = str(lab.project.rev())
-    racers = [spawn_aew(lab, "harness", "launch", inv, "--token", lab.project.token, "--expect-rev", rev)
+    racers = [spawn_aew(lab, "harness", "launch", inv, "--expect-rev", rev, env={"AEW_LEAD_TOKEN": lab.project.token})
               for _ in range(2)]
     results = [(p.wait(timeout=180), *p.communicate()) for p in racers]
     codes = sorted(r[0] for r in results)
@@ -409,8 +409,8 @@ def test_rotation_racing_submissions_never_admits_evidence_after_revocation(lab,
         nxt = f"R-{inv}-{n + 1}"
         lab.script(nxt, [touch(sync / f"ready{n + 1}"), wait(sync / f"go{n + 1}"),
                          {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}])
-        racer = spawn_aew(lab, "harness", "launch", inv, "--replace", "--token", lab.project.token,
-                          "--expect-rev", str(lab.project.rev()))
+        racer = spawn_aew(lab, "harness", "launch", inv, "--replace",
+                          "--expect-rev", str(lab.project.rev()), env={"AEW_LEAD_TOKEN": lab.project.token})
         (sync / f"go{n}").touch()
         assert racer.wait(timeout=180) == 0, racer.communicate()
         lab.wait(f"R-{inv}-{n}")
@@ -839,8 +839,8 @@ def test_model_and_role_configuration_are_pinned_at_dispatch(lab, tmp_path):
     policy = lab.aew_root / "policy" / "execution.yaml"
     policy.write_text(policy.read_text(encoding="utf-8").replace("fake-model", "cheaper-model"), encoding="utf-8")
     lab.project.adopt_policy()
-    assert lab.aew("harness", "launch", out["invocation"], "--model", "fakeprov/cheaper-model", "--token",
-                   lab.project.token, "--expect-rev", str(lab.project.rev())).returncode != 0
+    assert lab.aew("harness", "launch", out["invocation"], "--model", "fakeprov/cheaper-model",
+                   "--expect-rev", str(lab.project.rev()), env={"AEW_LEAD_TOKEN": lab.project.token}).returncode != 0
     lab.script(R2, [{"do": "aew", "args": ["whoami"]}])
     lab.lead("harness", "launch", out["invocation"])
     lab.wait(R2)

@@ -53,7 +53,7 @@ def build_world(tmp: Path, *, maps: bool = False, search: bool = False) -> World
     integrate(p, done)
     open_ticket = create_planned_ticket(p, tmp, title="Add apply()", extra=("--parent", epic))
     hostile = create_unit(p, "ticket", HOSTILE, cls=1, parent=epic)
-    p.ok("history", "audit", "--token", p.token, "--expect-rev", str(p.rev()))
+    p.ok("history", "audit", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     if search:
         policy = p.root / ".aew/policy/execution.yaml"
         policy.write_text(policy.read_text(encoding="utf-8") + "recall:\n  raw_history_search: explicit\n",
@@ -63,9 +63,10 @@ def build_world(tmp: Path, *, maps: bool = False, search: bool = False) -> World
     if maps:  # through the Lead's own commands, as an operator would: nothing is planted
         discovery = complete_investigation(p, create_investigation(p, tmp, title="Architecture survey"))
         rev = p.ok("map", "show", "--json")["map_revision"]
-        generated = p.ok("map", "generate", "--token", p.token, "--select", "--expect-map-rev", rev, "--json")
-        p.ok("map", "select-architecture", discovery, "--token", p.token, "--expect-map-rev",
-             generated["map_revision"], "--json")
+        generated = p.ok("map", "generate", "--select", "--expect-map-rev", rev, "--json",
+                         env={"AEW_LEAD_TOKEN": p.token})
+        p.ok("map", "select-architecture", discovery, "--expect-map-rev",
+             generated["map_revision"], "--json", env={"AEW_LEAD_TOKEN": p.token})
         w.ids.update({"architecture": discovery, "map": generated["root"]})
     w.root, w.project = p.root, p
     return w

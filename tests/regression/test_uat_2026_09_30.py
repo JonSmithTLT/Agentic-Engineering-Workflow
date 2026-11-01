@@ -53,7 +53,7 @@ def lab(tmp_path):
 
 
 def refused(p, *args):
-    res = p.aew(*args, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -266,5 +266,5 @@ def test_a_run_that_ended_without_its_expected_output_is_conspicuous_in_wait(lab
     lab.lead("harness", "launch", "INV-0001")
     res = run_aew("-C", str(lab.root), "harness", "wait", "R-INV-0001-3", "--timeout", "1", env=lab.env, timeout=240)
     assert res.returncode == 0 and res.json["timed_out"] and "headline" not in res.json, res.stdout
-    lab.ok("harness", "stop", "R-INV-0001-3", "--reason", "test over", "--token", lab.project.token)
+    lab.ok("harness", "stop", "R-INV-0001-3", "--reason", "test over", env={"AEW_LEAD_TOKEN": lab.project.token})
     assert_control_invariants(lab.project)

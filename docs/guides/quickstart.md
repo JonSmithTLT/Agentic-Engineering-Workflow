@@ -21,14 +21,37 @@ cd <repo>                       # the main worktree, on the authoritative branch
 aew init                        # discovers authority *candidates*; confers no authority
 $EDITOR .aew/policy/checks.yaml # configure the real test command; gates stay blocked until you do
 aew lead acquire --expect-rev 0 --session-label lead-1   # shows the Lead credential ONCE, on your terminal
-aew manifest adopt --reason "configured the test command" --token <credential> --expect-rev 1
+aew manifest adopt --reason "configured the test command" --expect-rev 1   # asks for the Lead credential, hidden
 ```
 
 The policy files under `.aew/policy/` are pinned like `project.yaml`: after any edit, every Lead change is refused until
 you review it and run `aew manifest adopt` (a recorded decision). Adopt asks you to type back a one-time code at your
 own terminal, so the Lead, which has no terminal, can never approve a policy change it made.
 
-Hand the credential to the Lead session (for example in its environment as `AEW_LEAD_TOKEN`). It is never written to disk.
+### Giving AEW the Lead credential
+
+A command that needs the Lead credential asks for it at a hidden prompt on your terminal, and uses it for that command
+only. Nothing you type there is shown or lands in your shell's history. Never put the credential on a command line:
+`--token` takes no value, because a command line is saved in your shell's history.
+
+To run several commands, or a Lead session (`aew opencode`, `aew lead session`), without the prompt, set
+`AEW_LEAD_TOKEN` with one of these forms. Each echoes nothing and leaves nothing in history:
+
+```bash
+read -rsp 'Lead token: ' AEW_LEAD_TOKEN; echo; export AEW_LEAD_TOKEN    # bash
+```
+
+```powershell
+$env:AEW_LEAD_TOKEN = Read-Host "Lead token" -MaskInput                 # PowerShell 7
+$s = Read-Host "Lead token" -AsSecureString; $env:AEW_LEAD_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)); Remove-Variable s    # Windows PowerShell 5.1
+```
+
+Set it for this shell session only: a persistent variable reaches every process you start, and a startup file is a
+plain file in your home directory, like history. A Lead session removes it from its harness's environment and holds
+the credential in its broker's memory; `--acquire` takes a vacant seat instead. The credential is never written to disk.
+Once a Lead session (`aew opencode`, `aew lead session`) is running, AEW never asks for the Lead credential inside the
+Lead's own window: a prompt there is not AEW's.
+
 A command that issues a credential writes it only to your terminal, never to standard output, and the JSON result says
 `"(written to your terminal)"` instead. With no terminal (a pipe, a harness tool call) it is refused before anything is
 issued. A script that keeps the credential safe can ask for it on standard output with `aew --print-credential ...`;

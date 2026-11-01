@@ -44,7 +44,7 @@ def show(p, wid):
 
 
 def err(p, *args):
-    res = p.aew(*args, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 

@@ -223,3 +223,15 @@ behaviour above stands.
   evidence). WC §8.2's crash rule still marks an invocation `INTERRUPTED`/unknown when its own
   custody is lost (its supervisor or the AEW host is gone); losing only the Lead's attachment is not that (decision
   record §14.1, confirmed by the designer: loss of the Lead attachment is not loss of an admitted child's custody).
+
+## Amendment 2026-11-01 — the Lead credential is never a command-line value (STG-05 CS-4 addendum 12)
+
+- **What changes.** In the 2026-09-29 amendment's explicit-credential path, `--token` takes no value: the path is
+  `AEW_INVOCATION_TOKEN` and `AEW_LEAD_TOKEN`. A command that needs the Lead credential takes it from `AEW_LEAD_TOKEN`
+  or, at the operator's own terminal and outside any AEW session, from a hidden prompt, used for that command only.
+  `--token` with a value is refused before anything runs, and the option is gone from every help text (it stays
+  registered, as the broker's carrier). Tests give the credential through the variable, as the operator does.
+- **Why.** A value on a command line lands in the shell's history file, and so does an `export` line holding one.
+- **What AEW shows.** A refusal for a missing credential gives the per-session hidden-input forms, rendered by
+  `aew.lead_credential` (their one owner); no text offers a persistent variable or a startup-file line.
+- **Known limit.** `--invocation-token` (scripted roles) still takes a value; the register tracks it.

@@ -162,14 +162,13 @@ def test_operator_only_commands_are_refused_and_read_only_commands_are_not_relay
 def test_an_operator_confirmed_command_is_refused_with_its_own_reason_and_validate_is_reachable():
     """M4-D5: resetting the validation breaker is the operator's, confirmed at their terminal; validating a candidate
     is the Lead's."""
-    refusal = lead_broker.refuses_locally(_ns("integrate", "breaker", "reset", "--reason", "fixed", "--token", "x",
+    refusal = lead_broker.refuses_locally(_ns("integrate", "breaker", "reset", "--reason", "fixed",
                                               "--expect-rev", "1"))
     assert refusal and "confirmed by the operator" in refusal and "credential" not in refusal
     assert refusal.startswith("`aew integrate breaker reset`"), refusal  # as typed, never sorted (re-review R4)
     offer = lead_broker.refuses_locally(_ns("lead", "handoff", "offer", "--expect-rev", "1"))
     assert offer and offer.startswith("`aew lead handoff offer`"), offer
-    assert lead_broker.refuses_locally(_ns("integrate", "validate", "T-0001", "--token", "x",
-                                           "--expect-rev", "1")) is None
+    assert lead_broker.refuses_locally(_ns("integrate", "validate", "T-0001", "--expect-rev", "1")) is None
 
 
 @pytest.mark.parametrize("argv", [

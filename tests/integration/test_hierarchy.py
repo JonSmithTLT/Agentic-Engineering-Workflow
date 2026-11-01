@@ -33,7 +33,7 @@ def show(p, wid):
 
 
 def err(p, *args):
-    res = p.aew(*args, "--token", p.token, "--expect-rev", str(p.rev()))
+    res = p.aew(*args, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     return res.error
 
@@ -187,7 +187,7 @@ def lowered(before, after):
 def refused_changing_nothing(p, *args):
     """``aew *args`` as the Lead at the current revision, refused, with the control state as it was: the error."""
     state = load_control(p.root)
-    res = p.aew(*args, "--token", p.token, "--expect-rev", str(state["revision"]))
+    res = p.aew(*args, "--expect-rev", str(state["revision"]), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode != 0, res.stdout
     assert load_control(p.root) == state
     return res.error

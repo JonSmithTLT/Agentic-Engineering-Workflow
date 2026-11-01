@@ -92,13 +92,13 @@ def enable_messaging(lab: HarnessLab) -> None:
 def stop_and_requests(lab: HarnessLab, run: str) -> list[str]:
     """Stop the run and wait for its end: every request recorded before the stop has been acted on by then, so what
     was posted is final. Returns the kinds of the requests the supervisor acted on."""
-    lab.ok("harness", "stop", run, "--reason", "the test is done", "--token", lab.project.token)
+    lab.ok("harness", "stop", run, "--reason", "the test is done", env={"AEW_LEAD_TOKEN": lab.project.token})
     lab.wait(run)
     return [t.get("kind") for t in lab.record(run)["timeline"] if t["event"] == "request"]
 
 
 def send(lab: HarnessLab, run: str, *args: str):
-    return lab.aew("harness", "send", run, *args, "--token", lab.project.token)
+    return lab.aew("harness", "send", run, *args, env={"AEW_LEAD_TOKEN": lab.project.token})
 
 
 # ---------------------------------------------------------------------------------------------- messaging off
@@ -108,7 +108,8 @@ def test_harness_send_defaults_to_next_step_and_posts_steer(lab, tmp_path):
     """With no `--when`, a send is `next-step`: a supervisor request file, as before, that fake V2 receives as `steer`
     and admits at the next step boundary, inside the same turn."""
     run = launch_held_open(lab, tmp_path)
-    out = lab.ok("harness", "send", run, "--text", "Also note the changed files.", "--token", lab.project.token)
+    out = lab.ok("harness", "send", run, "--text", "Also note the changed files.",
+                 env={"AEW_LEAD_TOKEN": lab.project.token})
     assert out["requested"] == "send" and out["file"]
     lab.until(lambda: lead_posts(lab, run), what="the message posted")
     assert lead_posts(lab, run) == ["steer"]
@@ -135,7 +136,8 @@ def test_harness_send_when_turn_end_is_refused_while_messaging_is_off_and_writes
     assert not (lab.aew_root / "coordination").exists()
     assert "coordination_store" not in Engine.discover(lab.root).store.read()
     # a `next-step` send after it is the first and only Lead post: the refused one never reached the queue
-    lab.ok("harness", "send", run, "--text", "Now this.", "--when", "next-step", "--token", lab.project.token)
+    lab.ok("harness", "send", run, "--text", "Now this.", "--when", "next-step",
+           env={"AEW_LEAD_TOKEN": lab.project.token})
     lab.until(lambda: lead_posts(lab, run), what="the next-step message posted")
     release(tmp_path)
     assert stop_and_requests(lab, run) in (["send", "stop"], ["send"])
@@ -151,8 +153,9 @@ def test_with_messaging_off_no_lead_path_posts_queue(lab, tmp_path, monkeypatch)
     accepted = [("--text", "Default timing."), ("--text", "Named timing.", "--when", "next-step"),
                 ("--file", str(message)), ("--file", str(message), "--when", "next-step")]
     for args in accepted:
-        lab.ok("harness", "send", run, *args, "--token", lab.project.token)
-    res = lab.project.aew("harness", "send", run, "--file", "-", "--token", lab.project.token, env=lab.env,
+        lab.ok("harness", "send", run, *args, env={"AEW_LEAD_TOKEN": lab.project.token})
+    res = lab.project.aew("harness", "send", run, "--file", "-",
+                          env={**(lab.env or {}), "AEW_LEAD_TOKEN": lab.project.token},
                           input="From stdin.")
     assert res.returncode == 0, res.stderr
     res = send(lab, run, "--text", "Turn end.", "--when", "turn-end")

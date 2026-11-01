@@ -12,6 +12,7 @@ import contextlib
 import dataclasses
 import hashlib
 import os
+import shlex
 import shutil
 import signal
 import socket
@@ -942,6 +943,26 @@ def test_display_credentials_and_variables_never_reach_a_contained_process(lab, 
                   env=dict.fromkeys(L.DISPLAY_ENV, "synthetic"))
     assert done.returncode == 0 and "SYNTHETIC" not in done.stdout, done.stderr
     assert {line.split("=", 1)[0] for line in done.stdout.splitlines()} & set(L.DISPLAY_ENV) == set()
+
+
+def test_no_shell_or_repl_history_is_readable_inside_and_the_self_test_row_covers_each(lab, monkeypatch):
+    """CS-4 addendum 12, ruling 1 and its test: a synthetic history holding a synthetic token, planted at each name the
+    home's history list holds and at the file a synthetic HISTFILE names, is not there inside. Row 5 checks each, as a
+    path left out of its directory, and the host still reads every one (the control)."""
+    token = "SYNTHETIC-LEAD-TOKEN-" + "0" * 16
+    planted = [lab.home / rel for rel in L.HISTORY_FILES] + [lab.outside / "custom_history"]
+    for path in planted:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"aew checkpoint --token {token}\nexport AEW_LEAD_TOKEN={token}\n")
+    layout, label = establish(lab, monkeypatch, env={"HISTFILE": str(planted[-1])})
+    row = label["self_test"]["rows"]["5"]
+    assert row["ok"], row
+    assert {os.path.realpath(p) for p in planted} <= set(layout.left_out) | set(layout.hide_files)
+    quoted = " ".join(shlex.quote(str(p)) for p in planted)
+    host = subprocess.run(["sh", "-c", f"cat {quoted}"], capture_output=True, text=True, timeout=60)
+    assert host.stdout.count("SYNTHETIC") == 2 * len(planted)  # the control: the host reads every one
+    inside = lab.sh(layout, f"cat {quoted} 2>/dev/null; true")
+    assert "SYNTHETIC" not in inside.stdout + inside.stderr
 
 
 def test_no_credential_reaches_git_inside_the_sandbox(lab):

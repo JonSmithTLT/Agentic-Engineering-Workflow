@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import threading
@@ -52,6 +53,9 @@ TERMINATE_S = 20.0
 ENDING_EXTRA_S = 60.0  # beyond the adapter's stop: collection and the evidence and credential scans
 START_ENV = "AEW_RUN_START_S"
 STARTING_MARGIN_S = 60.0  # beyond the self-test and the adapter's launch: the contract, the bridge, the layout
+# The error type of a provider refusal on content, as the adapter's detail spells it ("failed (provider.content-filter,
+# 200: ...)"); matched at the type, never in the provider's message text (PR #310 review, F3).
+CONTENT_FILTER = re.compile(r"\(provider\.content[-_.]filter\b", re.IGNORECASE)
 
 
 def starting_limit_s(harness: str | None) -> float:
@@ -440,7 +444,32 @@ class Supervisor:
                                 "relaunch reads the key from the process that launches it: from inside a Lead session "
                                 "(`aew opencode`, `aew lead session`) that is the session's own, so restart it from a "
                                 "terminal with the new key first")
-        return self._finish(K.CRASHED, f"harness exited with {code} without recording its expected output")
+        reason = f"harness exited with {code} without recording its expected output"
+        # the provider's text is bounded and cleaned before it reaches a reason that is shown (PR #310 review, F2);
+        # the record's `harness_outcome` keeps the raw value
+        detail = event_spool.clean(status.get("detail"))
+        if detail:
+            reason += f"; harness outcome: {detail}"
+            if CONTENT_FILTER.search(detail):
+                reason += self._content_filter_next_step()
+        return self._finish(K.CRASHED, reason)
+
+    def _content_filter_next_step(self) -> str:
+        """What the Lead does when the provider refuses on content, as commands that parse as printed (PR #310
+        review, F1). A relaunch keeps the invocation's pinned model (ADR-0010) and no governed command changes its
+        pack, so a repeat means a new invocation on another model: cancel this one, then dispatch."""
+        inv = self.inv_id
+        wid = self.record.get("work_unit") or "<work unit>"
+        rev = "--expect-rev <revision from aew status>"
+        return (f". Relaunch it with `aew harness launch {inv} {rev}`. A relaunch keeps the invocation's pinned "
+                "model (ADR-0010), so if the refusal repeats, cancel it:\n\n"
+                f"```sh\naew invoke cancel {inv} {rev} --fields - <<'EOF'\n"
+                "reason: 'why this invocation must end'\nEOF\n```\n\n"
+                "and dispatch a new invocation on another model:\n\n"
+                f"```sh\naew invoke create {wid} --launch --model PROVIDER/MODEL {rev}\n```\n\n"
+                "For a non-mutating Ticket, redispatch it instead of cancelling and dispatching:\n\n"
+                f"```sh\naew work redispatch {wid} --launch --model PROVIDER/MODEL {rev} --fields - <<'EOF'\n"
+                "reason: 'why this Ticket is redispatched'\nEOF\n```")
 
     def _evidence(self, *, kinds: bool = False) -> list[Any]:
         wid = self.record.get("work_unit")

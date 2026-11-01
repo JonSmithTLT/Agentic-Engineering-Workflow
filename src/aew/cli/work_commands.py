@@ -7,7 +7,15 @@ import os
 import sys
 from typing import Any
 
-from aew.cli.commands import _add_json, _add_lead, _engine, _lead_token, _read_text_arg, operator_attribution
+from aew.cli.commands import (
+    _add_json,
+    _add_lead,
+    _engine,
+    _lead_token,
+    _read_text_arg,
+    add_token,
+    operator_attribution,
+)
 from aew.errors import UsageError
 from aew.harness import bridge
 from aew.harness.contract import ENDED_WITHOUT_EVIDENCE
@@ -443,7 +451,7 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q = hsub.add_parser("stop", help="stop a run's harness; the invocation is unchanged (Lead)")
     q.add_argument("run")
     q.add_argument("--reason", required=True)
-    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
+    add_token(q)
     q.set_defaults(handler=lambda a: _engine(a).harness_stop(token=_lead_token(a), run=a.run, reason=a.reason))
     # The timings and their help (F9-A plan v4 amendment 2 §1.4, §4; register E55). The text is static: it reads the
     # same whether messaging is on or off, so it is what M4-H's frozen treatment shows.
@@ -465,12 +473,12 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     src.add_argument("--file", help="message file, or - for stdin")
     q.add_argument("--when", choices=list(WHEN_DELIVERY), default=DEFAULT_WHEN,
                    help="when the agent receives it: next-step (the default) or turn-end")
-    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
+    add_token(q)
     q.set_defaults(handler=lambda a: _engine(a).harness_send(
         token=_lead_token(a), run=a.run, text=a.text if a.text is not None else _read_text_arg(a.file), when=a.when))
     q = hsub.add_parser("interrupt", help="stop a run's current turn, keeping its session (Lead)")
     q.add_argument("run")
-    q.add_argument("--token", help="Lead credential (or env AEW_LEAD_TOKEN)")
+    add_token(q)
     q.set_defaults(handler=lambda a: _engine(a).harness_interrupt(token=_lead_token(a), run=a.run))
     q = hsub.add_parser("config", help="print the exact projection a harness receives (read-only)")
     q.add_argument("harness", choices=["opencode"])

@@ -15,7 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from aew import SPEC_SET, __version__, profile
+from aew import SPEC_SET, __version__, lead_credential, profile
 from aew.cli import credentials, fields
 from aew.errors import AEWError
 
@@ -143,8 +143,11 @@ def _run(args: argparse.Namespace, argv: list[str], handler: Handler) -> tuple[A
     from aew.engine import dispatch
 
     credentials.before(args)  # a credential this command issues must have somewhere safe to go (ADR-0009)
-    with dispatch.channel("cli"):  # recorded with any dispatch decision this command makes (M4-A)
-        return credentials.deliver(handler(args), args), getattr(args, "json", False)
+    try:
+        with dispatch.channel("cli"):  # recorded with any dispatch decision this command makes (M4-A)
+            return credentials.deliver(handler(args), args), getattr(args, "json", False)
+    finally:
+        lead_credential.take_prompted()  # what the operator typed at the prompt was for this command only
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -181,6 +184,8 @@ def _run_main(argv: list[str]) -> int:
         parser.print_help()
         return 2
     try:
+        if getattr(args, "token", None) is not None:  # refused before anything runs (CS-4 addendum 12, ruling 2)
+            raise lead_credential.token_value_refusal(lead_session=bool(os.environ.get("AEW_LEAD_BROKER")))
         relayed = _relayed_read(args, argv)
         if relayed is not None:
             return relayed

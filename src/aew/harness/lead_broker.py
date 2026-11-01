@@ -52,7 +52,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from aew import errors
+from aew import errors, lead_credential
 from aew.engine import dispatch, faults
 from aew.engine.authority import require_held_lead, require_lead
 from aew.harness import agentenv, bridge, broker_liveness, steering_loop, tool_calls
@@ -511,8 +511,8 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     if getattr(ns, "print_credential", False):
         raise errors.PermissionDenied("--print-credential is refused in a Lead session: a credential never goes "
                                       "into the Lead's transcript")
-    if ns.token:
-        raise errors.UsageError("do not pass --token in a Lead session: the session holds the Lead credential")
+    if ns.token is not None:  # the client refuses it first; the typed `cli` tool's argv reaches only this check
+        raise lead_credential.token_value_refusal(lead_session=True)
     if any(p <= path for p in DISPATCHES) and not getattr(ns, "launch", False):
         raise errors.PermissionDenied(
             "in a Lead session, dispatch with --launch: without it the dispatch prints an invocation credential "
@@ -698,12 +698,12 @@ class Harness:
 
 
 def require_credential(acquire: bool) -> None:
-    """A Lead session needs the Lead credential, from the operator's shell or a vacant seat (``--acquire``): refused
-    before anything starts. ``aew opencode`` asks this before its contained Lead's own checks (U29)."""
-    if not acquire and not os.environ.get("AEW_LEAD_TOKEN"):
-        raise errors.UsageError("a Lead session needs the Lead credential: set AEW_LEAD_TOKEN in your own shell "
-                                "(it is removed from the session's environment), or take a vacant seat with "
-                                "--acquire (the credential then exists only inside this session)")
+    """A Lead session needs the Lead credential, from the operator (``lead_credential.required``: the variable, removed
+    from the session's environment, or the hidden prompt) or a vacant seat (``--acquire``): refused before anything
+    starts. ``aew opencode`` asks this before its contained Lead's own checks (U29)."""
+    if not acquire:
+        lead_credential.required(instead="take a vacant seat with --acquire (the credential then exists only inside "
+                                         "this session)")
 
 
 def run_session(engine: Any, command: list[str], *, acquire: bool, session_label: str | None,
@@ -726,7 +726,8 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
         raise errors.UsageError("name the Lead's harness command after `--`, e.g. `aew lead session -- opencode-cli`")
     harden_current_process()  # this process holds the Lead credential (Linux: not inspectable by its child)
     require_credential(acquire)
-    held = os.environ.pop("AEW_LEAD_TOKEN", "")  # in memory only: never inherited by git, hooks or any child
+    # in memory only: never inherited by git, hooks or any child
+    held = os.environ.pop(lead_credential.ENV, "") or lead_credential.take_prompted()
     if acquire:
         token = engine.lead_acquire(expect_rev=engine.store.current()["revision"], session_label=session_label)["token"]
     else:

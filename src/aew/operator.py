@@ -82,10 +82,23 @@ def has_terminal() -> bool:
     return True
 
 
+# What a prompt that ends unanswered says: (timed out, terminal closed). The authorization prompt's own words.
+AUTHORIZATION_ENDS = ("operator authorization timed out", "terminal closed before authorization")
+
+
 def ask(prompt: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> str:
     """Write ``prompt`` to the controlling terminal and return the line the operator types, or raise
     ``OperatorAuthorizationRequired`` when this process has no terminal. Never reads argv, environment or stdin."""
     return _ask_windows(prompt, timeout) if IS_WINDOWS else _ask_posix(prompt, timeout)
+
+
+def ask_hidden(prompt: str, *, what: str, timeout: float = DEFAULT_TIMEOUT_S) -> str:
+    """:func:`ask` for a secret: what the operator types is never echoed (CS-4 addendum 12, the Lead credential's
+    prompt). The Windows console read never echoes; on POSIX the terminal's echo is off while it reads. ``what`` names
+    the secret in the refusal when the prompt times out or the terminal closes (review of #316, m6)."""
+    ends = (f"the prompt for {what} timed out", f"terminal closed before {what} was entered")
+    return _ask_windows(prompt, timeout, ends=ends) if IS_WINDOWS else _ask_posix(prompt, timeout, hidden=True,
+                                                                                  ends=ends)
 
 
 def authorize(text: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, str]:
@@ -105,8 +118,10 @@ def _no_terminal(detail: str) -> OperatorAuthorizationRequired:
     )
 
 
-def _ask_posix(prompt: str, timeout: float) -> str:  # pragma: posix-only
+def _ask_posix(prompt: str, timeout: float, *, hidden: bool = False,
+               ends: tuple[str, str] = AUTHORIZATION_ENDS) -> str:  # pragma: posix-only
     import select
+    import termios
 
     assert sys.platform != "win32"  # narrows the os module for the type checker
 
@@ -114,28 +129,37 @@ def _ask_posix(prompt: str, timeout: float) -> str:  # pragma: posix-only
         fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
     except OSError as exc:
         raise _no_terminal(f"/dev/tty unavailable: {exc.strerror}") from None
+    saved = None
     try:
+        if hidden:  # echo off before the prompt shows, so nothing typed after it is ever echoed
+            saved = termios.tcgetattr(fd)
+            quiet = list(saved)
+            quiet[3] &= ~termios.ECHO
+            termios.tcsetattr(fd, termios.TCSAFLUSH, quiet)
         os.write(fd, prompt.encode("utf-8"))
         buf = b""
         deadline = time.monotonic() + timeout
         while b"\n" not in buf and b"\r" not in buf:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise PermissionDenied("operator authorization timed out")
+                raise PermissionDenied(ends[0])
             ready, _, _ = select.select([fd], [], [], remaining)
             if not ready:
                 continue
             chunk = os.read(fd, 256)
             if not chunk:
-                raise PermissionDenied("terminal closed before authorization")
+                raise PermissionDenied(ends[1])
             buf += chunk
         os.write(fd, b"\n")
         return buf.decode("utf-8", "replace").splitlines()[0] if buf.strip() else ""
     finally:
+        if saved is not None:
+            termios.tcsetattr(fd, termios.TCSAFLUSH, saved)
         os.close(fd)
 
 
-def _ask_windows(prompt: str, timeout: float) -> str:  # pragma: windows-only
+def _ask_windows(prompt: str, timeout: float, *,
+                 ends: tuple[str, str] = AUTHORIZATION_ENDS) -> str:  # pragma: windows-only
     import ctypes
     import msvcrt
 
@@ -154,7 +178,7 @@ def _ask_windows(prompt: str, timeout: float) -> str:  # pragma: windows-only
         deadline = time.monotonic() + timeout
         while True:
             if time.monotonic() > deadline:
-                raise PermissionDenied("operator authorization timed out")
+                raise PermissionDenied(ends[0])
             if not msvcrt.kbhit():
                 time.sleep(0.02)
                 continue

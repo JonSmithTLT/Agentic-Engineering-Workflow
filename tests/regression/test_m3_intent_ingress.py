@@ -68,8 +68,8 @@ def assert_stored(p, wid: str, data: dict) -> None:
 
 
 def create(p, *extra: str, input: str | None = None):
-    return p.aew("work", "create", "ticket", "--class", "1", *extra, "--token", p.token,
-                 "--expect-rev", str(p.rev()), input=input)
+    return p.aew("work", "create", "ticket", "--class", "1", *extra,
+                 "--expect-rev", str(p.rev()), input=input, env={"AEW_LEAD_TOKEN": p.token})
 
 
 @pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig", "utf-16"])  # utf-16: Windows PowerShell 5.1's `>`
@@ -112,17 +112,17 @@ def test_reasons_and_notes_through_fields_and_stdin_are_stored_byte_for_byte(tmp
     p = sample_project(tmp_path)
     wid = create(p, "--fields", "-", input=dump(spec())).json["id"]
     plan = "".join(f"- {c}\n" if "\n" not in c else c for c in CORPUS)
-    res = p.aew("plan", "propose", "--assurance", "none", wid, "--file", "-", "--token", p.token,
-                "--expect-rev", str(p.rev()), input=plan)
+    res = p.aew("plan", "propose", "--assurance", "none", wid, "--file", "-",
+                "--expect-rev", str(p.rev()), input=plan, env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 0, res.stderr
     stored = (p.root / ".aew" / "work" / wid / "plan-v1.md").read_text(encoding="utf-8")
     assert parse_frontmatter(stored, source="plan")[1] == plan
     reason = "\n".join(CORPUS)
-    res = p.aew("work", "transition", wid, "--to", "CANCELLED", "--token", p.token, "--expect-rev", str(p.rev()),
-                "--fields", "-", input=dump({"reason": reason}))
+    res = p.aew("work", "transition", wid, "--to", "CANCELLED", "--expect-rev", str(p.rev()),
+                "--fields", "-", input=dump({"reason": reason}), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 0, res.stderr
-    res = p.aew("checkpoint", "--token", p.token, "--expect-rev", str(p.rev()), "--fields", "-",
-                input=dump({"next": CORPUS[1]}))
+    res = p.aew("checkpoint", "--expect-rev", str(p.rev()), "--fields", "-",
+                input=dump({"next": CORPUS[1]}), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 0, res.stderr
     engine = Engine.discover(p.root)
     state = engine.store.read()

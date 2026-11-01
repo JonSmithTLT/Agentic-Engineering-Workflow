@@ -346,7 +346,7 @@ def test_a_queue_input_at_the_turn_boundary_is_answered_before_the_run_ends(lab,
            idle_before_queue_s=3)
     _, _, run = launch(lab, tmp_path)
     lab.until(lambda: (sync / "ready").exists(), what="the turn is under way")
-    lab.ok("harness", "send", run, "--text", "Also note the changed files.", "--token", lab.project.token)
+    lab.ok("harness", "send", run, "--text", "Also note the changed files.", env={"AEW_LEAD_TOKEN": lab.project.token})
     lab.until(lambda: any(e["event"] == "opencode.prompt" and e["delivery"] == "queue" for e in events(lab)),
               what="the message queued")
     (sync / "go").write_text("x")
@@ -363,10 +363,10 @@ def test_a_lead_interrupt_holds_the_session_until_send(lab, tmp_path):
     script(lab, [{"do": "touch", "path": str(sync / "ready")}, {"do": "hang"}])
     _, _, run = launch(lab, tmp_path)
     lab.until(lambda: (sync / "ready").exists(), what="the turn is under way")
-    lab.ok("harness", "interrupt", run, "--token", lab.project.token)
+    lab.ok("harness", "interrupt", run, env={"AEW_LEAD_TOKEN": lab.project.token})
     lab.until(lambda: any(e["event"] == "opencode.held" for e in events(lab)), what="the session held")
     assert lab.ok("harness", "status")["runs"][0]["status"] == "running"
-    lab.ok("harness", "send", run, "--text", "Continue and finish.", "--token", lab.project.token)
+    lab.ok("harness", "send", run, "--text", "Continue and finish.", env={"AEW_LEAD_TOKEN": lab.project.token})
     assert lab.wait(run)["status"] == "ended_without_evidence"
     kinds = [t.get("kind") for t in lab.record(run)["timeline"] if t["event"] == "request"]
     assert kinds == ["interrupt", "send"]
@@ -414,9 +414,15 @@ def test_the_server_dying_mid_run_is_a_crash(lab, tmp_path):
     lab.until(lambda: (sync / "ready").exists(), what="the turn is under way")
     rev = lab.project.rev()
     (sync / "go").write_text("x")
-    assert lab.wait(run)["status"] == "crashed"
+    done = lab.wait(run)
+    assert done["status"] == "crashed"
     record = lab.record(run)
     assert record["exit_code"] == 9 and "server exited (9)" in record["harness_outcome"]
+    # the outcome reaches the reason the Lead is shown, by `harness wait` and by `harness status` (PR #310, F4)
+    outcome = "; harness outcome: the OpenCode server exited (9) during the run"
+    assert outcome in done["reason"]
+    [row] = lab.ok("harness", "status", inv)["runs"]
+    assert row["reason"] == done["reason"]
     assert lab.project.rev() == rev and lab.ok("invoke", "show", inv)["status"] == "active"
 
 
@@ -567,9 +573,10 @@ def test_send_refuses_a_credential_and_a_run_that_is_not_running(lab, tmp_path):
     script(lab, [{"do": "exit", "code": 0}])
     _, _, run = launch(lab, tmp_path)
     lab.wait(run)
-    res = lab.aew("harness", "send", run, "--text", f"use {lab.project.token}", "--token", lab.project.token)
+    res = lab.aew("harness", "send", run, "--text", f"use {lab.project.token}",
+                  env={"AEW_LEAD_TOKEN": lab.project.token})
     assert res.error["code"] == "USAGE" and lab.project.token not in res.stderr
-    res = lab.aew("harness", "send", run, "--text", "hello", "--token", lab.project.token)
+    res = lab.aew("harness", "send", run, "--text", "hello", env={"AEW_LEAD_TOKEN": lab.project.token})
     assert res.error["code"] == "ILLEGAL_TRANSITION"
 
 

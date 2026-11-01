@@ -82,6 +82,82 @@ def test_a_model_id_that_maps_to_no_pair_is_refused_with_its_reason(profile, rea
     assert refused.value.details["reason"] == reason and refused.value.details["field"] == "profiles.standard.model"
 
 
+@pytest.mark.parametrize("model", ["openai/MODEL_ID", "openai/YOUR_MODEL_ID", "openai/<model>", "openai/<id>suffix",
+                                   "openai/<id", "openai/id>", "<openai>/model"])
+def test_a_placeholder_model_is_refused_naming_its_key_its_value_and_the_listing(model):
+    with pytest.raises(ValidationFailed) as refused:
+        pin(policy(standard={"model": model}))
+    details, message = refused.value.details, refused.value.message
+    assert details["reason"] == "model_id_malformed" and details["field"] == "profiles.standard.model"
+    assert details["value"] == model
+    assert "opencode models" in message and "full provider/model ID in profiles.standard.model" in message
+    assert "policy key" not in message  # where it is written is the field, not "this policy key" (PR #309, F2)
+
+
+def test_a_placeholder_in_the_explicit_provider_part_is_refused_with_the_provider_s_own_next_step():
+    with pytest.raises(ValidationFailed) as refused:
+        pin(policy(standard={"provider": "<openai>", "model": "model"}))
+    assert refused.value.details["reason"] == "model_id_malformed"
+    assert refused.value.details["value"] == "<openai>"
+    assert refused.value.details["field"] == "profiles.standard.provider"
+    assert refused.value.details["model"] == "model"
+    message = refused.value.message
+    # the provider key takes the provider id alone, never the full id (PR #309, F1)
+    assert "provider id alone" in message and "remove `provider`" in message
+    assert "full provider/model ID in profiles.standard.model" in message
+    assert "paste" not in message
+
+
+def test_the_refusal_of_a_placeholder_provider_is_followed_by_the_advice_it_gives():
+    """Doing what the message says is accepted for the right reason: the provider key gets the provider id alone, or
+    the provider key goes and the model key gets the full id. Both give ``openai/gpt-x`` once, never a doubled id; the
+    advice that used to be given (the full id in the provider key) passed doctor and then failed at launch."""
+    with pytest.raises(ValidationFailed):
+        pin(policy(standard={"provider": "<provider>", "model": "gpt-x"}))
+    for profile in ({"provider": "openai", "model": "gpt-x"}, {"model": "openai/gpt-x"}):
+        got = pin(policy(standard=profile))
+        assert (got["provider"], got["model"]) == ("openai", "gpt-x")
+        assert models.from_profile(profile.get("provider"), profile["model"]).harness_ref == "openai/gpt-x"
+    with pytest.raises(ValidationFailed):  # the model key's own advice: the full id, here still template text
+        pin(policy(standard={"model": "openai/MODEL_ID"}))
+    assert pin(policy(standard={"model": "openai/gpt-x"}))["model"] == "gpt-x"
+
+
+def test_the_lead_s_model_override_names_the_flag_not_a_policy_key():
+    with pytest.raises(UsageError) as refused:
+        pin(None, request={"model": "openai/<id>"})
+    assert "full provider/model ID in --model" in refused.value.message
+    assert "policy key" not in refused.value.message
+
+
+def test_a_bare_listed_id_is_refused_for_having_no_provider_by_the_one_parse():
+    """``from_listing`` is ``from_profile`` without the template check (PR #309, F4): the old reason, one parse."""
+    with pytest.raises(ValidationFailed) as refused:
+        models.from_listing("model-a")
+    assert refused.value.details["reason"] == "model_id_no_provider" and refused.value.details["field"] == "listed id"
+    with pytest.raises(ValidationFailed) as refused:
+        models.from_listing("vendor/")
+    assert refused.value.details["reason"] == "model_id_malformed"
+
+
+@pytest.mark.parametrize("model", ["openai/model_id", "openai/your-model-id", "openai/$MODEL_ID", "openai/${MODEL_ID}",
+                                   "openai/{model}", "openai/[model]", "openai/MODEL-ID", "openai/YOUR_MODEL",
+                                   "provider/model", "openai/TODO"])
+def test_the_placeholder_rule_refuses_only_what_it_states(model):
+    """The documented limits of the rule (PR #309, F5): other spellings of template text pass it."""
+    assert models.from_profile(None, model).harness_ref == model
+
+
+def test_catalog_and_listing_placeholders_are_provider_owned_ids():
+    assert models.from_catalog("vendor", "MODEL_ID").model == "MODEL_ID"
+    assert models.from_listing("vendor/MODEL_ID").model == "MODEL_ID"
+
+
+@pytest.mark.parametrize("model", ["openai/model-id", "openai/myMODEL_IDmodel", "openai/myidmodel"])
+def test_legitimate_model_and_id_substrings_are_not_placeholders(model):
+    assert models.from_profile(None, model).harness_ref == model
+
+
 def test_the_leads_model_override_uses_the_same_rule():
     got = pin(policy(standard={"model": "vendor/model-a"}), request={"model": "router/maker/model-b"})
     assert (got["provider"], got["model"], got["rule"]) == ("router", "maker/model-b", "lead:model")
@@ -132,11 +208,20 @@ CATALOG_SHAPES = [models.from_catalog("vendor", "model-a"), models.from_catalog(
 @pytest.mark.parametrize("identity", CATALOG_SHAPES, ids=lambda x: x.catalog_id)
 def test_a_chooser_saving_the_harness_reference_round_trips_every_catalog_shape(identity):
     """A chooser writes ``model: <harness_ref>`` and no provider (review of PR #214, F3): that profile resolves to the
-    very pair the catalog entry named, whatever the model id contains."""
+    very pair the catalog entry named, whatever the model id contains (but for an id that reads as template text:
+    ``test_a_listed_id_that_reads_as_template_text_does_not_round_trip``)."""
     fields = identity.profile_fields()
     assert fields == {"model": identity.harness_ref}
     got = pin(policy(standard=fields))
     assert (got["provider"], got["model"]) == (identity.provider, identity.model)
+
+
+def test_a_listed_id_that_reads_as_template_text_does_not_round_trip():
+    """Documented, not guaranteed (PR #309, F3): the listing takes a provider's own id, the profile rule refuses it."""
+    listed = models.from_listing("vendor/MODEL_ID")
+    with pytest.raises(ValidationFailed) as refused:
+        pin(policy(standard=listed.profile_fields()))
+    assert refused.value.details["reason"] == "model_id_malformed"
 
 
 def test_the_split_pair_of_a_nested_catalog_id_is_not_a_profile_form():

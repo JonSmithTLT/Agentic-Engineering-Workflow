@@ -42,8 +42,9 @@ provider_env: [OPENAI_API_KEY]
 - **`provider_env`** lists the *names* of the environment variables OpenCode's server needs. Never put a key in this file. The value is read from the environment of whoever launches the run, and goes only to that run's OpenCode server, never to the agent's shell. A launch from an environment where a listed variable is not set is refused before anything starts, naming the variable; `aew doctor`'s `provider-env` line says the same beforehand. Behind a proxy, list the variable OpenCode reads for your provider's scheme here too: `HTTPS_PROXY` for an `https://` provider, `HTTP_PROXY` for an `http://` one (OpenCode 2.0.18 does not read `ALL_PROXY`, and `HTTP_PROXY` never applies to `https://`). AEW then adds `127.0.0.1`, `localhost`, `::1` and `[::1]` to `NO_PROXY`, keeping any entries you pass (a `NO_PROXY` of `*` is left as it is), so OpenCode's loopback traffic never goes through the proxy. AEW's own calls to the run's server ignore proxy settings in any case. `aew opencode --provider-env` does the same for the Lead's OpenCode.
 - **Routing** is most specific first: card, then risk class, then archetype, then default. The profile is pinned on each invocation at dispatch, so editing the policy never changes work already dispatched. The Lead can override one dispatch with `--profile NAME` or `--model PROVIDER/MODEL [--effort E]`.
 
-The policy files are pinned: after editing one, run `aew manifest adopt --reason ... --token <credential> --expect-rev N`
-at your own terminal to accept the change (until then every Lead change is refused).
+The policy files are pinned: after editing one, run `aew manifest adopt --reason ... --expect-rev N` at your own
+terminal to accept the change (until then every Lead change is refused). It asks for the Lead credential at a hidden
+prompt; see [Giving AEW the Lead credential](quickstart.md#giving-aew-the-lead-credential).
 
 Then check the project:
 
@@ -55,7 +56,7 @@ aew doctor
 
 ## 2. Set the provider key
 
-Set the key in your own environment, under the name `provider_env` lists (on Windows, as a user environment variable; open a new terminal afterwards). Runs launched from that terminal pass it to their OpenCode servers only.
+Set the key in the terminal you launch runs from, under the name `provider_env` lists, for that shell session only, with a form that echoes nothing and leaves nothing in history (the forms in [the quickstart](quickstart.md#giving-aew-the-lead-credential), with the variable's name in place of `AEW_LEAD_TOKEN`). Never a persistent variable or a startup file: a persistent variable reaches every process you start, and a startup file is a plain file in your home directory, like history. Runs launched from that terminal pass it to their OpenCode servers only.
 
 The Lead's own model is different. By default it uses the credentials OpenCode has stored for you (`opencode auth login`), and its environment holds no provider key.
 - **On Linux** the Lead runs contained (see [Containment](#containment)): AEW reads your stored logins on the host, never inside the sandbox, and gives each provider whose key OpenCode reads from a variable (openai, anthropic, google) a relay of its own; inside, that variable holds only a stand-in the relay swaps for the key. `aew opencode --provider-env NAME` feeds that provider's relay from your environment instead, and the Lead's shell still never sees the key. Your ChatGPT login (openai) is relayed as stored: AEW reads it on each request and never refreshes it, so when it expires the Lead's request fails with a message, `opencode auth list` at your own terminal refreshes it, and the Lead's next request works with no restart. When it has 24 hours or less left (the execution policy's `containment.lead.login_warning_h` changes that), the session's start says so: log in again then (`opencode auth login openai`), and the Lead uses the fresh login from its next request. The session's first lines say which logins are relayed, how long a refreshing one has left, and why any is not: a stored opencode key is not served yet (without it you get OpenCode's free models), and a login your OpenCode stored in a shape AEW does not know is not used, never guessed at. A provider key set in your environment is named too: pass it with `--provider-env` to use it. On a machine where you have not logged in to OpenCode, log in first with your own `opencode auth login`; until then only OpenCode's free models work, and the first lines say so.
@@ -70,7 +71,12 @@ aew opencode --acquire
 ```
 
 - `--acquire` takes the vacant Lead seat inside the session, so the Lead credential exists only in the broker's memory. It is never printed. At exit the seat is released if nothing is in flight; otherwise it stays held, and the output tells you that continuing needs a terminal takeover. `--keep-seat` keeps it held.
-- Without `--acquire`, the broker takes the credential from `AEW_LEAD_TOKEN` in your shell, and removes it from OpenCode's environment.
+- Without `--acquire`, `aew opencode` asks for the Lead credential at a hidden prompt, and the broker holds what you type in its memory. If your shell already holds `AEW_LEAD_TOKEN`, it takes the credential from there instead and removes it from OpenCode's environment. Set it for this shell session only, with a form that echoes nothing and leaves nothing in history:
+  - bash: `read -rsp 'Lead token: ' AEW_LEAD_TOKEN; echo; export AEW_LEAD_TOKEN`
+  - PowerShell 7: `$env:AEW_LEAD_TOKEN = Read-Host "Lead token" -MaskInput`
+  - Windows PowerShell 5.1: `$s = Read-Host "Lead token" -AsSecureString; $env:AEW_LEAD_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)); Remove-Variable s`
+
+  Never a persistent variable or a startup file: a persistent variable reaches every process you start, and a startup file is a plain file in your home directory, like history. Once the session is running, AEW never asks for the Lead credential inside the Lead's own window: a prompt there is not AEW's.
 - Extra OpenCode TUI arguments go after `--`. `--server` is refused, because the Lead's shell would then get the server's environment.
 
 In the TUI, the agent is `aew-lead`, with these commands:

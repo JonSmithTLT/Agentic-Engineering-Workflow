@@ -61,7 +61,8 @@ def test_a_finished_ticket_leaves_the_hot_state_with_its_invocations_and_credent
     finished = p.ok("resume", "--json")["finished"]
     assert (finished["done"], [r["id"] for r in finished["recent"]]) == (1, [wid])
     assert "Finished work (archived): 1 done" in (p.root / ".aew/state/CURRENT.md").read_text(encoding="utf-8")
-    refused = p.aew("work", "transition", wid, "--to", "RUNNING", "--token", p.token, "--expect-rev", str(p.rev()))
+    refused = p.aew("work", "transition", wid, "--to", "RUNNING", "--expect-rev", str(p.rev()),
+                    env={"AEW_LEAD_TOKEN": p.token})
     assert refused.error["code"] == "ILLEGAL_TRANSITION"  # finished work does not change, archived or not
     assert_control_invariants(p)
 
@@ -90,7 +91,7 @@ def test_a_superseded_lead_credential_is_archived_and_still_stale(tmp_path):
     state = hot(p)
     assert [t["kind"] for t in state["tokens"].values()] == ["lead"]  # only the new Lead's credential stays hot
     assert state["tokens"][accepted["token"].split(".")[1]]["revoked_at"] is None
-    res = p.aew("checkpoint", "--token", old, "--expect-rev", str(p.rev()))
+    res = p.aew("checkpoint", "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": old})
     assert res.error["code"] == "STALE_AUTHORITY" and "superseded" in res.error["message"]
     assert_control_invariants(p)
 
@@ -176,7 +177,7 @@ def test_a_v1_project_changes_no_work_until_it_is_migrated(tmp_path):
     state = load_control(p.root)
     control.write_bytes(serialize_control(as_v1(state)))
     refused = p.aew("work", "create", "ticket", "--title", "Investigate", "--class", "1", "--non-mutating",
-                    "--token", p.token, "--expect-rev", str(p.rev()))
+                    "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert refused.error["code"] == "MIGRATION_REQUIRED"
     assert p.lead("migrate")["migrated"] is True
     wid = create_investigation(p, tmp_path)
@@ -193,8 +194,8 @@ def test_a_crash_while_archiving_rolls_forward_to_the_archived_state(tmp_path):
     role, _ = dispatch(p, wid)
     rec = submit_record(role, "discovery_record")["evidence"]
     p.lead("evidence", "ingest", wid, "--evidence", rec)
-    res = run_aew("-C", str(p.root), "work", "accept", wid, "--token", p.token, "--expect-rev", str(p.rev()),
-                  env={"AEW_FAULT": "history.after_bundle"})
+    res = run_aew("-C", str(p.root), "work", "accept", wid, "--expect-rev", str(p.rev()),
+                  env={"AEW_LEAD_TOKEN": p.token, "AEW_FAULT": "history.after_bundle"})
     assert res.returncode == CRASH_EXIT_CODE
     assert show(p, wid)["state"] == "DONE" and wid not in hot(p)["work"]  # recovery applied the whole transition
     assert_control_invariants(p)
@@ -239,7 +240,7 @@ def test_a_crash_while_archiving_keeps_the_observation_cleanup_until_it_is_done(
     obs = Path(out["observation"]["path"])
     assert obs.exists() and obs.resolve().as_posix() in worktree_paths(p)
     res = run_aew("-C", str(p.root), "work", "transition", wid, "--to", "CANCELLED", "--reason", "not needed",
-                  "--token", p.token, "--expect-rev", str(p.rev()), env={"AEW_FAULT": "history.after_bundle"})
+                  "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token, "AEW_FAULT": "history.after_bundle"})
     assert res.returncode == CRASH_EXIT_CODE
     assert show(p, wid)["state"] == "CANCELLED"  # recovery applies the cancellation and its archival...
     state = hot(p)

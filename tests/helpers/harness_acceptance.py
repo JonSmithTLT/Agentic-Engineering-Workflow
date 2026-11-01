@@ -511,7 +511,7 @@ def at17_credential_custody(lab: HarnessLab, driver: Driver, tmp_path: Path) -> 
         lead("lead", "handoff", "offer"),                                                       # 11
         {"do": "aew", "args": ["lead", "acquire", "--expect-rev", "0"]},                        # 12
         lead("work", "assign", WID),                                                            # 13: no --launch
-        lead("checkpoint", "--next", "x", "--token", "{FORGED_CREDENTIAL}"),                    # 14
+        {**lead("checkpoint", "--next", "x"), "env": {"AEW_LEAD_TOKEN": "{FORGED_CREDENTIAL}"}},  # 14
         {"do": "scan", "out": str(sync / "lead-hits"), "roots": roots},                         # 15
         {"do": "touch", "path": str(sync / "lead-ready")},
         {"do": "wait_file", "path": str(sync / "lead-go"), "timeout": 600},

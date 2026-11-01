@@ -42,13 +42,15 @@ permissions:
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
+# Linux jobs run on ubuntu-24.04, not ubuntu-latest (26.04 since 2026-11-01); matrix `os` stays `ubuntu-latest`,
+# the label job names, shard sizing and budgets key on. Why: testing-and-ci-strategy.md §4, "Linux runner image".
 jobs:
   changes:
     # Reduced tiers are for pull requests only, and are backed by main's always-full push run: a personal-account
     # repository has no merge queue (strategy §3, "Tiers"). Anything not provably docs, fast or web is full; a
     # `full-ci` label or a `CI-Full: yes` trailer on the head commit forces full (plan v7 §1.2).
     name: tier
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -123,7 +125,7 @@ jobs:
             python: "3.11"   # Rocky Linux 8 AppStream / SPT wheelhouse target
           - os: windows-latest
             python: "3.13"   # developer workstation
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 24
     steps:
@@ -187,7 +189,7 @@ jobs:
       # Computed for this run by the tier job (tools/ci/shard_plan.py; strategy doc, "Runtime budgets"): per runner
       # and lane, shards 1..N of N, N the fewest that fit the session deadline on a runner twice as slow.
       matrix: ${{ fromJSON(needs.changes.outputs.lanes_matrix) }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 34
     steps:
@@ -247,7 +249,7 @@ jobs:
     name: fastbase
     needs: changes
     if: needs.changes.outputs.decision == 'fast' && needs.changes.outputs.modules == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # At least 2x the slowest measured fast-lane step plus setup (strategy §8: 7.4 and 0.8 minutes), and
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 20
@@ -292,7 +294,7 @@ jobs:
   static:
     # Static checks (strategy, "Static checks"): lint with Bandit's security rules, types on both platforms, and
     # known vulnerabilities in the installed dependencies. Tool versions are pinned in the `lint` extra.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -331,7 +333,7 @@ jobs:
     # The merge gate: mark this check as required on `main`.
     needs: [changes, core, lanes, web, static, fastbase]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read

@@ -10,10 +10,12 @@ on:
 permissions:
   contents: read
 
+# Linux jobs run on ubuntu-24.04, not ubuntu-latest (26.04 since 2026-11-01); matrix `os` stays `ubuntu-latest`,
+# the label job names, shard sizing and budgets key on. Why: testing-and-ci-strategy.md §4, "Linux runner image".
 jobs:
   changes:
     name: web changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       web: ${{ steps.paths.outputs.web }}
     steps:
@@ -53,7 +55,7 @@ jobs:
     name: web checks
     needs: changes
     if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
@@ -133,7 +135,7 @@ jobs:
     name: web result
     needs: [changes, checks]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Web result for assurance integration
         env:

@@ -19,10 +19,12 @@ concurrency:
 permissions:
   contents: read
 
+# Linux jobs run on ubuntu-24.04, not ubuntu-latest (26.04 since 2026-11-01); matrix `os` stays `ubuntu-latest`,
+# the label job names, shard sizing and budgets key on. Why: testing-and-ci-strategy.md §4, "Linux runner image".
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read

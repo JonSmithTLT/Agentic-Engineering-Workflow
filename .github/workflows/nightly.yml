@@ -15,13 +15,15 @@ permissions:
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
+# Linux jobs run on ubuntu-24.04, not ubuntu-latest (26.04 since 2026-11-01); matrix `os` stays `ubuntu-latest`,
+# the label job names, shard sizing and budgets key on. Why: testing-and-ci-strategy.md §4, "Linux runner image".
 jobs:
   shard-history:
     # Keeps the merge gate's shard-durations history (ci.yml; tools/ci/shard_plan.py, register E44) from expiring:
     # GitHub removes a cache entry nobody has read for seven days, and a week with no CI run would then leave the
     # next run to the fallback (review of #235, F1). A restore is a read; nothing here ever saves.
     name: shard-durations history (read, so it does not expire)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/cache/restore@v6
@@ -40,7 +42,7 @@ jobs:
     # jobs leave beside this workflow's other jobs, never more. Static counts (4 Linux, 8 Windows, sized 2026-10-09)
     # ran out on 10-26 and 10-28. One table for the whole run: every shard of a runner must cut the same partition.
     name: reference shards (tools/ci/shard_plan.py --reference)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.plan.outputs.reference_matrix }}
@@ -78,7 +80,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.reference-plan.outputs.matrix) }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 64
     steps:
@@ -118,7 +120,7 @@ jobs:
     # failed fails this job, so a dropped shard can never read as a green nightly.
     needs: [reference]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -185,7 +187,7 @@ jobs:
         include:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 64
     env:
@@ -231,7 +233,7 @@ jobs:
         include:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 64
     steps:
@@ -276,7 +278,7 @@ jobs:
         include:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 64
     env:
@@ -324,7 +326,7 @@ jobs:
           - {os: windows-latest, python: "3.11", shard: 2, of: 4}
           - {os: windows-latest, python: "3.11", shard: 3, of: 4}
           - {os: windows-latest, python: "3.11", shard: 4, of: 4}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 64
     steps:
@@ -364,7 +366,7 @@ jobs:
     # test ran exactly once and passed (pinned platform skips excepted), so a dropped shard never reads as green.
     needs: [matrix-extra]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -395,7 +397,7 @@ jobs:
     if: >-
       always() && github.event_name == 'schedule' &&
       (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       issues: write
     steps:

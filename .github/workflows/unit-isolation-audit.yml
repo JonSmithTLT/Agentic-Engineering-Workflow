@@ -19,6 +19,8 @@ permissions:
 env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
+# Linux jobs run on ubuntu-24.04, not ubuntu-latest (26.04 since 2026-11-01); matrix `os` stays `ubuntu-latest`,
+# the label job names, shard sizing and budgets key on. Why: testing-and-ci-strategy.md §4, "Linux runner image".
 jobs:
   parallel:
     name: audit ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
@@ -47,7 +49,7 @@ jobs:
           - {os: windows-latest, python: "3.13", shard: 8, of: 10}
           - {os: windows-latest, python: "3.13", shard: 9, of: 10}
           - {os: windows-latest, python: "3.13", shard: 10, of: 10}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 44
     steps:
@@ -85,7 +87,7 @@ jobs:
         include:
           - {os: ubuntu-latest, python: "3.11"}
           - {os: windows-latest, python: "3.13"}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 44
     steps:
@@ -118,7 +120,7 @@ jobs:
     # Clean means: every job reported, and no report holds a violation.
     needs: [parallel, serial]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7

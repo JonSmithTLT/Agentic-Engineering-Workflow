@@ -879,6 +879,46 @@ def test_every_shell_and_repl_history_is_masked_for_every_role_with_the_file_his
         assert [m for m in L._env_masks({"HISTFILE": nothing}) if m[1] == "HISTFILE"] == [], nothing
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="making a symlink needs a privilege on Windows, and /dev and /proc "
+                                                    "are Linux's")
+@pytest.mark.parametrize("role", ["reviewer", "implementer", "lead"])
+def test_a_secret_that_links_into_the_sandboxs_own_dev_or_proc_masks_nothing_there(tmp_path, fake_bwrap, role):
+    """The layout never replaces, masks or puts back anything under the sandbox's own /dev or /proc, whatever names it:
+    a history kept as a link to /dev/null (how a shell keeps none), a link to a /proc file, a secret directory linked
+    into /proc, links in a secret directory masked whole (followed as its links are), and a HISTFILE that is itself a
+    link to /dev/null. Each link is still left out of its directory."""
+    home = tmp_path / "home"
+    home.mkdir()
+    links = {".bash_history": "/dev/null", ".mysql_history": "/dev/null", ".lesshst": "/proc/self/status",
+             ".kube": "/proc/self"}
+    for name, target in links.items():
+        os.symlink(target, home / name)
+    (home / ".ssh").mkdir()  # masked whole; the links in it are followed
+    os.symlink("/dev/null", home / ".ssh" / "known_hosts")
+    os.symlink("/proc/self", home / ".ssh" / "agent")
+    histfile = tmp_path / "elsewhere" / "custom_history"
+    histfile.parent.mkdir()
+    os.symlink("/dev/null", histfile)
+    env = {"HISTFILE": str(histfile)}
+
+    def make(where: Path, home_dir: Path, launching: dict[str, str]) -> C.Layout:
+        return (lead_layout(where, home=str(home_dir), env=launching) if role == "lead" else
+                run_layout(where, role, home=str(home_dir), env=launching))
+
+    def own_flags(layout: C.Layout) -> list[tuple[str, str]]:  # every argv pair that names the sandbox's own trees
+        flags = [str(f) for f in L.bwrap_argv(layout, ["true"])]
+        return [(f, v) for f, v in zip(flags, flags[1:], strict=False) if L._sandbox_own(v)]
+
+    layout = make(tmp_path / "linked", home, env)
+    touched = (*layout.left_out, *layout.left_out_of, *layout.put_back, *(p for p, _ in layout.put_back_links),
+               *layout.hide_dirs, *layout.hide_files)
+    assert [p for p in touched if L._sandbox_own(p)] == []
+    assert {os.path.join(os.path.realpath(home), name) for name in links} <= set(layout.left_out)
+    assert [m for m in L._env_masks(env) if m[1] == "HISTFILE"] == []  # a HISTFILE that resolves into /dev names none
+    (tmp_path / "bare").mkdir()
+    assert own_flags(layout) == own_flags(make(tmp_path / "control", tmp_path / "bare", {}))  # the control: no links
+
+
 # Where OpenCode keeps its directories, named here and not taken from `opencode.login`, the owner these tests check
 # (the review of #283 at b2dc3035, m2): each XDG base, with its default under the home directory.
 XDG_BASES = {"XDG_DATA_HOME": ".local/share", "XDG_CONFIG_HOME": ".config", "XDG_STATE_HOME": ".local/state",

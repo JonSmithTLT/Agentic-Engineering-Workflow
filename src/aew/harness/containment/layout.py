@@ -486,13 +486,15 @@ def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None
     leave: list[str] = []
 
     def named(path: str, source: str, secret: str) -> None:
-        if os.path.isdir(path):
+        if os.path.isdir(path) and not _sandbox_own(_real(path)):
             real = _real(path)
             by.setdefault(real, f"the link {path}" if os.path.islink(path) else source)
             what.setdefault(real, f"what {path} links to" if os.path.islink(path) else secret)
             dirs.append(real)
             return
-        entries = _left_out(path)
+        # A link into the sandbox's own /dev or /proc (`~/.bash_history -> /dev/null`, how a shell keeps no history)
+        # is left out of its directory itself; what it points at is not the host's, so nothing there is masked.
+        entries = [e for e in _left_out(path) if not _sandbox_own(e)]
         for i, entry in enumerate(entries):  # the first as named, each other through the link before it
             by.setdefault(entry, source if i == 0 else f"the link {entries[i - 1]}")
             what.setdefault(entry, secret if i == 0 else f"what {entries[i - 1]} links to")
@@ -589,6 +591,12 @@ def _named(home: str | None, extra: list[str], env: Mapping[str, str]) -> list[t
     return [(path, source, secret) for path, (source, secret) in seen.items()]
 
 
+def _sandbox_own(path: str) -> bool:
+    """``path`` is under the sandbox's own ``/dev`` or ``/proc`` (:data:`SANDBOX_OWN`): the layout never masks, leaves
+    out or puts back anything there, whatever names it."""
+    return any(_within(path, d) for d in SANDBOX_OWN)
+
+
 def _left_out(raw: str) -> list[str]:
     """What a named path that is not a directory leaves out of its directory, each at its directory's real path: the
     path itself where it exists, else its first component that does not exist yet (so ``~/.config/git/credentials``
@@ -651,6 +659,8 @@ def _linked(dirs: list[str], needed: list[tuple[str, str]], *, skip: set[str]) -
     while queue:
         for link in _links_in(queue.pop(0)):
             target = _real(link)
+            if _sandbox_own(target):  # the sandbox's own /dev or /proc: nothing of the host's is there
+                continue
             if not os.path.isdir(target):
                 targets.append((link, target))
             elif not covered(target) and target not in refused:

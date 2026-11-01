@@ -41,11 +41,13 @@ def printed_reason(inv: str, wid: str) -> str:
 
 
 def run_printed(lab: HarnessLab, command: str, stdin: str = "", *, model: str | None = None):
-    """Run a printed ``aew ...`` command as a Lead: the revision placeholder is the project's current revision."""
+    """Run a printed ``aew ...`` command as a Lead: the revision placeholder is the project's current revision, and the
+    Lead credential is in the environment, the way the operator gives it (CS-4 addendum 12: ``--token`` takes no
+    value)."""
     argv = shlex.split(command.replace("<revision from aew status>", str(lab.project.rev())))[1:]
     if model:
         argv = [model if a == "PROVIDER/MODEL" else a for a in argv]
-    return lab.project.aew(*argv, "--token", lab.project.token, env=lab.env, input=stdin or None)
+    return lab.project.aew(*argv, env=lab.lead_env(lab.env), input=stdin or None)
 
 
 def test_the_content_filter_next_step_can_be_followed_to_a_new_model(fake_lab, tmp_path):

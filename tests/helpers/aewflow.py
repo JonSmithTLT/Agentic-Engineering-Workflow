@@ -76,11 +76,11 @@ class Role:
     token: str
     workspace: Path
 
-    def aew(self, *args: str):
-        return run_aew("-C", str(self.workspace), *args, env={"AEW_INVOCATION_TOKEN": self.token})
+    def aew(self, *args: str, env: dict[str, str] | None = None):
+        return run_aew("-C", str(self.workspace), *args, env={"AEW_INVOCATION_TOKEN": self.token, **(env or {})})
 
-    def ok(self, *args: str) -> Any:
-        res = self.aew(*args)
+    def ok(self, *args: str, env: dict[str, str] | None = None) -> Any:
+        res = self.aew(*args, env=env)
         assert res.returncode == 0, f"role aew {' '.join(args)} failed: {res.stderr or res.stdout}"
         return res.json
 

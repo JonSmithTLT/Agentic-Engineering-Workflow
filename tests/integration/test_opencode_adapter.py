@@ -414,9 +414,15 @@ def test_the_server_dying_mid_run_is_a_crash(lab, tmp_path):
     lab.until(lambda: (sync / "ready").exists(), what="the turn is under way")
     rev = lab.project.rev()
     (sync / "go").write_text("x")
-    assert lab.wait(run)["status"] == "crashed"
+    done = lab.wait(run)
+    assert done["status"] == "crashed"
     record = lab.record(run)
     assert record["exit_code"] == 9 and "server exited (9)" in record["harness_outcome"]
+    # the outcome reaches the reason the Lead is shown, by `harness wait` and by `harness status` (PR #310, F4)
+    outcome = "; harness outcome: the OpenCode server exited (9) during the run"
+    assert outcome in done["reason"]
+    [row] = lab.ok("harness", "status", inv)["runs"]
+    assert row["reason"] == done["reason"]
     assert lab.project.rev() == rev and lab.ok("invoke", "show", inv)["status"] == "active"
 
 

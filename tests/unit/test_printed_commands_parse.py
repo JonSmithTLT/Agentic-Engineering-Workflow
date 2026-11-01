@@ -85,6 +85,16 @@ def test_every_exemption_and_deferral_is_still_live() -> None:
     assert not (gone or parses or clean), f"gone: {gone}; parses: {parses}; deferred file now clean: {clean}"
 
 
+def test_the_revision_placeholder_has_one_owner() -> None:
+    """Every printed `--expect-rev` takes its placeholder from ``contract.EXPECT_REV``; no other module spells it out,
+    and none prints a bare `--expect-rev N` (the brief, step 2; files B3 owns wait for the follow-up)."""
+    owner = "src/aew/harness/contract.py"
+    restated = [f"{p.relative_to(P.ROOT).as_posix()}" for p in sorted(P.SRC.rglob("*.py"))
+                if (K.REVISION in (text := p.read_text(encoding="utf-8")) or "--expect-rev N" in text)
+                and p.relative_to(P.ROOT).as_posix() not in {owner, *DEFERRED_FILES}]
+    assert not restated, restated
+
+
 def test_the_two_finders_agree_both_ways() -> None:
     """Finder 1 (the syntax tree) and finder 2 (the token stream), written apart, find the same printed commands at
     the same lines; each one's extra sites are listed."""
@@ -214,6 +224,21 @@ def test_each_capability_change_names_a_capability_command() -> None:
     assert len(kinds) >= 4
     for kind in kinds:
         P.check(f"aew capability {kind.replace('_', '-')}", "span")
+
+
+@pytest.mark.parametrize(("role", "unit"), [("reviewer", {"kind": "ticket"}), ("verifier", {"kind": "ticket"}),
+                                            ("investigator", {"kind": "ticket", "mutating": False})])
+def test_a_finished_runs_ingest_command_parses(role: str, unit: dict[str, object]) -> None:
+    """Blind spot 1 whole (``harness_ops._after_run``'s `{command} {wid} ...`): a span that opens with a value is not
+    seen at all, so the ingest step a finished run names is rendered for each role that has one."""
+    from aew.engine.harness_ops import Harness
+
+    state = {"work": {"T-0007": unit}}
+    produced = [{"id": "EV-0003", "kind": "review" if role == "reviewer" else "verification"}]
+    message = Harness._after_run(Harness.__new__(Harness), state, {"work_unit": "T-0007", "role": role}, produced)
+    [(printed, fenced)] = P.commands(message)
+    [args] = P.parse(printed, fenced=fenced)
+    assert (args.work_id, args.evidence, args.expect_rev) == ("T-0007", "EV-0003", 17)
 
 
 @pytest.mark.parametrize("state", transitions.STATES)

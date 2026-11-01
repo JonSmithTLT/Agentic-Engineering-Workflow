@@ -520,7 +520,7 @@ class Hierarchy:
                 raise IllegalTransition(
                     f"cancel a Ticket with:\n\n```sh\n"
                     f"aew work transition {work_id} --to CANCELLED "
-                    "--expect-rev <revision from aew status> --fields - <<'EOF'\n"
+                    f"{EXPECT_REV} --fields - <<'EOF'\n"
                     "reason: 'why this Ticket must end'\n"
                     "EOF\n```"
                 )

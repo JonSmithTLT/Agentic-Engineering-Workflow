@@ -21,7 +21,8 @@ literal arguments.
 
 What the finders cannot see (each with a probe in the check's tests):
 - a command word from a value (``custody_ops``' ``f"`aew {command}`"``): no fill can stand for it, so the site is in
-  the check's exemption table and a test renders it for each value it takes;
+  the check's exemption table and a test renders it for each value it takes; a span that opens with a value
+  (``harness_ops``' `{command} {wid} ...`) is not seen at all, and a test renders it the same way;
 - a slot that renders several words or quotes (``{' '.join(argv)}``) is filled as one word;
 - text joined at run time (``transitions.next_steps`` formats commands from a table and joins them), and a literal
   inside an f-string's replacement field.

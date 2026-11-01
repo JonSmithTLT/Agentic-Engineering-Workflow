@@ -648,6 +648,7 @@ NAMED_WRITERS = {
     ("src/aew/engine/store.py", "serialize_control"): '"control state"',
     ("src/aew/engine/store.py", "ControlStore._commit_unprofiled"): '"the transaction\'s redo record"',
     ("src/aew/engine/disposition_ops.py", "Dispositions._write"): "f\"disposition record {record['id']}\"",
+    ("src/aew/engine/gate_ops.py", "GateRepair._write"): "f\"gate correction record {record['id']}\"",  # ITEMS 55
     ("src/aew/engine/stage_intents.py", "StageIntents._end"): "f\"stage intent {si['id']}\"",
 }
 

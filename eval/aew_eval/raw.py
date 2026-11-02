@@ -448,7 +448,8 @@ class RawArm:
     def run(self, repo: Path, config: dict[str, Any], *, deadline_s: float, task: str | None = None) -> ArmResult:
         if not task:
             raise Invalid("a raw arm needs the case's task")
-        from aew.harness import procs
+        from aew.harness import procs, weaker_register
+        from aew.harness.containment import label as containment_label
 
         headless = _headless()
         profile = model_ref(config["model"])
@@ -465,17 +466,30 @@ class RawArm:
 
         ended, arm_error = "not_started", None
         launched = False  # no harness process exists before session.open: nothing can have been spent
+        entry = None
         try:
+            layout = None
             if config["contain"]:
                 layout = contained_layout(repo, scratch, binary=binary)
                 containment = {"contained": True, "mechanism": "bubblewrap", **verify_layout(layout, scratch)}
                 if not containment["ok"]:
                     raise Invalid(f"containment failed: {containment['reason']}")
                 session.tree = procs.ProcessTree(layout=layout)
+            # An arm runs a model: an agent context, entered in the register of weaker contexts while it runs unless
+            # its sandbox has a network of its own (G3 addendum 7). On Linux one that cannot be entered never starts.
+            entry = weaker_register.enter_if_weaker(
+                containment_label(contained=layout is not None, mechanism="bubblewrap" if layout is not None else None,
+                        layout=layout, self_test={"ok": bool(containment.get("ok"))} if layout is not None else None,
+                        reason=None if layout is not None else "a raw arm with contain: false"),
+                kind="eval_raw", ownership="pid_namespace" if layout is not None else "process_group",
+                directory=scratch)
+            if entry is not None:
+                entry.started()
             launched = True
             session.open(directory=repo, profile=profile, agent=self.agent,
                          config=headless.raw_config(profile, int(config["steps"])),
-                         env=headless.shell_env(os.environ), provider_env=names, title="raw OpenCode (evaluation)")
+                         env=entry.mark(headless.shell_env(os.environ)) if entry is not None
+                         else headless.shell_env(os.environ), provider_env=names, title="raw OpenCode (evaluation)")
             session.say(task)
             ended = session.wait_turn(time.monotonic() + deadline_s, over_cap)
         except Exception as exc:  # noqa: BLE001 (the run is counted either way; its facts are still collected)
@@ -485,6 +499,8 @@ class RawArm:
         except Exception as exc:  # noqa: BLE001
             summary = {}
             arm_error = arm_error or f"close: {type(exc).__name__}: {exc}"[-600:]
+        if entry is not None:  # ended once the session's processes are proven ended (ruling 2)
+            entry.end(session.tree.survivors(0.0))
         snapshot = getattr(session, "snapshot", None) or {}
         facts = step_facts(list(snapshot.get("assistant") or []))
         state = scratch / "harness"

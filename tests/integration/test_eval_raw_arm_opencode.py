@@ -176,6 +176,35 @@ def test_a_session_that_fails_after_it_started_still_records_its_database_leak_s
     assert record["cost"]["charged_usd"] == (reported if reported is not None else config["cap_usd"])
 
 
+def test_a_raw_arm_is_live_in_the_register_of_weaker_contexts_while_it_runs(tmp_path, fake_server, monkeypatch):
+    """G3 addendum 7: a raw arm runs a model, an agent context, with no network of its own: it enters the register
+    before its session opens and has ended there once the arm returns. Planted: the session reads it as it opens."""
+    from aew.harness import weaker_register as W
+
+    scripts, config = fake_server
+    script(scripts, [{"do": "write", "files": {"calc.py": FIXED}}])
+    real = raw._headless  # noqa: SLF001
+    seen: list = []
+
+    def watching_headless():
+        module = real()
+
+        class Watching(module.HeadlessSession):
+            def open(self, **kw):
+                seen.append(([e["kind"] for e in W.read().live], kw["env"].get(W.MARKER)))
+                return super().open(**kw)
+
+        module.HeadlessSession = Watching
+        return module
+
+    monkeypatch.setattr(raw, "_headless", watching_headless)
+    run_raw(tmp_path, config)
+    [(live, marker)] = seen
+    assert "eval_raw" in live and marker, seen
+    assert "eval_raw" not in [e["kind"] for e in W.read().live]
+    assert "eval_raw" in [e["kind"] for e in W.read().recent]
+
+
 def test_on_linux_a_contained_raw_run_sees_only_its_own_state(tmp_path, fake_server, monkeypatch):
     """The whole OpenCode tree runs in bubblewrap: its writable roots are the work tree and its harness state, every
     other run and everything beside the lane's run state is hidden, and both are verified before OpenCode starts."""

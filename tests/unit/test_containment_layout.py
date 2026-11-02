@@ -1604,7 +1604,8 @@ def test_a_workers_containment_event_carries_the_launch_line_of_the_masks_in_its
                           writable=(str(tmp_path / "ws"),), readonly=(), tree_masks=tree_masks)
         monkeypatch.setattr(C, "establish", lambda layout=layout, **_: (layout, dict(label)))
         events: list[tuple[str, dict[str, Any]]] = []
-        engine = SimpleNamespace(execution_policy=lambda: ({}, None), repo_root=tmp_path / "repo")
+        engine = SimpleNamespace(execution_policy=lambda: ({}, None), repo_root=tmp_path / "repo",
+                                 aew_root=tmp_path / "repo" / ".aew")
         worker = SimpleNamespace(engine=engine, run_dir=tmp_path / "r",
                                  bridge=SimpleNamespace(private_dir=None, address="a"), record={}, layout=None,
                                  tree=None, _event=lambda kind, out=events, **fields: out.append((kind, fields)))

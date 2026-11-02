@@ -300,8 +300,12 @@ def configure(repo: Path, profile: dict[str, Any], routing: dict[str, str]) -> N
         profiles[f"{role}-route"] = {**profile_of(ref), **limits}
         archetypes[role] = f"{role}-route"
     envs = sorted({n for p in profiles.values() for n in provider_env(p)})
+    # The dogfood's Lead is the general command, headless (`aew lead session`), which `required` refuses: its project
+    # allows weaker runs, so that Lead runs labelled not contained and in the register of weaker contexts (G3 addendum
+    # 7, ruling 1). Its workers are still contained wherever a sandbox can be established.
     (policy / "execution.yaml").write_text(dump_yaml({
         "schema": "aew/execution/v1", "configured": True, "harness": "opencode", "provider_env": envs,
+        "containment": {"mode": "allow_weaker"},
         "profiles": profiles, "routing": {"default": "standard", "archetypes": archetypes, "classes": {},
                                           "cards": {}}}), encoding="utf-8", newline="\n")
 
@@ -452,8 +456,19 @@ def lead_child(spec_path: Path) -> int:
 
 
 def hidden(task: str, tree: Path) -> dict[str, Any]:
-    res = subprocess.run([sys.executable, str(HERE / "hidden.py"), task, str(tree)], capture_output=True, text=True,
-                         encoding="utf-8", timeout=600, stdin=subprocess.DEVNULL, **NO_WINDOW)
+    """The hidden scorer, which runs the model's tree's code with no sandbox: an agent context, entered in the register
+    of weaker contexts while it runs (G3 addendum 7). On Linux one whose entry cannot be written is refused."""
+    from aew.harness import containment, weaker_register
+
+    label = containment.label(contained=False, reason="the dogfood's hidden scorer runs the model's code as it is")
+    entry = weaker_register.enter(kind="dogfood_scorer", label=label, ownership="unowned", directory=tree)
+    entry.started()
+    try:
+        res = subprocess.run([sys.executable, str(HERE / "hidden.py"), task, str(tree)], capture_output=True,
+                             text=True, encoding="utf-8", timeout=600, stdin=subprocess.DEVNULL,
+                             env=entry.mark(os.environ), **NO_WINDOW)
+    finally:
+        entry.end([])  # no tree holds it: it ends once a scan finds none of its processes
     try:
         return json.loads(res.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):

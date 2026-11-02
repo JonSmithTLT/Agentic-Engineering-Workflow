@@ -853,11 +853,19 @@ def floor_trial(where: Path, record: dict[str, Any], names: list[str], *, cap: f
                PYTHONPATH=os.pathsep.join([str(ROOT / "src"), env.get("PYTHONPATH", "")]).rstrip(os.pathsep))
     if names:
         env["AEW_LIVE_PROVIDER_KEY_ENV"] = names[0]
+    # The live lane runs a harness with a model: an agent context, entered in the register of weaker contexts while it
+    # runs (no sandbox); on Linux one that cannot be entered never starts (G3 addendum 7).
+    from aew.harness import weaker_register
+    from aew.harness.containment import label as containment_label
+
+    entry = weaker_register.enter(kind="eval_live", ownership="process_group", directory=where,
+                                  label=containment_label(contained=False, reason="the live lane runs uncontained"))
     tree = procs.ProcessTree()
     log = (where / "pytest.log").open("w", encoding="utf-8")
+    entry.started()
     proc = tree.spawn([sys.executable, "-m", "pytest", "--live", LIVE_TEST, "-p", "no:xdist", "-p",
-                       "no:cacheprovider", "-q", "--basetemp", str(where / "tmp")], cwd=str(ROOT), env=env,
-                      stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+                       "no:cacheprovider", "-q", "--basetemp", str(where / "tmp")], cwd=str(ROOT),
+                      env=entry.mark(env), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
     stopped: list[str] = []
 
     def watch() -> None:
@@ -873,6 +881,7 @@ def floor_trial(where: Path, record: dict[str, Any], names: list[str], *, cap: f
     watcher.join(timeout=POLL_S * 2)
     log.close()
     tree.close()
+    entry.end(tree.survivors(0.0))
     return code, read_results(results), session_costs(where / "tmp"), stopped
 
 

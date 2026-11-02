@@ -75,6 +75,9 @@ def _read_regular(path: Path) -> bytes:
     return data
 
 
+read_regular = _read_regular  # for the register of weaker contexts' marker scan, which reads these files the same way
+
+
 def _read_text(path: Path) -> str | None:
     """None only when the file does not exist. On Windows a reader can briefly collide with a writer's atomic
     replace (a sharing violation): that is retried, never mistaken for absence. Elsewhere a permission error is

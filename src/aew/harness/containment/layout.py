@@ -58,6 +58,7 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any
 
+from aew import hoststate
 from aew.errors import ContainmentUnavailable
 
 # What each archetype may do to the workspace (or observation) it was dispatched for. Exhaustive by design: an
@@ -908,6 +909,9 @@ def _guarded(ws: Path, *, project: str | os.PathLike[str] | None, runs: str | os
     for prefix in {sys.prefix, sys.base_prefix}:
         if prefix:
             out.append(("the Python environment AEW runs from", _real(prefix)))
+    # ruling 2 (G3 addendum 7): the register lives outside every sandbox's writable binds (#321 review, F7)
+    out.append(("AEW's host state (the capability register and the register of weaker contexts)",
+                _real(hoststate.root())))
     # each secret named by what it is, so the refusal says why (CS-4 addendum 8, ruling 1)
     out += [(f"{secret}, a masked secret", p) for p, secret in masks]
     out += [(f"{secret}, a secret path left out of the sandbox whether or not it exists", p) for p, secret in left_out]

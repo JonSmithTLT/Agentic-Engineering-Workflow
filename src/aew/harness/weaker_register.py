@@ -41,7 +41,7 @@ import os
 import secrets
 import sys
 import time
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -71,6 +71,7 @@ KINDS = frozenset({
     "eval_scoring",      # eval's scorer of a model-written tree
     "eval_live",         # the qualification's live lane
     "dogfood_scorer",    # the dogfood's hidden scorer
+    "dogfood_debrief",   # the dogfood's debrief of a saved Lead session (every tool denied)
     "found_at_creation",  # a context already running when the register was first created on this host
 })
 # How an owner holds its context's processes: only these hold the whole tree, so that orphaned descendants come back
@@ -82,7 +83,9 @@ FORBIDDEN_ROOTS = ("/dev", "/proc", "/sys")
 PROC = Path("/proc")
 
 # Tests point the register at a directory of their own, in process; the product never sets it. (An environment
-# variable would let any process that launches AEW choose another register.)
+# variable would let any process that launches AEW choose another register.) The register is still one per
+# hoststate base (XDG_DATA_HOME, LOCALAPPDATA on Windows): a writer and a reader started with different values use
+# different registers (#321 review, N2).
 ROOT_OVERRIDE: Path | None = None
 
 
@@ -192,12 +195,35 @@ def _uptime_ticks(base: Path) -> int | None:
         return None
 
 
-def _load(path: str | Path | None) -> dict[str, Any] | None:
-    if not path:
+def _trusted(path: str | Path, roots: Iterable[str]) -> bool:
+    """Whether a marker names a record AEW wrote, the only file a marker is followed to (#321 review, F2): an entry's
+    own file in this register, or a run's ``label.json`` or ``run.json`` under the ``.aew`` of a project an entry
+    records (``<aew_root>/local/harness/runs/<run>/``), which every sandbox hides. Anything else a process's
+    environment names (a file in a workspace, a FIFO, a device, a path under ``/proc``) is not read: its process is no
+    host, and a label it holds exempts nothing."""
+    from aew.harness import runlog
+
+    here = Path(os.path.abspath(path))
+    if here.parent == Path(os.path.abspath(root())):
+        return True
+    runs = os.path.normcase(str(here.parent.parent))
+    return here.name in ("label.json", runlog.RECORD) and any(
+        runs == os.path.normcase(os.path.abspath(Path(r) / runlog.RUNS_REL)) for r in roots)
+
+
+def _load(path: str | Path | None, roots: Iterable[str] = ()) -> dict[str, Any] | None:
+    """A record AEW wrote (:func:`_trusted`), read as runlog reads a run's files: a regular file, never through a
+    symlink and never blocking on a FIFO or a device (``O_NOFOLLOW | O_NONBLOCK``; on Windows, which has no
+    ``O_NOFOLLOW``, a link or non-file is refused by ``lstat`` before the open), at most ``runlog.MAX_RECORD_BYTES``,
+    the bound of a run record. None for anything else, or anything JSON cannot hold (nesting past the parser's depth
+    included, as ``runlog.read_record``)."""
+    from aew.harness import runlog
+
+    if not path or not _trusted(path, roots):
         return None
     try:
-        data = json.loads(Path(path).read_bytes())
-    except (OSError, ValueError):
+        data = json.loads(runlog.read_regular(Path(path)))
+    except (OSError, ValueError, RecursionError):
         return None
     return data if isinstance(data, dict) else None
 
@@ -210,15 +236,17 @@ def _label_of(data: dict[str, Any] | None) -> dict[str, Any] | None:
     return inner if isinstance(inner, dict) else data if data.get("filesystem") else None
 
 
-def hosts(entries: list[dict[str, Any]], seen: Scan) -> set[str]:
+def hosts(entries: list[dict[str, Any]], seen: Scan, roots: Iterable[str] = ()) -> set[str]:
     """The start ids AEW recorded for its host processes (the designer's ruling of 2026-11-01: a host is decided by
     identity, never by its command line): each entry's owner; the Lead session a marker's ``label.json`` names; the
     supervisor a run record names, found through a readable child's marker or the supervisor's own ``--run-dir``; and
     the operator endpoint of each entry's project. A command line only points to the record to check; the start id's
-    match is the proof, so one that names a real record but is another process is no host."""
+    match is the proof, so one that names a real record but is another process is no host. A marker is followed only
+    to a record AEW wrote, of a project an entry (or ``roots``) names (:func:`_trusted`)."""
     from aew.harness import operator_client, runlog
 
     found: set[str] = set()
+    known_roots = {str(e["aew_root"]) for e in entries if e.get("aew_root")} | {str(r) for r in roots}
 
     def add(record: dict[str, Any] | None, key: str) -> None:
         value = (record or {}).get(key)
@@ -232,12 +260,12 @@ def hosts(entries: list[dict[str, Any]], seen: Scan) -> set[str]:
             add(operator_client.read_locator(operator_client.locator_path(Path(entry["aew_root"]))), "start_id")
     for p in seen.procs:
         if p.env is not None:
-            data = _load(p.env.get(MARKER))
+            data = _load(p.env.get(MARKER), known_roots)
             add(data, "session_start_id")
             add(data, "supervisor_start_id")
         elif "--run-dir" in p.cmdline[:-1]:
             directory = p.cmdline[p.cmdline.index("--run-dir") + 1]
-            add(_load(Path(directory) / runlog.RECORD), "supervisor_start_id")
+            add(_load(Path(directory) / runlog.RECORD, known_roots), "supervisor_start_id")
     return found
 
 
@@ -310,9 +338,11 @@ def _aew_command(cmdline: tuple[str, ...]) -> bool:
     return any(a == "-m" and (b == "aew" or b.startswith("aew.")) for a, b in zip(cmdline, cmdline[1:], strict=False))
 
 
-def _ensure_created(directory: Path) -> None:
+def _ensure_created(directory: Path, *, aew_root: str | Path | None = None, creator: str | None = None) -> None:
     """At the register's first creation on this host: its creation counts as a weaker context that ended then, and
-    every AEW context already running counts as weaker until it ends, unless the label its marker names is not."""
+    every AEW context already running counts as weaker until it ends, unless the label its marker names is not. No
+    entry names a project yet, so a marker is trusted only into the creating owner's own project (``aew_root``), and
+    the creating owner's own process (``creator``, its start id) is a host, not a context found running (#321 N1)."""
     if (directory / CREATED).exists():
         return
     from aew.harness.containment import weaker
@@ -320,7 +350,8 @@ def _ensure_created(directory: Path) -> None:
     seen = scan()
     found: list[dict[str, Any]] = []
     legacy = legacy_markers()
-    known = hosts([], seen) if seen is not None else set()
+    roots = {str(aew_root)} if aew_root else set()
+    known = (hosts([], seen, roots) if seen is not None else set()) | ({creator} if creator else set())
     for p in (seen.procs if seen is not None else []):
         if p.env is None:
             # An unreadable process with AEW's command line and no record naming it counts as weaker; any other
@@ -331,7 +362,7 @@ def _ensure_created(directory: Path) -> None:
                 continue
             label = None
         elif p.env.get(MARKER) or any(p.env.get(m) for m in legacy):
-            label = _label_of(_load(p.env.get(MARKER)))
+            label = _label_of(_load(p.env.get(MARKER), roots))
         else:
             continue
         if label is not None and not weaker(label):
@@ -393,8 +424,8 @@ class Entry:
                 entries = [e for e in _entries(directory) if isinstance(e, dict)]
                 seen = scan()
                 blocked = blockers(self.data, seen, hosts(entries, seen) if seen is not None else set())
-            except OSError as exc:
-                blocked = [f"the scan failed: {exc}"]
+            except Exception as exc:  # noqa: BLE001 (any failure of the scan is a failed scan: unowned, never clean)
+                blocked = [f"the scan failed: {type(exc).__name__}: {exc}"[:300]]
             if live:
                 self.data["outcome"] = "survivors"
             elif own in HOLDS_WHOLE and survivors is not None and not blocked:
@@ -438,7 +469,7 @@ def enter(*, kind: str, label: Mapping[str, Any] | None, ownership: str, project
         path = reg / f"{data['id']}.json"
         data["marker"] = data["marker"] or str(path)
         with _locked(reg):
-            _ensure_created(reg)
+            _ensure_created(reg, aew_root=aew_root, creator=data["owner"]["start_id"])
             _prune(reg, time.time())
             create_exclusive(path, json.dumps(data, indent=1, sort_keys=True) + "\n")
     except (OSError, AEWError) as exc:
@@ -503,9 +534,11 @@ def _why_live(entry: dict[str, Any], boot: str | None) -> str | None:
         return "running"
     if boot is not None and entry.get("boot") and entry["boot"] != boot:
         return None
-    left = [s for s in entry.get("survivors") or [] if same_process(s.get("pid"), s.get("start_id") or "")]
+    # a survivor the reaper could not name (no start id) is never proven ended: it holds the entry until a new boot
+    left = [s for s in entry.get("survivors") or []
+            if not s.get("start_id") or same_process(s.get("pid"), s.get("start_id") or "")]
     if left:
-        return f"survivors still running: {', '.join(str(s['pid']) for s in left)}"
+        return f"survivors still running: {', '.join(str(s['pid']) if s.get('start_id') else 'unnamed' for s in left)}"
     return "unowned: its owner ended with no outcome proving its processes ended" \
         if entry.get("outcome") in (None, "unowned") else "its processes are not yet proven ended"
 
@@ -533,7 +566,8 @@ class Reading:
 
 def read(window_s: float = WINDOW_S, now: float | None = None) -> Reading:
     """The register for G3's standing: what was live on this host in the last ``window_s`` seconds. Writes nothing,
-    so any reader can call it; an unowned context stays live here until :func:`sweep` records that it ended."""
+    so any reader can call it; an unowned context stays live here until :func:`sweep` records that it ended, so G3's
+    reader calls :func:`sweep` first, then this (#321 review, N1)."""
     now = time.time() if now is None else now
     out = Reading(window_s=window_s, now=now)
     directory = root()

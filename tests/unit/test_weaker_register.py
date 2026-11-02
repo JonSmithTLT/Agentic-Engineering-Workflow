@@ -34,6 +34,18 @@ def entry(**kw):
     return W.enter(**{"kind": "worker_run", "label": WEAK, "ownership": "subreaper", **kw})
 
 
+def runs_of(tmp_path: Path) -> tuple[Path, Path]:
+    """A project's AEW root and its runs directory, where a marker may name a record (#321 review, F2)."""
+    aew = tmp_path / "repo" / ".aew"
+    return aew, aew / "local" / "harness" / "runs"
+
+
+def record(path: Path, data: dict) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data))
+    return path
+
+
 def scan_of(*ps: W.Proc) -> W.Scan:
     return W.Scan(procs=list(ps), boot="boot-1", now_ticks=5000)
 
@@ -166,10 +178,10 @@ def test_a_clean_outcome_does_not_end_the_entry_while_a_process_carries_its_mark
 def test_a_forged_aew_command_line_makes_no_host(reg, monkeypatch, tmp_path):
     """A host is decided by identity, never by its command line: an unreadable process naming a real run directory is
     a host only when its start id is the one that run's record names."""
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    (run_dir / "run.json").write_text(json.dumps({"supervisor_pid": 8, "supervisor_start_id": "linux:boot-1:9000"}))
-    e = entry(ownership="subreaper", marker="/p/run.json")
+    aew, runs = runs_of(tmp_path)
+    supervisor = {"supervisor_pid": 8, "supervisor_start_id": "linux:boot-1:9000"}
+    run_dir = record(runs / "R-1" / "run.json", supervisor).parent
+    e = entry(ownership="subreaper", marker="/p/run.json", aew_root=aew)
     e.started()
     argv = ("python", "-m", "aew.harness.supervisor", "--run-dir", str(run_dir))
     forged = W.Proc(pid=9, start_id="linux:boot-1:4000", ticks=4000, env=None, cmdline=argv)
@@ -179,7 +191,7 @@ def test_a_forged_aew_command_line_makes_no_host(reg, monkeypatch, tmp_path):
     assert data["outcome"] == "unowned" and "9 cannot be read" in data["reason"]
     real = W.Proc(pid=8, start_id="linux:boot-1:9000", ticks=9000, env=None, cmdline=argv)
     monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: scan_of(real))
-    e2 = entry(ownership="subreaper", marker="/p/two.json")
+    e2 = entry(ownership="subreaper", marker="/p/two.json", aew_root=aew)
     e2.started()
     e2.end([])
     assert json.loads(e2.path.read_text())["outcome"] == "clean", "the record's own supervisor is a host"
@@ -200,6 +212,111 @@ def test_a_failed_scan_is_never_clean(reg, monkeypatch):
     e.started()
     e.end([])
     assert json.loads(e.path.read_text())["outcome"] == "unowned" and W.read().live
+
+
+def test_a_scan_that_raises_is_a_failed_scan_and_the_entry_ends_unowned(reg, monkeypatch):
+    """`Entry.end` never raises (#321 review, F2): any failure of its scan is a failed scan, unowned, never clean."""
+    def broken(proc=None, uid=None):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    e = entry()
+    e.started()
+    monkeypatch.setattr(W, "scan", broken)
+    e.end([])
+    data = json.loads(e.path.read_text())
+    assert data["outcome"] == "unowned" and "the scan failed: RecursionError" in data["reason"] and W.read().live
+
+
+def _held_by_a_stranger(monkeypatch, tmp_path, marker_of_readable: Path) -> W.Entry:
+    """An entry of a project whose end an unreadable non-host process started after it blocks, and a readable process
+    whose marker names ``marker_of_readable``: a file that says the stranger is a host."""
+    aew, _ = runs_of(tmp_path)
+    stranger = W.Proc(pid=31, start_id="linux:boot-1:4000", ticks=4000, env=None, cmdline=("x",))
+    readable = W.Proc(pid=32, start_id="linux:boot-1:4100", ticks=4100, env={W.MARKER: str(marker_of_readable)},
+                      cmdline=("y",))
+    monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: scan_of(stranger, readable))
+    e = entry(ownership="subreaper", marker="/p/own.json", aew_root=aew)
+    e.started()
+    return e
+
+
+def test_a_marker_is_followed_only_to_a_record_aew_wrote_in_a_project_an_entry_names(reg, monkeypatch, tmp_path):
+    """#321 review, F2, scenario A: a process's environment chooses its marker, so a file anywhere else (a
+    workspace's look-alike of a run directory included) that names another process as a host makes no host. The same
+    record under the entry's own project's runs directory does."""
+    claim = {"session_start_id": "linux:boot-1:4000"}
+    aew, runs = runs_of(tmp_path)
+    for forged in (record(tmp_path / "forged.json", claim),
+                   record(tmp_path / "ws" / ".aew" / "local" / "harness" / "runs" / "R-9" / "label.json", claim)):
+        e = _held_by_a_stranger(monkeypatch, tmp_path, forged)
+        e.end([])
+        assert json.loads(e.path.read_text())["outcome"] == "unowned", forged
+    e = _held_by_a_stranger(monkeypatch, tmp_path, record(runs / "lead-1" / "label.json", claim))
+    e.end([])
+    assert json.loads(e.path.read_text())["outcome"] == "clean", "a record AEW wrote names its host"
+
+
+def test_a_marker_record_past_the_parsers_depth_or_the_bound_is_no_record_and_the_end_never_raises(reg, monkeypatch,
+                                                                                                tmp_path):
+    """#321 review, F2, scenario B and the size cap: nesting past the parser's depth, or a file past
+    ``runlog.MAX_RECORD_BYTES``, is no record: it names no host, and the end records its outcome."""
+    from aew.harness import runlog
+
+    _, runs = runs_of(tmp_path)
+    deep = runs / "lead-1" / "label.json"
+    deep.parent.mkdir(parents=True)
+    deep.write_text("[" * 200_000)
+    e = _held_by_a_stranger(monkeypatch, tmp_path, deep)
+    e.end([])
+    assert json.loads(e.path.read_text())["outcome"] == "unowned"
+    big = record(runs / "lead-2" / "label.json", {"session_start_id": "linux:boot-1:4000", "pad": "x" * 64})
+    monkeypatch.setattr(runlog, "MAX_RECORD_BYTES", 32)
+    e = _held_by_a_stranger(monkeypatch, tmp_path, big)
+    e.end([])
+    assert json.loads(e.path.read_text())["outcome"] == "unowned", "a record past the bound names no host"
+    W.sweep()  # nor does the sweep raise on either
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="a FIFO is POSIX's")
+def test_a_marker_that_names_a_fifo_never_blocks_the_end(reg, monkeypatch, tmp_path):
+    """#321 review, F2, scenario C: a FIFO in a run directory is opened without blocking and refused as no file."""
+    import threading
+
+    _, runs = runs_of(tmp_path)
+    fifo = runs / "lead-1" / "label.json"
+    fifo.parent.mkdir(parents=True)
+    os.mkfifo(fifo)
+    e = _held_by_a_stranger(monkeypatch, tmp_path, fifo)
+    done = threading.Event()
+    worker = threading.Thread(target=lambda: (e.end([]), done.set()), daemon=True)
+    worker.start()
+    assert done.wait(10), "the end blocked on the FIFO"
+    assert json.loads(e.path.read_text())["outcome"] == "unowned"
+
+
+def test_the_sweep_leaves_a_survivors_entry_live_while_a_named_survivor_runs(reg, monkeypatch):
+    """#321 review, F4: a clean marker scan never ends a context whose named survivor is still the process it was."""
+    e = entry()
+    e.started()
+    monkeypatch.setattr(procs, "same_process", lambda pid, sid: pid == 4242)
+    e.end([(4242, "linux:boot-1:77")])
+    monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: scan_of())  # nothing carries its marker
+    W.sweep()
+    assert [x["why"] for x in W.read().live] == ["survivors still running: 4242"]
+
+
+def test_a_survivor_with_no_start_id_holds_its_entry_until_a_new_boot(reg, monkeypatch):
+    """#321 review, F4: a survivor the reaper could not name is never proven ended, by a scan or with none (Windows):
+    the entry stays live through a sweep, and a new boot ends it."""
+    e = entry()
+    e.started()
+    e.end([(0, None)])
+    for scan in (lambda proc=None, uid=None: None, lambda proc=None, uid=None: scan_of()):
+        monkeypatch.setattr(W, "scan", scan)
+        W.sweep()
+        assert [x["why"] for x in W.read().live] == ["survivors still running: unnamed"]
+    monkeypatch.setattr(W, "_now_ticks", lambda: ("boot-2", 10))
+    assert W.read().live == []
 
 
 # ------------------------------------------------------------------------------- a failed write, and the creation
@@ -267,33 +384,35 @@ def test_a_register_never_created_on_this_host_is_never_clear(reg):
 
 
 def test_a_context_already_running_at_the_creation_stays_live_until_it_ends(reg, monkeypatch, tmp_path):
-    weaker, contained = tmp_path / "weaker.json", tmp_path / "contained.json"
-    weaker.write_text(json.dumps(WEAK))
-    contained.write_text(json.dumps({"filesystem": "os_readonly_roots", "network": {"mode": "proxy_only"},
-                                     "self_test": {"ok": True}}))
+    """A contained label exempts a context only where AEW wrote it, in the creating owner's project: the same label in
+    a workspace exempts nothing (#321 review, F2)."""
+    aew, runs = runs_of(tmp_path)
+    shut = {"filesystem": "os_readonly_roots", "network": {"mode": "proxy_only"}, "self_test": {"ok": True}}
+    weaker, contained = record(runs / "R-1" / "label.json", WEAK), record(runs / "R-2" / "label.json", shut)
+    forged = record(tmp_path / "workspace" / ".aew" / "local" / "harness" / "runs" / "R-3" / "label.json", shut)
     running = [W.Proc(pid=11, start_id="s-11", ticks=1, env={W.MARKER: str(weaker)}, cmdline=("x",)),
                W.Proc(pid=12, start_id="s-12", ticks=1, env={W.MARKER: str(contained)}, cmdline=("y",)),
                W.Proc(pid=13, start_id="s-13", ticks=1, env={"AEW_RUN": "R-1"}, cmdline=("z",)),  # older code
-               W.Proc(pid=14, start_id="s-14", ticks=1, env={"PATH": "/bin"}, cmdline=("gpg-agent",))]
+               W.Proc(pid=14, start_id="s-14", ticks=1, env={"PATH": "/bin"}, cmdline=("gpg-agent",)),
+               W.Proc(pid=15, start_id="s-15", ticks=1, env={W.MARKER: str(forged)}, cmdline=("w",))]
     monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: scan_of(*running))
-    alive = {"s-11", "s-13"}
+    alive = {"s-11", "s-13", "s-15"}
     monkeypatch.setattr(procs, "same_process", lambda pid, sid: sid in alive)
-    W.sweep()  # the register's first creation on this host
-    found = sorted(x["why"] for x in W.read().live)
-    assert found == ["running", "running"], "a weaker context and one older code started; not a contained one"
+    entry(aew_root=aew).end([])  # the register's first creation on this host, by an owner of this project
+    found = sorted(x["why"] for x in W.read().live if x["kind"] == "found_at_creation")
+    assert found == ["running"] * 3, "a weaker context, one older code started and a forged label; not a contained one"
     alive.clear()
     monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: scan_of())
     W.sweep()
-    assert W.read().live == []
+    assert [x for x in W.read().live if x["kind"] == "found_at_creation"] == []
 
 
 def test_at_the_creation_an_unreadable_aew_process_no_record_names_counts_as_weaker(reg, monkeypatch, tmp_path):
     """The designer's ruling of 2026-11-01: an unreadable process with AEW's command line and no record naming it is
     counted; one a run record names by its start id is a host, a forged pointer to that record makes none, and an
     unreadable process that is not AEW's (ssh-agent) is not counted."""
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    (run_dir / "run.json").write_text(json.dumps({"supervisor_start_id": "s-21", "containment": WEAK}))
+    aew, runs = runs_of(tmp_path)
+    run_dir = record(runs / "R-1" / "run.json", {"supervisor_start_id": "s-21", "containment": WEAK}).parent
     sup = ("python", "-m", "aew.harness.supervisor", "--run-dir", str(run_dir))
     running = [W.Proc(pid=20, start_id="s-20", ticks=1, env=None, cmdline=("/venv/bin/aew", "work", "list")),
                W.Proc(pid=21, start_id="s-21", ticks=1, env=None, cmdline=sup),  # the record's own supervisor
@@ -301,10 +420,20 @@ def test_at_the_creation_an_unreadable_aew_process_no_record_names_counts_as_wea
                W.Proc(pid=23, start_id="s-23", ticks=1, env=None, cmdline=("ssh-agent", "-s"))]
     monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: scan_of(*running))
     monkeypatch.setattr(procs, "same_process", lambda pid, sid: True)
-    W.sweep()
+    entry(aew_root=aew).end([])  # the creation, by an owner of the record's project
     found = json.loads((reg / W.CREATED).read_text())["found"]
     owners = sorted(json.loads((reg / f"{i}.json").read_text())["owner"]["pid"] for i in found)
-    assert owners == [20, 22] and len(W.read().live) == 2
+    assert owners == [20, 22] and len([x for x in W.read().live if x["kind"] == "found_at_creation"]) == 2
+
+
+def test_the_owner_that_creates_the_register_is_a_host_not_a_context_found_running(reg, monkeypatch):
+    """#321 review, N1: the first weaker Lead on a host is hardened, so its own process is unreadable, with AEW's
+    command line, and its entry is not yet written at the creation: its start id makes it a host, and only its own
+    entry counts it."""
+    me = W.Proc(pid=OWN[0], start_id=OWN[1], ticks=1, env=None, cmdline=("/venv/bin/aew", "lead", "session"))
+    monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: scan_of(me))
+    entry(kind="lead_session")
+    assert json.loads((reg / W.CREATED).read_text())["found"] == []
 
 
 def test_an_unreadable_entry_is_marked_never_dropped(reg):

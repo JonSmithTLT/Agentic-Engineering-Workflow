@@ -292,17 +292,20 @@ def weaker_register_dir(tmp_path_factory) -> Path:
 @pytest.fixture(autouse=True)
 def weaker_contexts(weaker_register_dir, request):
     """No test reads or writes this host's own register of weaker contexts: in process each test has one of its own,
-    under the session's directory, so what one test's runs entered is never another's. (Not through ``monkeypatch``,
-    for the reason ``capability_register`` gives.)"""
+    under the session's directory, so what one test's runs entered is never another's. Nor does it scan this host's
+    processes, unless it names the ``/proc`` to read or gives its own scan: another worker's hardened supervisor cannot
+    be read and started after the test's entry, which holds that entry open by the entry-end ruling's condition (c).
+    (Not through ``monkeypatch``, for the reason ``capability_register`` gives.)"""
     import re
 
     from aew.harness import weaker_register
 
-    saved = weaker_register.ROOT_OVERRIDE
+    saved, scan = weaker_register.ROOT_OVERRIDE, weaker_register.scan
     own = weaker_register_dir / re.sub(r"[^\w.-]+", "_", request.node.nodeid)[-120:]
     weaker_register.ROOT_OVERRIDE = own
+    weaker_register.scan = lambda proc=None, uid=None: None if proc is None else scan(proc, uid)
     yield own
-    weaker_register.ROOT_OVERRIDE = saved
+    weaker_register.ROOT_OVERRIDE, weaker_register.scan = saved, scan
 
 
 @pytest.fixture(autouse=True)

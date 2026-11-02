@@ -720,7 +720,7 @@ def run(task_id: str, mode: str, model: str, routing: dict[str, str], cap: float
                 outcome = session.wait_turn(time.monotonic() + task.raw_deadline_s, over_cap)
                 closed = session.close()
             finally:
-                entry.end(session.tree.survivors(0.0))  # once its processes are proven ended (ruling 2)
+                entry.end(session.tree.survivors())  # once its processes are proven ended (ruling 2)
             record["raw"] = {**session_summary(closed, model_key(profile)), "outcome": outcome}
             record["hidden"] = hidden(task_id, repo)
             record["changed_paths"] = changed_paths(repo, base, None)
@@ -881,7 +881,7 @@ def debrief_run(name: str, results: Path, out: Path) -> dict[str, Any]:
         try:
             closed = session.close()
         finally:
-            context.end(session.tree.survivors(0.0))
+            context.end(session.tree.survivors())
     entry["detail"] = closed.get("last_detail")
     entry["safety"] = scan_secrets(copy, secret)
     entry["safety"]["checkout_untouched"] = git(ROOT, "status", "--porcelain",

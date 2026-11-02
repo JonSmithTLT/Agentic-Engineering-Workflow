@@ -5,6 +5,7 @@ its OpenCode session or its scorer stood in for, and reads the register as its f
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from aew.harness import procs
 from aew.harness import weaker_register as W
 from aew.harness.opencode import projection
 
@@ -41,7 +43,9 @@ def session(monkeypatch, tmp_path):
     class Session:
         def __init__(self, state: Path) -> None:
             self.state_dir = state
-            self.tree = SimpleNamespace(survivors=lambda wait_s=10.0: [])
+            # A killed tree's members are still dying as the kill returns: only a wait proves them ended.
+            own = (os.getpid(), procs.start_id(os.getpid()))
+            self.tree = SimpleNamespace(survivors=lambda wait_s=10.0: [] if wait_s else [own])
 
         def _started(self, env: dict) -> None:
             seen.update(live=[(x["kind"], x["why"]) for x in W.read().live], marker=env.get(W.MARKER))

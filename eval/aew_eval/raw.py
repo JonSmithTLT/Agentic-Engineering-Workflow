@@ -500,7 +500,7 @@ class RawArm:
             summary = {}
             arm_error = arm_error or f"close: {type(exc).__name__}: {exc}"[-600:]
         if entry is not None:  # ended once the session's processes are proven ended (ruling 2)
-            entry.end(session.tree.survivors(0.0))
+            entry.end(session.tree.survivors())
         snapshot = getattr(session, "snapshot", None) or {}
         facts = step_facts(list(snapshot.get("assistant") or []))
         state = scratch / "harness"

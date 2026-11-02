@@ -83,10 +83,9 @@ def test_where_the_policy_allows_it_a_weaker_check_runs_labelled_and_live_in_the
     commands, _, ran = direct
     weaker = containment.label(contained=False, reason="the execution policy allows weaker runs")
     monkeypatch.setattr(containment, "establish", lambda **kw: (None, weaker))
-    # an owner that held the whole tree and a clean scan: on Linux a bare process group's end is unowned, so that
-    # its run keeps its label (the next test)
+    # an owner that held the whole tree: on Linux a bare process group's end is unowned, so that its run keeps its
+    # label (the next test)
     monkeypatch.setattr(W, "ownership_of", lambda label: "subreaper")
-    monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: W.Scan(procs=[], boot="boot-1", now_ticks=1))
     out = call(commands, tmp_path)
     [given] = ran
     assert given["layout"] is None and "check_run" in given["live"], "entered before the check started"

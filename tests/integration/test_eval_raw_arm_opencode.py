@@ -205,6 +205,21 @@ def test_a_raw_arm_is_live_in_the_register_of_weaker_contexts_while_it_runs(tmp_
     assert "eval_raw" in [e["kind"] for e in W.read().recent]
 
 
+def test_a_raw_arm_waits_for_its_killed_tree_before_its_entry_ends(tmp_path, fake_server, monkeypatch):
+    """A killed tree's members are still dying as the kill returns. Read at that instant they are survivors, and hold
+    the entry until a sweep: the arm waits for them, as the worker's supervisor does. Planted: a member still there at
+    that instant, and gone by any wait."""
+    from aew.harness import procs
+    from aew.harness import weaker_register as W
+
+    scripts, config = fake_server
+    script(scripts, [{"do": "write", "files": {"calc.py": FIXED}}])
+    own = (os.getpid(), procs.start_id(os.getpid()))
+    monkeypatch.setattr(procs.ProcessTree, "survivors", lambda self, wait_s=10.0: [] if wait_s else [own])
+    run_raw(tmp_path, config)
+    assert "eval_raw" not in [e["kind"] for e in W.read().live]
+
+
 def test_on_linux_a_contained_raw_run_sees_only_its_own_state(tmp_path, fake_server, monkeypatch):
     """The whole OpenCode tree runs in bubblewrap: its writable roots are the work tree and its harness state, every
     other run and everything beside the lane's run state is hidden, and both are verified before OpenCode starts."""

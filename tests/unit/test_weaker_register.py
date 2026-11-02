@@ -436,6 +436,15 @@ def test_the_owner_that_creates_the_register_is_a_host_not_a_context_found_runni
     assert json.loads((reg / W.CREATED).read_text())["found"] == []
 
 
+def test_in_process_no_test_scans_this_hosts_processes_unless_it_names_them(monkeypatch, tmp_path):
+    """The session's own guard (``conftest.weaker_contexts``), with no ``reg``: another worker's hardened process would
+    hold a test's entry open. A test that names its ``/proc`` still reads it."""
+    monkeypatch.setattr(W, "enforced", lambda: True)  # as on Linux, on any platform
+    monkeypatch.setattr(W, "PROC", tmp_path / "no-such-proc")
+    assert W.scan() is None
+    assert W.scan(tmp_path / "no-such-proc", uid=0).failed
+
+
 def test_an_unreadable_entry_is_marked_never_dropped(reg):
     entry().end([])
     (reg / "worker_run-broken.json").write_text("{not json")

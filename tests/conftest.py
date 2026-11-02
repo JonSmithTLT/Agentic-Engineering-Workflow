@@ -253,6 +253,37 @@ def capability_register_dir(tmp_path_factory) -> Path:
                              f"{sorted(set(after.items()) ^ set(before.items()))}")
 
 
+@pytest.fixture(scope="session")
+def weaker_register_dir(tmp_path_factory) -> Path:
+    """The session's register of weaker contexts, and the sentinel on the host's (G3 addendum 7): as the capability
+    register's, every `aew` a test starts gets the session's own base (``clean_env``), so its register is under it; in
+    process the register is this directory; and at the session's end the host's register is as the session found it."""
+    from aew.harness import weaker_register
+
+    host = weaker_register.root()  # no override yet
+    before = _register_files(host)
+    yield tmp_path_factory.mktemp("weaker-register")
+    after = _register_files(host)
+    assert after == before, (f"the session changed the host's own register of weaker contexts at {host}: "
+                             f"{sorted(set(after.items()) ^ set(before.items()))}")
+
+
+@pytest.fixture(autouse=True)
+def weaker_contexts(weaker_register_dir, request):
+    """No test reads or writes this host's own register of weaker contexts: in process each test has one of its own,
+    under the session's directory, so what one test's runs entered is never another's. (Not through ``monkeypatch``,
+    for the reason ``capability_register`` gives.)"""
+    import re
+
+    from aew.harness import weaker_register
+
+    saved = weaker_register.ROOT_OVERRIDE
+    own = weaker_register_dir / re.sub(r"[^\w.-]+", "_", request.node.nodeid)[-120:]
+    weaker_register.ROOT_OVERRIDE = own
+    yield own
+    weaker_register.ROOT_OVERRIDE = saved
+
+
 @pytest.fixture(autouse=True)
 def capability_register(capability_register_dir):
     """No test reads or writes this host's own capability register (STG-15, CAP-1): in process the register is the

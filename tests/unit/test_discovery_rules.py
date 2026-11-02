@@ -427,9 +427,11 @@ def test_the_static_scan_reads_every_static_text():
 def test_the_capture_plugin_reads_a_real_refusal_of_the_cli(repo):
     """U29's shape, from the product itself: `aew lead session` without a credential asks the operator to set it.
     A clean answer of the same command family raises neither rule."""
-    from conftest import run_aew
+    from aewflow import allow_weaker_lead
+    from conftest import Project, run_aew
 
     assert run_aew("init", cwd=repo).returncode == 0
+    allow_weaker_lead(Project(repo))  # the credential's refusal, not `required`'s (G3 addendum 7)
     argv = ["-C", str(repo), "lead", "session", "--", "true"]
     res = run_aew(*argv)
     outputs = capture.cli_outputs(argv, res.stdout, res.stderr)

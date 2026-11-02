@@ -35,7 +35,6 @@ import json
 import logging
 import os
 import re
-import secrets
 import shutil
 import sqlite3
 import subprocess
@@ -47,7 +46,7 @@ from typing import Any
 
 from aew import process_kind
 from aew.errors import AEWError, ContainmentUnavailable, HarnessIncompatible, UsageError
-from aew.harness import agentenv, lead_broker, runlog
+from aew.harness import agentenv, lead_broker
 from aew.harness.opencode import capabilities, login, projection
 from aew.harness.opencode.adapter import binary_command
 
@@ -192,15 +191,17 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                       env=tui_env(os.environ, provider_env=[], guide=guide), contained=lead)
         return {**out, "opencode": version}
+    # Off Linux the TUI runs as it is, labelled so, with its label.json and its register entry (G3 addendum 7, ruling
+    # 1); under an explicit `required` that refuses before any credential is read.
+    weaker = lead_broker.WeakerLead(engine, argv, kind="lead_opencode", who="aew opencode")
+    weaker.precheck()
     env = tui_env(os.environ, provider_env=provider_env, guide=guide)
     if provider_env:
         sys.stderr.write(f"aew opencode: {', '.join(provider_env)} passed to the Lead's OpenCode; the Lead model's "
                          "shell commands can read it.\n")
-    from aew.harness import containment
-
     out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
-                                  env=env)
-    return {**out, "containment": containment.label(contained=False), "opencode": version}
+                                  env=env, contained=weaker)
+    return {**out, "opencode": version}
 
 
 # ---------------------------------------------------------------------------------------- the contained Lead (Linux)
@@ -473,15 +474,17 @@ class ContainedLead:
                       "OpenCode's defaults.\n")
 
     def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> lead_broker.Harness:
-        from aew.harness import containment
+        from aew.harness import containment, weaker_register
         from aew.harness.containment import egress, netns
 
         engine = self.engine
         self.stages.mark("seat")
-        run_dir = runlog.run_dir(engine.aew_root, f"lead-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-"
-                                                  f"{secrets.token_hex(3)}")
-        run_dir.mkdir(parents=True)
+        run_dir = lead_broker.lead_run_dir(engine)
         state = engine.aew_root / LEAD_DIR
+        # The session's marker: its label's file, in its harness's environment (the register of weaker contexts'
+        # scan, G3 addendum 7, ruling 2), and its entry there when its label is weaker.
+        where = {"kind": "lead_opencode", "ownership": lead_broker.session_ownership(), "project": engine.repo_root,
+                 "aew_root": engine.aew_root, "directory": run_dir, "marker": run_dir / "label.json"}
         policy, _ = engine.execution_policy()
         project = str(engine.repo_root)
         layout, label = containment.establish(
@@ -495,8 +498,10 @@ class ContainedLead:
             sys.stderr.write(f"aew opencode: the Lead runs NOT contained ({label['filesystem']}): "
                              f"{label.get('weaker_because')}\n")
             self._record(run_dir, label)
-            env = {**child_env, **{n: str(agentenv.lookup(self.base, n)) for n in self.provider_env}}
-            return lead_broker.Harness(argv=self.argv, env=env, relay=False, label=label, close=lambda: None)
+            entry = weaker_register.enter(label=label, **where)
+            env = entry.mark({**child_env, **{n: str(agentenv.lookup(self.base, n)) for n in self.provider_env}})
+            return lead_broker.Harness(argv=self.argv, env=env, relay=False, label=label, close=lambda: None,
+                                       entry=entry)
         line = containment.tree_masks_line(layout)
         if line:
             sys.stderr.write(f"aew opencode: {line}.\n")
@@ -525,12 +530,15 @@ class ContainedLead:
                 self.stages.mark("lead_logins")
             spec = network.spec() if network is not None and network.dir else {"in": [], "out": []}
             argv = containment.bwrap_argv(layout, netns.shim_argv({**spec, "ctty": True}, self.argv), cwd=project)
+            self._record(run_dir, label)
+            # A sandbox on the host's network (containment.network.mode: shared) is weaker, and enters the register
+            entry = weaker_register.enter_if_weaker(label, **where)
         except BaseException:
             self._retire(run_dir, layout, network)
             raise
-        self._record(run_dir, label)
+        inside[weaker_register.MARKER] = str(where["marker"])
         return lead_broker.Harness(argv=argv, env=inside, relay=True, label=label,
-                                   close=lambda: self._retire(run_dir, layout, network))
+                                   close=lambda: self._retire(run_dir, layout, network), entry=entry)
 
     def _inside(self, child_env: Mapping[str, str], layout: Any, run_dir: Path, state: Path,
                 config: dict[str, Any], network: Any) -> dict[str, str]:
@@ -612,9 +620,9 @@ class ContainedLead:
 
     @staticmethod
     def _record(run_dir: Path, label: dict[str, Any]) -> None:
-        """The session's label, beside its run directory's state, for what reads it (G3, #269)."""
-        (run_dir / "label.json").write_text(json.dumps(label, indent=2, sort_keys=True, default=str) + "\n",
-                                            encoding="utf-8")
+        """The session's label, beside its run directory's state, for what reads it (G3, #269): the one writer both
+        Lead routes use (:func:`lead_broker.record_label`)."""
+        lead_broker.record_label(run_dir, label)
 
     @staticmethod
     def _retire(run_dir: Path, layout: Any, network: Any) -> None:

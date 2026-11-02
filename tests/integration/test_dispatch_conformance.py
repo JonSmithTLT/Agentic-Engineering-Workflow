@@ -65,6 +65,14 @@ def lab(tmp_path):
     lab.cleanup()
 
 
+@pytest.fixture
+def lead_lab(tmp_path):
+    """A lab whose tests run the general Lead command, which its policy allows weaker (G3 addendum 7, ruling 1)."""
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path, lead_session=True)
+    yield lab
+    lab.cleanup()
+
+
 def test_assign_and_invoke_for_a_mutating_ticket_record_their_decision(tmp_path):
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
@@ -135,7 +143,8 @@ def test_launch_relaunch_and_dispatch_launch_record_their_decision(lab, tmp_path
     assert_control_invariants(lab.project)
 
 
-def test_a_lead_session_dispatch_is_relayed_to_the_same_predicate(lab, tmp_path):
+def test_a_lead_session_dispatch_is_relayed_to_the_same_predicate(lead_lab, tmp_path):
+    lab = lead_lab
     wid = create_planned_ticket(lab.project, tmp_path)
     lab.script("default", [{"do": "aew", "args": ["whoami"]}])
     script = tmp_path / "lead.json"
@@ -149,9 +158,10 @@ def test_a_lead_session_dispatch_is_relayed_to_the_same_predicate(lab, tmp_path)
     lab.wait(lab.project.ok("invoke", "show", inv_id)["runs"][0]["run"])
 
 
-def test_a_typed_surface_dispatch_is_carried_by_lead_mcp_and_waited_on_through_it(lab, tmp_path):
+def test_a_typed_surface_dispatch_is_carried_by_lead_mcp_and_waited_on_through_it(lead_lab, tmp_path):
     """The `aew-lead` MCP server's recovery-profile cli escape dispatches through the same predicate; the channel
     records that the MCP transport carried it (provenance only); the run is then waited on through MCP."""
+    lab = lead_lab
     wid = create_planned_ticket(lab.project, tmp_path)
     lab.script("default", [{"do": "aew", "args": ["whoami"]}])
     probe = Path(__file__).resolve().parents[1] / "helpers" / "mcp_probe_agent.py"

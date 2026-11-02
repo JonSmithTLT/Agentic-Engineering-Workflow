@@ -25,7 +25,8 @@ SECRET = "sk-provider-secret-must-not-reach-the-agent"
 
 @pytest.fixture
 def lab(tmp_path):
-    lab = HarnessLab.create(sample_project(tmp_path), tmp_path, extra_env={"OPENAI_API_KEY": SECRET})
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path, extra_env={"OPENAI_API_KEY": SECRET},
+                            lead_session=True)  # the general Lead command: allowed weaker (G3 addendum 7)
     yield lab
     lab.cleanup()
     assert not credential_hits(tmp_path), "a credential string was left in a file"
@@ -157,7 +158,7 @@ def test_a_lead_session_needs_a_credential_it_can_hold(lab):
 def test_an_acquired_seat_is_released_or_held_explicitly(tmp_path, sync):
     p = Project(make_git_repo(tmp_path / "vacant", {"README.md": "# v\n", "calc/core.py": "x = 1\n"}))
     p.ok("init", "--project-id", "vacant")
-    lab = HarnessLab.create(p, tmp_path)
+    lab = HarnessLab.create(p, tmp_path, lead_session=True)
     try:
         res, steps = session(lab, "acq-1", [{"do": "lead", "args": ["checkpoint", "--next", "plan the work"]}],
                              acquire=True, token=False)
@@ -283,7 +284,7 @@ def test_a_process_the_lead_harness_leaves_behind_ends_before_the_seat_is_releas
     """Nothing the Lead's harness starts outlives the session, even detached; the seat is released only after that,
     so a leftover process can never take it."""
     p = vacant_project(tmp_path)
-    lab = HarnessLab.create(p, tmp_path)
+    lab = HarnessLab.create(p, tmp_path, lead_session=True)
     pidfile, go, out = sync / "lingerer.pid", sync / "go", sync / "lingerer.out"
     try:
         res, steps = session(lab, "linger", [{"do": "spawn_lingerer", "pidfile": str(pidfile), "go": str(go),

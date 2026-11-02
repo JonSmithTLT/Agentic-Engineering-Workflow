@@ -695,6 +695,81 @@ class Harness:
     relay: bool
     label: dict[str, Any]
     close: Callable[[], None]
+    entry: Any = None  # its entry in the register of weaker contexts, when its label is weaker (G3 addendum 7)
+
+
+# `aew lead session` under `required` (G3 addendum 7, ruling 1): what it closes, and the ways on.
+UNCONTAINED_LEAD = ("`aew lead session` runs its harness as it is, on your own terminal and network, from where it "
+                    "could reach the display and G3, so under containment.mode: required (the default on Linux) it is "
+                    "refused. `aew opencode` is the contained Lead. Setting containment.mode: allow_weaker in the "
+                    "execution policy runs this harness labelled not contained; G3 is then held for this project "
+                    "while its policy says so, and on this host until 15 minutes after the session ends")
+
+
+def session_ownership() -> str:
+    """How :func:`procs.run_session_tree` holds a session's processes on this platform, in the register of weaker
+    contexts' terms: the session reaper is a subreaper on Linux, Windows' a job object, and elsewhere nothing."""
+    if sys.platform.startswith("linux"):
+        return "subreaper"
+    return "job_object" if sys.platform == "win32" else "unowned"
+
+
+def record_label(run_dir: Path, label: dict[str, Any]) -> None:
+    """The session's label, beside its run directory's state, for what reads it (G3, #269; ``harness status``): the
+    one writer of a Lead session's ``label.json``, both Lead routes'. It names the session's own process by pid and
+    start id, so a reader judges the session live with ``same_process`` (G3 addendum 7, ruling 2)."""
+    from aew.harness.procs import start_id
+
+    label = {**label, "session_pid": os.getpid(), "session_start_id": start_id(os.getpid())}
+    (run_dir / "label.json").write_text(json.dumps(label, indent=2, sort_keys=True, default=str) + "\n",
+                                        encoding="utf-8")
+
+
+def lead_run_dir(engine: Any) -> Path:
+    """A Lead session's run directory: ``lead-<UTC>-<hex>``, beside the runs' (both Lead routes')."""
+    import secrets
+
+    from aew.harness import runlog
+
+    run_dir = runlog.run_dir(engine.aew_root, f"lead-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-"
+                                              f"{secrets.token_hex(3)}")
+    run_dir.mkdir(parents=True)
+    return run_dir
+
+
+class WeakerLead:
+    """The Lead's harness run as it is, labelled not contained (G3 addendum 7, ruling 1): ``aew lead session`` where
+    its policy allows it or off Linux, and ``aew opencode`` off Linux. It writes the session's ``label.json``, prints
+    the "runs NOT contained" line, and enters the session in the register of weaker contexts. Under ``required`` it
+    refuses (:meth:`precheck`), before any credential is read or any seat moves."""
+
+    def __init__(self, engine: Any, argv: list[str], *, kind: str, who: str) -> None:
+        self.engine, self.argv, self.kind, self.who = engine, list(argv), kind, who
+
+    def precheck(self) -> None:
+        from aew.harness import containment
+
+        policy, _ = self.engine.execution_policy()
+        if containment.mode(policy) == containment.REQUIRED:
+            raise errors.ContainmentUnavailable(UNCONTAINED_LEAD if self.kind == "lead_session" else
+                                                containment.unsupported_message(), reason="lead_uncontained",
+                                                instead="aew opencode")
+
+    def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> Harness:
+        from aew.harness import containment, weaker_register
+
+        self.precheck()
+        run_dir = lead_run_dir(self.engine)
+        label = containment.label(contained=False, reason=containment.uncontained_reason())
+        label["session"] = run_dir.name
+        record_label(run_dir, label)
+        sys.stderr.write(f"{self.who}: the Lead runs NOT contained ({label['filesystem']}): "
+                         f"{label['weaker_because']}\n")
+        entry = weaker_register.enter(kind=self.kind, label=label, ownership=session_ownership(),
+                                      project=self.engine.repo_root, aew_root=self.engine.aew_root,
+                                      directory=run_dir, marker=run_dir / "label.json")
+        return Harness(argv=self.argv, env=entry.mark(child_env), relay=False, label=label, close=lambda: None,
+                       entry=entry)
 
 
 def require_credential(acquire: bool) -> None:
@@ -707,23 +782,30 @@ def require_credential(acquire: bool) -> None:
 
 
 def run_session(engine: Any, command: list[str], *, acquire: bool, session_label: str | None,
-                keep_seat: bool, env: dict[str, str] | None = None,
-                contained: Callable[[str | None, dict[str, str]], Harness] | None = None) -> dict[str, Any]:
+                keep_seat: bool, contained: Callable[[str | None, dict[str, str]], Harness],
+                env: dict[str, str] | None = None) -> dict[str, Any]:
     """``aew lead session``: broker the Lead credential for one Lead harness session.
 
     ``env`` is the harness's environment (default: the caller's, minus every credential variable). A harness
     adapter passes a curated one (``aew opencode``); the broker's coordinates are added either way.
 
-    ``contained`` (the contained Lead, STG-05 CS-4) is called once the broker serves, with the broker's private
-    directory (which the sandbox binds in) and that environment, and returns what to run instead of ``command``: in
-    its sandbox, or, where the policy allows a weaker run, as it is, labelled so. When it refuses (containment
-    required and not established), nothing runs, and a seat this session acquired is released again.
+    ``contained`` says how the harness runs, and every caller passes it (G3 addendum 7, ruling 1: no route stays
+    uncontained by omission). It is called once the broker serves, with the broker's private directory (which the
+    sandbox binds in) and that environment, and returns what to run instead of ``command``: in its sandbox (the
+    contained Lead, STG-05 CS-4), or, where the policy allows a weaker run, as it is, labelled so (:class:`WeakerLead`).
+    When it refuses (containment required and not established), nothing runs, and a seat this session acquired is
+    released again. Its ``precheck``, where it has one, runs first: a refusal there comes before any credential is read.
     """
     from aew.engine.harness_ops import scrubbed_env
     from aew.harness.procs import harden_current_process, run_session_tree
 
     if not command:
-        raise errors.UsageError("name the Lead's harness command after `--`, e.g. `aew lead session -- opencode-cli`")
+        raise errors.UsageError("name the Lead's harness command after `--`; the Lead's own OpenCode is `aew opencode`")
+    if contained is None:  # the backstop: the handlers' own refusals come first (DV-5)
+        raise errors.ContainmentUnavailable(UNCONTAINED_LEAD, reason="lead_uncontained", instead="aew opencode")
+    precheck = getattr(contained, "precheck", None)
+    if precheck is not None:
+        precheck()
     harden_current_process()  # this process holds the Lead credential (Linux: not inspectable by its child)
     require_credential(acquire)
     # in memory only: never inherited by git, hooks or any child
@@ -738,26 +820,29 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     with agentenv.session_host("this Lead session (`aew opencode` or `aew lead session`)"):
         broker.start()
         child_env = {**(scrubbed_env() if env is None else scrubbed_env(env)), **broker.env}
-        harness = None
-        if contained is not None:
-            try:
-                harness = contained(broker.server.private_dir, child_env)
-            except BaseException:
-                broker.close()
-                if acquire and not broker.superseded:  # nothing ran: the seat this session took is free again
-                    with contextlib.suppress(errors.AEWError):
-                        engine.lead_release(token=token, expect_rev=engine.store.current()["revision"])
-                raise
         try:
-            code, ownership = run_session_tree(harness.argv if harness else command,
-                                               env=harness.env if harness else child_env, cwd=str(engine.repo_root),
-                                               relay=bool(harness and harness.relay))
+            harness = contained(broker.server.private_dir, child_env)
+        except BaseException:
+            broker.close()
+            if acquire and not broker.superseded:  # nothing ran: the seat this session took is free again
+                with contextlib.suppress(errors.AEWError):
+                    engine.lead_release(token=token, expect_rev=engine.store.current()["revision"])
+            raise
+        survivors: list[tuple[int, str | None]] = []
+        ownership = None
+        try:
+            if harness.entry is not None:
+                harness.entry.started()
+            code, ownership = run_session_tree(harness.argv, env=harness.env, cwd=str(engine.repo_root),
+                                               relay=harness.relay, survivors=survivors)
         finally:
-            if harness is not None:
-                harness.close()
+            if harness.entry is not None:  # an outcome the reaper never gave is an unknown one: unowned
+                harness.entry.end(survivors if ownership in ("clean", "survivors") else None,
+                                  ownership=None if ownership in ("clean", "survivors") else "unowned")
+            harness.close()
             broker.close()
     out: dict[str, Any] = {"ok": True, "exit": code, "superseded": broker.superseded, "processes": ownership,
-                           **({"containment": harness.label} if harness is not None else {})}
+                           "containment": harness.label}
     state = engine.store.current()
     if acquire and not broker.superseded:
         active = sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active")

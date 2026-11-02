@@ -10,6 +10,7 @@ oracle (rules 34-42) runs after every step that changes state.
 from __future__ import annotations
 
 import errno
+import json
 import shutil
 import sys
 import threading
@@ -695,12 +696,12 @@ def test_publishing_through_the_verifier_ends_a_run_left_running(calc, tmp_path,
 def spawn_failure(monkeypatch, codes: list[int]):
     real = C.run
 
-    def run(cfg, workspace, env=None, layout=None, trees=None):
+    def run(cfg, workspace, *, policy, env=None, layout=None, trees=None):
         if codes:
             code = codes.pop(0)
             return {"exit_code": None, "duration_s": 0.0, "log": f"$ x\nfailed to start: [Errno {code}]",
                     "command": ["x"], "outcome": "spawn_failed", "spawn_errno": code}
-        return real(cfg, workspace, env=env, layout=layout, trees=trees)
+        return real(cfg, workspace, policy=policy, env=env, layout=layout, trees=trees)
 
     monkeypatch.setattr(C, "run", run)
 
@@ -724,6 +725,47 @@ def test_resource_exhaustion_and_unknown_failures_are_not_retried(calc, tmp_path
     out = validate(calc, wid)
     assert out["unavailable"] and out["code"] == "SPAWN_RESOURCE_EXHAUSTED", out
     assert len(integ(calc, wid)["validation_runs"]["ids"]) == 1
+
+
+def test_an_argument_limit_refusal_at_a_checks_start_is_reported_as_the_refusal_it_is(calc, tmp_path, contained,
+                                                                                       monkeypatch):
+    """E114: bubblewrap's argument limit (addendum 9) raises ContainmentUnavailable at the check's spawn, which is no
+    OSError. It is reported as that refusal, with its reason, never as an interrupted run."""
+    policy(calc, checks=SMOKE)
+    wid = prepared(calc, tmp_path)
+
+    def run(cfg, workspace, **kw):
+        raise ContainmentUnavailable("the sandbox's bubblewrap command line would exceed its argument limit",
+                                     reason="bwrap_argument_limit")
+
+    monkeypatch.setattr(VO.C, "run", run)
+    out = validate(calc, wid)
+    assert out["unavailable"] and out["code"] == "CONTAINMENT_UNAVAILABLE", out  # as a sandbox that failed (DV-1)
+    assert "VALIDATION_INTERRUPTED" not in json.dumps(out) + json.dumps(integ(calc, wid))
+    assert_control_invariants(calc)
+
+
+def test_a_weaker_validation_run_is_live_in_the_register_while_its_checks_run(calc, tmp_path, monkeypatch):
+    """G3 addendum 7: a run allowed weaker enters the register of weaker contexts before its first check, and leaves
+    it ended once its checks' trees are closed. Planted: the check reads the register while it runs."""
+    from aew.harness import weaker_register as W
+
+    policy(calc, checks=SMOKE, execution={"containment": {"mode": "allow_weaker"}})
+    wid = prepared(calc, tmp_path)
+    weaker_establish(monkeypatch)
+    seen: list = []
+
+    def run(cfg, workspace, **kw):
+        seen.append(([e["kind"] for e in W.read().live], kw["env"].get(W.MARKER)))
+        return {"outcome": "ran", "exit_code": 0, "duration_s": 0.0, "log": "", "command": ["stand-in"],
+                "spawn_errno": None}
+
+    monkeypatch.setattr(VO.C, "run", run)
+    validate(calc, wid, diagnostic=True)
+    [(live, marker)] = seen
+    assert "validation_run" in live and marker.endswith(VO.LABEL), (live, marker)
+    assert "validation_run" not in [e["kind"] for e in W.read().live]
+    assert "validation_run" in [e["kind"] for e in W.read().recent]
 
 
 def test_clustered_failures_trip_the_breaker_and_only_the_operator_resets_it(calc, tmp_path, contained, monkeypatch):

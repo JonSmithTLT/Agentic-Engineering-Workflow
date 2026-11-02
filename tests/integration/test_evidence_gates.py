@@ -34,6 +34,24 @@ def fail(res, code: str, exit_code: int | None = None) -> dict:
     return err
 
 
+def test_the_operators_check_run_runs_in_a_sandbox_of_its_own_and_records_its_label(calc, tmp_path):
+    """DV-4: `aew check run` establishes its own sandbox (or is refused under `required`), never runs the check bare.
+    Its run directory holds the label it ran under, and the evidence names that label's filesystem."""
+    import json
+
+    from aew.util import parse_frontmatter
+
+    wid = create_planned_ticket(calc, tmp_path)
+    impl = assign(calc, wid)
+    impl.write(SUBTRACT_PATCH)
+    out = impl.check("unit")
+    [run_dir] = (calc.root / ".aew/local/harness/runs").glob("check-*")
+    label = json.loads((run_dir / "label.json").read_text(encoding="utf-8"))
+    meta, _ = parse_frontmatter((calc.root / f".aew/evidence/{wid}/{out['evidence']}.md").read_text(encoding="utf-8"),
+                                source="evidence")
+    assert meta["method"]["containment"] == label["filesystem"]
+
+
 def test_smoke_to_verified(calc, tmp_path):
     wid, _ = to_verified(calc, tmp_path)
     gates = calc.ok("gate", "show", wid)

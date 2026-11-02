@@ -648,9 +648,10 @@ class Engine:
         return self._k.check_manifest_pin(state)
 
     def check_run(self, *, invocation_token: str, check_id: str, env: dict[str, str] | None = None,
-                  layout: Any = None, trees: Any = None, ending: Any = None) -> dict[str, Any]:
+                  layout: Any = None, trees: Any = None, ending: Any = None,
+                  label: dict[str, Any] | None = None) -> dict[str, Any]:
         return self._evidence.check_run(invocation_token=invocation_token, check_id=check_id, env=env, layout=layout,
-                                        trees=trees, ending=ending)
+                                        trees=trees, ending=ending, label=label)
 
     def checkpoint(self, *, token: str, expect_rev: int, note: str = "", next_action: str | None = None) -> dict[str,
                    Any]:

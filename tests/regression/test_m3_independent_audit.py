@@ -40,7 +40,8 @@ def test_a_check_leaves_no_process_behind_when_it_returns(tmp_path, parent_runs_
     script = tmp_path / "parent.py"
     script.write_text(PARENT, encoding="utf-8")
     cfg = {"command": ["{python}", str(script), str(marker), str(parent_runs_s)], "timeout_s": timeout_s}
-    result = checks.run(cfg, tmp_path)
+    # the process-tree property, with no sandbox: a policy that allows that (the default `required` refuses it)
+    result = checks.run(cfg, tmp_path, policy={"containment": {"mode": "allow_weaker"}})
     if parent_runs_s:
         assert result["exit_code"] is None and "TIMEOUT" in result["log"]
     else:

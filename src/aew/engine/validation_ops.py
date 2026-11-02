@@ -40,7 +40,6 @@ import json
 import os
 import shutil
 import socket
-import sys
 import threading
 import time
 from contextlib import AbstractContextManager
@@ -57,8 +56,7 @@ from aew.errors import (
     IllegalTransition,
     StaleRevision,
 )
-from aew.harness import containment, procs
-from aew.harness.agentenv import POSIX_KEEP, WINDOWS_KEEP
+from aew.harness import containment, procs, weaker_register
 from aew.knowledge import evidence as E
 from aew.policy import checks as C
 from aew.policy import guardrails as GR
@@ -489,7 +487,13 @@ class Validation:
         required = containment.mode(self.k.policy("execution")) == containment.REQUIRED
         if (not run.get("diagnostic") or required) and label.get("filesystem") != containment.CONTAINED:
             return {"infra": V.CONTAINMENT_UNAVAILABLE, "detail": "the run's sandbox was not established"}
-        env = self._check_env(layout)
+        try:  # a weaker run (allowed weaker, or on the host's network) is entered before its first check (G3 add. 7)
+            weaker = weaker_register.enter_if_weaker(
+                label, kind="validation_run", ownership=weaker_register.ownership_of(label), project=self.k.repo_root,
+                aew_root=self.k.aew_root, directory=directory, marker=directory / LABEL)
+        except ContainmentUnavailable as exc:
+            return {"infra": V.classify_containment_failure(exc), "detail": exc.message}
+        env = {**self._check_env(layout), weaker_register.MARKER: str(directory / LABEL)}
         trees = procs.CheckTrees()
         remaining = (_parse(run["deadline_at"]) - _now()).total_seconds()
         timer = threading.Timer(max(0.0, remaining), trees.end)  # the deadline ends the checks, mid-check included
@@ -498,6 +502,8 @@ class Validation:
         results = []
         before = self.invocations.snapshot_of(workspace, integ["workspace_id"])
         try:
+            if weaker is not None:
+                weaker.started()
             for entry in run["checks"]:
                 if _past(run["deadline_at"]):
                     return {"infra": "VALIDATION_DEADLINE_EXPIRED", "detail": "the deadline passed between checks"}
@@ -514,6 +520,8 @@ class Validation:
                 results.append(staged)
         finally:
             timer.cancel()
+            if weaker is not None:  # each check's tree was closed; what any left running keeps the entry live
+                weaker.end(list(trees.left))
         after = self.invocations.snapshot_of(workspace, integ["workspace_id"])
         finished = {"run": run["id"], "identity": run["identity"],
                     "before": before, "after": after,
@@ -529,13 +537,7 @@ class Validation:
     def _check_env(layout: Any) -> dict[str, str]:
         """An allowlist environment: operating-system basics and the sandbox's own settings. Never the Lead's
         credential or anything else the Lead's shell held (the candidate's code runs here)."""
-        keep = WINDOWS_KEEP if sys.platform == "win32" else POSIX_KEEP
-        env = {k: v for k, v in os.environ.items()
-               if k.upper() in keep or (sys.platform != "win32" and k.startswith("LC_"))}
-        env["PATH"] = os.environ.get("PATH") or os.environ.get("Path") or ""
-        env["PYTHONUTF8"] = "1"
-        env.update(getattr(layout, "env", None) or {})
-        return env
+        return C.allowlist_env(layout)
 
     def _one_check(self, run: dict[str, Any], check_id: str, entry: dict[str, Any], workspace: Path,
                    integ: dict[str, Any], scope: tuple[list[str], Any], env: dict[str, str], layout: Any,
@@ -549,7 +551,11 @@ class Validation:
             out = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0, "outcome": "ran",
                    "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"], "spawn_errno": None}
         else:
-            out = C.run(cfg, workspace, env=env, layout=layout, trees=trees)
+            try:
+                out = C.run(cfg, workspace, policy=self.k.policy("execution"), env=env, layout=layout, trees=trees)
+            except ContainmentUnavailable as exc:  # at the spawn: refused as itself, never "interrupted" (E114)
+                return {"infra": V.classify_containment_failure(exc),
+                        "detail": f"check {check_id} was refused at its start: {exc.message}"}
         if out["outcome"] == "spawn_failed":
             return {"infra": V.classify_spawn_failure(out.get("spawn_errno")),
                     "detail": f"check {check_id} could not start: {out['log'].splitlines()[-1]}"}

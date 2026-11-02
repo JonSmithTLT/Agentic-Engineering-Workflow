@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -16,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.engine import faults
-from aew.errors import GateUnsatisfied, NotFound
+from aew.errors import ContainmentUnavailable, GateUnsatisfied, NotFound
 
 BUILTIN = {"guardrails"}
 DEFAULT_TIMEOUT_S = 900
@@ -65,13 +66,34 @@ def resolve(checks_policy: dict[str, Any], check_id: str) -> dict[str, Any]:
     return cfg
 
 
-def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None, layout: Any = None,
-        trees: Any = None) -> dict[str, Any]:
+def allowlist_env(layout: Any) -> dict[str, str]:
+    """A check's environment where nothing hands it one: operating-system basics and the sandbox's own settings, never
+    a credential or anything else the caller's shell held (the check runs code an agent wrote)."""
+    from aew.harness.agentenv import POSIX_KEEP, WINDOWS_KEEP
+
+    keep = WINDOWS_KEEP if sys.platform == "win32" else POSIX_KEEP
+    env = {k: v for k, v in os.environ.items()
+           if k.upper() in keep or (sys.platform != "win32" and k.startswith("LC_"))}
+    env["PATH"] = os.environ.get("PATH") or os.environ.get("Path") or ""
+    env["PYTHONUTF8"] = "1"
+    env.update(getattr(layout, "env", None) or {})
+    return env
+
+
+def run(cfg: dict[str, Any], workspace: Path, *, policy: dict[str, Any] | None, env: dict[str, str] | None = None,
+        layout: Any = None, trees: Any = None) -> dict[str, Any]:
     """Run a check in its own process tree. Every process it started has ended when this returns, so the caller's
     after-snapshot describes everything the check did (independent audit I2). With ``layout`` (a contained run's
     sandbox) the tree starts the check inside it (M4-B), with no network unless the check's ``network: shared`` and the
     run's own network allow the host's (F28 §3.8; ``containment.for_check``); the result records which. ``trees`` (a
-    run's supervisor) holds the check's tree while it runs, so the run ending ends the check."""
+    run's supervisor) holds the check's tree while it runs, so the run ending ends the check, and gathers what each
+    check's tree left running (``CheckTrees.left``).
+
+    ``policy`` is the execution policy the check runs under, which every caller passes. Under its ``required``, a check
+    with no layout is refused before anything starts, whatever started it (DV-4's backstop): the tree requires one.
+    Such a refusal, like any containment failure at the spawn (bubblewrap's argument limit, addendum 9), is raised as
+    the ``ContainmentUnavailable`` it is, never reported as a check that could not start (E114)."""
+    from aew.harness import containment
     from aew.harness.containment.layout import for_check
     from aew.harness.procs import ProcessTree
 
@@ -80,7 +102,13 @@ def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None,
     timeout = cfg.get("timeout_s", DEFAULT_TIMEOUT_S)
     started = time.monotonic()
     layout = for_check(layout, cfg.get("network")) if layout is not None else None
-    tree = ProcessTree(layout=layout)
+    required = containment.mode(policy) == containment.REQUIRED
+    if required and layout is None:
+        raise ContainmentUnavailable(
+            f"the check `{' '.join(command)[:80]}` would run with no sandbox, and the execution policy requires "
+            f"containment (containment.mode: required): it is refused before anything starts. Run it contained, or "
+            f"{containment.ALLOW_WEAKER_REMEDY}", reason="check_uncontained")
+    tree = ProcessTree(layout=layout, require_layout=required)  # and the tree itself starts nothing without one
     if trees is not None:
         trees.add(tree)  # a run's CheckTrees: killed on arrival if the run has already ended
     faults.pause("checks.before_spawn")  # tests: the run ends between registration and start (M4-B review)
@@ -107,6 +135,8 @@ def run(cfg: dict[str, Any], workspace: Path, env: dict[str, str] | None = None,
     finally:
         left = tree.close()
         if trees is not None:
+            if left:  # the register of weaker contexts ends a run's entry only once these are proven ended
+                trees.left.extend(tree.survivors(0.0))
             trees.discard(tree)
     if left and exit_code is not None:
         log += "\n--- processes the check left running were ended when it returned ---\n"

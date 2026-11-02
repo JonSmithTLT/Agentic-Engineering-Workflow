@@ -797,13 +797,61 @@ class EvidenceCommands:
             raise NotFound(f"no invocation {invocation}")
         return {"id": invocation, **{k: v for k, v in inv.items() if k != "token_id"}}
 
+    def _check_run_direct(self, cfg: dict[str, Any], workspace: Path, inv: dict[str, Any]) -> dict[str, Any]:
+        """The operator's own ``aew check run`` (DV-4): the check runs in the invocation role's sandbox, self-tested,
+        with an allow-listed environment. Under ``required`` a sandbox that cannot be established refuses, naming
+        ``allow_weaker``; where the policy allows a weaker run (and on Windows) it runs labelled so, and is entered in
+        the register of weaker contexts while it runs (G3 addendum 7)."""
+        import secrets
+        import shutil
+        import time
+
+        from aew.errors import ContainmentUnavailable
+        from aew.harness import containment, procs, runlog, weaker_register
+
+        policy = self.k.policy("execution")
+        run_dir = runlog.run_dir(self.k.aew_root, f"check-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-"
+                                                  f"{secrets.token_hex(3)}")
+        run_dir.mkdir(parents=True)
+        try:
+            layout, label = containment.establish(
+                role=inv["role"], scope=inv.get("scope") or "ticket", workspace=str(workspace), run_dir=run_dir,
+                scratch=str(run_dir / "scratch"), bridge_dir=None, policy=policy, project=str(self.k.repo_root))
+        except ContainmentUnavailable as exc:
+            raise ContainmentUnavailable(
+                f"`aew check run` runs the check in a sandbox, and its sandbox could not be established: "
+                f"{exc.message}. Nothing ran; {containment.ALLOW_WEAKER_REMEDY}", **exc.details) from None
+        if layout is not None and layout.net_dir:  # a check never uses a run's routes out (F28 §3.8)
+            shutil.rmtree(layout.net_dir, ignore_errors=True)
+        (run_dir / "label.json").write_text(json.dumps(label, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        trees = procs.CheckTrees()
+        try:
+            weaker = weaker_register.enter_if_weaker(
+                label, kind="check_run", ownership=weaker_register.ownership_of(label), project=self.k.repo_root,
+                aew_root=self.k.aew_root, directory=run_dir, marker=run_dir / "label.json")
+            env = {**C.allowlist_env(layout), weaker_register.MARKER: str(run_dir / "label.json")}
+            if weaker is not None:
+                weaker.started()
+            try:
+                run = C.run(cfg, workspace, policy=policy, env=env, layout=layout, trees=trees)
+            finally:
+                if weaker is not None:
+                    weaker.end(list(trees.left))
+        finally:
+            containment.retire_private_git(run_dir)
+        return {**run, "containment": label}
+
     def check_run(self, *, invocation_token: str, check_id: str, env: dict[str, str] | None = None,
-                  layout: Any = None, trees: Any = None, ending: Any = None) -> dict[str, Any]:
+                  layout: Any = None, trees: Any = None, ending: Any = None,
+                  label: dict[str, Any] | None = None) -> dict[str, Any]:
         """Run a project check as a bounded role. ``env`` is the complete environment of the check's process
         (a harness run passes its agent environment, so a check never sees the supervisor's). ``layout`` is a
         contained run's sandbox: the check runs inside it, through the same process-tree choke point (M4-B).
         ``trees`` and ``ending`` come from a run's supervisor: the run ending kills the check, and a check the run's
-        end cut short records nothing (independent review, area 2, F6)."""
+        end cut short records nothing (independent review, area 2, F6). ``label`` is that run's containment decision,
+        which a run's supervisor passes (its run is already entered in the register of weaker contexts when weaker).
+        Without one, this is the operator's own command, which decides here: contained, or refused under ``required``,
+        or labelled weaker and registered where the policy allows it (DV-4)."""
         with self.k.store.session() as s:
             inv_id, inv, actor = require_invocation(s.state, invocation_token, "check.run",
                                                     archived=self.archive.archived_credential)
@@ -837,7 +885,10 @@ class EvidenceCommands:
                    "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"]}
         else:
             verdict = None
-            run = C.run(cfg, workspace, env=env, layout=layout, trees=trees)
+            if label is None:  # the operator's own `aew check run`: contained here, or refused (DV-4)
+                run = self._check_run_direct(cfg, workspace, inv)
+            else:
+                run = C.run(cfg, workspace, policy=self.k.policy("execution"), env=env, layout=layout, trees=trees)
             if ending is not None and ending.is_set():
                 raise StaleAuthority(f"the run ended while check {check_id} ran; nothing was recorded")
         after = self.invocations.snapshot_of(workspace, ws_id)
@@ -860,7 +911,8 @@ class EvidenceCommands:
                 "evaluated_snapshot": before,
                 "method": {"capability": "targeted_test_execution" if not cfg.get("builtin") else "guardrail_check",
                            "provider": "aew-check-runner", "command": run["command"],
-                           "containment": "os_readonly_roots" if layout is not None else "workdir_separation_only",
+                           "containment": (run.get("containment") or {}).get("filesystem")
+                           or ("os_readonly_roots" if layout is not None else "workdir_separation_only"),
                            # the check's effective network (F28 §3.8), where it ran in a sandbox
                            **({"network": run["network"]} if run.get("network") else {})},
                 "claim": f"check {check_id} passes on the evaluated snapshot",

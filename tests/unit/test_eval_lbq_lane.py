@@ -156,6 +156,35 @@ def test_the_upstream_suite_runs_only_on_a_fresh_copy_of_the_fixtures_starting_f
     assert only["dir"].startswith("aew-lbq-suite-") and only["files"] == planted
 
 
+def test_the_live_lane_is_live_in_the_register_while_its_trial_runs(qualify, monkeypatch, tmp_path):
+    """G3 addendum 7 (#321 review, F5): a floor trial runs a harness with a model, uncontained: it is entered in the
+    register of weaker contexts before its first process starts, live while it runs, and its process is marked."""
+    from aew.harness import procs
+    from aew.harness import weaker_register as W
+
+    seen: dict = {}
+
+    class Tree:
+        def spawn(self, argv, *, env, **_):
+            seen.update(live=[(x["kind"], x["why"]) for x in W.read().live], marker=env.get(W.MARKER))
+            return SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
+
+        def close(self):
+            pass
+
+        def survivors(self, wait_s=10.0):
+            return []
+
+    monkeypatch.setattr(procs, "ProcessTree", Tree)
+    monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: None)  # the host's own processes are not this test's
+    monkeypatch.setattr(qualify, "watch_floor", lambda *a, **k: None)
+    monkeypatch.setattr(qualify, "session_costs", lambda where: 0.0)
+    monkeypatch.setattr(qualify, "read_results", lambda path: [])
+    qualify.floor_trial(tmp_path, {"ref": "fake/model"}, [], cap=1.0, spent_before=0.0)
+    assert seen["live"] == [("eval_live", "running")] and seen["marker"]
+    assert [x["kind"] for x in W.read().live] == [], "it ends when the trial ends"
+
+
 def test_the_lane_files_are_consistent(qualify):
     """The plan's arm pins its profile record as the record states it; the profiles derive their states; every case
     commits to an oracle; the overlay is portable and replaces no upstream file."""

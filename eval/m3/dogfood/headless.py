@@ -26,7 +26,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from aew.harness import agentenv, procs
+from aew.harness import agentenv, procs, weaker_register
 from aew.harness.opencode import adapter as oc
 from aew.harness.opencode import projection
 from aew.harness.opencode.client import EventStream, OpenCodeError, OpenCodeUnavailable, Server
@@ -186,14 +186,17 @@ class HeadlessSession(oc.OpenCodeAdapter):
             fh.write(json.dumps({"t": round(time.time(), 3), **event}, default=str) + "\n")
 
     def _start(self, *, directory: Path, profile: dict[str, Any], config: dict[str, Any],
-               provider_env: list[str]) -> None:
-        """A private server on this session's state, with the pinned model in its catalog."""
+               provider_env: list[str], marker: str | None = None) -> None:
+        """A private server on this session's state, with the pinned model in its catalog. ``marker`` is the context's
+        register marker (``AEW_CONTEXT``), which the server and all it starts carry too (G3 addendum 7)."""
         self.opened_at = time.monotonic()
         self.state_dir = self.run_dir / "harness"
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.directory = os.path.realpath(directory)
         server_env = oc.server_env(dict(os.environ), self.state_dir, provider_env=provider_env, config=config,
                                    password=secrets.token_urlsafe(32))
+        if marker:
+            server_env[weaker_register.MARKER] = marker
         self.server = Server.start(self.tree.spawn, oc.binary_command(), env=server_env, cwd=self.directory,
                                    log_path=self.state_dir / "server.log")
         del server_env
@@ -211,7 +214,8 @@ class HeadlessSession(oc.OpenCodeAdapter):
     def open(self, *, directory: Path, profile: dict[str, Any], agent: str, config: dict[str, Any],
              env: dict[str, str], provider_env: list[str], rules: list[dict[str, str]] | None = None,
              title: str = "AEW dogfood") -> None:
-        self._start(directory=directory, profile=profile, config=config, provider_env=provider_env)
+        self._start(directory=directory, profile=profile, config=config, provider_env=provider_env,
+                    marker=env.get(weaker_register.MARKER))
         assert self.client is not None
         body: dict[str, Any] = {"title": title, "agent": agent, "model": projection.model_ref(profile),
                                 "location": {"directory": self.directory}}
@@ -227,7 +231,8 @@ class HeadlessSession(oc.OpenCodeAdapter):
         """Reopen a session this class ran before, from its saved state (rubric A6: a finished Lead's debrief).
         The session exists already, so nothing is created. Its shell environment lived only in the old server's
         memory, so it is curated again here: without it, the shell would get this server's own environment."""
-        self._start(directory=directory, profile=profile, config=config, provider_env=provider_env)
+        self._start(directory=directory, profile=profile, config=config, provider_env=provider_env,
+                    marker=env.get(weaker_register.MARKER))
         assert self.client is not None
         self.client.get(f"/api/session/{session}")  # it exists, or this raises
         self.session = session

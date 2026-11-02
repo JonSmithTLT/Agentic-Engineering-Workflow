@@ -473,11 +473,10 @@ def test_a_weaker_run_is_live_in_the_register_while_its_harness_runs_and_its_age
         monkeypatch.setattr(W, "ROOT_OVERRIDE", conftest.CHILD_DATA_BASE / "aew" / W.DIRNAME)
         entries = {e["id"]: e for e in (json.loads(f.read_text(encoding="utf-8"))
                                         for f in W.root().glob("worker_run-*.json"))}
-        [mine] = [x for x in W.read().live if x["kind"] == "worker_run"
-                  and Path(entries[x["id"]]["marker"]).parent.name == run]
-        assert mine["why"] == "running"
-        marker = entries[mine["id"]]["marker"]
-        assert json.loads((sync / "env.json").read_text(encoding="utf-8"))[W.MARKER] == marker
+        # this session's register is shared and run ids repeat across projects: its entry is its agent's marker
+        marker = json.loads((sync / "env.json").read_text(encoding="utf-8"))[W.MARKER]
+        [mine] = [x for x in W.read().live if x["kind"] == "worker_run" and entries[x["id"]]["marker"] == marker]
+        assert mine["why"] == "running" and Path(marker).parent.name == run
         (sync / "go").write_text("x", encoding="utf-8")
         lab.wait(run)
     finally:

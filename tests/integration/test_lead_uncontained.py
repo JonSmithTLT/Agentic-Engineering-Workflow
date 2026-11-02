@@ -91,11 +91,14 @@ def test_under_allow_weaker_the_general_command_runs_labelled_with_its_label_and
     label = seen["label"]
     assert label["filesystem"] == containment.WORKDIR_ONLY and label["weaker_because"]
     assert Path(seen["marker"]).name == "label.json" and Path(seen["marker"]).parent.name.startswith("lead-")
-    [live] = [e for e in seen["live"] if e["kind"] == "lead_session"]
-    assert live["why"] == "running"
     assert res.json["containment"]["filesystem"] == containment.WORKDIR_ONLY
+    # every `aew` the session starts shares one register, so another test's Lead session may be live in it too (an
+    # entry the scan cannot prove ended stays live): this session's is the one its own marker names
     register = conftest.CHILD_DATA_BASE / "aew" / W.DIRNAME
-    [entry] = [json.loads(f.read_text()) for f in register.glob("lead_session-*.json") if live["id"] in f.name]
+    entries = {e["id"]: e for e in (json.loads(f.read_text()) for f in register.glob("lead_session-*.json"))}
+    [live] = [e for e in seen["live"] if e["kind"] == "lead_session" and entries[e["id"]]["marker"] == seen["marker"]]
+    assert live["why"] == "running"
+    entry = entries[live["id"]]
     assert entry["owner"] == {"pid": label["session_pid"], "start_id": label["session_start_id"]}
     assert entry["outcome"] == "clean" and entry["ended_epoch"], "it ends when the session ends"
     assert entry["marker"] == seen["marker"]

@@ -226,14 +226,27 @@ def _register_files(path: Path) -> dict[str, tuple[int, int]]:
             for p in sorted(path.rglob("*")) if p.is_file()}
 
 
+def _host_state() -> Path:
+    """AEW's host state directory as the session found the environment (``HOST_ENV``), whatever it holds now."""
+    from unittest import mock
+
+    from aew import hoststate
+
+    with mock.patch.dict(os.environ, HOST_ENV, clear=True):
+        return hoststate.root()
+
+
 @pytest.fixture(scope="session")
 def capability_register_dir(tmp_path_factory) -> Path:
     """The session's register, and the sentinel on the host's (CAP-1 review F2): every `aew` a test starts gets the
-    session's own base (``clean_env``), and at the session's end the host's register is as the session found it.
+    session's own base (``clean_env``), and at the session's end the host's register is as the session found it. The
+    test process's own base variable names that base too, for the session: a child an in-process engine starts (a
+    worker's supervisor) inherits it, so it writes neither host register (#321's CI: Windows workers' entries in the
+    host's register of weaker contexts).
 
     Its limits (#272's quick check, QC2):
-    * a child started without ``clean_env`` that keeps the host's base is seen only here, at the end, and a read
-      leaves nothing to see;
+    * a child that is given the host's base explicitly is seen only here, at the end, and a read leaves nothing to
+      see;
     * where the host sets ``XDG_DATA_HOME``, a child that keeps ``HOME`` but drops ``XDG_DATA_HOME`` writes the XDG
       default under the home directory, which is neither redirected nor watched; on Windows, where the host's
       ``LOCALAPPDATA`` is not the profile's own local app-data folder, a child that drops it writes the profile's
@@ -241,12 +254,20 @@ def capability_register_dir(tmp_path_factory) -> Path:
     * any real change to the host's register during the run (the operator's own command, or another suite run from a
       commit without this fixture) fails the session, naming the files that changed."""
     global CHILD_DATA_BASE
-    from aew.capability import store
+    from aew import hoststate
 
-    host = store.root()  # no override yet, and the environment as the session found it
+    host = _host_state() / "capability"
     before = _register_files(host)
     CHILD_DATA_BASE = tmp_path_factory.mktemp("child-data-base")
+    name = hoststate.base_variable()
+    found = os.environ.get(name)
+    if found == HOST_ENV.get(name):
+        os.environ[name] = str(CHILD_DATA_BASE)
     yield tmp_path_factory.mktemp("capability-register")
+    if found is None:
+        os.environ.pop(name, None)
+    else:
+        os.environ[name] = found
     CHILD_DATA_BASE = None
     after = _register_files(host)
     assert after == before, (f"the session changed the host's own capability register at {host}: "
@@ -260,7 +281,7 @@ def weaker_register_dir(tmp_path_factory) -> Path:
     process the register is this directory; and at the session's end the host's register is as the session found it."""
     from aew.harness import weaker_register
 
-    host = weaker_register.root()  # no override yet
+    host = _host_state() / weaker_register.DIRNAME
     before = _register_files(host)
     yield tmp_path_factory.mktemp("weaker-register")
     after = _register_files(host)

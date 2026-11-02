@@ -17,7 +17,7 @@ import threading
 from pathlib import Path
 
 import pytest
-from aewflow import create_unit, sample_project, to_commit_ready, verify
+from aewflow import create_unit, sample_project, stand_in_containment, to_commit_ready, verify
 from conftest import git
 from invariants import assert_control_invariants, load_control
 
@@ -41,8 +41,7 @@ def calc(tmp_path):
 @pytest.fixture
 def contained(monkeypatch):
     """Stand in for Linux containment: the engine believes the integration worktree is immutable for the run."""
-    monkeypatch.setattr(VO.Validation, "containment_available", lambda self: True)
-    monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (None, dict(CONTAINED)))
+    stand_in_containment(monkeypatch, CONTAINED)
 
 
 def engine(p) -> Engine:

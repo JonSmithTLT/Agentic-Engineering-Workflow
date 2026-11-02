@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from aewflow import stand_in_containment
 from test_composition_walk import Walk
 
 from aew.engine import transitions
@@ -46,10 +47,8 @@ class QueueWalk(Walk):
         self.gates_path = gates
         # A stand-in for Linux containment, and a single-threaded walk: between steps no run is executing, so a run
         # left `running` by an injected crash has lost its executor (as a crashed process would have).
-        monkeypatch.setattr(VO.Validation, "containment_available", lambda self: True)
-        monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (
-            None, {"filesystem": "os_readonly_roots", "process_ownership": "pid_namespace", "network": "shared",
-                   "mechanism": "walk stand-in"}))
+        stand_in_containment(monkeypatch, {"filesystem": "os_readonly_roots", "process_ownership": "pid_namespace",
+                                           "network": "shared", "mechanism": "walk stand-in"})
         monkeypatch.setattr(VO, "executor_alive", lambda run: False)
         monkeypatch.setattr(V, "BACKOFF_S", 0.0)
         self.outside = 0

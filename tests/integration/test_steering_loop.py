@@ -22,7 +22,7 @@ from typing import Any
 
 import pytest
 import yaml
-from aewflow import create_planned_ticket, sample_project
+from aewflow import create_planned_ticket, sample_project, stand_in_containment
 from fake_harness import POLICY, HarnessLab
 from invariants import load_control
 from legality_modules import legality_modules
@@ -1128,14 +1128,12 @@ def test_a_dead_custodian_ended_under_an_auto_run_step(tmp_path, monkeypatch, fo
     from test_validation_checks import CONTAINED
 
     from aew.engine import api as engine_api
-    from aew.engine import validation_ops as VO
     from aew.harness import procs
 
     held: dict[str, str] = {}
     monkeypatch.setattr(engine_api, "spawn_worker",
                         lambda repo, aew_root, custodian, credential: held.__setitem__(custodian, credential))
-    monkeypatch.setattr(VO.Validation, "containment_available", lambda self: True)
-    monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (None, dict(CONTAINED)))
+    stand_in_containment(monkeypatch, CONTAINED)
     p = sample_project(tmp_path)
     checks_mode(p)
     _wid, custodian, _out = prepared(p, tmp_path)

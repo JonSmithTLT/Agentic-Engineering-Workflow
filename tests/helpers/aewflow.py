@@ -57,6 +57,20 @@ def allow_weaker_lead(project: Project) -> Project:
     return project
 
 
+def stand_in_containment(monkeypatch: Any, label: dict[str, Any]) -> None:
+    """Stand in for Linux containment in this process: the engine believes the integration worktree is immutable for
+    the run (validation's own seams), and its sandbox is ``label`` with no layout behind it. Under ``required`` a check
+    with no layout is refused (DV-4, ``policy/checks.py``'s backstop), so a stand-in with none can only be a host whose
+    policy allows weaker runs: it stands in for that policy too, in this process. An `aew` the test starts reads the
+    project's own policy, and on Linux runs its checks in a real sandbox."""
+    from aew.engine import validation_ops as VO
+    from aew.harness import containment
+
+    monkeypatch.setattr(VO.Validation, "containment_available", lambda self: True)
+    monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (None, dict(label)))
+    monkeypatch.setattr(containment, "mode", lambda policy: containment.ALLOW_WEAKER)
+
+
 def lead_project(tmp_path: Path, **kw: Any) -> Project:
     """:func:`sample_project` for a test of the general Lead command (:func:`allow_weaker_lead`)."""
     return allow_weaker_lead(sample_project(tmp_path, **kw))

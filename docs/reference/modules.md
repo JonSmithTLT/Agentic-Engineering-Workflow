@@ -12,13 +12,13 @@ A group is a second-level package, or `aew` for the top and the modules directly
 |---|---|---|---|
 | `aew` | 11 | `aew.capability`, `aew.cli`, `aew.engine`, `aew.harness`, `aew.stg02` | `aew.capability`, `aew.cli`, `aew.dashboard`, `aew.engine`, `aew.harness`, `aew.history`, `aew.knowledge`, `aew.maps`, `aew.policy`, `aew.roles`, `aew.schemas`, `aew.snapshot`, `aew.stg02`, `aew.surface`, `aew.workspace` |
 | `aew.capability` | 6 | `aew`, `aew.engine`, `aew.harness`, `aew.schemas`, `aew.stg02` | `aew`, `aew.cli`, `aew.harness` |
-| `aew.cli` | 14 | `aew`, `aew.capability`, `aew.coordination`, `aew.dashboard`, `aew.engine`, `aew.harness`, `aew.maps`, `aew.surface` | `aew`, `aew.harness` |
-| `aew.coordination` | 2 | `aew.harness` | `aew.cli`, `aew.engine` |
+| `aew.cli` | 14 | `aew`, `aew.capability`, `aew.dashboard`, `aew.engine`, `aew.harness`, `aew.knowledge`, `aew.maps`, `aew.surface` | `aew`, `aew.harness` |
+| `aew.coordination` | 2 | `aew.harness` | `aew.engine` |
 | `aew.dashboard` | 14 | `aew`, `aew.engine`, `aew.harness`, `aew.history`, `aew.knowledge`, `aew.maps`, `aew.schemas` | `aew.cli`, `aew.stg02` |
 | `aew.engine` | 50 | `aew`, `aew.coordination`, `aew.harness`, `aew.history`, `aew.knowledge`, `aew.maps`, `aew.policy`, `aew.roles`, `aew.schemas`, `aew.snapshot`, `aew.workspace` | `aew`, `aew.capability`, `aew.cli`, `aew.dashboard`, `aew.harness`, `aew.history`, `aew.maps`, `aew.policy`, `aew.stg02`, `aew.surface`, `aew.workspace` |
 | `aew.harness` | 37 | `aew`, `aew.capability`, `aew.cli`, `aew.engine`, `aew.knowledge`, `aew.schemas`, `aew.surface`, `aew.workspace` | `aew`, `aew.capability`, `aew.cli`, `aew.coordination`, `aew.dashboard`, `aew.engine`, `aew.knowledge`, `aew.policy`, `aew.stg02`, `aew.surface`, `aew.workspace` |
 | `aew.history` | 4 | `aew`, `aew.engine`, `aew.schemas` | `aew.dashboard`, `aew.engine` |
-| `aew.knowledge` | 7 | `aew`, `aew.harness`, `aew.roles`, `aew.schemas` | `aew.dashboard`, `aew.engine`, `aew.harness`, `aew.maps`, `aew.surface` |
+| `aew.knowledge` | 7 | `aew`, `aew.harness`, `aew.roles`, `aew.schemas` | `aew.cli`, `aew.dashboard`, `aew.engine`, `aew.harness`, `aew.maps`, `aew.surface` |
 | `aew.maps` | 9 | `aew`, `aew.engine`, `aew.knowledge`, `aew.policy`, `aew.schemas`, `aew.workspace` | `aew.cli`, `aew.dashboard`, `aew.engine` |
 | `aew.policy` | 8 | `aew`, `aew.engine`, `aew.harness`, `aew.schemas` | `aew.engine`, `aew.maps` |
 | `aew.roles` | 1 | `aew`, `aew.schemas` | `aew.engine`, `aew.knowledge` |
@@ -62,7 +62,7 @@ A group is a second-level package, or `aew` for the top and the modules directly
 | `aew.cli` | - | - |
 | `aew.cli.capability_commands` | `aew.capability.ops`, `aew.cli.commands`, `aew.engine.custody_ops`, `aew.errors`, `aew.harness.operator_client`, `aew.operator` | `aew.cli.commands` |
 | `aew.cli.commands` | `aew.cli.capability_commands`, `aew.cli.dashboard_commands`, `aew.cli.g3_commands`, `aew.cli.history_commands`, `aew.cli.map_commands`, `aew.cli.message_commands`, `aew.cli.operator_commands`, `aew.cli.settings_commands`, `aew.cli.work_commands`, `aew.doctor`, `aew.engine.api`, `aew.errors`, `aew.harness.lead_broker`, `aew.harness.opencode.lead`, `aew.lead_credential`, `aew.operator`, `aew.surface`, `aew.surface.client`, `aew.surface.context`, `aew.surface.contract`, `aew.surface.errors`, `aew.surface.mcp`, `aew.surface.run`, `aew.surface.stage`, `aew.util` | `aew.cli.capability_commands`, `aew.cli.dashboard_commands`, `aew.cli.g3_commands`, `aew.cli.history_commands`, `aew.cli.main`, `aew.cli.map_commands`, `aew.cli.message_commands`, `aew.cli.operator_commands`, `aew.cli.settings_commands`, `aew.cli.work_commands` |
-| `aew.cli.credentials` | `aew.coordination.layout`, `aew.errors`, `aew.harness.contract`, `aew.harness.lead_broker`, `aew.operator` | `aew.cli.dashboard_commands`, `aew.cli.main` |
+| `aew.cli.credentials` | `aew.errors`, `aew.harness.contract`, `aew.harness.lead_broker`, `aew.knowledge.records`, `aew.operator` | `aew.cli.dashboard_commands`, `aew.cli.main` |
 | `aew.cli.dashboard_commands` | `aew.cli.commands`, `aew.cli.credentials`, `aew.dashboard.control`, `aew.dashboard.defaults`, `aew.dashboard.server`, `aew.dashboard.service`, `aew.errors`, `aew.operator` | `aew.cli.commands`, `aew.cli.operator_commands` |
 | `aew.cli.fields` | `aew.errors`, `aew.util` | `aew.cli.main`, `aew.harness.lead_broker` |
 | `aew.cli.g3_commands` | `aew.cli.commands`, `aew.engine.custody_ops`, `aew.errors`, `aew.g3client` | `aew.cli.commands` |
@@ -79,7 +79,7 @@ A group is a second-level package, or `aew` for the top and the modules directly
 | Module | Imports | Imported by |
 |---|---|---|
 | `aew.coordination` | - | - |
-| `aew.coordination.layout` | `aew.harness.delivery` | `aew.cli.credentials`, `aew.engine.archive_ops`, `aew.engine.coordination_ops`, `aew.engine.store` |
+| `aew.coordination.layout` | `aew.harness.delivery` | `aew.engine.archive_ops`, `aew.engine.coordination_ops`, `aew.engine.store` |
 
 ## `aew.dashboard` (14)
 
@@ -215,7 +215,7 @@ A group is a second-level package, or `aew` for the top and the modules directly
 | `aew.knowledge.discovery` | `aew.harness.contract` | `aew.engine.api` |
 | `aew.knowledge.evidence` | `aew.errors`, `aew.profile`, `aew.schemas`, `aew.util` | `aew.dashboard.projections`, `aew.engine.archive_ops`, `aew.engine.context_ops`, `aew.engine.custody_ops`, `aew.engine.evidence_ops`, `aew.engine.harness_ops`, `aew.engine.hierarchy_ops`, `aew.engine.integration_ops`, `aew.engine.nonmutating_ops`, `aew.engine.resume_ops`, `aew.engine.validation_ops`, `aew.harness.supervisor`, `aew.maps.service`, `aew.surface.projection` |
 | `aew.knowledge.manifest` | `aew.errors`, `aew.schemas`, `aew.util` | `aew.dashboard.reader`, `aew.dashboard.service`, `aew.engine.api`, `aew.engine.base`, `aew.engine.configuration`, `aew.engine.coordination_ops`, `aew.engine.gates`, `aew.engine.recall`, `aew.engine.resume_ops` |
-| `aew.knowledge.records` | `aew.schemas`, `aew.util` | `aew.dashboard.projections`, `aew.engine.api`, `aew.engine.archive_ops`, `aew.engine.assurance_ops`, `aew.engine.base`, `aew.engine.context_ops`, `aew.engine.disposition_ops`, `aew.engine.evidence_ops`, `aew.engine.gate_ops`, `aew.engine.hierarchy_ops`, `aew.engine.history_ops`, `aew.engine.lead_ops`, `aew.engine.nonmutating_ops`, `aew.engine.queue_ops`, `aew.engine.stage_intents`, `aew.engine.steering`, `aew.engine.work_ops`, `aew.engine.workspace_ops` |
+| `aew.knowledge.records` | `aew.schemas`, `aew.util` | `aew.cli.credentials`, `aew.dashboard.projections`, `aew.engine.api`, `aew.engine.archive_ops`, `aew.engine.assurance_ops`, `aew.engine.base`, `aew.engine.context_ops`, `aew.engine.disposition_ops`, `aew.engine.evidence_ops`, `aew.engine.gate_ops`, `aew.engine.hierarchy_ops`, `aew.engine.history_ops`, `aew.engine.lead_ops`, `aew.engine.nonmutating_ops`, `aew.engine.queue_ops`, `aew.engine.stage_intents`, `aew.engine.steering`, `aew.engine.work_ops`, `aew.engine.workspace_ops` |
 | `aew.knowledge.render` | - | `aew.engine.base`, `aew.engine.lead_ops`, `aew.engine.resume_ops` |
 
 ## `aew.maps` (9)

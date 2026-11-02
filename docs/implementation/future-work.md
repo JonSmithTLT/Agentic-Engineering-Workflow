@@ -37,7 +37,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 3 | STG-05 | CS-3b, the network namespace (#257) (merged, `d796a342`) |
 | 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register (PR 1 merged as #272, `af951c92`; PR 2 is next, now that CS-4 has merged) |
 | 5 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
-| 6 | STG-05, STG-03, E112 | CS-4, the Lead contained (merged as #283, `da547f9a`), with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, merged as #282, `61310fb3`; G3-D, the CLI client, merged as #286, `21ea8674`; G3-C after E112, G3 addendum 7's ruling 1, which merges before G3-C starts) |
+| 6 | STG-05, STG-03 | CS-4, the Lead contained (merged as #283, `da547f9a`), with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, merged as #282, `61310fb3`; G3-D, the CLI client, merged as #286, `21ea8674`; E112, G3 addendum 7's ruling 1 with ruling 2's register of weaker contexts, built in its pull request; G3-C, which reads both, is next) |
 | 7 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
 | 8 | STG-13 | V-01's oracle rebuilt |
 | 9 | STG-14 | I-6, the resource, model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established: CS-4 has merged (#283), and G3 is still established on no host (map v1.20, design workspace `0717159`) |
@@ -1199,18 +1199,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E111/`, oldest first (`python tools/register.py show E111`).*
 
-### E112
-
-**Work:** G3 addendum 7's ruling 1, a build against STG-05 before G3-C: under `required`, every launch whose containment fails is refused, whatever command or flag started it (`G3-12`). **The general Lead command:** under `required` on Linux, the default, `aew lead session` is refused with `CONTAINMENT_UNAVAILABLE` in its handler, before the credential is read and before any seat moves, and the message names `aew opencode`, the contained Lead, and `containment.mode: allow_weaker`. Under `allow_weaker`, and on Windows, it runs labelled not contained: its label is written to `label.json` in a `lead-<UTC>-<hex>` run directory by the writer `aew opencode` uses, the "runs NOT contained" line is printed, and the context is entered in the register of weaker contexts. `run_session`'s `contained` becomes required, so every caller says how its harness runs. **The register of weaker contexts** (ruling 2's, built here): per host and per operator UID, outside every project and every sandbox's writable binds. A weaker context's owning host process writes its entry before the context's first process starts, and the entry stays live until that process has ended and its tree is reaped clean. Contained launches write nothing, and on Linux a weaker launch whose entry cannot be written is refused. **The launch census:** a static test holds every process start in `src/` and `eval/` to a pinned table, and classifies each outcome (contained, weaker and registered, or not an agent context, with its reason) and each branch where containment fails, which under `required` refuses (DV-2). **DV-5, the census's failure-branch half:** every `ProcessTree(` and `run_session_tree(` construction in `src` takes a containment decision or is allowlisted with its reason, and every `except ContainmentUnavailable` re-raises or refuses under `required`. The `run_session` guard is the backstop, and the handler's early refusal stays, so no seat moves. Eval has no policy: its lanes register as weaker contexts while they run. **DV-4, under `required`, checks spawn only in a layout:** the operator's own `aew check run` runs its checks contained, or refuses naming `allow_weaker`. Under `allow_weaker` and on Windows, it runs labelled weaker and registers. The backstop is a refusal in `policy/checks.py` for any check spawned with no layout under `required`, whatever started it. **In the same pull request:** the labs of Linux CI's Lead-session tests, the live lane and the dogfood set `allow_weaker` for those tests only; the docs follow the ruling; the surface map's `lead session` row gains `CONTAINMENT_UNAVAILABLE`; and the usage error names `aew opencode`. Each rule is checked with a planted failure, as the addendum lists them
-
-**Source:** G3 addendum 7, ruling 1, with ruling 2's register of weaker contexts (the designer, 2026-10-29; design workspace `891f067`, `30-stages/STG-03-G3-trusted-origin/handoff/HANDOFF-G3-ADDENDUM-7-when-an-owner-may-accept-G3.md`), which applies `G3-12` and A-33 and changes no adopted text; the designer's rulings DV-2, DV-4 and DV-5 of 2026-10-29 (design workspace `891f067` and `ae9570d`)
-
-**When:** **Now.** It merges before G3-C starts, because G3-C reads both the refusal and the register (addendum 7). §1's item 6 puts G3-C after it
-
-**Notes:** Filed by the Lead. Ruling 2, the standing by which an owner accepts G3, is G3-C's and goes into its brief, not this row. **One more for the census** (found on 2026-10-30; the designer is told): off Linux, the weaker label that `aew opencode` returns carries no `weaker_because` (`src/aew/harness/opencode/lead.py:203` at `45b247e5`). The follow-on the addendum leaves to the Lead, a headless contained OpenCode Lead, is E113
-
-*Later notes: `notes.d/E112/`, oldest first (`python tools/register.py show E112`).*
-
 ### E113
 
 **Work:** A headless contained OpenCode Lead, which would let the live lane exercise containment
@@ -1222,18 +1210,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. Once E112 merges, the live lane's lab sets `allow_weaker` until this is built
 
 *Later notes: `notes.d/E113/`, oldest first (`python tools/register.py show E113`).*
-
-### E114
-
-**Work:** Report an argument-limit refusal at a check's spawn as the refusal it is. It surfaces as `VALIDATION_INTERRUPTED`, because the spawn in `src/aew/policy/checks.py` (`:93` at `45b247e5`) catches only `OSError`, and the refusal, `ContainmentUnavailable` with the reason `bwrap_argument_limit` (`src/aew/harness/containment/layout.py:309` at `45b247e5`), is not one
-
-**Source:** The designer's ruling of 2026-10-29 (design workspace `ae9570d`), which sends it to the register as a public minor: "It still refuses, so it is a reporting defect"
-
-**When:** **Contained.** A public minor, fixed in E112's pull request, whose backstop changes the same spawn in `policy/checks.py`. Owner: E112's builder
-
-**Notes:** Filed by the Lead
-
-*Later notes: `notes.d/E114/`, oldest first (`python tools/register.py show E114`).*
 
 ### E47
 
@@ -1930,6 +1906,26 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #279 (`32fc4ea3`): a return from escalation meets the gates of the phase it enters, and a reconcile the guard of its direct edge, as ADR-0003's amendment of 2026-10-25 states. The class by any route is E96, and E85's named outcome closes only when E96 lands (designer, 2026-10-25)
 
 *Later notes: `notes.d/E85/`, oldest first (`python tools/register.py show E85`).*
+
+### E112
+
+**Was:** G3 addendum 7's ruling 1, before G3-C: under `required`, every launch whose containment fails is refused, whatever command or flag started it, with ruling 2's register of weaker contexts, the launch census (DV-2, DV-5) and DV-4
+
+**Closed:** 2026-11-01
+
+**By:** E112's pull request (`fix/e112-weaker-contexts`): `aew lead session` refused under `required` before any credential read or seat move; `run_session`'s `contained` required; the register of weaker contexts (`aew.harness.weaker_register`), entered by every weaker owner; `aew check run` contained or refused with the `policy/checks.py` backstop; the launch census (`tests/launch-census.yaml`); ADR-0009's and ADR-0004's amendments of 2026-11-01. The entry's end follows the designer's ruling of 2026-11-01 on E112's entry end
+
+*Later notes: `notes.d/E112/`, oldest first (`python tools/register.py show E112`).*
+
+### E114
+
+**Was:** Report an argument-limit refusal at a check's spawn as the refusal it is, not as `VALIDATION_INTERRUPTED`
+
+**Closed:** 2026-11-01
+
+**By:** E112's pull request (`fix/e112-weaker-contexts`): a `ContainmentUnavailable` at a check's spawn is the run's containment refusal (`test_an_argument_limit_refusal_at_a_checks_start_is_reported_as_the_refusal_it_is`)
+
+*Later notes: `notes.d/E114/`, oldest first (`python tools/register.py show E114`).*
 
 ### F1
 

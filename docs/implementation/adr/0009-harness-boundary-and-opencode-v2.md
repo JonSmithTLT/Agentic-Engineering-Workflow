@@ -1651,3 +1651,28 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   refusal of an explicit `--token` stands, with the shared refusal (reason `token_on_command_line`).
 - Without `--acquire` and without `AEW_LEAD_TOKEN`, `aew lead session` and `aew opencode` ask for the Lead credential
   at the operator's hidden prompt before the session starts, and the broker holds what is typed, in memory only.
+
+## Amendment 2026-11-01 — every Lead route says how it runs, and weaker contexts are registered (G3 addendum 7)
+
+- **The general Lead command is contained like any launch AEW cannot contain** (G3 addendum 7, ruling 1). Under
+  `containment.mode: required` on Linux, the default, `aew lead session` is refused with `CONTAINMENT_UNAVAILABLE`
+  (reason `lead_uncontained`) in its handler, before any credential is read and before any seat moves. The message
+  names `aew opencode`, the contained Lead, and `containment.mode: allow_weaker`. This qualifies the CS-4 amendment's
+  "on Linux the Lead runs contained": that is `aew opencode`'s Lead.
+- **`run_session`'s `contained` is required**: every caller says how its harness runs (`ContainedLead`, or
+  `WeakerLead` for the general command and for `aew opencode` off Linux). A route that says nothing is refused, the
+  backstop behind the handlers' own refusals.
+- **Where the policy allows it, and on Windows, the general command runs labelled not contained**, through the same
+  `label.json` writer as `aew opencode` (in a `lead-<UTC>-<hex>` run directory), which now names the session's own
+  process by pid and start id. Off Linux, `aew opencode`'s label says why it is weaker.
+- **The register of weaker contexts** (ruling 2; `aew.harness.weaker_register`): per host and per operator account,
+  in AEW's host state beside the capability register, outside every project and every sandbox's writable binds. Every
+  agent context whose label is weaker than a self-tested sandbox on a network of its own is entered there by its
+  owning host process before its first process starts: a Lead session, a worker run, a validation run, the operator's
+  check run and eval's lanes. Contained launches write nothing. On Linux a weaker launch whose entry cannot be written
+  is refused. An entry ends only when no process of its context may still live (the designer, 2026-11-01): its owner
+  held the whole tree, no survivor is still the process it was, and a scan of the operator's processes finds none
+  carrying its marker (`AEW_CONTEXT`). It is kept for G3's window (15 minutes, `G3-06`'s tripwire), then pruned. What
+  reads it (G3's standing) is G3-C's.
+- **Tests:** `tests/integration/test_lead_uncontained.py`, `tests/unit/test_weaker_register.py`,
+  `tests/unit/test_launch_census.py` (every process start in `src/` and `eval/`, classified).

@@ -82,14 +82,24 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/R-{}-{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/supervisor.log`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.open)
-- `local/harness/runs/lead-{}-{}`: written or removed by `aew.harness.opencode.lead:ContainedLead.__call__` (direct: Path.mkdir)
+- `local/harness/runs/check-{}-{}`: written or removed by `aew.engine.evidence_ops:EvidenceCommands._check_run_direct` (direct: Path.mkdir)
+- `local/harness/runs/check-{}-{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
+- `local/harness/runs/check-{}-{}/git`: written or removed by `aew.harness.containment.layout:retire_private_git` (direct: shutil.rmtree)
+- `local/harness/runs/check-{}-{}/git/index`: written or removed by `aew.harness.containment.layout:private_git` (direct: shutil.copy2)
+- `local/harness/runs/check-{}-{}/git/objects`: written or removed by `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
+- `local/harness/runs/check-{}-{}/harness`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/runs/check-{}-{}/harness/.aew-containment-probe-{}.spec.json`: written or removed by `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
+- `local/harness/runs/check-{}-{}/label.json`: written or removed by `aew.engine.evidence_ops:EvidenceCommands._check_run_direct` (direct: Path.write_text)
+- `local/harness/runs/check-{}-{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/runs/check-{}-{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/runs/lead-{}-{}`: written or removed by `aew.harness.lead_broker:lead_run_dir` (direct: Path.mkdir)
 - `local/harness/runs/lead-{}-{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
 - `local/harness/runs/lead-{}-{}/git`: written or removed by `aew.harness.containment.layout:retire_private_git` (direct: shutil.rmtree)
 - `local/harness/runs/lead-{}-{}/git/index`: written or removed by `aew.harness.containment.layout:private_git` (direct: shutil.copy2)
 - `local/harness/runs/lead-{}-{}/git/objects`: written or removed by `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
 - `local/harness/runs/lead-{}-{}/harness`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/lead-{}-{}/harness/.aew-containment-probe-{}.spec.json`: written or removed by `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
-- `local/harness/runs/lead-{}-{}/label.json`: written or removed by `aew.harness.opencode.lead:ContainedLead._record` (direct: Path.write_text)
+- `local/harness/runs/lead-{}-{}/label.json`: written or removed by `aew.harness.lead_broker:record_label` (direct: Path.write_text)
 - `local/harness/runs/lead-{}-{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/lead-{}-{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/{}`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.mkdir)
@@ -224,9 +234,9 @@ A `with` statement's implicit `__enter__` and `__exit__` calls are not followed 
 
 The parser cut: 112 registrations of a command handler; handlers by role (`aew`: 110, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
-Writer functions with a store-transaction or direct write placed under `.aew`: 83; reached from at least one entry point: 57.
+Writer functions with a store-transaction or direct write placed under `.aew`: 84; reached from at least one entry point: 58.
 
-- `aew` (store_writer): 49 writer functions (24 write the store, 25 only under `local/`)
+- `aew` (store_writer): 50 writer functions (24 write the store, 26 only under `local/`)
 - `aew (contained Lead)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 - `aew (worker run)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 - `aew dashboard serve` (non_writer): 2 writer functions (0 write the store, 2 only under `local/`)
@@ -263,11 +273,12 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.capability.store:record_change` (direct: open): `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability/changes.jsonl`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.capability.store:write` (direct: Path.mkdir): `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.capability.store:write` (direct: atomic_write): `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability/register.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.engine.evidence_ops:EvidenceCommands._check_run_direct` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.engine.faults:pause` (direct: open): element 2 of `item.partition(...)`, a callee this reading cannot name
-- `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir): a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
-- `aew.engine.lock:FileLock._join_queue` (direct: open): a relative path, `aew/capability/register.lock.queue`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
-- `aew.engine.lock:FileLock._open` (direct: Path.mkdir): a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
-- `aew.engine.lock:FileLock._open` (direct: open): a relative path, `aew/capability/register.lock`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir): a relative path, `aew/capability`, with no root this reading can name; a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.engine.lock:FileLock._join_queue` (direct: open): a relative path, `aew/capability/register.lock.queue`, with no root this reading can name; a relative path, `aew/weaker-contexts/register.lock.queue`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.engine.lock:FileLock._open` (direct: Path.mkdir): a relative path, `aew/capability`, with no root this reading can name; a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.engine.lock:FileLock._open` (direct: open): a relative path, `aew/capability/register.lock`, with no root this reading can name; a relative path, `aew/weaker-contexts/register.lock`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.engine.migrate_ops:Migration.discard_unreachable` (direct: Path.unlink): under `.aew`, but its first directory or file name is computed
 - `aew.engine.store:ControlStore._remove_temp_files` (direct: Path.unlink): under `.aew`, but its first directory or file name is computed
 - `aew.engine.validation_ops:Validation.establish` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
@@ -289,6 +300,12 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.supervisor:Supervisor._contain` (direct: shutil.rmtree): the attribute `self.layout.net_dir` is not a value this reading can follow
 - `aew.harness.supervisor:Supervisor.start` (direct: Path.mkdir): the attribute `contract.scratch` is not a value this reading can follow
 - `aew.harness.usage_live:Meter._persist` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
+- `aew.harness.weaker_register:Entry.end` (direct: atomic_write): a relative path, `aew/weaker-contexts/{}-{}-{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.harness.weaker_register:_checked_root` (direct: Path.mkdir): a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.harness.weaker_register:_ensure_created` (direct: create_exclusive): a relative path, `aew/weaker-contexts/created.json`, with no root this reading can name; a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.harness.weaker_register:_prune` (direct: Path.unlink): a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.harness.weaker_register:enter` (direct: create_exclusive): a relative path, `aew/weaker-contexts/{}-{}-{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.harness.weaker_register:sweep` (direct: atomic_write): a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.profile:cli_finish` (direct: open): the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.stg02.ledger:Ledger.__init__` (direct: Path.mkdir): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.ledger:Ledger._connect` (direct: sqlite3.connect): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it

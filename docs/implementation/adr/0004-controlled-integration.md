@@ -359,3 +359,17 @@ The M4-E plan v3 §2.3, built by E6a. Everything above holds, except where this 
 - **Unchanged:** what an authoritative run proves, and the diagnostic run's own slot. An advisory run never produces
   evidence, never changes state and never feeds the breaker.
 - **Tests:** `tests/integration/test_validation_checks.py`.
+
+## Amendment 2026-11-01 — a check AEW cannot contain is refused under `required`, whatever started it (DV-4, E114)
+
+- **What changes:** the amendment of 2026-10-30, widened from validation runs to every check. Under `required`, the
+  operator's own `aew check run` runs its check in the invocation role's self-tested sandbox, with an allow-listed
+  environment, or is refused naming `allow_weaker` before anything starts (the designer's DV-4). Where the policy allows
+  weaker runs, and on Windows, it runs labelled so.
+- **The backstop:** a check spawned with no layout under `required` is refused in `policy/checks.py`, whatever started
+  it, and its process tree itself starts nothing without one.
+- **A containment refusal at a check's start** (bubblewrap's argument limit, or the backstop) is reported as the refusal
+  it is, never as an interrupted run (E114).
+- **A weaker validation run or check run** is entered in the register of weaker contexts (ADR-0009's amendment of
+  2026-11-01) before its first check, and leaves it ended once its checks' trees are closed.
+- **Tests:** `tests/unit/test_check_run_contained.py`, `tests/integration/test_validation_checks.py`.

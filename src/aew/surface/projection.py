@@ -243,7 +243,8 @@ def _ticket_actions(part: dict[str, Any], wid: str, rev: int) -> None:
                                   "cli": ["integrate", "publish", wid, "--expect-rev", r]})
     elif st == "INTERRUPTED":
         part["decisions"].append({"decision": "RECONCILE", "tool": None,
-                                  "cli": ["work", "reconcile", wid, "--to", "<phase>", "--expect-rev", r]})
+                                  "cli": ["work", "reconcile", wid, "--to", "<phase>", "--reason", "<reason>",
+                                          "--expect-rev", r]})
 
 
 def _cached_control_part(engine: Any, subject: str) -> dict[str, Any]:

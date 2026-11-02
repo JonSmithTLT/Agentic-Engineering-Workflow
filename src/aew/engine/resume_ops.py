@@ -113,14 +113,15 @@ class Resume:
                      if si["generation"] != lead["generation"] else "")
             actions.append(f"{wid + ': ' if wid else ''}stage {si['tool']} ({sid}) is unfinished after "
                            f"{len(si['steps'])} of {len(si['plan'])} step(s){owner}: resolve it, continue or abandon "
-                           f"with a rationale (`resolve`, or `aew stage continue|abandon {sid} --rationale ... "
+                           f"with a rationale (`resolve`, or `aew stage continue|abandon {sid} --rationale <reason> "
                            f"{EXPECT_REV}`); `aew resume` says whether it is safe to continue")
         actions.extend(f"{h['work_unit']}: {h['action']}" for h in self.harness.harness_resume(state))
         audit = self.history.audit_status(state)
         if audit and audit["over_policy"]:  # backlog against policy, not an alarm (ADR-0011 invariant 11)
+            audit_command = (f"`aew history audit {EXPECT_REV} --full`" if any(
+                "full" in o for o in audit["over_policy"]) else f"`aew history audit {EXPECT_REV}`")
             actions.append("the history audit is behind policy (" + "; ".join(audit["over_policy"])
-                           + f"): `aew history audit {EXPECT_REV}`" + (" --full" if any(
-                               "full" in o for o in audit["over_policy"]) else ""))
+                           + f"): {audit_command}")
         return actions
 
     def _ticket_next_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:

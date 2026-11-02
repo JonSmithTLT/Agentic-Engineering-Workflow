@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -35,15 +36,34 @@ from aew.engine import transitions
 from aew.engine.custody_ops import LEAD_KEPT_OUT, operator_terminal_refusal
 from aew.harness import contract as K
 
-# Files B3 is changing on fix/e112-weaker-contexts (the ITEMS 56 brief, "Don't overlap"): their sites wait for a
-# follow-up once that branch merges, rather than conflict with it. Each must still hold a failing site.
+# Files B3 is changing on fix/e112-weaker-contexts (the ITEMS 56 brief, "Don't overlap"): their failing sites wait for
+# a follow-up once that branch merges, rather than conflict with it. Each is pinned by (file, printed text), since B3's
+# edits move its line: a failing site in these files that is not pinned fails the check, and a pinned one that is gone
+# or now parses fails the liveness test (#319 review F3).
 B3 = "deferred: B3's file (E112, fix/e112-weaker-contexts)"
-DEFERRED_FILES = {
-    "src/aew/engine/evidence_ops.py": f"{B3}; with #312 F3 (an already-ingested refusal whose lease lookup refuses)",
-    "src/aew/engine/validation_ops.py": B3,
-    "src/aew/harness/lead_broker.py": f"{B3}; with the bare names #311 F3 named",
-    "src/aew/harness/supervisor.py": B3,
+EVIDENCE, VALIDATION = "src/aew/engine/evidence_ops.py", "src/aew/engine/validation_ops.py"
+BROKER, SUPERVISOR = "src/aew/harness/lead_broker.py", "src/aew/harness/supervisor.py"
+DEFERRED = {
+    (EVIDENCE, "aew plan reconfirm {work_id} --reason ..."): B3,
+    (EVIDENCE, "aew plan reconfirm <id> --reason ..."): B3,
+    (EVIDENCE, "aew integrate publish {work_id} --expect-rev N"): f"{B3}; #312 F3 (an already-ingested refusal)",
+    (VALIDATION, "aew integrate validate --diagnostic"): B3,
+    (VALIDATION, "aew integrate validate {work_id} --wait"): B3,
+    (VALIDATION, "aew integrate validate {work_id} --diagnostic"): B3,
+    (VALIDATION, "aew integrate validate {work_id}{flag}"): B3,
+    (VALIDATION, "aew integrate publish {work_id}"): B3,
+    (VALIDATION, "aew verify classify {work_id}"): B3,
+    (VALIDATION, "aew integrate validate {work_id}"): B3,
+    (VALIDATION, "aew integrate requeue {work_id}"): B3,
+    (BROKER, "aew {command_name(ns)}"): f"{B3}; with the bare names #311 F3 named",
+    (BROKER, "aew {name}"): f"{B3}; with the bare names #311 F3 named",
+    (SUPERVISOR, "aew harness launch {inv} {rev}"): B3,
+    (SUPERVISOR, "aew invoke cancel {inv} {rev} --fields - <<'EOF'\nreason: 'why this invocation must end'\nEOF"): B3,
+    (SUPERVISOR, "aew invoke create {wid} --launch --model PROVIDER/MODEL {rev}"): B3,
+    (SUPERVISOR, "aew work redispatch {wid} --launch --model PROVIDER/MODEL {rev} --fields - <<'EOF'\n"
+                 "reason: 'why this Ticket is redispatched'\nEOF"): B3,
 }
+DEFERRED_FILES = frozenset(path for path, _ in DEFERRED)  # B3's: the one-owner tests wait for them too
 
 # Sites whose command the finder cannot judge from the source, each with why and the test that checks it instead.
 EXEMPT = {
@@ -57,7 +77,7 @@ EXEMPT = {
 
 
 def _held(site: P.Site) -> bool:
-    return site.path not in DEFERRED_FILES and site.key not in EXEMPT
+    return (site.path, site.shown) not in DEFERRED and site.key not in EXEMPT
 
 
 def _why_not(site: P.Site) -> str | None:
@@ -81,18 +101,51 @@ def test_every_exemption_and_deferral_is_still_live() -> None:
     by_key = {s.key: s for s in sites}
     gone = [k for k in EXEMPT if k not in by_key]
     parses = [k for k in EXEMPT if k in by_key and _why_not(by_key[k]) is None]
-    clean = [f for f in DEFERRED_FILES if not any(s.path == f and _why_not(s) for s in sites)]
-    assert not (gone or parses or clean), f"gone: {gone}; parses: {parses}; deferred file now clean: {clean}"
+    failing = {(s.path, s.shown) for s in sites if _why_not(s)}
+    stale = [pin for pin in DEFERRED if pin not in failing]  # gone, or every copy of it now parses
+    assert not (gone or parses or stale), f"gone: {gone}; parses: {parses}; deferred site gone or parses: {stale}"
+
+
+OWNER = "src/aew/harness/contract.py"
+SPELLED = re.compile(r"--expect-rev (?:<|[A-Z])")  # a placeholder spelled out: `<revision...>`, `N`, `REV`...
+
+
+def _restating(pattern: re.Pattern[str], allowed: set[str]) -> list[str]:
+    out = []
+    for path in sorted(P.SRC.rglob("*.py")):
+        rel = path.relative_to(P.ROOT).as_posix()
+        if rel not in allowed | {OWNER} | DEFERRED_FILES:
+            out += [f"{rel}: {m.group()!r}" for m in pattern.finditer(path.read_text(encoding="utf-8"))]
+    return out
 
 
 def test_the_revision_placeholder_has_one_owner() -> None:
-    """Every printed `--expect-rev` takes its placeholder from ``contract.EXPECT_REV``; no other module spells it out,
-    and none prints a bare `--expect-rev N` (the brief, step 2; files B3 owns wait for the follow-up)."""
-    owner = "src/aew/harness/contract.py"
-    restated = [f"{p.relative_to(P.ROOT).as_posix()}" for p in sorted(P.SRC.rglob("*.py"))
-                if (K.REVISION in (text := p.read_text(encoding="utf-8")) or "--expect-rev N" in text)
-                and p.relative_to(P.ROOT).as_posix() not in {owner, *DEFERRED_FILES}]
-    assert not restated, restated
+    """Every printed `--expect-rev` takes its placeholder from ``contract.EXPECT_REV``: no other module spells one out
+    (`--expect-rev <revision>`, `--expect-rev N`; the brief, step 2; #319 review F6). Files B3 owns wait for the
+    follow-up."""
+    assert not _restating(SPELLED, set()), _restating(SPELLED, set())
+
+
+# The modules besides the owner that name the heredoc without writing the frame: the CLI's own help for `--fields`, and
+# the contained Lead's system text telling it to pipe report text through one. Pinned by count both ways.
+HEREDOC_NAMED = {"src/aew/cli/fields.py": 2, "src/aew/harness/opencode/projection.py": 1}
+
+
+def test_the_fields_frame_has_one_owner() -> None:
+    """Every printed `--fields - <<'EOF'` frame is written by ``contract.fields_command``/``fields_block`` (item 2;
+    #319 review F2): no other module spells the heredoc, except where it is named, not written (pinned by count)."""
+    named = {rel: n for rel, n in ((p.relative_to(P.ROOT).as_posix(), p.read_text(encoding="utf-8").count("<<'EOF'"))
+                                   for p in sorted(P.SRC.rglob("*.py"))) if n}
+    written = {rel: n for rel, n in named.items() if rel not in {OWNER} | DEFERRED_FILES}
+    assert written == HEREDOC_NAMED, written
+
+
+def test_a_full_history_audit_is_printed_whole() -> None:
+    """``resume``'s history-audit step prints `--full` inside its command when the policy needs a full audit, so the
+    reader copies the whole command (#319 review F5): each form is one span, and each parses."""
+    audits = {s.text for s in P.ast_sites() if s.path == "src/aew/engine/resume_ops.py" and "history audit" in s.text}
+    assert audits == {f"aew history audit {K.EXPECT_REV}", f"aew history audit {K.EXPECT_REV} --full"}
+    assert [P.parse(a, fenced=False)[0].full for a in sorted(audits)] == [False, True]
 
 
 def test_the_two_finders_agree_both_ways() -> None:
@@ -145,7 +198,7 @@ def test_a_right_command_passes(command: str, kind: str) -> None:
         pytest.param("aew lead takeover --reason why", "span", "required: --expect-rev", id="incomplete"),
         pytest.param("aew lead takeover", "field", "required", id="bare-name-in-a-field"),
         pytest.param("aew manifest adoptt", "span", "invalid choice", id="misspelled-mention"),
-        pytest.param("aew work cancel ...", "span", "required", id="elision"),
+        pytest.param(f"aew work cancel T-1 --reason ... {K.EXPECT_REV}", "span", "elided value", id="elision"),
     ],
 )
 def test_the_check_refuses_each_planted_defect(command: str, kind: str, why: str) -> None:
@@ -167,11 +220,16 @@ def refusal(work_id, held, verb):
     e = fields_command(f"aew invoke cancel {work_id} --expect-rev 1", "reason", verb)
     f = "a fenced block:\\n\\n```sh\\naew lead takeover --expect-rev 1 --fields - <<'EOF'\\nreason: 'x'\\nEOF\\n```"
     g = fields_block("aew lead takeover --expect-rev 1", {"reason": "x"})
-    return a, b, c, d, e, f, g
+    h = {"cli": ["work", "reconcile", work_id, "--to", "<phase>", "--expect-rev", "1"]}
+    i = dict(cli_fallback=["aew", "work", "show", work_id])
+    j = dict(cli_fallback=[x for x in ["work", "show"]], cli=held)
+    return a, b, c, d, e, f, g, h, i, j
 '''
-# Line: (kind, whether it passes). The conditional's other branch (9) and the bare name in a field (10) fail.
+# Line: (kind, whether it passes). The conditional's other branch (9), the bare name in a field (10) and the argv list
+# missing reconcile's --reason (15) fail; a comprehension or a variable at an argv key (17) is not a literal.
 PLANTED_SITES = {8: ("span", True), 9: ("span", False), 10: ("field", False), 11: ("field", True),
-                 12: ("fence", True), 13: ("fence", True), 14: ("fence", True)}
+                 12: ("fence", True), 13: ("fence", True), 14: ("fence", True), 15: ("argv", False),
+                 16: ("argv", True)}
 
 
 def _planted(tmp_path: Path, text: str, name: str = "planted.py") -> Path:

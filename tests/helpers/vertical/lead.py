@@ -411,8 +411,8 @@ class Lead:
             # as the quickstart's "Losing the session" says (the Lead's AEW knowledge, counted with the shell call).
             phase = _unit((self.last_out or {}).get("result")).get("interrupted_from")
             self.event("gap", gap="reconcile", why="an INTERRUPTED Ticket: its decision has no typed tool")
-            cli = [str(phase) if x == "<phase>" else x for x in cli]
-            cli += ["--reason", "workspace inspected after the session was taken over"]
+            filled = {"<phase>": str(phase), "<reason>": "workspace inspected after the session was taken over"}
+            cli = [filled.get(x, x) for x in cli]
         if not cli or any(x.startswith("<") or "{" in x for x in cli):
             return self.stuck(f"decision {d['decision']} has no typed tool and its fallback needs a choice: {cli}")
         self.event("gap", gap="decision_without_tool", decision=d["decision"])

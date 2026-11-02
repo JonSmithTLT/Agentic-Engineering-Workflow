@@ -225,7 +225,7 @@ LEAD_SYSTEM = "\n".join([
     "This session is disposable. After any restart, rebuild your context with `aew resume` (/aew-resume), never "
     "from an earlier conversation.",
     "- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated `aew` "
-    "commands for you. Mutations still need `--expect-rev <revision>` (from `aew status` or the previous command).",
+    f"commands for you. Mutations still need `{EXPECT_REV}` (from `aew status` or the previous command).",
     f"- Your `{SERVER_NAME}` tools are the normal way to read AEW state, wait for runs and checkpoint: `status`, "
     "`resume`, `work_show`, `explain`, `harness_status`, `harness_wait` (several runs at once; it returns when the "
     "first ends) and `checkpoint`. Each returns the revision to pass as `expect_rev` next and a projection of what is "
@@ -295,7 +295,7 @@ LEAD_COMMANDS: dict[str, dict[str, str]] = {
         "description": "AEW: checkpoint for a Lead handoff",
         "template": "Prepare a Lead handoff. Output of `aew resume`:\n\n!`aew resume`\n\nWrite a checkpoint note "
                     "(state, in-flight runs, open decisions, next action) and record it with "
-                    f"`aew checkpoint --note-file - --next \"...\" {EXPECT_REV}`. Then tell me that the handoff "
+                    f"`aew checkpoint --note-file - --next <next action> {EXPECT_REV}`. Then tell me that the handoff "
                     "itself (`aew lead handoff offer`) is mine to run at my own terminal.",
     },
 }

@@ -30,7 +30,7 @@ from aew.errors import (
     ObligationsDropped,
     UsageError,
 )
-from aew.harness.contract import EXPECT_REV
+from aew.harness.contract import EXPECT_REV, fields_command
 from aew.knowledge import evidence as E
 from aew.knowledge.records import KIND_PREFIX, format_id
 from aew.policy import validation as V
@@ -517,13 +517,8 @@ class Hierarchy:
             state = ctx.state
             unit = self.units.unit(state, work_id)
             if not H.is_parent(unit):
-                raise IllegalTransition(
-                    f"cancel a Ticket with:\n\n```sh\n"
-                    f"aew work transition {work_id} --to CANCELLED "
-                    f"{EXPECT_REV} --fields - <<'EOF'\n"
-                    "reason: 'why this Ticket must end'\n"
-                    "EOF\n```"
-                )
+                raise IllegalTransition("cancel a Ticket with:\n\n" + fields_command(
+                    f"aew work transition {work_id} --to CANCELLED {EXPECT_REV}", "reason", "why this Ticket must end"))
             if unit["state"] in H.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
             open_desc = [d for d in H.descendants(state, work_id) if state["work"][d]["state"] not in H.TERMINAL]

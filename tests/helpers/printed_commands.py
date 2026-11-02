@@ -16,16 +16,31 @@ How sites are found: every string literal in ``src/aew`` (a constant, an f-strin
 expression's first branch) that is not a docstring or an argparse ``help``/``description``/``epilog``/``usage``, and
 in it each code span that starts ``aew `` and each fenced ``sh`` block; a literal starting ``aew `` given to a
 suggested-input field (``rules.SUGGESTED_FIELDS``: ``next``, ``next_action``, ``remedy``...) as a keyword or a dict
-key; and each ``fields_command(...)`` or ``fields_block(...)`` call, whose block the owner renders from the call's
-literal arguments.
+key; each ``fields_command(...)`` or ``fields_block(...)`` call, whose block the owner renders from the call's literal
+arguments; and each list literal given to a ``cli`` or ``cli_fallback`` key or keyword, an argv the projection offers
+to be run as given (``aew`` prepended unless it is the list's first word; #319 review F1).
 
-What the finders cannot see (each with a probe in the check's tests):
+What the finders cannot see (each with a probe in the check's tests where one can be written):
 - a command word from a value (``custody_ops``' ``f"`aew {command}`"``): no fill can stand for it, so the site is in
   the check's exemption table and a test renders it for each value it takes; a span that opens with a value
   (``harness_ops``' `{command} {wid} ...`) is not seen at all, and a test renders it the same way;
-- a slot that renders several words or quotes (``{' '.join(argv)}``) is filled as one word;
+- a slot that renders several words or quotes (``{' '.join(argv)}``, an argv list's ``*live``) is filled as one word;
 - text joined at run time (``transitions.next_steps`` formats commands from a table and joins them), and a literal
-  inside an f-string's replacement field.
+  inside an f-string's replacement field;
+- an argv list that is not a literal at the key: one held in a variable first (``surface.projection``'s
+  ``cli_fallback=cli``, ``x["cli"]``, the comprehension filling ``{evidence}``), and ``gate_ops.stale_invocations``'
+  ``commands``, which is neither key;
+- a ``fields_command`` whose command is a variable (``stage_intents``' ``cancel_command``): neither finder renders it,
+  and its guidance test renders the message instead;
+- a bare command in a dict key outside ``SUGGESTED_FIELDS`` (``recall``'s ``expand``, ``knowledge.render``'s
+  ``history``);
+- anything outside ``src/aew``'s ``*.py`` files: the role archetypes' YAML (``roles/archetypes/*.yaml``) prints
+  `aew resume` and `aew plan adopt`, mentions both, unchecked here;
+- more than 16 alternatives in one command: ``discovery.rules._variants`` keeps the first 16.
+
+The two finders share their needles (`` `aew ``, ```` ```sh ````, ``SUGGESTED_FIELDS``, ``TEXT_KEYWORDS``, the argv
+keys), so their agreement shows that each reads the source the same way, line by line, not that the needles cover every
+printed command: what they miss together is the list above.
 """
 
 from __future__ import annotations
@@ -76,6 +91,11 @@ PLACEHOLDERS: dict[str, str] = {
     "<STATE>": "REVIEW_PENDING",
     "<CLASS>": "LOCAL_IMPLEMENTATION_DEFECT",  # a verification failure's classification
     "<reason>": "why",
+    "<why>": "why",  # the projection's argv lists
+    "<next action>": "review",
+    "<classification>": "LOCAL_IMPLEMENTATION_DEFECT",
+    "<phase>": "RUNNING",  # the phase an INTERRUPTED Ticket was interrupted from
+    "{evidence}": "EV-0005",  # the projection's own marker, replaced by each report's id before it is offered
     "<value>": "value",  # a fields_command value the code computes
     "<title>": "Title",
     "<goal>": "goal",
@@ -106,8 +126,8 @@ class Site:
 
     path: str
     line: int
-    # "span" (inline code), "fence" (a fenced sh block), "field" (a suggested-input field's whole value), or
-    # "unreadable" (a module the finder could not read; ``text`` says why)
+    # "span" (inline code), "fence" (a fenced sh block), "field" (a suggested-input field's whole value), "argv" (a
+    # ``cli``/``cli_fallback`` list, joined), or "unreadable" (a module the finder could not read; ``text`` says why)
     kind: str
     text: str
     exprs: tuple[str, ...] = ()
@@ -235,6 +255,8 @@ def parse(command: str, *, fenced: bool, exprs: tuple[str, ...] = ()) -> list[ar
         raise PrintedCommandError(f"not one shell command line ({exc}): {head!r}") from None
     if not tokens or tokens[0] != "aew":
         raise PrintedCommandError(f"not an aew command: {head!r}")
+    if "..." in tokens:  # run as printed it records "...": the reader cannot know it stands for a value (#319 F4)
+        raise PrintedCommandError(f"an elided value `...`, not a named placeholder: {head!r}")
     out = []
     for variant in _variants(tokens[1:]):
         for _attempt in range(8):
@@ -388,6 +410,21 @@ def _skipped(tree: ast.AST) -> set[ast.AST]:
 
 
 FRAMES = ("fields_command", "fields_block")  # ``aew.harness.contract``'s owners of the printed frame
+ARGV_FIELDS = frozenset({"cli", "cli_fallback"})  # an argv offered to be run as given (``discovery.rules``)
+BARE_WORD = re.compile(r"[^\s'\"\\]+")
+
+
+def _argv(node: ast.List, exprs: list[str]) -> str:
+    """An argv list literal as the command line it stands for: each string element a word (quoted only where the shell
+    needs it), any other element a slot, and ``aew`` first."""
+    words = []
+    for e in node.elts:
+        if isinstance(e, ast.Constant) and isinstance(e.value, str):
+            words.append(e.value if BARE_WORD.fullmatch(e.value) else shlex.quote(e.value))
+        else:
+            exprs.append(ast.unparse(e))
+            words.append(f"\x01{len(exprs) - 1}\x02")
+    return " ".join(words if words[:1] == ["aew"] else ["aew", *words])
 
 
 def _fields_call(node: ast.Call, exprs: list[str]) -> str | None:
@@ -435,6 +472,17 @@ def ast_sites(root: Path = ROOT) -> list[Site]:
                     skip.update(n for a in node.args for n in ast.walk(a))
                     [command] = FENCE.findall(block)
                     found.append(Site(rel, node.args[0].lineno, "fence", command, tuple(exprs)))
+            argv = []
+            if isinstance(node, ast.keyword) and node.arg in ARGV_FIELDS:
+                argv = [node.value]
+            if isinstance(node, ast.Dict):
+                argv = [v for k, v in zip(node.keys, node.values, strict=True)
+                        if isinstance(k, ast.Constant) and k.value in ARGV_FIELDS]
+            for v in argv:
+                if isinstance(v, ast.List):
+                    exprs = []
+                    skip.update(ast.walk(v))
+                    found.append(Site(rel, v.lineno, "argv", _argv(v, exprs), tuple(exprs)))
             field_value = None
             if isinstance(node, ast.keyword) and node.arg in SUGGESTED_FIELDS:
                 field_value = node.value
@@ -479,7 +527,8 @@ def ast_sites(root: Path = ROOT) -> list[Site]:
 def _strings(path: Path) -> Iterator[tuple[list[tuple[int, str]], str]]:
     """Each string token of a module as ``(pieces, context)``: its text as ``(line, text)`` pieces (one for a plain
     string; an f-string's literal parts on Python 3.12 and later, which tokenize it apart) and what it follows
-    (``_context``). A literal inside an f-string's replacement field is not seen."""
+    (``_context``); and each list display's ``[`` as one piece ``(line, "[")``. A literal inside an f-string's
+    replacement field is not seen."""
     tokens = list(tokenize.generate_tokens(io.StringIO(path.read_text(encoding="utf-8")).readline))
     fstart = getattr(tokenize, "FSTRING_START", -1)
     fend = getattr(tokenize, "FSTRING_END", -1)
@@ -500,22 +549,39 @@ def _strings(path: Path) -> Iterator[tuple[list[tuple[int, str]], str]]:
             continue
         if tok.type == tokenize.STRING:
             yield [(tok.start[0], tok.string)], _context(significant)
+        if tok.type == tokenize.OP and tok.string == "[" and _display(tokens, i):
+            yield [(tok.start[0], "[")], _context(significant)
         if tok.type not in (tokenize.COMMENT, tokenize.NL):
             significant.append(tok)
         i += 1
 
 
+def _display(tokens: list[tokenize.TokenInfo], i: int) -> bool:
+    """Whether the ``[`` at ``i`` opens a list display, not a comprehension: no ``for`` at its own depth."""
+    depth = 0
+    for tok in tokens[i:]:
+        if tok.type == tokenize.OP and tok.string in ("(", "[", "{"):
+            depth += 1
+        elif tok.type == tokenize.OP and tok.string in (")", "]", "}"):
+            depth -= 1
+            if not depth:
+                return True
+        elif depth == 1 and tok.type == tokenize.NAME and tok.string == "for":
+            return False
+    return False
+
+
 def _context(before: list[tokenize.TokenInfo]) -> str:
-    """What a string token follows: the statement start, a keyword argument, a dict key, a call, or other code. A
-    string continuing an implicit concatenation takes the context of the first string of the run."""
+    """What a string token (or a list's ``[``) follows: the statement start, a keyword argument, a dict key, a call,
+    or other code. A string continuing an implicit concatenation takes the context of the first string of the run."""
     k = len(before)
     while k and before[k - 1].type == tokenize.STRING:
         k -= 1
     prev = before[k - 1] if k else None
     if prev is None or prev.type in (tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT, tokenize.ENCODING):
         return "statement"
-    if prev.string == "=" and k >= 2 and before[k - 2].type == tokenize.NAME:
-        return "kw:" + before[k - 2].string
+    if prev.string == "=" and k >= 3 and before[k - 2].type == tokenize.NAME and before[k - 3].string in ("(", ","):
+        return "kw:" + before[k - 2].string  # a keyword argument; `name = ...` is an assignment
     if prev.string == ":" and k >= 2 and before[k - 2].type == tokenize.STRING:
         return "key:" + before[k - 2].string.strip("\"'")
     if prev.string == "(" and k >= 2 and before[k - 2].string in FRAMES:
@@ -526,8 +592,9 @@ def _context(before: list[tokenize.TokenInfo]) -> str:
 def token_sites(root: Path = ROOT) -> list[tuple[str, int, str]]:
     """Finder 2, written apart from finder 1: from the token stream, each ``(path, line, kind)`` where a printed command
     starts. It sees a code span's opening ``\\`aew `` and a fenced block's opening ```` ```sh```` inside one string
-    token, a string token opening ``"aew `` (or ``f"aew ``) given to a suggested field or ``fields_command``. A string
-    alone on a statement right after ``def``/``class``/module start, or given to ``help=``..., is not printed."""
+    token, a string token opening ``"aew `` (or ``f"aew ``) given to a suggested field or ``fields_command``, and a
+    list display (``[`` with no ``for`` at its depth) given to an argv key or keyword. A string alone on a statement
+    right after ``def``/``class``/module start, or given to ``help=``..., is not printed."""
     found: list[tuple[str, int, str]] = []
     for path in sorted((root / "src" / "aew").rglob("*.py")):
         rel = path.relative_to(root).as_posix()
@@ -538,6 +605,10 @@ def token_sites(root: Path = ROOT) -> list[tuple[str, int, str]]:
             continue
         for pieces, context in strings:
             how, _, name = context.partition(":")
+            if pieces[0][1] == "[":  # a list display: an argv only at an argv key or keyword
+                if how in ("kw", "key") and name in ARGV_FIELDS:
+                    found.append((rel, pieces[0][0], "argv"))
+                continue
             if context == "statement" or (how == "kw" and name in TEXT_KEYWORDS):
                 continue
             opening = re.sub(r"^[rbuRBUfF]*(\"\"\"|'''|\"|')", "", "".join(text for _, text in pieces[:2]))

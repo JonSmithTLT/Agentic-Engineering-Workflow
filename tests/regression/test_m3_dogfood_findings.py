@@ -27,11 +27,14 @@ from __future__ import annotations
 import json
 import sys
 
+import printed_commands as P
 import pytest
 from aewflow import SUBTRACT_PATCH, create_planned_ticket, sample_project
 from conftest import IS_WINDOWS, run_aew
 from fake_harness import AGENT, IMPL_REPORT, HarnessLab, credential_hits
 from invariants import assert_control_invariants
+
+from aew.harness import contract as K
 
 IMPLEMENT = [{"do": "write", "files": SUBTRACT_PATCH}, {"do": "check", "id": "unit"},
              {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}]
@@ -157,8 +160,9 @@ def test_after_a_reviewer_run_the_next_action_names_the_review_ingest(lab, tmp_p
 
     review = [a for a in actions(lab, wid) if "R-INV-0002-1" in a]
     assert review and all(f"aew review ingest {wid} --evidence INV-0002-" in a for a in review), review
-    evidence = review[0].split("--evidence ")[1].split("`")[0]
-    lab.lead("review", "ingest", wid, "--evidence", evidence)  # the advice is a legal step
+    [(printed, fenced)] = [c for c in P.commands(review[0]) if " ingest " in c[0]]
+    [args] = P.parse(printed, fenced=fenced)  # the command as printed, its placeholders filled
+    lab.lead("review", "ingest", wid, "--evidence", args.evidence)  # the advice is a legal step
     assert lab.ok("work", "show", wid)["control"]["state"] == "REVIEW_PASSED"
 
 
@@ -192,29 +196,41 @@ def test_next_actions_give_commands_a_lead_can_run(repo, tmp_path):
     """M3 audit X2, from the dogfood: 37 `--help` lookups in 29 Lead sessions, 20 of them `aew authority --help`,
     because `resume` named commands without their arguments (`aew authority list`, then accept/reject;
     `aew plan propose/accept`; `aew work assign`). Each next action now gives a command with its unit id, its required
-    options and `--expect-rev N` (placeholders in <...>)."""
+    options and the revision placeholder (placeholders in <...>), and every command it prints runs as printed once
+    they are filled (ITEMS 56)."""
     from aewflow import create_unit
     from conftest import Project
 
     fresh = Project(repo)
     fresh.ok("init")
     actions = "\n".join(fresh.ok("resume", "--json")["next_actions"])
-    assert "aew authority accept <candidate> --class <" in actions and "--expect-rev N" in actions, actions
+    assert "aew authority accept <candidate> --class <" in actions and K.EXPECT_REV in actions, actions
+    _each_parses(actions)
 
     p = sample_project(tmp_path / "sample")  # `repo` above is tmp_path/repo
     wid = p.lead("work", "create", "ticket", "--title", "t", "--class", "1", "--goal", "g", "--scope", "calc/**")["id"]
     story = create_unit(p, "story", "s")
     actions = "\n".join(p.ok("resume", "--json")["next_actions"])
-    propose = f"aew plan propose {wid} --file - --assurance none|--review <card>|--verify <card> --expect-rev N"
+    propose = f"aew plan propose {wid} --file - --assurance none|--review <card>|--verify <card> {K.EXPECT_REV}"
     assert propose in actions, actions
-    assert f"aew plan accept {wid} --revision <n> --expect-rev N" in actions, actions
+    assert f"aew plan accept {wid} --revision <n> {K.EXPECT_REV}" in actions, actions
     assert f"aew work create ticket --parent {story}" in actions, actions
+    _each_parses(actions)
     plan = tmp_path / "plan.md"
     plan.write_text("Do it.\n", encoding="utf-8")
     p.lead("plan", "propose", "--assurance", "none", wid, "--file", str(plan))
     p.lead("plan", "accept", wid, "--revision", "1")
     actions = "\n".join(p.ok("resume", "--json")["next_actions"])
-    assert f"aew work assign {wid} --launch --expect-rev N" in actions, actions
+    assert f"aew work assign {wid} --launch {K.EXPECT_REV}" in actions, actions
+    _each_parses(actions)
+
+
+def _each_parses(actions: str) -> None:
+    """Every command the next actions print passes the printed-command check (``printed_commands``)."""
+    printed = P.commands(actions)
+    assert printed, actions
+    for command, fenced in printed:
+        P.check(command, "fence" if fenced else "span")
 
 
 class _PromptServer:

@@ -18,9 +18,9 @@ import os
 import sys
 from typing import Any
 
-from aew.coordination.layout import INVOCATION_RE
 from aew.errors import UsageError
 from aew.harness import contract as K
+from aew.knowledge.records import format_id
 
 KEYS = ("token", "offer", "invocation_token", "session_url")
 ISSUING = (frozenset({"lead", "acquire"}), frozenset({"lead", "takeover"}), frozenset({"lead", "handoff", "offer"}),
@@ -84,6 +84,14 @@ def deliver(result: Any, args: argparse.Namespace) -> Any:
     return {**result, **dict.fromkeys(found, WRITTEN)}
 
 
+def _invocation_id(value: Any) -> bool:
+    """Whether ``value`` is an invocation id as the engine mints them (``records.format_id("INV", n)``), so that only
+    an id, never another value of the result, reaches the message; from the minter, not coordination's layout, which
+    the CLI does not import (F9 invariant 1)."""
+    prefix, _, number = value.partition("-") if isinstance(value, str) else ("", "", "")
+    return prefix == "INV" and number.isascii() and number.isdigit() and format_id("INV", int(number)) == value
+
+
 def _recovery(key: str, result: dict[str, Any], args: argparse.Namespace) -> str:
     """How to recover from losing the credential ``key`` names: by its kind, never its value (#311 review, F1)."""
     if key == "token":
@@ -95,7 +103,7 @@ def _recovery(key: str, result: dict[str, Any], args: argparse.Namespace) -> str
                 f"`aew lead handoff cancel {K.EXPECT_REV}`, then offer again.")
     if key == "invocation_token":
         invocation = result.get("invocation")
-        if not (isinstance(invocation, str) and INVOCATION_RE.match(invocation)):
+        if not _invocation_id(invocation):
             invocation = "<invocation from aew harness status>"
         return (f"The invocation credential of {invocation} is lost: cancel the invocation with:\n\n"
                 + K.fields_command(f"aew invoke cancel {invocation} {K.EXPECT_REV}", "reason",

@@ -107,7 +107,9 @@ def test_every_exemption_and_deferral_is_still_live() -> None:
 
 
 OWNER = "src/aew/harness/contract.py"
-SPELLED = re.compile(r"--expect-rev (?:<|[A-Z])")  # a placeholder spelled out: `<revision...>`, `N`, `REV`...
+# A placeholder spelled out after `--expect-rev` (` ` or `=`: `<revision...>`, `N`, `REV`...), or the owner's text
+# itself anywhere, so that a copy split across literals or in an argv list is caught too (#319 quick check, F7).
+SPELLED = re.compile(rf"--expect-rev[ =](?:<|[A-Z])|{re.escape(K.REVISION)}")
 
 
 def _restating(pattern: re.Pattern[str], allowed: set[str]) -> list[str]:
@@ -121,8 +123,8 @@ def _restating(pattern: re.Pattern[str], allowed: set[str]) -> list[str]:
 
 def test_the_revision_placeholder_has_one_owner() -> None:
     """Every printed `--expect-rev` takes its placeholder from ``contract.EXPECT_REV``: no other module spells one out
-    (`--expect-rev <revision>`, `--expect-rev N`; the brief, step 2; #319 review F6). Files B3 owns wait for the
-    follow-up."""
+    (`--expect-rev <revision>`, `--expect-rev=N`, the owner's text split across literals; the brief, step 2; #319
+    review F6, quick check F7). Files B3 owns wait for the follow-up."""
     assert not _restating(SPELLED, set()), _restating(SPELLED, set())
 
 

@@ -1,0 +1,344 @@
+# The launch census (G3 addendum 7, ruling 1's class guard; the designer's DV-2 and DV-5): every process start in src/
+# and eval/, each classified, held both ways to the code by tests/unit/test_launch_census.py (two detectors,
+# tests/helpers/launch_census.py).
+#
+# A row is one call of a start in one scope ("path::Class.function"), with one class per call, in source order:
+#   contained          through establish (or eval's raw.verify_layout); `contained_by` names the scope that calls it.
+#                      A weaker outcome there (the policy allows it, or a sandbox on the host's network) is entered in
+#                      the register of weaker contexts by `weaker_registered_by`.
+#   weaker_registered  always weaker, and entered in the register while it runs, by `registered_by`.
+#   not_agent_context  with its reason: no model acts, and nothing an agent wrote runs.
+# Under `required`, a containment failure refuses; every handler that can catch one is in `handlers`, with what it
+# does. One that goes on is eval's only (eval has no policy, DV-5), with its reason.
+
+excluded:
+  eval/reviews/: the frozen review probes; it holds no lane (addendum 7)
+  eval/m3/spike/: frozen probes, kept as they ran in M3; it holds no lane (the designer, 2026-11-01, confirming the
+    Lead's reading; no change to addendum 7's text)
+
+starts:
+# ------------------------------------------------------------------------------------------------ src/aew
+- site: src/aew/capability/status.py::_run
+  call: run
+  classes: [not_agent_context]
+  reason: a provider CLI's health check (the operator's capability commands; none is Lead-reachable)
+- site: src/aew/cli/commands.py::_lead_session
+  call: run_session
+  classes: [weaker_registered]
+  reason: the general Lead command, refused under required in its handler before any credential read or seat move
+    (WeakerLead.precheck); elsewhere it runs labelled not contained
+  registered_by: [src/aew/harness/lead_broker.py::WeakerLead.__call__]
+- site: src/aew/doctor.py::_git
+  call: run
+  classes: [not_agent_context]
+  reason: git --version
+- site: src/aew/engine/custody_ops.py::spawn_worker
+  call: spawn_detached
+  classes: [not_agent_context]
+  reason: the custodian, AEW's own engine process; the validation it runs decides containment (Validation._execute)
+- site: src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct
+  call: establish
+  classes: [contained]
+  reason: the operator's own `aew check run` (DV-4)
+  contained_by: [src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct]
+  weaker_registered_by: [src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct]
+- site: src/aew/engine/harness_ops.py::Harness._spawn_run
+  call: spawn_detached
+  classes: [not_agent_context]
+  reason: a run's supervisor, AEW's own process; its run's containment is decided in Supervisor._contain before any
+    harness process starts
+- site: src/aew/engine/validation_ops.py::Validation.establish
+  call: establish
+  classes: [contained]
+  reason: a checks-mode validation run's sandbox, authoritative or diagnostic (DV-1)
+  contained_by: [src/aew/engine/validation_ops.py::Validation.establish]
+  weaker_registered_by: [src/aew/engine/validation_ops.py::Validation._execute]
+- site: src/aew/harness/containment/layout.py::for_run
+  call: bwrap_argv
+  classes: [not_agent_context]
+  reason: counts the layout's own arguments before any bubblewrap starts (addendum 9); nothing starts
+- site: src/aew/harness/containment/probe.py::_self_test
+  call: bwrap_argv
+  classes: [contained]
+  reason: the launch self-test's probe, AEW's own code, in the layout under test
+  contained_by: [src/aew/harness/containment/probe.py::_self_test]
+- site: src/aew/harness/containment/probe.py::_self_test
+  call: run
+  classes: [contained]
+  reason: the launch self-test's probe, AEW's own code, in the layout under test
+  contained_by: [src/aew/harness/containment/probe.py::_self_test]
+- site: src/aew/harness/containment/probe.py::mechanism
+  call: run
+  classes: [not_agent_context]
+  reason: bwrap --version
+- site: src/aew/harness/containment/shim.py::main
+  call: Popen
+  classes: [not_agent_context]
+  reason: the network shim inside the sandbox, starting the harness argv its run's supervisor gave; that run's
+    containment is the supervisor's (Supervisor._contain)
+- site: src/aew/harness/lead_broker.py::run_read
+  call: Popen
+  classes: [not_agent_context]
+  reason: a read the contained Lead relays, run by the broker as AEW's own CLI from a closed list, with no credential
+    and as a non-writer (STG-05 CS-4 addendum 4)
+- site: src/aew/harness/lead_broker.py::run_session
+  call: run_session_tree
+  classes: [contained]
+  reason: the one Lead harness start; its required `contained` decides (G3 addendum 7, ruling 1)
+  contained_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+  weaker_registered_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__,
+                         src/aew/harness/lead_broker.py::WeakerLead.__call__]
+- site: src/aew/harness/notify.py::Watcher._deliver_one
+  call: ProcessTree
+  classes: [not_agent_context]
+  reason: the operator's own configured notifier command
+- site: src/aew/harness/notify.py::deliver
+  call: ProcessTree
+  classes: [not_agent_context]
+  reason: the operator's own configured notifier command
+- site: src/aew/harness/opencode/lead.py::ContainedLead.__call__
+  call: bwrap_argv
+  classes: [contained]
+  reason: the contained Lead's TUI, in its self-tested sandbox (STG-05 CS-4)
+  contained_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+  weaker_registered_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+- site: src/aew/harness/opencode/lead.py::ContainedLead.__call__
+  call: establish
+  classes: [contained]
+  reason: the contained Lead's sandbox (STG-05 CS-4)
+  contained_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+  weaker_registered_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+- site: src/aew/harness/opencode/lead.py::ContainedLead._seed_logins
+  call: bwrap_argv
+  classes: [contained]
+  reason: OpenCode's `session list` in the Lead's own layout, seeding its relayed logins
+  contained_by: [src/aew/harness/opencode/lead.py::ContainedLead._seed_logins]
+- site: src/aew/harness/opencode/lead.py::ContainedLead._seed_logins
+  call: run
+  classes: [contained]
+  reason: OpenCode's `session list` in the Lead's own layout, seeding its relayed logins
+  contained_by: [src/aew/harness/opencode/lead.py::ContainedLead._seed_logins]
+- site: src/aew/harness/opencode/lead.py::check_version
+  call: run
+  classes: [not_agent_context]
+  reason: the operator's own OpenCode binary with --version, before any session (host code; threat model of
+    2026-10-19)
+- site: src/aew/harness/opencode/lead.py::run
+  call: run_session
+  classes: [contained, weaker_registered]
+  reason: '`aew opencode`: contained on Linux (ContainedLead); off Linux it runs labelled not contained (WeakerLead),
+    refused under an explicit required before any credential read'
+  contained_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+  registered_by: [src/aew/harness/lead_broker.py::WeakerLead.__call__]
+  weaker_registered_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+- site: src/aew/harness/procs.py::ProcessTree._spawn
+  call: Popen
+  classes: [not_agent_context, not_agent_context, not_agent_context, not_agent_context]
+  reason: the process tree's choke point (and its process-group sentinel); what it runs is decided where the tree is
+    made, a row of its own
+- site: src/aew/harness/procs.py::ProcessTree._spawn
+  call: bwrap_argv
+  classes: [not_agent_context]
+  reason: the process tree's choke point wrapping each start in its layout; decided where the tree is made
+- site: src/aew/harness/procs.py::run_session_tree
+  call: Popen
+  classes: [not_agent_context, not_agent_context]
+  reason: the session's own choke point (and its reaper); decided by run_session's caller
+- site: src/aew/harness/procs.py::run_session_tree
+  call: call
+  classes: [not_agent_context]
+  reason: the session's own choke point on a POSIX host that is neither Linux nor Windows; decided by run_session's
+    caller
+- site: src/aew/harness/procs.py::spawn_detached
+  call: Popen
+  classes: [not_agent_context, not_agent_context, not_agent_context]
+  reason: the detached start's choke point; decided by its callers (the supervisor and the custodian), rows of their own
+- site: src/aew/harness/supervisor.py::Supervisor.__init__
+  call: ProcessTree
+  classes: [not_agent_context]
+  reason: the run's fail-closed tree (require_layout off Windows) until Supervisor._contain decides; it starts nothing
+- site: src/aew/harness/supervisor.py::Supervisor._contain
+  call: ProcessTree
+  classes: [contained]
+  reason: a worker run's tree, in its self-tested layout
+  contained_by: [src/aew/harness/supervisor.py::Supervisor._contain]
+  weaker_registered_by: [src/aew/harness/supervisor.py::Supervisor._contain]
+- site: src/aew/harness/supervisor.py::Supervisor._contain
+  call: establish
+  classes: [contained]
+  reason: a worker run's sandbox
+  contained_by: [src/aew/harness/supervisor.py::Supervisor._contain]
+  weaker_registered_by: [src/aew/harness/supervisor.py::Supervisor._contain]
+- site: src/aew/policy/checks.py::run
+  call: ProcessTree
+  classes: [contained]
+  reason: a check, in its caller's layout; under required one with no layout is refused before anything starts, and
+    the tree requires one (DV-4's backstop)
+  contained_by: [src/aew/engine/validation_ops.py::Validation.establish,
+                 src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct,
+                 src/aew/harness/supervisor.py::Supervisor._contain]
+  weaker_registered_by: [src/aew/engine/validation_ops.py::Validation._execute,
+                         src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct,
+                         src/aew/harness/supervisor.py::Supervisor._contain]
+- site: src/aew/workspace/git.py::CatFileBatch.__enter__
+  call: Popen
+  classes: [not_agent_context]
+  reason: AEW's own git, on AEW's repositories
+- site: src/aew/workspace/git.py::_base_files
+  call: run
+  classes: [not_agent_context]
+  reason: AEW's own git, on AEW's repositories
+- site: src/aew/workspace/git.py::configured_drivers
+  call: run
+  classes: [not_agent_context]
+  reason: AEW's own git, on AEW's repositories
+- site: src/aew/workspace/git.py::git
+  call: run
+  classes: [not_agent_context]
+  reason: AEW's own git, on AEW's repositories
+- site: src/aew/workspace/git.py::object_git
+  call: run
+  classes: [not_agent_context]
+  reason: AEW's own git, on AEW's repositories
+# ------------------------------------------------------------------------------------------------ eval/
+- site: eval/aew_eval/analysis.py::simulate
+  call: ProcessPoolExecutor
+  classes: [not_agent_context]
+  reason: the analysis plan's statistics simulation, on numbers alone
+- site: eval/aew_eval/fixture.py::git
+  call: run
+  classes: [not_agent_context]
+  reason: git on the evaluation's own repositories
+- site: eval/aew_eval/hidden.py::score
+  call: ProcessTree
+  classes: [weaker_registered]
+  reason: the scorer, which runs code a model wrote (its layout shares the host's network; off Linux it has none)
+  registered_by: [eval/aew_eval/hidden.py::score]
+- site: eval/aew_eval/raw.py::RawArm.run
+  call: ProcessTree
+  classes: [weaker_registered]
+  reason: a raw arm's OpenCode, in its verified layout, which shares the host's network
+  registered_by: [eval/aew_eval/raw.py::RawArm.run]
+- site: eval/aew_eval/raw.py::verify_layout
+  call: bwrap_argv
+  classes: [contained]
+  reason: the arm's confidentiality probe, AEW eval's own code, in the layout under test
+  contained_by: [eval/aew_eval/raw.py::verify_layout]
+- site: eval/aew_eval/raw.py::verify_layout
+  call: run
+  classes: [contained]
+  reason: the arm's confidentiality probe, AEW eval's own code, in the layout under test
+  contained_by: [eval/aew_eval/raw.py::verify_layout]
+- site: eval/aew_eval/score_child.py::make_run.run
+  call: ProcessTree
+  classes: [weaker_registered]
+  reason: a model's program, run by the scorer's child, inside the scorer's context
+  registered_by: [eval/aew_eval/hidden.py::score]
+- site: eval/aew_eval/score_child.py::make_run.run
+  call: bwrap_argv
+  classes: [weaker_registered]
+  reason: a model's program in the scoring layout, inside the scorer's context
+  registered_by: [eval/aew_eval/hidden.py::score]
+- site: eval/aew_eval/transport.py::LocalTransport.exchange
+  call: Popen
+  classes: [not_agent_context]
+  reason: the arm-host agent, eval's own code (the stand-in for its SSH transport); each arm it runs registers itself
+    (RawArm.run)
+- site: eval/experiments/lower-bound-qualification/qualify.py::cmd_fetch
+  call: run
+  classes: [not_agent_context]
+  reason: git, fetching the pinned fixture
+- site: eval/experiments/lower-bound-qualification/qualify.py::containment_check
+  call: ProcessTree
+  classes: [contained]
+  reason: the containment check's dry run, in the verified layout as far as OpenCode's catalog; no session is created
+    and no prompt is sent
+  contained_by: [eval/experiments/lower-bound-qualification/qualify.py::containment_check]
+- site: eval/experiments/lower-bound-qualification/qualify.py::floor_trial
+  call: ProcessTree
+  classes: [weaker_registered]
+  reason: the live lane, a harness with a model, uncontained
+  registered_by: [eval/experiments/lower-bound-qualification/qualify.py::floor_trial]
+- site: eval/experiments/lower-bound-qualification/qualify.py::upstream_baseline
+  call: run
+  classes: [not_agent_context]
+  reason: the fixture's own upstream suite on a fresh copy of its starting files, before any model has written
+    anything (test_eval_lbq_lane.py::test_the_upstream_suite_runs_only_on_a_fresh_copy_of_the_fixtures_starting_files)
+- site: eval/m3/dogfood/dogfood.py::aew
+  call: run
+  classes: [not_agent_context]
+  reason: the dogfood's scripted setup through AEW's own CLI
+- site: eval/m3/dogfood/dogfood.py::export_commit
+  call: run
+  classes: [not_agent_context]
+  reason: git archive of a commit
+- site: eval/m3/dogfood/dogfood.py::git
+  call: run
+  classes: [not_agent_context]
+  reason: git on the dogfood's repository
+- site: eval/m3/dogfood/dogfood.py::hidden
+  call: run
+  classes: [weaker_registered]
+  reason: the dogfood's hidden scorer, which runs the model's code with no sandbox
+  registered_by: [eval/m3/dogfood/dogfood.py::hidden]
+- site: eval/m3/dogfood/dogfood.py::run
+  call: run
+  classes: [weaker_registered]
+  reason: the dogfood's headless Lead, through the general Lead command; its project allows weaker runs
+  registered_by: [src/aew/harness/lead_broker.py::WeakerLead.__call__]
+- site: eval/m3/dogfood/headless.py::HeadlessSession.__init__
+  call: ProcessTree
+  classes: [weaker_registered]
+  reason: a headless OpenCode session's tree; a raw arm registers it (the qualification's dry runs create no session
+    and send no prompt)
+  registered_by: [eval/aew_eval/raw.py::RawArm.run]
+- site: eval/m3/dogfood/hidden.py::cli
+  call: run
+  classes: [weaker_registered]
+  reason: the model's program, inside the dogfood's hidden scorer
+  registered_by: [eval/m3/dogfood/dogfood.py::hidden]
+- site: eval/m3/dogfood/hidden.py::main
+  call: run
+  classes: [weaker_registered]
+  reason: the model's tests, inside the dogfood's hidden scorer
+  registered_by: [eval/m3/dogfood/dogfood.py::hidden]
+
+# What only one detector sees (each a call the other cannot read the same way).
+ast_only: []
+token_only:
+- site: src/aew/engine/validation_ops.py::Validation._execute
+  call: establish
+  count: 1
+  reason: "`self.establish(`, the validation's own seam for containment.establish (a row of its own,
+    Validation.establish): a method, which the AST detector resolves by import only"
+
+handlers:
+- site: eval/aew_eval/raw.py::RawArm.run
+  catches: [Exception]
+  does: goes_on
+  reason: eval has no policy (DV-5); a failed arm records its error, and no harness process starts before
+    session.open, behind a layout check that raises first
+- site: src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct
+  catches: [ContainmentUnavailable]
+  does: raises
+- site: src/aew/engine/validation_ops.py::Validation._execute
+  catches: [ContainmentUnavailable]
+  does: returns
+- site: src/aew/engine/validation_ops.py::Validation._execute
+  catches: [ContainmentUnavailable]
+  does: returns
+- site: src/aew/engine/validation_ops.py::Validation._one_check
+  catches: [ContainmentUnavailable]
+  does: returns
+- site: src/aew/harness/containment/__init__.py::establish
+  catches: [ContainmentUnavailable]
+  does: raises
+- site: src/aew/harness/opencode/lead.py::ContainedLead.__call__
+  catches: [BaseException]
+  does: raises
+- site: src/aew/harness/procs.py::run_session_tree
+  catches: [BaseException]
+  does: raises
+- site: src/aew/harness/supervisor.py::Supervisor._contain
+  catches: [ContainmentUnavailable]
+  does: raises

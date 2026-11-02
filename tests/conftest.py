@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import os
 import subprocess
@@ -303,7 +304,12 @@ def weaker_contexts(weaker_register_dir, request):
     saved, scan = weaker_register.ROOT_OVERRIDE, weaker_register.scan
     own = weaker_register_dir / re.sub(r"[^\w.-]+", "_", request.node.nodeid)[-120:]
     weaker_register.ROOT_OVERRIDE = own
-    weaker_register.scan = lambda proc=None, uid=None: None if proc is None else scan(proc, uid)
+
+    @functools.wraps(scan)  # still the function it stands for, to a test that reads its signature
+    def named_only(proc=None, uid=None):
+        return None if proc is None else scan(proc, uid)
+
+    weaker_register.scan = named_only
     yield own
     weaker_register.ROOT_OVERRIDE, weaker_register.scan = saved, scan
 

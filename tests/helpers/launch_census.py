@@ -46,8 +46,14 @@ STARTS = frozenset({
     "aew.harness.procs.ProcessTree", "aew.harness.procs.run_session_tree", "aew.harness.procs.spawn_detached",
     "aew.harness.lead_broker.run_session", "aew.harness.containment.establish",
     "aew.harness.containment.bwrap_argv", "aew.harness.containment.layout.bwrap_argv",
+    # A wrapper is a start of its own, so every caller is a row and owns its context (#321 review, F1): the check
+    # runner, whose callers each contain or register their check.
+    "aew.policy.checks.run",
 })
-NAMES = frozenset(s.rsplit(".", 1)[1] for s in STARTS)
+# Wrappers no import names, matched by their own name: the dogfood's headless OpenCode session is loaded from its file
+# (``raw._headless``, or ``import headless`` with ``eval/m3/dogfood`` on the path), so no caller's import resolves it.
+NAMED_STARTS = frozenset({"HeadlessSession"})
+NAMES = frozenset(s.rsplit(".", 1)[1] for s in STARTS) | NAMED_STARTS
 # What can catch ContainmentUnavailable: the class itself and every class it inherits from (aew.errors).
 CATCHES = frozenset({"ContainmentUnavailable", "HarnessError", "AEWError", "Exception", "BaseException"})
 # The register's writer: a weaker outcome's owner calls one of these (ruling 1: one helper writes every entry).
@@ -56,11 +62,24 @@ REGISTERS = frozenset({"aew.harness.weaker_register.enter", "aew.harness.weaker_
 CONTAINS = frozenset({"aew.harness.containment.establish", "aew.harness.containment.bwrap_argv",
                       "aew.harness.containment.layout.bwrap_argv"})
 
-# What neither detector can see, each pinned by a probe in the test: a call through a name only a value carries.
+# What neither detector can see, each pinned by a probe in the test (#321 review, F3): a call through a name only a
+# value carries. Each is code in a function's body. None is in src/ or eval/ (``test_no_form_both_cannot_see_...``).
+# Beyond these forms the census reads sites, not data flow: a classified scope that drops its layout before it makes
+# its tree, or passes an unmarked environment, is outside it (the owners' own tests prove those).
 CANNOT_SEE = {
     "getattr(subprocess, 'run')(...)": "the callee is a string at run time",
     "importlib.import_module('subprocess').run(...)": "the module is a string at run time",
     "__import__('subprocess').run(...)": "the module is a string at run time",
+    "box = type('Box', (), {})()\nbox.start = subprocess.run\nbox.start(...)":
+        "a start bound to an attribute: an attribute's value is not followed",
+    "def inner(start=subprocess.run):\n    start(...)\ninner()":
+        "a start as a default argument: a parameter's value is not followed",
+    "import functools\nfunctools.partial(subprocess.run, ['x'])()": "a start wrapped by functools.partial: an argument "
+                                                                   "is not a call",
+    "import asyncio\nloop = asyncio.new_event_loop()\nloop.subprocess_exec(object, 'x')":
+        "an event loop's subprocess_exec or subprocess_shell: the loop is a value",
+    "class Child(subprocess.Popen):\n    pass\nChild(...)": "a subclass of a start, made in a function",
+    "start: object = subprocess.run\nstart(...)": "an annotated alias: only a plain one is followed",
 }
 
 
@@ -187,10 +206,12 @@ class _Walker(ast.NodeVisitor):
         origin = self.resolve(node.func)
         if origin:
             self.result.calls.setdefault(self.scope, set()).add(origin)
-            if origin in STARTS:
-                key = (self.scope, origin.rsplit(".", 1)[1])
-                self.result.sites[key] += 1
-                self.result.origins.setdefault(key, set()).add(origin)
+        leaf = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+        if origin in STARTS or leaf in NAMED_STARTS:
+            name = leaf if leaf in NAMED_STARTS else str(origin).rsplit(".", 1)[1]
+            key = (self.scope, name)
+            self.result.sites[key] += 1
+            self.result.origins.setdefault(key, set()).add(origin or name)
         self.generic_visit(node)
 
     def visit_Try(self, node: ast.Try) -> None:
@@ -220,15 +241,36 @@ class _Walker(ast.NodeVisitor):
                                               or origin == leaf) else set()
 
 
+def _ends(body: list[ast.stmt]) -> str | None:
+    """How every path through ``body`` ends: ``raise`` when each raises, ``return`` when each raises or returns and
+    one returns, None when one can fall through. A loop's body may not run, so a loop never ends a path."""
+    for stmt in body:
+        if isinstance(stmt, ast.Raise):
+            return "raise"
+        if isinstance(stmt, ast.Return):
+            return "return"
+        ends: list[str | None] = []
+        if isinstance(stmt, ast.If):
+            ends = [_ends(stmt.body), _ends(stmt.orelse)]
+        elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+            ends = [_ends(stmt.body)]
+        elif isinstance(stmt, ast.Try):
+            final = _ends(stmt.finalbody)
+            if final is not None:
+                return final
+            # the body's own end, else its ``else`` runs; and each handler is a path of its own
+            ends = [_ends(stmt.body) or _ends(stmt.orelse), *(_ends(h.body) for h in stmt.handlers)]
+        if ends and all(ends):
+            return "return" if "return" in ends else "raise"
+    return None
+
+
 def _disposition(handler: ast.ExceptHandler) -> str:
-    """What an ``except`` body does with what it caught: re-raises (``raise``, or raises another), returns, or goes
-    on (falls through to what follows)."""
-    kinds = {type(n) for n in ast.walk(ast.Module(body=handler.body, type_ignores=[]))}
-    if ast.Raise in kinds:
-        return "raises"
-    if ast.Return in kinds:
-        return "returns"
-    return "goes_on"
+    """What an ``except`` body does with what it caught, on every path through it (#321 review, F3): re-raises
+    (``raise``, or raises another), returns (each path raises or returns), or goes on (some path falls through to what
+    follows, a branch that raises included)."""
+    ends = _ends(handler.body)
+    return {"raise": "raises", "return": "returns"}.get(ends or "", "goes_on")
 
 
 def by_ast(repo: Path, roots: Iterable[str] = ROOTS) -> Census:
@@ -255,6 +297,7 @@ _DEF = {"def", "class"}
 DISTINCT = frozenset({"Popen", "check_output", "getoutput", "getstatusoutput", "create_subprocess_exec",
                       "create_subprocess_shell", "ProcessPoolExecutor", "posix_spawn", "posix_spawnp", "forkpty",
                       "ProcessTree", "run_session_tree", "run_session", "spawn_detached", "establish", "bwrap_argv",
+                      *NAMED_STARTS,
                       *(n for n in NAMES if n.startswith(("exec", "spawn")) and n != "spawn")})
 MODULE_TEXTS = frozenset({"subprocess", "os", "asyncio", "pty", "multiprocessing", "futures"})
 

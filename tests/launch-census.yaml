@@ -37,6 +37,18 @@ starts:
   classes: [not_agent_context]
   reason: the custodian, AEW's own engine process; the validation it runs decides containment (Validation._execute)
 - site: src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct
+  call: run
+  classes: [contained]
+  reason: the operator's own `aew check run`'s check, in the sandbox this scope establishes (DV-4)
+  contained_by: [src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct]
+  weaker_registered_by: [src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct]
+- site: src/aew/engine/evidence_ops.py::EvidenceCommands.check_run
+  call: run
+  classes: [contained]
+  reason: a run's check, in the layout its supervisor passes (label given; the direct route is the row above)
+  contained_by: [src/aew/harness/supervisor.py::Supervisor._contain]
+  weaker_registered_by: [src/aew/harness/supervisor.py::Supervisor._contain]
+- site: src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct
   call: establish
   classes: [contained]
   reason: the operator's own `aew check run` (DV-4)
@@ -47,6 +59,12 @@ starts:
   classes: [not_agent_context]
   reason: a run's supervisor, AEW's own process; its run's containment is decided in Supervisor._contain before any
     harness process starts
+- site: src/aew/engine/validation_ops.py::Validation._one_check
+  call: run
+  classes: [contained]
+  reason: a checks-mode validation run's check, in the run's sandbox
+  contained_by: [src/aew/engine/validation_ops.py::Validation.establish]
+  weaker_registered_by: [src/aew/engine/validation_ops.py::Validation._execute]
 - site: src/aew/engine/validation_ops.py::Validation.establish
   call: establish
   classes: [contained]
@@ -215,6 +233,11 @@ starts:
   reason: the scorer, which runs code a model wrote (its layout shares the host's network; off Linux it has none)
   registered_by: [eval/aew_eval/hidden.py::score]
 - site: eval/aew_eval/raw.py::RawArm.run
+  call: HeadlessSession
+  classes: [weaker_registered]
+  reason: a raw arm's OpenCode session, which runs a model
+  registered_by: [eval/aew_eval/raw.py::RawArm.run]
+- site: eval/aew_eval/raw.py::RawArm.run
   call: ProcessTree
   classes: [weaker_registered]
   reason: a raw arm's OpenCode, in its verified layout, which shares the host's network
@@ -249,11 +272,21 @@ starts:
   classes: [not_agent_context]
   reason: git, fetching the pinned fixture
 - site: eval/experiments/lower-bound-qualification/qualify.py::containment_check
+  call: HeadlessSession
+  classes: [contained]
+  reason: the containment check's dry run, in the verified layout; no session is created and no prompt is sent
+  contained_by: [eval/experiments/lower-bound-qualification/qualify.py::containment_check]
+- site: eval/experiments/lower-bound-qualification/qualify.py::containment_check
   call: ProcessTree
   classes: [contained]
   reason: the containment check's dry run, in the verified layout as far as OpenCode's catalog; no session is created
     and no prompt is sent
   contained_by: [eval/experiments/lower-bound-qualification/qualify.py::containment_check]
+- site: eval/experiments/lower-bound-qualification/qualify.py::harness_launch
+  call: HeadlessSession
+  classes: [not_agent_context]
+  reason: the launch check's dry run, as far as OpenCode's catalog; no session is created, no prompt is sent, and a
+    paid provider's variable holds a placeholder, so nothing reaches a model
 - site: eval/experiments/lower-bound-qualification/qualify.py::floor_trial
   call: ProcessTree
   classes: [weaker_registered]
@@ -276,11 +309,26 @@ starts:
   call: run
   classes: [not_agent_context]
   reason: git on the dogfood's repository
+- site: eval/m3/dogfood/dogfood.py::debrief_run
+  call: HeadlessSession
+  classes: [weaker_registered]
+  reason: the debrief of a saved Lead session, which a model answers with every tool denied, with no sandbox
+  registered_by: [eval/m3/dogfood/dogfood.py::debrief_run]
 - site: eval/m3/dogfood/dogfood.py::hidden
   call: run
   classes: [weaker_registered]
   reason: the dogfood's hidden scorer, which runs the model's code with no sandbox
   registered_by: [eval/m3/dogfood/dogfood.py::hidden]
+- site: eval/m3/dogfood/dogfood.py::lead_child.open_session
+  call: HeadlessSession
+  classes: [weaker_registered]
+  reason: the dogfood's headless Lead, the harness `aew lead session` runs (its project allows weaker runs)
+  registered_by: [src/aew/harness/lead_broker.py::WeakerLead.__call__]
+- site: eval/m3/dogfood/dogfood.py::run
+  call: HeadlessSession
+  classes: [weaker_registered]
+  reason: the dogfood's raw arm, which runs a model with no sandbox
+  registered_by: [eval/m3/dogfood/dogfood.py::run]
 - site: eval/m3/dogfood/dogfood.py::run
   call: run
   classes: [weaker_registered]
@@ -289,9 +337,10 @@ starts:
 - site: eval/m3/dogfood/headless.py::HeadlessSession.__init__
   call: ProcessTree
   classes: [weaker_registered]
-  reason: a headless OpenCode session's tree; a raw arm registers it (the qualification's dry runs create no session
-    and send no prompt)
-  registered_by: [eval/aew_eval/raw.py::RawArm.run]
+  reason: a headless OpenCode session's own tree; every construction of the session is a row of its own (call
+    HeadlessSession), classified at its caller (#321 review, F1)
+  registered_by: [eval/aew_eval/raw.py::RawArm.run, eval/m3/dogfood/dogfood.py::run,
+    eval/m3/dogfood/dogfood.py::debrief_run]
 - site: eval/m3/dogfood/hidden.py::cli
   call: run
   classes: [weaker_registered]
@@ -304,7 +353,20 @@ starts:
   registered_by: [eval/m3/dogfood/dogfood.py::hidden]
 
 # What only one detector sees (each a call the other cannot read the same way).
-ast_only: []
+ast_only:
+- site: src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct
+  call: run
+  count: 1
+  reason: '`C.run(`, the check runner imported as `checks as C`: a common name called on a name not spelled as its
+    module, which the token detector, reading the text alone, does not take for a start'
+- site: src/aew/engine/evidence_ops.py::EvidenceCommands.check_run
+  call: run
+  count: 1
+  reason: '`C.run(`, as above'
+- site: src/aew/engine/validation_ops.py::Validation._one_check
+  call: run
+  count: 1
+  reason: '`C.run(`, as above'
 token_only:
 - site: src/aew/engine/validation_ops.py::Validation._execute
   call: establish
@@ -332,7 +394,9 @@ handlers:
   does: returns
 - site: src/aew/harness/containment/__init__.py::establish
   catches: [ContainmentUnavailable]
-  does: raises
+  does: returns
+  reason: re-raised under required; where the policy allows weaker runs, it returns the weaker label it reports (read
+    on every path since #321's review, F3)
 - site: src/aew/harness/opencode/lead.py::ContainedLead.__call__
   catches: [BaseException]
   does: raises

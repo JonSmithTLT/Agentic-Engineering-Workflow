@@ -112,6 +112,20 @@ def test_a_planted_branch_that_runs_on_after_a_containment_failure_fails(tmp_pat
     assert L.check(plant(tmp_path, {"src/aew/z.py": refusing}), pinned) == []
 
 
+def test_a_handler_that_raises_on_one_path_only_goes_on(tmp_path):
+    """#321 review, F3: a handler is read as raising only when every path through it raises or returns; one that
+    raises on a branch and falls through on the other goes on, and the census fails on it in src/."""
+    swallowed = "        pass  # goes on with no layout: uncontained under required"
+    branch = SWALLOW.replace(swallowed, "        if policy:\n            raise")
+    assert branch != SWALLOW
+    assert L.check(plant(tmp_path, {"src/aew/z.py": branch}), SWALLOW_TABLE) == [
+        "a containment failure goes on at src/aew/z.py::launch (['ContainmentUnavailable']): src/ refuses under "
+        "required"]
+    both = SWALLOW.replace(swallowed, "        if policy:\n            raise\n        else:\n            return None")
+    pinned = {**SWALLOW_TABLE, "handlers": [{**SWALLOW_TABLE["handlers"][0], "does": "returns"}]}
+    assert L.check(plant(tmp_path, {"src/aew/z.py": both}), pinned) == []
+
+
 def test_a_weaker_start_with_no_register_entry_fails(tmp_path):
     repo = plant(tmp_path, {"src/aew/w.py": "from aew.harness import procs\n\n\ndef launch():\n"
                                             "    procs.ProcessTree().spawn(['agent'])\n"})
@@ -161,8 +175,8 @@ def test_a_name_that_is_not_a_start_is_found_by_neither(tmp_path, form):
 def test_what_both_detectors_cannot_see_is_exactly_the_pinned_list(tmp_path, form):
     """Each form only a value names, pinned: both miss it, so a start written this way would need a census of its
     own. None is in src/ or eval/ (a grep for each in the test below)."""
-    repo = plant(tmp_path, {"src/aew/a.py": f"import importlib\nimport subprocess\n\n\ndef go():\n    {form}\n"
-                            .replace("(...)", "(['x'])")})
+    body = form.replace("(...)", "(['x'])").replace("\n", "\n    ")
+    repo = plant(tmp_path, {"src/aew/a.py": f"import importlib\nimport subprocess\n\n\ndef go():\n    {body}\n"})
     assert L.by_ast(repo).sites() == {} and L.by_tokens(repo).sites() == {}
 
 
@@ -184,6 +198,25 @@ def test_no_form_both_cannot_see_is_in_src_or_eval():
                 hits.append(f"{rel}:{node.lineno}")
             if name in ("import_module", "__import__") and isinstance(first, ast.Constant) and first.value in modules:
                 hits.append(f"{rel}:{node.lineno}")
+        for node in ast.walk(ast.parse(path.read_bytes())):  # the forms #321's review added (F3)
+            values: list[ast.AST] = []
+            if isinstance(node, ast.Call):
+                name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+                if name in ("subprocess_exec", "subprocess_shell"):
+                    hits.append(f"{rel}:{node.lineno}: {name}")
+                if name == "partial":
+                    values += node.args[:1]
+            if isinstance(node, ast.ClassDef):
+                values += node.bases
+            if isinstance(node, ast.AnnAssign) and node.value is not None:
+                values.append(node.value)
+            if isinstance(node, ast.Assign) and any(isinstance(x, ast.Attribute) for x in node.targets):
+                values.append(node.value)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                values += [d for d in (*node.args.defaults, *node.args.kw_defaults) if d is not None]
+            hits += [f"{rel}:{getattr(v, 'lineno', 0)}: {ast.unparse(v)}" for v in values
+                     if isinstance(v, ast.Attribute) and isinstance(v.value, ast.Name) and v.value.id in modules
+                     and v.attr in L.NAMES]
     assert hits == []
 
 

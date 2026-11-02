@@ -35,19 +35,20 @@ sections:
   - Source
   rows:
   - Milestone or gate: '**Personal alpha: a recorded milestone before V-01, with no release claim**'
-    Done when: '**First use:** items 1 to 11 of the Now list are done, and the operator runs their own SPT work on it. **The
-      gate,** beside the oracle and reading the same ledgers: limits and recovery (the hard limits read held, and V2-forced
-      reaches a result); setup and preflight (V3''s four non-stale cases pass strict, with the driver asserting the diagnosis);
-      the fresh path (V1 reaches a result with exactly the plan and publish decisions, excusing only G3 steps not yet landed,
-      each printed by name); the receipt (a real-model run the operator starts, on a sample repository with a seeded neighbour
-      test and a lint outside the configured check, recording no-wake, validation width, scope, dead-end gates, the operator''s
-      own yes or no on readability, and containment labels, with bars set after the first receipt); the install (the same
-      kit from the installed package on the Rocky 8 VM; on Windows, an install check only). **Stated limits:** no G3 as
-      proof, so the Lead''s token stays and "authenticate once" is not met; no assessed profile, so workers run on the launch
-      self-test and masks as measured; publish moves local main with no operator step, and the push is the approval; a setting
-      changed after setup goes back to adopt and the token; the 2.0.18 pin; no format-change safety, so no marker raises,
-      changes are additive, and the operator snapshots `.aew/` before an upgrade; real work on Linux only. **It changes
-      no gate:** the `vertical` job stays red, the V-01 line leads its report, and nothing here implies V-01''s completeness'
+    Done when: '**First use:** items 1 to 11 of the Now list are done (item 4 may follow, if it needs more than its quick
+      check), and the operator runs their own SPT work on it. **The gate,** beside the oracle and reading the same ledgers:
+      limits and recovery (the hard limits read held, and V2-forced reaches a result); setup and preflight (V3''s four non-stale
+      cases pass strict, with the driver asserting the diagnosis); the fresh path (V1 reaches a result with exactly the
+      plan and publish decisions, excusing only G3 steps not yet landed, each printed by name); the receipt (a real-model
+      run the operator starts, on a sample repository with a seeded neighbour test and a lint outside the configured check,
+      recording no-wake, validation width, scope, dead-end gates, the operator''s own yes or no on readability, and containment
+      labels, with bars set after the first receipt); the install (the same kit from the installed package on the Rocky
+      8 VM; on Windows, an install check only). **Stated limits:** no G3 as proof, so the Lead''s token stays and "authenticate
+      once" is not met; no assessed profile, so workers run on the launch self-test and masks as measured; publish moves
+      local main with no operator step, and the push is the approval; a setting changed after setup goes back to adopt and
+      the token; the 2.0.18 pin; no format-change safety, so no marker raises, changes are additive, and the operator snapshots
+      `.aew/` before an upgrade; real work on Linux only. **It changes no gate:** the `vertical` job stays red, the V-01
+      line leads its report, and nothing here implies V-01''s completeness'
     Source: the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`), under A-02's
       `OI-FR-06`; the designer's position of the same day; the vertical sweep (0 of 17 scenarios has ever passed on Linux,
       in 104 completed runs)
@@ -827,7 +828,8 @@ sections:
       (`skills`, `tools_allowed`, `native_sandbox`) and a native-sandbox label line'
     Source: '[harness-native integration research v0.3](../research/harness-native-integration-research-v0.3.md) (ledger
       HNI)'
-    When: '**Now**: the worker-run parts; the Lead MCP parts land with F15''s typed surface'
+    When: '**Now**: the worker-run parts; the Lead MCP parts land with F15''s typed surface. Its probe is item 6 of the
+      Now list; the rest is item 14'
     Notes: 'Codex qualification is F24; the capability registry is F13. ARV-05 (operator, 2026-10-05): whether the current
       OpenCode release still fits is this row''s question. **M6a native edit/write decision (v0.9 §7, approved by the designer,
       D1 2026-10-10 (MCD-01, MCD-02); takes effect at M6; F40):** whether OpenCode''s native `edit` and `write` can be hidden
@@ -1073,7 +1075,8 @@ sections:
       fingerprint, which G3-C binds consent to, and a two-member continuation set. Tests only'
     Source: STG-12's S12-4 trace, FIX claim "the set fingerprint and the per-member order are unproven" (`CLAIMS.yaml` at
       design workspace `18cdf63`, pack `290d5bca540f`); the claim's deviation is the brief
-    When: '**Internal alpha**, one of the trace''s FIX rows (S12-6). Before G3-C binds consent to the fingerprint'
+    When: '**Internal alpha**, one of the trace''s FIX rows (S12-6). Before G3-C binds consent to the fingerprint, so item
+      12 of the Now list pulls it ahead'
     Notes: The designer asked for this row on 2026-10-25, with family 6's claims
 
   - '#': E83
@@ -1233,8 +1236,9 @@ sections:
       for an install with no internet), and extended by the per-target system packages and the guided sequence, the Lead's
       sketch of the same day
     When: '**Internal alpha**, as its packaging (the milestone''s "an install the operator can run on their own machine
-      and on a managed Linux host"). The designer designs it, by Internal alpha. F18.3 and D2 stay held in HOLD-17; E99''s
-      design takes IBU-12, IBU-13 and ADR-0014 as its inputs, and names at the group''s exit how F18.3 and D2 are absorbed'
+      and on a managed Linux host"). Item 13 of the Now list pulls it ahead of the work step. The designer designs it, by
+      Internal alpha. F18.3 and D2 stay held in HOLD-17; E99''s design takes IBU-12, IBU-13 and ADR-0014 as its inputs,
+      and names at the group''s exit how F18.3 and D2 are absorbed'
     Notes: 'Filed by the Lead. `g3/requirements-offline.txt` is the offline manifest the bundle''s one manifest absorbs.
       Closest mechanisms today: CAP-1''s capability register (STG-15) and H-3''s bundle import (E35). Its decisions-due
       item waits until `test_register` admits a new item (#285''s review, m5): the next register batch'
@@ -1472,7 +1476,7 @@ sections:
   - '#': E118
     Work: The contained Lead's saved permissions are cleared at start, and the Lead's server is moved out of the shell's
       reach. The same writer checks the `credential` table's columns before inserting, and degrades gracefully
-    Source: Harness ruling 11 of 2026-11-01 (AEW-plans), not accepted as a residual
+    Source: Harness ruling 11 of 2026-11-01
     When: '**Now.** First after E112, or without it if E112 needs more than its quick check'
     Notes: Filed by the Lead
 
@@ -1513,7 +1517,7 @@ sections:
     Work: The relay presents a provider's client certificate. The policy names the certificate, key and CA paths; those
       paths are masked from every sandbox, and a launch refuses if they are not; a run with no relay refuses the provider.
       Tested against a throwaway CA. Also measures how a 429 reaches the harness, against a local fake upstream
-    Source: The designer's ruling of 2026-11-02, the relay presents the certificate (AEW-plans)
+    Source: The designer's ruling of 2026-11-02, the relay presents the certificate
     When: '**Now.** Item 13 of the Now list, and the work of the gate before a provider that requires a client certificate'
     Notes: Filed by the Lead
 

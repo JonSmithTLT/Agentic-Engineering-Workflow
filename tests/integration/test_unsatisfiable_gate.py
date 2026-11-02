@@ -8,8 +8,10 @@ standard written in prose, as dogfood Story S-0001's was."""
 from __future__ import annotations
 
 import json
+import shlex
 from typing import Any
 
+import printed_commands as P
 import pytest
 import yaml
 from aewflow import (
@@ -267,6 +269,129 @@ def test_a_parent_gate_only_another_unit_type_evaluates_is_stuck_and_replaceable
     out = resolve(p, item, "check:unit")
     assert out["ok"] and out["result"]["mandatory_gates"] == ["check:unit"], out
     assert gate_ops.REASON not in p.ok("dispatch", "explain", child, "--json")["reason_codes"]
+    assert_control_invariants(p)
+
+
+def epic_over_a_story_and_a_ticket(p, tmp_path) -> tuple[str, str, str]:
+    epic = create_unit(p, "epic", "Initiative")
+    story = create_unit(p, "story", "Objective", parent=epic)
+    ticket = create_planned_ticket(p, tmp_path, extra=("--parent", epic))
+    return epic, story, ticket
+
+
+def test_a_mixed_gate_is_the_operators_and_every_surface_names_who_can_satisfy_it(tmp_path):
+    """Addendum 5: an Epic's `children_complete` has an evaluator, its Stories, so the Lead cannot replace it. The
+    refusal, doctor, the backstop, resume and status each say so and name the Story; the Ticket stays refused."""
+    p = sample_project(tmp_path)
+    epic, _story, ticket = epic_over_a_story_and_a_ticket(p, tmp_path)
+    seed(p, epic, ["children_complete"])
+    item = gate_ops.item_id(epic, "children_complete")
+    says = f"a Story under {epic} can satisfy `children_complete`"
+    decides = "the operator's decision"
+
+    before = load_control(p.root)
+    error = refusal(resolve(p, item, "check:unit"))
+    assert error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED" and error["details"]["satisfiable_by"] == ["Story"], error
+    assert says in error["message"] and decides in error["message"], error
+    assert error["details"]["stranded_by"] == ["mutating Ticket", "non-mutating Ticket"], error
+    assert load_control(p.root)["revision"] == before["revision"]
+    assert load_control(p.root)["work"][epic]["policy"] == before["work"][epic]["policy"]
+    assert not (p.root / ".aew" / "work" / epic / "gate-corrections").exists()
+
+    found = doctor(p)
+    assert found["status"] == "FAIL" and says in found["detail"] and decides in found["detail"], found
+    assert f"{epic} sets mandatory gate `children_complete` (stuck: {ticket})" in found["detail"]
+    assert "on some unit types under it" in found["detail"] and "replace_gate" not in found["detail"], found
+    no_command_findings(found["detail"])
+
+    stuck = {b["code"]: b for b in err(p, "work", "assign", ticket)["details"]["blocking_conditions"]}[gate_ops.REASON]
+    assert says in stuck["message"] and decides in stuck["message"] and "choice `replace_gate`" not in stuck["message"]
+    assert stuck["details"]["satisfiable_by"] == {epic: ["Story"]}, stuck
+    no_command_findings(stuck["message"])
+    assert gate_ops.REASON in p.ok("dispatch", "explain", ticket, "--json")["reason_codes"]
+
+    [action] = [a for a in p.ok("resume", "--json")["next_actions"] if a.startswith(f"{epic}: mandatory gate")]
+    assert says in action and decides in action and "replace_gate" not in action, action
+
+    [decision] = status_items(p)
+    assert decision["availability"] == "BLOCKED", decision
+    [preview] = status_previews(p)
+    assert (preview["replaceable"], preview["satisfiable_by"]) == (False, ["Story"]), preview
+    [blocker] = [b for b in projection(p)["blockers"] if b["code"] == gate_ops.REASON]
+    assert says in blocker["message"] and decides in blocker["message"], blocker
+    assert_control_invariants(p)
+
+
+def test_the_open_item_and_the_replacement_judge_condition_2_alike(tmp_path):
+    """The route takes a gate exactly when the open item says it can (one predicate, `replaceable`), and each kind of
+    gate reaches the outcome addendum 5 rules for it."""
+    p = sample_project(tmp_path)
+    epic = create_unit(p, "epic", "Initiative")
+    story = create_unit(p, "story", "Objective")
+    replaced, mixed, every = [], [], []
+    for unit, gate, by, text in [
+            # no unit type under the parent can satisfy it: replaced
+            (story, PROSE, [], None),
+            (story, "children_complete", [], None),  # a Story holds only Tickets
+            (story, "review_prose_standard", [], None),
+            (story, "check:lint", [], None),  # undefined: a non-mutating Ticket's pass-through is not an evaluator
+            (epic, PROSE, [], None),
+            (epic, "check:lint", [], None),
+            # mixed: the operator's
+            (story, "execute_record", ["non-mutating Ticket"], "a non-mutating Ticket under"),
+            (epic, "execute_record", ["non-mutating Ticket"], "a non-mutating Ticket under"),
+            (epic, "children_complete", ["Story"], "a Story under"),
+            # every unit type it binds can satisfy it: today's refusal
+            (story, "review_r1", None, "this route does not apply"),
+            (story, "check:unit", None, "this route does not apply"),
+            (epic, "check:unit", None, "this route does not apply")]:
+        seed(p, unit, [gate])
+        item = gate_ops.item_id(unit, gate)
+        previews = [x for x in status_previews(p) if x["id"] == item]
+        out = resolve(p, item, "verify_card:verifier")
+        if by is None:  # no open item: nothing is stuck on it
+            error = refusal(out)
+            assert previews == [] and text in error["message"], (gate, out)
+            assert "satisfiable_by" not in error["details"], (gate, out)
+            every.append(gate)
+        elif not by:
+            assert [x["replaceable"] for x in previews] == [True] and previews[0]["satisfiable_by"] == [], previews
+            assert out["ok"] and out["result"]["mandatory_gates"] == ["verify_card:verifier"], (gate, out)
+            replaced.append(gate)
+        else:
+            assert [x["replaceable"] for x in previews] == [False] and previews[0]["satisfiable_by"] == by, previews
+            error = refusal(out)
+            assert error["code"] == "OPERATOR_AUTHORIZATION_REQUIRED", (gate, error)
+            assert error["details"]["satisfiable_by"] == by, (gate, error)
+            assert f"{text} {unit} can satisfy `{gate}`" in error["message"], (gate, error)
+            assert load_control(p.root)["work"][unit]["policy"]["mandatory_gates"] == [gate]
+            mixed.append(gate)
+        seed(p, unit, [])
+    assert (len(replaced), len(mixed), len(every)) == (6, 3, 3)
+
+
+def test_a_gate_no_unit_type_can_satisfy_is_replaced_by_following_doctors_remedy_as_printed(tmp_path):
+    """The standing rule "follow the message's own advice" (ITEMS 56): doctor's remedy names the item, the choice and a
+    shell form that takes the arguments as JSON on standard input. Run as printed, with the revision from `aew status`
+    as it says, the route accepts the replacement."""
+    p = sample_project(tmp_path)
+    story = create_unit(p, "story", "Objective")
+    child = create_planned_ticket(p, tmp_path, extra=("--parent", story))
+    seed(p, story, [PROSE])
+    detail = doctor(p)["detail"]
+    item = gate_ops.item_id(story, PROSE)
+    assert f"settle `{item}`" in detail and f"choice `{gate_ops.CHOICE}`" in detail, detail
+    [(command, fenced)] = [(c, f) for c, f in P.commands(detail) if "lead tool resolve" in c]
+    P.parse(command, fenced=fenced)
+    arguments = {"subject": item, "choice": gate_ops.CHOICE, "replacement": "check:unit",
+                 "rationale": "the targeted check is that standard, as a configured check",
+                 "expect_rev": p.ok("status", "--json")["revision"]}
+    head, _body = P.split(command, fenced)
+    res = p.aew(*shlex.split(head)[1:], input=json.dumps(arguments), env=lead_env(p))
+    assert res.returncode == 0, res.stderr or res.stdout
+    assert load_control(p.root)["work"][story]["policy"]["mandatory_gates"] == ["check:unit"]
+    assert gate_ops.REASON not in p.ok("dispatch", "explain", child, "--json")["reason_codes"]
+    assert doctor(p)["status"] == "PASS"
     assert_control_invariants(p)
 
 

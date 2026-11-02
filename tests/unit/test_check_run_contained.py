@@ -6,6 +6,7 @@ started it. Each with its planted failure."""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -29,12 +30,14 @@ def direct(tmp_path, monkeypatch):
     """The direct route's own frame, with the check runner stood in for: it records what it was given."""
     policy: dict = {}
     commands = object.__new__(EvidenceCommands)
-    commands.k = type("K", (), {"policy": lambda self, name: policy, "aew_root": tmp_path / ".aew",
-                                "repo_root": tmp_path})()
+    commands.k = type("K", (), {"policy": lambda self, name: policy, "execution_policy": lambda self: (policy, None),
+                                "aew_root": tmp_path / ".aew", "repo_root": tmp_path})()
     ran: list[dict] = []
 
     def run(cfg, workspace, **kw):
-        ran.append({**kw, "live": [e["kind"] for e in W.read().live]})
+        marker = Path(kw["env"].get(W.MARKER) or workspace / "none")
+        ran.append({**kw, "live": [e["kind"] for e in W.read().live],
+                    "label": json.loads(marker.read_text(encoding="utf-8")) if marker.is_file() else None})
         return {"exit_code": 0, "duration_s": 0.0, "log": "", "command": ["stand-in"], "outcome": "ran",
                 "spawn_errno": None}
 
@@ -83,9 +86,27 @@ def test_where_the_policy_allows_it_a_weaker_check_runs_labelled_and_live_in_the
     [given] = ran
     assert given["layout"] is None and "check_run" in given["live"], "entered before the check started"
     assert given["env"][W.MARKER].endswith("label.json")
-    assert json.loads(open(given["env"][W.MARKER], encoding="utf-8").read())["filesystem"] == weaker["filesystem"]
+    assert given["label"]["filesystem"] == weaker["filesystem"], "its marker names its label while it runs"
     assert out["containment"]["weaker_because"]
     assert "check_run" not in [e["kind"] for e in W.read().live], "ended once the check returned"
+    [ended] = [json.loads(f.read_text(encoding="utf-8")) for f in W.root().glob("check_run-*.json")]
+    run_dir = Path(given["env"][W.MARKER]).parent
+    assert ended["outcome"] == "clean" and not run_dir.exists(), "a clean end takes the run's directory (N3)"
+
+
+def test_a_weaker_check_whose_end_is_not_clean_keeps_only_its_label_for_its_live_entry(direct, tmp_path, monkeypatch):
+    """#321 review, N3: the run's directory goes with the run, but for the label its entry's marker names while that
+    entry may still be live."""
+    commands, _, ran = direct
+    weaker = containment.label(contained=False, reason="the execution policy allows weaker runs")
+    monkeypatch.setattr(containment, "establish", lambda **kw: (None, weaker))
+    monkeypatch.setattr(W, "ownership_of", lambda label: "process_group")  # held less than the whole tree: unowned
+    call(commands, tmp_path)
+    [given] = ran
+    run_dir = Path(given["env"][W.MARKER]).parent
+    [ended] = [json.loads(f.read_text(encoding="utf-8")) for f in W.root().glob("check_run-*.json")]
+    assert ended["outcome"] == "unowned"
+    assert [p.name for p in run_dir.iterdir()] == ["label.json"]
 
 
 def test_the_supervisors_route_passes_its_decision_and_does_not_decide_again(monkeypatch, tmp_path):

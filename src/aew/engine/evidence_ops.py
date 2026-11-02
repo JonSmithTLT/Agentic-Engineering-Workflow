@@ -809,7 +809,7 @@ class EvidenceCommands:
         from aew.errors import ContainmentUnavailable
         from aew.harness import containment, procs, runlog, weaker_register
 
-        policy = self.k.policy("execution")
+        policy, _ = self.k.execution_policy()  # None for a project with no execution policy (ADR-0010)
         run_dir = runlog.run_dir(self.k.aew_root, f"check-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-"
                                                   f"{secrets.token_hex(3)}")
         run_dir.mkdir(parents=True)
@@ -818,6 +818,7 @@ class EvidenceCommands:
                 role=inv["role"], scope=inv.get("scope") or "ticket", workspace=str(workspace), run_dir=run_dir,
                 scratch=str(run_dir / "scratch"), bridge_dir=None, policy=policy, project=str(self.k.repo_root))
         except ContainmentUnavailable as exc:
+            shutil.rmtree(run_dir, ignore_errors=True)  # nothing ran in it
             raise ContainmentUnavailable(
                 f"`aew check run` runs the check in a sandbox, and its sandbox could not be established: "
                 f"{exc.message}. Nothing ran; {containment.ALLOW_WEAKER_REMEDY}", **exc.details) from None
@@ -825,6 +826,7 @@ class EvidenceCommands:
             shutil.rmtree(layout.net_dir, ignore_errors=True)
         (run_dir / "label.json").write_text(json.dumps(label, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         trees = procs.CheckTrees()
+        weaker = None
         try:
             weaker = weaker_register.enter_if_weaker(
                 label, kind="check_run", ownership=weaker_register.ownership_of(label), project=self.k.repo_root,
@@ -839,6 +841,16 @@ class EvidenceCommands:
                     weaker.end(list(trees.left))
         finally:
             containment.retire_private_git(run_dir)
+            # The run's directory goes with the run (#321 review, N3), but for its label while its entry may still be
+            # live: the entry's marker names that file.
+            keep = weaker is not None and weaker.data.get("outcome") != "clean"
+            for path in run_dir.iterdir() if keep else ():
+                if path.is_dir():
+                    shutil.rmtree(path, ignore_errors=True)
+                elif path.name != "label.json":
+                    path.unlink(missing_ok=True)
+            if not keep:
+                shutil.rmtree(run_dir, ignore_errors=True)
         return {**run, "containment": label}
 
     def check_run(self, *, invocation_token: str, check_id: str, env: dict[str, str] | None = None,
@@ -888,7 +900,7 @@ class EvidenceCommands:
             if label is None:  # the operator's own `aew check run`: contained here, or refused (DV-4)
                 run = self._check_run_direct(cfg, workspace, inv)
             else:
-                run = C.run(cfg, workspace, policy=self.k.policy("execution"), env=env, layout=layout, trees=trees)
+                run = C.run(cfg, workspace, policy=self.k.execution_policy()[0], env=env, layout=layout, trees=trees)
             if ending is not None and ending.is_set():
                 raise StaleAuthority(f"the run ended while check {check_id} ran; nothing was recorded")
         after = self.invocations.snapshot_of(workspace, ws_id)

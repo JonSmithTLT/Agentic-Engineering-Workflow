@@ -411,8 +411,8 @@ class Lead:
             # as the quickstart's "Losing the session" says (the Lead's AEW knowledge, counted with the shell call).
             phase = _unit((self.last_out or {}).get("result")).get("interrupted_from")
             self.event("gap", gap="reconcile", why="an INTERRUPTED Ticket: its decision has no typed tool")
-            cli = [str(phase) if x == "<phase>" else x for x in cli]
-            cli += ["--reason", "workspace inspected after the session was taken over"]
+            filled = {"<phase>": str(phase), "<reason>": "workspace inspected after the session was taken over"}
+            cli = [filled.get(x, x) for x in cli]
         if not cli or any(x.startswith("<") or "{" in x for x in cli):
             return self.stuck(f"decision {d['decision']} has no typed tool and its fallback needs a choice: {cli}")
         self.event("gap", gap="decision_without_tool", decision=d["decision"])
@@ -466,7 +466,7 @@ class Lead:
         if step == 1 and d["decision"] == "RESOLVE_STAGE":
             # The known gap: an unfinished stage (often the steering loop's, or one a lost session left) whose typed
             # call lacks the choice and rationale. The Lead continues it with its own rationale, from the shell, as
-            # the decision's command names (`aew stage continue <intent> --rationale ... --expect-rev N`).
+            # the decision's command names (`aew stage <continue|abandon> <intent> --rationale <why> --expect-rev <r>`).
             self.event("gap", gap="resolve_stage", why="the stage's typed resolution was refused; its command needs a "
                                                         "choice and a rationale")
             cli = [("continue" if x == "<continue|abandon>" else

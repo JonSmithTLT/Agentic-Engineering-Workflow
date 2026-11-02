@@ -9,10 +9,12 @@ import sys
 import time
 from pathlib import Path
 
+import printed_commands as P
 import pytest
 from conftest import IS_WINDOWS, Project, clean_env, git, run_aew
 
 from aew.errors import IllegalTransition, ValidationFailed
+from aew.harness import contract as K
 
 
 def control_bytes(p: Project) -> bytes:
@@ -331,7 +333,9 @@ def test_acquire_only_when_vacant(project):
     assert "aew lead takeover" in res.error["message"] and "interrupts nothing" in res.error["message"]
     details = res.error["details"]
     assert details["session_label"] == "lead-a" and details["active_invocations"] == []
-    assert details["next"] == "aew lead takeover" and details["generation"] == 1
+    assert details["generation"] == 1
+    [takeover] = P.parse(details["next"], fenced=False)  # a structured next is a whole command (ITEMS 56)
+    assert takeover.lead_cmd == "takeover" and takeover.reason
 
 
 def test_a_refused_acquire_names_what_a_takeover_would_interrupt(tmp_path):
@@ -367,7 +371,7 @@ def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leave
     prepare_and_validate(q, wid2)
     res = q.aew("lead", "acquire", "--expect-rev", str(q.rev()))
     assert res.error["details"]["interrupted_work"] == [] and res.error["details"]["active_invocations"] == []
-    assert f"`aew integrate reconcile {wid2}`" in res.error["message"], res.error
+    assert f"`aew integrate reconcile {wid2} {K.EXPECT_REV}`" in res.error["message"], res.error
 
 
 def test_token_issued_in_one_process_verified_in_another(project):

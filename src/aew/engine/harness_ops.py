@@ -130,7 +130,7 @@ class Harness:
             stop = K.fields_command(f"aew harness stop {previous['run']}", "reason", "superseded run is still live")
             return blocker_from(RunLive(
                 f"{previous['run']} may still be running; stop it with:\n\n{stop}\n\n"
-                f"or relaunch with `aew harness launch {invocation} --expect-rev <revision from aew status> "
+                f"or relaunch with `aew harness launch {invocation} {K.EXPECT_REV} "
                 "--replace` (its credential is revoked either way)", run=previous["run"]))
         return None
 
@@ -193,8 +193,8 @@ class Harness:
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
             except OSError as exc:
                 raise HarnessLaunchFailed(f"{run} was recorded but its supervisor could not start: {exc}; relaunch "
-                                           f"with `aew harness launch {inv_id} --expect-rev <revision from aew "
-                                           "status>` (the credential rotates)", **base,
+                                           f"with `aew harness launch {inv_id} {K.EXPECT_REV}` (the credential "
+                                           "rotates)", **base,
                                           **_launcher_code()) from None
         faults.hit("harness.launch.after_spawn")
         handoff = {"credential": credential, "run": run, "invocation": inv_id,
@@ -218,7 +218,7 @@ class Harness:
         if custody is None:  # no acknowledgement at all: make sure no process holds the credential
             proc.kill()
             raise HarnessLaunchFailed(f"{run}'s supervisor never acknowledged custody; it was stopped. Relaunch "
-                                      f"with `aew harness launch {inv_id} --expect-rev <revision from aew status>` "
+                                      f"with `aew harness launch {inv_id} {K.EXPECT_REV}` "
                                       "(the credential rotates)", **out, **_launcher_code())
         if not custody["custody"]:
             raise HarnessLaunchFailed(f"{run}'s supervisor refused custody: {custody.get('reason')}", **out,
@@ -540,8 +540,8 @@ class Harness:
                 status, _ = runlog.observed_status(directory)
                 if status not in (K.STARTING, K.RUNNING):
                     raise IllegalTransition(
-                        f"{run} is {status}; relaunch with `aew harness launch {inv_id} --expect-rev "
-                        f"<revision from aew status>` to continue its invocation")
+                        f"{run} is {status}; relaunch with `aew harness launch {inv_id} {K.EXPECT_REV}` to continue "
+                        "its invocation")
             entry = next(r for r in inv["runs"] if r["run"] == run)
             name, text = self._record_request(entry, kind, payload)
             revision = s.commit(Transition(op=f"harness.{kind}", actor=actor, summary=f"{kind} requested for {run}",
@@ -666,19 +666,19 @@ class Harness:
                         provider_env = []
                 names = provider_env or [str(n) for n in _list(_field(_field(record, "contract"), "extra").get(
                     "provider_env"))]  # else the names this run was launched with
-                cancel = K.fields_command(f"aew invoke cancel {inv_id} --expect-rev <revision from aew status>",
+                cancel = K.fields_command(f"aew invoke cancel {inv_id} {K.EXPECT_REV}",
                                           "reason", "provider credential rejected")
                 action = (f"{run} ended because the model provider rejected the credential: check the key in "
                           f"{', '.join(names) or 'the variables'} (the execution policy's provider_env), then "
-                          f"relaunch with `aew harness launch {inv_id} --expect-rev <revision from aew status>`, or "
+                          f"relaunch with `aew harness launch {inv_id} {K.EXPECT_REV}`, or "
                           f"cancel it with:\n\n{cancel}\n\nA relaunch starts a new harness server with the key from "
                           "the environment of the process that launches it; inside a Lead session that is the "
                           "session's own, so restart `aew opencode` with the new key first")
             else:
-                cancel = K.fields_command(f"aew invoke cancel {inv_id} --expect-rev <revision from aew status>",
+                cancel = K.fields_command(f"aew invoke cancel {inv_id} {K.EXPECT_REV}",
                                           "reason", "harness run ended")
                 action = (f"{inv_id} has no live run ({run}: {status}): relaunch it with `aew harness launch {inv_id} "
-                          f"--expect-rev <revision from aew status>` (its credential rotates) or cancel it with:"
+                          f"{K.EXPECT_REV}` (its credential rotates) or cancel it with:"
                           f"\n\n{cancel}")
             out.append({"invocation": inv_id, "work_unit": inv["work_unit"], "role": inv["role"], "run": run,
                         "status": status, "reason": (record or {}).get("reason"), "evidence": evidence,
@@ -700,7 +700,7 @@ class Harness:
         records = sorted(e["id"] for e in produced if e["kind"] != "check_result") or ["<id>"]
         if command is None:
             return "ingest it"
-        return "ingest it: " + ", ".join(f"`{command} {wid} --evidence {e}`" for e in records)
+        return "ingest it: " + ", ".join(f"`{command} {wid} --evidence {e} {K.EXPECT_REV}`" for e in records)
 
     def after_implementation(self, state: dict[str, Any], wid: str) -> str:
         """The transition(s) that take a mutating Ticket on once its implementer's report and checks are in."""
@@ -709,11 +709,12 @@ class Harness:
             gc = self.gates.gate_context(state, wid)
             to = ("REVIEW_PENDING" if self.gates.review_gates(gc)
                   else "VERIFY_PENDING" if self.gates.verification_gates(gc) else "COMMIT_READY")
-            step = f"`aew work transition {wid} --to {to}`"
+            step = f"`aew work transition {wid} --to {to} {K.EXPECT_REV}`"
         except AEWError:
-            step = f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY` (as its gates require)"
+            step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY {K.EXPECT_REV}` (as "
+                    "its gates require)")
         if unit["state"] == "ASSIGNED":
-            return f"`aew work transition {wid} --to RUNNING`, then {step}"
+            return f"`aew work transition {wid} --to RUNNING {K.EXPECT_REV}`, then {step}"
         return step
 
     def implementation_blocker(self, state: dict[str, Any], wid: str) -> str | None:
@@ -821,7 +822,7 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
     if on != launched_on:
         if SNAPSHOT_RECORDED or not on:  # project off: a relaunched run reads as launched off, so it agrees
             remedy = (f"Relaunch the run (`aew harness launch {invocation or '<invocation from aew harness status>'} "
-                      "--expect-rev <revision from aew status>`) and send to the new run")
+                      f"{K.EXPECT_REV}`) and send to the new run")
         else:  # project on, before MS4: every run reads as launched off, so a relaunch would be refused the same way
             remedy = ("This AEW version cannot yet launch a run with coordination messaging on (F9-A MS4 adds it), so "
                       "until then `harness send` needs messaging switched off: ask the operator")

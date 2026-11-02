@@ -92,7 +92,7 @@
         "lower-bound": 254
       }
     },
-    "digest": "sha256:d306b3d466312df31e4803d9140975bb31452a2c166525c77e9abf1076e16b82",
+    "digest": "sha256:320690434003367e92d79a98de330f094798b3cbf43c9881178326343c5be2d7",
     "records": 1121,
     "unresolved": 104
   },
@@ -18187,7 +18187,9 @@
       "family": "modules",
       "imports": [
         "aew.errors",
+        "aew.harness.contract",
         "aew.harness.lead_broker",
+        "aew.knowledge.records",
         "aew.operator"
       ]
     },
@@ -18966,6 +18968,7 @@
         "aew.engine.gates",
         "aew.engine.ports",
         "aew.errors",
+        "aew.harness.contract",
         "aew.knowledge.records",
         "aew.policy.execution",
         "aew.util",
@@ -18989,6 +18992,7 @@
       "family": "modules",
       "imports": [
         "aew.errors",
+        "aew.harness.contract",
         "aew.util"
       ]
     },
@@ -19013,6 +19017,7 @@
         "aew.engine.store",
         "aew.engine.usage_ops",
         "aew.errors",
+        "aew.harness.contract",
         "aew.knowledge.manifest",
         "aew.knowledge.records",
         "aew.knowledge.render",
@@ -19316,6 +19321,7 @@
         "aew.engine.hierarchy",
         "aew.engine.ports",
         "aew.errors",
+        "aew.harness.contract",
         "aew.knowledge.records",
         "aew.schemas",
         "aew.util"
@@ -19380,7 +19386,8 @@
       },
       "family": "modules",
       "imports": [
-        "aew.engine.transitions"
+        "aew.engine.transitions",
+        "aew.harness.contract"
       ]
     },
     "modules:aew.engine.harness_ops": {
@@ -19437,7 +19444,9 @@
         "path": "src/aew/engine/hierarchy.py"
       },
       "family": "modules",
-      "imports": []
+      "imports": [
+        "aew.harness.contract"
+      ]
     },
     "modules:aew.engine.hierarchy_ops": {
       "anchor": {
@@ -19466,6 +19475,7 @@
         "aew.engine.transitions",
         "aew.engine.work_ops",
         "aew.errors",
+        "aew.harness.contract",
         "aew.knowledge.evidence",
         "aew.knowledge.records",
         "aew.policy.validation",
@@ -19529,6 +19539,7 @@
         "aew.engine.stage_intents",
         "aew.engine.transitions",
         "aew.errors",
+        "aew.harness.contract",
         "aew.knowledge.evidence",
         "aew.policy.checks",
         "aew.policy.guardrails",
@@ -19560,6 +19571,7 @@
         "aew.engine.ports",
         "aew.engine.store",
         "aew.errors",
+        "aew.harness.contract",
         "aew.knowledge.records",
         "aew.knowledge.render",
         "aew.operator",
@@ -19667,6 +19679,7 @@
         "aew.engine.seams",
         "aew.engine.transitions",
         "aew.errors",
+        "aew.harness.contract",
         "aew.knowledge.evidence",
         "aew.knowledge.records",
         "aew.snapshot.fingerprint",
@@ -19761,6 +19774,7 @@
         "aew.engine.ports",
         "aew.engine.stage_intents",
         "aew.errors",
+        "aew.harness.contract",
         "aew.harness.procs",
         "aew.knowledge.records",
         "aew.policy.validation",
@@ -19842,6 +19856,7 @@
         "aew.engine.seams",
         "aew.engine.validation_ops",
         "aew.errors",
+        "aew.harness.contract",
         "aew.knowledge.evidence",
         "aew.knowledge.manifest",
         "aew.knowledge.render",
@@ -19872,6 +19887,7 @@
         "aew.engine.ports",
         "aew.engine.transitions",
         "aew.errors",
+        "aew.harness.contract",
         "aew.operator",
         "aew.policy.checks",
         "aew.policy.consistency",
@@ -20037,7 +20053,8 @@
       },
       "family": "modules",
       "imports": [
-        "aew.errors"
+        "aew.errors",
+        "aew.harness.contract"
       ]
     },
     "modules:aew.engine.usage_ops": {
@@ -20126,6 +20143,7 @@
         "aew.engine.seams",
         "aew.engine.transitions",
         "aew.errors",
+        "aew.harness.contract",
         "aew.knowledge.records",
         "aew.profile",
         "aew.util",
@@ -21189,7 +21207,9 @@
         "path": "src/aew/knowledge/discovery.py"
       },
       "family": "modules",
-      "imports": []
+      "imports": [
+        "aew.harness.contract"
+      ]
     },
     "modules:aew.knowledge.evidence": {
       "anchor": {
@@ -21644,6 +21664,7 @@
       },
       "family": "modules",
       "imports": [
+        "aew.harness.contract",
         "aew.util"
       ]
     },

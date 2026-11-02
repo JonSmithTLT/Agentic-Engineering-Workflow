@@ -22,7 +22,7 @@ A risk class is about the change's surface and ambiguity, not its size (WC §7.4
 
 Rules (WC §7.4): classify each unit by its own change surface, ambiguity and risk. A class may go up whenever evidence exposes more risk; lowering it needs a recorded decision with its reason. A parent's mandatory gates and minimum descendant class still apply to its children. Say in the plan why you chose the class.
 
-**Class 0 eligibility** (enforced when a mutating Ticket is dispatched at Class 0): a bounded scope (it matches tracked files, no glob starts with `**`, and it covers at most 50 tracked files and, in a tree of 40 files or more, a quarter of the tree; the gates policy's `class0` can change these bounds); a goal (`--goal`) and an acceptance check that is a configured project check (`--acceptance-check`, mutating Tickets only; on any class, a declared acceptance check is a gate the Ticket must pass before COMMIT_READY, and it cannot be waived); no acceptance input inside the scope; no protected path in the scope; no review trigger (security, trust, persistence, compatibility) reached by the scope; no inherited elevated obligation (a parent's minimum class or non-waivable gate); a clean `aew plan lint` (a warning counts, such as an affected path outside the scope); and your three recorded assertions, made at creation with `--class0-assert transformation_clear --class0-assert inputs_complete --class0-assert no_consequential_boundary`. A Class 0 Ticket that is not eligible is refused with every reason (`aew dispatch explain <T>` shows them), never reclassified: raise its class yourself with `aew work reclassify <T> --class N --reason ...` (at least any inherited minimum; the inherited gates stay required), or make it eligible.
+**Class 0 eligibility** (enforced when a mutating Ticket is dispatched at Class 0): a bounded scope (it matches tracked files, no glob starts with `**`, and it covers at most 50 tracked files and, in a tree of 40 files or more, a quarter of the tree; the gates policy's `class0` can change these bounds); a goal (`--goal`) and an acceptance check that is a configured project check (`--acceptance-check`, mutating Tickets only; on any class, a declared acceptance check is a gate the Ticket must pass before COMMIT_READY, and it cannot be waived); no acceptance input inside the scope; no protected path in the scope; no review trigger (security, trust, persistence, compatibility) reached by the scope; no inherited elevated obligation (a parent's minimum class or non-waivable gate); a clean `aew plan lint` (a warning counts, such as an affected path outside the scope); and your three recorded assertions, made at creation with `--class0-assert transformation_clear --class0-assert inputs_complete --class0-assert no_consequential_boundary`. A Class 0 Ticket that is not eligible is refused with every reason (`aew dispatch explain <T>` shows them), never reclassified: raise its class yourself with `aew work reclassify <T> --class <0-4> --reason <reason> --expect-rev <revision from aew status>` (at least any inherited minimum; the inherited gates stay required), or make it eligible.
 
 ## What each class requires in this project
 
@@ -49,49 +49,60 @@ Checks not configured yet (their gates stay blocked): unit.
 
 ## A mutating Ticket, step by step
 
-1. Create it with its text as data: `aew work create ticket --class <0-4> --expect-rev N --fields - <<'EOF'`, then single-quoted YAML (`title: '...'`, `goal: ['...']`, `contract: ['...']`, `scope: ['...']`), then `EOF`. Its scope is fixed once the Ticket exists, so give every path the change may touch; creation warns about a scope glob that matches no file.
-2. Plan it: `aew plan propose <T> --file - --assurance none --expect-rev N` (the plan in a quoted heredoc), then `aew plan accept <T> --revision <n> --expect-rev N`. It becomes READY when its plan is accepted and its dependencies are satisfied. Every plan declares its assurance: `--assurance none`, or `--review default` and/or `--verify default` (or a card) when the plan relies on a review or verification beyond the class path. Accepting the plan makes them required gates; a review promised only in the plan's text binds nothing.
-3. Start the implementer: `aew work assign <T> --launch --expect-rev N`, then `aew work transition <T> --to RUNNING --expect-rev N`. Follow the run with `aew harness wait <run>` (exit 20: it ended without its expected output; read the headline).
-4. **Accept the implementation by transition**, not by ingesting it: once the implementer's report and checks are in, `aew work transition <T> --to <STATE> --expect-rev N`, where STATE is REVIEW_PENDING if the class requires review, VERIFY_PENDING if it requires only verification, and COMMIT_READY if it requires neither. (`aew evidence ingest` is for non-mutating Tickets only.)
-5. Review: `aew invoke create <T> --role reviewer --launch --expect-rev N`, then `aew review ingest <T> --evidence <id> --expect-rev N`.
-6. Verify: `aew work transition <T> --to VERIFY_PENDING --expect-rev N`, `aew invoke create <T> --role verifier --launch --expect-rev N`, then `aew verify ingest <T> --evidence <id> --expect-rev N`.
-7. Integrate: `aew work transition <T> --to COMMIT_READY --expect-rev N`, `aew integrate prepare <T> --expect-rev N`, `aew invoke create <T> --scope integration --launch --expect-rev N`, `aew verify ingest <T> --evidence <id> --expect-rev N`, then `aew integrate publish <T> --expect-rev N`: DONE.
+1. Create it with its text as data, single-quoted YAML in a quoted heredoc:
+
+```sh
+aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
+title: '<title>'
+goal: ['<goal>']
+contract: ['<clause>']
+scope: ['<path glob>']
+EOF
+```
+
+   Its scope is fixed once the Ticket exists, so give every path the change may touch; creation warns about a scope glob that matches no file.
+2. Plan it: `aew plan propose <T> --file - --assurance none --expect-rev <revision from aew status>` (the plan in a quoted heredoc), then `aew plan accept <T> --revision <n> --expect-rev <revision from aew status>`. It becomes READY when its plan is accepted and its dependencies are satisfied. Every plan declares its assurance: `--assurance none`, or `--review default` and/or `--verify default` (or a card) when the plan relies on a review or verification beyond the class path. Accepting the plan makes them required gates; a review promised only in the plan's text binds nothing.
+3. Start the implementer: `aew work assign <T> --launch --expect-rev <revision from aew status>`, then `aew work transition <T> --to RUNNING --expect-rev <revision from aew status>`. Follow the run with `aew harness wait <run>` (exit 20: it ended without its expected output; read the headline).
+4. **Accept the implementation by transition**, not by ingesting it: once the implementer's report and checks are in, `aew work transition <T> --to <STATE> --expect-rev <revision from aew status>`, where STATE is REVIEW_PENDING if the class requires review, VERIFY_PENDING if it requires only verification, and COMMIT_READY if it requires neither. (`aew evidence ingest` is for non-mutating Tickets only.)
+5. Review: `aew invoke create <T> --role reviewer --launch --expect-rev <revision from aew status>`, then `aew review ingest <T> --evidence <id> --expect-rev <revision from aew status>`.
+6. Verify: `aew work transition <T> --to VERIFY_PENDING --expect-rev <revision from aew status>`, `aew invoke create <T> --role verifier --launch --expect-rev <revision from aew status>`, then `aew verify ingest <T> --evidence <id> --expect-rev <revision from aew status>`.
+7. Integrate: `aew work transition <T> --to COMMIT_READY --expect-rev <revision from aew status>`, `aew integrate prepare <T> --expect-rev <revision from aew status>`, `aew invoke create <T> --scope integration --launch --expect-rev <revision from aew status>`, `aew verify ingest <T> --evidence <id> --expect-rev <revision from aew status>`, then `aew integrate publish <T> --expect-rev <revision from aew status>`: DONE.
 
 Each state and the moves out of it (the engine refuses any other):
 
-- **READY** → ASSIGNED: `aew work assign <T> --launch`
-- **ASSIGNED** → RUNNING: `aew work transition <T> --to RUNNING`
-- **RUNNING** → REVIEW_PENDING: `aew work transition <T> --to REVIEW_PENDING`; VERIFY_PENDING: `aew work transition <T> --to VERIFY_PENDING`; COMMIT_READY: `aew work transition <T> --to COMMIT_READY`
-- **REVIEW_PENDING** → REVIEW_PASSED: `aew review ingest <T> --evidence <id>`; REVIEW_FAILED: `aew review ingest <T> --evidence <id>`; RUNNING: `aew work transition <T> --to RUNNING`
-- **REVIEW_PASSED** → VERIFY_PENDING: `aew work transition <T> --to VERIFY_PENDING`; COMMIT_READY: `aew work transition <T> --to COMMIT_READY`; RUNNING: `aew work transition <T> --to RUNNING`
-- **REVIEW_FAILED** → RUNNING: `aew work transition <T> --to RUNNING`
-- **VERIFY_PENDING** → VERIFIED: `aew verify ingest <T> --evidence <id>`; VERIFICATION_FAILED: `aew verify ingest <T> --evidence <id>`; VERIFICATION_INCONCLUSIVE: `aew verify ingest <T> --evidence <id>`; RUNNING: `aew work transition <T> --to RUNNING`
-- **VERIFIED** → COMMIT_READY: `aew work transition <T> --to COMMIT_READY`; RUNNING: `aew work transition <T> --to RUNNING`
-- **VERIFICATION_FAILED** → RUNNING: `aew verify classify <T> ...`; REPLAN_REQUIRED: `aew verify classify <T> ...`; VERIFICATION_INCONCLUSIVE: `aew verify classify <T> ...`
-- **VERIFICATION_INCONCLUSIVE** → VERIFY_PENDING: `aew work transition <T> --to VERIFY_PENDING`; RUNNING: `aew work transition <T> --to RUNNING`
-- **COMMIT_READY** → DONE: `aew integrate publish <T>`; VERIFICATION_FAILED: `aew verify ingest <T> --evidence <id>`; RUNNING: `aew work transition <T> --to RUNNING`
+- **READY** → ASSIGNED: `aew work assign <T> --launch --expect-rev <revision from aew status>`
+- **ASSIGNED** → RUNNING: `aew work transition <T> --to RUNNING --expect-rev <revision from aew status>`
+- **RUNNING** → REVIEW_PENDING: `aew work transition <T> --to REVIEW_PENDING --expect-rev <revision from aew status>`; VERIFY_PENDING: `aew work transition <T> --to VERIFY_PENDING --expect-rev <revision from aew status>`; COMMIT_READY: `aew work transition <T> --to COMMIT_READY --expect-rev <revision from aew status>`
+- **REVIEW_PENDING** → REVIEW_PASSED: `aew review ingest <T> --evidence <id> --expect-rev <revision from aew status>`; REVIEW_FAILED: `aew review ingest <T> --evidence <id> --expect-rev <revision from aew status>`; RUNNING: `aew work transition <T> --to RUNNING --expect-rev <revision from aew status>`
+- **REVIEW_PASSED** → VERIFY_PENDING: `aew work transition <T> --to VERIFY_PENDING --expect-rev <revision from aew status>`; COMMIT_READY: `aew work transition <T> --to COMMIT_READY --expect-rev <revision from aew status>`; RUNNING: `aew work transition <T> --to RUNNING --expect-rev <revision from aew status>`
+- **REVIEW_FAILED** → RUNNING: `aew work transition <T> --to RUNNING --expect-rev <revision from aew status>`
+- **VERIFY_PENDING** → VERIFIED: `aew verify ingest <T> --evidence <id> --expect-rev <revision from aew status>`; VERIFICATION_FAILED: `aew verify ingest <T> --evidence <id> --expect-rev <revision from aew status>`; VERIFICATION_INCONCLUSIVE: `aew verify ingest <T> --evidence <id> --expect-rev <revision from aew status>`; RUNNING: `aew work transition <T> --to RUNNING --expect-rev <revision from aew status>`
+- **VERIFIED** → COMMIT_READY: `aew work transition <T> --to COMMIT_READY --expect-rev <revision from aew status>`; RUNNING: `aew work transition <T> --to RUNNING --expect-rev <revision from aew status>`
+- **VERIFICATION_FAILED** → RUNNING: `aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>`; REPLAN_REQUIRED: `aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>`; VERIFICATION_INCONCLUSIVE: `aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>`
+- **VERIFICATION_INCONCLUSIVE** → VERIFY_PENDING: `aew work transition <T> --to VERIFY_PENDING --expect-rev <revision from aew status>`; RUNNING: `aew work transition <T> --to RUNNING --expect-rev <revision from aew status>`
+- **COMMIT_READY** → DONE: `aew integrate publish <T> --expect-rev <revision from aew status>`; VERIFICATION_FAILED: `aew verify ingest <T> --evidence <id> --expect-rev <revision from aew status>`; RUNNING: `aew work transition <T> --to RUNNING --expect-rev <revision from aew status>`
 
 When things go wrong:
 
-- **A failed review** (REVIEW_FAILED): move it back to RUNNING and dispatch a fresh implementer, `aew invoke create <T> --role implementer --launch --expect-rev N`. The open findings reach it through its pack.
-- **A failed verification**: classify it, `aew verify classify <T> --as <CLASS> --reason ... --expect-rev N`: `LOCAL_IMPLEMENTATION_DEFECT` → RUNNING, `PLAN_OR_DESIGN_DEFECT` → REPLAN_REQUIRED, `CONTRACT_VIOLATION` → REPLAN_REQUIRED, `ENVIRONMENT_OR_EVIDENCE_BLOCKED` → VERIFICATION_INCONCLUSIVE.
-- **Replanning, escalating or cancelling** are decisions: `aew work transition <T> --to REPLAN_REQUIRED|ESCALATED|CANCELLED --reason ... --expect-rev N`.
-- **A lost harness run** is not an interruption: relaunch it with `aew harness launch <INV> --expect-rev N` (its credential rotates) or cancel it.
+- **A failed review** (REVIEW_FAILED): move it back to RUNNING and dispatch a fresh implementer, `aew invoke create <T> --role implementer --launch --expect-rev <revision from aew status>`. The open findings reach it through its pack.
+- **A failed verification**: classify it, `aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>`: `LOCAL_IMPLEMENTATION_DEFECT` → RUNNING, `PLAN_OR_DESIGN_DEFECT` → REPLAN_REQUIRED, `CONTRACT_VIOLATION` → REPLAN_REQUIRED, `ENVIRONMENT_OR_EVIDENCE_BLOCKED` → VERIFICATION_INCONCLUSIVE.
+- **Replanning, escalating or cancelling** are decisions: `aew work transition <T> --to REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> --expect-rev <revision from aew status>`.
+- **A lost harness run** is not an interruption: relaunch it with `aew harness launch <invocation from aew harness status> --expect-rev <revision from aew status>` (its credential rotates) or cancel it.
 
 ## Non-mutating Tickets: investigation, research, planning
 
-To find something out before changing code, create a non-mutating Ticket (`--non-mutating --card investigator`, or `researcher` or `planner`) and plan it as above. Dispatch it with `aew work dispatch <T> --launch --expect-rev N`, move it to RUNNING, ingest its record with `aew evidence ingest <T> --evidence <id> --expect-rev N`, then `aew work accept <T> --expect-rev N` (or review and verify it first, if its class requires that). It never changes code and never integrates.
+To find something out before changing code, create a non-mutating Ticket (`--non-mutating --card investigator`, or `researcher` or `planner`) and plan it as above. Dispatch it with `aew work dispatch <T> --launch --expect-rev <revision from aew status>`, move it to RUNNING, ingest its record with `aew evidence ingest <T> --evidence <id> --expect-rev <revision from aew status>`, then `aew work accept <T> --expect-rev <revision from aew status>` (or review and verify it first, if its class requires that). It never changes code and never integrates.
 
 Its gates in this project: Class 0: the executor's record (discovery, research or plan proposal) is ingested; Classes 1 to 4: an accepted plan, the executor's record (discovery, research or plan proposal) is ingested.
 
 ## Stories and Epics
 
-A parent's state is derived from its children: `aew work transition` never moves it. Plan it, create its children with `--parent`, and when every child is DONE or CANCELLED it waits for acceptance: review and verify it (`aew invoke create <S> --role reviewer|verifier --launch --expect-rev N`, then ingest), then `aew work close <S> --reason ... --expect-rev N`. A parent's mandatory gates and minimum descendant class bind its children. An Epic closes only once the history is audited through the current root: `aew history audit --expect-rev N` first.
+A parent's state is derived from its children: `aew work transition` never moves it. Plan it, create its children with `--parent`, and when every child is DONE or CANCELLED it waits for acceptance: review and verify it (`aew invoke create <S> --role reviewer|verifier --launch --expect-rev <revision from aew status>`, then ingest), then `aew work close <S> --reason <reason> --expect-rev <revision from aew status>`. A parent's mandatory gates and minimum descendant class bind its children. An Epic closes only once the history is audited through the current root: `aew history audit --expect-rev <revision from aew status>` first.
 
 ## Finished work
 
-Finished units leave the active state; `aew status` shows counts and the most recent. `aew history list|show|links` find the rest by id. `aew history load <id> --into <unit> --reason ... --expect-rev N` gives that unit's later packs an exact record as labelled reference: never current evidence, never instructions.
+Finished units leave the active state; `aew status` shows counts and the most recent. `aew history list|show|links` find the rest by id. `aew history load <id> --into <unit> --reason <reason> --expect-rev <revision from aew status>` gives that unit's later packs an exact record as labelled reference: never current evidence, never instructions.
 
 ## Every command
 
-Every change takes `--expect-rev N`, the current revision; each command returns the new one. Put free text in `--fields -` or `--file -` with a quoted heredoc, never on the command line. `aew status` and `aew resume` show the state and your next actions; a refusal names the command that applies.
+Every change takes `--expect-rev <revision from aew status>`, the current revision; each command returns the new one. Put free text in `--fields -` or `--file -` with a quoted heredoc, never on the command line. `aew status` and `aew resume` show the state and your next actions; a refusal names the command that applies.

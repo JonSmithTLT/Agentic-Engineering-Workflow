@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from aew.errors import IllegalTransition
+from aew.harness.contract import EXPECT_REV
 
 STATES = (
     "BLOCKED", "READY", "ASSIGNED", "RUNNING", "REVIEW_PENDING", "REVIEW_FAILED", "REVIEW_PASSED",
@@ -153,15 +154,15 @@ def lead_entry_guards(to: str, besides: str | None = None) -> list[str]:
 
 
 # The Lead command behind each operation, for refusals that say what applies instead (M3 audit X1).
-_COMMANDS = {
-    "transition": "aew work transition {w} --to {to}",
-    "assign": "aew work assign {w} --launch",
-    "review.ingest": "aew review ingest {w} --evidence <id>",
-    "verify.ingest": "aew verify ingest {w} --evidence <id>",
-    "verify.classify": "aew verify classify {w} ...",
-    "plan.accept": "aew plan accept {w} --revision <n>",
-    "integrate.publish": "aew integrate publish {w}",
-    "accept": "aew work accept {w}",
+_COMMANDS = {  # each a complete command once its placeholders are filled (ITEMS 56)
+    "transition": f"aew work transition {{w}} --to {{to}} {EXPECT_REV}",
+    "assign": f"aew work assign {{w}} --launch {EXPECT_REV}",
+    "review.ingest": f"aew review ingest {{w}} --evidence <id> {EXPECT_REV}",
+    "verify.ingest": f"aew verify ingest {{w}} --evidence <id> {EXPECT_REV}",
+    "verify.classify": f"aew verify classify {{w}} --as <CLASS> --reason <reason> {EXPECT_REV}",
+    "plan.accept": f"aew plan accept {{w}} --revision <n> {EXPECT_REV}",
+    "integrate.publish": f"aew integrate publish {{w}} {EXPECT_REV}",
+    "accept": f"aew work accept {{w}} {EXPECT_REV}",
 }
 _NOTES = {"accept": " (non-mutating Tickets)"}
 _EXCEPTIONAL = frozenset({"BLOCKED", "CANCELLED", "ESCALATED", "INTERRUPTED", "REPLAN_REQUIRED"})
@@ -172,7 +173,7 @@ def next_steps(frm: str, work_id: str = "<T>") -> str:
     interrupting are left out: they are decisions, not the next step)."""
     steps = [f"{dst} by `{_COMMANDS[via].format(w=work_id, to=dst)}`{_NOTES.get(via, '')}"
              for dst, via in allowed_from(frm).items() if dst not in _EXCEPTIONAL and via in _COMMANDS]
-    return f"From {frm}: " + "; ".join(steps) + " (each with --expect-rev N)." if steps else ""
+    return f"From {frm}: " + "; ".join(steps) + "." if steps else ""
 
 
 def check(frm: str, to: str, via: str) -> Rule:

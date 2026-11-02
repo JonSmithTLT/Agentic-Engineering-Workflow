@@ -35,6 +35,7 @@ from aew.errors import (
     StaleCandidate,
     UsageError,
 )
+from aew.harness.contract import EXPECT_REV
 from aew.knowledge import evidence as E
 from aew.policy import checks as C
 from aew.policy import guardrails as GR
@@ -234,7 +235,8 @@ class Integration:
                                         entry=(entry or {}).get("state"), integration=integ.get("status"))
             if lost:
                 raise IllegalTransition(f"{work_id}'s VALIDATED candidate lost its integration worktree "
-                                        f"({integ['workspace']}): requeue it (`aew integrate requeue {work_id}`) to "
+                                        f"({integ['workspace']}): requeue it (`aew integrate requeue {work_id} "
+                                        f"--reason <reason> {EXPECT_REV}`) to "
                                         "build a new candidate", workspace=integ["workspace"])
             return
         # Under the queue, an open candidate is held by its entry's lease. One with no lease was prepared before the
@@ -425,7 +427,7 @@ class Integration:
             ctx.summary = f"{work_id} queue entry {moved['entry']} requeued from {moved['from']}: {reason}"
         return {"ok": True, "work_id": work_id, **moved, "queue": self._queue_brief(ctx.state, work_id),
                 "revision": ctx.session.committed_revision,
-                "next": f"`aew integrate prepare {work_id}` when it is next in the queue"}
+                "next": f"`aew integrate prepare {work_id} {EXPECT_REV}` when it is next in the queue"}
 
     def integrate_reorder(self, *, token: str, expect_rev: int, work_id: str, before: str | None,
                           reason: str) -> dict[str, Any]:
@@ -545,7 +547,8 @@ class Integration:
         if {"candidate": pinned["candidate"], "snapshot": pinned["snapshot"], "check_set": pinned["check_set"],
                 "binding": pinned["obligation"]["binding"]} != current:
             raise GateUnsatisfied("the checks-mode validation was for another candidate, check set or obligation: it "
-                                  f"must be validated again (recovery: `aew integrate validate {work_id}`)",
+                                  f"must be validated again (recovery: `aew integrate validate {work_id} "
+                                  f"{EXPECT_REV}`)",
                                   validated=pinned, current=current)
         run = integ.get("current_validation_run") or {}
         if run.get("id") != validation["run"] or run.get("state") != "committed" or run.get("result") != "pass":
@@ -937,7 +940,7 @@ class Integration:
         if lease["reconcile"] is not None:
             raise LeaseReconcileRequired(
                 f"{work_id}'s integration lease lost its custodian ({lease['reconcile']['reason']}): run `aew "
-                f"integrate reconcile {work_id}`", entry=lease["entry"])
+                f"integrate reconcile {work_id} {EXPECT_REV}`", entry=lease["entry"])
         return lease
 
     def integrate_reconcile(self, *, token: str, expect_rev: int, work_id: str) -> dict[str, Any]:

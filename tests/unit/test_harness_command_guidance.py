@@ -4,18 +4,14 @@ from __future__ import annotations
 
 import argparse
 import re
-import shlex
-import sys
 import threading
 from collections.abc import Callable
-from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 
+import printed_commands as P
 import pytest
 
-from aew.cli import fields
-from aew.cli.main import build_parser
 from aew.engine.harness_ops import Harness, send_route
 from aew.engine.stage_intents import StageIntents
 from aew.errors import (
@@ -24,7 +20,6 @@ from aew.errors import (
     HarnessLaunchFailed,
     IllegalTransition,
     MessagingSnapshotMismatch,
-    UsageError,
 )
 from aew.harness import contract as harness_contract
 from aew.harness import runlog
@@ -33,52 +28,24 @@ from aew.harness.opencode import adapter as adapter_module
 ROOT = Path(__file__).parents[2]
 
 
-REVISION = "<revision from aew status>"
-BLOCK = re.compile(r"```sh\n(.*?)\n```", flags=re.DOTALL)
-BODY_LINE = re.compile(r"(reason|rationale): '(.+)'")
-PLACEHOLDER = re.compile(r"<[^<>\s][^<>]*>")
-
-
 def _parse(command: str, *, fenced: bool) -> argparse.Namespace:
-    """Parse a command as a reader would run it, after filling the revision with 17. A fenced block must close with a
-    line that is exactly ``EOF`` and carry a single-quoted ``reason:`` or ``rationale:`` body, which goes through
-    ``fields.expand``; an inline command is one line. Any other ``<...>`` left over is an unfilled placeholder."""
-    filled = command.replace(REVISION, "17")
-    head, sep, rest = filled.partition(" <<'EOF'")
-    body = None
+    """Parse a command as a reader would run it (``printed_commands.parse``: the revision filled with 17, a fenced
+    block's body through ``fields.expand``, any other ``<...>`` an unfilled placeholder), and check that a fenced
+    block's single-quoted ``reason:`` or ``rationale:`` value arrives as written."""
+    [args] = P.parse(command, fenced=fenced)
     if fenced:
-        assert sep and rest.startswith("\n") and rest.endswith("\nEOF"), f"heredoc not closed by EOF: {command!r}"
-        body = rest[1:-len("EOF")]
-        [line] = body.splitlines()
-        match = BODY_LINE.fullmatch(line)
+        _, body = P.split(command, fenced=True)
+        [line] = (body or "").splitlines()
+        match = re.fullmatch(r"(reason|rationale): '(.+)'", line)
         assert match, f"the body is not one single-quoted value: {line!r}"
-    else:
-        assert not sep and "\n" not in command, f"an inline command is one line: {command!r}"
-    assert not PLACEHOLDER.search(head + (body or "")), f"an unfilled placeholder is left in {command!r}"
-    tokens = shlex.split(head)
-    assert tokens.pop(0) == "aew"
-    parser = build_parser()
-    old_stdin = sys.stdin
-    try:
-        sys.stdin = StringIO(body or "")
-        args = parser.parse_args(fields.expand(tokens, parser))
-    finally:
-        sys.stdin = old_stdin
-    if body is not None:
-        key, value = BODY_LINE.fullmatch(body.strip()).groups()
-        assert getattr(args, key) == value, (key, getattr(args, key), value)
-    if "--expect-rev" in tokens:
+        key, value = match.groups()
+        assert getattr(args, key) == value.replace("''", "'"), (key, getattr(args, key), value)
+    if "--expect-rev" in command:
         assert args.expect_rev == 17
     return args
 
 
-def _commands(message: str) -> list[tuple[str, bool]]:
-    """Every complete command a runtime message prints: each fenced ``sh`` block, then each inline code span outside
-    the blocks. The pair is the command and whether it is fenced."""
-    fenced = [(block, True) for block in BLOCK.findall(message)]
-    rest = BLOCK.sub("", message)
-    assert "EOF" not in rest and "<<" not in rest, f"a heredoc outside a fenced block: {message!r}"
-    return fenced + [(span, False) for span in re.findall(r"`(aew [^`]*)`", rest)]
+_commands = P.commands
 
 
 def _id_of(args: argparse.Namespace) -> str | None:
@@ -268,22 +235,6 @@ def test_changed_guidance_renders_parser_accepted_commands(
     assert ids - {None} == named, message
 
 
-@pytest.mark.parametrize("fenced", [True, False])
-def test_the_parse_check_refuses_a_broken_printed_command(fenced: bool) -> None:
-    """The check itself fails on each defect it exists for: an unterminated heredoc, an unquoted or wrong-key body,
-    a placeholder left unfilled, and a heredoc inside a code span."""
-    good = "aew invoke cancel INV-1 --expect-rev <revision from aew status> --fields - <<'EOF'\nreason: 'why'\nEOF"
-    if fenced:
-        assert _parse(good, fenced=True).reason == "why"
-        for broken in (good.removesuffix("\nEOF"), good.replace("'why'", "why"), good.replace("INV-1", "<INV>"),
-                       good.replace("reason:", "why:"), good + "\nEOF2"):
-            with pytest.raises((AssertionError, SystemExit, UsageError)):
-                _parse(broken, fenced=True)
-    else:
-        with pytest.raises(AssertionError):
-            _parse(good, fenced=False)
-
-
 def test_a_stage_launch_failure_keeps_the_stages_own_abandon_remedy(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
@@ -304,21 +255,19 @@ def test_a_relaunch_hint_without_an_invocation_names_where_to_find_one() -> None
     assert "<INV>" not in raised.value.message
 
 
-def test_a_quote_in_a_printed_reason_is_escaped_so_the_body_still_parses() -> None:
-    block = harness_contract.fields_command("aew invoke cancel INV-1 --expect-rev <revision from aew status>",
-                                            "reason", "it's done")
+@pytest.mark.parametrize("value", [
+    "it's done", "a\nb", "EOF", "x\nEOF\ny", "tab\there", "back\\slash \"quoted\"\n", "#1 : not a comment",
+    " line separator", "\x07bell", "emoji \U0001f600\r\n",
+])
+def test_fields_command_roundtrip(value: str) -> None:
+    """Whatever the value, the printed block is one command line, a body of one line, and `EOF` alone, and the value
+    arrives as written: a quote is doubled, and a line break or other unprintable character is escaped in a
+    double-quoted scalar, so no body line can be `EOF` (#313 review, N3)."""
+    block = harness_contract.fields_command(f"aew invoke cancel INV-1 {harness_contract.EXPECT_REV}", "reason", value)
     [(command, fenced)] = _commands(block)
-    assert fenced and "reason: 'it''s done'" in command
-    filled = command.replace(REVISION, "17")
-    head, _, rest = filled.partition(" <<'EOF'\n")
-    parser = build_parser()
-    old_stdin = sys.stdin
-    try:
-        sys.stdin = StringIO(rest.removesuffix("\nEOF"))
-        args = parser.parse_args(fields.expand(shlex.split(head)[1:], parser))
-    finally:
-        sys.stdin = old_stdin
-    assert args.reason == "it's done"
+    assert fenced and len(command.splitlines()) == 3
+    [args] = P.parse(command, fenced=True)
+    assert args.reason == value
 
 
 def test_harness_send_hands_the_runs_invocation_to_the_route_it_refuses_with(monkeypatch: pytest.MonkeyPatch) -> None:

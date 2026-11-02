@@ -215,7 +215,7 @@ def _launch_contract(p: PackInputs) -> list[str]:
         "### Credential and writeback",
         "",
         f"Set `AEW_INVOCATION_TOKEN={TOKEN_PLACEHOLDER}` for every `aew` command below.",
-        f"Run commands from the workspace: `aew -C \"{p.workspace}\" ...`",
+        f"Run commands from the workspace, as in `aew -C \"{p.workspace}\" whoami`",
     ]
     if "check.run" in ((p.card or {}).get("restrict", {}).get("operations") or p.role_def["engine_operations"]):
         lines.append("- Run a check: `aew check run <check-id>` (records sealed evidence bound to the snapshot)")

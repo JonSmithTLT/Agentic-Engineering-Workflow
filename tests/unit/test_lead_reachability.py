@@ -318,7 +318,8 @@ def _messages(tree):
 
 
 # Machine-readable fields that hold a command and nothing else; the message beside each names the operator.
-BARE_COMMAND_FIELDS = {"aew migrate --expect-rev N"}  # MigrationRequired's next_action (base.py)
+# MigrationRequired's next_action (base.py, coordination_ops.py): f"aew migrate {EXPECT_REV}", read without its field.
+BARE_COMMAND_FIELDS = {"aew migrate "}
 
 
 def test_no_message_in_aew_hands_an_operator_decision_to_whoever_reads_it():

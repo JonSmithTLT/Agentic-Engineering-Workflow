@@ -25,7 +25,7 @@ def test_the_workflow_contracts_classes_are_explained_with_their_examples():
     assert "not its size" in text and "lowering it needs a recorded decision" in text
     # Class 0 eligibility is the amendment's predicate, enforced at dispatch since M4-A (Q10 decided 2026-10-03).
     assert "**Class 0 eligibility** (enforced when a mutating Ticket is dispatched at Class 0)" in text
-    assert "never reclassified" in text and "aew work reclassify <T> --class N --reason" in text
+    assert "never reclassified" in text and "aew work reclassify <T> --class <0-4> --reason <reason>" in text
     assert "not defined yet" not in text
 
 

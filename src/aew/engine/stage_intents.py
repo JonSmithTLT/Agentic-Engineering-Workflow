@@ -450,13 +450,13 @@ class StageIntents:
             if observed not in LIVE_RUN:
                 step_n = last["n"] if last else "?"
                 inv = K.invocation_of_run(run) or "<invocation from aew harness status>"
-                relaunch = f"`aew harness launch {inv} --expect-rev <revision from aew status>`"
-                cancel_command = f"aew invoke cancel {inv} --expect-rev <revision from aew status>"
+                relaunch = f"`aew harness launch {inv} {K.EXPECT_REV}`"
+                cancel_command = f"aew invoke cancel {inv} {K.EXPECT_REV}"
                 if observed == K.UNCONFIRMED:  # the credential died with the launcher: relaunching is the remedy
                     # The stage's own remedies stay first: relaunch, or abandon the intent (an invoke cancel ends the
                     # invocation but leaves the intent unresolved; #313 review, F4).
                     abandon = K.fields_command(
-                        f"aew stage abandon {intent} --expect-rev <revision from aew status>",
+                        f"aew stage abandon {intent} {K.EXPECT_REV}",
                         "rationale", "stage launch failed")
                     cancel = K.fields_command(cancel_command, "reason", "stage launch failed")
                     return {"status": "no_supervisor", "run": run, "observed": observed,

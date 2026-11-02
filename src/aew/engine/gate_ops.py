@@ -38,6 +38,7 @@ from aew.engine import hierarchy as H
 from aew.engine.dispatch import Blocker, GuardRegistration, checked
 from aew.engine.guards import require
 from aew.errors import IllegalTransition, NotFound, OperatorAuthorizationRequired, UsageError, ValidationFailed
+from aew.harness.contract import EXPECT_REV
 from aew.knowledge.records import format_id
 from aew.schemas import validate
 from aew.util import safe_dump_yaml, sha256_bytes, utc_now
@@ -117,7 +118,7 @@ def stale_invocations(state: dict[str, Any], work_id: str, gate: str) -> list[di
     cancelled and dispatched again with its card (addendum 3)."""
     under = set(H.descendants(state, work_id))
     why = f"{work_id}'s mandatory gate `{gate}` was replaced on the record, so this invocation's context pack changed"
-    rev = "--expect-rev <revision from aew status>"
+    rev = EXPECT_REV
     out = []
     for inv_id, inv in sorted(state["invocations"].items()):
         if inv.get("status") != "active" or inv.get("work_unit") not in under:

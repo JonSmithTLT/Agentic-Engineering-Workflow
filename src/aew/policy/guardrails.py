@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from aew.harness.contract import EXPECT_REV, fields_command
 from aew.util import glob_any
 
 ALWAYS_PROTECTED = [".aew/**"]
@@ -61,6 +62,8 @@ def describe(violations: list[dict[str, str]], limit: int = 3) -> str:
 
 def scope_remedy(work_id: str) -> str:
     """What a Lead can do about a change outside its Ticket's scope (M3 dogfood report §6.6, E9)."""
-    return (f"A Ticket's scope is fixed when it is created: if the scope is wrong, cancel this Ticket "
-            f"(`aew work transition {work_id} --to CANCELLED --reason ...`) and create one with the scope the change "
-            "needs; if the change strayed outside it, have the implementer undo that part")
+    cancel = fields_command(f"aew work transition {work_id} --to CANCELLED {EXPECT_REV}", "reason",
+                            "its scope is wrong")
+    return ("A Ticket's scope is fixed when it is created: if the change strayed outside it, have the implementer undo "
+            "that part; if the scope is wrong, create a Ticket with the scope the change needs and cancel this one "
+            f"with:\n\n{cancel}")

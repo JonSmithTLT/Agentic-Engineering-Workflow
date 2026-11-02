@@ -21,6 +21,7 @@ from aew.engine import gates as G
 from aew.engine import transitions
 from aew.engine.base import TxnContext
 from aew.errors import AEWError, IllegalTransition, NotFound, PermissionDenied, UsageError, ValidationFailed
+from aew.harness.contract import EXPECT_REV
 from aew.operator import require_operator_attribution
 from aew.policy import checks as C
 from aew.policy import consistency
@@ -359,7 +360,8 @@ class Roles:
         if pinned and card.id not in pinned:
             raise PermissionDenied(
                 f"the operator pinned {pinned} for {work_id}'s execute slot; to dispatch {card.id}, change the role "
-                f"plan first with `aew work staff {work_id} --execute {card.id} --reason ...` (a recorded decision)",
+                f"plan first with `aew work staff {work_id} --execute {card.id} --reason <reason> {EXPECT_REV}` (a "
+                "recorded decision)",
                 pinned=pinned, requested=card.id)
 
     @staticmethod

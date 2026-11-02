@@ -20,12 +20,14 @@ sys.path.insert(0, str(ROOT / "tests" / "helpers"))
 sys.path.insert(0, str(ROOT / "tools" / "perf"))
 
 import control_plane as CP  # noqa: E402
+import printed_commands as P  # noqa: E402
 from conftest import run_aew  # noqa: E402
 from invariants import assert_control_invariants, load_control, with_cold  # noqa: E402
 
 from aew.engine.api import Engine  # noqa: E402
 from aew.engine.faults import CRASH_EXIT_CODE  # noqa: E402
 from aew.engine.store import serialize_control  # noqa: E402
+from aew.harness import contract as K  # noqa: E402
 from aew.history.index import HistoryIndex  # noqa: E402
 from aew.history.store import History  # noqa: E402
 
@@ -78,9 +80,10 @@ def test_a_v1_project_refuses_the_leads_mutations_until_it_is_migrated(tmp_path)
     refused = aew(t, "work", "create", "ticket", "--title", "New work", "--class", "1",
                   "--expect-rev", str(t.rev()))
     assert refused.error["code"] == "MIGRATION_REQUIRED", refused.stderr
-    assert refused.error["details"]["next_action"] == "aew migrate --expect-rev N"
+    migrate = f"aew migrate {K.EXPECT_REV}"  # the owner's text, and it runs as printed (ITEMS 56)
+    assert refused.error["details"]["next_action"] == migrate and P.parse(migrate, fenced=False)
     actions = aew(t, "resume", "--json").json["next_actions"]
-    assert any("aew migrate --expect-rev N" in a for a in actions)
+    assert any(f"`{migrate}`" in a for a in actions), actions
     # Reads work, and so do what the Lead needs to reach the migration: the seat, and ending work in flight.
     assert aew(t, "status", "--json").returncode == 0 and aew(t, "work", "tree").returncode == 0
     inv = next(i for i, v in read(t)["invocations"].items() if v["work_unit"] == "T-0003" and v["status"] == "active")

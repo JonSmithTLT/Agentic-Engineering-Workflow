@@ -23,6 +23,7 @@ from aew.errors import (
     StaleRevision,
     WorkspaceNotAuthority,
 )
+from aew.harness.contract import EXPECT_REV
 from aew.knowledge import render
 from aew.knowledge.manifest import AEW_DIR, MANIFEST, load_manifest
 from aew.knowledge.records import decision_record, format_id
@@ -400,9 +401,9 @@ class Kernel:
                 if s.state.get("schema") != V2 and op not in V1_OPS and not self.legacy_v1_writes:
                     raise MigrationRequired(
                         "this project's control state is v1: migrate it first (the operator runs `aew migrate "
-                        "--expect-rev N` at their own terminal); until then the Lead can change the seat and cancel "
+                        f"{EXPECT_REV}` at their own terminal); until then the Lead can change the seat and cancel "
                         "invocations, and the operator can adopt the manifest",
-                        schema=s.state.get("schema"), next_action="aew migrate --expect-rev N")
+                        schema=s.state.get("schema"), next_action=f"aew migrate {EXPECT_REV}")
                 if not _adopting_manifest:
                     self.check_manifest_pin(s.state)
                 # Adoption validates and pins the files itself; every other transaction reads policy held to its pins.

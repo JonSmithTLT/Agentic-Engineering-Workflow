@@ -50,6 +50,7 @@ from aew.errors import (
     UsageError,
     ValidationFailed,
 )
+from aew.harness.contract import EXPECT_REV
 from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
 from aew.snapshot.fingerprint import changed_paths
@@ -150,7 +151,7 @@ class Inputs:
             raise InputStale(
                 f"{work_id} consumes {len(stale)} source-bound record(s) that no longer match the authoritative source "
                 "they would be used against; refresh them (a new CURRENT record) or acknowledge them for this commit "
-                f"with `aew work acknowledge-input {work_id} --input <E> --from <T> --reason ...`",
+                f"with `aew work acknowledge-input {work_id} --input <E> --from <T> --reason <reason> {EXPECT_REV}`",
                 inputs=stale, authoritative_commit=commit)
         return pinned
 
@@ -202,11 +203,12 @@ class NonMutating:
         self.archive = archive
 
     _MUTATING_INSTEAD = {
-        "`aew work dispatch`": "start a mutating Ticket with `aew work assign {w} --launch`",
+        "`aew work dispatch`": f"start a mutating Ticket with `aew work assign {{w}} --launch {EXPECT_REV}`",
         "`aew work redispatch`": "a mutating Ticket gets a new implementer with "
-                                 "`aew invoke create {w} --role implementer --launch`",
+                                 f"`aew invoke create {{w}} --role implementer --launch {EXPECT_REV}`",
         "`aew evidence ingest`": "a mutating Ticket's implementation report is accepted by its transition, "
-                                 "`aew work transition {w} --to REVIEW_PENDING` (or VERIFY_PENDING or COMMIT_READY, "
+                                 f"`aew work transition {{w}} --to REVIEW_PENDING {EXPECT_REV}` (or VERIFY_PENDING "
+                                 "or COMMIT_READY, "
                                  "as its gates allow); reviews and verifications use `aew review ingest` and "
                                  "`aew verify ingest`",
     }
@@ -433,7 +435,7 @@ class NonMutating:
             st = unit["state"]
             if st in EXECUTE_STATES:
                 raise IllegalTransition(f"{work_id}'s executor is dispatched per attempt (one active executor per "
-                                        f"attempt): use `aew work redispatch {work_id} --reason ...`")
+                                        f"attempt): use `aew work redispatch {work_id} --reason <reason> {EXPECT_REV}`")
             slot = {"REVIEW_PENDING": "review", "VERIFY_PENDING": "verify"}.get(st)
             if slot is None:
                 raise IllegalTransition(f"no role is dispatched for {work_id} in state {st}")
@@ -625,7 +627,8 @@ class NonMutating:
         fresh = F.record_freshness(self.k.repo_root, ev, commit)
         if fresh.get("source_bound") and fresh["status"] != F.CURRENT:
             return {"status": G.STALE, "evidence": rec["id"], "freshness": fresh,
-                    "action": f"`aew work redispatch {work_id}` for a record of the current source"}
+                    "action": f"`aew work redispatch {work_id} --reason <reason> {EXPECT_REV}` for a record of the "
+                              "current source"}
         return {"status": G.CURRENT, "evidence": rec["id"], "freshness": fresh}
 
     def evidence_gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:

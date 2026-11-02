@@ -56,6 +56,7 @@ from aew.harness.contract import (
     AGENT_LOAD_TIMEOUT,
     CATALOG_TIMEOUT,
     CREDENTIAL_PATTERNS,
+    EXPECT_REV,
     LONG_TOKEN,
     PROVIDER_AUTH_FAILED,
     REDACTION_FORMS,
@@ -262,7 +263,7 @@ class OpenCodeAdapter(HarnessAdapter):
         """The complete command for recovering this invocation's run."""
         contract = getattr(self, "contract", None)
         invocation = contract.invocation if contract is not None else "<invocation from aew harness status>"
-        return f"`aew harness launch {invocation} --expect-rev <revision from aew status>`"
+        return f"`aew harness launch {invocation} {EXPECT_REV}`"
 
     def launch(self, contract: LaunchContract, agent_env: dict[str, str]) -> dict[str, Any]:
         self.contract = contract

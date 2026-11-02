@@ -1682,5 +1682,7 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   `fstat` after it), at most the run log's record bound (`MAX_RECORD_BYTES`, 16 MiB). Any other file is no record:
   its process is no host, and a label it holds exempts nothing. A scan that fails for any reason ends the entry
   unowned, never clean.
+- **The marker is the one `AEW_*` variable a harness server receives** (#321's review, F6): the server, and all it
+  starts, carry it so the scan finds them. Its value is the path of the context's record, never a credential.
 - **Tests:** `tests/integration/test_lead_uncontained.py`, `tests/unit/test_weaker_register.py`,
   `tests/unit/test_launch_census.py` (every process start in `src/` and `eval/`, classified).

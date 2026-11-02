@@ -160,7 +160,7 @@ class FakeOpenCode:
                    "flags": {k: os.environ.get(k) for k in ("OPENCODE_DISABLE_PROJECT_CONFIG",
                                                              "OPENCODE_DISABLE_AUTOUPDATE", "XDG_CONFIG_HOME",
                                                              "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
-                                                             "TEMP")},
+                                                             "TEMP", "AEW_CONTEXT")},
                    # the variables whose value is a relay sentinel (F28 §3.6 row 6): a name, never a value
                    "sentinel_names": sorted(k for k, v in os.environ.items() if v.startswith("aew-relay-")),
                    "proxy": {k: os.environ.get(k) for k in ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY")},

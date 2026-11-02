@@ -28,6 +28,7 @@ def dogfood(monkeypatch, tmp_path):
     monkeypatch.setattr(module, "profile_of", lambda model: {"provider": "fakeprov", "model": "fake-model"})
     monkeypatch.setattr(module, "provider_env", lambda profile: [])
     monkeypatch.setattr(module, "scan_secrets", lambda where, secret: {})
+    monkeypatch.setattr(module, "git", lambda repo, *args: "")  # its check that the real checkout stayed untouched
     return module
 
 

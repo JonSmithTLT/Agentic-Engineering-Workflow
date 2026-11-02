@@ -815,6 +815,7 @@ def test_a_contained_lead_on_the_hosts_network_is_live_in_the_register_while_it_
     monkeypatch.setattr(lead.ContainedLead, "_inside", lambda self, *a, **k: {"PATH": "/usr/bin"})
     monkeypatch.setattr(lead.ContainedLead, "_retire", lambda self, *a, **k: None)
     harness = _weaker_lead(tmp_path, monkeypatch, SimpleNamespace(private_network=False), shared)
+    assert harness.entry is not None, "a weaker label enters the register"
     harness.entry.started()
     assert harness.relay and [x["why"] for x in _live_lead(harness)] == ["running"]
     assert harness.env["AEW_CONTEXT"] == harness.entry.data["marker"], "the sandboxed TUI carries its marker"

@@ -63,6 +63,7 @@ def test_under_required_a_check_whose_sandbox_cannot_be_established_is_refused_n
     assert containment.ALLOW_WEAKER_REMEDY in refused.value.message and "Nothing ran" in refused.value.message
     assert refused.value.details["self_test"] == {"ok": False}
     assert ran == [], "no check process started"
+    assert not list((tmp_path / ".aew/local/harness/runs").glob("check-*")), "nothing ran in its directory (N3)"
 
 
 def test_a_contained_check_runs_in_its_sandbox_and_writes_no_register_entry(direct, tmp_path, monkeypatch):
@@ -82,6 +83,10 @@ def test_where_the_policy_allows_it_a_weaker_check_runs_labelled_and_live_in_the
     commands, _, ran = direct
     weaker = containment.label(contained=False, reason="the execution policy allows weaker runs")
     monkeypatch.setattr(containment, "establish", lambda **kw: (None, weaker))
+    # an owner that held the whole tree and a clean scan: on Linux a bare process group's end is unowned, so that
+    # its run keeps its label (the next test)
+    monkeypatch.setattr(W, "ownership_of", lambda label: "subreaper")
+    monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: W.Scan(procs=[], boot="boot-1", now_ticks=1))
     out = call(commands, tmp_path)
     [given] = ran
     assert given["layout"] is None and "check_run" in given["live"], "entered before the check started"

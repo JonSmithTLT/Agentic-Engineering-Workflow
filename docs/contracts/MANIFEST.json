@@ -308,14 +308,14 @@
    "sha256": "c20e6a673dccc077588e58d1a8e57bb69f8dbc6befd12a7b3b6c2cb28849b1c9"
   },
   {
-   "path": "A-32/AEW-86-Action-Classification-2026-10-22.json",
+   "path": "A-32/AEW-86-Action-Classification-2026-10-29-A46.json",
    "generated": "do not edit; regenerated from the adopted design text (see README.md)",
    "position": "A-32",
-   "source": "20-register/scope/adopted/classification-2026-10-22/AEW-86-Action-Classification-2026-10-22.json",
-   "source-sha256": "67f614fc8968b3fc1d64555b516449afbccdab2d80714cee26b97af2704e2e84",
+   "source": "20-register/scope/AEW-86-Action-Classification-2026-10-29-A46.json",
+   "source-sha256": "3e1d10a80ced9828fa0f2b9d9e478965e40088bc39f847bdab6b29f8258c3798",
    "edits-sha256": "none",
    "header": false,
-   "sha256": "67f614fc8968b3fc1d64555b516449afbccdab2d80714cee26b97af2704e2e84"
+   "sha256": "3e1d10a80ced9828fa0f2b9d9e478965e40088bc39f847bdab6b29f8258c3798"
   },
   {
    "path": "A-33/BUILD-BRIEF-PROPOSED.md",
@@ -496,6 +496,56 @@
    "edits-sha256": "none",
    "header": true,
    "sha256": "86d56cd517b602525c5f26ddc066c7277261619aad68d0014720bdf34d07f0aa"
+  },
+  {
+   "path": "A-47/LB01-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-47",
+   "source": "30-stages/STG-23-LB01-checked-launch-briefs/adopted/lb01-r3/LB01-POSITION.md",
+   "source-sha256": "65e697b2c22324dc8aba8fcf11da0319d0eda6f39514685469c6321dd26a88ea",
+   "edits-sha256": "d94a29298765d93834077aa3b98969c98a6c0a5051d3467bfcd46f1cfbf647e1",
+   "header": true,
+   "sha256": "4e3e75ff4f787e8b862ffd9c2430c038641b87d34cde3942ccbabf7c80714801"
+  },
+  {
+   "path": "A-49/TB01-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-49",
+   "source": "30-stages/STG-24-I4B7-determination-producers-in-the-trust-basis/adopted/tb01-r4/TB01-POSITION.md",
+   "source-sha256": "211878604f7b34f0cc6304143904a4455318de01f66dfbd43279983be7435444",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "74703fad609fed3b6f5ede0fa28671ccabbde29af701f3ac8c283f4b639cddd8"
+  },
+  {
+   "path": "A-50/PL01-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-50",
+   "source": "30-stages/STG-25-PoC-request-link-carrier/adopted/pl01-r3/PL01-POSITION.md",
+   "source-sha256": "6180835b42ef0c5c8109dedfbc7c7b64c48322a6cbe9a0110a00081e17a395b0",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "5c8a58a4bd0ce379f81894d138ac45c4b5cb12dd1fba8298f4f42be92ef329af"
+  },
+  {
+   "path": "A-51/AP5-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-51",
+   "source": "30-stages/STG-26-A05-section-5-rows/adopted/ap5-r4/AP5-POSITION.md",
+   "source-sha256": "e1448944c1a4677b5e49c1b7078f4a155d3ddbb6bcf25a879257afef362e0ab2",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "89690e013664f60882cc9769347c14677f7e85122546ab67f2c8306aa3a6b8f9"
+  },
+  {
+   "path": "A-52/RHC-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-52",
+   "source": "30-stages/STG-27-A05-resource-ceilings-row/adopted/rhc-r4/RHC-POSITION.md",
+   "source-sha256": "fc9ff906eeaefa5d19eeddf23bd9f9faabe716295ce428f4d568d348e8eafa10",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "ab1ff3ac47809390f97f456def13d55e35fab17a0fca8da2687049bf5318e9c2"
   },
   {
    "path": "A-25/aew-d01-read-v0.3.4-FULL.schema.json",

@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from aew import SPEC_SET
-from aew.engine import usage_ops
+from aew.engine import gate_ops, usage_ops
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
 from aew.engine.base import POLICY_PINS, Kernel, TxnContext, check_policy_bytes, policy_files
@@ -30,6 +30,7 @@ from aew.engine.custody_ops import Custody, spawn_worker
 from aew.engine.dispatch import Dispatch
 from aew.engine.disposition_ops import Dispositions
 from aew.engine.evidence_ops import EvidenceCommands, Gates
+from aew.engine.gate_ops import GateRepair
 from aew.engine.guards import GuardQueries
 from aew.engine.harness_ops import Harness
 from aew.engine.hierarchy_ops import Hierarchy
@@ -320,6 +321,10 @@ class ProjectAdmin:
         found = self.roles.policy_problems()
         add("policy:consistency", "FAIL" if found else "PASS",
             " ".join(found) if found else "gates, checks and role cards agree")
+        try:  # ITEMS 55: units stuck on an inherited gate that can never be satisfied, and the route that repairs them
+            add("gates:satisfiable", *gate_ops.doctor(state, self.roles.gate_catalogue()))
+        except AEWError as exc:  # an invalid policy or catalogue is reported above
+            add("gates:satisfiable", "FAIL", f"{exc.code}: {exc}")
         try:
             execution, _ = self.k.execution_policy()
             if execution is None or not execution["configured"]:
@@ -453,6 +458,7 @@ class Engine:
                                     archive=archive)
         self._dispatch = dispatch = Dispatch(k)
         self._assurance = assurance = Assurance(k, gates=gates)
+        self._gate_repair = gate_repair = GateRepair(k, units=units, roles=roles)  # ITEMS 55
         self._work = work = WorkCommands(k, units=units, roles=roles, invocations=invocations, archive=archive,
                                          coordination=coordination)
         self._assignment = assignment = Assignment(k, units=units, roles=roles, invocations=invocations,
@@ -504,7 +510,7 @@ class Engine:
             kinds.register_all(owner.kind_registrations())
         kinds.require_complete()
         # M4-A: every dispatch entrypoint's guards, by the collaborator that owns each check.
-        for owner in (assignment, nm, evidence, hierarchy, harness, assurance, integration, queue):
+        for owner in (assignment, nm, evidence, hierarchy, harness, assurance, gate_repair, integration, queue):
             dispatch.register_all(owner.dispatch_guards())
         dispatch.require_complete()
         # M4-E E4: the migrated transition and ingest guards, each the query its own execute path calls first.
@@ -513,6 +519,7 @@ class Engine:
         queries.register("review.ingest", evidence.review_ingest_query)
         queries.register("work.create", work.create_query)
         queries.register("plan.propose", work.propose_query)
+        queries.register("work.gate_replace", gate_repair.replace_query)
         queries.register("verify.ingest", evidence.scoped_verify_query("ticket"))
         queries.register("integrate.prepare", integration.prepare_query)
         queries.register("verify.ingest.integration", evidence.scoped_verify_query("integration"))
@@ -1380,6 +1387,17 @@ class Engine:
                      risk_class: int | None = None) -> dict[str, Any]:
         return self._hierarchy.work_promote(token=token, expect_rev=expect_rev, work_id=work_id, to=to, title=title,
                                             reason=reason, risk_class=risk_class)
+
+    def work_gate_replace(self, *, token: str, expect_rev: int, subject: str, replacement: str | None,
+                          rationale: str) -> dict[str, Any]:
+        """Replace a parent's mandatory gate that can never be satisfied, on the record (ITEMS 55, option (b)): the
+        `resolve` tool's `replace_gate`."""
+        return self._gate_repair.gate_replace(token=token, expect_rev=expect_rev, subject=subject,
+                                              replacement=replacement, rationale=rationale)
+
+    def gate_items(self, subject: str | None = None, *, state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """The open stuck-gate items (ITEMS 55): resume, status and doctor name them; `resolve` settles them."""
+        return self._gate_repair.gate_items(self._k.store.current() if state is None else state, subject)
 
     def work_reclassify(self, *, token: str, expect_rev: int, work_id: str, risk_class: int,
                         reason: str) -> dict[str, Any]:

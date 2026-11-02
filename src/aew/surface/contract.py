@@ -129,10 +129,14 @@ STEERING_ARGUMENTS = {"lower": (("mode",), ("mode", "rationale")),
 # kinds (aew/schemas/disposition.schema.json, tested). A1a-2 and A2 add pairs.
 STAGE_SUBJECTS = ("stage_intent",)
 DISPOSITION_SUBJECTS = ("finding", "claim", "anomaly")
+# A parent's stuck gate, `<parent>#gate:<gate>` (ITEMS 55, designer addendum 4): only `replace_gate` takes it, and that
+# choice alone takes, and needs, the `replacement` gate (checked by the adapter).
+GATE_SUBJECTS = ("gate",)
 RESOLVE_CHOICE_PRIMITIVE: dict[tuple[str, str], str] = {
     **{(choice, kind): "stage.resolve" for choice in ("continue", "abandon") for kind in STAGE_SUBJECTS},
     **{(choice, kind): "work.dispose" for choice in ("accept_risk", "follow_up", "not_applicable")
        for kind in DISPOSITION_SUBJECTS},
+    **{("replace_gate", kind): "work.gate_replace" for kind in GATE_SUBJECTS},
 }
 
 
@@ -143,6 +147,7 @@ def _choices_running(*primitives: str) -> tuple[str, ...]:
 
 STAGE_CHOICES = _choices_running("stage.resolve")
 DISPOSITION_CHOICES = _choices_running("work.dispose")
+GATE_CHOICES = _choices_running("work.gate_replace")
 RESOLVE_CHOICES = _choices_running()
 
 # Handoff text stays a bounded mechanism, not a free-form memory store (operator, 2026-10-05).
@@ -240,12 +245,13 @@ TOOLS: dict[str, Tool] = _catalog(
                "subject": {"type": "string", "minLength": 1, "description": "a stage intent, finding or anomaly id"},
                "choice": {"enum": list(RESOLVE_CHOICES)},
                "follow_up": WORK_ID_PATTERN,
+               "replacement": {"type": "string"},  # not blank: checked by the adapter, as the rationale is
                "rationale": TEXT},  # required, and not blank: checked by the adapter (aew.surface.validate)
               ("expect_rev", "subject", "choice", "rationale")),
          # One primitive per call, chosen by `choice` (not a sequence): a stage's resolution, or a disposition's (PR 182
          # review, n2), each with its own judgment. Neither field is advertised.
          expands_to=tuple(dict.fromkeys(RESOLVE_CHOICE_PRIMITIVE.values())),
-         required_judgments=("stage_resolution", "disposition"),
+         required_judgments=("stage_resolution", "disposition", "gate_replacement"),
          mutates=True, progression=True),
     # ---- the recovery escape: catalogued, never on the normal profile (§12.2)
     Tool("cli", PRIMITIVE, JUDGMENT_BEARING,

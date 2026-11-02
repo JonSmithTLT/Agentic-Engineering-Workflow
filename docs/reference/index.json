@@ -1,8 +1,8 @@
 {
   "counts": {
     "by_coverage": {
-      "complete-by-construction": 403,
-      "lower-bound": 738
+      "complete-by-construction": 404,
+      "lower-bound": 741
     },
     "by_family": {
       "cli-commands": 116,
@@ -14,17 +14,17 @@
       "dashboard-routes": 24,
       "entry-points": 7,
       "guards": 11,
-      "layout": 75,
-      "modules": 191,
+      "layout": 76,
+      "modules": 192,
       "reason-rules": 56,
-      "schemas": 31,
+      "schemas": 32,
       "sqlite-tables": 10,
       "states": 17,
       "stg02-routes": 24,
       "tools": 16,
       "transitions": 94,
       "usage-live-states": 3,
-      "writers": 270
+      "writers": 271
     },
     "by_family_and_coverage": {
       "cli-commands": {
@@ -58,16 +58,16 @@
         "complete-by-construction": 11
       },
       "layout": {
-        "lower-bound": 75
+        "lower-bound": 76
       },
       "modules": {
-        "lower-bound": 191
+        "lower-bound": 192
       },
       "reason-rules": {
         "complete-by-construction": 56
       },
       "schemas": {
-        "complete-by-construction": 31
+        "complete-by-construction": 32
       },
       "sqlite-tables": {
         "lower-bound": 10
@@ -89,12 +89,12 @@
         "lower-bound": 3
       },
       "writers": {
-        "lower-bound": 270
+        "lower-bound": 271
       }
     },
-    "digest": "sha256:f85e400fbff69c6314c09947eaee9cf38ddc7e40ac1d8477b6378cfc9bcf122d",
-    "records": 1141,
-    "unresolved": 111
+    "digest": "sha256:955a6894bbb2ddb9123e51bb92fc9527c55c209314a02d1c7057a9733a43dec6",
+    "records": 1145,
+    "unresolved": 112
   },
   "gaps": [
     {
@@ -408,6 +408,12 @@
       "module": "aew.engine.faults",
       "symbol": "pause",
       "why": "open of a path this reading cannot place: element 2 of `item.partition(...)`, a callee this reading cannot name"
+    },
+    {
+      "family": "writers",
+      "module": "aew.engine.gate_ops",
+      "symbol": "GateRepair._write",
+      "why": "no static call chain from any entry point's declaring function reaches this writer"
     },
     {
       "family": "writers",
@@ -18117,6 +18123,69 @@
       },
       "family": "layout"
     },
+    "layout:work/{}/gate-corrections": {
+      "anchor": {
+        "module": "aew.engine.gate_ops",
+        "symbol": "GateRepair._write"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry"
+          },
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "git_ignored": false,
+        "masked_by_containment": false,
+        "named_by": [],
+        "prefix": "work/{}/gate-corrections",
+        "readers": [],
+        "store": false,
+        "writers": [
+          {
+            "module": "aew.engine.gate_ops",
+            "symbol": "GateRepair._write"
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "readers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry"
+            }
+          ]
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            }
+          ]
+        }
+      },
+      "family": "layout"
+    },
     "layout:work/{}/stage-intents": {
       "anchor": {
         "module": "aew.engine.stage_intents",
@@ -19175,6 +19244,7 @@
         "aew.engine.dispatch",
         "aew.engine.disposition_ops",
         "aew.engine.evidence_ops",
+        "aew.engine.gate_ops",
         "aew.engine.guards",
         "aew.engine.harness_ops",
         "aew.engine.hierarchy_ops",
@@ -19620,6 +19690,34 @@
         "aew.workspace.git"
       ]
     },
+    "modules:aew.engine.gate_ops": {
+      "anchor": {
+        "module": "aew.engine.gate_ops",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/gate_ops.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.base",
+        "aew.engine.dispatch",
+        "aew.engine.gates",
+        "aew.engine.guards",
+        "aew.engine.hierarchy",
+        "aew.engine.ports",
+        "aew.errors",
+        "aew.knowledge.records",
+        "aew.schemas",
+        "aew.util"
+      ]
+    },
     "modules:aew.engine.gates": {
       "anchor": {
         "module": "aew.engine.gates",
@@ -19636,6 +19734,7 @@
       },
       "family": "modules",
       "imports": [
+        "aew.engine.hierarchy",
         "aew.knowledge.manifest",
         "aew.policy.checks",
         "aew.policy.validation"
@@ -20013,6 +20112,7 @@
       "imports": [
         "aew.engine.base",
         "aew.engine.dispatch",
+        "aew.engine.gates",
         "aew.engine.store",
         "aew.history.index",
         "aew.knowledge.context",
@@ -20130,6 +20230,7 @@
         "aew",
         "aew.engine.base",
         "aew.engine.dependencies",
+        "aew.engine.gate_ops",
         "aew.engine.gates",
         "aew.engine.guide",
         "aew.engine.hierarchy",
@@ -20169,6 +20270,7 @@
         "aew.engine.transitions",
         "aew.errors",
         "aew.operator",
+        "aew.policy.checks",
         "aew.policy.consistency",
         "aew.roles",
         "aew.util"
@@ -20413,6 +20515,8 @@
         "aew.engine.base",
         "aew.engine.dependencies",
         "aew.engine.dispatch",
+        "aew.engine.gate_ops",
+        "aew.engine.gates",
         "aew.engine.guards",
         "aew.engine.hierarchy",
         "aew.engine.ports",
@@ -21946,6 +22050,7 @@
       },
       "family": "modules",
       "imports": [
+        "aew.engine.gates",
         "aew.policy.validation"
       ]
     },
@@ -25594,6 +25699,87 @@
           "routing",
           "routing.default",
           "schema"
+        ]
+      },
+      "fact_coverage": {
+        "properties": {
+          "check": [
+            "tests/integration/test_reference_interfaces.py::test_every_registered_schema_flattens_with_its_unresolved_items_named",
+            "tests/integration/test_reference_interfaces.py::test_the_schema_records_are_the_registry_and_the_directory_both_ways"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.schemas:SCHEMAS"
+        },
+        "required": {
+          "check": [
+            "tests/integration/test_reference_interfaces.py::test_every_registered_schema_flattens_with_its_unresolved_items_named",
+            "tests/integration/test_reference_interfaces.py::test_the_schema_records_are_the_registry_and_the_directory_both_ways"
+          ],
+          "label": "complete-by-construction",
+          "registry": "aew.schemas:SCHEMAS"
+        }
+      },
+      "family": "schemas"
+    },
+    "schemas:gate-correction": {
+      "anchor": {
+        "module": "aew.schemas",
+        "symbol": "SCHEMAS"
+      },
+      "basis": "enumerated",
+      "coverage": {
+        "check": [
+          "tests/integration/test_reference_interfaces.py::test_every_registered_schema_flattens_with_its_unresolved_items_named",
+          "tests/integration/test_reference_interfaces.py::test_the_schema_records_are_the_registry_and_the_directory_both_ways"
+        ],
+        "label": "complete-by-construction",
+        "registry": "aew.schemas:SCHEMAS"
+      },
+      "fact": {
+        "file": "gate-correction.schema.json",
+        "id": "aew/gate-correction/v1",
+        "name": "gate-correction",
+        "properties": {
+          "at": "string",
+          "by": "object",
+          "expected_revision": "integer",
+          "generation": "integer",
+          "id": "string",
+          "reason": "string",
+          "replaced": "string",
+          "rev": "integer",
+          "schema": "const",
+          "stale_invocations": "array",
+          "stale_invocations[]": "object",
+          "stale_invocations[].commands": "array",
+          "stale_invocations[].commands[]": "string",
+          "stale_invocations[].fields": "object",
+          "stale_invocations[].fields.*": "string",
+          "stale_invocations[].invocation": "string",
+          "stale_invocations[].role": "null|string",
+          "stale_invocations[].work_id": "string",
+          "with": "string",
+          "work_unit": "string"
+        },
+        "registered": true,
+        "required": [
+          "at",
+          "by",
+          "expected_revision",
+          "generation",
+          "id",
+          "reason",
+          "replaced",
+          "rev",
+          "schema",
+          "stale_invocations",
+          "stale_invocations[].commands",
+          "stale_invocations[].fields",
+          "stale_invocations[].invocation",
+          "stale_invocations[].role",
+          "stale_invocations[].work_id",
+          "with",
+          "work_unit"
         ]
       },
       "fact_coverage": {
@@ -30289,13 +30475,15 @@
           "expect_rev",
           "follow_up",
           "rationale",
+          "replacement",
           "subject"
         ],
         "class": "JUDGMENT_BEARING",
         "dispatches": false,
         "expands_to": [
           "stage.resolve",
-          "work.dispose"
+          "work.dispose",
+          "work.gate_replace"
         ],
         "kind": "stage",
         "mutates": true,
@@ -30313,7 +30501,8 @@
         ],
         "required_judgments": [
           "stage_resolution",
-          "disposition"
+          "disposition",
+          "gate_replacement"
         ],
         "status": "built"
       },
@@ -46625,6 +46814,62 @@
             {
               "module": "aew.engine.disposition_ops",
               "symbol": "Dispositions._write",
+              "why": "no static call chain from any entry point's declaring function reaches this writer"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:work/{}/gate-corrections/{}.yaml": {
+      "anchor": {
+        "module": "aew.engine.gate_ops",
+        "symbol": "GateRepair._write"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "work",
+        "named_by": [],
+        "prefix": "work/{}/gate-corrections/{}.yaml",
+        "writers": [
+          {
+            "entry_kinds": [],
+            "entry_points": [],
+            "mechanism": "store-transaction",
+            "module": "aew.engine.gate_ops",
+            "symbol": "GateRepair._write",
+            "via": [
+              "session.write"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.engine.gate_ops",
+              "symbol": "GateRepair._write",
               "why": "no static call chain from any entry point's declaring function reaches this writer"
             }
           ]

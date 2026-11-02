@@ -55,7 +55,8 @@ def check_call(name: Any, arguments: Any, profile: str) -> Tool:
 
 def _check_resolve(arguments: dict[str, Any]) -> None:
     """Kept out of the schema to keep the advertised bytes (plan v3 §2.6), input errors all the same: the rationale is
-    never blank, and only the `follow_up` choice takes, and needs, the `follow_up` Ticket (M4-E E5b)."""
+    never blank, only the `follow_up` choice takes, and needs, the `follow_up` Ticket (M4-E E5b), and only the
+    `replace_gate` choice takes, and needs, a `replacement` that is not blank (ITEMS 55, addendum 4)."""
     if not arguments["rationale"].strip():
         raise AdapterInputError("INVALID_ARGUMENTS", "resolve: the rationale says why, and is never blank",
                                 violations=["rationale: blank"])
@@ -64,6 +65,12 @@ def _check_resolve(arguments: dict[str, Any]) -> None:
             "INVALID_ARGUMENTS", "resolve: the follow_up choice names the Ticket that follows it up, and only it",
             violations=["follow_up: required for choice follow_up" if arguments["choice"] == "follow_up"
                         else f"follow_up: not taken by choice {arguments['choice']}"])
+    gate, given = arguments["choice"] in contract.GATE_CHOICES, "replacement" in arguments  # addendum 4 (ITEMS 55)
+    if gate != given or (gate and not arguments["replacement"].strip()):
+        why = (f"replacement: not taken by choice {arguments['choice']}" if given and not gate else
+               "replacement: blank" if given else "replacement: required for choice replace_gate")
+        raise AdapterInputError("INVALID_ARGUMENTS", "resolve: the replace_gate choice names the gate that replaces "
+                                                     "the stuck one, and only it", violations=[why])
 
 
 def _check_steering(arguments: dict[str, Any]) -> None:

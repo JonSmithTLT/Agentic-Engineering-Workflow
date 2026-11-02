@@ -1,7 +1,7 @@
 {
- "status": "PROPOSED FOR ADOPTION (lead designer, 2026-10-22); adopted rows follow their adoptions; remaining rows proposed",
+ "status": "A-32 regenerated after A-46 (lead designer, 2026-10-29-A46), as A-32 asks; adopted rows follow their adoptions; remaining rows as A-32 adopted them, as planning keys; needs no adoption of its own",
  "method": "working-method v0.4 amendment 1, A6.3; rules in tools/classify_actions.py",
- "supersedes": "20-register/scope/AEW-86-Action-Classification-2026-10-19.json (proposed, never adopted; kept as history)",
+ "supersedes": "20-register/scope/AEW-86-Action-Classification-2026-10-25-A43.json (A-32 regenerated after A-43), and through it 20-register/scope/AEW-86-Action-Classification-2026-10-25.json (A-32 regenerated after A-39), 20-register/scope/AEW-86-Action-Classification-2026-10-23.json (A-32 regenerated after A-34) and 20-register/scope/AEW-86-Action-Classification-2026-10-22.json (A-32, adopted; frozen in 20-register/scope/adopted/)",
  "inputs": [
   "10-adopted/RECONCILED-SOURCE-BASELINE/06-SCOPE/operator-scope-86-actions.json",
   "10-adopted/RECONCILED-SOURCE-BASELINE/08-NEXT-DESIGN/p0-action-coverage.json",
@@ -9,17 +9,24 @@
   "30-stages/STG-07-I5-work-and-scope-decisions/adopted/o01-0.4-i5/wire/action-registry-0.4.json",
   "30-stages/STG-08-I3-adc-authority-and-grants/adopted/o01-0.5-i3/wire/action-registry-0.5.json",
   "30-stages/STG-09-I4-aev-assurance-and-holds/adopted/o01-0.6-i4/wire/action-registry-0.6.json",
+  "30-stages/STG-10-I2-heb-child-execution-control/adopted/o01-0.7-i2/wire/action-registry-0.7.json",
+  "30-stages/STG-14-I6-resource-model-and-host-policy/adopted/o01-0.8-i6/wire/action-registry-0.8.json",
+  "30-stages/STG-19-I7-research-links-and-mission-wire/adopted/o01-0.9-i7/wire/action-registry-0.9.json",
   "30-stages/STG-07-I5-work-and-scope-decisions/adopted/o01-0.4-i5/I5-PROFILE.md",
-  "30-stages/STG-09-I4-aev-assurance-and-holds/adopted/o01-0.6-i4/I4-PROFILE.md"
+  "30-stages/STG-09-I4-aev-assurance-and-holds/adopted/o01-0.6-i4/I4-PROFILE.md",
+  "30-stages/STG-10-I2-heb-child-execution-control/adopted/o01-0.7-i2/I2-PROFILE.md",
+  "30-stages/STG-14-I6-resource-model-and-host-policy/adopted/o01-0.8-i6/I6-PROFILE.md",
+  "30-stages/STG-19-I7-research-links-and-mission-wire/adopted/o01-0.9-i7/I7-PROFILE.md",
+  "30-stages/STG-22-U01-upgrade-and-recovery/adopted/u01-r3/U01-POSITION.md"
  ],
  "counts": {
-  "WIRED": 37,
-  "SERVED": 1,
-  "NO_COMMAND": 2,
-  "DEFERRED": 1,
+  "WIRED": 50,
+  "SERVED": 3,
+  "NO_COMMAND": 4,
+  "DEFERRED": 5,
   "READ": 19,
   "MANUAL_LOCAL": 5,
-  "COMMAND": 21
+  "COMMAND": 0
  },
  "data_defects": [
   {
@@ -58,7 +65,7 @@
     "C20"
    ],
    "note": "stop, quiesce, resume, release and discard of child runs; remote effects stay unknown",
-   "adopted_as": null
+   "adopted_as": "A-34"
   },
   {
    "id": "I-3",
@@ -122,19 +129,19 @@
     "U10"
    ],
    "note": "resource policy issuer, R-01, IF-13, S-01, U-01",
-   "adopted_as": null
+   "adopted_as": "A-39"
   },
   {
    "id": "I-7",
-   "name": "Waits on unselected domain contracts",
+   "name": "Research, links and the mission",
    "actions": [
     "W11",
     "W12",
     "W13",
     "W14"
    ],
-   "note": "RX-01, K-01 and P-01 must be selected first; no O-01 work until then",
-   "adopted_as": null
+   "note": "A-32 named it \"waits on unselected domain contracts\"; RX-01, K-01 and P-01 were selected before it (2026-10-25)",
+   "adopted_as": "A-43"
   }
  ],
  "actions": [
@@ -341,9 +348,13 @@
    "owner_text": "HEB actual process/custody stop and separately unknown external effects",
    "adopted_coverage": null,
    "increment": "I-2",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "HEB"
+   "cls": "WIRED",
+   "wire_action": "STOP_CHILD_NOW",
+   "origin": "PROTECTED_G3",
+   "owner": "HEB",
+   "adopted_by": "A-34",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3",
+   "departure": false
   },
   {
    "catalog_id": "C04",
@@ -353,9 +364,13 @@
    "owner_text": "HEB §3.3: stop before/together with credential revocation, then end custody; **never** transfer a live child to uncontrolled execution",
    "adopted_coverage": null,
    "increment": "I-2",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "HEB"
+   "cls": "WIRED",
+   "wire_action": "RELEASE_CHILD_TO_MANUAL",
+   "origin": "PROTECTED_G3",
+   "owner": "HEB",
+   "adopted_by": "A-34",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3",
+   "departure": false
   },
   {
    "catalog_id": "C05",
@@ -382,9 +397,13 @@
    "owner_text": "HEB child/custody owner alone admits effect; protected origin G3, independent remote uncertainty; cancel requested ≠ cancellation confirmed",
    "adopted_coverage": null,
    "increment": "I-2",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "HEB"
+   "cls": "WIRED",
+   "wire_action": "CANCEL_CHILD_OPERATION",
+   "origin": "PROTECTED_G3",
+   "owner": "HEB",
+   "adopted_by": "A-34",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3",
+   "departure": false
   },
   {
    "catalog_id": "C07",
@@ -394,9 +413,13 @@
    "owner_text": "HEB/AEV/R-01 under current grant, no replay of unknown non-idempotent effect",
    "adopted_coverage": "OTHER_NON_READ",
    "increment": "I-2",
-   "cls": "COMMAND",
-   "origin_class": "DELEGATED_GRANT",
-   "primary_owner": "HEB"
+   "cls": "WIRED",
+   "wire_action": "REQUEST_BACKGROUND_RERUN",
+   "origin": "CURRENT_SUCCESSOR_GENERATION",
+   "owner": "HEB",
+   "adopted_by": "A-34",
+   "proposed_origin_class": "DELEGATED_GRANT",
+   "departure": false
   },
   {
    "catalog_id": "C08",
@@ -451,9 +474,10 @@
    "owner_text": "HEB/R-01 exact process/effect state; neither a HOLD nor an assured stop of remote effects",
    "adopted_coverage": null,
    "increment": "I-2",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "HEB"
+   "cls": "DEFERRED",
+   "adopted_by": "A-34",
+   "disposition": "no adopted source defines a quiesced execution; an HEB amendment, or R-01's wait and yield (R01-25) widened to an operator request, would (backlog I2-B1)",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3"
   },
   {
    "catalog_id": "C13",
@@ -463,10 +487,10 @@
    "owner_text": "Separate from in-grant continuation C17 and from authority-increasing HOLD release A03; current authority and assurance predicates apply",
    "adopted_coverage": null,
    "increment": "I-2",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "HEB",
-   "owner_assigned_by_designer": "execution resume, beside C17 (HEB scheduling)"
+   "cls": "DEFERRED",
+   "adopted_by": "A-34",
+   "disposition": "nothing to resume without C12's state (backlog I2-B1)",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3"
   },
   {
    "catalog_id": "C14",
@@ -476,9 +500,13 @@
    "owner_text": "HEB current custodian / AEV-WIS as applicable; retained audit/provenance, exact held-result version; not a publication decision",
    "adopted_coverage": "OTHER_NON_READ",
    "increment": "I-2",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "HEB"
+   "cls": "WIRED",
+   "wire_action": "DISCARD_HELD_RESULT",
+   "origin": "PROTECTED_G3",
+   "owner": "HEB",
+   "adopted_by": "A-34",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3",
+   "departure": false
   },
   {
    "catalog_id": "C15",
@@ -560,9 +588,13 @@
    "owner_text": "HEB/WIS competent stage owner; distinguish local stage abandonment from immutable Ticket cancellation/revision and external-effect settlement; no retained grant escalation",
    "adopted_coverage": "OTHER_NON_READ",
    "increment": "I-2",
-   "cls": "COMMAND",
-   "origin_class": "DELEGATED_GRANT",
-   "primary_owner": "HEB"
+   "cls": "WIRED",
+   "wire_action": "ABANDON_INTERRUPTED_EXECUTION",
+   "origin": "CURRENT_SUCCESSOR_GENERATION",
+   "owner": "HEB",
+   "adopted_by": "A-34",
+   "proposed_origin_class": "DELEGATED_GRANT",
+   "departure": false
   },
   {
    "catalog_id": "L01",
@@ -801,9 +833,16 @@
    "owner_text": "IF-13/IF-12 current source recipient, gateway/route constraints, IF-10 policy",
    "adopted_coverage": "OTHER_NON_READ",
    "increment": "I-6",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "IF-13"
+   "cls": "WIRED",
+   "wire_action": "ADOPT_MANIFEST_EDIT",
+   "origin": "PROTECTED_G3",
+   "owner": "IF13",
+   "adopted_by": "A-39",
+   "type_shared_with": [
+    "P14"
+   ],
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3",
+   "departure": false
   },
   {
    "catalog_id": "P05",
@@ -826,10 +865,13 @@
    "owner_text": "Current issuer-qualified immutable replacement/revocation, in-flight effect handling",
    "adopted_coverage": "OTHER_NON_READ",
    "increment": "I-6",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "RESOURCE_POLICY_ISSUER",
-   "owner_assigned_by_designer": "same issuer as P05"
+   "cls": "WIRED",
+   "wire_action": "NARROW_OR_REVOKE_STANDING_POLICY",
+   "origin": "PROTECTED_G3",
+   "owner": "RESOURCE_POLICY_ISSUER",
+   "adopted_by": "A-39",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3",
+   "departure": false
   },
   {
    "catalog_id": "P07",
@@ -839,10 +881,10 @@
    "owner_text": "Authority-increasing, inherited mandatory bounds and real limits still apply",
    "adopted_coverage": "OTHER_NON_READ",
    "increment": "I-6",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "RESOURCE_POLICY_ISSUER",
-   "owner_assigned_by_designer": "same issuer as P05"
+   "cls": "SERVED",
+   "adopted_by": "A-39",
+   "disposition": "a widening is `ISSUE_STANDING_POLICY` issuing a successor revision (I6-03); a limit that is not a standing policy waits for backlog I6-B1",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3"
   },
   {
    "catalog_id": "P08",
@@ -852,10 +894,13 @@
    "owner_text": "R01-38: future eligible admissions only; **no** alteration to ADC grants, risk class, effects, assurance HOLD, caps or mandatory reviews. Governing R-01 steering issuer records version/fence",
    "adopted_coverage": "OTHER_NON_READ",
    "increment": "I-6",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "R-01",
-   "owner_assigned_by_designer": "R01-38 names R-01; ADC appears only in \"no alteration to ADC grants\""
+   "cls": "WIRED",
+   "wire_action": "SET_STEERING_MODE",
+   "origin": "PROTECTED_G3",
+   "owner": "R01",
+   "adopted_by": "A-39",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3",
+   "departure": false
   },
   {
    "catalog_id": "P09",
@@ -876,10 +921,13 @@
    "owner_text": "Read/owner-side reconciliation of original call; not another dispatch or manual force-settled",
    "adopted_coverage": null,
    "increment": "I-6",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "R-01",
-   "owner_assigned_by_designer": "original paid-call reconciliation (R-01/IF-10)"
+   "cls": "WIRED",
+   "wire_action": "REQUEST_CHARGE_RECONCILIATION",
+   "origin": "PROTECTED_G3",
+   "owner": "R01",
+   "adopted_by": "A-39",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3",
+   "departure": false
   },
   {
    "catalog_id": "P11",
@@ -889,9 +937,12 @@
    "owner_text": "S-01/IF-13, U-01 migration path where needed; not a trivial preference",
    "adopted_coverage": null,
    "increment": "I-6",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "S-01"
+   "cls": "SERVED",
+   "adopted_by": "A-39",
+   "disposition": "`REQUEST_PROFILE_CHANGE` at the new installation (I6-09), then the operator's adoption of the move (U01-07.b, U01-R02)",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3",
+   "settled_by": "A-46",
+   "deferred_as": "the profile half is `REQUEST_PROFILE_CHANGE` at the new installation; moving a project's state waits for U-01 (I6-09, backlog I6-B2)"
   },
   {
    "catalog_id": "P12",
@@ -901,10 +952,13 @@
    "owner_text": "Qualified independent assessor, not operator label or “passed sandbox” checkbox",
    "adopted_coverage": "OTHER_NON_READ",
    "increment": "I-6",
-   "cls": "COMMAND",
-   "origin_class": "OWNER_DECISION",
-   "primary_owner": "S-01",
-   "owner_assigned_by_designer": "host profile qualification"
+   "cls": "WIRED",
+   "wire_action": "REVOKE_HOST_QUALIFICATION",
+   "origin": "PROTECTED_G3",
+   "owner": "IF13",
+   "adopted_by": "A-39",
+   "proposed_origin_class": "OWNER_DECISION",
+   "departure": true
   },
   {
    "catalog_id": "P14",
@@ -914,10 +968,16 @@
    "owner_text": "Governing config/manifest owner; qualified source revision, exact diff and effect-time gates; mere file edit not governance",
    "adopted_coverage": null,
    "increment": "I-6",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "IF-13",
-   "owner_assigned_by_designer": "governing config/manifest owner"
+   "cls": "WIRED",
+   "wire_action": "ADOPT_MANIFEST_EDIT",
+   "origin": "PROTECTED_G3",
+   "owner": "IF13",
+   "adopted_by": "A-39",
+   "type_shared_with": [
+    "P04"
+   ],
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3",
+   "departure": false
   },
   {
    "catalog_id": "U01",
@@ -1025,9 +1085,12 @@
    "owner_text": "U-01 migration/integrity and host/current grant, separately designed",
    "adopted_coverage": null,
    "increment": "I-6",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "U-01"
+   "cls": "NO_COMMAND",
+   "adopted_by": "A-39",
+   "disposition": "the host's install and the operator's local commands, as L10's install (U01-08, U01-R02)",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3",
+   "settled_by": "A-46",
+   "deferred_as": "upgrading or rolling back AEW waits for U-01, an open domain (backlog I6-B2)"
   },
   {
    "catalog_id": "W01",
@@ -1204,9 +1267,13 @@
    "owner_text": "RX-01/ADC accepted research boundary, grants and effects",
    "adopted_coverage": "OTHER_NON_READ",
    "increment": "I-7",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "RX-01"
+   "cls": "WIRED",
+   "wire_action": "ACCEPT_INQUIRY",
+   "origin": "PROTECTED_G3",
+   "owner": "WIS",
+   "adopted_by": "A-43",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3",
+   "departure": false
   },
   {
    "catalog_id": "W12",
@@ -1216,9 +1283,10 @@
    "owner_text": "K-01 qualified admission owner; journal ≠ Case, human feedback ≠ proof",
    "adopted_coverage": "OTHER_NON_READ",
    "increment": "I-7",
-   "cls": "COMMAND",
-   "origin_class": "OWNER_DECISION",
-   "primary_owner": "K-01"
+   "cls": "DEFERRED",
+   "adopted_by": "A-43",
+   "disposition": "knowledge admission is K-01's, in its own increment after V-01 (the selection before I-7, choice 1)",
+   "proposed_origin_class": "OWNER_DECISION"
   },
   {
    "catalog_id": "W13",
@@ -1228,9 +1296,10 @@
    "owner_text": "P-01 actual input/source owner and qualified comparator; derived cache not proof",
    "adopted_coverage": null,
    "increment": "I-7",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "P-01"
+   "cls": "NO_COMMAND",
+   "adopted_by": "A-43",
+   "disposition": "a map is derived, and selecting one protects nothing; the built selection is the Lead's (P-DEC-02, I7-00)",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3"
   },
   {
    "catalog_id": "W14",
@@ -1240,10 +1309,10 @@
    "owner_text": "",
    "adopted_coverage": null,
    "increment": "I-7",
-   "cls": "COMMAND",
-   "origin_class": "OPERATOR_ORIGIN_G3",
-   "primary_owner": "K-01",
-   "owner_assigned_by_designer": "source authority for knowledge/research inputs"
+   "cls": "DEFERRED",
+   "adopted_by": "A-43",
+   "disposition": "source authority is K-01's, in its own increment after V-01 (the selection before I-7, choice 1)",
+   "proposed_origin_class": "OPERATOR_ORIGIN_G3"
   },
   {
    "catalog_id": "W15",

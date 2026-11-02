@@ -224,7 +224,8 @@ def test_a_move_never_lowers_the_obligations_of_the_work_it_moves(tmp_path):
     hardening = create_unit(p, "epic", "Hardening", extra=(*floor, *gate))
     floor_only = create_unit(p, "epic", "Floor only", extra=floor)
     gate_only = create_unit(p, "epic", "Gate only", extra=gate)
-    swapped = create_unit(p, "epic", "Another gate", extra=(*floor, "--mandatory-gate", "review_performance"))
+    swapped = create_unit(p, "epic", "Another gate",
+                          extra=(*floor, "--mandatory-gate", "review_card:security_reviewer"))
     plain = create_unit(p, "epic", "Plain")
     more = create_unit(p, "epic", "More", extra=("--min-descendant-class", "4", "--rationale", "money moves", *gate,
                                                  *verifier))

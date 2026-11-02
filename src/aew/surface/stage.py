@@ -680,6 +680,18 @@ def dispose(c: Call) -> dict[str, Any]:
     return out
 
 
+def replace_gate(c: Call) -> dict[str, Any]:
+    """The ``resolve`` tool for a stuck gate (ITEMS 55; designer, addendum 4): a parent's mandatory gate that can never
+    be satisfied, replaced on the record by one that can. One transaction, so no stage intent (like a disposition)."""
+    a = c.a
+    out = c.engine.work_gate_replace(token=c.token(), expect_rev=a["expect_rev"], subject=a["subject"],
+                                     replacement=a.get("replacement"), rationale=a["rationale"])
+    c.subject = out.get("work_id")
+    c.committed("work.gate_replace", out, f"{out['work_id']} gate `{out['replaced']}` replaced by `{out['with']}` "
+                f"({out['correction']})", [str(out["correction"])])
+    return out
+
+
 def resolve_stage(c: Call) -> dict[str, Any]:
     """The ``resolve`` tool for a stage: the current Lead's explicit continue or abandon (rule 8).
 
@@ -697,6 +709,8 @@ def resolve_stage(c: Call) -> dict[str, Any]:
     a = c.a
     if a["choice"] in contract.DISPOSITION_CHOICES:
         return dispose(c)
+    if a["choice"] in contract.GATE_CHOICES:
+        return replace_gate(c)
     sid = a["subject"]
     si = c.engine.stage_intent(sid)
     c.intent, c.subject, c.binding = sid, si["subject"]["id"], dict(si["binding"])

@@ -118,6 +118,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 - `work/{}/annotations` (kept in git); written by `aew.history.store`: `History.write_record`; read by none
 - `work/{}/coordination` (kept in git); written by `aew.engine.coordination_ops`: `Coordination._write`, `_append_line`, `_truncate`; `aew.history.store`: `prewrite`; read by `aew.engine.coordination_ops`: `Coordination.evidence_inputs`, `Coordination.seal_ending`, `Coordination.unit_threads`, `read_thread`, `scan_thread`; `aew.history.store`: `prewrite`
 - `work/{}/dispositions` (kept in git); written by `aew.engine.disposition_ops`: `Dispositions._write`; read by none
+- `work/{}/gate-corrections` (kept in git); written by `aew.engine.gate_ops`: `GateRepair._write`; read by none
 - `work/{}/stage-intents` (kept in git); written by `aew.engine.stage_intents`: `StageIntents._end`; read by none
 - `work/{}/validation-runs` (kept in git); written by `aew.engine.validation_ops`: `Validation._write_record`; read by none
 

@@ -137,7 +137,7 @@ allowed:
   - static:guide|aew work transition <T> --to REVIEW_PENDING --expect-rev <revision from aew status>
   - static:guide|aew work transition <T> --to RUNNING --expect-rev <revision from aew status>
   - static:guide|aew work transition <T> --to VERIFY_PENDING --expect-rev <revision from aew status>
-  - static:lead-command:aew-handoff|aew checkpoint --note-file - --next "..." --expect-rev <revision from aew status>
+  - static:lead-command:aew-handoff|aew checkpoint --note-file - --next <next action> --expect-rev <revision from aew status>
   - static:lead-system|aew harness wait <run>
   - static:lead-system|aew work assign T-0001 --launch --expect-rev <revision from aew status>
   - static:lead-system|aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
@@ -722,10 +722,6 @@ residuals:
   decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
   reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
 - rule: O-IDS
-  site: static:lead-command:aew-handoff|aew checkpoint --note-file - --next "..." --expect-rev <revision from aew status>
-  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
-  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
-- rule: O-IDS
   site: static:lead-system|aew work assign T-0001 --launch --expect-rev <revision from aew status>
   decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
   reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
@@ -733,3 +729,7 @@ residuals:
   site: static:lead-system|aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
   decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
   reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:lead-command:aew-handoff|aew checkpoint --note-file - --next <next action> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept (Recommended)"'
+  reason: 'operator, 2026-11-01, #319 review F4: `--next "..."` re-keyed to the named placeholder `<next action>`; same finding, new text'

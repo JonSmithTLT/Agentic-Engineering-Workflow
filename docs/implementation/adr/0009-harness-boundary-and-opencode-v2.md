@@ -1673,6 +1673,14 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   is refused. An entry ends only when no process of its context may still live (the designer, 2026-11-01): its owner
   held the whole tree, no survivor is still the process it was, and a scan of the operator's processes finds none
   carrying its marker (`AEW_CONTEXT`). It is kept for G3's window (15 minutes, `G3-06`'s tripwire), then pruned. What
-  reads it (G3's standing) is G3-C's.
+  reads it (G3's standing) is G3-C's, which sweeps the register before it reads it. The register is one per host
+  state base (`XDG_DATA_HOME`, `LOCALAPPDATA` on Windows).
+- **The scan follows a marker only to a record AEW wrote** (#321's review, F2): an entry's own file in the register, or
+  a run's `label.json` or `run.json` under `.aew/local/harness/runs/<run>/` of a project an entry records. It reads it
+  as the run log reads a run's files: a regular file, never through a link and never blocking (`O_NOFOLLOW |
+  O_NONBLOCK`; Windows has no `O_NOFOLLOW`, so a link or non-file is refused by `lstat` before the open, and by
+  `fstat` after it), at most the run log's record bound (`MAX_RECORD_BYTES`, 16 MiB). Any other file is no record:
+  its process is no host, and a label it holds exempts nothing. A scan that fails for any reason ends the entry
+  unowned, never clean.
 - **Tests:** `tests/integration/test_lead_uncontained.py`, `tests/unit/test_weaker_register.py`,
   `tests/unit/test_launch_census.py` (every process start in `src/` and `eval/`, classified).

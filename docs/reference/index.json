@@ -2,7 +2,7 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 404,
-      "lower-bound": 741
+      "lower-bound": 742
     },
     "by_family": {
       "cli-commands": 116,
@@ -24,7 +24,7 @@
       "tools": 16,
       "transitions": 94,
       "usage-live-states": 3,
-      "writers": 271
+      "writers": 272
     },
     "by_family_and_coverage": {
       "cli-commands": {
@@ -89,11 +89,11 @@
         "lower-bound": 3
       },
       "writers": {
-        "lower-bound": 271
+        "lower-bound": 272
       }
     },
-    "digest": "sha256:955a6894bbb2ddb9123e51bb92fc9527c55c209314a02d1c7057a9733a43dec6",
-    "records": 1145,
+    "digest": "sha256:099c0e29713ec38bb831140ada237aa5ad1215851d9e80c4c186dd332411d016",
+    "records": 1146,
     "unresolved": 112
   },
   "gaps": [
@@ -14122,6 +14122,10 @@
         "prefix": "local/harness/runs",
         "readers": [
           {
+            "module": "aew.engine.evidence_ops",
+            "symbol": "EvidenceCommands._check_run_direct"
+          },
+          {
             "module": "aew.engine.harness_ops",
             "symbol": "Harness.harness_launch"
           },
@@ -14590,6 +14594,10 @@
         "named_by": [],
         "prefix": "local/harness/runs/check-{}-{}",
         "readers": [
+          {
+            "module": "aew.engine.evidence_ops",
+            "symbol": "EvidenceCommands._check_run_direct"
+          },
           {
             "module": "aew.harness.containment.layout",
             "symbol": "for_run"
@@ -20784,6 +20792,7 @@
       "imports": [
         "aew.errors",
         "aew.harness.opencode.login",
+        "aew.hoststate",
         "aew.workspace.git"
       ]
     },
@@ -21094,7 +21103,8 @@
         "aew.harness.opencode.projection",
         "aew.harness.runlog",
         "aew.harness.usage",
-        "aew.harness.usage_live"
+        "aew.harness.usage_live",
+        "aew.harness.weaker_register"
       ]
     },
     "modules:aew.harness.opencode.capabilities": {
@@ -37455,7 +37465,8 @@
             "module": "aew.engine.evidence_ops",
             "symbol": "EvidenceCommands._check_run_direct",
             "via": [
-              "Path.mkdir"
+              "Path.mkdir",
+              "shutil.rmtree"
             ]
           }
         ]
@@ -38005,6 +38016,67 @@
             "symbol": "for_run",
             "via": [
               "Path.mkdir"
+            ]
+          }
+        ]
+      },
+      "fact_coverage": {
+        "named_by": {
+          "label": "lower-bound",
+          "unresolved": []
+        },
+        "writers": {
+          "label": "lower-bound",
+          "unresolved": [
+            {
+              "module": "aew",
+              "symbol": null,
+              "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+            },
+            {
+              "module": "aew.process_kind",
+              "symbol": "require_writer",
+              "why": "the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here"
+            }
+          ]
+        }
+      },
+      "family": "writers"
+    },
+    "writers:local/harness/runs/check-{}-{}/{}": {
+      "anchor": {
+        "module": "aew.engine.evidence_ops",
+        "symbol": "EvidenceCommands._check_run_direct"
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": [
+          {
+            "module": "aew",
+            "symbol": null,
+            "why": "write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path"
+          }
+        ]
+      },
+      "fact": {
+        "directory": "local",
+        "named_by": [],
+        "prefix": "local/harness/runs/check-{}-{}/{}",
+        "writers": [
+          {
+            "entry_kinds": [
+              "store_writer"
+            ],
+            "entry_points": [
+              "aew"
+            ],
+            "mechanism": "direct",
+            "module": "aew.engine.evidence_ops",
+            "symbol": "EvidenceCommands._check_run_direct",
+            "via": [
+              "Path.unlink",
+              "shutil.rmtree"
             ]
           }
         ]

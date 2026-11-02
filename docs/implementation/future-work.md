@@ -32,25 +32,39 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 | # | Row | Item |
 |---|---|---|
-| 1 | STG-12 | S12-2's PRs 4 to 10, on two builders, to the pack cut (the list is frozen) (all merged: PR 10 as #268, `a4d81bae`) |
-| 2 | STG-05 | the owner-only store (#256) (merged, `e78c6386`) |
-| 3 | STG-05 | CS-3b, the network namespace (#257) (merged, `d796a342`) |
-| 4 | STG-15 | CAP-1: AEW brings ripgrep through the capability register (PR 1 merged as #272, `af951c92`; PR 2 is next, now that CS-4 has merged) |
-| 5 | E35 | H-1: OpenCode 2.1.4 through the live lane, with its token semantics |
-| 6 | STG-05, STG-03 | CS-4, the Lead contained (merged as #283, `da547f9a`), with the G3 service beside it (G3-A merged as #269, `24d4eec0`; G3-B, the confirmer, merged as #282, `61310fb3`; G3-D, the CLI client, merged as #286, `21ea8674`; E112, G3 addendum 7's ruling 1 with ruling 2's register of weaker contexts, built in its pull request; G3-C, which reads both, is next) |
-| 7 | E35 | H-2 (`aew harness qualify` and its records), then H-3 (the feed check, the automatic switch, rollback, bundle import) |
-| 8 | STG-13 | V-01's oracle rebuilt |
-| 9 | STG-14 | I-6, the resource, model and host policy (A-39): the first of V-01's wire increments. Moving it ahead is the operator's call. Its protected rows stay held until G3 is established: CS-4 has merged (#283), and G3 is still established on no host (map v1.20, design workspace `0717159`) |
+| 1 | E115 | The scoreboard: the vertical report leads with scenarios passing, steps landed and how long each has been flat |
+| 2 | E116 | The vertical driver's fix for the placeholder #319 printed |
+| 3 | E117 | The first real-model receipt on a seeded kit, likely red, and the personal alpha's gate |
+| 4 | STG-05 | E112, closed into §9 by #321: every launch whose containment fails is refused, and the register of weaker contexts |
+| 5 | E118 | The contained Lead's two fixes |
+| 6 | E35 | The probe of what a project can load into the harness. Only this part of E35 is before first use |
+| 7 | STG-15 | CAP-1 PR 2: the read-only ripgrep bind, Q08's rows, the fetch at first launch and the contained health check (PR 1 merged as #272, `af951c92`) |
+| 8 | E119 | `aew init` takes the check, model and provider names, with the oracle's row and driver in one PR |
+| 9 | E120 | Validation's coverage on the record, and failure lines back to the worker |
+| 10 | E121 | A readable result: a headline per result in chat |
+| 11 | E122 | The next step while the Lead waits |
+| 12 | STG-03 | **After first use, or earlier if a builder slot is free:** G3-C with `ATTACH_LEAD`, E82 and the G3 install. G3-A, G3-B and G3-D are merged (#269, #282, #286). E112 merges first (G3 addendum 7's ruling 1). It never holds first use |
+| 13 | E123 | **Before the work step:** the relay presenting a client certificate, and the bundle (E99, whose design is owed) |
+| 14 | STG-15, E35 | **After those:** CAP-1 PR 3, then H-1, H-2 and H-3 |
+| 15 | STG-14 | I-6, the resource, model and host policy (A-39), the first of the wire increments V-01 needs. Its protected rows stay held until G3 is established, and G3 is established on no host yet |
 
-**Contention for a slot:** STG-05's slices first (CAP-1 counts as CS-3b's follow-up), then H-1 to H-3, then G3, then the oracle's rebuild, as the map says today, then I-6 (STG-14, item 9). On 2026-10-25 the operator gave the G3 service a builder slot of its own (in chat), so it was building ahead of H-1, beside CS-4, as the operator's decision of 2026-10-23 placed it (design workspace). **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
+**Between items 11 and 12, first use:** the operator's SPT work, image work included. CI is SPT's first ticket: AEW's workers write it and the operator pushes. SPT stays as it is until then. Later fixes come from that use.
+
+**Contention for a slot:** the list's order, as the operator's decision of 2026-11-02 sets it. **New design stops until the first receipt,** except what first use surfaces, SPB's adoption question and the research the operator asked for, so a new ruling becomes a row only if it serves this list. **Everything moved stays in V-01,** and V-01 stays the gate before any release. **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
 
 **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 
 <!-- columns: Milestone or gate | Done when | Source -->
 
+### **Personal alpha: a recorded milestone before V-01, with no release claim**
+
+**Done when:** **First use:** items 1 to 11 of the Now list are done (item 4 may follow, if it needs more than its quick check), and the operator runs their own SPT work on it. **The gate,** beside the oracle and reading the same ledgers: limits and recovery (the hard limits read held, and V2-forced reaches a result); setup and preflight (V3's four non-stale cases pass strict, with the driver asserting the diagnosis); the fresh path (V1 reaches a result with exactly the plan and publish decisions, excusing only G3 steps not yet landed, each printed by name); the receipt (a real-model run the operator starts, on a sample repository with a seeded neighbour test and a lint outside the configured check, recording no-wake, validation width, scope, dead-end gates, the operator's own yes or no on readability, and containment labels, with bars set after the first receipt); the install (the same kit from the installed package on the Rocky 8 VM; on Windows, an install check only). **Stated limits:** no G3 as proof, so the Lead's token stays and "authenticate once" is not met; no assessed profile, so workers run on the launch self-test and masks as measured; publish moves local main with no operator step, and the push is the approval; a setting changed after setup goes back to adopt and the token; the 2.0.18 pin; no format-change safety, so no marker raises, changes are additive, and the operator snapshots `.aew/` before an upgrade; real work on Linux only. **It changes no gate:** the `vertical` job stays red, the V-01 line leads its report, and nothing here implies V-01's completeness
+
+**Source:** the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`), under A-02's `OI-FR-06`; the designer's position of the same day; the vertical sweep (0 of 17 scenarios has ever passed on Linux, in 104 completed runs)
+
 ### **Contained and reconciled**
 
-**Done when:** **Every agent runs contained:** CS-3b and CS-4 merged, with their live lanes on Rocky 8 (STG-05), and the G3 service installed (STG-03, A-37). **The rest:** the owner-only store merged, AEW's base tools shipped (STG-15, CAP-1 and the bundle), and harness currency in place (E35, H-1 to H-3). **Reconciled:** the as-built reference is complete and the requirements trace is final, with its flags decided (STG-12: S12-2, S12-4, S12-5)
+**Done when:** **Every agent runs contained:** CS-3b and CS-4 merged, with their live lanes on Rocky 8 (STG-05), and the G3 service installed (STG-03, A-37). **The rest:** the owner-only store merged, AEW's base tools shipped (STG-15, CAP-1 and the bundle), and harness currency in place (E35, H-1 to H-3). **Reconciled:** the as-built reference is complete and the requirements trace is final, with its flags decided (STG-12: S12-2, S12-4, S12-5). Not a bar before the personal alpha, whose floor is E118 and E35's probe; the rest stays ordered by the Now list
 
 **Source:** A-33, A-37, A-35; the operator's decisions of 2026-10-24 (AEW brings its tools; OpenCode version currency); the register rebaseline (design workspace, `b598fdc`)
 
@@ -68,9 +82,9 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### **Before a provider that requires a client certificate is used**
 
-**Done when:** The AEW Provider Gateway (F18.8 with F28) holds the provider's mutual-TLS client certificate and key and presents them: the pinned harness (OpenCode 2.0.18) speaks chat completions but cannot present a client certificate (harness probe, 2026-10-11), and the credential never enters a sandbox or a harness's configuration. Applies only to such providers; for others Q5's hardening milestone and its order are unchanged (designer, 2026-10-11; Q5 closed in the register rebaseline). The forced request fields have been qualified against the provider (operator, live; AIR-85). Its work, F18.8, is now held in HOLD-20 (register rebaseline).
+**Done when:** The relay (F28) holds and presents the provider's mutual-TLS client certificate and key (E123): the pinned harness (OpenCode 2.0.18) speaks chat completions but cannot present a client certificate (harness probe, 2026-10-11), and the credential never enters a sandbox or a harness's configuration. Applies only to such providers; for others Q5's hardening milestone and its order are unchanged (designer, 2026-10-11; Q5 closed in the register rebaseline). The forced request fields have been qualified against the provider (operator, live; AIR-85). F18.8's other parts stay held in HOLD-20, and are not prerequisites for this
 
-**Source:** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §6.4, §6.5, §6.8 (ledger AIR-81, AIR-82, AIR-85)
+**Source:** [decision record](../design/decisions-2026-10-11-architecture-integration.md) §6.4, §6.5, §6.8 (ledger AIR-81, AIR-82, AIR-85); the designer's ruling of 2026-11-02, the relay presents the certificate
 
 ### **Met**
 
@@ -136,7 +150,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 **Source (governing):** the vertical-UAT ruling of 2026-10-23; the operator's decisions of 2026-10-24 (V-01's first row; the oracle rebuild's exemption); the register rebaseline (design workspace, `b598fdc`)
 
-**Belongs to or gated by:** **Stage.** STG-13; V-01's first row, after G3 in the contention order (§1)
+**Belongs to or gated by:** **Stage.** STG-13; V-01's first row. The rebuild merged as #306 (`efc98baa`); the Linux lane measures again from #307
 
 **Notes:** One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23).
 
@@ -148,7 +162,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 **Source (governing):** A-39, I-6 at revision 3 (adopted by the operator on 2026-10-25, design workspace `43e14c0`)
 
-**Belongs to or gated by:** **Stage.** STG-14; after V-01's oracle in the Now list (§1), unless the operator moves it. A contract, not an activation: its protected rows stay held until G3 is established. CS-4 has merged (#283, `da547f9a`), and G3 is still established on no host (map v1.20, design workspace `0717159`)
+**Belongs to or gated by:** **Stage.** STG-14; item 15 of the Now list (§1). A contract, not an activation: its protected rows stay held until G3 is established. CS-4 has merged (#283, `da547f9a`), and G3 is still established on no host (map v1.20, design workspace `0717159`)
 
 **Notes:** One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23).
 
@@ -689,7 +703,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** [harness-native integration research v0.3](../research/harness-native-integration-research-v0.3.md) (ledger HNI)
 
-**When:** **Now**: the worker-run parts; the Lead MCP parts land with F15's typed surface
+**When:** **Now**: the worker-run parts; the Lead MCP parts land with F15's typed surface. Its probe is item 6 of the Now list; the rest is item 14
 
 **Notes:** Codex qualification is F24; the capability registry is F13. ARV-05 (operator, 2026-10-05): whether the current OpenCode release still fits is this row's question. **M6a native edit/write decision (v0.9 §7, approved by the designer, D1 2026-10-10 (MCD-01, MCD-02); takes effect at M6; F40):** whether OpenCode's native `edit` and `write` can be hidden or denied in the worker's model-visible schema, not only refused when called, is first established in the worker profile here; shell writes are stopped by the read-only source, and the shell is kept; a cross-reference, not new scope
 
@@ -869,7 +883,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** STG-12's S12-4 trace, FIX claim "the set fingerprint and the per-member order are unproven" (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`); the claim's deviation is the brief
 
-**When:** **Internal alpha**, one of the trace's FIX rows (S12-6). Before G3-C binds consent to the fingerprint
+**When:** **Internal alpha**, one of the trace's FIX rows (S12-6). Before G3-C binds consent to the fingerprint, so item 12 of the Now list pulls it ahead
 
 **Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
 
@@ -1049,7 +1063,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The install and bootstrap UX v0.3, sections 5 and 5.1 (ledger IBU-12, IBU-13), and ADR-0014 (the signed manifest, verified before anything is consumed), whose build is held in HOLD-17 as F18.3 and D2; brought forward to Internal alpha by the operator's decision of 2026-10-25, in chat, on G3-B's system packages (packaging bundles every requirement for an install with no internet), and extended by the per-target system packages and the guided sequence, the Lead's sketch of the same day
 
-**When:** **Internal alpha**, as its packaging (the milestone's "an install the operator can run on their own machine and on a managed Linux host"). The designer designs it, by Internal alpha. F18.3 and D2 stay held in HOLD-17; E99's design takes IBU-12, IBU-13 and ADR-0014 as its inputs, and names at the group's exit how F18.3 and D2 are absorbed
+**When:** **Internal alpha**, as its packaging (the milestone's "an install the operator can run on their own machine and on a managed Linux host"). Item 13 of the Now list pulls it ahead of the work step. The designer designs it, by Internal alpha. F18.3 and D2 stay held in HOLD-17; E99's design takes IBU-12, IBU-13 and ADR-0014 as its inputs, and names at the group's exit how F18.3 and D2 are absorbed
 
 **Notes:** Filed by the Lead. `g3/requirements-offline.txt` is the offline manifest the bundle's one manifest absorbs. Closest mechanisms today: CAP-1's capability register (STG-15) and H-3's bundle import (E35). Its decisions-due item waits until `test_register` admits a new item (#285's review, m5): the next register batch
 
@@ -1210,6 +1224,114 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. Once E112 merges, the live lane's lab sets `allow_weaker` until this is built
 
 *Later notes: `notes.d/E113/`, oldest first (`python tools/register.py show E113`).*
+
+### E115
+
+**Work:** The vertical report leads with its progress: scenarios passing, steps landed, reached a result, and how long each has been flat, plus a per-run series. A display change: no threshold moves, and a landed step whose driver is owed shows as its own column
+
+**Source:** the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`); the vertical sweep: nothing in the report showed that no scenario had moved
+
+**When:** **Now.**
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E115/`, oldest first (`python tools/register.py show E115`).*
+
+### E116
+
+**Work:** The vertical driver handles the placeholder `--expect-rev <revision from aew status>` that #319 printed. `tests/helpers/vertical/lead.py` (`:556-557` at `1108661e`) drops two tokens where the placeholder is four, so the V2 forced-kill scenario stalls at ASSIGNED. Read in the code; the fix's test confirms it. Tests only
+
+**Source:** The vertical sweep's adversarial check; the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`)
+
+**When:** **Now.**
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E116/`, oldest first (`python tools/register.py show E116`).*
+
+### E117
+
+**Work:** A seeded kit and the first real-model receipt: a sample repository with a neighbour test and a lint outside the configured check, and a run the operator starts, recording no-wake, validation width, scope, dead-end gates, the operator's yes or no on readability, and containment labels. It will likely be red. Also the personal alpha's named gate, reading the same ledgers as the oracle
+
+**Source:** the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`)
+
+**When:** **Now.**
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E117/`, oldest first (`python tools/register.py show E117`).*
+
+### E118
+
+**Work:** The contained Lead's saved permissions are cleared at start, and the Lead's server is moved out of the shell's reach. The same writer checks the `credential` table's columns before inserting, and degrades gracefully
+
+**Source:** Harness ruling 11 of 2026-11-01
+
+**When:** **Now.** First after E112, or without it if E112 needs more than its quick check
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E118/`, oldest first (`python tools/register.py show E118`).*
+
+### E119
+
+**Work:** `aew init` takes the check command, the model and the provider names, and writes them before it pins, so first setup needs no hand-edited YAML, acquire or adopt. On `init` only: a sibling that writes after the pin is the rejected credential-free adopt. No flag weakens containment or network, and `next` points at `aew opencode --acquire`. In one PR with an option-aware oracle part and the driver: the plain edit to `oracle.py`'s step 2 would read as built at once
+
+**Source:** the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`); the designer's position of the same day, on setup's credentials
+
+**When:** **Now.**
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E119/`, oldest first (`python tools/register.py show E119`).*
+
+### E120
+
+**Work:** Validation's coverage goes on the record, saying what it did not check, and a failing check's lines go back to the worker
+
+**Source:** the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`); dogfood findings of 2026-10-31
+
+**When:** **Now.**
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E120/`, oldest first (`python tools/register.py show E120`).*
+
+### E121
+
+**Work:** A readable result: a headline per result in the Lead's chat
+
+**Source:** the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`); dogfood finding of 2026-10-31
+
+**When:** **Now.**
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E121/`, oldest first (`python tools/register.py show E121`).*
+
+### E122
+
+**Work:** The next step while the Lead waits on a run, so a mid-tier Lead does not stop or spin
+
+**Source:** the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`); dogfood finding of 2026-10-31
+
+**When:** **Now.**
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E122/`, oldest first (`python tools/register.py show E122`).*
+
+### E123
+
+**Work:** The relay presents a provider's client certificate. The policy names the certificate, key and CA paths; those paths are masked from every sandbox, and a launch refuses if they are not; a run with no relay refuses the provider. Tested against a throwaway CA. Also measures how a 429 reaches the harness, against a local fake upstream
+
+**Source:** The designer's ruling of 2026-11-02, the relay presents the certificate
+
+**When:** **Now.** Item 13 of the Now list, and the work of the gate before a provider that requires a client certificate
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E123/`, oldest first (`python tools/register.py show E123`).*
 
 ### E47
 

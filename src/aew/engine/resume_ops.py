@@ -102,9 +102,8 @@ class Resume:
             items = gate_ops.open_items(state, self.roles.gate_catalogue())
         except AEWError:  # reported by doctor
             items = []
-        actions.extend(f"{i['work_id']}: mandatory gate `{i['gate']}` can never be satisfied ({i['why']}): "
-                       + (gate_ops.remedy(i["work_id"], i["gate"]) if i["replaceable"] else
-                          "changing it is the operator's decision") for i in items)
+        actions.extend(f"{i['work_id']}: mandatory gate `{i['gate']}` {i['verdict']} ({i['why']}): {i['route']}"
+                       for i in items)
         for wid, u in sorted(state["work"].items()):
             actions.extend(f"{wid}: {a}" for a in self.kinds.resolve(NEXT_ACTIONS, u)(state, wid, u))
         for sid, si in sorted((state.get("stage_intents") or {}).items()):  # rule 8 (M4-E E3c): never inferred

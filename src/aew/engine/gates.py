@@ -31,7 +31,7 @@ Which evidence may satisfy a gate (review 2026-09-26 M4; KC §7.2/§16):
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import Any, NamedTuple
 
 from aew.engine import hierarchy as H
@@ -163,30 +163,60 @@ def unsatisfiable(gate: str, utype: str = MUTATING, catalogue: Catalogue | None 
 UNDER = {"ticket": "a Ticket", "story": "a Story", "epic": "an Epic"}
 
 
-def descendant_types(kind: str) -> tuple[str, ...]:
-    """The unit types that can sit under a unit of ``kind``: ``hierarchy.PARENT_KINDS`` read the other way (a Story's
-    are Tickets; an Epic's are Stories and Tickets)."""
+def _descendant_kinds(kind: str) -> set[str]:
     kinds: set[str] = set()
     frontier = {kind}
     while frontier:
         frontier = {c for c, parents in H.PARENT_KINDS.items() if parents & frontier} - kinds
         kinds |= frontier
-    types = {t for c in kinds for t in ((MUTATING, NON_MUTATING) if c == "ticket" else (PARENT,))}
+    return kinds
+
+
+def descendant_types(kind: str) -> tuple[str, ...]:
+    """The unit types that can sit under a unit of ``kind``: ``hierarchy.PARENT_KINDS`` read the other way (a Story's
+    are Tickets; an Epic's are Stories and Tickets)."""
+    types = {t for c in _descendant_kinds(kind) for t in ((MUTATING, NON_MUTATING) if c == "ticket" else (PARENT,))}
     return tuple(t for t in UNIT_TYPES if t in types)
+
+
+def _inherited(gate: str, kind: str, catalogue: Catalogue) -> Iterator[tuple[str, Unsatisfiable | None]]:
+    """Each unit type under a unit of ``kind`` that a mandatory gate binds, with ``unsatisfiable``'s verdict on it. A
+    change-only gate passes through the others unevaluated (addendum 2, ruling 1), so they have no verdict: they
+    neither fail it nor evaluate it."""
+    for utype in descendant_types(kind):
+        if utype == MUTATING or not change_only(gate):
+            yield utype, unsatisfiable(gate, utype, catalogue)
 
 
 def unsatisfiable_inherited(gate: str, kind: str, catalogue: Catalogue) -> Unsatisfiable | None:
     """A mandatory gate set on a unit of ``kind``, which every descendant inherits (``effective_obligations``):
     refused when any unit type that can sit under it can neither satisfy it nor pass it through (addendum 2, ruling
     1: a change-only gate passes through to mutating descendants; ITEMS 55 review F1). Every writer and the
-    replacement's conditions call this one function, so the rule changes in one place."""
-    for utype in descendant_types(kind):
-        if utype != MUTATING and change_only(gate):
-            continue
-        found = unsatisfiable(gate, utype, catalogue)
+    replacement gate call this one function, so the rule changes in one place."""
+    for utype, found in _inherited(gate, kind, catalogue):
         if found is not None:
             return found._replace(why=f"a {utype} can sit under {UNDER[kind]} and inherits it, and {found.why}")
     return None
+
+
+def _named(utype: str, kind: str) -> str:
+    """``utype`` as it sits under a unit of ``kind``: the only parent under an Epic is a Story."""
+    if utype != PARENT:
+        return utype
+    return " or ".join(sorted(k.capitalize() for k in _descendant_kinds(kind) - {"ticket"}))
+
+
+def satisfiable_by(gate: str, kind: str, catalogue: Catalogue) -> tuple[str, ...]:
+    """The unit types under a unit of ``kind`` that can satisfy its mandatory ``gate``. Any at all means the gate has
+    an evaluator, so changing it is the operator's decision (designer, ITEMS 55 addendum 5, on the operator's condition
+    2). Passing a gate through is not evaluating it: an undefined `check:<id>` has no evaluator on a mutating Ticket,
+    and a non-mutating Ticket's pass-through does not give it one."""
+    return tuple(_named(t, kind) for t, found in _inherited(gate, kind, catalogue) if found is None)
+
+
+def stranded_by(gate: str, kind: str, catalogue: Catalogue) -> tuple[str, ...]:
+    """The unit types under a unit of ``kind`` that its mandatory ``gate`` binds and that can never satisfy it."""
+    return tuple(_named(t, kind) for t, found in _inherited(gate, kind, catalogue) if found is not None)
 
 
 def with_acceptance_checks(obligations: dict[str, Any], declared: list[str]) -> dict[str, Any]:

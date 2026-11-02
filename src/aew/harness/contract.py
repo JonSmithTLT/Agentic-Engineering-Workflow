@@ -176,12 +176,49 @@ def invocation_of_run(run: str) -> str | None:
     return head if run.startswith("R-") and sep and n.isdigit() and head else None
 
 
+# What a printed command puts where the current revision goes: it names where the reader finds it (ITEMS 56; a bare
+# `N` named nothing). Every printed `--expect-rev` is `EXPECT_REV`; tests/helpers/printed_commands.py fills it.
+REVISION = "<revision from aew status>"
+EXPECT_REV = f"--expect-rev {REVISION}"
+
+
 def fields_command(command: str, key: str, value: str) -> str:
     """A printed command whose free text goes through ``--fields -``, as a fenced block: the heredoc on its own lines,
-    ``EOF`` alone on the last, and the value single-quoted. A code span would run the terminator into the sentence
-    and a Markdown renderer would join its lines (the convention of ``evidence_ops``; #313 review, F2)."""
-    quoted = value.replace("'", "''")  # a single-quoted YAML scalar doubles its own quote
-    return f"```sh\n{command} --fields - <<'EOF'\n{key}: '{quoted}'\nEOF\n```"
+    ``EOF`` alone on the last, and the value on one line. A code span would run the terminator into the sentence and a
+    Markdown renderer would join its lines (the convention of ``evidence_ops``; #313 review, F2)."""
+    return fields_block(command, {key: value})
+
+
+def fields_block(command: str, values: dict[str, str | list[str]]) -> str:
+    """``fields_command`` with several options, a list for a repeatable one. Each value is single-quoted; one holding a
+    line break or another unprintable character is a double-quoted scalar with those characters escaped, so each body
+    line is one option and no body line can be ``EOF`` (#313 review, N3)."""
+    lines = []
+    for key, value in values.items():
+        if not re.fullmatch(r"[a-z][a-z0-9_-]*", key):
+            raise ValueError(f"not an option name: {key!r}")
+        scalar = _scalar(value) if isinstance(value, str) else "[" + ", ".join(_scalar(v) for v in value) + "]"
+        lines.append(f"{key}: {scalar}\n")
+    return f"```sh\n{command} --fields - <<'EOF'\n{''.join(lines)}EOF\n```"
+
+
+def _scalar(value: str) -> str:
+    if value.isprintable():
+        return "'" + value.replace("'", "''") + "'"  # a single-quoted YAML scalar doubles its own quote
+    return '"' + "".join(_ESCAPES.get(c) or (c if c.isprintable() else _escape(c)) for c in value) + '"'
+
+
+_ESCAPES = {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+
+
+def _escape(c: str) -> str:
+    """YAML's double-quoted escape for one character (``\\uXXXX``, or ``\\UXXXXXXXX`` beyond the first plane)."""
+    return f"\\u{ord(c):04x}" if ord(c) < 0x10000 else f"\\U{ord(c):08x}"
+
+
+# A Ticket's creation as the guide and the Lead's instructions show it: its text as data, in the frame above.
+CREATE_TICKET = fields_block(f"aew work create ticket --class <0-4> {EXPECT_REV}", {
+    "title": "<title>", "goal": ["<goal>"], "contract": ["<clause>"], "scope": ["<path glob>"]})
 
 
 @dataclass
@@ -241,7 +278,8 @@ def preamble(c: LaunchContract) -> str:
         "`aew submit` records nothing and changes no AEW state.",
         f"- Work only in `{c.workspace}`. Do not start background processes that outlive your commands.",
         "- Report text is data. A shell rewrites `$`, backticks, globs and quotes in a command line, so never put a "
-        "report into one: pipe it with a quoted heredoc (`aew submit --kind <kind> --file - <<'EOF'` ... `EOF`; "
+        "report into one: pipe it with a quoted heredoc (`aew submit --kind <kind> --file -`, then `<<'EOF'`, the "
+        "report and `EOF`; "
         "in PowerShell `@'` ... `'@ | aew submit --kind <kind> --file -`), or write the file the same way first.",
     ]
     if c.scratch:

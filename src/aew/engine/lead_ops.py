@@ -25,6 +25,7 @@ from aew.engine.authority import issue_token, revoke, verify_offer
 from aew.engine.base import TxnContext
 from aew.engine.store import Transition
 from aew.errors import IllegalTransition, PermissionDenied, StaleRevision
+from aew.harness.contract import EXPECT_REV, fields_command
 from aew.knowledge.records import format_id
 from aew.roles import NON_MUTATING_EXECUTORS
 from aew.util import render_frontmatter, utc_now
@@ -34,6 +35,9 @@ if TYPE_CHECKING:
     from aew.engine.ports import ArchivePort, CoordinationPort, QueuePort
 
 ACTIVE_INVOCATION_STATES = {"active"}
+# The operator's takeover when the holding session is gone, as a refusal prints it (#311 review, F3).
+TAKEOVER_REASON = "the holding Lead session is gone"
+TAKEOVER = fields_command(f"aew lead takeover {EXPECT_REV}", "reason", TAKEOVER_REASON)
 # The invocation each phase is waiting on (role, scope). Only when *that* invocation is lost is the
 # Ticket's state in doubt; every other state is already determined by ingested evidence or a Lead
 # decision, and interruption must not erase the obligation it carries — e.g. VERIFICATION_FAILED
@@ -85,14 +89,16 @@ class Lead:
         lease = (after.get("queue") or {}).get("lease")
         if lease:
             work = ((after["queue"]["entries"].get(lease["entry"])) or {}).get("work")
-            interrupts += f"; the integration lease of {work} is then reconciled with `aew integrate reconcile {work}`"
+            interrupts += (f"; the integration lease of {work} is then reconciled with `aew integrate reconcile {work} "
+                           f"{EXPECT_REV}`")
         return PermissionDenied(
             f"the Lead seat is held ({holder}). A successor takes it over cooperatively with `aew lead handoff "
             f"accept`. If the holding session is gone (its wrapper exited or crashed and its credential went with "
-            f"it), the seat cannot be re-acquired: run `aew lead takeover` at an operator terminal. It starts "
-            f"generation {generation + 1}, revokes the old credential, and {interrupts}",
+            f"it), the seat cannot be re-acquired: the operator takes it over at their own terminal. It starts "
+            f"generation {generation + 1}, revokes the old credential, and {interrupts}:\n\n{TAKEOVER}",
             generation=generation, session_label=lead.get("session_label"), acquired_at=lead.get("acquired_at"),
-            active_invocations=active, interrupted_work=stopped, next="aew lead takeover")
+            active_invocations=active, interrupted_work=stopped,
+            next=f"aew lead takeover {EXPECT_REV} --reason '{TAKEOVER_REASON}'")
 
     def _new_lead(self, state: dict[str, Any], session_label: str | None) -> str:
         lead = state["lead"]
@@ -282,7 +288,7 @@ class Lead:
         snapshot = self.k.store.current()
         lead = snapshot["lead"]
         if lead["status"] == "vacant":
-            raise IllegalTransition("the Lead seat is vacant; use `aew lead acquire`")
+            raise IllegalTransition(f"the Lead seat is vacant; use `aew lead acquire {EXPECT_REV}`")
         if expect_rev != snapshot["revision"]:
             raise StaleRevision(f"expected revision {expect_rev}, current is {snapshot['revision']}",
                                 expected=expect_rev, current=snapshot["revision"])

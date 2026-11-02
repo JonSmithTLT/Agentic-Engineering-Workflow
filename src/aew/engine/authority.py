@@ -21,6 +21,7 @@ from collections.abc import Callable
 from typing import Any
 
 from aew.errors import PermissionDenied, StaleAuthority
+from aew.harness.contract import EXPECT_REV
 from aew.util import sha256_text, utc_now
 
 TOKEN_RE = re.compile(r"^aew1\.(tk_[0-9a-f]{16})\.([A-Za-z0-9_-]{40,})$")
@@ -162,7 +163,7 @@ def require_lead(state: dict[str, Any], token: str, *, allow_pending: bool = Fal
             current_generation=lead["generation"],
         )
     if lead["status"] == "handoff_pending" and not allow_pending:
-        raise PermissionDenied("a Lead handoff is pending; only `aew lead handoff cancel` is allowed")
+        raise PermissionDenied(f"a Lead handoff is pending; only `aew lead handoff cancel {EXPECT_REV}` is allowed")
     if lead["status"] == "vacant":
         raise StaleAuthority(_VACANT)
     return {"kind": "lead", "session_label": lead.get("session_label"), "generation": lead["generation"],

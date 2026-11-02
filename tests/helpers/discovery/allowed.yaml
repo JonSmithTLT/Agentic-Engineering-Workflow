@@ -25,35 +25,35 @@ allowed:
   - cli:aew work dispatch|INPUT_STALE
   - cli:aew work dispose|result
   - cli:aew work transition|ILLEGAL_TRANSITION
-  - static:docs/guides/lead-guide.md|aew evidence ingest <T> --evidence <id> --expect-rev N
-  - static:docs/guides/lead-guide.md|aew harness launch <INV> --expect-rev N
+  - static:docs/guides/lead-guide.md|aew evidence ingest <T> --evidence <id> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew harness launch <invocation from aew harness status> --expect-rev <revision from aew status>
   - static:docs/guides/lead-guide.md|aew harness wait <run>
-  - static:docs/guides/lead-guide.md|aew history audit --expect-rev N
-  - static:docs/guides/lead-guide.md|aew history load <id> --into <unit> --reason ... --expect-rev N
-  - static:docs/guides/lead-guide.md|aew integrate prepare <T> --expect-rev N
-  - static:docs/guides/lead-guide.md|aew integrate publish <T> --expect-rev N
-  - static:docs/guides/lead-guide.md|aew invoke create <S> --role reviewer|verifier --launch --expect-rev N
-  - static:docs/guides/lead-guide.md|aew invoke create <T> --role implementer --launch --expect-rev N
-  - static:docs/guides/lead-guide.md|aew invoke create <T> --role reviewer --launch --expect-rev N
-  - static:docs/guides/lead-guide.md|aew invoke create <T> --role verifier --launch --expect-rev N
-  - static:docs/guides/lead-guide.md|aew invoke create <T> --scope integration --launch --expect-rev N
-  - static:docs/guides/lead-guide.md|aew plan accept <T> --revision <n> --expect-rev N
-  - static:docs/guides/lead-guide.md|aew plan propose <T> --file - --assurance none --expect-rev N
-  - static:docs/guides/lead-guide.md|aew review ingest <T> --evidence <id>
-  - static:docs/guides/lead-guide.md|aew review ingest <T> --evidence <id> --expect-rev N
-  - static:docs/guides/lead-guide.md|aew verify classify <T> --as <CLASS> --reason ... --expect-rev N
-  - static:docs/guides/lead-guide.md|aew verify ingest <T> --evidence <id>
-  - static:docs/guides/lead-guide.md|aew verify ingest <T> --evidence <id> --expect-rev N
-  - static:docs/guides/lead-guide.md|aew work accept <T> --expect-rev N
-  - static:docs/guides/lead-guide.md|aew work assign <T> --launch --expect-rev N
-  - static:docs/guides/lead-guide.md|aew work close <S> --reason ... --expect-rev N
-  - static:docs/guides/lead-guide.md|aew work create ticket --class <0-4> --expect-rev N --fields - <<'EOF'
-  - static:docs/guides/lead-guide.md|aew work dispatch <T> --launch --expect-rev N
-  - static:docs/guides/lead-guide.md|aew work transition <T> --to <STATE> --expect-rev N
-  - static:docs/guides/lead-guide.md|aew work transition <T> --to COMMIT_READY --expect-rev N
-  - static:docs/guides/lead-guide.md|aew work transition <T> --to REPLAN_REQUIRED|ESCALATED|CANCELLED --reason ... --expect-rev N
-  - static:docs/guides/lead-guide.md|aew work transition <T> --to RUNNING --expect-rev N
-  - static:docs/guides/lead-guide.md|aew work transition <T> --to VERIFY_PENDING --expect-rev N
+  - static:docs/guides/lead-guide.md|aew history audit --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew history load <id> --into <unit> --reason <reason> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew integrate prepare <T> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew integrate publish <T> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew invoke create <S> --role reviewer|verifier --launch --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew invoke create <T> --role implementer --launch --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew invoke create <T> --role reviewer --launch --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew invoke create <T> --role verifier --launch --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew invoke create <T> --scope integration --launch --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew plan accept <T> --revision <n> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew plan propose <T> --file - --assurance none --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew review ingest <T> --evidence <id> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew verify ingest <T> --evidence <id> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew work accept <T> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew work assign <T> --launch --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew work close <S> --reason <reason> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
+  - static:docs/guides/lead-guide.md|aew work dispatch <T> --launch --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew work reclassify <T> --class <0-4> --reason <reason> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew work transition <T> --to <STATE> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew work transition <T> --to COMMIT_READY --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew work transition <T> --to REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew work transition <T> --to REVIEW_PENDING --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew work transition <T> --to RUNNING --expect-rev <revision from aew status>
+  - static:docs/guides/lead-guide.md|aew work transition <T> --to VERIFY_PENDING --expect-rev <revision from aew status>
   - static:docs/guides/opencode.md|aew harness config opencode INV-0001
   - static:docs/guides/opencode.md|aew harness interrupt R-INV-0001-1
   - static:docs/guides/opencode.md|aew harness launch INV --expect-rev N
@@ -108,39 +108,39 @@ allowed:
   - static:docs/guides/quickstart.md|aew work transition T-0001 --to REVIEW_PENDING --expect-rev N
   - static:docs/guides/quickstart.md|aew work transition T-0001 --to RUNNING --expect-rev N
   - static:docs/guides/quickstart.md|aew work transition T-0001 --to VERIFY_PENDING --expect-rev N
-  - static:guide|aew evidence ingest <T> --evidence <id> --expect-rev N
-  - static:guide|aew harness launch <INV> --expect-rev N
+  - static:guide|aew evidence ingest <T> --evidence <id> --expect-rev <revision from aew status>
+  - static:guide|aew harness launch <invocation from aew harness status> --expect-rev <revision from aew status>
   - static:guide|aew harness wait <run>
-  - static:guide|aew history audit --expect-rev N
-  - static:guide|aew history load <id> --into <unit> --reason ... --expect-rev N
-  - static:guide|aew integrate prepare <T> --expect-rev N
-  - static:guide|aew integrate publish <T> --expect-rev N
-  - static:guide|aew invoke create <S> --role reviewer|verifier --launch --expect-rev N
-  - static:guide|aew invoke create <T> --role implementer --launch --expect-rev N
-  - static:guide|aew invoke create <T> --role reviewer --launch --expect-rev N
-  - static:guide|aew invoke create <T> --role verifier --launch --expect-rev N
-  - static:guide|aew invoke create <T> --scope integration --launch --expect-rev N
-  - static:guide|aew plan accept <T> --revision <n> --expect-rev N
-  - static:guide|aew plan propose <T> --file - --assurance none --expect-rev N
-  - static:guide|aew review ingest <T> --evidence <id>
-  - static:guide|aew review ingest <T> --evidence <id> --expect-rev N
-  - static:guide|aew verify classify <T> --as <CLASS> --reason ... --expect-rev N
-  - static:guide|aew verify ingest <T> --evidence <id>
-  - static:guide|aew verify ingest <T> --evidence <id> --expect-rev N
-  - static:guide|aew work accept <T> --expect-rev N
-  - static:guide|aew work assign <T> --launch --expect-rev N
-  - static:guide|aew work close <S> --reason ... --expect-rev N
-  - static:guide|aew work create ticket --class <0-4> --expect-rev N --fields - <<'EOF'
-  - static:guide|aew work dispatch <T> --launch --expect-rev N
-  - static:guide|aew work transition <T> --to <STATE> --expect-rev N
-  - static:guide|aew work transition <T> --to COMMIT_READY --expect-rev N
-  - static:guide|aew work transition <T> --to REPLAN_REQUIRED|ESCALATED|CANCELLED --reason ... --expect-rev N
-  - static:guide|aew work transition <T> --to RUNNING --expect-rev N
-  - static:guide|aew work transition <T> --to VERIFY_PENDING --expect-rev N
-  - static:lead-command:aew-handoff|aew checkpoint --note-file - --next "..." --expect-rev N
+  - static:guide|aew history audit --expect-rev <revision from aew status>
+  - static:guide|aew history load <id> --into <unit> --reason <reason> --expect-rev <revision from aew status>
+  - static:guide|aew integrate prepare <T> --expect-rev <revision from aew status>
+  - static:guide|aew integrate publish <T> --expect-rev <revision from aew status>
+  - static:guide|aew invoke create <S> --role reviewer|verifier --launch --expect-rev <revision from aew status>
+  - static:guide|aew invoke create <T> --role implementer --launch --expect-rev <revision from aew status>
+  - static:guide|aew invoke create <T> --role reviewer --launch --expect-rev <revision from aew status>
+  - static:guide|aew invoke create <T> --role verifier --launch --expect-rev <revision from aew status>
+  - static:guide|aew invoke create <T> --scope integration --launch --expect-rev <revision from aew status>
+  - static:guide|aew plan accept <T> --revision <n> --expect-rev <revision from aew status>
+  - static:guide|aew plan propose <T> --file - --assurance none --expect-rev <revision from aew status>
+  - static:guide|aew review ingest <T> --evidence <id> --expect-rev <revision from aew status>
+  - static:guide|aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>
+  - static:guide|aew verify ingest <T> --evidence <id> --expect-rev <revision from aew status>
+  - static:guide|aew work accept <T> --expect-rev <revision from aew status>
+  - static:guide|aew work assign <T> --launch --expect-rev <revision from aew status>
+  - static:guide|aew work close <S> --reason <reason> --expect-rev <revision from aew status>
+  - static:guide|aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
+  - static:guide|aew work dispatch <T> --launch --expect-rev <revision from aew status>
+  - static:guide|aew work reclassify <T> --class <0-4> --reason <reason> --expect-rev <revision from aew status>
+  - static:guide|aew work transition <T> --to <STATE> --expect-rev <revision from aew status>
+  - static:guide|aew work transition <T> --to COMMIT_READY --expect-rev <revision from aew status>
+  - static:guide|aew work transition <T> --to REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> --expect-rev <revision from aew status>
+  - static:guide|aew work transition <T> --to REVIEW_PENDING --expect-rev <revision from aew status>
+  - static:guide|aew work transition <T> --to RUNNING --expect-rev <revision from aew status>
+  - static:guide|aew work transition <T> --to VERIFY_PENDING --expect-rev <revision from aew status>
+  - static:lead-command:aew-handoff|aew checkpoint --note-file - --next <next action> --expect-rev <revision from aew status>
   - static:lead-system|aew harness wait <run>
-  - static:lead-system|aew work assign T-0001 --launch --expect-rev N
-  - static:lead-system|aew work create ticket --class <0-4> --expect-rev N --fields - <<'EOF'
+  - static:lead-system|aew work assign T-0001 --launch --expect-rev <revision from aew status>
+  - static:lead-system|aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
   - static:pack:implementer|aew check run <check-id>
   - static:pack:implementer|aew submit --kind implementation_report --file <your-report.md>
   - static:pack:investigator|aew check run <check-id>
@@ -497,3 +497,239 @@ residuals:
   site: static:docs/guides/quickstart.md|aew manifest adopt --reason "configured the test command" --expect-rev 1
   decision: 'the operator, 2026-11-01: "yes accept the two O-IDS entries"'
   reason: re-key of the pre-existing allowed entry; the line changed only because CS-4 addendum 12 removed --token
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew evidence ingest <T> --evidence <id> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew harness launch <invocation from aew harness status> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew history audit --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew history load <id> --into <unit> --reason <reason> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew integrate prepare <T> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew integrate publish <T> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew invoke create <S> --role reviewer|verifier --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew invoke create <T> --role implementer --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew invoke create <T> --role reviewer --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew invoke create <T> --role verifier --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew invoke create <T> --scope integration --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew plan accept <T> --revision <n> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew plan propose <T> --file - --assurance none --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew review ingest <T> --evidence <id> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew verify ingest <T> --evidence <id> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work accept <T> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work assign <T> --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work close <S> --reason <reason> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work dispatch <T> --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work reclassify <T> --class <0-4> --reason <reason> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text; this command now carries the revision it lacked'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work transition <T> --to <STATE> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work transition <T> --to COMMIT_READY --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work transition <T> --to REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work transition <T> --to REVIEW_PENDING --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text; this command now carries the revision it lacked'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work transition <T> --to RUNNING --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work transition <T> --to VERIFY_PENDING --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew evidence ingest <T> --evidence <id> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew harness launch <invocation from aew harness status> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew history audit --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew history load <id> --into <unit> --reason <reason> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew integrate prepare <T> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew integrate publish <T> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew invoke create <S> --role reviewer|verifier --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew invoke create <T> --role implementer --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew invoke create <T> --role reviewer --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew invoke create <T> --role verifier --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew invoke create <T> --scope integration --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew plan accept <T> --revision <n> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew plan propose <T> --file - --assurance none --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew review ingest <T> --evidence <id> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew verify ingest <T> --evidence <id> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew work accept <T> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew work assign <T> --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew work close <S> --reason <reason> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew work dispatch <T> --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew work reclassify <T> --class <0-4> --reason <reason> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text; this command now carries the revision it lacked'
+- rule: O-IDS
+  site: static:guide|aew work transition <T> --to <STATE> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew work transition <T> --to COMMIT_READY --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew work transition <T> --to REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew work transition <T> --to REVIEW_PENDING --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text; this command now carries the revision it lacked'
+- rule: O-IDS
+  site: static:guide|aew work transition <T> --to RUNNING --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew work transition <T> --to VERIFY_PENDING --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:lead-system|aew work assign T-0001 --launch --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:lead-system|aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:lead-command:aew-handoff|aew checkpoint --note-file - --next <next action> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept (Recommended)"'
+  reason: 'operator, 2026-11-01, #319 review F4: `--next "..."` re-keyed to the named placeholder `<next action>`; same finding, new text'

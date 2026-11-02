@@ -68,6 +68,7 @@ from aew.errors import (
     ValidationFailed,
 )
 from aew.harness import contract as K
+from aew.harness.contract import EXPECT_REV
 from aew.history.manifest import canonical_json
 from aew.history.store import prewrite
 from aew.knowledge.manifest import MANIFEST
@@ -903,8 +904,8 @@ class Coordination:
         when either refuses."""
         if state.get("schema") != V2:
             raise MigrationRequired("this project's control state is v1: messages are recorded on v2 projects only; "
-                                    "the operator runs `aew migrate --expect-rev N` first",
-                                    schema=state.get("schema"), next_action="aew migrate --expect-rev N")
+                                    f"the operator runs `aew migrate {EXPECT_REV}` first",
+                                    schema=state.get("schema"), next_action=f"aew migrate {EXPECT_REV}")
         switch, reason = messaging_switch(self.k.aew_root, state)
         if switch != X.MESSAGING_ENABLED:
             raise MessagingDisabled(

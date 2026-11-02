@@ -23,8 +23,11 @@ class _Queue:
     def __init__(self, lease: dict[str, Any] | None) -> None:
         self.lease = lease
 
-    def sync(self, _state: dict[str, Any]) -> None:
-        pass
+    def sync(self, state: dict[str, Any]) -> None:
+        # The real sync rewrites the queue and the units it acts on; mutating the state it is given is what lets the
+        # purity assertion fail if the lookup ever syncs the caller's state instead of a copy (#312 review, F1).
+        state.setdefault("queue", {})["synced"] = True
+        state["work"]["T-1"]["integration"]["status"] = "synced"
 
     def require_live_lease(self, _state: dict[str, Any], _work_id: str, _what: str) -> dict[str, Any] | None:
         if self.lease is None:

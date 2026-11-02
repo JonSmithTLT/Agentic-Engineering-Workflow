@@ -548,6 +548,16 @@
    "sha256": "ab1ff3ac47809390f97f456def13d55e35fab17a0fca8da2687049bf5318e9c2"
   },
   {
+   "path": "A-53/CRD-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-53",
+   "source": "30-stages/STG-28-I5-08a-content-read/adopted/crd-r3.1/CRD-POSITION.md",
+   "source-sha256": "b23667ca3831123fd7fa383c15eeecb2d8fb59f060490aba5f019a48d4a18256",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "d316612aea8088318b5f71bd08c6af0d3102f908531689cd3d1c34a824dfe301"
+  },
+  {
    "path": "A-25/aew-d01-read-v0.3.4-FULL.schema.json",
    "generated": "do not edit; regenerated from the adopted design text (see README.md)",
    "position": "A-25",

@@ -53,3 +53,4 @@ Generated; do not edit. These files are the design text the operator has adopted
 | A-50 | [`PL01-POSITION.md`](A-50/PL01-POSITION.md) | the PoC request link's carrier, PL01, revision 3, answering A-48's row 3 by addition to I7-04.a and I7-Q07 |
 | A-51 | [`AP5-POSITION.md`](A-51/AP5-POSITION.md) | four of A-05 section 5's parameter rows, AP5, revision 4: the launch, mediation, helper-roles and handover rows |
 | A-52 | [`RHC-POSITION.md`](A-52/RHC-POSITION.md) | A-05 section 5's resource-ceilings row, RHC, revision 4 |
+| A-53 | [`CRD-POSITION.md`](A-53/CRD-POSITION.md) | I5-08a's content read, CRD, revision 3.1 |

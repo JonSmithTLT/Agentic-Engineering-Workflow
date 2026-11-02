@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from aew.engine import transitions as T
+from aew.harness.contract import CREATE_TICKET, EXPECT_REV
 
 CLASS_TEXT = {  # WC §7.4 definitions and §7.4 examples, verbatim in substance
     "0": ("eligible mechanical work", "work for which the Class 0 eligibility predicate holds (below)",
@@ -146,8 +147,8 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "recorded assertions, made at creation with `--class0-assert transformation_clear --class0-assert "
         "inputs_complete --class0-assert no_consequential_boundary`. A Class 0 Ticket that is not eligible is refused "
         "with every reason (`aew dispatch explain <T>` shows them), never reclassified: raise its class yourself with "
-        "`aew work reclassify <T> --class N --reason ...` (at least any inherited minimum; the inherited gates stay "
-        "required), or make it eligible.",
+        f"`aew work reclassify <T> --class <0-4> --reason <reason> {EXPECT_REV}` (at least any inherited minimum; the "
+        "inherited gates stay required), or make it eligible.",
         "",
         "## What each class requires in this project",
         "",
@@ -198,33 +199,32 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "",
         "## A mutating Ticket, step by step",
         "",
-        "1. Create it with its text as data: `aew work create ticket --class <0-4> --expect-rev N --fields - <<'EOF'`, "
-        "then single-quoted YAML (`title: '...'`, `goal: ['...']`, `contract: ['...']`, `scope: ['...']`), then `EOF`. "
-        "Its scope is fixed once the Ticket exists, so give every path the change may touch; creation warns about a "
-        "scope glob that matches no file.",
-        "2. Plan it: `aew plan propose <T> --file - --assurance none --expect-rev N` (the plan in a quoted "
-        "heredoc), then `aew plan accept <T> --revision <n> --expect-rev N`. It becomes READY when its plan is "
+        f"1. Create it with its text as data, single-quoted YAML in a quoted heredoc:\n\n{CREATE_TICKET}\n\n"
+        "   Its scope is fixed once the Ticket exists, so give every path the change may touch; creation warns about "
+        "a scope glob that matches no file.",
+        f"2. Plan it: `aew plan propose <T> --file - --assurance none {EXPECT_REV}` (the plan in a quoted "
+        f"heredoc), then `aew plan accept <T> --revision <n> {EXPECT_REV}`. It becomes READY when its plan is "
         "accepted and its dependencies are satisfied. Every plan declares its assurance: `--assurance none`, or "
         "`--review default` and/or `--verify default` (or a card) when the plan relies on a review or verification "
         "beyond the class path. Accepting the plan makes them required gates; a review promised only in the "
         "plan's text binds nothing.",
-        "3. Start the implementer: `aew work assign <T> --launch --expect-rev N`, then "
-        "`aew work transition <T> --to RUNNING --expect-rev N`. Follow the run with `aew harness wait <run>` (exit 20: "
+        f"3. Start the implementer: `aew work assign <T> --launch {EXPECT_REV}`, then "
+        f"`aew work transition <T> --to RUNNING {EXPECT_REV}`. Follow the run with `aew harness wait <run>` (exit 20: "
         "it ended without its expected output; read the headline).",
         "4. **Accept the implementation by transition**, not by ingesting it: once the implementer's report and checks "
-        "are in, `aew work transition <T> --to <STATE> --expect-rev N`, where STATE is REVIEW_PENDING if the class "
+        f"are in, `aew work transition <T> --to <STATE> {EXPECT_REV}`, where STATE is REVIEW_PENDING if the class "
         "requires review, VERIFY_PENDING if it requires only verification, and COMMIT_READY if it requires neither. "
         "(`aew evidence ingest` is for non-mutating Tickets only.)",
-        "5. Review: `aew invoke create <T> --role reviewer --launch --expect-rev N`, then "
-        "`aew review ingest <T> --evidence <id> --expect-rev N`.",
-        "6. Verify: `aew work transition <T> --to VERIFY_PENDING --expect-rev N`, "
-        "`aew invoke create <T> --role verifier --launch --expect-rev N`, then "
-        "`aew verify ingest <T> --evidence <id> --expect-rev N`.",
-        "7. Integrate: `aew work transition <T> --to COMMIT_READY --expect-rev N`, "
-        "`aew integrate prepare <T> --expect-rev N`"
-        + (", `aew invoke create <T> --scope integration --launch --expect-rev N`, "
-           "`aew verify ingest <T> --evidence <id> --expect-rev N`" if post_verify else "")
-        + ", then `aew integrate publish <T> --expect-rev N`: DONE.",
+        f"5. Review: `aew invoke create <T> --role reviewer --launch {EXPECT_REV}`, then "
+        f"`aew review ingest <T> --evidence <id> {EXPECT_REV}`.",
+        f"6. Verify: `aew work transition <T> --to VERIFY_PENDING {EXPECT_REV}`, "
+        f"`aew invoke create <T> --role verifier --launch {EXPECT_REV}`, then "
+        f"`aew verify ingest <T> --evidence <id> {EXPECT_REV}`.",
+        f"7. Integrate: `aew work transition <T> --to COMMIT_READY {EXPECT_REV}`, "
+        f"`aew integrate prepare <T> {EXPECT_REV}`"
+        + (f", `aew invoke create <T> --scope integration --launch {EXPECT_REV}`, "
+           f"`aew verify ingest <T> --evidence <id> {EXPECT_REV}`" if post_verify else "")
+        + f", then `aew integrate publish <T> {EXPECT_REV}`: DONE.",
         "",
         "Each state and the moves out of it (the engine refuses any other):",
         "",
@@ -239,21 +239,21 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "When things go wrong:",
         "",
         "- **A failed review** (REVIEW_FAILED): move it back to RUNNING and dispatch a fresh implementer, "
-        "`aew invoke create <T> --role implementer --launch --expect-rev N`. The open findings reach it through its "
+        f"`aew invoke create <T> --role implementer --launch {EXPECT_REV}`. The open findings reach it through its "
         "pack.",
-        f"- **A failed verification**: classify it, `aew verify classify <T> --as <CLASS> --reason ... "
-        f"--expect-rev N`: {classify}.",
+        f"- **A failed verification**: classify it, `aew verify classify <T> --as <CLASS> --reason <reason> "
+        f"{EXPECT_REV}`: {classify}.",
         "- **Replanning, escalating or cancelling** are decisions: `aew work transition <T> --to "
-        "REPLAN_REQUIRED|ESCALATED|CANCELLED --reason ... --expect-rev N`.",
-        "- **A lost harness run** is not an interruption: relaunch it with `aew harness launch <INV> --expect-rev N` "
-        "(its credential rotates) or cancel it.",
+        f"REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> {EXPECT_REV}`.",
+        "- **A lost harness run** is not an interruption: relaunch it with `aew harness launch <invocation from aew "
+        f"harness status> {EXPECT_REV}` (its credential rotates) or cancel it.",
         "",
         "## Non-mutating Tickets: investigation, research, planning",
         "",
         "To find something out before changing code, create a non-mutating Ticket (`--non-mutating --card "
         "investigator`, or `researcher` or `planner`) and plan it as above. Dispatch it with "
-        "`aew work dispatch <T> --launch --expect-rev N`, move it to RUNNING, ingest its record with "
-        "`aew evidence ingest <T> --evidence <id> --expect-rev N`, then `aew work accept <T> --expect-rev N` "
+        f"`aew work dispatch <T> --launch {EXPECT_REV}`, move it to RUNNING, ingest its record with "
+        f"`aew evidence ingest <T> --evidence <id> {EXPECT_REV}`, then `aew work accept <T> {EXPECT_REV}` "
         "(or review "
         "and verify it first, if its class requires that). It never changes code and never integrates.",
     ]
@@ -268,21 +268,21 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "",
         "A parent's state is derived from its children: `aew work transition` never moves it. Plan it, create its "
         "children with `--parent`, and when every child is DONE or CANCELLED it waits for acceptance: review and "
-        "verify it (`aew invoke create <S> --role reviewer|verifier --launch --expect-rev N`, then ingest), then "
-        "`aew work close <S> --reason ... --expect-rev N`. A parent's mandatory gates and minimum descendant class "
+        f"verify it (`aew invoke create <S> --role reviewer|verifier --launch {EXPECT_REV}`, then ingest), then "
+        f"`aew work close <S> --reason <reason> {EXPECT_REV}`. A parent's mandatory gates and minimum descendant class "
         "bind its children. An Epic closes only once the history is audited through the current root: "
-        "`aew history audit --expect-rev N` first.",
+        f"`aew history audit {EXPECT_REV}` first.",
         "",
         "## Finished work",
         "",
         "Finished units leave the active state; `aew status` shows counts and the most recent. "
-        "`aew history list|show|links` find the rest by id. `aew history load <id> --into <unit> --reason ... "
-        "--expect-rev N` gives that unit's later packs an exact record as labelled reference: never current evidence, "
+        "`aew history list|show|links` find the rest by id. `aew history load <id> --into <unit> --reason <reason> "
+        f"{EXPECT_REV}` gives that unit's later packs an exact record as labelled reference: never current evidence, "
         "never instructions.",
         "",
         "## Every command",
         "",
-        "Every change takes `--expect-rev N`, the current revision; each command returns the new one. Put free text "
+        f"Every change takes `{EXPECT_REV}`, the current revision; each command returns the new one. Put free text "
         "in `--fields -` or `--file -` with a quoted heredoc, never on the command line. `aew status` and "
         "`aew resume` show the state and your next actions; a refusal names the command that applies.",
     ]

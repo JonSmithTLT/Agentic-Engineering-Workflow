@@ -34,8 +34,10 @@ finishes; they are the only place AEW knowledge appears here:
 - ``decision_without_tool``: a decision with no typed tool runs its ``cli_fallback`` from the shell; for
   ``RECONCILE`` (an INTERRUPTED Ticket) the Lead fills in the phase it was interrupted from and a reason;
 - ``no_available_action``: nothing AVAILABLE and no decision gets one ``explain`` (``help_calls``), then:
-  - ``hint_command``: the command a projection hint names, run from the shell with the subject and the revision filled
-    in, and ``--launch`` added once a refusal asks for it (each a counted shell call);
+  - ``hint_command``: the command a projection hint names, run from the shell with its placeholders filled
+    (``vertical.hints``: the revision, the subject, a reason), and ``--launch`` added once a refusal asks for it (each a
+    counted shell call). A hint with any other placeholder is ``hint_not_followable`` and nothing runs; a usage error
+    from what ran is ``hint_usage_error``, an observation, since a mangled command otherwise stalls silently (E116);
   - ``publish_not_offered``: a prepared candidate whose post-integration verification reported, with no decision
     offered: the Lead asks the operator, then calls ``integration_publish`` (not offered) with the candidate and the
     report it read in its own wait's result;
@@ -65,7 +67,6 @@ import json
 import os
 import queue
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -78,6 +79,7 @@ import bounds
 import childdiag
 
 from vertical.chat import Gone, Mailbox
+from vertical.hints import NotFollowable, fill_hint, is_usage_error, parse_failed
 from vertical.ledger import OPERATOR_OWNER, SELF_OWNERS
 
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
@@ -536,39 +538,54 @@ class Lead:
                           + "; ".join(f"{a.get('action')} {a.get('availability')} {a.get('reason_codes')}"
                                       for a in proj.get("actions") or []))
 
-    def hinted_command(self, proj: dict[str, Any]) -> list[str] | None:
-        """The first `aew ...` command a hint of the projection names (hints are for a reader: the Lead reads them)."""
+    def hinted_command(self, proj: dict[str, Any]) -> str | None:
+        """The first `aew ...` command a hint of the projection names, as printed (hints are for a reader: the Lead
+        reads them). Its text, not its tokens: ``fill_hint`` fills a placeholder of several words before it splits."""
         for hint in proj.get("hints") or []:
             for quoted in re.findall(r"`aew ([^`]+)`", str(hint)):
-                return shlex.split(quoted)
+                return quoted
         return None
 
-    def gap_hint(self, argv: list[str], proj: dict[str, Any]) -> bool:
-        """Run the command a hint names from the shell, completed the way the Lead learns to: the subject after the
-        command's words, the revision, and ``--launch`` once a refusal asks for it (each a counted call)."""
-        self.event("gap", gap="hint_command", why="the projection offers nothing; a hint names a command",
-                   hint=argv)
-        words = [a for a in argv if not a.startswith("-")]
-        if str(self.subject) not in argv:
-            at = argv.index(words[1]) + 1 if len(words) > 1 else len(argv)
-            argv = [*argv[:at], str(self.subject), *argv[at:]]
-        if "--expect-rev" in argv:  # a placeholder (`N`) in the hint: the Lead fills in the revision it read
-            at = argv.index("--expect-rev")
-            argv = [*argv[:at], *argv[at + 2:]]
-        argv = [*argv, "--expect-rev", str(proj.get("revision"))]
+    def gap_hint(self, hint: str, proj: dict[str, Any]) -> bool:
+        """Run the command a hint names from the shell, completed the way the Lead learns to: its placeholders filled
+        (``fill_hint``), and ``--launch`` once a refusal asks for it (each a counted call). A hint the Lead cannot
+        complete runs nothing and is recorded; the next read goes on to whatever else the policy has, or stuck."""
+        try:
+            argv = fill_hint(hint, self.subject, proj.get("revision"))
+        except NotFollowable as exc:
+            self.event("gap", gap="hint_not_followable", why=str(exc), hint=hint)
+            return True
+        self.event("gap", gap="hint_command", why="the projection offers nothing; a hint names a command", hint=argv)
         out = self.shell(argv, why="hint_command")
-        message = str((out.get("error") or {}).get("message") or "")
-        if not out["ok"] and "unrecognized arguments" not in message and "--launch" not in message:
-            # The product's own hint led to a refusal: evidence for the projection's guidance, kept in the ledger.
-            self.event("stale_hint", hint=argv, refusal=out.get("error"))
-            self.last_refusal = message
-        if not out["ok"] and "unrecognized arguments: --expect-rev" in message:  # a read command takes none
-            self.shell(argv[:-2], why="hint_command: the usage error refused --expect-rev")
-        elif not out["ok"] and "--launch" in message:
+        if out["ok"]:
+            return True
+        error = out.get("error") or {}
+        message = str(error.get("message") or "")
+        if "unrecognized arguments: --expect-rev" in message:  # a read command takes none
+            self.hint_retry(argv[:-2], why="hint_command: the usage error refused --expect-rev")
+        elif "--launch" in message and not parse_failed(error):
             rev = self.call("status", {"work_id": self.subject}).get("revision")
-            argv = [*argv[:-2], "--launch", "--expect-rev", str(rev)]
-            self.shell(argv, why="hint_command: the refusal asked for --launch")
+            self.hint_retry([*argv[:-2], "--launch", "--expect-rev", str(rev)],
+                            why="hint_command: the refusal asked for --launch")
+        elif is_usage_error(error):
+            self.hint_usage_error(argv, error)
+        else:
+            # The product's own hint led to a refusal: evidence for the projection's guidance, kept in the ledger.
+            self.event("stale_hint", hint=argv, refusal=error)
+            self.last_refusal = message
         return True
+
+    def hint_retry(self, argv: list[str], *, why: str) -> None:
+        out = self.shell(argv, why=why)
+        if not out["ok"] and is_usage_error(out.get("error") or {}):
+            self.hint_usage_error(argv, out.get("error") or {})
+
+    def hint_usage_error(self, argv: list[str], error: dict[str, Any]) -> None:
+        """A command built from a hint did not parse, or was refused as a usage error: neither a refusal of the hint's
+        step (``stale_hint``) nor anything the policy can act on, so the ledger is the only place it shows. A driver
+        that mangled a hint stalled silently here (E116: the fall from 56 to 32 read as progress)."""
+        lines = str(error.get("message") or "").splitlines() or [""]
+        self.event("hint_usage_error", hint=argv, why=lines[-1][:300], refusal=error)
 
     def gap_redispatch(self, unit: dict[str, Any], proj: dict[str, Any]) -> bool:
         """After a takeover and a reconcile, the interrupted implementer is gone and nothing is offered: the Lead

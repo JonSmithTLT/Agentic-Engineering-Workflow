@@ -289,7 +289,7 @@ commands:
     journeys: []
     mutates: "yes"
     mutates_basis: "runs a Lead harness session that holds the Lead credential; with --acquire takes the seat"
-    refusals: [PROJECT_NOT_FOUND, USAGE]
+    refusals: [CONTAINMENT_UNAVAILABLE, PROJECT_NOT_FOUND, USAGE]
     note: "a Lead harness session for any harness; `aew opencode` is the journeys' entry"
   - name: lead tool
     home: recovery
@@ -961,7 +961,7 @@ commands:
     journeys: [V1, V2, V4]
     mutates: "yes"
     mutates_basis: "runs a project check as the invocation and records its result as role evidence"
-    refusals: [PROJECT_NOT_FOUND, USAGE]
+    refusals: [CONTAINMENT_UNAVAILABLE, PROJECT_NOT_FOUND, USAGE]
   - name: submit
     home: product
     users: [worker]

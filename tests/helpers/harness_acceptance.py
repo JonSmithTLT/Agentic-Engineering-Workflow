@@ -579,8 +579,8 @@ def at17_credential_custody(lab: HarnessLab, driver: Driver, tmp_path: Path) -> 
 
 
 ACCEPTANCE = {
-    "AT-14": Scenario("at14_ticket_end_to_end", at14_ticket_end_to_end),
-    "AT-15": Scenario("at15_disposable_harness", at15_disposable_harness),
+    "AT-14": Scenario("at14_ticket_end_to_end", at14_ticket_end_to_end, lead_session=True),
+    "AT-15": Scenario("at15_disposable_harness", at15_disposable_harness, lead_session=True),
     "AT-16": Scenario("at16_isolated_review", at16_isolated_review),
-    "AT-17": Scenario("at17_credential_custody", at17_credential_custody),
+    "AT-17": Scenario("at17_credential_custody", at17_credential_custody, lead_session=True),
 }

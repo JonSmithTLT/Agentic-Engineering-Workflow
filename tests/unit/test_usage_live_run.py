@@ -105,7 +105,7 @@ class Rig:
 
     def _start(self, spawn: Any, command: list[str], *, env: dict[str, str], cwd: str, log_path: Path,
                timeout: float = 0) -> StubServer:
-        self.started.append({"live": runlog.read_live(self.run_dir)})
+        self.started.append({"live": runlog.read_live(self.run_dir), "env": dict(env)})
         self.app.config = json.loads(env["OPENCODE_CONFIG_CONTENT"])  # as the real server loads it
         self.server = StubServer(self.url, self.app.password)
         return self.server
@@ -164,6 +164,21 @@ def test_unsent_is_written_before_the_server_starts(rig):
     assert start["live"] is not None
     assert (start["live"]["seq"], start["live"]["prompt_state"], start["live"]["source"]) == (
         0, "unsent", {"kind": "run", "id": RUN})
+    adapter.terminate()
+
+
+@pytest.mark.parametrize("marked", [True, False])
+def test_a_weaker_runs_opencode_server_carries_its_marker_and_a_contained_ones_none(rig, marked):
+    """G3 addendum 7 (#321 review, F6): the run's OpenCode server, and so everything it starts outside its shell tool,
+    carries the context's marker where the supervisor gave one (a weaker run); a run with none adds nothing."""
+    from aew.harness import weaker_register as W
+
+    adapter = rig.adapter()
+    marker = {W.MARKER: str(rig.run_dir / "run.json")} if marked else {}
+    adapter.launch(rig.contract(), {"PATH": os.environ.get("PATH", ""), **marker})
+    wait_for(lambda: not adapter.inspect()["alive"], what="the turn to end")
+    [start] = rig.started
+    assert start["env"].get(W.MARKER) == marker.get(W.MARKER)
     adapter.terminate()
 
 

@@ -32,6 +32,7 @@ from aewflow import (
     implement,
     review,
     sample_project,
+    stand_in_containment,
     to_commit_ready,
     verify,
 )
@@ -73,8 +74,7 @@ def custody(monkeypatch):
 @pytest.fixture
 def contained(monkeypatch):
     """The containment stand-in of `test_validation_checks`: the engine believes the candidate is immutable."""
-    monkeypatch.setattr(VO.Validation, "containment_available", lambda self: True)
-    monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (None, dict(CONTAINED)))
+    stand_in_containment(monkeypatch, CONTAINED)
 
 
 def control(p: Project) -> dict[str, Any]:
@@ -720,8 +720,7 @@ def test_stage_matches_primitives(tmp_path, monkeypatch, name, case):
     verifier = "verifier" in case
     monkeypatch.setenv("GIT_AUTHOR_DATE", "2026-01-01T00:00:00Z")
     monkeypatch.setenv("GIT_COMMITTER_DATE", "2026-01-01T00:00:00Z")
-    monkeypatch.setattr(VO.Validation, "containment_available", lambda self: True)
-    monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (None, dict(CONTAINED)))
+    stand_in_containment(monkeypatch, CONTAINED)
     held: dict[str, str] = {}
     monkeypatch.setattr(engine_api, "spawn_worker",
                         lambda repo, aew_root, custodian, credential: held.__setitem__(f"{aew_root}|{custodian}",

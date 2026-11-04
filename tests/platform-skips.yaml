@@ -4,6 +4,17 @@
 schema: aew/platform-skips/v1
 skipped:
   win32:
+    tests/unit/test_weaker_register.py::test_a_register_that_resolves_into_the_kernels_own_trees_is_refused: >-
+      /proc and /dev are Linux's (#316's lesson): on Windows the register has no kernel trees to resolve into, and a
+      failed write there never refuses (no G3, no containment). Covered on Linux; the refusal of an unwritable register
+      is tested on every platform in the same file.
+    tests/unit/test_weaker_register.py::test_a_marker_through_a_link_and_up_opens_the_path_it_was_checked_at: >-
+      Making a symlink needs a privilege on Windows (#321 quick check, F8), and its marker scan does not run (no /proc).
+      The open is the same line on every platform. Covered on Linux.
+    tests/unit/test_weaker_register.py::test_a_marker_that_names_a_fifo_never_blocks_the_end: >-
+      A FIFO is POSIX's (#321 review, F2): Windows has none, and its marker scan does not run (no /proc). The marker's
+      other refusals (a file outside AEW's records, past the parser's depth or the size bound) are tested on every
+      platform in the same file.
     tests/unit/test_store_read_committed.py::test_an_absent_file_reads_as_absent_at_once_where_rename_is_atomic: >-
       POSIX rename is atomic, so a missing file is absent at once there; Windows retries it (F46.1 F1a, re-review R8).
       Covered on Windows by test_an_absent_file_is_absent_only_after_the_retries_on_windows.

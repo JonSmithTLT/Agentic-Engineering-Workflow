@@ -96,7 +96,9 @@ class Driver:
     # operator's environment minus AEW credentials, since a harness needs its provider keys.
     curated_lead_env = False
 
-    def create_lab(self, tmp_path: Path) -> HarnessLab:
+    def create_lab(self, tmp_path: Path, *, lead_session: bool = False) -> HarnessLab:
+        """A lab for one scenario; ``lead_session`` for one that runs the general Lead command, whose lab allows
+        weaker runs (``HarnessLab.create``; G3 addendum 7, ruling 1)."""
         raise NotImplementedError
 
     def script(self, lab: HarnessLab, key: str, steps: list[dict[str, Any]], *,
@@ -160,8 +162,9 @@ class FakeDriver(Driver):
     capabilities = frozenset({"effective_override", "incompatible"})
     review_profile = {"provider": "fakeprov", "model": "fake-model", "effort": "medium"}
 
-    def create_lab(self, tmp_path: Path) -> HarnessLab:
-        return HarnessLab.create(sample_project(tmp_path), tmp_path, extra_env={"OPENAI_API_KEY": PROVIDER_SECRET})
+    def create_lab(self, tmp_path: Path, *, lead_session: bool = False) -> HarnessLab:
+        return HarnessLab.create(sample_project(tmp_path), tmp_path, extra_env={"OPENAI_API_KEY": PROVIDER_SECRET},
+                                 lead_session=lead_session)
 
     def script(self, lab, key, steps, *, effective=None, health=None):
         spec: Any = steps if effective is None and health is None else {"steps": steps, "effective": effective,
@@ -189,11 +192,12 @@ class FakeOpenCodeDriver(Driver):
     review_profile = {"provider": "fakeprov", "model": "fake-model", "effort": "medium"}
     curated_lead_env = True
 
-    def create_lab(self, tmp_path: Path) -> HarnessLab:
+    def create_lab(self, tmp_path: Path, *, lead_session: bool = False) -> HarnessLab:
         policy = {**POLICY, "harness": "opencode", "provider_env": ["OPENAI_API_KEY"]}
         upstream = fake_opencode.ProviderUpstream()  # the provider the run's relay reaches (F28, Linux)
         lab = HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy,
-                                extra_env={"OPENAI_API_KEY": PROVIDER_SECRET}, provider_upstream=upstream.url)
+                                extra_env={"OPENAI_API_KEY": PROVIDER_SECRET}, provider_upstream=upstream.url,
+                                lead_session=lead_session)
         lab.closers.append(upstream.close)
         lab.provider = upstream
         scripts = Path(lab.env[SCRIPTS_ENV])  # a root contained runs can see (the sandbox's /tmp is private)
@@ -275,7 +279,7 @@ class OpenCodeDriver(Driver):
     name = "opencode-live"
     capabilities = frozenset({"incompatible"})
 
-    def create_lab(self, tmp_path: Path) -> HarnessLab:
+    def create_lab(self, tmp_path: Path, *, lead_session: bool = False) -> HarnessLab:
         from opencode_scripted import HERE as HELPERS
 
         provider, _, model = FREE_MODEL.partition("/")
@@ -283,7 +287,8 @@ class OpenCodeDriver(Driver):
                   "profiles": {"standard": {"provider": provider, "model": model}}}
         return HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy, extra_env={
             "OPENAI_API_KEY": PROVIDER_SECRET, "AEW_LAUNCH_ACK_S": "240",
-            "AEW_HARNESS_ADAPTERS": f"opencode-scripted={HELPERS / 'opencode_scripted.py'}:ScriptedOpenCodeAdapter"})
+            "AEW_HARNESS_ADAPTERS": f"opencode-scripted={HELPERS / 'opencode_scripted.py'}:ScriptedOpenCodeAdapter"},
+            lead_session=lead_session)
 
     def script(self, lab, key, steps, *, effective=None, health=None):
         lab.script(key, {"steps": steps, "health": health})
@@ -335,6 +340,7 @@ class Scenario:
     name: str
     fn: Callable[..., None]
     needs: frozenset[str] = frozenset()
+    lead_session: bool = False  # it runs the general Lead command, so its lab allows weaker runs (G3 addendum 7)
 
 
 SCENARIOS: list[Scenario] = []
@@ -351,7 +357,7 @@ def run_scenario(sc: Scenario, driver: Driver, tmp_path: Path) -> None:
     missing = sc.needs - driver.capabilities
     if missing:
         pytest.skip(f"{driver.name} cannot drive {sorted(missing)}")
-    lab = driver.create_lab(tmp_path)
+    lab = driver.create_lab(tmp_path, lead_session=sc.lead_session)
     try:
         sc.fn(lab, driver, tmp_path)
     finally:

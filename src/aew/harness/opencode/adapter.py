@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.errors import HarnessError, HarnessIncompatible, HarnessLaunchFailed
-from aew.harness import agentenv, runlog
+from aew.harness import agentenv, runlog, weaker_register
 from aew.harness import usage as U
 from aew.harness.base import HarnessAdapter
 from aew.harness.containment import netns
@@ -288,6 +288,8 @@ class OpenCodeAdapter(HarnessAdapter):
         self._start_meter(contract)  # before any server exists: no server, and so no prompt, without a live file
         env = server_env(dict(os.environ), self.state_dir, provider_env=list(contract.extra.get("provider_env") or []),
                          config=config, password=secrets.token_urlsafe(32))
+        if agent_env.get(weaker_register.MARKER):  # a weaker run's server, and all it starts, carry its marker too
+            env[weaker_register.MARKER] = agent_env[weaker_register.MARKER]
         if network is not None:  # the provider's variables are sentinels inside; the relay holds the values
             env = network.harness_env(env)
             leaked = network.leaks(*env.values(), json.dumps(config))

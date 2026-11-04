@@ -809,6 +809,25 @@ def test_an_operator_root_under_or_containing_run_is_refused(tmp_path, fake_bwra
     assert any(e["path"] == L._real(L.RUN) for e in containing.value.details["exposes"])
 
 
+def test_an_operator_root_that_holds_aews_host_state_is_refused(tmp_path, monkeypatch, fake_bwrap):
+    """G3 addendum 7, ruling 2: the register of weaker contexts lives outside every sandbox's writable binds (#321
+    review, F7). A policy root that is, contains or lies under AEW's host state is refused, whatever else it holds;
+    one beside it is not."""
+    from aew import hoststate
+
+    _, ws = repo_with_worktree(tmp_path)
+    data = tmp_path / "data"
+    (data / "aew" / "weaker-contexts").mkdir(parents=True)
+    (tmp_path / "beside").mkdir()
+    monkeypatch.setenv(hoststate.base_variable(), str(data))
+    guarded = L._guarded(ws, project=None, runs=None, bridge_dir=None, masks=(), host=())
+    for root in (data, data / "aew", data / "aew" / "weaker-contexts"):
+        with pytest.raises(ContainmentUnavailable, match="AEW's host state"):
+            L._refuse_unsafe_root(str(root), L._real(root), guarded, workspaces=str(tmp_path / "workspaces"))
+    L._refuse_unsafe_root(str(tmp_path / "beside"), L._real(tmp_path / "beside"), guarded,
+                          workspaces=str(tmp_path / "workspaces"))
+
+
 def test_a_layout_survives_score_childs_json_round_trip_with_the_same_argv():
     """eval's scoring child rebuilds its layout from JSON (``dataclasses.asdict``, then lists back to tuples): the new
     fields, the exceptions' pairs among them, give the same sandbox."""
@@ -1604,7 +1623,8 @@ def test_a_workers_containment_event_carries_the_launch_line_of_the_masks_in_its
                           writable=(str(tmp_path / "ws"),), readonly=(), tree_masks=tree_masks)
         monkeypatch.setattr(C, "establish", lambda layout=layout, **_: (layout, dict(label)))
         events: list[tuple[str, dict[str, Any]]] = []
-        engine = SimpleNamespace(execution_policy=lambda: ({}, None), repo_root=tmp_path / "repo")
+        engine = SimpleNamespace(execution_policy=lambda: ({}, None), repo_root=tmp_path / "repo",
+                                 aew_root=tmp_path / "repo" / ".aew")
         worker = SimpleNamespace(engine=engine, run_dir=tmp_path / "r",
                                  bridge=SimpleNamespace(private_dir=None, address="a"), record={}, layout=None,
                                  tree=None, _event=lambda kind, out=events, **fields: out.append((kind, fields)))

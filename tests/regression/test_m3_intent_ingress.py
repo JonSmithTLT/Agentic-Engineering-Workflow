@@ -16,7 +16,7 @@ import sys
 
 import pytest
 import yaml
-from aewflow import sample_project
+from aewflow import lead_project, sample_project
 from conftest import run_aew
 from fake_harness import AGENT
 
@@ -133,7 +133,7 @@ def test_reasons_and_notes_through_fields_and_stdin_are_stored_byte_for_byte(tmp
 
 def test_fields_through_a_lead_session_are_stored_byte_for_byte(tmp_path):
     """The Lead's harness pipes the heredoc to `aew`; the client expands it and the broker receives data."""
-    p = sample_project(tmp_path)
+    p = lead_project(tmp_path)
     script, transcript = tmp_path / "lead-script.json", tmp_path / "lead.jsonl"
     script.write_text(json.dumps([{"do": "lead", "args": ["work", "create", "ticket", "--class", "1",
                                                           "--fields", "-"], "stdin": dump(spec(CORPUS[4]))}]),

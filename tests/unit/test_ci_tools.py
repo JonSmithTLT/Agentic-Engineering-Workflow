@@ -1355,7 +1355,9 @@ def covered(refs: list[tuple[str, str, str]], source: Path, tracked: list[str]) 
 # and name no document, except interfaces_cli.py, which names docs/implementation/surface-map.yaml (a full-tier file, in
 # tier.SHARED: a change to it runs the heavy lanes' tests that import the family), so the heavy lanes' tests may import
 # those (tests/integration/test_reference_entry_points.py, tests/integration/test_reference_interfaces.py).
-CORE_ONLY_READERS = ("tools/register.py", "tools/ci/tier.py", "tools/dashboard/import_build.py", "tools/reference.py")
+CORE_ONLY_READERS = ("tools/register.py", "tools/ci/tier.py", "tools/dashboard/import_build.py", "tools/reference.py",
+                     # the launch census's helper: only tests/unit/test_launch_census.py imports it (E112)
+                     "tests/helpers/launch_census.py")
 # Rooted expressions without a literal base that do not read the repository widely (PR #163 review, V7-3), by file
 # and source text. Each needs its reason; anything new of this shape fails the guard until it is listed or rewritten.
 _CONTRACT = "ROOT / CT.CONTRACT_REL"  # the dashboard contract: its literal path is in src/aew/dashboard/contract.py,

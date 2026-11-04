@@ -29,6 +29,7 @@ from aew.harness import contract as K
 from aew.util import atomic_write, utc_now
 
 RUNS_REL = "local/harness/runs"
+RECORD = "run.json"                        # the run record
 LIVE_FILE = "usage.live.json"              # the run's live usage sample (F25 L2)
 LIVE_STATE_FILE = "usage.live.state.json"  # its meter's high-water state; not part of any contract
 LIVE_SCHEMA = "aew/usage-live/v1"
@@ -74,6 +75,9 @@ def _read_regular(path: Path) -> bytes:
     return data
 
 
+read_regular = _read_regular  # for the register of weaker contexts' marker scan, which reads these files the same way
+
+
 def _read_text(path: Path) -> str | None:
     """None only when the file does not exist. On Windows a reader can briefly collide with a writer's atomic
     replace (a sharing violation): that is retried, never mistaken for absence. Elsewhere a permission error is
@@ -92,7 +96,7 @@ def _read_text(path: Path) -> str | None:
 
 def read_record(directory: Path) -> dict[str, Any] | None:
     try:
-        text = _read_text(directory / "run.json")
+        text = _read_text(directory / RECORD)
         record = json.loads(text) if text is not None else None
     except (OSError, ValueError, RecursionError):  # nesting past the parser's depth is no record (#137 re-review, F1)
         return None
@@ -103,7 +107,7 @@ def read_record(directory: Path) -> dict[str, Any] | None:
 
 def write_record(directory: Path, record: dict[str, Any]) -> None:
     record["updated_at"] = utc_now()
-    atomic_write(directory / "run.json", K.redact(json.dumps(record, indent=1, sort_keys=True, default=str)) + "\n")
+    atomic_write(directory / RECORD, K.redact(json.dumps(record, indent=1, sort_keys=True, default=str)) + "\n")
     # A changed run record wakes waiters (ADR-0012 D4; advisory). ``directory`` is <aew root>/local/harness/runs/<run>.
     aew_root = directory.parents[len(Path(RUNS_REL).parts)]
     if directory.parent == aew_root / RUNS_REL:

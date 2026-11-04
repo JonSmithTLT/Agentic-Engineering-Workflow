@@ -12,6 +12,7 @@ import textwrap
 import time
 
 import pytest
+from aewflow import allow_weaker_lead
 from conftest import Project, clean_env
 
 from aew import lead_credential
@@ -78,6 +79,7 @@ def test_with_the_variable_set_for_the_session_the_command_proceeds(project: Pro
 
 def test_a_lead_session_without_the_credential_refuses_with_the_per_session_forms_and_acquire(project: Project):
     """The Lead session's refusal (lead_broker.require_credential), off a terminal: the forms and the other way in."""
+    allow_weaker_lead(project)  # the credential's refusal, not `required`'s (G3 addendum 7)
     res = project.aew("lead", "session", "--", sys.executable, "-c", "pass")
     assert res.returncode == 2 and res.error["details"]["reason"] == "lead_credential_required", res.stderr
     _forms_given(res.error)
@@ -190,7 +192,7 @@ def test_a_lead_session_started_at_the_prompt_holds_what_was_typed(monkeypatch):
     class Broker:
         env: dict = {}
         superseded = None
-        server = None
+        server = type("Server", (), {"private_dir": None})
 
         def __init__(self, engine, token):
             held.append(token)
@@ -216,7 +218,9 @@ def test_a_lead_session_started_at_the_prompt_holds_what_was_typed(monkeypatch):
     monkeypatch.setattr(lead_broker, "LeadBroker", Broker)
     monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setattr(procs, "run_session_tree", lambda command, **k: (0, "clean"))
-    lead_broker.run_session(Engine(), ["harness"], acquire=False, session_label=None, keep_seat=False, env={})
+    lead_broker.run_session(Engine(), ["harness"], acquire=False, session_label=None, keep_seat=False, env={},
+                            contained=lambda _dir, env: lead_broker.Harness(argv=["harness"], env=env, relay=False,
+                                                                            label={}, close=lambda: None))
     assert held == ["synthetic-typed"]
     assert lead_credential.take_prompted() == ""  # the broker took it; nothing is left for another command
 

@@ -236,18 +236,29 @@ def score(oracle: Oracle, tree: Path, *, hide: tuple[Path, ...] | list[Path] = (
     import base64
     import dataclasses
 
+    from aew.harness import weaker_register
+    from aew.harness.containment import label as containment_label
     from aew.harness.procs import ProcessTree
 
     scratch = Path(tempfile.mkdtemp(prefix="aew-eval-scoring-")).resolve()  # TEMP may be an 8.3 name (review, 6)
     try:
         masked = [*private_repository(oracle.root), *hide]
         layout = scoring_layout(tree, scratch, masked) if sys.platform.startswith("linux") else None
+        # The scorer runs code a model wrote: an agent context, entered in the register of weaker contexts while it
+        # runs (its layout shares the host's network; off Linux it has none). On Linux one that cannot be entered is
+        # refused before the scorer starts (G3 addendum 7).
         spec = {"files": {rel: base64.b64encode(data).decode("ascii") for rel, data in oracle.files.items()},
-                "layout": dataclasses.asdict(layout) if layout is not None else None,
-                "env": program_env(scratch)}
+                "layout": dataclasses.asdict(layout) if layout is not None else None, "env": program_env(scratch)}
         env = {k: v for k, v in os.environ.items() if k != ENV}
         procs = ProcessTree()
+        entry = weaker_register.enter(
+            kind="eval_scoring", ownership="process_group", directory=tree,
+            label=containment_label(contained=layout is not None, layout=layout,
+                                    mechanism="bubblewrap" if layout is not None else None,
+                                    reason=None if layout is not None else "scored off Linux, with no sandbox"))
+        spec["env"], env = entry.mark(spec["env"]), entry.mark(env)  # the model's programs carry its marker too
         try:
+            entry.started()
             proc = procs.spawn([sys.executable, "-I", "-B", str(CHILD), str(tree)], cwd=str(tree), env=env,
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:
@@ -258,6 +269,7 @@ def score(oracle: Oracle, tree: Path, *, hide: tuple[Path, ...] | list[Path] = (
                 return _failed(oracle, "SCORING_TIMEOUT", f"scoring ran over {timeout_s:g} s")
         finally:
             procs.close()
+            entry.end(procs.survivors(0.0))  # a bare process group: ended once a scan finds none of it (ruling 2)
         stdout, stderr = raw_out.decode("utf-8", "replace"), raw_err.decode("utf-8", "replace")
         checks = _parse(stdout) if proc.returncode == 0 else None
         if checks is None:

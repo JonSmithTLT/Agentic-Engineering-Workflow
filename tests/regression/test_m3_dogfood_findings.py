@@ -29,7 +29,7 @@ import sys
 
 import printed_commands as P
 import pytest
-from aewflow import SUBTRACT_PATCH, create_planned_ticket, sample_project
+from aewflow import SUBTRACT_PATCH, create_planned_ticket, lead_project, sample_project
 from conftest import IS_WINDOWS, run_aew
 from fake_harness import AGENT, IMPL_REPORT, HarnessLab, credential_hits
 from invariants import assert_control_invariants
@@ -93,7 +93,7 @@ def test_a_scope_glob_with_a_comma_is_refused_saying_to_repeat_the_option(tmp_pa
 
 
 def test_resume_inside_a_lead_session_says_this_session_holds_lead_authority(tmp_path):
-    p = sample_project(tmp_path)
+    p = lead_project(tmp_path)
     script, transcript = tmp_path / "lead-script.json", tmp_path / "lead.jsonl"
     script.write_text(json.dumps([{"do": "aew", "args": ["resume", "--json"]}]), encoding="utf-8")
     res = run_aew("-C", str(p.root), "lead", "session", "--", sys.executable, str(AGENT), "--script", str(script),

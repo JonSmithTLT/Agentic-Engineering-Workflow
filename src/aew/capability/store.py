@@ -25,6 +25,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from aew import hoststate
 from aew.errors import IntegrityError, PermissionDenied
 from aew.util import atomic_write, utc_now
 
@@ -43,19 +44,14 @@ ROOT_OVERRIDE: Path | None = None
 
 def base_variable() -> str:
     """The environment variable that names the directory the register lives under on this platform."""
-    return "LOCALAPPDATA" if sys.platform == "win32" else "XDG_DATA_HOME"
+    return hoststate.base_variable()
 
 
 def root() -> Path:
     """This host's register directory."""
     if ROOT_OVERRIDE is not None:
         return ROOT_OVERRIDE
-    if sys.platform == "win32":
-        base = os.environ.get(base_variable()) or str(Path.home() / "AppData" / "Local")
-    else:  # the XDG base directory rule: a relative XDG_DATA_HOME is ignored
-        xdg = os.environ.get(base_variable()) or ""
-        base = xdg if os.path.isabs(xdg) else str(Path.home() / ".local" / "share")
-    return Path(base) / "aew" / "capability"
+    return hoststate.root() / "capability"
 
 
 def empty() -> dict[str, Any]:

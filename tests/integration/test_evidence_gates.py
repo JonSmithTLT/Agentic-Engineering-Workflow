@@ -34,6 +34,31 @@ def fail(res, code: str, exit_code: int | None = None) -> dict:
     return err
 
 
+def test_the_operators_check_run_runs_in_a_sandbox_of_its_own_and_records_its_label(calc, tmp_path):
+    """DV-4: `aew check run` establishes its own sandbox (or is refused under `required`), never runs the check bare.
+    Its run directory holds the label it ran under, and the evidence names that label's filesystem."""
+    import json
+
+    from aew.util import parse_frontmatter
+
+    wid = create_planned_ticket(calc, tmp_path)
+    impl = assign(calc, wid)
+    impl.write(SUBTRACT_PATCH)
+    out = impl.check("unit")
+    meta, _ = parse_frontmatter((calc.root / f".aew/evidence/{wid}/{out['evidence']}.md").read_text(encoding="utf-8"),
+                                source="evidence")
+    import conftest
+
+    left = list((calc.root / ".aew/local/harness/runs").glob("check-*"))
+    # what remains of the run's directory: nothing, or its label alone while its entry may be live (#321 review, N3)
+    assert all([p.name for p in d.iterdir()] == ["label.json"] for d in left)
+    if meta["method"]["containment"] != "os_readonly_roots":  # weaker (Windows, or allowed): entered by this route
+        register = conftest.CHILD_DATA_BASE / "aew" / "weaker-contexts"
+        mine = [e for e in (json.loads(f.read_text(encoding="utf-8")) for f in register.glob("check_run-*.json"))
+                if e["project"] == str(calc.root)]
+        assert len(mine) == 1 and mine[0]["label"]["filesystem"] == meta["method"]["containment"]
+
+
 def test_smoke_to_verified(calc, tmp_path):
     wid, _ = to_verified(calc, tmp_path)
     gates = calc.ok("gate", "show", wid)

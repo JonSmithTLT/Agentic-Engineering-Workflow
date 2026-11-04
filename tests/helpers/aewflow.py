@@ -42,6 +42,40 @@ def unit_check_command() -> list[str]:
     return ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests"]
 
 
+def allow_weaker_lead(project: Project) -> Project:
+    """For tests of the general Lead command only (`aew lead session`, G3 addendum 7, ruling 1): the project allows
+    weaker runs, as an operator's would, so the command runs its harness labelled not contained instead of being refused
+    under the default ``required``. Its workers are still contained wherever a sandbox can be established. The policy is
+    the project's starting one (pinned), so this runs before the test's first transition, not as an edit under test."""
+    path = project.root / ".aew/policy/execution.yaml"
+    policy = (load_yaml(path.read_text(encoding="utf-8"), source=str(path)) if path.exists() else
+              {"schema": "aew/execution/v1", "configured": False, "profiles": {}, "routing": {}})
+    policy["containment"] = {**(policy.get("containment") or {}), "mode": "allow_weaker"}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    project.pin_policy()
+    return project
+
+
+def stand_in_containment(monkeypatch: Any, label: dict[str, Any]) -> None:
+    """Stand in for Linux containment in this process: the engine believes the integration worktree is immutable for
+    the run (validation's own seams), and its sandbox is ``label`` with no layout behind it. Under ``required`` a check
+    with no layout is refused (DV-4, ``policy/checks.py``'s backstop), so a stand-in with none can only be a host whose
+    policy allows weaker runs: it stands in for that policy too, in this process. An `aew` the test starts reads the
+    project's own policy, and on Linux runs its checks in a real sandbox."""
+    from aew.engine import validation_ops as VO
+    from aew.harness import containment
+
+    monkeypatch.setattr(VO.Validation, "containment_available", lambda self: True)
+    monkeypatch.setattr(VO.Validation, "establish", lambda self, *, workspace, run_dir: (None, dict(label)))
+    monkeypatch.setattr(containment, "mode", lambda policy: containment.ALLOW_WEAKER)
+
+
+def lead_project(tmp_path: Path, **kw: Any) -> Project:
+    """:func:`sample_project` for a test of the general Lead command (:func:`allow_weaker_lead`)."""
+    return allow_weaker_lead(sample_project(tmp_path, **kw))
+
+
 def sample_project(tmp_path: Path, *, guardrails: dict[str, Any] | None = None,
                    checks: dict[str, Any] | None = None, gates: dict[str, Any] | None = None) -> Project:
     repo = make_git_repo(tmp_path / "repo", SAMPLE_FILES)

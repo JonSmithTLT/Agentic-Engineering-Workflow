@@ -81,6 +81,7 @@ def test_a_lead_session_marks_its_process_as_the_launch_host_while_it_runs(monke
     class Broker:
         env: dict = {}
         superseded = None
+        server = type("Server", (), {"private_dir": None})
 
         def __init__(self, *_):
             pass
@@ -99,7 +100,7 @@ def test_a_lead_session_marks_its_process_as_the_launch_host_while_it_runs(monke
         repo_root = "."
         store = Store()
 
-    def tree(command, *, env, cwd, relay=False):
+    def tree(command, *, env, cwd, relay=False, survivors=None):
         seen.append(("run", agentenv.env_fix("VENDOR_KEY")))
         return 0, "clean"
 
@@ -107,7 +108,9 @@ def test_a_lead_session_marks_its_process_as_the_launch_host_while_it_runs(monke
     monkeypatch.setattr(procs, "run_session_tree", tree)
     monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setenv("AEW_LEAD_TOKEN", "synthetic")
-    lead_broker.run_session(Engine(), ["harness"], acquire=False, session_label=None, keep_seat=False, env={})
+    lead_broker.run_session(Engine(), ["harness"], acquire=False, session_label=None, keep_seat=False, env={},
+                            contained=lambda _dir, env: lead_broker.Harness(argv=["harness"], env=env, relay=False,
+                                                                            label={}, close=lambda: None))
     assert [k for k, _ in seen] == ["start", "run"]
     assert all("this Lead session" in text and "started without" in text for _, text in seen)
     assert "started without" not in agentenv.env_fix("VENDOR_KEY")  # only while the session runs

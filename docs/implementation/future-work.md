@@ -2033,7 +2033,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Was:** G3 addendum 7's ruling 1, before G3-C: under `required`, every launch whose containment fails is refused, whatever command or flag started it, with ruling 2's register of weaker contexts, the launch census (DV-2, DV-5) and DV-4
 
-**Closed:** 2026-11-01
+**Closed:** 2026-11-03
 
 **By:** E112's pull request (`fix/e112-weaker-contexts`): `aew lead session` refused under `required` before any credential read or seat move; `run_session`'s `contained` required; the register of weaker contexts (`aew.harness.weaker_register`), entered by every weaker owner; `aew check run` contained or refused with the `policy/checks.py` backstop; the launch census (`tests/launch-census.yaml`); ADR-0009's and ADR-0004's amendments of 2026-11-01. The entry's end follows the designer's ruling of 2026-11-01 on E112's entry end
 
@@ -2043,7 +2043,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Was:** Report an argument-limit refusal at a check's spawn as the refusal it is, not as `VALIDATION_INTERRUPTED`
 
-**Closed:** 2026-11-01
+**Closed:** 2026-11-03
 
 **By:** E112's pull request (`fix/e112-weaker-contexts`): a `ContainmentUnavailable` at a check's spawn is the run's containment refusal (`test_an_argument_limit_refusal_at_a_checks_start_is_reported_as_the_refusal_it_is`)
 

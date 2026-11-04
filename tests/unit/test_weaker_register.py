@@ -277,6 +277,38 @@ def test_a_marker_record_past_the_parsers_depth_or_the_bound_is_no_record_and_th
     W.sweep()  # nor does the sweep raise on either
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="making a symlink needs a privilege on Windows")
+def test_a_marker_through_a_link_and_up_opens_the_path_it_was_checked_at(reg, monkeypatch, tmp_path):
+    """#321 quick check, F8: the check collapses ``link/..`` in a path's text without looking at the disk, so the open
+    reads that same path and not the file the link and ``..`` reach. A record there names no host: through the
+    project's runs directory or the register's own, by a marker, or by an unreadable process's ``--run-dir``."""
+    stranger = "linux:boot-1:4000"
+    claim = {"session_start_id": stranger, "supervisor_start_id": stranger}
+    aew, _ = runs_of(tmp_path)
+    project = aew.parent
+    elsewhere = project / "x" / ".aew" / "local" / "harness" / "runs"
+    record(elsewhere / "r" / "label.json", claim)
+    record(elsewhere / "s" / "run.json", claim)
+    (project / "x" / "y").mkdir()
+    (project / "link").symlink_to(project / "x" / "y")
+    workspace = tmp_path / "ws"
+    (workspace / "deep" / "n0" / "n1").mkdir(parents=True)
+    (workspace / "lnk").symlink_to(workspace / "deep" / "n0" / "n1")
+    record(workspace / "deep" / reg.name / "x.json", claim)
+    for marker in (f"{project}/link/../.aew/local/harness/runs/r/label.json",
+                   f"{workspace}/lnk/../../{reg.name}/x.json"):
+        e = _held_by_a_stranger(monkeypatch, tmp_path, marker)
+        e.end([])
+        assert json.loads(e.path.read_text())["outcome"] == "unowned", marker
+    argv = ("python", "-m", "aew.harness.supervisor", "--run-dir", f"{project}/link/../.aew/local/harness/runs/s")
+    named = W.Proc(pid=33, start_id=stranger, ticks=4000, env=None, cmdline=argv)
+    monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: scan_of(named))
+    e = entry(ownership="subreaper", marker="/p/own.json", aew_root=aew)
+    e.started()
+    e.end([])
+    assert json.loads(e.path.read_text())["outcome"] == "unowned", "a process's own --run-dir names no host"
+
+
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="a FIFO is POSIX's")
 def test_a_marker_that_names_a_fifo_never_blocks_the_end(reg, monkeypatch, tmp_path):
     """#321 review, F2, scenario C: a FIFO in a run directory is opened without blocking and refused as no file."""
@@ -286,6 +318,7 @@ def test_a_marker_that_names_a_fifo_never_blocks_the_end(reg, monkeypatch, tmp_p
     fifo = runs / "lead-1" / "label.json"
     fifo.parent.mkdir(parents=True)
     os.mkfifo(fifo)
+    entry().end([])  # the register's creation scans too, in this thread: it comes before the scan is planted
     e = _held_by_a_stranger(monkeypatch, tmp_path, fifo)
     done = threading.Event()
     worker = threading.Thread(target=lambda: (e.end([]), done.set()), daemon=True)

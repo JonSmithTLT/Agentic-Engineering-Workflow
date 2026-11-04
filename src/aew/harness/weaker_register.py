@@ -216,13 +216,14 @@ def _load(path: str | Path | None, roots: Iterable[str] = ()) -> dict[str, Any] 
     symlink and never blocking on a FIFO or a device (``O_NOFOLLOW | O_NONBLOCK``; on Windows, which has no
     ``O_NOFOLLOW``, a link or non-file is refused by ``lstat`` before the open), at most ``runlog.MAX_RECORD_BYTES``,
     the bound of a run record. None for anything else, or anything JSON cannot hold (nesting past the parser's depth
-    included, as ``runlog.read_record``)."""
+    included, as ``runlog.read_record``). It opens the path it checked: ``_trusted`` collapses ``link/..`` in the text,
+    and the kernel would follow the link (#321 quick check, F8)."""
     from aew.harness import runlog
 
     if not path or not _trusted(path, roots):
         return None
     try:
-        data = json.loads(runlog.read_regular(Path(path)))
+        data = json.loads(runlog.read_regular(Path(os.path.abspath(path))))
     except (OSError, ValueError, RecursionError):
         return None
     return data if isinstance(data, dict) else None

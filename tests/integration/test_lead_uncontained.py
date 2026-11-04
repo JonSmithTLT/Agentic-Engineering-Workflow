@@ -103,7 +103,8 @@ def test_under_allow_weaker_the_general_command_runs_labelled_with_its_label_and
     # This `aew` scans the host's real processes. Another worker's hardened supervisor cannot be read and started after
     # this entry, which holds it open by condition (c) of the entry-end ruling: that is the rule, and nothing of this
     # session's. Its own processes, or a failed scan, never pass here.
-    held = entry["outcome"] == "unowned" and "cannot be read" in entry["reason"]
+    held = (entry["outcome"] == "unowned" and entry["ownership"] in W.HOLDS_WHOLE
+            and "cannot be read" in entry["reason"])
     assert held and not re.search("carries its marker|the scan failed", entry["reason"]) or (
         entry["outcome"] == "clean" and entry["ended_epoch"]), entry
     assert entry["marker"] == seen["marker"]

@@ -39,7 +39,7 @@ from typing import Any
 from aew import errors
 from aew.engine import faults
 from aew.engine.authority import require_invocation, token_id_of
-from aew.harness import agentenv, bridge, containment, event_spool, procs, registry, runlog, usage
+from aew.harness import agentenv, bridge, containment, event_spool, procs, registry, runlog, usage, weaker_register
 from aew.harness import contract as K
 from aew.harness.base import HarnessAdapter
 from aew.harness.delivery import NEXT_STEP, WHEN_DELIVERY
@@ -117,6 +117,7 @@ class Supervisor:
         # Fail closed until the run's containment is decided: on POSIX, nothing starts without a layout (M4-B).
         self.tree = procs.ProcessTree(require_layout=not procs.IS_WINDOWS)
         self.layout: containment.Layout | None = None
+        self.weaker: weaker_register.Entry | None = None  # its entry, when its label is weaker (G3 addendum 7)
         self._checks = procs.CheckTrees()              # the trees of checks running for the agent now
         self._ending = threading.Event()               # set when the run ends: running checks are killed
         self.agent_env: dict[str, str] = {}
@@ -178,7 +179,7 @@ class Supervisor:
             if op == "check.run":
                 return self.engine.check_run(invocation_token=self._credential, check_id=args["check_id"],
                                              env=dict(self.agent_env), layout=self.layout, trees=self._checks,
-                                             ending=self._ending)
+                                             ending=self._ending, label=self.record["containment"])
             if op == "submit":
                 return self.engine.submit(invocation_token=self._credential, kind=args["kind"], text=args["text"])
         except errors.StaleAuthority as exc:
@@ -222,7 +223,11 @@ class Supervisor:
                                             invocation=self.inv_id, run=self.run, work_unit=inv["work_unit"],
                                             scratch=contract.scratch,
                                             contained=self.layout.env if self.layout is not None else None)
+            # The run's marker, whatever its label: the register of weaker contexts' scan finds its processes by it
+            self.agent_env[weaker_register.MARKER] = str(self.run_dir / runlog.RECORD)
             self.adapter = adapter_cls(self.tree, self.run_dir, self.events)
+            if self.weaker is not None:
+                self.weaker.started()
             info = self.adapter.launch(contract, dict(self.agent_env))
             self.record["launch"] = info
             faults.pause("harness.supervisor.launched")  # tests: a start that wedges after the custody ack
@@ -269,6 +274,12 @@ class Supervisor:
                 role=contract.role, scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir,
                 scratch=contract.scratch, bridge_dir=self.bridge.private_dir, policy=policy,
                 project=str(self.engine.repo_root), bridge=self.bridge.address, egress_policy=allow)
+            # A weaker run (allowed by the policy, or a sandbox on the host's network) enters the register of weaker
+            # contexts before its harness starts; on Linux one that cannot be entered is refused (G3 addendum 7).
+            self.weaker = weaker_register.enter_if_weaker(
+                self.record["containment"], kind="worker_run",
+                ownership=weaker_register.ownership_of(self.record["containment"]), project=self.engine.repo_root,
+                aew_root=self.engine.aew_root, directory=self.run_dir, marker=self.run_dir / runlog.RECORD)
             if self.layout is not None and self.layout.private_network:
                 network = netns.RunNetwork.start(
                     self.layout, provider=(self.record.get("execution_profile") or {}).get("provider"),
@@ -509,6 +520,8 @@ class Supervisor:
                 self._terminate_adapter()
         finally:  # the tree is killed whatever the adapter managed
             self.tree.kill()
+            if self.weaker is not None:  # ended only once its processes are proven ended (G3 addendum 7, ruling 2)
+                self.weaker.end(self.tree.survivors() + list(self._checks.left))
             containment.retire_private_git(self.run_dir)  # private staging is scratch: nothing real refers to it
         try:
             self.record["result"] = self.adapter.collect() if self.adapter is not None else {}

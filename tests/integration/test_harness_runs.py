@@ -446,3 +446,38 @@ def test_a_lab_teardown_ends_every_run_whatever_the_test_patched(lab, tmp_path, 
 
 # G3 H1: a failure here keeps an autopsy (stacks, processes, helper children, files; tests/helpers/autopsy.py).
 pytestmark = pytest.mark.autopsy
+
+
+def test_a_weaker_run_is_live_in_the_register_while_its_harness_runs_and_its_agent_carries_the_marker(tmp_path,
+                                                                                                      monkeypatch):
+    """G3 addendum 7, ruling 2 (#321 review, F5): a worker run whose label is weaker (a sandbox on the host's network,
+    or off Linux) is entered by its supervisor before its harness starts, is live while the harness runs, and its agent
+    carries the marker. Read from the register every `aew` the session starts writes to."""
+    import json
+
+    import conftest
+
+    from aew.harness import weaker_register as W
+
+    sync = tmp_path / "sync"
+    policy = {**POLICY, "containment": {"writable": [str(tmp_path / "fake-scripts"), str(sync)],
+                                        "network": {"mode": "shared"}}}
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy)
+    try:
+        wid = create_planned_ticket(lab.project, tmp_path)
+        lab.script("default", [{"do": "dump_env", "path": str(sync / "env.json")},
+                               {"do": "touch", "path": str(sync / "ready")},
+                               {"do": "wait_file", "path": str(sync / "go"), "timeout": 120}])
+        run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
+        lab.until(lambda: (sync / "ready").exists(), what="the agent is running")
+        monkeypatch.setattr(W, "ROOT_OVERRIDE", conftest.CHILD_DATA_BASE / "aew" / W.DIRNAME)
+        entries = {e["id"]: e for e in (json.loads(f.read_text(encoding="utf-8"))
+                                        for f in W.root().glob("worker_run-*.json"))}
+        # this session's register is shared and run ids repeat across projects: its entry is its agent's marker
+        marker = json.loads((sync / "env.json").read_text(encoding="utf-8"))[W.MARKER]
+        [mine] = [x for x in W.read().live if x["kind"] == "worker_run" and entries[x["id"]]["marker"] == marker]
+        assert mine["why"] == "running" and Path(marker).parent.name == run
+        (sync / "go").write_text("x", encoding="utf-8")
+        lab.wait(run)
+    finally:
+        lab.cleanup()

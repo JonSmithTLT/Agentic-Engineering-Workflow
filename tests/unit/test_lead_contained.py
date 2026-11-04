@@ -619,8 +619,8 @@ def session_parts(monkeypatch):
     monkeypatch.setattr(lead_broker, "LeadBroker", Broker)
     monkeypatch.setattr(procs, "harden_current_process", lambda: None)
     monkeypatch.setattr(procs, "run_session_tree",
-                        lambda argv, *, env, cwd, relay=False: runs.append({"argv": argv, "env": env, "relay": relay})
-                        or (0, "clean"))
+                        lambda argv, *, env, cwd, relay=False, survivors=None:
+                        runs.append({"argv": argv, "env": env, "relay": relay}) or (0, "clean"))
     return runs
 
 
@@ -767,3 +767,55 @@ def test_a_write_that_meets_a_mask_in_the_leads_project_is_explained_as_the_mask
 def test_every_relayable_provider_has_an_upstream_and_a_key_variable():
     assert set(netns.PROVIDER_KEY_ENV) <= set(netns.UPSTREAMS)
     assert netns.CATALOG_ADDRESSED <= set(netns.PROVIDER_KEY_ENV)
+
+
+def _weaker_lead(tmp_path: Path, monkeypatch, layout: Any, label: dict[str, Any]) -> lead_broker.Harness:
+    """The contained Lead's own call, with containment.establish giving ``layout`` and ``label``."""
+    from aew.harness import containment
+
+    monkeypatch.setattr(containment, "establish", lambda **kw: (layout, dict(label)))
+    engine = SimpleNamespace(execution_policy=lambda: ({"containment": {"mode": "allow_weaker"}}, None),
+                             repo_root=tmp_path / "repo", aew_root=tmp_path / "repo" / ".aew")
+    (tmp_path / "repo").mkdir()
+    built = lead.ContainedLead(engine, argv=["opencode"], provider_env=[], guide="",
+                               base={"HOME": str(tmp_path), "PATH": "/usr/bin"})
+    return built(None, {lead_broker.ENV_ENDPOINT: "/tmp/aew-bridge-x/s"})
+
+
+def _live_lead(harness: lead_broker.Harness) -> list[dict[str, Any]]:
+    from aew.harness import weaker_register as W
+
+    assert harness.env[W.MARKER] == harness.entry.data["marker"] and harness.env[W.MARKER].endswith("label.json")
+    return [x for x in W.read().live if x["kind"] == "lead_opencode"]
+
+
+def test_a_contained_lead_the_policy_allows_to_run_weaker_is_live_in_the_register_while_it_runs(tmp_path, monkeypatch,
+                                                                                                at_a_terminal):
+    """#321 review, F5: with no layout (allowed weaker by the policy), the TUI runs as it is, entered in the register
+    of weaker contexts before it starts and marked."""
+    from aew.harness import containment
+
+    harness = _weaker_lead(tmp_path, monkeypatch, None, containment.label(contained=False, reason="allowed weaker"))
+    harness.entry.started()
+    assert [x["why"] for x in _live_lead(harness)] == ["running"]
+
+
+def test_a_contained_lead_on_the_hosts_network_is_live_in_the_register_while_it_runs(tmp_path, monkeypatch,
+                                                                                      at_a_terminal):
+    """#321 review, F5: a sandbox on the host's network (containment.network.mode: shared) is weaker, and enters the
+    register like any weaker context."""
+    from aew.harness import containment
+
+    shared = {"filesystem": "os_readonly_roots", "network": {"mode": "shared"}, "self_test": {"ok": True},
+              "process_ownership": "pid_namespace"}
+    monkeypatch.setattr(containment, "tree_masks_line", lambda layout: "")
+    monkeypatch.setattr(containment, "bwrap_argv", lambda layout, argv, cwd=None: ["bwrap", *argv])
+    monkeypatch.setattr(netns, "shim_argv", lambda spec, argv: list(argv))
+    monkeypatch.setattr(projection, "lead_config", lambda *a, **k: {})
+    monkeypatch.setattr(lead.ContainedLead, "_inside", lambda self, *a, **k: {"PATH": "/usr/bin"})
+    monkeypatch.setattr(lead.ContainedLead, "_retire", lambda self, *a, **k: None)
+    harness = _weaker_lead(tmp_path, monkeypatch, SimpleNamespace(private_network=False), shared)
+    assert harness.entry is not None, "a weaker label enters the register"
+    harness.entry.started()
+    assert harness.relay and [x["why"] for x in _live_lead(harness)] == ["running"]
+    assert harness.env["AEW_CONTEXT"] == harness.entry.data["marker"], "the sandboxed TUI carries its marker"

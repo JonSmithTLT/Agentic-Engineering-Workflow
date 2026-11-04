@@ -300,8 +300,12 @@ def configure(repo: Path, profile: dict[str, Any], routing: dict[str, str]) -> N
         profiles[f"{role}-route"] = {**profile_of(ref), **limits}
         archetypes[role] = f"{role}-route"
     envs = sorted({n for p in profiles.values() for n in provider_env(p)})
+    # The dogfood's Lead is the general command, headless (`aew lead session`), which `required` refuses: its project
+    # allows weaker runs, so that Lead runs labelled not contained and in the register of weaker contexts (G3 addendum
+    # 7, ruling 1). Its workers are still contained wherever a sandbox can be established.
     (policy / "execution.yaml").write_text(dump_yaml({
         "schema": "aew/execution/v1", "configured": True, "harness": "opencode", "provider_env": envs,
+        "containment": {"mode": "allow_weaker"},
         "profiles": profiles, "routing": {"default": "standard", "archetypes": archetypes, "classes": {},
                                           "cards": {}}}), encoding="utf-8", newline="\n")
 
@@ -452,8 +456,19 @@ def lead_child(spec_path: Path) -> int:
 
 
 def hidden(task: str, tree: Path) -> dict[str, Any]:
-    res = subprocess.run([sys.executable, str(HERE / "hidden.py"), task, str(tree)], capture_output=True, text=True,
-                         encoding="utf-8", timeout=600, stdin=subprocess.DEVNULL, **NO_WINDOW)
+    """The hidden scorer, which runs the model's tree's code with no sandbox: an agent context, entered in the register
+    of weaker contexts while it runs (G3 addendum 7). On Linux one whose entry cannot be written is refused."""
+    from aew.harness import containment, weaker_register
+
+    label = containment.label(contained=False, reason="the dogfood's hidden scorer runs the model's code as it is")
+    entry = weaker_register.enter(kind="dogfood_scorer", label=label, ownership="unowned", directory=tree)
+    entry.started()
+    try:
+        res = subprocess.run([sys.executable, str(HERE / "hidden.py"), task, str(tree)], capture_output=True,
+                             text=True, encoding="utf-8", timeout=600, stdin=subprocess.DEVNULL,
+                             env=entry.mark(os.environ), **NO_WINDOW)
+    finally:
+        entry.end([])  # no tree holds it: it ends once a scan finds none of its processes
     try:
         return json.loads(res.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
@@ -683,17 +698,30 @@ def run(task_id: str, mode: str, model: str, routing: dict[str, str], cap: float
             record.update(collect_aew(repo, base, work))
             record["interventions"] = lead.get("nudges") or 0
         else:
+            from aew.harness import containment, weaker_register
+
             session = headless.HeadlessSession(work / "raw")
-            session.open(directory=repo, profile=profile, agent="build", config=headless.raw_config(profile, RAW_STEPS),
-                         env=headless.shell_env(os.environ), provider_env=provider_env(profile),
-                         title=f"raw OpenCode (dogfood {task_id})")
-            session.say(raw_prompt(task))
+            # The raw arm runs a model on the host with no sandbox: an agent context, entered in the register of
+            # weaker contexts while it runs (G3 addendum 7); on Linux one whose entry cannot be written never starts.
+            entry = weaker_register.enter(
+                kind="eval_raw", label=containment.label(contained=False, reason="the dogfood's raw arm runs OpenCode "
+                                                         "with no sandbox"), ownership="process_group",
+                directory=work / "raw")
+            entry.started()
+            try:
+                session.open(directory=repo, profile=profile, agent="build",
+                             config=headless.raw_config(profile, RAW_STEPS), env=entry.mark(headless.shell_env(os.environ)),
+                             provider_env=provider_env(profile), title=f"raw OpenCode (dogfood {task_id})")
+                session.say(raw_prompt(task))
 
-            def over_cap() -> str | None:
-                return "cost_cap" if float(session.live_usage().get("cost") or 0) > cap else None
+                def over_cap() -> str | None:
+                    return "cost_cap" if float(session.live_usage().get("cost") or 0) > cap else None
 
-            outcome = session.wait_turn(time.monotonic() + task.raw_deadline_s, over_cap)
-            record["raw"] = {**session_summary(session.close(), model_key(profile)), "outcome": outcome}
+                outcome = session.wait_turn(time.monotonic() + task.raw_deadline_s, over_cap)
+                closed = session.close()
+            finally:
+                entry.end(session.tree.survivors())  # once its processes are proven ended (ruling 2)
+            record["raw"] = {**session_summary(closed, model_key(profile)), "outcome": outcome}
             record["hidden"] = hidden(task_id, repo)
             record["changed_paths"] = changed_paths(repo, base, None)
             record["interventions"] = 0
@@ -824,10 +852,19 @@ def debrief_run(name: str, results: Path, out: Path) -> dict[str, Any]:
                              "lead_guide": guide, "model": record["model"], "session": sessions[0],
                              "asked_at": now(), "question": DEBRIEF}
     checkout_before = git(ROOT, "status", "--porcelain", "--untracked-files=all")
+    from aew.harness import containment, weaker_register
+
     session = headless.HeadlessSession(copy)
+    # A model answers with every tool denied, but its OpenCode runs on the host with no sandbox: an agent context all
+    # the same, entered in the register of weaker contexts while it runs (G3 addendum 7).
+    context = weaker_register.enter(
+        kind="dogfood_debrief", label=containment.label(contained=False, reason="the dogfood's debrief resumes a saved "
+                                                        "Lead session with no sandbox"), ownership="process_group",
+        directory=copy)
+    context.started()
     try:
         session.resume(session=sessions[0], directory=work / "repo", profile=profile, config=config,
-                       env=headless.shell_env(os.environ), provider_env=names)
+                       env=context.mark(headless.shell_env(os.environ)), provider_env=names)
         before = {"cost": float(session.live_usage().get("cost") or 0),
                   "steps": headless.assistant_steps(session.state_dir),
                   "commands": len(headless.command_log(session.state_dir))}
@@ -841,7 +878,10 @@ def debrief_run(name: str, results: Path, out: Path) -> dict[str, Any]:
         entry["steps"] = headless.assistant_steps(session.state_dir) - before["steps"]
         entry["tool_calls"] = headless.command_log(session.state_dir)[before["commands"]:]
     finally:
-        closed = session.close()
+        try:
+            closed = session.close()
+        finally:
+            context.end(session.tree.survivors())
     entry["detail"] = closed.get("last_detail")
     entry["safety"] = scan_secrets(copy, secret)
     entry["safety"]["checkout_untouched"] = git(ROOT, "status", "--porcelain",

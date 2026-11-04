@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 import pytest
-from aewflow import create_planned_ticket, sample_project
+from aewflow import create_planned_ticket, lead_project
 from conftest import IS_WINDOWS, clean_env, run_aew
 from fake_harness import contains_credential, credential_hits
 from invariants import assert_control_invariants
@@ -45,7 +45,7 @@ def _rev(p) -> int:
 
 
 def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(tmp_path):
-    p = sample_project(tmp_path)
+    p = lead_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
     rev = _rev(p)
     env_file = tmp_path / "server-env.json"
@@ -105,7 +105,7 @@ def test_after_a_takeover_the_harness_keeps_running_and_the_server_never_fabrica
     import aew.operator
     from aew.engine.api import Engine
 
-    p = sample_project(tmp_path)
+    p = lead_project(tmp_path)
     sync = tmp_path / "sync"
     sync.mkdir()
     argv, transcript = _argv(tmp_path, "takeover", [
@@ -146,7 +146,7 @@ def test_a_wait_through_mcp_never_queues_the_next_call_on_the_same_connection(tm
     from aew.engine.api import Engine
     from aew.harness import lead_broker
 
-    p = sample_project(tmp_path)
+    p = lead_project(tmp_path)
     engine = Engine.discover(p.root)
     monkeypatch.setattr(engine, "harness_wait", lambda runs, *, timeout=600.0, any_=False: {
         "run": runs if isinstance(runs, str) else runs[0], "status": "running", "timed_out": True})
@@ -186,7 +186,7 @@ def test_a_wait_through_mcp_never_queues_the_next_call_on_the_same_connection(tm
       "AEW_LEAD_BROKER_KEY": "00" * 32}, "not live"),
 ])
 def test_without_a_live_broker_or_with_a_credential_it_refuses_to_start(tmp_path, extra, why):
-    p = sample_project(tmp_path)
+    p = lead_project(tmp_path)
     env = clean_env(extra)
     for name in ("AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY"):
         if name not in extra:

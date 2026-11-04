@@ -24,6 +24,7 @@ import pytest
 from aewflow import (
     DISCOVERY,
     SUBTRACT_PATCH,
+    allow_weaker_lead,
     create_investigation,
     create_planned_ticket,
     sample_project,
@@ -815,6 +816,7 @@ def test_an_investigator_cannot_obtain_implementer_authority(lab, tmp_path):
 def test_a_lead_acting_on_stale_conversational_state_is_refused(lab, tmp_path, sync):
     """Attack 8: a Lead harness session resumed from an old conversation acts on a revision it remembers; AEW
     refuses (compare-and-swap), and a relaunched run is rebuilt from durable state, not from its old session."""
+    allow_weaker_lead(lab.project)  # the general Lead command (G3 addendum 7), before the first transition
     wid = create_planned_ticket(lab.project, tmp_path)
     remembered = lab.project.rev()
     lab.project.lead("checkpoint", "--next", "the state moved on")

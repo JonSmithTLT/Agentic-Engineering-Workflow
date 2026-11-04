@@ -41,7 +41,7 @@ from aew.harness.containment.layout import (
 from aew.harness.containment.netns import NOT_PROVIDED
 
 __all__ = ["Layout", "bwrap_argv", "for_check", "for_run", "tree_masks_line", "retire_private_git", "establish",
-           "label", "normalize",
+           "label", "normalize", "weaker",
            "mode", "network", "supported", "REQUIRED", "ALLOW_WEAKER", "ALLOW_WEAKER_REMEDY", "NO_CONTAINMENT_REMEDY",
            "CONTAINED", "WORKDIR_ONLY", "PROXY_ONLY",
            "ISOLATED", "SHARED", "NOT_PROVIDED"]
@@ -102,6 +102,38 @@ def label(*, contained: bool, mechanism: str | None = None, self_test: dict[str,
     return out
 
 
+def uncontained_reason() -> str:
+    """Why a launch that never builds a sandbox runs weaker, for its label's ``weaker_because``: the platform has none,
+    or, on Linux, the policy allows it (the general Lead command, G3 addendum 7)."""
+    if supported():
+        return f"the execution policy allows weaker runs (containment.mode: {ALLOW_WEAKER})"
+    return _no_platform()
+
+
+def _no_platform() -> str:
+    return f"this platform ({sys.platform}) has no filesystem containment (Linux with bubblewrap only)"
+
+
+def unsupported_message() -> str:
+    """The refusal of a launch under an explicit ``required`` on a platform with no containment."""
+    return (f"execution policy requires containment (containment.mode: required), and {_no_platform()}: "
+            f"{NO_CONTAINMENT_REMEDY}")
+
+
+def weaker(value: Any) -> bool:
+    """Whether a label is weaker than full containment (G3 addendum 7, ruling 2's "What is weaker"): anything but
+    ``os_readonly_roots`` with a ``proxy_only`` or ``isolated`` network and a passing self-test. An absent or malformed
+    label is weaker: it is never read as contained (DV-7). A weaker context enters the register of weaker contexts
+    (:mod:`aew.harness.weaker_register`)."""
+    if not isinstance(value, Mapping):
+        return True
+    net = value.get("network")
+    net_mode = net.get("mode") if isinstance(net, Mapping) else net
+    test = value.get("self_test")
+    return not (value.get("filesystem") == CONTAINED and net_mode in (PROXY_ONLY, ISOLATED)
+                and isinstance(test, Mapping) and test.get("ok") is True)
+
+
 def normalize(value: Any) -> dict[str, Any]:
     """A run record's ``containment``, whatever its age: records before M4-B hold the string
     ``workdir_separation_only`` (or nothing), which meant exactly that; records before CS-3b hold the network's mode as
@@ -131,10 +163,8 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
     wanted = mode(policy)
     if not supported():
         if wanted == REQUIRED:
-            raise ContainmentUnavailable(
-                f"execution policy requires containment (containment.mode: required), and this platform "
-                f"({sys.platform}) has no filesystem containment (Linux with bubblewrap only): {NO_CONTAINMENT_REMEDY}")
-        return None, label(contained=False)
+            raise ContainmentUnavailable(unsupported_message())
+        return None, label(contained=False, reason=uncontained_reason())
     settings = (policy or {}).get("containment") or {}
     net_mode = netns.mode(policy)
     net_dir = netns.private_dir() if net_mode in (PROXY_ONLY, ISOLATED) else None

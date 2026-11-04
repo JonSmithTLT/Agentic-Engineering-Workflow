@@ -25,7 +25,7 @@ from harness_conformance import IMPLEMENT, PROVIDER_SECRET, FakeOpenCodeDriver, 
 from lead_session import KEYS
 from proxy_env import RecordingProxy, proxy_env
 
-from aew.harness import runlog
+from aew.harness import runlog, weaker_register
 from aew.harness.containment import netns
 from aew.harness.opencode import projection
 from aew.util import dump_yaml, load_yaml
@@ -109,9 +109,12 @@ def test_the_projection_reaches_the_server_and_the_session(lab, tmp_path):
     assert config["permissions"][-7:] == denied + [projection.rule("external_directory", "allow", p) for p in private]
     assert projection.rule("edit", "allow") in config["permissions"]  # an implementer
     assert config["plugins"] == [projection.COMPATIBILITY_PLUGIN] and config["share"] == "disabled"
-    # the server's environment: the named provider variable, private state, no project config, nothing of AEW's
+    # the server's environment: the named provider variable, private state, no project config, and of AEW's only its
+    # context's marker (G3 addendum 7; #321 review, F6), which is the path of the run's record, never a credential
     assert "OPENAI_API_KEY" in started["env_names"]
-    assert not [n for n in started["env_names"] if n.upper().startswith("AEW_")]
+    assert not [n for n in started["env_names"] if n.upper().startswith("AEW_") and n != weaker_register.MARKER]
+    marker = Path(started["flags"][weaker_register.MARKER])
+    assert marker.name == runlog.RECORD and marker.parent.name == run
     assert started["flags"]["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1"
     for name in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TEMP"):
         assert Path(started["flags"][name]).resolve().is_relative_to(hdir.resolve())

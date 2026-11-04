@@ -309,6 +309,35 @@ def checks(tree, run):
     assert score["passed"] is False and score["checks"][-1]["name"] == "checks raised", score
 
 
+def test_a_scorer_is_live_in_the_register_of_weaker_contexts_while_it_runs(tmp_path, monkeypatch):
+    """G3 addendum 7: the scorer runs code a model wrote, an agent context with no network of its own: it enters the
+    register before its child starts, the model's programs carry its marker, and it has ended once scoring returns.
+    Planted: the start reads the register; a check reads the marker from inside."""
+    from aew.harness import procs
+    from aew.harness import weaker_register as W
+
+    secret = tmp_path / "private"
+    make_oracle(secret, checks=(
+        "import sys\n"
+        "def checks(tree, run):\n"
+        "    ran = run([sys.executable, '-c', 'import os; print(os.environ.get(\"AEW_CONTEXT\", \"\"))'])\n"
+        "    yield 'marked', bool(ran.stdout.strip()), ran\n"))
+    seen: list = []
+    real = procs.ProcessTree.spawn
+
+    def spawn(self, argv, **kw):
+        seen.append(([e["kind"] for e in W.read().live], kw["env"].get(W.MARKER)))
+        return real(self, argv, **kw)
+
+    monkeypatch.setattr(procs.ProcessTree, "spawn", spawn)
+    score = hidden.score(hidden.Oracle.locate(secret, "C1"), tree_with(tmp_path, {"calc.py": "x = 1\n"}))
+    assert score["passed"] is True, score
+    [(live, marker)] = seen[:1]
+    assert "eval_scoring" in live and marker
+    assert "eval_scoring" not in [e["kind"] for e in W.read().live]
+    assert "eval_scoring" in [e["kind"] for e in W.read().recent]
+
+
 def test_scoring_that_overruns_is_a_failed_score(tmp_path):
     secret = tmp_path / "private"
     make_oracle(secret, checks="import time\ndef checks(tree, run):\n    time.sleep(60)\n    yield 'x', True, ''\n")

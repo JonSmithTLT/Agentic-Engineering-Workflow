@@ -93,7 +93,9 @@ class Endpoint:
 @pytest.fixture
 def steered(project):
     path = project.root / ".aew" / "policy" / "execution.yaml"
-    path.write_text(path.read_text(encoding="utf-8") + "steering:\n  mode: crawl\n", encoding="utf-8")
+    # its Lead session is the general Lead command, which `required` refuses (G3 addendum 7, ruling 1)
+    path.write_text(path.read_text(encoding="utf-8") + "steering:\n  mode: crawl\n"
+                    "containment:\n  mode: allow_weaker\n", encoding="utf-8")
     project.adopt_policy()
     return project
 

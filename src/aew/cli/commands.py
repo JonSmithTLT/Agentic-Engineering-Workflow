@@ -390,8 +390,14 @@ def _lead_session(args: argparse.Namespace) -> Any:
     command = list(args.harness_command)
     if command[:1] == ["--"]:
         command = command[1:]
-    return lead_broker.run_session(_engine(args), command, acquire=args.acquire, session_label=args.session_label,
-                                   keep_seat=args.keep_seat)
+    engine = _engine(args)
+    # Refused here under `required`, before any credential is read or any seat moves (G3 addendum 7, ruling 1);
+    # run_session asks it again, as the backstop.
+    harness = lead_broker.WeakerLead(engine, command, kind="lead_session", who="aew lead session")
+    if command:
+        harness.precheck()
+    return lead_broker.run_session(engine, command, acquire=args.acquire, session_label=args.session_label,
+                                   keep_seat=args.keep_seat, contained=harness)
 
 
 def _opencode(args: argparse.Namespace) -> Any:

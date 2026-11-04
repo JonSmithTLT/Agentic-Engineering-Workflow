@@ -417,11 +417,12 @@ def test_a_check_has_no_network_unless_it_asks_and_its_run_has_the_hosts(lab):
     run = dataclasses.replace(lab.layout("reviewer"), network=L.PROXY_ONLY, net_dir=None)
     for asked in (None, "shared"):  # a run with routes of its own: a check gets none of them, nor the host's
         out = checks.run({"command": [sys.executable, "-I", "-c", OFFLINE], **({"network": asked} if asked else {})},
-                         lab.ws, layout=run)
+                         lab.ws, policy=None, layout=run)
         assert (out["exit_code"], out["network"]) == (0, L.ISOLATED), out["log"]
         assert "(network: none; a check that needs the network declares `network: shared`" in out["log"]
     shared = dataclasses.replace(run, network=L.SHARED)
-    out = checks.run({"command": [sys.executable, "-I", "-c", "pass"], "network": "shared"}, lab.ws, layout=shared)
+    out = checks.run({"command": [sys.executable, "-I", "-c", "pass"], "network": "shared"}, lab.ws, policy=None,
+                     layout=shared)
     assert (out["exit_code"], out["network"]) == (0, L.SHARED) and "(network:" not in out["log"]
 
 
@@ -569,7 +570,7 @@ def test_a_check_runs_inside_the_runs_layout(lab):
     cfg = {"command": ["sh", "-c", f"printf x >> {lab.outside}/protected.txt; printf x >> f.txt; echo done"],
            "timeout_s": 60}
     before = lab.fingerprint()
-    result = checks.run(cfg, lab.ws, env={"PATH": os.environ["PATH"], **layout.env}, layout=layout)
+    result = checks.run(cfg, lab.ws, policy=None, env={"PATH": os.environ["PATH"], **layout.env}, layout=layout)
     assert "Read-only file system" in result["log"] and "done" in result["log"]
     assert lab.fingerprint() == before and (lab.ws / "f.txt").read_text() == "base\n"
 

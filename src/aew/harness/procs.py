@@ -205,6 +205,8 @@ class ProcessTree:
     def active(self) -> int:
         """Processes still running in the tree (Windows: the job's count; POSIX: 1 if the group exists)."""
         if sys.platform == "win32":  # pragma: windows-only
+            if not self._job:  # closed: kill-on-close ended everything (a NULL handle would ask about our own job)
+                return 0
             info = _BasicAccounting()
             if not _k32.QueryInformationJobObject(self._job, _BASIC_ACCOUNTING_INFORMATION, ctypes.byref(info),
                                                   ctypes.sizeof(info), None):
@@ -217,6 +219,29 @@ class ProcessTree:
             return 1
         except OSError:
             return 0
+
+    def survivors(self, wait_s: float = 10.0) -> list[tuple[int, str | None]]:
+        """What of the tree still runs once it was killed, each ``(pid, start_id)``, after waiting up to ``wait_s``,
+        for the register of weaker contexts (G3 addendum 7, ruling 2). POSIX: its process group's members (a sandbox's
+        bubblewrap among them, whose pid namespace ends with it); Windows: ``(0, None)`` while the job counts any,
+        since it names none. A member that cannot be named is ``(0, None)`` too, which no check proves ended."""
+        deadline = time.monotonic() + wait_s
+        while self.active() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        if not self.active():
+            return []
+        if sys.platform == "win32":  # pragma: windows-only
+            return [(0, None)]
+        out: list[tuple[int, str | None]] = []
+        for name in os.listdir("/proc"):
+            if name.isdigit():
+                try:
+                    pgrp = int(Path("/proc", name, "stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()[2])
+                except (OSError, ValueError, IndexError):
+                    continue
+                if pgrp == self._pgid:
+                    out.append((int(name), start_id(int(name))))
+        return out or [(0, None)]
 
     def kill(self) -> None:
         with self._mu:
@@ -274,6 +299,9 @@ class CheckTrees:
         self._trees: set[ProcessTree] = set()
         self._drained = threading.Condition(self._mu)
         self.ended = False
+        # What a check's tree still ran when it closed, each (pid, start_id): its run's entry in the register of weaker
+        # contexts stays live until each is proven ended (G3 addendum 7, ruling 2)
+        self.left: list[tuple[int, str | None]] = []
 
     def add(self, tree: ProcessTree) -> None:
         with self._mu:
@@ -414,8 +442,9 @@ def finish(code, drain=False):
                 left = False
                 break
             time.sleep(0.02)
-        try:
-            os.write(res, b"unowned" if not owned else b"survivors" if left else b"clean")
+        try:  # survivors are named, for the register of weaker contexts (G3 addendum 7, ruling 2)
+            os.write(res, b"unowned" if not owned else
+                     (b"survivors " + " ".join(map(str, descendants())).encode()).strip() if left else b"clean")
         except OSError:
             pass   # EPIPE: the session's process is gone, and its traceback would land on the operator's terminal
         os._exit(code)
@@ -449,11 +478,14 @@ finish(rc if rc >= 0 else 128 - rc, drain=True)
 """.replace("__TERMINAL_LEAVE__", repr(TERMINAL_LEAVE))
 
 
-def run_session_tree(argv: list[str], *, env: dict[str, str], cwd: str, relay: bool = False) -> tuple[int, str]:
+def run_session_tree(argv: list[str], *, env: dict[str, str], cwd: str, relay: bool = False,
+                     survivors: list[tuple[int, str | None]] | None = None) -> tuple[int, str]:
     """Run an interactive session's harness (the Lead's TUI, ADR-0009) on the caller's terminal or console, and own
     every process it starts: none outlives the harness, or this process. Returns ``(exit code, ownership)``, where
     ownership is ``"clean"`` when nothing it started is still running, ``"survivors"`` when something could not be
-    ended, and ``"unowned"`` where this platform gives no such guarantee (POSIX other than Linux).
+    ended, and ``"unowned"`` where this platform gives no such guarantee (POSIX other than Linux). ``survivors``, when
+    given, receives each survivor's ``(pid, start_id)`` on Linux (Windows' job counts them and names none); a survivor
+    the reaper could not name is ``(0, None)``, which no check proves ended.
 
     * **Windows:** a kill-on-close job object; the harness is created suspended, assigned and resumed, and keeps the
       caller's console (it gets a hidden one only when the caller has none, so no window ever appears).
@@ -495,6 +527,8 @@ def run_session_tree(argv: list[str], *, env: dict[str, str], cwd: str, relay: b
                                                       ctypes.sizeof(acct), None) or not acct.ActiveProcesses:
                     break
                 time.sleep(0.02)
+            if acct.ActiveProcesses and survivors is not None:
+                survivors.append((0, None))  # the job counts them and names none
             return code, "survivors" if acct.ActiveProcesses else "clean"
         finally:
             _k32.CloseHandle(job)  # kill-on-close: anything still in the job ends with its last handle
@@ -531,7 +565,12 @@ def run_session_tree(argv: list[str], *, env: dict[str, str], cwd: str, relay: b
                 termios.tcsetattr(0, termios.TCSADRAIN, saved)
             except (OSError, termios.error):
                 pass
-    return code, reported or "survivors"
+    word, *named = (reported or "survivors").split()
+    if survivors is not None:
+        survivors.extend((int(pid), start_id(int(pid))) for pid in named if pid.isdigit())
+        if word == "survivors" and not named:  # the reaper died before it could say which: none is known ended
+            survivors.append((0, None))
+    return code, word
 
 
 def process_chain(limit: int = 6) -> list[str]:
@@ -690,9 +729,22 @@ def start_id(pid: int | None) -> str | None:
         return None if created is None else f"win:{created}"
     try:
         boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
-        return f"linux:{boot}:{_start_ticks(pid)}" if boot else None
+        return linux_start_id(boot, _start_ticks(pid)) if boot else None
     except (OSError, ValueError, IndexError):
         return None
+
+
+def linux_start_id(boot: str, ticks: int) -> str:
+    """:func:`start_id`'s Linux form from its parts, for a reader of ``/proc`` that has them already (the register of
+    weaker contexts' scan, G3 addendum 7)."""
+    return f"linux:{boot}:{ticks}"
+
+
+def boot_of(start: str | None) -> str | None:
+    """The boot a Linux :func:`start_id` was taken in, or None (Windows', or not a start id): a process recorded in
+    another boot has ended (G3 addendum 7, ruling 2: an unowned context stays live until the next boot)."""
+    parts = (start or "").split(":")
+    return parts[1] if len(parts) == 3 and parts[0] == "linux" and parts[1] else None
 
 
 def _status_lines(pid: int | str) -> list[str]:

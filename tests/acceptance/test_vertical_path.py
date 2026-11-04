@@ -38,6 +38,7 @@ from vertical.ledger import (
     NOT_EXERCISED,
     NOT_REFUSED,
     REBUILT,
+    RESULT_REACHED,
     UNNAMED,
     V1_DECISIONS,
     Ledger,
@@ -156,10 +157,13 @@ def merge_lead(op: Operator) -> None:
         op.ledger.lead_event(e)
 
 
-def write_out(op: Operator, request: pytest.FixtureRequest) -> Path:
+def write_out(op: Operator, request: pytest.FixtureRequest, *, asks_result: bool = True) -> Path:
     """Write the scenario's ledger. Called from the ``finally`` around its body: an exception escaping the body (the
-    Lead did not start, setup raised) is in flight here, and makes the scenario not measured (STG-13, addendum 1)."""
+    Lead did not start, setup raised) is in flight here, and makes the scenario not measured (STG-13, addendum 1).
+    ``asks_result``: whether its verdict calls ``result_problems`` (test_vertical_report checks the two agree). Recorded
+    for the scoreboard, no counter and no threshold: a scenario that stops before a result by design is not a "no"."""
     op.ledger.ended_by(sys.exc_info()[1])
+    op.ledger.observe(RESULT_REACHED, reached=bool(op.reports), asked=asks_result)
     base = Path(os.environ.get(OUT_ENV) or op.tmp / "vertical-out")
     out = base / ledger_dir_name(request.node.name)
     op.ledger.observe("transcript", operator=op.transcript)
@@ -385,7 +389,7 @@ def test_v1_a_semantic_conflict_stops_and_names_the_change(tmp_path, world, requ
         run_v1_path(op)
         semantic_conflict(op, moved)
     finally:
-        write_out(op, request)
+        write_out(op, request, asks_result=False)
     problems = verdict(op, decisions=None, limits=("semantic_conflict", "publish_needs_decision", "containment"))
     assert_verdict(op, problems)
 
@@ -461,7 +465,7 @@ def test_v1_an_evidence_mismatch_blocks_and_names_the_paths(tmp_path, world, req
         finish(op, session)
         evidence_mismatch(op)
     finally:
-        write_out(op, request)
+        write_out(op, request, asks_result=False)
     problems = verdict(op, decisions=None, limits=("evidence_mismatch", "publish_needs_decision", "containment"))
     assert_verdict(op, problems)
 
@@ -763,7 +767,7 @@ def test_v3_preflight_names_the_cause_and_the_fix_before_any_ticket(tmp_path, wo
         if launched:
             problems.append(f"something was launched before any Ticket: {launched}")
     finally:
-        write_out(op, request)
+        write_out(op, request, asks_result=False)
     assert_verdict(op, problems)
 
 

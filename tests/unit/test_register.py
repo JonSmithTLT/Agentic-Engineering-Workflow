@@ -950,6 +950,51 @@ def test_the_now_list_refuses_a_closed_a_missing_and_an_untargeted_row_and_a_now
         f"the Now list's item {count} names no row (each item names the rows that carry it)"]
 
 
+def test_a_closed_item_keeps_its_number_and_must_name_a_row_closed_in_section_9():
+    """Register E115: other rows cite the items' numbers, so an item whose work closed stays, marked `closed:`.
+    Planted in both directions: a row closed in §9 is right, and reads as typed on the page; an open row, an unknown id
+    and a mark with no id are refused; a closed row without the mark keeps today's refusal; a Now row marked closed is
+    also a Now row the list does not name."""
+    open_rows = register.rows(DATA)
+    open_ids = {r["id"] for r in open_rows}
+    closed = next(r["id"] for r in register.rows(DATA, open_only=False) if r["id"] and r["id"] not in open_ids)
+    stage = next(r["id"] for r in open_rows if r["id"] and r["target"] != "Now")
+    named = [i for _, ids in register.now_list(DATA) for i in ids]
+    now_row = next(r["id"] for r in open_rows if r["target"] == "Now" and named.count(r["id"]) == 1)
+    count = len(register.now_list(DATA))
+
+    def item(cell: str) -> Any:
+        def edit(intro: str) -> str:
+            last = _now_line(intro, count)
+            return intro.replace(last, f"{last}\n| {count + 1} | {cell} | what it was, closed by #1 |")
+        return edit
+
+    assert _with_now(item(f"closed: {closed}")) == []
+    assert _with_now(item(f"closed: {stage}")) == [
+        f"the Now list's item {count + 1} marks {stage} closed, but it is an open row: close it into §9, or name it "
+        "without `closed:`"]
+    assert _with_now(item("closed: Z99")) == [
+        f"the Now list's item {count + 1} marks Z99 closed, but §9 has no such row"]
+    assert _with_now(item("closed:")) == [
+        f"the Now list's item {count + 1} names no row (each item names the rows that carry it)"]
+    assert _with_now(item(closed)) == [f"the Now list names {closed}, which is not an open row: {register.NOW_EDIT}"]
+    # Only the exact prefix marks an item: anything else is an id, and is refused as one
+    assert _with_now(item(f"Closed: {closed}")) == [
+        f"the Now list names Closed: {closed}, which is not an open row: {register.NOW_EDIT}"]
+    marked_open = _with_now(lambda intro: "\n".join(
+        line.replace(f"| {now_row} |", f"| closed: {now_row} |") if re.match(r"\| \d+ \|", line) else line
+        for line in intro.splitlines()))
+    assert f"{now_row} is targeted Now, but the Now list does not name it: {register.NOW_EDIT}" in marked_open
+    data = copy.deepcopy(DATA)
+    first = next(s for s in data["sections"] if s["number"] == 1)
+    first["intro"] = item(f"closed: {closed}")(first["intro"])
+    assert register.now_list(data)[-1] == (count + 1, [])
+    assert register.now_closed(data)[-1] == (count + 1, [closed])
+    assert [n for n, _ in register.now_list(data)] == list(range(1, count + 2))  # the numbering stays gapless
+    assert (f"| {count + 1} | closed: {closed} | what it was, closed by #1 |"
+            in register.render_markdown(data).splitlines())
+
+
 def test_the_now_list_reads_an_indented_item_and_refuses_a_second_table():
     """Review of #273, F2: a table line indented by up to three spaces is still a table line, so an item written that
     way is read, not skipped; and §1's intro holds one table, so any other table line is refused rather than read as an

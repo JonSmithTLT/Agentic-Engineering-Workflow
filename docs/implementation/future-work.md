@@ -28,11 +28,11 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ## 1. Now, the milestones and the gates (in order)
 
-**Now, in order.** The build queue, each item on the row that carries it. **The Lead keeps it current:** this register owns the build order, and the architecture map's build order points here for it. The design queue stays in the map. `python tools/register.py check` holds the list to the rows: every row it names is open and targeted **Now** or **Stage**, and every row targeted **Now** is in it. A stage is named once it is queued. A change that closes or retargets a row named here edits this list in the same change.
+**Now, in order.** The build queue, each item on the row that carries it. **The Lead keeps it current:** this register owns the build order, and the architecture map's build order points here for it. The design queue stays in the map. `python tools/register.py check` holds the list to the rows: every row it names is open and targeted **Now** or **Stage**, and every row targeted **Now** is in it. A stage is named once it is queued. A change that closes or retargets a row named here edits this list in the same change: an item whose rows have closed keeps its number, as `| <n> | closed: <row> | what it was, closed by #NNN |`, because other rows cite the numbers, and `check` holds its rows to §9.
 
 | # | Row | Item |
 |---|---|---|
-| 1 | E115 | The scoreboard: the vertical report leads with scenarios passing, steps landed and how long each has been flat |
+| 1 | closed: E115 | The scoreboard: the vertical report leads with scenarios passing, steps landed and how long each has been flat, closed by #NNN |
 | 2 | E116 | The vertical driver's fix for the placeholder #319 printed |
 | 3 | E117 | The first real-model receipt on a seeded kit, likely red, and the personal alpha's gate |
 | 4 | E112 | Every launch whose containment fails is refused, and the register of weaker contexts (#321, in review). If it needs more than its quick check, item 5 goes first without it |
@@ -1249,18 +1249,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E114/`, oldest first (`python tools/register.py show E114`).*
 
-### E115
-
-**Work:** The vertical report leads with its progress: scenarios passing, steps landed, reached a result, and how long each has been flat, plus a per-run series. A display change: no threshold moves, and a landed step whose driver is owed shows as its own column
-
-**Source:** the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`); the vertical sweep: nothing in the report showed that no scenario had moved
-
-**When:** **Now.**
-
-**Notes:** Filed by the Lead
-
-*Later notes: `notes.d/E115/`, oldest first (`python tools/register.py show E115`).*
-
 ### E116
 
 **Work:** The vertical driver handles the placeholder `--expect-rev <revision from aew status>` that #319 printed. `tests/helpers/vertical/lead.py` (`:556-557` at `1108661e`) drops two tokens where the placeholder is four, so the V2 forced-kill scenario stalls at ASSIGNED. Read in the code; the fix's test confirms it. Tests only
@@ -2052,6 +2040,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #279 (`32fc4ea3`): a return from escalation meets the gates of the phase it enters, and a reconcile the guard of its direct edge, as ADR-0003's amendment of 2026-10-25 states. The class by any route is E96, and E85's named outcome closes only when E96 lands (designer, 2026-10-25)
 
 *Later notes: `notes.d/E85/`, oldest first (`python tools/register.py show E85`).*
+
+### E115
+
+**Was:** The vertical report leads with its progress: scenarios passing, steps landed, reached a result, and how long each has been flat, plus a per-run series. A display change: no threshold moves, and a landed step whose driver is owed shows as its own column
+
+**Closed:** 2026-11-03
+
+**By:** #NNN. The scoreboard is `tests/helpers/vertical/scoreboard.py`, the series `vertical-series.jsonl` in the job's artifact, carried by `actions/cache`. The first `main` push run after #NNN merges writes the series' first line and shows it; the run after that is the first to restore it, and so the first whose "flat since" counts more than one run. Reached a result starts with that first run. It also adds the Now list's `closed:` form, which keeps a closed item's number
+
+*Later notes: `notes.d/E115/`, oldest first (`python tools/register.py show E115`).*
 
 ### F1
 

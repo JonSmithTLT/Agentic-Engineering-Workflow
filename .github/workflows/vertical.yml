@@ -54,14 +54,36 @@ jobs:
           python -m pytest -q -p no:cacheprovider --lane vertical tests/acceptance/test_vertical_path.py
           -n auto --dist worksteal --test-timeout 1800 --session-deadline 2700 --max-worker-restart 0
           "--hang-dir=${{ runner.temp }}/vertical/hangs" "--junitxml=${{ runner.temp }}/vertical/junit.xml"
-      # The not-measured count first (a scenario that ended before its verdict: STG-13, addendum 1), then each
-      # ledger's one-screen summary (tests/helpers/vertical/report.py). It reports, and gates nothing.
+      # The series of main's runs (register E115), keyed per OS, the newest found by prefix. The restore and the save
+      # use one path: actions/cache keys an entry by its path too (ci.yml's tier job explains it). A branch's dispatch
+      # restores main's newest and reports beside it; it saves nothing.
+      - name: The series of main's runs, for the scoreboard (the newest)
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/vertical/vertical-series.jsonl
+          key: vertical-series-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: vertical-series-${{ runner.os }}-
+      # The not-measured count first (a scenario that ended before its verdict: STG-13, addendum 1), then the V-01 line
+      # and the scoreboard with the last ten runs (whether anything moved: register E115), then each ledger's
+      # one-screen summary (tests/helpers/vertical/report.py). On main it adds this run's line to the series. It
+      # reports, and gates nothing.
       - name: The lane's report and the ledgers' one-screen summaries
         if: always()
         shell: bash
         env:
           PYTHONPATH: tests/helpers
         run: python -m vertical.report "${{ runner.temp }}/vertical" >> "$GITHUB_STEP_SUMMARY"
+      # Only main writes, so a branch cannot change main's line. No hashFiles guard: it reads only under the workspace,
+      # and this path is not, so it would always say empty and nothing would ever be saved.
+      - name: This run's series, for main's next run
+        if: always() && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/vertical/vertical-series.jsonl
+          key: vertical-series-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:

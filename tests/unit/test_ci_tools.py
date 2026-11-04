@@ -1662,6 +1662,41 @@ def test_the_vertical_job_runs_in_shadow_in_its_own_workflow_and_uploads_its_led
     assert "vertical" not in ci  # not a job of the gate's workflow, nor anything its jobs run
 
 
+def test_only_main_saves_the_vertical_series_and_every_run_restores_it_where_it_is_saved():
+    """Register E115: the series goes to the job's output directory, so the artifact carries it, and actions/cache
+    carries it between runs, per OS, by a per-run key and a restore prefix, at one path (ci.yml's tier job says why). A
+    dispatch on a branch restores it and saves nothing, so a branch cannot change main's line. Red jobs must still save
+    (the job is red by design), and the workflow's permissions stay as they are: no commit from CI."""
+    from vertical.scoreboard import MAIN_REF, SERIES
+
+    wf = yaml.safe_load((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
+    assert wf["permissions"] == {"contents": "read"}
+    steps = wf["jobs"]["vertical"]["steps"]
+    restores = [s for s in steps if str(s.get("uses", "")).startswith("actions/cache/restore")]
+    saves = [s for s in steps if str(s.get("uses", "")).startswith("actions/cache/save")]
+    assert len(restores) == 1 and len(saves) == 1
+    restore, save = restores[0], saves[0]
+    out = next(s for s in steps if "pytest" in str(s.get("run", "")))["env"]["AEW_VERTICAL_OUT"]
+    assert restore["with"]["path"] == save["with"]["path"] == f"{out}/{SERIES}"
+    run_key = "vertical-series-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}"
+    assert save["with"]["key"] == restore["with"]["key"] == run_key
+    assert restore["with"]["restore-keys"] == "vertical-series-${{ runner.os }}-" and run_key.startswith(
+        restore["with"]["restore-keys"])
+    # Restored whatever the lane did, on every ref; saved whatever it did (always(): the job is red), on main's only
+    assert restore["if"] == "always()" and restore["continue-on-error"] is True
+    assert save["continue-on-error"] is True
+    always, on_main = save["if"].split("&&")
+    assert always.strip() == "always()"  # no hashFiles: it reads only under the workspace, and this path is not
+
+    def saved_on(ref: str) -> object:
+        return _github_expression("${{ " + on_main + " }}", {"github": {"ref": ref}})
+
+    assert saved_on(MAIN_REF) is True and saved_on("refs/heads/feat/e115-scoreboard") is False
+    report = next(i for i, s in enumerate(steps) if "python -m vertical.report" in str(s.get("run", "")))
+    upload = next(i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/upload-artifact"))
+    assert steps.index(restore) < report < steps.index(save) < upload
+
+
 def _github_expression(expr: str, context: dict) -> object:
     """A GitHub expression of the shapes `ci.yml`'s concurrency block uses: alternatives joined by `||`, each a run of
     `&&`, each operand a context path or `path == 'literal'`. `&&` and `||` return an operand, as GitHub's do."""

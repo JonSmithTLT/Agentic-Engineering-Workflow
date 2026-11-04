@@ -42,6 +42,9 @@ numbered from 1, each item naming the rows that carry it (``now_list``). It is t
 keeps it, adding and reordering items (designer, 2026-10-25; the rebaseline's list of 2026-10-24 stays frozen in
 ``register-rebaseline-dispositions.yaml``). ``check`` holds it to the rows (``now_problems``, through ``problems``):
 - every id it names is an open row targeted **Now** or **Stage**, and every item names at least one;
+- an item whose work has closed keeps its number, as ``| <n> | closed: <row ids> | what it was, closed by #NNN |``,
+  because other rows cite the numbers. Each id it names must be a row closed in §9: an open row or an unknown id is
+  refused, and a closed row named without ``closed:`` is refused as it was (``now_closed``);
 - every open row targeted **Now** is named in it, so a row cannot be put in the queue in one place and left out of the
   order in the other. A **Stage** row need not be named: a stage waits in the map's order for its hand-off, and is
   named once it is queued;
@@ -51,7 +54,8 @@ keeps it, adding and reordering items (designer, 2026-10-25; the rebaseline's li
   does not tell it apart (quick check of #273, N2).
 
 The table is one cell, the intro, so two changes to it conflict. The Lead keeps the order, but a change that closes or
-retargets a row the list names must edit the list in the same change (its refusals say so), and renumber what follows.
+retargets a row the list names must edit the list in the same change (its refusals say so): a closed item is marked and
+keeps its number, so what follows does not move.
 
 The markdown gives every row its own block, never a table line: a ``### <id>`` heading (the row's first cell), then
 one paragraph per non-empty cell, ``**<column>:** <text>``, each between blank lines. Each section names its columns in
@@ -146,6 +150,7 @@ NOW_SEPARATOR_RE = re.compile(r"^ {0,3}\|[\s|:-]*-[\s|:-]*$")
 # of TARGETS.
 NOW_TARGETS = ("Now", "Stage")
 NOW_EDIT = "edit §1's Now list in the same change"
+NOW_CLOSED = "closed:"  # an item whose rows have closed, which keeps its number (the module's *The Now list*)
 
 
 # libyaml's parser where PyYAML has it, as aew.util reads YAML: with the pure-Python reader one `check` of the 380 KB
@@ -512,19 +517,35 @@ def problems(data: dict[str, Any]) -> list[str]:
     return out + now_problems(data)
 
 
-def now_list(data: dict[str, Any]) -> list[tuple[int, list[str]]]:
-    """§1's Now table, as (number, the row ids it names) per line, in the table's order (the module's *The Now
-    list*)."""
+def _now_cells(data: dict[str, Any]) -> list[tuple[int, str]]:
+    """§1's Now table, as (number, its rows cell) per line, in the table's order."""
     first = next((s for s in data["sections"] if s["number"] == 1), {})
-    return [(int(m.group(1)), [i.strip() for i in m.group(2).split(",") if i.strip()])
-            for line in str(first.get("intro") or "").splitlines() if (m := NOW_LINE_RE.match(line))]
+    return [(int(m.group(1)), m.group(2)) for line in str(first.get("intro") or "").splitlines()
+            if (m := NOW_LINE_RE.match(line))]
+
+
+def _now_ids(text: str) -> list[str]:
+    return [i.strip() for i in text.split(",") if i.strip()]
+
+
+def now_list(data: dict[str, Any]) -> list[tuple[int, list[str]]]:
+    """§1's Now table, as (number, the open row ids it names) per line, in the table's order: a closed item holds its
+    place and names none (``now_closed``; the module's *The Now list*)."""
+    return [(n, [] if text.startswith(NOW_CLOSED) else _now_ids(text)) for n, text in _now_cells(data)]
+
+
+def now_closed(data: dict[str, Any]) -> list[tuple[int, list[str]]]:
+    """The items marked ``closed:``, as (number, the row ids they name)."""
+    return [(n, _now_ids(text[len(NOW_CLOSED):])) for n, text in _now_cells(data) if text.startswith(NOW_CLOSED)]
 
 
 def now_problems(data: dict[str, Any]) -> list[str]:
     """Where §1's Now list and the rows disagree: an item numbered out of order or naming no row, an id that is not an
-    open row targeted **Now** or **Stage**, an open row targeted **Now** that the list does not name, or a table line in
-    §1's intro that is not the list's header, separator or an item (the module's *The Now list*)."""
+    open row targeted **Now** or **Stage**, an item marked ``closed:`` whose row is not closed in §9, an open row
+    targeted **Now** that the list does not name, or a table line in §1's intro that is not the list's header, separator
+    or an item (the module's *The Now list*)."""
     listed = now_list(data)
+    closed_items = now_closed(data)
     if not listed:
         return ["§1 has no Now list: its intro holds the build order as `| <n> | <row ids> | <item> |` lines"]
     first = next(s for s in data["sections"] if s["number"] == 1)
@@ -534,9 +555,18 @@ def now_problems(data: dict[str, Any]) -> list[str]:
                                                       or NOW_SEPARATOR_RE.match(line))]
     out += [f"the Now list's item {n} is numbered out of order (expected {i})"
             for i, (n, _) in enumerate(listed, start=1) if n != i]
+    marked = {n for n, _ in closed_items}
     out += [f"the Now list's item {n} names no row (each item names the rows that carry it)"
-            for n, ids in listed if not ids]
+            for n, ids in [*(item for item in listed if item[0] not in marked), *closed_items] if not ids]
     open_rows = {r["id"]: r for r in rows(data) if r["id"]}
+    closed_rows = {r["id"] for r in rows(data, open_only=False) if r["id"]} - set(open_rows)
+    for n, ids in closed_items:
+        for i in ids:
+            if i in open_rows:
+                out.append(f"the Now list's item {n} marks {i} closed, but it is an open row: close it into §9, or "
+                           f"name it without `{NOW_CLOSED}`")
+            elif i not in closed_rows:
+                out.append(f"the Now list's item {n} marks {i} closed, but §9 has no such row")
     named = [i for _, ids in listed for i in ids]
     for i in named:
         if i not in open_rows:

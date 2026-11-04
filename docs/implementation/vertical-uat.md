@@ -168,9 +168,17 @@ false`, `Ledger.ended_by`), and it counts in no counter and against no threshold
 (`aew/vertical-ledger/v2`) `counts` is null when `measured` is false. The limit: every exception escaping a
 scenario's body is classed so, including AEW's own refusal at the open, the reopen or setup, and the reason recorded
 names it. The run's summary (`vertical/report.py`) gives the not-measured count first (on Windows, after its
-unqualified state, on the same line, with the conditions still open next, before any scenario), and a run where
-every scenario is not measured says so in its first words.
-Without a readable JUnit report the count is unknown, and the summary says so. It reports, and gates nothing.
+unqualified state, on the same line), and a run where every scenario is not measured says so in its first words.
+Without a readable JUnit report the count is unknown, and the summary says so. The V-01 line is next, on every path:
+V-01 is not met and the job stays red until every scenario passes (on Windows, the conditions still open follow it,
+before any scenario). Then the scoreboard (`vertical/scoreboard.py`, register E115): scenarios passing, V1's steps
+landed, the other steps landed, landed with a driver owed, and reached a result, each with how long it has been flat,
+then the last ten runs of `vertical-series.jsonl` (the artifact carries the whole series, and only `main` saves it). A
+run that measured nothing is marked so in the series, and neither resets nor extends "flat since". Nor does a partial
+run, one that measured fewer scenarios than the lane holds, for the rows it changes: scenarios passing, driver owed
+and reached a result. The scoreboard shows the last run that measured the whole lane, and counts the stretch of runs
+that did not. "Every scenario passes" also needs the pytest step to have finished clean, and a run that lost the
+series says so on its line. It reports, and gates nothing.
 
 **Operator counters (all must be 0):**
 

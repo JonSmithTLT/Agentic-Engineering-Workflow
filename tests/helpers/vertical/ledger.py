@@ -80,6 +80,9 @@ CONTAINMENT_MINIMUM: dict[str, dict[str, str | None]] = {
 # every verdict and summary it prints leads with this line and the conditions still open. Lifting it is the
 # operator's decision.
 ENFORCED_PLATFORMS = ("linux",)
+# An observation, on every scenario's ledger: whether a result reached the operator, and whether this scenario's verdict
+# asks for one. No counter and no threshold read it: the scoreboard shows it (vertical/scoreboard.py, register E115).
+RESULT_REACHED = "result_reached"
 WINDOWS_UNQUALIFIED = "Windows: UNQUALIFIED (excluded from the enforced gate)"
 WINDOWS_OPEN_CONDITIONS = ("B5q, the Low-integrity Lead qualification",
                            "B5 (or B5b), the MIC backend for the workers and the Lead",

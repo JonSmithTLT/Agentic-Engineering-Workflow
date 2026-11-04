@@ -32,6 +32,24 @@ jobs:
           key: shard-durations-restore-only
           restore-keys: shard-durations-
 
+  vertical-series:
+    # Keeps the vertical scoreboard's series (vertical.yml, register E115) from expiring the same way: the lane runs on
+    # main's pushes only, and it has gone a week with none. Its own path and key per OS. A restore is a read; nothing
+    # here ever saves. The scoreboard still says so if the entry goes anyway (tests/helpers/vertical/scoreboard.py).
+    name: vertical scoreboard's series, ${{ matrix.os }} (read, so it does not expire)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/vertical/vertical-series.jsonl
+          key: vertical-series-restore-only
+          restore-keys: vertical-series-${{ runner.os }}-
+
   reference-plan:
     # The reference lane's shards, computed for every run (tools/ci/shard_plan.py --reference), as the merge gate's are
     # (ci.yml, register E44), but from this lane's own history: one process per shard measures a test's serial time,
@@ -389,8 +407,8 @@ jobs:
           test "${{ needs.matrix-extra.result }}" = success
 
   report:
-    needs: [shard-history, reference-plan, reference, reference-assurance, walk-extended, race-repeat, crash-extended,
-            matrix-extra, matrix-extra-assurance]
+    needs: [shard-history, vertical-series, reference-plan, reference, reference-assurance, walk-extended, race-repeat,
+            crash-extended, matrix-extra, matrix-extra-assurance]
     # A scheduled job that hits its timeout-minutes ends `cancelled`, not `failed`: on a scheduled run either is a
     # failure of nightly assurance and opens (or updates) the issue. Nothing supersedes a scheduled run, so a
     # cancellation here is never a newer push; pull-request runs never reach this job.

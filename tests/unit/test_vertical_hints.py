@@ -19,6 +19,7 @@ from vertical.lead import Lead
 from vertical.ledger import COUNTERS, Ledger
 
 from aew.cli.main import build_parser
+from aew.errors import UsageError
 from aew.harness import contract as K
 
 T, REV = "T-0001", 17
@@ -77,6 +78,16 @@ def test_the_placeholder_comes_from_its_owner(monkeypatch: pytest.MonkeyPatch) -
     assert H.fill_hint(f"work close {T} --expect-rev {K.REVISION}", T, REV) == ["work", "close", T, *FILLED]
     with pytest.raises(H.NotFollowable):
         H.fill_hint(f"work close {T} --expect-rev {old}", T, REV)
+
+
+def test_a_plain_word_standing_for_a_value_goes_through_as_printed() -> None:
+    """The limit ``hints``' docstring states: nothing marks `NAME` or `WHY` as a stand-in, so neither is refused. The
+    live one is outside the modules that feed a Lead's hints; if it moves or a change refuses these, the docstring's
+    limit needs reading again."""
+    assert H.fill_hint("opencode --provider-env NAME", T, REV) == ["opencode", T, "--provider-env", "NAME", *FILLED]
+    assert H.fill_hint(f"work redispatch {T} --reason WHY", T, REV)[-3:] == ["WHY", *FILLED]
+    live = [site for site in P.ast_sites() if site.text == "aew opencode --provider-env NAME"]
+    assert live and not [site.key for site in live if site.path in HINT_SOURCES]
 
 
 def test_every_placeholder_a_printed_command_may_hold_is_filled_or_refused() -> None:
@@ -140,16 +151,15 @@ def test_a_filled_hint_parses_as_printed() -> None:
     """Every whole command a hint can print parses once filled. A mention (`aew evidence ingest`) names a command and is
     not held to its arguments; when a hint prints one, the run's ``hint_usage_error`` shows it. Each exception is
     live."""
-    results = {}
+    results, whole = {}, 0
     for site, argv in _census():
-        whole = argv is not None and (P.SLOT.search(site.text) or not P.mention(site.text))
-        if whole and site.path in HINT_SOURCES:
-            assert argv is not None
-            results[site.key] = (site.shown, _parse_failure(argv, site))
-    assert len(results) > 20
-    failing = {key: (shown, why) for key, (shown, why) in results.items() if why and shown not in NOT_A_TICKETS}
+        if argv is not None and site.path in HINT_SOURCES and (P.SLOT.search(site.text) or not P.mention(site.text)):
+            whole += 1
+            results[site.key, site.shown] = _parse_failure(argv, site)
+    assert len(results) == whole > 20  # two spans on one line are two results (#325's review, F4)
+    failing = {key: why for key, why in results.items() if why and key[1] not in NOT_A_TICKETS}
     assert not failing, failing
-    assert {shown for shown, why in results.values() if why} == NOT_A_TICKETS
+    assert {shown for (_, shown), why in results.items() if why} == NOT_A_TICKETS
 
 
 def test_the_forced_kill_hint_parses_with_the_real_parser() -> None:
@@ -178,7 +188,7 @@ def test_the_real_parsers_errors_are_usage_errors(capsys: pytest.CaptureFixture[
 
 
 @pytest.mark.parametrize(("error", "usage", "parse"), [
-    ({"code": "USAGE", "message": "in a Lead session, dispatch with --launch"}, True, False),  # right: AEW's own
+    ({"code": UsageError.code, "message": "in a Lead session, dispatch with --launch"}, True, False),  # right: AEW's
     ({"code": "GATE_UNSATISFIED", "message": f"{T} has no active implementer invocation"}, False, False),  # wrong
     ({"code": "GATE_UNSATISFIED", "message": "see: error: in the message"}, False, False),  # a code says it is AEW's
     ({"code": None, "message": "no such thing"}, False, False),
@@ -224,6 +234,17 @@ HINT = f"work transition {T} --to RUNNING {K.EXPECT_REV}"
 PROJECTION = {"revision": REV, "hints": [f"implementer INV-0001 was launched: `aew {HINT}`"]}
 
 
+def _after_twelve_gaps(*events: dict[str, Any]) -> Ledger:
+    """A ledger with 12 gaps ahead of ``events``. The summary's list holds 12, and forced-kill reaches its hint at
+    ASSIGNED as number 15, so a test with only the event never meets the cap (#325's review, F1)."""
+    ledger = Ledger("unit")
+    for n in range(12):
+        ledger.lead_event({"kind": "gap", "step": f"{T}:{n}", "gap": "earlier", "why": "an earlier gap"})
+    for event in events:
+        ledger.lead_event(event)
+    return ledger
+
+
 def test_the_lead_reads_the_hint_as_printed() -> None:
     lead = Lead.__new__(Lead)
     assert lead.hinted_command(PROJECTION) == HINT
@@ -247,6 +268,9 @@ def test_a_hint_the_lead_cannot_complete_runs_nothing_and_is_recorded(tmp_path: 
     assert lead.ran == []
     [gap] = lead.events()
     assert gap["gap"] == "hint_not_followable" and "<invocation from aew harness status>" in gap["why"]
+    lines = _after_twelve_gaps(gap).summary().splitlines()
+    assert lines.count(f"hint_not_followable: {T}:ASSIGNED {gap['why']}") == 1  # once, and past the 12
+    assert sum("hint_not_followable" in line for line in lines) == 1
 
 
 def test_a_mangled_hint_is_an_observation_with_no_counter_and_no_threshold(tmp_path: Path) -> None:
@@ -257,11 +281,13 @@ def test_a_mangled_hint_is_an_observation_with_no_counter_and_no_threshold(tmp_p
     usage = lead.events()[-1]
     assert usage["why"].endswith("unrecognized arguments: from aew status>")
 
-    ledger = Ledger("unit")
-    ledger.lead_event(usage)
-    assert [o["kind"] for o in ledger.observations] == ["lead.hint_usage_error"]
+    ledger = _after_twelve_gaps(usage)
+    assert ledger.observations[-1]["kind"] == "lead.hint_usage_error"
     assert ledger.counts() == dict.fromkeys(COUNTERS, 0) and not ledger.over()
-    assert "lead.hint_usage_error" in ledger.summary()  # where a reader of the run sees it
+    line = f"lead.hint_usage_error: {T}:ASSIGNED {usage['why']}"
+    lines = ledger.summary().splitlines()  # where a reader of the run sees it
+    assert lines.count(line) == 1 and sum("hint_usage_error" in other for other in lines) == 1
+    assert _after_twelve_gaps(*[usage] * 13).summary().splitlines().count(line) == 13  # its own list has no cap
 
 
 def test_a_read_command_refusing_the_revision_is_retried_without_it_and_not_observed(tmp_path: Path) -> None:
@@ -279,8 +305,16 @@ def test_a_retry_that_is_a_usage_error_is_observed_too(tmp_path: Path) -> None:
     assert lead.kinds() == ["gap", "hint_usage_error"]
 
 
+def test_a_launch_retry_that_is_a_usage_error_is_observed_too(tmp_path: Path) -> None:
+    lead = _Lead(tmp_path, [_refused(UsageError.code, "in a Lead session, dispatch with --launch"),
+                            _refused(None, "aew work assign: error: unrecognized arguments: --launch")])
+    lead.gap_hint(f"work assign {T} {K.EXPECT_REV}", PROJECTION)
+    assert lead.ran[-1] == ["work", "assign", T, "--launch", "--expect-rev", str(REV + 1)]
+    assert lead.kinds() == ["gap", "hint_usage_error"]
+
+
 def test_a_refusal_asking_for_launch_is_retried_with_it(tmp_path: Path) -> None:
-    lead = _Lead(tmp_path, [_refused("USAGE", "in a Lead session, dispatch with --launch"),
+    lead = _Lead(tmp_path, [_refused(UsageError.code, "in a Lead session, dispatch with --launch"),
                             {"ok": True, "json": {}, "error": None}])
     lead.gap_hint(f"work assign {T} {K.EXPECT_REV}", PROJECTION)
     assert lead.ran[-1] == ["work", "assign", T, "--launch", "--expect-rev", str(REV + 1)]

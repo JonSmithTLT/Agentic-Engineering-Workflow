@@ -510,8 +510,12 @@ class Ledger:
         for o in self.observations:
             if o["kind"] == "steering_stop":
                 lines.append(f"steering loop: mode {o.get('mode')}, stopped {(o.get('stop') or {}).get('code')}")
+        unfollowed = [o for o in self.observations
+                      if o["kind"] == "lead.hint_usage_error" or o.get("gap") == "hint_not_followable"]
+        for o in unfollowed:  # no counter and no threshold: only this line draws a reader to it (#325's review, F1)
+            lines.append(f"{o.get('gap') or o['kind']}: {o.get('step') or ''} {o.get('why') or ''}"[:200])
         gaps = [o for o in self.observations
-                if o["kind"] in ("fallback", "lead.gap", "lead.stuck", "lead.hint_usage_error", "gap")]
+                if o["kind"] in ("fallback", "lead.gap", "lead.stuck", "gap") and o not in unfollowed]
         for o in gaps[:12]:
             what = o.get("why") or o.get("observed") or ""
             lines.append(f"  {o['kind']}: {o.get('step') or o.get('gap') or ''} {what}"[:118])

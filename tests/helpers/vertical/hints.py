@@ -4,7 +4,11 @@ A hint prints a command for a reader, with placeholders where the reader's own v
 holds a value for: the revision (named by its owner, ``aew.harness.contract.REVISION``), the subject (``<T>``,
 ``<unit>``), and its own words for a reason (``<reason>``, ``<why>``). Anything else is **not followable**: the value is
 a choice the Lead has no basis for (``<card>``, ``<CLASS>``, ``<n>``, ``<a|b>``, ``--to A|B``) or one it would have to
-go and read (``<invocation from aew harness status>``). A placeholder never goes through as literal tokens.
+go and read (``<invocation from aew harness status>``).
+
+A placeholder the text marks (``<...>``, ``{...}``, ``|``, ``...``) never goes through as literal tokens. **A plain word
+standing for a value does:** nothing tells ``--provider-env NAME`` or ``--reason WHY`` from a real value, so it runs as
+printed. The live one, ``aew opencode --provider-env NAME``, is the operator's startup text and reaches no Lead's hints.
 
 Filling works on the text, before it is split: a placeholder of several words is several tokens afterwards, and nothing
 can tell them from the command's own. The revision always goes last, whatever the hint's order, because the retries in
@@ -18,6 +22,7 @@ from typing import Any
 
 from printed_commands import ANGLE
 
+from aew.errors import UsageError
 from aew.harness import contract as K
 
 REASON = "the projection offers nothing else, and its hint names this command"  # the Lead's own words
@@ -27,7 +32,7 @@ EXPECT_REV = "--expect-rev"
 NOT_FILLED = frozenset("<>{}|")  # a piece of a placeholder (`<x`), the projection's `{evidence}`, or alternatives
 ELIDED = "..."  # run as printed it records "...": the reader cannot know it stands for a value (#319 review, F4)
 PARSE_FAILED = ": error: "  # how argparse ends a usage message: `aew work transition: error: ...`
-USAGE_CODE = "USAGE"  # aew.errors.UsageError's code
+USAGE_CODE = UsageError.code
 
 
 class NotFollowable(ValueError):

@@ -245,6 +245,13 @@ def _after_twelve_gaps(*events: dict[str, Any]) -> Ledger:
     return ledger
 
 
+def _times_printed_alone(event: dict[str, Any]) -> int:
+    """How many of the summary's lines show ``event``, with room in the list of gaps, where a second line would go."""
+    ledger = Ledger("unit")
+    ledger.lead_event(event)
+    return sum(event["why"] in line for line in ledger.summary().splitlines())
+
+
 def test_the_lead_reads_the_hint_as_printed() -> None:
     lead = Lead.__new__(Lead)
     assert lead.hinted_command(PROJECTION) == HINT
@@ -269,8 +276,8 @@ def test_a_hint_the_lead_cannot_complete_runs_nothing_and_is_recorded(tmp_path: 
     [gap] = lead.events()
     assert gap["gap"] == "hint_not_followable" and "<invocation from aew harness status>" in gap["why"]
     lines = _after_twelve_gaps(gap).summary().splitlines()
-    assert lines.count(f"hint_not_followable: {T}:ASSIGNED {gap['why']}") == 1  # once, and past the 12
-    assert sum("hint_not_followable" in line for line in lines) == 1
+    assert lines.count(f"hint_not_followable: {T}:ASSIGNED {gap['why']}") == 1  # past the 12
+    assert _times_printed_alone(gap) == 1
 
 
 def test_a_mangled_hint_is_an_observation_with_no_counter_and_no_threshold(tmp_path: Path) -> None:
@@ -285,8 +292,8 @@ def test_a_mangled_hint_is_an_observation_with_no_counter_and_no_threshold(tmp_p
     assert ledger.observations[-1]["kind"] == "lead.hint_usage_error"
     assert ledger.counts() == dict.fromkeys(COUNTERS, 0) and not ledger.over()
     line = f"lead.hint_usage_error: {T}:ASSIGNED {usage['why']}"
-    lines = ledger.summary().splitlines()  # where a reader of the run sees it
-    assert lines.count(line) == 1 and sum("hint_usage_error" in other for other in lines) == 1
+    assert ledger.summary().splitlines().count(line) == 1  # where a reader of the run sees it, past the 12
+    assert _times_printed_alone(usage) == 1
     assert _after_twelve_gaps(*[usage] * 13).summary().splitlines().count(line) == 13  # its own list has no cap
 
 

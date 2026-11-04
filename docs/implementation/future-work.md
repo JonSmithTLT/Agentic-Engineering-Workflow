@@ -32,7 +32,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 | # | Row | Item |
 |---|---|---|
-| 1 | closed: E115 | The scoreboard: the vertical report leads with scenarios passing, steps landed and how long each has been flat, closed by #NNN |
+| 1 | closed: E115 | The scoreboard: the vertical report leads with scenarios passing, steps landed and how long each has been flat, closed by #324 |
 | 2 | E116 | The vertical driver's fix for the placeholder #319 printed |
 | 3 | E117 | The first real-model receipt on a seeded kit, likely red, and the personal alpha's gate |
 | 4 | E112 | Every launch whose containment fails is refused, and the register of weaker contexts (#321, in review). If it needs more than its quick check, item 5 goes first without it |
@@ -2047,7 +2047,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-03
 
-**By:** #NNN. The scoreboard is `tests/helpers/vertical/scoreboard.py`, the series `vertical-series.jsonl` in the job's artifact, carried by `actions/cache`. The first `main` push run after #NNN merges writes the series' first line and shows it; the run after that is the first to restore it, and so the first whose "flat since" counts more than one run. Reached a result starts with that first run. It also adds the Now list's `closed:` form, which keeps a closed item's number
+**By:** #324. The scoreboard is `tests/helpers/vertical/scoreboard.py`, the series `vertical-series.jsonl` in the job's artifact, carried by `actions/cache`. The first `main` push run after #324 merges writes the series' first line and shows it; the run after that is the first to restore it, and so the first whose "flat since" counts more than one run. Reached a result starts with that first run. It also adds the Now list's `closed:` form, which keeps a closed item's number
 
 *Later notes: `notes.d/E115/`, oldest first (`python tools/register.py show E115`).*
 

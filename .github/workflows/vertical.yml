@@ -48,6 +48,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: pytest --lane vertical (the ledgers go to the runner's temp directory)
+        id: pytest
         env:
           AEW_VERTICAL_OUT: ${{ runner.temp }}/vertical
         run: >-
@@ -68,12 +69,14 @@ jobs:
       # The not-measured count first (a scenario that ended before its verdict: STG-13, addendum 1), then the V-01 line
       # and the scoreboard with the last ten runs (whether anything moved: register E115), then each ledger's
       # one-screen summary (tests/helpers/vertical/report.py). On main it adds this run's line to the series. It
-      # reports, and gates nothing.
+      # reports, and gates nothing. A JUnit report holds only the scenarios that ran, so "every scenario passes" also
+      # reads how the pytest step ended.
       - name: The lane's report and the ledgers' one-screen summaries
         if: always()
         shell: bash
         env:
           PYTHONPATH: tests/helpers
+          VERTICAL_PYTEST_OUTCOME: ${{ steps.pytest.outcome }}
         run: python -m vertical.report "${{ runner.temp }}/vertical" >> "$GITHUB_STEP_SUMMARY"
       # Only main writes, so a branch cannot change main's line. No hashFiles guard: it reads only under the workspace,
       # and this path is not, so it would always say empty and nothing would ever be saved.

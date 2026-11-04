@@ -786,7 +786,7 @@ def test_the_nightly_reads_the_history_every_night_so_a_week_without_ci_does_not
     ci = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
     saved = next(s for s in ci["assurance"]["steps"] if s.get("uses") == "actions/cache/save@v6")
     assert saved["with"]["key"].startswith(gate[0]["with"]["restore-keys"])
-    own = [s for s in caches if s not in gate]
+    own = [s for s in caches if s not in gate and not s["with"]["key"].startswith("vertical-series-")]  # its test below
     assert [s["uses"] for s in own] == ["actions/cache/restore@v6", "actions/cache/restore@v6",
                                         "actions/cache/save@v6"]  # the plan's read; the aggregate's read and save
     assert {s["with"].get("restore-keys") for s in own[:2]} == {"reference-durations-"}
@@ -803,7 +803,7 @@ def _cache_steps(workflow: Path) -> list[dict]:
 
 def _cache_family(step: dict) -> str:
     """The key prefix a cache step reads or writes: a restore's ``restore-keys``, else its key before the run's part."""
-    return step["with"].get("restore-keys") or step["with"]["key"].split("${{")[0]
+    return (step["with"].get("restore-keys") or step["with"]["key"]).split("${{")[0]
 
 
 def test_every_cache_the_nightly_uses_is_at_the_path_its_family_is_saved_at():
@@ -818,7 +818,7 @@ def test_every_cache_the_nightly_uses_is_at_the_path_its_family_is_saved_at():
             if step["uses"].startswith("actions/cache/save"):
                 saved.setdefault(_cache_family(step), set()).add(step["with"]["path"])
     nightly = _cache_steps(workflows / "nightly.yml")
-    assert {_cache_family(s) for s in nightly} == {"shard-durations-", "reference-durations-"}
+    assert {_cache_family(s) for s in nightly} == {"shard-durations-", "reference-durations-", "vertical-series-"}
     for step in nightly:
         family = _cache_family(step)
         assert saved.get(family) == {step["with"]["path"]}, (family, step["with"]["path"], saved.get(family))
@@ -1697,6 +1697,36 @@ def test_only_main_saves_the_vertical_series_and_every_run_restores_it_where_it_
     report = next(i for i, s in enumerate(steps) if "python -m vertical.report" in str(s.get("run", "")))
     upload = next(i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("actions/upload-artifact"))
     assert steps.index(restore) < report < steps.index(save) < upload
+
+
+def test_the_nightly_reads_the_vertical_series_on_each_os_so_a_quiet_week_does_not_evict_it():
+    """The review of #324, F3: GitHub removes a cache entry nobody has read for seven days, and the lane runs only on
+    main's pushes (none from 10-14 to 10-22). Read per OS, as the lane saves it; a restore is a read, and nothing saves.
+    test_every_cache_the_nightly_uses_is_at_the_path_its_family_is_saved_at holds its path."""
+    from_lane = yaml.safe_load((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))
+    lane = from_lane["jobs"]["vertical"]
+    job = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))["jobs"][
+        "vertical-series"]
+    assert job["strategy"]["matrix"]["os"] == [o["os"] for o in lane["strategy"]["matrix"]["include"]]
+    assert job["runs-on"] == lane["runs-on"]
+    [step] = job["steps"]
+    assert step["uses"].startswith("actions/cache/restore")
+    saved = next(s for s in lane["steps"] if str(s.get("uses", "")).startswith("actions/cache/save"))
+    assert step["with"]["path"] == saved["with"]["path"]
+    assert step["with"]["restore-keys"] == "vertical-series-${{ runner.os }}-"
+
+
+def test_the_vertical_report_is_told_how_the_pytest_step_ended():
+    """The review of #324, F2: a JUnit report holds only what ran, so "every scenario passes" needs the pytest step's
+    outcome, which only the workflow can pass."""
+    from vertical.report import PYTEST_OUTCOME
+
+    steps = yaml.safe_load((ROOT / ".github" / "workflows" / "vertical.yml").read_text(encoding="utf-8"))[
+        "jobs"]["vertical"]["steps"]
+    pytest_step = next(s for s in steps if "--lane vertical" in str(s.get("run", "")))
+    report = next(s for s in steps if "python -m vertical.report" in str(s.get("run", "")))
+    assert report["env"][PYTEST_OUTCOME] == "${{ steps." + pytest_step["id"] + ".outcome }}"
+    assert steps.index(pytest_step) < steps.index(report) and report["if"] == "always()"
 
 
 def _github_expression(expr: str, context: dict) -> object:

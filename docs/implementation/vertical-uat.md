@@ -174,8 +174,11 @@ V-01 is not met and the job stays red until every scenario passes (on Windows, t
 before any scenario). Then the scoreboard (`vertical/scoreboard.py`, register E115): scenarios passing, V1's steps
 landed, the other steps landed, landed with a driver owed, and reached a result, each with how long it has been flat,
 then the last ten runs of `vertical-series.jsonl` (the artifact carries the whole series, and only `main` saves it). A
-run that measured nothing is marked so in the series, neither resets nor extends "flat since", and the scoreboard
-shows the last run that did measure. It reports, and gates nothing.
+run that measured nothing is marked so in the series, and neither resets nor extends "flat since". Nor does a partial
+run, one that measured fewer scenarios than the lane holds, for the rows it changes: scenarios passing, driver owed
+and reached a result. The scoreboard shows the last run that measured the whole lane, and counts the stretch of runs
+that did not. "Every scenario passes" also needs the pytest step to have finished clean, and a run that lost the
+series says so on its line. It reports, and gates nothing.
 
 **Operator counters (all must be 0):**
 

@@ -2043,7 +2043,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-03
 
-**By:** #324. The scoreboard is `tests/helpers/vertical/scoreboard.py`, the series `vertical-series.jsonl` in the job's artifact, carried by `actions/cache`. The first `main` push run after #324 merges writes the series' first line and shows it; the run after that is the first to restore it, and so the first whose "flat since" counts more than one run. Reached a result starts with that first run. It also adds the Now list's `closed:` form, which keeps a closed item's number
+**By:** #324. The scoreboard is `tests/helpers/vertical/scoreboard.py`, the series `vertical-series.jsonl` in the job's artifact, carried by `actions/cache`. The first `main` push run after #324 merges writes the series' first line and shows it; the run after that is the first to restore it, and so the first whose "flat since" counts more than one run. Reached a result starts with that first run. **The Lead reads that second run after the merge,** on both jobs, in the summary or the artifact (the save has `continue-on-error`, which hides a failed save): its table must show both lines. That proves the save and restore round trip, and nothing about eviction or re-runs. It also adds the Now list's `closed:` form, which keeps a closed item's number
 
 *Later notes: `notes.d/E115/`, oldest first (`python tools/register.py show E115`).*
 

@@ -19,7 +19,7 @@ design); any test that records it is listed apart, with its result, never hidden
 Usage: ``python -m vertical.report <ledgers directory>`` (with ``tests/helpers`` on the path); it reads
 ``<directory>/junit.xml``, each ``<directory>/<scenario>/vertical-ledger.json`` and
 ``<directory>/vertical-series.jsonl``, to which a run of ``main`` adds its line (the workflow's ``GITHUB_*`` variables
-say which run this is).
+say which run this is, and ``VERTICAL_PYTEST_OUTCOME`` how its pytest step ended).
 """
 
 from __future__ import annotations
@@ -44,6 +44,7 @@ UNKNOWN, TEARDOWN = "verdict unknown", "passed, errored in teardown"
 # The JUnit property a test of the lane that is not a scenario records (``record_property``). Only the #213 hang
 # diagnosis records it: it writes no ledger by design, so it is listed apart and never counted as not measured.
 NOT_A_SCENARIO = "vertical_not_a_scenario"
+PYTEST_OUTCOME = "VERTICAL_PYTEST_OUTCOME"  # the workflow's report step: the pytest step's outcome
 
 
 def cases(junit: Path) -> list[tuple[str, str, str | None]] | None:
@@ -107,7 +108,8 @@ def rows(directory: Path) -> tuple[list[dict[str, Any]], bool, list[str]]:
 def run_row(found: list[dict[str, Any]], from_junit: bool, run: S.Run | None) -> dict[str, Any]:
     """This run's line of the series. Without a readable JUnit report a run has no passing count, so it is no data
     point, whatever ledgers it left; nor is a run in which every scenario ended before its verdict."""
-    identity = {"run": run.id if run else "this run", "sha": run.sha if run else "-", "date": run.date if run else "-"}
+    identity = {"run": run.id if run else S.THIS_RUN, "sha": run.sha if run else "-",
+                "date": run.date if run else "undated"}
     measured = sum(1 for r in found if r["outcome"] != NOT_MEASURED)
     if not from_junit:
         return {**identity, "measured": False, "why": "pytest wrote no readable JUnit report"}
@@ -119,7 +121,8 @@ def run_row(found: list[dict[str, Any]], from_junit: bool, run: S.Run | None) ->
     return {**identity, "measured": True, **S.values(found, passing=passing, measured=measured)}
 
 
-def report(directory: Path, *, run: S.Run | None = None) -> str:
+def report(directory: Path, *, run: S.Run | None = None, pytest: str | None = None) -> str:
+    """The summary. ``pytest`` is the pytest step's outcome, when a workflow gave it (``PYTEST_OUTCOME``)."""
     found, from_junit, apart = rows(directory)
     total = len(found)
     unmeasured = sum(1 for r in found if r["outcome"] == NOT_MEASURED)
@@ -134,11 +137,13 @@ def report(directory: Path, *, run: S.Run | None = None) -> str:
     series = directory / S.SERIES
     past, restarted = S.read_series(series)
     row = run_row(found, from_junit, run)
+    if restarted:
+        row["restarted"] = restarted  # on its line: the notice below shows on this run only (the review of #324, F3)
     timeline = S.joined(past, row)
     saved = run is not None and run.saves  # only main's runs write: a branch reads the series and leaves it alone
     problem = S.save_series(series, timeline) if saved else None
     lines = [f"### {state}vertical ({platform}): {head}",
-             S.v01_line(platform, known=from_junit, passing=counted[PASSED], total=total), "",
+             S.v01_line(platform, known=from_junit, passing=counted[PASSED], total=total, pytest=pytest), "",
              *([] if platform in ENFORCED_PLATFORMS else [*windows_lines()[1:], ""]),  # Q1(e): the open conditions
              *S.render(platform, timeline, this_run=row["run"], saved=saved, restarted=restarted, save_problem=problem),
              f"measured {total - unmeasured}: " + ", ".join(f"{n} {o}" for o, n in counted.items() if n), "",
@@ -162,7 +167,7 @@ def run_from(env: Mapping[str, str]) -> S.Run | None:
 
 
 def main(argv: list[str]) -> int:
-    sys.stdout.write(report(Path(argv[0]), run=run_from(os.environ)))
+    sys.stdout.write(report(Path(argv[0]), run=run_from(os.environ), pytest=os.environ.get(PYTEST_OUTCOME) or None))
     return 0
 
 

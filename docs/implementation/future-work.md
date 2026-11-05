@@ -33,9 +33,9 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | # | Row | Item |
 |---|---|---|
 | 1 | closed: E115 | The scoreboard: the vertical report leads with scenarios passing, steps landed and how long each has been flat, closed by #324 |
-| 2 | E116 | The vertical driver's fix for the placeholder #319 printed |
+| 2 | closed: E116 | The vertical driver's fix for the placeholder #319 printed, closed by #325 |
 | 3 | E117 | The first real-model receipt on a seeded kit, likely red, and the personal alpha's gate |
-| 4 | STG-05 | E112, closed into §9 by #321: every launch whose containment fails is refused, and the register of weaker contexts |
+| 4 | closed: E112 | Every launch whose containment fails is refused, and the register of weaker contexts, closed by #321 |
 | 5 | E118 | The contained Lead's two fixes |
 | 6 | E35 | The probe of what a project can load into the harness. Only this part of E35 is before first use |
 | 7 | STG-15 | CAP-1 PR 2: the read-only ripgrep bind, Q08's rows, the fetch at first launch and the contained health check (PR 1 merged as #272, `af951c92`) |
@@ -45,12 +45,15 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 11 | E122 | The next step while the Lead waits |
 | 12 | STG-03 | **After first use, or earlier if a builder slot is free:** G3-C with `ATTACH_LEAD`, E82 and the G3 install. G3-A, G3-B and G3-D are merged (#269, #282, #286). E112 merges first (G3 addendum 7's ruling 1). It never holds first use |
 | 13 | E123 | **Before the work step:** the relay presenting a client certificate, and the bundle (E99, whose design is owed) |
-| 14 | STG-15, E35 | **After those:** CAP-1 PR 3, then H-1, H-2 and H-3 |
+| 14 | STG-15, E35 | CAP-1 PR 3, right after PR 2 and beside first use, which it doesn't hold. **After those:** H-1, H-2 and H-3 |
 | 15 | STG-14 | I-6, the resource, model and host policy (A-39), the first of the wire increments V-01 needs. Its protected rows stay held until G3 is established, and G3 is established on no host yet |
+| 16 | E125 | The local readiness surface, with the driver asserting the diagnosis. With E119, it's what V3's four non-stale cases need to pass |
+| 17 | E126 | A pre-F4 correction that F4 absorbs: the Lead adds one exact test path to a Ticket's scope |
+| 18 | E127 | Delivering the first four skills, labelled unevaluated |
 
-**Between items 11 and 12, first use:** the operator's SPT work, image work included. CI is SPT's first ticket: AEW's workers write it and the operator pushes. SPT stays as it is until then. Later fixes come from that use.
+**After items 1 to 11 and 16 to 18, first use:** the operator's SPT work, image work included. CI is SPT's first ticket: AEW's workers write it and the operator pushes. SPT stays as it is until then. Later fixes come from that use.
 
-**Contention for a slot:** the list's order, as the operator's decision of 2026-11-02 sets it. **New design stops until the first receipt,** except what first use surfaces, SPB's adoption question and the research the operator asked for, so a new ruling becomes a row only if it serves this list. **Everything moved stays in V-01,** and V-01 stays the gate before any release. **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
+**Contention for a slot:** what blocks other items, starts a series or unlocks a capability that can be tested goes first, and a chain of pull requests keeps moving beside the one-offs (the operator, 2026-11-04). So CAP-1 PR 2, then PR 3, hold one slot. E125 follows E119, on the way to V3's first green. The other one-offs keep the operator's order of 2026-11-03: E121, E122, E120, with E119 alongside, then E126, E118 and E35's probe. E127 follows CAP-1 PR 2, since both change the same binds. E117 runs when the operator judges there's something new to measure, as the last step before first use. **The numbers name the items, and don't set the order.** **New design stops until the first receipt,** except what first use surfaces, SPB's adoption question and the research the operator asked for, so a new ruling becomes a row only if it serves this list. **Everything moved stays in V-01,** and V-01 stays the gate before any release. **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
 
 **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 
@@ -58,7 +61,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### **Personal alpha: a recorded milestone before V-01, with no release claim**
 
-**Done when:** **First use:** items 1 to 11 of the Now list are done (item 4 may follow, if it needs more than its quick check), and the operator runs their own SPT work on it. **The gate,** beside the oracle and reading the same ledgers: limits and recovery (the hard limits read held, and V2-forced reaches a result); setup and preflight (V3's four non-stale cases pass strict, with the driver asserting the diagnosis); the fresh path (V1 reaches a result with exactly the plan and publish decisions, excusing only G3 steps not yet landed, each printed by name); the receipt (a real-model run the operator starts, on a sample repository with a seeded neighbour test and a lint outside the configured check, recording no-wake, validation width, scope, dead-end gates, the operator's own yes or no on readability, and containment labels, with bars set after the first receipt); the install (the same kit from the installed package on the Rocky 8 VM; on Windows, an install check only). **Stated limits:** no G3 as proof, so the Lead's token stays and "authenticate once" is not met; no assessed profile, so workers run on the launch self-test and masks as measured; publish moves local main with no operator step, and the push is the approval; a setting changed after setup goes back to adopt and the token; the 2.0.18 pin; no format-change safety, so no marker raises, changes are additive, and the operator snapshots `.aew/` before an upgrade; real work on Linux only. **It changes no gate:** the `vertical` job stays red, the V-01 line leads its report, and nothing here implies V-01's completeness
+**Done when:** **First use:** items 1 to 11 and 16 to 18 of the Now list are done, and the operator runs their own SPT work on it. **The gate,** beside the oracle and reading the same ledgers: limits and recovery (the hard limits read held, and V2-forced reaches a result); setup and preflight (V3's four non-stale cases pass strict, with the driver asserting the diagnosis); the fresh path (V1 reaches a result with exactly the plan and publish decisions, excusing only G3 steps not yet landed, each printed by name); the receipt (a real-model run the operator starts, on a sample repository with a seeded neighbour test and a lint outside the configured check, recording no-wake, validation width, scope, dead-end gates, the operator's own yes or no on readability, and containment labels, with bars set after the first receipt); the install (the same kit from the installed package on the Rocky 8 VM; on Windows, an install check only). **Stated limits:** no G3 as proof, so the Lead's token stays and "authenticate once" is not met; no assessed profile, so workers run on the launch self-test and masks as measured; publish moves local main with no operator step, and the push is the approval; a setting changed after setup goes back to adopt and the token; the 2.0.18 pin; no format-change safety, so no marker raises, changes are additive, and the operator snapshots `.aew/` before an upgrade; real work on Linux only. **It changes no gate:** the `vertical` job stays red, the V-01 line leads its report, and nothing here implies V-01's completeness
 
 **Source:** the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`), under A-02's `OI-FR-06`; the designer's position of the same day; the vertical sweep (0 of 17 scenarios has ever passed on Linux, in 104 completed runs)
 
@@ -1225,18 +1228,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E113/`, oldest first (`python tools/register.py show E113`).*
 
-### E116
-
-**Work:** The vertical driver handles the placeholder `--expect-rev <revision from aew status>` that #319 printed. `tests/helpers/vertical/lead.py` (`:556-557` at `1108661e`) drops two tokens where the placeholder is four, so the V2 forced-kill scenario stalls at ASSIGNED. Read in the code; the fix's test confirms it. Tests only
-
-**Source:** The vertical sweep's adversarial check; the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`)
-
-**When:** **Now.**
-
-**Notes:** Filed by the Lead
-
-*Later notes: `notes.d/E116/`, oldest first (`python tools/register.py show E116`).*
-
 ### E117
 
 **Work:** A seeded kit and the first real-model receipt: a sample repository with a neighbour test and a lint outside the configured check, and a run the operator starts, recording no-wake, validation width, scope, dead-end gates, the operator's yes or no on readability, and containment labels. It will likely be red. Also the personal alpha's named gate, reading the same ledgers as the oracle
@@ -1255,7 +1246,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** Harness ruling 11 of 2026-11-01
 
-**When:** **Now.** First after E112, or without it if E112 needs more than its quick check
+**When:** **Now.**
 
 **Notes:** Filed by the Lead
 
@@ -1275,7 +1266,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E120
 
-**Work:** Validation's coverage goes on the record, saying what it did not check, and a failing check's lines go back to the worker
+**Work:** Validation's coverage goes on the record, saying what it did not check, and a failing check's lines go back to the worker. Results also list the skills a run asked for and did not get
 
 **Source:** the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`); dogfood findings of 2026-10-31
 
@@ -1320,6 +1311,78 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead
 
 *Later notes: `notes.d/E123/`, oldest first (`python tools/register.py show E123`).*
+
+### E124
+
+**Work:** An optional service, on G3's pattern but apart from G3's approval state, that holds a provider's mutual-TLS client key under a separate user, pins one upstream and logs use. It protects the key from other code running as the operator, and adds nothing against agents. Nothing is designed yet: the design is the designer's if it is selected
+
+**Source:** The designer's ruling of 2026-11-02, the relay presents the certificate; the operator's "Yes, track it"
+
+**When:** **Unscheduled**, after first use, outside the personal alpha's cut. It depends on checks the operator makes at their first live use
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E124/`, oldest first (`python tools/register.py show E124`).*
+
+### E125
+
+**Work:** The local readiness surface, V-01's row 11 as amended: before any Ticket, a setup problem is named with its cause and fix, using the same checks, so V3 can pass with no wire. P03 stays owed. The driver asserts the diagnosis in the same pull request, or the green is hollow. The surface and its command, with its surface-map entry, are chosen when it is briefed. It takes the amendment to `vertical-uat.md`
+
+**Source:** The designer's position of 2026-11-02 and decisions of 2026-11-03, on setup and preflight; the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`)
+
+**When:** **Now.** Item 16 of the Now list, after E119
+
+**Notes:** Filed by the Lead. With E119, it is what V3's four non-stale cases need, which the designer calls the first honest oracle green. V3's seeded stale seat stays red and held, and its detector is tested outside V3
+
+*Later notes: `notes.d/E125/`, oldest first (`python tools/register.py show E125`).*
+
+### E126
+
+**Work:** A pre-F4 correction that F4 absorbs, not F4's first slice: the product's Lead adds one exact test path to one Ticket's scope, on the record with a reason, in place of cancel and replace. The Ticket's record never changes: an immutable correction record and one accessor for the effective scope. There is no size limit, and the review judges proportion from the lines shown. A removed test, fewer test definitions, a runner config or an existing shared file under a test directory stops for a sign-off, cited from a plan revision or quoted from the operator. Any other kind of path stays out of this slice, until use shows a test-only add is not enough
+
+**Source:** The operator's order of 2026-11-03; the designer's decisions of 2026-11-03; the operator's answer on who decides an add, recorded by the designer on 2026-11-03
+
+**When:** **Now.** Item 17 of the Now list. F4 stays in HOLD-08, and no marker raises
+
+**Notes:** Filed by the Lead. Before the wire the Lead decides an add alone, an interim delegation for this one class of path. A-29 is not amended: before V-01 the add routes through `DECIDE_WORK_PROPOSAL` or the operator amends the text, which the designer holds. This describes the product's Lead, not development of AEW. The stop covers added paths only: a Ticket whose scope already covers the tests has the guide and the review behind it. `aew-reviewer` reviews it, with an extra look at the path rules and the pack's labelling of added paths
+
+*Later notes: `notes.d/E126/`, oldest first (`python tools/register.py show E126`).*
+
+### E127
+
+**Work:** Deliver `python-development`, `c-development`, `adversarial-review` and `acceptance-verification` from AEW's own install, with a manifest of hashes, labelled unevaluated, and rename the role cards to the last two. A project cannot add or replace one. `python-development` and `c-development` load only when the Lead staffs that language's card, since the default `engineer` card asks for none. A skill that is missing or mismatched reports unavailable, and the run goes on. The registry question, `CAPR-B6`, stays open
+
+**Source:** The operator's decision of 2026-11-03; the designer's decisions of 2026-11-03; a probe on OpenCode 2.0.18 of 2026-11-04, which found the route loads and that reading the skill's folder needs one added rule
+
+**When:** **Now.** Item 18 of the Now list, after CAP-1 PR 2, since both change the same binds
+
+**Notes:** Filed by the Lead. It needs the skills' public-text check first. The build gets both the read rule and an edit rule for the skills folder on every platform, a string entry with a model-free test, since the object form is ignored silently, and the allow-list enforced at the entry's root. It corrects `m3-opencode-v2-rebaseline.md`'s line on `/api/skill`. Kept apart from E120's line on unavailable skills. Qualification stays owed before anything beyond the personal alpha. `aew-reviewer` reviews it
+
+*Later notes: `notes.d/E127/`, oldest first (`python tools/register.py show E127`).*
+
+### E128
+
+**Work:** `aew opencode`'s refusal can race its own exit: the broker's close leaves a thread stopping the listener, the exit finalizer also unlinks the socket, and a traceback follows the JSON on stderr. The broker's close waits for the listener's stop within `WAKE_TIMEOUT_S`, the test helper keeps stderr when it finds no error, and the same delay pins the fix
+
+**Source:** Found while merging #321: reproduced with injected delays, and not proven to be what CI hit
+
+**When:** **Unscheduled**, any idle slot
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E128/`, oldest first (`python tools/register.py show E128`).*
+
+### E129
+
+**Work:** Starting AEW takes one step. A session today needs a virtual environment, a binary's path, `ssh -t` on a remote host, the Lead's token pasted into each shell, and knowing not to pass `--acquire` when the seat is held. E119 helps a fresh setup only: a held seat still refuses, and `ATTACH_LEAD` alone does not answer it
+
+**Source:** The operator, 2026-11-04, on what starting AEW took when looking at its output
+
+**When:** **Unscheduled**, the operator's to place. What it takes has not been designed
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E129/`, oldest first (`python tools/register.py show E129`).*
 
 ### E47
 
@@ -2046,6 +2109,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #324. The scoreboard is `tests/helpers/vertical/scoreboard.py`, the series `vertical-series.jsonl` in the job's artifact, carried by `actions/cache`. The first `main` push run after #324 merges writes the series' first line and shows it; the run after that is the first to restore it, and so the first whose "flat since" counts more than one run. Reached a result starts with that first run. **The Lead reads that second run after the merge,** on both jobs, in the summary or the artifact (the save has `continue-on-error`, which hides a failed save): its table must show both lines. That proves the save and restore round trip, and nothing about eviction or re-runs. It also adds the Now list's `closed:` form, which keeps a closed item's number
 
 *Later notes: `notes.d/E115/`, oldest first (`python tools/register.py show E115`).*
+
+### E116
+
+**Was:** The vertical driver handles the placeholder `--expect-rev <revision from aew status>` that #319 printed, so the V2 forced-kill scenario no longer stalls at ASSIGNED. Tests only
+
+**Closed:** 2026-11-04
+
+**By:** #325. Forced-kill went from 32 to 59 on Linux and from 32 to 64 on Windows, and the pass and fail sets did not move. It also records `hint_usage_error` and `hint_not_followable`, printed uncapped in the summary, so a mangled hint is not silent again. A bare-word placeholder still goes through as literal tokens, a limit `hints.py` states
+
+*Later notes: `notes.d/E116/`, oldest first (`python tools/register.py show E116`).*
 
 ### F1
 

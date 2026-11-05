@@ -27,6 +27,7 @@ from aewflow import (
 )
 from conftest import run_aew
 
+from aew.cli.work_commands import NO_INVOCATION_AUTHORITY
 from aew.knowledge.context import CHECK_WRITES_NOTE, OUTPUT_TEMPLATES
 from aew.util import load_yaml
 
@@ -74,14 +75,26 @@ def test_reviewer_pack_is_bounded_and_independent(calc, tmp_path):
     assert "Code Reviewer" in text  # the dispatched role card is part of the contract
 
 
-def test_a_role_run_by_hand_is_told_the_credential_by_its_first_refusal(calc, tmp_path):
-    """The one statement a role outside a harness run reads (it has no preamble, and its pack is silent): `aew` refuses
-    and names both ways to supply the credential."""
+@pytest.mark.parametrize("command", [("whoami",), ("submit", "--kind", "implementation_report", "--file", "report.md")],
+                         ids=["whoami", "submit"])
+def test_a_role_with_no_credential_is_told_to_stop_never_to_get_one(calc, tmp_path, command):
+    """The one statement a role with neither a bridge nor a credential reads (no preamble, and its pack is silent).
+    `check run` takes the same path: tests/unit/test_pack_truth.py holds it there, in process, since a refusal of it
+    through the CLI would be a new key for D2's capture."""
     impl = assign(calc, create_planned_ticket(calc, tmp_path))
-    refused = run_aew("-C", str(impl.workspace), "whoami")
-    assert refused.returncode != 0, refused.stdout
-    assert "--invocation-token" in refused.stderr and "AEW_INVOCATION_TOKEN" in refused.stderr
-    assert impl.aew("whoami").returncode == 0  # supplied as it says, the same command works
+    (impl.workspace / "report.md").write_text("---\nclaim: c\n---\n", encoding="utf-8", newline="\n")
+    refused = run_aew("-C", str(impl.workspace), *command)
+    assert refused.error["code"] == "USAGE", refused.stderr
+    assert refused.error["message"] == NO_INVOCATION_AUTHORITY
+
+
+def test_the_refusals_pointer_for_a_role_run_by_hand_covers_it(calc, tmp_path):
+    """`aew whoami --help` is where the refusal sends someone running a role by hand: it names how to supply the
+    credential, and supplied that way the command works."""
+    impl = assign(calc, create_planned_ticket(calc, tmp_path))
+    shown = run_aew("-C", str(impl.workspace), "whoami", "--help").stdout
+    assert "--invocation-token" in shown and "AEW_INVOCATION_TOKEN" in shown
+    assert impl.aew("whoami").returncode == 0
 
 
 def _for_ticket_review(p, tmp_path) -> Role:

@@ -13,7 +13,8 @@ responsibilities:
   - reconstruct context from durable artifacts on start/resume (`aew resume`), never from chat history
   - staff each Ticket from the role catalog (policy requirements, then operator constraints, then your selection)
   - delegate substantial investigation, implementation, review and verification to bounded invocations
-  - pass each subagent its generated launch contract and invocation credential, nothing more
+  - start each subagent with `aew invoke create <T> --launch --expect-rev <revision from aew status>`; its run is given
+    its generated launch contract and nothing more, and the run's supervisor holds its credential
   - detect contradictions between artifacts instead of silently choosing one
 engine_operations: []   # the Lead acts with the Lead credential, not an invocation credential
 evidence_kinds: []

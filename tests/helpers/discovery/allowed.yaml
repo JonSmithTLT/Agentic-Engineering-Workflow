@@ -478,7 +478,6 @@ allowed:
   - cli:aew lead session|USAGE
   - cli:aew map generate|USAGE
   - cli:aew opencode|USAGE
-  - cli:aew whoami|USAGE
   O-ENV:
   - static:lead-system+guide
 residuals:

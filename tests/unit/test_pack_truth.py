@@ -7,7 +7,9 @@ Each guard is a function of the rendered text or the role's definition, so its p
 - no worker's text both asks for a credential and says there is none, and no text corrects another;
 - a report format is what the engine accepts as it stands, its other values listed beside it from what the engine
   validates, and it names no scope (the engine fills in the dispatched one);
-- a role that may not change the tree it evaluates is told what a check that writes there does to its submission.
+- a role that may not change the tree it evaluates is told what a check that writes there does to its submission;
+- a role with no credential is told to stop, never to get one, and what an archetype tells any role asks for no
+  credential and names only commands that parse (D2 does not scan these two).
 
 The matrix is every dispatchable archetype, every scope it runs at and every built-in card, each with all of its
 optional inputs and with none, so a section that depends on the scope or the data is seen both ways.
@@ -22,7 +24,8 @@ import pytest
 from discovery import rules
 
 from aew import roles
-from aew.errors import AEWError
+from aew.cli.work_commands import NO_INVOCATION_AUTHORITY
+from aew.errors import AEWError, UsageError
 from aew.harness import bridge
 from aew.harness import contract as K
 from aew.knowledge import context as ctx
@@ -167,6 +170,24 @@ def report_format_problems(pack: str, role: str) -> list[str]:
     return problems
 
 
+def commands_in(text: str) -> list[rules.Suggestion]:
+    return rules.suggestions(rules.Output(site="unit", plane=rules.MODEL, text=text))
+
+
+def asks_or_misprints(text: str) -> list[str]:
+    """Each credential ask in ``text``, and each command in it that does not parse as printed, placeholders as values
+    (O-SECRET and O-CMD, on text D2 does not scan). Prose may name a command without its required arguments."""
+    problems = rules.o_secret(text, rules.MODEL) + rules.o_secret(text, rules.OPERATOR)
+    return problems + [p for s in commands_in(text) if (p := rules.o_cmd(s))]
+
+
+def archetype_prose(role: str) -> str:
+    """Every sentence an archetype tells a role, one to a line."""
+    definition = roles.archetype(role)
+    return "\n".join(line for key in ("authority", "responsibilities", "prohibited", "outputs")
+                     for line in definition.get(key) or [])
+
+
 def check_trap(pack: str, role: str) -> str | None:
     """What is wrong with what ``pack`` says about a check that writes, if anything."""
     offered, said = "aew check run <check-id>" in pack, ctx.CHECK_WRITES_NOTE in pack
@@ -244,6 +265,40 @@ def test_a_role_that_may_not_change_its_tree_is_told_what_a_check_that_writes_do
     assert check_trap(ctx.render(inputs(role, scope, full=full, card=card)), role) is None
 
 
+def test_a_role_with_no_credential_is_told_to_stop_and_never_to_get_one():
+    assert asks_or_misprints(NO_INVOCATION_AUTHORITY) == []
+    assert [s.argv for s in commands_in(NO_INVOCATION_AUTHORITY)] == [("harness", "launch"), ("whoami", "--help")]
+    assert "stop and report" in NO_INVOCATION_AUTHORITY
+    assert "AEW_INVOCATION_TOKEN" not in NO_INVOCATION_AUTHORITY
+
+
+def test_the_refusal_adds_nothing_d2_would_list_beyond_an_unstructured_refusal():
+    """The refusal's text is clean of every rule but O-WORDS, which it has always had: no id to fill in."""
+    refusal = {"code": "USAGE", "message": NO_INVOCATION_AUTHORITY, "details": {}}
+    found = rules.check(rules.Output(site="cli:aew whoami|USAGE", plane=rules.MODEL, refusal=refusal))
+    assert [f.rule for f in found] == ["O-WORDS"], found
+
+
+def test_check_run_with_no_credential_refuses_the_same_way(monkeypatch):
+    for name in ("AEW_INVOCATION_TOKEN", bridge.ENV_ENDPOINT, bridge.ENV_KEY):
+        monkeypatch.delenv(name, raising=False)
+    args = rules.parse(["check", "run", "unit"], complete=True)
+    with pytest.raises(UsageError) as refused:
+        args.handler(args)
+    assert refused.value.message == NO_INVOCATION_AUTHORITY
+
+
+@pytest.mark.parametrize("role", roles.ARCHETYPES)
+def test_an_archetype_asks_for_no_credential_and_names_only_commands_that_parse(role):
+    assert asks_or_misprints(archetype_prose(role)) == []
+
+
+def test_the_lead_is_told_to_launch_and_the_line_it_is_told_parses_whole():
+    launches = [s for s in commands_in(archetype_prose("lead")) if "--launch" in s.argv]
+    assert launches
+    assert [rules.o_cmd(rules.Suggestion(s.argv, s.text, structured=True)) for s in launches] == [None] * len(launches)
+
+
 # ------------------------------------------------------------------------------------- planted cases
 
 
@@ -298,6 +353,17 @@ def test_the_report_format_guard_finds_the_scope_the_verifier_template_offered()
     planted = pack.replace("verification:\n", "verification:\n  scope: <ticket|integration>\n")
     assert report_format_problems(pack, "verifier") == []
     assert "names a scope" in report_format_problems(planted, "verifier")
+
+
+@pytest.mark.parametrize(("text", "problem"), [
+    ("Run `aew whoami --help`.", None),
+    ("invocation credential required: pass --invocation-token or set AEW_INVOCATION_TOKEN", "asks to"),
+    ("pass each subagent its generated launch contract and invocation credential, nothing more", "asks to"),
+    ("Start it with `aew invoke create <T> --launhc`.", "--launhc"),
+])
+def test_the_text_guard_right_wrong_and_missing(text, problem):
+    found = asks_or_misprints(text)
+    assert found == [] if problem is None else any(problem in p for p in found), found
 
 
 @pytest.mark.parametrize(("role", "offered", "said", "trap"), [

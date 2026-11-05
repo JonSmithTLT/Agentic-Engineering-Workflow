@@ -8,8 +8,8 @@ created.
 
 A pack says nothing about the credential: neither its value nor how `aew` gets one. The pack is pinned at dispatch and
 a dispatch without ``--launch`` can be launched later, so one text serves both ways a role runs. The fact belongs to
-the text that knows the mode: a harness run's preamble (``aew.harness.contract.preamble``), or for a role run by hand,
-the refusal of its first `aew` command (``aew.cli.work_commands._inv_token``).
+the text that knows the mode: a harness run's preamble (``aew.harness.contract.preamble``), or for a process with no
+run and no credential, the refusal of its first `aew` command (``aew.cli.work_commands.NO_INVOCATION_AUTHORITY``).
 
 Independence (WC §10.1): the reviewer pack excludes implementer reasoning. Only
 the structured facts of the implementation report (files changed, checks run,

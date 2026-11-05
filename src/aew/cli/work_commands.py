@@ -21,11 +21,19 @@ from aew.harness import bridge
 from aew.harness.contract import ENDED_WITHOUT_EVIDENCE
 from aew.harness.delivery import DEFAULT_WHEN, WHEN_DELIVERY
 
+# The one statement a role with neither a bridge nor a credential reads: its pack says nothing of the credential
+# (`aew.knowledge.context`). It never sends a reader to copy one, a model least of all (operator, 2026-10-12).
+NO_INVOCATION_AUTHORITY = (
+    "invocation credential required: this process is not connected to an AEW harness run and holds no invocation "
+    "credential, so it cannot act as an invocation. Do not look for or ask for a credential: stop and report this. To "
+    "run this role, the Lead or the operator starts it with `aew harness launch`, which connects `aew` for the run. "
+    "Running a role by hand? See `aew whoami --help`.")
+
 
 def _inv_token(args: argparse.Namespace) -> str:
     token = getattr(args, "invocation_token", None) or os.environ.get("AEW_INVOCATION_TOKEN")
     if not token:
-        raise UsageError("invocation credential required: pass --invocation-token or set AEW_INVOCATION_TOKEN")
+        raise UsageError(NO_INVOCATION_AUTHORITY)
     return token
 
 

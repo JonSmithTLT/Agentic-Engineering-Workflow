@@ -438,7 +438,8 @@ def test_the_capture_plugin_reads_a_real_refusal_of_the_cli(repo):
     res = run_aew(*argv)
     outputs = capture.cli_outputs(argv, res.stdout, res.stderr)
     assert [o.site for o in outputs] == ["cli:aew lead session|USAGE"]
-    assert "AEW_LEAD_TOKEN" in outputs[0].refusal["message"] and "read -rsp" in outputs[0].refusal["message"]
+    refusal = outputs[0].refusal
+    assert refusal is not None and "AEW_LEAD_TOKEN" in refusal["message"] and "read -rsp" in refusal["message"]
     judged = {f.rule for f in rules.check(outputs[0])}
     assert "O-WORDS" in judged and "O-SECRET" not in judged
     assert str(repo) not in outputs[0].site  # a key never carries message text
@@ -464,7 +465,8 @@ def test_the_capture_plugin_keys_typed_tool_results_by_tool_and_code():
     refused = capture.tool_output("integration_publish", {"work_id": "T-1"},
                                   {"ok": False, "stopped": {"error": {"code": "GATE_UNSATISFIED", "message": "m"}}})
     assert ok.site == "tool:status|result" and ok.refusal is None and ok.plane == MODEL
-    assert refused.site == "tool:integration_publish|GATE_UNSATISFIED" and refused.refusal["code"] == "GATE_UNSATISFIED"
+    assert refused.site == "tool:integration_publish|GATE_UNSATISFIED"
+    assert refused.refusal is not None and refused.refusal["code"] == "GATE_UNSATISFIED"
 
 
 def _boom(*_a, **_k):
@@ -1037,7 +1039,8 @@ def test_a_failing_key_is_never_cut_and_a_shadow_key_can_be(capsys):
                                                      ("static:guide|aew x", "new", "the static scan")])
 def test_each_kind_of_failure_says_what_to_do(site, kind, text):
     key = f"O-CMD {site}"
-    v = allowed.Verdict(**{kind: [key]}, failing=[key])
+    v = allowed.Verdict(failing=[key])
+    setattr(v, kind, [key])
     assert text in "\n".join(allowed.report(v))
 
 

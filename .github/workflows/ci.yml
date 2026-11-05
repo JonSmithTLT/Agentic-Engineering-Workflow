@@ -509,9 +509,11 @@ jobs:
           python tools/ci/coverage_gate.py coverage-data --baseline tests/coverage-baseline.json
           --summary "$GITHUB_STEP_SUMMARY"
       # D2, the discovery layer's output and text rules (tests/helpers/discovery): the findings every lane job wrote
-      # beside its lane report, decided against the allow-list. On a pull request a new key fails only when its rule
-      # is enforced, and the list may only shrink against the base (an accepted residual only with the operator-merge
-      # label, read live); on main a listed key no longer observed is stale. A capture error fails it.
+      # beside its lane report, decided against the allow-list. A new key fails only when its rule is enforced. A listed
+      # key no longer observed is stale, decided by completeness and not by event: only the full tier with `assure`
+      # green proves an output is gone, so a full-tier pull request fails on the change that retires one, and a lost
+      # shard decides nothing. On a pull request the list may only shrink and a mode may not fall against the base
+      # (either only with the operator-merge label, read live). A capture error fails it.
       - name: "D2: no new violation of an enforced output rule, and the allow-list only shrinks"
         if: always()
         env:
@@ -519,15 +521,20 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ github.token }}
+          TIER: ${{ steps.tier.outputs.tier }}
+          ASSURANCE: ${{ steps.assure.outcome }}
         run: |
           base=()
           if [ "$EVENT" = pull_request ]; then
             if git show "$GITHUB_SHA^1:tests/helpers/discovery/allowed.yaml" > "$RUNNER_TEMP/allowed-base.yaml"; then
               base=(--base-allowlist "$RUNNER_TEMP/allowed-base.yaml")
             fi
+            if git show "$GITHUB_SHA^1:tests/helpers/discovery/modes.py" > "$RUNNER_TEMP/modes-base.py"; then
+              base+=(--base-modes "$RUNNER_TEMP/modes-base.py")
+            fi
           fi
-          python tools/ci/discovery_ratchet.py lane-reports --event "$EVENT" "${base[@]}" --repo "$REPO" --pr "$PR" \
-            --summary "$GITHUB_STEP_SUMMARY"
+          python tools/ci/discovery_ratchet.py lane-reports --event "$EVENT" --tier "$TIER" --assurance "$ASSURANCE" \
+            "${base[@]}" --repo "$REPO" --pr "$PR" --summary "$GITHUB_STEP_SUMMARY"
       - name: Every test job the tier requires succeeded (lanes are required unless the tier is known and reduced)
         if: always()
         env:

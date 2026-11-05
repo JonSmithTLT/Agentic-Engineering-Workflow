@@ -17,6 +17,7 @@ import functools
 import json
 import re
 import shlex
+import threading
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -140,8 +141,21 @@ class _Exit(Exception):
     pass
 
 
-@functools.cache
+# The parser is one shared object, and ``parse`` flips its actions' ``required`` flags for the length of a call, while
+# the capture plugin judges outputs outside its own lock (product threads may record concurrently). So a parse holds
+# this for its whole length, and the parser is built under it, so ``_actions`` and ``parse`` share one instance.
+# Reentrant: ``parse`` calls itself. A tight loop gave false refusals without it; how often the real suite overlaps two
+# judges is not established (no intermittent key shows in the runs read).
+_PARSE_LOCK = threading.RLock()
+
+
 def _parser() -> argparse.ArgumentParser:
+    with _PARSE_LOCK:
+        return _build_parser()
+
+
+@functools.cache
+def _build_parser() -> argparse.ArgumentParser:
     """The live ``aew`` parser with every command registered (``build_parser``'s classification mode), made
     parse-only: an error raises instead of printing and exiting, and a placeholder is taken as a value (it skips its
     action's type and choices)."""
@@ -299,25 +313,26 @@ def _variants(argv: list[str], limit: int = 16) -> list[list[str]]:
 def parse(argv: Iterable[str], *, complete: bool = True) -> argparse.Namespace:
     """Parse ``argv`` (without ``aew``) with the live parser, parse-only; raises ``ParseFail``. Not ``complete``: a
     command named in prose without its required arguments is a mention, so no argument is required."""
-    required: list[Any] = []
-    if not complete:
-        required = [*_actions(), *(g for p in _all_parsers(_parser()) for g in p._mutually_exclusive_groups)]
-    saved = [(x, x.required) for x in required]
-    for x in required:
-        x.required = False
-    args = list(argv)
-    try:
-        return _parser().parse_args(args)
-    except ParseFail as exc:
-        # An option named last, without its value, is a mention in prose (`aew opencode --provider-env`).
-        if not complete and args and args[-1].startswith("-") and "expected one argument" in str(exc):
-            return parse(args[:-1], complete=False)
-        raise
-    except _Exit:
-        return argparse.Namespace(command=None)
-    finally:
-        for x, was in saved:
-            x.required = was
+    with _PARSE_LOCK:  # a complete parse too: with another call's flags off, it would pass what it must refuse
+        required: list[Any] = []
+        if not complete:
+            required = [*_actions(), *(g for p in _all_parsers(_parser()) for g in p._mutually_exclusive_groups)]
+        saved = [(x, x.required) for x in required]
+        for x in required:
+            x.required = False
+        args = list(argv)
+        try:
+            return _parser().parse_args(args)
+        except ParseFail as exc:
+            # An option named last, without its value, is a mention in prose (`aew opencode --provider-env`).
+            if not complete and args and args[-1].startswith("-") and "expected one argument" in str(exc):
+                return parse(args[:-1], complete=False)
+            raise
+        except _Exit:
+            return argparse.Namespace(command=None)
+        finally:
+            for x, was in saved:
+                x.required = was
 
 
 # ---------------------------------------------------------------------------------------------- suggested inputs

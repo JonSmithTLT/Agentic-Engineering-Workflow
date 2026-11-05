@@ -2,7 +2,7 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 404,
-      "lower-bound": 743
+      "lower-bound": 745
     },
     "by_family": {
       "cli-commands": 116,
@@ -15,7 +15,7 @@
       "entry-points": 7,
       "guards": 11,
       "layout": 76,
-      "modules": 193,
+      "modules": 195,
       "reason-rules": 56,
       "schemas": 32,
       "sqlite-tables": 10,
@@ -61,7 +61,7 @@
         "lower-bound": 76
       },
       "modules": {
-        "lower-bound": 193
+        "lower-bound": 195
       },
       "reason-rules": {
         "complete-by-construction": 56
@@ -92,8 +92,8 @@
         "lower-bound": 272
       }
     },
-    "digest": "sha256:bd42f7d6df1446be1ae830b922105e5378be91a64aa6dc855e867ff4f2eb6283",
-    "records": 1147,
+    "digest": "sha256:dc966bb52b4fac6972b7bc7e9073e63f7f15aa7e73fdc3f5766013f0bc661864",
+    "records": 1149,
     "unresolved": 112
   },
   "gaps": [
@@ -22608,6 +22608,7 @@
         "aew.surface.client",
         "aew.surface.contract",
         "aew.surface.errors",
+        "aew.surface.readable",
         "aew.surface.validate"
       ]
     },
@@ -22640,6 +22641,27 @@
         "aew.util"
       ]
     },
+    "modules:aew.surface.readable": {
+      "anchor": {
+        "module": "aew.surface.readable",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/readable.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.harness.contract",
+        "aew.surface.contract",
+        "aew.surface.scrubbing"
+      ]
+    },
     "modules:aew.surface.run": {
       "anchor": {
         "module": "aew.surface.run",
@@ -22667,8 +22689,28 @@
         "aew.surface.context",
         "aew.surface.contract",
         "aew.surface.projection",
+        "aew.surface.scrubbing",
         "aew.surface.stage",
         "aew.surface.validate"
+      ]
+    },
+    "modules:aew.surface.scrubbing": {
+      "anchor": {
+        "module": "aew.surface.scrubbing",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/scrubbing.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.harness.contract"
       ]
     },
     "modules:aew.surface.stage": {

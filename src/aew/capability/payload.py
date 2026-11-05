@@ -27,10 +27,11 @@ FETCH_TIMEOUT_S = 60.0  # one socket operation (connect, or one read) of the fet
 # The whole fetch at a launch, every payload it is due (ops.fetch_at_launch), with the run waiting: AEW's own choice,
 # one socket operation's worth, so an offline host costs a launch no more than that. The run's start deadline adds it
 # (supervisor.starting_limit_s). `aew capability check` at the operator's terminal has only the per-operation timeout.
-LAUNCH_FETCH_BOUND_S = FETCH_TIMEOUT_S
+LAUNCH_FETCH_BOUND_S = FETCH_TIMEOUT_S  # a judgement constant: the setup PR replaces it with one measured from a fetch
 # A failed fetch is not tried again at a launch for this long, so an offline host does not pay for it at every launch.
 # A judgement, not a measurement: long enough that a day's launches pay a few times at most, short enough that a network
-# that comes back is used the same day. Only a launch's: `aew capability check` always tries.
+# that comes back is used the same day. Only a launch's: `aew capability check` always tries. The setup PR replaces it
+# with a setting.
 FETCH_RETRY_AFTER_S = 3600.0
 CHUNK = 1 << 16
 
@@ -47,16 +48,56 @@ def fetch(payload: dict[str, Any]) -> bytes:
     import urllib.request
 
     source = payload["source"]
+    shown = shown_source(source)
     try:  # the record's source is an https URL (the schema's pattern); urllib honours HTTPS_PROXY
         with urllib.request.urlopen(source, timeout=FETCH_TIMEOUT_S) as response:  # noqa: S310  # https only
-            data = _read_bounded(response, payload["archive_size"], what=source)
+            data = _read_bounded(response, payload["archive_size"], what=shown)
     except PinMismatch:
         raise
     except (urllib.error.URLError, OSError, ValueError) as exc:
-        raise Unavailable(f"the pinned payload could not be fetched from {source}: {exc}", source=source,
-                          reason="fetch_failed") from None
-    check_archive(data, payload, what=source)
+        # Never the error's own text: it can carry a proxy's URL with its credentials (the designer's rule 1)
+        code = fetch_reason(exc)
+        raise Unavailable(f"the pinned payload could not be fetched from {shown}: {FETCH_REASONS[code]}",
+                          source=shown, reason="fetch_failed", fetch_reason=code) from None
+    check_archive(data, payload, what=shown)
     return data
+
+
+# Why a fetch failed, closed: a reason code and AEW's own words for it, never the error's text
+FETCH_REASONS = {
+    "timed_out": "no answer within the fetch's timeout",
+    "http_status": "the server answered with an error status",
+    "bad_source": "its source is not a URL this host can fetch",
+    "unreachable": "the source could not be reached (no network, no route, or a proxy that refused it)",
+}
+
+
+def fetch_reason(exc: BaseException) -> str:
+    """The closed reason for a fetch's failure (:data:`FETCH_REASONS`)."""
+    import socket
+    import urllib.error
+
+    cause = getattr(exc, "reason", None)
+    if isinstance(exc, urllib.error.HTTPError):
+        return "http_status"
+    if isinstance(exc, (TimeoutError, socket.timeout)) or isinstance(cause, (TimeoutError, socket.timeout)):
+        return "timed_out"
+    if isinstance(exc, ValueError):
+        return "bad_source"
+    return "unreachable"
+
+
+def shown_source(source: str) -> str:
+    """``source`` as AEW shows it: any user and password in it left out."""
+    import urllib.parse
+
+    try:
+        parts = urllib.parse.urlsplit(source)
+    except ValueError:
+        return "its record's source"
+    if parts.username is None and parts.password is None:
+        return source
+    return urllib.parse.urlunsplit(parts._replace(netloc=parts.hostname or ""))
 
 
 def _read_bounded(fh: IO[bytes], size: int, *, what: str) -> bytes:

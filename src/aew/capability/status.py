@@ -73,10 +73,27 @@ class Copy:
     path: str | None = None
     checked_at: str | None = None
     limitations: list[str] = field(default_factory=list)
+    reason: str | None = None  # AEW's own copy only: why it does not serve, closed (:data:`NOT_SERVING_WHY`)
 
     def describe(self) -> dict[str, Any]:
         return {"copy": self.kind, "status": self.status, "cause": self.cause, "fix": self.fix, "path": self.path,
-                "checked_at": self.checked_at, "limitations": self.limitations}
+                "checked_at": self.checked_at, "limitations": self.limitations, "reason": self.reason}
+
+
+# Why AEW's pinned copy does not serve, in AEW's own words: what the operator's flag says (the designer's rule 1)
+NOT_SERVING_WHY = {
+    "record_refused": "its record is refused",
+    "no_payload_for_platform": "its record has no payload for this platform",
+    "refused": "its payload was refused",
+    "pin_changed": "its pin changed and the new payload is not here yet",
+    "fetch_failed": "the fetch failed",
+    "never_fetched": "it was never fetched or imported",
+    "off_pin": "its payload does not match its pin",
+    "never_checked": "it was never checked here",
+    "record_changed": "its record or its pin changed since it was checked",
+    "host_changed": "the host changed since it was checked",
+    "check_failed": "its check failed in the sandbox",
+}
 
 
 def host_facts() -> dict[str, str | None]:
@@ -140,13 +157,15 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
     """AEW's copy of provider ``name`` on this host (the module's order)."""
     if record is None:
         return Copy(AEW_COPY, REFUSED, f"its record is refused: {problem}",
-                    f"fix the operator's record and add it again, or `aew capability remove {name}`")
+                    f"fix the operator's record and add it again, or `aew capability remove {name}`",
+                    reason="record_refused")
     key = key or records.platform_key()
     pinned = record["payloads"].get(key)
     if pinned is None:
         return Copy(AEW_COPY, UNSUPPORTED, f"its record has no payload for this platform ({key})",
                     f"install {record['command']} on this host (a host copy serves, named unpinned), or add an "
-                    "operator record with a payload for this platform (`aew capability add`)")
+                    "operator record with a payload for this platform (`aew capability add`)",
+                    reason="no_payload_for_platform")
     path = P.path_of(name, record["command"], pinned, directory)
     refused = (state.get("refused") or {}).get(f"{name}:{key}")
     if refused and refused.get("sha256") == pinned["sha256"] and not path.exists():
@@ -154,7 +173,7 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
         # refused import or fetch never makes a payload that matches its pin read REFUSED (review F4)
         return Copy(AEW_COPY, REFUSED, f"its payload was refused at {refused.get('at')}: {refused.get('reason')}",
                     f"`{CHECK}` fetches the pinned payload again (online), or `{IMPORT}` imports, from the "
-                    "operator's bundle, one that matches its pin (offline)", str(path))
+                    "operator's bundle, one that matches its pin (offline)", str(path), reason="refused")
     done = (state.get("checks") or {}).get(f"{AEW_COPY}:{name}")
     if not path.exists() and done is not None and done.get("sha256") != pinned["sha256"] \
             and not (state.get("fetch_failures") or {}).get(f"{name}:{key}"):
@@ -162,7 +181,7 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
         return Copy(AEW_COPY, STALE, f"its pin changed since it was checked (checked {str(done.get('sha256'))[:16]}, "
                     f"now pinned {pinned['sha256'][:16]}), and the newly pinned payload is not on this host yet",
                     f"`{CHECK}` fetches it (online), or `{IMPORT}` imports it from the operator's bundle (offline)",
-                    str(path), done.get("at"))
+                    str(path), done.get("at"), reason="pin_changed")
     if not path.exists():
         failed = (state.get("fetch_failures") or {}).get(f"{name}:{key}")
         cause = (f"its pinned payload is not on this host: the fetch failed at {failed.get('at')} "
@@ -170,12 +189,13 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
                  if failed and failed.get("sha256") == pinned["sha256"] else
                  "its pinned payload is not on this host: it was never fetched or imported")
         return Copy(AEW_COPY, UNAVAILABLE, cause, f"`{CHECK}` fetches it (online), or `{IMPORT}` imports it from "
-                    "the operator's bundle (offline)", str(path))
+                    "the operator's bundle (offline)", str(path), reason="fetch_failed" if failed and failed.get(
+                        "sha256") == pinned["sha256"] else "never_fetched")
     wrong = P.verify(path, pinned)
     if wrong is not None:
         return Copy(AEW_COPY, REFUSED, f"its payload does not match its pin: {wrong}",
                     f"`{CHECK}` refuses it and fetches it again (online), or `{IMPORT}` with the operator's bundle "
-                    "(offline)", str(path))
+                    "(offline)", str(path), reason="off_pin")
     return _checked(AEW_COPY, done, path, facts, digest=records.digest(record), sha256=pinned["sha256"],
                     changed="its record or its pin changed since it was checked")
 
@@ -222,17 +242,18 @@ def host_copy(name: str, record: dict[str, Any], state: dict[str, Any], *, facts
 def _checked(kind: str, done: dict[str, Any] | None, path: Path, facts: dict[str, str | None], *, digest: str | None,
              sha256: str, changed: str) -> Copy:
     if done is None:
-        return Copy(kind, NOT_ESTABLISHED, "it was never checked on this host", f"`{CHECK}`", str(path))
+        return Copy(kind, NOT_ESTABLISHED, "it was never checked on this host", f"`{CHECK}`", str(path),
+                    reason="never_checked")
     at = done.get("at")
     if (digest is not None and done.get("record_digest") != digest) or done.get("sha256") != sha256:
-        return Copy(kind, STALE, changed, f"`{CHECK}`", str(path), at)
+        return Copy(kind, STALE, changed, f"`{CHECK}`", str(path), at, reason="record_changed")
     host = _changed(done.get("facts") or {}, facts)
     if host:
         return Copy(kind, STALE, "the host changed since it was checked: " + "; ".join(host), f"`{CHECK}`", str(path),
-                    at)
+                    at, reason="host_changed")
     if not done.get("ok"):
         return Copy(kind, UNAVAILABLE, f"its check failed: {done.get('cause')}",
-                    f"fix what the check names, then `{CHECK}`", str(path), at)
+                    f"fix what the check names, then `{CHECK}`", str(path), at, reason="check_failed")
     limits = [HOST_CHECKED] if done.get("where") == ON_HOST and sys.platform != "win32" else []
     return Copy(kind, FUNCTIONAL_ONLY, None, None, str(path), at, limits)
 

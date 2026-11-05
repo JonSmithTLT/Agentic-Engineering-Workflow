@@ -545,6 +545,19 @@ def test_a_register_under_a_host_mask_stays_out_and_its_pinned_copy_becomes_the_
     assert world.status()["observed_status"] != status.FUNCTIONAL_ONLY
 
 
+def test_a_launch_without_its_pinned_copy_flags_it_and_one_with_it_says_nothing(world, monkeypatch, capsys):
+    """The operator, 2026-11-05, at a real launch: the run's label keeps the list (`harness status` shows it, as the
+    Lead's label does), and the operator's terminal gets the line; with AEW's pinned copy bound, neither."""
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    _, label = world.establish()
+    flags = label["tool_flags"]
+    assert [(f["tool"], f["served"], f["reason"]) for f in flags] == [("fake", "stub", "never_fetched")], flags
+    assert "aew: attention: fake in this run is a stub that fails" in capsys.readouterr().err
+    _import(world.reg)
+    _, label = world.establish()
+    assert label["tool_flags"] == [] and "attention" not in capsys.readouterr().err
+
+
 def test_no_variable_turns_the_launchs_fetch_off(world, monkeypatch):
     """The Lead's condition: nothing an installed AEW reads disables it, and the test seam is in process only."""
     net = Network(monkeypatch, world.reg["archive"])

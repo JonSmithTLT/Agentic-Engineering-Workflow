@@ -274,7 +274,8 @@ def _take(name: str, record: dict[str, Any], pinned: dict[str, Any], state: dict
         return f"refused the fetched payload: {got.message}"
     if isinstance(got, AEWError):
         state.setdefault("fetch_failures", {})[f"{name}:{key}"] = {"at": utc_now(), "reason": got.message,
-                                                                    "sha256": pinned["sha256"]}
+                                                                    "sha256": pinned["sha256"],
+                                                                    "code": got.details.get("fetch_reason")}
         return f"could not fetch it: {got.message}"
     _installed(state, name, key)
     P.install(name, record["command"], pinned, got, directory)
@@ -343,16 +344,96 @@ def fetch_at_launch(directory: Path | None = None) -> None:
         worker = threading.Thread(target=fetch_all, name="aew-capability-fetch", daemon=True)
         worker.start()
         worker.join(P.LAUNCH_FETCH_BOUND_S)
+        # Past the bound the whole fetch is abandoned, what it brought included: its thread writes only into a dict no
+        # one reads after this, and a download is in memory, so a late or partial one leaves nothing behind
+        done = {} if worker.is_alive() else dict(got)
         late = Unavailable(f"the fetch did not finish within {P.LAUNCH_FETCH_BOUND_S:g} s at this launch",
-                           reason="fetch_failed")
+                           reason="fetch_failed", fetch_reason="timed_out")
         key = records.platform_key()
         with store.locked(directory, short=True) as root:
             state = store.read(root)
             for name, record, pinned in due:
-                _take(name, record, pinned, state, key, root, got.get(name, late))
+                _take(name, record, pinned, state, key, root, done.get(name, late))
             store.write(state, root)
     except (AEWError, OSError):  # a register that cannot be read or written: every status read says so itself
         return
+
+
+def missing(tools: dict[str, Any] | None, directory: Path | None = None) -> list[dict[str, Any]]:
+    """Each tool a contained run got without AEW's pinned copy, from its self-test (``probe.self_test``'s ``tools``):
+    a stub or an unpinned host copy, why AEW's copy does not serve (closed, :data:`status.NOT_SERVING_WHY`), since
+    when, and the fix. Read after :func:`record_contained`, so a check that failed inside is the reason. AEW's own words
+    only: a cause the check wrote is never in it."""
+    if not tools:
+        return []
+    try:
+        state = store.read(directory)
+    except AEWError:
+        state = store.empty()
+    effective = status.effective(state)
+    facts = status.host_facts()
+    out = []
+    for name, tool in sorted(tools.items()):
+        if tool.get("served") == status.AEW_COPY or name not in effective:
+            continue
+        entry = effective[name]
+        aew = status.aew_copy(name, entry["record"], entry["problem"], state, facts=facts, directory=directory)
+        why = aew.reason or "never_checked"
+        failed = (state.get("fetch_failures") or {}).get(f"{name}:{records.platform_key()}") or {}
+        since = failed.get("at") if why == "fetch_failed" else (
+            ((state.get("refused") or {}).get(f"{name}:{records.platform_key()}") or {}).get("at")
+            if why == "refused" else None)
+        out.append({"tool": tool.get("command") or name, "provider": name,
+                    "served": "host" if tool.get("served") == status.HOST_COPY else "stub",
+                    "path": tool.get("path") if tool.get("served") == status.HOST_COPY else None,
+                    "reason": why, "since": since, "fix": aew.fix})
+    return out
+
+
+def flag_line(flag: dict[str, Any]) -> str:
+    """The operator's one line for a tool a run got without AEW's pinned copy: attention, not blocked-on-you, as the
+    run goes on (the designer's rule 3)."""
+    got = f"the host's unpinned copy at {flag['path']}" if flag["served"] == "host" else "a stub that fails"
+    since = f" (at {flag['since']})" if flag.get("since") else ""
+    return (f"aew: attention: {flag['tool']} in this run is {got}, not AEW's pinned copy: "
+            f"{status.NOT_SERVING_WHY.get(flag['reason'], flag['reason'])}{since}. The run goes on. "
+            f"Fix: {flag['fix'] or '`aew capability check`'}.")
+
+
+def _to_terminal() -> bool:
+    """Whether this process's stderr is a terminal: the operator's (a supervisor's goes to its run's log)."""
+    try:
+        return sys.stderr.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def flag_missing(tools: dict[str, Any] | None, directory: Path | None = None) -> list[dict[str, Any]]:
+    """The operator's flag for what a launch bound without AEW's pinned copy (the operator, 2026-11-05): every run's
+    record keeps its list (returned here); the operator's terminal gets one line per tool and state, not one per
+    launch, and the next one once that tool's state changes; a tool bound again clears it. A worker's own `aew` and a
+    process with no terminal print nothing (the designer's rule 2)."""
+    flags = missing(tools, directory)
+    if not tools or process_kind.kind() == process_kind.NON_WRITER:
+        return flags
+    keys = {f["provider"]: f"{f['served']}:{f['reason']}:{f['since']}" for f in flags}
+    try:
+        seen = store.read(directory).get("flagged") or {}
+        bound = [n for n, t in tools.items() if t.get("served") == status.AEW_COPY and n in seen]
+        show = [f for f in flags if seen.get(f["provider"]) != keys[f["provider"]]] if _to_terminal() else []
+        if show or bound:
+            with store.locked(directory, short=True) as root:
+                state = store.read(root)
+                marks = state.setdefault("flagged", {})
+                for name in bound:
+                    marks.pop(name, None)
+                marks.update({f["provider"]: keys[f["provider"]] for f in show})
+                store.write(state, root)
+    except AEWError:  # where the register cannot be written, the line still shows: a repeat beats silence
+        show = flags if _to_terminal() else []
+    for flag in show:
+        sys.stderr.write(flag_line(flag) + "\n")
+    return flags
 
 
 def record_contained(tools: dict[str, Any] | None, directory: Path | None = None) -> None:

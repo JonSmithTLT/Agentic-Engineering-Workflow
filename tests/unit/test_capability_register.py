@@ -69,6 +69,116 @@ def test_a_workers_own_aew_neither_fetches_nor_records_and_the_operators_does(re
     assert asked and key in store.read()["checks"]
 
 
+def test_a_fetch_error_never_carries_its_text_into_the_status_the_record_or_the_line(reg, monkeypatch, capsys):
+    """The designer's rule 1: a proxy's URL can carry its credentials, and a fetch's error can carry that URL. The
+    status, the register's record and the operator's line say why in AEW's own words, a closed reason."""
+    import urllib.error
+
+    proxy = "http://user:hunter2@proxy.invalid:3128"
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+
+    def through_the_proxy(*_a: Any, **_k: Any) -> Any:
+        raise urllib.error.URLError(f"Tunnel connection failed via {proxy}: 407 Proxy Authentication Required")
+
+    monkeypatch.setattr("urllib.request.urlopen", through_the_proxy)
+    monkeypatch.setattr(ops, "LAUNCH_FETCH", True)
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    with pytest.raises(errors.Unavailable) as raised:
+        P.fetch(records.shipped()["fake"]["payloads"][records.platform_key()])
+    assert "hunter2" not in raised.value.message and raised.value.details["fetch_reason"] == "unreachable"
+    ops.fetch_at_launch()
+    flags = ops.flag_missing({"fake": {"command": "fake", "served": None, "path": None}})
+    said = json.dumps([store.read(), ops.listing(), flags], default=str) + capsys.readouterr().err
+    assert "hunter2" not in said and "user:" not in said, said
+    failed = store.read()["fetch_failures"][f"fake:{records.platform_key()}"]
+    assert failed["code"] == "unreachable" and P.FETCH_REASONS["unreachable"] in failed["reason"]
+    assert flags and flags[0]["reason"] == "fetch_failed"
+
+
+def test_a_source_with_a_user_in_it_is_shown_without_one():
+    assert P.shown_source("https://u:p@example.invalid/a.tgz") == "https://example.invalid/a.tgz"
+    assert P.shown_source("https://example.invalid/a.tgz") == "https://example.invalid/a.tgz"
+
+
+STUB = {"fake": {"command": "fake", "served": None, "path": None}}
+
+
+def test_a_launch_without_the_pinned_copy_flags_it_once_per_state_and_one_with_it_says_nothing(reg, monkeypatch,
+                                                                                                capsys):
+    """The operator, 2026-11-05: a launch that goes on without a pinned tool never does it quietly. One line per tool
+    and state on the operator's terminal (the designer's rule 2), every run's record keeps its own list, a change of
+    state says so again, and a tool bound again clears it."""
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    first = ops.flag_missing(STUB)
+    line = capsys.readouterr().err
+    assert line.count("\n") == 1 and line.startswith("aew: attention: fake in this run is a stub that fails"), line
+    assert "never fetched or imported" in line and "The run goes on" in line and "aew capability check" in line
+    assert ops.flag_missing(STUB) == first and capsys.readouterr().err == ""  # the record keeps it; no repeat
+    pinned = records.shipped()["fake"]["payloads"][records.platform_key()]
+    with store.locked():
+        state = store.read()
+        state["fetch_failures"][f"fake:{records.platform_key()}"] = {
+            "at": "2026-11-05T00:00:00Z", "reason": "x", "sha256": pinned["sha256"], "code": "unreachable"}
+        store.write(state)
+    ops.flag_missing(STUB)
+    assert "the fetch failed (at 2026-11-05T00:00:00Z)" in capsys.readouterr().err  # a new state says so again
+    assert ops.flag_missing({"fake": {"command": "fake", "served": status.AEW_COPY, "path": "x"}}) == []
+    assert capsys.readouterr().err == "" and "fake" not in store.read()["flagged"]  # bound: nothing, and cleared
+    ops.flag_missing(STUB)
+    assert "aew: attention: fake" in capsys.readouterr().err  # missing again: said again
+
+
+def test_the_flag_goes_only_to_the_operators_terminal(reg, monkeypatch, capsys):
+    """A supervisor's stderr is its run's log, and a worker's own `aew` is the agent's: neither prints the line, and
+    neither marks it seen, so the operator's next launch at a terminal says it. Each run's record still has it."""
+    monkeypatch.setattr(ops, "_to_terminal", lambda: False)
+    assert ops.flag_missing(STUB) and capsys.readouterr().err == ""
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    with process_kind.declared_as("aew (worker run)"):
+        assert ops.flag_missing(STUB) and capsys.readouterr().err == ""
+    ops.flag_missing(STUB)
+    assert "aew: attention: fake" in capsys.readouterr().err
+
+
+def test_an_abandoned_fetch_leaves_nothing_and_its_late_thread_neither_installs_nor_records(reg, monkeypatch):
+    """The designer's ruling: past the bound the fetch is abandoned. What its thread brings later, even the right
+    bytes, is never installed or recorded; the launch recorded the late failure, and nothing else lands. The race it
+    guards: the thread finishes after the bound but before the launch takes the lock to record, so the launch must
+    decide at the bound, not when it records."""
+    import contextlib
+    import threading
+
+    finished = threading.Event()
+
+    def slow(_pinned: dict[str, Any]) -> bytes:
+        time.sleep(0.4)  # past the bound
+        try:
+            return reg["archive"]
+        finally:
+            finished.set()
+
+    real = store.locked
+
+    @contextlib.contextmanager
+    def slow_to_lock(*a: Any, **k: Any) -> Any:
+        assert finished.wait(10)  # the late thread is done before the launch records
+        with real(*a, **k) as root:
+            yield root
+
+    monkeypatch.setattr(ops, "LAUNCH_FETCH", True)
+    monkeypatch.setattr(P, "fetch", slow)
+    monkeypatch.setattr(P, "LAUNCH_FETCH_BOUND_S", 0.2)
+    monkeypatch.setattr(store, "locked", slow_to_lock)
+    ops.fetch_at_launch()
+    before = store.read()
+    time.sleep(0.2)  # the thread's last steps, had it any left
+    record = records.shipped()["fake"]
+    pinned = record["payloads"][records.platform_key()]
+    assert not P.path_of("fake", record["command"], pinned).exists()
+    assert store.read() == before
+    assert before["fetch_failures"][f"fake:{records.platform_key()}"]["code"] == "timed_out"
+
+
 def test_a_launchs_fetch_behind_a_long_holder_costs_its_bound_and_the_short_wait_only(reg, monkeypatch):
     """Review of #330, M1, its repro inverted: a fetch that stalls past its bound, behind the operator's `aew capability
     check` holding the lock. The launch waits the bound and the short wait, never the store's whole wait, and the next

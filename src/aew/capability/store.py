@@ -59,7 +59,7 @@ def root() -> Path:
 
 def empty() -> dict[str, Any]:
     return {"format": FORMAT, "host_copies": True, "operator_records": {}, "checks": {}, "refused": {},
-            "fetch_failures": {}}
+            "fetch_failures": {}, "flagged": {}}
 
 
 def read(directory: Path | None = None) -> dict[str, Any]:

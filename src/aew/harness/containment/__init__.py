@@ -195,6 +195,7 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
         finally:
             sentinel.unlink(missing_ok=True)
         capability.record_contained(test.get("tools"))  # the status follows the check inside (CAPR-03, CAPR-13)
+        flags = capability.flag_missing(test.get("tools"))  # never quietly without a pinned tool (the operator)
         if not test["ok"]:
             raise ContainmentUnavailable(f"containment self-test failed: {test['reason']}", self_test=recorded(test))
     except ContainmentUnavailable as exc:
@@ -208,7 +209,9 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
         if net_dir:
             shutil.rmtree(net_dir, ignore_errors=True)
         raise
-    return layout, label(contained=True, mechanism=probe.mechanism(layout), self_test=recorded(test), layout=layout)
+    out = label(contained=True, mechanism=probe.mechanism(layout), self_test=recorded(test), layout=layout)
+    out["tool_flags"] = flags  # what this run got without AEW's pinned copy, on its record and in `harness status`
+    return layout, out
 
 
 def recorded(test: dict[str, Any]) -> dict[str, Any]:

@@ -169,6 +169,21 @@ def test_the_operators_recorded_line_parses_and_what_it_typed_is_what_ran(tmp_pa
     assert written["checks"]["unit"]["command"] == check
 
 
+def test_the_recorded_line_reads_as_an_operator_would_type_it(tmp_path):
+    """`{python}` stays bare, and the driver's check commands, with their own quotes and backslash, still split back."""
+    op = operator(tmp_path)
+    line = S.check_line(["{python}", "-m", "pytest", "-q", "tests"])
+    assert line == "{python} -m pytest -q tests"
+    res = op.first_configuration(["--check-command", line, "--model", S.OFFLINE_MODEL], S.world_fixtures(op.lab),
+                                 {S.OFFLINE_PROVIDER: None})
+    assert res.returncode == 0, res.stderr
+    (typed,) = [t for t in op.transcript if t["step"] == "init"]
+    assert typed["input"] == f"aew init --check-command '{line}' --model {S.OFFLINE_MODEL}"
+    for argv in (["{python}", "-c", r"p.write_text(p.read_text() + 'built\n')"],
+                 ["{python}", "-c", "open('check-output.txt', 'w').write('x')"]):
+        assert shlex.split(S.check_line(argv)) == argv
+
+
 def test_each_fixture_is_recorded_not_counted_and_pinned_by_the_real_path(tmp_path):
     op = operator(tmp_path)
     fixtures = S.world_fixtures(op.lab, steering="crawl")

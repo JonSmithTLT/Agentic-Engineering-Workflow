@@ -442,6 +442,12 @@ def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | No
     return HarnessLab(Project(repo), tmp, env)
 
 
+def check_line(argv: list[str]) -> str:
+    """A check's argv as the operator writes it for ``--check-command``: quoted where it needs to be, and with
+    ``{python}`` bare, which ``shlex.join`` would quote for its braces though no shell ever reads this text."""
+    return shlex.join(argv).replace("'{python}'", "{python}")
+
+
 # The model the operator names in the offline world. Its provider stands for a key-free one, as `opencode` is.
 OFFLINE_PROVIDER = "fakeprov"
 OFFLINE_MODEL = f"{OFFLINE_PROVIDER}/fake-model"

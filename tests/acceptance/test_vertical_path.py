@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -51,6 +50,7 @@ from vertical.scripted_operator import (
     OFFLINE_MODEL,
     OFFLINE_PROVIDER,
     Operator,
+    check_line,
     containment,
     lead_events,
     lead_spec,
@@ -94,7 +94,7 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
         model = ["--provider", "vuatprov", "--model",
                  "vuat-missing-model" if cause == "model-not-listed" else "vuatprov/vuat-model"]
         del fixtures["harness: fake"]
-    res = op.first_configuration(["--check-command", shlex.join(command), *model], fixtures, known)
+    res = op.first_configuration(["--check-command", check_line(command), *model], fixtures, known)
     assert res.returncode == 0, res.stderr
 
 

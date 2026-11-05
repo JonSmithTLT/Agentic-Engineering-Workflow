@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import argparse
 import shlex
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -110,8 +109,11 @@ def test_resume_gives_a_vacant_seat_the_one_text_status_does(tmp_path):
 
 
 def test_the_way_back_the_classification_route_names_gives_acquire_the_seat_again(tmp_path):
-    """Review of #329, F2: classified as the action says, the seat is held and `--acquire` is refused; the release that
-    the action names leaves it vacant, and `--acquire` takes it."""
+    """Review of #329, F2: classified as the action says, the seat is held and taking it is refused; the release that
+    the action names leaves it vacant, and it can be taken again. Each `--acquire` takes the seat through
+    `Engine.lead_acquire` (`lead_broker`, `opencode/lead.py`), so this takes it the same way, through `aew lead
+    acquire`: under `required`, Linux's default, a Lead session started here is refused for containment before it
+    reaches the seat, and `aew opencode` would start OpenCode."""
     root = repo(tmp_path)
     assert init(root, *GOOD).returncode == 0
     classify = [a for a in actions(root) if a.startswith("classify authority candidates")]
@@ -121,12 +123,14 @@ def test_the_way_back_the_classification_route_names_gives_acquire_the_seat_agai
     accepted = run_aew("-C", str(root), "authority", "accept", "C-001", "--class", "orientation", "--expect-rev", "1",
                        env=env)
     assert accepted.returncode == 0, accepted.stderr
-    session = ("-C", str(root), "lead", "session", "--acquire", "--", sys.executable, "-c", "pass")
-    held = run_aew(*session)
-    assert held.returncode != 0 and held.error["code"] == "PERMISSION_DENIED"
+    take = ("-C", str(root), "lead", "acquire", "--expect-rev", "2")
+    held = run_aew(*take)
+    assert held.returncode != 0 and held.error["code"] == "PERMISSION_DENIED", held.stderr
     released = run_aew("-C", str(root), "lead", "release", "--expect-rev", "2", env=env)
     assert released.returncode == 0, released.stderr
-    assert run_aew(*session).returncode == 0
+    assert run_aew("-C", str(root), "status", "--json").json["lead"]["status"] == "vacant"
+    again = run_aew(*take[:-1], "3")
+    assert again.returncode == 0, again.stderr
 
 
 def test_an_interrupted_init_may_run_again_with_other_values(tmp_path):

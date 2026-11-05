@@ -30,8 +30,8 @@ NO_INVOCATION_AUTHORITY = (
     "harness launch` (see its `--help`); either connects `aew` for the run. Running a role by hand? See `aew whoami "
     "--help`.")
 # Where that last sentence sends someone running a role by hand: how to present the credential, and where it came from.
-INVOCATION_TOKEN_HELP = ("the credential a dispatch without `--launch` wrote to your terminal "
-                         "(or env AEW_INVOCATION_TOKEN)")
+CREDENTIAL_OPTION_HELP = ("the credential a dispatch without `--launch` wrote to your terminal "
+                          "(or env AEW_INVOCATION_TOKEN)")
 
 
 def _inv_token(args: argparse.Namespace) -> str:
@@ -418,7 +418,7 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     csub = p.add_subparsers(dest="check_cmd", required=True)
     q = csub.add_parser("run")
     q.add_argument("check_id", help="a check from policy/checks.yaml, or the built-in `guardrails`")
-    q.add_argument("--invocation-token", help=INVOCATION_TOKEN_HELP)
+    q.add_argument("--invocation-token", help=CREDENTIAL_OPTION_HELP)
     q.set_defaults(handler=lambda a: _as_invocation(
         a, "check.run", {"check_id": a.check_id},
         lambda token: _engine(a).check_run(invocation_token=token, check_id=a.check_id)))
@@ -427,11 +427,11 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("--kind", required=True, choices=["implementation_report", "review", "verification",
                                                      "discovery_record", "research_record", "plan_proposal"])
     q.add_argument("--file", required=True, help="Markdown with YAML frontmatter (file or - for stdin)")
-    q.add_argument("--invocation-token", help=INVOCATION_TOKEN_HELP)
+    q.add_argument("--invocation-token", help=CREDENTIAL_OPTION_HELP)
     q.set_defaults(handler=_submit)
 
     q = sub.add_parser("whoami", help="the invocation this credential or harness run acts as (bounded role)")
-    q.add_argument("--invocation-token", help=INVOCATION_TOKEN_HELP)
+    q.add_argument("--invocation-token", help=CREDENTIAL_OPTION_HELP)
     q.set_defaults(handler=lambda a: _as_invocation(
         a, "whoami", {}, lambda token: _engine(a).invocation_whoami(invocation_token=token)))
 

@@ -94,7 +94,8 @@ def test_a_role_with_no_credential_is_told_to_stop_never_to_get_one(calc, tmp_pa
 
 def test_the_refusals_pointer_for_a_role_run_by_hand_covers_it(calc, tmp_path):
     """`aew whoami --help` is where the refusal sends someone running a role by hand: it names how to supply the
-    credential and where it came from. `assign` is a dispatch without `--launch`, and the credential it printed works."""
+    credential and where it came from. `assign` is a dispatch without `--launch`, and the credential it printed
+    works."""
     impl = assign(calc, create_planned_ticket(calc, tmp_path))
     shown = " ".join(run_aew("-C", str(impl.workspace), "whoami", "--help").stdout.split())
     assert "--invocation-token" in shown and "AEW_INVOCATION_TOKEN" in shown

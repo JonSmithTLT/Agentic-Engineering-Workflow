@@ -28,6 +28,8 @@ from aewflow import (
 from conftest import run_aew
 
 from aew.cli.work_commands import NO_INVOCATION_AUTHORITY
+from aew.engine.api import Engine
+from aew.errors import WorkspaceMutated
 from aew.knowledge.context import CHECK_WRITES_NOTE, OUTPUT_TEMPLATES
 from aew.util import load_yaml
 
@@ -92,10 +94,11 @@ def test_a_role_with_no_credential_is_told_to_stop_never_to_get_one(calc, tmp_pa
 
 def test_the_refusals_pointer_for_a_role_run_by_hand_covers_it(calc, tmp_path):
     """`aew whoami --help` is where the refusal sends someone running a role by hand: it names how to supply the
-    credential, and supplied that way the command works."""
+    credential and where it came from. `assign` is a dispatch without `--launch`, and the credential it printed works."""
     impl = assign(calc, create_planned_ticket(calc, tmp_path))
-    shown = run_aew("-C", str(impl.workspace), "whoami", "--help").stdout
+    shown = " ".join(run_aew("-C", str(impl.workspace), "whoami", "--help").stdout.split())
     assert "--invocation-token" in shown and "AEW_INVOCATION_TOKEN" in shown
+    assert "a dispatch without `--launch` wrote to your terminal" in shown
     assert impl.aew("whoami").returncode == 0
 
 
@@ -187,12 +190,14 @@ WRITING_CHECKS = {"schema": "aew/checks/v1", "baseline_failures": [], "checks": 
     "codegen": {"configured": True, "command": ["{python}", "-c", "open('calc/generated.py','w').write('X=1\\n')"]}}}
 
 
-def _says_what_the_engine_does(role: Role, out: dict[str, Any], submit: Any, refusal: str) -> None:
+def _says_what_the_engine_does(role: Role, out: dict[str, Any], submit: Any, refusal: str, later_check: Any) -> None:
     """CHECK_WRITES_NOTE, both ways: in a sandbox the write fails and nothing is lost; without one it lands, the check
-    is inconclusive and the submission is refused. Which applies depends on the host, so each holds where it applies."""
+    is inconclusive, the submission is refused and ``later_check`` holds. Which applies depends on the host, so each
+    holds where it applies."""
     if out["mutated_inputs"]:
         assert out["result"] == "inconclusive", out
         assert submit().error["code"] == refusal
+        later_check()
     else:
         assert out["exit_code"] != 0 and out["result"] == "fail", out
         assert submit().returncode == 0
@@ -203,7 +208,8 @@ def test_a_check_that_writes_into_an_observation_does_what_the_pack_says(tmp_pat
     role, _ = dispatch(p, create_investigation(p, tmp_path))
     assert CHECK_WRITES_NOTE in p.aew("context", "show", role.ok("whoami")["invocation"]).stdout
     _says_what_the_engine_does(role, role.check("codegen"),
-                               lambda: submit_record(role, "discovery_record", expect_ok=False), "OBSERVATION_MUTATED")
+                               lambda: submit_record(role, "discovery_record", expect_ok=False), "OBSERVATION_MUTATED",
+                               lambda: role.check("codegen"))  # outside ticket or integration scope, it still runs
 
 
 def test_a_check_that_writes_into_a_verified_workspace_does_what_the_pack_says(tmp_path):
@@ -211,9 +217,16 @@ def test_a_check_that_writes_into_a_verified_workspace_does_what_the_pack_says(t
     role = _for_ticket_verification(p, tmp_path)
     assert CHECK_WRITES_NOTE in p.aew("context", "show", role.ok("whoami")["invocation"]).stdout
     claims = [{"type": kind, "claim": "c", "result": "pass"} for kind in ("goal_backwards", "contract")]
+
+    assert "at ticket or integration scope, any later check" in CHECK_WRITES_NOTE  # what the next lines hold
+
+    def later_check_is_refused() -> None:  # in process: a CLI refusal of `check run` here would be a new key for D2
+        with pytest.raises(WorkspaceMutated):
+            Engine(p.root, p.root / ".aew").check_run(invocation_token=role.token, check_id="codegen")
+
     _says_what_the_engine_does(role, role.check("codegen"),
                                lambda: role.submit("verification", {"claim": "c", "verification": {"claims": claims}},
-                                                   expect_ok=False), "WORKSPACE_MUTATED")
+                                                   expect_ok=False), "WORKSPACE_MUTATED", later_check_is_refused)
 
 
 def test_pack_regeneration_is_deterministic(calc, tmp_path):

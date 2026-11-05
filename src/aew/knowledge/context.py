@@ -106,14 +106,19 @@ OUTPUT_TEMPLATES = {
 
 
 # A role that may not change the tree it evaluates, told what running a check there can do (`check_run` runs inside it;
-# `require_observation_intact` and `require_workspace_intact` refuse the submission after a write lands).
+# `require_observation_intact` and `require_workspace_intact` refuse the submission after a write lands, and `check_run`
+# refuses a reviewer's or verifier's next check at ticket or integration scope; "by default": a project's
+# `fingerprint.include_ignored` brings an ignored path back into the snapshot).
 CHECK_WRITES_NOTE = ("- A check runs inside the tree you evaluate, which you may not change. In a sandbox a write "
-                     "there fails; without one it lands, and unless the path is outside the snapshot (ignored by git "
-                     "or excluded by the project) the check records `inconclusive` and AEW refuses your submission.")
+                     "there fails; without one it lands, and unless the path is outside the snapshot (by default, "
+                     "ignored by git or excluded by the project) the check records `inconclusive` and AEW refuses your "
+                     "submission and, at ticket or integration scope, any later check.")
 
 # Which section delivers each logical knowledge name an archetype's context may name (KC §14: roles ask by logical
 # name). A name with no entry has no section, so no pack promises it: tests/unit/test_pack_truth.py holds every
-# archetype's list to this table.
+# archetype's list to this table. So the table is those guards' only source, and a wrong row passes them (their planted
+# cases pin only a few names). `discovery_evidence` is the `inputs` section, which holds any consumed input: a planner
+# whose only input is a research record is still promised discovery evidence.
 KNOWLEDGE_SECTIONS = {
     "current_ticket": "requirement", "requirement": "requirement", "objective": "requirement",
     "acceptance_criteria": "requirement", "ticket_scope": "requirement",
@@ -210,6 +215,7 @@ def _allowed_values(role: str) -> dict[str, dict[str, str | None]]:
     severity = review["findings"]["items"]["properties"]["severity"]
     claim = section["verification"]["properties"]["claims"]["items"]["properties"]["result"]
     return {"implementer": {"result": E.IMPLEMENTATION_RESULTS},
+            "planner": {"result": dict.fromkeys(E.RECORD_RESULTS)},  # a plan proposal answers no question
             "reviewer": {"disposition": dict.fromkeys(review["disposition"]["enum"]),
                          "severity": dict.fromkeys(severity["enum"])},
             "verifier": {"result": dict.fromkeys(claim["enum"])}}.get(role, {"result": E.RECORD_RESULTS})

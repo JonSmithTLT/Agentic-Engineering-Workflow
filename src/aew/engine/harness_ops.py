@@ -116,7 +116,7 @@ class Harness:
         pack = self._regenerated_pack(state, invocation)
         if pack["sha256"] != (inv.get("pack") or {}).get("sha256"):
             return blocker_from(IllegalTransition(
-                f"{invocation}'s context pack no longer matches the pack pinned at dispatch (its inputs changed); "
+                f"{invocation}'s context pack no longer matches the pack pinned at dispatch (its inputs or AEW's pack text changed); "
                 "dispatch a new invocation rather than relaunching this one", pinned=(inv.get("pack") or {}).get(
                     "sha256"), now=pack["sha256"]))
         return None

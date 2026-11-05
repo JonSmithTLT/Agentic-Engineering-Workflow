@@ -152,9 +152,9 @@ def search_enabled(aew_root: Path, state: dict[str, Any]) -> bool:
 
 
 # The variables that mark an invoked agent's environment, whichever way it was invoked: a harness run's (``AGENT_VARS``:
-# its invocation, run, unit, bridge coordinates and scratch directory) and a Lead-spawned role's, which sets its
-# invocation credential for every `aew` command (the context pack's "Credential and writeback", knowledge/context.py;
-# PR #148 review, m3). The Lead's own shell sets none of them (its broker variables are the Lead's).
+# its invocation, run, unit, bridge coordinates and scratch directory) and a role run by hand, which sets its invocation
+# credential for every `aew` command (`aew whoami --help`; PR #148 review, m3). The Lead's own shell sets none of them
+# (its broker variables are the Lead's).
 INVOCATION_CREDENTIAL = "AEW_INVOCATION_TOKEN"
 
 

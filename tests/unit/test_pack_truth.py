@@ -3,7 +3,9 @@ pack or preamble is a product defect).
 
 Each guard is a function of the rendered text or the role's definition, so its planted cases run the same code:
 - a pack promises only sections it has, and each archetype's knowledge list is sections its pack can have;
-- every operation and `aew` command a worker's text names is one its custody bridge offers;
+- every operation in a pack's allowed list and every `aew` command a worker's text prints is one its custody bridge
+  offers. Its limits: a project card's "Restricted to operations" line is not read (no built-in card restricts, so the
+  matrix never renders one), and `submit.<anything>` passes on its prefix;
 - no worker's text both asks for a credential and says there is none, and no text corrects another;
 - a report format is what the engine accepts as it stands, its other values listed beside it from what the engine
   validates, and it names no scope (the engine fills in the dispatched one);
@@ -270,6 +272,9 @@ def test_a_role_with_no_credential_is_told_to_stop_and_never_to_get_one():
     assert [s.argv for s in commands_in(NO_INVOCATION_AUTHORITY)] == [("harness", "launch"), ("whoami", "--help")]
     assert "stop and report" in NO_INVOCATION_AUTHORITY
     assert "AEW_INVOCATION_TOKEN" not in NO_INVOCATION_AUTHORITY
+    # Printed bare, it adds no id placeholder; so it says where the arguments are, and the route with no invocation yet.
+    assert "dispatches it with `--launch`" in NO_INVOCATION_AUTHORITY
+    assert "`aew harness launch` (see its `--help`)" in NO_INVOCATION_AUTHORITY
 
 
 def test_the_refusal_adds_nothing_d2_would_list_beyond_an_unstructured_refusal():
@@ -293,10 +298,22 @@ def test_an_archetype_asks_for_no_credential_and_names_only_commands_that_parse(
     assert asks_or_misprints(archetype_prose(role)) == []
 
 
-def test_the_lead_is_told_to_launch_and_the_line_it_is_told_parses_whole():
-    launches = [s for s in commands_in(archetype_prose("lead")) if "--launch" in s.argv]
-    assert launches
-    assert [rules.o_cmd(rules.Suggestion(s.argv, s.text, structured=True)) for s in launches] == [None] * len(launches)
+def test_the_lead_is_told_to_launch_by_every_route_that_dispatches_and_each_takes_the_flag():
+    """Which route applies is the guide's: this holds that the line names them all and that `--launch` is real on each,
+    not that a route fits a given unit."""
+    lines = [line for line in archetype_prose("lead").splitlines() if "`--launch`" in line]
+    assert len(lines) == 1
+    routes = [s.argv for s in commands_in(lines[0])]
+    assert routes == [("work", "assign"), ("work", "dispatch"), ("invoke", "create"), ("guide",)]
+    for route in routes[:-1]:
+        whole = (*route, "<T>", "--launch", "--expect-rev", "<revision from aew status>")
+        assert rules.o_cmd(rules.Suggestion(whole, " ".join(whole), structured=True)) is None
+
+
+@pytest.mark.parametrize(("role", "says"), [("planner", False), ("investigator", True), ("researcher", True)])
+def test_only_a_role_with_a_question_is_told_a_pass_answers_it(role, says):
+    pack = ctx.render(inputs(role, "observation", full=False))
+    assert ("the question is answered" in pack) is says
 
 
 # ------------------------------------------------------------------------------------- planted cases

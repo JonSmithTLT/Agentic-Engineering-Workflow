@@ -73,6 +73,28 @@ def test_a_stage_stopped_at_a_refusal_says_where_and_why_on_its_first_line():
                                       "T-0001's candidate is not the one named")
 
 
+def test_a_stopped_call_never_reads_as_though_the_project_s_next_step_were_the_way_on_from_it():
+    """A stopped call's projection is the project's (`state` null): the outcome is about the call, and what the
+    projection offers says whose it is. A call that ran, or a stop whose projection has a unit, says nothing extra."""
+    project = {"subject": "project", "state": None, "hints": ["configure checks"],
+               "blockers": [{"code": "B1", "message": "m1"}]}
+    lines = lines_of(stopped("T-0001's candidate is not the one named", completed_steps=[], projection=project))
+    assert lines[0] == ("ticket_prepare: stopped at integrate.publish (refused): "
+                        "T-0001's candidate is not the one named")
+    assert "project" not in lines[0]
+    assert lines[1] == "next for the project: configure checks"
+    assert lines[2] == "blocker for the project: B1: m1"
+    project["hints"] = []
+    assert lines_of(stopped(projection=project))[1] == "blocked for the project: B1: m1"
+    project["blockers"] = []
+    assert lines_of(stopped(projection=project))[1] == "next for the project: nothing offered"
+    offered = {"subject": "project", "state": None, "actions": [action()]}
+    assert lines_of(stopped(projection=offered))[1] == "next for the project: ticket_start expect_rev=15 work_id=T-0001"
+    assert lines_of(stage(projection={"subject": "project", "state": None, "hints": ["go on"]}))[:2] == [
+        "ticket_prepare: done (project)", "next: go on"]
+    assert lines_of(stopped(projection={"hints": ["go on"]}))[1] == "next: go on"
+
+
 def test_a_result_with_no_steps_goes_from_the_next_step_to_the_json():
     lines = lines_of(stage(completed_steps=[]))
     assert lines[:4] == ["ticket_prepare: done (T-0001: READY)", "next: nothing offered", "", JSON_MARKER]

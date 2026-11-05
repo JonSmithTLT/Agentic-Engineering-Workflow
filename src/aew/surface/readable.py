@@ -136,6 +136,7 @@ def _next(result: dict[str, Any]) -> str:
     """The one next step the projection offers: a decision that is the Lead's, an action that moves the work, a wait,
     the engine's own hint, or what blocks it. A call or a printed command is never shortened: it must run as printed."""
     projection = _projection(result)
+    scope = _scope(result)
     for decision in projection.get("decisions_required") or []:
         if decision.get("availability") == "AVAILABLE":
             what = f"decide {_one_line(decision.get('decision'))} on {_one_line(decision.get('subject'))}"
@@ -146,14 +147,21 @@ def _next(result: dict[str, Any]) -> str:
     for action in [a for a in offered if a.get("kind") not in _NOT_A_NEXT_STEP] or \
             [a for a in offered if a.get("kind") == "wait"]:
         if action.get("callable"):
-            return "next: " + _whole(_call(action.get("action"), action.get("arguments")))
+            return f"next{scope}: " + _whole(_call(action.get("action"), action.get("arguments")))
         if action.get("cli_fallback"):
-            return "next: " + _whole(_command(action["cli_fallback"]))
+            return f"next{scope}: " + _whole(_command(action["cli_fallback"]))
     for hint in projection.get("hints") or []:
-        return _one_line(f"next: {hint}")
+        return _one_line(f"next{scope}: {hint}")
     for blocker in projection.get("blockers") or []:
-        return _one_line(f"blocked: {blocker.get('code')}: {blocker.get('message')}")
-    return "next: nothing offered"
+        return _one_line(f"blocked{scope}: {blocker.get('code')}: {blocker.get('message')}")
+    return f"next{scope}: nothing offered"
+
+
+def _scope(result: dict[str, Any]) -> str:
+    """A stopped call's projection is the project's, not its Ticket's (``surface/run.py``, ``_run_tool``), so what it
+    offers is said to be the project's: it must not read as the way on from this stop."""
+    stopped = result.get("stopped") and _projection(result).get("subject") == "project"
+    return " for the project" if stopped else ""
 
 
 def _whole(call: str) -> str:
@@ -192,7 +200,8 @@ def _waiting(result: dict[str, Any]) -> list[str]:
     anomalies = [f"{a.get('code')}: {a.get('message')}" for a in projection.get("anomalies") or []]
     runs = [f"{r.get('run')} {r.get('role')} {r.get('work_unit')}: {r.get('status')}"
             for r in projection.get("runs") or []]
-    return [*_listed("decision", decisions), *_listed("blocker", problems), *_listed("anomaly", anomalies),
+    return [*_listed("decision", decisions), *_listed(f"blocker{_scope(result)}", problems),
+            *_listed("anomaly", anomalies),
             *_listed("run", runs)]
 
 

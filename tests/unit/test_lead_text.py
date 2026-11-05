@@ -20,6 +20,7 @@ import pytest
 from aew.engine import gates as G
 from aew.engine import guide, resume_ops
 from aew.engine import transitions as T
+from aew.engine.evidence_ops import Gates
 from aew.engine.harness_ops import Harness
 from aew.engine.resume_ops import Resume
 from aew.harness.opencode import projection
@@ -100,6 +101,15 @@ def known_words() -> set[str]:
     normal = contract.exposed(NORMAL)
     return ({t.name for t in normal} | {a for t in normal for a in t.input_schema.get("properties") or {}}
             | set(NOT_TOOLS) | set(DEFAULT_CHECKS["checks"]) | set(G.VERIFICATION_GATES))
+
+
+def stray_arguments(text: str) -> list[str]:
+    """The arguments ``text`` names that no tool it names takes: a word the guard knows as some tool's argument can
+    still be stale for the tool beside it (the review's G9, an argument renamed on one tool and kept by another)."""
+    words = WORD.findall(text)
+    taken = {a for w in words if w in contract.TOOLS for a in contract.TOOLS[w].input_schema.get("properties") or {}}
+    every = {a for t in contract.exposed(NORMAL) for a in t.input_schema.get("properties") or {}}
+    return [w for w in words if w in every and w not in contract.TOOLS and w not in taken]
 
 
 def lead_texts() -> dict[str, str]:
@@ -299,6 +309,27 @@ def test_a_tool_renamed_in_the_catalog_with_its_old_name_left_fails_the_guard(mo
     assert name in left
 
 
+def test_an_argument_a_step_or_command_names_is_taken_by_a_tool_it_names():
+    for lead, step in steps(rendered()).items():
+        if lead.startswith("`"):
+            assert stray_arguments(step) == [], lead
+    for name, command in projection.LEAD_COMMANDS.items():
+        assert stray_arguments(command["template"]) == [], name
+
+
+def test_an_argument_renamed_on_one_tool_with_its_old_name_left_beside_it_fails_the_guard(monkeypatch):
+    """`verification_evidence` is `ticket_prepare`'s argument too, so the word guard alone still knows it."""
+    row = contract.TOOLS["integration_publish"]
+    props = {("integration_report" if k == "verification_evidence" else k): v
+             for k, v in row.input_schema["properties"].items()}
+    monkeypatch.setitem(contract.TOOLS, "integration_publish",
+                        row._replace(input_schema={**row.input_schema, "properties": props}))
+    assert "verification_evidence" in known_words()
+    assert stray_arguments(steps(rendered())["`integration_publish`"]) == ["verification_evidence"]
+    hint = resume_with()._integration_verifier(integration_state(report="EV-3"), "T-0007")
+    assert stray_arguments(hint) == ["verification_evidence"]
+
+
 def test_an_argument_renamed_in_the_catalog_with_its_old_name_left_fails_the_guard(monkeypatch):
     def renamed(row: contract.Tool) -> contract.Tool:
         props = {("verification_report" if k == "verification_evidence" else k): v
@@ -429,6 +460,31 @@ def test_a_stage_is_named_only_where_the_class_requires_what_it_launches(frm, ds
     assert not stage_named(T.next_steps(frm, "T-0007", FULL._replace(**{missing: False})).split(f"{dst} by ")[1])
 
 
+@pytest.mark.parametrize("unit", [{"kind": "ticket", "mutating": False}, {"kind": "story"}, {}])
+def test_the_gates_fit_no_stage_to_a_non_mutating_ticket_or_a_parent(unit):
+    """#331 review F1: whatever its gates, a non-mutating Ticket or a parent has no stage; the gates are not read."""
+    gates = Gates.__new__(Gates)
+    gates.gate_context = lambda state, wid: pytest.fail("read the gates")  # type: ignore[method-assign]
+    assert gates.stage_fit({"work": {"T-0007": unit}}, "T-0007") is None
+
+
+def test_the_gates_fit_reads_what_the_class_requires_and_what_is_still_due():
+    gates = Gates.__new__(Gates)
+    gc = {"obligations": {"gates": ["review_r1", "review_security", "verification_goal_backwards",
+                                    "verification_contract", "verify_card:extra"]},
+          "gates": {"review_r1": {"status": "MISSING"}, "review_security": {"status": "CURRENT"},
+                    "verification_goal_backwards": {"status": "MISSING"},
+                    "verification_contract": {"status": "MISSING"},
+                    "verify_card:extra": {"status": "CURRENT"}}}
+    gates.gate_context = lambda state, wid: gc  # type: ignore[method-assign]
+    state = {"work": {"T-0007": {"kind": "ticket", "mutating": True}}}
+    assert gates.stage_fit(state, "T-0007") == T.Fit(review=True, verification=True, last_review=True,
+                                                     last_verification=True)  # one review, one verifier still due
+    gc["gates"]["review_security"]["status"] = gc["gates"]["verify_card:extra"]["status"] = "MISSING"
+    assert gates.stage_fit(state, "T-0007") == T.Fit(review=True, verification=True, last_review=False,
+                                                     last_verification=False)
+
+
 @pytest.mark.parametrize(("frm", "dst"), [(frm, "RUNNING") for frm in ("REVIEW_PENDING", "REVIEW_PASSED",
                                                                        "VERIFY_PENDING", "VERIFIED",
                                                                        "VERIFICATION_INCONCLUSIVE", "COMMIT_READY")]
@@ -499,7 +555,7 @@ def test_a_validated_candidates_hint_leads_with_the_publish_stage_and_names_the_
     state = {"invocations": {}, "work": {"T-0007": unit}}
     [hint] = resume._ticket_actions(state, "T-0007", unit)
     assert hint.index("`integration_publish`") < hint.index("`aew integrate publish`")
-    assert "C-1 as `prepared_candidate`" in hint
+    assert "C-1 as `prepared_candidate`" in hint and stray_arguments(hint) == []
 
 
 def after_implementation(state: str, *, review: bool, verification: bool = True) -> str:
@@ -539,6 +595,7 @@ def test_after_ticket_prepare_the_hint_never_dispatches_the_verifier_it_launched
     assert "EV-3 as `verification_evidence`" in clean and "`integration_publish`" in clean
     assert "aew invoke create" not in clean
     assert "C-1 as `prepared_candidate`" in running and "C-1 as `prepared_candidate`" in clean
+    assert stray_arguments(running) == stray_arguments(clean) == []
 
 
 def test_the_running_verifiers_hint_holds_once_its_run_has_ended():

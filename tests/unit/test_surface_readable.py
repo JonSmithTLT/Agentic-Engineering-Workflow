@@ -213,13 +213,14 @@ def test_the_view_lands_on_the_outcome_and_the_next_step():
 
 
 def test_the_lead_s_json_drops_only_the_named_fields():
-    result = stopped(completed_steps=[step()], result={"record_sha256": DIGEST, "kept": "x", "nested": [{"h": DIGEST}]})
+    result = stopped(completed_steps=[step()], result={"record_sha256": DIGEST, "kept": "x",
+                                                       "nested": [{"sha256": DIGEST, "checks": "not a digest"}]})
     result["projection"]["actions"] = [action()]
     got = lead_json(render(result))
     assert set(result) - set(got) == {"surface", "base_operation_class", "effective_operation_class", "policy_binding"}
     assert got["projection"] == result["projection"] and got["stopped"] == result["stopped"]
     assert got["completed_steps"] == [{k: v for k, v in step().items() if k != "operation_class"}]
-    assert got["result"] == {"kept": "x", "nested": [{}]}
+    assert got["result"] == {"kept": "x", "nested": [{"checks": "not a digest"}]}
     for field in ("revision", "generation", "stage_intent_id", "ok", "tool"):
         assert got[field] == result[field]
 
@@ -232,11 +233,11 @@ def test_a_new_schema_field_reaches_the_lead_unless_it_is_named():
 
 
 def test_a_digest_stays_where_the_lead_acts_or_a_call_is_made_from_it():
-    result = stopped(result={"arguments": {"candidate": DIGEST}, "ids": [DIGEST]},
+    result = stopped(result={"arguments": {"sha256": DIGEST}, "ids": [DIGEST], "root": DIGEST},
                      projection={"actions": [action(arguments={"digest": DIGEST})]})
     result["stopped"]["error"]["details"] = {"bound": DIGEST, "current": DIGEST}
     got = lead_json(render(result))
-    assert got["result"] == {"arguments": {"candidate": DIGEST}, "ids": [DIGEST]}
+    assert got["result"] == {"arguments": {"sha256": DIGEST}, "ids": [DIGEST], "root": DIGEST}  # `root`: not named
     assert got["projection"]["actions"][0]["arguments"] == {"digest": DIGEST}
     assert got["stopped"]["error"]["details"] == {"bound": DIGEST, "current": DIGEST}
 

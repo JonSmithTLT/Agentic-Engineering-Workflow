@@ -46,6 +46,11 @@ JSON_MARKER = ("For the Lead, the result as JSON on the next line. If it is miss
 # surface's constant, the two operation classes, and the policy digests the runner already bound. `structuredContent`
 # keeps them. A field not named here stays, so a new field reaches the Lead by default.
 _NOT_ACTED_ON = frozenset({"surface", "base_operation_class", "effective_operation_class", "policy_binding"})
+# The payload's digests, by the field that holds one: no tool input or CLI flag takes them, and they cost a mean of 87
+# tokens a call in the sizing corpus. A digest under any other name stays, so a new one (a stored map's root, say, which
+# `aew map --root` does take) reaches the Lead by default.
+_DIGEST_FIELDS = frozenset({"sha256", "record_sha256", "legality_digest", "operational_digest", "gates", "guardrails",
+                            "checks"})
 _DIGEST = re.compile(r"(?:sha256:)?[0-9a-f]{64}")
 _NOT_A_NEXT_STEP = ("query", "wait")
 _BREAKS = ("Cc", "Zl", "Zp")  # a control character or a line separator: a space, so the words either side stay apart
@@ -62,8 +67,8 @@ def render(result: dict[str, Any]) -> str:
 
 def for_the_lead(result: dict[str, Any]) -> dict[str, Any]:
     """The result without what no Lead call takes. It leaves the projection and the stop whole: they are what the Lead
-    acts on, so a digest there stays. In the payload a dict's digest value goes, except under ``arguments``, which a
-    call may be made from; a list's items stay, since a list can hold the ids a decision binds."""
+    acts on, so a digest there stays. In the payload a named field holding a digest goes, except under ``arguments``,
+    which a call may be made from."""
     kept = {k: v for k, v in result.items() if k not in _NOT_ACTED_ON}
     if "completed_steps" in kept:
         kept["completed_steps"] = [{k: v for k, v in s.items() if k != "operation_class"}
@@ -76,7 +81,7 @@ def for_the_lead(result: dict[str, Any]) -> dict[str, Any]:
 def _without_digests(value: Any) -> Any:
     if isinstance(value, dict):
         return {k: v if k == "arguments" else _without_digests(v) for k, v in value.items()
-                if not (isinstance(v, str) and _DIGEST.fullmatch(v))}
+                if not (k in _DIGEST_FIELDS and isinstance(v, str) and _DIGEST.fullmatch(v))}
     if isinstance(value, list):
         return [_without_digests(v) for v in value]
     return value

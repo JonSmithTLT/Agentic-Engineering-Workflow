@@ -2226,6 +2226,19 @@ def test_an_enforced_check_names_the_drift(check, edit, named):
     assert any(named in f for f in findings), findings
 
 
+def test_an_option_the_path_names_is_checked_against_the_live_parser(monkeypatch):
+    """Planted: the path's real options pass, an option no live parser has is named, and a path naming none adds
+    nothing. The drift is in the oracle's reading rather than the registry, so the table above can't plant it."""
+    reg = load()
+    assert not [f for f in check_ideal_path(reg) if "no option" in f]
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "ideal_path_options", lambda: {"init": ["--check-command", "--nope"]})
+    assert [f for f in check_ideal_path(reg) if "no option" in f] == [
+        "ideal path names `aew init --nope`, which is no option of the live parser"]
+    monkeypatch.setattr(module, "ideal_path_options", dict)
+    assert not [f for f in check_ideal_path(reg) if "no option" in f]
+
+
 def _mutate_on_read(how: str) -> Callable[..., Any]:
     from aew.engine.api import Engine
 

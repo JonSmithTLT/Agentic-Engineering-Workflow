@@ -81,6 +81,14 @@ def test_a_check_command_that_would_pin_something_broken_is_refused_naming_what_
     assert refused.value.details["reason"] == reason and names in refused.value.message
 
 
+@pytest.mark.parametrize("code", [r"p.write_text(p.read_text() + 'built\n')", "open('out', 'w').write('x')", "a'b\"c"])
+def test_a_command_quoted_as_a_shell_would_comes_back_whole_with_its_backslash(code):
+    """`shlex.join` closes and reopens its single quotes around a quote in the text. A backslash stays inside them, so
+    the driver's stamp check, which only the vertical lane runs, isn't refused."""
+    argv = ["{python}", "-c", code]
+    assert FC.parse_check_command(shlex.join(argv)) == argv
+
+
 def test_a_refused_operator_names_a_shell_form_that_itself_parses():
     with pytest.raises(UsageError) as refused:
         FC.parse_check_command("echo 'it''s' && make")

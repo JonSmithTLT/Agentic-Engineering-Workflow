@@ -4,8 +4,12 @@ A pack is assembled only from durable artifacts, so a replacement subagent can b
 launched without anyone's conversational history. Packs are deterministic
 functions of recorded inputs: the diff is regenerated from the snapshot's git
 tree id, and evidence is limited to what existed when the invocation was
-created. The credential never appears in a pack; the Lead supplies it in the
-spawn prompt.
+created.
+
+A pack says nothing about the credential: neither its value nor how `aew` gets one. The pack is pinned at dispatch and
+a dispatch without ``--launch`` can be launched later, so one text serves both ways a role runs. The fact belongs to
+the text that knows the mode: a harness run's preamble (``aew.harness.contract.preamble``), or for a process with no
+run and no credential, the refusal of its first `aew` command (``aew.cli.work_commands.NO_INVOCATION_AUTHORITY``).
 
 Independence (WC §10.1): the reviewer pack excludes implementer reasoning. Only
 the structured facts of the implementation report (files changed, checks run,
@@ -18,16 +22,19 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from aew.harness.bridge import OPERATIONS as BRIDGE_OPERATIONS
+from aew.knowledge import evidence as E
 from aew.roles import AUTHORITY_SENSITIVE_CAPABILITIES
+from aew.schemas import schema
 from aew.util import dump_yaml
 
-# A placeholder, not a credential.
-TOKEN_PLACEHOLDER = "<AEW_INVOCATION_TOKEN: supplied by the Lead in the spawn prompt; never written to disk>"  # noqa: S105
-
+# Each report's format, copied as it stands by the model that reads it: a value here is one the engine accepts, and the
+# other values a field may take are listed beside it (`_allowed_values`), since a YAML comment would become part of the
+# quoted value. A verification names no scope: the engine fills in the dispatched one.
 OUTPUT_TEMPLATES = {
     "implementer": ("implementation_report", {
         "claim": "<one line: what is now implemented>",
-        "result": "pass  # or: blocked",
+        "result": "pass",
         "producer": {"model": "<model>", "harness": "<harness>"},
         "implementation": {
             "files_changed": ["<path>"],
@@ -42,15 +49,15 @@ OUTPUT_TEMPLATES = {
         "producer": {"model": "<model>"},
         "review": {
             "independence": "R1",
-            "disposition": "pass  # or: changes_required",
-            "findings": [{"id": "F1", "severity": "blocker|major|minor|observation", "summary": "<finding>",
-                          "location": "<path:line>", "required": True}],
+            "disposition": "pass",
+            "findings": [{"id": "F1", "severity": "minor", "summary": "<finding>", "location": "<path:line>",
+                          "required": False}],
             "resolved_findings": ["<ids of earlier findings this change resolves>"],
         },
     }),
     "investigator": ("discovery_record", {
         "claim": "<one line: what the investigation established>",
-        "result": "pass  # the question is answered; or: blocked | inconclusive",
+        "result": "pass",
         "producer": {"model": "<model>", "harness": "<harness>"},
         "discovery": {
             "question": "<the question investigated>",
@@ -62,7 +69,7 @@ OUTPUT_TEMPLATES = {
     }),
     "researcher": ("research_record", {
         "claim": "<one line>",
-        "result": "pass  # or: blocked | inconclusive",
+        "result": "pass",
         "producer": {"model": "<model>"},
         "research": {
             "question": "<the question researched>",
@@ -74,7 +81,7 @@ OUTPUT_TEMPLATES = {
     }),
     "planner": ("plan_proposal", {
         "claim": "<one line>",
-        "result": "pass  # or: blocked | inconclusive",
+        "result": "pass",
         "producer": {"model": "<model>"},
         "proposal": {
             "objective": "<objective>", "approach": "<chosen approach>",
@@ -87,16 +94,39 @@ OUTPUT_TEMPLATES = {
         "claim": "<one line>",
         "producer": {"model": "<model>"},
         "verification": {
-            "scope": "<ticket|integration>",
             "claims": [
-                {"type": "goal_backwards", "claim": "<observable outcome>", "result": "pass|fail|inconclusive|blocked",
+                {"type": "goal_backwards", "claim": "<observable outcome>", "result": "pass",
                  "checks": ["<check evidence ids you ran>"]},
-                {"type": "contract", "claim": "<conformance statement>", "result": "pass|fail|inconclusive|blocked",
-                 "checks": ["<ids>"]},
+                {"type": "contract", "claim": "<conformance statement>", "result": "pass", "checks": ["<ids>"]},
             ],
             "suspected_cause": "<optional; never a remediation decision>",
         },
     }),
+}
+
+
+# A role that may not change the tree it evaluates, told what running a check there can do (`check_run` runs inside it;
+# `require_observation_intact` and `require_workspace_intact` refuse the submission after a write lands, and `check_run`
+# refuses a reviewer's or verifier's next check at ticket or integration scope; "by default": a project's
+# `fingerprint.include_ignored` brings an ignored path back into the snapshot).
+CHECK_WRITES_NOTE = ("- A check runs inside the tree you evaluate, which you may not change. In a sandbox a write "
+                     "there fails; without one it lands, and unless the path is outside the snapshot (by default, "
+                     "ignored by git or excluded by the project) the check records `inconclusive` and AEW refuses your "
+                     "submission and, at ticket or integration scope, any later check.")
+
+# Which section delivers each logical knowledge name an archetype's context may name (KC §14: roles ask by logical
+# name). A name with no entry has no section, so no pack promises it: tests/unit/test_pack_truth.py holds every
+# archetype's list to this table. So the table is those guards' only source, and a wrong row passes them (their planted
+# cases pin only a few names). `discovery_evidence` is the `inputs` section, which holds any consumed input: a planner
+# whose only input is a research record is still promised discovery evidence.
+KNOWLEDGE_SECTIONS = {
+    "current_ticket": "requirement", "requirement": "requirement", "objective": "requirement",
+    "acceptance_criteria": "requirement", "ticket_scope": "requirement",
+    "accepted_plan": "accepted-plan", "guardrails": "guardrails", "accepted_authority": "authority",
+    "available_checks": "checks", "open_review_findings": "open-findings", "failure_evidence": "failure-evidence",
+    "discovery_evidence": "inputs", "codebase_map": "codebase-map", "review_scope": "review-scope",
+    "change_diff": "change", "check_results": "check-results",
+    "implementation_structured_summary": "implementation-facts", "implementation_revision": "implementation-revision",
 }
 
 
@@ -178,7 +208,32 @@ def _card_section(p: PackInputs) -> list[str]:
     ]
 
 
-def _launch_contract(p: PackInputs) -> list[str]:
+def _allowed_values(role: str) -> dict[str, dict[str, str | None]]:
+    """The other values each field of ``role``'s report format may take, from what the engine validates against."""
+    section = schema("evidence")["properties"]
+    review = section["review"]["properties"]
+    severity = review["findings"]["items"]["properties"]["severity"]
+    claim = section["verification"]["properties"]["claims"]["items"]["properties"]["result"]
+    return {"implementer": {"result": E.IMPLEMENTATION_RESULTS},
+            "planner": {"result": dict.fromkeys(E.RECORD_RESULTS)},  # a plan proposal answers no question
+            "reviewer": {"disposition": dict.fromkeys(review["disposition"]["enum"]),
+                         "severity": dict.fromkeys(severity["enum"])},
+            "verifier": {"result": dict.fromkeys(claim["enum"])}}.get(role, {"result": E.RECORD_RESULTS})
+
+
+def _operations(p: PackInputs) -> list[str]:
+    return (p.card or {}).get("restrict", {}).get("operations") or p.role_def["engine_operations"]
+
+
+def _on_the_bridge(operations: list[str]) -> list[str]:
+    """The operations a role can ask AEW to carry out, in either way it runs. ``context.read`` is authority without a
+    command: the role already has its pack, and `aew context show` is a local read that takes no credential."""
+    return [op for op in operations if op in BRIDGE_OPERATIONS or op.split(".")[0] in BRIDGE_OPERATIONS]
+
+
+def _launch_contract(p: PackInputs, delivered: set[str]) -> list[str]:
+    """``delivered``: the names of the pack's other sections, so the contract promises only what follows it (most of
+    them depend on the scope, a switch or the data)."""
     kind, template = OUTPUT_TEMPLATES.get(p.role, (None, None))
     snap = p.snapshot
     card_label = f"{p.card['display_name']} — " if p.card else ""
@@ -200,25 +255,27 @@ def _launch_contract(p: PackInputs) -> list[str]:
         *([f"- Attempt {p.attempt}: you must produce exactly one **{p.expected_kind}**; the workspace is a read-only "
            "observation of the authoritative source (any change to it refuses your submission)"]
           if p.expected_kind else []),
-        "- Required knowledge (included below): " + ", ".join(p.role_def["context"]["knowledge"]),
+        "- Required knowledge (included below): " + ", ".join(
+            name for name in p.role_def["context"]["knowledge"] if KNOWLEDGE_SECTIONS.get(name) in delivered),
         "- Capabilities: " + (", ".join(p.role_def.get("capabilities", [])) or "none"),
         "",
         "### Responsibilities (archetype)",
         *_bullets(p.role_def["responsibilities"]),
         "",
         "### Allowed engine operations",
-        *_bullets((p.card or {}).get("restrict", {}).get("operations") or p.role_def["engine_operations"]),
+        *_bullets(_on_the_bridge(_operations(p))),
         "",
         "### Prohibited",
         *_bullets(p.role_def["prohibited"]),
         "",
-        "### Credential and writeback",
+        "### Commands and writeback",
         "",
-        f"Set `AEW_INVOCATION_TOKEN={TOKEN_PLACEHOLDER}` for every `aew` command below.",
         f"Run commands from the workspace, as in `aew -C \"{p.workspace}\" whoami`",
     ]
-    if "check.run" in ((p.card or {}).get("restrict", {}).get("operations") or p.role_def["engine_operations"]):
+    if "check.run" in _operations(p):
         lines.append("- Run a check: `aew check run <check-id>` (records sealed evidence bound to the snapshot)")
+        if p.role != "implementer":
+            lines.append(CHECK_WRITES_NOTE)
     if kind:
         lines += [
             f"- Write back: `aew submit --kind {kind} --file <your-report.md>`",
@@ -231,6 +288,9 @@ def _launch_contract(p: PackInputs) -> list[str]:
             "---",
             "<Markdown body>",
             "```",
+            "",
+            "Allowed values: " + "; ".join(f"`{name}` is {E.one_of(values)}"
+                                           for name, values in _allowed_values(p.role).items()) + ".",
         ]
     lines += ["", "### Completion criteria", ""]
     if p.role == "investigator":
@@ -480,7 +540,7 @@ def _lines_section(name: str, tier: int, lines: list[str], *, cuttable: bool = F
 
 def sections(p: PackInputs) -> list[Section]:
     """The pack as tiered sections, in document order. Joined, they are exactly the pack."""
-    out = [Section("contract", CONSTRAINTS, _launch_contract(p))]
+    out: list[Section] = []
     card = _card_section(p)
     if card:
         out.append(Section("role-card", CONSTRAINTS, card))
@@ -548,7 +608,7 @@ def sections(p: PackInputs) -> list[Section]:
                        f"checks run: {', '.join(s.get('checks_run', [])) or 'not reported'}"])], cuttable=True))
     if p.codebase_map is not None:  # last of the source-and-evidence tier, so the budget cuts it first (plan §5.4)
         out.append(_lines_section("codebase-map", EVIDENCE, ["", *p.codebase_map], cuttable=True))
-    return out
+    return [Section("contract", CONSTRAINTS, _launch_contract(p, {s.name for s in out})), *out]
 
 
 _FENCE = re.compile(r"^(`{3,})")

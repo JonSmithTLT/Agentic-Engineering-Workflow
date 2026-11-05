@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 import yaml
 from jsonschema import Draft202012Validator
+from lead_text import lead_json
 
 from aew.harness import contract as K
 from aew.harness.opencode import capabilities, projection
@@ -110,7 +111,10 @@ def test_a_call_returns_the_stage_result_as_structured_content_with_is_error_fro
     spy = Spy()
     out = rpc(mcp.Server(spy), "tools/call", {"name": "status", "arguments": {}})["result"]
     assert out["structuredContent"] == _result() and out["isError"] is False
-    assert json.loads(out["content"][0]["text"]) == _result()
+    # The text stops being JSON, on purpose (E121): it opens with lines for a person, and the Lead's JSON is the line
+    # after its marker (tests/unit/test_surface_readable.py).
+    text = out["content"][0]["text"]
+    assert text.startswith("status: done") and lead_json(text) == _result()
     assert spy.calls == [("status", {}, "normal")]
     refused = rpc(mcp.Server(Spy(_result(ok=False))), "tools/call", {"name": "status"})["result"]
     assert refused["isError"] is True and refused["structuredContent"]["ok"] is False  # not discarded

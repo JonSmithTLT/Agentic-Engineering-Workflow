@@ -981,8 +981,8 @@ class EvidenceCommands:
                 meta["evaluated_snapshot"] = self.invocations.snapshot_of(workspace, ws_id)
                 meta["implementation"] = submitted.get("implementation") or {}
                 meta["result"] = submitted.get("result", "pass")
-                if meta["result"] not in {"pass", "blocked"}:
-                    raise ValidationFailed("an implementation report result is pass (complete) or blocked")
+                if meta["result"] not in E.IMPLEMENTATION_RESULTS:
+                    raise ValidationFailed(f"an implementation report result is {E.one_of(E.IMPLEMENTATION_RESULTS)}")
             elif kind == "review":
                 review = submitted.get("review") or {}
                 validate_property("evidence", "review", {**review, "findings": [

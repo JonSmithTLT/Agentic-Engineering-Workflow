@@ -192,7 +192,7 @@ LINES = [
      'per_session_hidden("; ".join([*above, line]), n) for i in range(1)', RULES, TWO),
     ("R42", "an earlier block's read honoured", PARSER,
      'lines[fences[-1] + 1:] if len(fences) % 2 else lines[-1:]',
-     'lines[fences[0] + 1:] if fences else lines[-1:]', RULES, TWO),
+     '[ln for ln in lines if not FENCE.match(ln)] if len(fences) % 2 else lines[-1:]', RULES, TWO),
     # O-CMD
     ("C1", "a --fields body not expanded", PARSER,
      'given = _field_options(argv, s.body)', 'given = []', RULES, FIELDS),

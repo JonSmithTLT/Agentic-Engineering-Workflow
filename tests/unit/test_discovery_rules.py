@@ -1370,6 +1370,7 @@ def test_o_secret_passes_what_asks_for_nothing(text):
     ("You would then set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),
     ("No one should fail to set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # a double negative (#335 F1)
     ("No problem. Paste the token.", "asks to paste token"),  # a negation stays in its own sentence
+    ("We cannot. You must set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # only filler past the full stop
     ("AEW can't, so set AEW_LEAD_TOKEN yourself.", "asks to set AEW_LEAD_TOKEN"),  # a connector alone (#335 QC, R1)
     ("If the Lead says it has no credential supply the token in your reply.", "asks to supply token"),
     ("You don't need to wait to set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # handed on, then another verb

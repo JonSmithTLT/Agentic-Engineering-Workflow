@@ -7,7 +7,6 @@ from __future__ import annotations
 import atexit
 import hashlib
 import io
-import json
 import os
 import shutil
 import tarfile
@@ -26,21 +25,6 @@ TEXT = "needle one\nhay\nneedle two needle\n"
 FOUND = "needle one\nneedle two needle"
 SCRIPT = ('#!/bin/sh\nif [ "$1" = "--version" ]; then echo "fake 1.0"; exit 0; fi\n'
           'while IFS= read -r line; do case "$line" in *needle*) echo "$line";; esac; done < "$2"\n')
-
-
-def register_holding_a_failed_fetch(data_base: Path) -> None:
-    """The register under ``data_base`` (a child `aew`'s ``XDG_DATA_HOME``), as a host whose fetch of every shipped
-    payload failed, and whose launches do not try it again yet: how a test's child stays off the network, with no switch
-    in the product. Its time is in the future, so a long session does not outlast it. It reads as what it is: its
-    capabilities are UNAVAILABLE, with this cause, or served by a host copy beside it."""
-    key = records.platform_key()
-    failures = {f"{name}:{key}": {"at": "2999-01-01T00:00:00Z", "reason": "a test's register: this child never fetches",
-                                  "sha256": record["payloads"][key]["sha256"]}
-                for name, record in records.shipped().items() if key in record["payloads"]}
-    root = data_base / "aew" / "capability"
-    root.mkdir(parents=True, exist_ok=True)
-    if not (root / store.REGISTER).exists():
-        (root / store.REGISTER).write_text(json.dumps({**store.empty(), "fetch_failures": failures}), encoding="utf-8")
 
 
 def _sha(data: bytes) -> str:

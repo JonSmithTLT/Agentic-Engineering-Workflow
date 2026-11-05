@@ -56,23 +56,11 @@ skipped:
       Bubblewrap's: Windows has no contained context, so no bind (CAP-1 PR 2), and its unbound state is the label's and the status's, tested on every platform in test_capability_register.py. Covered on Linux.
     tests/integration/test_capability_bind.py::test_a_process_inside_never_reads_the_contexts_own_entries_as_a_host_copy: >-
       Bubblewrap's: Windows has no contained context, so no bind (CAP-1 PR 2), and its unbound state is the label's and the status's, tested on every platform in test_capability_register.py. Covered on Linux.
-    tests/integration/test_capability_bind.py::test_a_fresh_host_has_the_base_tools_before_the_first_use_with_no_operator_step: >-
-      Bubblewrap's: Windows has no contained context, so no bind (CAP-1 PR 2), and its unbound state is the label's and the status's, tested on every platform in test_capability_register.py. Covered on Linux.
-    tests/integration/test_capability_bind.py::test_a_failed_fetch_never_stops_the_run_and_the_status_says_why: >-
-      Bubblewrap's: Windows has no contained context, so no bind (CAP-1 PR 2), and its unbound state is the label's and the status's, tested on every platform in test_capability_register.py. Covered on Linux.
-    tests/integration/test_capability_bind.py::test_a_fetched_archive_off_its_pin_is_refused_at_the_launch_and_not_fetched_again: >-
-      Bubblewrap's: Windows has no contained context, so no bind (CAP-1 PR 2), and its unbound state is the label's and the status's, tested on every platform in test_capability_register.py. Covered on Linux.
-    tests/integration/test_capability_bind.py::test_a_fetch_that_stalls_costs_a_launch_its_bound_and_no_more: >-
+    tests/integration/test_capability_bind.py::test_a_launch_never_fetches_and_the_operators_check_does: >-
       Bubblewrap's: Windows has no contained context, so no bind (CAP-1 PR 2), and its unbound state is the label's and the status's, tested on every platform in test_capability_register.py. Covered on Linux.
     tests/integration/test_capability_bind.py::test_a_launch_without_its_pinned_copy_flags_it_and_one_with_it_says_nothing: >-
       Bubblewrap's: Windows has no contained context, so no bind (CAP-1 PR 2), and its unbound state is the label's and the status's, tested on every platform in test_capability_register.py. Covered on Linux.
     tests/integration/test_capability_bind.py::test_a_register_under_a_host_mask_stays_out_and_its_pinned_copy_becomes_the_stub: >-
-      Bubblewrap's: Windows has no contained context, so no bind (CAP-1 PR 2), and its unbound state is the label's and the status's, tested on every platform in test_capability_register.py. Covered on Linux.
-    tests/integration/test_capability_bind.py::test_no_variable_turns_the_launchs_fetch_off: >-
-      Bubblewrap's: Windows has no contained context, so no bind (CAP-1 PR 2), and its unbound state is the label's and the status's, tested on every platform in test_capability_register.py. Covered on Linux.
-    tests/integration/test_capability_bind.py::test_a_tests_child_register_stays_off_the_network_and_never_reads_as_healthy: >-
-      Bubblewrap's: Windows has no contained context, so no bind (CAP-1 PR 2), and its unbound state is the label's and the status's, tested on every platform in test_capability_register.py. Covered on Linux.
-    tests/integration/test_capability_bind.py::test_the_status_says_when_a_launch_next_tries_a_failed_fetch_and_names_the_check: >-
       Bubblewrap's: Windows has no contained context, so no bind (CAP-1 PR 2), and its unbound state is the label's and the status's, tested on every platform in test_capability_register.py. Covered on Linux.
     tests/integration/test_capability_bind.py::test_a_register_that_cannot_be_written_never_stops_a_launch: >-
       Bubblewrap's: Windows has no contained context, so no bind (CAP-1 PR 2), and its unbound state is the label's and the status's, tested on every platform in test_capability_register.py. Covered on Linux.

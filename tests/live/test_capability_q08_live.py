@@ -171,18 +171,19 @@ REAL = "AEW_CAP1_REAL_DIR"  # a directory of the operator's choosing: naming it 
 
 
 @pytest.fixture
-def real(monkeypatch) -> Path:
+def real() -> Path:
     if not os.environ.get(REAL):
         pytest.skip(f"a real fetch from github.com is the operator's to allow: set {REAL}")
-    monkeypatch.setattr(ops, "LAUNCH_FETCH", True)
     return Path(os.environ[REAL])
 
 
-def test_a_fresh_host_fetches_at_its_first_launch_and_aews_pinned_ripgrep_serves(row, real, tmp_path, monkeypatch):
-    """CAPR-Q10, CAPR-X01: the real archive by the launch's own fetch, checked against its pin, with no operator step;
-    FUNCTIONAL_ONLY before the first use; a real server's search runs through it, and OpenCode fetches nothing. The
-    register stays in that directory, so running this again fetches nothing, and the archive is kept for the next
-    test."""
+def test_the_operators_check_fetches_the_real_archive_and_aews_pinned_ripgrep_serves(row, real, tmp_path,
+                                                                                     monkeypatch):
+    """CAPR-X01, and CAPR-Q10 as the operator chooses it (the operator, 2026-11-05: AEW downloads no tool unless the
+    operator chooses it): the real archive by the operator's `aew capability check`, checked against its pin;
+    FUNCTIONAL_ONLY before the first use; a real server's search runs through it, and neither the launch nor OpenCode
+    fetches anything. The register stays in that directory, so running this again fetches nothing, and the archive is
+    kept for the next test."""
     monkeypatch.setattr(store, "ROOT_OVERRIDE", real / "register")
     fetched = P.fetch
 
@@ -192,6 +193,8 @@ def test_a_fresh_host_fetches_at_its_first_launch_and_aews_pinned_ripgrep_serves
         return data
 
     monkeypatch.setattr(P, "fetch", keeping)
+    ops.check("ripgrep")
+    monkeypatch.setattr(P, "fetch", lambda _p: pytest.fail("a launch fetched"))
     got = _search(tmp_path, row, monkeypatch, _path_without_rg(tmp_path))
     tool = got["label"]["self_test"]["tools"]["ripgrep"]
     assert tool["served"] == status.AEW_COPY and tool["tried"][0]["version"].startswith("ripgrep 15.1.0"), tool

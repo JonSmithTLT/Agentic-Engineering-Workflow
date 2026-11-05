@@ -170,7 +170,6 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
         if wanted == REQUIRED:
             raise ContainmentUnavailable(unsupported_message())
         return None, label(contained=False, reason=uncontained_reason())
-    capability.fetch_at_launch()  # the register's base tools, before the first use, with no operator step (CAPR-04)
     settings = (policy or {}).get("containment") or {}
     net_mode = netns.mode(policy)
     net_dir = netns.private_dir() if net_mode in (PROXY_ONLY, ISOLATED) else None
@@ -210,7 +209,9 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
             shutil.rmtree(net_dir, ignore_errors=True)
         raise
     out = label(contained=True, mechanism=probe.mechanism(layout), self_test=recorded(test), layout=layout)
-    out["tool_flags"] = flags  # what this run got without AEW's pinned copy, on its record and in `harness status`
+    # What this run got without AEW's pinned copy, on its record and in `harness status`: logged on every run, never
+    # removed, as a missing skill is (the operator, 2026-11-05)
+    out["missing_tools"] = capability.run_record(flags)
     return layout, out
 
 

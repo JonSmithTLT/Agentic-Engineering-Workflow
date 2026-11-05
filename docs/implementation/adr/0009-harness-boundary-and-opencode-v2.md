@@ -1713,28 +1713,26 @@ This replaces the 2026-10-24 amendment's `aew doctor` `ripgrep` line, and its "r
   dangling link, which `which` would pass over. Where no sandbox can be made, `aew capability check` runs it on the host
   and the status says so.
 - **It never refuses a launch** (CAPR-12): the tools' health is no part of the self-test's verdict, its budget is half
-  the probe's time, and neither the first-launch fetch nor recording a result can stop a launch.
-- **The first-launch fetch** is the fallback; setup becomes the primary route later (the designer's ruling of
-  2026-11-05, STG-15's log). It is in `containment.establish`, and never holds the register's lock across the network:
-  it downloads and verifies outside it, bounded as a whole (`payload.LAUNCH_FETCH_BOUND_S`), then takes the lock only
-  to record and install, with the short wait `store.RECORD_WAIT_S`, giving way to the next launch behind a longer
-  holder. The check's record waits the same. `starting_limit_s` adds all three. Past the bound the fetch is abandoned:
-  the launch decides at the bound, its thread writes only into memory no one reads after that, and a download is never
-  on disk until installed, so a late or partial one leaves nothing. A due fetch says so on stderr, and the contained
-  Lead's start times it as its own `fetch` stage. A failure is not retried at a launch for
-  `payload.FETCH_RETRY_AFTER_S`, and a refusal not until `aew capability check`. The status says when a launch next
-  tries. The 60 s bound and the hour's back-off are judgement constants: the setup PR replaces them with settings
-  measured from a real fetch. No variable turns the fetch off: tests turn it off in process (`ops.LAUNCH_FETCH`), and a
-  test's child `aew` starts from a register that holds a failed fetch, which reads as one.
+  the probe's time, and recording a result cannot stop a launch.
+- **No launch downloads a tool** (the operator, 2026-11-05: AEW downloads no tool unless the operator chooses it; it
+  amends CAPR-04's online branch and CAPR-Q10). A pinned copy reaches a host by the operator's `aew capability check`
+  (online) or `aew capability import` (offline), and by nothing else: the fetch has two doors, `ops.check` and the
+  add the operator approved at the operator endpoint (`ops.apply`), and a test reads AEW's source for any other route.
+  An agent's own `aew` (a worker run's, the contained Lead's) is refused the check, as the Lead's broker refuses it,
+  so no agent's tool chooses one either. A host without the copy reads "not installed", and its fix names both
+  commands. The two records a launch makes after its self-test (the checks' results, and the mark of the operator's
+  flag) wait only the short `store.RECORD_WAIT_S` for the lock, giving way to the next launch behind a longer holder
+  such as the operator's check; `starting_limit_s` adds both.
 - **Why a fetch failed is a closed reason** (`payload.FETCH_REASONS`), in AEW's own words, never the error's text,
   which can carry a proxy's URL with its credentials; a source is shown without a user or password. The register's
   record keeps the reason's code.
-- **A launch without a pinned tool is never quiet** (the operator, 2026-11-05). A tool bound as a stub or an unpinned
-  host copy is on the run's label (`tool_flags`: which tool, how it was served, why AEW's copy does not, in the closed
-  words of `status.NOT_SERVING_WHY`, since when, and the fix), which `harness status` and the Lead's label carry. The
-  operator's terminal gets one line per tool and state (the register's `flagged`), not one per launch: a launch whose
-  stderr is not a terminal (a supervisor's, its run's log) and a worker's own `aew` print nothing, and a tool bound
-  again clears it. It is attention, not a stop: the run goes on.
+- **A missing tool is logged on every run and never dropped, as a missing skill is** (the operator, 2026-11-05). A run
+  that binds a stub or an unpinned host copy keeps it on its label (`missing_tools`: each tool in `unavailable`, its
+  closed reason in `reasons`, from `status.NOT_SERVING_WHY`, and in `detail` how it was served, since when and the
+  fix), which `harness status` and the Lead's label carry; nothing removes a tool from a run's record. The operator's
+  terminal gets one line per tool and state (the register's `flagged`), not one per launch: a launch whose stderr is
+  not a terminal (a supervisor's, its run's log) and a worker's own `aew` print nothing, and a tool bound again clears
+  it. It is attention, not a stop: the run goes on, and the stub tells the agent at use what to search with meanwhile.
 - **Where it does not reach:** Windows, and a Linux run the policy allows to be weaker, have no sandbox, so no bind, and
   the download stays reachable there. Those runs' labels say so (`register_tools`), and on Windows the capabilities'
   limitations do.

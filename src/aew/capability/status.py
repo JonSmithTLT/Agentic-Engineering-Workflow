@@ -28,7 +28,6 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -87,7 +86,7 @@ NOT_SERVING_WHY = {
     "refused": "its payload was refused",
     "pin_changed": "its pin changed and the new payload is not here yet",
     "fetch_failed": "the fetch failed",
-    "never_fetched": "it was never fetched or imported",
+    "not_installed": "it is not installed on this host",
     "off_pin": "its payload does not match its pin",
     "never_checked": "it was never checked here",
     "record_changed": "its record or its pin changed since it was checked",
@@ -184,13 +183,14 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
                     str(path), done.get("at"), reason="pin_changed")
     if not path.exists():
         failed = (state.get("fetch_failures") or {}).get(f"{name}:{key}")
-        cause = (f"its pinned payload is not on this host: the fetch failed at {failed.get('at')} "
-                 f"({failed.get('reason')}){_tries_again(failed.get('at'))}"
-                 if failed and failed.get("sha256") == pinned["sha256"] else
-                 "its pinned payload is not on this host: it was never fetched or imported")
+        # AEW downloads no tool unless the operator chooses it (the operator, 2026-11-05): a launch never fetches, so
+        # a failed fetch is only ever the operator's own `aew capability check`'s
+        failed = failed if failed and failed.get("sha256") == pinned["sha256"] else None
+        cause = ("its pinned payload is not on this host: "
+                 + (f"the fetch failed at {failed.get('at')} ({failed.get('reason')})" if failed else
+                    "it is not installed"))
         return Copy(AEW_COPY, UNAVAILABLE, cause, f"`{CHECK}` fetches it (online), or `{IMPORT}` imports it from "
-                    "the operator's bundle (offline)", str(path), reason="fetch_failed" if failed and failed.get(
-                        "sha256") == pinned["sha256"] else "never_fetched")
+                    "the operator's bundle (offline)", str(path), reason="fetch_failed" if failed else "not_installed")
     wrong = P.verify(path, pinned)
     if wrong is not None:
         return Copy(AEW_COPY, REFUSED, f"its payload does not match its pin: {wrong}",
@@ -198,22 +198,6 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
                     "(offline)", str(path), reason="off_pin")
     return _checked(AEW_COPY, done, path, facts, digest=records.digest(record), sha256=pinned["sha256"],
                     changed="its record or its pin changed since it was checked")
-
-
-def next_fetch(at: Any) -> datetime | None:
-    """When a launch next tries a fetch that failed at ``at``; None for a time that cannot be read."""
-    try:
-        then = datetime.fromisoformat(str(at).replace("Z", "+00:00"))
-        return then + timedelta(seconds=P.FETCH_RETRY_AFTER_S) if then.tzinfo is not None else None
-    except ValueError:
-        return None
-
-
-def _tries_again(at: Any) -> str:
-    when = next_fetch(at)
-    next_try = f"a launch tries again from {when.strftime('%Y-%m-%dT%H:%M:%SZ')}" if when else (
-        "the next launch tries again")
-    return f"; {next_try}, and `{CHECK}` tries now"
 
 
 def host_copy(name: str, record: dict[str, Any], state: dict[str, Any], *, facts: dict[str, str | None],

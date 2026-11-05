@@ -255,8 +255,6 @@ def capability_register_dir(tmp_path_factory) -> Path:
     * any real change to the host's register during the run (the operator's own command, or another suite run from a
       commit without this fixture) fails the session, naming the files that changed."""
     global CHILD_DATA_BASE
-    from capability_stand_in import register_holding_a_failed_fetch
-
     from aew import hoststate
 
     host = _host_state() / "capability"
@@ -266,10 +264,8 @@ def capability_register_dir(tmp_path_factory) -> Path:
     found = os.environ.get(name)
     if found == HOST_ENV.get(name):
         os.environ[name] = str(CHILD_DATA_BASE)
-    # No launch a child `aew` makes fetches from the network: its register holds a fetch that failed, a launch does not
-    # try one again yet, and the status reads as what it is (CAPR-03). Its limit: only under this base, and a test that
-    # gives its child another builds the same (tests/helpers/lead_session.py). The end of the session checks the base.
-    register_holding_a_failed_fetch(CHILD_DATA_BASE)
+    # No launch fetches (the operator, 2026-11-05: AEW downloads no tool unless the operator chooses it); the end of
+    # the session checks that no child's register gained a payload all the same
     yield tmp_path_factory.mktemp("capability-register")
     assert not list((CHILD_DATA_BASE / "aew" / "capability").glob("payloads/*")), "a test's child fetched a payload"
     if found is None:
@@ -327,13 +323,12 @@ def capability_register(capability_register_dir):
     session's own directory, and a test that needs an empty one sets ``aew.capability.store.ROOT_OVERRIDE`` itself;
     an `aew` a test starts gets the session's own base. (Not through ``monkeypatch``: an autouse fixture that takes
     it would undo every test's ``setenv`` after ``process_isolation`` looks.)"""
-    from aew.capability import ops, store
+    from aew.capability import store
 
-    saved, fetch = store.ROOT_OVERRIDE, ops.LAUNCH_FETCH
+    saved = store.ROOT_OVERRIDE
     store.ROOT_OVERRIDE = capability_register_dir
-    ops.LAUNCH_FETCH = False  # a test of the launch's fetch turns it on, with a fixture in place of the network
     yield capability_register_dir
-    store.ROOT_OVERRIDE, ops.LAUNCH_FETCH = saved, fetch
+    store.ROOT_OVERRIDE = saved
 
 
 @pytest.fixture

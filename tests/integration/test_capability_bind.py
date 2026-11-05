@@ -25,7 +25,6 @@ from capability_stand_in import (
     _plant_host_copy,
     _record,
     make_register,
-    register_holding_a_failed_fetch,
 )
 from fake_harness import POLICY, HarnessLab
 from host_env import GUARDED, clean_launching_env
@@ -380,7 +379,6 @@ def test_with_no_ripgrep_anywhere_doctor_names_it_with_the_fix_and_an_agents_run
                                         "network": {"mode": "shared"}}}
     lab = HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy)
     base = tmp_path / "data"
-    register_holding_a_failed_fetch(base)
     bin_dir = os.path.dirname(sys.executable)
     env = {"XDG_DATA_HOME": str(base), "PATH": f"{bin_dir}:{farm}"}
     try:
@@ -406,7 +404,7 @@ def test_a_process_inside_never_reads_the_contexts_own_entries_as_a_host_copy(wo
     assert status.find_host_copy("fake") is None
 
 
-# ---------------------------------------------------------------------------------------------- the fetch at a launch
+# ---------------------------------------------------------------------------------------------- no fetch at a launch
 
 
 class Network:
@@ -416,7 +414,6 @@ class Network:
         self.asked: list[str] = []
         self.body = body
         monkeypatch.setattr("urllib.request.urlopen", self.urlopen)
-        monkeypatch.setattr(ops, "LAUNCH_FETCH", True)
 
     def urlopen(self, url: str, timeout: float = 0.0) -> Any:
         import io
@@ -427,99 +424,25 @@ class Network:
         return io.BytesIO(self.body)
 
 
-def test_a_fresh_host_has_the_base_tools_before_the_first_use_with_no_operator_step(world, monkeypatch):
-    """CAPR-Q10, with a fixture's archive in place of the network: fetched, checked inside, recorded, serving."""
+def test_a_launch_never_fetches_and_the_operators_check_does(world, monkeypatch):
+    """The operator, 2026-11-05: AEW downloads no tool unless the operator chooses it. A launch on a host without the
+    pinned copy reaches no network: it goes on with the stub (CAPR-12), and the status says the tool is not installed,
+    never that a launch will fetch it. The operator's `aew capability check` fetches it, and the next launch serves it,
+    checked inside."""
     net = Network(monkeypatch, world.reg["archive"])
-    layout, label = world.establish()
-    assert net.asked == [world.pinned["source"]]
-    assert label["self_test"]["tools"]["fake"]["served"] == status.AEW_COPY
+    for _ in range(2):
+        layout, label = world.establish()
+        assert label["self_test"]["ok"] is True and label["self_test"]["tools"]["fake"]["served"] is None
+    assert net.asked == []
     cap = world.status()
-    assert cap["observed_status"] == status.FUNCTIONAL_ONLY and cap["pinned"] is True
-    assert cap["limitations"] == []  # checked in a sandbox, not on the host
-    assert world.state()["checks"]["aew:fake"]["where"] == status.IN_SANDBOX
-    world.establish()
-    assert len(net.asked) == 1  # once: it is there now
-
-
-def test_a_failed_fetch_never_stops_the_run_and_the_status_says_why(world, monkeypatch):
-    """CAPR-12, A6: the launch goes on with the stub, the cause is the failure's, and an offline host pays once. The
-    operator's `aew capability check` always tries."""
-    net = Network(monkeypatch, OSError("no route to host"))
-    layout, label = world.establish()
-    assert label["self_test"]["ok"] is True
-    cap = world.status()
-    assert cap["observed_status"] == status.UNAVAILABLE and "no route to host" in cap["cause"]
-    assert "no route to host" in world.sh(layout, "fake --version").stderr
-    world.establish()
-    assert len(net.asked) == 1  # not again at the next launch, within the retry time
-    state = world.state()
-    state["fetch_failures"][f"fake:{records.platform_key()}"]["at"] = "2020-01-01T00:00:00Z"
-    with store.locked():
-        store.write(state)
-    world.establish()
-    assert len(net.asked) == 2  # and again after it
+    assert cap["observed_status"] == status.UNAVAILABLE and cap["cause"].endswith("it is not installed"), cap
+    assert "launch" not in cap["cause"] and "aew capability check" in cap["fix"]
     ops.check()
-    assert len(net.asked) == 3
-
-
-def test_a_fetched_archive_off_its_pin_is_refused_at_the_launch_and_not_fetched_again(world, monkeypatch):
-    """CAPR-Q01 at the launch's fetch."""
-    data = bytearray(world.reg["archive"])
-    data[len(data) // 2] ^= 1
-    net = Network(monkeypatch, bytes(data))
-    layout, _ = world.establish()
-    assert world.status()["observed_status"] == status.REFUSED and not world.payload.exists()
-    assert world.sh(layout, 'fake --version; echo "exit $?"').stdout.splitlines() == ["exit 127"]
-    world.establish()
-    assert len(net.asked) == 1
-
-
-def test_a_fetch_that_stalls_costs_a_launch_its_bound_and_no_more(world, monkeypatch, capsys):
-    """CAPR-12: a socket that keeps answering slowly is bounded as a whole, and recorded as a failure. Behind a holder
-    of the register's lock (the operator's `aew capability check`, mid-fetch), its record waits only the short wait and
-    gives way, so the launch costs the two bounds `starting_limit_s` adds (review of #330, M1)."""
-    import threading
-    import time
-
-    from aew.harness import supervisor
-
-    release, held, holder_done = threading.Event(), threading.Event(), threading.Event()
-    stall_s = 30.0
-    net = Network(monkeypatch, b"")
-    monkeypatch.setattr(ops.P, "fetch", lambda _p: release.wait(stall_s) and b"")
-    monkeypatch.setattr(ops.P, "LAUNCH_FETCH_BOUND_S", 0.2)
-    monkeypatch.setattr(store, "RECORD_WAIT_S", 0.5)
-    monkeypatch.setattr(store, "LOCK_TIMEOUT_S", stall_s)
-
-    def holder() -> None:
-        with store.locked():
-            held.set()
-            holder_done.wait(stall_s)
-
-    lock_holder = threading.Thread(target=holder, daemon=True)
-    lock_holder.start()
-    assert held.wait(10)
-    started = time.monotonic()
-    try:
-        ops.fetch_at_launch()
-        behind_holder = time.monotonic() - started
-    finally:
-        holder_done.set()
-        lock_holder.join(10)
-    assert behind_holder < 0.2 + 0.5 + 3.0, behind_holder  # the bound and the short wait, never the store's whole wait
-    assert "fetching fake for this host's capability register (at most 0.2 s)" in capsys.readouterr().err
-    assert supervisor.starting_limit_s(None) - supervisor.STARTING_MARGIN_S >= (
-        ops.P.LAUNCH_FETCH_BOUND_S + 2 * store.RECORD_WAIT_S)  # what the deadline adds covers both waits
-    started = time.monotonic()
-    try:
-        ops.fetch_at_launch()
-        spent = time.monotonic() - started
-        _, label = world.establish()
-    finally:
-        release.set()
-    assert spent < stall_s / 2, spent  # it stopped waiting at its bound, well before the stalled fetch would have ended
-    assert net.asked == [] and label["self_test"]["ok"] is True
-    assert "did not finish within" in world.status()["cause"]
+    assert net.asked == [world.pinned["source"]]
+    _, label = world.establish()
+    assert label["self_test"]["tools"]["fake"]["served"] == status.AEW_COPY and net.asked == [world.pinned["source"]]
+    assert world.status()["observed_status"] == status.FUNCTIONAL_ONLY
+    assert world.state()["checks"]["aew:fake"]["where"] == status.IN_SANDBOX
 
 
 def test_a_register_under_a_host_mask_stays_out_and_its_pinned_copy_becomes_the_stub(world, monkeypatch):
@@ -546,54 +469,26 @@ def test_a_register_under_a_host_mask_stays_out_and_its_pinned_copy_becomes_the_
 
 
 def test_a_launch_without_its_pinned_copy_flags_it_and_one_with_it_says_nothing(world, monkeypatch, capsys):
-    """The operator, 2026-11-05, at a real launch: the run's label keeps the list (`harness status` shows it, as the
-    Lead's label does), and the operator's terminal gets the line; with AEW's pinned copy bound, neither."""
+    """The operator, 2026-11-05, at real launches: "the missing tool acts the same as missing skills and is logged and
+    not voided". Each run's label keeps its record (`harness status` shows it, as the Lead's label does), every launch
+    its own; the operator's terminal gets the line once; with AEW's pinned copy bound, neither."""
     monkeypatch.setattr(ops, "_to_terminal", lambda: True)
-    _, label = world.establish()
-    flags = label["tool_flags"]
-    assert [(f["tool"], f["served"], f["reason"]) for f in flags] == [("fake", "stub", "never_fetched")], flags
-    assert "aew: attention: fake in this run is a stub that fails" in capsys.readouterr().err
+    labels = [world.establish()[1] for _ in range(3)]
+    for label in labels:
+        missing = label["missing_tools"]
+        assert missing["unavailable"] == ["fake"] and missing["reasons"] == {"fake": "not_installed"}, missing
+        assert [(d["tool"], d["served"]) for d in missing["detail"]] == [("fake", "stub")], missing
+    said = capsys.readouterr().err
+    assert said.count("aew: attention: fake in this run is a stub that fails") == 1, said
+    assert "it is not installed on this host" in said
     _import(world.reg)
     _, label = world.establish()
-    assert label["tool_flags"] == [] and "attention" not in capsys.readouterr().err
-
-
-def test_no_variable_turns_the_launchs_fetch_off(world, monkeypatch):
-    """The Lead's condition: nothing an installed AEW reads disables it, and the test seam is in process only."""
-    net = Network(monkeypatch, world.reg["archive"])
-    for name in ("AEW_CAPABILITY_FETCH", "AEW_OFFLINE", "AEW_NO_FETCH"):
-        monkeypatch.setenv(name, "off")
-    world.establish()
-    assert net.asked == [world.pinned["source"]]
-    assert not [v for v in vars(ops).values() if isinstance(v, str) and v.startswith("AEW_")]
-
-
-def test_a_tests_child_register_stays_off_the_network_and_never_reads_as_healthy(world, monkeypatch):
-    """How a child `aew` stays off the network, in the status's own words."""
-    net = Network(monkeypatch, world.reg["archive"])
-    register_holding_a_failed_fetch(world.tmp / "base")
-    monkeypatch.setattr(store, "ROOT_OVERRIDE", world.tmp / "base" / "aew" / "capability")
-    world.establish()
-    assert net.asked == []
-    cap = world.status()
-    assert cap["observed_status"] == status.UNAVAILABLE and "this child never fetches" in cap["cause"]
-
-
-def test_the_status_says_when_a_launch_next_tries_a_failed_fetch_and_names_the_check(world, monkeypatch):
-    """A failure the operator can act on: the time, and the command that does not wait for it."""
-    Network(monkeypatch, OSError("no route to host"))
-    world.establish()
-    failed = world.state()["fetch_failures"][f"fake:{records.platform_key()}"]["at"]
-    when = status.next_fetch(failed)
-    assert when is not None
-    cause = world.status()["cause"]
-    assert f"a launch tries again from {when.strftime('%Y-%m-%dT%H:%M:%SZ')}" in cause
-    assert "`aew capability check` tries now" in cause
+    assert label["missing_tools"] == {"unavailable": [], "reasons": {}, "detail": []}
+    assert "attention" not in capsys.readouterr().err
 
 
 def test_a_register_that_cannot_be_written_never_stops_a_launch(world, monkeypatch):
-    """CAPR-12: the fetch and the record of a check both give way."""
-    Network(monkeypatch, world.reg["archive"])
+    """CAPR-12: the record of a check and the mark of the operator's flag both give way."""
 
     def refused(*_a: Any, **_k: Any) -> None:
         raise OSError(30, "Read-only file system")

@@ -163,14 +163,15 @@ def test_a_hosts_no_proxy_never_lets_a_sweeps_child_go_around_the_closed_route(t
 
 
 def test_a_sweeps_child_that_fetches_reaches_no_network(tmp_path, monkeypatch):
-    """#272's quick check, QC1: the sweep runs `aew capability check` online, as a worker's agent could. With the
-    sweep's environment the fetch goes to the closed proxy and fails, so nothing is downloaded and no payload is
-    installed; the failure is recorded in the child's own register (its base is this test's). The host's own route
-    out is a listener here, which records any connection: the child never takes it."""
+    """#272's quick check, QC1: the sweep runs `aew capability check` online, as a worker's agent could. It is refused
+    before anything is read (the operator, 2026-11-05: AEW downloads no tool unless the operator chooses it), so
+    nothing is downloaded, no payload is installed and no register is written. Behind it, the sweep's environment
+    sends a fetch to the closed proxy; the host's own route out is a listener here, which records any connection: the
+    child never takes it."""
     import socket
     import threading
 
-    from aew.capability import records, store
+    from aew.capability import store
 
     listener = socket.create_server(("127.0.0.1", 0))
     listener.settimeout(0.2)
@@ -201,11 +202,8 @@ def test_a_sweeps_child_that_fetches_reaches_no_network(tmp_path, monkeypatch):
         recorder.join()
         listener.close()
     assert reached == []  # the sweep's environment, not the host's route
-    assert res.returncode == 0, res.stderr
-    register = base / "aew" / "capability"
-    state = json.loads((register / store.REGISTER).read_text(encoding="utf-8"))
-    assert sorted(state["fetch_failures"]) == [f"ripgrep:{records.platform_key()}"], state["fetch_failures"]
-    assert not (register / store.PAYLOADS).exists()
+    assert res.returncode != 0 and refusal_reason(res.stderr) == "operator_only", res.stderr
+    assert not (base / "aew" / "capability").exists()  # nothing read, nothing written, nothing fetched
 
 
 def refusal_reason(stderr: str) -> str | None:

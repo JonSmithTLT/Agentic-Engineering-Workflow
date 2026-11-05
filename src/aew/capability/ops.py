@@ -4,9 +4,11 @@
   capability list`` and ``aew doctor`` show it, and need no authorization.
 * :func:`check`: fetch what a record pins and this host lacks (online), check every payload against its pin, run the
   health checks and record their results. It writes the checks' results and payloads to an existing pin, never a
-  record or a setting, so it changes no authority and needs none.
-* :func:`fetch_at_launch` and :func:`record_contained`: the same two writes, at a contained context's launch, which
-  never stop it (CAPR-12). What the context then gets is :mod:`.bind`'s.
+  record or a setting, so it changes no authority and needs none. It is the operator's to run: AEW downloads no tool
+  unless the operator chooses it (the operator, 2026-11-05), so nothing else reaches the fetch.
+* :func:`record_contained` and :func:`flag_missing`: at a contained context's launch, the health checks' results
+  from inside, and what the run got without AEW's pinned copy, on its record and once on the operator's terminal.
+  Neither ever stops a launch (CAPR-12), and neither fetches. What the context gets is :mod:`.bind`'s.
 * The operator's changes, ``import``, ``add``, ``remove`` and ``host-copies``, change what a contained context gets,
   so they are the operator's alone (CAPR-05; the designer's CAP-1 ruling 1): a change is previewed
   (:func:`preview`), shown at the operator endpoint's console, and applied by the endpoint (:func:`apply`) once the
@@ -20,9 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
-import threading
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -36,10 +36,6 @@ from aew.util import load_yaml, sha256_text, utc_now
 IMPORT, ADD, REMOVE, HOST_COPIES = "import", "add", "remove", "host_copies"
 CHANGES = (IMPORT, ADD, REMOVE, HOST_COPIES)
 MAX_RECORD_TEXT = 12 * 1024  # an add's record text travels in one operator endpoint request (its MAX_MESSAGE, 16 KiB)
-# Tests turn the launch's fetch off in process, as they point the register elsewhere (``store.ROOT_OVERRIDE``); the
-# product never sets it, and no variable reaches it, so an installed AEW always fetches what it lacks. A test's child
-# `aew` starts from a register that holds a failure instead, which reads as what it is (``conftest``).
-LAUNCH_FETCH = True
 
 
 # ---------------------------------------------------------------------------------------------- reading
@@ -174,7 +170,14 @@ def check(selector: str | None = None, *, offline: bool = False, directory: Path
     pin as it is read (``offline``: never). A payload that does not match its pin is refused and removed; the next
     check fetches it again. Each copy's health check runs inside a sandbox, as its uses run (CAPR-13), so what it says
     is what a contained run sees; only where no sandbox can be made does it run here, and the status says so. A host
-    copy is checked where AEW's copy cannot serve and host copies are on."""
+    copy is checked where AEW's copy cannot serve and host copies are on. It is the operator's to run: an agent's own
+    `aew` (a worker run's, the contained Lead's) is refused, as AEW downloads no tool the operator did not choose (the
+    operator, 2026-11-05). A keep-out keyed on the process's declaration, not the boundary: inside a sandbox the
+    register is read-only."""
+    if process_kind.kind() == process_kind.NON_WRITER:
+        raise PermissionDenied("`aew capability check` is the operator's, at their own terminal: it may fetch a tool "
+                               "and it writes this host's capability register, and an agent's own `aew` does neither; "
+                               "ask the operator to run it", reason="operator_only")
     with store.locked(directory) as root:
         state = store.read(root)
         eff = status.effective(state)
@@ -290,75 +293,6 @@ def _fetch(name: str, record: dict[str, Any], pinned: dict[str, Any], state: dic
 # ---------------------------------------------------------------------------------------------- at a launch
 
 
-def _due(state: dict[str, Any], directory: Path | None) -> list[tuple[str, dict[str, Any], dict[str, Any]]]:
-    """What a launch fetches: each payload this host lacks that was neither refused nor failed lately. A refusal stays
-    until ``aew capability check``, which is the operator's to run, and whose fix text the status gives."""
-    key = records.platform_key()
-    out = []
-    for name, entry in sorted(status.effective(state).items()):
-        pinned = (entry["record"] or {}).get("payloads", {}).get(key)
-        if pinned is None or P.path_of(name, entry["record"]["command"], pinned, directory).exists():
-            continue
-        refused = (state.get("refused") or {}).get(f"{name}:{key}") or {}
-        failed = (state.get("fetch_failures") or {}).get(f"{name}:{key}") or {}
-        if refused.get("sha256") == pinned["sha256"]:
-            continue
-        if failed.get("sha256") == pinned["sha256"] and _within_retry(failed.get("at")):
-            continue
-        out.append((name, entry["record"], pinned))
-    return out
-
-
-def _within_retry(at: Any) -> bool:
-    """A failure this recent is not tried again at a launch: each try can cost a launch
-    :data:`P.LAUNCH_FETCH_BOUND_S`. An unreadable time: try again."""
-    next_try = status.next_fetch(at)
-    return next_try is not None and datetime.now(UTC) < next_try
-
-
-def fetch_at_launch(directory: Path | None = None) -> None:
-    """CAPR-04, CAPR-Q10: before a contained context's first use, with no step for the operator, fetch what this host
-    lacks. It never stops the launch (CAPR-12): a failure is recorded, the status says why, and the run goes on with a
-    host copy or the stub. The network wait is outside the register's lock and bounded as a whole, so a second launch
-    does not queue behind it; two first launches may each fetch, and each installs the same pinned bytes. Its record
-    waits only the short ``store.RECORD_WAIT_S`` for the lock: behind a long holder (`aew capability check` holds it
-    across its fetches) it gives way, and the next launch fetches and records (review of #330, M1). Every wait here is
-    one ``supervisor.starting_limit_s`` adds."""
-    if not LAUNCH_FETCH:
-        return
-    if process_kind.kind() == process_kind.NON_WRITER:  # an agent's own `aew`: the register is the operator's
-        return
-    try:
-        due = _due(store.read(directory), directory)
-        if not due:
-            return
-        # Said where the operator sees it: a start that waits on the network says so (review of #330, m3)
-        sys.stderr.write(f"aew: fetching {', '.join(name for name, _, _ in due)} for this host's capability register "
-                         f"(at most {P.LAUNCH_FETCH_BOUND_S:g} s); the run goes on whatever comes of it\n")
-        got: dict[str, bytes | AEWError] = {}
-
-        def fetch_all() -> None:
-            for name, _, pinned in due:
-                got[name] = _fetched(pinned)
-
-        worker = threading.Thread(target=fetch_all, name="aew-capability-fetch", daemon=True)
-        worker.start()
-        worker.join(P.LAUNCH_FETCH_BOUND_S)
-        # Past the bound the whole fetch is abandoned, what it brought included: its thread writes only into a dict no
-        # one reads after this, and a download is in memory, so a late or partial one leaves nothing behind
-        done = {} if worker.is_alive() else dict(got)
-        late = Unavailable(f"the fetch did not finish within {P.LAUNCH_FETCH_BOUND_S:g} s at this launch",
-                           reason="fetch_failed", fetch_reason="timed_out")
-        key = records.platform_key()
-        with store.locked(directory, short=True) as root:
-            state = store.read(root)
-            for name, record, pinned in due:
-                _take(name, record, pinned, state, key, root, done.get(name, late))
-            store.write(state, root)
-    except (AEWError, OSError):  # a register that cannot be read or written: every status read says so itself
-        return
-
-
 def missing(tools: dict[str, Any] | None, directory: Path | None = None) -> list[dict[str, Any]]:
     """Each tool a contained run got without AEW's pinned copy, from its self-test (``probe.self_test``'s ``tools``):
     a stub or an unpinned host copy, why AEW's copy does not serve (closed, :data:`status.NOT_SERVING_WHY`), since
@@ -434,6 +368,15 @@ def flag_missing(tools: dict[str, Any] | None, directory: Path | None = None) ->
     for flag in show:
         sys.stderr.write(flag_line(flag) + "\n")
     return flags
+
+
+def run_record(flags: list[dict[str, Any]]) -> dict[str, Any]:
+    """What a run's label keeps of the tools it got without AEW's pinned copy (:func:`flag_missing`'s list), in the
+    shape a run's missing skills take: each tool in ``unavailable``, its closed reason in ``reasons``, and the whole of
+    each in ``detail``. Every run keeps its own, whatever the operator's line said before: nothing removes a tool from
+    a run's record (the operator, 2026-11-05)."""
+    return {"unavailable": [f["tool"] for f in flags], "reasons": {f["tool"]: f["reason"] for f in flags},
+            "detail": flags}
 
 
 def record_contained(tools: dict[str, Any] | None, directory: Path | None = None) -> None:

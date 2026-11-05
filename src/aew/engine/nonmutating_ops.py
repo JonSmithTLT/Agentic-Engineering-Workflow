@@ -557,8 +557,8 @@ class NonMutating:
                                    f"{execution['expected_kind']} (pinned at dispatch), not a {kind}")
         section = {"discovery_record": "discovery", "research_record": "research", "plan_proposal": "proposal"}[kind]
         result = submitted.get("result", "pass")
-        if result not in {"pass", "blocked", "inconclusive"}:
-            raise ValidationFailed("a record's result is pass (the question is answered), blocked or inconclusive")
+        if result not in E.RECORD_RESULTS:
+            raise ValidationFailed(f"a record's result is {E.one_of(E.RECORD_RESULTS)}")
         return {"evaluated_snapshot": inv["snapshot"], "attempt": inv["attempt"], "result": result,
                 section: submitted.get(section) or {}}
 

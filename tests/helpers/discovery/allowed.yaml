@@ -474,18 +474,10 @@ allowed:
   - tool:ticket_start|STALE_REVISION
   - tool:work_show|NOT_FOUND
   O-SECRET:
-  - cli:aew context show|result
   - cli:aew history audit|USAGE
   - cli:aew lead session|USAGE
   - cli:aew map generate|USAGE
   - cli:aew opencode|USAGE
-  - cli:aew whoami|USAGE
-  - static:pack:implementer|asks to set AEW_INVOCATION_TOKEN
-  - static:pack:investigator|asks to set AEW_INVOCATION_TOKEN
-  - static:pack:planner|asks to set AEW_INVOCATION_TOKEN
-  - static:pack:researcher|asks to set AEW_INVOCATION_TOKEN
-  - static:pack:reviewer|asks to set AEW_INVOCATION_TOKEN
-  - static:pack:verifier|asks to set AEW_INVOCATION_TOKEN
   O-ENV:
   - static:lead-system+guide
 residuals:

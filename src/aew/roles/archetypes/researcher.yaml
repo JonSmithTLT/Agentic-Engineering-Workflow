@@ -17,6 +17,6 @@ prohibited:
 outputs:
   - research record
 context:
-  knowledge: [objective, accepted_authority, open_questions]
+  knowledge: [objective, accepted_authority]
   excluded: []
 capabilities: [documentation_lookup]

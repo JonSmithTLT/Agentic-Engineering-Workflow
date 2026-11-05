@@ -279,8 +279,8 @@ def preamble(c: LaunchContract) -> str:
         "",
         "- In this environment the `aew` command is already connected to AEW for this run. Use it exactly as the "
         f"contract shows ({commands}).",
-        "- **There is no credential to set.** Ignore the contract's instruction to set `AEW_INVOCATION_TOKEN`: "
-        "you never see, need or ask for an AEW credential, and none exists in this environment.",
+        "- **There is no credential to set.** You never see, need or ask for an AEW credential, and none exists in "
+        "this environment.",
         f"- Only submitted AEW evidence counts. Expected output: {kinds}. Ending the conversation without "
         "`aew submit` records nothing and changes no AEW state.",
         f"- Work only in `{c.workspace}`. Do not start background processes that outlive your commands.",

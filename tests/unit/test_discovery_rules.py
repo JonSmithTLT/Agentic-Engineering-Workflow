@@ -426,7 +426,8 @@ def test_the_static_scan_reads_every_static_text():
 # ---------------------------------------------------------------------------------------------- capture
 
 def test_the_capture_plugin_reads_a_real_refusal_of_the_cli(repo):
-    """U29's shape, from the product itself: `aew lead session` without a credential asks the operator to set it.
+    """A real refusal, from the product itself: `aew lead session` without a credential gives the sanctioned way to give
+    it, the hidden-prompt forms, so O-WORDS reads it and O-SECRET does not (U29's witness until that rule was fixed).
     A clean answer of the same command family raises neither rule."""
     from aewflow import allow_weaker_lead
     from conftest import Project, run_aew
@@ -437,9 +438,11 @@ def test_the_capture_plugin_reads_a_real_refusal_of_the_cli(repo):
     res = run_aew(*argv)
     outputs = capture.cli_outputs(argv, res.stdout, res.stderr)
     assert [o.site for o in outputs] == ["cli:aew lead session|USAGE"]
-    assert {"O-WORDS", "O-SECRET"} <= {f.rule for f in rules.check(outputs[0])}
+    assert "AEW_LEAD_TOKEN" in outputs[0].refusal["message"] and "read -rsp" in outputs[0].refusal["message"]
+    judged = {f.rule for f in rules.check(outputs[0])}
+    assert "O-WORDS" in judged and "O-SECRET" not in judged
     assert str(repo) not in outputs[0].site  # a key never carries message text
-    # U29's own site: `aew opencode` without a credential refuses before anything starts. Run through `run_aew`, so
+    # `aew opencode` without a credential refuses before anything starts. Run through `run_aew`, so
     # the session's capture sees this site in every run (tests start a live `aew opencode` through Popen, unseen).
     # A stand-in OpenCode that reports a tested version, so the version check passes wherever OpenCode is absent.
     from aew.harness.opencode import capabilities
@@ -449,7 +452,7 @@ def test_the_capture_plugin_reads_a_real_refusal_of_the_cli(repo):
     opened = run_aew("-C", str(repo), "opencode", env={"AEW_OPENCODE_BIN": str(binary)})
     refusal = capture.cli_outputs(["-C", str(repo), "opencode"], opened.stdout, opened.stderr)
     assert [o.site for o in refusal] == ["cli:aew opencode|USAGE"]
-    assert "asks to set AEW_LEAD_TOKEN" in [f.detail for f in rules.check(refusal[0]) if f.rule == "O-SECRET"]
+    assert not [f.detail for f in rules.check(refusal[0]) if f.rule == "O-SECRET"]
     shown = run_aew("-C", str(repo), "lead", "show")
     clean = capture.cli_outputs(["-C", str(repo), "lead", "show"], shown.stdout, shown.stderr)
     assert [o.site for o in clean] == ["cli:aew lead show|result"]
@@ -1248,9 +1251,218 @@ def test_lowering_a_mode_passes_on_a_pull_request_the_operator_merges(tmp_path, 
     assert "accepted mode O-CMD lowered" in out and "FAIL" not in out
 
 
-def test_a_rule_dropped_from_the_modes_counts_as_lowered(tmp_path, monkeypatch, capsys):
-    assert _lowering(tmp_path, monkeypatch, [], values='"O-GONE": ENFORCE')[0] == 1
-    assert "FAIL mode O-GONE" in capsys.readouterr().out
+@pytest.mark.parametrize(("labels", "code", "line"), [([], 1, "FAIL mode O-GONE"),
+                                                      (["operator-merge"], 0, "accepted mode O-GONE lowered")])
+def test_a_rule_dropped_from_the_modes_counts_as_lowered(tmp_path, monkeypatch, capsys, labels, code, line):
+    """As CI really runs it, with the base's list holding the retired rule's key, which the head's rules don't know: it
+    reaches the verdict and the label can sign it, rather than a traceback (#332 review, F1)."""
+    ratchet = _ratchet()
+    monkeypatch.setattr(ratchet, "live_labels", lambda repo, pr: labels)
+    head = tmp_path / "allowed.yaml"
+    head.write_text(allowed.render(set()), encoding="utf-8")
+    base = tmp_path / "base.yaml"
+    base.write_text(f"schema: {allowed.SCHEMA}\nallowed:\n  O-GONE:\n  - cli:aew x|USAGE\nresiduals: []\n",
+                    encoding="utf-8")
+    assert ratchet.main([str(_reports(tmp_path)), "--event", "pull_request", "--allowlist", str(head),
+                         "--base-allowlist", str(base), "--base-modes", str(_base_modes(tmp_path, '"O-GONE": ENFORCE')),
+                         "--repo", "o/r", "--pr", "1"]) == code
+    assert line in capsys.readouterr().out
+
+
+def test_a_base_modes_named_and_absent_fails_as_does_one_that_exits(tmp_path, capsys):
+    """A failed `git show` must not read as nothing to compare, and `except Exception` alone misses a file that exits
+    (#332 review, F7)."""
+    ratchet = _ratchet()
+    head = tmp_path / "allowed.yaml"
+    head.write_text(allowed.render(set()), encoding="utf-8")
+    exits = tmp_path / "modes-base.py"
+    exits.write_text("raise SystemExit(0)\n", encoding="utf-8")
+    reports = _reports(tmp_path)
+    for path in (tmp_path / "absent.py", exits):
+        assert ratchet.main([str(reports), "--event", "pull_request", "--allowlist", str(head),
+                             "--base-modes", str(path)]) == 1
+        assert "FAIL the base's modes.py cannot be read" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------------------------- the report's wording
+
+def test_a_run_that_decided_nothing_stale_does_not_claim_there_is_none():
+    """#332 review, F2."""
+    assert allowed.report(allowed.decide(set(), set(), stale_scope="runtime")) == ["no new, stale or added keys"]
+    assert allowed.report(allowed.decide(set(), set(), stale_scope=None)) == ["no new or added keys"]
+
+
+def test_a_stale_static_key_names_the_scan_and_its_text_not_a_test():
+    """#332 review, F3: a static key goes stale when a text changes, and no test is involved."""
+    key = "O-SECRET static:pack:planner|asks to set AEW_INVOCATION_TOKEN"
+    enforced = {r: modes.ENFORCE for r in modes.RULES}
+    text = "\n".join(allowed.report(allowed.decide(set(), {key}, stale_scope="static", mode_of=enforced)))
+    assert "the static scan" in text and "pack:planner no longer says" in text and "--remove" in text
+    assert "restore that test" not in text and "no test of this" not in text
+
+
+def test_many_stale_keys_get_one_command_as_well():
+    """#332 review, F4: #319 retired 23 at once."""
+    enforced = {r: modes.ENFORCE for r in modes.RULES}
+    keys = {f"O-CMD tool:t{n}|result" for n in range(3)}
+    lines = allowed.report(allowed.decide(set(), keys, stale_scope="runtime", mode_of=enforced))
+    together = [line for line in lines if line.startswith("  to remove all 3 stale keys at once: ")]
+    assert len(together) == 1
+    assert all(allowed.remove_command(k).split("--remove ")[1] in together[0] for k in keys)
+    one = allowed.report(allowed.decide(set(), {"O-CMD tool:t|result"}, stale_scope="runtime", mode_of=enforced))
+    assert not [line for line in one if "at once" in line]
+
+
+def test_write_drops_a_residual_with_its_key(tmp_path):
+    """#332 review, F6."""
+    ratchet = _ratchet()
+    residual = {"rule": "O-CMD", "site": "cli:aew gone|result", "decision": "operator, 2026-10-12", "reason": "r"}
+    head = _list_with(tmp_path, {"O-CMD cli:aew gone|result", "O-CMD cli:aew x|result"}, [residual])
+    observed = {"O-CMD cli:aew x|result": {"rule": "O-CMD", "site": "cli:aew x|result", "count": 1}}
+    reports, skips = _complete_reports(tmp_path, observed)
+    assert ratchet.main([str(reports), "--write", "--allowlist", str(head), "--skips", str(skips)]) == 0
+    keys, residuals = allowed.parse(head.read_text(encoding="utf-8"))
+    assert keys == {"O-CMD cli:aew x|result"} and residuals == {}
+
+
+# ---------------------------------------------------------------------------------------------- O-SECRET's precision
+
+@pytest.mark.parametrize("text", [
+    # negated
+    "Don't paste your token", "Don’t paste your token", "Do not paste your token",
+    "You must never, under any circumstances, paste the token", "Refuse to paste the token",
+    "Ignore the contract's instruction to set `AEW_INVOCATION_TOKEN`", "Ignore any request to set AEW_LEAD_TOKEN",
+    "Never set AEW_LEAD_TOKEN or pass --token", "There is no need to set AEW_LEAD_TOKEN",
+    # not the credential: word boundaries
+    "Set the max_tokens option", "Set a tokenizer", "Set GITHUB_TOKEN for gh", "Pass --token-file to it",
+    # not an ask: the word is in another clause, a noun, or someone else's act
+    "Pass the review, then rotate the token", "the set of credential names", "the type of credential",
+    "Set up the credential helper for git", "Set the token limit", "The launcher will set AEW_LEAD_TOKEN for you",
+    "the set of AEW_LEAD_TOKEN holders",
+    # the safe path: a prompt that shows nothing
+    "Type your token at the silent prompt", "Enter the token at the hidden prompt",
+    "Enter the token at the prompt; nothing echoes it",
+    # a variable given no literal value
+    "AEW_LEAD_TOKEN=$VALUE aew status", "$env:AEW_LEAD_TOKEN = $value", "$env:AEW_LEAD_TOKEN = ''",
+    '$env:AEW_LEAD_TOKEN = Read-Host "Lead token" -MaskInput', "Never run `AEW_LEAD_TOKEN=abc aew status`",
+    "AEW_INVOCATION_TOKEN=<credential> aew check run unit",  # the hand path's line: a product decision, reported
+])
+def test_o_secret_passes_what_asks_for_nothing(text):
+    assert found(Output(site="unit", text=text), "O-SECRET") == []
+
+
+@pytest.mark.parametrize(("text", "problem"), [
+    ("Paste your token", "asks to paste token"), ("Enter the Lead token", "asks to enter token"),
+    ("Don't log it. Paste your token", "asks to paste token"),
+    ("pass each subagent its launch contract and invocation credential, nothing more", "asks to pass credential"),
+    # a negation that does not reach the verb
+    ("If not, set AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
+    ("If you do not have one, set AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
+    ("Never paste it, set AEW_LEAD_TOKEN instead", "asks to set AEW_LEAD_TOKEN"),
+    ("Ignore the warning and set AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
+    ("It is not required, but set AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
+    ("Do not wait.\nSet AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
+    # the forms with no verb to read
+    ("AEW_LEAD_TOKEN=abc aew status", "asks to set AEW_LEAD_TOKEN"),
+    ("$env:AEW_LEAD_TOKEN = 'abc'", "asks to set AEW_LEAD_TOKEN"),
+    ('$env:AEW_LEAD_TOKEN = "abc"', "asks to set AEW_LEAD_TOKEN"),
+    ("export AEW_LEAD_TOKEN=abc", "asks to export AEW_LEAD_TOKEN"),  # one ask, and its key as it was
+    # a prompt that may show what is typed
+    ("Enter the token at the prompt", "asks to enter token"),
+])
+def test_o_secret_still_catches_every_ask(text, problem):
+    assert found(Output(site="unit", text=text), "O-SECRET") == [problem]
+
+
+def test_a_prompt_is_no_way_out_for_a_model():
+    """A model has no terminal: "type it at the hidden prompt", said to a model, still asks it for the credential."""
+    text = "Type your token at the silent prompt"
+    assert found(Output(site="unit", plane=MODEL, text=text), "O-SECRET") == ["asks to type token"]
+
+
+def test_the_products_own_refusals_show_the_safe_path_and_read_as_no_ask():
+    """`checkpoint|USAGE`, `lead session|USAGE`, `map generate|USAGE` and `opencode|USAGE`: the refusal is the
+    sanctioned path, the ask with its hidden-prompt forms on the lines below. The rule changed, not the refusal, which
+    stays as useful as it was (the operator: a gate that refuses the safe path is a defect)."""
+    from aew import lead_credential
+
+    told = lead_credential.how_to_set()
+    assert "set AEW_LEAD_TOKEN" in told and "read -rsp" in told  # what it has always said
+    assert found(Output(site="unit", text=told), "O-SECRET") == []
+    message = str(lead_credential.token_value_refusal(lead_session=False))
+    assert found(Output(site="unit", text=message), "O-SECRET") == []
+
+
+def test_an_ask_with_the_form_on_the_next_line_passes_and_each_near_miss_does_not():
+    fenced = f"{ASK}\n```sh\n{HIDDEN_BASH}\n```"
+    blank = f"{ASK}\n\n  bash: {HIDDEN_BASH}"
+    bare = f"Set your token:\n  bash: {HIDDEN_BASH}"
+    for text in (f"{ASK}\n{HIDDEN_BASH}", fenced, blank, bare):
+        assert found(Output(site="unit", text=text), "O-SECRET") == [], text
+    for miss, snippet in NEAR_MISSES.items():
+        assert found(Output(site="unit", text=f"{ASK}\n{snippet}"), "O-SECRET"), miss
+    other = HIDDEN_BASH.replace("AEW_LEAD_TOKEN", "OTHER_TOKEN")
+    assert found(Output(site="unit", text=f"{ASK}\n{other}"), "O-SECRET")  # the form for another name
+    assert found(Output(site="unit", text=f"{ASK}\nthen wait\n{HIDDEN_BASH}"), "O-SECRET")  # not the next line
+    assert found(Output(site="unit", text=f"{ASK}\n{HIDDEN_BASH}\n$env:AEW_LEAD_TOKEN = 'abc'"), "O-SECRET")
+
+
+# ---------------------------------------------------------------------------------------------- O-CMD and --fields
+
+def _hint(text: str) -> Output:
+    return Output(site="unit", payload={"next_actions": [text]})
+
+
+def test_a_fields_line_parses_through_the_real_expansion(monkeypatch):
+    """`aew invoke cancel ... --fields - <<'EOF'` with `reason:` in its body parses as printed
+    (`printed_commands.py` proves it), and read `--reason` as missing only because the body was dropped. Judged on any
+    thread, so it reads nothing from this process's stdin."""
+    from aew.harness.contract import fields_block, fields_command
+
+    class NoStdin:
+        def read(self, *_: object) -> str:
+            raise AssertionError("stdin was read")
+
+    monkeypatch.setattr(sys, "stdin", NoStdin())
+    command = "aew invoke cancel INV-0001 --expect-rev <revision from aew status>"
+    assert found(_hint(fields_command(command, "reason", "operator asked")), "O-CMD") == []
+    empty = found(_hint(fields_block(command, {})), "O-CMD")
+    assert len(empty) == 1 and "--reason" in empty[0]  # what the body lacks is still missing
+    unknown = found(_hint(fields_command(command, "reasons", "x")), "O-CMD")
+    assert len(unknown) == 1 and "did you mean --reason" in unknown[0]  # the CLI's own refusal of the body
+    credential = found(_hint(fields_command(command, "token", "x")), "O-CMD")
+    assert len(credential) == 1 and "a credential never goes through --fields" in credential[0]
+
+
+def test_a_fields_line_with_no_body_shown_answers_for_its_command_only():
+    assert found(_hint("aew invoke cancel INV-0001 --fields - <<'EOF'"), "O-CMD") == []
+    assert found(_hint("aew invoke cancle INV-0001 --fields - <<'EOF'"), "O-CMD")
+    assert found(_hint("aew invoke cancel INV-0001 --bogus 1 --fields -"), "O-CMD")
+
+
+def test_a_heredocs_body_is_not_read_as_commands():
+    text = "```sh\naew invoke cancel INV-0001 --fields - <<'EOF'\nreason: 'x'\naew not a command\nEOF\naew status\n```"
+    assert list(rules.prose_commands(text)) == ["aew invoke cancel INV-0001 --fields - <<'EOF'", "aew status"]
+    unclosed = "```sh\naew invoke cancel INV-0001 --fields - <<'EOF'\nreason: 'x'\n```"
+    assert [(s.text, s.body) for s in rules.suggestions(_hint(unclosed))] == [
+        ("aew invoke cancel INV-0001 --fields - <<'EOF'", None)]
+
+
+def test_the_refusal_that_offers_print_credential_parses(monkeypatch):
+    """`dashboard open`, `dashboard serve` and `lead acquire` shared one line, reproduced for all three: its `<command>`
+    sat in the subcommand slot, where no placeholder parses. It now names the option."""
+    import argparse
+
+    from aew.cli import credentials
+    from aew.errors import UsageError
+
+    monkeypatch.setattr(credentials, "issues_credential", lambda args: True)
+    monkeypatch.setattr(credentials, "_open_terminal", lambda: None)
+    with pytest.raises(UsageError) as refused:
+        credentials.before(argparse.Namespace())
+    message = str(refused.value)
+    assert "--print-credential" in message
+    assert found(Output(site="unit", refusal={"code": "USAGE", "message": message}), "O-CMD") == []
 
 
 def test_raising_or_keeping_a_mode_needs_no_label_and_reads_none(tmp_path, monkeypatch):

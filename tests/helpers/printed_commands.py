@@ -101,7 +101,6 @@ PLACEHOLDERS: dict[str, str] = {
     "<goal>": "goal",
     "<clause>": "clause",
     "<path glob>": "src/**",
-    "<command>": "status",  # any aew command, after a global option
 }
 
 # The printed text's owners (``aew.harness.contract``): a replacement field naming one is its value, not a slot.

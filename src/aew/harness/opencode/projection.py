@@ -152,9 +152,11 @@ def network_text(network: Mapping[str, Any]) -> str:
     everything else is refused by design, and how to ask for more. ``network`` is the run's label
     (``netns.RunNetwork.describe``); its upstream and stated limits are the operator's, not the agent's."""
     reach = ["your model's provider"] if network.get("provider_relay") == "configured" else []
-    allow = list(network.get("egress_allow") or [])
-    if allow:
-        reach.append(f"through `HTTPS_PROXY`, only {', '.join(f'`{a}`' for a in allow)}")
+    allow = ", ".join(f"`{a}`" for a in network.get("egress_allow") or [])
+    if network.get("provider_route") == "egress":  # no relay: the provider is on the list, and reached through it
+        reach.append(f"your model's provider through `HTTPS_PROXY`, which admits only {allow}")
+    elif allow:
+        reach.append(f"through `HTTPS_PROXY`, only {allow}")
     return (f"- This run has a network of its own (`{network['mode']}`): "
             + (f"it reaches {' and, '.join(reach)}" if reach else "it has no route out")
             + ". Every other connection is refused by design. If your work needs another host, do not work around "

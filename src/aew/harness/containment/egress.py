@@ -1,9 +1,10 @@
 """F28's generic egress proxy: credentialless, CONNECT only, with two policies and R-6 (STG-05 CS-3a; F28 §3.4).
 
-The proxy serves the sandbox's optional non-provider egress, such as OpenCode's catalog fetch in connected mode. It
+The proxy serves the sandbox's optional egress, such as OpenCode's catalog fetch in connected mode. It
 runs in the host's network namespace, outside the run's sandbox, and holds no credential: it never sees or adds
-one, and it forwards no request header. Provider traffic never comes here: it goes through the credentialing relay
-(F28 §3.3, decision 5).
+one, and it forwards no request header. A provider's credential never comes here: provider traffic that has one goes
+through the credentialing relay (F28 §3.3, decision 5). Traffic with none may: the one ``host:port`` of a worker with no
+key, which its harness calls itself (``netns.keyless_egress``), as the Lead's free models do.
 
 **Policies.** :class:`Allowlist` is a bounded ``host:port`` list, the workers' policy. Web, browser and
 package-manager destinations are never added to it just because a harness supports them (F28 §3.4). :class:`AnyPublic`
@@ -474,8 +475,7 @@ class EgressProxy(Service):
                     "relayed. Retry the request.")
         if reason in peer.HOST_ROUTE_REASONS:
             return (f"CONNECT {target} refused: it reaches a {reason} address. The egress proxy runs on the host and "
-                    "never connects to the host's own addresses, even allowlisted ones (R-6). Provider traffic goes "
-                    "through the provider relay, not this proxy.")
+                    "never connects to the host's own addresses, even allowlisted ones (R-6).")
         return (f"CONNECT {target} refused: it reaches a {reason} address, which is not public; this run's egress "
                 "admits public addresses only.")
 

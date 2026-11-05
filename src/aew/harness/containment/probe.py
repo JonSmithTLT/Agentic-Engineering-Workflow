@@ -491,11 +491,12 @@ def _echo(path: str, deadline: float, out: dict[str, Any], ended: threading.Even
 
 
 @contextlib.contextmanager
-def _network(layout: Layout, *, egress_policy: Any, bridge: str | None) -> Iterator[dict[str, Any] | None]:
+def _network(layout: Layout, *, egress_policy: Any, bridge: str | None,
+             provider_relay: bool = True) -> Iterator[dict[str, Any] | None]:
     """Row 1's stand-ins, in the run's own network directory, for as long as the probe runs: the probe's relay (its
     upstream a listener of the host's, with a credential of the probe's own) and an egress proxy with the run's
-    allowlist, where the run has them; a loopback port and an abstract socket the host holds, which must not be there
-    inside. None for a run on the host's network."""
+    allowlist, where the run has them (a keyless run has no relay: ``netns.keyless_egress``); a loopback port and an
+    abstract socket the host holds, which must not be there inside. None for a run on the host's network."""
     if not layout.private_network or not layout.net_dir or sys.platform == "win32":
         yield None
         return
@@ -509,21 +510,23 @@ def _network(layout: Layout, *, egress_policy: Any, bridge: str | None) -> Itera
             stack.callback(Path(directory, name).unlink, missing_ok=True)
         sentinel = ""
         if layout.network == PROXY_ONLY:
-            listener = socket.create_server(("127.0.0.1", 0))
-            upstream = _ProbeUpstream(listener, state["token"], state["seen"])
-            stack.callback(upstream.close)  # it closes the listener too
-            upstream.start()
-            state["secret"], sentinel = secrets.token_hex(16), relay.sentinel()
-            target = relay.Upstream(f"http://127.0.0.1:{listener.getsockname()[1]}/aew-probe")
-            probe_relay = relay.ProviderRelay(target, {sentinel: state["secret"]},
-                                              listener=netns.listen(os.path.join(directory, PROBE_RELAY))).start()
-            stack.callback(probe_relay.close)
-            state["relay"] = True
+            if provider_relay:
+                listener = socket.create_server(("127.0.0.1", 0))
+                upstream = _ProbeUpstream(listener, state["token"], state["seen"])
+                stack.callback(upstream.close)  # it closes the listener too
+                upstream.start()
+                state["secret"], sentinel = secrets.token_hex(16), relay.sentinel()
+                target = relay.Upstream(f"http://127.0.0.1:{listener.getsockname()[1]}/aew-probe")
+                probe_relay = relay.ProviderRelay(target, {sentinel: state["secret"]},
+                                                  listener=netns.listen(os.path.join(directory, PROBE_RELAY))).start()
+                stack.callback(probe_relay.close)
+                state["relay"] = True
             if egress_policy is not None:
                 proxy = egress.EgressProxy(egress_policy,
                                            listener=netns.listen(os.path.join(directory, PROBE_EGRESS))).start()
                 stack.callback(proxy.close)
                 state["egress"] = True
+                state["egress_allow"] = egress_policy.describe().get("allow")
         held = socket.create_server(("127.0.0.1", 0))
         stack.callback(held.close)
         abstract = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)  # pyright: ignore[reportAttributeAccessIssue]
@@ -570,7 +573,7 @@ def new_sentinel(directory: Path) -> Path:
 
 
 def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tuple[str, ...] = (),
-              env: Mapping[str, str] | None = None, egress_policy: Any = None,
+              env: Mapping[str, str] | None = None, egress_policy: Any = None, provider_relay: bool = True,
               bridge: str | None = None, relayed_terminal: Mapping[str, Any] | None = None,
               spec_dir: Path | None = None, sentinel: Path | None = None) -> dict[str, Any]:
     """Run the probe in ``layout``. Returns ``{"ok": bool, "reason": str | None, "rows": {...}, "tools": {...}, ...}``;
@@ -578,14 +581,15 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tup
     environment's ``PATH``, the sandbox finds each tool a harness needs from the host (``{"rg": path or None}``).
     ``own`` holds the run's own socket directories (its bridge, its network directory); ``env`` is the launching
     environment the socket classes read (default: this process's). For row 1: ``egress_policy`` is the run's egress
-    allowlist (None: the run has no egress proxy), and ``bridge`` the run's bridge socket, which must answer inside.
+    allowlist (None: the run has no egress proxy), ``provider_relay`` whether the run has a relay (a keyless run has
+    none, so no provider port may answer inside), and ``bridge`` the run's bridge socket, which must answer inside.
     ``relayed_terminal`` is the Lead's (STG-05 CS-4, ruling R-7): the probe then runs on a pseudo-terminal the host
     owns, through the shim's controlling-terminal step, as the Lead's TUI runs on its relay's; row 4 checks that this
     terminal is the probe's controlling terminal and that ``forbid``, the launching terminal's device, is not open
     inside. Its standard input is that terminal, so its spec is a file in ``spec_dir``, which the sandbox must show
     (the run's own harness directory; default ``sentinel_dir``). ``sentinel`` is one :func:`new_sentinel` made before
     the layout (default: one made now in ``sentinel_dir``)."""
-    with _network(layout, egress_policy=egress_policy, bridge=bridge) as net:
+    with _network(layout, egress_policy=egress_policy, bridge=bridge, provider_relay=provider_relay) as net:
         return _self_test(layout, sentinel_dir=sentinel_dir, sibling_dir=sibling_dir, own=own, env=env, net=net,
                           relayed_terminal=relayed_terminal, spec_dir=spec_dir, sentinel=sentinel)
 
@@ -777,6 +781,7 @@ def _row1(layout: Layout, seen: dict[str, Any], net: dict[str, Any] | None) -> d
         problems.append(f"the bridge does not answer inside by its path ({inside.get('bridge')})")
     return _row("network", problems, mode=layout.network, netns={"inside": inside.get("netns"), "launcher": launcher},
                 provider_relay="probe upstream" if net["relay"] else "none", egress=net["egress"],
+                egress_allow=net.get("egress_allow"),
                 egress_refused={"target": planted, "why": why} if net["egress"] else None,
                 checks={k: inside.get(k) for k in ("direct", "direct_udp", "direct6", "host_port", "host_abstract",
                                                    "bridge", "server")},

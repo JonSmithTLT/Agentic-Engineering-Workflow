@@ -5,9 +5,11 @@ and abstract sockets are not in it. What it may reach instead runs outside the s
 socket files in the run's network directory (:func:`private_dir`), which the layout binds in:
 
 * **the provider relay** (``relay.py``): the harness's provider ``baseURL`` is a loopback port inside, which the shim
-  forwards here. It holds the provider's credential and connects to one fixed upstream, the execution policy's.
+  forwards here. It holds the provider's credential and connects to one fixed upstream, the execution policy's. A
+  worker with no key has none: :func:`keyless_egress`.
 * **the egress proxy** (``egress.py``, CS-3a): a bounded ``host:port`` allowlist for anything else (OpenCode's model
-  catalog, say), credentialless, under ruling R-6. Only when the allowlist names something.
+  catalog, say), credentialless, under ruling R-6. Only when the allowlist names something. A worker with no key
+  calls its provider's one host through this proxy.
 * **the shim** (``shim.py``) runs inside, as the harness's parent: it forwards those two ports out, and the harness
   server's port in, for the supervisor.
 
@@ -58,7 +60,8 @@ PROVIDER_KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "google": "GOOGLE_GENERATI
                     "openai": "OPENAI_API_KEY", "opencode": "OPENCODE_API_KEY"}
 # Providers whose models each carry an address of their own in OpenCode's catalog, which beats the provider-level
 # baseURL (measured, 2026-10-24 and 25): the Lead, which switches models from the live catalog, cannot point them at a
-# relay, so their key is never relayed for it (STG-05 CS-4). Their free models need no key and go out through egress.
+# relay, so their key is never relayed for it (STG-05 CS-4). Their free models need no key and go out through egress,
+# the Lead's and a keyless worker's alike (:func:`keyless_egress`).
 CATALOG_ADDRESSED = frozenset({"opencode"})
 # A refreshing (OAuth) login's own upstream, by provider id, where it differs from the provider's API: OpenCode
 # 2.0.18's ChatGPT login moves openai's requests here (its `model.request` hook; read in the bundle, and the relay
@@ -68,6 +71,9 @@ REFRESHING_UPSTREAMS = {"openai": "https://chatgpt.com/backend-api/codex"}
 # The contained Lead's relays, one per provider, on loopback ports inside from here up (4100-4102 are the workers').
 LEAD_RELAY_PORT = 4111
 PROXY_NAMES = frozenset({*agentenv.PROXY_VARS, "NO_PROXY"})
+# What a run reaching its provider through the egress proxy gives up, on its label (operator, 2026-11-05).
+KEYLESS_LIMIT = ("provider: this route is for testing; this run's provider traffic has no relay, so no per-request "
+                 "record and no 429 classification, and AEW can't see the tunnel's content.")
 # The designer's ruling on #246's P8, as the operator decided it (2026-10-24): the one-line form, for the label.
 EGRESS_RESIDUAL = ("egress (R-6): a destination the host's own network configuration, root's, rewrites to this host "
                    "is not detected.")
@@ -123,6 +129,33 @@ def upstream(provider: str | None, policy: Mapping[str, Any] | None,
     except AEWError as exc:
         raise ContainmentUnavailable(f"containment.network.upstreams.{provider}: {exc.message}", provider=provider,
                                      reason="bad_upstream") from None
+
+
+def keyless_egress(provider: str | None, provider_env: Iterable[str], policy: Mapping[str, Any] | None) -> str | None:
+    """The ``host:port`` a worker of ``provider`` calls itself through the egress proxy, or None when the relay serves
+    it (network containment design §8). The one place this is decided, from the pinned profile, the contract's
+    ``provider_env`` and the policy: Linux ``proxy_only``, a :data:`CATALOG_ADDRESSED` provider, its key's variable not
+    named in ``provider_env`` (a named variable that is unset is refused at launch:
+    ``agentenv.provider_env_problems``), and no upstream the policy names for it (a gateway, F18.8). A host variable
+    the policy does not name never reaches the run (``server_env``). Provider variables are the policy's current list,
+    not a pin, so a relaunch can change the route, and each run's label says which it had."""
+    configured = settings(policy).get("upstreams")
+    if mode(policy) != PROXY_ONLY or provider not in CATALOG_ADDRESSED \
+            or PROVIDER_KEY_ENV[provider] in list(provider_env) \
+            or (isinstance(configured, dict) and configured.get(provider)):
+        return None
+    target = upstream(provider, None)
+    return f"{target.host}:{target.port}"
+
+
+def worker_route(policy: Mapping[str, Any] | None, *, provider: str | None, provider_env: Iterable[str],
+                 relay_needed: bool, egress_extra: Iterable[str] = ()) -> tuple[str | None, egress.Allowlist | None]:
+    """A worker's provider route and allowlist: :func:`keyless_egress`'s answer (None when the harness calls no
+    provider, ``relay_needed`` False) and :func:`egress_policy`'s list with that one host added, for that run only. The
+    self-test and the run's network both take them from here, so the self-test checks the policy the run has. Raises
+    ``ValidationFailed`` as :func:`egress_policy` does."""
+    keyless = keyless_egress(provider, list(provider_env), policy) if relay_needed else None
+    return keyless, egress_policy(policy, [*egress_extra, *([keyless] if keyless else [])])
 
 
 def shim_spec(directory: str, *, server: str | None = SERVER, relay_sock: str | None = None,
@@ -201,6 +234,7 @@ class RunNetwork:
         self.sentinels = dict(sentinels or {})  # provider variable -> its sentinel inside
         self._values = dict(values or {})       # provider variable -> its value, for the leak check only
         self.relays: dict[str, tuple[int, relay.ProviderRelay]] = {}  # the Lead's: provider -> (port inside, relay)
+        self.keyless: str | None = None  # the provider's host:port, for a worker that calls it through the egress proxy
         self.login_sentinels: dict[str, str] = {}  # the Lead's refreshing logins: provider -> its sentinel inside
         self.server_leg = True    # a worker's harness server is reached through the shim; the Lead's TUI uses stdio
         self.http_proxy = False   # the Lead's HTTP_PROXY names the egress proxy too, for its refusal's https form
@@ -211,8 +245,10 @@ class RunNetwork:
               policy: Mapping[str, Any] | None, env: Mapping[str, str], relay_needed: bool,
               egress_extra: Iterable[str] = ()) -> RunNetwork:
         """Start what ``layout``'s network needs: under ``proxy_only``, the relay (when the harness calls a provider,
-        ``relay_needed``) and the egress proxy (when the allowlist names something). Raises
-        ``ContainmentUnavailable`` when the relay has no upstream, or a socket cannot be made."""
+        ``relay_needed``, unless :func:`worker_route` says the run has no key to hold) and the egress proxy (when the
+        allowlist names something). Raises ``ContainmentUnavailable`` when the relay has no upstream, when an HTTP proxy
+        the policy names applies to a keyless run's upstream, which the egress proxy cannot follow, or when a socket
+        cannot be made."""
         names = [str(n) for n in provider_env]
         secret = [n for n in names if n.upper() not in PROXY_NAMES]
         values = {n: agentenv.lookup(env, n) or "" for n in secret}
@@ -221,20 +257,30 @@ class RunNetwork:
         if layout.network != PROXY_ONLY or not layout.net_dir:
             return net
         try:
+            try:
+                keyless, allow = worker_route(policy, provider=provider, provider_env=names, relay_needed=relay_needed,
+                                              egress_extra=egress_extra)
+            except AEWError as exc:
+                raise ContainmentUnavailable(f"containment.network.egress_allow: {exc.message}",
+                                             reason="bad_egress_allow") from None
             if relay_needed:
                 target = upstream(provider, policy)
                 try:
                     proxy = operator_proxy(target, names, env)
                 except AEWError as exc:
                     raise ContainmentUnavailable(exc.message, reason="bad_proxy") from None
-                net.relay = relay.ProviderRelay(
-                    target, {sentinels[n]: v for n, v in values.items() if v}, proxy=proxy,
-                    listener=listen(os.path.join(layout.net_dir, RELAY))).start()
-            try:
-                allow = egress_policy(policy, egress_extra)
-            except AEWError as exc:
-                raise ContainmentUnavailable(f"containment.network.egress_allow: {exc.message}",
-                                             reason="bad_egress_allow") from None
+                if keyless is None:
+                    net.relay = relay.ProviderRelay(
+                        target, {sentinels[n]: v for n, v in values.items() if v}, proxy=proxy,
+                        listener=listen(os.path.join(layout.net_dir, RELAY))).start()
+                elif proxy is not None:  # refused now: it would otherwise start, and fail on its first connection
+                    raise ContainmentUnavailable(
+                        f"a run of {provider!r} with no key calls {keyless} through AEW's egress proxy, which connects "
+                        "directly, and an HTTP proxy the execution policy's provider_env names applies to that host. "
+                        f"Name a gateway as containment.network.upstreams.{provider}, so that the relay serves the run "
+                        "and follows the proxy, or set containment.network.mode: shared, labelled shared",
+                        provider=provider, reason="keyless_proxy")
+                net.keyless = keyless
             if allow is not None:
                 net.egress = egress.EgressProxy(allow, listener=listen(os.path.join(layout.net_dir, EGRESS))).start()
         except OSError as exc:
@@ -340,6 +386,17 @@ class RunNetwork:
             agentenv.bypass_proxy_for_loopback(out)
         return out
 
+    def refused_address(self, url: str) -> str | None:
+        """The ``host:port`` of a keyless run's model address when the egress proxy would refuse it, or None: on any
+        other route, or when it is on the allowlist. The list does not widen by itself (design §8)."""
+        if self.keyless is None or self.egress is None:
+            return None
+        try:
+            target = relay.Upstream(url)
+        except AEWError:  # no address the proxy could be asked for
+            return "an address that is not a URL"
+        return None if self.egress.policy.admits(target.host, target.port) is None else f"{target.host}:{target.port}"
+
     def leaks(self, *texts: str) -> list[str]:
         """The provider variables whose value appears in any of ``texts`` (the harness's environment and configuration,
         say): F28 §3.6, row 6. Names only."""
@@ -366,7 +423,9 @@ class RunNetwork:
                 out["egress_allow"] = policy["allow"]
             else:
                 out["egress_policy"] = policy.get("policy")
-            out["limits"] = [EGRESS_RESIDUAL]
+            out["limits"] = [EGRESS_RESIDUAL, *([KEYLESS_LIMIT] if self.keyless else [])]
+        if self.keyless:
+            out["provider_route"] = "egress"
         return out
 
     def _services(self) -> list[tuple[str, Any]]:
@@ -393,4 +452,5 @@ class RunNetwork:
 
 
 __all__ = ["EGRESS_PORT", "ISOLATED", "NETWORK_MODES", "NOT_PROVIDED", "PROVIDER_PORT", "PROXY_ONLY", "RunNetwork",
-           "SERVER_PORT", "SHARED", "mode", "private_dir", "settings", "shim_spec", "upstream"]
+           "SERVER_PORT", "SHARED", "keyless_egress", "mode", "private_dir", "settings", "shim_spec", "upstream",
+           "worker_route"]

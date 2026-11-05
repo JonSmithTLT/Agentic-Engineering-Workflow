@@ -186,3 +186,16 @@ This records decisions already made and what STG-05's CS-3a (#246) and CS-3b bui
 - **Only `HTTPS_PROXY` points at the egress proxy** (refines §3.5). The egress proxy serves `CONNECT` only, and the provider's `baseURL` is plain HTTP to the relay's loopback port, which must never be sent to it, so `HTTP_PROXY` is unset inside and `NO_PROXY` lists loopback.
 - **Checks** (§3.8, decision 3): built are `isolated`, the default, and `shared`, which a check gets only when its run's mode is `shared`. A check that needs a route out through the run's egress proxy (`proxy_only` for a check) is not built; its definition cannot ask for it.
 - **Not built here:** the Lead's harness on `proxy_only` (decision 2) is STG-05 CS-4's, and Windows stays `not_provided`.
+
+## 8. Amendment 2026-11-05: a keyless `opencode` worker's provider traffic goes through the egress proxy
+
+This is the operator's decision of 2026-11-05. The upstream doesn't serve the relay's re-sent requests for its keyless models, and it does serve OpenCode's own client through a plain tunnel. A keyless run has no credential for the relay to hold, so the relay closes no route for it (the operator's decision 2 of 2026-10-21). ADR-0009's amendment of the same date says how it is built.
+
+- **What it's for:** a carve-out for testing on free models, not a supported route for real work, which takes a key through the relay. It can be removed once it isn't needed.
+- **When:** Linux `proxy_only`, a harness that calls a provider itself, provider `opencode`, `OPENCODE_API_KEY` not named in the run's `provider_env`, and no `upstreams.opencode` in the policy. Any other run is as §3.3 says.
+- **What changes:** no relay; no `baseURL` override; `opencode.ai:443` on that run's allowlist only. A catalog address outside the list is refused, and the list doesn't widen by itself. An operator's HTTP proxy for this upstream isn't followed, so the launch refuses.
+- **Amends §1.1 item 2, §2 item 4 and §3.4:** egress also carries this one case of provider traffic, with no credential, and this host joins the startup destinations.
+- **Amends §3.1:** under `proxy_only`, provider traffic goes only through the relay, except in this case. The label says `provider_relay: none`, `provider_route: egress`, and states the limit: no per-request record, no 429 classification, and a tunnel AEW can't read.
+- **Amends §3.5 and §7's reason for `HTTPS_PROXY`:** on this run the provider's `baseURL` isn't projected to the relay.
+- **Amends §3.6 row 4:** this run's self-test has no relay path, and checks that the port is dead.
+- **Amends §5's register text** in the same way. §6's decision 5 stands, because nothing is injected.

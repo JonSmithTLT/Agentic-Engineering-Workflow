@@ -148,7 +148,8 @@ def normalize(value: Any) -> dict[str, Any]:
 
 def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: str, bridge_dir: str | None,
               policy: dict[str, Any] | None, project: str | None = None, env: Mapping[str, str] | None = None,
-              bridge: str | None = None, egress_policy: Any = None, state_dir: str | None = None,
+              bridge: str | None = None, egress_policy: Any = None, provider_relay: bool = True,
+              state_dir: str | None = None,
               relayed_terminal: Mapping[str, Any] | None = None) -> tuple[Layout | None, dict[str, Any]]:
     """The run's layout, self-tested, and its label. ``(None, weaker label)`` when containment is unavailable and
     the policy allows that; raises ``ContainmentUnavailable`` when the policy requires it. ``env`` is the launching
@@ -185,6 +186,7 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
             test = probe.self_test(layout, sentinel_dir=Path(workspace).parent, sibling_dir=Path(workspace).parent,
                                    own=tuple(d for d in (bridge_dir, layout.net_dir) if d), env=env,
                                    egress_policy=egress_policy if net_mode == PROXY_ONLY else None, bridge=bridge,
+                                   provider_relay=provider_relay,
                                    relayed_terminal=relayed_terminal, spec_dir=run_dir / "harness", sentinel=sentinel)
         finally:
             sentinel.unlink(missing_ok=True)
@@ -288,7 +290,9 @@ def _doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, 
             return "PASS", (f"{CONTAINED} through {probe.mechanism(layout)}: runs can write only their own roots "
                             f"(filesystem integrity; the host stays readable), and their network is {net_mode}: a "
                             "namespace of their own, without the host's loopback ports or abstract sockets"
-                            + ("; their only routes out are the provider relay and the egress allowlist"
+                            + ("; their only routes out are the provider relay and the egress allowlist (a "
+                               f"{' or '.join(sorted(netns.CATALOG_ADDRESSED))} run with no key has no relay: its "
+                               "provider traffic goes through the allowlist, with no per-request record)"
                                if net_mode == PROXY_ONLY else "; with no route out")), test
         detail = (f"{CONTAINED} through {probe.mechanism(layout)}: runs can write only their own roots "
                   "(filesystem integrity; the host stays readable), and their network is the host's "

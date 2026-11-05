@@ -31,6 +31,7 @@ from aew.harness.opencode import projection
 from aew.util import dump_yaml, load_yaml
 
 RUN = "R-INV-0001-1"
+LINUX = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="a run's own network: Linux only")
 # The relaunch command the adapter's refusals print for the lab's invocation (#313 review, N1).
 RELAUNCH = "`aew harness launch INV-0001 --expect-rev <revision from aew status>`"
 
@@ -92,6 +93,21 @@ def two_at_once(lab: HarnessLab) -> None:
     lab.project.pin_policy()
 
 
+def keyless(lab: HarnessLab, provider_env: list[str] | None = None, **model: Any) -> dict[str, Any]:
+    """The lab's policy pinning a free ``opencode`` model, and the catalog entry the fake server should offer for it:
+    the shape of 2.0.18's (measured, 2026-11-05: its address under ``settings.baseURL``, its key the catalog's)."""
+    path = lab.aew_root / "policy/execution.yaml"
+    policy = load_yaml(path.read_text(encoding="utf-8"))
+    policy["profiles"] = {"standard": {"provider": "opencode", "model": "free-model", "effort": "high"}}
+    if provider_env is not None:
+        policy["provider_env"] = provider_env
+    path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
+    return {"id": "free-model", "modelID": "free-model", "providerID": "opencode", "name": "Free", "enabled": True,
+            "family": "free", "time": {"released": 1}, "variants": [{"id": "high"}],
+            "settings": {"apiKey": "public", "baseURL": "https://opencode.ai/inference/openai/v1", **model}}
+
+
 # ---------------------------------------------------------------------------------------------- projection
 
 
@@ -145,6 +161,88 @@ def test_the_projection_reaches_the_server_and_the_session(lab, tmp_path):
         assert projection.network_text(network) in config["agents"][projection.AGENT]["system"]
     else:
         assert "network of its own" not in config["agents"][projection.AGENT]["system"]
+
+
+@LINUX
+def test_a_worker_with_no_key_calls_its_provider_through_the_egress_proxy_with_no_key_inside(lab, tmp_path):
+    """Design §8: no relay, no ``baseURL`` override, the provider's one host on this run's allowlist, its key not in
+    the server's environment (set on the host, unnamed), another provider's variable a sentinel as on any run, and a
+    label, a self-test and a system text that all say so. The pinned model resolves from the catalog."""
+    lab.env["OPENCODE_API_KEY"] = "synthetic-opencode-key-not-named"
+    free = keyless(lab)
+    script(lab, IMPLEMENT, models=[free])
+    _, inv, run = launch(lab, tmp_path)
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    hdir = harness_dir(lab)
+    started = json.loads((hdir / "fake-server.json").read_text(encoding="utf-8"))
+    config = json.loads((hdir / "opencode-config.json").read_text(encoding="utf-8"))
+    assert "providers" not in config and "providers" not in started["config"]
+    assert "OPENCODE_API_KEY" not in started["env_names"] and started["sentinel_names"] == ["OPENAI_API_KEY"]
+    assert started["proxy"]["HTTPS_PROXY"] == f"http://127.0.0.1:{netns.EGRESS_PORT}"
+    record = lab.record(run)
+    assert record["result"]["effective"] == [{"provider": "opencode", "model": "free-model", "effort": "high"}]
+    network = record["containment"]["network"]
+    assert network["mode"] == "proxy_only" and network["provider_relay"] == "none"
+    assert network["provider_route"] == "egress" and "provider_upstream" not in network
+    assert network["egress_allow"] == ["models.opencode.ai:443", "opencode.ai:443"]
+    assert netns.KEYLESS_LIMIT in network["limits"]
+    assert set(network["decisions"]) == {"egress"}
+    row1 = record["containment"]["self_test"]["rows"]["1"]
+    assert row1["provider_relay"] == "none" and row1["egress_allow"] == network["egress_allow"]  # the policy it has
+    assert projection.network_text(network) in config["agents"][projection.AGENT]["system"]
+    [row] = lab.ok("harness", "status", inv)["runs"]  # where the operator reads a run's containment
+    assert row["containment"]["network"]["provider_route"] == "egress"
+    assert netns.KEYLESS_LIMIT in row["containment"]["network"]["limits"]
+
+
+@LINUX
+def test_a_worker_whose_policy_names_the_opencode_key_keeps_the_relay(lab, tmp_path):
+    lab.env["OPENCODE_API_KEY"] = "synthetic-opencode-key-named"
+    free = keyless(lab, ["OPENCODE_API_KEY"])
+    script(lab, IMPLEMENT, models=[free])
+    _, _, run = launch(lab, tmp_path)
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    hdir = harness_dir(lab)
+    started = json.loads((hdir / "fake-server.json").read_text(encoding="utf-8"))
+    config = json.loads((hdir / "opencode-config.json").read_text(encoding="utf-8"))
+    assert config["providers"]["opencode"]["settings"]["baseURL"].startswith(f"http://127.0.0.1:{netns.PROVIDER_PORT}/")
+    assert started["sentinel_names"] == ["OPENCODE_API_KEY"]
+    network = lab.record(run)["containment"]["network"]
+    assert network["provider_relay"] == "configured" and "provider_route" not in network
+    assert network["egress_allow"] == ["models.opencode.ai:443"]
+
+
+@LINUX
+def test_a_keyless_run_with_a_proxy_for_its_upstream_is_refused_before_any_harness_starts(lab, tmp_path):
+    lab.env["HTTPS_PROXY"] = "http://proxy.example:3128"
+    free = keyless(lab, ["HTTPS_PROXY"])
+    script(lab, IMPLEMENT, models=[free])
+    wid = create_planned_ticket(lab.project, tmp_path)
+    res = lab.lead_res("work", "assign", wid, "--launch")
+    assert res.returncode != 0 and "containment.network.upstreams.opencode" in res.error["message"], res.error
+    record = lab.record(RUN)
+    assert record["status"] == "launch_failed"
+    assert not (harness_dir(lab) / "fake-server.json").exists()
+    assert not evidence_of(lab, wid)
+
+
+@LINUX
+def test_a_keyless_runs_model_that_opencode_does_not_offer_is_refused_at_launch(lab, tmp_path):
+    """Nothing in the projection names the model to the catalog on this route, so nothing lists it for being named."""
+    lab.env["AEW_OPENCODE_CATALOG_SETTLE_S"] = "1"
+    keyless(lab)
+    script(lab, IMPLEMENT)  # the fake's catalog offers no opencode model
+    message = refused_launch(lab, tmp_path, reason_code="unknown")
+    assert "opencode/free-model is not offered" in message, message
+
+
+@LINUX
+def test_a_keyless_runs_model_served_from_off_the_allowlist_is_refused_naming_the_host_and_the_setting(lab, tmp_path):
+    free = keyless(lab, baseURL="https://elsewhere.example/v1")
+    script(lab, IMPLEMENT, models=[free])
+    message = refused_launch(lab, tmp_path)
+    assert "elsewhere.example:443" in message and "containment.network.egress_allow" in message, message
+    assert lab.record(RUN)["containment"]["network"]["egress_allow"] == ["models.opencode.ai:443", "opencode.ai:443"]
 
 
 @pytest.mark.parametrize("profile", [{"provider": "fakeprov", "model": "fakeprov/fake-model", "effort": "high"},

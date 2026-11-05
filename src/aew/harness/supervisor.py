@@ -264,16 +264,21 @@ class Supervisor:
         policy, _ = self.engine.execution_policy()
         assert self.bridge is not None
         network: netns.RunNetwork | None = None
+        provider = (self.record.get("execution_profile") or {}).get("provider")
+        provider_env = [str(n) for n in contract.extra.get("provider_env") or []]
         try:
             try:
-                allow = netns.egress_policy(policy, adapter_cls.EGRESS)
+                keyless, allow = netns.worker_route(policy, provider=provider, provider_env=provider_env,
+                                                    relay_needed=adapter_cls.PROVIDER_RELAY,
+                                                    egress_extra=adapter_cls.EGRESS)
             except errors.AEWError as exc:
                 raise errors.ContainmentUnavailable(f"containment.network.egress_allow: {exc.message}",
                                                     reason="bad_egress_allow") from None
             self.layout, self.record["containment"] = containment.establish(
                 role=contract.role, scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir,
                 scratch=contract.scratch, bridge_dir=self.bridge.private_dir, policy=policy,
-                project=str(self.engine.repo_root), bridge=self.bridge.address, egress_policy=allow)
+                project=str(self.engine.repo_root), bridge=self.bridge.address, egress_policy=allow,
+                provider_relay=keyless is None)
             # A weaker run (allowed by the policy, or a sandbox on the host's network) enters the register of weaker
             # contexts before its harness starts; on Linux one that cannot be entered is refused (G3 addendum 7).
             self.weaker = weaker_register.enter_if_weaker(
@@ -282,9 +287,8 @@ class Supervisor:
                 aew_root=self.engine.aew_root, directory=self.run_dir, marker=self.run_dir / runlog.RECORD)
             if self.layout is not None and self.layout.private_network:
                 network = netns.RunNetwork.start(
-                    self.layout, provider=(self.record.get("execution_profile") or {}).get("provider"),
-                    provider_env=[str(n) for n in contract.extra.get("provider_env") or []], policy=policy,
-                    env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, egress_extra=adapter_cls.EGRESS)
+                    self.layout, provider=provider, provider_env=provider_env, policy=policy, env=os.environ,
+                    relay_needed=adapter_cls.PROVIDER_RELAY, egress_extra=adapter_cls.EGRESS)
                 self.record["containment"]["network"].update(network.describe())
         except errors.ContainmentUnavailable as exc:  # the self-test's rows, when it ran, stay on the refusal's label
             if self.layout is not None and self.layout.net_dir:

@@ -62,6 +62,11 @@ TEMPLATE = """\
 # only the run's own roots. `containment: {mode: required}` is the default and refuses a launch whose sandbox
 # cannot be established; `mode: allow_weaker` launches it labelled workdir_separation_only. `writable` adds
 # directories every run may write (for example a shared build cache); `hide` masks further secrets.
+# A run of provider `opencode` with no key (`provider_env` does not name OPENCODE_API_KEY), a route for testing on free
+# models, has no provider relay on Linux: its harness calls opencode.ai:443 through the run's egress proxy. AEW then has
+# no per-request record of that traffic and no 429 classification, and a launch refuses if an HTTP proxy `provider_env`
+# names applies to that host, since that proxy does not follow one. `aew harness status` shows the run's route
+# (`provider_route`) and this limit.
 schema: aew/execution/v1
 configured: false
 harness: opencode

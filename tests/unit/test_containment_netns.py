@@ -17,6 +17,7 @@ from aew.errors import ContainmentUnavailable, ValidationFailed
 from aew.harness.containment import layout as L
 from aew.harness.containment import netns, relay
 from aew.harness.containment.egress import Allowlist
+from aew.harness.opencode import projection
 
 pytestmark = GUARDED
 KEY = "synthetic-provider-key-cs3b"
@@ -164,6 +165,139 @@ def test_a_relay_with_no_upstream_refuses_the_launch_and_leaves_no_network_direc
         netns.RunNetwork.start(layout, provider="acme", provider_env=["ACME_KEY"], policy=None,
                                env={"ACME_KEY": KEY}, relay_needed=True)
     assert caught.value.details["reason"] == "no_upstream" and not (tmp_path / "aew-net-x").exists()
+
+
+def test_only_opencode_with_its_key_unnamed_and_no_upstream_named_on_linux_proxy_only_has_no_relay(monkeypatch):
+    """Design §8: the one place this is decided, from the pinned profile and the policy."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert netns.keyless_egress("opencode", [], None) == "opencode.ai:443"
+    # another provider's variable in the policy-wide list is no key for this provider
+    assert netns.keyless_egress("opencode", ["OPENAI_API_KEY", "HTTPS_PROXY"], None) == "opencode.ai:443"
+    assert netns.keyless_egress("opencode", ["OPENCODE_API_KEY"], None) is None
+    assert netns.keyless_egress("opencode", [], policy(upstreams={"opencode": "https://gw.example/v1"})) is None
+    for provider in ("openai", "anthropic", "google", "acme", None):  # never another provider, even with no key
+        assert netns.keyless_egress(provider, [], None) is None, provider
+    for other in ("shared", "isolated"):
+        assert netns.keyless_egress("opencode", [], policy(mode=other)) is None, other
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert netns.keyless_egress("opencode", [], None) is None
+
+
+def test_the_one_allowlist_adds_the_providers_host_for_that_run_only_and_never_to_the_harnesss_own(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    egress_extra = ("models.opencode.ai:443",)
+
+    def shown(provider, provider_env, relay_needed=True, **network):
+        keyless, allow = netns.worker_route(policy(**network), provider=provider, provider_env=provider_env,
+                                            relay_needed=relay_needed, egress_extra=egress_extra)
+        return keyless, allow.describe()["allow"] if allow else None
+    assert shown("opencode", []) == ("opencode.ai:443", ["models.opencode.ai:443", "opencode.ai:443"])
+    assert shown("opencode", [], egress_allow=["pypi.org:443"])[1] == ["models.opencode.ai:443", "opencode.ai:443",
+                                                                      "pypi.org:443"]
+    assert shown("opencode", ["OPENCODE_API_KEY"]) == (None, ["models.opencode.ai:443"])
+    assert shown("openai", []) == (None, ["models.opencode.ai:443"])
+    assert shown("opencode", [], relay_needed=False) == (None, ["models.opencode.ai:443"])  # it calls no provider
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the relay and the proxy listen on socket files (AF_UNIX)")
+def test_a_keyless_run_has_no_relay_and_holds_no_key_and_its_label_and_text_say_so():
+    net_dir = netns.private_dir()
+    os.mkdir(os.path.join(net_dir, L.NET_SHIM))
+    layout = replace(BASE, network=L.PROXY_ONLY, net_dir=net_dir)
+    host = {"OPENAI_API_KEY": KEY, "OPENCODE_API_KEY": "synthetic-opencode-key", "PATH": "/usr/bin"}
+    net = netns.RunNetwork.start(layout, provider="opencode", provider_env=["OPENAI_API_KEY"], policy=None, env=host,
+                                 relay_needed=True, egress_extra=("models.opencode.ai:443",))
+    try:
+        assert net.relay is None and net.provider_base() is None  # so projection.relayed() does not run
+        assert [leg["port"] for leg in net.spec()["out"]] == [netns.EGRESS_PORT]  # no provider port to fall back on
+        # what a server's environment holds by then: the named variable's value, and never the unnamed one's. Another
+        # provider's variable holds its sentinel, as on any run; nothing swaps it, and this provider is not sent it
+        inside = net.harness_env({"OPENAI_API_KEY": KEY, "PATH": "/usr/bin"})
+        assert inside["OPENAI_API_KEY"].startswith(relay.SENTINEL_PREFIX) and KEY not in inside.values()
+        assert "OPENCODE_API_KEY" not in inside and "synthetic-opencode-key" not in inside.values()
+        assert inside["HTTPS_PROXY"] == f"http://127.0.0.1:{netns.EGRESS_PORT}"
+        assert net.leaks(f"key={KEY}") == ["OPENAI_API_KEY"]  # the leak check still knows the value
+        label = net.describe()
+        assert label == {"mode": L.PROXY_ONLY, "provider_relay": "none", "provider_route": "egress",
+                         "egress_allow": ["models.opencode.ai:443", "opencode.ai:443"],
+                         "limits": [netns.EGRESS_RESIDUAL, netns.KEYLESS_LIMIT]}
+        assert "for testing" in netns.KEYLESS_LIMIT
+        assert "no per-request record and no 429 classification" in netns.KEYLESS_LIMIT
+        assert ("your model's provider through `HTTPS_PROXY`, which admits only `models.opencode.ai:443`, "
+                "`opencode.ai:443`") in projection.network_text(label)
+    finally:
+        net.close()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the relay and the proxy listen on socket files (AF_UNIX)")
+@pytest.mark.parametrize(("provider", "names", "network"), [
+    ("opencode", ["OPENCODE_API_KEY"], {}),
+    ("opencode", [], {"upstreams": {"opencode": "https://gw.example/v1"}}),
+    ("openai", ["OPENAI_API_KEY"], {}),
+])
+def test_a_run_with_a_key_or_a_named_gateway_or_another_provider_keeps_the_relay(provider, names, network):
+    net_dir = netns.private_dir()
+    os.mkdir(os.path.join(net_dir, L.NET_SHIM))
+    layout = replace(BASE, network=L.PROXY_ONLY, net_dir=net_dir)
+    net = netns.RunNetwork.start(layout, provider=provider, provider_env=names, policy=policy(**network),
+                                 env={n: KEY for n in names}, relay_needed=True,
+                                 egress_extra=("models.opencode.ai:443",))
+    try:
+        label = net.describe()
+        assert net.relay is not None and net.provider_base() is not None and net.keyless is None
+        assert label["provider_relay"] == "configured" and "provider_route" not in label
+        assert label["egress_allow"] == ["models.opencode.ai:443"] and netns.KEYLESS_LIMIT not in label["limits"]
+        inside = net.harness_env({**{n: KEY for n in names}, "PATH": "/usr/bin"})
+        assert all(inside[n].startswith(relay.SENTINEL_PREFIX) for n in names) and KEY not in inside.values()
+    finally:
+        net.close()
+
+
+@pytest.mark.parametrize("variable", ["HTTPS_PROXY", "ALL_PROXY"])
+def test_a_keyless_run_with_a_proxy_for_its_upstream_is_refused_and_told_what_to_do(tmp_path, monkeypatch, variable):
+    monkeypatch.setattr(sys, "platform", "linux")
+    layout = replace(BASE, network=L.PROXY_ONLY, net_dir=str(tmp_path / "aew-net-x"))
+    (tmp_path / "aew-net-x").mkdir()
+    with pytest.raises(ContainmentUnavailable) as caught:
+        netns.RunNetwork.start(layout, provider="opencode", provider_env=[variable], policy=None,
+                               env={variable: "http://proxy.example:3128"}, relay_needed=True,
+                               egress_extra=("models.opencode.ai:443",))
+    assert caught.value.details["reason"] == "keyless_proxy"
+    for what_to_do in ("containment.network.upstreams.opencode", "containment.network.mode: shared"):
+        assert what_to_do in caught.value.message
+    assert "API_KEY" not in caught.value.message  # a key is measured nowhere on this upstream
+    assert not (tmp_path / "aew-net-x").exists()  # nothing was started, and nothing is left
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the proxy listens on a socket file (AF_UNIX)")
+@pytest.mark.parametrize(("names", "env"), [
+    (["NO_PROXY"], {"NO_PROXY": "internal.example"}),
+    (["HTTPS_PROXY", "NO_PROXY"], {"HTTPS_PROXY": "http://proxy.example:3128", "NO_PROXY": "opencode.ai"}),
+    (["HTTP_PROXY"], {"HTTP_PROXY": "http://proxy.example:3128"}),  # the relay would not use it for https either
+])
+def test_a_keyless_run_is_not_refused_for_a_proxy_that_does_not_apply_to_its_upstream(names, env):
+    net_dir = netns.private_dir()
+    os.mkdir(os.path.join(net_dir, L.NET_SHIM))
+    layout = replace(BASE, network=L.PROXY_ONLY, net_dir=net_dir)
+    net = netns.RunNetwork.start(layout, provider="opencode", provider_env=names, policy=None, env=env,
+                                 relay_needed=True, egress_extra=())
+    try:
+        assert net.keyless == "opencode.ai:443" and net.relay is None
+    finally:
+        net.close()
+
+
+def test_a_keyless_runs_model_off_the_allowlist_is_named_and_any_other_route_never_asks():
+    layout = replace(BASE, network=L.PROXY_ONLY, net_dir="/tmp/aew-net-x")
+    net = netns.RunNetwork(layout, egress_proxy=Egress(["opencode.ai:443"]))  # type: ignore[arg-type]
+    net.keyless = "opencode.ai:443"
+    assert net.refused_address("https://opencode.ai/inference/openai/v1") is None
+    assert net.refused_address("https://OpenCode.AI/v1") is None
+    assert net.refused_address("https://elsewhere.example/v1") == "elsewhere.example:443"
+    assert net.refused_address("https://opencode.ai:8443/v1") == "opencode.ai:8443"
+    assert net.refused_address("not a url") == "an address that is not a URL"
+    net.keyless = None
+    assert net.refused_address("https://elsewhere.example/v1") is None
 
 
 def test_the_shim_spec_forwards_the_server_in_and_the_relay_and_egress_out_on_fixed_ports():

@@ -1686,3 +1686,63 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   starts, carry it so the scan finds them. Its value is the path of the context's record, never a credential.
 - **Tests:** `tests/integration/test_lead_uncontained.py`, `tests/unit/test_weaker_register.py`,
   `tests/unit/test_launch_census.py` (every process start in `src/` and `eval/`, classified).
+
+## Amendment 2026-11-05 — a keyless `opencode` worker's provider traffic goes through the egress proxy (network containment design §8)
+
+The operator's decision of 2026-11-05; the design's §8 states the rule, and this says how it is built. The upstream
+doesn't serve the relay's re-sent requests for its keyless models, and a keyless run has no credential for the relay
+to hold. It is a carve-out for testing on free models, not a supported route for real work, and can be removed once it
+isn't needed. Nothing gates it on a test flag; the label and the design's §8 say what it is for.
+
+- **One place decides** (`netns.keyless_egress`), from the pinned profile, the contract's `provider_env` and the
+  policy: Linux `proxy_only`, a provider in `netns.CATALOG_ADDRESSED` (`opencode`), its key's variable
+  (`netns.PROVIDER_KEY_ENV`) not named in `provider_env`, and no `upstreams.<provider>` in the policy. A named variable
+  that is unset is already refused at launch, so "keyless" needs no third state. A provider that isn't `opencode` never
+  takes this route, even with no key. Provider variables are the policy's current list, not a pin, so a relaunch can
+  change route, and each run's label says which it had. The route is stored on `RunNetwork`, never in `label()`'s
+  defaults, and `start_lead` and `upstream()` don't take part.
+- **One allowlist** (`netns.worker_route`): the supervisor's self-test and `RunNetwork.start` both take the route and
+  the list from it, so the self-test checks the policy the run has. The provider's `host:port` is added for that run
+  only, and never to the adapter's `EGRESS`, which every OpenCode worker gets. A harness that calls no provider
+  (`PROVIDER_RELAY` false) never takes the route. The doctor's self-test has no run's extras, so its line carries one
+  fixed clause about these runs.
+- **The run:** no relay and no shim leg for it, so `provider_base()` is None, `projection.relayed` does not run, and
+  OpenCode uses the catalog's address. The pinned model must be in the catalog: the `_relayed` filter does not run,
+  and nothing in the projection lists a model OpenCode doesn't offer (measured on 2.0.18), so the launch refuses it.
+- **The self-test** has no stand-in relay on this route (`establish(provider_relay=False)`, down to `probe._network`),
+  so row 1 says `provider_relay: none` and fails if a provider port answers inside.
+- **No key inside:** `OPENCODE_API_KEY` is not named, so it never reaches the server (`server_env`), even when set on
+  the host. A policy naming another provider's variable leaves that variable's sentinel inside, as on any run, and
+  OpenCode doesn't send it to this provider. `leaks()` runs as before.
+- **Two refusals, neither a fallback:**
+  - `operator_proxy(...)` returns a proxy for this upstream: the launch refuses (`CONTAINMENT_UNAVAILABLE`, reason
+    `keyless_proxy`), offering `containment.network.upstreams.opencode` or `shared`. The egress proxy connects directly,
+    so the run would otherwise start and fail on a connection. `provider_env` is policy-wide, so a proxy named for
+    another provider can refuse a free run. That is stated, not fixed.
+  - The pinned model's catalog address (`settings.baseURL` in `/api/model`, measured on 2.0.18) isn't on the allowlist:
+    the launch refuses before the first prompt (`HARNESS_INCOMPATIBLE`, reason `address_not_allowed`), naming that host
+    and `containment.network.egress_allow`. The host comes from the catalog, never from a `CONNECT` target, which a
+    steered shell chooses. The list doesn't widen by itself.
+- **The label:** `mode: proxy_only`, `provider_relay: none`, `provider_route: egress`, `egress_allow` with the
+  provider's host, and `netns.KEYLESS_LIMIT` in `limits`. The record's `decisions` count the egress proxy's connections.
+  The label reaches `harness status` only: the containment event carries the mode, and the dashboard has no containment
+  reader.
+- **The system text** (`projection.network_text`): the run is told its provider goes through `HTTPS_PROXY`, and which
+  hosts that admits.
+- **What this qualifies, on such a run only:**
+  - lines 537-549, the provider-traffic and egress bullets: the relay and its sentinel are not in the path, and egress
+    carries this provider's traffic, with no credential;
+  - line 563, the label's `mode`: `proxy_only` holds with no relay;
+  - line 590, the projection: the provider's `baseURL` isn't projected to the relay;
+  - lines 599 and 1331, the self-test's relay row: above;
+  - line 1376, a card's web capability: `webfetch` now reaches `opencode.ai` too.
+- **`netns.UPSTREAMS["opencode"]` stays,** for a keyed run or a named upstream, so the 2026-10-24 amendment's list isn't
+  false, but "the free models" no longer describes it.
+- **Corrects CS-3b's reading, and two things are true:** the relay's 429 on a keyless request wasn't a quota that
+  waiting would clear, and the free models also have a usage limit of their own, on every route. So a 429 on this route
+  can be a real limit.
+- **A keyed `opencode` worker through the relay is unmeasured.** Whoever first gives a run that key measures it first.
+- **Tests:** `tests/unit/test_containment_netns.py` (who takes the route, the one allowlist, no key inside, the label
+  and text, a key or gateway or other provider keeping the relay, the refusals),
+  `tests/integration/test_opencode_adapter.py` (the same through the supervisor and bubblewrap on Linux, with the fake
+  server).

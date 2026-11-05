@@ -199,8 +199,9 @@ def declared_only(model: dict[str, Any]) -> bool:
 
 class OpenCodeAdapter(HarnessAdapter):
     name = "opencode"
-    # F28 §3.4-3.5: it calls its provider itself, through the relay in a network of its own, and in connected mode it
-    # fetches its model catalog, which a pinned model newer than its embedded one needs (F28 §1, E).
+    # F28 §3.4-3.5: it calls its provider itself, through the relay in a network of its own (a run with no key, through
+    # the egress proxy: netns.keyless_egress), and in connected mode it fetches its model catalog, which a pinned model
+    # newer than its embedded one needs (F28 §1, E).
     PROVIDER_RELAY = True
     EGRESS = ("models.opencode.ai:443",)
     # How each provider's reported counters overlap, per qualified OpenCode version (F25, cost and usage ledger v0.2
@@ -290,7 +291,7 @@ class OpenCodeAdapter(HarnessAdapter):
                          config=config, password=secrets.token_urlsafe(32))
         if agent_env.get(weaker_register.MARKER):  # a weaker run's server, and all it starts, carry its marker too
             env[weaker_register.MARKER] = agent_env[weaker_register.MARKER]
-        if network is not None:  # the provider's variables are sentinels inside; the relay holds the values
+        if network is not None:  # the provider's variables are sentinels inside; any relay holds the values
             env = network.harness_env(env)
             leaked = network.leaks(*env.values(), json.dumps(config))
             if leaked:  # F28 §3.6, row 6: never started with a provider secret in its reach
@@ -477,6 +478,7 @@ class OpenCodeAdapter(HarnessAdapter):
             if declared:
                 match = None
             if match is not None:
+                self._require_address_allowed(match, ref)
                 variants = [v.get("id") for v in match.get("variants") or []]
                 # Each refusal of the pin, here and the catalog's below, names the way on: a new invocation where the
                 # pin must change, a relaunch where the cause is outside it (ADR-0010; CS-4 addendum 11; #304 m1).
@@ -508,6 +510,19 @@ class OpenCodeAdapter(HarnessAdapter):
                     # (M4-E E8a; PR #185 review, F1).
                     launch_cause=CATALOG_TIMEOUT)
             time.sleep(0.25)
+
+    def _require_address_allowed(self, model: dict[str, Any], ref: dict[str, Any]) -> None:
+        """A run with no relay calls the address the catalog gives its model, through the egress proxy, which would
+        refuse one off the allowlist: said now, with the operator's way to add it, and never widened by itself."""
+        network = self.tree.network
+        address = (model.get("settings") or {}).get("baseURL")
+        refused = network.refused_address(address) if network is not None and isinstance(address, str) else None
+        if refused:
+            raise HarnessIncompatible(
+                f"model {ref['providerID']}/{ref['id']} is served from {refused}, which is not on this run's egress "
+                "allowlist, so the run's egress proxy would refuse it; the operator adds it to "
+                f"containment.network.egress_allow, then relaunch with {self._relaunch_command()}; or dispatch a new "
+                "invocation with --profile or --model", model=ref, host=refused, reason="address_not_allowed")
 
     def _await_projection(self, config: dict[str, Any]) -> dict[str, Any]:
         """The server must have loaded AEW's agent exactly as projected: its system text, the pinned model and

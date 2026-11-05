@@ -276,6 +276,23 @@ skipped:
     tests/integration/test_containment.py::test_a_check_runs_inside_the_runs_layout: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/unit/test_containment_netns.py::test_a_keyless_run_has_no_relay_and_holds_no_key_and_its_label_and_text_say_so: >-
+      The proxy listens on a socket file (AF_UNIX) and a run's own network is Linux's; Windows stays not_provided, which
+      test_only_opencode_with_its_key_unnamed_and_no_upstream_named_on_linux_proxy_only_has_no_relay covers everywhere.
+    tests/unit/test_containment_netns.py::test_a_run_with_a_key_or_a_named_gateway_or_another_provider_keeps_the_relay: >-
+      The relay listens on a socket file (AF_UNIX) and a run's own network is Linux's. Covered on Linux.
+    tests/integration/test_opencode_adapter.py::test_a_worker_with_no_key_calls_its_provider_through_the_egress_proxy_with_no_key_inside: >-
+      A run's own network is Linux's (Windows: not_provided). Covered on Linux.
+    tests/integration/test_opencode_adapter.py::test_a_worker_whose_policy_names_the_opencode_key_keeps_the_relay: >-
+      A run's own network is Linux's (Windows: not_provided). Covered on Linux.
+    tests/unit/test_containment_netns.py::test_a_keyless_run_is_not_refused_for_a_proxy_that_does_not_apply_to_its_upstream: >-
+      The proxy listens on a socket file (AF_UNIX) and a run's own network is Linux's. Covered on Linux.
+    tests/integration/test_opencode_adapter.py::test_a_keyless_run_with_a_proxy_for_its_upstream_is_refused_before_any_harness_starts: >-
+      A run's own network is Linux's (Windows: not_provided). Covered on Linux.
+    tests/integration/test_opencode_adapter.py::test_a_keyless_runs_model_that_opencode_does_not_offer_is_refused_at_launch: >-
+      A run's own network is Linux's (Windows: not_provided). Covered on Linux.
+    tests/integration/test_opencode_adapter.py::test_a_keyless_runs_model_served_from_off_the_allowlist_is_refused_naming_the_host_and_the_setting: >-
+      A run's own network is Linux's (Windows: not_provided). Covered on Linux.
     tests/integration/test_opencode_adapter.py::test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell: >-
       reads /proc/<parent>/environ, which Windows has no equivalent of (a same-user process can read another's
       memory there instead: ADR-0009 residual). Covered on Linux.

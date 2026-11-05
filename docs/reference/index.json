@@ -92,7 +92,7 @@
         "lower-bound": 272
       }
     },
-    "digest": "sha256:dc966bb52b4fac6972b7bc7e9073e63f7f15aa7e73fdc3f5766013f0bc661864",
+    "digest": "sha256:102fa0cf0bae02b5ea4ceb56d2bcce04ffb87974a92f721f339f8a7d47e08a6c",
     "records": 1149,
     "unresolved": 112
   },
@@ -21652,7 +21652,10 @@
       },
       "family": "modules",
       "imports": [
+        "aew.harness.bridge",
+        "aew.knowledge.evidence",
         "aew.roles",
+        "aew.schemas",
         "aew.util"
       ]
     },

@@ -2,20 +2,36 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 from aewflow import (
     SUBTRACT_PATCH,
     Role,
     assign,
+    complete_investigation,
+    create_investigation,
     create_planned_ticket,
+    create_unit,
+    dispatch,
     implement,
+    plan_unit,
     review,
     sample_project,
+    submit_record,
+    to_commit_ready,
     verify,
 )
+from conftest import run_aew
+
+from aew.cli.work_commands import NO_INVOCATION_AUTHORITY
+from aew.engine.api import Engine
+from aew.errors import WorkspaceMutated
+from aew.knowledge.context import CHECK_WRITES_NOTE, OUTPUT_TEMPLATES
+from aew.util import load_yaml
 
 RATIONALE = "IMPLEMENTER-PRIVATE-RATIONALE-7Q2"
 
@@ -53,12 +69,165 @@ def test_reviewer_pack_is_bounded_and_independent(calc, tmp_path):
     assert "tests/test_subtract.py" in text
     # ...the implementer's reasoning and self-review notes are not (context independence).
     assert RATIONALE not in text
-    # The credential is never in the pack.
+    # The credential is never in the pack, nor any instruction about one: the pack serves both ways a role runs.
     assert out["invocation_token"].rsplit(".", 1)[1] not in text
-    assert "supplied by the Lead in the spawn prompt" in text
+    assert "AEW_INVOCATION_TOKEN" not in text
     sources = {s["name"] for s in out["pack"]["sources"]}
     assert {"current_ticket", "accepted_plan", "guardrails", "archetype:reviewer", "role_card:code_reviewer"} <= sources
     assert "Code Reviewer" in text  # the dispatched role card is part of the contract
+
+
+@pytest.mark.parametrize("command", [("whoami",), ("submit", "--kind", "implementation_report", "--file")],
+                         ids=["whoami", "submit"])
+def test_a_role_with_no_credential_is_told_to_stop_never_to_get_one(calc, tmp_path, command):
+    """The one statement a role with neither a bridge nor a credential reads (no preamble, and its pack is silent).
+    `check run` takes the same path: tests/unit/test_pack_truth.py holds it there, in process, since a refusal of it
+    through the CLI would be a new key for D2's capture."""
+    impl = assign(calc, create_planned_ticket(calc, tmp_path))
+    report = tmp_path / "report.md"
+    report.write_text("---\nclaim: c\n---\n", encoding="utf-8", newline="\n")
+    command = (*command, str(report)) if command[-1] == "--file" else command
+    refused = run_aew("-C", str(impl.workspace), *command)
+    assert refused.error["code"] == "USAGE", refused.stderr
+    assert refused.error["message"] == NO_INVOCATION_AUTHORITY
+
+
+def test_the_refusals_pointer_for_a_role_run_by_hand_covers_it(calc, tmp_path):
+    """`aew whoami --help` is where the refusal sends someone running a role by hand: it names how to supply the
+    credential and where it came from. `assign` is a dispatch without `--launch`, and the credential it printed
+    works."""
+    impl = assign(calc, create_planned_ticket(calc, tmp_path))
+    shown = " ".join(run_aew("-C", str(impl.workspace), "whoami", "--help").stdout.split())
+    assert "--invocation-token" in shown and "AEW_INVOCATION_TOKEN" in shown
+    assert "a dispatch without `--launch` wrote to your terminal" in shown
+    assert impl.aew("whoami").returncode == 0
+
+
+def _for_ticket_review(p, tmp_path) -> Role:
+    wid, impl, out = to_review(p, tmp_path)
+    return Role(p, out["invocation_token"], impl.workspace)
+
+
+def _for_ticket_verification(p, tmp_path) -> Role:
+    wid = create_planned_ticket(p, tmp_path)
+    impl = assign(p, wid)
+    implement(impl)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    return Role(p, p.lead("invoke", "create", wid, "--role", "verifier")["invocation_token"], impl.workspace)
+
+
+def _for_integration_verification(p, tmp_path) -> Role:
+    wid, _ = to_commit_ready(p, tmp_path)
+    p.lead("integrate", "prepare", wid)
+    out = p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")
+    return Role(p, out["invocation_token"], Path(p.ok("work", "show", wid)["control"]["integration"]["workspace"]))
+
+
+def _executor(card: str):
+    return lambda p, tmp_path: dispatch(p, create_investigation(p, tmp_path, card=card))[0]
+
+
+def _for_record_verification(p, tmp_path) -> Role:
+    wid = create_investigation(p, tmp_path, cls=2)
+    p.lead("work", "staff", wid, "--verify", "verifier")
+    role, _ = dispatch(p, wid)
+    p.lead("evidence", "ingest", wid, "--evidence", submit_record(role, "discovery_record")["evidence"])
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    out = p.lead("invoke", "create", wid, "--role", "verifier")
+    return Role(p, out["invocation_token"], Path(out["observation"]["path"]))
+
+
+def _of_a_story(role: str):
+    def build(p, tmp_path) -> Role:
+        story = create_unit(p, "story", "Understand calc", cls=1)
+        plan_unit(p, tmp_path, story, "Investigate, then decide.\n")
+        complete_investigation(p, create_investigation(p, tmp_path, parent=story))
+        out = p.lead("invoke", "create", story, "--role", role)
+        return Role(p, out["invocation_token"], Path(out["observation"]["path"]))
+    return build
+
+
+def _copied_report(p, role: Role, invocation: str) -> dict[str, Any]:
+    """The report format in the role's own pack, as it stands, with only the ids filled in that a model would have to
+    get from its own run: the checks it ran and the findings it resolves. Everything else is copied."""
+    pack = p.aew("context", "show", invocation).stdout
+    fence = re.search(r"^```markdown\n---\n(.*?)\n---\n", pack, re.S | re.M)
+    assert fence, pack
+    meta = load_yaml(fence.group(1))
+    if "review" in meta:
+        meta["review"]["resolved_findings"] = []
+    for claim in (meta.get("verification") or {}).get("claims", []):
+        claim["checks"] = []
+    return meta
+
+
+@pytest.mark.parametrize(("arch", "build"), [
+    ("implementer", lambda p, tmp_path: assign(p, create_planned_ticket(p, tmp_path))),
+    ("reviewer", _for_ticket_review),
+    ("reviewer", _of_a_story("reviewer")),
+    ("verifier", _for_ticket_verification),
+    ("verifier", _for_integration_verification),
+    ("verifier", _for_record_verification),
+    ("verifier", _of_a_story("verifier")),
+    ("investigator", _executor("investigator")),
+    ("researcher", _executor("researcher")),
+    ("planner", _executor("planner")),
+], ids=["implementer", "reviewer-ticket", "reviewer-parent", "verifier-ticket", "verifier-integration",
+        "verifier-observation", "verifier-parent", "investigator", "researcher", "planner"])
+def test_a_report_copied_from_its_pack_is_accepted(tmp_path, arch, build):
+    """The defects this replaces: a `pass  # or: blocked` value quoted whole, and a verifier's offered scope, which
+    a parent or an observation verifier could only get refused by copying."""
+    p = sample_project(tmp_path)
+    role = build(p, tmp_path)
+    who = role.ok("whoami")
+    kind = OUTPUT_TEMPLATES[arch][0]
+    assert role.submit(kind, _copied_report(p, role, who["invocation"]), "A body.\n")["evidence"]
+
+
+WRITING_CHECKS = {"schema": "aew/checks/v1", "baseline_failures": [], "checks": {
+    "unit": {"configured": True, "command": ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests"]},
+    "codegen": {"configured": True, "command": ["{python}", "-c", "open('calc/generated.py','w').write('X=1\\n')"]}}}
+
+
+def _says_what_the_engine_does(role: Role, out: dict[str, Any], submit: Any, refusal: str, later_check: Any) -> None:
+    """CHECK_WRITES_NOTE, both ways: in a sandbox the write fails and nothing is lost; without one it lands, the check
+    is inconclusive, the submission is refused and ``later_check`` holds. Which applies depends on the host, so each
+    holds where it applies."""
+    if out["mutated_inputs"]:
+        assert out["result"] == "inconclusive", out
+        assert submit().error["code"] == refusal
+        later_check()
+    else:
+        assert out["exit_code"] != 0 and out["result"] == "fail", out
+        assert submit().returncode == 0
+
+
+def test_a_check_that_writes_into_an_observation_does_what_the_pack_says(tmp_path):
+    p = sample_project(tmp_path, checks=WRITING_CHECKS)
+    role, _ = dispatch(p, create_investigation(p, tmp_path))
+    assert CHECK_WRITES_NOTE in p.aew("context", "show", role.ok("whoami")["invocation"]).stdout
+    _says_what_the_engine_does(role, role.check("codegen"),
+                               lambda: submit_record(role, "discovery_record", expect_ok=False), "OBSERVATION_MUTATED",
+                               lambda: role.check("codegen"))  # outside ticket or integration scope, it still runs
+
+
+def test_a_check_that_writes_into_a_verified_workspace_does_what_the_pack_says(tmp_path):
+    p = sample_project(tmp_path, checks=WRITING_CHECKS)
+    role = _for_ticket_verification(p, tmp_path)
+    assert CHECK_WRITES_NOTE in p.aew("context", "show", role.ok("whoami")["invocation"]).stdout
+    claims = [{"type": kind, "claim": "c", "result": "pass"} for kind in ("goal_backwards", "contract")]
+
+    assert "at ticket or integration scope, any later check" in CHECK_WRITES_NOTE  # what the next lines hold
+
+    def later_check_is_refused() -> None:  # in process: a CLI refusal of `check run` here would be a new key for D2
+        with pytest.raises(WorkspaceMutated):
+            Engine(p.root, p.root / ".aew").check_run(invocation_token=role.token, check_id="codegen")
+
+    _says_what_the_engine_does(role, role.check("codegen"),
+                               lambda: role.submit("verification", {"claim": "c", "verification": {"claims": claims}},
+                                                   expect_ok=False), "WORKSPACE_MUTATED", later_check_is_refused)
 
 
 def test_pack_regeneration_is_deterministic(calc, tmp_path):

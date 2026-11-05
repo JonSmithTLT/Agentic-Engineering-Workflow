@@ -21,11 +21,23 @@ from aew.harness import bridge
 from aew.harness.contract import ENDED_WITHOUT_EVIDENCE
 from aew.harness.delivery import DEFAULT_WHEN, WHEN_DELIVERY
 
+# The one statement a role with neither a bridge nor a credential reads: its pack says nothing of the credential
+# (`aew.knowledge.context`). It never sends a reader to copy one, a model least of all (operator, 2026-10-12).
+NO_INVOCATION_AUTHORITY = (
+    "invocation credential required: this process is not connected to an AEW harness run and holds no invocation "
+    "credential, so it cannot act as an invocation. Do not look for or ask for a credential: stop and report this. To "
+    "run this role, the Lead or the operator dispatches it with `--launch`, or starts one already dispatched with `aew "
+    "harness launch` (see its `--help`); either connects `aew` for the run. Running a role by hand? See `aew whoami "
+    "--help`.")
+# Where that last sentence sends someone running a role by hand: how to present the credential, and where it came from.
+CREDENTIAL_OPTION_HELP = ("the credential a dispatch without `--launch` wrote to your terminal "
+                          "(or env AEW_INVOCATION_TOKEN)")
+
 
 def _inv_token(args: argparse.Namespace) -> str:
     token = getattr(args, "invocation_token", None) or os.environ.get("AEW_INVOCATION_TOKEN")
     if not token:
-        raise UsageError("invocation credential required: pass --invocation-token or set AEW_INVOCATION_TOKEN")
+        raise UsageError(NO_INVOCATION_AUTHORITY)
     return token
 
 
@@ -406,7 +418,7 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     csub = p.add_subparsers(dest="check_cmd", required=True)
     q = csub.add_parser("run")
     q.add_argument("check_id", help="a check from policy/checks.yaml, or the built-in `guardrails`")
-    q.add_argument("--invocation-token", help="invocation credential (or env AEW_INVOCATION_TOKEN)")
+    q.add_argument("--invocation-token", help=CREDENTIAL_OPTION_HELP)
     q.set_defaults(handler=lambda a: _as_invocation(
         a, "check.run", {"check_id": a.check_id},
         lambda token: _engine(a).check_run(invocation_token=token, check_id=a.check_id)))
@@ -415,11 +427,11 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("--kind", required=True, choices=["implementation_report", "review", "verification",
                                                      "discovery_record", "research_record", "plan_proposal"])
     q.add_argument("--file", required=True, help="Markdown with YAML frontmatter (file or - for stdin)")
-    q.add_argument("--invocation-token", help="invocation credential (or env AEW_INVOCATION_TOKEN)")
+    q.add_argument("--invocation-token", help=CREDENTIAL_OPTION_HELP)
     q.set_defaults(handler=_submit)
 
     q = sub.add_parser("whoami", help="the invocation this credential or harness run acts as (bounded role)")
-    q.add_argument("--invocation-token", help="invocation credential (or env AEW_INVOCATION_TOKEN)")
+    q.add_argument("--invocation-token", help=CREDENTIAL_OPTION_HELP)
     q.set_defaults(handler=lambda a: _as_invocation(
         a, "whoami", {}, lambda token: _engine(a).invocation_whoami(invocation_token=token)))
 

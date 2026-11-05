@@ -38,6 +38,8 @@ from aew.errors import AEWError, IntegrityError
 DIRECTORY = "tools"  # <run dir>/tools, beside the run's harness state and outside its writable roots
 FIRST, OWN_NAME = "first", "own_name"  # the schema's two values of a record's ``path``, and each one's directory
 STUB_EXIT = 127  # the shell's "command not found", which is what the stub stands for
+# What an agent can do while no copy serves: the shell's own tools, which every contained context has
+AGENT_FALLBACK = "`grep -rn` or `find`"
 MAX_CAUSE = 2000  # a cause is a sentence or two; a stub's text is bounded whatever a record or a host path says
 # The schema's own pattern for a command: a refused record's command becomes a file name here only if it matches
 COMMAND = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -140,7 +142,8 @@ def _write_entry(directory: Path, command: str, *, link: str | None = None, stub
 def stub_text(tool: Tool, cause: str) -> str:
     """The failing stub: its one line goes to the harness's own error, and the agent reads it there (CAPR-X06)."""
     said = f"aew: {tool.command} is not available in this run. {cause}"
-    said += f" Fix: {tool.fix}." if tool.fix else ""
+    said += f" Meanwhile, search with {AGENT_FALLBACK}. The fix is the operator's: ask them to run it"
+    said += f" ({tool.fix})." if tool.fix else "."
     said += " `aew doctor` names it."
     return f"#!/bin/sh\nprintf '%s\\n' {shlex.quote(said[:MAX_CAUSE])} >&2\nexit {STUB_EXIT}\n"
 

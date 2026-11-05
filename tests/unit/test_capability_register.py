@@ -69,6 +69,44 @@ def test_a_workers_own_aew_neither_fetches_nor_records_and_the_operators_does(re
     assert asked and key in store.read()["checks"]
 
 
+def test_a_launchs_fetch_behind_a_long_holder_costs_its_bound_and_the_short_wait_only(reg, monkeypatch):
+    """Review of #330, M1, its repro inverted: a fetch that stalls past its bound, behind the operator's `aew capability
+    check` holding the lock. The launch waits the bound and the short wait, never the store's whole wait, and the next
+    launch tries again: nothing was recorded that would hold it off."""
+    import threading
+
+    bound = 0.5
+    monkeypatch.setattr(ops, "LAUNCH_FETCH", True)
+    monkeypatch.setattr(P, "LAUNCH_FETCH_BOUND_S", bound)
+    monkeypatch.setattr(store, "LOCK_TIMEOUT_S", 20.0)
+    monkeypatch.setattr(store, "RECORD_WAIT_S", 0.2)
+
+    def offline(_pinned: dict[str, Any]) -> bytes:  # a dropped route: the connect hangs past the bound, then fails
+        time.sleep(bound * 4)
+        raise errors.Unavailable("no route to host", reason="fetch_failed")
+
+    monkeypatch.setattr(P, "fetch", offline)
+    held, release = threading.Event(), threading.Event()
+
+    def holder() -> None:
+        with store.locked():
+            held.set()
+            release.wait(30)
+
+    lock_holder = threading.Thread(target=holder, daemon=True)
+    lock_holder.start()
+    assert held.wait(10)
+    started = time.monotonic()
+    try:
+        ops.fetch_at_launch()
+    finally:
+        spent = time.monotonic() - started
+        release.set()
+        lock_holder.join(10)
+    assert spent < bound + 0.2 + 3.0, spent  # never the 20 s the store's own wait would have cost
+    assert not (store.read().get("fetch_failures") or {})  # gave way: the next launch fetches and records
+
+
 def test_a_launch_behind_a_long_holder_of_the_lock_gives_way_and_the_next_records_it(reg, monkeypatch):
     """CAPR-12: recording a check never stops a launch for as long as a register command may wait."""
     monkeypatch.setattr(store, "RECORD_WAIT_S", 0.2)

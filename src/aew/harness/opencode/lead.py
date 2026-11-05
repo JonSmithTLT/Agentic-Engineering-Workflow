@@ -352,8 +352,9 @@ class StartStages:
     """How long each stage of the contained Lead's start took, in seconds, on its label and in the debug log (the
     designer's addendum 3: five starts of 15 to 31 s on the Rocky VM went unexplained, so a recurrence in the
     operator's trial names its stage): ``version`` (the OpenCode CLI's), ``logins`` (the stored logins, the policy
-    and the start lines), ``seat`` (the seat and the broker), ``sandbox`` (built and self-tested), ``network`` (the
-    relays and the egress proxy), ``lead_logins`` (the Lead's own login rows; its database the first time)."""
+    and the start lines), ``seat`` (the seat and the broker), ``fetch`` (the capability register's first-launch fetch,
+    when one is due), ``sandbox`` (built and self-tested), ``network`` (the relays and the egress proxy),
+    ``lead_logins`` (the Lead's own login rows; its database the first time)."""
 
     def __init__(self) -> None:
         self.last = time.monotonic()
@@ -474,6 +475,7 @@ class ContainedLead:
                       "OpenCode's defaults.\n")
 
     def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> lead_broker.Harness:
+        from aew.capability import ops as capability
         from aew.harness import containment, weaker_register
         from aew.harness.containment import egress, netns
 
@@ -487,6 +489,9 @@ class ContainedLead:
                  "aew_root": engine.aew_root, "directory": run_dir, "marker": run_dir / "label.json"}
         policy, _ = engine.execution_policy()
         project = str(engine.repo_root)
+        if containment.supported():  # a stage of its own, so a slow network is never read as a slow sandbox
+            capability.fetch_at_launch()
+        self.stages.mark("fetch")
         layout, label = containment.establish(
             role="lead", scope="project", workspace=project, run_dir=run_dir, scratch=str(run_dir / "scratch"),
             bridge_dir=bridge_dir, policy=policy, project=project, bridge=child_env.get(lead_broker.ENV_ENDPOINT),

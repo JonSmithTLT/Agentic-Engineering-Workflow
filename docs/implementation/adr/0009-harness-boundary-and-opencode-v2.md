@@ -1704,7 +1704,9 @@ This replaces the 2026-10-24 amendment's `aew doctor` `ripgrep` line, and its "r
   their environment's `PATH`; one that does not gets this process's.
 - **The register is bound read-only,** with `--ro-bind-try`, since a payload may go during a run, which then fails only
   that tool. The context's directory and the register are also `protected`, so the launch self-test refuses a sandbox
-  that could write them. A register under a host mask (`/run`) stays out of the sandbox instead of refusing the launch.
+  that could write them. A register under a host mask (`/run`) is not bound in: a bind there would re-open part of a
+  tree the layout masks whole, and the bind-back refusal reads no tool bind, so `_tool_fields`' filter keeps the mask
+  whole. Its copies' checks then fail inside, each entry becomes the stub, and the launch goes on.
 - **The check runs inside.** The self-test's probe runs each copy's health check in the sandbox, and only reports it:
   `status.judge` on the host owns what a check means. `bind.settle` then rewrites each entry from that, so a copy that
   matches its pin but cannot run there never serves, and a host copy the sandbox cannot see becomes the stub, never a
@@ -1713,7 +1715,10 @@ This replaces the 2026-10-24 amendment's `aew doctor` `ripgrep` line, and its "r
 - **It never refuses a launch** (CAPR-12): the tools' health is no part of the self-test's verdict, its budget is half
   the probe's time, and neither the first-launch fetch nor recording a result can stop a launch.
 - **The first-launch fetch** is in `containment.establish`, outside the register's lock and bounded as a whole
-  (`payload.LAUNCH_FETCH_BOUND_S`), which `starting_limit_s` adds. A failure is not retried at a launch for
+  (`payload.LAUNCH_FETCH_BOUND_S`). Its record and the check's each wait at most `store.RECORD_WAIT_S` for the
+  register's lock, and give way to the next launch behind a longer holder. `starting_limit_s` adds all three. A due
+  fetch says so on stderr, and the contained Lead's start times it as its own `fetch` stage. A failure is not retried
+  at a launch for
   `payload.FETCH_RETRY_AFTER_S` (a judgement, not a measurement), and a refusal not until `aew capability check`. The
   status says when a launch next tries. No variable turns it off: tests turn it off in process
   (`ops.LAUNCH_FETCH`), and a test's child `aew` starts from a register that holds a failed fetch, which reads as one.

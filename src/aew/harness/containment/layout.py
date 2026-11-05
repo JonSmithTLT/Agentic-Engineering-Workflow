@@ -1100,9 +1100,10 @@ def _tool_fields(run: Path, tools: tuple[Any, ...] | None, hide_host: tuple[str,
                  protected: list[str]) -> dict[str, Any]:
     """The capability register in this layout (CAPR-04, CAPR-Q02; ``aew.capability.bind``): the context's own directory
     of entries, read-only, and what its entries lead to, the register, read-only, each also a path the self-test must
-    find unwritable. Each is one for any number of records. Nothing here refuses a launch (CAPR-12): a register under a
-    host mask stays out of the sandbox, as nothing is bound back there but what the operator's rulings let in
-    (:func:`_refuse_run_bind_backs`), and its copies' checks then fail inside and the status says so."""
+    find unwritable. Each is one for any number of records. Nothing here refuses a launch (CAPR-12). A register under a
+    host mask is not bound in: a bind there would re-open part of a tree the layout masks whole, and
+    :func:`_refuse_run_bind_backs` reads no tool bind, so this filter is what keeps the mask whole. Its copies' checks
+    then fail inside, each entry becomes the stub, and the status says why."""
     from aew.capability import bind, status, store
 
     if sys.platform == "win32":  # pragma: windows-only  # no contained context there, and links need a privilege

@@ -92,7 +92,7 @@
         "lower-bound": 325
       }
     },
-    "digest": "sha256:cbdfcf256f94b12429f24a693bd4adeb832768ba348462806b378d7b31671e36",
+    "digest": "sha256:71346b420cf986fa5bb4eb4a43a397f777e82d1e12ed0bc0c9918d46e1eee84f",
     "records": 1217,
     "unresolved": 112
   },
@@ -311,25 +311,25 @@
       "family": "writers",
       "module": "aew.capability.payload",
       "symbol": "install",
-      "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
     },
     {
       "family": "writers",
       "module": "aew.capability.payload",
       "symbol": "install",
-      "why": "Path.unlink of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      "why": "Path.unlink of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
     },
     {
       "family": "writers",
       "module": "aew.capability.payload",
       "symbol": "install",
-      "why": "os.replace of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}.exe`, with no root this reading can name; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      "why": "os.replace of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}.exe`, with no root this reading can name; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
     },
     {
       "family": "writers",
       "module": "aew.capability.payload",
       "symbol": "install",
-      "why": "write_temp of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      "why": "write_temp of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
     },
     {
       "family": "writers",
@@ -22216,6 +22216,7 @@
       },
       "family": "modules",
       "imports": [
+        "aew.capability.ops",
         "aew.errors",
         "aew.harness.agentenv",
         "aew.harness.containment",
@@ -22440,6 +22441,7 @@
       "family": "modules",
       "imports": [
         "aew.capability.payload",
+        "aew.capability.store",
         "aew.engine.api",
         "aew.engine.authority",
         "aew.engine.disposition_ops",
@@ -48970,14 +48972,14 @@
           {
             "module": "aew.capability.payload",
             "symbol": "install",
-            "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+            "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "Path.mkdir",
-        "reason": "`root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+        "reason": "`root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
       },
       "family": "writers"
     },
@@ -48993,14 +48995,14 @@
           {
             "module": "aew.capability.payload",
             "symbol": "install",
-            "why": "Path.unlink of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+            "why": "Path.unlink of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "Path.unlink",
-        "reason": "`root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+        "reason": "`root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
       },
       "family": "writers"
     },
@@ -49016,14 +49018,14 @@
           {
             "module": "aew.capability.payload",
             "symbol": "install",
-            "why": "os.replace of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}.exe`, with no root this reading can name; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+            "why": "os.replace of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}.exe`, with no root this reading can name; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "os.replace",
-        "reason": "`root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}.exe`, with no root this reading can name; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+        "reason": "`root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}/{}.exe`, with no root this reading can name; a relative path, `aew/capability/payloads/{}/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
       },
       "family": "writers"
     },
@@ -49039,14 +49041,14 @@
           {
             "module": "aew.capability.payload",
             "symbol": "install",
-            "why": "write_temp of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+            "why": "write_temp of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "write_temp",
-        "reason": "`root` is bound by `with store.locked(directory)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+        "reason": "`root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; `root` of `_apply_add`, which no static call binds; `root` of `_apply_import`, which no static call binds; a relative path, `aew/capability/payloads/{}/{}`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
       },
       "family": "writers"
     },

@@ -66,7 +66,7 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         run_dir = lab.aew_root / "local" / "harness" / "runs" / label["session"]
         assert json.loads((run_dir / "label.json").read_text())["session"] == label["session"]
         # addendum 3: each start stage's seconds, so a slow start names its stage
-        assert list(label["start_s"]) == ["version", "logins", "seat", "sandbox", "network"], label["start_s"]
+        assert list(label["start_s"]) == ["version", "logins", "seat", "fetch", "sandbox", "network"], label["start_s"]
         assert all(isinstance(s, float) and s >= 0 for s in label["start_s"].values())
         assert json.loads((run_dir / "label.json").read_text())["start_s"] == label["start_s"]
         assert done["restored"]

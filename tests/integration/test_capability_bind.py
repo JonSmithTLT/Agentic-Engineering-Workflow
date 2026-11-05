@@ -195,6 +195,7 @@ def test_with_no_copy_at_all_the_stub_fails_with_the_cause_and_the_lookup_still_
     done = world.sh(layout, 'command -v fake; fake --search anything; echo "exit $?"')
     assert done.stdout.splitlines() == [str(entry), "exit 127"], done
     assert "its pinned payload is not on this host" in done.stderr and "aew capability check" in done.stderr
+    assert "Meanwhile, search with `grep -rn` or `find`" in done.stderr  # the agent's own step (review of #330, m5)
     cap = world.status()
     assert cap["observed_status"] == status.UNAVAILABLE and "not on this host" in cap["cause"]
     assert "aew capability check" in cap["fix"]
@@ -473,16 +474,42 @@ def test_a_fetched_archive_off_its_pin_is_refused_at_the_launch_and_not_fetched_
     assert len(net.asked) == 1
 
 
-def test_a_fetch_that_stalls_costs_a_launch_its_bound_and_no_more(world, monkeypatch):
-    """CAPR-12: a socket that keeps answering slowly is bounded as a whole, and recorded as a failure."""
+def test_a_fetch_that_stalls_costs_a_launch_its_bound_and_no_more(world, monkeypatch, capsys):
+    """CAPR-12: a socket that keeps answering slowly is bounded as a whole, and recorded as a failure. Behind a holder
+    of the register's lock (the operator's `aew capability check`, mid-fetch), its record waits only the short wait and
+    gives way, so the launch costs the two bounds `starting_limit_s` adds (review of #330, M1)."""
     import threading
     import time
 
-    release = threading.Event()
+    from aew.harness import supervisor
+
+    release, held, holder_done = threading.Event(), threading.Event(), threading.Event()
     stall_s = 30.0
     net = Network(monkeypatch, b"")
     monkeypatch.setattr(ops.P, "fetch", lambda _p: release.wait(stall_s) and b"")
     monkeypatch.setattr(ops.P, "LAUNCH_FETCH_BOUND_S", 0.2)
+    monkeypatch.setattr(store, "RECORD_WAIT_S", 0.5)
+    monkeypatch.setattr(store, "LOCK_TIMEOUT_S", stall_s)
+
+    def holder() -> None:
+        with store.locked():
+            held.set()
+            holder_done.wait(stall_s)
+
+    lock_holder = threading.Thread(target=holder, daemon=True)
+    lock_holder.start()
+    assert held.wait(10)
+    started = time.monotonic()
+    try:
+        ops.fetch_at_launch()
+        behind_holder = time.monotonic() - started
+    finally:
+        holder_done.set()
+        lock_holder.join(10)
+    assert behind_holder < 0.2 + 0.5 + 3.0, behind_holder  # the bound and the short wait, never the store's whole wait
+    assert "fetching fake for this host's capability register (at most 0.2 s)" in capsys.readouterr().err
+    assert supervisor.starting_limit_s(None) - supervisor.STARTING_MARGIN_S >= (
+        ops.P.LAUNCH_FETCH_BOUND_S + 2 * store.RECORD_WAIT_S)  # what the deadline adds covers both waits
     started = time.monotonic()
     try:
         ops.fetch_at_launch()
@@ -493,6 +520,29 @@ def test_a_fetch_that_stalls_costs_a_launch_its_bound_and_no_more(world, monkeyp
     assert spent < stall_s / 2, spent  # it stopped waiting at its bound, well before the stalled fetch would have ended
     assert net.asked == [] and label["self_test"]["ok"] is True
     assert "did not finish within" in world.status()["cause"]
+
+
+def test_a_register_under_a_host_mask_stays_out_and_its_pinned_copy_becomes_the_stub(world, monkeypatch):
+    """The ADR's case (review of #330, m4): AEW's own pinned copy, present on the host in a register the layout masks
+    whole. Binding it would re-open the mask, so it is not bound; the launch goes on, the check inside fails, the entry
+    is the stub, and the status never reads it as usable."""
+    from aew.harness.containment import probe
+
+    _import(world.reg)
+    register = os.path.realpath(store.root())
+    masks = (*L.host_masks(), register)
+    monkeypatch.setattr(L, "host_masks", lambda: masks)
+    monkeypatch.setattr(probe, "host_masks", lambda: masks)
+    layout, label = world.establish()
+    assert label["self_test"]["ok"] is True  # never a refused launch (CAPR-12)
+    assert register not in layout.tool_binds
+    argv = L.bwrap_argv(layout, ["true"])
+    assert not [i for i, a in enumerate(argv) if a == "--ro-bind-try" and argv[i + 1] == register], argv
+    tool = label["self_test"]["tools"]["fake"]
+    assert tool["served"] is None and tool["cause"], tool
+    entry = Path(layout.tools_first) / "fake"
+    assert not entry.is_symlink() and os.access(entry, os.X_OK)
+    assert world.status()["observed_status"] != status.FUNCTIONAL_ONLY
 
 
 def test_no_variable_turns_the_launchs_fetch_off(world, monkeypatch):

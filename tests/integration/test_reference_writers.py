@@ -298,7 +298,9 @@ def test_the_with_limit_the_page_names_is_still_the_live_case():
     dashboard = process_kind.cli_entry_point(["dashboard", "serve"], {})
     for key in keys:
         reached = {k for w in (records[key].fact or {})["writers"] for k in w["entry_points"]}
-        assert dashboard not in reached and ANALYSIS.roles.general in reached, (key, reached)
+        # the exact set, so a new role is a visible change: the supervisor is the page's per-function over-attribution
+        assert reached == {ANALYSIS.roles.general, "aew.harness.supervisor"}, (key, reached)
+        assert dashboard not in reached
 
 
 def test_the_directory_the_finding_treats_as_local_is_one_the_project_keeps_out_of_git():

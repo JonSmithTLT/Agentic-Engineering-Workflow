@@ -319,7 +319,10 @@ def fetch_at_launch(directory: Path | None = None) -> None:
     """CAPR-04, CAPR-Q10: before a contained context's first use, with no step for the operator, fetch what this host
     lacks. It never stops the launch (CAPR-12): a failure is recorded, the status says why, and the run goes on with a
     host copy or the stub. The network wait is outside the register's lock and bounded as a whole, so a second launch
-    does not queue behind it; two first launches may each fetch, and each installs the same pinned bytes."""
+    does not queue behind it; two first launches may each fetch, and each installs the same pinned bytes. Its record
+    waits only the short ``store.RECORD_WAIT_S`` for the lock: behind a long holder (`aew capability check` holds it
+    across its fetches) it gives way, and the next launch fetches and records (review of #330, M1). Every wait here is
+    one ``supervisor.starting_limit_s`` adds."""
     if not LAUNCH_FETCH:
         return
     if process_kind.kind() == process_kind.NON_WRITER:  # an agent's own `aew`: the register is the operator's
@@ -328,6 +331,9 @@ def fetch_at_launch(directory: Path | None = None) -> None:
         due = _due(store.read(directory), directory)
         if not due:
             return
+        # Said where the operator sees it: a start that waits on the network says so (review of #330, m3)
+        sys.stderr.write(f"aew: fetching {', '.join(name for name, _, _ in due)} for this host's capability register "
+                         f"(at most {P.LAUNCH_FETCH_BOUND_S:g} s); the run goes on whatever comes of it\n")
         got: dict[str, bytes | AEWError] = {}
 
         def fetch_all() -> None:
@@ -340,7 +346,7 @@ def fetch_at_launch(directory: Path | None = None) -> None:
         late = Unavailable(f"the fetch did not finish within {P.LAUNCH_FETCH_BOUND_S:g} s at this launch",
                            reason="fetch_failed")
         key = records.platform_key()
-        with store.locked(directory) as root:
+        with store.locked(directory, short=True) as root:
             state = store.read(root)
             for name, record, pinned in due:
                 _take(name, record, pinned, state, key, root, got.get(name, late))

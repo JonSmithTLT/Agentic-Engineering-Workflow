@@ -927,6 +927,18 @@ def test_a_lost_shard_fails_the_assurance_check_and_yields_no_mass_stale(tmp_pat
     assert "no longer observed" not in out and "stale keys not decided: the assurance check's outcome is failure" in out
 
 
+def test_an_absent_run_decides_nothing_stale_whatever_it_claims(tmp_path, capsys, monkeypatch):
+    """With no findings file nothing captured, so the tier and the outcome cannot make absence mean anything."""
+    monkeypatch.setitem(modes.MODES, "O-CMD", modes.ENFORCE)
+    ratchet = _ratchet()
+    head = _list_with(tmp_path, {"O-CMD cli:aew x|result"})
+    empty = tmp_path / "reports"
+    empty.mkdir()
+    assert ratchet.main([str(empty), "--event", "push", "--allowlist", str(head), "--tier", "full",
+                         "--assurance", "success"]) == 0
+    assert "stale keys not decided: no findings file" in capsys.readouterr().out
+
+
 def test_capture_errors_decide_nothing_stale_even_on_a_complete_run(tmp_path, capsys):
     """An output left unjudged fails the run already; mass stale keys on top would only hide that."""
     ratchet = _ratchet()

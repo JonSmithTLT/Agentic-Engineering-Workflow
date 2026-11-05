@@ -249,14 +249,14 @@ def test_o_secret_flags_every_credential_the_product_names_when_asked_for():
 @pytest.mark.parametrize("plane", [OPERATOR, MODEL])
 def test_o_secret_flags_a_credential_asked_of_any_reader(plane):
     """The operator's decision of 2026-10-12 widens O-SECRET to any reader: the operator, the Lead, or a worker model
-    through its pack. The pack's own line, as the product renders it, is caught on the model plane."""
-    pack = next(text for source, _, text in static.texts(guides()) if source == "pack:implementer")
-    line = next(ln for ln in pack.splitlines() if "AEW_INVOCATION_TOKEN=" in ln)
+    through its pack. The line packs carried until they stopped speaking of the credential is the planted case, and
+    no pack the product renders asks now."""
+    line = "Set `AEW_INVOCATION_TOKEN=<credential>` for every `aew` command below."
     assert found(Output(site="unit", plane=plane, text=line), "O-SECRET") == ["asks to set AEW_INVOCATION_TOKEN"]
+    packs = [text for source, _, text in static.texts(guides()) if source.startswith("pack:")]
+    assert packs and not [problem for text in packs for problem in rules.o_secret(text, plane)]
     assert found(Output(site="unit", plane=plane, text="Ask the operator to set AEW_LEAD_TOKEN."), "O-SECRET")
     assert not found(Output(site="unit", plane=plane, text="This session never holds AEW_LEAD_TOKEN."), "O-SECRET")
-    key = f"O-SECRET {static.STATIC}pack:implementer|asks to set AEW_INVOCATION_TOKEN"
-    assert key in allowed.load()  # listed until the product drops the line; its key stays stable
 
 
 # The designer's decision of 2026-11-01 (CS-4 addendum 12): each line asks to set the credential, so only the snippet

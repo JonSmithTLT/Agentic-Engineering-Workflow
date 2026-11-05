@@ -18,6 +18,6 @@ prohibited:
 outputs:
   - discovery record
 context:
-  knowledge: [objective, accepted_authority, codebase_map, architecture_map]
+  knowledge: [objective, accepted_authority, codebase_map]
   excluded: []
 capabilities: [exact_code_search, structural_code_search, repository_exploration, relationship_discovery]

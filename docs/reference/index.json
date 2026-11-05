@@ -2,7 +2,7 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 404,
-      "lower-bound": 742
+      "lower-bound": 743
     },
     "by_family": {
       "cli-commands": 116,
@@ -15,7 +15,7 @@
       "entry-points": 7,
       "guards": 11,
       "layout": 76,
-      "modules": 192,
+      "modules": 193,
       "reason-rules": 56,
       "schemas": 32,
       "sqlite-tables": 10,
@@ -61,7 +61,7 @@
         "lower-bound": 76
       },
       "modules": {
-        "lower-bound": 192
+        "lower-bound": 193
       },
       "reason-rules": {
         "complete-by-construction": 56
@@ -92,8 +92,8 @@
         "lower-bound": 272
       }
     },
-    "digest": "sha256:aa8c35b5335bcb119aaf433c5833cfd2435aac0cd1564e26406dcb3bac3ac8bf",
-    "records": 1146,
+    "digest": "sha256:0bae5f55e606fa1f54bda17a5c2ea15c93586f5fedb49e6f6de54bae030df34f",
+    "records": 1147,
     "unresolved": 112
   },
   "gaps": [
@@ -1324,7 +1324,7 @@
     "cli-commands:guide": {
       "anchor": {
         "module": "aew.cli.commands",
-        "symbol": "register"
+        "symbol": "_guide"
       },
       "basis": "declared",
       "coverage": {
@@ -18565,6 +18565,7 @@
         "aew.surface.context",
         "aew.surface.contract",
         "aew.surface.errors",
+        "aew.surface.lead_text",
         "aew.surface.mcp",
         "aew.surface.run",
         "aew.surface.stage",
@@ -19819,6 +19820,7 @@
         "aew.engine.outbox",
         "aew.engine.ports",
         "aew.engine.store",
+        "aew.engine.transitions",
         "aew.errors",
         "aew.harness.containment",
         "aew.harness.contract",
@@ -20259,6 +20261,7 @@
         "aew.engine.nonmutating_ops",
         "aew.engine.ports",
         "aew.engine.seams",
+        "aew.engine.transitions",
         "aew.engine.validation_ops",
         "aew.errors",
         "aew.harness.contract",
@@ -21189,7 +21192,8 @@
         "aew.harness.opencode.login",
         "aew.harness.opencode.projection",
         "aew.harness.weaker_register",
-        "aew.process_kind"
+        "aew.process_kind",
+        "aew.surface.lead_text"
       ]
     },
     "modules:aew.harness.opencode.login": {
@@ -21226,7 +21230,9 @@
       "family": "modules",
       "imports": [
         "aew.harness.contract",
-        "aew.surface"
+        "aew.surface",
+        "aew.surface.context",
+        "aew.surface.contract"
       ]
     },
     "modules:aew.harness.operator_client": {
@@ -22554,6 +22560,28 @@
       },
       "family": "modules",
       "imports": []
+    },
+    "modules:aew.surface.lead_text": {
+      "anchor": {
+        "module": "aew.surface.lead_text",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/surface/lead_text.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.engine.guide",
+        "aew.surface.availability",
+        "aew.surface.context",
+        "aew.surface.contract"
+      ]
     },
     "modules:aew.surface.mcp": {
       "anchor": {

@@ -34,10 +34,10 @@ def lead_system_text() -> str:
 
 
 def rendered_guide() -> str:
-    from aew.engine import guide
     from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
+    from aew.surface import lead_text
 
-    return guide.render(DEFAULT_GATES, DEFAULT_CHECKS)
+    return lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
 
 
 def pack_templates() -> Iterator[tuple[str, str]]:

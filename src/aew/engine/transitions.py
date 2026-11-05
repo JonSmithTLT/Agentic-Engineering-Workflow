@@ -165,13 +165,33 @@ _COMMANDS = {  # each a complete command once its placeholders are filled (ITEMS
     "accept": f"aew work accept {{w}} {EXPECT_REV}",
 }
 _NOTES = {"accept": " (non-mutating Tickets)"}
+# The typed stage a Lead calls to take an edge, for the engine's own words to a Lead (E130): a refusal's next steps, and
+# its hints. The engine never imports the surface, so this mirrors the catalog (`aew.surface.contract`) as that catalog
+# mirrors the primitives, and a test holds it exactly equal, both ways, to what the stages' first steps say
+# (tests/unit/test_lead_text.py). An edge a stage only passes through is not here: no stage starts from that state.
+STAGE_AT = {
+    ("READY", "ASSIGNED"): "ticket_start",
+    ("RUNNING", "REVIEW_PENDING"): "ticket_request_review",
+    ("REVIEW_PENDING", "REVIEW_PASSED"): "ticket_request_verification",
+    ("REVIEW_PENDING", "REVIEW_FAILED"): "ticket_request_verification",
+    ("VERIFY_PENDING", "VERIFIED"): "ticket_prepare",
+    ("VERIFY_PENDING", "VERIFICATION_FAILED"): "ticket_prepare",
+    ("VERIFY_PENDING", "VERIFICATION_INCONCLUSIVE"): "ticket_prepare",
+    ("COMMIT_READY", "DONE"): "integration_publish",
+    ("COMMIT_READY", "VERIFICATION_FAILED"): "integration_publish",
+}
 _EXCEPTIONAL = frozenset({"BLOCKED", "CANCELLED", "ESCALATED", "INTERRUPTED", "REPLAN_REQUIRED"})
 
 
+def _stage_or(frm: str, dst: str) -> str:
+    stage = STAGE_AT.get((frm, dst))
+    return f"`{stage}`, or " if stage else ""
+
+
 def next_steps(frm: str, work_id: str = "<T>") -> str:
-    """The forward moves from ``frm``, each as the command that makes it (cancelling, escalating, replanning and
-    interrupting are left out: they are decisions, not the next step)."""
-    steps = [f"{dst} by `{_COMMANDS[via].format(w=work_id, to=dst)}`{_NOTES.get(via, '')}"
+    """The forward moves from ``frm``, each as the stage that takes it, if one does, and the command that makes it
+    (cancelling, escalating, replanning and interrupting are left out: they are decisions, not the next step)."""
+    steps = [f"{dst} by {_stage_or(frm, dst)}`{_COMMANDS[via].format(w=work_id, to=dst)}`{_NOTES.get(via, '')}"
              for dst, via in allowed_from(frm).items() if dst not in _EXCEPTIONAL and via in _COMMANDS]
     return f"From {frm}: " + "; ".join(steps) + "." if steps else ""
 

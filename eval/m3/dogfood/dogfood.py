@@ -352,6 +352,7 @@ def lead_child(spec_path: Path) -> int:
     from aew.harness import contract as K
     from aew.harness import runlog
     from aew.harness.opencode import projection
+    from aew.surface import lead_text
 
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
     repo, state_root = Path(spec["repo"]), Path(spec["state"])
@@ -363,7 +364,7 @@ def lead_child(spec_path: Path) -> int:
     guide = spec.get("guide", "embedded")
     guide = {True: "embedded", False: "pointer"}.get(guide, guide) if isinstance(guide, bool) else guide  # A4's specs
     config, rules = headless.lead_config(profile, LEAD_STEPS,
-                                         guide=engine.lead_guide() if guide == "embedded" else "",
+                                         guide=lead_text.guide_for(engine) if guide == "embedded" else "",
                                          pointer=guide != "none")
     deadline = time.monotonic() + float(spec["deadline_s"])
     out: dict[str, Any] = {"sessions": [], "nudges": 0, "stop": None, "lost": False}
@@ -818,6 +819,7 @@ def debrief_run(name: str, results: Path, out: Path) -> dict[str, Any]:
 
     from aew.engine.api import Engine
     from aew.harness.opencode import projection
+    from aew.surface import lead_text
 
     record = next(r for r in (json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()
                               if line.strip()) if r.get("workdir") and Path(r["workdir"]).name == name)
@@ -844,7 +846,7 @@ def debrief_run(name: str, results: Path, out: Path) -> dict[str, Any]:
     finally:
         con.close()
     engine = Engine.discover(work / "repo")
-    config, _ = headless.lead_config(profile, LEAD_STEPS, guide=engine.lead_guide() if guide == "embedded" else "",
+    config, _ = headless.lead_config(profile, LEAD_STEPS, guide=lead_text.guide_for(engine) if guide == "embedded" else "",
                                      pointer=guide != "none")
     config["agents"][projection.LEAD_AGENT]["permissions"] = DENY_ALL
     config["permissions"] = DENY_ALL

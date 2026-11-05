@@ -9,12 +9,14 @@ takeover.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
 from aew.engine import gate_ops
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
+from aew.engine import transitions as T
 from aew.engine import validation_ops as VO
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
@@ -259,8 +261,9 @@ class Resume:
                     out.append(f"waiting on {b['id']} ({b['reason']})")
             return out
         if st == "READY":
-            return [f"staff it if the defaults do not fit (`aew work roles {wid}` / `aew work staff {wid} --execute "
-                    f"<card> {EXPECT_REV}`), then `aew work assign {wid} --launch {EXPECT_REV}`"]
+            return [f"`{T.STAGE_AT['READY', 'ASSIGNED']}` (`aew work assign {wid} --launch {EXPECT_REV}`), after "
+                    f"staffing it if the defaults do not fit (`aew work roles {wid}` / `aew work staff {wid} --execute "
+                    f"<card> {EXPECT_REV}`)"]
         implementer = u.get("implementer_invocation")
         if st == "ASSIGNED":
             if (state["invocations"].get(implementer) or {}).get("runs"):  # launched by a harness (M3-D8)
@@ -280,7 +283,8 @@ class Resume:
         if st == "REVIEW_PENDING":
             pending = self._submitted(state, wid, u, "review")
             if pending:
-                return [f"ingest review {e} (`aew review ingest`)" for e in pending]
+                return [f"ingest review {e}: `{T.STAGE_AT['REVIEW_PENDING', 'REVIEW_PASSED']}` (`aew review ingest`)"
+                        for e in pending]
             if active:
                 return [f"review in progress ({', '.join(active)})"]
             return ["dispatch the next planned reviewer card (`aew invoke create`)"]
@@ -291,7 +295,8 @@ class Resume:
         if st == "VERIFY_PENDING":
             pending = self._submitted(state, wid, u, "verification")
             if pending:
-                return [f"ingest verification {e} (`aew verify ingest`)" for e in pending]
+                return [f"ingest verification {e}: `{T.STAGE_AT['VERIFY_PENDING', 'VERIFIED']}` (`aew verify ingest`)"
+                        for e in pending]
             if active:
                 return [f"verification in progress ({', '.join(active)})"]
             return ["dispatch the next planned verifier card (`aew invoke create`)"]
@@ -319,13 +324,12 @@ class Resume:
                 "conflict": "integration conflict: return to RUNNING (rebase) or REPLAN_REQUIRED",
                 # M4-E E6a (plan v3 §2.3): the lease's custodian validates; the Lead never does, save for recovery.
                 "prepared": (self._custodian_validates(state, wid) if checks_mode
-                             else f"dispatch post-integration verification (`aew invoke create {wid} --scope "
-                                  f"integration --launch {EXPECT_REV}`)"),
+                             else self._integration_verifier(state, wid)),
                 "validation_unavailable": "post-integration validation could not run (infrastructure): fix the "
                                           "environment, then `aew integrate requeue`",
                 "validation_inconclusive": "resolve the post-integration verification blocker, then run `aew integrate "
                                            "prepare` (a new candidate) and verify it",
-                "validated": "publish: `aew integrate publish`",
+                "validated": f"publish: `{T.STAGE_AT['COMMIT_READY', 'DONE']}` (`aew integrate publish`)",
                 "publishing": "an interrupted publish: `aew integrate reconcile`",
             }.get(status, f"integration status {status}")]
         if st == "INTERRUPTED":
@@ -336,6 +340,28 @@ class Resume:
         if st == "ESCALATED":
             return ["record the escalation outcome and return the Ticket"]
         return []
+
+    @staticmethod
+    def _integration_verifier(state: dict[str, Any], wid: str) -> str:
+        """A prepared verifier-mode candidate's next step (E130). `ticket_prepare` launches its verifier, and a shell
+        `aew integrate prepare` does not: only that last case needs one dispatched, and telling a Lead to dispatch one
+        the stage launched is refused (LEASE_NOT_HELD, once its custodian released the lease to VALIDATED)."""
+        publish = T.STAGE_AT["COMMIT_READY", "DONE"]
+        queue = state.get("queue") or {}
+        entry = next((e for e in (queue.get("entries") or {}).values() if e["work"] == wid), {})
+        report = (entry.get("validated") or {}).get("report")
+        if report:
+            return (f"its integration verifier's report {report} is clean: `{publish}` with it as "
+                    "`verification_evidence`")
+        custodian = (queue.get("lease") or {}).get("custodian")
+        running = [i for i, inv in state["invocations"].items()
+                   if custodian and inv.get("custodian") == custodian and inv.get("scope") == "integration"
+                   and inv.get("status") == "active"]
+        if running:
+            return (f"integration verifier {running[0]} is verifying the candidate: wait for its run (`harness_wait`), "
+                    f"then `{publish}` with its report as `verification_evidence`")
+        return (f"dispatch post-integration verification (`aew invoke create {wid} --scope integration --launch "
+                f"{EXPECT_REV}`)")
 
     @staticmethod
     def _custodian_validates(state: dict[str, Any], wid: str) -> str:
@@ -532,11 +558,12 @@ class Resume:
             **({"harness_runs": runs} if (runs := self.harness.harness_resume(state)) else {}),
         }
 
-    def lead_guide(self) -> str:
-        """How work flows in AEW for this project's Lead, from its own policy (F16). Read-only."""
+    def lead_guide(self, stages: Sequence[Any]) -> str:
+        """How work flows in AEW for this project's Lead, from its own policy (F16) and the typed stages the caller
+        hands in (E130: the engine never imports the surface). Read-only."""
         from aew.engine import guide
 
-        return guide.render(self.k.policy("gates"), self.k.policy("checks"))
+        return guide.render(self.k.policy("gates"), self.k.policy("checks"), stages)
 
     def render_resume(self, r: dict[str, Any]) -> str:
         lines = [f"# AEW resume — {r['project']['name']} (control revision {r['control']['revision']})", "",

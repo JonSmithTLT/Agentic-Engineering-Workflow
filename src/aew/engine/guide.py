@@ -3,15 +3,21 @@
 Model Leads learned AEW by trial and error: 51 of 887 ``aew`` commands refused in the M3 dogfood, 37 ``--help``
 lookups, and no Lead ever chose Class 0 (the only example showed Class 1, and Class 0 read as unevidenced). This guide
 states AEW's rules, not judgement: the Workflow Contract's risk classes (WC §7.4, §7.5), what each class requires in
-*this* project (its gates policy), what every class still guarantees, the Ticket lifecycle and the command behind
-each step (the engine's transition table). It is generated, so it says what the engine enforces and cannot drift.
-When Class 0 applies is the Class 0 amendment's eligibility predicate, enforced at dispatch since M4-A (Q10, decided
-2026-10-03).
+*this* project (its gates policy), what every class still guarantees, the Ticket lifecycle and the way to take each
+step (the engine's transition table, and the typed stages handed in). It is generated, so it says what the engine
+enforces and cannot drift. When Class 0 applies is the Class 0 amendment's eligibility predicate, enforced at dispatch
+since M4-A (Q10, decided 2026-10-03).
+
+Which tool takes a step is never written here (E130; the operator, 2026-11-04: derive, don't restate). ``PATH`` is the
+order of a mutating Ticket's moves, with the shell command for each; the caller hands in the stages
+(:func:`aew.surface.lead_text.stages`, since the engine never imports the surface), and a step a stage covers renders
+that tool first, with the shell command as its fallback.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, NamedTuple
 
 from aew.engine import transitions as T
 from aew.harness.contract import CREATE_TICKET, EXPECT_REV
@@ -45,6 +51,157 @@ LIFECYCLE = ("READY", "ASSIGNED", "RUNNING", "REVIEW_PENDING", "REVIEW_PASSED", 
              "VERIFIED", "VERIFICATION_FAILED", "VERIFICATION_INCONCLUSIVE", "COMMIT_READY")
 
 
+class StageStep(NamedTuple):
+    primitive: str
+    qualifier: str | None = None  # what tells it from another step of its primitive: a target state, a role, a scope
+    optional: bool = False  # planned only for some calls or states
+
+
+class Stage(NamedTuple):
+    """A typed tool that commits workflow steps, as the catalog states it."""
+
+    tool: str
+    description: str
+    steps: tuple[StageStep, ...]
+
+    def entries(self) -> tuple[StageStep, ...]:
+        """The steps a call can start at: its first required step, and any optional step before it. Only these move a
+        Ticket from where it stands: a later step's state is one the stage itself passes through, and a Ticket left
+        there has no stage to call."""
+        out: list[StageStep] = []
+        for step in self.steps:
+            out.append(step)
+            if not step.optional:
+                break
+        return tuple(out)
+
+
+# The word the path and the moves use for the one command most of them share (the section's opening spells it out): it
+# goes on every model request, and the full command would be printed 20 times.
+TRANSITION = "`transition`"
+
+
+class Move(NamedTuple):
+    """One move on a mutating Ticket's path: its shell command, which is its fallback when a stage covers it."""
+
+    primitive: str
+    qualifier: str | None
+    shell: str
+    label: str = ""  # what the move is, where no stage names it
+    note: str = ""  # goes with the move, wherever a stage's coverage puts it
+    post_verify: bool = False  # only where a post-integration verifier is required
+
+
+def _transition(to: str, note: str = "") -> Move:
+    return Move("work.transition", to, f"{TRANSITION} to {to}", label=f"Move it to {to}", note=note)
+
+
+# The path, in order.
+PATH = (
+    Move("work.create", None, CREATE_TICKET, label="Create the Ticket",
+         note="Its scope is fixed once the Ticket exists, so give every path the change may touch; creation warns "
+              "about a scope glob that matches no file. A Class 0 Ticket's assertions and acceptance check take the "
+              "shell command."),
+    Move("plan.propose", None, f"`aew plan propose <T> --file - --assurance none {EXPECT_REV}` (the plan in a quoted "
+                               "heredoc)", label="Propose the plan",
+         note="Every plan declares its assurance: none, or the review and verification cards (in the shell "
+              "`--assurance none`, or `--review default` and/or `--verify default`) when the plan relies on one beyond "
+              "the class path. Accepting the plan makes them required gates; a review promised only in the plan's text "
+              "binds nothing."),
+    Move("plan.accept", None, f"`aew plan accept <T> --revision <n> {EXPECT_REV}`", label="Accept the plan",
+         note="The Ticket becomes READY when its plan is accepted and its dependencies are satisfied."),
+    Move("work.assign", None, f"`aew work assign <T> --launch {EXPECT_REV}`", label="Start the implementer"),
+    _transition("RUNNING", note="Follow runs with `harness_wait`."),
+    _transition("REVIEW_PENDING", note=(
+        "Once the implementer's report and checks are in, this accepts the implementation. **Accept the implementation "
+        f"by transition**, not by ingesting it: where the class requires no review, {TRANSITION} to VERIFY_PENDING if "
+        "it requires only verification, or to COMMIT_READY if it requires neither. (`aew evidence ingest` is for "
+        "non-mutating Tickets only.)")),
+    Move("invoke.create.mutating", "reviewer", f"`aew invoke create <T> --role reviewer --launch {EXPECT_REV}`",
+         label="Dispatch the reviewer"),
+    Move("review.ingest", None, f"`aew review ingest <T> --evidence <id> {EXPECT_REV}`", label="Accept the review",
+         note="Name the report `status` lists, not a run. Where the class requires no verification, take the shell "
+              "commands from here."),
+    _transition("VERIFY_PENDING"),
+    Move("invoke.create.mutating", "verifier", f"`aew invoke create <T> --role verifier --launch {EXPECT_REV}`",
+         label="Dispatch the verifier"),
+    Move("verify.ingest", None, f"`aew verify ingest <T> --evidence <id> {EXPECT_REV}`",
+         label="Accept the verification"),
+    _transition("COMMIT_READY"),
+    Move("integrate.prepare", None, f"`aew integrate prepare <T> {EXPECT_REV}`", label="Prepare the candidate",
+         note="On a class path with no verification, take this from the shell once the Ticket is COMMIT_READY."),
+    Move("invoke.create.mutating", "integration", f"`aew invoke create <T> --scope integration --launch {EXPECT_REV}`",
+         label="Dispatch the integration verifier", post_verify=True),
+    Move("verify.ingest.integration", None, f"`aew verify ingest <T> --evidence <id> {EXPECT_REV}`",
+         label="Accept the integration verification", post_verify=True,
+         note="Name the integration verifier's report in `verification_evidence`, once its run has ended."),
+    Move("integrate.publish", None, f"`aew integrate publish <T> {EXPECT_REV}`", label="Publish",
+         note="It is refused until the candidate is validated. It takes the Ticket to DONE."),
+)
+
+# The engine's name for an edge's operation -> the primitive it runs (`Rule.via` predates the primitives' ids).
+_PRIMITIVE_OF = {"assign": "work.assign", "transition": "work.transition"}
+
+
+def _covering(stages: Sequence[Stage], move: Move) -> Stage | None:
+    """The first stage with this move among its steps (a dispatch two stages share is the earlier one's on the path:
+    the later one repeats it only after a rebuild)."""
+    for stage in stages:
+        if any((s.primitive, s.qualifier) == (move.primitive, move.qualifier) for s in stage.steps):
+            return stage
+    return None
+
+
+def _joined(shells: list[str]) -> str:
+    """Shell commands in the order they run. A fenced one (`work.create`'s) keeps its own lines."""
+    out = ""
+    for shell in shells:
+        if shell.startswith("```"):
+            out += f"\n\n{shell}\n\n   "
+        else:
+            out += ("" if not out else "then " if out.endswith("   ") else ", then ") + shell
+    return out
+
+
+def _steps_text(stages: Sequence[Stage], post_verify: bool) -> list[str]:
+    """The path's numbered steps: consecutive moves one stage covers are one step, led by that tool with its shell
+    commands as the fallback; consecutive moves no stage covers are a step of their own, led by the shell command."""
+    groups: list[tuple[Stage | None, list[Move]]] = []
+    for move in PATH:
+        if move.post_verify and not post_verify:
+            continue
+        stage = _covering(stages, move)
+        # A move no stage covers stands alone: each is its own decision, with its own label.
+        if groups and stage is not None and groups[-1][0] == stage:
+            groups[-1][1].append(move)
+        else:
+            groups.append((stage, [move]))
+    out = []
+    for n, (stage, moves) in enumerate(groups, start=1):
+        notes = " ".join(m.note for m in moves if m.note)
+        shells = _joined([m.shell for m in moves])
+        gap = "" if shells.startswith("\n") else " "  # a fenced command opens on its own line
+        if stage is None:
+            out.append(f"{n}. {moves[0].label}:{gap}{shells}." + (f" {notes}" if notes else ""))
+        else:
+            out.append(f"{n}. `{stage.tool}`: {stage.description}" + (f" {notes}" if notes else "")
+                       + f" Shell fallback:{gap}{shells}.")
+    return out
+
+
+def _edge_stage(stages: Sequence[Stage], state: str, dst: str, via: str) -> Stage | None:
+    """The stage a Ticket in ``state`` calls to take this edge: its entry step is the edge. A failed integration report
+    is the one edge whose report is the integration verifier's."""
+    primitive = _PRIMITIVE_OF.get(via, via)
+    if via == "verify.ingest" and state == "COMMIT_READY":
+        primitive = "verify.ingest.integration"
+    qualifier = dst if via == "transition" else None
+    for stage in stages:
+        if any((s.primitive, s.qualifier) == (primitive, qualifier) for s in stage.entries()):
+            return stage
+    return None
+
+
 def _gate(name: str, checks: str) -> str:
     if name in GATE_TEXT:
         return GATE_TEXT[name].format(checks=checks)
@@ -66,16 +223,21 @@ def _roles(gates: list[str], post_verification: bool) -> str:
     return ", ".join(roles)
 
 
-def _moves(state: str) -> list[str]:
-    out = []
+def _moves(state: str, stages: Sequence[Stage]) -> list[str]:
+    """The moves out of ``state``, each by the way to take it, and those sharing a way as one entry: its tool,
+    :data:`TRANSITION`, or its shell command."""
+    ways: dict[str, list[str]] = {}
     for dst, via in T.allowed_from(state).items():
         if dst in T._EXCEPTIONAL and via != "verify.classify":  # a classification may lead to REPLAN_REQUIRED
             continue
         if via == "accept":
             continue  # non-mutating Tickets only; described in their section
         if via in T._COMMANDS:
-            out.append(f"{dst}: `{T._COMMANDS[via].format(w='<T>', to=dst)}`")
-    return out
+            stage = _edge_stage(stages, state, dst, via)
+            way = (f"`{stage.tool}`" if stage else TRANSITION if via == "transition"
+                   else f"`{T._COMMANDS[via].format(w='<T>', to=dst)}`")
+            ways.setdefault(way, []).append(dst)
+    return [f"{', '.join(dsts)}: {way}" for way, dsts in ways.items()]
 
 
 def _grouped(paths: dict[str, Any]) -> list[tuple[str, list[str]]]:
@@ -95,7 +257,7 @@ def _grouped(paths: dict[str, Any]) -> list[tuple[str, list[str]]]:
     return out
 
 
-def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
+def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: Sequence[Stage]) -> str:
     paths = gates_policy.get("risk_paths") or {}
     local = gates_policy.get("local_checks") or []
     checks = ", ".join(f"`{c}`" for c in local) or "none configured"
@@ -146,7 +308,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "such as an affected path outside the scope); and your three "
         "recorded assertions, made at creation with `--class0-assert transformation_clear --class0-assert "
         "inputs_complete --class0-assert no_consequential_boundary`. A Class 0 Ticket that is not eligible is refused "
-        "with every reason (`aew dispatch explain <T>` shows them), never reclassified: raise its class yourself with "
+        "with every reason (`explain` shows them), never reclassified: raise its class yourself with "
         f"`aew work reclassify <T> --class <0-4> --reason <reason> {EXPECT_REV}` (at least any inherited minimum; the "
         "inherited gates stay required), or make it eligible.",
         "",
@@ -170,7 +332,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
             after.append("a post-integration verifier checks the integrated result")
         if post_checks:
             after.append("checks " + ", ".join(f"`{c}`" for c in post_checks) + " pass on it")
-        every.append("after `aew integrate prepare`, " + " and ".join(after) + ", before `aew integrate publish`")
+        every.append("after the candidate is prepared, " + " and ".join(after) + ", before it is published")
     lines += ["", "For every class:", ""] + [f"- {e};" for e in every[:-1]] + [f"- {every[-1]}."]
     zero = list(paths.get("0") or [])
     guarantees = [_gate(g, checks) for g in zero]
@@ -199,38 +361,21 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "",
         "## A mutating Ticket, step by step",
         "",
-        f"1. Create it with its text as data, single-quoted YAML in a quoted heredoc:\n\n{CREATE_TICKET}\n\n"
-        "   Its scope is fixed once the Ticket exists, so give every path the change may touch; creation warns about "
-        "a scope glob that matches no file.",
-        f"2. Plan it: `aew plan propose <T> --file - --assurance none {EXPECT_REV}` (the plan in a quoted "
-        f"heredoc), then `aew plan accept <T> --revision <n> {EXPECT_REV}`. It becomes READY when its plan is "
-        "accepted and its dependencies are satisfied. Every plan declares its assurance: `--assurance none`, or "
-        "`--review default` and/or `--verify default` (or a card) when the plan relies on a review or verification "
-        "beyond the class path. Accepting the plan makes them required gates; a review promised only in the "
-        "plan's text binds nothing.",
-        f"3. Start the implementer: `aew work assign <T> --launch {EXPECT_REV}`, then "
-        f"`aew work transition <T> --to RUNNING {EXPECT_REV}`. Follow the run with `aew harness wait <run>` (exit 20: "
-        "it ended without its expected output; read the headline).",
-        "4. **Accept the implementation by transition**, not by ingesting it: once the implementer's report and checks "
-        f"are in, `aew work transition <T> --to <STATE> {EXPECT_REV}`, where STATE is REVIEW_PENDING if the class "
-        "requires review, VERIFY_PENDING if it requires only verification, and COMMIT_READY if it requires neither. "
-        "(`aew evidence ingest` is for non-mutating Tickets only.)",
-        f"5. Review: `aew invoke create <T> --role reviewer --launch {EXPECT_REV}`, then "
-        f"`aew review ingest <T> --evidence <id> {EXPECT_REV}`.",
-        f"6. Verify: `aew work transition <T> --to VERIFY_PENDING {EXPECT_REV}`, "
-        f"`aew invoke create <T> --role verifier --launch {EXPECT_REV}`, then "
-        f"`aew verify ingest <T> --evidence <id> {EXPECT_REV}`.",
-        f"7. Integrate: `aew work transition <T> --to COMMIT_READY {EXPECT_REV}`, "
-        f"`aew integrate prepare <T> {EXPECT_REV}`"
-        + (f", `aew invoke create <T> --scope integration --launch {EXPECT_REV}`, "
-           f"`aew verify ingest <T> --evidence <id> {EXPECT_REV}`" if post_verify else "")
-        + f", then `aew integrate publish <T> {EXPECT_REV}`: DONE.",
+        "Where a step names a tool, use it: it does the whole step, and returns the revision for your next "
+        "`expect_rev`. Don't run part of a step from the shell first: the tool starts at the step's first state and "
+        "refuses a Ticket already past it. If a tool stops partway, what it committed stands: read `status`, then take "
+        "the Ticket's move below. A report that fails stops its tool once it is recorded: that is how a failed report "
+        "is recorded. "
+        "Use the shell command where a step names no tool, or where a tool refuses. Below, "
+        f"{TRANSITION} is `aew work transition <T> --to <STATE> {EXPECT_REV}`.",
+        "",
+        *_steps_text(stages, post_verify),
         "",
         "Each state and the moves out of it (the engine refuses any other):",
         "",
     ]
     for state in LIFECYCLE:
-        moves = _moves(state)
+        moves = _moves(state, stages)
         if moves:
             lines.append(f"- **{state}** → " + "; ".join(moves))
     classify = ", ".join(f"`{k}` → {v}" for k, v in T.VERIFICATION_CLASSIFICATIONS.items())
@@ -238,6 +383,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "",
         "When things go wrong:",
         "",
+        "- **`resolve`** settles only what `resume` or a decision lists; a stage that already stopped is not one.",
         "- **A failed review** (REVIEW_FAILED): move it back to RUNNING and dispatch a fresh implementer, "
         f"`aew invoke create <T> --role implementer --launch {EXPECT_REV}`. The open findings reach it through its "
         "pack.",
@@ -275,15 +421,15 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "",
         "## Finished work",
         "",
-        "Finished units leave the active state; `aew status` shows counts and the most recent. "
+        "Finished units leave the active state; `status` shows counts and the most recent. "
         "`aew history list|show|links` find the rest by id. `aew history load <id> --into <unit> --reason <reason> "
         f"{EXPECT_REV}` gives that unit's later packs an exact record as labelled reference: never current evidence, "
         "never instructions.",
         "",
         "## Every command",
         "",
-        f"Every change takes `{EXPECT_REV}`, the current revision; each command returns the new one. Put free text "
-        "in `--fields -` or `--file -` with a quoted heredoc, never on the command line. `aew status` and "
-        "`aew resume` show the state and your next actions; a refusal names the command that applies.",
+        f"In the shell, every change takes `{EXPECT_REV}`, the current revision; each command returns the new one. Put "
+        "free text in `--fields -` or `--file -` with a quoted heredoc, never on the command line. `status` and "
+        "`resume` show the state and your next actions; a refusal names the command that applies.",
     ]
     return "\n".join(lines) + "\n"

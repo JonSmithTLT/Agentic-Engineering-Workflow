@@ -29,6 +29,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import faults, outbox
+from aew.engine import transitions as T
 from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_lead, rotate_invocation_token
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
@@ -700,7 +701,19 @@ class Harness:
         records = sorted(e["id"] for e in produced if e["kind"] != "check_result") or ["<id>"]
         if command is None:
             return "ingest it"
-        return "ingest it: " + ", ".join(f"`{command} {wid} --evidence {e} {K.EXPECT_REV}`" for e in records)
+        return f"ingest it: {self._stage_for_report(unit, inv)}" + ", ".join(
+            f"`{command} {wid} --evidence {e} {K.EXPECT_REV}`" for e in records)
+
+    @staticmethod
+    def _stage_for_report(unit: dict[str, Any], inv: dict[str, Any]) -> str:
+        """The stage that accepts a mutating Ticket's report, in front of its command (E130): it does the whole step,
+        so a Lead that ingests from the shell first finds the stage refuses."""
+        if unit.get("kind") != "ticket" or not unit.get("mutating"):
+            return ""
+        edge = {"reviewer": ("REVIEW_PENDING", "REVIEW_PASSED"),
+                "verifier": ("COMMIT_READY", "DONE") if inv.get("scope") == "integration"
+                else ("VERIFY_PENDING", "VERIFIED")}.get(inv["role"])
+        return f"`{T.STAGE_AT[edge]}`, or " if edge else ""
 
     def after_implementation(self, state: dict[str, Any], wid: str) -> str:
         """The transition(s) that take a mutating Ticket on once its implementer's report and checks are in."""
@@ -710,6 +723,8 @@ class Harness:
             to = ("REVIEW_PENDING" if self.gates.review_gates(gc)
                   else "VERIFY_PENDING" if self.gates.verification_gates(gc) else "COMMIT_READY")
             step = f"`aew work transition {wid} --to {to} {K.EXPECT_REV}`"
+            stage = T.STAGE_AT.get(("RUNNING", to))
+            step = f"`{stage}`, or {step}" if stage else step
         except AEWError:
             step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY {K.EXPECT_REV}` (as "
                     "its gates require)")

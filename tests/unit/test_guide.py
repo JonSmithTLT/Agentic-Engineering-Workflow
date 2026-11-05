@@ -13,13 +13,14 @@ from pathlib import Path
 from aew.engine import guide
 from aew.engine import transitions as T
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
+from aew.surface import lead_text
 
 DOC = Path(__file__).resolve().parents[2] / "docs" / "guides" / "lead-guide.md"
 CONFIGURED = {"checks": {"unit": {"configured": True, "command": ["{python}", "-m", "pytest"]}}}
 
 
 def test_the_workflow_contracts_classes_are_explained_with_their_examples():
-    text = guide.render(DEFAULT_GATES, CONFIGURED)
+    text = lead_text.render(DEFAULT_GATES, CONFIGURED)
     for c, (name, meaning, example) in guide.CLASS_TEXT.items():
         assert f"**Class {c}, {name}:** {meaning}. For example: {example}." in text
     assert "not its size" in text and "lowering it needs a recorded decision" in text
@@ -32,7 +33,7 @@ def test_the_workflow_contracts_classes_are_explained_with_their_examples():
 def test_each_class_lists_exactly_the_gates_this_projects_policy_requires():
     gates = copy.deepcopy(DEFAULT_GATES)
     gates["risk_paths"]["2"] = gates["risk_paths"]["2"] + ["review_security"]
-    text = guide.render(gates, CONFIGURED)
+    text = lead_text.render(gates, CONFIGURED)
     assert "- **Class 0:** the implementer's local checks pass on the change as submitted (`unit`). Runs: an " \
            "implementer, a post-integration verifier." in text
     assert "- **Class 1:**" in text and "- **Classes 3 and 4:**" in text  # 2 now differs, so it stands alone
@@ -40,7 +41,7 @@ def test_each_class_lists_exactly_the_gates_this_projects_policy_requires():
 
 
 def test_class_0_is_explained_as_evidenced_and_the_implementation_is_accepted_by_transition():
-    text = guide.render(DEFAULT_GATES, CONFIGURED)
+    text = lead_text.render(DEFAULT_GATES, CONFIGURED)
     assert "**Class 0 is still evidenced.**" in text  # X4b
     assert "the post-integration verification, the guardrails, and an accepted plan all still apply" in text
     assert "**Accept the implementation by transition**" in text  # the most refused command in the dogfood
@@ -49,14 +50,14 @@ def test_class_0_is_explained_as_evidenced_and_the_implementation_is_accepted_by
 
 
 def test_every_listed_move_is_one_the_engine_allows():
-    text = guide.render(DEFAULT_GATES, CONFIGURED)
+    text = lead_text.render(DEFAULT_GATES, CONFIGURED)
     for state in guide.LIFECYCLE:
         line = next((ln for ln in text.splitlines() if ln.startswith(f"- **{state}** → ")), None)
         if line is None:
             continue
         for move in line.split(" → ", 1)[1].split("; "):
-            dst = move.split(":")[0]
-            assert dst in T.allowed_from(state), f"{state} -> {dst} is listed but the engine refuses it"
+            for dst in move.split(":")[0].split(", "):
+                assert dst in T.allowed_from(state), f"{state} -> {dst} is listed but the engine refuses it"
     for name, to in T.VERIFICATION_CLASSIFICATIONS.items():
         assert f"`{name}` → {to}" in text
 
@@ -64,7 +65,7 @@ def test_every_listed_move_is_one_the_engine_allows():
 def test_the_guide_follows_the_post_integration_policy_and_names_unconfigured_checks():
     gates = copy.deepcopy(DEFAULT_GATES)
     gates["post_integration"] = {"verification": False, "checks": []}
-    text = guide.render(gates, DEFAULT_CHECKS)
+    text = lead_text.render(gates, DEFAULT_CHECKS)
     assert "post-integration verifier" not in text and "--scope integration" not in text
     assert "Checks not configured yet (their gates stay blocked): unit." in text
 
@@ -75,7 +76,7 @@ def test_the_guide_reads_the_table_in_its_written_order_whatever_the_dicts_order
     OpenCode Lead tests compare the two). With the table in the order that undo leaves it, the guide, the next steps
     and the Lead's entry guards are what they are in a fresh process."""
     def ordered() -> tuple[str, dict[str, str], dict[str, list[str]]]:
-        return (guide.render(DEFAULT_GATES, DEFAULT_CHECKS), {s: T.next_steps(s) for s in T.STATES},
+        return (lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS), {s: T.next_steps(s) for s in T.STATES},
                 {s: T.lead_entry_guards(s) for s in T.STATES})
 
     fresh = ordered()
@@ -91,5 +92,5 @@ def test_the_guide_reads_the_table_in_its_written_order_whatever_the_dicts_order
 
 def test_the_committed_lead_guide_matches_what_aew_renders_for_its_defaults():
     """docs/guides/lead-guide.md is the guide for a project on AEW's default policy (`aew init`). It is
-    generated, never edited: if this fails, regenerate it from `guide.render(DEFAULT_GATES, DEFAULT_CHECKS)`."""
-    assert guide.render(DEFAULT_GATES, DEFAULT_CHECKS) in DOC.read_text(encoding="utf-8")
+    generated, never edited: if this fails, regenerate it from `lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)`."""
+    assert lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS) in DOC.read_text(encoding="utf-8")

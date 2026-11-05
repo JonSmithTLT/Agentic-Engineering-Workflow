@@ -103,7 +103,8 @@ def test_the_dogfoods_debrief_is_live_in_the_register_while_its_model_answers(do
     results.write_text(json.dumps({"workdir": str(work), "model": "fakeprov/fake-model", "task": "T1",
                                    "lead_guide": "none"}) + "\n", encoding="utf-8")
     monkeypatch.setattr(dogfood, "DEBRIEF_ROOT", tmp_path / "debrief")
-    monkeypatch.setattr(api.Engine, "discover", staticmethod(lambda root: SimpleNamespace(lead_guide=lambda: "")))
+    monkeypatch.setattr(api.Engine, "discover",
+                        staticmethod(lambda root: SimpleNamespace(lead_guide=lambda stages: "")))
     dogfood.debrief_run(work.name, results, tmp_path / "debriefs.jsonl")
     assert session["live"] == [("dogfood_debrief", "running")] and session["marker"]
     assert W.read().live == []

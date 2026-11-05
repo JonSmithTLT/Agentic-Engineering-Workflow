@@ -8,6 +8,7 @@ import argparse
 import json
 import subprocess
 import sys
+import threading
 
 import pytest
 from discovery import allowed, capture, modes, rules, static
@@ -606,7 +607,7 @@ def test_a_pull_request_fails_only_on_new_keys_of_enforced_rules():
     assert allowed.decide(listed, listed, stale_scope=None, mode_of=enforced).ok
 
 
-def test_main_fails_on_a_stale_entry_of_an_enforced_rule_and_a_pull_request_never_does():
+def test_a_run_complete_for_a_key_fails_on_it_stale_and_an_incomplete_run_never_does():
     enforced = {r: modes.ENFORCE for r in modes.RULES}
     listed = {"O-IDS cli:aew status|result", "O-IDS static:guide|aew x"}
     assert allowed.decide(set(), listed, stale_scope=None, mode_of=enforced).ok
@@ -806,6 +807,29 @@ def test_the_capture_reads_aew_by_executable_name_and_echoes_stdin():
     assert plain[0].echo == ("lead", "tool", "x")
 
 
+def _complete_reports(tmp_path, findings: dict | None = None, *, platforms=("linux", "win32"), shards=1,
+                      skip_shard=None):
+    """A run ``assurance`` accepts: one lane per platform, ``shards`` shards, every collected test run and passed, each
+    report with its findings file. ``skip_shard`` loses that shard on every platform. Returns ``(reports, skips)``."""
+    root = tmp_path / "complete"
+    tests = [f"t.py::t{n}" for n in range(shards)]
+    for platform in platforms:
+        for n in range(shards):
+            if n == skip_shard:
+                continue
+            report = root / f"lane-report-{platform}-{n}" / f"{platform}-{n}.json"
+            report.parent.mkdir(parents=True)
+            report.write_text(json.dumps({
+                "schema": "aew/lane-report/v1", "platform": platform, "lane": "fast", "exitstatus": 0,
+                "shard": f"{n + 1}/{shards}", "collected": tests, "wall_s": 0.1,
+                "results": {tests[n]: {"outcome": "passed", "duration": 0.1}}}), encoding="utf-8")
+            allowed.findings_path_for(report).write_text(json.dumps(
+                {"schema": capture.SCHEMA, "outputs": 1, "findings": findings or {}, "errors": {}}), encoding="utf-8")
+    skips = tmp_path / "skips.yaml"
+    skips.write_text("schema: aew/platform-skips/v1\n", encoding="utf-8")
+    return root, skips
+
+
 def test_write_refuses_to_add_keys_unless_introducing_and_rescans_the_static_texts(tmp_path, capsys):
     """Review of #218, G2: `--write` may only shrink the list (no `--introduce`), and `--static` rescans the texts."""
     from pathlib import Path
@@ -814,13 +838,13 @@ def test_write_refuses_to_add_keys_unless_introducing_and_rescans_the_static_tex
     head = tmp_path / "allowed.yaml"
     head.write_text(allowed.render(set()), encoding="utf-8")
     observed = {"O-CMD cli:aew x|result": {"rule": "O-CMD", "site": "cli:aew x|result", "count": 1}}
-    reports = _reports(tmp_path, findings=json.dumps({"schema": capture.SCHEMA, "outputs": 1, "findings": observed,
-                                                      "errors": {}}))
-    assert ratchet.main([str(reports), "--write", "--allowlist", str(head)]) == 1
+    reports, skips = _complete_reports(tmp_path, observed)
+    assert ratchet.main([str(reports), "--write", "--allowlist", str(head), "--skips", str(skips)]) == 1
     assert "refused: 1 key(s) the allow-list lacks" in capsys.readouterr().err
     assert allowed.parse(head.read_text(encoding="utf-8"))[0] == set()
     guides = Path(__file__).resolve().parents[2] / "docs" / "guides"
-    rewrite = [str(reports), "--write", "--introduce", "--static", str(guides), "--allowlist", str(head)]
+    rewrite = [str(reports), "--write", "--introduce", "--static", str(guides), "--allowlist", str(head),
+               "--skips", str(skips)]
     assert ratchet.main(rewrite) == 0
     keys = allowed.parse(head.read_text(encoding="utf-8"))[0]
     assert "O-CMD cli:aew x|result" in keys and {k for k in keys if allowed.is_static(k)} == {
@@ -838,17 +862,82 @@ def test_write_refuses_a_run_that_lost_findings(tmp_path, capsys):
     assert allowed.parse(head.read_text(encoding="utf-8"))[0] == {"O-CMD cli:aew x|result"}  # untouched
 
 
-def test_a_pull_requests_partial_selection_reports_nothing_stale(tmp_path, capsys):
-    """Review of #218, G2: a pull request runs only its tier's lanes, so a listed key it did not observe proves
-    nothing there; main and nightly, which run everything, report it."""
+@pytest.mark.parametrize(("tier", "assurance"), [
+    ("docs", "success"), ("web", "success"), ("fast", "success"),  # a reduced selection
+    ("full", "failure"), ("full", "cancelled"), ("full", "skipped"), ("full", ""),  # a lost shard, a failed test
+    ("", "success"), (None, None)])  # told nothing: fails closed
+@pytest.mark.parametrize("event", ["pull_request", "push", "schedule"])
+def test_an_incomplete_run_decides_nothing_stale_on_any_event(tmp_path, capsys, monkeypatch, event, tier, assurance):
+    """A listed key not observed proves nothing unless every test ran and passed: on a reduced tier the test never ran,
+    and with a lost shard its findings never arrived. So an enforced rule fails nothing here, and the report says
+    why."""
+    monkeypatch.setitem(modes.MODES, "O-CMD", modes.ENFORCE)
     ratchet = _ratchet()
     head = tmp_path / "allowed.yaml"
     head.write_text(allowed.render({"O-CMD cli:aew x|result"}), encoding="utf-8")
-    reports = _reports(tmp_path)
-    assert ratchet.main([str(reports), "--event", "pull_request", "--allowlist", str(head)]) == 0
-    assert "no longer observed" not in capsys.readouterr().out
-    assert ratchet.main([str(reports), "--event", "push", "--allowlist", str(head)]) == 0  # shadow: reported only
+    args = [str(_reports(tmp_path)), "--event", event, "--allowlist", str(head)]
+    args += ["--tier", tier] if tier is not None else []
+    args += ["--assurance", assurance] if assurance is not None else []
+    assert ratchet.main(args) == 0
+    out = capsys.readouterr().out
+    assert "no longer observed" not in out and "stale keys not decided:" in out
+
+
+@pytest.mark.parametrize("event", ["pull_request", "push", "schedule"])
+def test_a_complete_run_decides_stale_whatever_its_event(tmp_path, capsys, monkeypatch, event):
+    """A correct fix used to pass its pull request and redden main, because the event decided this (discovery_ratchet,
+    D2 enforce measurement). A full-tier pull request runs what main runs, so it fails on the change that caused it."""
+    ratchet = _ratchet()
+    head = tmp_path / "allowed.yaml"
+    head.write_text(allowed.render({"O-CMD cli:aew x|result"}), encoding="utf-8")
+    args = [str(_reports(tmp_path)), "--event", event, "--allowlist", str(head), "--tier", "full",
+            "--assurance", "success"]
+    assert ratchet.main(args) == 0  # shadow: reported only
     assert "1 stale (allow-listed, no longer observed)" in capsys.readouterr().out
+    monkeypatch.setitem(modes.MODES, "O-CMD", modes.ENFORCE)
+    assert ratchet.main(args) == 1
+    out = capsys.readouterr().out
+    assert "FAIL O-CMD cli:aew x|result" in out
+    assert allowed.remove_command("O-CMD cli:aew x|result") in out  # what to do, ready to paste
+
+
+def test_a_lost_shard_fails_the_assurance_check_and_yields_no_mass_stale(tmp_path, capsys, monkeypatch):
+    """The two real tools end to end, as `assurance` runs them: a shard's reports never arrive, `check_assurance` fails,
+    and its outcome stops the ratchet calling everything that shard observed stale (337 false keys, before this)."""
+    monkeypatch.setitem(modes.MODES, "O-CMD", modes.ENFORCE)
+    ratchet = _ratchet()
+    check_assurance = ratchet.check_assurance
+    listed = {f"O-CMD cli:aew c{n}|result" for n in range(337)}
+    head = _list_with(tmp_path, listed)
+    args = ["--event", "push", "--allowlist", str(head), "--tier", "full"]
+    observed = {k: {"rule": "O-CMD", "site": k.split(" ", 1)[1], "count": 1} for k in listed}
+    reports, skips = _complete_reports(tmp_path, observed, shards=2)
+    assert check_assurance.main([str(reports), "--skips", str(skips)]) == 0
+    assert ratchet.main([str(reports), *args, "--assurance", "success"]) == 0
+    for lost in reports.rglob("*-1*.json"):  # shard 2 of 2: its lane reports and its findings files, as if not uploaded
+        lost.unlink()
+    for path in reports.rglob(f"*{allowed.FINDINGS_SUFFIX}"):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        path.write_text(json.dumps({**data, "findings": {}}), encoding="utf-8")  # what shard 1 saw was none of them
+    capsys.readouterr()
+    assert check_assurance.main([str(reports), "--skips", str(skips)]) == 1
+    capsys.readouterr()
+    assert ratchet.main([str(reports), *args, "--assurance", "failure"]) == 0  # assurance's failure reddens the gate
+    out = capsys.readouterr().out
+    assert "no longer observed" not in out and "stale keys not decided: the assurance check's outcome is failure" in out
+
+
+def test_capture_errors_decide_nothing_stale_even_on_a_complete_run(tmp_path, capsys):
+    """An output left unjudged fails the run already; mass stale keys on top would only hide that."""
+    ratchet = _ratchet()
+    head = tmp_path / "allowed.yaml"
+    head.write_text(allowed.render({"O-CMD cli:aew x|result"}), encoding="utf-8")
+    body = json.dumps({"schema": capture.SCHEMA, "outputs": 1, "findings": {}, "errors": {"RuntimeError: x": 1}})
+    args = [str(_reports(tmp_path, findings=body)), "--event", "push", "--allowlist", str(head), "--tier", "full",
+            "--assurance", "success"]
+    assert ratchet.main(args) == 1
+    out = capsys.readouterr().out
+    assert "FAIL capture errors" in out and "no longer observed" not in out
 
 
 def test_a_capture_error_fails_the_ratchet(tmp_path):
@@ -885,3 +974,293 @@ def test_the_committed_allow_list_is_well_formed_and_sorted():
     assert keys and set(residuals) <= keys  # an accepted residual (the operator's, with its decision) is listed too
     assert text == allowed.render(keys, residuals.values())
     assert all(" " in k and k.split(" ", 1)[0] in modes.RULES for k in keys)
+
+
+# ---------------------------------------------------------------------------------------------- what an author reads
+
+def _with_findings(tmp_path, keys):
+    body = {k: {"rule": k.split(" ", 1)[0], "site": k.split(" ", 1)[1], "count": 1, "detail": f"why {k}\nsecond line",
+                "test": f"tests/t.py::test {k}"} for k in keys}
+    return _reports(tmp_path, findings=json.dumps({"schema": capture.SCHEMA, "outputs": 1, "findings": body,
+                                                   "errors": {}}))
+
+
+def test_a_failure_past_the_shadow_keys_comes_first_with_its_detail_test_and_remedy(tmp_path, capsys, monkeypatch):
+    """A run used to exit 1 with no FAIL line when 40 shadow keys sorted ahead of the failing one (D2 enforce
+    measurement), and a FAIL line never said why, where from, or what to do."""
+    monkeypatch.setitem(modes.MODES, "O-SECRET", modes.ENFORCE)
+    ratchet = _ratchet()
+    head = tmp_path / "allowed.yaml"
+    head.write_text(allowed.render(set()), encoding="utf-8")
+    ahead = [f"O-IDS cli:aew c{n:02}|result" for n in range(45)]
+    failing = "O-SECRET cli:aew x|USAGE"
+    assert ratchet.main([str(_with_findings(tmp_path, [*ahead, failing])), "--event", "pull_request",
+                         "--allowlist", str(head)]) == 1
+    lines = capsys.readouterr().out.splitlines()
+    at = lines.index(f"  FAIL {failing}")
+    assert at < next(i for i, line in enumerate(lines) if line.startswith("46 new"))
+    assert lines[at + 1] == f"    why:  why {failing} second line"  # one line, inside the step summary's fence
+    assert lines[at + 2] == f"    test: tests/t.py::test {failing}"
+    assert lines[at + 3].startswith("    do:   change the output so it passes the rule")
+    assert "  ... and 5 more" in lines  # a key that fails nothing can still be cut
+
+
+def test_a_failing_key_is_never_cut_and_a_shadow_key_can_be(capsys):
+    enforced = {**{r: modes.SHADOW for r in modes.RULES}, "O-CMD": modes.ENFORCE}
+    failing = {f"O-CMD cli:aew f{n}|USAGE" for n in range(5)}
+    shadow = {f"O-IDS cli:aew s{n}|USAGE" for n in range(5)}
+    v = allowed.decide(failing | shadow, set(), stale_scope=None, mode_of=enforced)
+    lines = allowed.report(v, limit=2)
+    assert [line for line in lines if line.startswith("  FAIL ")] == [f"  FAIL {k}" for k in sorted(failing)]
+    assert "  ... and 3 more" in lines
+    assert "10 new (not allow-listed) (5 failing, above):" in lines
+
+
+@pytest.mark.parametrize(("site", "kind", "text"), [("cli:aew x|USAGE", "stale", "--remove"),
+                                                     ("cli:aew x|USAGE", "grown", "may only shrink"),
+                                                     ("static:guide|aew x", "new", "the static scan")])
+def test_each_kind_of_failure_says_what_to_do(site, kind, text):
+    key = f"O-CMD {site}"
+    v = allowed.Verdict(**{kind: [key]}, failing=[key])
+    assert text in "\n".join(allowed.report(v))
+
+
+def test_the_remove_command_pastes_into_a_shell_as_one_key():
+    import shlex
+
+    for key in ("O-CMD cli:aew x|USAGE", "O-CMD static:guide|aew w --fields - <<'EOF'", 'O-CMD static:g|say "$HOME"'):
+        assert shlex.split(allowed.remove_command(key))[-1] == key
+    assert '"O-CMD cli:aew x|USAGE"' in allowed.remove_command("O-CMD cli:aew x|USAGE")  # PowerShell reads this form
+
+
+# ---------------------------------------------------------------------------------------------- removal from a PR
+
+SHARED_SITE = "cli:aew x|USAGE"
+
+
+def _list_with(tmp_path, keys, residuals=()):
+    head = tmp_path / "allowed.yaml"
+    head.write_text(allowed.render(keys, residuals), encoding="utf-8", newline="\n")
+    return head
+
+
+def test_remove_takes_only_the_named_rules_entry_and_needs_no_reports(tmp_path, capsys):
+    """75 of 371 sites sit under more than one rule, and a hand edit has removed the wrong rule's entry. No reports:
+    `--write` refuses while any new key of any rule exists, so it cannot do this from a pull request."""
+    ratchet = _ratchet()
+    head = _list_with(tmp_path, {f"O-CMD {SHARED_SITE}", f"O-IDS {SHARED_SITE}", "O-IDS cli:aew y|result"})
+    assert ratchet.main(["--remove", f"O-CMD {SHARED_SITE}", "--allowlist", str(head)]) == 0
+    assert allowed.parse(head.read_text(encoding="utf-8"))[0] == {f"O-IDS {SHARED_SITE}", "O-IDS cli:aew y|result"}
+    assert f"O-CMD {SHARED_SITE}" in capsys.readouterr().out
+
+
+def test_remove_drops_a_residual_and_keeps_the_rendered_form(tmp_path, capsys):
+    ratchet = _ratchet()
+    residual = {"rule": "O-CMD", "site": SHARED_SITE, "decision": "operator, 2026-10-12", "reason": "r"}
+    other = {"rule": "O-IDS", "site": SHARED_SITE, "decision": "operator, 2026-10-12", "reason": "r"}
+    head = _list_with(tmp_path, {f"O-CMD {SHARED_SITE}", f"O-IDS {SHARED_SITE}"}, [residual, other])
+    assert ratchet.main(["--remove", f"O-CMD {SHARED_SITE}", "--allowlist", str(head)]) == 0
+    text = head.read_bytes().decode()
+    keys, residuals = allowed.parse(text)
+    assert keys == {f"O-IDS {SHARED_SITE}"} and set(residuals) == {f"O-IDS {SHARED_SITE}"}
+    assert text == allowed.render(keys, residuals.values()) and "\r" not in text
+    assert "accepted residual of 1" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("key", "named"), [(SHARED_SITE, f"O-IDS {SHARED_SITE}"),  # a site with no rule
+                                            (f"O-CMD {SHARED_SITE}", f"O-IDS {SHARED_SITE}"),  # the wrong rule
+                                            ("O-IDS cli:aew none|result", None)])
+def test_remove_refuses_a_key_not_on_the_list_and_removes_nothing(tmp_path, capsys, key, named):
+    ratchet = _ratchet()
+    head = _list_with(tmp_path, {f"O-IDS {SHARED_SITE}", "O-IDS cli:aew y|result"})
+    before = head.read_bytes()
+    assert ratchet.main(["--remove", "O-IDS cli:aew y|result", key, "--allowlist", str(head)]) == 1  # all or none
+    assert head.read_bytes() == before
+    err = capsys.readouterr().err
+    assert "refused, nothing removed" in err and (named is None or f"on the list as: {named}" in err)
+
+
+def test_the_rendered_list_removed_by_the_tool_still_passes_the_committed_form_pin(tmp_path):
+    """The real list, end to end: one key off, and the file is what `allowed.render` writes."""
+    ratchet = _ratchet()
+    head = tmp_path / "allowed.yaml"
+    head.write_bytes(allowed.PATH.read_bytes())
+    keys, _ = allowed.parse(head.read_text(encoding="utf-8"))
+    gone = sorted(keys)[0]
+    assert ratchet.main(["--remove", gone, "--allowlist", str(head)]) == 0
+    text = head.read_bytes().decode()
+    kept, residuals = allowed.parse(text)
+    assert kept == keys - {gone} and text == allowed.render(kept, residuals.values())
+
+
+def test_remove_takes_no_reports_directory_and_a_run_needs_one(tmp_path):
+    ratchet = _ratchet()
+    head = _list_with(tmp_path, {"O-IDS cli:aew y|result"})
+    with pytest.raises(SystemExit):
+        ratchet.main([str(tmp_path), "--remove", "O-IDS cli:aew y|result", "--allowlist", str(head)])
+    with pytest.raises(SystemExit):
+        ratchet.main(["--allowlist", str(head)])
+    assert allowed.parse(head.read_text(encoding="utf-8"))[0] == {"O-IDS cli:aew y|result"}
+
+
+@pytest.mark.parametrize("damage", ["empty", "one platform", "a lost shard", "a failed test", "a report sans fields"])
+def test_write_refuses_an_incomplete_run_and_leaves_the_list(tmp_path, capsys, damage):
+    """From a partial set `--write` used to exit 0 and drop keys: 347 to 10 runtime keys, and an empty directory to 0,
+    so the pull request passed and main then failed every key it had dropped."""
+    ratchet = _ratchet()
+    head = _list_with(tmp_path, {"O-CMD cli:aew x|result", "O-IDS static:guide|aew x"})
+    before = head.read_bytes()
+    if damage == "empty":
+        (tmp_path / "complete").mkdir()
+        reports, skips = tmp_path / "complete", tmp_path / "skips.yaml"
+        skips.write_text("schema: aew/platform-skips/v1\n", encoding="utf-8")
+    elif damage == "one platform":
+        reports, skips = _complete_reports(tmp_path, platforms=("linux",))
+    elif damage == "a lost shard":
+        reports, skips = _complete_reports(tmp_path, shards=2, skip_shard=1)
+    else:
+        reports, skips = _complete_reports(tmp_path)
+        path = next(p for p in reports.rglob("linux-0.json"))
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if damage == "a failed test":
+            data["exitstatus"], data["results"]["t.py::t0"]["outcome"] = 1, "failed"
+        else:
+            del data["results"]
+        path.write_text(json.dumps(data), encoding="utf-8")
+    assert ratchet.main([str(reports), "--write", "--allowlist", str(head), "--skips", str(skips)]) == 1
+    assert "not a complete run" in capsys.readouterr().err
+    assert head.read_bytes() == before
+
+
+def test_write_shrinks_the_list_from_a_complete_run(tmp_path):
+    ratchet = _ratchet()
+    head = _list_with(tmp_path, {"O-CMD cli:aew x|result", "O-CMD cli:aew gone|result", "O-IDS static:guide|aew x"})
+    observed = {"O-CMD cli:aew x|result": {"rule": "O-CMD", "site": "cli:aew x|result", "count": 1}}
+    reports, skips = _complete_reports(tmp_path, observed)
+    assert ratchet.main([str(reports), "--write", "--allowlist", str(head), "--skips", str(skips)]) == 0
+    assert allowed.parse(head.read_text(encoding="utf-8"))[0] == {"O-CMD cli:aew x|result", "O-IDS static:guide|aew x"}
+
+
+# ---------------------------------------------------------------------------------------------- the parser's flags
+
+def test_a_parse_never_sees_another_calls_required_flags_off(monkeypatch):
+    """`parse` flips the one parser's `required` flags, and the capture judges outside its lock. Held inside a mention's
+    parse, the flags are off: a complete parse must wait for it, not pass what it must refuse. Deterministic, where the
+    tight loop that found this gives a few false refusals in 400 trials; real-suite incidence is not established."""
+    parser = rules._parser()
+    real = parser.parse_args
+    inside, release = threading.Event(), threading.Event()
+    outcome: list[object] = []
+
+    def held(args):
+        if threading.current_thread().name == "mention":
+            inside.set()
+            assert release.wait(30)
+        return real(args)
+
+    monkeypatch.setattr(parser, "parse_args", held)
+
+    def complete():
+        try:
+            outcome.append(rules.parse(["work", "staff", "T-0001"]))
+        except rules.ParseFail as exc:
+            outcome.append(exc)
+
+    mention = threading.Thread(target=rules.parse, args=(["work", "staff"],), kwargs={"complete": False},
+                               name="mention")
+    other = threading.Thread(target=complete, name="complete")
+    mention.start()
+    try:
+        assert inside.wait(30)
+        other.start()
+        other.join(0.5)
+        assert other.is_alive(), f"the complete parse ran with the flags off: {outcome}"
+    finally:
+        release.set()
+        mention.join(30)
+        other.join(30)
+    assert len(outcome) == 1 and isinstance(outcome[0], rules.ParseFail)  # --expect-rev is required: refused
+
+
+def test_a_mention_named_with_a_trailing_option_still_parses_under_the_lock():
+    """`parse` calls itself for an option named last, inside its lock: a lock that is not reentrant hangs here."""
+    done: list[object] = []
+    thread = threading.Thread(target=lambda: done.append(rules.parse(["opencode", "--provider-env"], complete=False)),
+                              daemon=True)
+    thread.start()
+    thread.join(30)
+    assert done and not thread.is_alive()
+    with pytest.raises(rules.ParseFail):
+        rules.parse(["work", "staff", "T-0001"])  # every flag back on
+
+
+# ---------------------------------------------------------------------------------------------- lowering a mode
+
+def _base_modes(tmp_path, values: str):
+    path = tmp_path / "modes-base.py"
+    path.write_text(f'SHADOW, ENFORCE = "shadow", "enforce"\nMODES = {{{values}}}\n', encoding="utf-8")
+    return path
+
+
+def _lowering(tmp_path, monkeypatch, labels, values='"O-CMD": ENFORCE'):
+    ratchet = _ratchet()
+    read: list[int] = []
+
+    def live(repo, pr):
+        read.append(1)
+        return labels
+
+    monkeypatch.setattr(ratchet, "live_labels", live)
+    head = tmp_path / "allowed.yaml"
+    head.write_text(allowed.render(set()), encoding="utf-8")
+    reports = tmp_path / "reports"
+    if not reports.exists():
+        _reports(tmp_path)
+    code = ratchet.main([str(reports), "--event", "pull_request", "--allowlist", str(head),
+                         "--base-modes", str(_base_modes(tmp_path, values)), "--repo", "o/r", "--pr", "1"])
+    return code, read
+
+
+@pytest.mark.parametrize("labels", [[], ["full-ci"], None])
+def test_lowering_a_mode_fails_a_pull_request_without_the_operators_label(tmp_path, monkeypatch, capsys, labels):
+    """Any pull request could set a rule back to shadow, and only review caught it. Labels that cannot be read sign
+    nothing."""
+    assert _lowering(tmp_path, monkeypatch, labels)[0] == 1
+    assert "FAIL mode O-CMD: lowered from enforce against the base" in capsys.readouterr().out
+
+
+def test_lowering_a_mode_passes_on_a_pull_request_the_operator_merges(tmp_path, monkeypatch, capsys):
+    assert _lowering(tmp_path, monkeypatch, ["operator-merge"])[0] == 0
+    out = capsys.readouterr().out
+    assert "accepted mode O-CMD lowered" in out and "FAIL" not in out
+
+
+def test_a_rule_dropped_from_the_modes_counts_as_lowered(tmp_path, monkeypatch, capsys):
+    assert _lowering(tmp_path, monkeypatch, [], values='"O-GONE": ENFORCE')[0] == 1
+    assert "FAIL mode O-GONE" in capsys.readouterr().out
+
+
+def test_raising_or_keeping_a_mode_needs_no_label_and_reads_none(tmp_path, monkeypatch):
+    monkeypatch.setitem(modes.MODES, "O-CMD", modes.ENFORCE)
+    assert _lowering(tmp_path, monkeypatch, None, values='"O-CMD": SHADOW, "O-IDS": SHADOW') == (0, [])
+    assert _lowering(tmp_path, monkeypatch, None, values='"O-CMD": ENFORCE') == (0, [])
+
+
+def test_a_base_modes_file_that_cannot_be_read_fails_rather_than_passing(tmp_path, capsys):
+    ratchet = _ratchet()
+    bad = tmp_path / "modes-base.py"
+    bad.write_text("this is not python\n", encoding="utf-8")
+    head = tmp_path / "allowed.yaml"
+    head.write_text(allowed.render(set()), encoding="utf-8")
+    assert ratchet.main([str(_reports(tmp_path)), "--event", "pull_request", "--allowlist", str(head),
+                         "--base-modes", str(bad)]) == 1
+    assert "FAIL the base's modes.py cannot be read" in capsys.readouterr().out
+
+
+def test_a_mode_is_compared_only_on_a_pull_request(tmp_path, monkeypatch):
+    ratchet = _ratchet()
+    monkeypatch.setattr(ratchet, "live_labels", lambda repo, pr: pytest.fail("no pull request to read"))
+    head = tmp_path / "allowed.yaml"
+    head.write_text(allowed.render(set()), encoding="utf-8")
+    assert ratchet.main([str(_reports(tmp_path)), "--event", "push", "--allowlist", str(head),
+                         "--base-modes", str(_base_modes(tmp_path, '"O-CMD": ENFORCE'))]) == 0

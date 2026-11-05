@@ -39,10 +39,10 @@ from aew.surface.availability import stage_availability
 from aew.surface.classify import effective_class
 from aew.surface.context import SurfaceContext
 from aew.surface.projection import project
+from aew.surface.scrubbing import scrub
 from aew.surface.stage import STAGES, run_stage
 from aew.surface.validate import check_call
 
-SECRET_KEYS = frozenset({"token", "invocation_token", "offer", "secret", "credential"})
 DEFAULT_WAIT_S = 600
 OBSERVE_EVERY_S = 2.0  # a cooperative wait re-checks the runs at least this often, as the engine's own wait does
 TICK_S = 0.025
@@ -214,17 +214,6 @@ def boundary_of(exc: errors.AEWError) -> str:
     if isinstance(exc, errors.IllegalTransition | errors.UsageError | errors.ValidationFailed):
         return "refused"
     return "error"
-
-
-def scrub(value: Any) -> Any:
-    """``value`` without credential-bearing keys, and with credential strings redacted."""
-    if isinstance(value, dict):
-        return {k: scrub(v) for k, v in value.items() if str(k).lower() not in SECRET_KEYS}
-    if isinstance(value, list | tuple):
-        return [scrub(v) for v in value]
-    if isinstance(value, str):
-        return redact(value)
-    return value
 
 
 def _error(exc: errors.AEWError) -> dict[str, Any]:

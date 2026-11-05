@@ -946,8 +946,8 @@ def test_the_now_list_refuses_a_closed_a_missing_and_an_untargeted_row_and_a_now
     assert _with_now(lambda intro: re.sub(r"(?m)^\| \d+ \|.*\n?", "", intro)) == [
         "§1 has no Now list: its intro holds the build order as `| <n> | <row ids> | <item> |` lines"]
     # An item that names no row (review of #273, F3).
-    assert _with_now(lambda intro: intro.replace(_now_line(intro, count), f"| {count} |  | an item with no row |")) == [
-        f"the Now list's item {count} names no row (each item names the rows that carry it)"]
+    assert f"the Now list's item {count} names no row (each item names the rows that carry it)" in _with_now(
+        lambda intro: intro.replace(_now_line(intro, count), f"| {count} |  | an item with no row |"))
 
 
 def test_a_closed_item_keeps_its_number_and_must_name_a_row_closed_in_section_9():

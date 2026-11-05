@@ -18,6 +18,9 @@ from aewflow import create_planned_ticket, lead_project
 from conftest import IS_WINDOWS, clean_env, run_aew
 from fake_harness import contains_credential, credential_hits
 from invariants import assert_control_invariants
+from lead_text import lead_json
+
+from aew.surface import readable
 
 PROBE = Path(__file__).resolve().parents[1] / "helpers" / "mcp_probe_agent.py"
 HANDSHAKE = [{"rpc": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {},
@@ -42,6 +45,25 @@ def _content(record: dict) -> dict:
 
 def _rev(p) -> int:
     return p.ok("lead", "show")["revision"]
+
+
+def test_through_the_real_adapter_the_text_is_readable_and_the_structured_content_is_the_result(tmp_path):
+    """E121, through a real session's `aew lead mcp`: the head, the Lead's JSON, the last two lines; and a refusal."""
+    p = lead_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    argv, transcript = _argv(tmp_path, "readable", [*HANDSHAKE, {"call": "status", "arguments": {"work_id": wid}},
+                                                    {"call": "work_show", "arguments": {"work_id": "T-9999"}}])
+    res = run_aew("-C", str(p.root), *argv, env={"AEW_LEAD_TOKEN": p.token}, timeout=600)
+    assert res.returncode == 0, res.stderr
+    r = _records(transcript)
+    shown, refused = r[3]["reply"]["result"], r[4]["reply"]["result"]
+    lines = shown["content"][0]["text"].split("\n")
+    assert lines[0] == f"status: done ({wid}: READY)" and lines[1].startswith("next: ") and lines[-2:] == lines[:2]
+    full = shown["structuredContent"]
+    assert full["surface"] == "aew/surface/v1" and full["policy_binding"] is None and not shown["isError"]
+    assert lead_json(shown["content"][0]["text"]) == readable.for_the_lead(full)
+    assert refused["isError"] and refused["content"][0]["text"].startswith(
+        "work_show: stopped at work_show (not_found): no work unit T-9999")
 
 
 def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(tmp_path):

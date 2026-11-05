@@ -329,9 +329,9 @@ def flag_line(flag: dict[str, Any]) -> str:
     run goes on (the designer's rule 3)."""
     got = f"the host's unpinned copy at {flag['path']}" if flag["served"] == "host" else "a stub that fails"
     since = f" (at {flag['since']})" if flag.get("since") else ""
+    fix = flag["fix"] or "`aew capability check`"  # a printed command: its own constant, which both finders read
     return (f"aew: attention: {flag['tool']} in this run is {got}, not AEW's pinned copy: "
-            f"{status.NOT_SERVING_WHY.get(flag['reason'], flag['reason'])}{since}. The run goes on. "
-            f"Fix: {flag['fix'] or '`aew capability check`'}.")
+            f"{status.NOT_SERVING_WHY.get(flag['reason'], flag['reason'])}{since}. The run goes on. Fix: {fix}.")
 
 
 def _to_terminal() -> bool:

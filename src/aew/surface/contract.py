@@ -239,7 +239,7 @@ TOOLS: dict[str, Tool] = _catalog(
     # unfinished stage's remaining steps, abandon ends it. E5b adds the dispositions of a finding or claim that policy
     # marks `requires_disposition`, and of an anomaly (plan v3 §2.4; one tool, as §2.6 measured it).
     Tool("resolve", STAGE, JUDGMENT_BEARING,
-         "Settle what resume or a stop lists: continue or abandon an unfinished stage; dispose of a finding or "
+         "Settle what resume or a decision lists: continue or abandon an active stage; dispose of a finding or "
          "anomaly.",
          _obj({"expect_rev": EXPECT_REV,
                "subject": {"type": "string", "minLength": 1, "description": "a stage intent, finding or anomaly id"},

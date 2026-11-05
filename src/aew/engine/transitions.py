@@ -19,6 +19,7 @@ Each rule names the operation (``via``) allowed to perform it, so a generic
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from aew.errors import IllegalTransition
 from aew.harness.contract import EXPECT_REV
@@ -168,7 +169,8 @@ _NOTES = {"accept": " (non-mutating Tickets)"}
 # The typed stage a Lead calls to take an edge, for the engine's own words to a Lead (E130): a refusal's next steps, and
 # its hints. The engine never imports the surface, so this mirrors the catalog (`aew.surface.contract`) as that catalog
 # mirrors the primitives, and a test holds it exactly equal, both ways, to what the stages' first steps say
-# (tests/unit/test_lead_text.py). An edge a stage only passes through is not here: no stage starts from that state.
+# (tests/unit/test_lead_text.py). An edge a stage only passes through is not here: no stage starts from that state. Read
+# it through :func:`stage_for`, which names a stage only where it is a whole step for the Ticket at hand.
 STAGE_AT = {
     ("READY", "ASSIGNED"): "ticket_start",
     ("RUNNING", "REVIEW_PENDING"): "ticket_request_review",
@@ -183,25 +185,64 @@ STAGE_AT = {
 _EXCEPTIONAL = frozenset({"BLOCKED", "CANCELLED", "ESCALATED", "INTERRUPTED", "REPLAN_REQUIRED"})
 
 
-def _stage_or(frm: str, dst: str) -> str:
+class Fit(NamedTuple):
+    """What a Ticket's class asks of the stages now (E130; #331 review F1). A stage is a whole step only for a mutating
+    Ticket whose class requires the runs its launch serves, and whose report can end the phase: a stage named anywhere
+    else commits its first steps and then moves the Ticket where it never needed to go. The gates compute it
+    (``Gates.stage_fit``); there is none for a non-mutating Ticket, a parent, or a Ticket whose gates cannot be read."""
+
+    review: bool  # its class requires a review, so `ticket_request_review` has a reviewer to launch
+    verification: bool  # it requires a Ticket verification, so `ticket_request_verification` has a verifier to launch
+    last_review: bool  # at most one required review is still unmet: a report can end REVIEW_PENDING
+    last_verification: bool  # at most one Ticket verifier is still to report: a report can end VERIFY_PENDING
+
+
+# Which of a Fit's facts each stage needs, beyond the state it starts from.
+_NEEDS = {"ticket_request_review": ("review",), "ticket_request_verification": ("verification", "last_review"),
+          "ticket_prepare": ("last_verification",)}
+
+
+def stage_for(frm: str, dst: str, fit: Fit | None) -> str | None:
+    """The stage that takes ``frm -> dst`` as a whole step for the Ticket ``fit`` describes, or None: with no fit, no
+    stage is named (the command alone is never wrong)."""
     stage = STAGE_AT.get((frm, dst))
-    return f"`{stage}`, or " if stage else ""
+    if stage is None or fit is None or not all(getattr(fit, need) for need in _NEEDS.get(stage, ())):
+        return None
+    return stage
 
 
-def next_steps(frm: str, work_id: str = "<T>") -> str:
-    """The forward moves from ``frm``, each as the stage that takes it, if one does, and the command that makes it
-    (cancelling, escalating, replanning and interrupting are left out: they are decisions, not the next step)."""
-    steps = [f"{dst} by {_stage_or(frm, dst)}`{_COMMANDS[via].format(w=work_id, to=dst)}`{_NOTES.get(via, '')}"
-             for dst, via in allowed_from(frm).items() if dst not in _EXCEPTIONAL and via in _COMMANDS]
+def command(frm: str, dst: str, work_id: str = "<T>") -> str | None:
+    """The Lead command that takes ``frm -> dst``, complete: with ``--reason`` where the edge requires one (#331 review
+    F8: a regression printed without it is refused)."""
+    rule = RULES.get((frm, dst))
+    if rule is None or rule.via not in _COMMANDS:
+        return None
+    text = _COMMANDS[rule.via].format(w=work_id, to=dst)
+    if rule.reason_required and "--reason" not in text:
+        text = text.replace(f" {EXPECT_REV}", f" --reason <reason> {EXPECT_REV}")
+    return text
+
+
+def next_steps(frm: str, work_id: str = "<T>", fit: Fit | None = None) -> str:
+    """The forward moves from ``frm``, each as the stage that takes it where one is a whole step for the Ticket ``fit``
+    describes, and the command that makes it (cancelling, escalating, replanning and interrupting are left out: they
+    are decisions, not the next step)."""
+    steps = []
+    for dst, via in allowed_from(frm).items():
+        if dst in _EXCEPTIONAL or via not in _COMMANDS:
+            continue
+        stage = stage_for(frm, dst, fit)
+        steps.append(f"{dst} by {f'`{stage}`, or ' if stage else ''}`{command(frm, dst, work_id)}`"
+                     f"{_NOTES.get(via, '')}")
     return f"From {frm}: " + "; ".join(steps) + "." if steps else ""
 
 
-def check(frm: str, to: str, via: str) -> Rule:
+def check(frm: str, to: str, via: str, fit: Fit | None = None) -> Rule:
     rule = RULES.get((frm, to))
     if rule is None or (rule.via != via and via not in rule.also):
         allowed = sorted(dst for (src, dst), r in RULES.items() if src == frm and via in (r.via, *r.also))
         raise IllegalTransition(
-            f"{frm} -> {to} is not permitted via {via}. {next_steps(frm)}".rstrip(),
+            f"{frm} -> {to} is not permitted via {via}. {next_steps(frm, fit=fit)}".rstrip(),
             from_state=frm, to_state=to, via=via, allowed_via_this_operation=allowed,
             required_operation=rule.via if rule else None,
         )

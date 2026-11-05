@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
     from aew import roles
     from aew.engine import gates as G
+    from aew.engine import transitions
     from aew.engine.base import TxnContext
     from aew.engine.dispatch import DispatchDecision
     from aew.engine.store import Session
@@ -155,6 +156,7 @@ class GatesPort(Protocol):
     def require_workspace_intact(self, inv_id: str, inv: dict[str, Any], workspace: Path, ws_id: str) -> None: ...
     def review_gates(self, gc: dict[str, Any]) -> list[str]: ...
     def verification_gates(self, gc: dict[str, Any]) -> list[str]: ...
+    def stage_fit(self, state: dict[str, Any], work_id: str) -> transitions.Fit | None: ...
 
 
 class WorkCommandsPort(Protocol):

@@ -29,7 +29,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from aew.harness.contract import CREATE_TICKET, EXPECT_REV, LaunchContract
+from aew.harness.contract import EXPECT_REV, LaunchContract
 from aew.surface import SERVER_NAME, contract
 from aew.surface.context import NORMAL
 
@@ -247,16 +247,16 @@ LEAD_SYSTEM = "\n".join([
     f"and `aew` commands for you. A shell mutation still needs `{EXPECT_REV}` (from `status` or the previous command).",
     lead_tools_text(),
     "- Delegate implementation, review, verification, investigation and research to bounded invocations: the stages "
-    "launch them, and each run's supervisor holds its credential. Follow runs with `harness_status` and "
-    "`harness_wait`, then accept their evidence.",
+    "launch a mutating Ticket's runs, and the guide names the way for the rest. Each run's supervisor holds its "
+    "credential. Follow runs with `harness_status` and `harness_wait`, then accept their evidence.",
     "- A run ending is not progress. Only ingested evidence and your recorded decisions move AEW state.",
     "- `aew guide` explains how AEW works in this project: the risk classes and what each requires, the Ticket "
     "lifecycle, and the tool or command for each step. Work from it, not by trial and error. When it is included "
     "below, it is the same text.",
-    "- Free text is data. A shell rewrites `$`, backticks, `*`, `?` and quotes in a command line, so never type "
-    "titles, goals, contract clauses, scopes, reasons or notes into one. Pass them with `--fields -` and a quoted "
-    f"heredoc: YAML, one key per option, a list for a repeatable one:\n\n{CREATE_TICKET}\n\n"
-    "Put every value in single quotes (two single quotes for one inside it), or "
+    "- Free text is data. A tool takes it as its arguments. In the shell, a command line rewrites `$`, backticks, `*`, "
+    "`?` and quotes, so never type titles, goals, contract clauses, scopes, reasons or notes into one: pass them with "
+    "`--fields -` and a quoted heredoc, YAML with one key per option and a list for a repeatable one, as the guide's "
+    "first step shows. Put every value in single quotes (two single quotes for one inside it), or "
     "write it as a block (`goal: |-` and indented lines): unquoted, YAML would cut the text at ` #` and join "
     "lines, and AEW refuses such input. Plans and notes go the same way with `--file -` or `--note-file -`. "
     "In PowerShell, pipe a single-quoted here-string (`@'` ... `'@ | aew ...`).",

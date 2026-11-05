@@ -16,7 +16,20 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from aewflow import SUBTRACT_PATCH, assign, create_planned_ticket, implement, review, sample_project, verify
+import yaml
+from aewflow import (
+    SUBTRACT_PATCH,
+    Role,
+    assign,
+    create_investigation,
+    create_planned_ticket,
+    dispatch,
+    implement,
+    review,
+    sample_project,
+    submit_record,
+    verify,
+)
 from conftest import Project
 from fake_harness import contains_credential
 from invariants import assert_control_invariants, load_control
@@ -27,7 +40,7 @@ from test_stages_ticket import HANG, _declared, _effects, _observe, _twins
 from aew.engine import disposition_ops as DO
 from aew.engine import stage_intents as SI
 from aew.engine.api import Engine
-from aew.surface import projection
+from aew.surface import contract, projection
 from aew.surface import run as R
 from aew.surface.context import SurfaceContext
 
@@ -181,6 +194,59 @@ def test_after_ticket_prepare_the_hint_does_not_dispatch_the_verifier_it_launche
     assert out["ok"] and [s["primitive"] for s in out["completed_steps"]][-1] == "dispatch.launch", out["stopped"]
     hints = " ".join(out["projection"]["hints"])
     assert "aew invoke create" not in hints and "`integration_publish`" in hints and "`harness_wait`" in hints
+
+
+def hints(p: Project, wid: str) -> list[str]:
+    """What `status` tells a Lead about ``wid``. (Its decisions list a run's reports; these are the helper's, so the
+    decisions' stage is proved on its own: tests/unit/test_lead_text.py.)"""
+    return R.run_tool(Engine.discover(p.root), CTX, "status", {"work_id": wid}, token=p.token)["projection"]["hints"]
+
+
+def stages_named(text: str) -> set[str]:
+    return {t for t in contract.TOOLS if f"`{t}`" in text}
+
+
+def test_a_non_mutating_tickets_hints_and_refusals_name_no_stage(lab_project, tmp_path):
+    """#331 review F1, scenarios A and C, driven: an investigation with a reviewer staffed.
+    `ticket_request_verification` here commits the ingest and a transition, then refuses its mutating dispatch, leaving
+    VERIFY_PENDING, which the Ticket never needed. The command alone, as before E130, is the way."""
+    p, _lab = lab_project
+    wid = create_investigation(p, tmp_path, cls=2)
+    p.lead("work", "staff", wid, "--review", "code_reviewer")
+    role, _o = dispatch(p, wid)
+    p.lead("evidence", "ingest", wid, "--evidence", submit_record(role, "discovery_record")["evidence"])
+    refused = p.aew("review", "ingest", wid, "--evidence", "x", "--expect-rev", str(p.rev()),
+                    env={"AEW_LEAD_TOKEN": p.token}).error["message"]
+    assert "`aew work transition" in refused and not stages_named(refused), refused
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    rv = p.lead("invoke", "create", wid, "--card", "code_reviewer")
+    reviewer = Role(p, rv["invocation_token"], Path(rv["observation"]["path"]))
+    reviewer.submit("review", {"claim": "facts are supported", "review": {
+        "independence": "R1", "disposition": "pass", "findings": [], "resolved_findings": []}})
+    [hint] = [h for h in hints(p, wid) if h.startswith("ingest review")]
+    assert "`aew review ingest`" in hint and not stages_named(hint), hint
+
+
+@pytest.mark.parametrize("verification", [True, False])
+def test_the_review_hint_names_its_stage_only_where_the_class_requires_verification(lab_project, tmp_path,
+                                                                                    verification):
+    """#331 review F1, scenario B, driven: on a class with review and no verification, the stage would move the Ticket
+    to VERIFY_PENDING and launch a verifier nobody required. With verification, the hint leads with the stage."""
+    p, _lab = lab_project
+    if not verification:
+        gates = p.root / ".aew/policy/gates.yaml"
+        data = yaml.safe_load(gates.read_text(encoding="utf-8"))
+        data["risk_paths"]["1"] = [g for g in data["risk_paths"]["1"] if not g.startswith("verification")]
+        gates.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8", newline="\n")
+        p.pin_policy()
+    wid, _impl = implemented(p, tmp_path)
+    assert call(p, "ticket_request_review", work_id=wid)["ok"]
+    review(p, wid)
+    [hint] = [h for h in hints(p, wid) if h.startswith("ingest review")]
+    if verification:
+        assert hint.index("`ticket_request_verification`") < hint.index("`aew review ingest`")
+    else:
+        assert "`aew review ingest`" in hint and not stages_named(hint), hint
 
 
 # ---------------------------------------------------------------------------------------------- equivalence (§10)

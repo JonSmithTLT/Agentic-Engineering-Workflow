@@ -92,7 +92,7 @@
         "lower-bound": 272
       }
     },
-    "digest": "sha256:0bae5f55e606fa1f54bda17a5c2ea15c93586f5fedb49e6f6de54bae030df34f",
+    "digest": "sha256:bd42f7d6df1446be1ae830b922105e5378be91a64aa6dc855e867ff4f2eb6283",
     "records": 1147,
     "unresolved": 112
   },
@@ -19275,6 +19275,7 @@
         "aew.engine.status_ops",
         "aew.engine.steering",
         "aew.engine.store",
+        "aew.engine.transitions",
         "aew.engine.usage_ops",
         "aew.engine.validation_ops",
         "aew.engine.work_ops",
@@ -20137,6 +20138,7 @@
         "aew.engine.dispatch",
         "aew.engine.gates",
         "aew.engine.store",
+        "aew.engine.transitions",
         "aew.history.index",
         "aew.knowledge.context",
         "aew.roles"
@@ -22627,6 +22629,7 @@
       "imports": [
         "aew.engine.guards",
         "aew.engine.primitives",
+        "aew.engine.transitions",
         "aew.errors",
         "aew.harness.contract",
         "aew.knowledge.evidence",

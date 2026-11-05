@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from aew import SPEC_SET
-from aew.engine import gate_ops, usage_ops
+from aew.engine import gate_ops, transitions, usage_ops
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
 from aew.engine.base import POLICY_PINS, Kernel, TxnContext, check_policy_bytes, policy_files
@@ -696,6 +696,10 @@ class Engine:
 
     def gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         return self._gates.gate_context(state, work_id)
+
+    def stage_fit(self, state: dict[str, Any], work_id: str) -> transitions.Fit | None:
+        """What a stage may be named for on this Ticket now (E130): see ``transitions.stage_for``."""
+        return self._gates.stage_fit(state, work_id)
 
     def guard_query(self, primitive: str, work_id: str | None, args: dict[str, Any] | None = None, *,
                     state: dict[str, Any] | None = None) -> dict[str, Any]:

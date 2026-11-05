@@ -9,12 +9,15 @@ text with no other edit. What is still hand-written is the prose, listed in the 
 
 from __future__ import annotations
 
+import ast
 import re
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from aew.engine import gates as G
 from aew.engine import guide, resume_ops
 from aew.engine import transitions as T
 from aew.engine.harness_ops import Harness
@@ -23,11 +26,29 @@ from aew.harness.opencode import projection
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
 from aew.surface import availability as SA
 from aew.surface import contract, lead_text
+from aew.surface import projection as surface
 from aew.surface.context import NORMAL, RECOVERY
 
 PLANTED = "zz_planted"
-# The text's name for a typed tool: only these prefixes name tools, and the arguments they take are not spelled so.
-TOOL_NAME = re.compile(r"`((?:ticket|integration|harness|zz)_[a-z_]+)`")
+# A single backticked word: in what a Lead reads, a tool, one of its arguments, or a word listed below.
+WORD = re.compile(r"`([a-z][a-z_]*)`")
+# The backticked words that are neither a tool nor a tool's argument, each with what it is (#331 review F2). Any other
+# backticked word fails the guard: a tool renamed or removed in the catalog, with its old name left in the prose or in
+# an engine hint, is caught here, whatever its name.
+NOT_TOOLS = {
+    "aew": "the command",
+    "none": "an assurance (`--assurance none`)",
+    "planner": "a card", "researcher": "a card", "verifier": "a role",
+    "checks": "a policy file's key", "max_publish_paths": "a policy key", "mutating_concurrency": "a policy key",
+    "replace_gate": "a policy key", "coordination_store": "a policy key", "launch": "a policy key",
+    "integration_attempt": "a record's field", "projection": "a result's field", "revision": "a result's field",
+    "metadata": "a filesystem term", "chmod": "an operating-system command", "chown": "an operating-system command",
+    "diff": "a git command", "log": "a git command", "show": "a git command",
+}
+# Where the engine's and the surface's words to a Lead are written: every string in these, docstrings aside.
+WORDS_IN = ("src/aew/engine", "src/aew/surface", "src/aew/harness/opencode")
+ROOT = Path(__file__).resolve().parents[2]
+FULL = T.Fit(review=True, verification=True, last_review=True, last_verification=True)
 
 
 def rendered() -> str:
@@ -56,8 +77,49 @@ def state_row(text: str, state: str) -> str:
     return next(line for line in text.splitlines() if line.startswith(f"- **{state}** → "))
 
 
+def way_of(text: str, state: str, dst: str) -> str:
+    """How the guide's table says to take ``state -> dst``."""
+    for group in state_row(text, state).split(" → ", 1)[1].split("; "):
+        dsts, way = group.split(": ", 1)
+        if dst in dsts.split(", "):
+            return way
+    raise AssertionError((state, dst))
+
+
 def covered(stages: tuple[guide.Stage, ...]) -> list[tuple[guide.Move, guide.Stage]]:
     return [(m, s) for m in guide.PATH if (s := guide._covering(stages, m)) is not None]
+
+
+def stage_named(text: str) -> list[str]:
+    """The catalog's tools ``text`` names, any profile."""
+    return [w for w in WORD.findall(text) if w in contract.TOOLS or w.startswith("zz_")]
+
+
+def known_words() -> set[str]:
+    normal = contract.exposed(NORMAL)
+    return ({t.name for t in normal} | {a for t in normal for a in t.input_schema.get("properties") or {}}
+            | set(NOT_TOOLS) | set(DEFAULT_CHECKS["checks"]) | set(G.VERIFICATION_GATES))
+
+
+def lead_texts() -> dict[str, str]:
+    """What a Lead reads as written: the system text with the guide, and each command's template."""
+    return {"system": system_text(), **{f"/{k}": v["template"] for k, v in projection.LEAD_COMMANDS.items()}}
+
+
+def engine_words() -> dict[str, set[str]]:
+    """Each backticked word in the engine's and the surface's strings, with where: its hints, refusals and messages."""
+    out: dict[str, set[str]] = {}
+    for top in WORDS_IN:
+        for path in sorted((ROOT / top).rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            docs = {id(n.body[0].value) for n in ast.walk(tree)
+                    if isinstance(n, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) and n.body
+                    and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs:
+                    for word in WORD.findall(node.value):
+                        out.setdefault(word, set()).add(f"{path.relative_to(ROOT).as_posix()}:{node.lineno}")
+    return out
 
 
 # ------------------------------------------------------------------------------------------- the tool list is derived
@@ -68,6 +130,15 @@ def test_every_normal_tool_is_named_in_what_the_lead_is_given():
     assert len(contract.exposed(NORMAL)) >= 15
     for t in contract.exposed(NORMAL):
         assert f"`{t.name}`" in text, t.name
+
+
+def test_the_system_text_teaches_no_step_a_stage_covers_from_the_shell():
+    """#331 review F4: `LEAD_SYSTEM` printed `aew work create` as the way a title gets in, on every request and again in
+    the guide's first step. It points at the guide instead; the guide keeps the command as the step's fallback."""
+    for move, _stage in covered(lead_text.stages()):
+        command = re.sub(r"^`+(sh\n)?", "", move.shell).split(" <", 1)[0]
+        if command.startswith("aew "):
+            assert command not in projection.LEAD_SYSTEM, command
 
 
 def test_the_system_text_says_nothing_of_stages_still_to_come():
@@ -136,7 +207,7 @@ def test_a_move_a_stage_starts_at_names_it_and_one_it_passes_through_does_not():
         assert f"`{tool}`" in state_row(text, state)
     for state in ("ASSIGNED", "REVIEW_PASSED", "REVIEW_FAILED", "VERIFIED", "VERIFICATION_INCONCLUSIVE"):
         row = state_row(text, state)
-        assert not TOOL_NAME.search(row) and guide.TRANSITION in row, row
+        assert not stage_named(row) and guide.TRANSITION in row, row
 
 
 def test_a_moves_stage_is_one_the_engine_lets_it_start_from():
@@ -193,10 +264,49 @@ def test_the_shell_for_what_no_stage_reaches_is_named():
 def test_the_text_names_no_tool_the_normal_profile_lacks():
     names = {t.name for t in contract.exposed(NORMAL)}
     text = system_text()
-    assert set(TOOL_NAME.findall(text)) <= names
+    assert set(stage_named(text)) <= names
     for t in contract.TOOLS.values():
         if t.name not in names:
             assert f"`{t.name}`" not in text, t.name
+
+
+def test_every_backticked_name_a_lead_reads_is_a_tool_an_argument_or_a_listed_word():
+    """#331 review F2: the guard reads every backticked word, not a few prefixes, so `status` or `resume` left in the
+    prose after a rename fails here too."""
+    known = known_words()
+    for name, text in lead_texts().items():
+        assert sorted(set(WORD.findall(text)) - known) == [], name
+
+
+def test_every_backticked_name_in_the_engines_words_is_a_tool_an_argument_or_a_listed_word():
+    """The hints, refusals and messages the engine and the surface write for a Lead: the same check, on their source."""
+    found = engine_words()
+    assert {"harness_wait", "integration_publish", "resolve"} <= set(found)  # the scan reads them
+    unknown = {w: sorted(where) for w, where in found.items() if w not in known_words()}
+    assert unknown == {}
+
+
+@pytest.mark.parametrize("name", ["status", "resume", "work_show", "checkpoint", "resolve", "harness_wait",
+                                  "ticket_prepare", "integration_publish"])
+def test_a_tool_renamed_in_the_catalog_with_its_old_name_left_fails_the_guard(monkeypatch, name):
+    """The rename the review drove: the catalog moves, the prose and hints keep the old name."""
+    row = contract.TOOLS[name]
+    renamed = {k: (t._replace(name=f"{k}_renamed") if k == name else t) for k, t in contract.TOOLS.items()}
+    monkeypatch.setattr(contract, "TOOLS", renamed)
+    assert row.name not in known_words()
+    left = [w for text in lead_texts().values() for w in WORD.findall(text)] + list(engine_words())
+    assert name in left
+
+
+def test_an_argument_renamed_in_the_catalog_with_its_old_name_left_fails_the_guard(monkeypatch):
+    def renamed(row: contract.Tool) -> contract.Tool:
+        props = {("verification_report" if k == "verification_evidence" else k): v
+                 for k, v in (row.input_schema.get("properties") or {}).items()}
+        return row._replace(input_schema={**row.input_schema, "properties": props})
+
+    monkeypatch.setattr(contract, "TOOLS", {k: renamed(t) for k, t in contract.TOOLS.items()})
+    assert "verification_evidence" not in known_words()
+    assert "verification_evidence" in WORD.findall(system_text())
 
 
 def test_a_recovery_or_designed_row_never_reaches_the_normal_text(monkeypatch):
@@ -215,7 +325,7 @@ def test_a_lead_command_template_names_only_real_tools_and_takes_no_stage_step_f
     assert "aew work create" in covered_shell
     for name, command in projection.LEAD_COMMANDS.items():
         template = command["template"]
-        assert set(TOOL_NAME.findall(template)) <= names, name
+        assert set(stage_named(template)) <= names, name
         assert "!`" not in template, name
         for shell in covered_shell:
             assert shell not in template, (name, shell)
@@ -287,23 +397,72 @@ def test_a_stage_planted_at_an_edge_fails_the_mirror_until_it_is_added(monkeypat
 
 def test_a_refusal_names_the_stage_first_where_one_takes_the_move():
     """What a Lead reads at the moment it decides: the stage, then the command that is its fallback."""
-    text = T.next_steps("REVIEW_PENDING", "T-0007")
+    text = T.next_steps("REVIEW_PENDING", "T-0007", FULL)
     assert text.index("`ticket_request_verification`") < text.index("`aew review ingest T-0007")
     for edge, tool in T.STAGE_AT.items():
-        assert f"`{tool}`, or `aew " in T.next_steps(edge[0], "T-0007"), edge
+        assert f"`{tool}`, or `aew " in T.next_steps(edge[0], "T-0007", FULL), edge
 
 
 @pytest.mark.parametrize("state", ["ASSIGNED", "REVIEW_PASSED", "REVIEW_FAILED", "VERIFIED"])
 def test_a_refusal_in_a_state_no_stage_starts_from_names_only_the_command(state):
-    text = T.next_steps(state, "T-0007")
-    assert "`aew work transition T-0007" in text and not TOOL_NAME.search(text)
+    text = T.next_steps(state, "T-0007", FULL)
+    assert "`aew work transition T-0007" in text and not stage_named(text)
+
+
+@pytest.mark.parametrize("state", sorted({frm for frm, _ in T.STAGE_AT}))
+def test_a_refusal_that_knows_no_mutating_ticket_names_no_stage(state):
+    """#331 review F1: a non-mutating Ticket's refusal, or one whose unit the caller does not know, gives commands."""
+    assert not stage_named(T.next_steps(state, "T-0007"))
+    assert "`aew " in T.next_steps(state, "T-0007")
+
+
+@pytest.mark.parametrize(("frm", "dst", "missing"), [("RUNNING", "REVIEW_PENDING", "review"),
+                                                     ("REVIEW_PENDING", "REVIEW_PASSED", "verification"),
+                                                     ("REVIEW_PENDING", "REVIEW_PASSED", "last_review"),
+                                                     ("VERIFY_PENDING", "VERIFIED", "last_verification")])
+def test_a_stage_is_named_only_where_the_class_requires_what_it_launches(frm, dst, missing):
+    """#331 review F1: `ticket_request_verification` on a class with no verification launches a verifier nobody
+    required; with another review still due, it stops after its ingest."""
+    assert T.stage_for(frm, dst, FULL) == T.STAGE_AT[frm, dst]
+    assert T.stage_for(frm, dst, FULL._replace(**{missing: False})) is None
+    assert not stage_named(T.next_steps(frm, "T-0007", FULL._replace(**{missing: False})).split(f"{dst} by ")[1])
+
+
+@pytest.mark.parametrize(("frm", "dst"), [(frm, "RUNNING") for frm in ("REVIEW_PENDING", "REVIEW_PASSED",
+                                                                       "VERIFY_PENDING", "VERIFIED",
+                                                                       "VERIFICATION_INCONCLUSIVE", "COMMIT_READY")]
+                         + [("VERIFICATION_INCONCLUSIVE", "VERIFY_PENDING")])
+def test_a_move_that_requires_a_reason_is_printed_with_one(frm, dst):
+    """#331 review F8: each of these is refused without `--reason`, and the guide and the refusals printed it bare."""
+    assert T.RULES[frm, dst].reason_required
+    assert "--reason <reason>" in T.command(frm, dst, "T-0007")
+    assert f"`aew work transition T-0007 --to {dst} --reason <reason> " in T.next_steps(frm, "T-0007")
+    text = rendered()
+    assert way_of(text, frm, dst) == f"{guide.TRANSITION} {guide.WITH_REASON}"
+    assert f'"{guide.WITH_REASON}" adds `--reason <reason>`' in text
+
+
+def test_a_moves_shell_is_the_engines_own_command():
+    """#331 review F3: a step's shell fallback is the transition table's command, never a copy that can drift."""
+    via_of = {"plan.accept": "plan.accept", "work.assign": "assign", "review.ingest": "review.ingest",
+              "verify.ingest": "verify.ingest", "verify.ingest.integration": "verify.ingest",
+              "integrate.publish": "integrate.publish"}
+    for move in guide.PATH:
+        if move.primitive in via_of:
+            assert move.shell == f"`{T._COMMANDS[via_of[move.primitive]].format(w='<T>', to='<STATE>')}`", move
 
 
 # ---------------------------------------------------------------------------------------- the hints a projection shows
 
 
-def actions(unit_state: str, *, submitted: tuple[str, ...] = ()) -> list[str]:
+def resume_with(fit: T.Fit | None = FULL) -> Resume:
     resume = Resume.__new__(Resume)
+    resume.gates = SimpleNamespace(stage_fit=lambda state, wid: fit)  # type: ignore[assignment]
+    return resume
+
+
+def actions(unit_state: str, *, submitted: tuple[str, ...] = (), fit: T.Fit | None = FULL) -> list[str]:
+    resume = resume_with(fit)
     resume._submitted = lambda state, wid, unit, kind: list(submitted)  # type: ignore[method-assign]
     return resume._ticket_actions({"invocations": {}}, "T-0007", {"state": unit_state, "invocations": []})
 
@@ -318,20 +477,35 @@ def test_a_hint_leads_with_the_stage_and_keeps_the_command(state, edge):
     assert hint.index(f"`{tool}`") < hint.index("`aew ")
 
 
-def test_a_validated_candidates_hint_leads_with_the_publish_stage(monkeypatch):
+@pytest.mark.parametrize(("state", "fit"), [("REVIEW_PENDING", None), ("VERIFY_PENDING", None),
+                                            ("REVIEW_PENDING", FULL._replace(verification=False)),
+                                            ("REVIEW_PENDING", FULL._replace(last_review=False)),
+                                            ("VERIFY_PENDING", FULL._replace(last_verification=False))])
+def test_a_hint_names_no_stage_that_is_not_a_whole_step_for_this_ticket(state, fit):
+    """#331 review F1, the twins: a non-mutating Ticket (no fit), a class with no verification, and another report
+    still due. Each gets the command alone, which was right before E130."""
+    [hint] = actions(state, submitted=("EV-1",), fit=fit)
+    assert "`aew " in hint and not stage_named(hint), hint
+
+
+def test_a_validated_candidates_hint_leads_with_the_publish_stage_and_names_the_candidate(monkeypatch):
+    """#331 review F6: the stage requires the candidate, so the hint names it."""
     monkeypatch.setattr(resume_ops.V, "obligation", lambda *a: {"mode": "verifier"})
-    resume = Resume.__new__(Resume)
+    resume = resume_with()
     resume.k = SimpleNamespace(policy=lambda name: {})
     resume._queue_wait = lambda state, wid: None  # type: ignore[method-assign]
-    unit = {"state": "COMMIT_READY", "invocations": [], "integration": {"status": "validated"}}
-    [hint] = resume._ticket_actions({"invocations": {}}, "T-0007", unit)
+    unit = {"state": "COMMIT_READY", "invocations": [], "integration": {"status": "validated", "candidate": "C-1"}}
+    state = {"invocations": {}, "work": {"T-0007": unit}}
+    [hint] = resume._ticket_actions(state, "T-0007", unit)
     assert hint.index("`integration_publish`") < hint.index("`aew integrate publish`")
+    assert "C-1 as `prepared_candidate`" in hint
 
 
 def after_implementation(state: str, *, review: bool, verification: bool = True) -> str:
     harness = Harness.__new__(Harness)
-    harness.gates = SimpleNamespace(gate_context=lambda state, wid: {}, review_gates=lambda gc: review,  # type: ignore[assignment]
-                                    verification_gates=lambda gc: verification)
+    harness.gates = SimpleNamespace(  # type: ignore[assignment]
+        gate_context=lambda state, wid: {}, review_gates=lambda gc: review, verification_gates=lambda gc: verification,
+        stage_fit=lambda state, wid: FULL._replace(review=review, verification=verification))
     return harness.after_implementation({"work": {"T-0007": {"state": state}}}, "T-0007")
 
 
@@ -339,7 +513,7 @@ def test_a_finished_implementation_names_the_review_stage_only_where_review_is_n
     """Only RUNNING -> REVIEW_PENDING has a stage: `ticket_request_review` refuses a Ticket whose class needs none."""
     text = after_implementation("RUNNING", review=True)
     assert text.index("`ticket_request_review`") < text.index("--to REVIEW_PENDING")
-    assert not TOOL_NAME.search(after_implementation("RUNNING", review=False))
+    assert not stage_named(after_implementation("RUNNING", review=False))
     assigned = after_implementation("ASSIGNED", review=True)  # the stage starts at RUNNING: that step comes first
     assert assigned.index("--to RUNNING") < assigned.index("`ticket_request_review`")
 
@@ -350,23 +524,39 @@ def integration_state(*, report: str | None = None, verifier: str | None = None)
         entry["validated"] = {"report": report}
     invocations = {verifier: {"custodian": "INV-C", "scope": "integration", "status": "active"}} if verifier else {}
     lease = None if report else {"custodian": "INV-C", "entry": "Q-1"}
-    return {"queue": {"entries": {"Q-1": entry}, "lease": lease}, "invocations": invocations}
+    return {"queue": {"entries": {"Q-1": entry}, "lease": lease}, "invocations": invocations,
+            "work": {"T-0007": {"integration": {"status": "prepared", "candidate": "C-1"}}}}
 
 
 def test_after_ticket_prepare_the_hint_never_dispatches_the_verifier_it_launched():
     """The scripted Lead followed `aew invoke create --scope integration` right after the stage had launched it, and was
-    refused (LEASE_NOT_HELD). A running verifier says wait, a clean report says publish with it."""
-    running = Resume._integration_verifier(integration_state(verifier="INV-9"), "T-0007")
+    refused (LEASE_NOT_HELD). A running verifier says wait, a clean report says publish with it; both name the
+    candidate the stage requires (#331 review F6)."""
+    running = resume_with()._integration_verifier(integration_state(verifier="INV-9"), "T-0007")
     assert "INV-9" in running and "`harness_wait`" in running and "aew invoke create" not in running
-    clean = Resume._integration_verifier(integration_state(report="EV-3"), "T-0007")
-    assert "EV-3" in clean and "`integration_publish`" in clean and "`verification_evidence`" in clean
+    clean = resume_with()._integration_verifier(integration_state(report="EV-3"), "T-0007")
+    assert "EV-3 as `verification_evidence`" in clean and "`integration_publish`" in clean
     assert "aew invoke create" not in clean
+    assert "C-1 as `prepared_candidate`" in running and "C-1 as `prepared_candidate`" in clean
+
+
+def test_the_running_verifiers_hint_holds_once_its_run_has_ended():
+    """#331 review F7: between the run's end and the custodian's routing, "is verifying" sat beside "ended with
+    evidence". The hint says what holds in both."""
+    running = resume_with()._integration_verifier(integration_state(verifier="INV-9"), "T-0007")
+    assert "is verifying" not in running and "once its run has ended" in running
 
 
 def test_a_candidate_prepared_from_the_shell_is_still_told_to_dispatch_its_verifier():
     """`aew integrate prepare` launches no verifier, so the lease is held and the dispatch is the next step."""
-    hint = Resume._integration_verifier(integration_state(), "T-0007")
+    hint = resume_with()._integration_verifier(integration_state(), "T-0007")
     assert "aew invoke create T-0007 --scope integration --launch" in hint
+
+
+def harness_with(fit: T.Fit | None = FULL) -> Harness:
+    harness = Harness.__new__(Harness)
+    harness.gates = SimpleNamespace(stage_fit=lambda state, wid: fit)  # type: ignore[assignment]
+    return harness
 
 
 @pytest.mark.parametrize(("role", "scope", "tool"), [("reviewer", "ticket", "ticket_request_verification"),
@@ -374,13 +564,47 @@ def test_a_candidate_prepared_from_the_shell_is_still_told_to_dispatch_its_verif
                                                      ("verifier", "integration", "integration_publish")])
 def test_a_finished_runs_message_leads_with_the_stage_that_accepts_its_report(role, scope, tool):
     state = {"work": {"T-0007": {"kind": "ticket", "mutating": True}}}
-    message = Harness._after_run(Harness.__new__(Harness), state, {"work_unit": "T-0007", "role": role, "scope": scope},
-                                 [{"id": "EV-3", "kind": "review" if role == "reviewer" else "verification"}])
+    message = harness_with()._after_run(state, {"work_unit": "T-0007", "role": role, "scope": scope},
+                                        [{"id": "EV-3", "kind": "review" if role == "reviewer" else "verification"}])
     assert message.index(f"`{tool}`") < message.index("`aew ")
+
+
+@pytest.mark.parametrize("fit", [None, FULL._replace(verification=False), FULL._replace(last_review=False)])
+def test_a_finished_review_names_no_stage_that_is_not_a_whole_step_for_this_ticket(fit):
+    """#331 review F1's end-of-run twin: a reviewer's report on a Ticket where `ticket_request_verification` does not
+    fit names the ingest alone."""
+    state = {"work": {"T-0007": {"kind": "ticket", "mutating": True}}}
+    message = harness_with(fit)._after_run(state, {"work_unit": "T-0007", "role": "reviewer", "scope": "ticket"},
+                                           [{"id": "EV-3", "kind": "review"}])
+    assert "`aew review ingest T-0007" in message and not stage_named(message)
+
+
+def decisions_offered(fit: T.Fit | None) -> dict[str, Any]:
+    part: dict[str, Any] = {"state": None, "unit": {"integration": {"status": "validated", "candidate": "C-1"}},
+                            "decisions": []}
+    out = {}
+    for state in ("REVIEW_PENDING", "VERIFY_PENDING", "COMMIT_READY"):
+        part.update(state=state, decisions=[])
+        surface._ticket_actions(part, "T-0007", 3)
+        [decision] = part["decisions"]
+        out[state] = surface._fitting(decision, fit)
+    return out
+
+
+def test_a_decision_offers_its_stage_only_where_it_is_a_whole_step_for_this_ticket():
+    """#331 review F1's surface twin: the decisions `status` lists name the same stages the hints do."""
+    full = decisions_offered(FULL)
+    assert [d["tool"] for d in full.values()] == ["ticket_request_verification", "ticket_prepare",
+                                                  "integration_publish"]
+    nm = decisions_offered(None)  # a non-mutating Ticket: the commands alone
+    assert all(d["tool"] is None and not d.get("arguments") and d["cli"] for d in nm.values())
+    no_verification = decisions_offered(FULL._replace(verification=False))
+    assert no_verification["REVIEW_PENDING"]["tool"] is None and no_verification["REVIEW_PENDING"]["argument"] is None
+    assert no_verification["COMMIT_READY"]["tool"] == "integration_publish"
 
 
 def test_a_parents_or_non_mutating_report_names_no_stage():
     for unit, role in (({"kind": "story"}, "reviewer"), ({"kind": "ticket", "mutating": False}, "investigator")):
-        message = Harness._after_run(Harness.__new__(Harness), {"work": {"S-1": unit}},
-                                     {"work_unit": "S-1", "role": role}, [{"id": "EV-3", "kind": "review"}])
-        assert not TOOL_NAME.search(message), message
+        message = harness_with(None)._after_run({"work": {"S-1": unit}}, {"work_unit": "S-1", "role": role},
+                                                [{"id": "EV-3", "kind": "review"}])
+        assert not stage_named(message), message

@@ -261,9 +261,9 @@ class Resume:
                     out.append(f"waiting on {b['id']} ({b['reason']})")
             return out
         if st == "READY":
-            return [f"`{T.STAGE_AT['READY', 'ASSIGNED']}` (`aew work assign {wid} --launch {EXPECT_REV}`), after "
-                    f"staffing it if the defaults do not fit (`aew work roles {wid}` / `aew work staff {wid} --execute "
-                    f"<card> {EXPECT_REV}`)"]
+            return [f"{self._led(state, wid, 'READY', 'ASSIGNED', f'aew work assign {wid} --launch {EXPECT_REV}')}, "
+                    f"after staffing it if the defaults do not fit (`aew work roles {wid}` / `aew work staff {wid} "
+                    f"--execute <card> {EXPECT_REV}`)"]
         implementer = u.get("implementer_invocation")
         if st == "ASSIGNED":
             if (state["invocations"].get(implementer) or {}).get("runs"):  # launched by a harness (M3-D8)
@@ -283,8 +283,8 @@ class Resume:
         if st == "REVIEW_PENDING":
             pending = self._submitted(state, wid, u, "review")
             if pending:
-                return [f"ingest review {e}: `{T.STAGE_AT['REVIEW_PENDING', 'REVIEW_PASSED']}` (`aew review ingest`)"
-                        for e in pending]
+                lead = self._led(state, wid, "REVIEW_PENDING", "REVIEW_PASSED", "aew review ingest")
+                return [f"ingest review {e}: {lead}" for e in pending]
             if active:
                 return [f"review in progress ({', '.join(active)})"]
             return ["dispatch the next planned reviewer card (`aew invoke create`)"]
@@ -295,8 +295,8 @@ class Resume:
         if st == "VERIFY_PENDING":
             pending = self._submitted(state, wid, u, "verification")
             if pending:
-                return [f"ingest verification {e}: `{T.STAGE_AT['VERIFY_PENDING', 'VERIFIED']}` (`aew verify ingest`)"
-                        for e in pending]
+                lead = self._led(state, wid, "VERIFY_PENDING", "VERIFIED", "aew verify ingest")
+                return [f"ingest verification {e}: {lead}" for e in pending]
             if active:
                 return [f"verification in progress ({', '.join(active)})"]
             return ["dispatch the next planned verifier card (`aew invoke create`)"]
@@ -329,7 +329,7 @@ class Resume:
                                           "environment, then `aew integrate requeue`",
                 "validation_inconclusive": "resolve the post-integration verification blocker, then run `aew integrate "
                                            "prepare` (a new candidate) and verify it",
-                "validated": f"publish: `{T.STAGE_AT['COMMIT_READY', 'DONE']}` (`aew integrate publish`)",
+                "validated": f"publish: {self._publish(state, wid, 'aew integrate publish')}",
                 "publishing": "an interrupted publish: `aew integrate reconcile`",
             }.get(status, f"integration status {status}")]
         if st == "INTERRUPTED":
@@ -341,30 +341,46 @@ class Resume:
             return ["record the escalation outcome and return the Ticket"]
         return []
 
-    @staticmethod
-    def _integration_verifier(state: dict[str, Any], wid: str) -> str:
+    def _led(self, state: dict[str, Any], wid: str, frm: str, dst: str, command: str) -> str:
+        """The way to take ``frm -> dst``: the stage first, where it is a whole step for this Ticket (E130; #331 review
+        F1), then the command, which alone is never wrong."""
+        stage = T.stage_for(frm, dst, self.gates.stage_fit(state, wid))
+        return f"`{stage}` (`{command}`)" if stage else f"`{command}`"
+
+    def _publish(self, state: dict[str, Any], wid: str, command: str, report: str | None = None) -> str:
+        """Publication of a COMMIT_READY Ticket's candidate, with what the stage takes: the candidate it prepared and,
+        in verifier mode, the integration verifier's report (#331 review F6: a Lead told only the report is refused
+        once, or reads `work_show` first)."""
+        stage = T.stage_for("COMMIT_READY", "DONE", self.gates.stage_fit(state, wid))
+        if stage is None:
+            return f"`{command}`"
+        candidate = ((state["work"].get(wid) or {}).get("integration") or {}).get("candidate")
+        named = ([f"{report} as `verification_evidence`"] if report else []) + (
+            [f"{candidate} as `prepared_candidate`"] if candidate else [])
+        return f"`{stage}`" + (f" with {' and '.join(named)}" if named else "") + f" (`{command}`)"
+
+    def _integration_verifier(self, state: dict[str, Any], wid: str) -> str:
         """A prepared verifier-mode candidate's next step (E130). `ticket_prepare` launches its verifier, and a shell
         `aew integrate prepare` does not: only that last case needs one dispatched, and telling a Lead to dispatch one
         the stage launched is refused (LEASE_NOT_HELD, once its custodian released the lease to VALIDATED)."""
-        publish = T.STAGE_AT["COMMIT_READY", "DONE"]
         queue = state.get("queue") or {}
         entry = next((e for e in (queue.get("entries") or {}).values() if e["work"] == wid), {})
         report = (entry.get("validated") or {}).get("report")
         if report:
-            return (f"its integration verifier's report {report} is clean: `{publish}` with it as "
-                    "`verification_evidence`")
+            return (f"its integration verifier's report {report} is clean: "
+                    f"{self._publish(state, wid, 'aew integrate publish', report)}")
         custodian = (queue.get("lease") or {}).get("custodian")
         running = [i for i, inv in state["invocations"].items()
                    if custodian and inv.get("custodian") == custodian and inv.get("scope") == "integration"
                    and inv.get("status") == "active"]
         if running:
-            return (f"integration verifier {running[0]} is verifying the candidate: wait for its run (`harness_wait`), "
-                    f"then `{publish}` with its report as `verification_evidence`")
+            # True whether its run is still going or has ended and its report waits to be routed (#331 review F7).
+            return (f"integration verifier {running[0]} checks the candidate: once its run has ended (`harness_wait`), "
+                    f"{self._publish(state, wid, 'aew integrate publish', '<its report>')}")
         return (f"dispatch post-integration verification (`aew invoke create {wid} --scope integration --launch "
                 f"{EXPECT_REV}`)")
 
-    @staticmethod
-    def _custodian_validates(state: dict[str, Any], wid: str) -> str:
+    def _custodian_validates(self, state: dict[str, Any], wid: str) -> str:
         """A prepared checks-mode candidate's next step (M4-E E6a; plan v3 §2.3): its lease's custodian validates it,
         then the Lead publishes the VALIDATED candidate. `aew integrate validate` is recovery only: for a custodian
         with no registered custody worker."""
@@ -372,7 +388,7 @@ class Resume:
         custodian = lease.get("custodian")
         worker = (state["invocations"].get(custodian or "") or {}).get("worker")
         said = (f"the lease's custodian {custodian} validates the candidate with the policy's checks; once its entry "
-                "is VALIDATED, publish it with `integration_publish` (`aew integrate publish`)")
+                f"is VALIDATED, publish it: {self._publish(state, wid, 'aew integrate publish')}")
         if worker:
             return said
         return said + (" (recovery, while no custody worker has registered for it: `aew integrate validate`)")

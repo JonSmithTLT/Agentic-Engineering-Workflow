@@ -701,19 +701,17 @@ class Harness:
         records = sorted(e["id"] for e in produced if e["kind"] != "check_result") or ["<id>"]
         if command is None:
             return "ingest it"
-        return f"ingest it: {self._stage_for_report(unit, inv)}" + ", ".join(
+        return f"ingest it: {self._stage_for_report(state, inv)}" + ", ".join(
             f"`{command} {wid} --evidence {e} {K.EXPECT_REV}`" for e in records)
 
-    @staticmethod
-    def _stage_for_report(unit: dict[str, Any], inv: dict[str, Any]) -> str:
-        """The stage that accepts a mutating Ticket's report, in front of its command (E130): it does the whole step,
-        so a Lead that ingests from the shell first finds the stage refuses."""
-        if unit.get("kind") != "ticket" or not unit.get("mutating"):
-            return ""
+    def _stage_for_report(self, state: dict[str, Any], inv: dict[str, Any]) -> str:
+        """The stage that accepts a Ticket's report, in front of its command, where it is a whole step for that Ticket
+        (E130; #331 review F1): it does the whole step, so a Lead that ingests from the shell first finds it refuses."""
         edge = {"reviewer": ("REVIEW_PENDING", "REVIEW_PASSED"),
                 "verifier": ("COMMIT_READY", "DONE") if inv.get("scope") == "integration"
                 else ("VERIFY_PENDING", "VERIFIED")}.get(inv["role"])
-        return f"`{T.STAGE_AT[edge]}`, or " if edge else ""
+        stage = T.stage_for(*edge, self.gates.stage_fit(state, inv["work_unit"])) if edge else None
+        return f"`{stage}`, or " if stage else ""
 
     def after_implementation(self, state: dict[str, Any], wid: str) -> str:
         """The transition(s) that take a mutating Ticket on once its implementer's report and checks are in."""
@@ -723,7 +721,7 @@ class Harness:
             to = ("REVIEW_PENDING" if self.gates.review_gates(gc)
                   else "VERIFY_PENDING" if self.gates.verification_gates(gc) else "COMMIT_READY")
             step = f"`aew work transition {wid} --to {to} {K.EXPECT_REV}`"
-            stage = T.STAGE_AT.get(("RUNNING", to))
+            stage = T.stage_for("RUNNING", to, self.gates.stage_fit(state, wid))
             step = f"`{stage}`, or {step}" if stage else step
         except AEWError:
             step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY {K.EXPECT_REV}` (as "

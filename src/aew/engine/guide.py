@@ -77,8 +77,17 @@ class Stage(NamedTuple):
 
 
 # The word the path and the moves use for the one command most of them share (the section's opening spells it out): it
-# goes on every model request, and the full command would be printed 20 times.
-TRANSITION = "`transition`"
+# goes on every model request, and the full command would be printed 20 times. Plain, not in backticks: in this text a
+# backticked word is a tool (#331 review N2).
+TRANSITION = "transition"
+# A move the table requires a reason for, said once per move and spelled out once (#331 review F8: printed bare, each
+# such move is refused).
+WITH_REASON = "with a reason"
+
+
+def _command(via: str, to: str = "<STATE>") -> str:
+    """The engine's own command for an operation (``transitions._COMMANDS``), never a copy of it (#331 review F3)."""
+    return f"`{T._COMMANDS[via].format(w='<T>', to=to)}`"
 
 
 class Move(NamedTuple):
@@ -108,9 +117,9 @@ PATH = (
               "`--assurance none`, or `--review default` and/or `--verify default`) when the plan relies on one beyond "
               "the class path. Accepting the plan makes them required gates; a review promised only in the plan's text "
               "binds nothing."),
-    Move("plan.accept", None, f"`aew plan accept <T> --revision <n> {EXPECT_REV}`", label="Accept the plan",
+    Move("plan.accept", None, _command("plan.accept"), label="Accept the plan",
          note="The Ticket becomes READY when its plan is accepted and its dependencies are satisfied."),
-    Move("work.assign", None, f"`aew work assign <T> --launch {EXPECT_REV}`", label="Start the implementer"),
+    Move("work.assign", None, _command("assign"), label="Start the implementer"),
     _transition("RUNNING", note="Follow runs with `harness_wait`."),
     _transition("REVIEW_PENDING", note=(
         "Once the implementer's report and checks are in, this accepts the implementation. **Accept the implementation "
@@ -119,24 +128,24 @@ PATH = (
         "non-mutating Tickets only.)")),
     Move("invoke.create.mutating", "reviewer", f"`aew invoke create <T> --role reviewer --launch {EXPECT_REV}`",
          label="Dispatch the reviewer"),
-    Move("review.ingest", None, f"`aew review ingest <T> --evidence <id> {EXPECT_REV}`", label="Accept the review",
+    Move("review.ingest", None, _command("review.ingest"), label="Accept the review",
          note="Name the report `status` lists, not a run. Where the class requires no verification, take the shell "
               "commands from here."),
     _transition("VERIFY_PENDING"),
     Move("invoke.create.mutating", "verifier", f"`aew invoke create <T> --role verifier --launch {EXPECT_REV}`",
          label="Dispatch the verifier"),
-    Move("verify.ingest", None, f"`aew verify ingest <T> --evidence <id> {EXPECT_REV}`",
-         label="Accept the verification"),
+    Move("verify.ingest", None, _command("verify.ingest"), label="Accept the verification"),
     _transition("COMMIT_READY"),
     Move("integrate.prepare", None, f"`aew integrate prepare <T> {EXPECT_REV}`", label="Prepare the candidate",
          note="On a class path with no verification, take this from the shell once the Ticket is COMMIT_READY."),
     Move("invoke.create.mutating", "integration", f"`aew invoke create <T> --scope integration --launch {EXPECT_REV}`",
          label="Dispatch the integration verifier", post_verify=True),
-    Move("verify.ingest.integration", None, f"`aew verify ingest <T> --evidence <id> {EXPECT_REV}`",
-         label="Accept the integration verification", post_verify=True,
-         note="Name the integration verifier's report in `verification_evidence`, once its run has ended."),
-    Move("integrate.publish", None, f"`aew integrate publish <T> {EXPECT_REV}`", label="Publish",
-         note="It is refused until the candidate is validated. It takes the Ticket to DONE."),
+    Move("verify.ingest.integration", None, _command("verify.ingest"), label="Accept the integration verification",
+         post_verify=True, note="Name the integration verifier's report in `verification_evidence`, once its run has "
+                                "ended."),
+    Move("integrate.publish", None, _command("integrate.publish"), label="Publish",
+         note="Name the candidate `status` shows in `prepared_candidate`. It is refused until the candidate is "
+              "validated. It takes the Ticket to DONE."),
 )
 
 # The engine's name for an edge's operation -> the primitive it runs (`Rule.via` predates the primitives' ids).
@@ -234,8 +243,10 @@ def _moves(state: str, stages: Sequence[Stage]) -> list[str]:
             continue  # non-mutating Tickets only; described in their section
         if via in T._COMMANDS:
             stage = _edge_stage(stages, state, dst, via)
-            way = (f"`{stage.tool}`" if stage else TRANSITION if via == "transition"
-                   else f"`{T._COMMANDS[via].format(w='<T>', to=dst)}`")
+            # An edge that requires a reason says so: the bare form is refused (#331 review F8).
+            reason = f" {WITH_REASON}" if T.RULES[state, dst].reason_required else ""
+            way = (f"`{stage.tool}`" if stage else f"{TRANSITION}{reason}" if via == "transition"
+                   else f"`{T.command(state, dst)}`")
             ways.setdefault(way, []).append(dst)
     return [f"{', '.join(dsts)}: {way}" for way, dsts in ways.items()]
 
@@ -367,7 +378,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "the Ticket's move below. A report that fails stops its tool once it is recorded: that is how a failed report "
         "is recorded. "
         "Use the shell command where a step names no tool, or where a tool refuses. Below, "
-        f"{TRANSITION} is `aew work transition <T> --to <STATE> {EXPECT_REV}`.",
+        f"\"{TRANSITION}\" means {_command('transition')}, and \"{WITH_REASON}\" adds `--reason <reason>`.",
         "",
         *_steps_text(stages, post_verify),
         "",
@@ -387,8 +398,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "- **A failed review** (REVIEW_FAILED): move it back to RUNNING and dispatch a fresh implementer, "
         f"`aew invoke create <T> --role implementer --launch {EXPECT_REV}`. The open findings reach it through its "
         "pack.",
-        f"- **A failed verification**: classify it, `aew verify classify <T> --as <CLASS> --reason <reason> "
-        f"{EXPECT_REV}`: {classify}.",
+        f"- **A failed verification**: classify it, {_command('verify.classify')}: {classify}.",
         "- **Replanning, escalating or cancelling** are decisions: `aew work transition <T> --to "
         f"REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> {EXPECT_REV}`.",
         "- **A lost harness run** is not an interruption: relaunch it with `aew harness launch <invocation from aew "

@@ -302,6 +302,25 @@ class Gates:
         return [g for g in gc["obligations"]["gates"]
                 if g in G.VERIFICATION_GATES or g.startswith(G.VERIFY_CARD_PREFIX)]
 
+    def stage_fit(self, state: dict[str, Any], work_id: str) -> transitions.Fit | None:
+        """What the engine's words to a Lead may name a stage for (E130; #331 review F1): a mutating Ticket, with the
+        review and verification its class requires and how many are still to come. None where no stage fits or the
+        gates cannot be read: then only commands are named."""
+        unit = state["work"].get(work_id) or {}
+        if unit.get("kind") != "ticket" or not unit.get("mutating"):
+            return None
+        try:
+            gc = self.gate_context(state, work_id)
+        except AEWError:
+            return None
+        reviews, verifications = self.review_gates(gc), self.verification_gates(gc)
+        unmet = G.unmet(gc["gates"])
+        # One Ticket verifier answers the built-in verification gates together; each planned card is a verifier of its
+        # own, as each review gate is a reviewer of its own.
+        verifiers = {"ticket" if g in G.VERIFICATION_GATES else g for g in verifications if g in unmet}
+        return transitions.Fit(review=bool(reviews), verification=bool(verifications),
+                               last_review=sum(g in unmet for g in reviews) <= 1, last_verification=len(verifiers) <= 1)
+
     @staticmethod
     def _gate_evidence_ids(gc: dict[str, Any], names: list[str]) -> set[str]:
         ids: set[str] = set()
@@ -1129,8 +1148,8 @@ class EvidenceCommands:
         def check() -> None:
             unit = state["work"][work_id]
             if unit["state"] != "REVIEW_PENDING":
-                raise IllegalTransition(f"{work_id} is {unit['state']}, not REVIEW_PENDING. "
-                                        f"{transitions.next_steps(unit['state'], work_id)}".rstrip())
+                steps = transitions.next_steps(unit["state"], work_id, self.gates.stage_fit(state, work_id))
+                raise IllegalTransition(f"{work_id} is {unit['state']}, not REVIEW_PENDING. {steps}".rstrip())
             ev = self.gates.find_evidence(work_id, evidence_id)
             inv = state["invocations"][ev["producer"]["invocation"]]
             if ev["kind"] != "review" or inv["role"] not in REVIEW_ROLES or inv["work_unit"] != work_id:
@@ -1274,8 +1293,8 @@ class EvidenceCommands:
             scope = ev["verification"]["scope"]
             if scope == "ticket":
                 if unit["state"] != "VERIFY_PENDING":
-                    raise IllegalTransition(f"{work_id} is {unit['state']}, not VERIFY_PENDING. "
-                                            f"{transitions.next_steps(unit['state'], work_id)}".rstrip())
+                    steps = transitions.next_steps(unit["state"], work_id, self.gates.stage_fit(state, work_id))
+                    raise IllegalTransition(f"{work_id} is {unit['state']}, not VERIFY_PENDING. {steps}".rstrip())
                 current = (self.invocations.current_snapshot(unit) or {}).get("relevant_inputs_fingerprint")
             else:
                 integ = unit.get("integration") or {}

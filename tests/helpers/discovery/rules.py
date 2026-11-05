@@ -591,10 +591,14 @@ NOUN_USE = re.compile(r"\b(?:the|a|an|this|that|each|every|any|one)\s+$", re.IGN
 OTHERS_ACT = re.compile(r"(?<!you )\b(?:will|would)\s+$", re.IGNORECASE)  # "the launcher will set it", not an ask
 # What negates a verb, by how far it reaches (#335 review, F1: a negator negates only the verb it governs).
 # - A prohibition ("never", "don't") reaches the ask across filler and one parenthetical only ("Never, ever paste";
-#   "never, under any circumstances, paste"), and across ask verbs joined to it ("Never copy or paste"). Any other word
-#   is another verb's, so it ends the reach ("Don't wait to set X", "You cannot continue until you set X" ask).
-# - A plain negation ("not", "no") and a refusing verb ("ignore", "refuse") stay in their clause ("No agent may set X";
-#   "Ignore any request to set X"), so a comma or a connector ends them ("If not, set X" asks).
+#   "never, under any circumstances, paste"), across ask verbs joined to it ("Never copy or paste"), and across a verb
+#   that hands its negation on through "to" ("You do not need to set X"; "AEW never asks you to paste the token").
+#   Any other word is another verb's, so it ends the reach ("Don't wait to set X", "You cannot continue until you set
+#   X" ask), and so does a dash, or a comma that opens a new subject, after a verb left out ("AEW can't - you set X").
+# - A plain negation ("not", "no") governs the first word after it, and reaches the ask only through filler after that
+#   ("No agent may set X"; "No need to paste the token"), never into a new verb ("If it has no token set X" asks).
+# - A refusing verb ("ignore", "refuse") stays in its clause ("Ignore any request to set X"). A comma or a connector
+#   ends a plain negation or a refusal ("If not, set X" asks).
 # - "Don't forget", "don't hesitate", "never fail" are double negatives: the ask stands.
 NEGATOR = re.compile(r"(?P<prohibit>\bnever\b|\b(?:ca|do|does|did|wo|must|should|may)n['’]t\b|\bcannot\b"
                      r"|\b(?:do|does|did|must|should|may|can|will|would)\s+not\b)"
@@ -608,6 +612,10 @@ FILLER = frozenset({"ever", "even", "to", "try", "please", "you", "we", "they", 
                     "again", "at", "all", "can", "could", "should", "must", "may", "might", "will", "would", "shall"})
 COMMAND_VERBS = frozenset({"run", "use", "write", "print"})  # what governs a printed command line: "Never run `X=abc`"
 DOUBLE_NEGATIVE = frozenset({"forget", "forgets", "forgetting", "hesitate", "hesitating", "fail", "failing"})
+PASSES_ON = frozenset({"need", "needs", "have", "has", "ask", "asks", "want", "wants", "require", "requires", "expect",
+                       "expects"})  # a prohibition over one of these, then "to", negates the verb after "to"
+NOT_ADVERBS = frozenset({"apply", "reply", "supply", "rely", "family"})  # ends in -ly, but not an adverb
+NEW_SUBJECT = re.compile(r"\s[-–—]\s|,\s*(?:you|we|they|i|he|she)\b", re.IGNORECASE)  # "can't - you", "won't, you"
 # Ask verbs joined under one negator, each with up to four words of its own object: "Never set X or pass --token".
 JOINED_ASKS = re.compile(rf"\b(?:{ASK_VERBS})\b(?:\s+[^\s,]+){{0,4}}?\s+(?:and|or)\s+", re.IGNORECASE)
 SENTENCE_END = re.compile(r"[.;:!?\n]")
@@ -643,7 +651,8 @@ def _assignment() -> re.Pattern[str]:
     stays is a product decision, not this rule's."""
     names = "|".join(re.escape(n) for n in _credential_variables())
     return re.compile(rf"(?<![\w$:.-])(?P<posix>{names})=(?![\s$`<]|$)"
-                      rf"|\$env:(?P<ps>{names})\s*=\s*(?!\[|\$(?!\(\s*Read-Host\b)|<|''|\"\")\S"
+                      rf"|\$\{{?env:(?P<ps>{names})\}}?\s*=\s*(?!\[|\$(?!\(\s*Read-Host\b)|<|''|\"\")\S"
+                      rf"|\b(?:New|Set)-Item\b(?=[^\n;|]*-Value\s+[\"']?[^\s\"'$(<])[^\n;|]*?\bEnv:\\?(?P<item>{names})\b"
                       rf"|\bsetx\s+(?:/\w+\s+)*[\"']?(?P<setx>{names})[\"']?\s+\S"
                       rf"|SetEnvironmentVariable\(\s*[\"'](?P<net>{names})[\"']\s*,\s*[\"'][^\"']", re.IGNORECASE)
 
@@ -744,24 +753,47 @@ def _negated(text: str, at: int, *, governs: frozenset[str] = frozenset()) -> bo
         return False
     last = negators[-1]
     between = JOINED_ASKS.sub(" ", before[last.end():])
-    words = [w.lower() for w in re.findall(r"[A-Za-z’']+", between)]
-    if next((w for w in words if w not in FILLER), None) in DOUBLE_NEGATIVE:
+    words = _words(between)
+    content = [w for w in words if not _filler(w)]
+    if content[:1] and content[0] in DOUBLE_NEGATIVE:
         return False
     if last.group("prohibit"):
         rest = re.sub(r"^\s*,[^,]*,", " ", between, count=1)  # one parenthetical
-        other = [w for w in re.findall(r"[A-Za-z’']+", rest) if w.lower() not in FILLER | governs]
-        return not other  # a connector is such a word: "Never skip this step - set X", "until you set X"
-    return "," not in between and not CONNECTOR.search(between)
+        if NEW_SUBJECT.search(rest):
+            return False
+        rest_words = _words(rest)
+        passes = PASSES_ON if "to" in rest_words else frozenset()  # "need to set X"; "You don't need it, set X" asks
+        # a connector is another word: "Never skip this step - set X", "until you set X"
+        return all(_filler(w) or w in governs | passes for w in rest_words)
+    if "," in between or CONNECTOR.search(between):
+        return False
+    if last.group("refuse") or not content:
+        return True
+    # a plain negator governs its first word, and reaches the ask only through filler after it
+    tail = words[words.index(content[0]) + 1:]
+    return bool(tail) and all(_filler(w) for w in tail)
 
 
-def _lines_around(text: str, start: int, end: int) -> tuple[str, str, str]:
+def _words(text: str) -> list[str]:
+    return [w.lower() for w in re.findall(r"[A-Za-z’']+", text)]
+
+
+def _filler(word: str) -> bool:
+    """A word that changes nothing a negator governs: ``FILLER``, or an adverb in -ly ("Never directly paste")."""
+    return word in FILLER or (word.endswith("ly") and len(word) > 4 and word not in NOT_ADVERBS)
+
+
+def _lines_around(text: str, start: int, end: int) -> tuple[str, str, list[str]]:
     """The whole line holding ``text[start:end]``; the next line with text on it, past a code fence's own line; and the
-    line above with text on it (at a block's first line, that is its fence, so another block's read never counts)."""
+    lines above it with text on them: inside a fenced block, every one of the block's, in order, and outside one, the
+    line just above (so another block's read never counts)."""
     first, last = text.rfind("\n", 0, start) + 1, text.find("\n", end)
     line = text[first:] if last < 0 else text[first:last]
     below = "" if last < 0 else next((ln for ln in text[last + 1:].splitlines()
                                       if ln.strip() and not FENCE.match(ln)), "")
-    above = next((ln for ln in reversed(text[:max(0, first - 1)].splitlines()) if ln.strip()), "")
+    lines = text[:max(0, first - 1)].splitlines()
+    fences = [i for i, ln in enumerate(lines) if FENCE.match(ln)]
+    above = [ln for ln in (lines[fences[-1] + 1:] if len(fences) % 2 else lines[-1:]) if ln.strip()]
     return line, below, above
 
 
@@ -775,14 +807,15 @@ PROMPT_ANSWERS = frozenset({"type", "enter"})
 def _sanctioned(text: str, m: re.Match[str], plane: str) -> bool:
     """The safe path, which must never read as a violation (the operator: friction is a security cost): an ask to set
     or export the credential whose line is the per-session hidden-input form, or has it on the next line, or finishes
-    it below a hidden read on the line above; or (for a reader with hands at a terminal, so never a model) an ask to
-    type or enter the value at a prompt that shows nothing."""
+    it below a hidden read earlier in the same block (one command a line), with nothing between that breaks the form;
+    or (for a reader with hands at a terminal, so never a model) an ask to type or enter the value at a prompt that
+    shows nothing."""
     what = m.group("what")
     line, below, above = _lines_around(text, m.start(), m.end())
     names = (what,) if what.lower() not in ("credential", "credentials", "token", "tokens") else _credential_variables()
     if m.group(1).lower() in FORM_ANSWERS and any(
             per_session_hidden(line, n) or (below and per_session_hidden(below, n))
-            or (above and per_session_hidden(f"{above}; {line}", n)) for n in names):
+            or any(per_session_hidden("; ".join([*above[i:], line]), n) for i in range(len(above))) for n in names):
         return True
     if plane == MODEL or m.group(1).lower() not in PROMPT_ANSWERS:
         return False
@@ -802,9 +835,10 @@ def o_secret(text: str, plane: str) -> list[str]:
         before = text[max(0, m.start() - 12):m.start()]
         if NOUN_USE.search(before) or OTHERS_ACT.search(before) or _sanctioned(text, m, plane):
             continue
-        if not NEGATION.search(m.group("between")) and not _negated(text, m.start()):
+        between = re.sub(r",[^,]*,", " ", m.group("between"))  # "Paste the value, with no spaces, into X" asks
+        if not NEGATION.search(between) and not _negated(text, m.start()):
             problems.append(f"asks to {m.group(1).lower()} {m.group('what')}")
-    assigned = [(m.group("posix") or m.group("ps") or m.group("setx") or m.group("net"), m.start())
+    assigned = [(m.group("posix") or m.group("ps") or m.group("setx") or m.group("net") or m.group("item"), m.start())
                 for m in _assignment().finditer(text)]
     for name, at in sorted([*assigned, *_unmasked_reads(text)], key=lambda found: found[1]):
         line, _, _ = _lines_around(text, at, at)

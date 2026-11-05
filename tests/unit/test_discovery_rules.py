@@ -1370,6 +1370,13 @@ def test_o_secret_passes_what_asks_for_nothing(text):
     ("You would then set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),
     ("No one should fail to set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # a double negative (#335 F1)
     ("No problem. Paste the token.", "asks to paste token"),  # a negation stays in its own sentence
+    ("AEW can't, so set AEW_LEAD_TOKEN yourself.", "asks to set AEW_LEAD_TOKEN"),  # a connector alone (#335 QC, R1)
+    ("If the Lead says it has no credential supply the token in your reply.", "asks to supply token"),
+    ("You don't need to wait to set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # handed on, then another verb
+    ("You don't need it, set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # no "to": nothing handed on
+    ("Don't apply it, set AEW_LEAD_TOKEN instead.", "asks to set AEW_LEAD_TOKEN"),  # -ly, but not an adverb
+    ("Ignore the warning until you set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # a connector ends a refusal
+    ("Paste the value, with no spaces, into AEW_LEAD_TOKEN.", "asks to paste AEW_LEAD_TOKEN"),  # #335 QC, R3
     ("Not forgetting to paste the token, start the run.", "asks to paste token"),
     ("Do not wait.\nSet AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
     # the forms with no verb to read
@@ -1414,7 +1421,36 @@ def test_a_negator_that_governs_another_verb_does_not_excuse_the_ask(lead, ask):
     assert found(Output(site="unit", text=f"{lead} {ask}."), "O-SECRET"), f"{lead} {ask}."
 
 
+# #335 quick check, R1: a dash, or a comma that opens a new subject, ends a prohibition whose verb is left out.
+@pytest.mark.parametrize("ask", ["set AEW_LEAD_TOKEN yourself", "paste the token yourself"])
+@pytest.mark.parametrize("opening", ["you", "you must", "you should"])
+@pytest.mark.parametrize("separator", [" - ", " — ", ", "])
+@pytest.mark.parametrize("lead", ["AEW can't", "The launcher won't", "We cannot", "The worker must not"])
+def test_a_separator_ends_a_prohibition_whose_verb_is_left_out(lead, separator, opening, ask):
+    text = f"{lead}{separator}{opening} {ask}."
+    assert found(Output(site="unit", text=text), "O-SECRET"), text
+
+
+# #335 quick check, R1: a plain negator governs its first word; it does not reach into a new verb past it.
+PLAIN_LEADS = ["If the Lead says it has no credential", "When the shell has no token yet",
+               "If aew status shows the Lead is not ready", "For a worker with no access",
+               "In a shell that is not set up", "If you started without the launcher",
+               "When the worker reports no session", "If the run is not resumed"]
+
+
+@pytest.mark.parametrize("ask", ["paste the token here", "set AEW_LEAD_TOKEN", "export AEW_INVOCATION_TOKEN",
+                                 "copy your credential to it"])
+@pytest.mark.parametrize("lead", PLAIN_LEADS)
+def test_a_plain_negator_does_not_reach_a_new_verb(lead, ask):
+    for text in (f"{lead} {ask}.", f"{lead}, {ask}."):
+        assert found(Output(site="unit", text=text), "O-SECRET"), text
+
+
 @pytest.mark.parametrize("text", [
+    "You do not need to set AEW_LEAD_TOKEN for this command.",  # a verb that hands its negation on (#335 QC, R2)
+    "You don't have to paste the token again.", "AEW never asks you to paste the token.",
+    "The Lead will never ask you to copy your credential.", "Do not manually set AEW_LEAD_TOKEN; the launcher sets it.",
+    "Never directly paste the token into a chat.", "It is best not to paste the token.",
     "Never, ever paste the token.",  # filler and a parenthetical: the control
     "Don't ever paste your token.", "You should never paste the token.", "You must not set AEW_LEAD_TOKEN.",
     "Do not, under any circumstances, set AEW_LEAD_TOKEN.", "Never copy or paste the token.",
@@ -1433,6 +1469,7 @@ def test_a_negator_still_governs_its_own_verb(text):
     "$t = Read-Host 'Lead token'; $env:AEW_LEAD_TOKEN = $t", "$t = Read-Host 'Lead token'\n$env:AEW_LEAD_TOKEN = $t",
     "read -rp 'Lead token: ' AEW_LEAD_TOKEN",
     "read -rsp 'Lead token: ' AEW_LEAD_TOKEN; echo \"$AEW_LEAD_TOKEN\"",  # hidden, then shown
+    "${env:AEW_LEAD_TOKEN} = 'abc'", "New-Item -Path Env:AEW_LEAD_TOKEN -Value 'abc'",  # #335 quick check, R3
 ])
 def test_a_value_typed_where_it_shows_or_made_persistent_is_an_ask(text):
     assert found(Output(site="unit", text=text), "O-SECRET") == ["asks to set AEW_LEAD_TOKEN"]
@@ -1442,6 +1479,7 @@ def test_a_value_typed_where_it_shows_or_made_persistent_is_an_ask(text):
     "$env:AEW_LEAD_TOKEN = $(Read-Host 'Lead token' -MaskInput)",
     "$s = Read-Host 'Lead token' -AsSecureString; $env:AEW_LEAD_TOKEN = $s",  # no plain text reaches the variable
     "[Environment]::SetEnvironmentVariable('AEW_LEAD_TOKEN', $null, 'User')",  # clearing it
+    "New-Item -Path Env:AEW_LEAD_TOKEN -Value $s",  # from a variable
     "read -rsp 'Lead token: ' AEW_LEAD_TOKEN",
 ])
 def test_the_masked_and_clearing_forms_are_no_ask(text):
@@ -1468,6 +1506,11 @@ def test_the_form_written_over_two_lines_in_one_block_passes():
     assert found(Output(site="unit", text=unmasked), "O-SECRET")
     split = "```sh\nread -rsp 'Lead token: ' AEW_LEAD_TOKEN; echo\n```\n```sh\nexport AEW_LEAD_TOKEN\n```"
     assert found(Output(site="unit", text=split), "O-SECRET")  # one block only: a fence ends it
+    # one command a line, the read anywhere earlier in the block (#335 quick check, R3)
+    three = "```sh\naew status > status.txt\nread -rsp 'Lead token: ' AEW_LEAD_TOKEN\necho\nexport AEW_LEAD_TOKEN\n```"
+    assert found(Output(site="unit", text=three), "O-SECRET") == []
+    shown = "```sh\nread -rsp 'Lead token: ' AEW_LEAD_TOKEN\necho \"$AEW_LEAD_TOKEN\"\nexport AEW_LEAD_TOKEN\n```"
+    assert found(Output(site="unit", text=shown), "O-SECRET")  # shown between the read and the export
 
 
 @pytest.mark.parametrize("text", [

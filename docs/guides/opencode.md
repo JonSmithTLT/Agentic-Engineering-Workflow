@@ -45,7 +45,7 @@ provider_env: [OPENAI_API_KEY]
 The policy files are pinned: after editing one, run `aew manifest adopt --reason ... --expect-rev N` at your own
 terminal to accept the change (until then every Lead change is refused). It asks for the Lead credential at a hidden
 prompt; see [Giving AEW the Lead credential](quickstart.md#giving-aew-the-lead-credential). That route holds the seat,
-and it doesn't mix with the next section's `--acquire`: a held seat refuses it, so start the Lead there with
+and it doesn't mix with section 3's `--acquire`: a held seat refuses it, so start the Lead there with
 `aew opencode` and your credential.
 
 Then check the project:

@@ -571,7 +571,9 @@ class Engine:
             raise UsageError("initialize AEW in the main worktree, not a linked worktree")
         aew_root = repo_root / AEW_DIR
         if (aew_root / "state" / "control.yaml").exists():
-            raise IntegrityError(f"{aew_root} is already an initialized AEW project")
+            from aew.engine.first_configuration import already_initialized  # only this refusal needs its tables
+
+            raise IntegrityError(already_initialized(aew_root))
         branch = branch or git.current_branch(repo_root)
         if not branch:
             raise UsageError("HEAD is detached; pass --branch to name the authoritative branch")

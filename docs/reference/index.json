@@ -92,7 +92,7 @@
         "lower-bound": 272
       }
     },
-    "digest": "sha256:8b97263b75a82cd9a7722962945596f0bde7221ec3b69836ba59eb36a24c68e4",
+    "digest": "sha256:186087a10aad7ee2bd8a83083bd9e7e31d2dc24fb1efcd72c69ed1e0672bb3c3",
     "records": 1147,
     "unresolved": 112
   },
@@ -19706,6 +19706,7 @@
         "aew.harness.contract",
         "aew.harness.models",
         "aew.knowledge.manifest",
+        "aew.lead_credential",
         "aew.policy.execution",
         "aew.util"
       ]
@@ -43230,8 +43231,8 @@
     },
     "writers:policy/checks.yaml": {
       "anchor": {
-        "module": "aew.engine.store",
-        "symbol": "ControlStore.create"
+        "module": "aew.engine.first_configuration",
+        "symbol": "CHECKS_REL"
       },
       "basis": "static",
       "coverage": {
@@ -43246,7 +43247,12 @@
       },
       "fact": {
         "directory": "policy",
-        "named_by": [],
+        "named_by": [
+          {
+            "module": "aew.engine.first_configuration",
+            "symbol": "CHECKS_REL"
+          }
+        ],
         "prefix": "policy/checks.yaml",
         "writers": [
           {

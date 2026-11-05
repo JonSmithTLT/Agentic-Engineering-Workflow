@@ -25,14 +25,18 @@ aew opencode --acquire --provider-env OPENAI_API_KEY
 ```
 
 `aew init` takes the first configuration in that one call and writes it before it pins, so a fresh setup needs no hand
-edit, no adopt and no credential. Its `next` says what's left for what you gave it.
+edit, no adopt and no credential. Its `next` says what's left for what you gave it. The first `aew doctor` above exits 1
+on `provider-env`, because the key isn't set until the line after it: its message names the variable and how to set it.
 
 - **`--check-command`** sets the `unit` check. It's split as POSIX on every platform, with no shell, and `{python}` is
   the running Python. The result prints the argv. A command that would pin something broken is refused: empty or
   unparseable; a bare shell operator (`&&`, `||`, `|`, `;`, `<`, `>`) or a leading `VAR=`, which take a shell you name
-  yourself (`sh -c '...'`); a backslash outside single quotes, which this split would spend (write `/` or `{python}`).
+  yourself (`sh -c '"{python}" -m pytest && make'`, with `{python}` in double quotes because that shell reads its path);
+  a backslash outside single quotes, which this split would spend (write `/` or `{python}`). Nothing else is refused:
+  with no shell, nothing expands `~`, `$VAR` or a glob, and a lone `&` is an argument, so read the printed argv.
   **`--check-timeout SECONDS`** goes with it.
-- **A check command is not a place for a credential.** AEW doesn't scan it, and it's committed with the policy.
+- **A check command is not a place for a credential.** AEW doesn't scan it, and it sits in plain text in
+  `.aew/policy/checks.yaml`, which goes wherever that file is committed.
 - **`--model`** sets the workers' model, written as the harness lists it, in one profile named `default`; **`--provider`**
   goes with a bare id. They don't set the Lead's own model. For a provider that needs a key, `provider_env` gets the
   variable's name: no flag takes a key, and `aew init` doesn't look for one. `opencode` writes no variable, since its free
@@ -44,7 +48,7 @@ edit, no adopt and no credential. Its `next` says what's left for what you gave 
   with other values.
 
 Everything after the pin goes through the Lead credential and an adopt. That's also the route for what the flags don't
-cover:
+cover. On a project already initialized, skip this block's first line, which `aew init` would refuse:
 
 ```bash
 aew init                        # discovers authority *candidates*; confers no authority
@@ -54,9 +58,11 @@ aew manifest adopt --reason "configured the test command" --expect-rev 1   # ask
 ```
 
 **The two routes don't mix.** `aew lead acquire` holds the seat, and a held seat refuses `aew opencode --acquire`, so a
-Lead session on that route starts with `aew opencode` and your credential. On the `--acquire` route no credential is ever
-shown, so the authority candidates wait: they block nothing, and you classify them after the session exits and releases
-the seat, through `aew lead acquire`.
+Lead session on that route starts with `aew opencode` and your credential. `--acquire` itself never shows a credential (a
+session that exits with work in flight keeps the seat, and taking that over shows one), so the authority candidates wait:
+they block nothing, and you classify them after the session exits and releases the seat, through `aew lead acquire`. That
+holds the seat again, so when you've classified them, `aew lead release` gives it up (with `--expect-rev` and the revision
+from `aew status`, like any change) and `--acquire` works again.
 
 The policy files under `.aew/policy/` are pinned like `project.yaml`: after any edit, every Lead change is refused until
 you review it and run `aew manifest adopt` (a recorded decision). Adopt asks you to type back a one-time code at your

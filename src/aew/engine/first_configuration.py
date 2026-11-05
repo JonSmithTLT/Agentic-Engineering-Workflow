@@ -18,6 +18,7 @@ import shlex
 from dataclasses import dataclass
 from typing import Any
 
+from aew import lead_credential
 from aew.errors import UsageError
 from aew.harness import contract as K
 from aew.harness import models
@@ -35,8 +36,25 @@ DESCRIPTION = "set at aew init"
 # A bare shell operator: there is no shell here, so each of these would reach the program as an argument.
 OPERATORS = ("&&", "||", "|", ";", "<", ">")
 ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
-HAND_EDIT = (f"`aew init` without these flags, `aew lead acquire --expect-rev 0`, the edit of .aew/{X.REL_PATH}, then "
-             f"the operator's `aew manifest adopt --reason <reason> {K.EXPECT_REV}`")
+# A `{python}` no quote touches: a shell would read its expansion, spending a Windows path's backslashes and splitting a
+# path at its spaces (review of #329, F5).
+BARE_PYTHON = re.compile(r"""(?<!["'])\{python\}(?!["'])""")
+QUOTED_PYTHON = '"{python}"'
+
+
+def post_pin_route(*files: str, fresh: bool = False) -> str:
+    """What changing a pinned policy file takes, ``fresh`` on a project just initialized, at revision 0. Whatever prints
+    it adds ``K.HELD_SEAT``."""
+    acquire = "`aew lead acquire --expect-rev 0`" if fresh else f"`aew lead acquire {K.EXPECT_REV}`"
+    edits = " or ".join(f".aew/{file}" for file in files)
+    return f"{acquire}, the edit of {edits}, then the operator's `aew manifest adopt --reason <reason> {K.EXPECT_REV}`"
+
+
+def already_initialized(aew_root: Any) -> str:
+    """The refusal on a pinned project, whose likeliest reader ran `aew init` and then read about these flags (review of
+    #329, F8). The code stays `INTEGRITY_ERROR`, as ruled."""
+    return (f"{aew_root} is already an initialized AEW project, so `aew init` can't change it. Its check command and "
+            f"model now take {post_pin_route(CHECKS_REL, X.REL_PATH)}. {K.HELD_SEAT}")
 
 
 def _refuse(reason: str, message: str, **details: Any) -> UsageError:
@@ -83,7 +101,7 @@ def parse_check_command(text: str) -> list[str]:
         what = f"the shell operator {found[0]}" if found else f"the leading assignment {argv[0]}"
         raise _refuse("check_command_shell",
                       f"--check-command: {text!r} has {what}, and a check runs with no shell. Name the shell yourself: "
-                      f"sh -c {shlex.quote(text)}")
+                      f"sh -c {shlex.quote(BARE_PYTHON.sub(QUOTED_PYTHON, text))}")
     return argv
 
 
@@ -109,8 +127,9 @@ def _provider_env(provider: str) -> tuple[str, ...]:
     if name is None:
         raise _refuse("unknown_provider",
                       f"--model: provider {provider!r} isn't one this flag knows "
-                      f"({', '.join(sorted(netns.PROVIDER_KEY_ENV))}). Another provider is a hand edit: {HAND_EDIT}, "
-                      "naming its containment.network.upstreams entry there", provider=provider)
+                      f"({', '.join(sorted(netns.PROVIDER_KEY_ENV))}). Another provider is a hand edit: `aew init` "
+                      f"without these flags, {post_pin_route(X.REL_PATH, fresh=True)}, naming its "
+                      f"containment.network.upstreams entry there. {K.HELD_SEAT}", provider=provider)
     return (name,)
 
 
@@ -170,7 +189,7 @@ class FirstConfiguration:
             if not self.provider_env:
                 out["provider_note"] = (f"provider {self.identity.provider}: no variable was written, since its free "
                                         "models need none and a listed variable left unset refuses the launch. A paid "
-                                        f"model of it takes the hand edit: {HAND_EDIT}")
+                                        f"model of it takes {post_pin_route(X.REL_PATH, fresh=True)}. {K.HELD_SEAT}")
         return out
 
     def next_step(self) -> str:
@@ -178,15 +197,14 @@ class FirstConfiguration:
         Lead's relay needs it named, so one line covers both. An ``--acquire`` path shows no credential."""
         if self.argv is None or self.identity is None:  # at least one was given, or there would be no configuration
             missing, file = (("check command", CHECKS_REL) if self.argv is None else ("model", X.REL_PATH))
-            return (f"this project still has no {missing}. Adding it now takes `aew lead acquire --expect-rev 0`, the "
-                    f"edit of .aew/{file}, then the operator's `aew manifest adopt --reason <reason> {K.EXPECT_REV}`. "
-                    "The two paths don't mix: a held seat refuses `aew opencode --acquire`")
+            return (f"this project still has no {missing}. Adding it now takes "
+                    f"{post_pin_route(file, fresh=True)}. {K.HELD_SEAT}")
         if not self.provider_env:
             return ("run `aew doctor`, then start the Lead with `aew opencode --acquire`. It holds the seat itself: a "
                     "seat already held refuses `--acquire`")
         var = self.provider_env[0]
-        return (f"run `aew doctor`. Set {var} by the hidden form (bash: `read -rsp '{var}: ' {var}; echo; export "
-                f"{var}`; PowerShell 7: `$env:{var} = Read-Host '{var}' -MaskInput`), then start the Lead with "
+        hidden = "; ".join(f"{shell}: `{form}`" for shell, form in lead_credential.forms(var, var).items())
+        return (f"run `aew doctor`. Set {var} by the hidden form ({hidden}), then start the Lead with "
                 f"`aew opencode --acquire --provider-env {var}`; a stored login (`opencode auth login`) is the "
                 f"alternative for the Lead. A worker reads {var} from the shell that launches it, and the Lead's relay "
                 "needs it named, so this covers both. It holds the seat itself: a seat already held refuses "

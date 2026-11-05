@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import shlex
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ from vertical.chat import Mailbox
 from aew.cli.main import build_parser
 from aew.engine.api import Engine
 from aew.errors import ValidationFailed
+from aew.harness import contract as K
 from aew.harness.containment import netns
 from aew.util import sha256_file
 
@@ -80,6 +82,51 @@ def test_a_flag_never_writes_on_a_pinned_project_and_the_integrity_error_stands(
     before = tree(flagged)
     res = init(flagged, "--model", "anthropic/other")
     assert res.error["code"] == "INTEGRITY_ERROR" and tree(flagged) == before
+    assert "aew lead acquire" in res.error["message"] and "aew manifest adopt" in res.error["message"]  # F8
+
+
+def actions(root: Path) -> list[str]:
+    return run_aew("-C", str(root), "status", "--json").json["next_actions"]
+
+
+def test_the_route_a_note_prints_after_the_pin_runs_as_printed(tmp_path):
+    """Review of #329, F1: the first step of what a successful init prints isn't refused."""
+    root = repo(tmp_path)
+    res = init(root, "--check-command", "make", "--model", "opencode/big")
+    assert "aew lead acquire --expect-rev 0" in res.json["first_configuration"]["provider_note"]
+    assert run_aew("-C", str(root), "lead", "acquire", "--expect-rev", "0").returncode == 0
+
+
+def test_resume_gives_a_vacant_seat_the_one_text_status_does(tmp_path):
+    """Review of #329, F3: `aew resume` named the credential route alone, and following it refuses the `--acquire` that
+    `next` named."""
+    root = repo(tmp_path)
+    assert init(root, *GOOD).returncode == 0
+    resume = run_aew("-C", str(root), "resume").stdout
+    words = " ".join(resume.split())
+    assert "No Lead holds authority: `aew opencode --acquire` takes it" in words
+    assert " ".join(K.HELD_SEAT.split()) in words
+    assert [a for a in actions(root) if a.startswith("no Lead holds the seat:") and K.HELD_SEAT in a]
+
+
+def test_the_way_back_the_classification_route_names_gives_acquire_the_seat_again(tmp_path):
+    """Review of #329, F2: classified as the action says, the seat is held and `--acquire` is refused; the release that
+    the action names leaves it vacant, and `--acquire` takes it."""
+    root = repo(tmp_path)
+    assert init(root, *GOOD).returncode == 0
+    classify = [a for a in actions(root) if a.startswith("classify authority candidates")]
+    assert classify and f"aew lead release {K.EXPECT_REV}" in classify[0]
+    token = run_aew("-C", str(root), "lead", "acquire", "--expect-rev", "0").json["token"]
+    env = {"AEW_LEAD_TOKEN": token}
+    accepted = run_aew("-C", str(root), "authority", "accept", "C-001", "--class", "orientation", "--expect-rev", "1",
+                       env=env)
+    assert accepted.returncode == 0, accepted.stderr
+    session = ("-C", str(root), "lead", "session", "--acquire", "--", sys.executable, "-c", "pass")
+    held = run_aew(*session)
+    assert held.returncode != 0 and held.error["code"] == "PERMISSION_DENIED"
+    released = run_aew("-C", str(root), "lead", "release", "--expect-rev", "2", env=env)
+    assert released.returncode == 0, released.stderr
+    assert run_aew(*session).returncode == 0
 
 
 def test_an_interrupted_init_may_run_again_with_other_values(tmp_path):

@@ -135,8 +135,9 @@ installed tool: its variables are not the operator's.
   entry, its message and details; a JSON answer with `ok: true` never is.
 - **Opening AEW.** The `open` step is L01 and L02 (`ATTACH_LEAD`), through a G3 client and the confirmer, whose PIN
   approves the attach (§4, the PIN rule). The test records whether a console endpoint came up (`open.console`), never
-  counted. Until the step lands, the operator opens the Lead today's way (the credential in `AEW_LEAD_TOKEN`, then
-  `aew opencode`), counted as a fallback. `configure` (step 2) is A-39's setup act at the console, with no O-01 command
+  counted. Until the step lands, the operator opens the Lead the way `aew init`'s `next` says
+  (`aew opencode --acquire`), counted as a fallback. V4 and the same-shell V2 extra keep the credential route (an
+  acquire, the credential in `AEW_LEAD_TOKEN`, then `aew opencode`), every step counted. `configure` (step 2) is A-39's setup act at the console, with no O-01 command
   and no PIN. The steering `raise` (step 13, `SET_STEERING_MODE`) is a decision on every platform.
 - **V2's reopen.** The step is L03 (`REATTACH_LEAD`), with the reads that say where things stand, from a fresh
   terminal with nothing carried over. Until it lands, the operator opens the Lead the way `docs/guides/opencode.md`

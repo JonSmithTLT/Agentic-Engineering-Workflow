@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from aew.engine import transitions as T
-from aew.harness.contract import CREATE_TICKET, EXPECT_REV
+from aew.harness.contract import CREATE_TICKET, EXPECT_REV, HELD_SEAT_IN_A_GUIDE
 
 CLASS_TEXT = {  # WC §7.4 definitions and §7.4 examples, verbatim in substance
     "0": ("eligible mechanical work", "work for which the Class 0 eligibility predicate holds (below)",
@@ -195,7 +195,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "This tells AEW which documents govern the work and which only orient it, and it blocks nothing. On a session "
         "started with `aew opencode --acquire`, don't ask during the session: classifying needs a credential that path "
         "never shows, and a takeover would turn you read-only. The operator classifies after you exit, once the seat "
-        "is released, through `aew lead acquire`.",
+        f"is released, through `aew lead acquire`. {HELD_SEAT_IN_A_GUIDE}.",
         "- Look at the project before you describe work in it. You cannot edit files, but you can read and search them "
         "with your read, glob and grep tools.",
         "",

@@ -4,17 +4,24 @@ of 2026-11-03, §1). Nothing here writes: ``tests/integration/test_init_first_co
 from __future__ import annotations
 
 import argparse
+import ast
+import re
 import shlex
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import printed_commands as P
 import pytest
 import yaml
 
+import aew
+from aew import lead_credential
 from aew.cli.main import build_parser
 from aew.engine import first_configuration as FC
 from aew.engine.base import check_policy_bytes
 from aew.errors import UsageError, ValidationFailed
+from aew.harness import contract as K
 from aew.harness import lead_broker
 from aew.harness.containment import netns
 from aew.harness.models import ModelIdRefused
@@ -96,6 +103,33 @@ def test_a_refused_operator_names_a_shell_form_that_itself_parses():
     assert FC.parse_check_command(named)[:2] == ["sh", "-c"]
 
 
+def named_shell_form(text: str) -> str:
+    with pytest.raises(UsageError) as refused:
+        FC.parse_check_command(text)
+    return refused.value.message.split("Name the shell yourself: ", 1)[1]
+
+
+@pytest.mark.parametrize("interpreter", [r"C:\Users\A Person\venv\Scripts\python.exe", "/home/a b/venv/bin/python"])
+def test_the_shell_form_a_refusal_names_still_finds_python_once_the_shell_reads_it(interpreter):
+    """Review of #329, F5: the check runner expands `{python}` inside the string, and then `sh` reads it. POSIX word
+    splitting, which `sh` does and `shlex` follows, must give back the whole path, backslashes and space included."""
+    argv = FC.parse_check_command(named_shell_form("{python} -m pytest && make"))
+    assert argv == ["sh", "-c", '"{python}" -m pytest && make']
+    expanded = argv[2].replace("{python}", interpreter)  # as `policy/checks.py` expands it
+    assert shlex.split(expanded)[0] == interpreter
+
+
+@pytest.mark.parametrize(("text", "script"), [
+    ("make && make lint", "make && make lint"),  # nothing to quote
+    ("FOO=1 {python} -m pytest", 'FOO=1 "{python}" -m pytest'),
+    ('"{python}" -m pytest && make', '"{python}" -m pytest && make'),  # its quotes already there, not doubled
+    ("'{python}' -m pytest && make", "'{python}' -m pytest && make"),
+    ("{python} a && {python} b", '"{python}" a && "{python}" b'),
+])
+def test_the_shell_form_quotes_only_a_python_no_quote_touches(text, script):
+    assert FC.parse_check_command(named_shell_form(text)) == ["sh", "-c", script]
+
+
 # ---------------------------------------------------------------------------------------------- what goes with what
 
 
@@ -155,6 +189,18 @@ def test_opencode_writes_no_variable_and_the_result_says_so():
         assert doc["provider_env"] == []
         assert "no variable was written" in parsed.report()["provider_note"]
     assert "provider_note" not in parse(model="openai/m").report()
+
+
+def test_a_note_printed_after_the_pin_names_no_step_the_pin_refuses():
+    """Review of #329, F1: a successful init has pinned, so `aew init` is refused by then. The refusal, which has
+    written nothing, is the one text where it is still a step."""
+    note = parse(model="opencode/big").report()["provider_note"]
+    assert "aew init" not in note and K.HELD_SEAT in note
+    assert printed(note)[:2] == ["aew lead acquire --expect-rev 0",
+                                 f"aew manifest adopt --reason <reason> {K.EXPECT_REV}"]
+    with pytest.raises(UsageError) as refused:
+        parse(model="fakeprov/m")
+    assert "`aew init` without these flags" in refused.value.message and K.HELD_SEAT in refused.value.message
 
 
 @pytest.mark.parametrize("flags", [{"model": "fakeprov/m"}, {"model": "m", "provider": "vuatprov"},
@@ -264,8 +310,16 @@ def printed(text: str) -> list[str]:
 def test_next_with_a_check_and_a_model_that_needs_a_key():
     text = parse(check_command="make", model="anthropic/m").next_step()
     assert printed(text) == ["aew doctor", "aew opencode --acquire --provider-env ANTHROPIC_API_KEY"]
-    assert "read -rsp 'ANTHROPIC_API_KEY: ' ANTHROPIC_API_KEY" in text and "-MaskInput" in text  # the hidden form
     assert "stored login" in text and "a seat already held refuses" in text
+
+
+def test_next_gives_each_hidden_form_its_one_owner_has():
+    """Review of #329, F4: derived, so the Windows PowerShell 5.1 form, which has no `-MaskInput`, is there too."""
+    text = parse(check_command="make", model="anthropic/m").next_step()
+    forms = lead_credential.forms("ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY")
+    assert "Windows PowerShell 5.1" in forms  # control: the owner has it
+    for shell, form in forms.items():
+        assert f"{shell}: `{form}`" in text
 
 
 def test_next_with_a_check_and_an_opencode_model():
@@ -286,7 +340,72 @@ def test_next_with_some_flags_says_whats_missing_and_what_adding_it_takes(flags,
     assert f"no {missing}." in text and f".aew/{file}" in text
     spans = printed(text)
     assert spans[0] == "aew lead acquire --expect-rev 0" and spans[1].startswith("aew manifest adopt --reason")
-    assert spans[2] == "aew opencode --acquire" and "a held seat refuses" in text
+    assert spans[2] == "aew opencode --acquire" and K.HELD_SEAT in text
+    assert spans[3] == f"aew lead release {K.EXPECT_REV}"
+
+
+# ---------------------------------------------------------------------------------------------- the seat, in each text
+
+
+# The literals that name `aew lead acquire` without the seat's sentence, and why each may.
+NO_SEAT_SENTENCE = {
+    "commands.py": "the flagless `next`, which the ruling keeps as it always was",
+    "lead_ops.py": "a takeover refused on a vacant seat: not a first step, and its reader already holds the route",
+    "first_configuration.py": "`post_pin_route`: each caller adds the sentence, as the tests above and below say",
+}
+
+
+def shown_texts(tree: ast.AST) -> Iterator[str]:
+    """Every string the program can show, whole, with each f-string value read as its source, and no docstring."""
+    docstrings = {id(n.body[0].value) for n in ast.walk(tree)
+                  if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.body
+                  and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
+    parts = {id(v) for n in ast.walk(tree) if isinstance(n, ast.JoinedStr) for v in n.values}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings | parts:
+            yield node.value
+        elif isinstance(node, ast.JoinedStr):
+            yield "".join(str(v.value) if isinstance(v, ast.Constant) else ast.unparse(v) for v in node.values)
+
+
+def test_every_text_that_names_lead_acquire_says_it_holds_the_seat():
+    """Review of #329, F3's class: an operator who follows such a text gets a held seat, which then refuses the
+    `--acquire` that `aew init`'s `next` named. So the text says so, in the one sentence with the way back. Limits: the
+    literal spelling `aew lead acquire`, in what `src/aew` can show (the guides are the test below); it reads no
+    meaning, so an entry above stays only for the reason it gives."""
+    src = Path(aew.__file__).parent
+    exempt = set()
+    missing = []
+    for path in sorted(src.rglob("*.py")):
+        for text in shown_texts(ast.parse(path.read_text(encoding="utf-8"))):
+            if "aew lead acquire" not in text or "HELD_SEAT" in text:
+                continue
+            if path.name in NO_SEAT_SENTENCE:
+                exempt.add(path.name)
+            else:
+                missing.append(f"{path.name}: {text[:100]}")
+    assert missing == []
+    assert exempt == set(NO_SEAT_SENTENCE)  # an entry with nothing left to excuse goes
+
+
+@pytest.mark.parametrize("guide", ["quickstart.md", "lead-guide.md"])
+def test_every_guide_section_that_names_lead_acquire_names_the_way_back(guide):
+    """Review of #329, F2: classifying leaves the seat held, and `aew lead release` is what gives `--acquire` back."""
+    text = (Path(aew.__file__).resolve().parents[2] / "docs" / "guides" / guide).read_text(encoding="utf-8")
+    sections = [s for s in re.split(r"^#+ ", text, flags=re.M) if "aew lead acquire" in s]
+    assert sections  # control: the guide still names it, or this test looks at nothing
+    for section in sections:
+        assert "`aew lead release`" in section and "--acquire" in section, section[:80]
+        assert "holds the seat" in section, section[:80]
+
+
+def test_the_refusal_on_an_initialized_project_says_what_it_takes_now():
+    """Review of #329, F8: the code stays as ruled, and the message gives the way forward."""
+    text = FC.already_initialized("/repo/.aew")
+    assert "already an initialized AEW project" in text and K.HELD_SEAT in text
+    assert ".aew/policy/checks.yaml or .aew/policy/execution.yaml" in text
+    assert printed(text)[1:3] == [f"aew lead acquire {K.EXPECT_REV}",
+                                  f"aew manifest adopt --reason <reason> {K.EXPECT_REV}"]
 
 
 # ---------------------------------------------------------------------------------------------- where the flags are

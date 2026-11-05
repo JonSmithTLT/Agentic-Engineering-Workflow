@@ -969,10 +969,11 @@ def test_a_capture_error_fails_the_ratchet(tmp_path):
 def test_the_static_texts_add_no_new_key_of_an_enforced_rule():
     """Review of #218, M2: the static decision in a required job. The fast lane runs in every tier's `core`, so a new
     or stale static key of a rule in `enforce` blocks the merge; the `discovery` workflow only reports."""
-    observed = {f.key for f in static.scan(guides())}
+    found = {f.key: {"detail": f.detail} for f in static.scan(guides())}
+    observed = set(found)
     listed = {k for k in allowed.load() if allowed.is_static(k)}
     verdict = allowed.decide(observed, listed, stale_scope="static")
-    assert verdict.ok, "\n".join(allowed.report(verdict))
+    assert verdict.ok, "\n".join(allowed.report(verdict, details=found))
     enforced = {r: modes.ENFORCE for r in modes.RULES}
     assert allowed.decide(observed | {"O-IDS static:guide|aew x --expect-rev N"}, listed, stale_scope="static",
                           mode_of=enforced).failing == ["O-IDS static:guide|aew x --expect-rev N"]

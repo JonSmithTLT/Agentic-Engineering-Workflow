@@ -30,7 +30,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from capability_stand_in import make_register
 
 from aew.capability import bind, ops, records, status, store
 from aew.capability import payload as P
@@ -89,10 +88,7 @@ def _path_without_rg(tmp: Path) -> str:
 @pytest.fixture
 def row(tmp_path, monkeypatch):
     """A register of the test's own with AEW's real shipped ripgrep record, no fetch, and a proxy."""
-    make_register(tmp_path, monkeypatch)
-    monkeypatch.undo()  # the real shipped record, and the session's own fetch-off and PATH, below
     monkeypatch.setattr(store, "ROOT_OVERRIDE", tmp_path / "register")
-    monkeypatch.setenv(ops.FETCH_SWITCH, "off")
     proxy = LoggingProxy()
     yield proxy
     proxy.close()
@@ -169,6 +165,59 @@ def _nothing_was_downloaded(result: dict[str, Any], proxy: LoggingProxy) -> None
     assert held == [], f"the server's own bin directory holds {held}"
     assert not [line for line in proxy.log if GITHUB in line], proxy.log
     assert "downloading ripgrep" not in result["log"]
+
+
+REAL = "AEW_CAP1_REAL_DIR"  # a directory of the operator's choosing: naming it is what allows a real fetch, once
+
+
+@pytest.fixture
+def real(monkeypatch) -> Path:
+    if not os.environ.get(REAL):
+        pytest.skip(f"a real fetch from github.com is the operator's to allow: set {REAL}")
+    monkeypatch.setattr(ops, "LAUNCH_FETCH", True)
+    return Path(os.environ[REAL])
+
+
+def test_a_fresh_host_fetches_at_its_first_launch_and_aews_pinned_ripgrep_serves(row, real, tmp_path, monkeypatch):
+    """CAPR-Q10, CAPR-X01: the real archive by the launch's own fetch, checked against its pin, with no operator step;
+    FUNCTIONAL_ONLY before the first use; a real server's search runs through it, and OpenCode fetches nothing. The
+    register stays in that directory, so running this again fetches nothing, and the archive is kept for the next
+    test."""
+    monkeypatch.setattr(store, "ROOT_OVERRIDE", real / "register")
+    fetched = P.fetch
+
+    def keeping(pinned: dict[str, Any]) -> bytes:
+        data = fetched(pinned)
+        (real / Path(pinned["source"]).name).write_bytes(data)
+        return data
+
+    monkeypatch.setattr(P, "fetch", keeping)
+    got = _search(tmp_path, row, monkeypatch, _path_without_rg(tmp_path))
+    tool = got["label"]["self_test"]["tools"]["ripgrep"]
+    assert tool["served"] == status.AEW_COPY and tool["tried"][0]["version"].startswith("ripgrep 15.1.0"), tool
+    assert Path(got["layout"].tools_first, "rg").resolve() == Path(tool["path"])
+    assert [e["path"] for e in got["found"]["data"]] == ["needle.txt"], got
+    _nothing_was_downloaded(got, row)
+    cap = next(c for c in ops.listing()["capabilities"] if c["id"] == "EXACT_CODE_SEARCH")
+    assert cap["observed_status"] == status.FUNCTIONAL_ONLY and cap["pinned"] is True and cap["version"] == "15.1.0"
+    assert cap["limitations"] == [] and store.read()["checks"]["aew:ripgrep"]["where"] == status.IN_SANDBOX
+
+
+def test_an_offline_host_imports_the_same_archive_and_its_check_runs_contained(real, tmp_path, monkeypatch):
+    """CAPR-Q05, with the real archive the fetch above kept, no network, and the operator's change as the endpoint
+    applies it. Its status comes from inside a sandbox (CAPR-13)."""
+    from capability_stand_in import _principal
+
+    monkeypatch.setattr(store, "ROOT_OVERRIDE", tmp_path / "offline")
+    monkeypatch.setattr("urllib.request.urlopen", lambda *_a, **_k: pytest.fail("the import reached the network"))
+    pinned = records.shipped()["ripgrep"]["payloads"][records.platform_key()]
+    archive = real / Path(pinned["source"]).name
+    if not archive.exists():
+        pytest.skip("the fetch's own test keeps the archive: run it first")
+    ops.apply(_principal(), ops.preview(ops.IMPORT, {"path": str(archive)}))
+    cap = next(c for c in ops.listing()["capabilities"] if c["id"] == "EXACT_CODE_SEARCH")
+    assert cap["observed_status"] == status.FUNCTIONAL_ONLY and cap["pinned"] is True
+    assert store.read()["checks"]["aew:ripgrep"]["where"] == status.IN_SANDBOX
 
 
 def _plant_refused(tmp: Path) -> None:

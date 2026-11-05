@@ -92,6 +92,17 @@ def test_platform_keys():
 # ---------------------------------------------------------------------------------------------- the statuses
 
 
+def test_where_no_context_is_contained_the_status_says_the_download_stays_reachable(reg):
+    """CAP-1 PR 2: no sandbox on Windows, so no bind, and its capabilities say so. A Linux run the policy allows to be
+    weaker says so on its label, as a register per host cannot know one project's policy."""
+    from aew.harness import containment
+
+    assert _cap()["limitations"] == ([status.NOT_BOUND] if IS_WINDOWS else [])
+    assert "download stays reachable" in status.NOT_BOUND
+    assert containment.label(contained=False)["register_tools"] == status.NOT_BOUND
+    assert "register_tools" not in containment.label(contained=True, mechanism="m")
+
+
 def test_a_payload_never_fetched_reads_unavailable_with_its_cause_and_fix(reg):
     cap = _cap()
     assert cap["observed_status"] == status.UNAVAILABLE and cap["assessment_status"] == status.NOT_ESTABLISHED

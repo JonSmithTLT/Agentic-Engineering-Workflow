@@ -342,7 +342,7 @@ def tools(spec, tmp, budget):
     import tempfile
     end = time.monotonic() + budget
     out = {}
-    for t in spec:
+    for t in spec if isinstance(spec, list) else ():
         checks = {}
         for path in t["paths"]:
             try:
@@ -362,6 +362,12 @@ def tools(spec, tmp, budget):
                 shutil.rmtree(d, ignore_errors=True)
         out[t["provider"]] = {"found": shutil.which(t["command"]), "checks": checks}
     return out
+def guarded_tools(spec):
+    # whatever goes wrong here is a provider's, reported as nothing for it: the host then reads its checks as not run
+    try:
+        return tools(spec["tools"], spec["tmp"], spec["tools_budget"])
+    except Exception as e:
+        return {"error": "%s: %s" % (type(e).__name__, e)}
 def network(net, server):
     import socket
     out = {"netns": os.readlink("/proc/self/ns/net"), "listening": listening(), "abstract": abstract_names(),
@@ -433,7 +439,7 @@ if __name__ == "__main__":
         "store_shield": shield(spec.get("stores") or [], table),
         "network": network(net, server) if net else None,
         "path": os.environ.get("PATH", ""),
-        "tools": tools(spec["tools"], spec["tmp"], spec["tools_budget"]),
+        "tools": guarded_tools(spec),
     }))
 """
 

@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from aewflow import sample_project
+from capability_stand_in import register_holding_a_failed_fetch
 from conftest import clean_env
 from fake_harness import AGENT, POLICY, HarnessLab
 
@@ -197,6 +198,8 @@ def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, st
     for name in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "OPENCODE_DB",
                  "OPENCODE_CONFIG"):
         env.pop(name, None)  # the synthetic home's defaults, never the runner's own OpenCode
+    # That home's own register, whose launch never reaches the network (conftest: as the session's own children)
+    register_holding_a_failed_fetch(Path(home) / ".local" / "share")
     wrapper = textwrap.dedent("""
         import fcntl, os, sys, termios
         os.setsid()

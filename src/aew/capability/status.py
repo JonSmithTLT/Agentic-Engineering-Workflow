@@ -28,6 +28,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,10 @@ UNPINNED = "an unpinned host copy: AEW does not know its version, and did not ch
 IN_SANDBOX, ON_HOST = "sandbox", "host"
 HOST_CHECKED = ("checked on the host, not in a sandbox: no sandbox could be made here, so what a contained run would "
                 "see was not read")
+# What a context with no sandbox gets, in the words its label and (on Windows, where none exists) the status give:
+# Windows, and a Linux run the policy allows to be weaker
+NOT_BOUND = ("no sandbox here, so AEW's tools are not bound into this context: OpenCode's lookup is its own, and its "
+             "download stays reachable")
 TOOLS_MARKER = ".aew-tools"  # marks a contained context's own directory of entries (bind.py), never a host copy
 HEALTH_TIMEOUT_S = 30.0  # one step of a health check: `--version`, or the fixture query over a few lines
 
@@ -161,7 +166,8 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
     if not path.exists():
         failed = (state.get("fetch_failures") or {}).get(f"{name}:{key}")
         cause = (f"its pinned payload is not on this host: the fetch failed at {failed.get('at')} "
-                 f"({failed.get('reason')})" if failed and failed.get("sha256") == pinned["sha256"] else
+                 f"({failed.get('reason')}){_tries_again(failed.get('at'))}"
+                 if failed and failed.get("sha256") == pinned["sha256"] else
                  "its pinned payload is not on this host: it was never fetched or imported")
         return Copy(AEW_COPY, UNAVAILABLE, cause, f"`{CHECK}` fetches it (online), or `{IMPORT}` imports it from "
                     "the operator's bundle (offline)", str(path))
@@ -172,6 +178,22 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
                     "(offline)", str(path))
     return _checked(AEW_COPY, done, path, facts, digest=records.digest(record), sha256=pinned["sha256"],
                     changed="its record or its pin changed since it was checked")
+
+
+def next_fetch(at: Any) -> datetime | None:
+    """When a launch next tries a fetch that failed at ``at``; None for a time that cannot be read."""
+    try:
+        then = datetime.fromisoformat(str(at).replace("Z", "+00:00"))
+        return then + timedelta(seconds=P.FETCH_RETRY_AFTER_S) if then.tzinfo is not None else None
+    except ValueError:
+        return None
+
+
+def _tries_again(at: Any) -> str:
+    when = next_fetch(at)
+    next_try = f"a launch tries again from {when.strftime('%Y-%m-%dT%H:%M:%SZ')}" if when else (
+        "the next launch tries again")
+    return f"; {next_try}, and `{CHECK}` tries now"
 
 
 def host_copy(name: str, record: dict[str, Any], state: dict[str, Any], *, facts: dict[str, str | None],

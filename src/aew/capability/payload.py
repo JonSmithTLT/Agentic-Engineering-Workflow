@@ -28,6 +28,10 @@ FETCH_TIMEOUT_S = 60.0  # one socket operation (connect, or one read) of the fet
 # one socket operation's worth, so an offline host costs a launch no more than that. The run's start deadline adds it
 # (supervisor.starting_limit_s). `aew capability check` at the operator's terminal has only the per-operation timeout.
 LAUNCH_FETCH_BOUND_S = FETCH_TIMEOUT_S
+# A failed fetch is not tried again at a launch for this long, so an offline host does not pay for it at every launch.
+# A judgement, not a measurement: long enough that a day's launches pay a few times at most, short enough that a network
+# that comes back is used the same day. Only a launch's: `aew capability check` always tries.
+FETCH_RETRY_AFTER_S = 3600.0
 CHUNK = 1 << 16
 
 

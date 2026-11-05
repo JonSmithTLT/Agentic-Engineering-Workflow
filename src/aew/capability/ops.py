@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
+import sys
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -35,10 +35,10 @@ from aew.util import load_yaml, sha256_text, utc_now
 IMPORT, ADD, REMOVE, HOST_COPIES = "import", "add", "remove", "host_copies"
 CHANGES = (IMPORT, ADD, REMOVE, HOST_COPIES)
 MAX_RECORD_TEXT = 12 * 1024  # an add's record text travels in one operator endpoint request (its MAX_MESSAGE, 16 KiB)
-FETCH_SWITCH = "AEW_CAPABILITY_FETCH"  # ``off``: no launch fetches (:func:`fetch_at_launch`); it only ever fetches less
-# A failed fetch is not tried again at a launch for this long, so an offline host does not pay for it at every launch.
-# AEW's own choice, and only a launch's: `aew capability check` always tries.
-FETCH_RETRY_AFTER_S = 3600.0
+# Tests turn the launch's fetch off in process, as they point the register elsewhere (``store.ROOT_OVERRIDE``); the
+# product never sets it, and no variable reaches it, so an installed AEW always fetches what it lacks. A test's child
+# `aew` starts from a register that holds a failure instead, which reads as what it is (``conftest``).
+LAUNCH_FETCH = True
 # How long a launch waits to record a check's result, behind whoever holds the register's lock; the next launch records
 # it. AEW's own choice: long enough for another launch's write, short beside a run's start.
 RECORD_WAIT_S = 5.0
@@ -83,6 +83,7 @@ def _provider(name: str, entry: dict[str, Any], state: dict[str, Any], facts: di
     aew = status.aew_copy(name, record, entry["problem"], state, facts=facts, directory=directory)
     host: Copy | None = None
     note = None
+    limits = [status.NOT_BOUND] if sys.platform == "win32" else []
     if record is not None and aew.status in status.NOT_SERVING:
         if state["host_copies"]:
             host = status.host_copy(name, record, state, facts=facts, directory=directory)
@@ -92,7 +93,7 @@ def _provider(name: str, entry: dict[str, Any], state: dict[str, Any], facts: di
     return {"name": name, "layer": entry["layer"], "command": (record or {}).get("command"),
             "version": (record or {}).get("version"), "aew_copy": aew.describe(),
             "host_copy": host.describe() if host is not None else None, "note": note,
-            "serving": host if host is not None else aew, "aew": aew}
+            "serving": host if host is not None else aew, "aew": aew, "limitations": limits}
 
 
 def _capability(cap: str, providers: list[dict[str, Any]]) -> dict[str, Any]:
@@ -110,7 +111,7 @@ def _capability(cap: str, providers: list[dict[str, Any]]) -> dict[str, Any]:
     return {"id": cap, "observed_status": serving.status, "assessment_status": status.NOT_ESTABLISHED,
             "provider": chosen["name"], "copy": serving.kind, "path": serving.path,
             "version": None if host else chosen["version"], "pinned": not host,
-            "cause": "; ".join(causes) or None, "limitations": list(serving.limitations),
+            "cause": "; ".join(causes) or None, "limitations": [*serving.limitations, *chosen["limitations"]],
             "checked_at": serving.checked_at, "fix": serving.fix or (aew.fix if host else None)}
 
 
@@ -126,7 +127,7 @@ def _unreadable(exc: IntegrityError) -> dict[str, Any]:
 
 def public(view: dict[str, Any]) -> dict[str, Any]:
     """A listing as commands print it: the copies' objects dropped."""
-    return {**view, "providers": [{k: v for k, v in p.items() if k not in ("serving", "aew")}
+    return {**view, "providers": [{k: v for k, v in p.items() if k not in ("serving", "aew", "limitations")}
                                   for p in view["providers"]]}
 
 
@@ -311,22 +312,17 @@ def _due(state: dict[str, Any], directory: Path | None) -> list[tuple[str, dict[
 
 def _within_retry(at: Any) -> bool:
     """A failure this recent is not tried again at a launch: each try can cost a launch
-    :data:`P.LAUNCH_FETCH_BOUND_S`."""
-    try:
-        then = datetime.fromisoformat(str(at).replace("Z", "+00:00"))
-        return (datetime.now(UTC) - then).total_seconds() < FETCH_RETRY_AFTER_S
-    except (ValueError, TypeError):  # an unreadable time, or a naive one: try again
-        return False
+    :data:`P.LAUNCH_FETCH_BOUND_S`. An unreadable time: try again."""
+    next_try = status.next_fetch(at)
+    return next_try is not None and datetime.now(UTC) < next_try
 
 
 def fetch_at_launch(directory: Path | None = None) -> None:
     """CAPR-04, CAPR-Q10: before a contained context's first use, with no step for the operator, fetch what this host
     lacks. It never stops the launch (CAPR-12): a failure is recorded, the status says why, and the run goes on with a
     host copy or the stub. The network wait is outside the register's lock and bounded as a whole, so a second launch
-    does not queue behind it; two first launches may each fetch, and each installs the same pinned bytes.
-    :data:`FETCH_SWITCH` ``off`` turns it off for this process and the ones it starts, for a test suite or a host the
-    operator knows is offline."""
-    if os.environ.get(FETCH_SWITCH) == "off":
+    does not queue behind it; two first launches may each fetch, and each installs the same pinned bytes."""
+    if not LAUNCH_FETCH:
         return
     try:
         due = _due(store.read(directory), directory)

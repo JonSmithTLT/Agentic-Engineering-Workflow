@@ -1714,8 +1714,11 @@ This replaces the 2026-10-24 amendment's `aew doctor` `ripgrep` line, and its "r
   the probe's time, and neither the first-launch fetch nor recording a result can stop a launch.
 - **The first-launch fetch** is in `containment.establish`, outside the register's lock and bounded as a whole
   (`payload.LAUNCH_FETCH_BOUND_S`), which `starting_limit_s` adds. A failure is not retried at a launch for
-  `ops.FETCH_RETRY_AFTER_S`, and a refusal not until `aew capability check`. `AEW_CAPABILITY_FETCH=off` turns it off.
+  `payload.FETCH_RETRY_AFTER_S` (a judgement, not a measurement), and a refusal not until `aew capability check`. The
+  status says when a launch next tries. No variable turns it off: tests turn it off in process
+  (`ops.LAUNCH_FETCH`), and a test's child `aew` starts from a register that holds a failed fetch, which reads as one.
 - **Where it does not reach:** Windows, and a Linux run the policy allows to be weaker, have no sandbox, so no bind, and
-  OpenCode's download stays reachable there.
+  the download stays reachable there. Those runs' labels say so (`register_tools`), and on Windows the capabilities'
+  limitations do.
 - **Tests:** `tests/integration/test_capability_bind.py`; CAPR-Q08's rows against a real OpenCode are
   `tests/live/test_capability_q08_live.py`.

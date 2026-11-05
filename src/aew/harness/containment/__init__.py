@@ -99,6 +99,10 @@ def label(*, contained: bool, mechanism: str | None = None, self_test: dict[str,
         out["layout"] = layout.describe()
     if reason:
         out["weaker_because"] = reason
+    if not contained:
+        from aew.capability import status
+
+        out["register_tools"] = status.NOT_BOUND
     return out
 
 

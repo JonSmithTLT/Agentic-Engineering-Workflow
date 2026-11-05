@@ -19,9 +19,16 @@ from typing import Any
 
 import pytest
 from aewflow import create_planned_ticket, sample_project, to_commit_ready
-from capability_stand_in import _archive, _import, _plant_host_copy, _record, make_register
+from capability_stand_in import (
+    _archive,
+    _import,
+    _plant_host_copy,
+    _record,
+    make_register,
+    register_holding_a_failed_fetch,
+)
 from fake_harness import POLICY, HarnessLab
-from host_env import GUARDED
+from host_env import GUARDED, clean_launching_env
 
 from aew import doctor
 from aew.capability import ops, records, status, store
@@ -61,8 +68,10 @@ class World:
         self.runs = tmp_path / "runs"
         self.runs.mkdir()
         self.count = 0
-        # A PATH with no copy of the stand-in on it, whatever the host has
+        # A PATH with no copy of the stand-in on it, whatever the host has, and a home of the test's own
         monkeypatch.setenv("PATH", "/usr/bin:/bin")
+        (tmp_path / "home").mkdir()
+        clean_launching_env(monkeypatch, tmp_path / "home")
 
     def layout(self, role: str = "reviewer", scope: str = "ticket", **kw: Any) -> C.Layout:
         self.count += 1
@@ -333,6 +342,61 @@ def test_the_contained_path_is_set_whichever_environment_the_caller_built():
     assert "--setenv" not in L.bwrap_argv(L.replace(layout, tools_first=None), ["x"], path="/usr/bin")
 
 
+def test_a_spawn_keeps_the_path_its_own_environment_gave_behind_the_entries(world):
+    """N2's proof: the caller's environment decides the rest of PATH, not this process's."""
+    layout = world.layout()
+    done = world.sh(layout, 'printf "%s" "$PATH"', path="/custom/bin:/usr/bin:/bin")
+    assert done.stdout == f"{layout.tools_first}:/custom/bin:/usr/bin:/bin", done
+
+
+def test_a_context_with_no_sandbox_says_the_download_stays_reachable():
+    """Windows, and a Linux run the policy allows to be weaker: no bind, and its label says so."""
+    assert C.label(contained=False, reason="the policy")["register_tools"] == status.NOT_BOUND
+    assert "download stays reachable" in status.NOT_BOUND
+
+
+def test_a_probe_whose_tool_check_breaks_still_reports_and_the_launch_goes_on(world, monkeypatch):
+    """CAPR-12: a spec the probe cannot use is reported as nothing for that tool, and serves nothing."""
+    from aew.capability import bind
+
+    monkeypatch.setattr(bind.Tool, "spec", lambda self: {"provider": self.provider, "broken": True})
+    layout, label = world.establish()
+    assert label["self_test"]["ok"] is True
+    assert world.sh(layout, 'fake --version; echo "exit $?"').stdout.splitlines() == ["exit 127"]
+
+
+def test_with_no_ripgrep_anywhere_doctor_names_it_with_the_fix_and_an_agents_run_works(tmp_path):
+    """CAPR-Q06, CAPR-X06, by the real CLI and a real supervisor: a host with no `rg` (this PATH holds everything of
+    the host's but that, as the VM has its own). ``test_doctor_names_a_missing_provider...`` plants one too."""
+    farm = tmp_path / "no-rg-bin"
+    farm.mkdir()
+    for entry in os.scandir("/usr/bin"):
+        if entry.name != "rg":
+            (farm / entry.name).symlink_to(entry.path)
+    sync = tmp_path / "sync"
+    policy = {**POLICY, "containment": {"writable": [str(tmp_path / "fake-scripts"), str(sync)],
+                                        "network": {"mode": "shared"}}}
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy)
+    base = tmp_path / "data"
+    register_holding_a_failed_fetch(base)
+    bin_dir = os.path.dirname(sys.executable)
+    env = {"XDG_DATA_HOME": str(base), "PATH": f"{bin_dir}:{farm}"}
+    try:
+        wid = create_planned_ticket(lab.project, tmp_path)
+        lab.script("default", [{"do": "dump_env", "path": str(sync / "env.json")},
+                               {"do": "touch", "path": str(sync / "ran")}])
+        run = lab.lead("work", "assign", wid, "--launch", env=env)["launch"]["run"]
+        lab.until(lambda: (sync / "ran").exists(), what="the agent's run, with no ripgrep anywhere")
+        assert lab.record(run)["containment"]["self_test"]["tools"]["ripgrep"]["served"] is None
+        doctor_rows = {c["check"]: c for c in lab.ok("doctor", "--json", env=env)["checks"]}
+        row = doctor_rows["capability:EXACT_CODE_SEARCH"]
+        assert row["status"] == "WARN" and "not on this host" in row["detail"]
+        assert "aew capability check" in row["detail"] and doctor_rows["containment"]["status"] != "FAIL"
+        assert "ripgrep" not in doctor_rows  # RG-1's own line is gone
+    finally:
+        lab.cleanup()
+
+
 def test_a_process_inside_never_reads_the_contexts_own_entries_as_a_host_copy(world, monkeypatch, tmp_path):
     """Inside, `aew capability list` looks along a PATH that starts with the entries: a stub there is no host copy."""
     layout = world.layout()
@@ -350,7 +414,7 @@ class Network:
         self.asked: list[str] = []
         self.body = body
         monkeypatch.setattr("urllib.request.urlopen", self.urlopen)
-        monkeypatch.delenv(ops.FETCH_SWITCH, raising=False)
+        monkeypatch.setattr(ops, "LAUNCH_FETCH", True)
 
     def urlopen(self, url: str, timeout: float = 0.0) -> Any:
         import io
@@ -424,11 +488,37 @@ def test_a_fetch_that_stalls_costs_a_launch_its_bound_and_no_more(world, monkeyp
     assert "did not finish within" in world.status()["cause"]
 
 
-def test_the_switch_turns_the_launchs_fetch_off(world, monkeypatch):
+def test_no_variable_turns_the_launchs_fetch_off(world, monkeypatch):
+    """The Lead's condition: nothing an installed AEW reads disables it, and the test seam is in process only."""
     net = Network(monkeypatch, world.reg["archive"])
-    monkeypatch.setenv(ops.FETCH_SWITCH, "off")
+    for name in ("AEW_CAPABILITY_FETCH", "AEW_OFFLINE", "AEW_NO_FETCH"):
+        monkeypatch.setenv(name, "off")
+    world.establish()
+    assert net.asked == [world.pinned["source"]]
+    assert not [v for v in vars(ops).values() if isinstance(v, str) and v.startswith("AEW_")]
+
+
+def test_a_tests_child_register_stays_off_the_network_and_never_reads_as_healthy(world, monkeypatch):
+    """How a child `aew` stays off the network, in the status's own words."""
+    net = Network(monkeypatch, world.reg["archive"])
+    register_holding_a_failed_fetch(world.tmp / "base")
+    monkeypatch.setattr(store, "ROOT_OVERRIDE", world.tmp / "base" / "aew" / "capability")
     world.establish()
     assert net.asked == []
+    cap = world.status()
+    assert cap["observed_status"] == status.UNAVAILABLE and "this child never fetches" in cap["cause"]
+
+
+def test_the_status_says_when_a_launch_next_tries_a_failed_fetch_and_names_the_check(world, monkeypatch):
+    """A failure the operator can act on: the time, and the command that does not wait for it."""
+    Network(monkeypatch, OSError("no route to host"))
+    world.establish()
+    failed = world.state()["fetch_failures"][f"fake:{records.platform_key()}"]["at"]
+    when = status.next_fetch(failed)
+    assert when is not None
+    cause = world.status()["cause"]
+    assert f"a launch tries again from {when.strftime('%Y-%m-%dT%H:%M:%SZ')}" in cause
+    assert "`aew capability check` tries now" in cause
 
 
 def test_a_register_that_cannot_be_written_never_stops_a_launch(world, monkeypatch):
@@ -525,6 +615,8 @@ def test_doctor_names_a_missing_provider_with_its_fix_and_stays_a_warning(world,
 def test_inside_a_sandbox_a_check_of_the_register_is_refused_and_changes_nothing(tmp_path, monkeypatch):
     """CAPR-Q02, by the commands themselves, from a real sandbox, on a real register."""
     data = tmp_path / "data"
+    (tmp_path / "home").mkdir()
+    clean_launching_env(monkeypatch, tmp_path / "home")
     monkeypatch.setenv("XDG_DATA_HOME", str(data))
     monkeypatch.setattr(store, "ROOT_OVERRIDE", None)
     root = store.root()
@@ -650,10 +742,11 @@ def test_the_operators_own_check_run_gets_the_entries(tmp_path):
     _says_the_entry(out)
 
 
-def test_a_validation_run_gets_the_entries(tmp_path):
+def test_a_validation_run_gets_the_entries(tmp_path, monkeypatch):
     """Checks-mode validation, the verifier's layout, by the real run. Its executor is not in this process, so what
     it found comes back through the file its check wrote."""
     project = sample_project(tmp_path)
+    (tmp_path / "home").mkdir()
     (tmp_path / "keep").mkdir()
     out = tmp_path / "keep" / "validation.txt"
     execution = project.root / ".aew/policy/execution.yaml"
@@ -671,6 +764,7 @@ def test_a_validation_run_gets_the_entries(tmp_path):
     assert project.lead("integrate", "prepare", wid)["ok"]
     engine = Engine(project.root, project.root / ".aew")
     engine._validation.backoff_s = 0.0
+    clean_launching_env(monkeypatch, tmp_path / "home")
     done = engine.integrate_validate(token=project.token, expect_rev=project.rev(), work_id=wid)
     assert done["ok"], done
     _says_the_entry(out)

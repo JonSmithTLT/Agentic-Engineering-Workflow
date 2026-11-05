@@ -92,7 +92,7 @@
         "lower-bound": 325
       }
     },
-    "digest": "sha256:12c3dd47775aea355c3863ce01a308dcc7c331f57e22cfa1b1034132f80839ac",
+    "digest": "sha256:37a3a1f6926f9a003a07d707707dc50287e841a59a3610cf2f7154f12c759a72",
     "records": 1215,
     "unresolved": 112
   },
@@ -21796,6 +21796,7 @@
       "family": "modules",
       "imports": [
         "aew.capability.ops",
+        "aew.capability.status",
         "aew.errors",
         "aew.harness.containment.layout",
         "aew.harness.containment.netns",

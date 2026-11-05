@@ -166,6 +166,7 @@ def test_a_move_no_stage_covers_is_led_by_its_shell_command():
     assert [m.primitive for m in alone] == ["plan.accept"]
     for move in alone:
         assert found[move.label].startswith(f"{move.label}: {move.shell}")
+    assert found["Accept the plan"].startswith("Accept the plan: `aew plan accept <T> --revision <n> ")
     assert "aew verify classify <T> --as <CLASS>" in state_row(text, "VERIFICATION_FAILED")
 
 
@@ -173,7 +174,7 @@ def test_with_no_stages_every_step_is_the_shell_commands_alone():
     text = guide.render(DEFAULT_GATES, DEFAULT_CHECKS, ())
     assert "Shell fallback" not in text
     for move in guide.PATH:
-        assert move.shell in text, move.shell
+        assert move.shell and move.shell in text, move.primitive
 
 
 def test_the_shell_for_what_no_stage_reaches_is_named():

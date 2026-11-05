@@ -234,12 +234,13 @@ def test_a_new_schema_field_reaches_the_lead_unless_it_is_named():
 
 def test_a_digest_stays_where_the_lead_acts_or_a_call_is_made_from_it():
     result = stopped(result={"arguments": {"sha256": DIGEST}, "ids": [DIGEST], "root": DIGEST},
-                     projection={"actions": [action(arguments={"digest": DIGEST})]})
-    result["stopped"]["error"]["details"] = {"bound": DIGEST, "current": DIGEST}
+                     projection={"actions": [action(arguments={"sha256": DIGEST})],
+                                 "blockers": [{"code": "B", "message": "m", "details": {"sha256": DIGEST}}]})
+    result["stopped"]["error"]["details"] = {"legality_digest": DIGEST, "current": DIGEST}
     got = lead_json(render(result))
     assert got["result"] == {"arguments": {"sha256": DIGEST}, "ids": [DIGEST], "root": DIGEST}  # `root`: not named
-    assert got["projection"]["actions"][0]["arguments"] == {"digest": DIGEST}
-    assert got["stopped"]["error"]["details"] == {"bound": DIGEST, "current": DIGEST}
+    assert got["projection"] == result["projection"]  # a named field too: the projection is what the Lead acts on
+    assert got["stopped"]["error"]["details"] == {"legality_digest": DIGEST, "current": DIGEST}
 
 
 def test_the_reduced_form_comes_from_the_scrubbed_result():

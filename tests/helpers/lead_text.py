@@ -40,6 +40,7 @@ def opencode_cut(text: str) -> str:
 def lead_json(text: str) -> dict[str, Any]:
     """The result a model reads from the text: the line after the marker."""
     lines = text.split("\n")
-    parsed = json.loads(lines[lines.index(JSON_MARKER) + 1])
+    marker = next(n for n, line in enumerate(lines) if line.startswith(JSON_MARKER))
+    parsed = json.loads(lines[marker + 1])
     assert isinstance(parsed, dict)
     return parsed

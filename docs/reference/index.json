@@ -92,7 +92,7 @@
         "lower-bound": 272
       }
     },
-    "digest": "sha256:9bda397787863266142b561dd8f54057f16ee3ac6897ca7fcb551a8ed0e68516",
+    "digest": "sha256:dbaa68b00f8174a48dbe2ff30fd7fc1c5a6a236b80dff941a0bbb9a67c5c9105",
     "records": 1148,
     "unresolved": 112
   },
@@ -22626,6 +22626,7 @@
       },
       "family": "modules",
       "imports": [
+        "aew.harness.contract",
         "aew.surface.contract",
         "aew.surface.scrubbing"
       ]

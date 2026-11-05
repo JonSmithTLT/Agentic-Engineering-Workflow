@@ -24,7 +24,7 @@ from test_integration_stages import (  # noqa: F401  (`contained` and `custody` 
 )
 from test_stage_runner import launching
 from test_stages_request import implemented, unit
-from test_stages_ticket import HANG
+from test_stages_ticket import DRAFT, HANG
 
 from aew.engine import custody_ops as CO
 from aew.engine.api import Engine
@@ -117,6 +117,42 @@ def test_a_lead_reading_only_the_text_goes_through_a_stale_revision_a_refusal_an
     assert verifying_now["ok"], verifying_now["stopped"]
     assert lead.status(wid)["projection"]["state"] == "VERIFY_PENDING"
     assert_control_invariants(p)
+
+
+def test_a_wait_that_timed_out_says_so_through_the_adapter(lab_project):
+    p, _lab = lab_project
+    lead = TextLead(p)
+    drafted = lead.call("ticket_draft", **{**DRAFT, "expect_rev": lead.call("status")["revision"]})
+    wid = drafted["projection"]["subject"]
+    p.lead("plan", "accept", wid, "--revision", "1")
+    started = lead.offered(wid, "ticket_start")
+    assert started["ok"], started["stopped"]
+    runs = [r["run"] for r in lead.status(wid)["projection"]["runs"]]
+    timed_out = lead.call("harness_wait", runs=runs, timeout_s=1)
+    assert timed_out["result"]["timed_out"] is True
+    assert lead.head[0] == f"harness_wait: timed out: {runs[0]} still running"
+    assert lead.head[1] == f'next: harness_wait runs=["{runs[0]}"]'
+
+
+def test_a_wait_whose_run_failed_leads_with_the_engine_s_headline(lab_project):
+    """Through the real runner, the adapter and the engine's own payload: the run submits nothing, so the first line and
+    the last two say so, and the next step is the wait's own, not the project's first hint."""
+    p, lab = lab_project
+    lab.script("default", [])  # the run ends at once, having submitted nothing
+    lead = TextLead(p)
+    drafted = lead.call("ticket_draft", **{**DRAFT, "expect_rev": lead.call("status")["revision"]})
+    wid = drafted["projection"]["subject"]
+    p.lead("plan", "accept", wid, "--revision", "1")
+    started = lead.offered(wid, "ticket_start")
+    assert started["ok"], started["stopped"]
+    runs = [r["run"] for r in started["projection"]["runs"]]
+    got = lead.call("harness_wait", runs=runs, timeout_s=30)
+    payload = got["result"]
+    assert payload["status"] == "ended_without_evidence" and "ENDED WITHOUT EVIDENCE" in payload["headline"]
+    lines = lead.text.split("\n")
+    assert lines[0].startswith(f"harness_wait: {runs[0]} ENDED WITHOUT EVIDENCE") and "done" not in lines[0]
+    assert lines[1].startswith("next: ") and "authority" not in lines[1] and payload["next_action"][:20] in lines[1]
+    assert "```" not in lines[1] and lines[-2:] == lines[:2]
 
 
 def test_a_lead_reading_only_the_text_publishes_the_candidate_it_read(

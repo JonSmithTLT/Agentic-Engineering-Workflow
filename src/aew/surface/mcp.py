@@ -52,7 +52,7 @@ FORBIDDEN_ENV = ("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "AEW_AGENT_ENDPOINT",
 INSTRUCTIONS = ("The AEW Lead's typed tools. Every result is a StageResult: `revision` is the expect_rev for your next "
                 "mutation, and `projection` says which actions are AVAILABLE, BLOCKED or UNKNOWN and which decisions "
                 "are yours. Decisions never have a default. A result's text opens with lines for the person; the "
-                "result itself is the JSON on the line its marker names.")
+                "result itself is the JSON on the line after its marker.")
 
 Forward = Callable[[str, dict[str, Any], str], dict[str, Any]]  # (name, arguments, profile) -> StageResult
 

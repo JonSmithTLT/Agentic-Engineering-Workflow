@@ -36,7 +36,7 @@ DESCRIPTION = "set at aew init"
 OPERATORS = ("&&", "||", "|", ";", "<", ">")
 ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 HAND_EDIT = (f"`aew init` without these flags, `aew lead acquire --expect-rev 0`, the edit of .aew/{X.REL_PATH}, then "
-             f"`aew manifest adopt --reason <reason> {K.EXPECT_REV}`")
+             f"the operator's `aew manifest adopt --reason <reason> {K.EXPECT_REV}`")
 
 
 def _refuse(reason: str, message: str, **details: Any) -> UsageError:
@@ -179,8 +179,8 @@ class FirstConfiguration:
         if self.argv is None or self.identity is None:  # at least one was given, or there would be no configuration
             missing, file = (("check command", CHECKS_REL) if self.argv is None else ("model", X.REL_PATH))
             return (f"this project still has no {missing}. Adding it now takes `aew lead acquire --expect-rev 0`, the "
-                    f"edit of .aew/{file}, then `aew manifest adopt --reason <reason> {K.EXPECT_REV}`. The two paths "
-                    "don't mix: a held seat refuses `aew opencode --acquire`")
+                    f"edit of .aew/{file}, then the operator's `aew manifest adopt --reason <reason> {K.EXPECT_REV}`. "
+                    "The two paths don't mix: a held seat refuses `aew opencode --acquire`")
         if not self.provider_env:
             return ("run `aew doctor`, then start the Lead with `aew opencode --acquire`. It holds the seat itself: a "
                     "seat already held refuses `--acquire`")

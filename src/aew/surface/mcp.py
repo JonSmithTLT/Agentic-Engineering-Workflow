@@ -9,9 +9,10 @@ Lead broker this process refuses to start (§12.4).
 The protocol layer is small and dependency-free by intent (§4.3, §13): newline-delimited JSON-RPC 2.0 on stdio,
 ``initialize`` with a known protocol revision, ``ping``, ``tools/list`` rendered from the catalog filtered by the
 surface profile (the generic ``cli`` escape only on ``recovery``), ``tools/call`` returning the ``StageResult`` as
-structured content with ``isError`` from its ``ok``. A call naming an unknown, designed or concealed tool, or with
-arguments outside the tool's schema, is an input error that never reaches the broker; an unreachable broker is a
-transport error, never a fabricated result. Stdout carries the protocol only; diagnostics go to stderr.
+structured content with ``isError`` from its ``ok``, and as readable text (:mod:`aew.surface.readable`). A call naming
+an unknown, designed or concealed tool, or with arguments outside the tool's schema, is an input error that never
+reaches the broker; an unreachable broker is a transport error, never a fabricated result. Stdout carries the protocol
+only; diagnostics go to stderr.
 
 Ingress keeps being read while a tool runs: each ``tools/call`` is answered from a worker thread. Waits (a
 ``harness_wait`` blocks for up to ten minutes) have their own lane of ``MAX_WAITS`` workers, and every other call
@@ -35,7 +36,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import IO, Any
 
-from aew.surface import SERVER_NAME, client, contract
+from aew.surface import SERVER_NAME, client, contract, readable
 from aew.surface.errors import AdapterInputError
 from aew.surface.validate import check_call
 
@@ -50,7 +51,8 @@ FORBIDDEN_ENV = ("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "AEW_AGENT_ENDPOINT",
                  "AEW_RUN", "AEW_WORK_UNIT")
 INSTRUCTIONS = ("The AEW Lead's typed tools. Every result is a StageResult: `revision` is the expect_rev for your next "
                 "mutation, and `projection` says which actions are AVAILABLE, BLOCKED or UNKNOWN and which decisions "
-                "are yours. Decisions never have a default.")
+                "are yours. Decisions never have a default. A result's text opens with lines for the person; the "
+                "result itself is the JSON on the line its marker names.")
 
 Forward = Callable[[str, dict[str, Any], str], dict[str, Any]]  # (name, arguments, profile) -> StageResult
 
@@ -198,8 +200,17 @@ class Server:
         except AdapterInputError as exc:
             code = BROKER_UNREACHABLE if exc.code == "BROKER_UNREACHABLE" else INVALID_PARAMS
             raise _RpcError(code, exc.message, {"adapter_input_error": exc.to_dict()}) from None
-        return {"content": [{"type": "text", "text": json.dumps(result, separators=(",", ":"))}],
-                "structuredContent": result, "isError": not result["ok"]}
+        return {"content": [{"type": "text", "text": self.text(result)}],
+                "structuredContent": result, "isError": not result.get("ok")}
+
+    def text(self, result: dict[str, Any]) -> str:
+        """The result as the person and an OpenCode model read it (:mod:`aew.surface.readable`). The call has already
+        run, so a defect in rendering it must not cost the Lead the answer: the whole result, as JSON, instead."""
+        try:
+            return readable.render(result)
+        except Exception as exc:
+            self.log.write(f"aew lead mcp: could not render a result: {type(exc).__name__}: {exc}\n")
+            return json.dumps(result, separators=(",", ":"))
 
 
 _NOT_JSON = object()

@@ -270,6 +270,7 @@ def test_a_hanging_provider_costs_its_budget_and_never_the_launch(world, monkeyp
     """CAPR-12: the probe's own time is what refuses a launch, and a tool cannot use it up."""
     from aew.harness.containment import probe
 
+    assert probe.TOOLS_BUDGET_S < probe.TIMEOUT_S  # what makes this hold at its real size, without waiting for it
     body = b'#!/bin/sh\nexec sleep 600\n'
     archive = _archive(body, "fake-1.0/fake")
     shipped = {"fake": _record(body, archive)}
@@ -475,15 +476,21 @@ def test_a_fetched_archive_off_its_pin_is_refused_at_the_launch_and_not_fetched_
 def test_a_fetch_that_stalls_costs_a_launch_its_bound_and_no_more(world, monkeypatch):
     """CAPR-12: a socket that keeps answering slowly is bounded as a whole, and recorded as a failure."""
     import threading
+    import time
 
     release = threading.Event()
+    stall_s = 30.0
     net = Network(monkeypatch, b"")
-    monkeypatch.setattr(ops.P, "fetch", lambda _p: release.wait(30) and b"")
+    monkeypatch.setattr(ops.P, "fetch", lambda _p: release.wait(stall_s) and b"")
     monkeypatch.setattr(ops.P, "LAUNCH_FETCH_BOUND_S", 0.2)
+    started = time.monotonic()
     try:
+        ops.fetch_at_launch()
+        spent = time.monotonic() - started
         _, label = world.establish()
     finally:
         release.set()
+    assert spent < stall_s / 2, spent  # it stopped waiting at its bound, well before the stalled fetch would have ended
     assert net.asked == [] and label["self_test"]["ok"] is True
     assert "did not finish within" in world.status()["cause"]
 
@@ -568,10 +575,12 @@ def test_a_launch_records_a_check_only_when_a_result_changed(world, monkeypatch)
     """An ordinary launch takes no lock: its result is the one the register holds."""
     _import(world.reg)
     world.establish()
-    first = world.state()["checks"]["aew:fake"]
+    state = world.state()
+    state["checks"]["aew:fake"]["at"] = "2020-01-01T00:00:00Z"  # a time no write of this test's could give
+    with store.locked():
+        store.write(state)
     world.establish()
-    second = world.state()["checks"]["aew:fake"]
-    assert first == second  # its time too: nothing was written
+    assert world.state()["checks"]["aew:fake"]["at"] == "2020-01-01T00:00:00Z"  # its time too: nothing was written
 
 
 def test_the_status_goes_stale_on_a_new_pin_and_is_checked_again_at_the_next_launch(world, monkeypatch):

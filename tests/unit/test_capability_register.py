@@ -389,7 +389,7 @@ def test_with_host_copies_off_a_host_copy_never_serves(reg, monkeypatch):
 def test_with_no_copy_at_all_the_capability_is_unavailable_with_its_cause(reg):
     cap = _cap()
     assert cap["observed_status"] == status.UNAVAILABLE and cap["copy"] == status.AEW_COPY
-    assert cap["limitations"] == []
+    assert cap["limitations"] == ([status.NOT_BOUND] if IS_WINDOWS else [])
 
 
 # ---------------------------------------------------------------------------------------------- operator records

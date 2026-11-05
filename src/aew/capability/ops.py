@@ -39,9 +39,6 @@ MAX_RECORD_TEXT = 12 * 1024  # an add's record text travels in one operator endp
 # product never sets it, and no variable reaches it, so an installed AEW always fetches what it lacks. A test's child
 # `aew` starts from a register that holds a failure instead, which reads as what it is (``conftest``).
 LAUNCH_FETCH = True
-# How long a launch waits to record a check's result, behind whoever holds the register's lock; the next launch records
-# it. AEW's own choice: long enough for another launch's write, short beside a run's start.
-RECORD_WAIT_S = 5.0
 
 
 # ---------------------------------------------------------------------------------------------- reading
@@ -360,7 +357,7 @@ def record_contained(tools: dict[str, Any] | None, directory: Path | None = None
         facts = status.host_facts()
         if not _apply_contained(store.read(directory), tools, facts):
             return
-        with store.locked(directory, timeout=RECORD_WAIT_S) as root:
+        with store.locked(directory, short=True) as root:
             state = store.read(root)
             _apply_contained(state, tools, facts)
             store.write(state, root)

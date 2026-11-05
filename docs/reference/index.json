@@ -92,7 +92,7 @@
         "lower-bound": 325
       }
     },
-    "digest": "sha256:37a3a1f6926f9a003a07d707707dc50287e841a59a3610cf2f7154f12c759a72",
+    "digest": "sha256:1e58723096b695f39acaea25540cb94da1953b460dc26b14050523a81560132a",
     "records": 1215,
     "unresolved": 112
   },
@@ -353,13 +353,13 @@
       "family": "writers",
       "module": "aew.capability.store",
       "symbol": "write",
-      "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, timeout=RECORD_WAIT_S)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
     },
     {
       "family": "writers",
       "module": "aew.capability.store",
       "symbol": "write",
-      "why": "atomic_write of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, timeout=RECORD_WAIT_S)`; a relative path, `aew/capability/register.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+      "why": "atomic_write of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; a relative path, `aew/capability/register.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
     },
     {
       "family": "writers",
@@ -7635,7 +7635,7 @@
             "symbol": "locked"
           }
         ],
-        "timeout": "timeout",
+        "timeout": "RECORD_WAIT_S if short else LOCK_TIMEOUT_S",
         "unplaced_why": "the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
       },
       "fact_coverage": {
@@ -49087,14 +49087,14 @@
           {
             "module": "aew.capability.store",
             "symbol": "write",
-            "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, timeout=RECORD_WAIT_S)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+            "why": "Path.mkdir of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "Path.mkdir",
-        "reason": "`root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, timeout=RECORD_WAIT_S)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+        "reason": "`root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
       },
       "family": "writers"
     },
@@ -49110,14 +49110,14 @@
           {
             "module": "aew.capability.store",
             "symbol": "write",
-            "why": "atomic_write of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, timeout=RECORD_WAIT_S)`; a relative path, `aew/capability/register.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+            "why": "atomic_write of a path this reading cannot place: `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; a relative path, `aew/capability/register.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
           }
         ]
       },
       "fact": {
         "mechanism": "direct",
         "primitive": "atomic_write",
-        "reason": "`root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, timeout=RECORD_WAIT_S)`; a relative path, `aew/capability/register.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
+        "reason": "`root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; a relative path, `aew/capability/register.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name"
       },
       "family": "writers"
     },

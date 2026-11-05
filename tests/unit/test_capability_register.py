@@ -15,6 +15,7 @@ import io
 import json
 import os
 import tarfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,23 @@ from aew.capability import payload as P
 @pytest.fixture
 def reg(tmp_path, monkeypatch):
     return make_register(tmp_path, monkeypatch)
+
+
+def test_a_launch_behind_a_long_holder_of_the_lock_gives_way_and_the_next_records_it(reg, monkeypatch):
+    """CAPR-12: recording a check never stops a launch for as long as a register command may wait."""
+    monkeypatch.setattr(store, "RECORD_WAIT_S", 0.2)
+    monkeypatch.setattr(store, "LOCK_TIMEOUT_S", 20.0)
+    tools = {"fake": {"tried": [{"ok": True, "cause": None, "path": "x", "sha256": "0" * 64, "record_digest": "d",
+                                 "version": "v", "kind": status.AEW_COPY}]}}
+    started = time.monotonic()
+    with store.locked():
+        ops.record_contained(tools)
+        spent = time.monotonic() - started
+    assert spent < 10.0, spent  # the short wait, well before the store's own would have ended
+    key = f"{status.AEW_COPY}:fake"
+    assert key not in (store.read().get("checks") or {})
+    ops.record_contained(tools)
+    assert store.read()["checks"][key]["where"] == status.IN_SANDBOX
 
 
 def _cap(cap: str = "FAKE_SEARCH") -> dict[str, Any]:

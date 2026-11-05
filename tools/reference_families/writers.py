@@ -713,7 +713,8 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
              "context manager writes is attributed only to the roles that call it by name: the dashboard server takes "
              f"its own lock file by `with self._lock():` (`{WITH_CASE[0]}:{WITH_CASE[1]}`), and "
              + " and ".join(f"`{key}`" for key in WITH_CASE[2])
-             + " are listed under `aew` alone. The counts of writer functions reached below are lower bounds.", ""]
+             + " are listed only under the roles that call `FileLock.__enter__` by name, and not under the dashboard "
+             "server. The counts of writer functions reached below are lower bounds.", ""]
     cut = analysis.cut
     if cut is not None and analysis.roles is not None:
         roles = analysis.roles

@@ -44,6 +44,7 @@ from test_stages_ticket import _declared, _effects, _observe, _twins
 from test_validation_checks import CONTAINED, SMOKE, policy
 
 import aew.operator
+from aew import hoststate
 from aew.engine import api as engine_api
 from aew.engine import authority as A
 from aew.engine import custody_ops as CO
@@ -356,7 +357,10 @@ def test_custody_worker_holds_no_lead_credential(tmp_path, monkeypatch):
     custody commit."""
     base = {"PATH": "/bin", "AEW_LEAD_TOKEN": synthetic("x"), "AEW_LEAD_BROKER": "127.0.0.1:9",
             "AEW_LEAD_BROKER_KEY": "00", "AEW_INVOCATION_TOKEN": "t", "OPENAI_API_KEY": "secret", "HOME": "/home/x"}
-    env = CO.worker_env(base)
+    state_base = hoststate.base_variable()
+    env = CO.worker_env({**base, state_base: "/state/base"})
+    assert env[state_base] == "/state/base"  # the spawner's capability register, never a second one of its own
+    assert state_base not in CO.worker_env(base)
     assert not [k for k in env if k.upper().startswith("AEW_")] and "OPENAI_API_KEY" not in env
     assert not CRED.search(json.dumps(env))
     seen: dict[str, Any] = {}

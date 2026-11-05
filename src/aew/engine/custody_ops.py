@@ -48,6 +48,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from aew import hoststate
 from aew.engine import disposition_ops as DO
 from aew.engine import queue_ops as Q
 from aew.errors import AEWError, IllegalTransition, PermissionDenied, StaleAuthority
@@ -79,14 +80,19 @@ RUN_LOST = "run lost"  # the integration verifier's run that no supervisor holds
 
 
 def worker_env(base: dict[str, str] | None = None) -> dict[str, str]:
-    """The worker's environment: the run bridge's keep-list (operating-system basics), ``PATH``, and the location of
-    the engine that spawned it, so it runs the same code. Never an ``AEW_*`` variable or any other credential (T1)."""
+    """The worker's environment: the run bridge's keep-list (operating-system basics), ``PATH``, the location of the
+    engine that spawned it, so it runs the same code, and the host's state base, so it uses the same capability
+    register and register of weaker contexts as its spawner: a worker on another base would fetch and record apart
+    (CAPR-04). Never an ``AEW_*`` variable or any other credential (T1)."""
     base = dict(os.environ if base is None else base)
     keep = WINDOWS_KEEP if sys.platform == "win32" else POSIX_KEEP
     env = {k: v for k, v in base.items()
            if k.upper() in keep or (sys.platform != "win32" and k.startswith("LC_"))}
     env["PATH"] = base.get("PATH") or base.get("Path") or ""
     env["PYTHONUTF8"] = "1"
+    state_base = hoststate.base_variable()
+    if base.get(state_base):
+        env[state_base] = base[state_base]
     return procs.engine_imports(env)  # the engine's own import path only, whatever its argv or its launcher's
 
 

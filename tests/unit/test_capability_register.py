@@ -36,7 +36,7 @@ from capability_stand_in import (
 )
 from conftest import IS_WINDOWS
 
-from aew import errors
+from aew import errors, process_kind
 from aew.capability import ops, records, status, store
 from aew.capability import payload as P
 
@@ -44,6 +44,29 @@ from aew.capability import payload as P
 @pytest.fixture
 def reg(tmp_path, monkeypatch):
     return make_register(tmp_path, monkeypatch)
+
+
+def test_a_workers_own_aew_neither_fetches_nor_records_and_the_operators_does(reg, monkeypatch):
+    """The register is the operator's. An agent's own `aew` starts on its allow-listed environment, so where no sandbox
+    holds it, a fetch and a record would land in a register of its choosing."""
+    asked: list[Any] = []
+
+    def fetched(pinned: dict[str, Any]) -> bytes:
+        asked.append(pinned)
+        raise errors.Unavailable("no network here", reason="fetch_failed")
+
+    monkeypatch.setattr(ops, "LAUNCH_FETCH", True)
+    monkeypatch.setattr(P, "fetch", fetched)
+    tools = {"fake": {"tried": [{"ok": True, "cause": None, "path": "x", "sha256": "0" * 64, "record_digest": "d",
+                                 "version": "v", "kind": status.AEW_COPY}]}}
+    key = f"{status.AEW_COPY}:fake"
+    with process_kind.declared_as("aew (worker run)"):
+        ops.fetch_at_launch()
+        ops.record_contained(tools)
+    assert asked == [] and key not in (store.read().get("checks") or {})
+    ops.fetch_at_launch()
+    ops.record_contained(tools)
+    assert asked and key in store.read()["checks"]
 
 
 def test_a_launch_behind_a_long_holder_of_the_lock_gives_way_and_the_next_records_it(reg, monkeypatch):

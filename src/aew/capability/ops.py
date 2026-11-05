@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from aew import process_kind
 from aew.capability import bind, records, status, store
 from aew.capability import payload as P
 from aew.capability.status import Copy
@@ -321,6 +322,8 @@ def fetch_at_launch(directory: Path | None = None) -> None:
     does not queue behind it; two first launches may each fetch, and each installs the same pinned bytes."""
     if not LAUNCH_FETCH:
         return
+    if process_kind.kind() == process_kind.NON_WRITER:  # an agent's own `aew`: the register is the operator's
+        return
     try:
         due = _due(store.read(directory), directory)
         if not due:
@@ -352,6 +355,8 @@ def record_contained(tools: dict[str, Any] | None, directory: Path | None = None
     (CAPR-12): where it cannot be written, as inside a sandbox, or behind a long holder of the lock, the next one
     does."""
     if not tools:
+        return
+    if process_kind.kind() == process_kind.NON_WRITER:  # an agent's own `aew`: the register is the operator's
         return
     try:
         facts = status.host_facts()

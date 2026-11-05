@@ -581,7 +581,8 @@ NAMED_ASK = (rf"\b({ASK_VERBS})\b(?P<between>(?:(?!\b(?:{ASK_VERBS})\b)[^.;\n]){
 # the token limit"), so they ask only within the verb's own clause, and not as the first half of another noun.
 BARE_ASK = re.compile(rf"\b({ASK_VERBS})\b"
                       rf"(?P<between>(?:(?!,|\b(?:then|but|which|when|if|of|{ASK_VERBS})\b)[^.;:\n]){{0,80}}?)"
-                      r"(?<![\w-])(?P<what>credentials?|tokens?)(?![\w'’-])"
+                      # a possessive is not the word ("the token's state"), unless it names the value itself
+                      r"(?<![\w-])(?P<what>credentials?|tokens?)(?![\w-])(?!['’](?!s\s+(?:value|contents?)\b))"
                       r"(?!\s+(?:helpers?|names?|managers?|stores?|types?|kinds?|budgets?|limits?|counts?|usage|costs?)\b)",
                       re.IGNORECASE)
 NOUN_USE = re.compile(r"\b(?:the|a|an|this|that|each|every|any|one)\s+$", re.IGNORECASE)  # "the set", "a type"

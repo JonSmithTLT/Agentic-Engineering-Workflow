@@ -1466,9 +1466,11 @@ def test_the_form_written_over_two_lines_in_one_block_passes():
     assert found(Output(site="unit", text=split), "O-SECRET")  # one block only: a fence ends it
 
 
-def test_a_possessive_is_not_the_bare_word():
-    """#335 review, F4."""
+def test_a_possessive_is_not_the_bare_word_unless_it_names_the_value():
+    """#335 review, F4; `main` caught the value's own possessive, so it still asks."""
     assert found(Output(site="unit", text="Type `aew status` to see the token's state."), "O-SECRET") == []
+    for text in ("Paste the token's value here.", "Copy the credential’s contents into the box."):
+        assert found(Output(site="unit", text=text), "O-SECRET"), text
 
 
 # #335 review, F5: what O-SECRET does not catch, and what it still gets wrong, each pinned so a change to either is
@@ -1484,7 +1486,6 @@ LIMITS = {
     "--token from a pipe": ("echo abc | aew lead session --token -", False),
     "set as a participle": ("Re-run with AEW_LEAD_TOKEN set.", False),
     "a pronoun for the credential": ("If you have no token, ask the operator, then paste it.", False),
-    "the possessive's own value": ("Paste the token's value here.", False),
     "a name across a comma (false positive)": ("Copy the file, and AEW_LEAD_TOKEN stays where it is.", True),
     "a bare word joined by and (false positive)": ("Pass the tests and the token is renewed.", True),
     "a bare export with no value (false positive)": ("export AEW_LEAD_TOKEN", True),

@@ -1443,7 +1443,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** A pack golden for each role, so any change to a pack's text shows in a diff, and a re-run of the A4 and A5 evaluations when what agents are told changes, counting typed share from the tool-call log. The second is the only check on what a model does
 
-**Source:** The operator, 2026-11-04: "we basically know we have very little mechanism to keep packs accurate"; the controls inventory of 2026-11-04
+**Source:** The operator, 2026-11-04, on how little keeps packs accurate; the controls inventory of 2026-11-04
 
 **When:** **Unscheduled**, after E139
 
@@ -1551,11 +1551,11 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** A carve-out for testing on free models: a worker with no provider key, on Linux `proxy_only` and provider `opencode`, reaches its model through the egress proxy rather than the provider relay, with that one host allowed for that run. Real work takes a key through the relay. The run's label says so, what the worker is told says so, and a launch with an operator's HTTP proxy for this upstream refuses
 
-**Source:** The operator, 2026-11-05: "go with option A", then a carve-out for testing; the designer's ruling of 2026-11-05, which amends the network containment design and ADR-0009
+**Source:** The operator, 2026-11-05, who chose this route over refusing at launch or requiring a key, and then made it a carve-out for testing; the designer's ruling of 2026-11-05, which amends the network containment design and ADR-0009
 
 **When:** **Now.** Item 22 of the Now list. Merge waits for a contained worker to get a model answer on the real path
 
-**Notes:** Filed by the Lead, and already being built. It can be removed later; nothing schedules that. It loses per-request visibility of that traffic. Free models also have a usage limit of their own on every route, and how far a day goes in a real run is unmeasured: when it runs out the run parks at attention, and the Lead's report names it as the likely cause. A keyed `opencode` worker through the relay is unmeasured. `aew-reviewer` reviews it
+**Notes:** Filed by the Lead, and already being built. It can be removed later; nothing schedules that. It loses per-request visibility of that traffic. Free models also have a usage limit of their own on every route, and how far a day goes in a real run is unmeasured: when it runs out, the run ends with the turn's error until E149 parks it at attention, and the Lead's report naming it as the likely cause is owed. A keyed `opencode` worker through the relay is unmeasured. `aew-reviewer` reviews it
 
 *Later notes: `notes.d/E143/`, oldest first (`python tools/register.py show E143`).*
 
@@ -1597,7 +1597,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E147
 
-**Work:** `test_a_waiter_parses_no_control_state_between_commits` bounds parses by commits, while `harness_ops.py:423-425` says a commit between its two reads costs one more parse. Bound parses by the identity changes the waiter saw, and inject a commit there as the repro. One fact has two owners: `store.control_identity` and `harness_ops._control_identity`
+**Work:** `test_a_waiter_parses_no_control_state_between_commits` bounds parses by commits, while `harness_ops.py:423-425` says a commit between its two reads costs one more parse. Bound parses by the identity changes the waiter saw, and inject a commit there as the repro. One fact has three owners, whose tuple order differs: `store.control_identity`, `harness_ops._control_identity` and `api._control_identity`
 
 **Source:** `ci` run 41957465614, Windows, on #330's branch, whose diff does not touch it: 1 real failure in at least 81 green `main` runs
 
@@ -1635,7 +1635,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** Turn endings: the pack tells workers to end with their role record, never a question, and when a turn succeeds with no role evidence sealed the adapter continues it, within a per-dispatch envelope. It never continues a step-capped turn, and applies to workers only
 
-**Source:** The designer's rulings 9 and 10 of 2026-11-01, revision 2
+**Source:** The designer's rulings 9 and 10 of 2026-11-01, revision 2; the designer's decisions on the brief gap list of 2026-11-01, for the blocker
 
 **When:** **Unscheduled**, after E149, since they share the wait state and lock code
 

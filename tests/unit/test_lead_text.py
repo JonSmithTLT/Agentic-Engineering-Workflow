@@ -44,6 +44,7 @@ NOT_TOOLS = {
     "integration_attempt": "a record's field", "projection": "a result's field", "revision": "a result's field",
     "metadata": "a filesystem term", "chmod": "an operating-system command", "chown": "an operating-system command",
     "diff": "a git command", "log": "a git command", "show": "a git command",
+    "read": "OpenCode's own tool, not AEW's",
 }
 # Where the engine's and the surface's words to a Lead are written: every string in these, docstrings aside.
 WORDS_IN = ("src/aew/engine", "src/aew/surface", "src/aew/harness/opencode")

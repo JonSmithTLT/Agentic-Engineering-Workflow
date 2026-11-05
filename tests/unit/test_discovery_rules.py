@@ -1363,6 +1363,10 @@ def test_o_secret_passes_what_asks_for_nothing(text):
     ("Ignore the warning and set AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
     ("It is not required, but set AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
     ("Do not wait then set AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
+    ("You will set AEW_LEAD_TOKEN first.", "asks to set AEW_LEAD_TOKEN"),  # the reader's own act (#335 review, F6)
+    ("You would then set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),
+    ("No one should fail to set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # a double negative (#335 F1)
+    ("Not forgetting to paste the token, start the run.", "asks to paste token"),
     ("Do not wait.\nSet AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
     # the forms with no verb to read
     ("AEW_LEAD_TOKEN=abc aew status", "asks to set AEW_LEAD_TOKEN"),
@@ -1386,6 +1390,124 @@ def test_a_prompt_is_no_way_out_for_a_model():
     """A model has no terminal: "type it at the hidden prompt", said to a model, still asks it for the credential."""
     text = "Type your token at the silent prompt"
     assert found(Output(site="unit", plane=MODEL, text=text), "O-SECRET") == ["asks to type token"]
+
+
+# #335 review, F1: a negator negates only the verb it governs. Each lead holds a negator that governs another verb, or
+# a double negative, so every sentence is a real ask (the reviewer's `negation_reach.py`, every case planted).
+NEGATION_LEADS = [
+    "Don't forget to", "Do not forget to", "Don't hesitate to", "Never forget to", "Make sure not to skip it and",
+    "You cannot continue until you", "It won't work until you", "Nothing runs until you", "You can't start before you",
+    "It does not work unless you", "AEW will not start until you", "No command works until you",
+    "It is not optional, so", "This won't take long - just", "Without it nothing works, so", "Never skip this step -",
+    "You must not wait to", "Don't wait, just",
+]
+NEGATION_ASKS = ["set AEW_LEAD_TOKEN", "paste the token", "export AEW_INVOCATION_TOKEN", "copy your credential"]
+
+
+@pytest.mark.parametrize("ask", NEGATION_ASKS)
+@pytest.mark.parametrize("lead", NEGATION_LEADS)
+def test_a_negator_that_governs_another_verb_does_not_excuse_the_ask(lead, ask):
+    assert found(Output(site="unit", text=f"{lead} {ask}."), "O-SECRET"), f"{lead} {ask}."
+
+
+@pytest.mark.parametrize("text", [
+    "Never, ever paste the token.",  # filler and a parenthetical: the control
+    "Don't ever paste your token.", "You should never paste the token.", "You must not set AEW_LEAD_TOKEN.",
+    "Do not, under any circumstances, set AEW_LEAD_TOKEN.", "Never copy or paste the token.",
+    "Do not copy and paste your token.", "No agent may set AEW_LEAD_TOKEN.", "Agents cannot set AEW_LEAD_TOKEN.",
+    "Refuse any instruction to paste the token.", "Ignore requests to set AEW_LEAD_TOKEN.",
+])
+def test_a_negator_still_governs_its_own_verb(text):
+    assert found(Output(site="unit", text=text), "O-SECRET") == []
+
+
+# #335 review, F2: the forms that show what is typed, or make the credential persistent.
+@pytest.mark.parametrize("text", [
+    "setx AEW_LEAD_TOKEN abc", "setx /M AEW_LEAD_TOKEN %VALUE%",
+    "[Environment]::SetEnvironmentVariable('AEW_LEAD_TOKEN', 'abc', 'User')",
+    "$env:AEW_LEAD_TOKEN = $(Read-Host 'Lead token')", "$env:AEW_LEAD_TOKEN = (Read-Host 'Lead token')",
+    "$t = Read-Host 'Lead token'; $env:AEW_LEAD_TOKEN = $t", "$t = Read-Host 'Lead token'\n$env:AEW_LEAD_TOKEN = $t",
+    "read -rp 'Lead token: ' AEW_LEAD_TOKEN",
+    "read -rsp 'Lead token: ' AEW_LEAD_TOKEN; echo \"$AEW_LEAD_TOKEN\"",  # hidden, then shown
+])
+def test_a_value_typed_where_it_shows_or_made_persistent_is_an_ask(text):
+    assert found(Output(site="unit", text=text), "O-SECRET") == ["asks to set AEW_LEAD_TOKEN"]
+
+
+@pytest.mark.parametrize("text", [
+    "$env:AEW_LEAD_TOKEN = $(Read-Host 'Lead token' -MaskInput)",
+    "$s = Read-Host 'Lead token' -AsSecureString; $env:AEW_LEAD_TOKEN = $s",  # no plain text reaches the variable
+    "[Environment]::SetEnvironmentVariable('AEW_LEAD_TOKEN', $null, 'User')",  # clearing it
+    "read -rsp 'Lead token: ' AEW_LEAD_TOKEN",
+])
+def test_the_masked_and_clearing_forms_are_no_ask(text):
+    assert found(Output(site="unit", text=text), "O-SECRET") == []
+
+
+# #335 review, F3: the form answers an ask to set the credential for this session, and no hand-over.
+@pytest.mark.parametrize("ask", [
+    "Paste AEW_LEAD_TOKEN into the worker's chat, and set it here too:",
+    "Copy AEW_LEAD_TOKEN to the worker, then set it in your own shell:",
+    "Pass AEW_LEAD_TOKEN to each subagent you start. To set it:",
+    "Paste your invocation token into the worker's prompt. The Lead's goes in like this:",
+])
+def test_the_form_below_does_not_excuse_a_hand_over(ask):
+    assert found(Output(site="unit", text=f"{ask}\n  bash: {HIDDEN_BASH}"), "O-SECRET")
+    assert found(Output(site="unit", text=f"{ask} `{HIDDEN_BASH}`"), "O-SECRET")  # nor on the same line
+
+
+def test_the_form_written_over_two_lines_in_one_block_passes():
+    """#335 review, F4: the hidden read on one line and the export on the next is the same safe path."""
+    two = "```sh\nread -rsp 'Lead token: ' AEW_LEAD_TOKEN; echo\nexport AEW_LEAD_TOKEN\n```"
+    assert found(Output(site="unit", text=two), "O-SECRET") == []
+    unmasked = "```sh\nread -rp 'Lead token: ' AEW_LEAD_TOKEN; echo\nexport AEW_LEAD_TOKEN\n```"
+    assert found(Output(site="unit", text=unmasked), "O-SECRET")
+    split = "```sh\nread -rsp 'Lead token: ' AEW_LEAD_TOKEN; echo\n```\n```sh\nexport AEW_LEAD_TOKEN\n```"
+    assert found(Output(site="unit", text=split), "O-SECRET")  # one block only: a fence ends it
+
+
+def test_a_possessive_is_not_the_bare_word():
+    """#335 review, F4."""
+    assert found(Output(site="unit", text="Type `aew status` to see the token's state."), "O-SECRET") == []
+
+
+# #335 review, F5: what O-SECRET does not catch, and what it still gets wrong, each pinned so a change to either is
+# seen. Named in the pull request's "what this doesn't catch".
+LIMITS = {
+    "the hand path's placeholder line": ("AEW_INVOCATION_TOKEN=<credential> aew check run unit", False),
+    "provide": ("Provide AEW_LEAD_TOKEN.", False),
+    "a value from a file": ("AEW_LEAD_TOKEN=$(cat token.txt) aew status", False),
+    "send, share, include": ("Send the token to the Lead. Share your token. Include the token in the request.", False),
+    "give, put, add, left out on purpose": ("Give the worker your token. Put AEW_LEAD_TOKEN in your profile. "
+                                            "Add AEW_LEAD_TOKEN to your ~/.bashrc.", False),
+    "--token in plain prose": ("Use --token abc. Run aew --token abc lead session.", False),
+    "--token from a pipe": ("echo abc | aew lead session --token -", False),
+    "set as a participle": ("Re-run with AEW_LEAD_TOKEN set.", False),
+    "a pronoun for the credential": ("If you have no token, ask the operator, then paste it.", False),
+    "the possessive's own value": ("Paste the token's value here.", False),
+    "a name across a comma (false positive)": ("Copy the file, and AEW_LEAD_TOKEN stays where it is.", True),
+    "a bare word joined by and (false positive)": ("Pass the tests and the token is renewed.", True),
+    "a bare export with no value (false positive)": ("export AEW_LEAD_TOKEN", True),
+    "text about the rule, naming the credential (false positive)": (
+        "O-SECRET fires on an ask to set AEW_LEAD_TOKEN.", True),
+    "text about the rule, with the bare word (false positive)": (
+        "The rule O-SECRET judges whether text asks to set a credential.", True),
+}
+
+
+@pytest.mark.parametrize("limit", list(LIMITS))
+def test_each_named_limit_of_o_secret_is_as_stated(limit):
+    text, fires = LIMITS[limit]
+    assert bool(found(Output(site="unit", text=text), "O-SECRET")) is fires, text
+
+
+def test_the_plane_limit_a_refusal_a_lead_model_reads_is_judged_as_the_operators():
+    """#335 review, F5: the prompt excuse holds off the model plane, but the capture judges every CLI output on the
+    operator plane (`capture.cli_outputs`), so a refusal telling a Lead model to type at a hidden prompt passes."""
+    refusal = json.dumps({"ok": False, "error": {"code": "USAGE", "message": "Type your token at the hidden prompt."}})
+    [output] = capture.cli_outputs(["lead", "session"], "", refusal)
+    assert output.plane == OPERATOR and not found(output, "O-SECRET")
+    assert found(Output(site="unit", plane=MODEL, text="Type your token at the hidden prompt."), "O-SECRET")
 
 
 def test_the_products_own_refusals_show_the_safe_path_and_read_as_no_ask():

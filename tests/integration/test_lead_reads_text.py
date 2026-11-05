@@ -119,6 +119,22 @@ def test_a_lead_reading_only_the_text_goes_through_a_stale_revision_a_refusal_an
     assert_control_invariants(p)
 
 
+def test_a_wait_whose_run_crashed_says_so_through_the_adapter(lab_project):
+    p, lab = lab_project
+    lab.script("default", [{"do": "exit", "code": 3}])
+    lead = TextLead(p)
+    drafted = lead.call("ticket_draft", **{**DRAFT, "expect_rev": lead.call("status")["revision"]})
+    wid = drafted["projection"]["subject"]
+    p.lead("plan", "accept", wid, "--revision", "1")
+    started = lead.offered(wid, "ticket_start")
+    assert started["ok"], started["stopped"]
+    runs = [r["run"] for r in started["projection"]["runs"]]
+    assert lead.call("harness_wait", runs=runs, timeout_s=30)["result"]["status"] == "crashed"
+    lines = lead.text.split("\n")
+    assert lines[0] == f"harness_wait: {runs[0]} crashed"
+    assert lines[1].startswith("next: ") and "has no live run" in lines[1] and lines[-2:] == lines[:2]
+
+
 def test_a_wait_that_timed_out_says_so_through_the_adapter(lab_project):
     p, _lab = lab_project
     lead = TextLead(p)

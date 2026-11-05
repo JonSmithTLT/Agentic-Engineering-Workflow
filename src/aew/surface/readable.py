@@ -7,7 +7,7 @@ nothing else (``core/src/session/runner/to-llm-message.ts:125-139``). The operat
 to take in what happened at the speed the Lead works. So the text is, in order:
 
 * the head: the outcome, the next step, what happened, and only what holds the work up. An outcome says what the call
-  got: a wait whose run failed or that timed out does not read as done;
+  got: a wait says how its run ended, or that it timed out, and ``done`` is said only of a call with no run status;
 * the marked line and the result as JSON for the Lead, on one line, without what no Lead call takes
   (:func:`for_the_lead`);
 * the outcome and the next step again, where the view lands.
@@ -47,10 +47,10 @@ MAX_LISTED = max(len(t.expands_to) for t in contract.TOOLS.values())
 CUT_BYTES = 50 * 1024  # OpenCode's cut (`core/src/tool-output.ts:14`): over it, the JSON's line does not arrive
 JSON_MARKER = "For the Lead, the result as JSON on the next line."
 # Only a text over the cut says how to reach the rest, so that no other call pays for it. `read` clamps a line to 2,000
-# characters (`core/src/tool/read-filesystem.ts:18, 327`), and `for_the_lead` puts what the Lead acts on inside them.
-JSON_OVER_THE_CUT = (f"{JSON_MARKER} It is over OpenCode's 50 KiB: if it is missing below, OpenCode's note names the "
-                     "file holding it. OpenCode's `read` shows 2,000 characters of a line, which start with the stop "
-                     "and the projection; the shell reads the rest.")
+# characters (`core/src/tool/read-filesystem.ts:18, 327`), and `for_the_lead` starts the line with what it acts on.
+JSON_OVER_THE_CUT = (f"{JSON_MARKER} It is over OpenCode's {CUT_BYTES // 1024} KiB: if it is missing below, OpenCode's "
+                     "note names the file holding it. OpenCode's `read` shows 2,000 characters of a line, which start "
+                     "with the stop and the projection; the shell reads the rest.")
 # Top-level fields no Lead call takes and no guide, role text, hint or refusal asks it to quote (E121's sweep): the
 # surface's constant, the two operation classes, and the policy digests the runner already bound. `structuredContent`
 # keeps them. A field not named here stays, so a new field reaches the Lead by default.
@@ -135,10 +135,11 @@ def _outcome(result: dict[str, Any]) -> str:
     if payload.get("timed_out"):
         runs = payload.get("runs") or {payload.get("run"): payload.get("status")}
         return _one_line(f"{tool}: timed out: " + ", ".join(f"{run} still {status}" for run, status in runs.items()))
+    if payload.get("run") and payload.get("status"):  # how the run ended, which `done` would misstate
+        why = (payload.get("ended_by") or {}).get("why")  # the run's own record may still show it running
+        return _one_line(f"{tool}: {payload['run']}: {why}" if why else f"{tool}: {payload['run']} {payload['status']}")
     projection = _projection(result)
-    about = (payload.get("run"), payload.get("status")) if payload.get("run") else (projection.get("subject"),
-                                                                                    projection.get("state"))
-    where = ": ".join(str(v) for v in about if v)
+    where = ": ".join(str(v) for v in (projection.get("subject"), projection.get("state")) if v)
     return _one_line(f"{tool}: done" + (f" ({where})" if where else ""))
 
 

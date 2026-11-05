@@ -1852,10 +1852,23 @@ def test_d2_runs_on_every_pull_request_and_main_and_its_ratchet_in_the_gate_and_
     # an accepted residual counts only on a pull request with the operator-merge label, read live (review of #218, M1)
     assert '--repo "$REPO" --pr "$PR"' in ratchet["run"] and ratchet["env"]["GH_TOKEN"] == "${{ github.token }}"
     assert gate.index(ratchet) < len(gate) - 1  # the jobs-for check stays last
+    # stale is decided on completeness: the tier and the check of every test, both what the gate itself computed
+    assert '--tier "$TIER" --assurance "$ASSURANCE"' in ratchet["run"]
+    assert ratchet["env"]["TIER"] == "${{ steps.tier.outputs.tier }}"
+    assert ratchet["env"]["ASSURANCE"] == "${{ steps.assure.outcome }}"
+    assure = next(s for s in gate if s.get("id") == "assure")
+    assert "check_assurance.py lane-reports" in assure["run"] and gate.index(assure) < gate.index(ratchet)
+    # a mode lowered against the base needs the operator's label, as growth does
+    assert 'GITHUB_SHA^1:tests/helpers/discovery/modes.py' in ratchet["run"] and "--base-modes" in ratchet["run"]
     nightly = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
     nightly_steps = nightly["jobs"]["reference-assurance"]["steps"]
-    assert any("discovery_ratchet.py reference-reports --event schedule" in str(s.get("run", ""))
-               for s in nightly_steps)
+    nightly_ratchet = next(s for s in nightly_steps
+                           if "discovery_ratchet.py reference-reports --event schedule" in str(s.get("run", "")))
+    assert '--tier full' in nightly_ratchet["run"] and '--assurance "$ASSURANCE"' in nightly_ratchet["run"]
+    assert nightly_ratchet["env"]["ASSURANCE"] == "${{ steps.assure.outcome }}"
+    nightly_assure = next(s for s in nightly_steps if s.get("id") == "assure")
+    assert "check_assurance.py reference-reports" in nightly_assure["run"]
+    assert nightly_steps.index(nightly_assure) < nightly_steps.index(nightly_ratchet)
     reference = "\n".join(str(s.get("run", "")) for s in nightly["jobs"]["reference"]["steps"])
     assert "--lane-report" in reference  # the capture writes beside it
 

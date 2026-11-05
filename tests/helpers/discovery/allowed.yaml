@@ -1,6 +1,6 @@
 # D2's allow-list (docs/implementation/vertical-uat.md §8): the (rule, output-site key) violations
-# observed when D2 was introduced. It may only shrink: remove an entry once it is no longer observed.
-# Regenerate with tools/ci/discovery_ratchet.py --write; never add an entry by hand (an accepted
+# observed when D2 was introduced. It may only shrink: remove an entry once it is no longer observed,
+# with tools/ci/discovery_ratchet.py --remove KEY...; never add an entry by hand (an accepted
 # residual is the operator's, under `residuals`, with its decision and reason).
 schema: aew/discovery-allowed/v1
 allowed:

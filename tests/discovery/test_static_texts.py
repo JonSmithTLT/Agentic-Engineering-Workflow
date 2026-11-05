@@ -13,10 +13,11 @@ GUIDES = Path(__file__).resolve().parents[2] / "docs" / "guides"
 
 
 def test_the_static_texts_add_no_violation_and_keep_no_stale_entry():
-    observed = {f.key for f in static.scan(static.read_guides(GUIDES, "docs/guides"))}
+    found = {f.key: {"detail": f.detail} for f in static.scan(static.read_guides(GUIDES, "docs/guides"))}
+    observed = set(found)
     listed = {k for k in allowed.load() if allowed.is_static(k)}
     verdict = allowed.decide(observed, listed, stale_scope="static")
-    report = "\n".join(allowed.report(verdict))
+    report = "\n".join(allowed.report(verdict, details=found))
     print(f"D2 static texts ({sys.platform}): {len(observed)} keys observed, {len(listed)} allow-listed; modes "
           + ", ".join(f"{r} {m}" for r, m in modes.MODES.items()) + "\n" + report)
     assert verdict.ok, report

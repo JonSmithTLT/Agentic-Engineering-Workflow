@@ -13,7 +13,8 @@ name: ci
 #                        in as many shards as the tier job computed; never written by hand
 #   fastbase             the whole fast lane at the base tip under coverage, when the decision is fast (plan v7 §5)
 #   web                  the dashboard's checks (web.yml): when web/, the contract or web.yml changed
-#   static               Ruff, Pyright (as Linux and as Windows) and pip-audit on the Python side
+#   static               Ruff, Pyright (as Linux and as Windows) and pip-audit on the Python side; it also prints the
+#                        generated reference's counts (reported, never gating)
 #   assurance            every collected test of the tier's lanes ran exactly once and passed on every OS, in each
 #                        shard's latest run attempt, and web and static passed (the merge gate). It recomputes the
 #                        tier, and refuses a reduced tier on any event but a pull request: a push to main and a merge

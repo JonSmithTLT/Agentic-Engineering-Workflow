@@ -174,14 +174,18 @@ def test_the_index_is_git_ignored_and_not_committed():
     """The index is rendered on demand and never committed (operator, 2026-11-05): its digest line made any two
     record-changing pull requests conflict. The pages stay committed and checked."""
     name = f"docs/reference/{reference.INDEX}"
-    assert git("ls-files", "--error-unmatch", name).returncode != 0, f"{name} is committed"
+    assert git("ls-files", "--error-unmatch", name).returncode != 0, (
+        f"{name} is committed: it is rendered on demand and git-ignored. Run `git rm --cached {name}` and commit "
+        "(a branch that committed it before meets a conflict on it when it merges main; settle it that way, then "
+        "run `python tools/reference.py render`)")
     assert git("check-ignore", "-q", name).returncode == 0, f"{name} is not git-ignored"
     assert git("check-ignore", "-q", "docs/reference/gaps.md").returncode == 1  # the pages are kept
 
 
 def test_render_runs_on_an_archived_tree_with_no_git_and_writes_the_index(tmp_path):
     """The design side renders the index at a commit from an archive of it, which has no ``.git`` (the designer's one
-    condition on not committing the index, 2026-11-05). This archives HEAD, so a local run sees committed work only."""
+    condition on not committing the index, 2026-11-05). ``check`` runs there first, so the index it renders is the
+    one the archive's committed pages were drawn from. This archives HEAD, so a local run sees committed work only."""
     archive = tmp_path / "head.tar"
     made = git("archive", "--format=tar", "-o", str(archive), "HEAD")
     assert made.returncode == 0, made.stderr.decode("utf-8", "replace")
@@ -189,10 +193,11 @@ def test_render_runs_on_an_archived_tree_with_no_git_and_writes_the_index(tmp_pa
     with tarfile.open(archive) as tar:
         tar.extractall(tree, filter="data")
     assert not (tree / ".git").exists() and (tree / "tools" / "reference.py").is_file()
-    proc = subprocess.run([sys.executable, str(tree / "tools" / "reference.py"), "render"],
-                          env={**os.environ, "PYTHONPATH": str(tree / "src")}, cwd=tmp_path, capture_output=True,
-                          timeout=300, check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")[-800:]
+    for command in ("check", "render"):
+        proc = subprocess.run([sys.executable, str(tree / "tools" / "reference.py"), command],
+                              env={**os.environ, "PYTHONPATH": str(tree / "src")}, cwd=tmp_path, capture_output=True,
+                              timeout=300, check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        assert proc.returncode == 0, (command, proc.stderr.decode("utf-8", "replace")[-800:])
     index = json.loads((tree / "docs" / "reference" / reference.INDEX).read_bytes())
     assert index["schema"] == C.SCHEMA and index["counts"]["records"] == len(index["records"]) > 0
 
@@ -516,44 +521,11 @@ def test_an_index_problem_states_the_fault_not_the_rule():
     assert not any(p.endswith("symbol is null") for p in problems)
 
 
-# ------------------------------------------------------------------------------- a stale clean merge cannot happen
-
-def merge(base: str, ours: str, theirs: str, tmp_path: Path) -> tuple[int, str]:
-    """A real three-way merge of three versions of one file: (the number of conflicts, the merged text)."""
-    paths = []
-    for name, text in (("ours", ours), ("base", base), ("theirs", theirs)):
-        paths.append(tmp_path / f"{name}.json")
-        paths[-1].write_bytes(text.encode("utf-8"))
-    proc = subprocess.run(["git", "merge-file", "-p", *map(str, paths)], capture_output=True, text=True, timeout=60,
-                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    assert proc.returncode >= 0, proc.stderr
-    return proc.returncode, proc.stdout
-
+# ------------------------------------------------------------------------------- the digest
 
 def modules_index(names: list[str]) -> dict[str, Any]:
     return C.build_index([C.Record(C.MODULES, n, n, None, "static", C.lower_bound(),
                                    {"path": f"src/{n.replace('.', '/')}.py", "package": False}, []) for n in names])
-
-
-def test_two_changes_that_each_add_a_module_conflict_instead_of_merging_into_stale_totals(tmp_path):
-    """The hazard (review of #241, F3): two pull requests each add a module, each re-renders and passes `check`. Both
-    edit the totals (`records`, `by_family`...) to the same text, so git keeps one edit and reports no conflict, and the
-    merged `main` says 3 records over 4. The `digest` of every record is on the line that differs, so the merge
-    conflicts and the documented step (take either side, run `render`) applies."""
-    base, ours, theirs = (modules_index(names) for names in (
-        ["aew.m1", "aew.m5"], ["aew.m0", "aew.m1", "aew.m5"], ["aew.m1", "aew.m5", "aew.m9"]))
-    merged_by_hand = modules_index(["aew.m0", "aew.m1", "aew.m5", "aew.m9"])
-    assert ours["counts"]["records"] == theirs["counts"]["records"] == 3  # the same edit to the totals, from both sides
-
-    conflicts, _ = merge(C.dumps(base), C.dumps(ours), C.dumps(theirs), tmp_path)
-    assert conflicts > 0
-    # the control: the same merge without the digest line is clean, and its totals are stale
-    for index in (base, ours, theirs):
-        del index["counts"]["digest"]
-    conflicts, text = merge(C.dumps(base), C.dumps(ours), C.dumps(theirs), tmp_path)
-    merged = json.loads(text)
-    assert conflicts == 0 and len(merged["records"]) == 4 and merged["counts"]["records"] == 3
-    assert merged_by_hand["counts"]["records"] == 4
 
 
 def test_a_change_to_a_record_changes_the_digest_and_no_change_does_not():

@@ -134,7 +134,7 @@ def test_a_guard_a_rule_names_that_nothing_registers_is_a_record_with_its_unreso
 
 # ---------------------------------------------------------------------------------------- the rendered records
 
-def test_the_committed_unchecked_sites_are_on_the_edges_and_in_the_gaps():
+def test_the_unchecked_sites_are_on_the_edges_and_in_the_gaps():
     """What the index of this tree's code says of the unchecked writes: each declared Ticket site is an unresolved item
     of an edge of its operation, and the gaps summary holds exactly those items (nothing lives only in gaps)."""
     index = rendered_index()

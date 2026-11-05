@@ -14,9 +14,14 @@
   a local index, absent, stale or current, is never compared. The pages are drawn from the in-memory index, so they
   carry what it measures.
 - **What the digest guarded, now.** Two pull requests that each edit a page's total to the same text can merge cleanly
-  into a stale total. `check` on the merged code fails on it, because it compares the pages with a render of that code:
-  a pull request's CI runs on its merge with `main`, a check of the merge result before merging finds it, and `main`'s
-  push run is the backstop. A planted stale total is one of `check`'s wrong cases.
+  into a stale total. `check` on the merged code fails on it, because it compares the pages with a render of that code.
+  `main`'s push run always catches it. A pull request's own CI catches it only when its last run came after the other
+  pull request merged, since nothing re-runs it when `main` moves. So the second of two such pull requests can merge
+  green, and `main` is then red until someone re-renders: the accepted cost of not committing the index. A planted
+  stale total is one of `check`'s wrong cases.
+- **A branch that committed the index before this change** meets a modify/delete conflict on it when it merges `main`.
+  Settle it with `git rm --cached docs/reference/index.json`, then `render`; taking the branch's side would keep the
+  index tracked, which the git-ignore test refuses.
 - **S12-2's hand-off, amended in practice.** The hand-off's "counts in `index.json` and in each PR" is now "counts
   printed by CI for each PR": the `static` job runs `python tools/reference.py counts` and puts the counts in the run's
   summary (reported, never gating). A pull request description still quotes `counts` when it adds records.

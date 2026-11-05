@@ -2,7 +2,8 @@
 """The generated as-built reference, ``docs/reference/`` (STG-12 S12-2; register F44 and F22 are its later owners).
 
     python tools/reference.py render    # write docs/reference/ from the code
-    python tools/reference.py check     # exit 1 if docs/reference/ is not what render would write
+    python tools/reference.py check     # exit 1 if the committed pages under docs/reference/ are not what render
+                                        # would write
     python tools/reference.py counts    # print the measured counts of the index
 
 One generator. ``render`` writes the machine index (``index.json``, keyed by record id), the human pages and

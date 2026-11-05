@@ -357,7 +357,9 @@ def readme(index: Mapping[str, Any], pages: Mapping[str, str]) -> str:
         "directory or file directly under `.aew` is declared first (`TOP_LEVEL` in "
         "`tools/reference_families/writers.py`); until it is, its writes are listed as unresolved. After a merge "
         "conflict here, take either side and run `render`: the output is a function of the code, so the second change "
-        "to merge re-renders. Two pull requests that each edit a total to the same text can merge without a conflict, "
+        "to merge re-renders. A branch that committed `index.json` before it was git-ignored meets a conflict on it "
+        "when it merges `main`: settle that one with `git rm --cached docs/reference/index.json`, then run `render`. "
+        "Two pull requests that each edit a total to the same text can merge without a conflict, "
         "and `check` on the merged code then fails on the stale total. A pull request that adds a record names the "
         "requirement IDs it serves in its description (`AGENTS.md`, section 7): IDs only, and never in these files.",
         ""])

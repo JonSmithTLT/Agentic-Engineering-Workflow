@@ -845,14 +845,16 @@ def test_with_messaging_off_the_engine_records_nothing(tmp_path, setting):
 
 
 # The policy files `aew init` writes, and their digests, captured at the base commit (677e4ac) before F9-A existed.
-# Re-captured once since, for execution.yaml only: ADR-0010's amendment of 2026-10-11 (the adapter's model identity)
-# rewrote two comment lines of the template (a model may be written as the harness lists it, `provider/model`, with
-# no separate provider). The parsed policy is unchanged, so the two digests below are too, and the test keeps proving
-# what D-32 needs: init writes no `coordination` and nothing F9-A added (the template's previous digest was
-# 2d36d67ee0185d77ebb1c9fc57c31c78d62edc3a578b6700e972138fa6c59fd3).
+# Re-captured twice since, for execution.yaml only, each for comment lines of the template: ADR-0010's amendment of
+# 2026-10-11 (a model may be written as the harness lists it, `provider/model`; the digest before it was
+# 2d36d67ee0185d77ebb1c9fc57c31c78d62edc3a578b6700e972138fa6c59fd3), and network containment design §8 of 2026-11-05
+# (a keyless `opencode` run's route and its limits; the digest before it was
+# a13a8659844ae4c9f03a76ef3b0b24219697be052845105f01193111fd8cdffb).
+# The parsed policy is unchanged, so the two digests below are too, and the test keeps proving what D-32 needs: init
+# writes no `coordination` and nothing F9-A added.
 INIT_POLICY_SHA256 = {
     "policy/checks.yaml": "f06632f61b021fe69f372d08cb2385c96b3b6954454cea72fa31e37c57e7bbe2",
-    "policy/execution.yaml": "a13a8659844ae4c9f03a76ef3b0b24219697be052845105f01193111fd8cdffb",
+    "policy/execution.yaml": "1612e653cfe7a13664bcd91b121af994d91446fa8cd6ce127d9f2e7cd413d10e",
     "policy/gates.yaml": "b676e7da71583adf2815f95b9728f4e1230348daa72ed4bc95d9050ef9e791f3",
     "policy/guardrails.yaml": "7d48716add96baf7d0e509c0eca70701c2ea0332a839dd7435c1d773b1f8bcf0",
 }

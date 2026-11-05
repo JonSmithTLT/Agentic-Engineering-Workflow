@@ -13,7 +13,15 @@ from aewflow import SUBTRACT_PATCH, implement, redispatch_implementer, review, s
 from conftest import git
 from invariants import assert_control_invariants
 from lead_text import lead_json
-from test_integration_stages import checks_mode, contained, control, custody, done, engine, verifying  # noqa: F401
+from test_integration_stages import (  # noqa: F401  (`contained` and `custody` are fixtures, found by name)
+    checks_mode,
+    contained,
+    control,
+    custody,
+    done,
+    engine,
+    verifying,
+)
 from test_stage_runner import launching
 from test_stages_request import implemented, unit
 from test_stages_ticket import HANG
@@ -111,7 +119,8 @@ def test_a_lead_reading_only_the_text_goes_through_a_stale_revision_a_refusal_an
     assert_control_invariants(p)
 
 
-def test_a_lead_reading_only_the_text_publishes_the_candidate_it_read(tmp_path, contained, custody):  # noqa: F811
+def test_a_lead_reading_only_the_text_publishes_the_candidate_it_read(
+        tmp_path, contained, custody):  # noqa: F811  (the imported fixtures, by the names pytest finds them)
     """`integration_publish` names the candidate: the digest filter must leave a commit id, and this one comes from the
     text of `ticket_prepare`'s own result. A wrong candidate is refused, and the refusal's text says which is
     current."""

@@ -594,12 +594,14 @@ def test_v2_closing_and_reopening_with_work_active_costs_the_operator_nothing(tm
     assert_verdict(op, problems)
 
 
-def test_v2_forced_kill_mid_stage_finishes_through_abandon_reconcile_redispatch(tmp_path, world, request):
+def test_v2_forced_kill_mid_stage_reaches_a_result(tmp_path, world, request):
     """V2 with the session killed while a stage is half done, every run on every platform: the implementer's launch
     (the second step of `ticket_start`, after `work.assign` committed) is held by the fake harness's hook until the
-    test has killed the session; nothing depends on timing. Reopening then needs the takeover, which moves the
+    test has killed the session; nothing depends on timing. Today reopening needs the takeover, which moves the
     stage's subject: continuing it is refused, the Lead abandons it, reconciles the Ticket and dispatches a new
-    implementer attempt, and the run still goes to the end (spec §2). The chain is asserted as well as V2's zeros."""
+    implementer attempt (spec §2). That chain is recorded in the ledger, not asserted: `reconcile` is offered only at
+    INTERRUPTED, which this test also fails on, so asserting both could never pass (the operator, 2026-11-04, on the
+    designer's position of 2026-11-02). V2's zeros are the verdict."""
     op = setup_operator(tmp_path, "V2-forced-mid-stage")
     world.append(op)
     scripts = Path(op.lab.env["AEW_FAKE_SCRIPTS"])
@@ -630,9 +632,6 @@ def test_v2_forced_kill_mid_stage_finishes_through_abandon_reconcile_redispatch(
     problems = verdict(op, decisions=v1_decisions(op, reopened=True)) + result_problems(op)
     if not facts.get("held_mid_stage"):
         problems.append("the session was not killed mid-stage (the launch hook never held)")
-    for step in ("refusal_names_a_step", "reconcile", "redispatch"):
-        if step not in facts.get("chain", []):
-            problems.append(f"the forced path did not run its {step} step: {facts.get('chain')}")
     if facts.get("interrupted"):
         problems.append("the Ticket was INTERRUPTED")
     assert_verdict(op, problems)

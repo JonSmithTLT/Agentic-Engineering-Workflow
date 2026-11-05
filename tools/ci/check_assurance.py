@@ -46,6 +46,7 @@ REPORT_SCHEMA = "aew/lane-report/v1"
 # `.json`, and the readers skip its directory too: two independent protections against reading one as a report.
 AUTOPSY_DIR = "autopsy"
 SKIPS_SCHEMA = "aew/platform-skips/v1"
+REQUIRED_PLATFORMS = ("linux", "win32")
 
 
 def load_reports(root: Path) -> list[dict[str, Any]]:
@@ -245,7 +246,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("reports", type=Path, help="directory searched recursively for lane reports")
     ap.add_argument("--skips", type=Path, required=True, help="tests/platform-skips.yaml")
-    ap.add_argument("--require", default="linux,win32", help="comma-separated platforms that must be present")
+    ap.add_argument("--require", default=",".join(REQUIRED_PLATFORMS),
+                    help="comma-separated platforms that must be present")
     ap.add_argument("--summary", type=Path, help="append the Markdown summary here (e.g. $GITHUB_STEP_SUMMARY)")
     ap.add_argument("--tier", default="full", choices=tiers.TIERS, help="the change's tier (tools/ci/tier.py)")
     ap.add_argument("--event", default="", help="the GitHub event: a reduced tier is accepted only for pull_request")

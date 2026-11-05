@@ -514,7 +514,8 @@ class OpenCodeAdapter(HarnessAdapter):
     def _require_address_allowed(self, model: dict[str, Any], ref: dict[str, Any]) -> None:
         """A run with no relay calls the address the catalog gives its model, through the egress proxy, which would
         refuse one off the allowlist: said now, with the operator's way to add it, and never widened by itself."""
-        network = self.tree.network
+        tree = getattr(self, "tree", None)  # an adapter outside a run (tests, guidance) has no tree and no network
+        network = tree.network if tree is not None else None
         address = (model.get("settings") or {}).get("baseURL")
         refused = network.refused_address(address) if network is not None and isinstance(address, str) else None
         if refused:

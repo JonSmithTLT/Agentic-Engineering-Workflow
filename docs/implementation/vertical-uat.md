@@ -145,8 +145,9 @@ installed tool: its variables are not the operator's.
   every step counted, and an INTERRUPTED Ticket or a reconcile recorded as evidence. A reopen from the same shell,
   where the first open's exported credential is still set, is an extra measurement (its own test), never V2's
   verdict. A forced variant kills the session while a stage is half done (the fake harness holds the implementer's
-  launch until the test has killed the session, so no timing decides it): reopening moves the stage's subject, and the
-  chain abandon, reconcile, new implementer attempt runs, and finishes, on every run on both platforms.
+  launch until the test has killed the session, so no timing decides it): the run still reaches its result, on every
+  run on both platforms. Today's chain (abandon, reconcile, new implementer attempt) is recorded, not asserted, because
+  `reconcile` is offered only at INTERRUPTED and the verdict fails on INTERRUPTED (the operator, 2026-11-04).
 - **Steering on.** V1 and V2 also run with steering on, in the mode that lets the loop push the stages (Run), so "the
   Lead does no stage-pushing" can be measured. Whether that mode completes a Ticket on today's `main` with the fake
   harness is recorded, not assumed: the ledger lists the stages the loop ran and where it stopped. **Raising the mode

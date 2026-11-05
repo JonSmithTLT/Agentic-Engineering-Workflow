@@ -33,9 +33,10 @@ CTX = C.Context(ROOT)  # the sources are parsed once for every test that builds 
 
 
 @cache
-def committed_index() -> dict[str, Any]:
-    """The committed index; ``test_reference.py`` holds the committed directory to what the code gives."""
-    return json.loads(reference._on_disk(reference.OUT)["index.json"])
+def rendered_index() -> dict[str, Any]:
+    """The index, rendered in memory (it is not committed); ``test_reference.py`` holds the committed pages to what the
+    code gives."""
+    return json.loads(reference.render_files(ROOT)[reference.INDEX])
 
 
 def site(module: str, symbol: str, form: str = "set_state", checked: bool = False):
@@ -131,12 +132,12 @@ def test_a_guard_a_rule_names_that_nothing_registers_is_a_record_with_its_unreso
     assert record.fact_coverage is not None and record.fact_coverage["evaluators"]["unresolved"]
 
 
-# ---------------------------------------------------------------------------------------- the committed records
+# ---------------------------------------------------------------------------------------- the rendered records
 
 def test_the_committed_unchecked_sites_are_on_the_edges_and_in_the_gaps():
-    """What the committed index says of the unchecked writes: each declared Ticket site is an unresolved item of an
-    edge of its operation, and the gaps summary holds exactly those items (nothing lives only in gaps)."""
-    index = committed_index()
+    """What the index of this tree's code says of the unchecked writes: each declared Ticket site is an unresolved item
+    of an edge of its operation, and the gaps summary holds exactly those items (nothing lives only in gaps)."""
+    index = rendered_index()
     gaps = {(g["module"], g["symbol"]) for g in index["gaps"] if g["family"] == M.TRANSITIONS}
     declared = {key for key, s in M.SITES.items() if s.kind == M.TICKET}
     assert gaps == declared

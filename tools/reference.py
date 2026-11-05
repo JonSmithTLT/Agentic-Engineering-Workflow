@@ -3,11 +3,15 @@
 
     python tools/reference.py render    # write docs/reference/ from the code
     python tools/reference.py check     # exit 1 if docs/reference/ is not what render would write
+    python tools/reference.py counts    # print the measured counts of the index
 
 One generator. ``render`` writes the machine index (``index.json``, keyed by record id), the human pages and
-``gaps.md``; ``check`` regenerates them in memory and fails on any difference, naming the first one and the command that
-settles it. CI runs ``check`` as a fast-lane test (``tests/unit/test_reference.py``), so a pull request that changes
-enumerated code re-renders in the same change; the second of two changes to merge re-renders after the first.
+``gaps.md``; ``check`` regenerates them in memory and fails on any difference in the committed files, naming the first
+one and the command that settles it. CI runs ``check`` as a fast-lane test (``tests/unit/test_reference.py``), so a pull
+request that changes enumerated code re-renders in the same change; the second of two changes to merge re-renders after
+the first. The index is not committed (operator, 2026-11-05): git ignores it, ``render`` writes it for local use and
+``counts`` prints its counts, which CI does for every pull request. The pages are drawn from the index rendered in
+memory, so they carry what it measures.
 
 The output is deterministic and the same on Windows and Linux: sorted, POSIX paths, LF, no timestamp, no absolute path.
 It states what the code is and never what it should be, and holds no requirement. No model is in the generator.
@@ -140,7 +144,8 @@ def _render(root: Path) -> tuple[dict[str, bytes], dict[str, int]]:
 
 def _on_disk(out: Path) -> dict[str, bytes]:
     """Every entry under the directory, at any depth: a file by its POSIX path, a directory by its path with a trailing
-    slash (the generator writes no directory, so any is a stray)."""
+    slash (the generator writes no directory, so any is a stray). A local ``index.json`` is listed like any file, so
+    ``render`` rewrites it only when it changed; ``differences`` never compares it (``committed``)."""
     if not out.is_dir():
         return {}
     found = {}
@@ -153,9 +158,17 @@ def _on_disk(out: Path) -> dict[str, bytes]:
     return found
 
 
+def committed(files: dict[str, bytes]) -> dict[str, bytes]:
+    """The entries git keeps: every one but the index, which git ignores. A local index, absent, stale or current, is
+    never a difference: the pages are drawn from the index rendered in memory, so any change to what it measures that
+    reaches a committed file is a difference there."""
+    return {name: data for name, data in files.items() if name != INDEX}
+
+
 def differences(files: dict[str, bytes], out: Path = OUT) -> list[str]:
-    """What differs between ``files`` and the directory, one line each; the first line of a changed file says where."""
-    have = _on_disk(out)
+    """What differs between ``files`` and the directory, one line each; the first line of a changed file says where.
+    Only the committed entries are compared (``committed``)."""
+    files, have = committed(files), committed(_on_disk(out))
     found = []
     for name in sorted(files.keys() | have.keys()):
         if name not in have:
@@ -201,7 +214,8 @@ def render(root: Path = ROOT, out: Path = OUT, files: dict[str, bytes] | None = 
 
 
 def counts(root: Path = ROOT) -> dict[str, Any]:
-    """The measured counts of a render: what a pull request description quotes."""
+    """The measured counts of a render: what CI prints for each pull request (the index that carries them is not
+    committed)."""
     return json.loads(render_files(root)[INDEX])["counts"]
 
 

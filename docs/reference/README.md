@@ -4,7 +4,6 @@ What the code is, enumerated from the code. It states what the code is, never wh
 
 ## Files
 
-- [index.json](index.json): the machine index. `records` is keyed by record id (`<family>:<key>`); `counts` measures records per family and per coverage label and the unresolved total, and carries a `digest` of every record and gap; `gaps` is a summary computed from the records, every distinct unresolved item once with its family (nothing lives only there). Schema `aew/reference-index/v1`.
 - [commands.md](commands.md): STG-02 routes, commands and refusals
 - [concurrency.md](concurrency.md): Concurrency
 - [control-keys.md](control-keys.md): Control-state keys
@@ -18,6 +17,10 @@ What the code is, enumerated from the code. It states what the code is, never wh
 - [state-transitions.md](state-transitions.md): State transition maps
 - [writers.md](writers.md): Writers
 
+## The machine index
+
+`index.json` is rendered on demand and not committed: `python tools/reference.py render` writes it here, where git ignores it, and `python tools/reference.py counts` prints its `counts`, as CI does for every pull request. The pages above are drawn from the same index, rendered in memory. `records` is keyed by record id (`<family>:<key>`); `counts` measures records per family and per coverage label and the unresolved total, and carries a `digest` of every record and gap; `gaps` is a summary computed from the records, every distinct unresolved item once with its family (nothing lives only there). Schema `aew/reference-index/v1`.
+
 ## A record
 
 - `family`, and `anchor` (`module` and `symbol`; line numbers churn, so a line is never an anchor).
@@ -29,4 +32,4 @@ What the code is, enumerated from the code. It states what the code is, never wh
 
 ## When a change moves it
 
-A pull request that changes enumerated code (a module, its imports, an entry point, a spawn site, a place that writes under `.aew`, a CLI command's handler) runs `python tools/reference.py render` and commits `docs/reference/`. A new directory or file directly under `.aew` is declared first (`TOP_LEVEL` in `tools/reference_families/writers.py`); until it is, its writes are listed as unresolved. After a merge conflict here, take either side and run `render`: the output is a function of the code, so the second change to merge re-renders. Two pull requests that both change the records always conflict, on the `digest` line of `counts`, so a clean merge cannot leave the totals stale. A pull request that adds a record names the requirement IDs it serves in its description (`AGENTS.md`, section 7): IDs only, and never in these files.
+A pull request that changes enumerated code (a module, its imports, an entry point, a spawn site, a place that writes under `.aew`, a CLI command's handler) runs `python tools/reference.py render` and commits the pages under `docs/reference/` (the index is rendered on demand, and git ignores it). A new directory or file directly under `.aew` is declared first (`TOP_LEVEL` in `tools/reference_families/writers.py`); until it is, its writes are listed as unresolved. After a merge conflict here, take either side and run `render`: the output is a function of the code, so the second change to merge re-renders. Two pull requests that each edit a total to the same text can merge without a conflict, and `check` on the merged code then fails on the stale total. A pull request that adds a record names the requirement IDs it serves in its description (`AGENTS.md`, section 7): IDs only, and never in these files.

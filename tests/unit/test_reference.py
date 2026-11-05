@@ -23,6 +23,7 @@ import pkgutil
 import re
 import subprocess
 import sys
+import tarfile
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -46,7 +47,8 @@ def rendered() -> dict[str, bytes]:
 
 
 def committed() -> dict[str, bytes]:
-    return reference._on_disk(OUT)
+    """The committed directory: what ``check`` compares (a local, git-ignored ``index.json`` is not part of it)."""
+    return reference.committed(reference._on_disk(OUT))
 
 
 def index_of(files: dict[str, bytes]) -> dict[str, Any]:
@@ -62,16 +64,24 @@ def test_the_committed_reference_is_what_the_code_gives():
 
 
 def test_a_planted_drift_fails_the_check_and_the_message_names_the_command(tmp_path):
-    """The wrong case and the missing case of the check: a changed byte, a deleted record, a deleted file, a stray
-    file, a stray subdirectory (a nested file included), a carriage return. Each is a difference, and the check's last
-    line is the command that fixes it."""
+    """The wrong case and the missing case of the check, in the committed pages: a changed byte, a deleted record, a
+    stale total, a deleted file, a stray file, a stray subdirectory (a nested file included), a carriage return. Each
+    is a difference, and the check's last line is the command that fixes it.
+
+    The stale total is what two pull requests leave when each edits a total to the same text and git merges them
+    cleanly: the merged page says one change's total, and ``check`` on the merged code renders the other."""
     files = rendered()
-    index = files["index.json"].decode("utf-8")
-    victim = next(k for k in index_of(files)["records"] if k.startswith("entry-points:"))
+    page = files["entry-points.md"].decode("utf-8")
+    victim = next(k for k in index_of(files)["records"] if k.startswith("entry-points:")).split(":", 1)[1]
+    heading = f"### `{victim}`\n"
+    gaps = files["gaps.md"].decode("utf-8")
+    total = re.search(r"Unresolved items: \*\*(\d+)\*\*", gaps)
+    assert heading in page and total, "the planted cases' anchors are gone: re-anchor them"
     planted = {
-        "a changed byte": {"index.json": index.replace('"kind"', '"kinD"', 1).encode()},
-        "a deleted record": {"index.json": C.dumps({**json.loads(index), "records": {
-            k: v for k, v in json.loads(index)["records"].items() if k != victim}}).encode()},
+        "a changed byte": {"entry-points.md": page.replace("**Kind:**", "**KinD:**", 1).encode()},
+        "a deleted record": {"entry-points.md": page.replace(heading, "", 1).encode()},
+        "a stale total": {"gaps.md": gaps.replace(total.group(0), total.group(0).replace(
+            total.group(1), str(int(total.group(1)) + 1)), 1).encode()},
         "a deleted file": {"entry-points.md": None},
         "a carriage return": {"gaps.md": files["gaps.md"].replace(b"\n", b"\r\n")},
         "a stray file": {"stray.md": b"# Stray\n"},
@@ -88,6 +98,13 @@ def test_a_planted_drift_fails_the_check_and_the_message_names_the_command(tmp_p
         found = reference.check(ROOT, out, files)
         assert found, f"{what} is not a difference"
         assert C.RENDER_COMMAND in found[-1], what
+    for what, index in {"no index": None, "a stale index": b"{}\n", "the current index": files["index.json"]}.items():
+        out = tmp_path / what.replace(" ", "-")
+        out.mkdir()
+        for name, data in {**files, "index.json": index}.items():
+            if data is not None:
+                (out / name).write_bytes(data)
+        assert reference.check(ROOT, out, files) == [], what  # git ignores it: never compared
     nested = reference.check(ROOT, tmp_path / "a-stray-nested-json", files)
     assert any("extra/stray.json" in f and "not a file the generator writes" in f for f in nested), nested
     assert reference.check(ROOT, OUT, files) == []  # the committed directory was not touched
@@ -104,7 +121,8 @@ def test_render_writes_what_check_accepts_removes_strays_at_any_depth_and_is_ide
     assert not (out / "stray.md").exists() and not (out / "extra").exists()
     assert reference.check(ROOT, out, rendered()) == []
     assert reference.render(ROOT, out, rendered()) == []  # nothing to write the second time
-    assert committed() == {name: (out / name).read_bytes() for name in sorted(os.listdir(out))}
+    assert (out / "index.json").read_bytes() == rendered()["index.json"]  # render writes the index, for local use
+    assert committed() == reference.committed({name: (out / name).read_bytes() for name in sorted(os.listdir(out))})
 
 
 # ------------------------------------------------------------------------------------------ determinism
@@ -145,6 +163,40 @@ def test_renders_in_fresh_processes_under_different_hash_seeds_are_byte_identica
     assert digests[0] == digests[1] == here
 
 
+# ------------------------------------------------------------------------------------------ the uncommitted index
+
+def git(*args: str) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, timeout=120, check=False,
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+def test_the_index_is_git_ignored_and_not_committed():
+    """The index is rendered on demand and never committed (operator, 2026-11-05): its digest line made any two
+    record-changing pull requests conflict. The pages stay committed and checked."""
+    name = f"docs/reference/{reference.INDEX}"
+    assert git("ls-files", "--error-unmatch", name).returncode != 0, f"{name} is committed"
+    assert git("check-ignore", "-q", name).returncode == 0, f"{name} is not git-ignored"
+    assert git("check-ignore", "-q", "docs/reference/gaps.md").returncode == 1  # the pages are kept
+
+
+def test_render_runs_on_an_archived_tree_with_no_git_and_writes_the_index(tmp_path):
+    """The design side renders the index at a commit from an archive of it, which has no ``.git`` (the designer's one
+    condition on not committing the index, 2026-11-05). This archives HEAD, so a local run sees committed work only."""
+    archive = tmp_path / "head.tar"
+    made = git("archive", "--format=tar", "-o", str(archive), "HEAD")
+    assert made.returncode == 0, made.stderr.decode("utf-8", "replace")
+    tree = tmp_path / "tree"
+    with tarfile.open(archive) as tar:
+        tar.extractall(tree, filter="data")
+    assert not (tree / ".git").exists() and (tree / "tools" / "reference.py").is_file()
+    proc = subprocess.run([sys.executable, str(tree / "tools" / "reference.py"), "render"],
+                          env={**os.environ, "PYTHONPATH": str(tree / "src")}, cwd=tmp_path, capture_output=True,
+                          timeout=300, check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")[-800:]
+    index = json.loads((tree / "docs" / "reference" / reference.INDEX).read_bytes())
+    assert index["schema"] == C.SCHEMA and index["counts"]["records"] == len(index["records"]) > 0
+
+
 # ------------------------------------------------------------------------------------------ private, LF, shaped
 
 def test_the_committed_files_are_lf_only_ascii_where_json_and_name_nothing_private():
@@ -152,7 +204,9 @@ def test_the_committed_files_are_lf_only_ascii_where_json_and_name_nothing_priva
     assert files, "docs/reference is empty"
     for name, data in files.items():
         assert C.text_problems(name, data.decode("utf-8"), Path.home()) == []
-    assert files["index.json"].isascii() and files["index.json"].endswith(b"}\n")
+    index = rendered()["index.json"]  # not committed: held to the same rules as rendered
+    assert C.text_problems("index.json", index.decode("utf-8"), Path.home()) == []
+    assert index.isascii() and index.endswith(b"}\n")
 
 
 @pytest.mark.parametrize(("text", "what"), [
@@ -228,7 +282,7 @@ def test_no_requirement_id_is_in_the_reference():
     """The trace is the design side's: the repository states what the code is, never what it should be, and holds no
     requirement ID. The design side's pack cutter checks each ID it finds against its index at the cut; this test is
     the earlier, shape-based check. (Requirement text, as against an ID, is not something either can match.)"""
-    found = {name: id_hits(data.decode("utf-8")) for name, data in committed().items()}
+    found = {name: id_hits(data.decode("utf-8")) for name, data in rendered().items()}  # the index too
     assert {name: hits for name, hits in found.items() if hits} == {}
 
 
@@ -260,8 +314,8 @@ def test_every_allowed_id_has_its_reason_is_matched_by_the_shape_and_is_used_by_
         assert entry in pages, f"{entry} occurs in no committed page: drop it until a page needs it"
 
 
-def test_the_committed_index_is_in_the_shape_the_trace_reads():
-    index = index_of(committed())
+def test_the_index_is_in_the_shape_the_trace_reads():
+    index = index_of(rendered())
     assert C.index_problems(index) == []
     assert list(index) == ["counts", "gaps", "records", "schema"] and index["schema"] == C.SCHEMA
     assert index["counts"]["records"] == len(index["records"])
@@ -517,7 +571,7 @@ def test_every_gap_is_on_a_record_and_nothing_lives_only_in_gaps():
     """`gaps` is a summary computed from the records (addendum 3): the trace reads records only, so each unresolved
     item is on a record, in its `coverage` or in the `fact_coverage` of a list fact, and the summary holds exactly
     those."""
-    index = index_of(committed())
+    index = index_of(rendered())
     on_records = {(r["family"], i["module"], i["symbol"], i["why"])
                   for r in index["records"].values() for i in C.unresolved_items(r)}
     in_gaps = [(g["family"], g["module"], g["symbol"], g["why"]) for g in index["gaps"]]
@@ -529,7 +583,7 @@ def test_every_gap_is_on_a_record_and_nothing_lives_only_in_gaps():
 def test_every_list_fact_a_detector_found_says_how_complete_it_is():
     """A list fact with no entry reads as unknown, and an empty list never means none (addendum 3)."""
     seen = 0
-    for rid, r in index_of(committed())["records"].items():
+    for rid, r in index_of(rendered())["records"].items():
         fact = r.get("fact", {})
         for name, value in fact.items():
             if isinstance(value, list):
@@ -544,7 +598,7 @@ def test_every_list_fact_a_detector_found_says_how_complete_it_is():
 def test_every_check_a_record_names_is_a_test_that_exists():
     """A coverage claim is only as good as the test it names: the file exists and defines the function."""
     seen = fact_level = 0
-    for rid, r in index_of(committed())["records"].items():
+    for rid, r in index_of(rendered())["records"].items():
         # a record's own coverage, and the coverage of each of its list facts (a lower-bound record can hold a list
         # fact that is complete-by-construction, and then the test ids are only there)
         claimed = [(r["coverage"], "")] + [(c, f" ({key})") for key, c in (r.get("fact_coverage") or {}).items()]
@@ -596,7 +650,7 @@ def test_every_registry_a_record_names_is_an_object_that_exists():
     complete-by-construction record and of every list fact that says so, so a registry that nothing resolves cannot stay
     green (review of #260, N3)."""
     seen: set[str] = set()
-    for rid, r in index_of(committed())["records"].items():
+    for rid, r in index_of(rendered())["records"].items():
         coverages = [r["coverage"], *(r.get("fact_coverage") or {}).values()]
         for cov in coverages:
             if cov.get("label") == "complete-by-construction":
@@ -643,7 +697,7 @@ def test_the_entry_point_records_are_the_registry_both_ways():
     carrying the table's own kind and reason."""
     from aew import process_kind
 
-    records = {rid: r for rid, r in index_of(committed())["records"].items() if r["family"] == "entry-points"}
+    records = {rid: r for rid, r in index_of(rendered())["records"].items() if r["family"] == "entry-points"}
     assert set(records) == {f"entry-points:{key}" for key in process_kind.ENTRY_POINTS}
     for key, (kind, reason) in process_kind.ENTRY_POINTS.items():
         record = records[f"entry-points:{key}"]
@@ -661,7 +715,7 @@ def test_the_modules_family_is_the_packages_modules_by_two_derivations():
     import aew
 
     by_walk = {"aew"} | {m.name for m in pkgutil.walk_packages(aew.__path__, "aew.")}
-    records = {r["anchor"]["module"]: r for r in index_of(committed())["records"].values() if r["family"] == C.MODULES}
+    records = {r["anchor"]["module"]: r for r in index_of(rendered())["records"].values() if r["family"] == C.MODULES}
     assert set(records) == by_walk
     for name, r in records.items():
         assert (ROOT / r["fact"]["path"]).is_file(), name

@@ -118,6 +118,18 @@ def next_seq(aew_root: Path, work_id: str) -> int:
     return 1 + (len(list(directory.glob("*.md"))) if directory.is_dir() else 0)
 
 
+# What a submitted report's `result` may be, narrower than the schema's enum, with what a value means where it needs
+# saying. The refusals and the packs' report formats both read these.
+IMPLEMENTATION_RESULTS: dict[str, str | None] = {"pass": "complete", "blocked": None}
+RECORD_RESULTS: dict[str, str | None] = {"pass": "the question is answered", "blocked": None, "inconclusive": None}
+
+
+def one_of(values: dict[str, str | None]) -> str:
+    """``pass (complete) or blocked``: a report field's allowed values, in prose."""
+    words = [f"{value} ({means})" if means else value for value, means in values.items()]
+    return ", ".join(words[:-1]) + " or " + words[-1]
+
+
 def check_submission(role: str, kind: str, meta: dict[str, Any]) -> None:
     if kind not in ROLE_KINDS.get(role, set()):
         raise PermissionDenied(f"role {role} may not submit {kind} evidence", role=role, kind=kind)

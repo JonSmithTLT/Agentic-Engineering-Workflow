@@ -20,8 +20,8 @@ prohibited:
 outputs:
   - verification with goal_backwards and contract claims, each citing evidence
 context:
-  knowledge: [acceptance_criteria, expected_observable_state, implementation_revision, accepted_authority,
-              guardrails, available_checks, open_review_findings]
+  knowledge: [acceptance_criteria, implementation_revision, accepted_authority, guardrails, available_checks,
+              open_review_findings]
   excluded: [implementer reasoning transcript, reviewer reasoning]
 independence:
   requires_distinct_invocation_from: [implementer]

@@ -75,14 +75,16 @@ def test_reviewer_pack_is_bounded_and_independent(calc, tmp_path):
     assert "Code Reviewer" in text  # the dispatched role card is part of the contract
 
 
-@pytest.mark.parametrize("command", [("whoami",), ("submit", "--kind", "implementation_report", "--file", "report.md")],
+@pytest.mark.parametrize("command", [("whoami",), ("submit", "--kind", "implementation_report", "--file")],
                          ids=["whoami", "submit"])
 def test_a_role_with_no_credential_is_told_to_stop_never_to_get_one(calc, tmp_path, command):
     """The one statement a role with neither a bridge nor a credential reads (no preamble, and its pack is silent).
     `check run` takes the same path: tests/unit/test_pack_truth.py holds it there, in process, since a refusal of it
     through the CLI would be a new key for D2's capture."""
     impl = assign(calc, create_planned_ticket(calc, tmp_path))
-    (impl.workspace / "report.md").write_text("---\nclaim: c\n---\n", encoding="utf-8", newline="\n")
+    report = tmp_path / "report.md"
+    report.write_text("---\nclaim: c\n---\n", encoding="utf-8", newline="\n")
+    command = (*command, str(report)) if command[-1] == "--file" else command
     refused = run_aew("-C", str(impl.workspace), *command)
     assert refused.error["code"] == "USAGE", refused.stderr
     assert refused.error["message"] == NO_INVOCATION_AUTHORITY

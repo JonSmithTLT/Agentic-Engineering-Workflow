@@ -1345,6 +1345,7 @@ def test_write_drops_a_residual_with_its_key(tmp_path):
     # a variable given no literal value
     "AEW_LEAD_TOKEN=$VALUE aew status", "$env:AEW_LEAD_TOKEN = $value", "$env:AEW_LEAD_TOKEN = ''",
     '$env:AEW_LEAD_TOKEN = Read-Host "Lead token" -MaskInput', "Never run `AEW_LEAD_TOKEN=abc aew status`",
+    "$env:AEW_LEAD_TOKEN = [Environment]::GetEnvironmentVariable('HELD')",
     "AEW_INVOCATION_TOKEN=<credential> aew check run unit",  # the hand path's line: a product decision, reported
 ])
 def test_o_secret_passes_what_asks_for_nothing(text):
@@ -1366,12 +1367,18 @@ def test_o_secret_passes_what_asks_for_nothing(text):
     ("AEW_LEAD_TOKEN=abc aew status", "asks to set AEW_LEAD_TOKEN"),
     ("$env:AEW_LEAD_TOKEN = 'abc'", "asks to set AEW_LEAD_TOKEN"),
     ('$env:AEW_LEAD_TOKEN = "abc"', "asks to set AEW_LEAD_TOKEN"),
-    ("export AEW_LEAD_TOKEN=abc", "asks to export AEW_LEAD_TOKEN"),  # one ask, and its key as it was
+    ('$env:AEW_LEAD_TOKEN = Read-Host "Lead token"', "asks to set AEW_LEAD_TOKEN"),  # unmasked: it shows what is typed
     # a prompt that may show what is typed
     ("Enter the token at the prompt", "asks to enter token"),
 ])
 def test_o_secret_still_catches_every_ask(text, problem):
     assert found(Output(site="unit", text=text), "O-SECRET") == [problem]
+
+
+def test_a_verb_and_an_assignment_on_one_credential_are_one_ask():
+    """Through `o_secret` itself: `rules.check` dedupes by key, but each problem is a static key of its own, so a second
+    one would be a new key on a line already listed."""
+    assert rules.o_secret("export AEW_LEAD_TOKEN=abc", OPERATOR) == ["asks to export AEW_LEAD_TOKEN"]
 
 
 def test_a_prompt_is_no_way_out_for_a_model():
@@ -1401,8 +1408,8 @@ def test_an_ask_with_the_form_on_the_next_line_passes_and_each_near_miss_does_no
         assert found(Output(site="unit", text=text), "O-SECRET") == [], text
     for miss, snippet in NEAR_MISSES.items():
         assert found(Output(site="unit", text=f"{ASK}\n{snippet}"), "O-SECRET"), miss
-    other = HIDDEN_BASH.replace("AEW_LEAD_TOKEN", "OTHER_TOKEN")
-    assert found(Output(site="unit", text=f"{ASK}\n{other}"), "O-SECRET")  # the form for another name
+    other = HIDDEN_BASH.replace("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN")
+    assert found(Output(site="unit", text=f"{ASK}\n{other}"), "O-SECRET")  # the form for another credential
     assert found(Output(site="unit", text=f"{ASK}\nthen wait\n{HIDDEN_BASH}"), "O-SECRET")  # not the next line
     assert found(Output(site="unit", text=f"{ASK}\n{HIDDEN_BASH}\n$env:AEW_LEAD_TOKEN = 'abc'"), "O-SECRET")
 

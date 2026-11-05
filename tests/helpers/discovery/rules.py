@@ -579,7 +579,7 @@ NAMED_ASK = (rf"\b({ASK_VERBS})\b(?P<between>(?:(?!\b(?:{ASK_VERBS})\b)[^.;\n]){
              r"(?<![\w-])(?P<what>{names})(?![\w-])")
 # The bare words are ordinary English ("Pass the review, then rotate the token"; "the set of credential names"; "Set
 # the token limit"), so they ask only within the verb's own clause, and not as the first half of another noun.
-BARE_ASK = re.compile(rf"\b({ASK_VERBS})\b(?!\s+(?:up|of)\b)"
+BARE_ASK = re.compile(rf"\b({ASK_VERBS})\b"
                       rf"(?P<between>(?:(?!,|\b(?:then|but|which|when|if|of|{ASK_VERBS})\b)[^.;:\n]){{0,80}}?)"
                       r"(?<![\w-])(?P<what>credentials?|tokens?)(?![\w-])"
                       r"(?!\s+(?:helpers?|names?|managers?|stores?|types?|kinds?|budgets?|limits?|counts?|usage|costs?)\b)",
@@ -619,12 +619,13 @@ def _credential_variables() -> tuple[str, ...]:
 @functools.cache
 def _assignment() -> re.Pattern[str]:
     """A credential variable given a literal value, with no verb to read: ``X=abc aew status`` and ``$env:X = 'abc'``.
-    A value that is another variable, empty, or read by ``Read-Host`` or a conversion holds no literal. Nor does a
-    ``<placeholder>``, for now: that is the hand path's documented line (``docs/guides/quickstart.md``), and whether it
-    stays is a product decision, not this rule's."""
+    A value that is another variable, empty, or a .NET call holds no literal; the hidden-input forms are excused by
+    ``per_session_hidden``, so an unmasked ``Read-Host``, which shows what is typed, is not. Nor does a
+    ``<placeholder>`` hold a literal, for now: that is the hand path's documented line (``docs/guides/quickstart.md``),
+    and whether it stays is a product decision, not this rule's."""
     names = "|".join(re.escape(n) for n in _credential_variables())
     return re.compile(rf"(?<![\w$:.-])(?P<posix>{names})=(?![\s$`<]|$)"
-                      rf"|\$env:(?P<ps>{names})\s*=\s*(?!Read-Host\b|\[|\$|<|''|\"\")\S", re.IGNORECASE)
+                      rf"|\$env:(?P<ps>{names})\s*=\s*(?!\[|\$|<|''|\"\")\S", re.IGNORECASE)
 
 
 # The per-session hidden-input form (the designer's decision of 2026-11-01, CS-4 addendum 12): a snippet that reads a

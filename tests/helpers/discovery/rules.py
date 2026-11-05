@@ -756,13 +756,13 @@ def _negated(text: str, at: int, *, governs: frozenset[str] = frozenset()) -> bo
 
 def _lines_around(text: str, start: int, end: int) -> tuple[str, str, str]:
     """The whole line holding ``text[start:end]``; the next line with text on it, past a code fence's own line; and the
-    line above with text on it, in the same block (a fence's own line ends it)."""
+    line above with text on it (at a block's first line, that is its fence, so another block's read never counts)."""
     first, last = text.rfind("\n", 0, start) + 1, text.find("\n", end)
     line = text[first:] if last < 0 else text[first:last]
     below = "" if last < 0 else next((ln for ln in text[last + 1:].splitlines()
                                       if ln.strip() and not FENCE.match(ln)), "")
     above = next((ln for ln in reversed(text[:max(0, first - 1)].splitlines()) if ln.strip()), "")
-    return line, below, "" if FENCE.match(above) else above
+    return line, below, above
 
 
 # The hidden-input form answers an ask to set a credential for this session, and no other: a form below "paste X into

@@ -1369,6 +1369,7 @@ def test_o_secret_passes_what_asks_for_nothing(text):
     ("You will set AEW_LEAD_TOKEN first.", "asks to set AEW_LEAD_TOKEN"),  # the reader's own act (#335 review, F6)
     ("You would then set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),
     ("No one should fail to set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # a double negative (#335 F1)
+    ("No problem. Paste the token.", "asks to paste token"),  # a negation stays in its own sentence
     ("Not forgetting to paste the token, start the run.", "asks to paste token"),
     ("Do not wait.\nSet AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
     # the forms with no verb to read

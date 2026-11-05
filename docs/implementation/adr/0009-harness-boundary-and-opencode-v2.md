@@ -1686,3 +1686,36 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   starts, carry it so the scan finds them. Its value is the path of the context's record, never a credential.
 - **Tests:** `tests/integration/test_lead_uncontained.py`, `tests/unit/test_weaker_register.py`,
   `tests/unit/test_launch_census.py` (every process start in `src/` and `eval/`, classified).
+
+## Amendment 2026-11-04 — the register's tools in every contained context (STG-15, CAP-1 PR 2)
+
+This replaces the 2026-10-24 amendment's `aew doctor` `ripgrep` line, and its "ripgrep where a run finds none".
+
+- **What it answers:** OpenCode's ripgrep lookup is `which("rg", PATH + <bin>)`, then `<bin>/rg`, then a download from
+  github.com, with no switch to turn that off (2.0.18, `core/src/ripgrep/binary.ts`; `<bin>` is
+  `$XDG_CACHE_HOME/opencode/bin`). The designer's CAP-1 ruling 1 replaces the switch with a lookup that never misses.
+- **The mechanism:** every contained context has its own directory first on `PATH`, `<run>/tools/first`, written on the
+  host and read-only inside. For each record of `path: first` it holds one entry under the record's command: a link to
+  AEW's pinned copy, a link to a copy the host has (named as unpinned in the status), or AEW's failing stub, which
+  prints the cause (`aew.capability.bind`). A record of `path: own_name` goes in `<run>/tools/own_name`, last on `PATH`,
+  with no stub, so the project keeps the host's tool under that name. One loop over the records does both.
+- **`PATH` is set by bubblewrap, in `bwrap_argv`** (`--setenv PATH`), on what the caller's environment holds. That is
+  the one way into a sandbox, so a context cannot miss it whichever allow-list built its environment. Its callers name
+  their environment's `PATH`; one that does not gets this process's.
+- **The register is bound read-only,** with `--ro-bind-try`, since a payload may go during a run, which then fails only
+  that tool. The context's directory and the register are also `protected`, so the launch self-test refuses a sandbox
+  that could write them. A register under a host mask (`/run`) stays out of the sandbox instead of refusing the launch.
+- **The check runs inside.** The self-test's probe runs each copy's health check in the sandbox, and only reports it:
+  `status.judge` on the host owns what a check means. `bind.settle` then rewrites each entry from that, so a copy that
+  matches its pin but cannot run there never serves, and a host copy the sandbox cannot see becomes the stub, never a
+  dangling link, which `which` would pass over. Where no sandbox can be made, `aew capability check` runs it on the host
+  and the status says so.
+- **It never refuses a launch** (CAPR-12): the tools' health is no part of the self-test's verdict, its budget is half
+  the probe's time, and neither the first-launch fetch nor recording a result can stop a launch.
+- **The first-launch fetch** is in `containment.establish`, outside the register's lock and bounded as a whole
+  (`payload.LAUNCH_FETCH_BOUND_S`), which `starting_limit_s` adds. A failure is not retried at a launch for
+  `ops.FETCH_RETRY_AFTER_S`, and a refusal not until `aew capability check`. `AEW_CAPABILITY_FETCH=off` turns it off.
+- **Where it does not reach:** Windows, and a Linux run the policy allows to be weaker, have no sandbox, so no bind, and
+  OpenCode's download stays reachable there.
+- **Tests:** `tests/integration/test_capability_bind.py`; CAPR-Q08's rows against a real OpenCode are
+  `tests/live/test_capability_q08_live.py`.

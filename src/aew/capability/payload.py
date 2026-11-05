@@ -24,6 +24,10 @@ from aew.errors import IntegrityError, Unavailable
 from aew.util import write_temp
 
 FETCH_TIMEOUT_S = 60.0  # one socket operation (connect, or one read) of the fetch; the archive is a few MB
+# The whole fetch at a launch, every payload it is due (ops.fetch_at_launch), with the run waiting: AEW's own choice,
+# one socket operation's worth, so an offline host costs a launch no more than that. The run's start deadline adds it
+# (supervisor.starting_limit_s). `aew capability check` at the operator's terminal has only the per-operation timeout.
+LAUNCH_FETCH_BOUND_S = FETCH_TIMEOUT_S
 CHUNK = 1 << 16
 
 

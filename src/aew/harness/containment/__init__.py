@@ -158,6 +158,7 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
     ``egress_policy`` (its egress allowlist, or None) are what the self-test's row 1 checks. The Lead's session
     (STG-05 CS-4) passes its own OpenCode ``state_dir`` (``layout.for_run``) and its ``relayed_terminal``
     (``probe.self_test``: row 4's Lead form)."""
+    from aew.capability import ops as capability
     from aew.harness.containment import netns, probe
 
     wanted = mode(policy)
@@ -165,6 +166,7 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
         if wanted == REQUIRED:
             raise ContainmentUnavailable(unsupported_message())
         return None, label(contained=False, reason=uncontained_reason())
+    capability.fetch_at_launch()  # the register's base tools, before the first use, with no operator step (CAPR-04)
     settings = (policy or {}).get("containment") or {}
     net_mode = netns.mode(policy)
     net_dir = netns.private_dir() if net_mode in (PROXY_ONLY, ISOLATED) else None
@@ -188,6 +190,7 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
                                    relayed_terminal=relayed_terminal, spec_dir=run_dir / "harness", sentinel=sentinel)
         finally:
             sentinel.unlink(missing_ok=True)
+        capability.record_contained(test.get("tools"))  # the status follows the check inside (CAPR-03, CAPR-13)
         if not test["ok"]:
             raise ContainmentUnavailable(f"containment self-test failed: {test['reason']}", self_test=recorded(test))
     except ContainmentUnavailable as exc:
@@ -205,9 +208,9 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
 
 
 def recorded(test: dict[str, Any]) -> dict[str, Any]:
-    """What a run's label keeps of its launch self-test, pass or fail: the verdict, the probe's pid and each of
-    CB-12's rows with its facts (a self-test that could not run has no rows)."""
-    return {k: test[k] for k in ("ok", "reason", "probe_pid", "rows") if k in test}
+    """What a run's label keeps of its launch self-test, pass or fail: the verdict, the probe's pid, each of CB-12's
+    rows with its facts (a self-test that could not run has no rows), and what each of the register's tools served."""
+    return {k: test[k] for k in ("ok", "reason", "probe_pid", "rows", "tools") if k in test}
 
 
 def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, str]:
@@ -217,35 +220,39 @@ def doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, s
 
 
 def doctor_checks(policy: dict[str, Any] | None, note_unsupported: str) -> list[tuple[str, str, str]]:
-    """``aew doctor``'s containment lines, ``(check, status, detail)``: ``containment``, and, where its sandbox ran
-    and passed, ``ripgrep`` from what that sandbox found (:func:`ripgrep_check`)."""
-    from aew.harness.containment import netns
+    """``aew doctor``'s containment line, ``(check, status, detail)``. Its sandbox's self-test also runs the register's
+    health checks, in the shape a run gets, and records them, so the capability lines ``aew capability list`` and
+    doctor show come from inside (CAPR-03, CAPR-13; ``aew.doctor.run`` reads them after this)."""
+    from aew.capability import ops as capability
 
     status, detail, test = _doctor(policy, note_unsupported)
-    out = [("containment", status, detail)]
-    if test.get("ok") and "rg" in (test.get("tools") or {}):
-        out.append(("ripgrep", *ripgrep_check(test["tools"]["rg"], netns.mode(policy), host=shutil.which("rg"))))
-    return out
+    capability.record_contained(test.get("tools"))
+    return [("containment", status, detail)]
 
 
-def ripgrep_check(found: str | None, net_mode: str, *, host: str | None = None) -> tuple[str, str]:
-    """``aew doctor``'s ``ripgrep`` line: where a contained run finds ``rg`` on its ``PATH`` (``found``; None:
-    nowhere), and ``host``, where this host's own ``PATH`` has it. OpenCode's glob and grep tools run ripgrep, and
-    without one on the ``PATH`` OpenCode downloads it, which a run on a network of its own or an offline host cannot
-    (the designer's ruling RG-1, 2026-10-24). CAP-1, the capability register's first slice, is the fix: AEW brings a
-    pinned ripgrep into every contained context, and its provider health replaces this line (the operator's decision
-    of 2026-10-24)."""
-    if found:
-        return "PASS", f"a contained run finds ripgrep at {found}, for OpenCode's glob and grep tools"
-    why = (f"OpenCode then downloads it, which a run on a network of its own (containment.network.mode: {net_mode}) "
-           "cannot" if net_mode in (PROXY_ONLY, ISOLATED) else "OpenCode then downloads it for each run, which an "
-           "offline host cannot")
-    meanwhile = (f"this host's {host} is on the PATH but in a directory runs cannot see, so install ripgrep elsewhere "
-                 "(runs see neither /tmp, /run nor the masked secret directories)" if host
-                 else "install ripgrep (`rg`) on this host, on the PATH")
-    return "WARN", (f"a contained run finds no ripgrep on its PATH, so OpenCode's glob and grep tools fail in it: "
-                    f"{why}. Fix: CAP-1 (AEW bringing its own tools) will put a pinned ripgrep in "
-                    f"every contained run; until then, {meanwhile}")
+def tool_checks(tools: tuple[Any, ...]) -> dict[str, Any] | None:
+    """Every one of ``tools``' health checks, in a throwaway sandbox of the shape a run gets, with no network: what
+    ``aew capability check`` records (CAPR-13). None where no sandbox can be made here, so nothing was read inside."""
+    import tempfile
+
+    from aew.harness.containment import probe
+
+    if not supported():
+        return None
+    with tempfile.TemporaryDirectory(prefix="aew-capability-check-") as tmp:
+        root = Path(tmp)
+        (root / "ws").mkdir()
+        try:
+            from aew.workspace import git
+
+            git.git("init", "-q", cwd=root / "ws")
+            layout = for_run(role="reviewer", scope="ticket", workspace=str(root / "ws"), run_dir=root / "run",
+                             scratch=str(root / "run" / "scratch"), bridge_dir=None, policy={}, project=root,
+                             network=ISOLATED, tools=tools)
+            test = probe.self_test(layout, sentinel_dir=root, sibling_dir=root)
+        except AEWError:  # ContainmentUnavailable, or the throwaway repository could not be made
+            return None
+    return test.get("tools")
 
 
 def _doctor(policy: dict[str, Any] | None, note_unsupported: str) -> tuple[str, str, dict[str, Any]]:

@@ -70,16 +70,18 @@ def test_the_register_changes_are_refused_by_the_lead_broker_and_its_recovery_es
     """The broker's `run_cli` (where the relay of `lead.cli` and the typed surface's `cli` escape, the recovery
     profile's included, both end) refuses the four changes with the register's own refusal, saying whose they are and
     what to do, not the generic "run this one directly" (review F8); `check` is refused there too."""
-    for argv in CHANGES:
-        with pytest.raises(errors.PermissionDenied) as exc:
-            lead_broker.run_cli(object(), "token", list(argv), ".", "", channel="lead_broker")
-        assert "capability register" in exc.value.message and "operator endpoint" in exc.value.message, argv
-        assert "aew capability list" in exc.value.message, argv
-    with pytest.raises(errors.PermissionDenied) as exc:  # its own keep-out text (#272's quick check, QC3)
-        lead_broker.run_cli(object(), "token", ["capability", "check", "--offline"], ".", "", channel="lead_broker")
-    assert exc.value.message == lead_session_refusal("check") and exc.value.details["reason"] == LEAD_SESSION
-    assert "run this one directly" not in exc.value.message
-    assert "ask the operator to run `aew capability check`" in exc.value.message  # a way to ask (#281 review, F3)
+    for channel in lead_broker.INGRESS_CHANNEL.values():  # both of a session's channels (#281's quick check, R1)
+        for argv in CHANGES:
+            with pytest.raises(errors.PermissionDenied) as exc:
+                lead_broker.run_cli(object(), "token", list(argv), ".", "", channel=channel)
+            assert "capability register" in exc.value.message and "operator endpoint" in exc.value.message, argv
+            assert "aew capability list" in exc.value.message, argv
+        with pytest.raises(errors.PermissionDenied) as exc:  # its own keep-out text (#272's quick check, QC3)
+            lead_broker.run_cli(object(), "token", ["capability", "check", "--offline"], ".", "", channel=channel)
+        assert exc.value.message == lead_session_refusal("check") and exc.value.details["reason"] == LEAD_SESSION
+        assert "run this one directly" not in exc.value.message
+        assert "ask the operator to run `aew capability check`" in exc.value.message  # a way to ask (#281 review, F3)
+    assert set(lead_broker.INGRESS_CHANNEL.values()) == {"lead_broker", "lead_mcp"}  # A8's guard: neither is dropped
     # The operator's own `cli` escape, outside any session (channel "cli"), is no Lead session: there the true text
     # stays "run this one directly", with no lead_session reason (#281 review, F2)
     with pytest.raises(errors.PermissionDenied) as exc:

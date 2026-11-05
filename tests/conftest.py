@@ -256,6 +256,7 @@ def capability_register_dir(tmp_path_factory) -> Path:
       commit without this fixture) fails the session, naming the files that changed."""
     global CHILD_DATA_BASE
     from aew import hoststate
+    from aew.capability.ops import FETCH_SWITCH
 
     host = _host_state() / "capability"
     before = _register_files(host)
@@ -264,7 +265,15 @@ def capability_register_dir(tmp_path_factory) -> Path:
     found = os.environ.get(name)
     if found == HOST_ENV.get(name):
         os.environ[name] = str(CHILD_DATA_BASE)
+    # No launch a test makes, in this process or a child, fetches from the network: a test of the fetch at a launch
+    # takes this off, with a fixture's archive in place of the network (CAPR-Q10)
+    switch = os.environ.get(FETCH_SWITCH)
+    os.environ[FETCH_SWITCH] = "off"
     yield tmp_path_factory.mktemp("capability-register")
+    if switch is None:
+        os.environ.pop(FETCH_SWITCH, None)
+    else:
+        os.environ[FETCH_SWITCH] = switch
     if found is None:
         os.environ.pop(name, None)
     else:

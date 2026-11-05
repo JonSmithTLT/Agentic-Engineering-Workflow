@@ -68,7 +68,8 @@ OPERATIONS: bridge.Operations = {"lead.cli": {"argv": list, "cwd": str, "stdin":
                                  # one read relayed for the contained Lead (RELAYED_READS)
                                  "lead.read": {"argv": list, "cwd": str}}
 COOPERATIVE = frozenset({"lead.tool", "lead.read"})
-INGRESS_CHANNEL = {"mcp": "lead_mcp", "cli": "lead_broker"}  # provenance only, never legality
+# Provenance. Its values also pick the refusal text of a command kept out of a Lead session (:func:`run_cli`).
+INGRESS_CHANNEL = {"mcp": "lead_mcp", "cli": "lead_broker"}
 
 CREDENTIAL_EMITTING = (frozenset({"lead", "acquire"}), frozenset({"lead", "takeover"}), frozenset({"lead", "release"}),
                        frozenset({"lead", "handoff", "offer"}), frozenset({"lead", "handoff", "accept"}),
@@ -497,7 +498,9 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
 
     # On the broker's own channels (a Lead session), a command kept out of one says so in its own text, not "run this
     # one directly" (QC3; #286 review F1); the operator's out-of-session `cli` escape keeps that text, which is true
-    # there (#281 review, F2). Both are refusals: the channel chooses the wording, never the legality.
+    # there (#281 review, F2). For `capability check`, which takes no token, both are refusals, so the channel chooses
+    # only its wording: a kept-out command that takes a token passes this line on the `cli` escape (#281's quick
+    # check, R2).
     kept_out = kept_out_refusal(command_path(ns))
     if channel in INGRESS_CHANNEL.values() and kept_out:
         raise errors.PermissionDenied(kept_out, reason=LEAD_SESSION)

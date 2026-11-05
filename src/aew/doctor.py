@@ -123,7 +123,6 @@ def _capabilities() -> list[dict[str, str]]:
 
 
 def run(cwd: str | None = None) -> dict[str, Any]:
-    checks = environment_checks()
     project_checks: list[dict[str, str]] = []
     try:
         from aew.engine.api import Engine
@@ -136,6 +135,8 @@ def run(cwd: str | None = None) -> dict[str, Any]:
         code = getattr(exc, "code", type(exc).__name__)
         status = "UNAVAILABLE" if code == "PROJECT_NOT_FOUND" else "FAIL"
         project_checks = [_check("project", status, f"{code}: {exc}")]
+    # After the project's: its containment line's sandbox records the capability checks these lines read
+    checks = environment_checks()
     all_checks = checks + project_checks
     failed = sum(1 for c in all_checks if c["status"] == "FAIL")
     return {

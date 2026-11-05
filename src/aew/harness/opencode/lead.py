@@ -529,7 +529,8 @@ class ContainedLead:
                                      f"{'it' if len(network.login_sentinels) == 1 else 'them'} this session.\n")
                 self.stages.mark("lead_logins")
             spec = network.spec() if network is not None and network.dir else {"in": [], "out": []}
-            argv = containment.bwrap_argv(layout, netns.shim_argv({**spec, "ctty": True}, self.argv), cwd=project)
+            argv = containment.bwrap_argv(layout, netns.shim_argv({**spec, "ctty": True}, self.argv), cwd=project,
+                                          path=inside.get("PATH"))
             self._record(run_dir, label)
             # A sandbox on the host's network (containment.network.mode: shared) is weaker, and enters the register
             entry = weaker_register.enter_if_weaker(label, **where)
@@ -594,7 +595,8 @@ class ContainedLead:
 
         db = state / "xdg-data" / "opencode" / login.DB
         if not db.is_file():
-            subprocess.run(containment.bwrap_argv(layout, [*binary_command(), "session", "list"], cwd=project),
+            subprocess.run(containment.bwrap_argv(layout, [*binary_command(), "session", "list"], cwd=project,
+                                                  path=inside.get("PATH")),
                            env=dict(inside), capture_output=True, timeout=SEED_TIMEOUT_S, stdin=subprocess.DEVNULL,
                            check=False)
         if not db.is_file():

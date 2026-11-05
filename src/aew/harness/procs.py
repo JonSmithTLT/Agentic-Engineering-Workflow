@@ -176,7 +176,8 @@ class ProcessTree:
         if self.layout is not None:  # pragma: posix-only
             from aew.harness.containment import bwrap_argv
 
-            argv = bwrap_argv(self.layout, list(argv), cwd=kwargs.get("cwd"))
+            argv = bwrap_argv(self.layout, list(argv), cwd=kwargs.get("cwd"),
+                              path=(kwargs.get("env") or {}).get("PATH"))
         elif self.require_layout:
             from aew.errors import ContainmentUnavailable
 

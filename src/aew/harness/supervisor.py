@@ -60,10 +60,11 @@ CONTENT_FILTER = re.compile(r"\(provider\.content[-_.]filter\b", re.IGNORECASE)
 
 def starting_limit_s(harness: str | None) -> float:
     """A start's deadline, from custody to running (ADR-0009 amendment 2026-10-09). ``AEW_RUN_START_S`` when the
-    operator set it; otherwise the sandbox self-test's and the adapter's own launch bounds in series, plus a margin, so
-    the deadline caps the whole start without ever cutting off a step still inside its own timeout. A start still
-    unfinished then is abandoned: its heartbeat stops, so the run reads `lost` within the deadline + STALE_AFTER_S of
-    custody, and it never becomes `running`."""
+    operator set it; otherwise the first-launch fetch's (CAPR-04), the sandbox self-test's and the adapter's own launch
+    bounds in series, plus a margin, so the deadline caps the whole start without ever cutting off a step still inside
+    its own timeout. A start still unfinished then is abandoned: its heartbeat stops, so the run reads `lost` within
+    the deadline + STALE_AFTER_S of custody, and it never becomes `running`."""
+    from aew.capability.payload import LAUNCH_FETCH_BOUND_S
     from aew.harness.containment import probe
 
     if os.environ.get(START_ENV):
@@ -72,7 +73,7 @@ def starting_limit_s(harness: str | None) -> float:
         bound = registry.load(harness).launch_bound_s() if harness else HarnessAdapter.LAUNCH_BOUND_S
     except errors.AEWError:  # the launch loads it again and fails, well inside this deadline
         bound = HarnessAdapter.LAUNCH_BOUND_S
-    return probe.BOUND_S + bound + STARTING_MARGIN_S
+    return LAUNCH_FETCH_BOUND_S + probe.BOUND_S + bound + STARTING_MARGIN_S
 
 
 def log(msg: str) -> None:

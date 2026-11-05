@@ -4,10 +4,13 @@ payloads in an archive built here."""
 
 from __future__ import annotations
 
+import atexit
 import hashlib
 import io
 import os
+import shutil
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -102,8 +105,14 @@ def _import(reg: dict[str, Any], **kw: Any) -> dict[str, Any]:
 
 
 def _plant_host_copy(reg: dict[str, Any], monkeypatch) -> Path:
-    directory = reg["tmp"] / "host-bin"
-    directory.mkdir()
+    # Where a sandbox sees it, as a host's own copy is: a sandbox's /tmp is its own, and a test's tmp_path is under it,
+    # so a copy there reads UNAVAILABLE from inside (which test_capability_bind.py shows on purpose)
+    directory = Path(tempfile.mkdtemp(prefix="aew-test-host-bin-", dir=Path.home())) if not IS_WINDOWS \
+        else reg["tmp"] / "host-bin"
+    if IS_WINDOWS:
+        directory.mkdir()
+    else:
+        atexit.register(shutil.rmtree, directory, True)
     exe = directory / store.executable_name("fake")
     exe.write_bytes(reg["body"])
     exe.chmod(0o755)

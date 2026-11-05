@@ -45,6 +45,12 @@ USABLE = frozenset({QUALIFIED, FUNCTIONAL_ONLY})  # "usable means checked" (CAPR
 NOT_SERVING = frozenset({UNAVAILABLE, REFUSED, UNSUPPORTED})  # AEW's copy cannot serve: a host copy may
 AEW_COPY, HOST_COPY = "aew", "host"
 UNPINNED = "an unpinned host copy: AEW does not know its version, and did not check it against a pin"
+# Where a check ran: CAPR-13 runs a sandbox-placed provider's check contained, as its uses run. On a Linux host with no
+# sandbox to run it in, the host is what a weaker run would use, and the status says so.
+IN_SANDBOX, ON_HOST = "sandbox", "host"
+HOST_CHECKED = ("checked on the host, not in a sandbox: no sandbox could be made here, so what a contained run would "
+                "see was not read")
+TOOLS_MARKER = ".aew-tools"  # marks a contained context's own directory of entries (bind.py), never a host copy
 HEALTH_TIMEOUT_S = 30.0  # one step of a health check: `--version`, or the fixture query over a few lines
 
 CHECK = "aew capability check"
@@ -205,14 +211,17 @@ def _checked(kind: str, done: dict[str, Any] | None, path: Path, facts: dict[str
     if not done.get("ok"):
         return Copy(kind, UNAVAILABLE, f"its check failed: {done.get('cause')}",
                     f"fix what the check names, then `{CHECK}`", str(path), at)
-    return Copy(kind, FUNCTIONAL_ONLY, None, None, str(path), at)
+    limits = [HOST_CHECKED] if done.get("where") == ON_HOST and sys.platform != "win32" else []
+    return Copy(kind, FUNCTIONAL_ONLY, None, None, str(path), at, limits)
 
 
 def find_host_copy(command: str, directory: Path | None = None) -> Path | None:
-    """``command`` on this process's PATH, leaving out AEW's own register: the host copy CAPR-04 lets serve."""
+    """``command`` on this process's PATH, leaving out AEW's own register and a contained context's own entries (in a
+    sandbox a stub or a link there would read as the host's): the host copy CAPR-04 lets serve."""
     reg = os.path.normcase(os.path.realpath(directory or store.root()))
     entries = [p for p in (os.environ.get("PATH") or "").split(os.pathsep) if p
-               and not os.path.normcase(os.path.realpath(p)).startswith(reg)]
+               and not os.path.normcase(os.path.realpath(p)).startswith(reg)
+               and not os.path.exists(os.path.join(p, TOOLS_MARKER))]
     found = shutil.which(command, path=os.pathsep.join(entries))
     return Path(found).resolve() if found else None
 
@@ -225,33 +234,51 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def health(executable: Path, record: dict[str, Any], *, pinned: bool = True) -> tuple[bool, str | None, str | None]:
-    """``(passed, cause, first line of --version)``: the record's version check, then its fixture query, run on a
-    fixture written to a fresh directory. A host copy (``pinned=False``) is not AEW's pin, so its version check asks
-    only that it is the provider: the record's expected line without the record's version (``ripgrep``, for
-    ``ripgrep 15.1.0``); what version it is, is recorded. Run on the host in this slice; CAPR-13 runs a sandbox-placed
-    provider's check contained, as its uses run, which comes with the bind into every contained context (CAP-1's
-    second PR)."""
+def judge(record: dict[str, Any], version: Any, fixture: Any, *,
+          pinned: bool = True) -> tuple[bool, str | None, str | None]:
+    """``(passed, cause, first line of --version)`` from a health check's two steps, each ``[finished, its stdout, why
+    not]``, wherever they ran: the one owner of what a check means, on the host or from a sandbox's report. A host copy
+    (``pinned=False``) is not AEW's pin, so its version check asks only that it is the provider: the record's expected
+    line without the record's version (``ripgrep``, for ``ripgrep 15.1.0``); what version it is, is recorded."""
     spec = record["health"]
     expect = spec["version"]["expect"]
     if not pinned and expect.endswith(record["version"]):
         expect = expect[: -len(record["version"])].rstrip() or expect
+    version_ok, out, why = _step(version)
+    if not version_ok:
+        return False, f"`{record['command']} {' '.join(spec['version']['args'])}` {why}", None
+    first = (out.strip().splitlines() or [""])[0].strip()
+    if not first.startswith(expect):
+        return False, f"its version check printed {first[:200]!r}, not {expect!r}", first
+    fixture_ok, out, why = _step(fixture)
+    if not fixture_ok:
+        return False, f"its fixture query {why}", first
+    if out.strip() != spec["fixture"]["expect"].strip():
+        return False, (f"its fixture query printed {out.strip()[:200]!r}, not "
+                       f"{spec['fixture']['expect'].strip()!r}"), first
+    return True, None, first
+
+
+def _step(step: Any) -> tuple[bool, str, str]:
+    """One step as a report holds it; a report that is not one is a step that did not run."""
+    if isinstance(step, (list, tuple)) and len(step) == 3 and isinstance(step[1], str):
+        return bool(step[0]), step[1], str(step[2])
+    return False, "", "was not reported by the check"
+
+
+def health(executable: Path, record: dict[str, Any], *, pinned: bool = True) -> tuple[bool, str | None, str | None]:
+    """The record's health check run here, on a fixture written to a fresh directory (:func:`judge`): the record's
+    version check, then its fixture query. CAPR-13 runs a sandbox-placed provider's check contained, as its uses run:
+    this is for where no sandbox exists, Windows, or a Linux host with none to make (``ops.check``). Everywhere else
+    the check runs in the sandbox's self-test (``probe.self_test``)."""
+    spec = record["health"]
     with tempfile.TemporaryDirectory(prefix="aew-capability-") as tmp:
         for name, text in spec["fixture"]["files"].items():
             (Path(tmp) / name).write_bytes(text.encode("utf-8"))
-        ok, out, why = _run([str(executable), *spec["version"]["args"]], tmp)
-        if not ok:
-            return False, f"`{record['command']} {' '.join(spec['version']['args'])}` {why}", None
-        first = (out.strip().splitlines() or [""])[0].strip()
-        if not first.startswith(expect):
-            return False, f"its version check printed {first[:200]!r}, not {expect!r}", first
-        ok, out, why = _run([str(executable), *spec["fixture"]["args"]], tmp)
-        if not ok:
-            return False, f"its fixture query {why}", first
-        if out.strip() != spec["fixture"]["expect"].strip():
-            return False, (f"its fixture query printed {out.strip()[:200]!r}, not "
-                           f"{spec['fixture']['expect'].strip()!r}"), first
-    return True, None, first
+        version = _run([str(executable), *spec["version"]["args"]], tmp)
+        # The fixture query runs only after a version step that finished, as a report from a sandbox holds both
+        fixture = _run([str(executable), *spec["fixture"]["args"]], tmp) if version[0] else None
+        return judge(record, version, fixture, pinned=pinned)
 
 
 def _run(argv: list[str], cwd: str) -> tuple[bool, str, str]:

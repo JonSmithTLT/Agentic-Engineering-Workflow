@@ -109,14 +109,14 @@ def write(state: dict[str, Any], directory: Path | None = None) -> None:
 
 
 @contextlib.contextmanager
-def locked(directory: Path | None = None) -> Iterator[Path]:
+def locked(directory: Path | None = None, *, timeout: float = LOCK_TIMEOUT_S) -> Iterator[Path]:
     """The register's lock, held for a read-change-write of its state."""
     from aew.engine.lock import FileLock
 
     target = directory or root()
     with writing(target):
         target.mkdir(mode=0o700, parents=True, exist_ok=True)  # the register is the operator's own, as AEW's store is
-        lock = FileLock(target / LOCK, timeout=LOCK_TIMEOUT_S)
+        lock = FileLock(target / LOCK, timeout=timeout)
         lock.__enter__()
     try:
         yield target

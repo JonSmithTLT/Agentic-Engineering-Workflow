@@ -159,6 +159,30 @@ def test_a_review_that_fails_stops_the_request_after_its_ingest(lab_project, tmp
     assert_control_invariants(p)
 
 
+def test_a_run_the_stage_launched_is_followed_with_the_typed_wait(lab_project, tmp_path):
+    """E130: a live Lead read "follow it with `aew harness wait`" beside its typed wait. The hint leads with it."""
+    p, _lab = lab_project
+    wid, _impl = implemented(p, tmp_path)
+    out = call(p, "ticket_request_review", work_id=wid)
+    assert out["ok"], out["stopped"]
+    [hint] = [h for h in out["projection"]["hints"] if "is running for" in h]
+    assert hint.index("`harness_wait`") < hint.index("`aew harness wait")
+
+
+def test_after_ticket_prepare_the_hint_does_not_dispatch_the_verifier_it_launched(lab_project, tmp_path):
+    """E130: the scripted Lead followed this hint right after the stage had launched that verifier, and was refused
+    (LEASE_NOT_HELD). Against the real stage: the hint says wait for it."""
+    p, _lab = lab_project
+    wid, _impl = implemented(p, tmp_path)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+    out = call(p, "ticket_prepare", work_id=wid, verification_evidence=verify(p, wid))
+    assert out["ok"] and [s["primitive"] for s in out["completed_steps"]][-1] == "dispatch.launch", out["stopped"]
+    hints = " ".join(out["projection"]["hints"])
+    assert "aew invoke create" not in hints and "`integration_publish`" in hints and "`harness_wait`" in hints
+
+
 # ---------------------------------------------------------------------------------------------- equivalence (§10)
 
 

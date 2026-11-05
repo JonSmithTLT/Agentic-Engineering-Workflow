@@ -10,11 +10,12 @@ text with no other edit. What is still hand-written is the prose, listed in the 
 from __future__ import annotations
 
 import re
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from aew.engine import guide
+from aew.engine import guide, resume_ops
 from aew.engine import transitions as T
 from aew.engine.harness_ops import Harness
 from aew.engine.resume_ops import Resume
@@ -84,7 +85,7 @@ def test_a_tool_added_to_the_catalog_is_named_with_no_other_edit(monkeypatch, ki
 
 
 def test_the_list_follows_the_catalog_when_a_tool_goes(monkeypatch):
-    monkeypatch.delitem(contract.TOOLS, "work_show")
+    monkeypatch.setattr(contract, "TOOLS", {k: t for k, t in contract.TOOLS.items() if k != "work_show"})
     assert "`work_show`" not in projection.lead_tools_text()
 
 
@@ -314,6 +315,32 @@ def test_a_hint_leads_with_the_stage_and_keeps_the_command(state, edge):
     tool = T.STAGE_AT[edge]
     assert f"`{tool}`" in hint and tool in {s.tool for s in lead_text.stages()}
     assert hint.index(f"`{tool}`") < hint.index("`aew ")
+
+
+def test_a_validated_candidates_hint_leads_with_the_publish_stage(monkeypatch):
+    monkeypatch.setattr(resume_ops.V, "obligation", lambda *a: {"mode": "verifier"})
+    resume = Resume.__new__(Resume)
+    resume.k = SimpleNamespace(policy=lambda name: {})
+    resume._queue_wait = lambda state, wid: None  # type: ignore[method-assign]
+    unit = {"state": "COMMIT_READY", "invocations": [], "integration": {"status": "validated"}}
+    [hint] = resume._ticket_actions({"invocations": {}}, "T-0007", unit)
+    assert hint.index("`integration_publish`") < hint.index("`aew integrate publish`")
+
+
+def after_implementation(state: str, *, review: bool, verification: bool = True) -> str:
+    harness = Harness.__new__(Harness)
+    harness.gates = SimpleNamespace(gate_context=lambda state, wid: {}, review_gates=lambda gc: review,  # type: ignore[assignment]
+                                    verification_gates=lambda gc: verification)
+    return harness.after_implementation({"work": {"T-0007": {"state": state}}}, "T-0007")
+
+
+def test_a_finished_implementation_names_the_review_stage_only_where_review_is_next():
+    """Only RUNNING -> REVIEW_PENDING has a stage: `ticket_request_review` refuses a Ticket whose class needs none."""
+    text = after_implementation("RUNNING", review=True)
+    assert text.index("`ticket_request_review`") < text.index("--to REVIEW_PENDING")
+    assert not TOOL_NAME.search(after_implementation("RUNNING", review=False))
+    assigned = after_implementation("ASSIGNED", review=True)  # the stage starts at RUNNING: that step comes first
+    assert assigned.index("--to RUNNING") < assigned.index("`ticket_request_review`")
 
 
 def integration_state(*, report: str | None = None, verifier: str | None = None) -> dict[str, Any]:

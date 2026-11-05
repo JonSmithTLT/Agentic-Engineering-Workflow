@@ -55,8 +55,8 @@ internals.
   (`docs/guides/quickstart.md`): acquire, then copy the credential into `AEW_LEAD_TOKEN`; an `--expect-rev` read from
   `status`; a takeover; an adopt after editing YAML. A step that has landed but has no driver in the scripted operator
   yet is recorded as `no_driver`, and fails the verdict like a fallback.
-- **The setup boundary.** Setup is `aew init` and the project's first configuration (its check command and its
-  harness), before the first Lead session opens. A policy file edited by hand in setup is recorded, not counted under
+- **The setup boundary.** Setup is `aew init` and the project's first configuration (its check command, model and
+  provider), before the first Lead session opens. A policy file edited by hand in setup is recorded, not counted under
   `raw_yaml`; one edited after setup counts. Everything else in setup (an acquire, a credential, a separate adopt) is
   counted like any other step.
 - **Terminal channels.** A decision AEW confirms at the operator's own terminal (a policy adoption, a takeover, a

@@ -2,7 +2,7 @@
   "counts": {
     "by_coverage": {
       "complete-by-construction": 404,
-      "lower-bound": 742
+      "lower-bound": 743
     },
     "by_family": {
       "cli-commands": 116,
@@ -15,7 +15,7 @@
       "entry-points": 7,
       "guards": 11,
       "layout": 76,
-      "modules": 192,
+      "modules": 193,
       "reason-rules": 56,
       "schemas": 32,
       "sqlite-tables": 10,
@@ -61,7 +61,7 @@
         "lower-bound": 76
       },
       "modules": {
-        "lower-bound": 192
+        "lower-bound": 193
       },
       "reason-rules": {
         "complete-by-construction": 56
@@ -92,8 +92,8 @@
         "lower-bound": 272
       }
     },
-    "digest": "sha256:aa8c35b5335bcb119aaf433c5833cfd2435aac0cd1564e26406dcb3bac3ac8bf",
-    "records": 1146,
+    "digest": "sha256:8b97263b75a82cd9a7722962945596f0bde7221ec3b69836ba59eb36a24c68e4",
+    "records": 1147,
     "unresolved": 112
   },
   "gaps": [
@@ -18555,6 +18555,7 @@
         "aew.cli.work_commands",
         "aew.doctor",
         "aew.engine.api",
+        "aew.engine.first_configuration",
         "aew.errors",
         "aew.harness.lead_broker",
         "aew.harness.opencode.lead",
@@ -19254,6 +19255,7 @@
         "aew.engine.dispatch",
         "aew.engine.disposition_ops",
         "aew.engine.evidence_ops",
+        "aew.engine.first_configuration",
         "aew.engine.gate_ops",
         "aew.engine.guards",
         "aew.engine.harness_ops",
@@ -19682,6 +19684,31 @@
       },
       "family": "modules",
       "imports": []
+    },
+    "modules:aew.engine.first_configuration": {
+      "anchor": {
+        "module": "aew.engine.first_configuration",
+        "symbol": null
+      },
+      "basis": "static",
+      "coverage": {
+        "label": "lower-bound",
+        "unresolved": []
+      },
+      "fact": {
+        "package": false,
+        "path": "src/aew/engine/first_configuration.py"
+      },
+      "family": "modules",
+      "imports": [
+        "aew.errors",
+        "aew.harness.containment.netns",
+        "aew.harness.contract",
+        "aew.harness.models",
+        "aew.knowledge.manifest",
+        "aew.policy.execution",
+        "aew.util"
+      ]
     },
     "modules:aew.engine.freshness": {
       "anchor": {
@@ -21010,6 +21037,7 @@
         "aew.engine.custody_ops",
         "aew.engine.dispatch",
         "aew.engine.faults",
+        "aew.engine.first_configuration",
         "aew.engine.harness_ops",
         "aew.errors",
         "aew.harness.agentenv",

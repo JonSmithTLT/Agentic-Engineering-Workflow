@@ -18,11 +18,45 @@ Runtime dependencies are PyYAML and jsonschema. Both are already in the SPT py31
 
 ```bash
 cd <repo>                       # the main worktree, on the authoritative branch
+aew init --check-command "{python} -m pytest -q" --model openai/gpt-6-sol   # also discovers authority *candidates*; confers no authority
+aew doctor
+read -rsp 'OPENAI_API_KEY: ' OPENAI_API_KEY; echo; export OPENAI_API_KEY    # bash; this shell only, as for the Lead token below
+aew opencode --acquire --provider-env OPENAI_API_KEY
+```
+
+`aew init` takes the first configuration in that one call and writes it before it pins, so a fresh setup needs no hand
+edit, no adopt and no credential. Its `next` says what's left for what you gave it.
+
+- **`--check-command`** sets the `unit` check. It's split as POSIX on every platform, with no shell, and `{python}` is
+  the running Python. The result prints the argv. A command that would pin something broken is refused: empty or
+  unparseable; a bare shell operator (`&&`, `||`, `|`, `;`, `<`, `>`) or a leading `VAR=`, which take a shell you name
+  yourself (`sh -c '...'`); a backslash outside single quotes, which this split would spend (write `/` or `{python}`).
+  **`--check-timeout SECONDS`** goes with it.
+- **A check command is not a place for a credential.** AEW doesn't scan it, and it's committed with the policy.
+- **`--model`** sets the workers' model, written as the harness lists it, in one profile named `default`; **`--provider`**
+  goes with a bare id. They don't set the Lead's own model. For a provider that needs a key, `provider_env` gets the
+  variable's name: no flag takes a key, and `aew init` doesn't look for one. `opencode` writes no variable, since its free
+  models need none; its paid models take the route below. Any other provider is refused, and takes the route below, as
+  does a proxy variable such as `HTTPS_PROXY`.
+- **Nothing runs at init.** The check isn't run and the model isn't looked up: `aew doctor` has `provider-env` and
+  `model-refs`.
+- **On an initialized project** `aew init` is refused, flags or not. One interrupted before it finished may run again,
+  with other values.
+
+Everything after the pin goes through the Lead credential and an adopt. That's also the route for what the flags don't
+cover:
+
+```bash
 aew init                        # discovers authority *candidates*; confers no authority
 $EDITOR .aew/policy/checks.yaml # configure the real test command; gates stay blocked until you do
 aew lead acquire --expect-rev 0 --session-label lead-1   # shows the Lead credential ONCE, on your terminal
 aew manifest adopt --reason "configured the test command" --expect-rev 1   # asks for the Lead credential, hidden
 ```
+
+**The two routes don't mix.** `aew lead acquire` holds the seat, and a held seat refuses `aew opencode --acquire`, so a
+Lead session on that route starts with `aew opencode` and your credential. On the `--acquire` route no credential is ever
+shown, so the authority candidates wait: they block nothing, and you classify them after the session exits and releases
+the seat, through `aew lead acquire`.
 
 The policy files under `.aew/policy/` are pinned like `project.yaml`: after any edit, every Lead change is refused until
 you review it and run `aew manifest adopt` (a recorded decision). Adopt asks you to type back a one-time code at your

@@ -222,6 +222,21 @@ def ideal_path() -> dict[str, list[str]]:
             for s in module.STEPS}
 
 
+def ideal_path_options() -> dict[str, list[str]]:
+    """The options V-01's oracle names on its path, by `aew` command (step 2's are `aew init`'s). They stay apart from
+    :func:`ideal_path`, whose names resolve as words."""
+    spec = importlib.util.spec_from_file_location("g1_vertical_oracle_options", VERTICAL)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    path = list(sys.path)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = path
+    return {" ".join(i.command): list(i.options) for s in module.STEPS for i in s.serves
+            if isinstance(i, module.Local) and i.command and i.options}
+
+
 def worker_commands() -> set[str]:
     """The commands a worker runs through its run's custody bridge (bridge.OPERATIONS: `check.run` is `check run`)."""
     return {op.replace(".", " ") for op in bridge.OPERATIONS}
@@ -602,6 +617,10 @@ def check_ideal_path(reg: dict[str, Any]) -> list[str]:
                 out.append(f"ideal path `{step}` (aew {name}) names no live command")
             elif leaf not in commands:
                 out.append(f"ideal path `{step}` (aew {name}) names `aew {leaf}`, which is not registered")
+    for name, options in ideal_path_options().items():
+        live = {o for a in live_commands()[name]._actions for o in a.option_strings}
+        out += [f"ideal path names `aew {name} {o}`, which is no option of the live parser" for o in options
+                if o not in live]
     out += [f"proposed `aew {p.get('name')}`: V-01's path names no proposed command (STG-13); remove it"
             for p in reg.get("proposed") or []]
     return out
@@ -2004,6 +2023,8 @@ def test_the_walk_and_the_ideal_path_are_the_live_ones():
     assert {" ".join(sorted(p)) for p in lead_broker.LEAD_REACHABLE} <= {" ".join(sorted(c.split())) for c in commands}
     rows = ideal_path()
     assert len(rows) == 13 and rows["init"] == ["init"] and resolve(["init"]) == "init"
+    assert rows["configure"] == ["init"]  # its options are `ideal_path_options`'s: they're no words of the command
+    assert ideal_path_options() == {"init": ["--check-command", "--model", "--provider"]}
     assert worker_commands() == {"whoami", "check run", "submit"}
 
 

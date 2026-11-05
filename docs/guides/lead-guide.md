@@ -44,7 +44,7 @@ Checks not configured yet (their gates stay blocked): unit.
 
 ## Before the first Ticket
 
-- `aew init` lists documents that may govern the work (a README, contracts, schemas) as authority candidates, and gives them no authority. Classifying them is the operator's decision, made at their own terminal (`aew authority accept` and `aew authority reject` are refused in your session): `aew authority list` shows them, and you ask the operator to classify them. This tells AEW which documents govern the work and which only orient it.
+- `aew init` lists documents that may govern the work (a README, contracts, schemas) as authority candidates, and gives them no authority. Classifying them is the operator's decision, made at their own terminal (`aew authority accept` and `aew authority reject` are refused in your session): `aew authority list` shows them. This tells AEW which documents govern the work and which only orient it, and it blocks nothing. On a session started with `aew opencode --acquire`, don't ask during the session: classifying needs a credential that path never shows, and a takeover would turn you read-only. The operator classifies after you exit, once the seat is released, through `aew lead acquire`.
 - Look at the project before you describe work in it. You cannot edit files, but you can read and search them with your read, glob and grep tools.
 
 ## A mutating Ticket, step by step

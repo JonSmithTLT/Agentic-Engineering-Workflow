@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -47,14 +48,16 @@ from vertical.ledger import (
 )
 from vertical.report import NOT_A_SCENARIO
 from vertical.scripted_operator import (
+    OFFLINE_MODEL,
+    OFFLINE_PROVIDER,
     Operator,
     containment,
-    execution_policy,
     lead_events,
     lead_spec,
     new_world,
     stage_intents,
     staled_by,
+    world_fixtures,
 )
 
 from aew.harness import runlog
@@ -71,50 +74,52 @@ OUT_ENV = "AEW_VERTICAL_OUT"  # where the ledgers go (CI uploads them); default:
 
 
 def configure(op: Operator, *, steering: bool = False, cause: str | None = None) -> None:
-    """Setup's step 2 (configure), today's way while it has not landed: the check command and the harness in the
-    policy files, then an acquire and an adopt (quickstart). ``cause`` puts a V3 cause into the operator's first
-    configuration; ``steering`` adds what Run needs (a starting mode, a notifier, hard deadlines)."""
-    op.workaround("configure", "edit .aew/policy/checks.yaml and execution.yaml, aew lead acquire, aew manifest adopt "
-                               "(quickstart)")
+    """Setup's steps 1 and 2 (init, configure), in the one line `aew init` takes before it pins, with no acquire and no
+    adopt. ``cause`` puts a V3 cause into the operator's first configuration, as what they typed where a flag can carry
+    it and as a fixture where it can't; ``steering`` adds what Run needs (a starting mode, a notifier, hard deadlines),
+    which are fixtures."""
     command = (["{python}", "-c", "open('check-output.txt', 'w').write('x')"] if cause == "check-changes-snapshot"
                else ["{python}", "-c", STAMP_CHECK] if cause == "stamp" else workers.UNIT)
-
-    def checks(doc: dict[str, Any]) -> None:
-        doc.update({"schema": "aew/checks/v1", "baseline_failures": [],
-                    "checks": {"unit": {"configured": True, "command": command, "cwd": ".", "timeout_s": 300,
-                                        "description": "the project's tests"}}})
-
-    def execution(doc: dict[str, Any]) -> None:
-        doc.clear()
-        doc.update(execution_policy(op.lab, steering="crawl" if steering else None))
-        if steering:
-            doc["profiles"]["standard"]["deadline_s"] = 1800
-            doc["notify"] = {"command": recorder(op.tmp)[0]}
-        if cause == "provider-env-unset":
-            doc["provider_env"] = ["VUAT_PROVIDER_KEY"]
-        if cause in ("model-not-listed", "model-id-provider-prefix"):
-            doc["harness"] = "opencode"
-            doc["profiles"] = {"standard": {"provider": "vuatprov", "model": "vuat-missing-model"
-                                            if cause == "model-not-listed" else "vuatprov/vuat-model"}}
-
-    op.edit_policy("configure", "checks.yaml", checks)
-    op.edit_policy("configure", "execution.yaml", execution)
-    acquired = op.type("configure:acquire", ["lead", "acquire", "--expect-rev", "0", "--session-label", "operator"])
-    assert acquired.returncode == 0, acquired.stderr
-    op.credential = acquired.json["token"]
-    op.lab.project.token = op.credential
-    op.adopt("configure:adopt", "configured the test command and the harness")
+    model: list[str] = ["--model", OFFLINE_MODEL]
+    known: dict[str, str | None] = {OFFLINE_PROVIDER: None}
+    fixtures = world_fixtures(op.lab, steering="crawl" if steering else None)
+    if steering:
+        notifier = recorder(op.tmp)[0]
+        fixtures["notify"] = lambda doc: doc.update(notify={"command": notifier})
+        fixtures["deadline_s"] = lambda doc: doc["profiles"]["default"].update(deadline_s=1800)
+    if cause == "provider-env-unset":  # a provider that needs a key, whose variable isn't set where AEW launches
+        model, known = ["--model", "vuatprov/fake-model"], {"vuatprov": "VUAT_PROVIDER_KEY"}
+    if cause in ("model-not-listed", "model-id-provider-prefix"):  # what the operator typed, on the real harness name
+        known = {"vuatprov": None}
+        model = ["--provider", "vuatprov", "--model",
+                 "vuat-missing-model" if cause == "model-not-listed" else "vuatprov/vuat-model"]
+        del fixtures["harness: fake"]
+    res = op.first_configuration(["--check-command", shlex.join(command), *model], fixtures, known)
+    assert res.returncode == 0, res.stderr
 
 
-def open_session(op: Operator, step: str, *, steering: bool = False):
-    """Step 3 (open), or step 10 (reopen) from the same shell, today's way while it has not landed: the credential in
-    AEW_LEAD_TOKEN, then ``aew opencode`` (quickstart). The operator's terminal is one shell: a variable exported
-    earlier is still set."""
-    op.workaround("reopen" if step == "reopen" else "open", "export AEW_LEAD_TOKEN=<credential>; aew opencode",
-                  step=step)
-    if op.shell_env.get("AEW_LEAD_TOKEN") != op.credential:
-        op.export(step, "AEW_LEAD_TOKEN", op.credential)
-    session = op.open_session(step, ["opencode"], lead_spec(op.lab, steering=steering))
+def open_session(op: Operator, step: str, *, steering: bool = False, credential_path: bool = False):
+    """Step 3 (open), or step 10 (reopen) from the same shell, today's way while it has not landed: ``aew opencode
+    --acquire``, as `aew init`'s ``next`` says. ``credential_path``: an acquire, the credential in AEW_LEAD_TOKEN, then
+    ``aew opencode`` (quickstart), all counted, for a scenario that measures that path: V4, whose adopt needs the
+    credential (a takeover would turn its Lead read-only), and the same-shell reopen. The operator's terminal is one
+    shell: a variable exported earlier is still set."""
+    if credential_path:
+        op.workaround("reopen" if step == "reopen" else "open",
+                      "aew lead acquire; export AEW_LEAD_TOKEN=<credential>; aew opencode", step=step)
+        if not op.credential:
+            acquired = op.type(f"{step}:acquire", ["lead", "acquire", "--expect-rev", "0", "--session-label",
+                                                   "operator"])
+            assert acquired.returncode == 0, acquired.stderr
+            op.credential = acquired.json["token"]
+            op.lab.project.token = op.credential
+        if op.shell_env.get("AEW_LEAD_TOKEN") != op.credential:
+            op.export(step, "AEW_LEAD_TOKEN", op.credential)
+        argv = ["opencode"]
+    else:
+        op.workaround("open", "aew opencode --acquire", step=step)
+        argv = ["opencode", "--acquire"]
+    session = op.open_session(step, argv, lead_spec(op.lab, steering=steering))
     first = op.first_words(session)
     console_opened(op, step)
     assert first is not None, f"the Lead session did not start: {session.output()[-2000:]}"
@@ -147,9 +152,7 @@ def setup_operator(tmp_path: Path, scenario: str, *, steering: bool = False, als
                                                              error=f"{type(exc).__name__}: {exc}"[:300]))
     op = Operator(lab, ledger, tmp_path, chat)
     op.allowed_heads.add(git("rev-parse", "main", cwd=lab.root))
-    res = op.type("init", ["init"])  # step 1, served by `aew init`
-    assert res.returncode == 0, res.stderr
-    return op
+    return op  # `aew init` comes with the first configuration, once the scenario's cause is known (`configure`)
 
 
 def merge_lead(op: Operator) -> None:
@@ -527,7 +530,7 @@ def run_v2(op: Operator, gate: Path, *, how: str, steering: bool, fresh: bool) -
     facts: dict[str, Any] = {"how": how, "terminal": "fresh" if fresh else "same shell"}
     configure(op, steering=steering)
     op.in_setup = False
-    session, _ = open_session(op, "open", steering=steering)
+    session, _ = open_session(op, "open", steering=steering, credential_path=not fresh)
     if steering:
         raise_steering(op)
     op.say("ask", workers.REQUEST)
@@ -535,7 +538,8 @@ def run_v2(op: Operator, gate: Path, *, how: str, steering: bool, fresh: bool) -
     facts["implementer_running"] = ready.exists()
     op.end_session(session, how)
     facts["lead_gone"] = lead_gone(session)
-    session, first = reopen(op, steering=steering) if fresh else open_session(op, "reopen", steering=steering)
+    session, first = (reopen(op, steering=steering) if fresh
+                      else open_session(op, "reopen", steering=steering, credential_path=True))
     facts["first_words"] = first.get("words")
     facts["run_after_reopen"] = run_status(op, "R-INV-0001-1")
     facts["state_after_reopen"] = ((run_aew_json(op, "work", "show", "T-0001") or {}).get("control") or {}).get(
@@ -790,7 +794,7 @@ def test_v4_changing_a_setting_is_one_action_that_validates_and_saves(tmp_path, 
     try:
         configure(op)
         op.in_setup = False
-        session, _ = open_session(op, "open")
+        session, _ = open_session(op, "open", credential_path=True)  # the setting's adopt needs the credential
         op.workaround("setting", "edit .aew/policy/execution.yaml; aew manifest adopt", step="change_model")
 
         def route(doc: dict[str, Any]) -> None:

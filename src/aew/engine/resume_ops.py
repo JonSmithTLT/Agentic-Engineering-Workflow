@@ -76,7 +76,9 @@ class Resume:
         actions: list[str] = []
         lead = state["lead"]
         if lead["status"] == "vacant":
-            actions.append(f"acquire Lead authority: `aew lead acquire {EXPECT_REV}`")
+            actions.append("no Lead holds the seat: `aew opencode --acquire` takes it for a Lead session, with no "
+                           f"credential shown, or `aew lead acquire {EXPECT_REV}` shows one for the edit-and-adopt "
+                           "route. The two don't mix: a held seat refuses `--acquire`")
         elif lead["status"] == "handoff_pending":
             actions.append("a Lead handoff is pending: the successor runs `aew lead handoff accept`")
         if not H.is_v2(state):  # ADR-0011: the Lead's other mutations are refused until then
@@ -84,7 +86,11 @@ class Resume:
                            f"`aew migrate {EXPECT_REV}` at their own terminal (a Lead session is refused it)")
         if any(c["status"] == "proposed" for c in self.k.manifest["authority"]["candidates"]):
             actions.append("classify authority candidates (the operator, at their own terminal; a Lead session is "
-                           "refused it): `aew authority list`, then for each `aew authority accept <candidate> "
+                           "refused it, and it blocks nothing). A session started with `aew opencode --acquire` "
+                           "doesn't ask: that path shows no credential, and a takeover would turn the live Lead "
+                           "read-only, so the operator classifies after it exits, once the seat is released, through "
+                           f"`aew lead acquire {EXPECT_REV}`. Then `aew authority list`, and for each "
+                           "`aew authority accept <candidate> "
                            f"--class <contracts|decisions|schemas|source|orientation> {EXPECT_REV}` or "
                            f"`aew authority reject <candidate> --reason <reason> {EXPECT_REV}`")
         try:

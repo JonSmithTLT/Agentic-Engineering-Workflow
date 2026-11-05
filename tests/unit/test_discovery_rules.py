@@ -1469,10 +1469,29 @@ def test_the_form_written_over_two_lines_in_one_block_passes():
     assert found(Output(site="unit", text=split), "O-SECRET")  # one block only: a fence ends it
 
 
-def test_a_possessive_is_not_the_bare_word_unless_it_names_the_value():
-    """#335 review, F4; `main` caught the value's own possessive, so it still asks."""
-    assert found(Output(site="unit", text="Type `aew status` to see the token's state."), "O-SECRET") == []
-    for text in ("Paste the token's value here.", "Copy the credential’s contents into the box."):
+@pytest.mark.parametrize("text", [
+    "Type `aew status` to see the token's state.", "Set the token's expiry in the config.",
+    "Copy the credential's name.", "Pass the tokens' types to the check.",
+])
+def test_a_possessive_of_something_other_than_the_value_is_no_ask(text):
+    """#335 review, F4: the possessive passes only before the nouns the bare word itself does not ask with."""
+    assert found(Output(site="unit", text=text), "O-SECRET") == []
+
+
+@pytest.mark.parametrize("text", [
+    "Paste the token's value here.", "Paste the token's secret here.", "Copy the credential’s text into the box.",
+    "Enter the token's string.", "Type the credential's characters.",
+])
+def test_a_possessive_that_is_the_value_still_asks(text):
+    """`main` caught each of these, and so does this rule (a possessive is a word boundary)."""
+    assert found(Output(site="unit", text=text), "O-SECRET"), text
+
+
+def test_only_typing_or_entering_is_answered_by_a_prompt():
+    """#335 review, F3: a prompt that shows nothing answers "type it there", not "paste" or "pass it there"."""
+    assert found(Output(site="unit", text="Enter your token at the hidden prompt."), "O-SECRET") == []
+    assert found(Output(site="unit", text="Type your token at the hidden prompt."), "O-SECRET") == []
+    for text in ("Pass the token at the hidden prompt.", "Paste the token at the hidden prompt."):
         assert found(Output(site="unit", text=text), "O-SECRET"), text
 
 

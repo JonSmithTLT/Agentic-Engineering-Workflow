@@ -579,11 +579,13 @@ NAMED_ASK = (rf"\b({ASK_VERBS})\b(?P<between>(?:(?!\b(?:{ASK_VERBS})\b)[^.;\n]){
              r"(?<![\w-])(?P<what>{names})(?![\w-])")
 # The bare words are ordinary English ("Pass the review, then rotate the token"; "the set of credential names"; "Set
 # the token limit"), so they ask only within the verb's own clause, and not as the first half of another noun.
+OTHER_NOUN = r"helpers?|names?|managers?|stores?|types?|kinds?|budgets?|limits?|counts?|usage|costs?"
 BARE_ASK = re.compile(rf"\b({ASK_VERBS})\b"
                       rf"(?P<between>(?:(?!,|\b(?:then|but|which|when|if|of|{ASK_VERBS})\b)[^.;:\n]){{0,80}}?)"
-                      # a possessive is not the word ("the token's state"), unless it names the value itself
-                      r"(?<![\w-])(?P<what>credentials?|tokens?)(?![\w-])(?!['’](?!s\s+(?:value|contents?)\b))"
-                      r"(?!\s+(?:helpers?|names?|managers?|stores?|types?|kinds?|budgets?|limits?|counts?|usage|costs?)\b)",
+                      r"(?<![\w-])(?P<what>credentials?|tokens?)(?![\w-])"
+                      rf"(?!\s+(?:{OTHER_NOUN})\b)"
+                      # nor as the owner of something that is not its value: "see the token's state" (#335 review, F4)
+                      rf"(?!['’]s?\s+(?:{OTHER_NOUN}|states?|status|formats?|expiry|age|scopes?|owners?)\b)",
                       re.IGNORECASE)
 NOUN_USE = re.compile(r"\b(?:the|a|an|this|that|each|every|any|one)\s+$", re.IGNORECASE)  # "the set", "a type"
 OTHERS_ACT = re.compile(r"(?<!you )\b(?:will|would)\s+$", re.IGNORECASE)  # "the launcher will set it", not an ask
@@ -764,15 +766,17 @@ def _lines_around(text: str, start: int, end: int) -> tuple[str, str, str]:
 
 
 # The hidden-input form answers an ask to set a credential for this session, and no other: a form below "paste X into
-# the worker's chat" does not hand anything over safely (#335 review, F3). Typing at a prompt is the prompt's own case.
+# the worker's chat" does not hand anything over safely (#335 review, F3). A prompt that shows nothing answers an ask
+# to type or enter the value there, and no other ("pass the token at the prompt" still hands it over).
 FORM_ANSWERS = frozenset({"set", "export"})
+PROMPT_ANSWERS = frozenset({"type", "enter"})
 
 
 def _sanctioned(text: str, m: re.Match[str], plane: str) -> bool:
     """The safe path, which must never read as a violation (the operator: friction is a security cost): an ask to set
     or export the credential whose line is the per-session hidden-input form, or has it on the next line, or finishes
     it below a hidden read on the line above; or (for a reader with hands at a terminal, so never a model) an ask to
-    type the value at a prompt that shows nothing."""
+    type or enter the value at a prompt that shows nothing."""
     what = m.group("what")
     line, below, above = _lines_around(text, m.start(), m.end())
     names = (what,) if what.lower() not in ("credential", "credentials", "token", "tokens") else _credential_variables()
@@ -780,7 +784,7 @@ def _sanctioned(text: str, m: re.Match[str], plane: str) -> bool:
             per_session_hidden(line, n) or (below and per_session_hidden(below, n))
             or (above and per_session_hidden(f"{above}; {line}", n)) for n in names):
         return True
-    if plane == MODEL:
+    if plane == MODEL or m.group(1).lower() not in PROMPT_ANSWERS:
         return False
     after = line[m.end() - text.rfind("\n", 0, m.start()) - 1:]
     return bool(HIDDEN_PROMPT.search(after) or (PLAIN_PROMPT.search(after) and NOTHING_ECHOED.search(after)))

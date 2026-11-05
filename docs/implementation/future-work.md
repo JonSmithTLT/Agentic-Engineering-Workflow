@@ -49,11 +49,18 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 15 | STG-14 | I-6, the resource, model and host policy (A-39), the first of the wire increments V-01 needs. Its protected rows stay held until G3 is established, and G3 is established on no host yet |
 | 16 | E125 | The local readiness surface, with the driver asserting the diagnosis. With E119, it's what V3's four non-stale cases need to pass |
 | 17 | E126 | A pre-F4 correction that F4 absorbs: the Lead adds one exact test path to a Ticket's scope |
-| 18 | E127 | Delivering the first four skills, labelled unevaluated |
+| 18 | E127 | Delivering the first four skills, labelled unevaluated, and `optional_skills` on the card |
+| 19 | E130 | What the Lead is told points at its typed tools and cannot go stale |
+| 20 | E139 | Worker packs made true, each finding with a guard |
+| 21 | E140 | Enforcing the discovery layer's O-CMD and O-SECRET, in three PRs |
+| 22 | E143 | A carve-out for testing: free-model workers with no key reach their model through the egress proxy |
+| 23 | E142 | Serving `security-review` and `c-review`, after E127 |
+| 24 | E136 | Serving the other eleven skills, batched, after E142 |
+| 25 | E137 | A publish that stops stale after its first commit, and the stranded stages like it |
 
 **After items 1 to 11 and 16 to 18, first use:** the operator's SPT work, image work included. CI is SPT's first ticket: AEW's workers write it and the operator pushes. SPT stays as it is until then. Later fixes come from that use.
 
-**Contention for a slot:** what blocks other items, starts a series or unlocks a capability that can be tested goes first, and a chain of pull requests keeps moving beside the one-offs (the operator, 2026-11-04). The Lead's placements under that rule: CAP-1 PR 2, then PR 3, hold one slot; E125 follows E119, on the way to V3's first green; E127 follows CAP-1 PR 2, since both change the same binds. The other one-offs keep the operator's order of 2026-11-03: E121, E122, E120, with E119 alongside, then E126, E118 and E35's probe. E117 runs when the operator judges there's something new to measure, as the last step before first use. **The numbers name the items, and don't set the order.** **New design stops until the first receipt,** except what first use surfaces, SPB's adoption question and the research the operator asked for, so a new ruling becomes a row only if it serves this list. **Everything moved stays in V-01,** and V-01 stays the gate before any release. **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
+**Contention for a slot:** what blocks other items, starts a series or unlocks a capability that can be tested goes first, and a chain of pull requests keeps moving beside the one-offs (the operator, 2026-11-04). The Lead's placements under that rule: CAP-1 PR 2, then PR 3, hold one slot; E125 follows E119, on the way to V3's first green; E127 follows CAP-1 PR 2, since both change the same binds. Items 19 to 25 are the Lead's placements of 2026-11-05, and none of them is a condition of first use unless the operator says so. The other one-offs keep the operator's order of 2026-11-03: E121, E122, E120, with E119 alongside, then E126, E118 and E35's probe. E117 runs when the operator judges there's something new to measure, as the last step before first use. **The numbers name the items, and don't set the order.** **New design stops until the first receipt,** except what first use surfaces, SPB's adoption question and the research the operator asked for, so a new ruling becomes a row only if it serves this list. **Everything moved stays in V-01,** and V-01 stays the gate before any release. **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
 
 **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 
@@ -67,7 +74,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### **Contained and reconciled**
 
-**Done when:** **Every agent runs contained:** CS-3b and CS-4 merged, with their live lanes on Rocky 8 (STG-05), and the G3 service installed (STG-03, A-37). **The rest:** the owner-only store merged, AEW's base tools shipped (STG-15, CAP-1 and the bundle), and harness currency in place (E35, H-1 to H-3). **Reconciled:** the as-built reference is complete and the requirements trace is final, with its flags decided (STG-12: S12-2, S12-4, S12-5). Not a bar before the personal alpha, whose floor is E118 and E35's probe; the rest stays ordered by the Now list
+**Done when:** **Every agent runs contained:** CS-3b and CS-4 merged, with their live lanes on Rocky 8 (STG-05), and the G3 service installed (STG-03, A-37). **The rest:** the owner-only store merged, AEW's base tools shipped (STG-15, CAP-1 and the bundle), and harness currency in place (E35, H-1 to H-3). **Reconciled:** the as-built reference is complete and the requirements trace is final, with its flags decided (STG-12: S12-2, S12-4, S12-5). Not a bar before the personal alpha; the Now list says what comes before first use and orders the rest
 
 **Source:** A-33, A-37, A-35; the operator's decisions of 2026-10-24 (AEW brings its tools; OpenCode version currency); the register rebaseline (design workspace, `b598fdc`)
 
@@ -1350,13 +1357,13 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E127
 
-**Work:** Deliver `python-development`, `c-development`, `adversarial-review` and `acceptance-verification` from AEW's own install, with a manifest of hashes, labelled unevaluated, and rename the role cards to the last two. A project cannot add or replace one. `python-development` and `c-development` load only when the Lead staffs that language's card, since the default `engineer` card asks for none. A skill that is missing or mismatched reports unavailable, and the run goes on. The registry question, `CAPR-B6`, stays open
+**Work:** Deliver `python-development`, `c-development`, `adversarial-review` and `acceptance-verification` from AEW's own install, with a manifest of hashes, labelled unevaluated, and rename the role cards to the last two. A project cannot add or replace one. A card gains `optional_skills`, which a role is offered and loads only if its task matches, and `engineer` offers `python-development` and `c-development`. A skill that is missing or mismatched reports unavailable, and the run goes on. The Lead is told to staff by language, and the run's record says what was offered and loaded. The registry question, `CAPR-B6`, stays open
 
-**Source:** The operator's decision of 2026-11-03; the designer's decisions of 2026-11-03; a probe on OpenCode 2.0.18 of 2026-11-04, which found the route loads and that reading the skill's folder needs one added rule
+**Source:** The operator's decisions of 2026-11-03 and 2026-11-04; the designer's decisions of 2026-11-03 and 2026-11-04; a probe on OpenCode 2.0.18 of 2026-11-04, which found the route loads and that reading the skill's folder needs one added rule
 
 **When:** **Now.** Item 18 of the Now list, after CAP-1 PR 2, since both change the same binds
 
-**Notes:** Filed by the Lead. It needs the skills' public-text check first. The build gets both the read rule and an edit rule for the skills folder on every platform, a string entry with a model-free test, since the object form is ignored silently, and the allow-list enforced at the entry's root. It corrects `m3-opencode-v2-rebaseline.md`'s line on `/api/skill`. Kept apart from E120's line on unavailable skills. Qualification stays owed before anything beyond the personal alpha. `aew-reviewer` reviews it
+**Notes:** Filed by the Lead. The public-text check on the four passed. Audit P6 is met by the system text, since the pack renders nothing from the manifest. The build gets both the read rule and an edit rule for the skills folder on every platform, a string entry with a model-free test, since the object form is ignored silently, and the allow-list enforced at the entry's root. It corrects `m3-opencode-v2-rebaseline.md`'s line on `/api/skill`. Kept apart from E120's line on unavailable skills. Qualification stays owed before anything beyond the personal alpha. `aew-reviewer` reviews it
 
 *Later notes: `notes.d/E127/`, oldest first (`python tools/register.py show E127`).*
 
@@ -1383,6 +1390,318 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead
 
 *Later notes: `notes.d/E129/`, oldest first (`python tools/register.py show E129`).*
+
+### E130
+
+**Work:** What the Lead is told points at its typed tools and cannot go stale: `LEAD_SYSTEM`'s tool list is derived from the catalog, the guide names the stage where one covers a step with the shell command as the named fallback, and state hints, end-of-run messages and refusal text follow. A test fails if a normal-profile tool goes unnamed or a covered step is shown shell-first
+
+**Source:** The operator, 2026-11-04: "are we going to have to manually keep teh system tgextg up to date?"; a count of 8 real sessions, where shell tails were 63% of default rows on screen
+
+**When:** **Now.** Item 19 of the Now list, open as #331
+
+**Notes:** Filed by the Lead, and already being built. One small table, edge to tool, stays hand-kept because the engine never imports the surface, with a test holding it equal to the catalog in both directions. The guide stays in the system text: moving it out is what made early Leads spend their time asking how AEW works. `ticket_draft` is where the text should gain most. Count help calls as well as shell calls. `aew-reviewer` reviews it
+
+*Later notes: `notes.d/E130/`, oldest first (`python tools/register.py show E130`).*
+
+### E131
+
+**Work:** A typed `harness send`. It is shell-only today, and the surface map plans it as `message_send`, landing with F9-A, which HOLD-09 holds
+
+**Source:** The operator, 2026-11-04; the count of 8 real sessions
+
+**When:** **Unscheduled**, the operator's to place, since it depends on HOLD-09
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E131/`, oldest first (`python tools/register.py show E131`).*
+
+### E132
+
+**Work:** Short `aew` output in a Lead session, so a shell call the Lead still makes does not fill the operator's screen. E121 covers typed results only
+
+**Source:** The operator, 2026-11-04: "a ton of aews output is a huge chunk of text"; the count of 8 real sessions, where the top five shell commands were 134 calls and 1,198 rows
+
+**When:** **Unscheduled**, after E130's re-count shows what remains
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E132/`, oldest first (`python tools/register.py show E132`).*
+
+### E133
+
+**Work:** Typed exits that are missing. In verifier mode the projection offers no typed publish after the verifier reports (its decision has `tool: None` while the candidate is `prepared`, though `integration_publish` takes `verification_evidence`). No stage starts from REVIEW_PASSED, VERIFIED, or COMMIT_READY without a candidate, so after a shell ingest or a stopped stage only shell exits remain. The surface map omits REVIEW_PASSED to VERIFY_PENDING and VERIFIED to COMMIT_READY from `uncovered`, so it cannot see this
+
+**Source:** E130's first step and the real tool-call log, 2026-11-04; the code at `c02d1f16`
+
+**When:** **Unscheduled**, after E130, whose test pins no tool at those two states and has to change with this
+
+**Notes:** Filed by the Lead. Two earlier guesses were withdrawn on the log's evidence: `resolve`'s decisions omit arguments by design, and no publish was refused for publishing early
+
+*Later notes: `notes.d/E133/`, oldest first (`python tools/register.py show E133`).*
+
+### E134
+
+**Work:** A pack golden for each role, so any change to a pack's text shows in a diff, and a re-run of the A4 and A5 evaluations when what agents are told changes, counting typed share from the tool-call log. The second is the only check on what a model does
+
+**Source:** The operator, 2026-11-04, on how little keeps packs accurate; the controls inventory of 2026-11-04
+
+**When:** **Unscheduled**, after E139
+
+**Notes:** Filed by the Lead. It replaces the pack-truth tracer, retired by the operator on 2026-11-04. 18 runs of A4 and A5 cost USD 0.61 on 2026-09-30
+
+*Later notes: `notes.d/E134/`, oldest first (`python tools/register.py show E134`).*
+
+### E135
+
+**Work:** The skill evaluation: whether a skill helps the weaker models AEW's workers would use, whether such a model picks the right skill from descriptions, and what a listing and its loads cost, taken from paired runs' usage. Its runner is not built
+
+**Source:** The evaluation plan of 2026-10-28, with the operator's limit of USD 10; the designer's decisions of 2026-11-04
+
+**When:** **Evaluation**, before anything beyond the personal alpha, since qualification is owed then for every skill served
+
+**Notes:** Filed by the Lead. Earlier result: no detectable benefit on Sonnet and Haiku at about 1.5 times the cost, on cases that did not discriminate. E127's `loaded` record gives a lower bound on load cost
+
+*Later notes: `notes.d/E135/`, oldest first (`python tools/register.py show E135`).*
+
+### E136
+
+**Work:** Serve the other eleven candidate skills from AEW's install, unevaluated, alpha only and labelled: `agent-security-review`, `security-control-validation`, `codebase-investigation`, `debugging-root-cause-analysis`, `test-design`, `engineering-planning`, `requirements-clarification`, `empirical-evaluation`, `ci-evidence-triage`, `mechanical-enumeration`, `technical-writing`. Each goes on the cards it fits as `optional_skills`, in explicit re-hash PRs that can be batched as each clears the checks
+
+**Source:** The operator, 2026-11-04: "Yes, serve them"; the designer's decisions of 2026-11-04, section 4
+
+**When:** **Now.** Item 24 of the Now list, after E142
+
+**Notes:** Filed by the Lead. Fit is the Lead's reading, judged in each PR's review. `frontend-design` and `delegation-handoffs` have no card that can reach them and wait. That these PRs do not gate first use is the designer's reading
+
+*Later notes: `notes.d/E136/`, oldest first (`python tools/register.py show E136`).*
+
+### E137
+
+**Work:** `integration_publish` can stop STALE_REVISION after its first commit, when another commit lands before it finishes. The ref does not move, but the Ticket stays `publishing`, a second publish is refused with a misleading reason, typed calls are refused, the lease blocks other integrations, and the only exit is shell `aew integrate reconcile`. The result says none of this. Other judgment stages also strand at their last committed step. Suspected, not confirmed: the custody worker's registration, which takes no expected revision
+
+**Source:** The real tool-call log (3 of 9 publishes stopped stale), and a reproduction by injecting the registration at that window, at `c02d1f16`
+
+**When:** **Now.** Item 25 of the Now list
+
+**Notes:** Filed by the Lead. `test_integration_stages.py:655` passes a fresh revision into `_finish_publish`, which hides the window. `aew-reviewer` reviews it
+
+*Later notes: `notes.d/E137/`, oldest first (`python tools/register.py show E137`).*
+
+### E138
+
+**Work:** Typed calls that end in an implementation defect: 3 DEFECT (`ticket_request_review`, `resolve`, `checkpoint`) and 1 INTEGRITY_ERROR (`checkpoint`), codes only, cause unknown. Any non-AEW error escaping the runner reaches the Lead as `-32603` with no stage result, even if steps committed, and a stage may stay active. First step: record the exception's class where it can be read
+
+**Source:** The real tool-call log, 2026-11-04
+
+**When:** **Unscheduled**, any idle slot
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E138/`, oldest first (`python tools/register.py show E138`).*
+
+### E139
+
+**Work:** Make worker packs true: findings P1 to P5 and P7 of the pack audit, each with a plain guard, plus the refusal a worker gets with no credential and `lead.yaml`'s line on credentials
+
+**Source:** The pack audit at `e69313b`; the operator's decisions of 2026-10-12 and 2026-11-04
+
+**When:** **Now.** Item 20 of the Now list, open as #333
+
+**Notes:** Filed by the Lead, and already being built. P6 is met by E127's system text, not the pack (designer, 2026-11-04). `aew-reviewer` reviews it
+
+*Later notes: `notes.d/E139/`, oldest first (`python tools/register.py show E139`).*
+
+### E140
+
+**Work:** Enforce the discovery layer's O-CMD and O-SECRET, in three PRs: the tooling (stale keys judged on completeness, a readable failure, safe removal, a lowered mode counted as growth), then the rules' precision and the text they fire on, then the flip, after `main` and a nightly show neither rule in new or stale
+
+**Source:** The operator, 2026-11-04: "enforce those two"; a measurement over 22 full-tier runs, where the flip alone turned every PR and `main` red
+
+**When:** **Now.** Item 21 of the Now list; the tooling is open as #332
+
+**Notes:** Filed by the Lead, and already being built. After the merge, each open PR needs a run on the flipped base before it merges. `aew-reviewer` reviews each
+
+*Later notes: `notes.d/E140/`, oldest first (`python tools/register.py show E140`).*
+
+### E141
+
+**Work:** Follow-ons to E140: which text the discovery layer scans (the worker preamble, role cards, MCP text and `readable.py` are outside it), and a bare command named in a sentence, which `test_printed_commands_parse.py` passes and O-CMD fails
+
+**Source:** The measurement for E140, 2026-11-04
+
+**When:** **Unscheduled**, after E140
+
+**Notes:** Filed by the Lead. Listed keys hide a new violation at the same site: shrink the list, and add no residuals
+
+*Later notes: `notes.d/E141/`, oldest first (`python tools/register.py show E141`).*
+
+### E142
+
+**Work:** Serve `security-review` and `c-review`, the two skills the role cards already request. They need no card change, and go from unavailable to delivered
+
+**Source:** The operator, 2026-11-04; the designer's decisions of 2026-11-04, sections 4 and 6
+
+**When:** **Now.** Item 23 of the Now list, after E127
+
+**Notes:** Filed by the Lead. Written and edited on 2026-11-04, and the public-text check passed. Labelled unevaluated: neither has run on a model
+
+*Later notes: `notes.d/E142/`, oldest first (`python tools/register.py show E142`).*
+
+### E143
+
+**Work:** A carve-out for testing on free models: a worker with no provider key, on Linux `proxy_only` and provider `opencode`, reaches its model through the egress proxy rather than the provider relay, with that one host allowed for that run. Real work takes a key through the relay. The run's label says so, what the worker is told says so, and a launch with an operator's HTTP proxy for this upstream refuses
+
+**Source:** The operator, 2026-11-05, who chose this route over refusing at launch or requiring a key, and then made it a carve-out for testing; the designer's ruling of 2026-11-05, which amends the network containment design and ADR-0009
+
+**When:** **Now.** Item 22 of the Now list. Merge waits for a contained worker to get a model answer on the real path
+
+**Notes:** Filed by the Lead, and already being built. It can be removed later; nothing schedules that. It loses per-request visibility of that traffic. Free models also have a usage limit of their own on every route, and how far a day goes in a real run is unmeasured: when it runs out, the run ends with the turn's error until E149 parks it at attention, and the Lead's report naming it as the likely cause is owed. A keyed `opencode` worker through the relay is unmeasured. `aew-reviewer` reviews it
+
+*Later notes: `notes.d/E143/`, oldest first (`python tools/register.py show E143`).*
+
+### E144
+
+**Work:** `explain` with a `work_id`, entrypoint `harness.launch` and no `invocation` answers `-32603` from a `KeyError` at `engine/harness_ops.py:110`. It should be an input error
+
+**Source:** Found in the review of #328
+
+**When:** **Unscheduled**, any idle slot
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E144/`, oldest first (`python tools/register.py show E144`).*
+
+### E145
+
+**Work:** `test_the_clis_search_output_is_byte_identical_to_before_s2` depends on the real clock: the current arm hit the 2-second catch-up budget on a slow runner. Remove the clock from the test rather than raising the budget. Separately, a walk that finished is reported as incomplete when the budget trips after its last entry, which is a product defect
+
+**Source:** `ci` run 41947735176 on `main` at `05eafc4a`: 1 failure in at least 81 green `main` runs
+
+**When:** **Unscheduled**, any idle slot, unless it recurs
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E145/`, oldest first (`python tools/register.py show E145`).*
+
+### E146
+
+**Work:** `test_notifier_timeout_kills_the_process_tree` depends on the real clock: the 1.5-second timeout can kill the notifier before it writes its record. Hand-shake through the `tree=` seam, so the timeout starts after the record
+
+**Source:** `ci` run 41954626019, Windows, on #330's branch, whose diff does not touch it: 1 failure in at least 81 green `main` runs
+
+**When:** **Unscheduled**, any idle slot, unless it recurs
+
+**Notes:** Filed by the Lead. Cause inferred from the code and the log
+
+*Later notes: `notes.d/E146/`, oldest first (`python tools/register.py show E146`).*
+
+### E147
+
+**Work:** `test_a_waiter_parses_no_control_state_between_commits` bounds parses by commits, while `harness_ops.py:423-425` says a commit between its two reads costs one more parse. Bound parses by the identity changes the waiter saw, and inject a commit there as the repro. One fact has three owners, whose tuple order differs: `store.control_identity`, `harness_ops._control_identity` and `api._control_identity`
+
+**Source:** `ci` run 41957465614, Windows, on #330's branch, whose diff does not touch it: 1 real failure in at least 81 green `main` runs
+
+**When:** **Unscheduled**, any idle slot, unless it recurs
+
+**Notes:** Filed by the Lead. Cause inferred
+
+*Later notes: `notes.d/E147/`, oldest first (`python tools/register.py show E147`).*
+
+### E148
+
+**Work:** Show a run's provider route on the site. E143's label reaches `harness status` only, and the dashboard has no containment reader, though it is the operator's main view
+
+**Source:** The designer's ruling of 2026-11-05
+
+**When:** **Unscheduled**, the web developer's to place
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E148/`, oldest first (`python tools/register.py show E148`).*
+
+### E149
+
+**Work:** The 429 re-drive: OpenCode's in-step retry stays, with no patch, and the run supervisor's adapter re-drives in the turn-end path with a "rate-limited, waiting" turn state. The relay classifies a 429 where one is present and sets `x-should-retry`; elsewhere the trigger is the harness's claim. A classified hard quota is a blocked-on-you source. The budget is per episode, counts against `deadline_s` and never re-arms `max_steps`
+
+**Source:** The designer's rulings 9 and 10 of 2026-11-01, revision 2; the operator's decision of 2026-11-01, which amends BOY-03.a by addition
+
+**When:** **Unscheduled**, the operator's to place
+
+**Notes:** Filed by the Lead. It keys on a relay being present, not on the mode, because of E143. "AEW observed this; no agent raised it" overstates a park on E143's route. `aew-reviewer` reviews it
+
+*Later notes: `notes.d/E149/`, oldest first (`python tools/register.py show E149`).*
+
+### E150
+
+**Work:** Turn endings: the pack tells workers to end with their role record, never a question, and when a turn succeeds with no role evidence sealed the adapter continues it, within a per-dispatch envelope. It never continues a step-capped turn, and applies to workers only
+
+**Source:** The designer's rulings 9 and 10 of 2026-11-01, revision 2; the designer's decisions on the brief gap list of 2026-11-01, for the blocker
+
+**When:** **Unscheduled**, after E149, since they share the wait state and lock code
+
+**Notes:** Filed by the Lead. The "scope exceeds plan" blocker is built with it. `aew-reviewer` reviews it
+
+*Later notes: `notes.d/E150/`, oldest first (`python tools/register.py show E150`).*
+
+### E151
+
+**Work:** The launch conflict check for concurrent workers' files (`CNI-03.a`, `.g`): at dispatch, compare the new invocation's declared scope with each live invocation's scope and touched paths, and hold or serialize on a conflict, or where a live invocation's paths cannot be established. The check runs again at effect. Other resource kinds stay in HOLD-09
+
+**Source:** The operator's decision of 2026-11-01 selecting it; A-09
+
+**When:** **Unscheduled**, the operator's to place
+
+**Notes:** Filed by the Lead. `aew-reviewer` reviews it
+
+*Later notes: `notes.d/E151/`, oldest first (`python tools/register.py show E151`).*
+
+### E152
+
+**Work:** Measure one harness workaround from ruling 11, W1: the switch plus `OPENCODE_MODELS_PATH` through AEW's relayed launch, with the model offered and not config-declared. Measurement only
+
+**Source:** The designer's harness ruling 11 of 2026-11-01, revision 2
+
+**When:** **Unscheduled**, before any patch to the harness
+
+**Notes:** Filed by the Lead. Results are not recorded here
+
+*Later notes: `notes.d/E152/`, oldest first (`python tools/register.py show E152`).*
+
+### E153
+
+**Work:** Detectors for V3's `check-changes-snapshot` and `model-not-listed` cases. Naming the failing file means running the check, while doctor is structural only and nothing runs at init, so no detector exists. V3's case fails today with "fell back to today's workaround"
+
+**Source:** The vertical sweep of 2026-11-02; the scoreboard run of 2026-11-04
+
+**When:** **Unscheduled**, with E125. It needs a ruling on what may run, which the Lead takes to the designer
+
+**Notes:** Filed by the Lead. E125 names no detector, and the personal alpha gate needs this case
+
+*Later notes: `notes.d/E153/`, oldest first (`python tools/register.py show E153`).*
+
+### E154
+
+**Work:** Checked launch briefs (A-47, LB01): the brief checker's build, which passes LB01-Q01 to Q22; the `brief` group's registry line in its own PR; the pre-F4 `brief` correction; and the release adding the two lists, with its format value and migration step
+
+**Source:** A-47, adopted 2026-11-01
+
+**When:** **Unscheduled**, the operator's to place
+
+**Notes:** Filed by the Lead. The child defaults follow LB01-B4. The fact process is containment-adjacent, so `aew-reviewer` reviews the checker
+
+*Later notes: `notes.d/E154/`, oldest first (`python tools/register.py show E154`).*
+
+### E155
+
+**Work:** `docs/guides/quickstart.md`'s hand-driven path tells the operator to give an implementer its credential, while `cli/credentials.py` tells them to keep it out of any agent's reach. Decide which holds, then make both say it
+
+**Source:** Found while making packs true, 2026-11-04
+
+**When:** **Unscheduled**, a question the Lead takes to the designer
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E155/`, oldest first (`python tools/register.py show E155`).*
 
 ### E47
 

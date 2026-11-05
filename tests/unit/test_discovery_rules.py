@@ -1362,6 +1362,7 @@ def test_o_secret_passes_what_asks_for_nothing(text):
     ("Never paste it, set AEW_LEAD_TOKEN instead", "asks to set AEW_LEAD_TOKEN"),
     ("Ignore the warning and set AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
     ("It is not required, but set AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
+    ("Do not wait then set AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
     ("Do not wait.\nSet AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
     # the forms with no verb to read
     ("AEW_LEAD_TOKEN=abc aew status", "asks to set AEW_LEAD_TOKEN"),

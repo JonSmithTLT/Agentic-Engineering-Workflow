@@ -428,9 +428,17 @@ shrink.
     request carries the `operator-merge` label, read live. That label reserves the merge for the operator
     (AGENTS.md §5), so the operator's merge is the sign-off. Without it, the residual fails as growth, naming the
     key.
+  - A rule's mode lowered from `enforce` against the base fails the same way, because it stops the rule failing
+    anything: it passes only with that label.
   - A capture error fails the run on every event: an output left unjudged is not a pass.
-- **On main's full run and nightly,** the same tool also reports every listed key no longer observed as **stale**. A
-  stale key fails the run if its rule is in `enforce`, until a pull request removes it. CI never commits the removal.
+- **On any run complete for it,** the same tool also reports every listed key no longer observed as **stale**: the
+  run's tier is full and the assurance check passed, so every test ran and passed. That is main's full run, nightly,
+  and a full-tier pull request, which therefore fails on the change that retires an output rather than reddening main
+  after its merge. A reduced tier or a lost shard decides nothing stale, and says so. A stale key fails the run if its
+  rule is in `enforce`, until a pull request removes it (`discovery_ratchet.py --remove`, which reads no reports). CI
+  never commits the removal.
+- **A failing key** comes first in the report and is never cut, with what fired, the test that reached it and what to
+  do. Keys that fail nothing follow, up to 40 per list.
 - **Static texts** are decided on every pull request by a fast-lane test
   (`test_the_static_texts_add_no_new_key_of_an_enforced_rule`), so a required job (`core`) carries the decision. The
   scan is complete, so its new and stale keys are decided on every run. The `discovery` lane, in its own workflow

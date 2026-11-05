@@ -654,7 +654,7 @@ class Harness:
                         if e["producer"].get("run") == run]
             evidence = sorted(e["id"] for e in produced)
             if status in (K.STARTING, K.RUNNING):
-                action = f"{run} is running for {inv_id}: follow it with `aew harness wait {run}`"
+                action = f"{run} is running for {inv_id}: follow it with `harness_wait` (`aew harness wait {run}`)"
             elif status == K.ENDED_WITH_EVIDENCE:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
                           f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")

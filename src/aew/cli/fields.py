@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import re
+from collections.abc import Callable
 from typing import Any
 
 import yaml
@@ -135,8 +136,10 @@ def _scalar(value: Any, key: str) -> str:
     return str(value)
 
 
-def expand(argv: list[str], parser: argparse.ArgumentParser) -> list[str]:
-    """Replace ``--fields FILE|-`` with ``--name=value`` arguments, one per value, never through a shell."""
+def expand(argv: list[str], parser: argparse.ArgumentParser, *,
+           read: Callable[[str], str] = read_text_input) -> list[str]:
+    """Replace ``--fields FILE|-`` with ``--name=value`` arguments, one per value, never through a shell. ``read`` gets
+    the mapping's text: D2's O-CMD gives it a printed heredoc's body, on whatever thread judges the output."""
     at = [i for i, a in enumerate(argv) if a == OPTION or a.startswith(OPTION + "=")]
     if not at:
         return argv
@@ -151,7 +154,7 @@ def expand(argv: list[str], parser: argparse.ArgumentParser) -> list[str]:
         source, head, rest = argv[i].split("=", 1)[1], argv[:i], argv[i + 1:]
     if source == "-" and "-" in head + rest:
         raise UsageError("only one input can read stdin: both --fields and another option name `-`")
-    data = _load(read_text_input(source))
+    data = _load(read(source))
     command = _command_parser(parser, head)
     tokens: list[str] = []
     for key, value in data.items():

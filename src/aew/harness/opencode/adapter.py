@@ -50,7 +50,15 @@ from typing import Any
 from aew.errors import HarnessError, HarnessIncompatible, HarnessLaunchFailed, ValidationFailed
 from aew.harness import agentenv, runlog, weaker_register
 from aew.harness import usage as U
-from aew.harness.base import HarnessAdapter
+from aew.harness.base import (
+    KEY_IN_SANDBOX,
+    PROVIDER_ENV_UNUSABLE,
+    RELAY_FAMILY_MATCHES,
+    RELAY_FAMILY_MISMATCH,
+    RELAY_FAMILY_REFUSED,
+    RELAY_FAMILY_UNVERIFIED,
+    HarnessAdapter,
+)
 from aew.harness.containment import netns
 from aew.harness.contract import (
     AGENT_LOAD_TIMEOUT,
@@ -166,7 +174,7 @@ def server_env(base: dict[str, str], state_dir: Path, *, provider_env: list[str]
     problems = agentenv.provider_env_problems(provider_env, base)
     if problems:
         raise HarnessIncompatible("the execution policy's provider_env cannot be passed to the harness server: "
-                                  + "; ".join(why for _, why in problems), reason="provider_env",
+                                  + "; ".join(why for _, why in problems), reason=PROVIDER_ENV_UNUSABLE,
                                   variables=[name for name, _ in problems])
     for name in provider_env:
         env[name] = str(agentenv.lookup(base, name))  # the same lookup the checks use (Windows: any case)
@@ -198,11 +206,9 @@ def declared_only(model: dict[str, Any]) -> bool:
         "id")
 
 
-# The relay-route check of the pinned model's family (``relay_family``): what the launch record keeps, and the one
-# reason it refuses with. Closed. The reason is the refusal's own detail today: no launcher output or file carries it
-# yet; the supervisor's acknowledgement carries it from the pull request after #330 (register E143).
-RELAY_FAMILY_MATCHES, RELAY_FAMILY_UNVERIFIED, RELAY_FAMILY_MISMATCH = "matches", "unverified", "mismatch"
-RELAY_FAMILY_REFUSED = "relay_family_mismatch"
+# The relay-route check of the pinned model's family (``relay_family``): its results and the reason it refuses with are
+# the harness's closed launch report (``aew.harness.base``), which the supervisor puts on the run's label and passes on
+# in its acknowledgement (register E143).
 
 
 def _served_at(address: Any) -> tuple[str, str, int, str] | None:
@@ -371,7 +377,7 @@ class OpenCodeAdapter(HarnessAdapter):
                 raise HarnessIncompatible(f"the value of {', '.join(leaked)} would reach the run's sandbox in the "
                                           "harness's environment or configuration, so the harness was not started; "
                                           "keep the provider's key out of every other variable and setting",
-                                          reason="provider_secret_in_sandbox", variables=leaked)
+                                          reason=KEY_IN_SANDBOX, variables=leaked)
         spawn = self.tree.spawn if network is None else functools.partial(self.tree.spawn, network_shim=True)
         self.server = Server.start(spawn, command, env=env, cwd=self.directory, log_path=self.state_dir / "server.log",
                                    **({"port": netns.SERVER_PORT, "unix": network.server_socket}

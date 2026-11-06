@@ -48,6 +48,7 @@ from aew.errors import (
 from aew.harness import containment, procs, runlog
 from aew.harness import contract as K
 from aew.harness import delivery as L
+from aew.harness.base import LAUNCH_REFUSALS, RELAY_FAMILY_SHOWN
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
 from aew.policy import execution as X
@@ -233,8 +234,9 @@ class Harness:
         if not started["started"]:
             raise HarnessLaunchFailed(f"{run} failed to start: {started.get('reason')}", **out,
                                       status=started.get("status"), reason=started.get("reason"),
-                                      **_acknowledged_code(started))
-        return {**out, "status": K.RUNNING, **{k: v for k, v in started.items() if k in {"harness", "session"}}}
+                                      **_acknowledged_code(started), **_acknowledged_report(started))
+        return {**out, "status": K.RUNNING, **{k: v for k, v in started.items() if k in {"harness", "session"}},
+                **_acknowledged_report(started)}
 
     def _regenerated_pack(self, state: dict[str, Any], inv_id: str) -> dict[str, Any]:
         inputs, _ = self.packs.pack_inputs(state, inv_id)
@@ -769,6 +771,20 @@ def _acknowledged_code(ack: dict[str, Any]) -> dict[str, str]:
     if not isinstance(code, str) or code not in K.LAUNCH_FAILURE_CODES:
         code = K.UNKNOWN_LAUNCH_FAILURE
     return {"reason_code": code, "reason_code_source": "acknowledgement"}
+
+
+def _acknowledged_report(ack: dict[str, Any]) -> dict[str, str]:
+    """What the launch reports beside its status, from the supervisor's acknowledgement (register E143), closed like
+    its code: a started launch's relay-route check of the pinned model's family (``unverified`` says nothing decided
+    it), and a refused launch's own reason (``refusal``). A value outside ``aew.harness.base``'s closed sets is not
+    passed on."""
+    out: dict[str, str] = {}
+    family, refusal = ack.get("relay_family"), ack.get("refusal")
+    if ack.get("started") and isinstance(family, str) and family in RELAY_FAMILY_SHOWN:
+        out["relay_family"] = family
+    if not ack.get("started") and isinstance(refusal, str) and refusal in LAUNCH_REFUSALS:
+        out["refusal"] = refusal
+    return out
 
 
 def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, Any]]:

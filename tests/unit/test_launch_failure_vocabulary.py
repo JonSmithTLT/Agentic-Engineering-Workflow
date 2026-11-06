@@ -7,6 +7,7 @@ from __future__ import annotations
 import pytest
 
 from aew.engine import harness_ops
+from aew.harness import base as B
 from aew.harness import contract as K
 from aew.harness.opencode import adapter as opencode
 
@@ -26,6 +27,67 @@ def test_launch_and_adapter_reason_codes_are_disjoint_and_lowercase():
     # The mapping only ever yields the closed set, whatever it is asked.
     asked = [None, "", "AEW_ERROR", "STALE_AUTHORITY", "HARNESS_INCOMPATIBLE", K.PROVIDER_AUTH_FAILED]
     assert {K.launch_failure_code(site, code) for site in SITES for code in asked} <= K.LAUNCH_FAILURE_CODES
+
+
+def test_a_launch_reports_only_closed_values_beside_its_status_and_its_code():
+    """What an adapter's launch reports beside its status (register E143) is closed like its code: the relay-route
+    check a started launch shows, and the adapter's refusal reason a refused one carries, are lowercase and apart from
+    the launch-failure and adapter codes; the adapter's own refusal reasons are all in the set."""
+    every = K.LAUNCH_FAILURE_CODES | K.ADAPTER_REASON_CODES
+    assert all(r == r.lower() and r.isidentifier() for r in B.LAUNCH_REFUSALS) and not B.LAUNCH_REFUSALS & every
+    assert B.RELAY_FAMILY_SHOWN == {B.RELAY_FAMILY_MATCHES, B.RELAY_FAMILY_UNVERIFIED}
+    assert B.RELAY_FAMILY_MISMATCH not in B.RELAY_FAMILY_SHOWN  # a mismatch refuses the launch
+    assert {opencode.RELAY_FAMILY_REFUSED, opencode.KEY_IN_SANDBOX, opencode.PROVIDER_ENV_UNUSABLE} == B.LAUNCH_REFUSALS
+
+
+@pytest.mark.parametrize(("ack", "passed_on"), [
+    ({"started": True, "relay_family": "unverified"}, {"relay_family": "unverified"}),
+    ({"started": True, "relay_family": "matches"}, {"relay_family": "matches"}),
+    ({"started": True, "relay_family": "mismatch"}, {}),  # never on a started launch: a mismatch refuses
+    ({"started": True, "relay_family": "trust me"}, {}),
+    ({"started": True, "refusal": "relay_family_mismatch"}, {}),  # a started launch refused nothing
+    ({"started": False, "refusal": "relay_family_mismatch"}, {"refusal": "relay_family_mismatch"}),
+    ({"started": False, "refusal": "provider_secret_in_sandbox"}, {"refusal": "provider_secret_in_sandbox"}),
+    ({"started": False, "refusal": "anything else"}, {}),
+    ({"started": False, "relay_family": "unverified"}, {}),
+])
+def test_the_launcher_passes_on_only_a_closed_report_from_the_acknowledgement(ack, passed_on):
+    """The supervisor's acknowledgement crosses a process boundary; the launcher passes on beside the run's status
+    only the closed values (register E143), as it does the closed code."""
+    assert harness_ops._acknowledged_report(ack) == passed_on
+
+
+@pytest.mark.parametrize("ack", [{"started": True, "relay_family": ["unverified"]},
+                                 {"started": False, "refusal": {"relay_family_mismatch": 1}}])
+def test_an_unhashable_value_in_the_acknowledgement_is_dropped_not_raised(ack):
+    assert harness_ops._acknowledged_report(ack) == {}
+
+
+@pytest.mark.parametrize(("check", "shown"), [
+    ("matches", "matches"), ("unverified", "unverified"),
+    ("mismatch", None),  # a mismatch refuses the launch, so a started one never shows it
+    ("trust me", None), (None, None), (["unverified"], None),
+])
+def test_the_supervisor_puts_only_a_closed_relay_check_on_the_label_and_the_acknowledgement(check, shown):
+    """The supervisor's side of the closing (register E143; #339 review m2): ``relay_family_of`` reads the adapter's
+    launch report and gives only a value a started launch may show."""
+    assert B.relay_family_of({"health": {"relay_family": {"check": check}}}) == shown
+    assert B.relay_family_of({"health": {"relay_family": check}}) is None  # not the report's shape
+    assert B.relay_family_of(None) is None and B.relay_family_of({}) is None
+
+
+@pytest.mark.parametrize(("reason", "carried"), [
+    ("relay_family_mismatch", "relay_family_mismatch"), ("provider_secret_in_sandbox", "provider_secret_in_sandbox"),
+    ("provider_env", "provider_env"),
+    ("no_upstream", None),  # a ContainmentUnavailable's reason is not an adapter's refusal
+    ("bad_egress_allow", None), ("incompatible_config", None), ("anything", None), (None, None),
+    (["provider_env"], None),
+])
+def test_the_supervisor_carries_only_a_closed_refusal_reason(reason, carried):
+    """The supervisor's side of the closing (register E143; #339 review m2): ``refusal_of`` reads an error's details
+    and gives only one of the adapters' closed refusal reasons."""
+    assert B.refusal_of({"reason": reason}) == carried
+    assert B.refusal_of(None) is None and B.refusal_of({}) is None
 
 
 @pytest.mark.parametrize("code", sorted(N8))

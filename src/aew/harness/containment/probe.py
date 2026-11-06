@@ -576,6 +576,11 @@ def _network(layout: Layout, *, egress_policy: Any, bridge: str | None) -> Itera
                                            listener=netns.listen(os.path.join(directory, PROBE_EGRESS))).start()
                 stack.callback(proxy.close)
                 state["egress"] = True
+                # What row 1 checked, as the run's label says it (``RunNetwork.describe``): the allowlist, or the
+                # policy's name for one that has none (the contained Lead's ``any_public``) (register E143).
+                described = egress_policy.describe()
+                state["egress_checked"] = ({"egress_allow": described["allow"]} if "allow" in described
+                                           else {"egress_policy": described.get("policy")})
         held = socket.create_server(("127.0.0.1", 0))
         stack.callback(held.close)
         abstract = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)  # pyright: ignore[reportAttributeAccessIssue]
@@ -846,6 +851,7 @@ def _row1(layout: Layout, seen: dict[str, Any], net: dict[str, Any] | None) -> d
         problems.append(f"the bridge does not answer inside by its path ({inside.get('bridge')})")
     return _row("network", problems, mode=layout.network, netns={"inside": inside.get("netns"), "launcher": launcher},
                 provider_relay="probe upstream" if net["relay"] else "none", egress=net["egress"],
+                **(net.get("egress_checked") or {}),
                 egress_refused={"target": planted, "why": why} if net["egress"] else None,
                 checks={k: inside.get(k) for k in ("direct", "direct_udp", "direct6", "host_port", "host_abstract",
                                                    "bridge", "server")},

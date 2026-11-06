@@ -2006,6 +2006,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E179/`, oldest first (`python tools/register.py show E179`).*
 
+### E180
+
+**Work:** The Lead's MCP server starts as a bare `aew lead mcp` (`projection.py`'s `LEAD_MCP_COMMAND`), so it runs whichever `aew` is first on the path, not the interpreter and code the Lead runs. In a mixed setup (a development copy, an upgrade mid-session, two virtual environments) the Lead's typed tools fail with only "connection closed". Start the server with the Lead's own interpreter (`sys.executable -m aew lead mcp`, or its equivalent resolved at start), keep the sandbox's binds covering that interpreter, and test that the configured command names the running interpreter
+
+**Source:** The operator's live check of 2026-11-06: a contained Lead started from a branch copy, whose sandbox's `aew` was another tree's editable install
+
+**When:** **Unscheduled**, small, any time. It helps every test that runs a Lead from a copy
+
+**Notes:** Filed by the Lead, at the operator's request
+
+*Later notes: `notes.d/E180/`, oldest first (`python tools/register.py show E180`).*
+
 ### E47
 
 **Work:** Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do), a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the classifier with a test pinning the case; repeated wall-clock violations on `main` open or update a CI-health issue

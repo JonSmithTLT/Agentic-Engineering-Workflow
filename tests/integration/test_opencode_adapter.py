@@ -107,7 +107,11 @@ def test_the_projection_reaches_the_server_and_the_session(lab, tmp_path):
     denied = [projection.rule(a, "deny") for a in projection.ALWAYS_DENIED]
     private = projection.private_output_dirs(os.path.realpath(hdir), os.sep,
                                              scratch=os.path.realpath(hdir.parent / "scratch"))
-    assert config["permissions"][-7:] == denied + [projection.rule("external_directory", "allow", p) for p in private]
+    # then the run's copy of the skills its card (`engineer`) is offered: readable, never editable (E127)
+    at = projection.skills_at(os.path.realpath(hdir), os.sep)
+    assert config["permissions"][-9:] == denied + [projection.rule("external_directory", "allow", p) for p in private] \
+        + [projection.rule("external_directory", "allow", at.pattern), projection.rule("edit", "deny", at.pattern)]
+    assert config["skills"] == [at.folder]
     assert projection.rule("edit", "allow") in config["permissions"]  # an implementer
     assert config["plugins"] == [projection.COMPATIBILITY_PLUGIN] and config["share"] == "disabled"
     # the server's environment: the named provider variable, private state, no project config, and of AEW's only its
@@ -758,9 +762,16 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
     shown = out.json
     used = json.loads((harness_dir(lab) / "opencode-config.json").read_text(encoding="utf-8"))
     assert shown["for_run"] == "R-INV-0001-2"  # the next run: the same rules, its own private output directories
-    # The run's own private output directories and scratch directory come last.
-    assert shown["config"]["permissions"][:-4] == used["permissions"][:-4]
-    assert all("R-INV-0001-2" in r["resource"] for r in shown["config"]["permissions"][-4:])
+    # The run's own private output directories and scratch directory come last, then its copy of the skills its card
+    # (`engineer`, the default) is offered: readable and never editable (E127).
+    assert shown["config"]["permissions"][:-6] == used["permissions"][:-6]
+    assert all("R-INV-0001-2" in r["resource"] for r in shown["config"]["permissions"][-6:])
+    assert [r["action"] for r in shown["config"]["permissions"][-2:]] == ["external_directory", "edit"]
+    ran = lab.record("R-INV-0001-1")["launch"]["skills"]  # one plan: what the run got is what config shows
+    assert ran["copy"] in ("read_only_bind", "rules_only") and {k: v for k, v in ran.items() if k != "copy"} == shown[
+        "skills"]
+    assert shown["skills"]["exposed"] == ["c-development", "python-development"] == sorted(
+        p.name for p in (harness_dir(lab) / "skills").iterdir())
     assert shown["session"]["model"] == {"providerID": "fakeprov", "id": "fake-model", "variant": "high"}
     assert shown["server_env"]["provider_variables"] == ["OPENAI_API_KEY"]
     lead = lab.ok("harness", "config", "opencode", "--lead")

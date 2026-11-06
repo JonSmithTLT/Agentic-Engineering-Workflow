@@ -212,16 +212,23 @@ def test_a_stray_file_at_the_root_or_a_nested_skill_is_found(tmp_path):
 
 
 def test_a_copy_that_would_hold_a_nested_skill_drops_that_skill_and_the_run_goes_on(tmp_path, monkeypatch):
-    """A4 at the copy: whatever ``check`` hands over, ``deliver`` leaves nothing at the root but allow-listed files."""
-    real = skills.check
+    """A4 at the copy: whatever ``check`` hands over, ``deliver`` leaves nothing at the root but allow-listed files. The
+    planted file is in the manifest's hash too, so the copy's re-hash passes and only the root's own check stands."""
+    real, real_entries = skills.check, skills.entries()
+    nested = b"---\nname: x\n---\n"
+    files = {**real_entries["c-development"]["files"], "references/SKILL.md": hashlib.sha256(nested).hexdigest()}
+    entries = {**real_entries, "c-development": {**real_entries["c-development"], "files": files,
+                                                 "sha256": skills.tree_sha256(files)}}
+
+    checked = {n: real(n) for n in ("c-development", "python-development")}  # before the manifest is planted
 
     def planted(name: str):
-        why, files = real(name)
-        return (why, {**files, "references/SKILL.md": b"---\nname: x\n---\n"}) if name == "c-development" else (why,
-                                                                                                            files)
+        why, found = checked[name]
+        return (None, {**found, "references/SKILL.md": nested}) if name == "c-development" else (why, found)
 
-    monkeypatch.setattr(skills, "check", planted)
     planned = skills.plan([], ["c-development", "python-development"])
+    monkeypatch.setattr(skills, "check", planted)
+    monkeypatch.setattr(skills, "entries", lambda: entries)
     root = tmp_path / "skills"
     delivered = skills.deliver(planned, root)
     assert delivered["exposed"] == ["python-development"]
@@ -257,6 +264,7 @@ def test_the_skill_rules_are_exactly_the_copied_set_with_the_folder_readable_and
     planned = skills.plan(["adversarial-review", "security-review"], ["c-development", "frontend-design"])
     root = tmp_path / "skills"
     delivered = skills.deliver(planned, root)
+    assert delivered["exposed"] == planned["exposed"] == ["adversarial-review", "c-development"]  # never widened
     c = contract(role=role, planned=delivered)
     config = projection.invocation_config(c, skills_dir=AT)
     rules = config["permissions"]

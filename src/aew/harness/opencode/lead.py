@@ -173,6 +173,23 @@ def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | No
             "env_names": sorted([*env, *lead_broker.ENV_NAMES]), "provider_env": provider_env, "notes": notes}
 
 
+def no_provider_line(provider_env: list[str], base: Mapping[str, str]) -> str | None:
+    """The uncontained Lead's start line when nothing gives it a provider: no ``--provider-env`` and no stored login
+    for a provider its configuration leaves on (review of #340, m2). It is a line, not a refusal: an OpenCode
+    configuration of the operator's own may name a provider AEW does not read."""
+    from aew.harness.containment import netns
+
+    if provider_env:
+        return None
+    logins, _why = login.stored(base)
+    if any(entry.integration not in projection.LEAD_DENIED_PROVIDERS for entry in logins):
+        return None
+    return ("aew opencode: no provider is configured for the Lead, and the Lead's configuration switches OpenCode's "
+            f"own providers off: AEW does not use OpenCode's free models. {netns.FREE_TIER_RULE} Log in with your own "
+            "OpenCode at your own terminal (`opencode auth login`), or pass a key with `--provider-env NAME`, then "
+            "start `aew opencode` again.\n")
+
+
 def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: bool, provider_env: list[str],
         extra_args: list[str], print_config: bool) -> dict[str, Any]:
     if print_config:
@@ -202,6 +219,9 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     if provider_env:
         sys.stderr.write(f"aew opencode: {', '.join(provider_env)} passed to the Lead's OpenCode; the Lead model's "
                          "shell commands can read it.\n")
+    line = no_provider_line(provider_env, os.environ)
+    if line is not None:
+        sys.stderr.write(line)
     out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                   env=env, contained=weaker)
     return {**out, "opencode": version}

@@ -210,9 +210,10 @@ def test_at_most_twenty_distinct_targets_are_named_and_the_rest_are_counted():
     ("opencode.ai:443", "opencode.ai:443"),                         # right: as authority() gives it
     ("[2001:db8::1]:443", "[2001:db8::1]:443"),                     # right: an address
     ("Evil\x1b[31m<b>\"x\"</b>\n:443", "evil[31mbxb:443"),       # wrong: control, markup and quotes go
-    ("a" * 300 + ":443", "a" * egress.REFUSED_TARGET_MAX),          # wrong: cut to a host name's longest
+    ("a" * 300 + ":443", "a" * egress.REFUSED_TARGET_MAX + ":443"),  # wrong: the host cut, its port kept (n4)
+    ("a" * 300, "a" * egress.REFUSED_TARGET_MAX),                   # wrong: no port, the whole cut
     ("", ""),                                                       # missing: nothing
-], ids=["name", "ipv6", "markup", "long", "empty"])
+], ids=["name", "ipv6", "markup", "long", "long-no-port", "empty"])
 def test_a_refused_target_is_kept_in_a_closed_character_set_and_cut(text, kept):
     assert egress.refused_target(text) == kept
     assert set(kept) <= set("abcdefghijklmnopqrstuvwxyz0123456789.:[]-")

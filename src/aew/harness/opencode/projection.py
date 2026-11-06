@@ -222,8 +222,11 @@ LEAD_MCP_COMMAND = ["aew", "lead", "mcp"]
 # `--output x` anywhere after the subcommand; git takes no abbreviation of either (checked: `--outp=` and `--ext` are
 # refused). A global option before the subcommand (`git -C dir diff`) matches none of these allows, so it asks too.
 LEAD_GIT_READS = ("git status*", "git diff*", "git log*", "git show*")
-LEAD_GIT_ASKS = tuple(f"git {cmd}*{option}*" for cmd in ("diff", "log", "show")
-                      for option in ("--output", "--ext-diff"))
+# They also ask for a comparison outside the working tree and for a read naming a `.env` file (the designer,
+# 2026-11-06). Other spellings and shell globs aren't matched: a containment-level mask is the follow-on.
+LEAD_GIT_ASKS = (*(f"git {cmd}*{option}*" for cmd in ("diff", "log", "show") for option in ("--output", "--ext-diff")),
+                 "git diff*--no-index*", "git diff*/dev/null*",
+                 *(f"git {cmd}*.env*" for cmd in ("diff", "log", "show")))
 
 LEAD_RULES = [
     rule("*", "ask"),
@@ -282,8 +285,9 @@ LEAD_SYSTEM = "\n".join([
     # approves. The rules are unchanged (`LEAD_RULES`): a command that asks still waits on the operator. OpenCode's
     # prompt is the one approval; a yes typed in chat is not a second gate (#304 review, m2; the designer).
     "- Do not implement substantial changes yourself. You cannot edit files in this session, but you can read and "
-    "search them with your read, glob and grep tools. The shell runs `aew` and `git status|diff|log|show` directly "
-    "(with `--output` or `--ext-diff`, those ask). "
+    "search them with your read, glob and grep tools (`.env` files aren't readable; `.env.example` is). The shell "
+    "runs `aew` and `git status|diff|log|show` directly (a few of their options and paths ask, a `.env` file named "
+    "among them). "
     "Any other command asks the operator's permission first: when the operator asks for one, such as running the "
     "tests or a script, or one is needed to do what they asked, request it by running it: OpenCode asks the "
     "operator, and it runs once they approve. That prompt is the approval: you may say in a line what you are about "

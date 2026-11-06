@@ -365,3 +365,21 @@ def test_rules_hold_when_only_denials_follow_aews_rules():
     assert "widen" in rules_hold(defaults + want + [rule("shell", "ask")], want)
     assert "missing" in rules_hold(defaults + [want[1], want[0], want[2]], want)
     assert "missing" in rules_hold(defaults + want[:2], want)
+
+
+def test_the_uncontained_lead_names_the_way_on_only_when_nothing_gives_it_a_provider(monkeypatch):
+    """Review of #340, m2: off Linux the Lead starts as it is, and one start line says why it would have no model when
+    no `--provider-env` is passed and no stored login is for a provider its configuration leaves on. A stored login
+    for OpenCode's own providers doesn't count: the configuration switches them off. The logins are stand-ins."""
+    from aew.harness.opencode import lead, login
+
+    stored: list[login.Login] = []
+    monkeypatch.setattr(login, "stored", lambda env: (list(stored), None))
+    line = lead.no_provider_line([], {})
+    assert line is not None and "(`opencode auth login`)" in line and "`--provider-env NAME`" in line
+    assert "https://opencode.ai/docs/zen/" in line
+    assert lead.no_provider_line(["OPENAI_API_KEY"], {}) is None
+    stored[:] = [login.Login("opencode", "key", "api"), login.Login("opencode-go", "key", "api")]
+    assert lead.no_provider_line([], {}) is not None
+    stored.append(login.Login("openai", "oauth", "oauth"))
+    assert lead.no_provider_line([], {}) is None

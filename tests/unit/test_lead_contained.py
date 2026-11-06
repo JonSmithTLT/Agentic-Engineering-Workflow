@@ -624,6 +624,21 @@ def test_the_leads_git_reads_that_write_a_file_or_run_a_program_ask_and_the_plai
         assert effect(rules, "shell", command) == "ask", command
 
 
+def test_the_leads_git_reads_ask_for_a_comparison_outside_the_working_tree_and_for_a_read_naming_an_env_file():
+    """The designer, 2026-11-06: the Lead's auto-allowed git reads also ask for comparisons outside the working tree
+    and for reads naming `.env` files. Other spellings and shell globs aren't matched; a containment-level mask is the
+    follow-on. The text says so, and `.env.example` stays readable. Nothing here runs git."""
+    rules = projection.lead_config()["agents"][projection.LEAD_AGENT]["permissions"]
+    for command in ("git diff --no-index a b", "git diff --no-index -- a b", "git diff /dev/null b",
+                    "git diff --stat /dev/null b", "git diff .env", "git diff HEAD -- .env.local", "git log -p -- .env",
+                    "git show HEAD:.env", "git show HEAD:config/.env.production"):
+        assert effect(rules, "shell", command) == "ask", command
+    for command in ("git diff", "git log -5", "git show HEAD", "git diff HEAD -- src/aew", "git log --oneline -3"):
+        assert effect(rules, "shell", command) == "allow", command
+    assert "(`.env` files aren't readable; `.env.example` is)" in projection.LEAD_SYSTEM
+    assert "a `.env` file named among them" in " ".join(projection.LEAD_SYSTEM.split())
+
+
 def test_the_lead_text_requests_a_command_that_asks_and_keeps_edits_and_commits_with_invocations():
     """Addendum 11: two sentences, read together, made the Lead refuse a command its rules ask about ("a permission
     approval wouldn't override them", the operator's trial of 2026-10-30). The text now says to request such a command

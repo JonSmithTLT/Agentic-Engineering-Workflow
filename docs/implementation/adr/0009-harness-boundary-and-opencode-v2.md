@@ -1789,15 +1789,18 @@ acknowledgements.
   entry under `providers`, which would switch the provider on. The contained Lead, the Lead that is not contained
   and `--print-config` all get it. `Config.InfoEncoded`'s `experimental` and `experimental.policies` join the checked
   configuration keys (`capabilities.py`), so a release that respells them is refused at a worker's launch; the Lead's
-  TUI is checked for its version only, not probed. Which document's policy wins when the Lead that is not contained
-  merges this over the operator's own configuration is not established.
+  TUI is checked for its version only, not probed. So the cost of a respelling falls on workers' launches, whose
+  configuration doesn't carry the deny, and the Lead that does carry it is never probed. Which document's policy wins
+  when the Lead that is not contained merges this over the operator's own configuration is not established.
 - **A contained Lead with no provider relayed is refused at start** (`provider_key_missing`, before the seat and the
   sandbox; `ContainedLead.require_provider`), after its start lines say what was found: with no key and no
   refreshing login relayed it would have no model. The message quotes the published rule and names the operator's
   fixes: `opencode auth login` at their own terminal, or `--provider-env NAME`. It replaces the start line of the
   amendment of 2026-10-25 that said only the free models work; opencode's own key stays not served, and the start
   line says the Lead's configuration switches `opencode` off. The seeded `model.json` needs no change: the TUI skips
-  an entry naming a model that is not offered.
+  an entry naming a model that is not offered. The Lead that is not contained (Windows) starts as it is, and one
+  start line names the same fixes when no `--provider-env` is passed and no stored login is for a provider its
+  configuration leaves on (`lead.no_provider_line`).
 - **A run's refused egress targets are recorded, and only recorded** (the designer's ruling of 2026-11-06): the
   egress proxy keeps each `CONNECT` target it refuses (403), as `host:port` in a closed character set, cut to 253
   characters; at most 20 distinct targets a run, then a count of the refusals of any other
@@ -1814,8 +1817,14 @@ acknowledgements.
 - **The live lanes** have no default model: `tests/helpers/harness_conformance.py`'s `LIVE_MODEL` and the model lane
   read `AEW_LIVE_OPENCODE_MODEL`, a keyed paid model the operator names and approves for each run, and skip without
   it. No key is in code.
-- **Not established:** whether the deny holds on every recompute at runtime (the live check covers the contained
-  Lead's start); which policy wins in the Lead that is not contained; what call a worker's refused side request was.
+- **The live check** ran on 2026-11-06, on Rocky 8 with OpenCode 2.0.18, approved for the event. A contained Lead with
+  no provider was refused at start (`provider_key_missing`), with the seat left vacant and no sandbox. The deny held
+  on a real server: with one synthetic key, the provider and model listings named `opencode` without the deny and
+  only the keyed provider with the Lead's configuration (`opencode-go`, which needs its own subscription, was in
+  neither). A contained Lead on the operator's stored login, relayed, listed no OpenCode provider and answered one
+  prompt.
+- **Not established:** whether the deny holds on every later recompute at runtime; which policy wins in the Lead that
+  is not contained; what call a worker's refused side request was.
 - **Tests:** `tests/unit/test_provider_key_refusal.py` (the predicate, both launch checks, the refused-target record
   and its note, the checked keys); `tests/integration/test_launch_readiness_named.py` (a refused launch and doctor's
   line on Linux, and no Lead read carrying the record); `tests/unit/test_lead_contained.py` (the Lead's refusal);

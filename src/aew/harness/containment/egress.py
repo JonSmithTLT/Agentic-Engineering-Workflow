@@ -118,10 +118,14 @@ def authority(text: str) -> tuple[str, int]:
 
 
 def refused_target(target: str) -> str:
-    """``target`` as the run's record keeps it: only :data:`REFUSED_TARGET_CHARS`'s characters, cut to
-    :data:`REFUSED_TARGET_MAX`. What :func:`authority` passes is already in that set; this holds whatever reaches
-    the record."""
-    return REFUSED_TARGET_CHARS.sub("", target.lower())[:REFUSED_TARGET_MAX]
+    """``target`` as the run's record keeps it: only :data:`REFUSED_TARGET_CHARS`'s characters, with the host cut to
+    :data:`REFUSED_TARGET_MAX` before its port is put back, so a long host keeps its port (review of #340, n4). What
+    :func:`authority` passes is already in that set; this holds whatever reaches the record."""
+    kept = REFUSED_TARGET_CHARS.sub("", target.lower())
+    host, colon, port = kept.rpartition(":")
+    if not (colon and host and port.isdigit() and len(port) <= 5):
+        return kept[:REFUSED_TARGET_MAX]
+    return f"{host[:REFUSED_TARGET_MAX]}:{port}"
 
 
 def _literal(host: str) -> peer.IP | None:

@@ -187,7 +187,7 @@ series says so on its line. It reports, and gates nothing.
 | Counter | What counts |
 |---|---|
 | `credentials` | any AEW credential the operator had to see, copy, paste or set (one entry per event) |
-| `env_vars` | any environment variable the operator had to set. In offline mode the provider key is also 0 (the fake needs none); the live variant reports it separately. |
+| `env_vars` | any environment variable the operator had to set. In offline mode the provider key is also 0: the world sets a synthetic key (`FAKEPROV_API_KEY`) itself, and the operator sets none. The live variant reports the provider key separately. |
 | `raw_yaml` | any file under `.aew/policy/` edited by hand after setup |
 | `revisions` | any operator input containing a control-state revision (`expect_rev` or a number read from `status`) |
 | `generations` | any operator input containing a Lead generation |

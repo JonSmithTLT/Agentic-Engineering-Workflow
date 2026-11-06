@@ -1689,10 +1689,11 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
 
 ## Amendment 2026-11-05 — a keyless `opencode` worker's provider traffic goes through the egress proxy (network containment design §8)
 
-The operator's decision of 2026-11-05; the design's §8 states the rule, and this says how it is built. The upstream
-doesn't serve the relay's re-sent requests for its keyless models, and a keyless run has no credential for the relay
-to hold. It is a carve-out for testing on free models, not a supported route for real work, and can be removed once it
-isn't needed. Nothing gates it on a test flag; the label and the design's §8 say what it is for.
+The operator's decision of 2026-11-05; the design's §8 states the rule, and this says how it is built. OpenCode's
+published rule for its free models is "Free-tier chat models require OpenCode; use paid models or Go from other
+clients" (https://opencode.ai/docs/zen/, read 2026-11-06): the relay re-sends a request from its own client, and a
+keyless run has no credential for the relay to hold. It is a carve-out for testing on free models, not a supported
+route for real work, and can be removed once it isn't needed. Nothing gates it on a test flag; the label and the design's §8 say what it is for.
 
 - **One place decides** (`netns.keyless_egress`), from the pinned profile, the contract's `provider_env` and the
   policy: Linux `proxy_only`, a provider in `netns.CATALOG_ADDRESSED` (`opencode`), its key's variable

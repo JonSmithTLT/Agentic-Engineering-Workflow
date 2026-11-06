@@ -189,7 +189,7 @@ This records decisions already made and what STG-05's CS-3a (#246) and CS-3b bui
 
 ## 8. Amendment 2026-11-05: a keyless `opencode` worker's provider traffic goes through the egress proxy
 
-This is the operator's decision of 2026-11-05. The upstream doesn't serve the relay's re-sent requests for its keyless models, and it does serve OpenCode's own client through a plain tunnel. A keyless run has no credential for the relay to hold, so the relay closes no route for it (the operator's decision 2 of 2026-10-21). ADR-0009's amendment of the same date says how it is built.
+This is the operator's decision of 2026-11-05. OpenCode's published rule for its free models is "Free-tier chat models require OpenCode; use paid models or Go from other clients" (https://opencode.ai/docs/zen/, read 2026-11-06). The relay re-sends a request from its own client, so it can't carry them; the egress proxy's tunnel leaves OpenCode's own client making the request. A keyless run has no credential for the relay to hold, so the relay closes no route for it (the operator's decision 2 of 2026-10-21). Upstream offers the free models for a limited time and not in every region, so this route can stop working with no change in AEW. ADR-0009's amendment of the same date says how it is built.
 
 - **What it's for:** a carve-out for testing on free models, not a supported route for real work, which takes a key through the relay. It can be removed once it isn't needed.
 - **When:** Linux `proxy_only`, a harness that calls a provider itself, provider `opencode`, `OPENCODE_API_KEY` not named in the run's `provider_env`, and no `upstreams.opencode` in the policy. Any other run is as §3.3 says.

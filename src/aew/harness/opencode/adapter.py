@@ -347,12 +347,13 @@ class OpenCodeAdapter(HarnessAdapter):
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.directory = os.path.realpath(contract.workspace)  # 8.3 short paths break OpenCode's project detection
         network = self.tree.network  # a network of the run's own (F28; STG-05 CS-3b), or None
+        state = os.path.realpath(self.state_dir)
+        self.skills = projection.skills(contract)  # as the supervisor copied them (aew.skills.deliver)
         config = projection.invocation_config(
             contract, private_dirs=projection.private_output_dirs(
-                os.path.realpath(self.state_dir), os.sep,
-                scratch=os.path.realpath(contract.scratch) if contract.scratch else ""),
+                state, os.sep, scratch=os.path.realpath(contract.scratch) if contract.scratch else ""),
+            skills_dir=projection.skills_at(state, os.sep),
             network=network.describe() if network is not None else None)  # the agent is told what it reaches
-        self.skills = projection.skills(contract)
         rules = config["permissions"]
         base = network.provider_base() if network is not None else None
         self._relayed = base is not None
@@ -870,6 +871,7 @@ class OpenCodeAdapter(HarnessAdapter):
         assistant: list[dict[str, Any]] = []
         params: dict[str, str] = {"order": "asc", "limit": "200"}
         truncated = True  # unless the last page is reached: the bounded loop may stop with a next cursor left (F25 R1)
+        loads: dict[str, Any] | None = {"loaded": {}, "other": 0}
         for _ in range(PAGES):
             page = self.client.get(f"/api/session/{self.session}/message", params) or {}
             for m in page.get("data") or []:
@@ -880,6 +882,7 @@ class OpenCodeAdapter(HarnessAdapter):
                                                 if isinstance(c, dict) and c.get("type") == "tool"],
                                       "error": error_view(m["error"]) if isinstance(m.get("error"), dict)
                                       else None})
+                    loads = self._count_loads(loads, m)
             nxt = (page.get("cursor") or {}).get("next")
             if not nxt:
                 truncated = False
@@ -887,13 +890,29 @@ class OpenCodeAdapter(HarnessAdapter):
             params = {"cursor": str(nxt), "limit": "200"}
         info = (self.client.get(f"/api/session/{self.session}") or {}).get("data") or {}
         self.snapshot = {"assistant": assistant, "session": {k: info.get(k) for k in ("outcome", "tokens", "cost")},
-                         "truncated": truncated}
+                         "truncated": truncated, "skill_loads": loads}
         # Every other session in the run's private state (a subagent's, or anyone's): recorded even if the event
         # stream missed its creation. Listed unfiltered: the server is the run's alone (F25 plan v4, m1).
         for other in (self.client.get("/api/session") or {}).get("data") or []:
             sid = other.get("id")
             if sid and sid != self.session and sid not in self.foreign_sessions:
                 self.foreign_sessions.append(str(sid))
+
+    def _count_loads(self, loads: dict[str, Any] | None, message: dict[str, Any]) -> dict[str, Any] | None:
+        """``loads`` with one assistant message's ``skill`` calls added (:func:`skill_loads`), or None, for good, once
+        any reading fails. It runs on the poll path and at teardown, where an error would end the run or lose its
+        snapshot, so nothing here can raise: telemetry never hurts a run (the 2026-11-04 ruling, §5)."""
+        if loads is None:
+            return None
+        try:
+            exposed = frozenset((getattr(self, "skills", None) or {}).get("exposed") or ())
+            ids, other = skill_loads(message.get("content"), exposed)
+            for sid in ids:
+                loads["loaded"][sid] = loads["loaded"].get(sid, 0) + 1
+            loads["other"] += other
+            return loads
+        except Exception:  # noqa: BLE001 - unknown, never a failed run (ruling of 2026-11-04, §5)
+            return None
 
     def terminate(self) -> None:
         self._stop.set()
@@ -926,6 +945,17 @@ class OpenCodeAdapter(HarnessAdapter):
                 for name in m.get("tools") or []:
                     tools[name] = tools.get(name, 0) + 1
             out["tools_called"] = tools  # what the agent actually used (never its inputs or outputs)
+            # The one exception to that (the 2026-11-04 ruling, §5): which exposed skills it loaded, and how many other
+            # `skill` calls it made, never their ids. Telemetry only: nothing reads it as a gate, evidence or state.
+            # Unknown stays unknown: absent with no snapshot, a truncated one, or any failure reading it.
+            loads = snap.get("skill_loads")
+            if isinstance(loads, dict) and not snap.get("truncated"):
+                try:
+                    found = (dict(sorted(loads["loaded"].items())), int(loads["other"]))
+                except Exception:  # noqa: BLE001 - a lost result would lose the run's record (supervisor `_end`)
+                    found = None
+                if found is not None:
+                    out["loaded"], out["skill_other"] = found
             first = next((m["tokens"] for m in snap["assistant"] if isinstance(m.get("tokens"), dict)), None)
             if first:  # what the model received on its first step: contract + OpenCode's own overhead
                 cached = (first.get("cache") or {}).get("read") or 0
@@ -949,6 +979,28 @@ class OpenCodeAdapter(HarnessAdapter):
         semantics = U.resolve_semantics(self.token_semantics, self.health.get("version"), providers)
         return U.normalize(snap["session"], snap["assistant"], effective, semantics, source=source,
                            truncated=bool(snap.get("truncated")), foreign_sessions=len(self.foreign_sessions))
+
+
+def skill_loads(content: Any, exposed: frozenset[str]) -> tuple[list[str], int]:
+    """One assistant message's ``skill`` calls: ``(ids loaded, other calls)``. A load is a content part with ``type``
+    ``tool``, ``name`` ``skill``, ``state.status`` ``completed`` and ``state.input`` a mapping whose ``id`` is a string
+    the run exposed. Anything else named ``skill`` (a denied or unknown id, a failed or pending call, a streaming part
+    whose input is still a string) is only counted: its id is the model's text and is never kept. Every ``skill`` part
+    is one or the other, so their sum is ``tools_called["skill"]``."""
+    loaded: list[str] = []
+    other = 0
+    for part in content or []:
+        if not isinstance(part, dict) or part.get("type") != "tool" or str(part.get("name")) != "skill":
+            continue
+        state = part.get("state")
+        status = state.get("status") if isinstance(state, dict) else None
+        given = state.get("input") if isinstance(state, dict) else None
+        sid = given.get("id") if isinstance(given, dict) else None
+        if status == "completed" and isinstance(sid, str) and sid in exposed:
+            loaded.append(sid)
+        else:
+            other += 1
+    return loaded, other
 
 
 def error_view(error: dict[str, Any]) -> dict[str, Any]:

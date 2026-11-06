@@ -131,14 +131,29 @@ sections:
     | 19 | E130 | What the Lead is told points at its typed tools and cannot go stale |
     | 20 | E139 | Worker packs made true, each finding with a guard |
     | 21 | E140 | Enforcing the discovery layer's O-CMD and O-SECRET, in three PRs |
-    | 22 | E143 | A carve-out for testing: free-model workers with no key reach their model through the egress proxy |
+    | 22 | E143 | The relay route's model-family check, merged as #338, and its follow-on: one allowlist function, row 1's list and the check on the status line |
     | 23 | E142 | Serving `security-review` and `c-review`, after E127 |
     | 24 | E136 | Serving the other eleven skills, batched, after E142 |
     | 25 | E137 | A publish that stops stale after its first commit, and the stranded stages like it |
+    | 26 | E156 | Refuse a launch with no provider key, close the Lead's OpenCode provider, and Lead permission tightening |
+    | 27 | E157 | `report_write`: the Lead writes a report itself, kept apart from evidence |
+    | 28 | E158 | The consult: the Lead spawns a read-only card on a question in one call, in two PRs |
+    | 29 | E164, E165 | The models the Lead may pin: the operator's allow command, and `--model` held to profiles plus the allow-list, always bounded |
+    | 30 | E159, E166 | The Lead change, with the light review, requested gates and `review_triggers` levels, and first configuration proposing those levels and keyed profiles |
+    | 31 | E160 | The plan assessment gate and the `plan_assessor` card, with planner staffing in the Lead's text |
+    | 32 | E161 | The Lead's skills, after E127 |
+    | 33 | E162, E163 | Lead text fixes, and a typed `plan accept` |
+    | 34 | E167 | The `technical_writer` card, and `technical-writing` on `code_reviewer`, with E136's batches |
+    | 35 | E170 | A command that prints a record's text as written |
+    | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
+    | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
+    | 38 | E171 | The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch` |
 
     **After items 1 to 11 and 16 to 18, first use:** the operator's SPT work, image work included. CI is SPT's first ticket: AEW's workers write it and the operator pushes. SPT stays as it is until then. Later fixes come from that use.
 
-    **Contention for a slot:** what blocks other items, starts a series or unlocks a capability that can be tested goes first, and a chain of pull requests keeps moving beside the one-offs (the operator, 2026-11-04). The Lead's placements under that rule: CAP-1 PR 2, then PR 3, hold one slot; E125 follows E119, on the way to V3's first green; E127 follows CAP-1 PR 2, since both change the same binds. Items 19 to 25 are the Lead's placements of 2026-11-05, and none of them is a condition of first use unless the operator says so. The other one-offs keep the operator's order of 2026-11-03: E121, E122, E120, with E119 alongside, then E126, E118 and E35's probe. E117 runs when the operator judges there's something new to measure, as the last step before first use. **The numbers name the items, and don't set the order.** **New design stops until the first receipt,** except what first use surfaces, SPB's adoption question and the research the operator asked for, so a new ruling becomes a row only if it serves this list. **Everything moved stays in V-01,** and V-01 stays the gate before any release. **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
+    **In the alpha, not a condition of first use** (the operator, 2026-11-06, a new category): they follow the first-use list and never hold it. In this order: `report_write` (item 27), the consult (item 28, with the model pins of item 29 beside its second PR), the Lead change (item 30), the plan assessment gate (item 31), then the Lead's skills after E127 (item 32). Items 33 to 36 are the Lead's placements in the same category, after those.
+
+    **Contention for a slot:** what blocks other items, starts a series or unlocks a capability that can be tested goes first, and a chain of pull requests keeps moving beside the one-offs (the operator, 2026-11-04). The Lead's placements under that rule: CAP-1 PR 2, then PR 3, hold one slot; E125 follows E119, on the way to V3's first green; E127 follows CAP-1 PR 2, since both change the same binds. Items 19 to 25 are the Lead's placements of 2026-11-05, and items 26, 37 and 38 of 2026-11-06; none of them is a condition of first use unless the operator says so. The other one-offs keep the operator's order of 2026-11-03: E121, E122, E120, with E119 alongside, then E126, E118 and E35's probe. E117 runs when the operator judges there's something new to measure, as the last step before first use. **The numbers name the items, and don't set the order.** **New design stops until the first receipt,** except what first use surfaces, SPB's adoption question, the research the operator asked for and what the operator asks for directly (the Lead's leeway, 2026-11-06), so a new ruling becomes a row only if it serves this list. **Everything moved stays in V-01,** except the plan assessment gate (V-01's item 10), which the operator placed in the alpha on 2026-11-06 (E160), and V-01 stays the gate before any release. **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
 
     **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 - number: 2
@@ -1600,8 +1615,12 @@ sections:
       `security-control-validation`, `codebase-investigation`, `debugging-root-cause-analysis`, `test-design`, `engineering-planning`,
       `requirements-clarification`, `empirical-evaluation`, `ci-evidence-triage`, `mechanical-enumeration`, `technical-writing`.
       Each goes on the cards it fits as `optional_skills`, in explicit re-hash PRs that can be batched as each clears the
-      checks'
-    Source: 'The operator, 2026-11-04: "Yes, serve them"; the designer''s decisions of 2026-11-04, section 4'
+      checks. Fit includes one foundational skill, in `skills:`, for each role whose job has a method, its cost measured
+      since it loads in every run of that card; and `python-development` and `c-development` as `optional_skills` on `code_reviewer`,
+      with the `c_reviewer` card kept as it is'
+    Source: 'The operator, 2026-11-04: "Yes, serve them"; the designer''s decisions of 2026-11-04, section 4; the designer''s
+      decision of 2026-11-06, the Lead''s skills and MCP servers, and documents and branch reviews as work, the Lead''s
+      two items'
     When: '**Now.** Item 24 of the Now list, after E142'
     Notes: Filed by the Lead. Fit is the Lead's reading, judged in each PR's review. `frontend-design` and `delegation-handoffs`
       have no card that can reach them and wait. That these PRs do not gate first use is the designer's reading
@@ -1661,18 +1680,16 @@ sections:
       neither has run on a model'
 
   - '#': E143
-    Work: 'A carve-out for testing on free models: a worker with no provider key, on Linux `proxy_only` and provider `opencode`,
-      reaches its model through the egress proxy rather than the provider relay, with that one host allowed for that run.
-      Real work takes a key through the relay. The run''s label says so, what the worker is told says so, and a launch with
-      an operator''s HTTP proxy for this upstream refuses'
-    Source: The operator, 2026-11-05, who chose this route over refusing at launch or requiring a key, and then made it
-      a carve-out for testing; the designer's ruling of 2026-11-05, which amends the network containment design and ADR-0009
-    When: '**Now.** Item 22 of the Now list. Merge waits for a contained worker to get a model answer on the real path'
-    Notes: 'Filed by the Lead, and already being built. It can be removed later; nothing schedules that. It loses per-request
-      visibility of that traffic. Free models also have a usage limit of their own on every route, and how far a day goes
-      in a real run is unmeasured: when it runs out, the run ends with the turn''s error until E149 parks it at attention,
-      and the Lead''s report naming it as the likely cause is owed. A keyed `opencode` worker through the relay is unmeasured.
-      `aew-reviewer` reviews it'
+    Work: 'On the relay route (Linux `proxy_only`, a provider key named in `provider_env`), refuse a launch whose pinned
+      model is of a family the relay''s one upstream doesn''t serve, judged from the model''s own catalog `package`, and
+      read `unverified` when nothing decides, merged as #338. Then one allowlist function shared by the self-test and the
+      run, the self-test''s row 1 recording the list it checked, and the check''s result on the launch''s status line and
+      network label, with `relay_family_mismatch` in the supervisor''s failure acknowledgement'
+    Source: 'The operator''s decision of 2026-11-06, no reliance on OpenCode''s free models (design workspace `513d843`),
+      which closed this row''s first scope, a free-model carve-out for testing, unmerged (#336); the designer''s terms of
+      2026-11-06 for the model-family check, with the Lead''s ruling on #338''s review'
+    When: '**Now.** Item 22 of the Now list. The check merged as #338; the rest is open as #339'
+    Notes: Filed by the Lead. `aew-reviewer` reviews it
 
   - '#': E144
     Work: '`explain` with a `work_id`, entrypoint `harness.launch` and no `invocation` answers `-32603` from a `KeyError`
@@ -1770,8 +1787,293 @@ sections:
     Work: '`docs/guides/quickstart.md`''s hand-driven path tells the operator to give an implementer its credential, while
       `cli/credentials.py` tells them to keep it out of any agent''s reach. Decide which holds, then make both say it'
     Source: Found while making packs true, 2026-11-04
-    When: '**Unscheduled**, a question the Lead takes to the designer'
+    When: '**Now.** Item 37 of the Now list, carried by E169'
     Notes: Filed by the Lead
+
+  - '#': E156
+    Work: 'Refuse a launch that can''t work for want of a provider key. A worker on the relay route whose pinned provider
+      has no key reaching the run is refused before anything commits, with the closed reason `provider_key_missing`, checked
+      in `require_launchable` and again in the supervisor. The message quotes OpenCode''s published rule (free-tier chat
+      models need OpenCode''s own client) and names both steps, a key and a paid model. The Lead''s OpenCode configuration
+      denies the `opencode` and `opencode-go` providers through OpenCode''s own policy, failing closed if a release respells
+      it, and a Lead with no provider left is refused at start with the same reason. Refused proxy targets go into the run
+      record only, bounded and escaped, and are never offered as allowlist entries. With it: a doctor line, a first-use
+      line, the wording swept of free models as a working route, ADR-0009''s note, the live lanes'' free defaults replaced
+      by a model the operator names per run, and Lead permission tightening'
+    Source: The operator's decision of 2026-11-06, no reliance on OpenCode's free models (design workspace `513d843`); the
+      designer's ruling of 2026-11-06 on the Lead's OpenCode provider and refused targets
+    When: '**Now.** Item 26 of the Now list, open as #340'
+    Notes: Filed by the Lead, and already being built. Its live check runs on a keyed, paid model the operator approves
+      for that event. Its readiness line joins E125 when E125 is built. `aew-reviewer` reviews it
+
+  - '#': E157
+    Work: '`report_write`: the Lead writes a report (an explanation, a plan, an answer) through a typed tool on AEW''s own
+      MCP server, with no gate and no write access added. Reports are their own record kind, outside evidence: AEW assigns
+      the id and path, every evidence, plan and gate resolver refuses one, and they stay out of worker packs, derived knowledge
+      and the Lead''s later context (`resume` lists an id and title; the body comes on an explicit read, framed as data).
+      Size and count bounds are stated in the code. The terminal escapes control sequences, and the site renders no raw
+      HTML and fetches nothing remote. Every view labels it Lead-authored, unreviewed and not evidence, and a plan in it
+      is a proposal, never a Ticket''s plan'
+    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 4; the designer's
+      proposal of 2026-11-06, the Lead makes small changes and writes documents itself, §4
+    When: '**Now.** Item 27 of the Now list, first in the alpha after the first-use list'
+    Notes: Filed by the Lead. One PR. A document the operator wants in the repository is a Lead change (E159), not a report
+
+  - '#': E158
+    Work: 'The consult: one typed tool, `consult`, spawns a non-mutating card (investigator, researcher, planner, and `branch_reviewer`
+      once built) on a question in one call. AEW creates a non-mutating Ticket with `mode: consult` at class 0, writes and
+      accepts its plan, dispatches, and returns the Ticket and run ids at once. Its own gate path in the gates policy holds
+      no gates by default. The Lead''s next credentialed call ingests every ended consult''s record and completes it; the
+      wake carries only fields the engine sets, and the body comes through `consult_show`, framed as data. A consult''s
+      record is refused by `consumes`, proves no other unit''s obligation, stays out of packs and derived knowledge, and
+      is cited by any plan that draws on it. Steps and deadline are always bounded, from the profile or the consult policy,
+      with measured defaults whose source is stated in the code; the Lead may ask for less, never more. Two PRs: the mode,
+      gate path, tool, ingest and wake; then the bounds and allow-list, the isolation tests, `consult_show`, `resume`''s
+      list of unread records and the Lead''s text'
+    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), its further direction
+      and its pointer answering the consult's two questions (`f0fa7e5`); the designer's decision of 2026-11-06, the Lead's
+      consult
+    When: '**Now.** Item 28 of the Now list, second in the alpha after the first-use list'
+    Notes: Filed by the Lead. It replaces the designer's earlier one-call non-mutating stage, which is withdrawn; a non-mutating
+      Ticket in normal mode keeps today's steps and gates for a record that must carry assurance. A review the operator
+      asks for on a consult is dispatched and attached (E159). The models the Lead may pin are E164 and E165
+
+  - '#': E159
+    Work: 'The Lead change, in the contained Lead only (refused uncontained, a stated limit): the Lead makes a small change
+      the operator asks for in a Ticket workspace off the authoritative commit, with `edit` allowed only there and never
+      in git metadata. AEW runs the configured checks on an export of the fingerprinted tree, re-runs the class 0 predicate
+      on the final snapshot, and refuses a mechanical list of paths (AEW''s state and authority, git metadata, what judges
+      the change, and AEW''s own containment sources when the project is AEW), naming the Ticket route; a change to tests
+      is shown, not refused. The operator views the diff, rendered safely, and decides at their own terminal through an
+      operator-decided command bound to its fingerprint. Class 0: the checks and the approval, on by default. Class 1: the
+      checks (a verifier run where none are configured), the light review, required, and the approval, which replaces plan
+      assessment and `review_r1`. The light review is one independent `code_reviewer`-type run on the exact diff, looking
+      for side effects, not style; a material finding blocks approval until it is fixed and the new fingerprint reviewed,
+      or the operator dismisses it. A review or verification the operator requests on any unit is a gate added, never one
+      removed: the Lead records and dispatches it, and can neither decline nor waive it. Each `review_triggers` entry carries
+      a level the operator owns: `review` adds the light review, `ticket` refuses the route. The Lead''s text frames the
+      route as occasional, with delegation the norm inside an Epic'
+    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), items 1 to 3,
+      with its pointers on the light review (`445aa39`) and on class 1 (`41f1061`); the designer's proposal of 2026-11-06,
+      the Lead makes small changes and writes documents itself, §2 and §8
+    When: '**Now.** Item 30 of the Now list, third in the alpha after the first-use list'
+    Notes: Filed by the Lead. Four to five PRs, the designer's reading, and about one more for requested reviews on consults
+      and branch reviews. It supersedes the Lead mode of 2026-10-31 and amends that decision's condition 5; CS-4 addendum
+      14 widens to the route. Its containment changes go to `aew-reviewer`
+
+  - '#': E160
+    Work: 'The plan assessment gate: a `plan_assessment` gate on the gates policy''s class paths from class 1, never waivable,
+      which refuses a Ticket''s implementation dispatch, or a parent''s first dependent child dispatch, until an assessment
+      of the accepted plan revision is current. A new record kind, `plan_assessment`, on the reviewer archetype (a requirement
+      trace, the premises challenged, findings), bound to the revision and its sha256, from a new assessor entrypoint for
+      Tickets and parents. The `plan_assessor` card extends `reviewer` with `requires_distinct_invocation_from: [planner]`,
+      which the engine now enforces. A planner''s proposal reviewed by that card and adopted unchanged counts as the assessment.
+      One assessment counts per revision; the Lead''s waiver refuses its findings, which the operator may dismiss at their
+      own terminal. The Lead''s text says when to staff a planner: a Story or Epic to decompose, or a plan resting on code
+      the Lead hasn''t read; otherwise the Lead writes the plan'
+    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), items 5 and 8,
+      answering A-04's open points (iii) and (iv); the operator's decision of 2026-10-31, plan assessment from class 1;
+      the designer's decision of 2026-11-06, planner staffing and the plan assessor
+    When: '**Now.** Item 31 of the Now list, fourth in the alpha after the first-use list'
+    Notes: Filed by the Lead. Three to four PRs, the designer's reading. It was V-01's item 10, which then reads as met
+      by this build, with the work proposal carrying the findings. The Lead change (E159) is exempt at class 1. A test checks
+      that a Lead with a Story to plan is told to staff a planner, in the text the run receives
+
+  - '#': E161
+    Work: 'Skills for the Lead, through E127''s exposure mechanism: a `lead` list in AEW''s skill manifest, not on the archetype,
+      read by `lead_config` through the helper that decides what a run is exposed: `engineering-planning`, `requirements-clarification`
+      and `delegation-handoffs`, all optional, unevaluated, alpha only and labelled. The contained Lead gets the exposed
+      skills copied into its private state, allowed by id with every other id denied and the compatibility plugin off. The
+      uncontained Lead adds AEW''s path and ids beside the operator''s own skills, with the rest at `ask`. What was exposed
+      and loaded goes in the Lead session''s own record, and the listing''s and a loaded body''s cost are measured. The
+      Lead''s text names its skills, derived from the list. A live test on Windows checks an absolute `skills` path and
+      a colliding id'
+    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), items 6 to 8;
+      the designer's decision of 2026-11-06, the Lead's skills and MCP servers, and documents and branch reviews as work,
+      (a)
+    When: '**Now.** Item 32 of the Now list, fifth in the alpha after the first-use list, after E127'
+    Notes: Filed by the Lead. One PR. No MCP servers beyond AEW's own for the Lead in the alpha (the operator, item 7);
+      the operator's own servers in an uncontained Lead stay. Its live check runs on a keyed, paid model the operator approves
+      for that event
+
+  - '#': E162
+    Work: 'Three fixes to what the Lead is told: the text and `next` name the operator''s route for configuring the `unit`
+      check (first configuration, E119); the text says `git commit` asks, and points to the Lead change (E159); and it names
+      `steering`, `resolve`''s dispositions and `redispatch`, derived from the catalog as E130 does, so no tool the Lead
+      has goes unnamed'
+    Source: The designer's decisions of 2026-11-06 on a comparison of Lead sessions
+    When: '**Now.** Item 33 of the Now list'
+    Notes: Filed by the Lead. A test holds each line to the text the run receives
+
+  - '#': E163
+    Work: A typed tool for `plan accept` on the Lead's MCP server, with its surface-map entry
+    Source: The designer's decisions of 2026-11-06 on a comparison of Lead sessions
+    When: '**Now.** Item 33 of the Now list, with E162'
+    Notes: Filed by the Lead
+
+  - '#': E164
+    Work: '`aew policy model allow <provider/model>`, and a profile add beside it: each is one command at the operator''s
+      terminal, refused in a Lead session and attributed through `require_operator_attribution`, that writes and adopts
+      the execution policy''s change in one step, with its surface-map entry. The site''s settings editor gets the same
+      lever when the dashboard''s settings work reaches the execution policy'
+    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), its pointer on
+      the models the Lead may pin; the designer's decision of 2026-11-06, the Lead's consult, its pointer on adding a model
+    When: '**Now.** Item 29 of the Now list, beside E158''s second PR'
+    Notes: Filed by the Lead. Without it, an allow-list that is empty by default only moves friction onto the operator
+
+  - '#': E165
+    Work: 'A Lead''s model pin, on a Ticket''s `--model` as on a consult, is admitted only from the execution policy''s
+      profiles plus the operator''s `allowed_models`, empty by default. Today `--model` is checked only against the harness''s
+      model list, which admits every listed model, free `opencode/*` ones included. A pinned run always has a step cap and
+      a deadline: today a `--model` pin runs with neither'
+    Source: Found in the designer's decision of 2026-11-06, the Lead's consult; the operator's answer of 2026-11-06, profiles
+      plus an allow-list (`f0fa7e5`); the operator's decision of 2026-11-06, no reliance on OpenCode's free models (design
+      workspace `513d843`)
+    When: '**Now.** Item 29 of the Now list, beside E158''s second PR'
+    Notes: Filed by the Lead. The consult's bounds (E158) and this share one allow-list
+
+  - '#': E166
+    Work: 'First configuration (E119''s `aew init`) proposes, for the operator to adopt there: a profile for each provider
+      named in `provider_env`, naming a keyed, paid model, never a free `opencode/*` one; and `review_triggers` entries
+      for the project''s sensitive paths, each with its level (`review` or `ticket`), from the project''s map. Proposing
+      a profile doesn''t qualify it: the roster and the operator decide that'
+    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), its pointers;
+      the designer's proposal of 2026-11-06, the Lead makes small changes and writes documents itself, §8; the designer's
+      decision of 2026-11-06, the Lead's consult, its pointer on adding a model
+    When: '**Now.** Item 30 of the Now list, with E159'
+    Notes: Filed by the Lead. The profiles serve E164 and E165, and the trigger levels serve E159
+
+  - '#': E167
+    Work: A `technical_writer` card on the implementer archetype, to write or revise the repository's documentation (never
+      the generated reference), with `technical-writing` in `skills:`; and `technical-writing` in `code_reviewer`'s `optional_skills`,
+      with no separate document-review card. The checks are the project's own, proposed from the map and adopted by the
+      operator
+    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 8; the designer's
+      decision of 2026-11-06, the Lead's skills and MCP servers, and documents and branch reviews as work, (c)
+    When: '**Now.** Item 34 of the Now list, with E136''s batches'
+    Notes: Filed by the Lead. Data, the designer's reading
+
+  - '#': E168
+    Work: 'A review of any local branch or ref, as a non-mutating Ticket: the ref is resolved at dispatch and pinned to
+      a commit, with its merge-base against the authoritative branch (AEW fetches nothing), and observed read-only there.
+      A new record kind, `ref_review`, isn''t source-bound to the authoritative commit: when the ref moves, the record says
+      so and doesn''t gate. A `branch_reviewer` card on the investigator archetype, which gains the kind, takes the requirement
+      and the diff from the merge-base; its skill is the Lead''s fit choice, checked in the PR. It never changes code or
+      integrates'
+    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 8; the designer's
+      decision of 2026-11-06, the Lead's skills and MCP servers, and documents and branch reviews as work, (d)
+    When: '**Now.** Item 36 of the Now list'
+    Notes: Filed by the Lead. One to two PRs, the designer's reading. The review is retrieved as E170 prints it
+
+  - '#': E169
+    Work: 'O-SECRET reads one canonical prohibition and stops parsing negation: "Never", one ask verb or two joined by "or",
+      up to three words, the credential, then an ending from a closed list or none, at a sentence start, with code spans
+      opaque and wrapped markdown lines joined. The negation constants and functions go, with their limits and tests, and
+      the ablation and corpus scripts are rewritten; literal and unmasked values get no excuse. The non-ask guards and the
+      safe path stay. The PR counts what the check flags on `main` and rewords each to the form or the safe path, naming
+      any residual. With it, E155: the hand path stays, each role''s block reading `AEW_INVOCATION_TOKEN` in the per-session
+      hidden-input form and unsetting it at the end, and `_assignment`''s three placeholder carve-outs go'
+    Source: 'The designer''s decision of 2026-11-06, O-SECRET reads one fixed prohibition and stops parsing negation (D2);
+      the operator, 2026-11-06, on #335''s review rounds'
+    When: '**Now.** Item 37 of the Now list, after #335 merges, at normal priority behind the chain'
+    Notes: 'Filed by the Lead. Best effort over the ask surface, not over English: one full review, then a confirm-only
+      check, and a gap found later is a follow-on. If the rewording costs more than the machinery it replaces, it stops
+      at #335''s rules and the designer is told. O-CMD is unchanged. #335''s last quick check left notes for it'
+
+  - '#': E170
+    Work: A raw-body output for any record, archived or not, printed as written rather than as an escaped string inside
+      JSON, with its surface-map entry; the site shows the same. Today `aew history show` carries a body only for archived
+      units
+    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 8; the designer's
+      decision of 2026-11-06, the Lead's skills and MCP servers, and documents and branch reviews as work, (c)
+    When: '**Now.** Item 35 of the Now list'
+    Notes: Filed by the Lead. One small PR, the designer's reading
+
+  - '#': E171
+    Work: 'The tool-consent prompt, CAP-1''s follow-on: AEW downloads no tool without the operator''s consent. The shipped
+      capability record gains `needed`, with a reason naming what degrades without the tool, which the operator''s record
+      can override. One consent screen serves every caller: needed tools in full (name, purpose, version, size, source),
+      optional ones as a count until "pick", the choices needed, all, pick or none, Enter only for what the screen names,
+      and no timed default. `aew init` asks on a terminal; the Lead''s start asks only when a needed tool is missing and
+      not declined; a new operator-only `aew capability fetch` asks, with its surface-map entry. A worker''s launch never
+      asks or downloads, and off a terminal nothing downloads unless a flag names the tools. A "no" is remembered per tool
+      and pinned version and stays visible in `aew doctor` and `next`; every run''s record carries each missing tool with
+      a closed reason. With it, E119 §1''s seat wording'
+    Source: The operator's decision of 2026-11-05, no download without the operator's consent, which amends `CAPR-04`'s
+      online branch and `CAPR-Q10`; the designer's rulings of 2026-11-05 in STG-15's log, on "needed", declines and the
+      prompt screen; the designer's decision of 2026-11-06 on E119 §1
+    When: '**Now.** Item 38 of the Now list, being built'
+    Notes: Filed by the Lead, and already being built. STG-15's notes tracked it until now. `aew-reviewer` reviews the fetch
+      path
+
+  - '#': E172
+    Work: 'MCP servers for the Lead beyond AEW''s own: none in the alpha. After it, a design question, with the designer''s
+      proposed bounds for a server AEW declares: the operator declares it in a settings document, never an agent; read-only
+      servers first, with write tools at `ask` until the operator allows a named tool; its credential goes through the broker
+      or relay, never into the Lead''s environment; its egress is named in the declaration when the Lead is contained; and
+      the Lead''s text names it and what it''s for. The operator''s own servers in an uncontained Lead stay, and its start
+      line names those that loaded'
+    Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 7; the designer's
+      decision of 2026-11-06, the Lead's skills and MCP servers, and documents and branch reviews as work, (b)
+    When: '**Unscheduled**, after the alpha. The design is the designer''s when the operator queues it'
+    Notes: Filed by the Lead
+
+  - '#': E173
+    Work: 'Deterministic gate tools the Lead can call, typed and with no model judgement: merge readiness, public-text hygiene,
+      brief checking, and a secret scan before a commit'
+    Source: The Lead's comparison of Lead sessions (2026-11-06), endorsed in the designer's findings of 2026-11-06
+    When: '**Unscheduled.** Designed when the operator queues it'
+    Notes: Filed by the Lead
+
+  - '#': E174
+    Work: CI status at a given head as a typed read for the Lead, which wakes the Lead when the run ends
+    Source: The Lead's comparison of Lead sessions (2026-11-06), endorsed in the designer's findings of 2026-11-06
+    When: '**Unscheduled.** Designed when the operator queues it'
+    Notes: Filed by the Lead
+
+  - '#': E175
+    Work: Messaging with delivered and read state, built on E131's typed `harness send` rather than beside it. Mostly wiring,
+      since ADR-0017 is the adopted transport
+    Source: The Lead's comparison of Lead sessions (2026-11-06), endorsed in the designer's findings of 2026-11-06
+    When: '**Unscheduled.** Designed when the operator queues it, after E131'
+    Notes: Filed by the Lead
+
+  - '#': E176
+    Work: The Lead's own memory and rules, kept across its sessions
+    Source: The Lead's comparison of Lead sessions (2026-11-06), endorsed in the designer's findings of 2026-11-06
+    When: '**Unscheduled.** Designed when the operator queues it'
+    Notes: Filed by the Lead
+
+  - '#': E177
+    Work: A typed tool that runs the project's checks through AEW's check runner
+    Source: The designer's findings of 2026-11-06 on a comparison of Lead sessions
+    When: '**Unscheduled.** Designed when the operator queues it'
+    Notes: Filed by the Lead
+
+  - '#': E178
+    Work: The contained Lead's sandbox masks the project's secret files, without breaking the operator's own commands
+    Source: The designer's findings of 2026-11-06 on a comparison of Lead sessions
+    When: '**Unscheduled**, after E156'
+    Notes: Filed by the Lead. Containment, so `aew-reviewer` reviews it
+
+  - '#': E179
+    Work: '`ticket_request_verification` on a non-mutating Ticket commits two steps before it refuses, and the refusal doesn''t
+      say what to do. Its description, "launch the verifiers policy requires", launches a verifier when policy requires
+      none'
+    Source: 'Found in the review of #331 (E130), 2026-11-05: two pre-existing points under its finding F1'
+    When: '**Unscheduled**, any idle slot'
+    Notes: Filed by the Lead
+
+  - '#': E180
+    Work: The Lead's MCP server starts as a bare `aew lead mcp` (`projection.py`'s `LEAD_MCP_COMMAND`), so it runs whichever
+      `aew` is first on the path, not the interpreter and code the Lead runs. In a mixed setup (a development copy, an upgrade
+      mid-session, two virtual environments) the Lead's typed tools fail with only "connection closed". Start the server
+      with the Lead's own interpreter (`sys.executable -m aew lead mcp`, or its equivalent resolved at start), keep the
+      sandbox's binds covering that interpreter, and test that the configured command names the running interpreter
+    Source: 'The operator''s live check of 2026-11-06: a contained Lead started from a branch copy, whose sandbox''s `aew`
+      was another tree''s editable install'
+    When: '**Unscheduled**, small, any time. It helps every test that runs a Lead from a copy'
+    Notes: Filed by the Lead, at the operator's request
 
   - '#': E47
     Work: 'Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do),

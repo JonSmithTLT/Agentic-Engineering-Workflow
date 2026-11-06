@@ -12,6 +12,7 @@ from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
 from aew.knowledge.records import read_record
 from aew.maps import slices
+from aew.skills import pins as skill_pins
 from aew.util import atomic_write, parse_frontmatter, sha256_bytes, sha256_text
 from aew.workspace import git
 
@@ -241,6 +242,9 @@ class ContextPacks:
             {"name": f"archetype:{role}", "path": f"aew/roles/archetypes/{role}.yaml", "sha256": None},
             {"name": f"role_card:{(card or {}).get('id')}", "path": (card or {}).get("path"),
              "sha256": (card or {}).get("sha256"), "version": (card or {}).get("version")},
+            # the card's `skills:` as shipped at dispatch, by name, version and hash (the 2026-11-03 ruling, §3);
+            # never its optional ones, so a listed skill adds nothing here (the 2026-11-04 ruling, §5)
+            *skill_pins(((card or {}).get("content") or {}).get("skills") or []),
             {"name": "current_ticket", "path": unit["record"], "sha256": unit["record_sha256"]},
             {"name": "accepted_plan", "path": plan["path"] if plan else None,
              "sha256": plan["sha256"] if plan else None},
@@ -285,6 +289,9 @@ class ContextPacks:
             {"name": f"archetype:{role}", "path": f"aew/roles/archetypes/{role}.yaml", "sha256": None},
             {"name": f"role_card:{(card or {}).get('id')}", "path": (card or {}).get("path"),
              "sha256": (card or {}).get("sha256"), "version": (card or {}).get("version")},
+            # the card's `skills:` as shipped at dispatch, by name, version and hash (the 2026-11-03 ruling, §3);
+            # never its optional ones, so a listed skill adds nothing here (the 2026-11-04 ruling, §5)
+            *skill_pins(((card or {}).get("content") or {}).get("skills") or []),
             {"name": "current_work", "path": unit["record"], "sha256": unit["record_sha256"]},
             {"name": "accepted_plan", "path": plan["path"] if plan else None,
              "sha256": plan["sha256"] if plan else None},

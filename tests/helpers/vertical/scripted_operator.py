@@ -131,8 +131,10 @@ class Operator:
     ledger: Ledger
     tmp: Path
     chat: Mailbox
-    shell_env: dict[str, str] = field(default_factory=dict)  # what the operator exported in their own shell
-    credential: str = ""
+    # What the operator exported in their own shell, and its credential: never in a repr (a failed test's traceback
+    # prints its arguments, and a live run's shell can hold a provider key)
+    shell_env: dict[str, str] = field(default_factory=dict, repr=False)
+    credential: str = field(default="", repr=False)
     transcript: list[dict[str, Any]] = field(default_factory=list)
     allowed_heads: set[str] = field(default_factory=set)  # main's heads not published by AEW
     excluded_caches: bool = False  # the U14 workaround, applied once after the gate was observed to refuse

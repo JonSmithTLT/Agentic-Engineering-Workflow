@@ -153,7 +153,8 @@ def normalize(value: Any) -> dict[str, Any]:
 def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: str, bridge_dir: str | None,
               policy: dict[str, Any] | None, project: str | None = None, env: Mapping[str, str] | None = None,
               bridge: str | None = None, egress_policy: Any = None, state_dir: str | None = None,
-              relayed_terminal: Mapping[str, Any] | None = None) -> tuple[Layout | None, dict[str, Any]]:
+              relayed_terminal: Mapping[str, Any] | None = None,
+              skills_dir: str | None = None) -> tuple[Layout | None, dict[str, Any]]:
     """The run's layout, self-tested, and its label. ``(None, weaker label)`` when containment is unavailable and
     the policy allows that; raises ``ContainmentUnavailable`` when the policy requires it. ``env`` is the launching
     environment, for the credential paths and sockets it names (default: this process's). The layout's network is the
@@ -161,7 +162,8 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
     when the launch is refused, and otherwise the caller's to remove); ``bridge`` (the run's bridge socket) and
     ``egress_policy`` (its egress allowlist, or None) are what the self-test's row 1 checks. The Lead's session
     (STG-05 CS-4) passes its own OpenCode ``state_dir`` (``layout.for_run``) and its ``relayed_terminal``
-    (``probe.self_test``: row 4's Lead form)."""
+    (``probe.self_test``: row 4's Lead form). A run's ``skills_dir`` is its copy of its skills, bound read-only
+    (``layout.for_run``)."""
     from aew.capability import ops as capability
     from aew.harness.containment import netns, probe
 
@@ -184,7 +186,7 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
         try:
             layout = for_run(role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch,
                              bridge_dir=bridge_dir, policy=settings, project=project, runs=run_dir.parent, env=env,
-                             network=net_mode, net_dir=net_dir, state_dir=state_dir)
+                             network=net_mode, net_dir=net_dir, state_dir=state_dir, skills_dir=skills_dir)
             # The bridge's directory holds the run's own socket, and the network directory the run's own relay and
             # egress proxy, which the inventory lists as its own.
             test = probe.self_test(layout, sentinel_dir=Path(workspace).parent, sibling_dir=Path(workspace).parent,

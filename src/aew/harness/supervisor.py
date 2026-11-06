@@ -25,6 +25,7 @@ no event: its launcher gets ``HarnessLaunchFailed`` and the run reads ``unconfir
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import re
@@ -36,7 +37,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from aew import errors
+from aew import errors, skills
 from aew.engine import faults
 from aew.engine.authority import require_invocation, token_id_of
 from aew.harness import agentenv, bridge, containment, event_spool, procs, registry, runlog, usage, weaker_register
@@ -221,7 +222,7 @@ class Supervisor:
         faults.pause("harness.supervisor.after_custody_record")  # tests: a supervisor slow right after its first record
         self._send_ack({"custody": True, "run": self.run, "pid": os.getpid()})
         try:
-            contract = self.engine.harness_contract(state, self.inv_id, self.run)
+            contract = self._deliver_skills(self.engine.harness_contract(state, self.inv_id, self.run))
             self.record["contract"] = contract.to_record()
             (self.run_dir / "prompt.md").write_text(K.redact(contract.prompt), encoding="utf-8")
             self.bridge = bridge.BridgeServer(self.handle)
@@ -230,6 +231,8 @@ class Supervisor:
             Path(contract.scratch).mkdir(parents=True, exist_ok=True)
             adapter_cls = registry.load(profile["harness"])
             self._contain(contract, adapter_cls)
+            contract = self._label_skills(contract)
+            self.record["contract"] = contract.to_record()
             self.agent_env = agentenv.build(os.environ, endpoint=self.bridge.address, key_hex=self.bridge.key_hex,
                                             invocation=self.inv_id, run=self.run, work_unit=inv["work_unit"],
                                             scratch=contract.scratch,
@@ -270,6 +273,39 @@ class Supervisor:
         faults.hit("harness.supervisor.after_start")
         return True
 
+    def _skills_dir(self) -> Path:
+        return self.run_dir / "harness" / "skills"
+
+    def _deliver_skills(self, contract: K.LaunchContract) -> K.LaunchContract:
+        """Copy the run's exposed skills into its own folder before its sandbox exists (the 2026-11-03 ruling, §3),
+        and return the contract with the plan as delivered: a skill whose copy fails reports ``copy_failed`` and the
+        run goes on. Every harness gets the same copy; a harness without a ``skill`` tool just never lists it."""
+        planned = contract.extra.get("skills")
+        if not isinstance(planned, dict):
+            return contract
+        try:
+            delivered = skills.deliver(planned, self._skills_dir())
+        except Exception as exc:  # noqa: BLE001 - a missing skill never fails a run (the 2026-11-03 ruling, §3)
+            self._event("skills_not_delivered", error=f"{type(exc).__name__}: {exc}"[:300])
+            shutil.rmtree(self._skills_dir(), ignore_errors=True)
+            failed = {str(n): skills.COPY_FAILED for n in planned.get("exposed") or []}
+            delivered = {**planned, "exposed": [], "unavailable": list(planned.get("requested") or []),
+                         "reasons": dict(sorted({**(planned.get("reasons") or {}), **failed}.items())),
+                         "delivered": []}
+        return dataclasses.replace(contract, extra={**contract.extra, "skills": delivered})
+
+    def _label_skills(self, contract: K.LaunchContract) -> K.LaunchContract:
+        """What protects the copy, on the plan: ``read_only_bind`` when the run's sandbox binds it read-only (Linux),
+        else ``rules_only``: the harness's ``edit`` deny is all there is, and a shell write was never tried (Windows, or
+        a run the policy lets go uncontained). The copy is technique, never authority, so this is a label, not a
+        refusal."""
+        planned = contract.extra.get("skills")
+        if not isinstance(planned, dict) or not planned.get("exposed"):
+            return contract
+        bound = self.layout is not None and os.path.realpath(self._skills_dir()) in self.layout.skills_binds
+        planned = {**planned, "copy": "read_only_bind" if bound else "rules_only"}
+        return dataclasses.replace(contract, extra={**contract.extra, "skills": planned})
+
     def _contain(self, contract: K.LaunchContract, adapter_cls: type[HarnessAdapter]) -> None:
         """Build and self-test this run's sandbox before any harness process exists (F2, M4-B), and start its network
         outside it (F28, STG-05 CS-3b): the provider relay when the harness calls a provider, and the egress proxy
@@ -299,7 +335,8 @@ class Supervisor:
             self.layout, self.record["containment"] = containment.establish(
                 role=contract.role, scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir,
                 scratch=contract.scratch, bridge_dir=self.bridge.private_dir, policy=policy,
-                project=str(self.engine.repo_root), bridge=self.bridge.address, egress_policy=allow)
+                project=str(self.engine.repo_root), bridge=self.bridge.address, egress_policy=allow,
+                skills_dir=str(self._skills_dir()) if (contract.extra.get("skills") or {}).get("exposed") else None)
             # A weaker run (allowed by the policy, or a sandbox on the host's network) enters the register of weaker
             # contexts before its harness starts; on Linux one that cannot be entered is refused (G3 addendum 7).
             self.weaker = weaker_register.enter_if_weaker(

@@ -14,8 +14,10 @@ Invocation runs:
   except the run's own private OpenCode output directories (V2 saves long tool output there and points the
   model at it); ``.env`` files are not readable (V2's own default asks; ``.env.example`` stays readable);
   ``edit`` only for implementers; web access only for cards that request documentation lookup;
-  ``skill`` only for skills the harness actually provides for the card (none in M3: they are reported
-  as unavailable, WC §16.10);
+  ``skill`` only for the skills the run was given (``aew.skills``: the card's ``skills:`` and ``optional_skills``
+  that AEW's install ships, copied into the run's own folder, which is the config's one ``skills`` entry; that
+  folder is readable and never editable, and on Linux it is bound read-only too); any other a card names is
+  reported unavailable (WC §16.10; ADR-0006, amendment 2026-11-05);
 * no project configuration, no compatibility plugin (``~/.claude``/``~/.agents`` skills), no LSP or
   formatter downloads, no snapshots, no sharing, no updates.
 
@@ -27,8 +29,9 @@ only fixed read commands as inline shell (V2 runs those outside the permission f
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, NamedTuple
 
+from aew import skills as shipped_skills
 from aew.harness.contract import EXPECT_REV, LaunchContract
 from aew.surface import SERVER_NAME, contract
 from aew.surface.context import NORMAL
@@ -90,18 +93,39 @@ def config_model(profile: dict[str, Any]) -> dict[str, str]:
     return ref
 
 
-def skills(contract: LaunchContract, provided: frozenset[str] = frozenset()) -> dict[str, list[str]]:
-    requested = sorted(set(contract.extra.get("card_skills") or []))
-    return {"requested": requested, "exposed": [s for s in requested if s in provided],
-            "unavailable": [s for s in requested if s not in provided]}
+def skills(contract: LaunchContract) -> dict[str, Any]:
+    """What this run gets of its card's skills: the plan the launch contract carries (``aew.skills.plan``, decided once
+    in ``harness_contract``, and narrowed by the run's copy), or for a contract without one, the same function over its
+    card's lists. Never a computation of its own: the copy, the rules and the record read one answer."""
+    planned = contract.extra.get("skills")
+    if isinstance(planned, dict):
+        return planned
+    extra = contract.extra
+    return shipped_skills.plan(extra.get("card_skills") or [], extra.get("card_optional_skills") or [])
 
 
-def permissions(contract: LaunchContract, exposed_skills: list[str],
-                private_dirs: tuple[str, ...] = ()) -> list[dict[str, str]]:
+class SkillsAt(NamedTuple):
+    """The run's copy of its skills: the folder (the config's ``skills`` entry, a plain path string, since an object
+    entry loads nothing, silently: skills probe 2026-11-04) and the pattern its two rules match."""
+
+    folder: str
+    pattern: str
+
+
+def skills_at(state_dir: str, sep: str) -> SkillsAt:
+    """Where the run's skills are copied: ``skills`` in its harness state directory (``aew.skills.deliver``)."""
+    folder = sep.join([state_dir, "skills"])
+    return SkillsAt(folder, sep.join([folder, "*"]))
+
+
+def permissions(contract: LaunchContract, exposed_skills: list[str], private_dirs: tuple[str, ...] = (),
+                skills_dir: SkillsAt | None = None) -> list[dict[str, str]]:
     """The complete ordered rule set (last match wins). Sent on session create, where it is applied last.
 
     ``private_dirs``: path patterns of the run's own OpenCode output (tool output, shell output, temp files),
-    the only external directories the agent may read."""
+    the only external directories the agent may read. ``skills_dir``: the run's copy of its exposed skills, readable
+    so ``read`` reaches a skill's ``references/``, and never editable: the read grant alone opens writing where no bind
+    stands behind it (skills probe 2026-11-04, check 7), so both rules go together, on every platform."""
     capabilities = set(contract.extra.get("card_capabilities") or [])
     web = "allow" if capabilities & WEB_CAPABILITIES else "deny"
     rules = [rule("*", "deny")]  # anything not named below does not exist for the agent
@@ -112,6 +136,10 @@ def permissions(contract: LaunchContract, exposed_skills: list[str],
     rules += [rule("skill", "allow", name) for name in exposed_skills]
     rules += [rule(action, "deny") for action in ALWAYS_DENIED]  # after the rest, so nothing above reopens them
     rules += [rule("external_directory", "allow", pattern) for pattern in private_dirs]
+    if exposed_skills:
+        if skills_dir is None:
+            raise ValueError("a run exposed to skills needs the folder they are copied to")
+        rules += [rule("external_directory", "allow", skills_dir.pattern), rule("edit", "deny", skills_dir.pattern)]
     return rules
 
 
@@ -124,7 +152,37 @@ def private_output_dirs(state_dir: str, sep: str, *, scratch: str = "") -> tuple
     return dirs + ((sep.join([scratch, "*"]),) if scratch else ())
 
 
-def system_text(contract: LaunchContract, unavailable_skills: list[str],
+def skills_text(planned: Mapping[str, Any]) -> list[str]:
+    """The system text's skill lines, each on its own condition, naming ids (the 2026-11-04 ruling, §1). The pack
+    carries the card's pinned lists; these say what this run really has:
+
+    * the card's ``skills:`` that are here: load them, unless a description excludes this task (WC §15.3), which
+      qualifies the pack's "Skills to load";
+    * the rest of what the ``skill`` tool lists, the card's optional ones that are here: load each one whose description
+      matches the task (each, not one: a change in two languages fits two, review E127 M3);
+    * the card's ``skills:`` that are not here: proceed without them."""
+    requested = list(planned.get("requested") or [])
+    exposed = list(planned.get("exposed") or [])
+    load = [s for s in exposed if s in requested]
+    optional = [s for s in exposed if s not in requested]
+    unavailable = list(planned.get("unavailable") or [])
+    lines = []
+    if load:
+        lines.append(f"- Load {_ids(load)} with the `skill` tool before you start, unless its description says it does "
+                     "not fit this task. This qualifies the contract's \"Skills to load\".")
+    if optional:
+        lines.append(f"- The `skill` tool lists {_ids(optional)}: load each one whose description matches your task.")
+    if unavailable:
+        lines.append("- Skills your role card requests that this harness does not provide: "
+                     f"{', '.join(unavailable)}. Proceed without them and say so in your report.")
+    return lines
+
+
+def _ids(names: list[str]) -> str:
+    return ", ".join(f"`{n}`" for n in names)
+
+
+def system_text(contract: LaunchContract, planned: Mapping[str, Any],
                 network: Mapping[str, Any] | None = None) -> str:
     card = (contract.card or {}).get("id") or contract.role
     edit = ("You may edit files in the workspace." if contract.role in MUTATING_ROLES
@@ -149,9 +207,7 @@ def system_text(contract: LaunchContract, unavailable_skills: list[str],
     ]
     if network is not None:
         lines.append(network_text(network))
-    if unavailable_skills:
-        lines.append("- Skills your role card requests that this harness does not provide: "
-                     f"{', '.join(unavailable_skills)}. Proceed without them and say so in your report.")
+    lines += skills_text(planned)
     return "\n".join(lines)
 
 
@@ -170,23 +226,27 @@ def network_text(network: Mapping[str, Any]) -> str:
             "operator to add it to `containment.network.egress_allow`.")
 
 
-def invocation_config(contract: LaunchContract, *, provided_skills: frozenset[str] = frozenset(),
-                      private_dirs: tuple[str, ...] = (), network: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def invocation_config(contract: LaunchContract, *, private_dirs: tuple[str, ...] = (),
+                      skills_dir: SkillsAt | None = None, network: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """``OPENCODE_CONFIG_CONTENT`` for one run's private server. ``network``: the label of the run's own network
-    (``netns.RunNetwork.describe``), which the system text states; None for a run on the host's."""
-    skill = skills(contract, provided_skills)
-    rules = permissions(contract, skill["exposed"], private_dirs)
+    (``netns.RunNetwork.describe``), which the system text states; None for a run on the host's. ``skills_dir``: where
+    the run's exposed skills are copied (:func:`skills_at`), needed when it has any."""
+    skill = skills(contract)
+    rules = permissions(contract, skill["exposed"], private_dirs, skills_dir)
     profile = contract.execution_profile
     agent: dict[str, Any] = {"mode": "primary", "description": f"AEW {contract.role} for {contract.invocation}",
                              "model": config_model(profile),
-                             "system": system_text(contract, skill["unavailable"], network), "permissions": rules}
+                             "system": system_text(contract, skill, network), "permissions": rules}
     if profile.get("max_steps"):
         agent["steps"] = int(profile["max_steps"])
     agents: dict[str, Any] = {AGENT: agent}
     for name in AUXILIARY_AGENTS:  # any auxiliary model call uses the pinned model too
         agents[name] = {"model": config_model(profile)}
+    # The one skills entry: the run's own copy, by absolute path. Nothing else: no URL, no home path, no project folder
+    # (the 2026-11-04 ruling; CAPR-05, HEB-01.i). OpenCode's own built-in skills stay denied by the rules.
+    found = {"skills": [skills_dir.folder]} if skill["exposed"] and skills_dir is not None else {}
     return {"snapshots": False, "update": "disable", "share": "disabled", "plugins": [COMPATIBILITY_PLUGIN],
-            "lsp": False, "formatter": False, "default_agent": AGENT, "permissions": rules, "agents": agents}
+            "lsp": False, "formatter": False, "default_agent": AGENT, "permissions": rules, "agents": agents, **found}
 
 
 def relayed(config: dict[str, Any], profile: dict[str, Any], base_url: str) -> dict[str, Any]:

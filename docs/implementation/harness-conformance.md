@@ -52,7 +52,7 @@ Two more actions serve the acceptance scenarios: `note` (a remark that stays in 
 |---|---|---|
 | `FakeDriver` | CI | the fake harness: one scripted agent process |
 | `FakeOpenCodeDriver` | CI | the production OpenCode adapter against `fake_opencode.py`, a V2 server serving the real 2.0.18 OpenAPI. Its "model" runs each action as a tool call under the session's shell environment when one was set, else the server's own (V2's rule). The policy names a provider secret for the server, so the scenarios prove the agent's shell still lacks it. |
-| `OpenCodeDriver` | live lane | the production adapter against real OpenCode 2.0.18. Each action runs through the real session's shell endpoint, in the real curated environment, recorded in OpenCode's real database; `model_step` is a real prompt to a free model. |
+| `OpenCodeDriver` | live lane | the production adapter against real OpenCode 2.0.18. Each action runs through the real session's shell endpoint, in the real curated environment, recorded in OpenCode's real database, on a keyed paid model the operator names and approves for the run (`AEW_LIVE_OPENCODE_MODEL`; no default). |
 
 | Scenario | Property |
 |---|---|

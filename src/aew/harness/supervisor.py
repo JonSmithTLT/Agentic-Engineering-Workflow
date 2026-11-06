@@ -77,6 +77,15 @@ def starting_limit_s(harness: str | None) -> float:
     return 2 * store.RECORD_WAIT_S + probe.BOUND_S + bound + STARTING_MARGIN_S
 
 
+def record_refused(record: dict[str, Any], network: Any) -> None:
+    """The run's refused egress targets (``netns.RunNetwork.refused``), when there are any, as ``egress_refused``:
+    beside the run's ``containment`` label and never in it, since `harness status` and `harness wait` give the Lead
+    the label (the designer's ruling of 2026-11-06, point 1)."""
+    refused = network.refused()
+    if refused and (refused["targets"] or refused["more"]):
+        record["egress_refused"] = refused
+
+
 def log(msg: str) -> None:
     sys.stderr.write(K.redact(f"{utc_now()} {msg}\n"))
     sys.stderr.flush()
@@ -554,9 +563,7 @@ class Supervisor:
                                          outcomes=self.bridge.outcomes)
         if self.tree.network is not None:  # closed with the tree; its counts stay
             self.record["containment"]["network"]["decisions"] = self.tree.network.decisions()
-            refused = self.tree.network.refused()  # beside the label, never in it (RunNetwork.refused)
-            if refused and (refused["targets"] or refused["more"]):
-                self.record["egress_refused"] = refused
+            record_refused(self.record, self.tree.network)
         self._event("ended", status=status, reason=reason)
         self._drop_credential()
         try:

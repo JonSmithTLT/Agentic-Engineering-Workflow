@@ -304,3 +304,45 @@ def test_a_release_that_respells_the_leads_provider_deny_is_refused_at_a_workers
     empty = copy.deepcopy(spec)
     empty["components"]["schemas"][config]["properties"]["experimental"] = {"type": "object"}
     assert any("experimental.policies" in p for p in capabilities.problems(empty))
+
+
+def test_the_supervisor_writes_the_refused_targets_beside_the_label():
+    """Right: refusals go in `egress_refused`, beside `containment`. Missing: a run with none, or with no egress proxy,
+    gets no such key."""
+    record: dict[str, Any] = {"containment": {"network": {"mode": netns.PROXY_ONLY}}}
+    net = run_network("opencode", True, "opencode.ai:443")
+    try:
+        supervisor.record_refused(record, net)
+    finally:
+        net.close()
+    assert record["egress_refused"]["targets"][0]["target"] == "opencode.ai:443"
+    assert record["containment"] == {"network": {"mode": netns.PROXY_ONLY}}
+    for quiet in (run_network("opencode", True),
+                  netns.RunNetwork(SimpleNamespace(network=netns.PROXY_ONLY, net_dir=None))):  # type: ignore[arg-type]
+        empty: dict[str, Any] = {}
+        supervisor.record_refused(empty, quiet)
+        quiet.close()
+        assert empty == {}
+
+
+# ---------------------------------------------------------------------------------------------------- doctor
+
+def test_doctor_names_a_profile_whose_launch_would_get_no_key(relay_route, monkeypatch):
+    """`aew doctor`'s `provider-key` line, from the launch's own predicate. Wrong: FAIL naming the provider, the
+    variable and the profile. Right: PASS, names only. Missing: nothing judged (a harness that never calls its
+    provider itself, or an unknown provider), so no line."""
+    from aew.engine import api
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    policy = {"harness": "opencode", "provider_env": [],
+              "profiles": {"standard": {"provider": "openai", "model": "synthetic-paid-model"},
+                           "light": {"provider": "fakeprov", "model": "synthetic-model"}}}
+    found = api._provider_key_doctor(policy)
+    assert found is not None and found[0] == "FAIL", found
+    assert "openai (OPENAI_API_KEY), for profile(s) standard" in found[1] and "provider_key_missing" in found[1]
+    assert netns.FREE_TIER_RULE in found[1]
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    found = api._provider_key_doctor({**policy, "provider_env": ["OPENAI_API_KEY"]})
+    assert found == ("PASS", "a provider key reaches the run for profile(s) standard (names only)")
+    assert api._provider_key_doctor({**policy, "profiles": {"light": policy["profiles"]["light"]}}) is None
+    assert api._provider_key_doctor({**policy, "harness": "fake-not-registered"}) is None  # cannot load: not judged

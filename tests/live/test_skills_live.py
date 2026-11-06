@@ -13,7 +13,8 @@ with a control write beside it; the record says how the copy was protected.
 **With a model** (``test_live_a_model_lists_loads_and_is_refused_what_it_was_not_given``), only when
 ``AEW_LIVE_SKILLS_MODEL`` (``provider/model``) and ``AEW_LIVE_PROVIDER_KEY_ENV`` (the name of the variable holding that
 provider's key) are set. A paid model needs the operator's approval for each run (the operator, 2026-11-06), and never
-an ``opencode/*`` free model. Three runs, each capped at ``AEW_LIVE_SKILLS_STEPS`` steps:
+one of OpenCode's free models: a ``-free`` id, or one the served catalog prices at zero (``live_models``), whatever its
+provider; a paid OpenCode Zen model is allowed. Three runs, each capped at ``AEW_LIVE_SKILLS_STEPS`` steps:
 
 * ``engineer`` and a project card that is ``engineer`` without ``optional_skills``: their
   ``first_step_input_tokens`` and ``system_bytes`` are **recorded, never asserted** (the cost of the listing, the
@@ -42,6 +43,7 @@ import pytest
 from aewflow import create_investigation, create_planned_ticket, sample_project
 from fake_harness import POLICY, HarnessLab
 from harness_conformance import PROVIDER_SECRET
+from live_models import free_model
 
 from aew import skills
 from aew.harness import procs, runlog
@@ -85,6 +87,31 @@ def listed_skills(tmp: Path, config: dict[str, Any], directory: str) -> list[str
                 seen, since = now, time.monotonic()
             elif seen and time.monotonic() - since >= SETTLE_S:
                 return seen
+            time.sleep(0.5)
+        return seen
+    finally:
+        tree.kill()
+
+
+def served_catalog(tmp: Path) -> list[dict[str, Any]]:
+    """``/api/model`` on a fresh private server (no model, no prompt, no key): the catalog this OpenCode serves, read
+    until it has held still for ``SETTLE_S`` (it fills in asynchronously, as the skills do)."""
+    state = tmp / f"catalog-{time.monotonic_ns()}"
+    state.mkdir(parents=True)
+    tree = procs.ProcessTree()
+    env = adapter.server_env(dict(os.environ), state, provider_env=[], config={"snapshots": False},
+                             password=os.urandom(16).hex())
+    try:
+        server = Server.start(tree.spawn, adapter.binary_command(), env=env, cwd=str(tmp),
+                              log_path=state / "server.log")
+        seen: list[dict[str, Any]] = []
+        since, until = time.monotonic(), time.monotonic() + LOAD_WAIT_S
+        while time.monotonic() < until:
+            now = (server.client.get("/api/model", location(str(tmp))) or {}).get("data") or []
+            if len(now) != len(seen):
+                seen, since = now, time.monotonic()
+            elif seen and time.monotonic() - since >= SETTLE_S:
+                break
             time.sleep(0.5)
         return seen
     finally:
@@ -194,9 +221,10 @@ def model_lab(tmp_path: Path) -> HarnessLab:
     ref, key_name = os.environ.get(MODEL_ENV), os.environ.get(KEY_ENV)
     if not ref or not key_name or not os.environ.get(key_name):
         pytest.skip(f"set {MODEL_ENV} and {KEY_ENV} (and the key itself) for the model runs: a paid model, each run "
-                    "approved by the operator; never an opencode/* free model")
+                    "approved by the operator; never one of OpenCode's free models")
+    why = free_model(ref, served_catalog(tmp_path))
+    assert why is None, f"the operator ruled out OpenCode's free models (2026-11-06): {why}"
     provider, _, model = ref.partition("/")
-    assert provider != "opencode", "the operator ruled out OpenCode's free models (2026-11-06)"
     steps = int(os.environ.get(STEPS_ENV, "8"))
     policy = {**POLICY, "harness": "opencode", "provider_env": [key_name],
               "profiles": {"standard": {"provider": provider, "model": model, "max_steps": steps,

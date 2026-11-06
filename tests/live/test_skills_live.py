@@ -14,7 +14,11 @@ with a control write beside it; the record says how the copy was protected.
 ``AEW_LIVE_SKILLS_MODEL`` (``provider/model``) and ``AEW_LIVE_PROVIDER_KEY_ENV`` (the name of the variable holding that
 provider's key) are set. A paid model needs the operator's approval for each run (the operator, 2026-11-06), and never
 one of OpenCode's free models: a ``-free`` id, or one the served catalog prices at zero (``live_models``), whatever its
-provider; a paid OpenCode Zen model is allowed. Three runs, each capped at ``AEW_LIVE_SKILLS_STEPS`` steps:
+provider; a paid OpenCode Zen model is allowed. Three runs, each capped at ``AEW_LIVE_SKILLS_STEPS`` steps and each
+in a project of its own (a run that ends without integrating holds its Ticket's workspace, which the gates'
+``mutating_concurrency`` of 1 lets no second Ticket of that project past). ``AEW_LIVE_SKILLS_REHEARSE=1``, with no
+model set, runs the same three through the scripted adapter, no model and no key, to prove the test's own path before
+a paid run is asked for:
 
 * ``engineer`` and a project card that is ``engineer`` without ``optional_skills``: their
   ``first_step_input_tokens`` and ``system_bytes`` are **recorded, never asserted** (the cost of the listing, the
@@ -25,7 +29,8 @@ provider; a paid OpenCode Zen model is allowed. Three runs, each capped at ``AEW
 
 What the model does is recorded, not asserted. What is asserted, whatever it does: a ``skill`` call of an id the run
 was not given never completes; a write into the copy never succeeds; ``loaded`` and ``skill_other`` sum to the ``skill``
-calls; no ``skill`` id the model wrote is stored. Each run's record goes to ``AEW_LIVE_RESULTS`` if set::
+calls; no ``skill`` id the model wrote is stored. Each run's record goes to ``AEW_LIVE_RESULTS`` if set, as each run
+ends::
 
     AEW_LIVE_RESULTS=skills.jsonl pytest --live tests/live/test_skills_live.py -p no:xdist -q
 """
@@ -56,6 +61,7 @@ pytestmark = pytest.mark.skipif(not os.environ.get(adapter.BIN_ENV) and adapter.
 MODEL_ENV, KEY_ENV, STEPS_ENV = "AEW_LIVE_SKILLS_MODEL", "AEW_LIVE_PROVIDER_KEY_ENV", "AEW_LIVE_SKILLS_STEPS"
 RESULTS_ENV = "AEW_LIVE_RESULTS"
 PIN_ENV = "AEW_LIVE_SKILLS_PIN"  # the model-free test's pin: offered by the catalog, never prompted
+REHEARSE_ENV = "AEW_LIVE_SKILLS_REHEARSE"  # the model test's three runs through the scripted adapter: no model, no key
 LINUX = sys.platform.startswith("linux")
 LOAD_WAIT_S, SETTLE_S = 30.0, 5.0
 
@@ -217,20 +223,35 @@ PROBE_GOAL = (
     "that SKILL.md")
 
 
-def model_lab(tmp_path: Path) -> HarnessLab:
+def model_choice(tmp_path: Path) -> tuple[str, str] | None:
+    """The paid model and its key's variable name, or None for the rehearsal (``AEW_LIVE_SKILLS_REHEARSE=1``): the
+    same three runs through the scripted adapter, no model and no key, which proves the test's own path before a paid
+    run is asked for. Skips when neither is set."""
     ref, key_name = os.environ.get(MODEL_ENV), os.environ.get(KEY_ENV)
+    if not ref and os.environ.get(REHEARSE_ENV) == "1":
+        return None
     if not ref or not key_name or not os.environ.get(key_name):
         pytest.skip(f"set {MODEL_ENV} and {KEY_ENV} (and the key itself) for the model runs: a paid model, each run "
-                    "approved by the operator; never one of OpenCode's free models")
+                    f"approved by the operator; never one of OpenCode's free models ({REHEARSE_ENV}=1 rehearses them)")
     why = free_model(ref, served_catalog(tmp_path))
     assert why is None, f"the operator ruled out OpenCode's free models (2026-11-06): {why}"
-    provider, _, model = ref.partition("/")
-    steps = int(os.environ.get(STEPS_ENV, "8"))
-    policy = {**POLICY, "harness": "opencode", "provider_env": [key_name],
-              "profiles": {"standard": {"provider": provider, "model": model, "max_steps": steps,
-                                        "deadline_s": 600}}}
-    lab = HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy,
-                            extra_env={key_name: os.environ[key_name], "AEW_LAUNCH_ACK_S": "240"})
+    return ref, key_name
+
+
+def model_lab(tmp: Path, choice: tuple[str, str] | None) -> HarnessLab:
+    """A lab of its own for one run: its own project, so no earlier run's held workspace bears on it (below)."""
+    tmp.mkdir(parents=True, exist_ok=True)
+    if choice is None:
+        lab = scripted_lab(tmp)
+    else:
+        ref, key_name = choice
+        provider, _, model = ref.partition("/")
+        steps = int(os.environ.get(STEPS_ENV, "8"))
+        policy = {**POLICY, "harness": "opencode", "provider_env": [key_name],
+                  "profiles": {"standard": {"provider": provider, "model": model, "max_steps": steps,
+                                            "deadline_s": 600}}}
+        lab = HarnessLab.create(sample_project(tmp), tmp, policy=policy,
+                                extra_env={key_name: os.environ[key_name], "AEW_LAUNCH_ACK_S": "240"})
     roles_dir = lab.aew_root / "roles"
     roles_dir.mkdir(exist_ok=True)
     (roles_dir / "skill_probe.yaml").write_text(PROBE_CARD, encoding="utf-8", newline="\n")
@@ -256,18 +277,27 @@ def observe(lab: HarnessLab, run: str) -> dict[str, Any]:
 
 
 def test_live_a_model_lists_loads_and_is_refused_what_it_was_not_given(tmp_path):
-    lab = model_lab(tmp_path)
-    try:
-        listing = {}
-        for card in ("engineer", "plain_engineer"):
-            wid = create_planned_ticket(lab.project, tmp_path, title=f"Add subtract() ({card})",
+    choice = model_choice(tmp_path)
+    model = choice[0] if choice else "rehearsal"
+    # Each run has a project of its own. A listing run may end without integrating (out of steps, or no evidence),
+    # and its Ticket then holds its workspace, so the gates' `mutating_concurrency` (1) refuses the next Ticket of the
+    # same project (the operator's run of 2026-11-06). This measures the listing and the probe, not the queue.
+    listing = {}
+    for card in ("engineer", "plain_engineer"):
+        lab = model_lab(tmp_path / card, choice)
+        try:
+            wid = create_planned_ticket(lab.project, lab.tmp, title=f"Add subtract() ({card})",
                                         extra=("--card", card))
             listing[card] = observe(lab, lab.lead("work", "assign", wid, "--launch")["launch"]["run"])
-        assert listing["engineer"]["exposed"] == ["c-development", "python-development"]
-        assert listing["plain_engineer"]["exposed"] == []
-        record_result({"test": "listing", "model": os.environ[MODEL_ENV], "runs": listing})
+            record_result({"test": "listing", "model": model, "card": card, "run": listing[card]})
+        finally:
+            lab.cleanup()
+    assert listing["engineer"]["exposed"] == ["c-development", "python-development"]
+    assert listing["plain_engineer"]["exposed"] == []
 
-        wid = create_investigation(lab.project, tmp_path, card="skill_probe",
+    lab = model_lab(tmp_path / "probe", choice)
+    try:
+        wid = create_investigation(lab.project, lab.tmp, card="skill_probe",
                                    extra=("--goal", PROBE_GOAL))
         run = lab.lead("work", "dispatch", wid, "--launch")["launch"]["run"]
         seen = observe(lab, run)
@@ -287,7 +317,7 @@ def test_live_a_model_lists_loads_and_is_refused_what_it_was_not_given(tmp_path)
         for name in os.listdir(copy):  # nothing the model did added to the copy
             assert name in seen["exposed"], name
         assert not (Path(copy) / "adversarial-review" / "probe").exists()
-        record_result({"test": "probe", "model": os.environ[MODEL_ENV], "run": seen, "skill_calls": calls,
+        record_result({"test": "probe", "model": model, "run": seen, "skill_calls": calls,
                        "reads_of_the_copy": [r for r in reads if str(r["path"] or "").startswith(copy)],
                        "shells": [(p.get("state") or {}).get("status") for p in tool_parts(messages, "shell")],
                        "manifest": {n: skills.entries()[n]["sha256"] for n in seen["exposed"]}})

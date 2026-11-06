@@ -13,7 +13,7 @@ What any harness adapter must do for AEW. This is the adapter-neutral contract b
   - `tests/integration/test_opencode_lead.py` covers `aew opencode`;
   - `tests/integration/test_lead_session.py` checks Lead custody and bridge parity;
   - `tests/regression/test_m3_harness_adversarial.py` holds the step-2 race and attack regressions.
-- **Live lane (opt-in: `pytest --live tests/live`):** the same scenarios against a real OpenCode 2.0.18 server, plus a check that the real server loads the Lead projection, and (step 8) a free model carrying out real launch contracts unscripted (section 6).
+- **Live lane (opt-in: `pytest --live tests/live`):** the same scenarios against a real OpenCode 2.0.18 server, plus a check that the real server loads the Lead projection, and (step 8) a real model carrying out real launch contracts unscripted (section 6). Step 8 ran on free models; every live lane now runs on a keyed paid model the operator names and approves for each run (`AEW_LIVE_OPENCODE_MODEL`, with `AEW_LIVE_PROVIDER_KEY_ENV` for the unscripted lane), and skips without one: AEW does not use OpenCode's free models (ADR-0009's amendment of 2026-11-06).
 
 ## 1. The adapter contract
 

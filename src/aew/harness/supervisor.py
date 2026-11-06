@@ -265,6 +265,16 @@ class Supervisor:
 
         policy, _ = self.engine.execution_policy()
         assert self.bridge is not None
+        # The engine refused this before anything was committed (``require_launchable``); checked again here, on the
+        # names this run's contract carries, before any sandbox or network exists (the operator's decision of
+        # 2026-11-06: AEW does not rely on OpenCode's free models).
+        provider = (self.record.get("execution_profile") or {}).get("provider")
+        missing = netns.provider_key_missing(provider, [str(n) for n in contract.extra.get("provider_env") or []],
+                                             os.environ, on_relay_route=netns.relay_route(policy,
+                                                                                          adapter_cls.PROVIDER_RELAY))
+        if missing is not None:
+            raise errors.HarnessIncompatible(netns.provider_key_message(str(provider), missing),
+                                             reason=netns.PROVIDER_KEY_MISSING, variable=missing)
         network: netns.RunNetwork | None = None
         try:
             try:
@@ -544,6 +554,9 @@ class Supervisor:
                                          outcomes=self.bridge.outcomes)
         if self.tree.network is not None:  # closed with the tree; its counts stay
             self.record["containment"]["network"]["decisions"] = self.tree.network.decisions()
+            refused = self.tree.network.refused()  # beside the label, never in it (RunNetwork.refused)
+            if refused and (refused["targets"] or refused["more"]):
+                self.record["egress_refused"] = refused
         self._event("ended", status=status, reason=reason)
         self._drop_credential()
         try:

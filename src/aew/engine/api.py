@@ -342,6 +342,10 @@ class ProjectAdmin:
                 add("model-refs", *_model_refs_doctor(execution))
             if execution is not None and execution.get("provider_env"):
                 add("provider-env", *_provider_env_doctor(execution))
+            if execution is not None and execution.get("profiles"):
+                found = _provider_key_doctor(execution)
+                if found is not None:
+                    add("provider-key", *found)
         # F25 (the cost and usage ledger design v0.2 R4, R6): the price table, the snapshots usage records name (the
         # hot state and the recent ring: a bounded read; `aew usage show --all` covers the whole archive), and the
         # hot runs' copy state.
@@ -436,6 +440,43 @@ def _provider_env_doctor(policy: dict[str, Any]) -> tuple[str, str]:
                         + f" ({caveat})")
     return "PASS", (f"set in this environment: {', '.join(names)} (values not shown; {caveat}: restart one that "
                     "started before they were set)")
+
+
+def _provider_key_doctor(policy: dict[str, Any]) -> tuple[str, str] | None:
+    """Each profile's provider as a launch from this environment would find its key on the relay route
+    (``netns.provider_key_missing``, the check every such launch makes): FAIL naming the profiles whose launch is
+    refused (``provider_key_missing``) and the fix; PASS when every profile whose key AEW can judge has one; None
+    when there is nothing to judge (no profile on the relay route, as on Windows, or no provider whose key variable
+    AEW knows). Names only, never a value."""
+    from aew.harness import registry
+    from aew.harness.containment import netns
+
+    names = [str(n) for n in policy.get("provider_env") or []]
+    missing: dict[str, list[str]] = {}
+    judged = []
+    for name in sorted(policy["profiles"]):
+        try:
+            pair = X.model_pair(policy, name, registry.model_identity)
+            relay = registry.load(X.profile_harness(policy, policy["profiles"][name])).PROVIDER_RELAY
+        except AEWError:  # reported by the model-refs line, or the launch's own refusal
+            continue
+        on_route = netns.relay_route(policy, relay)
+        if not on_route or pair.provider not in netns.PROVIDER_KEY_ENV:
+            continue
+        judged.append(name)
+        variable = netns.provider_key_missing(pair.provider, names, os.environ, on_relay_route=on_route)
+        if variable is not None:
+            missing.setdefault(f"{pair.provider} ({variable})", []).append(name)
+    if missing:
+        return "FAIL", ("a harness launch from this environment is refused (provider_key_missing), since its provider "
+                        "would get no key: " + "; ".join(f"{p}, for profile(s) {', '.join(v)}"
+                                                          for p, v in sorted(missing.items()))
+                        + ". AEW does not use OpenCode's free models; " + netns.FREE_TIER_RULE + " Name the variable "
+                        "in the execution policy's provider_env, set it in the terminal you start AEW from, and pin "
+                        "a paid model")
+    if judged:
+        return "PASS", f"a provider key reaches the run for profile(s) {', '.join(judged)} (names only)"
+    return None
 
 
 class Engine:

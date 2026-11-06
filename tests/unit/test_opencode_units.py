@@ -243,6 +243,10 @@ def test_the_lead_tui_environment_has_no_credential_and_no_provider_key():
                 "OPENCODE_PASSWORD"} & set(env)
     assert env["XDG_CONFIG_HOME"] == "/c" and env["OPENCODE_CONFIG"] == "/cfg/opencode.json"
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config()
+    assert json.loads(env["OPENCODE_CONFIG_CONTENT"])["experimental"]["policies"] == [
+        {"action": "provider.use", "resource": "opencode", "effect": "deny"},
+        {"action": "provider.use", "resource": "opencode-go", "effect": "deny"}]  # the designer's ruling, 2026-11-06
+    assert "opencode" not in json.loads(env["OPENCODE_CONFIG_CONTENT"]).get("providers", {})  # never switched on
     assert env["PATH"].split(os.pathsep)[0] == os.path.dirname(sys.executable)
     assert lead.tui_env(base_env(), provider_env=["ANTHROPIC_API_KEY"])["ANTHROPIC_API_KEY"] == "sk-ant-secret"
 

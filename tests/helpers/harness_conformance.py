@@ -51,7 +51,20 @@ from aew.harness import bridge, procs, runlog
 from aew.knowledge import evidence as E
 
 PROVIDER_SECRET = "sk-provider-secret-must-not-reach-the-agent"
-FREE_MODEL = os.environ.get("AEW_LIVE_OPENCODE_MODEL", "opencode/longcat-2.5-preview-free")
+# The live lanes' model: a keyed paid model the operator names, and approves, for each run (the operator, 2026-11-06:
+# AEW does not use OpenCode's free models, and the model for testing is agreed per event). No default, and no key here.
+LIVE_MODEL_ENV = "AEW_LIVE_OPENCODE_MODEL"
+LIVE_MODEL = os.environ.get(LIVE_MODEL_ENV, "").strip()
+LIVE_MODEL_SKIP = (f"{LIVE_MODEL_ENV} is unset: a live run needs a keyed paid model (provider/model) that the operator "
+                   "chooses and approves for this run, with its key in the environment; AEW does not use OpenCode's "
+                   "free models")
+
+
+def live_model() -> str:
+    """The operator's model for this live run (:data:`LIVE_MODEL`), or a skip that says what is needed."""
+    if not LIVE_MODEL:
+        pytest.skip(LIVE_MODEL_SKIP)
+    return LIVE_MODEL
 NO_WINDOW: dict[str, Any] = ({"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS
                              else {"start_new_session": True})
 
@@ -272,7 +285,8 @@ class FakeOpenCodeDriver(Driver):
 
 class OpenCodeDriver(Driver):
     """The live lane: the real adapter and a real OpenCode 2.0.18 server per run (``opencode_scripted.py``); the
-    steps run through the session's own shell endpoint and ``model_step`` prompts a free model. The Lead acts
+    steps run through the session's own shell endpoint, on the operator's model for the run (:func:`live_model`;
+    the steps are scripted, so no model is called). The Lead acts
     through AEW's harness-neutral Lead broker (``aew lead session``): the real TUI needs a terminal, so the
     operator's own TUI session is its live check (M3 plan §9)."""
 
@@ -282,11 +296,16 @@ class OpenCodeDriver(Driver):
     def create_lab(self, tmp_path: Path, *, lead_session: bool = False) -> HarnessLab:
         from opencode_scripted import HERE as HELPERS
 
-        provider, _, model = FREE_MODEL.partition("/")
-        policy = {**POLICY, "harness": "opencode-scripted", "provider_env": ["OPENAI_API_KEY"],
+        from aew.harness.containment import netns
+
+        provider, _, model = live_model().partition("/")
+        # The provider's own key variable, so a launch on the relay route is not refused (provider_key_missing); its
+        # value is a placeholder: the scripted steps call no model.
+        key = netns.PROVIDER_KEY_ENV.get(provider, "OPENAI_API_KEY")
+        policy = {**POLICY, "harness": "opencode-scripted", "provider_env": [key],
                   "profiles": {"standard": {"provider": provider, "model": model}}}
         return HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy, extra_env={
-            "OPENAI_API_KEY": PROVIDER_SECRET, "AEW_LAUNCH_ACK_S": "240",
+            key: PROVIDER_SECRET, "AEW_LAUNCH_ACK_S": "240",
             "AEW_HARNESS_ADAPTERS": f"opencode-scripted={HELPERS / 'opencode_scripted.py'}:ScriptedOpenCodeAdapter"},
             lead_session=lead_session)
 

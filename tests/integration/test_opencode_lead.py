@@ -33,6 +33,10 @@ import fake_agent
 sys.exit(fake_agent.main())
 """
 
+# Every Lead's provider deny, written out (the designer's ruling of 2026-11-06)
+DENY = [{"action": "provider.use", "resource": "opencode", "effect": "deny"},
+        {"action": "provider.use", "resource": "opencode-go", "effect": "deny"}]
+
 
 @pytest.fixture
 def lab(tmp_path):
@@ -97,6 +101,8 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
                 "AEW_OPENCODE_BIN"} & set(env)
     assert {"AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY"} <= set(env)
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(guide_of(lab))  # with the guide (F16)
+    # OpenCode's own providers off in the Lead that is not contained too (the designer's ruling of 2026-11-06)
+    assert json.loads(env["OPENCODE_CONFIG_CONTENT"])["experimental"]["policies"] == DENY
     assert env["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1"
     assert steps[2]["exit"] == 0, steps[2]  # a Lead mutation, carried out by the broker
     assert code(steps[3]) == "USAGE"        # a credential-emitting command is refused in the session
@@ -119,6 +125,7 @@ def test_print_config_starts_nothing_and_shows_no_values(lab):
     assert res.returncode == 0, res.stderr
     shown = res.json
     assert shown["config"] == projection.lead_config(guide_of(lab))
+    assert shown["config"]["experimental"]["policies"] == DENY  # --print-config shows the provider deny
     assert shown["command"][-2:] == ["--standalone", str(lab.root)]
     system = shown["config"]["agents"][projection.LEAD_AGENT]["system"]
     assert system.startswith(projection.LEAD_SYSTEM) and "# How work gets done in AEW: the Lead's guide" in system

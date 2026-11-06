@@ -289,9 +289,9 @@ COVERAGE_FILE=/tmp/aew-cov/.coverage python -m coverage run -m pytest -n auto -m
 python tools/ci/coverage_gate.py /tmp/aew-cov --baseline tests/coverage-baseline.json   # report and check the ratchet
 # On Windows, also set AEW_COVERAGE_OTHER_OS=posix, and keep COVERAGE_FILE outside the checkout.
 AEW_WALK_SEEDS=4242 AEW_WALK_STEPS=150 python -m pytest --lane adversarial -q     # reproduce a nightly seed
-python -m pytest --live tests/live -n 4 -q              # live lane: real OpenCode (AEW_OPENCODE_BIN), a free model
+AEW_LIVE_OPENCODE_MODEL=<provider/model> python -m pytest --live tests/live -n 4 -q   # live lane: real OpenCode (AEW_OPENCODE_BIN), a keyed paid model approved for the run
 python -m pytest --live tests/live/test_opencode_acceptance_live.py -p no:xdist -q   # AT-14..AT-17 on real OpenCode
-AEW_LIVE_RESULTS=trials.jsonl python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # a free model, unscripted
+AEW_LIVE_RESULTS=trials.jsonl python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # unscripted: also AEW_LIVE_PROVIDER_KEY_ENV (costs money)
 AEW_LIVE_ROUTING=implementer=openai/gpt-5.6-luna AEW_LIVE_PROVIDER_KEY_ENV=OPENAI_API_KEY \n  python -m pytest --live tests/live/test_opencode_model_live.py -p no:xdist -q   # paid models, per role (costs money)
 ```
 

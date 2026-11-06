@@ -145,8 +145,9 @@ def test_each_api_key_login_of_a_known_provider_is_relayed_and_the_others_say_wh
     text = out.getvalue()
     assert "anthropic (key): relayed" in text
     assert "opencode (key): not served yet: OpenCode's catalog gives each opencode/* model an address of its own, so " \
-           "no relay can carry its key, and the key stays out of the Lead; without it OpenCode offers only the free " \
-           "opencode models, which work through the egress proxy" in text
+           "no relay can carry its key, and the key stays out of the Lead; the Lead's configuration switches " \
+           "opencode off" in text
+    assert "free" not in text and "egress proxy" not in text  # the free models are no route (2026-11-06)
     assert "mystery (key): not relayed; AEW does not know which variable" in text
     assert "openai (oauth): relayed as stored, 2 h left; AEW never refreshes it: when it expires, `opencode auth " \
            "list` at your own terminal refreshes it, and the Lead's next request works" in text
@@ -372,24 +373,56 @@ def test_the_contained_lead_needs_a_terminal_and_a_passable_provider_variable(tm
         contained(tmp_path, ["OPENAI_API_KEY"])  # unset
 
 
-def test_with_no_login_and_no_key_the_start_lines_say_only_free_models_work_and_name_the_operators_step(
+def test_a_contained_lead_with_no_provider_relayed_is_refused_naming_the_rule_and_the_operators_steps(
         tmp_path, at_a_terminal):
-    """The Lead's check: where the operator has no OpenCode login (no database, or none in it), the start lines say so,
-    and that no provider is relayed, so only OpenCode's free models work; and they name the operator's own step: log in
-    with their own OpenCode outside AEW, or feed a key, then start again. A relayed provider needs no such line."""
-    nothing = ("aew opencode: no provider is relayed to the Lead, so only OpenCode's free models work. Log in with "
-               "your own OpenCode at your own terminal, outside AEW (`opencode auth login`), or feed a key with "
-               "`--provider-env NAME`; then start `aew opencode` again.")
-    out = io.StringIO()
-    contained(tmp_path).announce(out)
-    assert "Your OpenCode logins: none (no OpenCode login database at" in out.getvalue() and nothing in out.getvalue()
-    store(tmp_path, [])
-    out = io.StringIO()
-    contained(tmp_path).announce(out)
-    assert "Your OpenCode logins: none." in out.getvalue() and nothing in out.getvalue()
-    out = io.StringIO()
-    contained(tmp_path, ["OPENAI_API_KEY"], OPENAI_API_KEY="sk-synthetic-fed").announce(out)
-    assert "no provider is relayed" not in out.getvalue()
+    """The designer's ruling of 2026-11-06: with no key and no refreshing login relayed, the Lead's configuration
+    leaves it no model (OpenCode's own providers are switched off), so `aew opencode` is refused at start with
+    `provider_key_missing`, quoting the published rule and naming the operator's own steps: log in with their own
+    OpenCode outside AEW, or feed a key, then start again. The start lines still say what was found, and no longer
+    say the free models work. Right case: a fed key, or a refreshing login, passes; wrong case: no login database, or
+    an empty one, is refused; missing case: an opencode key alone (never relayed) is refused too."""
+    def refused(session: lead.ContainedLead) -> errors.HarnessIncompatible:
+        out = io.StringIO()
+        session.announce(out)
+        assert "free models work" not in out.getvalue()
+        with pytest.raises(errors.HarnessIncompatible) as caught:
+            session.require_provider()
+        return caught.value
+
+    exc = refused(contained(tmp_path))
+    assert exc.details["reason"] == netns.PROVIDER_KEY_MISSING == "provider_key_missing"
+    assert netns.FREE_TIER_RULE in exc.message and "https://opencode.ai/docs/zen/" in exc.message
+    assert "`opencode auth login`" in exc.message and "`--provider-env NAME`" in exc.message
+    assert "ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENAI_API_KEY" in exc.message
+    assert "OPENCODE_API_KEY" not in exc.message  # never relayed to the Lead, so never offered as a fix
+    store(tmp_path / "empty", [])
+    refused(contained(tmp_path / "empty"))
+    store(tmp_path / "oc", [("opencode", "api", 1, {"type": "key", "key": KEYS["opencode"]}, 1)])
+    refused(contained(tmp_path / "oc", OPENCODE_API_KEY="synthetic-oc-env"))
+    contained(tmp_path, ["OPENAI_API_KEY"], OPENAI_API_KEY="sk-synthetic-fed").require_provider()  # fed: passes
+    in_two_hours = int((time.time() + 2 * 3600 + 60) * 1000)
+    store(tmp_path / "chatgpt",
+          [("openai", "chatgpt-browser", 1, {"type": "oauth", "access": "acc", "expires": in_two_hours}, 1)])
+    contained(tmp_path / "chatgpt").require_provider()  # a refreshing login relayed as stored: passes
+
+
+def test_the_lead_is_refused_before_a_seat_or_sandbox_when_no_provider_is_relayed(tmp_path, monkeypatch,
+                                                                                at_a_terminal):
+    """`aew opencode` refuses in `run`, after the start lines and before `run_session`, which takes the seat and
+    builds the sandbox (the designer's ruling: refused at start, before the sandbox)."""
+    started: list[Any] = []
+    monkeypatch.setattr(lead, "check_version", lambda: "2.0.18")
+    monkeypatch.setattr(lead, "command", lambda engine, extra: ["opencode", "--standalone"])
+    monkeypatch.setattr(lead, "guide_of", lambda engine: "")
+    monkeypatch.setattr(lead, "contained_here", lambda: True)
+    monkeypatch.setattr(lead_broker, "require_credential", lambda acquire: None)
+    monkeypatch.setattr(lead_broker, "run_session", lambda *a, **k: started.append(a) or {})
+    monkeypatch.setattr(os, "environ", {"HOME": str(tmp_path), "PATH": "/usr/bin"})
+    engine = SimpleNamespace(execution_policy=lambda: (None, None), repo_root=tmp_path)
+    with pytest.raises(errors.HarnessIncompatible, match="no provider is relayed to the contained Lead"):
+        lead.run(engine, acquire=False, session_label=None, keep_seat=False, provider_env=[], extra_args=[],
+                 print_config=False)
+    assert started == []
 
 
 def test_provider_variables_in_the_environment_are_named_with_whether_the_lead_serves_them(tmp_path, at_a_terminal):

@@ -237,11 +237,12 @@ def agent_session(tmp_path: Path, steps: list[dict[str, Any]] | Callable[[Harnes
                   logins: dict[str, str] | None = None) -> tuple[dict[str, Any], dict[int, Any]]:
     """A contained Lead session in its own project under ``tmp_path`` whose model takes ``steps`` (the fake agent's,
     or made from the lab) and ends: the session's result and each step's result. The operator's stored login holds
-    ``logins``."""
+    ``logins``, by default one synthetic key (a Lead with no provider relayed is refused at start: the designer's
+    ruling of 2026-11-06)."""
     tmp_path.mkdir(parents=True, exist_ok=True)
     lab, tui = make_lab(tmp_path)
     try:
-        home = synthetic_home(tmp_path, logins)
+        home = synthetic_home(tmp_path, {"anthropic": KEYS["anthropic"]} if logins is None else logins)
         (tui / "mode").write_text("agent")
         (tui / "tui-script.json").write_text(json.dumps(steps(lab) if callable(steps) else steps))
         done = at_the_terminal(lab, home)

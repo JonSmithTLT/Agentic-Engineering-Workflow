@@ -2,7 +2,7 @@
 
 Each scenario takes a ``Driver`` (``harness_conformance.py``): in CI the fake harness and the real OpenCode adapter
 against the fake V2 server (``tests/acceptance/test_at14_at17_harness.py``); in the live lane the real OpenCode
-2.0.18 server with a free model (``tests/live/test_opencode_acceptance_live.py``).
+2.0.18 server on the operator's keyed paid model for the run (``tests/live/test_opencode_acceptance_live.py``).
 
 The Lead acts through its own harness session wherever the scenario is about the Lead (AT-14, AT-15, AT-17):
 ``aew lead session`` (harness-neutral) or ``aew opencode`` (a fake TUI in CI). Every role is a harness run. The

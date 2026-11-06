@@ -71,9 +71,11 @@ REQUIRED_FIELDS: dict[str, dict[str, str]] = {
     "SessionMessagesResponse": {"data": A, "cursor": O, "cursor.next": S},
     "Permission.Request": {"id": S, "action": S, "resources": A},
     "Permission.Rule": {"action": S, "resource": S, "effect": S},
+    # `experimental.policies` carries the Lead's provider deny (projection.LEAD_DENIED_PROVIDERS): a release that
+    # respells it fails closed at a worker's launch, which probes this schema; the Lead's TUI is not probed.
     "Config.InfoEncoded": {"agents": O, "plugins": A, "snapshots": B, "update": S, "share": S, "lsp": B,
                            "formatter": B, "default_agent": S, "permissions": A, "commands": O, "mcp": O,
-                           "mcp.servers": O},
+                           "mcp.servers": O, "experimental": O, "experimental.policies": A},
     # The Lead's typed surface (F15.1): a release that respells local MCP servers fails closed at launch.
     "Mcp.LocalConfigEncoded": {"type": S, "command": A, "codemode": B},
     "Config.AgentEncoded": {"model": O, "system": S, "mode": S, "permissions": A, "steps": I, "description": S},

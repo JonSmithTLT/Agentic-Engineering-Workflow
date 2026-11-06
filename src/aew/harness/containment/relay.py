@@ -8,7 +8,8 @@ holds only a sentinel in its place (:func:`sentinel`). For each request it:
    where the relay connects);
 2. puts the real credential where the sentinel is, in a credential header only (:data:`CREDENTIAL_HEADERS`): never in
    any other header, which an upstream might echo back. A credential header without a sentinel passes as it came:
-   it carries what the sandbox already had, such as the free provider's catalog key ``public``. A credential that
+   it carries what the sandbox already had, which is no key (a launch whose provider would get none is refused before
+   it starts: ``netns.provider_key_missing``). A credential that
    can change while the relay runs (a stored login the operator's own harness refreshes) is resolved for each
    request instead (``resolve``), with the headers that go with it; one that cannot be used now is answered 401,
    with the resolver's message (:class:`Unavailable`), and nothing is connected;

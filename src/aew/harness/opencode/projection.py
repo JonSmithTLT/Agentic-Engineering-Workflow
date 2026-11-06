@@ -337,6 +337,20 @@ def lead_contained_text(label: Mapping[str, Any]) -> str:
             "where a setting exists. Running a command the operator approved is not working around anything.")
 
 
+# The providers every Lead's configuration switches off with OpenCode's own provider deny (the designer's ruling of
+# 2026-11-06, on the operator's decision that AEW does not use OpenCode's free models): OpenCode turns `opencode` on
+# with no key and offers its free models, and no relay serves `opencode-go` to the Lead, so it would only fail. The
+# deny removes the provider with its models on every recompute of OpenCode's provider state. Never an `opencode` entry
+# under `providers` instead: that switches the provider on.
+LEAD_DENIED_PROVIDERS = ("opencode", "opencode-go")
+
+
+def lead_provider_policies() -> list[dict[str, str]]:
+    """``experimental.policies`` for every Lead: a ``provider.use`` deny for each of :data:`LEAD_DENIED_PROVIDERS`
+    (OpenCode 2.0.18's ``Config.InfoEncoded.experimental.policies``, which the capability probe checks)."""
+    return [{"action": "provider.use", "resource": p, "effect": "deny"} for p in LEAD_DENIED_PROVIDERS]
+
+
 def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
                 relays: Mapping[str, str] | None = None) -> dict[str, Any]:
     """``OPENCODE_CONFIG_CONTENT`` for the Lead's TUI. It is merged over the operator's own configuration, which the
@@ -346,12 +360,15 @@ def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
     system text so every Lead works from how AEW actually runs here, not by trial and error. ``contained`` is a
     contained session's label, whose line the system text carries (:func:`lead_contained_text`), and ``relays`` its
     relayed providers' ``baseURL`` (provider id -> the relay's loopback address inside): provider-level only, which
-    every request of those providers' models follows (measured, 2026-10-25), so no model is made up in the list."""
+    every request of those providers' models follows (measured, 2026-10-25), so no model is made up in the list.
+    Every Lead's configuration (contained, not contained, and ``--print-config``'s) denies
+    :data:`LEAD_DENIED_PROVIDERS`."""
     system = LEAD_SYSTEM + (f"\n{lead_contained_text(contained)}" if contained is not None else "")
     system = f"{system}\n\n{guide}" if guide else system
     providers = {p: {"settings": {"baseURL": url, **({"transport": "http"} if p in WEBSOCKET_FIRST else {})}}
                  for p, url in sorted((relays or {}).items())}
     return {**({"providers": providers} if providers else {}), "share": "disabled", "default_agent": LEAD_AGENT,
+            "experimental": {"policies": lead_provider_policies()},
             # The typed surface's server: spawned by OpenCode in the session's curated environment, with no
             # `environment` of its own (it holds no credential), and with Code Mode off so its tools are function
             # tools (2.0.18's default hides MCP tools behind one `execute` tool). Its execution timeout is left at the

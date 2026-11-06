@@ -318,6 +318,7 @@ def _doctor(args: argparse.Namespace) -> Any:
 
 def _init(args: argparse.Namespace) -> Any:
     from aew.engine.api import Engine
+    from aew.harness.containment import netns
 
     engine = Engine.initialize(
         _cwd(args), project_id=args.project_id, name=args.name, branch=args.branch,
@@ -331,6 +332,7 @@ def _init(args: argparse.Namespace) -> Any:
         "revision": state["revision"],
         "authority_candidates": engine.manifest["authority"]["candidates"],
         "next": "acquire Lead authority: aew lead acquire --expect-rev 0",
+        "provider_key": netns.FIRST_USE_LINE,
     }
 
 

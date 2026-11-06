@@ -106,6 +106,20 @@
   }
  },
  "default_agent": "aew-lead",
+ "experimental": {
+  "policies": [
+   {
+    "action": "provider.use",
+    "effect": "deny",
+    "resource": "opencode"
+   },
+   {
+    "action": "provider.use",
+    "effect": "deny",
+    "resource": "opencode-go"
+   }
+  ]
+ },
  "mcp": {
   "servers": {
    "aew-lead": {

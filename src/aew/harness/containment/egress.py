@@ -70,6 +70,12 @@ ACCEPT_BACKOFF = 0.1
 CHUNK = 64 * 1024
 
 _LABEL = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?")
+# A refused target as the run's record keeps it (the designer's ruling of 2026-11-06, the Lead's point 1): the CONNECT's
+# ``host:port`` as :func:`authority` normalized it, in a closed character set (a host name's, an address's and the
+# port's), cut to a host name's longest (RFC 1035: 253). At most this many distinct targets per run, then a count.
+REFUSED_TARGET_CHARS = re.compile(r"[^a-z0-9.:\[\]-]")
+REFUSED_TARGET_MAX = 253
+MAX_REFUSED_TARGETS = 20
 _PHRASES = {400: "Bad Request", 403: "Forbidden", 405: "Method Not Allowed", 408: "Request Timeout",
             431: "Request Header Fields Too Large", 502: "Bad Gateway"}
 
@@ -109,6 +115,13 @@ def authority(text: str) -> tuple[str, int]:
     if not (port_text.isascii() and port_text.isdigit() and len(port_text) <= 5 and 0 < int(port_text) < 65536):
         raise ValueError("the port must be a number from 1 to 65535")
     return host, int(port_text)
+
+
+def refused_target(target: str) -> str:
+    """``target`` as the run's record keeps it: only :data:`REFUSED_TARGET_CHARS`'s characters, cut to
+    :data:`REFUSED_TARGET_MAX`. What :func:`authority` passes is already in that set; this holds whatever reaches
+    the record."""
+    return REFUSED_TARGET_CHARS.sub("", target.lower())[:REFUSED_TARGET_MAX]
 
 
 def _literal(host: str) -> peer.IP | None:
@@ -169,9 +182,12 @@ class AnyPublic:
 
 
 class _Refused(Exception):
-    def __init__(self, status: int, reason: str, message: str) -> None:
+    """A refused request. ``target`` is the ``host:port`` a CONNECT named, on a refusal of that target (403), which
+    the proxy records (:meth:`EgressProxy.refused_targets`); None on any other refusal."""
+
+    def __init__(self, status: int, reason: str, message: str, target: str | None = None) -> None:
         super().__init__(message)
-        self.status, self.reason, self.message = status, reason, message
+        self.status, self.reason, self.message, self.target = status, reason, message, target
 
     def response(self) -> bytes:
         body = self.message.encode()
@@ -336,6 +352,8 @@ class EgressProxy(Service):
         self.policy = policy
         self._resolve, self._connect, self._is_local = resolve, connect, is_local
         self.header_timeout, self.connect_timeout = header_timeout, connect_timeout
+        self._refused: dict[str, dict[str, Any]] = {}  # refused target -> its record entry (:meth:`_record_target`)
+        self._refused_more = 0
 
     def start(self) -> EgressProxy:
         super().start()
@@ -381,11 +399,38 @@ class EgressProxy(Service):
 
     def _answer(self, conn: socket.socket, refused: _Refused) -> None:
         self._count(refused.reason)
+        if refused.target is not None:
+            self._record_target(refused.target, refused.reason)
         try:
             conn.settimeout(self.header_timeout)
             conn.sendall(refused.response())
         except OSError:
             pass
+
+    def _record_target(self, target: str, reason: str) -> None:
+        """Record a refused target for the run's record (the designer's ruling of 2026-11-06, the Lead's point 1):
+        records only. The agent chose the string, so it is kept in a closed character set and cut
+        (:func:`refused_target`); at most :data:`MAX_REFUSED_TARGETS` distinct targets are named, and refusals of any
+        other target are counted, not named."""
+        kept = refused_target(target)
+        with self._lock:
+            entry = self._refused.get(kept)
+            if entry is None and len(self._refused) >= MAX_REFUSED_TARGETS:
+                self._refused_more += 1
+                return
+            if entry is None:
+                entry = self._refused[kept] = {"target": kept, "reasons": [], "count": 0}
+            entry["count"] += 1
+            if reason not in entry["reasons"]:
+                entry["reasons"] = sorted([*entry["reasons"], reason])
+
+    def refused_targets(self) -> dict[str, Any]:
+        """The refused targets so far, in the order first refused: ``targets`` (each ``target``, its ``reasons`` and
+        ``count``) and ``more``, how many refusals named a target past the first :data:`MAX_REFUSED_TARGETS`. Never
+        given to any agent and never offered as an allowlist entry: it is the run's record's only."""
+        with self._lock:
+            return {"targets": [{**e, "reasons": list(e["reasons"])} for e in self._refused.values()],
+                    "more": self._refused_more}
 
     def _read_request(self, conn: socket.socket) -> tuple[str, int, bytes]:
         """The request head, which has one deadline (``header_timeout`` from now) however its bytes are spaced."""
@@ -437,7 +482,8 @@ class EgressProxy(Service):
         reason = self.policy.admits(host, port)
         if reason:
             raise _Refused(403, reason, f"CONNECT {target} refused: it is not on this run's egress allowlist "
-                           "(F28 §3.4). A destination is added by the operator's execution policy, never by a run.")
+                           "(F28 §3.4). A destination is added by the operator's execution policy, never by a run.",
+                           target)
         literal = _literal(host)
         try:
             answers = [literal] if literal is not None else [peer.address(a) for a in self._resolve(host, port)]
@@ -449,7 +495,7 @@ class EgressProxy(Service):
         for ip in answers:  # one refused answer refuses the target (see the module docstring)
             reason = self._refusal(ip)
             if reason:
-                raise _Refused(403, reason, self._why(target, reason))
+                raise _Refused(403, reason, self._why(target, reason), target)
         for ip in answers:
             if self._closed.is_set():  # no new connect once close() has begun
                 raise _Refused(502, "closed", f"CONNECT {target}: the egress proxy is closing")
@@ -463,7 +509,7 @@ class EgressProxy(Service):
                 reason = "peer_unknown"
             if reason:
                 sock.close()
-                raise _Refused(403, reason, self._why(target, reason))
+                raise _Refused(403, reason, self._why(target, reason), target)
             return sock
         raise _Refused(502, "unreachable", f"CONNECT {target}: no address of it could be connected")
 

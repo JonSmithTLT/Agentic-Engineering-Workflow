@@ -188,7 +188,8 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         lead_broker.require_credential(acquire)
         lead = ContainedLead(engine, argv=argv, provider_env=provider_env, guide=guide, base=os.environ,
                              stages=stages)
-        lead.announce(sys.stderr)
+        lead.announce(sys.stderr)  # what it found, before the refusal names what is missing
+        lead.require_provider()
         stages.mark("logins")
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                       env=tui_env(os.environ, provider_env=[], guide=guide), contained=lead)
@@ -300,11 +301,11 @@ def _unknown(provider: str) -> str:
 
 def _not_served(provider: str) -> str:
     """Why a provider whose models carry their own catalogue address gets no relay (the designer's addendum 2, ruling
-    2): its key, stored or in the environment, never goes inside, and OpenCode 2.0.18 offers only the provider's free
-    models without one (it turns off every model with an input cost, read in the pinned bundle)."""
+    2): its key, stored or in the environment, never goes inside, and the Lead's configuration switches the provider
+    off (``projection.LEAD_DENIED_PROVIDERS``; the designer's ruling of 2026-11-06), since AEW does not use OpenCode's
+    free models."""
     return (f"not served yet: OpenCode's catalog gives each {provider}/* model an address of its own, so no relay can "
-            f"carry its key, and the key stays out of the Lead; without it OpenCode offers only the free {provider} "
-            "models, which work through the egress proxy")
+            f"carry its key, and the key stays out of the Lead; the Lead's configuration switches {provider} off")
 
 
 def _left(entry: login.Login) -> str:
@@ -450,10 +451,6 @@ class ContainedLead:
                       "provider's relay on the host.\n")
         for name, provider in self.unserved:
             out.write(f"aew opencode: {name} is set in your environment: {_not_served(provider)}.\n")
-        if not self.keys and not self.refreshing:
-            out.write("aew opencode: no provider is relayed to the Lead, so only OpenCode's free models work. Log in "
-                      "with your own OpenCode at your own terminal, outside AEW (`opencode auth login`), or feed a key "
-                      "with `--provider-env NAME`; then start `aew opencode` again.\n")
         for entry in self.refreshing.values():  # addendum 2, ruling 1: it warns, and blocks nothing
             hours = (entry.expires / 1000 - time.time()) / 3600 if entry.expires is not None else 0.0
             if hours <= 0:
@@ -474,6 +471,23 @@ class ContainedLead:
         if self.unread_preferences:
             out.write(f"aew opencode: could not read your TUI preferences, {self.unread_preferences}: the Lead uses "
                       "OpenCode's defaults.\n")
+
+    def require_provider(self) -> None:
+        """Refuse the session before its sandbox, and before a seat is taken, when no provider is relayed to the Lead
+        (no key and no refreshing login): its configuration switches OpenCode's own providers off
+        (``projection.LEAD_DENIED_PROVIDERS``), so it would have no model at all (the designer's ruling of
+        2026-11-06). The closed reason is a worker's (``netns.PROVIDER_KEY_MISSING``)."""
+        from aew.harness.containment import netns
+
+        if self.keys or self.refreshing:
+            return
+        variables = sorted(v for p, v in netns.PROVIDER_KEY_ENV.items() if p not in netns.CATALOG_ADDRESSED)
+        raise HarnessIncompatible(
+            "no provider is relayed to the contained Lead, so it would have no model: AEW does not use OpenCode's free "
+            f"models, and the Lead's configuration switches them off. {netns.FREE_TIER_RULE} Log in with your own "
+            "OpenCode at your own terminal, outside AEW (`opencode auth login`), or feed a key with "
+            f"`--provider-env NAME` (one of {', '.join(variables)}); then start `aew opencode` again",
+            reason=netns.PROVIDER_KEY_MISSING)
 
     def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> lead_broker.Harness:
         from aew.harness import containment, weaker_register

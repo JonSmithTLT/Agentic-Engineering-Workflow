@@ -16,6 +16,7 @@ import json
 import os
 import tarfile
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,8 @@ from conftest import IS_WINDOWS
 from aew import errors, process_kind
 from aew.capability import ops, records, status, store
 from aew.capability import payload as P
+
+URLOPEN = urllib.request.urlopen  # the real one: `make_register` replaces it with one that fails the test
 
 
 @pytest.fixture
@@ -197,6 +200,91 @@ def test_a_source_with_a_user_in_it_is_shown_without_one():
     assert P.shown_source("https://example.invalid/a.tgz") == "https://example.invalid/a.tgz"
 
 
+def _garbling_proxy() -> tuple[str, Any]:
+    """A loopback stand-in proxy that answers a CONNECT with something that is not HTTP, and its closer."""
+    import socket
+    import threading
+
+    server = socket.create_server(("127.0.0.1", 0))
+    server.settimeout(10)
+
+    def serve() -> None:
+        try:
+            conn, _ = server.accept()
+        except OSError:
+            return
+        with conn:
+            conn.settimeout(10)
+            try:
+                conn.recv(4096)
+                conn.sendall(b"this is not http\r\n\r\n")
+            except OSError:
+                pass
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+
+    def close() -> None:
+        server.close()
+        thread.join(10)
+
+    return f"http://user:hunter2@127.0.0.1:{server.getsockname()[1]}", close
+
+
+@pytest.mark.parametrize("proxy, code", [("garbles", "unreachable"), ("http://user:hunter2@127.0.0.1:notaport",
+                                                                     "bad_source")])
+def test_a_proxy_that_breaks_http_gives_a_closed_reason_never_a_crash(reg, monkeypatch, capsys, proxy, code):
+    """Quick check of #330, m-b: `http.client`'s own errors (a proxy that answers in something other than HTTP, a
+    proxy port that is not a number) are a closed reason too, through the real `urllib` and only to the loopback: the
+    operator's check records the failure, and no output carries the proxy's synthetic credential."""
+    import urllib.request
+
+    monkeypatch.setattr("urllib.request.urlopen", URLOPEN)
+    monkeypatch.setattr(urllib.request, "_opener", None)  # urlopen's opener reads the proxy once: rebuild it
+    for name in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY",
+                 "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    close = None
+    if proxy == "garbles":
+        proxy, close = _garbling_proxy()
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    try:
+        checked = ops.check("fake")
+    finally:
+        if close:
+            close()
+    flags = ops.flag_missing(STUB)
+    said = json.dumps([checked, store.read(), ops.listing(), flags], default=str) + capsys.readouterr().err
+    assert "hunter2" not in said and "user:" not in said, said
+    assert store.read()["fetch_failures"][f"fake:{records.platform_key()}"]["code"] == code
+    assert [f["reason"] for f in flags] == ["fetch_failed"]
+
+
+def test_a_source_with_a_user_or_password_is_refused_at_add_and_on_a_read_without_repeating_it(reg):
+    """Quick check of #330, m-b: a source with a user and password in it is refused, so the register, which every
+    sandbox reads, never keeps one; and the refusal says so in AEW's words, never the source's."""
+    _import(reg)
+    before = (reg["root"] / store.REGISTER).read_bytes()
+    record = _record(reg["body"], reg["archive"], description="with a user")
+    record["payloads"][KEY] = {**record["payloads"][KEY], "source": SOURCE.replace("https://", "https://u:hunter2@")}
+    with pytest.raises(errors.ValidationFailed) as refused:
+        _add(reg, record)
+    said = json.dumps(refused.value.to_dict())
+    assert "user or password" in said and "hunter2" not in said, said
+    assert (reg["root"] / store.REGISTER).read_bytes() == before
+    with pytest.raises(errors.ValidationFailed):  # the schema's own pattern refuses it as well
+        from aew import schemas
+        schemas.validate("capability-records", {"schema": records.SCHEMA, "providers": {"fake": record}}, source="t")
+    state = store.read()  # one kept from before: refused on a read, without the password
+    state["operator_records"]["fake"] = {"record": record, "base_digest": records.digest(reg["shipped"]["fake"])}
+    with store.locked() as root:
+        store.write(state, root)
+    cap = _cap()
+    assert cap["observed_status"] == status.REFUSED and "user or password" in cap["cause"]
+    assert "hunter2" not in json.dumps(ops.listing(), default=str), ops.listing()
+
+
 STUB = {"fake": {"command": "fake", "served": None, "path": None}}
 
 
@@ -248,6 +336,66 @@ def test_the_flag_goes_only_to_the_operators_terminal(reg, monkeypatch, capsys):
         assert ops.flag_missing(STUB) and capsys.readouterr().err == ""
     ops.flag_missing(STUB)
     assert "aew: attention: fake" in capsys.readouterr().err
+
+
+def test_a_refused_launch_neither_says_the_run_goes_on_nor_marks_the_flag_seen(reg, monkeypatch, capsys):
+    """Quick check of #330, m-a: the line says "The run goes on", so only a launch whose self-test passed prints it and
+    marks it seen; the next launch that goes on, with the same tool missing, says it. The sandbox's pieces are stood
+    in for, in process."""
+    from types import SimpleNamespace
+
+    from aew.harness import containment as C
+    from aew.harness.containment import probe
+
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    monkeypatch.setattr(C, "supported", lambda: True)
+    monkeypatch.setattr(C, "for_run", lambda **_k: SimpleNamespace(net_dir=None))
+    monkeypatch.setattr(C, "retire_private_git", lambda *_a, **_k: None)
+    monkeypatch.setattr(C, "label", lambda **k: {"contained": k.get("contained")})
+    monkeypatch.setattr(probe, "mechanism", lambda _layout: "stand-in")
+    verdict = {"ok": False}
+    monkeypatch.setattr(probe, "self_test", lambda *_a, **_k: {"ok": verdict["ok"], "reason": "stand-in failure",
+                                                                "tools": {"fake": {**STUB["fake"], "tried": []}}})
+    base = reg["root"].parent
+    (base / "ws").mkdir()
+    launch: dict[str, Any] = dict(role="reviewer", scope="ticket", workspace=str(base / "ws"),
+                                  run_dir=base / "runs" / "r1", scratch=str(base / "s"), bridge_dir=None,
+                                  policy={"containment": {"mode": "required"}}, project=str(base))
+    with pytest.raises(errors.ContainmentUnavailable):
+        C.establish(**launch)
+    assert capsys.readouterr().err == "" and "fake" not in (store.read().get("flagged") or {})
+    verdict["ok"] = True
+    _, label = C.establish(**launch)
+    assert "aew: attention: fake" in capsys.readouterr().err and label["missing_tools"]["unavailable"] == ["fake"]
+
+
+@pytest.mark.parametrize("tried, reason", [([{"kind": status.AEW_COPY, "ok": False}], "check_failed"),
+                                           ([], "not_served_here")])
+def test_a_checked_copy_that_did_not_serve_this_run_says_why_from_the_runs_own_evidence(reg, monkeypatch, capsys,
+                                                                                         tried, reason):
+    """Quick check of #330, m-c: AEW's copy reads usable (checked, and it passed), but this run got the stub, its own
+    result not recorded yet (the short lock gave way, or the register is masked). The reason is the run's own: its
+    check failed inside, or the copy did not serve there; never "it was never checked"."""
+    _import(reg)
+    assert store.read()["checks"][f"{status.AEW_COPY}:fake"]["ok"] is True
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    flags = ops.flag_missing({"fake": {**STUB["fake"], "tried": tried}})
+    line = capsys.readouterr().err
+    assert [f["reason"] for f in flags] == [reason] and status.NOT_SERVING_WHY[reason] in line, line
+    assert "never checked" not in line
+
+
+def test_a_flag_line_that_cannot_be_written_never_stops_the_launch(reg, monkeypatch):
+    """Quick check of #330, m-d (CAPR-12): the operator's terminal went away between the check and the write. The line
+    is lost; the run's record keeps the tool."""
+
+    class Gone:
+        def write(self, _text: str) -> int:
+            raise BrokenPipeError("the terminal went away")
+
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    monkeypatch.setattr(ops.sys, "stderr", Gone())
+    assert [f["tool"] for f in ops.flag_missing(STUB)] == ["fake"]
 
 
 def test_a_launch_behind_a_long_holder_of_the_lock_gives_way_and_the_next_records_it(reg, monkeypatch):

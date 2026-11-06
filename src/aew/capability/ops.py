@@ -312,7 +312,11 @@ def missing(tools: dict[str, Any] | None, directory: Path | None = None) -> list
             continue
         entry = effective[name]
         aew = status.aew_copy(name, entry["record"], entry["problem"], state, facts=facts, directory=directory)
-        why = aew.reason or "never_checked"
+        # A copy whose last check passed but did not serve this run (its result not recorded yet: the short lock gave
+        # way, or the register is masked): the run's own evidence says why, never "never checked" (quick check of
+        # #330, m-c)
+        why = aew.reason or ("check_failed" if any(t.get("kind") == status.AEW_COPY and not t.get("ok")
+                                                   for t in tool.get("tried") or []) else "not_served_here")
         failed = (state.get("fetch_failures") or {}).get(f"{name}:{records.platform_key()}") or {}
         since = failed.get("at") if why == "fetch_failed" else (
             ((state.get("refused") or {}).get(f"{name}:{records.platform_key()}") or {}).get("at")
@@ -365,8 +369,11 @@ def flag_missing(tools: dict[str, Any] | None, directory: Path | None = None) ->
                 store.write(state, root)
     except AEWError:  # where the register cannot be written, the line still shows: a repeat beats silence
         show = flags if _to_terminal() else []
-    for flag in show:
-        sys.stderr.write(flag_line(flag) + "\n")
+    try:
+        for flag in show:
+            sys.stderr.write(flag_line(flag) + "\n")
+    except OSError:  # the terminal went away: the line is lost, the launch goes on (CAPR-12; quick check of #330, m-d)
+        pass
     return flags
 
 

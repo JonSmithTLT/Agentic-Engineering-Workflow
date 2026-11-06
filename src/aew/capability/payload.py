@@ -35,6 +35,7 @@ def fetch(payload: dict[str, Any]) -> bytes:
     """The archive from the record's source, read to at most its pinned size and checked against its pin. Raises
     ``Unavailable`` (reason ``fetch_failed``) when it cannot be fetched, and ``PinMismatch`` when it is not the pinned
     archive."""
+    import http.client
     import urllib.error
     import urllib.request
 
@@ -45,7 +46,9 @@ def fetch(payload: dict[str, Any]) -> bytes:
             data = _read_bounded(response, payload["archive_size"], what=shown)
     except PinMismatch:
         raise
-    except (urllib.error.URLError, OSError, ValueError) as exc:
+    except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as exc:
+        # `http.client`'s own errors (a bad proxy port, a proxy that does not answer in HTTP) are none of the
+        # others (quick check of #330, m-b)
         # Never the error's own text: it can carry a proxy's URL with its credentials (the designer's rule 1)
         code = fetch_reason(exc)
         raise Unavailable(f"the pinned payload could not be fetched from {shown}: {FETCH_REASONS[code]}",
@@ -65,6 +68,7 @@ FETCH_REASONS = {
 
 def fetch_reason(exc: BaseException) -> str:
     """The closed reason for a fetch's failure (:data:`FETCH_REASONS`)."""
+    import http.client
     import socket
     import urllib.error
 
@@ -73,7 +77,7 @@ def fetch_reason(exc: BaseException) -> str:
         return "http_status"
     if isinstance(exc, (TimeoutError, socket.timeout)) or isinstance(cause, (TimeoutError, socket.timeout)):
         return "timed_out"
-    if isinstance(exc, ValueError):
+    if isinstance(exc, (ValueError, http.client.InvalidURL)):
         return "bad_source"
     return "unreachable"
 

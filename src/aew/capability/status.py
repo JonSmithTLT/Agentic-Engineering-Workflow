@@ -92,6 +92,7 @@ NOT_SERVING_WHY = {
     "record_changed": "its record or its pin changed since it was checked",
     "host_changed": "the host changed since it was checked",
     "check_failed": "its check failed in the sandbox",
+    "not_served_here": "it did not serve in this run's sandbox, though its last check passed",
 }
 
 

@@ -194,9 +194,11 @@ def establish(*, role: str, scope: str, workspace: str, run_dir: Path, scratch: 
         finally:
             sentinel.unlink(missing_ok=True)
         capability.record_contained(test.get("tools"))  # the status follows the check inside (CAPR-03, CAPR-13)
-        flags = capability.flag_missing(test.get("tools"))  # never quietly without a pinned tool (the operator)
         if not test["ok"]:
             raise ContainmentUnavailable(f"containment self-test failed: {test['reason']}", self_test=recorded(test))
+        # Only for a run that goes on, as its line says: a refused launch neither prints it nor marks it seen (quick
+        # check of #330, m-a)
+        flags = capability.flag_missing(test.get("tools"))  # never quietly without a pinned tool (the operator)
     except ContainmentUnavailable as exc:
         retire_private_git(run_dir)
         if net_dir:

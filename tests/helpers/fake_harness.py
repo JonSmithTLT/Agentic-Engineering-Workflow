@@ -141,11 +141,23 @@ POLICY = {
 }
 
 
+class Env(dict[str, str]):
+    """An environment that prints its variables' names and never their values. A failed test's traceback prints its
+    frames' arguments (pytest's long form), and a live lab's environment holds the operator's real provider key: the
+    run of 2026-11-06 printed it through the lab's repr. So the lab keeps its environment as one of these, and passes
+    one on."""
+
+    def __repr__(self) -> str:
+        return f"Env({sorted(self)!r}, values not shown)"
+
+    __str__ = __repr__
+
+
 @dataclass
 class HarnessLab:
     project: Any                      # conftest.Project
     tmp: Path
-    env: dict[str, str] = field(default_factory=dict)
+    env: dict[str, str] = field(default_factory=Env)  # an Env (__post_init__): its repr is the lab's, minus values
     sessions: list[subprocess.Popen[str]] = field(default_factory=list)  # Lead sessions the test started
     closers: list[Any] = field(default_factory=list)  # what else the lab started, each closed by cleanup()
     provider: Any = None  # the provider its runs' relay reaches, when it started one (fake_opencode.ProviderUpstream)
@@ -153,6 +165,8 @@ class HarnessLab:
     def __post_init__(self) -> None:
         import harness_diagnostics  # a failed test reports and keeps this lab's runs (register E3)
 
+        if not isinstance(self.env, Env):
+            self.env = Env(self.env)
         harness_diagnostics.register(self)
 
     @classmethod
@@ -194,7 +208,7 @@ class HarnessLab:
         (Path(self.env[SCRIPTS_ENV]) / f"{name}.json").write_text(json.dumps(steps), encoding="utf-8")
 
     def aew(self, *args: str, env: dict[str, str] | None = None):
-        return self.project.aew(*args, env={**self.env, **(env or {})})
+        return self.project.aew(*args, env=Env({**self.env, **(env or {})}))
 
     def ok(self, *args: str, env: dict[str, str] | None = None) -> Any:
         res = self.aew(*args, env=env)

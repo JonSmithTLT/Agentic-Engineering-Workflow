@@ -49,8 +49,10 @@ def is_static(key: str) -> bool:
     return key.split(" ", 1)[1].startswith(STATIC_PREFIXES)
 
 
-def parse(text: str | None) -> tuple[set[str], dict[str, dict[str, Any]]]:
-    """``(keys, residuals)`` of an allow-list's text (``None``: no allow-list, as before D2 existed)."""
+def parse(text: str | None, *, known_rules: bool = True) -> tuple[set[str], dict[str, dict[str, Any]]]:
+    """``(keys, residuals)`` of an allow-list's text (``None``: no allow-list, as before D2 existed). ``known_rules``:
+    refuse a rule D2 does not have. The base's list is read without it, since a pull request may retire a rule, and
+    that is for the ratchet to decide (a lowered mode) rather than a traceback (#332 review, F1)."""
     if text is None:
         return set(), {}
     data = yaml.safe_load(text) or {}
@@ -58,7 +60,7 @@ def parse(text: str | None) -> tuple[set[str], dict[str, dict[str, Any]]]:
         raise ValueError(f"the allow-list's schema is not {SCHEMA}")
     keys = {f"{rule} {site}" for rule, sites in (data.get("allowed") or {}).items() for site in sites or []}
     unknown = {k.split(" ", 1)[0] for k in keys} - set(modes.RULES)
-    if unknown:
+    if unknown and known_rules:
         raise ValueError(f"the allow-list names rules D2 does not have: {sorted(unknown)}")
     residuals = {f"{r['rule']} {r['site']}": r for r in data.get("residuals") or []}
     for key, r in residuals.items():
@@ -93,6 +95,7 @@ class Verdict:
     grown: list[str] = field(default_factory=list)
     lowered: list[str] = field(default_factory=list)  # rules whose mode fell from enforce against the base, unsigned
     failing: list[str] = field(default_factory=list)
+    stale_decided: bool = True  # False: the run was not complete for stale keys, so an empty ``stale`` means nothing
 
     @property
     def ok(self) -> bool:
@@ -112,7 +115,7 @@ def decide(observed: Iterable[str], allowed: set[str], *, stale_scope: str | Non
     ratchet (``tools/ci/discovery_ratchet.py``), which alone reads the pull request's labels live and so can tell the
     operator's accepted residual from the author's."""
     seen = set(observed)
-    v = Verdict()
+    v = Verdict(stale_decided=stale_scope is not None)
     v.new = sorted(seen - allowed)
     if stale_scope is not None:
         in_scope = {k for k in allowed if stale_scope == "all" or (is_static(k) == (stale_scope == "static"))}
@@ -124,7 +127,9 @@ def decide(observed: Iterable[str], allowed: set[str], *, stale_scope: str | Non
 
 def remove_command(*keys: str) -> str:
     """The command that removes ``keys``, to paste into bash or PowerShell: double quotes hold a key's ``|``, spaces and
-    ``<`` in both, and only a key holding what they would still expand falls back to POSIX quoting."""
+    ``<`` in both, and only a key holding what they would still expand falls back to POSIX quoting. Its limit: Windows
+    PowerShell 5.1 strips a key's own ``"`` from a native command's argument, so such a key needs bash there, and
+    ``--remove`` refuses the mangled one safely (#332 review, F5: 13 of 30 sampled keys, every one O-IDS static)."""
     quoted = (shlex.quote(k) if set(k) & set('"$`\\') else f'"{k}"' for k in keys)
     return " ".join(("python tools/ci/discovery_ratchet.py --remove", *quoted))
 
@@ -135,7 +140,12 @@ def _failure(key: str, v: Verdict, details: Mapping[str, Mapping[str, Any]]) -> 
     detail = " ".join(str(seen.get("detail") or "").split()) or "not recorded"
     test = seen.get("test") or ("the static scan (tests/helpers/discovery/static.py)" if is_static(key)
                                 else "not recorded")
-    if key in v.stale:
+    if key in v.stale and is_static(key):  # the scan reads every text, so no test is involved (#332 review, F3)
+        source = key.split(" ", 1)[1].split("|", 1)[0]
+        detail, test = "the static scan no longer finds this in the text", "the static scan"
+        todo = (f"remove the entry: {remove_command(key)} (if you did not mean to change it, {source} no longer says "
+                "this: restore the text instead)")
+    elif key in v.stale:
         detail, test = "no test of this complete run produced this output", "none"
         todo = (f"remove the entry: {remove_command(key)} (if you did not mean to retire the output, a test stopped "
                 "reaching it: restore that test instead)")
@@ -156,6 +166,9 @@ def report(v: Verdict, *, details: Mapping[str, Mapping[str, Any]] | None = None
     lines = [f"{len(v.failing)} key(s) fail this run:"] if v.failing else []
     for key in v.failing:
         lines += _failure(key, v, details or {})
+    stale_failing = [k for k in v.failing if k in v.stale]
+    if len(stale_failing) > 1:  # a change can retire many at once, as #319 did 23 (#332 review, F4)
+        lines.append(f"  to remove all {len(stale_failing)} stale keys at once: {remove_command(*stale_failing)}")
     for title, keys in (("new (not allow-listed)", v.new), ("stale (allow-listed, no longer observed)", v.stale),
                         ("added to the allow-list (it may only shrink)", v.grown)):
         if keys:
@@ -165,4 +178,4 @@ def report(v: Verdict, *, details: Mapping[str, Mapping[str, Any]] | None = None
             lines += [f"  {k}" for k in rest[:limit]]
             if len(rest) > limit:
                 lines.append(f"  ... and {len(rest) - limit} more")
-    return lines or ["no new, stale or added keys"]
+    return lines or ["no new, stale or added keys" if v.stale_decided else "no new or added keys"]

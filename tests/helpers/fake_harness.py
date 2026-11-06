@@ -143,9 +143,8 @@ POLICY = {
 
 class Env(dict[str, str]):
     """An environment that prints its variables' names and never their values. A failed test's traceback prints its
-    frames' arguments (pytest's long form), and a live lab's environment holds the operator's real provider key: the
-    run of 2026-11-06 printed it through the lab's repr. So the lab keeps its environment as one of these, and passes
-    one on."""
+    frames' arguments (pytest's long form), and a live lab's environment can hold a provider key. So the lab keeps its
+    environment as one of these, and passes one on."""
 
     def __repr__(self) -> str:
         return f"Env({sorted(self)!r}, values not shown)"

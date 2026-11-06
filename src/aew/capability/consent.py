@@ -399,7 +399,7 @@ def at_lead_start(out: Any = None, directory: Path | None = None, *, asking: boo
         if not terminal():
             return said
         ask_now = [o for o in missing if o.needed and not o.declined_at]
-        if ask_now and asking:
+        if ask_now:
             decision = ask([o for o in missing if not o.declined_at], read_terminal)
             decline(decision.declined, directory)
             done = get(decision.chosen, directory) if decision.chosen else {}

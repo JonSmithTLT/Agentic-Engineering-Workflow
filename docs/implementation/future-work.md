@@ -1926,7 +1926,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** Deterministic gate tools the Lead can call, typed and with no model judgement: merge readiness, public-text hygiene, brief checking, and a secret scan before a commit
 
-**Source:** The designer's findings of 2026-11-06 on a comparison of Lead sessions, "the ranked primitives"; the operator, 2026-11-06: the Lead's needs should be first-class AEW primitives, seamless and deterministic where possible
+**Source:** The Lead's comparison of Lead sessions (2026-11-06), endorsed in the designer's findings of 2026-11-06
 
 **When:** **Unscheduled.** Designed when the operator queues it
 
@@ -1938,7 +1938,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** CI status at a given head as a typed read for the Lead, which wakes the Lead when the run ends
 
-**Source:** The designer's findings of 2026-11-06 on a comparison of Lead sessions, "the ranked primitives"; the operator, 2026-11-06: the Lead's needs should be first-class AEW primitives, seamless and deterministic where possible
+**Source:** The Lead's comparison of Lead sessions (2026-11-06), endorsed in the designer's findings of 2026-11-06
 
 **When:** **Unscheduled.** Designed when the operator queues it
 
@@ -1950,7 +1950,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** Messaging with delivered and read state, built on E131's typed `harness send` rather than beside it. Mostly wiring, since ADR-0017 is the adopted transport
 
-**Source:** The designer's findings of 2026-11-06 on a comparison of Lead sessions, "the ranked primitives"; the operator, 2026-11-06: the Lead's needs should be first-class AEW primitives, seamless and deterministic where possible
+**Source:** The Lead's comparison of Lead sessions (2026-11-06), endorsed in the designer's findings of 2026-11-06
 
 **When:** **Unscheduled.** Designed when the operator queues it, after E131
 
@@ -1962,7 +1962,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** The Lead's own memory and rules, kept across its sessions
 
-**Source:** The designer's findings of 2026-11-06 on a comparison of Lead sessions, "the ranked primitives"; the operator, 2026-11-06: the Lead's needs should be first-class AEW primitives, seamless and deterministic where possible
+**Source:** The Lead's comparison of Lead sessions (2026-11-06), endorsed in the designer's findings of 2026-11-06
 
 **When:** **Unscheduled.** Designed when the operator queues it
 
@@ -1972,9 +1972,9 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E177
 
-**Work:** The project's tests and checks with no prompt each time: a typed tool that runs them through AEW's check runner, in its check sandbox, with the checks derived from the map's pipeline section, never as unprompted shell in the Lead's own process
+**Work:** A typed tool that runs the project's checks through AEW's check runner
 
-**Source:** The designer's findings of 2026-11-06 on a comparison of Lead sessions, "the ranked primitives"; the operator, 2026-11-06: the Lead's needs should be first-class AEW primitives, seamless and deterministic where possible; the designer's constraint there on running checks, under the 2026-10-31 decision's condition 3 and A-06 `HEB-03.i`
+**Source:** The designer's findings of 2026-11-06 on a comparison of Lead sessions
 
 **When:** **Unscheduled.** Designed when the operator queues it
 

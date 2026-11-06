@@ -5,7 +5,9 @@ harness runs every launch."""
 
 from __future__ import annotations
 
+import json
 import sys
+from typing import Any
 
 import pytest
 from aewflow import create_planned_ticket, sample_project
@@ -206,4 +208,19 @@ def test_a_runs_refused_egress_targets_reach_no_lead_read(lab, tmp_path):
     runlog.write_record(directory, record)
     for args in (("harness", "status"), ("harness", "status", record["invocation"]), ("harness", "wait", run)):
         res = lab.aew(*args)
-        assert "secret-plan" not in res.stdout and "egress_refused" not in res.stdout, (args, res.stdout)
+        # The label's self-test row 1 has an `egress_refused` key of its own (its planted probe target, CS-4 A2):
+        # what must not reach the read is the record's, by its value and by its shape.
+        assert "secret-plan" not in res.stdout and '"targets"' not in res.stdout, (args, res.stdout)
+        assert not_carried(json.loads(res.stdout)), args
+
+
+def not_carried(value: Any) -> bool:
+    """Whether no ``egress_refused`` in ``value`` has the run record's shape (a ``targets`` list)."""
+    if isinstance(value, dict):
+        found = value.get("egress_refused")
+        if isinstance(found, dict) and "targets" in found:
+            return False
+        return all(not_carried(v) for v in value.values())
+    if isinstance(value, list):
+        return all(not_carried(v) for v in value)
+    return True

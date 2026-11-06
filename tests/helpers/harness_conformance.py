@@ -264,7 +264,16 @@ class FakeOpenCodeDriver(Driver):
         dirs = {f"XDG_{k.upper()}_HOME": str(own / k) for k in ("data", "config", "state")}
         for path in dirs.values():
             Path(path).mkdir(parents=True, exist_ok=True)
-        env = {**lab.env, **({} if acquire else {"AEW_LEAD_TOKEN": lab.project.token}), **dirs}
+        # A synthetic stored login gives the Lead a relayed provider: with none it is refused at start
+        # (`provider_key_missing`, the designer's ruling of 2026-11-06). The fake TUI never calls it.
+        from lead_session import KEYS, synthetic_home
+
+        from aew.harness.opencode import login
+
+        db = own / "home" / ".local" / "share" / "opencode" / login.DB
+        if not db.exists():  # a scenario may start its Lead more than once
+            synthetic_home(own, {"anthropic": KEYS["anthropic"]})
+        env = {**lab.env, **({} if acquire else {"AEW_LEAD_TOKEN": lab.project.token}), **dirs, "OPENCODE_DB": str(db)}
         master, slave = pty.openpty()
         proc = subprocess.Popen([sys.executable, "-c", AT_A_TERMINAL, "-C", str(lab.root), *argv], env=clean_env(env),
                                 stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,

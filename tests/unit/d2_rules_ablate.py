@@ -49,7 +49,7 @@ PUNCT = "test_any_punctuation_ends_a_prohibition"
 CONNECT = "test_every_connector_ends_a_negation"
 
 # id, what it reverts, file, old text, new text, test file, -k expression
-LINES = [
+LINES: list[tuple] = [  # old and new: one text each, or a tuple of texts replaced together
     # O-SECRET: what asks
     ("S1", "the name's word boundaries gone", PARSER,
      r'r"(?<![\w-])(?P<what>{names})(?![\w-])")', r'r"(?P<what>{names})")', RULES, PASSES),
@@ -240,7 +240,7 @@ LINES = [
 ]
 
 
-def generated() -> list[tuple[str, str, str, str, str, str, str]]:
+def generated() -> list[tuple]:
     """One line per mark the punctuation check alone guards (";" and ":" end the sentence first), and one per word of
     the rule's own CONNECTOR, read from rules.py beside these tests (derived, never restated)."""
     lines = []
@@ -254,9 +254,16 @@ def generated() -> list[tuple[str, str, str, str, str, str, str]]:
     segment = re.sub(r'"\s*r"', "", segment[:segment.index("IGNORECASE")])
     words = re.search(r"\(\?:([a-z|]+)\)", segment)
     assert words, "CONNECTOR's words not found in rules.py"
+    statement = source[source.index("CONNECTOR = re.compile("):]
+    statement = statement[:statement.index("re.IGNORECASE)")]
     for word in words.group(1).split("|"):
-        lines.append((f"K-{word}", f"'{word}' read as filler", PARSER, 'FILLER = frozenset({"ever",',
-                      f'FILLER = frozenset({{"{word}", "ever",', RULES, CONNECT))
+        # dropped from CONNECTOR and read as filler: neither branch sees it end a negation
+        dropped = next(statement.replace(a, b, 1) for a, b in ((f"(?:{word}|", "(?:"), (f"|{word}|", "|"),
+                                                               (f'|{word}"', '"'), (f"|{word})", ")"))
+                       if statement.count(a) == 1)
+        lines.append((f"K-{word}", f"'{word}' dropped from CONNECTOR and read as filler", PARSER,
+                      (statement, 'FILLER = frozenset({"ever",'), (dropped, f'FILLER = frozenset({{"{word}", "ever",'),
+                      RULES, CONNECT))
     return lines
 
 
@@ -316,12 +323,16 @@ def main() -> int:
             path = root / rel
             before, digest = path.read_bytes(), sha(path)
             text = before.decode()
-            if text.count(old) != 1:
-                print(f"{ident}: the text occurs {text.count(old)} times in {rel}", flush=True)
+            pairs = list(zip(old, new, strict=True)) if isinstance(old, tuple) else [(old, new)]
+            counts = [text.count(a) for a, _ in pairs]
+            if counts != [1] * len(pairs):
+                print(f"{ident}: the text occurs {counts} times in {rel}", flush=True)
                 results.append({"id": ident, "what": what, "file": rel, "test": test, "k": expr,
                                 "state": "text not found", "tail": ""})
                 continue
-            path.write_bytes(text.replace(old, new).encode())
+            for a, b in pairs:
+                text = text.replace(a, b)
+            path.write_bytes(text.encode())
             clear(root)
             state, tail = run(root, test, expr)
             path.write_bytes(before)

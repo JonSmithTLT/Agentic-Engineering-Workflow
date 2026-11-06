@@ -1470,6 +1470,14 @@ def test_a_negator_still_governs_its_own_verb(text):
 MARKS = [" - ", "-", " – ", "–", " — ", "—", " (", "(", " [", ", ", ",", "; ", ": ", ' "', " '"]
 PRONOUNS = ["you", "we", "they", "I", "he", "she"]
 CONNECTOR_WORDS = re.search(r"\(\?:([a-z|]+)\)", rules.CONNECTOR.pattern).group(1).split("|")  # type: ignore[union-attr]
+# The floor: a connector may be added to CONNECTOR, never dropped, since dropping one also drops its generated case
+# above (the second quick check's ablation, which made each word filler and dropped it, survived for 14 of 16).
+CONNECTORS_AT_LEAST = frozenset({"then", "but", "instead", "otherwise", "unless", "if", "until", "before", "after",
+                                 "once", "so", "because", "and", "or", "while", "when"})
+
+
+def test_no_connector_is_dropped():
+    assert CONNECTORS_AT_LEAST <= set(CONNECTOR_WORDS), sorted(CONNECTORS_AT_LEAST - set(CONNECTOR_WORDS))
 
 
 @pytest.mark.parametrize("opening", [f"{p} must" for p in PRONOUNS] + ["please", "simply"])
@@ -1479,7 +1487,7 @@ def test_any_punctuation_ends_a_prohibition(mark, opening):
     assert found(Output(site="unit", text=text), "O-SECRET"), text
 
 
-@pytest.mark.parametrize("word", CONNECTOR_WORDS)
+@pytest.mark.parametrize("word", sorted(set(CONNECTOR_WORDS) | CONNECTORS_AT_LEAST))
 def test_every_connector_ends_a_negation(word):
     for text in (f"AEW can't {word} you must set AEW_LEAD_TOKEN.", f"The shell has no session {word} you set "
                  "AEW_LEAD_TOKEN."):

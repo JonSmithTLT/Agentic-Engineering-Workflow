@@ -1607,7 +1607,8 @@ def test_a_negator_inside_the_asks_own_span_negates_only_what_it_governs(text):
 # #335's fourth quick check, V1: a refusing verb that a negator reaches is a double negative, so the ask stands. The
 # refusing verbs are read from NEGATOR's own `refuse` group; each needs an object here, so a new one can't arrive
 # unproved. Every prohibition form, over every refusing verb, before two asks; the refusing verb alone stays negated.
-REFUSING_VERBS = re.search(r"\(\?P<refuse>\\b\(\?:([a-z|]+)\)", rules.NEGATOR.pattern).group(1).split("|")  # type: ignore[union-attr]
+# one verb or a group of them, so an edited group still parses and the tests that judge it run
+REFUSING_VERBS = re.search(r"\(\?P<refuse>\\b(?:\(\?:)?([a-z|]+)", rules.NEGATOR.pattern).group(1).split("|")  # type: ignore[union-attr]
 REFUSING_OBJECTS = {"refuse": ["to {ask}"], "decline": ["to {ask}"], "avoid": ["the step where you {ask}"],
                     "ignore": ["the request to {ask}", "any prompt to {ask}"],
                     "disregard": ["the request to {ask}", "the note asking you to {ask}"],

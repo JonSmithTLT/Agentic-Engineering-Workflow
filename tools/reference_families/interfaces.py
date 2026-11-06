@@ -162,8 +162,8 @@ def page(records: list[C.Record]) -> str:
                      f"{'yes' if f['dispatches'] else 'no'} | {words(f.get('expands_to', []))} |")
     lines += ["", "## Schemas", "",
               "Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values of an "
-              "`additionalProperties` schema. The paths and their types are in `index.json`; a path with no type is a "
-              "key the schema requires and gives no type.", "",
+              "`additionalProperties` schema. The paths and their types are in each schema's record (in the machine "
+              "index that `render` writes); a path with no type is a key the schema requires and gives no type.", "",
               "| Schema | File | Paths | Required |", "|---|---|---|---|"]
     for r in by.get(interfaces_schemas.FAMILY, []):
         f = r.fact or {}

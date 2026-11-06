@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# The generated reference's machine index: `python tools/reference.py render` writes it, and it is not committed
+# (operator, 2026-11-05; docs/reference/README.md, "The machine index").
+/docs/reference/index.json

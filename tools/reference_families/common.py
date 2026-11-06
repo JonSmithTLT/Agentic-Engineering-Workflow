@@ -203,11 +203,11 @@ def counts_of(rows: Iterable[tuple[str, str]], unresolved: int) -> dict[str, Any
 
 
 def digest_of(records: Mapping[str, Any], gaps: list[Any]) -> str:
-    """A digest of every record and gap, kept in ``counts``. Several lines of the generated files are functions of more
-    than one record (the totals), so two independent changes can each edit them to the same text, and git then merges
-    them without a conflict into totals that are stale. This line differs between any two changes to the records, so
-    two reference-changing pull requests always conflict on it, and the documented step (take either side, run
-    ``render``) applies: a stale clean merge cannot happen."""
+    """A digest of every record and gap, kept in ``counts``: two renders have the same records and gaps exactly when
+    their digests are equal, so ``counts`` (which CI prints for each pull request) shows whether a change moved the
+    records. The index is not committed (operator, 2026-11-05), so this line no longer makes two reference-changing
+    pull requests conflict. A total in a page that two changes each edit to the same text can merge cleanly and stale;
+    ``check`` on the merged code fails on it, since it compares the pages with a render of that code."""
     return "sha256:" + hashlib.sha256(dumps({"gaps": gaps, "records": records}).encode("utf-8")).hexdigest()
 
 

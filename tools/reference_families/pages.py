@@ -1,7 +1,8 @@
 """The pages that belong to no one family: the directory's README, ``gaps.md`` and the two maps (STG-12 S12-2).
 
-All are drawn from the index alone. The README carries no counts (they are measured in ``index.json``), so a change to
-one family's records changes that family's page and the index, and nothing else. The maps join records of several
+All are drawn from the index alone, rendered in memory (it is not committed). The README carries no counts (they are
+measured in the index, and ``tools/reference.py counts`` prints them), so a change to one family's records changes that
+family's page and the pages that join or total records, and nothing else. The maps join records of several
 families (the data-flow map) or read one machine's (the state maps), so they cannot be a family's page.
 """
 
@@ -328,11 +329,15 @@ def readme(index: Mapping[str, Any], pages: Mapping[str, str]) -> str:
         "regenerates it in memory and fails on any difference, and CI runs it as a fast-lane test. Do "
         "not edit these files by hand.", "",
         "## Files", "",
-        f"- [index.json](index.json): the machine index. `records` is keyed by record id (`<family>:<key>`); `counts` "
-        f"measures records per family and per coverage label and the unresolved total, and carries a `digest` of every "
-        f"record and gap; `gaps` is a summary computed from the records, every distinct unresolved item once with "
-        f"its family (nothing lives only there). Schema `{C.SCHEMA}`.",
         *listing, "",
+        "## The machine index", "",
+        "`index.json` is rendered on demand and not committed: `python tools/reference.py render` writes it here, "
+        "where git ignores it, and `python tools/reference.py counts` prints its `counts`, as CI does for every pull "
+        "request. The pages above are drawn from the same index, rendered in memory. `records` is keyed by record id "
+        "(`<family>:<key>`); `counts` "
+        "measures records per family and per coverage label and the unresolved total, and carries a `digest` of every "
+        "record and gap; `gaps` is a summary computed from the records, every distinct unresolved item once with its "
+        f"family (nothing lives only there). Schema `{C.SCHEMA}`.", "",
         "## A record", "",
         "- `family`, and `anchor` (`module` and `symbol`; line numbers churn, so a line is never an anchor).",
         "- `basis`: `enumerated` (read from a registry the code owns, at run time), `declared` (a table the generator "
@@ -348,11 +353,13 @@ def readme(index: Mapping[str, Any], pages: Mapping[str, str]) -> str:
         "## When a change moves it", "",
         "A pull request that changes enumerated code (a module, its imports, an entry point, a spawn site, a place "
         "that writes under `.aew`, a CLI command's handler) runs `python tools/reference.py render` and commits "
-        "`docs/reference/`. A new "
+        "the pages under `docs/reference/` (the index is rendered on demand, and git ignores it). A new "
         "directory or file directly under `.aew` is declared first (`TOP_LEVEL` in "
         "`tools/reference_families/writers.py`); until it is, its writes are listed as unresolved. After a merge "
         "conflict here, take either side and run `render`: the output is a function of the code, so the second change "
-        "to merge re-renders. Two pull requests that both change the records always conflict, on the `digest` line "
-        "of `counts`, so a clean merge cannot leave the totals stale. A pull request that adds a record names the "
+        "to merge re-renders. A branch that committed `index.json` before it was git-ignored meets a conflict on it "
+        "when it merges `main`: settle that one with `git rm --cached docs/reference/index.json`, then run `render`. "
+        "Two pull requests that each edit a total to the same text can merge without a conflict, "
+        "and `check` on the merged code then fails on the stale total. A pull request that adds a record names the "
         "requirement IDs it serves in its description (`AGENTS.md`, section 7): IDs only, and never in these files.",
         ""])

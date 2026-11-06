@@ -21,7 +21,7 @@ def test_the_path_is_row_v01_01s_13_steps_each_with_its_derived_state():
     assert [r["step"] for r in records] == list(range(1, 14)) == [s.n for s in O.STEPS]
     assert len({s.key for s in O.STEPS}) == 13
     for step, r in zip(O.STEPS, records, strict=True):
-        assert step.catalog and step.serves or step.key == "configure", step
+        assert step.catalog and step.serves, step
         assert {i.catalog for i in step.serves} <= set(step.catalog), step
         assert r["state"] in O.RANK and all(p["state"] in O.RANK for p in r["parts"])
         assert r["state"] == min((p["state"] for p in r["parts"]), key=O.RANK.__getitem__, default=O.NOT_BUILT)
@@ -44,11 +44,44 @@ def test_an_unbuilt_surface_reports_not_built_with_what_holds_it():
     assert by_key["publish"]["held_by"] == ["G3", "I4-06", "I4-B7"]
     assert by_key["reopen"]["state"] == O.NOT_BUILT and by_key["reopen"]["held_by"] == ["G3"]
     assert by_key["preflight"]["state"] == O.NOT_BUILT and "held_by" not in by_key["preflight"]
-    # A step with no serving surface at all (configure, A-39's console setup act) is not built, never built.
-    assert by_key["configure"]["state"] == O.NOT_BUILT and by_key["configure"]["parts"][0]["act"] == "NO_COMMAND"
+    # Configure, A-39's console setup act, is NO_COMMAND and served by `aew init`'s options: a local step, so neither
+    # the registry nor the routes move it.
+    assert by_key["configure"]["state"] == O.BUILT and by_key["configure"]["parts"][0]["act"] == "NO_COMMAND"
+    # A local step with no surface named at all is not built, never built.
+    assert O.part_state(O.Local("L10", None, None), O.code_facts()) == O.NOT_BUILT
     # Without the CLI's command, the local step is not built either; the harness's own exit stays outside AEW.
-    bare = {r["key"]: r for r in O.derive(facts=_facts(commands=frozenset()))}
+    bare = {r["key"]: r for r in O.derive(facts=_facts(commands={}))}
     assert bare["init"]["state"] == O.NOT_BUILT and bare["exit"]["state"] == O.OUTSIDE
+    assert bare["configure"]["state"] == O.NOT_BUILT
+
+
+def _without(*options: str):
+    """The real parser's facts, with `aew init` missing ``options``."""
+    commands = dict(O.code_facts().commands)
+    commands["init"] = commands["init"] - set(options)
+    return _facts(commands=commands)
+
+
+@pytest.mark.parametrize("option", ["--check-command", "--model", "--provider"])
+def test_step_2_reads_built_only_when_the_real_parser_has_all_three_options(option):
+    """The designer's ruling of 2026-11-03, §1: an option missing from the parser leaves step 2 not built, and reads as
+    a proposed name. The other flag, `--check-timeout`, isn't part of it; step 1 needs none of them."""
+    assert O.state_of("configure")["state"] == O.BUILT
+    assert O.state_of("configure")["parts"][0]["options"] == ["--check-command", "--model", "--provider"]
+    missing = _without(option)
+    assert O.state_of("configure", missing)["state"] == O.NOT_BUILT
+    assert O.state_of("init", missing)["state"] == O.BUILT
+    assert O.proposed_names(facts=missing) == [f"step 2 (configure): `aew init {option}` is no option of the CLI"]
+    assert O.state_of("configure", _without("--check-timeout"))["state"] == O.BUILT
+
+
+def test_the_options_are_the_real_parsers_and_a_leaf_lists_its_own():
+    from aew.cli.main import build_parser
+
+    commands = O.cli_commands(build_parser())
+    assert {"--check-command", "--model", "--provider"} <= commands["init"]
+    assert "--model" not in commands["doctor"] and "--json" in commands["doctor"]
+    assert O.code_facts().commands["init"] == commands["init"]
 
 
 def test_a_step_moves_when_its_registry_entry_or_route_is_added():
@@ -94,8 +127,13 @@ def test_a_proposed_name_on_the_path_fails():
                      "step 11 (preflight): `aew preflight` is no command of the CLI",
                      "step 11 (preflight): /v1/read/preflight is no route of the vendored D-01 matrix",
                      "step 12 (setting): SETTINGS_SET is neither in the O-01 registry nor placed by an adoption"]
-    # Missing: a step that names nothing proposes nothing (configure has no serving surface yet).
+    # Missing: a step that names nothing proposes nothing.
+    assert O.proposed_names([O.Step(2, "configure", O._s("all"), ("L10",), (O.Local("L10", None, None),), ())]) == []
+    # An option of a command the CLI has is checked too; today's step 2 names only live ones.
     assert O.proposed_names([O.STEP["configure"]]) == []
+    optioned = O.Step(2, "configure", O._s("all"), ("L10",),
+                      (O.Local("L10", None, ("init",), options=("--nope",)),), ())
+    assert O.proposed_names([optioned]) == ["step 2 (configure): `aew init --nope` is no option of the CLI"]
     # A switched command is a command of the CLI: the parser is built with both switches on (review of #306, N3).
     switched = O.Step(14, "recall", O._s("V1"), ("X01",), (O.Local("X01", None, ("history", "search")),), ())
     assert O.proposed_names([switched]) == []
@@ -153,10 +191,12 @@ def test_a_step_taken_todays_way_is_a_fallback_until_it_lands_and_then_has_no_dr
     (fallback,) = op.ledger.operator_fallbacks()
     assert fallback["step"] == "change_model" and fallback["ideal"] == "step 12 (P14 ADOPT_MANIFEST_EDIT)"
     assert fallback["observed"] == "not built, held by G3"
-    op.workaround("configure", "edit the policy files")
-    assert op.ledger.operator_fallbacks()[-1]["ideal"] == "step 2 (L10 NO_COMMAND)"
+    missing = _without("--model")
     landed = _facts(registry={**O.code_facts().registry, "ADOPT_MANIFEST_EDIT": O.code_facts().admitted_origin},
                     owner_action="ADOPT_MANIFEST_EDIT")
+    monkeypatch.setattr(O, "code_facts", lambda: missing)  # step 2, if its option went: a fallback again
+    op.workaround("configure", "edit the policy files")
+    assert op.ledger.operator_fallbacks()[-1]["ideal"] == "step 2 (L10 NO_COMMAND)"
     monkeypatch.setattr(O, "code_facts", lambda: landed)
     op.workaround("setting", "edit execution.yaml; aew manifest adopt", step="change_model")
     assert len(op.ledger.operator_fallbacks()) == 2

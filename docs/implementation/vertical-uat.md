@@ -55,8 +55,8 @@ internals.
   (`docs/guides/quickstart.md`): acquire, then copy the credential into `AEW_LEAD_TOKEN`; an `--expect-rev` read from
   `status`; a takeover; an adopt after editing YAML. A step that has landed but has no driver in the scripted operator
   yet is recorded as `no_driver`, and fails the verdict like a fallback.
-- **The setup boundary.** Setup is `aew init` and the project's first configuration (its check command and its
-  harness), before the first Lead session opens. A policy file edited by hand in setup is recorded, not counted under
+- **The setup boundary.** Setup is `aew init` and the project's first configuration (its check command, model and
+  provider), before the first Lead session opens. A policy file edited by hand in setup is recorded, not counted under
   `raw_yaml`; one edited after setup counts. Everything else in setup (an acquire, a credential, a separate adopt) is
   counted like any other step.
 - **Terminal channels.** A decision AEW confirms at the operator's own terminal (a policy adoption, a takeover, a
@@ -135,8 +135,9 @@ installed tool: its variables are not the operator's.
   entry, its message and details; a JSON answer with `ok: true` never is.
 - **Opening AEW.** The `open` step is L01 and L02 (`ATTACH_LEAD`), through a G3 client and the confirmer, whose PIN
   approves the attach (§4, the PIN rule). The test records whether a console endpoint came up (`open.console`), never
-  counted. Until the step lands, the operator opens the Lead today's way (the credential in `AEW_LEAD_TOKEN`, then
-  `aew opencode`), counted as a fallback. `configure` (step 2) is A-39's setup act at the console, with no O-01 command
+  counted. Until the step lands, the operator opens the Lead the way `aew init`'s `next` says
+  (`aew opencode --acquire`), counted as a fallback. V4 and the same-shell V2 extra keep the credential route (an
+  acquire, the credential in `AEW_LEAD_TOKEN`, then `aew opencode`), every step counted. `configure` (step 2) is A-39's setup act at the console, with no O-01 command
   and no PIN. The steering `raise` (step 13, `SET_STEERING_MODE`) is a decision on every platform.
 - **V2's reopen.** The step is L03 (`REATTACH_LEAD`), with the reads that say where things stand, from a fresh
   terminal with nothing carried over. Until it lands, the operator opens the Lead the way `docs/guides/opencode.md`
@@ -399,7 +400,7 @@ Code: `tests/helpers/discovery/` (`rules.py`, the capture plugin `capture.py`, `
 | O-CMD | A suggested input fails to parse in parse-only mode against the live parser. Placeholders are taken as values, and each alternative of `a`-or-`b` (written with a bar) must parse. A command named in prose without its required arguments is a mention, but a command in a structured field (`next`, `next_action(s)`, `remedy`, `hint(s)`, or the argument lists `cli` and `cli_fallback`) is offered to be run as given, so it must parse whole. A typed-tool name not in `contract.TOOLS` is also a violation. Text that echoes the input inside a refusal is excluded. |
 | O-CODE | A refusal whose cause is known is checked against the code registry (§8.4). In DX1 no cause is known: one is known only when an explorer injected it (DX2), or when the refusal states it in the refusal schema (DX3). So O-CODE judges nothing in the existing suite yet, as the specification's H5 requires. |
 | O-WORDS | A refusal without the refusal schema (`cause`, `remedy`, `owner`). Until the product emits it, this is the "unstructured refusal" finding, one per refusal site. |
-| O-SECRET | Any of these: <ul><li>an output that asks for a PIN anywhere other than the operator console;</li><li>one that asks a model (the Lead, or a worker through its pack) for a code;</li><li>one that asks any reader (the operator, the Lead, or a worker model through its pack) to set, copy or pass an AEW credential, the credential variables of `harness.contract.CREDENTIAL_ENV` and their options. The specification's text named the operator only; widening it to any reader is a spec amendment approved by the operator (operator decision, 2026-10-12);</li><li>a typed tool with a PIN, code or credential argument.</li></ul> |
+| O-SECRET | Any of these: <ul><li>an output that asks for a PIN anywhere other than the operator console;</li><li>one that asks a model (the Lead, or a worker through its pack) for a code;</li><li>one that asks any reader (the operator, the Lead, or a worker model through its pack) to set, copy or pass an AEW credential, the credential variables of `harness.contract.CREDENTIAL_ENV` and their options, or that shows such a variable given a literal value, made persistent, or typed where it shows (an unmasked `read` or `Read-Host`). The specification's text named the operator only; widening it to any reader is a spec amendment approved by the operator (operator decision, 2026-10-12);</li><li>a typed tool with a PIN, code or credential argument.</li></ul>The safe path is not an ask: the per-session hidden-input form (the designer, 2026-11-01) answering an ask to set or export that credential, on the line asking, the next one, or the line above in the same block; or, for a reader at a terminal, typing the value at a prompt that shows nothing. |
 | O-ENV | The Lead's system text, with the guide it is given, does not state the check environment. The expected statement is generated from the check path itself, `Validation._check_env`, probed on the platform that runs the scan. It must say that checks run in a scrubbed environment and name every variable that path keeps: the allowlist, `PATH`, `PYTHONUTF8` and, on POSIX, `LC_*`. The path has no way to give a check any other variable, so the statement must also say that no other variable reaches a check. |
 
 ### 8.3 The modes, the allow-list and the ratchet
@@ -574,5 +575,5 @@ Each row's witness, found by the static scan over `e993fd7`'s product and guides
 | U10 | No static text names `aew harness runs`: the specification's known gap. |
 | U15 | O-ENV: `static:lead-system+guide`. |
 | U27 (O-IDS) | The specification's witness, an `expect_rev: N` in a static text, never existed: no text at `e993fd7` contains it. The `N` reached the Lead through the runtime hints `--expect-rev N`, which D2 captures: `O-IDS tool:status\|result` and `O-IDS cli:aew status\|result`. Those keys are U27's witness. |
-| U29 | O-SECRET: `cli:aew opencode\|USAGE` and `cli:aew lead session\|USAGE` ("set AEW_LEAD_TOKEN"), captured in every run by a fast-lane test. Statically, none since CS-4 addendum 12: the guides show the per-session hidden-input form, which O-SECRET passes (the designer, 2026-11-01). |
+| U29 | None now. CS-4 addendum 12 put the per-session hidden-input form in the guides (the designer, 2026-11-01), and the refusals of `aew opencode`, `aew lead session` and the like show it on the lines under the ask, so O-SECRET passes both. `test_the_products_own_refusals_show_the_safe_path_and_read_as_no_ask` holds that, and `test_an_ask_with_the_form_on_the_next_line_passes_and_each_near_miss_does_not` that the ask without the form still fails. |
 | U31 | O-IDS: `aew harness wait <run>` in `LEAD_SYSTEM`, the guide and `lead-guide.md`. |

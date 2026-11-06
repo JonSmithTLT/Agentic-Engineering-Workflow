@@ -15,11 +15,12 @@ with a control write beside it; the record says how the copy was protected.
 provider's key) are set. A paid model needs the operator's approval for each run (the operator, 2026-11-06), and never
 an ``opencode/*`` free model. Three runs, each capped at ``AEW_LIVE_SKILLS_STEPS`` steps:
 
-* ``engineer`` and a project card that is ``engineer`` without ``optional_skills``: their ``first_step_input_tokens`` and
-  ``system_bytes`` are **recorded, never asserted** (the cost of the listing, the 2026-11-04 ruling §6);
+* ``engineer`` and a project card that is ``engineer`` without ``optional_skills``: their
+  ``first_step_input_tokens`` and ``system_bytes`` are **recorded, never asserted** (the cost of the listing, the
+  2026-11-04 ruling §6);
 * an investigator card with ``skills: [adversarial-review]`` and ``optional_skills: [c-development]``, whose Ticket
-  asks it to call the ``skill`` tool with a denied id (``opencode``, a built-in), to load ``adversarial-review`` and read
-  one of its ``references/`` files, and to try writing into the skill's folder from its shell.
+  asks it to call the ``skill`` tool with a denied id (``opencode``, a built-in), to load ``adversarial-review`` and
+  read one of its ``references/`` files, and to try writing into the skill's folder from its shell.
 
 What the model does is recorded, not asserted. What is asserted, whatever it does: a ``skill`` call of an id the run
 was not given never completes; a write into the copy never succeeds; ``loaded`` and ``skill_other`` sum to the ``skill``
@@ -221,7 +222,8 @@ def observe(lab: HarnessLab, run: str) -> dict[str, Any]:
         assert isinstance(result["skill_other"], int)
     return {"run": run, "status": record.get("status"), "exposed": planned["exposed"], "copy": planned.get("copy"),
             "system_bytes": record["launch"]["context"]["system_bytes"],
-            "first_step_input_tokens": result.get("first_step_input_tokens"), "tools_called": result.get("tools_called"),
+            "first_step_input_tokens": result.get("first_step_input_tokens"),
+            "tools_called": result.get("tools_called"),
             "loaded": result.get("loaded"), "skill_other": result.get("skill_other"), "usage": result.get("usage")}
 
 

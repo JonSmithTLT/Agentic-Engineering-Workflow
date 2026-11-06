@@ -166,6 +166,44 @@ def test_a_relay_with_no_upstream_refuses_the_launch_and_leaves_no_network_direc
     assert caught.value.details["reason"] == "no_upstream" and not (tmp_path / "aew-net-x").exists()
 
 
+@pytest.mark.parametrize("given", [Allowlist(["models.opencode.ai:443"]), None])
+def test_the_runs_egress_proxy_gets_the_allowlist_its_caller_built_and_the_network_builds_none(monkeypatch, tmp_path,
+                                                                                               given):
+    """One allowlist for the run's self-test and its egress proxy (register E143): the supervisor builds it once and
+    gives it to both, so RunNetwork.start never builds its own from the policy, even when the policy names other
+    entries: the proxy gets the very object it is given (identity, not an equal list). No allowlist given, no egress
+    proxy. The proxy and its socket are stand-ins, so this runs everywhere."""
+    layout = replace(BASE, network=L.PROXY_ONLY, net_dir=str(tmp_path / "aew-net-x"))
+    (tmp_path / "aew-net-x").mkdir()
+    started: list[Allowlist] = []
+
+    class Proxy:
+        def __init__(self, allow, *, listener):
+            started.append(allow)
+
+        def start(self):
+            return self
+
+        def close(self):
+            pass
+
+    def built(*args, **kwargs):
+        raise AssertionError("RunNetwork.start built an allowlist of its own")
+
+    monkeypatch.setattr(netns.egress, "EgressProxy", Proxy)
+    monkeypatch.setattr(netns, "listen", lambda path: None)
+    monkeypatch.setattr(netns, "egress_policy", built)
+    policy = {"containment": {"network": {"egress_allow": ["elsewhere.example:443"]}}}
+    net = netns.RunNetwork.start(layout, provider=None, provider_env=[], policy=policy, env={}, relay_needed=False,
+                                 allow=given)
+    try:
+        assert started == ([given] if given is not None else [])
+        assert all(got is given for got in started)  # the same object, not an equal one
+        assert (net.egress is not None) == (given is not None)
+    finally:
+        net.close()
+
+
 def test_the_shim_spec_forwards_the_server_in_and_the_relay_and_egress_out_on_fixed_ports():
     spec = netns.shim_spec("/n", relay_sock=netns.RELAY, egress_sock=netns.EGRESS)
     assert spec == {"in": [{"unix": os.path.join("/n", netns.SERVER), "port": netns.SERVER_PORT}],

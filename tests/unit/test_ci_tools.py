@@ -1860,6 +1860,7 @@ def test_d2_runs_on_every_pull_request_and_main_and_its_ratchet_in_the_gate_and_
     assert "check_assurance.py lane-reports" in assure["run"] and gate.index(assure) < gate.index(ratchet)
     # a mode lowered against the base needs the operator's label, as growth does
     assert 'GITHUB_SHA^1:tests/helpers/discovery/modes.py' in ratchet["run"] and "--base-modes" in ratchet["run"]
+    assert 'if git show "$GITHUB_SHA^1:tests/helpers/discovery/modes.py"' not in ratchet["run"]  # a failed read fails
     nightly = yaml.safe_load((ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8"))
     nightly_steps = nightly["jobs"]["reference-assurance"]["steps"]
     nightly_ratchet = next(s for s in nightly_steps

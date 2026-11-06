@@ -144,6 +144,8 @@ def test_the_projection_reaches_the_server_and_the_session(lab, tmp_path):
         network = record["containment"]["network"]
         assert network["provider_relay"] == "configured" and network["provider_upstream"] == lab.provider.url
         assert network["egress_allow"] == ["models.opencode.ai:443"]
+        # the self-test checked the allowlist the run got: one list, built once (register E143)
+        assert record["containment"]["self_test"]["rows"]["1"]["egress_allow"] == network["egress_allow"]
         assert set(network["decisions"]) == {"relay", "egress"}  # counted at the run's end
         assert not Path(record["containment"]["layout"]["net_dir"]).exists()  # closed with the run
         # the agent is told its network and how to ask for more (#257's review, F3)
@@ -370,6 +372,9 @@ def test_on_the_relay_route_a_model_of_a_family_the_upstream_does_not_serve_is_r
         return
     assert res.error["code"] == "HARNESS_LAUNCH_FAILED" and "HARNESS_INCOMPATIBLE" in res.error["message"], res.error
     assert res.error["details"]["reason_code"] == "incompatible_config", res.error
+    # the adapter's own reason, carried by the supervisor's acknowledgement and kept on the record (register E143)
+    assert res.error["details"]["refusal"] == "relay_family_mismatch", res.error
+    assert lab.record(RUN)["refusal"] == "relay_family_mismatch"
     message = res.error["message"]
     assert (f"model fakeprov/fake-model is a fake-pkg model, but the run's provider relay sends only to "
             f"{lab.provider.url}, which this OpenCode's catalog serves other-pkg models from, so its requests would "
@@ -390,16 +395,22 @@ def test_on_the_relay_route_a_model_of_a_family_the_upstream_does_not_serve_is_r
 def test_on_the_relay_route_the_family_check_is_recorded_and_the_run_goes_ahead(lab, tmp_path, sibling, check,
                                                                                 upstream_packages):
     """A sibling of the pin's family served from the relay's upstream: `matches`. Nothing to decide by: `unverified`,
-    which launches all the same. Either way the launch record keeps what was found."""
+    which launches all the same. Either way the launch record keeps what was found, and the launch's output and the
+    run's network label show the check, beside the status (register E143)."""
     relay_catalog(lab, sibling)
-    _, _, run = launch(lab, tmp_path)
+    wid = create_planned_ticket(lab.project, tmp_path)
+    started = lab.lead("work", "assign", wid, "--launch")["launch"]
+    run = started["run"]
     assert lab.wait(run)["status"] == "ended_with_evidence"
     record = lab.record(run)
     if record["containment"]["network"]["mode"] != "proxy_only":
-        assert "relay_family" not in record["launch"]["health"]
+        assert "relay_family" not in record["launch"]["health"] and "relay_family" not in started
+        assert "relay_family" not in record["containment"]["network"]
         return
     assert record["launch"]["health"]["relay_family"] == {
         "check": check, "package": "fake-pkg", "upstream_packages": upstream_packages}
+    assert started["status"] == "running" and started["relay_family"] == check, started
+    assert record["containment"]["network"]["relay_family"] == check
 
 
 def test_on_linux_a_provider_key_that_would_reach_the_sandbox_another_way_refuses_the_launch(lab, tmp_path):

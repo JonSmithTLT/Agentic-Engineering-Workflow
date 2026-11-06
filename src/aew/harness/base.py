@@ -18,6 +18,34 @@ from aew.harness import models
 from aew.harness.contract import LaunchContract
 from aew.harness.procs import ProcessTree
 
+# What an adapter's launch reports beside its status, closed, so a supervisor and a launcher pass on nothing else
+# (register E143). The relay-route check of the pinned model's family: its three results, and the two a launch that
+# started can carry on its label and its acknowledgement (a mismatch refuses the launch).
+RELAY_FAMILY_MATCHES, RELAY_FAMILY_UNVERIFIED, RELAY_FAMILY_MISMATCH = "matches", "unverified", "mismatch"
+RELAY_FAMILY_SHOWN = frozenset({RELAY_FAMILY_MATCHES, RELAY_FAMILY_UNVERIFIED})
+# The reasons an adapter's launch refusal (``HarnessIncompatible``) names in its details that a failure acknowledgement
+# carries as its ``refusal``: lowercase, and apart from the launch-failure codes, which say where a launch failed
+# rather than why the adapter refused it.
+RELAY_FAMILY_REFUSED = "relay_family_mismatch"
+KEY_IN_SANDBOX = "provider_secret_in_sandbox"
+PROVIDER_ENV_UNUSABLE = "provider_env"
+LAUNCH_REFUSALS = frozenset({RELAY_FAMILY_REFUSED, KEY_IN_SANDBOX, PROVIDER_ENV_UNUSABLE})
+
+
+def relay_family_of(launch: Mapping[str, Any] | None) -> str | None:
+    """The relay-route check a started launch reports (its adapter's ``health.relay_family.check``), if it is one a
+    started launch can carry; else None."""
+    found = ((((launch or {}).get("health") or {}).get("relay_family")) or {}) if isinstance(launch, Mapping) else {}
+    check = found.get("check") if isinstance(found, Mapping) else None
+    return check if isinstance(check, str) and check in RELAY_FAMILY_SHOWN else None
+
+
+def refusal_of(details: Mapping[str, Any] | None) -> str | None:
+    """The adapter's refusal reason in an error's or an acknowledgement's details, if it is one of ``LAUNCH_REFUSALS``;
+    else None."""
+    reason = (details or {}).get("reason") if isinstance(details, Mapping) else None
+    return reason if isinstance(reason, str) and reason in LAUNCH_REFUSALS else None
+
 
 class HarnessAdapter(ABC):
     """``launch`` / ``inspect`` / ``send`` / ``interrupt`` / ``terminate`` / ``collect`` for one run."""

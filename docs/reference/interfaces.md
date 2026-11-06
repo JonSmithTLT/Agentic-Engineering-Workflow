@@ -59,7 +59,7 @@ Outside the API:
 
 ## Schemas
 
-Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values of an `additionalProperties` schema. The paths and their types are in `index.json`; a path with no type is a key the schema requires and gives no type.
+Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values of an `additionalProperties` schema. The paths and their types are in each schema's record (in the machine index that `render` writes); a path with no type is a key the schema requires and gives no type.
 
 | Schema | File | Paths | Required |
 |---|---|---|---|

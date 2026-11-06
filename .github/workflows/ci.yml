@@ -13,7 +13,8 @@ name: ci
 #                        in as many shards as the tier job computed; never written by hand
 #   fastbase             the whole fast lane at the base tip under coverage, when the decision is fast (plan v7 §5)
 #   web                  the dashboard's checks (web.yml): when web/, the contract or web.yml changed
-#   static               Ruff, Pyright (as Linux and as Windows) and pip-audit on the Python side
+#   static               Ruff, Pyright (as Linux and as Windows) and pip-audit on the Python side; it also prints the
+#                        generated reference's counts (reported, never gating)
 #   assurance            every collected test of the tier's lanes ran exactly once and passed on every OS, in each
 #                        shard's latest run attempt, and web and static passed (the merge gate). It recomputes the
 #                        tier, and refuses a reduced tier on any event but a pull request: a push to main and a merge
@@ -321,6 +322,25 @@ jobs:
       - name: Pyright as Windows
         if: success() || failure()
         run: pyright --pythonplatform Windows
+      # The reference's index is not committed (operator, 2026-11-05), so its counts are printed here for every pull
+      # request instead: reported, never gating (the fast lane's `check` gates the committed pages). One render, on
+      # Linux only, in this job because it has AEW installed from this checkout and no pytest session deadline.
+      - name: The generated reference's counts (tools/reference.py counts; reported, never gating)
+        if: success() || failure()
+        continue-on-error: true
+        timeout-minutes: 3
+        run: |
+          python tools/reference.py counts > "$RUNNER_TEMP/reference-counts.json"
+          cat "$RUNNER_TEMP/reference-counts.json"
+          {
+            echo "## The generated reference's counts"
+            echo
+            echo "Measured by \`python tools/reference.py counts\` at this run's commit; the index is not committed."
+            echo
+            echo '```json'
+            cat "$RUNNER_TEMP/reference-counts.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: pip-audit (every installed distribution except AEW itself)
         if: success() || failure()
         # The exact installed set, frozen without the editable AEW: --strict then fails only on a vulnerability or on a

@@ -604,6 +604,8 @@ def apply(principal: Any, change: Change, *, directory: Path | None = None) -> d
         raise PermissionDenied("a change to the capability register is the operator's, approved at the operator "
                                "endpoint (`aew operator serve --dev`); nothing else applies one",
                                reason="operator_principal_required")
+    if change.kind == ADD:  # the network before the lock, never under it (the designer's ruling, STG-15)
+        change.data["downloaded"] = _add_downloads(change, directory)
     with store.locked(directory) as root:
         state = store.read(root)
         if change.data.get("basis") != _basis(state):
@@ -755,9 +757,27 @@ def _preview_add(text: str, source: str, bundle: Any, directory: Path | None) ->
     return Change(ADD, lines, data)
 
 
+def _add_downloads(change: Change, directory: Path | None) -> dict[str, bytes | AEWError]:
+    """The archives an approved add downloads, each record's this host lacks and the bundle shown did not hold: read
+    with no lock held, and checked against the archive's pin as they are read (``P.fetch``), or why not. The operator
+    approved the add, which names each record's source, so the download is their choice."""
+    key = records.platform_key()
+    out: dict[str, bytes | AEWError] = {}
+    for name, record in sorted(change.data["records"].items()):
+        pinned = record["payloads"][key]
+        if name in change.data["held"] or P.path_of(name, record["command"], pinned, directory).exists():
+            continue
+        try:
+            out[name] = P.fetch(pinned)
+        except (P.PinMismatch, Unavailable) as exc:
+            out[name] = exc
+    return out
+
+
 def _apply_add(change: Change, state: dict[str, Any], root: Path) -> dict[str, Any]:
-    """Validated before it takes effect (CAPR-13): each record's payload is fetched (or taken from the bundle shown)
-    and checked against its pin, and its health check must pass; otherwise nothing changes."""
+    """Validated before it takes effect (CAPR-13): each record's payload is taken from the bundle shown or from what
+    :func:`_add_downloads` brought before the lock was taken, and checked against its pin, and its health check must
+    pass; otherwise nothing changes. Nothing here reaches the network: the register's lock is held."""
     key = records.platform_key()
     facts = status.host_facts()
     trial = {**state, "checks": dict(state.get("checks") or {}), "refused": dict(state.get("refused") or {}),
@@ -772,7 +792,14 @@ def _apply_add(change: Change, state: dict[str, Any], root: Path) -> dict[str, A
                 data = change.data["held"].get(name)
                 if data is not None:  # the bundle's bytes, as the preview read and showed them
                     P.check_archive(data, pinned, what="the bundle's archive")
-                body = P.member(data if data is not None else P.fetch(pinned), pinned)
+                else:  # downloaded before the lock was taken
+                    data = (change.data.get("downloaded") or {}).get(name)
+                    if isinstance(data, AEWError):
+                        raise data
+                    if data is None:  # its payload went from this host since: never a download under the lock
+                        raise Unavailable(f"{name}'s payload left this host while the add was applied; ask for the "
+                                          "add again", reason="fetch_failed")
+                body = P.member(data, pinned)
                 P.install(name, record["command"], pinned, body, root)
                 made.append((name, pinned))
             elif (wrong := P.verify(path, pinned)) is not None:

@@ -223,8 +223,10 @@ class Supervisor:
             self._contain(contract, adapter_cls)
             from aew.capability import ops as capability
 
-            # What the run goes without, from its own record, for its system text (a missing tool is logged, not voided)
-            contract.extra[K.UNAVAILABLE_TOOLS] = capability.unavailable(self.record["containment"].get("missing_tools"))
+            # What the run goes without, from its own record, for its system text: a missing tool is logged, not
+            # voided (the operator, 2026-11-05)
+            missing = self.record["containment"].get("missing_tools")
+            contract.extra[K.UNAVAILABLE_TOOLS] = capability.unavailable(missing)
             self.agent_env = agentenv.build(os.environ, endpoint=self.bridge.address, key_hex=self.bridge.key_hex,
                                             invocation=self.inv_id, run=self.run, work_unit=inv["work_unit"],
                                             scratch=contract.scratch,

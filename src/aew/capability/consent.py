@@ -62,7 +62,8 @@ class Offer:
 
     def line(self) -> str:
         """The tool in full: name, purpose, version, size, source and what degrades without it."""
-        said = f"  {self.provider} {self.version} (`{self.command}`): {self.purpose}; {_size(self.size)} from {self.source}"
+        said = (f"  {self.provider} {self.version} (`{self.command}`): {self.purpose}; {_size(self.size)} from "
+                f"{self.source}")
         if self.degrades:
             said += f"; without it, {self.degrades}"
         if self.declined_at:
@@ -198,7 +199,7 @@ def decline(offers_: tuple[Offer, ...] | list[Offer], directory: Path | None = N
         for offer in offers_:
             record = (eff.get(offer.provider) or {}).get("record")
             pinned = (record or {}).get("payloads", {}).get(key)
-            if pinned is not None:
+            if record is not None and pinned is not None:
                 marks[f"{offer.provider}:{key}"] = {"at": at, "sha256": pinned["sha256"], "version": record["version"]}
         store.write(state, root)
 
@@ -337,13 +338,14 @@ def init_keys(next_step: str, tools: dict[str, Any], directory: Path | None = No
     return {"tools": tools, "next": next_step + "".join(f". Also: {line}" for line in declined_lines(directory))}
 
 
-def at_lead_start(out: Any = None, directory: Path | None = None) -> list[str]:
+def at_lead_start(out: Any = None, directory: Path | None = None, *, asking: bool = True) -> list[str]:
     """The Lead's start (`aew opencode`), before the TUI opens: the screen when a needed tool is missing and not
     declined, on a terminal; a needed tool declined gets one line and the command on every start, with no second ask
     (a reminder respects the choice). An optional tool that's missing says nothing here: it is in the run's record and
     `aew doctor`. With no terminal, nothing is asked or said, as a launch's flag says nothing there
-    (:func:`ops.flag_missing`): no operator reads it, and the run's record and `aew doctor` keep it. Never stops the
-    start (CAPR-12). Returns the lines written."""
+    (:func:`ops.flag_missing`): no operator reads it, and the run's record and `aew doctor` keep it. ``asking=False``
+    is a Lead AEW binds no tools into (not contained): nothing is asked, and each needed tool missing still gets its
+    line, so it is never silent. Never stops the start (CAPR-12). Returns the lines written."""
     out = out if out is not None else sys.stderr
     said: list[str] = []
     try:
@@ -351,7 +353,7 @@ def at_lead_start(out: Any = None, directory: Path | None = None) -> list[str]:
             return said
         missing = offers(directory)
         ask_now = [o for o in missing if o.needed and not o.declined_at]
-        if ask_now:
+        if ask_now and asking:
             decision = ask([o for o in missing if not o.declined_at], read_terminal)
             decline(decision.declined, directory)
             done = get(decision.chosen, directory) if decision.chosen else {}
@@ -365,6 +367,11 @@ def at_lead_start(out: Any = None, directory: Path | None = None) -> list[str]:
             if not o.needed:
                 continue
             why = f"you declined it at {o.declined_at}" if o.declined_at else "it is not on this host"
+            if not asking:
+                said.append(f"aew opencode: attention: {o.provider}, which a contained run needs, is missing: {why}. "
+                            "This Lead is not contained, so AEW binds no tools into it and OpenCode's own lookup "
+                            f"serves. `{status.FETCH} {o.provider}` downloads it.")
+                continue
             said.append(f"aew opencode: attention: {o.provider}, which the harness needs (without it, {o.degrades}), "
                         f"is missing: {why}. The Lead goes on without it. `{status.FETCH} {o.provider}` downloads it.")
     except AEWError as exc:

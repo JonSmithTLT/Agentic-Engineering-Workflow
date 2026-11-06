@@ -120,8 +120,8 @@ def private_output_dirs(state_dir: str, sep: str, *, scratch: str = "") -> tuple
 def system_text(contract: LaunchContract, unavailable_skills: list[str],
                 network: Mapping[str, Any] | None = None, unavailable_tools: list[str] | None = None) -> str:
     """The run's system text. ``unavailable_tools``: the commands of the tools AEW brings that this run got no copy of
-    (``capability.ops.unavailable``, from the run's own record), told as its missing skills are, so the agent proceeds without them and says so (the
-    operator, 2026-11-05: a missing tool is logged, not voided)."""
+    (``capability.ops.unavailable``, from the run's own record), told as its missing skills are, so the agent proceeds
+    without them and says so (the operator, 2026-11-05: a missing tool is logged, not voided)."""
     card = (contract.card or {}).get("id") or contract.role
     edit = ("You may edit files in the workspace." if contract.role in MUTATING_ROLES
             else "You must not modify any file: your role is read-only.")

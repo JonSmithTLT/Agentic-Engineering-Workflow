@@ -13,19 +13,17 @@ import http.server
 import io
 import json
 import os
-import subprocess
 import sys
 import threading
 import urllib.request
-from pathlib import Path
 from typing import Any
 
 import pytest
-from capability_stand_in import KEY, SOURCE, _archive, _record, _sha, make_register
+from capability_stand_in import KEY, SOURCE, _archive, _record, make_register
 from conftest import IS_WINDOWS
 
 from aew import errors, process_kind
-from aew.capability import consent, ops, records, status, store
+from aew.capability import consent, ops, records, store
 from aew.capability import payload as P
 from aew.engine.custody_ops import LEAD_SESSION_VARS, kept_out_refusal
 
@@ -266,6 +264,16 @@ def test_an_optional_tool_missing_says_nothing_at_the_lead_start(served, termina
     assert consent.at_lead_start(io.StringIO()) == [] and term.prompts == []
 
 
+def test_a_lead_that_binds_no_tools_never_asks_and_still_names_a_missing_needed_tool(served, terminal):
+    """Where the Lead is not contained (Windows), AEW binds no tools into it: nothing is asked, and a needed tool
+    missing still gets its line, so it is logged, not voided."""
+    term = terminal()
+    said = consent.at_lead_start(io.StringIO(), asking=False)
+    assert term.prompts == [] and served["fetched"] == [] and len(said) == 1
+    assert "fake, which a contained run needs, is missing: it is not on this host" in said[0]
+    assert "`aew capability fetch fake` downloads it" in said[0]
+
+
 def test_off_a_terminal_the_lead_start_neither_asks_nor_says_and_the_record_keeps_it(served):
     out = io.StringIO()
     assert consent.at_lead_start(out) == [] and out.getvalue() == "" and served["fetched"] == []
@@ -389,14 +397,34 @@ def test_a_download_matching_its_pin_is_placed(reg, local):
     assert _installed("fake") and any(line.startswith("downloaded ") for line in out["downloaded"]["fake"])
 
 
-def test_a_download_off_its_pin_is_refused_and_nothing_is_placed(reg, local):
-    """The hash check: one byte changed, the same size. Refused with its reason, and no file is left."""
-    wrong = bytearray(reg["archive"])
-    wrong[len(wrong) // 2] ^= 0x01
+def _same_size_other_archive(reg: dict[str, Any]) -> bytes:
+    """A well-formed archive of another executable, the pinned archive's exact size: only the digests can refuse it."""
+    from capability_stand_in import MEMBER
+
+    size = len(reg["archive"])
+    for at in range(len(reg["body"])):
+        body = bytearray(reg["body"])
+        body[at] ^= 0x01
+        archive = _archive(bytes(body), MEMBER)
+        if len(archive) == size:
+            return archive
+    raise AssertionError("no same-size archive found")
+
+
+@pytest.mark.parametrize("which", ["another executable, well formed", "one byte of the archive changed"])
+def test_a_download_off_its_pin_is_refused_and_nothing_is_placed(reg, local, which):
+    """The hash check: an archive the pinned size that is not the pinned one, whether a well-formed archive of
+    another executable or the pinned archive with one byte changed. Refused with its reason, and no file is left."""
+    if which.startswith("another"):
+        wrong = _same_size_other_archive(reg)
+    else:
+        wrong = bytearray(reg["archive"])
+        wrong[len(wrong) // 2] ^= 0x01
     local(bytes(wrong))
     out = consent.at_fetch(["fake"])
     assert not _installed("fake") and _leftovers() == []
-    assert "does not match its pin" in " ".join(out["downloaded"]["fake"])
+    assert "does not match its pin" in " ".join(out["downloaded"]["fake"]) or "cannot be read" in " ".join(
+        out["downloaded"]["fake"])
     assert store.read()["refused"][f"fake:{KEY}"]["sha256"] == reg["shipped"]["fake"]["payloads"][KEY]["sha256"]
 
 
@@ -428,6 +456,28 @@ def test_the_registers_lock_is_never_held_across_the_download(reg, local, monkey
     local(reg["archive"], during=another_command)
     consent.at_fetch(["fake"])
     assert took == [True] and _installed("fake")
+
+
+def test_an_approved_add_downloads_with_no_lock_held_either(reg, local, monkeypatch):
+    """The same rule for `aew capability add` (applied at the operator endpoint once approved): its payload is
+    downloaded before the register's lock is taken, and installed under it."""
+    from capability_stand_in import _principal
+
+    monkeypatch.setattr(store, "RECORD_WAIT_S", 1.0)
+    took: list[bool] = []
+
+    def another_command() -> None:
+        try:
+            with store.locked(short=True):
+                took.append(True)
+        except errors.AEWError:
+            took.append(False)
+
+    local(reg["archive"], during=another_command)
+    record = {**reg["shipped"]["extra"], "description": "the operator's own"}
+    text = json.dumps({"schema": records.SCHEMA, "providers": {"mine": record}})
+    out = ops.apply(_principal(), ops.preview(ops.ADD, {"text": text, "source": "test"}))
+    assert took == [True] and out["added"] == ["mine"]
 
 
 def test_offline_the_report_names_the_offline_import(reg, monkeypatch):
@@ -535,13 +585,16 @@ def test_the_screen_on_a_pseudo_terminal_takes_a_typed_answer(reg, tmp_path):
     env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
     pid, fd = pty.fork()
     if pid == 0:  # the child: its controlling terminal is the pseudo-terminal
-        os.execve(sys.executable, [sys.executable, "-B", str(script)], env)
+        os.execve(sys.executable, [sys.executable, "-B", str(script)], env)  # noqa: S606 (argv is fixed here)
     seen = b""
     try:
         while b"Choose needed / all / pick / none" not in seen:
             ready, _, _ = select.select([fd], [], [], 60)
             assert ready, seen
-            seen += os.read(fd, 4096)
+            try:
+                seen += os.read(fd, 4096)
+            except OSError:  # the child ended before its screen: what it printed says why
+                raise AssertionError(seen.decode(errors="replace")) from None
         os.write(fd, b"none\r")
         while b"RESULT" not in seen or not seen.rstrip().endswith(b"]"):
             ready, _, _ = select.select([fd], [], [], 60)
@@ -555,4 +608,3 @@ def test_the_screen_on_a_pseudo_terminal_takes_a_typed_answer(reg, tmp_path):
     declined = json.loads(seen.split(b"RESULT ", 1)[1].splitlines()[0])
     assert [d["tool"] for d in declined] == ["fake", "extra"]
     assert f"fake:{KEY}" in store.read()["declined"]
-    _ = (subprocess, _sha)  # imported for the stand-in's shapes

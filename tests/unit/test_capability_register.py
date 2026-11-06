@@ -180,8 +180,8 @@ def test_no_route_but_the_operators_own_commands_reaches_the_fetch():
     own callers."""
     refs = _references()
     reached = _reach(refs, ("aew.capability.payload", "fetch"), (CHECK, APPLY, GET))
-    assert reached == {("aew.capability.ops", n) for n in ("_fetched", "fetch", "_apply_add")} | {
-        CHECK, APPLY, GET}, sorted(reached)
+    assert reached == {("aew.capability.ops", n) for n in ("_fetched", "fetch", "_add_downloads")} | {
+        CHECK, APPLY, GET}, sorted(reached)  # `_apply_add` installs what was downloaded before the lock
     assert _callers(refs, CHECK) == {("aew.cli.capability_commands", "_check"), GET}
     assert _callers(refs, GET) == {("aew.capability.consent", n) for n in ("at_init", "at_lead_start", "at_fetch")}
     assert _callers(refs, APPLY) == {("aew.harness.operator_endpoint", "OperatorEndpoint._capability_change")}

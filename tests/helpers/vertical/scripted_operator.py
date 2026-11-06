@@ -410,8 +410,30 @@ def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | No
     env = {"AEW_HARNESS_ADAPTERS": workers.ADAPTER, SCRIPTS_ENV: str(scripts), "AEW_LAUNCH_ACK_S": "120",
            "AEW_OPENCODE_BIN": str(launcher),
            # The product as shipped: a lease's grant starts its custody worker (the suite turns it off by default).
-           "AEW_CUSTODY_WORKER": "on"}
+           "AEW_CUSTODY_WORKER": "on",
+           # The operator's OpenCode login: one synthetic key, which the contained Lead relays and the fake TUI never
+           # calls. A contained Lead with no provider relayed is refused at start (the designer's ruling of 2026-11-06).
+           "OPENCODE_DB": str(operator_login(tmp / "operator-opencode"))}
     return HarnessLab(Project(repo), tmp, env)
+
+
+def operator_login(directory: Path) -> Path:
+    """A synthetic OpenCode 2.0.18 login database (``lead_session.CREDENTIAL_TABLE``) holding one API key."""
+    import sqlite3
+
+    from lead_session import CREDENTIAL_TABLE, KEYS
+
+    directory.mkdir(parents=True, exist_ok=True)
+    db = directory / "opencode.db"
+    con = sqlite3.connect(db)
+    try:
+        con.execute(CREDENTIAL_TABLE)
+        con.execute("INSERT INTO credential VALUES ('cred_0', 'anthropic', 'l', ?, NULL, 'api', 1, 1, 1)",
+                    (json.dumps({"type": "key", "key": KEYS["anthropic"]}),))
+        con.commit()
+    finally:
+        con.close()
+    return db
 
 
 def execution_policy(lab: HarnessLab, *, steering: str | None = None) -> dict[str, Any]:

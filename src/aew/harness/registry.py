@@ -52,11 +52,6 @@ def load(name: str) -> type[HarnessAdapter]:
     return cls
 
 
-def check(name: str) -> None:
-    """Fail before any commit when the named adapter cannot even be loaded."""
-    load(name)
-
-
 def model_identity(harness: str, provider: str | None, model: str, field: str) -> ModelIdentity:
     """The named harness adapter's model identity (``HarnessAdapter.model_identity``), the one rule for resolving a
     profile's model (``aew.policy.execution.ModelIdentityFn``). An adapter that cannot be loaded here gets the rule

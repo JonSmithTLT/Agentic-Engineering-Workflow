@@ -447,7 +447,8 @@ class RunNetwork:
         (``egress.EgressProxy.refused_targets``), each with its fixed note where :func:`refused_note` gives one.
         Records only: it is written beside the run's ``containment`` label, never in it, so no Lead read of the
         label (``harness status``, ``harness wait``) and no system text carries it, and nothing offers a target as an
-        allowlist entry. Every reader escapes it: the agent chose the string."""
+        allowlist entry. The agent chose the string: today it is only in the run's JSON record, and any reader that
+        shows it escapes it."""
         if self.egress is None:
             return None
         found = self.egress.refused_targets()

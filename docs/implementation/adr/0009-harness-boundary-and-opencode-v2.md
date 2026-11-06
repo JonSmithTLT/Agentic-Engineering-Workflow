@@ -1783,7 +1783,8 @@ This replaces the 2026-10-24 amendment's `aew doctor` `ripgrep` line, and its "r
   characters; at most 20 distinct targets a run, then a count of the refusals of any other
   (`egress.EgressProxy.refused_targets`). The run's record keeps it as `egress_refused`, beside its `containment`
   label and never in it, so no Lead read (`harness status`, `harness wait`) and no system text carries it, and
-  nothing offers a target as an allowlist entry. The agent chose the string, so every reader escapes it.
+  nothing offers a target as an allowlist entry. Today the run's JSON record is its only form; the agent chose the
+  string, so any reader that shows it escapes it.
 - **One refused target is known and expected:** on a run whose provider is `opencode` with its key relayed, a refused
   `opencode.ai:443` carries the fixed note "expected: OpenCode's console sync (inferred), refused by design"
   (`netns.CONSOLE_SYNC_NOTE`, defined once, beside the record; no other target gets it). A set `OPENCODE_API_KEY`

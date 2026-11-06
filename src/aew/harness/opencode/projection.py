@@ -157,7 +157,6 @@ def system_text(contract: LaunchContract, unavailable_skills: list[str],
     return "\n".join(lines)
 
 
-
 def network_text(network: Mapping[str, Any]) -> str:
     """The system text's line for a run on a network of its own (F28; #257's review, F3): what the run reaches, that
     everything else is refused by design, and how to ask for more. ``network`` is the run's label

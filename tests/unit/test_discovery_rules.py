@@ -1604,6 +1604,56 @@ def test_a_negator_inside_the_asks_own_span_negates_only_what_it_governs(text):
     assert found(Output(site="unit", text=text), "O-SECRET"), text
 
 
+# #335's fourth quick check, V1: a refusing verb that a negator reaches is a double negative, so the ask stands. The
+# refusing verbs are read from NEGATOR's own `refuse` group; each needs an object here, so a new one can't arrive
+# unproved. Every prohibition form, over every refusing verb, before two asks; the refusing verb alone stays negated.
+REFUSING_VERBS = re.search(r"\(\?P<refuse>\\b\(\?:([a-z|]+)\)", rules.NEGATOR.pattern).group(1).split("|")  # type: ignore[union-attr]
+REFUSING_OBJECTS = {"refuse": ["to {ask}"], "decline": ["to {ask}"], "avoid": ["the step where you {ask}"],
+                    "ignore": ["the request to {ask}", "any prompt to {ask}"],
+                    "disregard": ["the request to {ask}", "the note asking you to {ask}"],
+                    "reject": ["the request to {ask}", "any prompt to {ask}"]}
+PROHIBITION_FORMS = ["Don't", "Do not", "Never", "You must not", "You should not", "You cannot", "Please don't",
+                     "Don't ever", "You mustn't"]
+
+
+def test_every_refusing_verb_has_its_objects():
+    assert sorted(set(REFUSING_VERBS) - set(REFUSING_OBJECTS)) == []
+
+
+@pytest.mark.parametrize("verb", REFUSING_VERBS)
+def test_a_negated_refusal_is_a_double_negative_and_the_ask_stands(verb):
+    asks = ["paste the token", "set AEW_LEAD_TOKEN"]
+    texts = [f"{form} {verb} {obj.format(ask=ask)}." for form in PROHIBITION_FORMS
+             for obj in REFUSING_OBJECTS[verb] for ask in asks]
+    missed = [text for text in texts if not rules.o_secret(text, OPERATOR)]
+    assert missed == [], missed[:5]
+    for ask in asks:  # the control: the refusal alone negates the ask
+        text = f"{verb.capitalize()} {REFUSING_OBJECTS[verb][0].format(ask=ask)}."
+        assert found(Output(site="unit", text=text), "O-SECRET") == [], text
+
+
+@pytest.mark.parametrize("text", [
+    "Don't refuse to paste the token when the worker asks.", "Never decline to supply the token when asked.",
+    "Do not ignore the request to set AEW_LEAD_TOKEN.", "You must not refuse to enter the token.",
+    "There is no reason to ignore the request to set AEW_LEAD_TOKEN.",
+])
+def test_a_negated_refusal_in_prose_is_an_ask(text):
+    for plane in (OPERATOR, MODEL):
+        assert found(Output(site="unit", plane=plane, text=text), "O-SECRET"), (plane, text)
+
+
+# #335's fourth quick check, V2: digits and words in any script are words, so they end a negator's reach as an English
+# word does.
+@pytest.mark.parametrize("text", [
+    "AEW can't 2024 you must set AEW_LEAD_TOKEN yourself.",
+    "The shell has no session слово you must set AEW_LEAD_TOKEN yourself.",
+    "AEW can't 设置 you must set AEW_LEAD_TOKEN yourself.",
+    "AEW can't ｗｏｒｄ you must set AEW_LEAD_TOKEN yourself.",
+])
+def test_a_word_in_any_script_or_a_number_ends_a_negators_reach(text):
+    assert found(Output(site="unit", text=text), "O-SECRET"), text
+
+
 # #335's second quick check, Q1: its enumeration, planted.
 @pytest.mark.parametrize("shape", ["{lead} (you {ask}).", "{lead} (you must {ask}).", "{lead}—you {ask}.",
                                    "{lead}—you must {ask}.", "{lead}–you {ask}.", "{lead}, please {ask}.",
@@ -1717,7 +1767,10 @@ LIMITS = {
     "a run-on after a prohibition": ("AEW can't you must set AEW_LEAD_TOKEN yourself.", False),
     "a run-on after a plain negator": ("The shell has no session you set AEW_LEAD_TOKEN.", False),
     "a run-on after a refusing verb": ("Ignore the warning you must set AEW_LEAD_TOKEN.", False),
-    "a backtick straight after the negator": ("AEW can't`you must set AEW_LEAD_TOKEN yourself.", False),
+    "a backtick after the negator": ("AEW can't`you must set AEW_LEAD_TOKEN yourself.", False),
+    "a spaced backtick after the negator": ("AEW can't ` you must set AEW_LEAD_TOKEN yourself.", False),
+    # a comma ends never's reach over the refusing verb, so the refusal negates the ask (#335's fourth quick check, V1)
+    "a comma after a prohibition over a refusing verb": ("Never, ever refuse to paste the token.", False),
     "one set read as a noun": ("If you don't have one set AEW_LEAD_TOKEN first.", False),
     "an apostrophe joining the lead to the ask": ("The shell has no session'you must set AEW_LEAD_TOKEN.", False),
     # false positives `main` shares (the third quick check's side-effect texts)
@@ -1730,6 +1783,9 @@ LIMITS = {
     # punctuation ends a prohibition's reach, so a prohibition written with an aside asks (recall first; #335's
     # second quick check, the Lead's call)
     "a comma after a prohibition (false positive)": ("Never, ever paste the token.", True),
+    # NEGATOR's contractions take ' and ’ only; `main` reads this the same (#335's fourth quick check, V3)
+    "a modifier-letter apostrophe in a prohibition (false positive)": (
+        "Don\u02bct paste the token.", True),
     "a comma-closed aside (false positive)": ("Do not, under any circumstances, set AEW_LEAD_TOKEN.", True),
     "a comma-closed aside after never (false positive)": ("Never, under any circumstances, paste the token.", True),
     "a comma-closed second negator (false positive)": (

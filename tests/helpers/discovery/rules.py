@@ -606,7 +606,9 @@ OTHERS_ACT = re.compile(r"(?<!you )\b(?:will|would)\s+$", re.IGNORECASE)  # "the
 #   `X=abc`"). Run-ons with no punctuation stay in reach, also named limits ("AEW can't you must set X").
 # - Inside the ask's own span, any negator negates only what it governs ("Pass no token"; "Set up your shell and
 #   don't forget X" asks).
-# - "Don't forget", "don't hesitate", "never fail" are double negatives: the ask stands.
+# - "Don't forget", "don't hesitate", "never fail" are double negatives: the ask stands. So is a refusing verb that a
+#   negator reaches by these same rules ("Don't refuse to paste X"; "There is no reason to ignore the request to set
+#   X"; #335's fourth quick check, V1).
 NEGATOR = re.compile(r"(?P<prohibit>\bnever\b|\b(?:ca|do|does|did|wo|must|should|may)n['’]t\b|\bcannot\b"
                      r"|\b(?:do|does|did|must|should|may|can|will|would)\s+not\b)"
                      r"|(?P<refuse>\b(?:refuse|ignore|disregard|reject|decline|avoid)\b)"
@@ -763,6 +765,8 @@ def _negated(text: str, at: int, *, governs: frozenset[str] = frozenset()) -> bo
     if not negators:
         return False
     last = negators[-1]
+    if last.group("refuse") and _negated(text, start + last.start()):
+        return False  # a refusal that is itself negated is a double negative: "Don't refuse to paste X"
     if PUNCTUATION.search(re.sub(r"`[^`\n]*`", "`", before[last.end():])):  # a code span is a word
         return False
     between = JOINED_ASKS.sub(" ", before[last.end():])
@@ -798,7 +802,7 @@ def _negated_within(between: str) -> bool:
 
 
 def _words(text: str) -> list[str]:
-    return [w.lower() for w in re.findall(r"[A-Za-z’']+", text)]
+    return [w.lower() for w in re.findall(r"(?:[^\W_]|['’])+", text)]  # digits and any script are words (#335 QC4)
 
 
 def _filler(word: str) -> bool:

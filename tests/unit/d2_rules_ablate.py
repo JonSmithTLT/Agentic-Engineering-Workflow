@@ -136,6 +136,11 @@ LINES: list[tuple] = [  # old and new: one text each, or a tuple of texts replac
     ("R51", "only a newline ends a sentence (fix line A)", PARSER,
      r'SENTENCE_END = re.compile("[.;:!?\n\r\v\f\x1c-\x1e\x85\u2028\u2029]")',
      r'SENTENCE_END = re.compile(r"[.;:!?\n]")', RULES, f"{BREAKS} or {PROSE}"),
+    ("R52", "a negated refusal still negates the ask (fix line G2)", PARSER,
+     '    if last.group("refuse") and _negated(text, start + last.start()):\n        return False', '    if False:\n'
+     '        return False', RULES, "test_a_negated_refusal"),
+    ("R53", "digits and other scripts are not words (fix line H)", PARSER, r'''re.findall(r"(?:[^\W_]|['’])+", text)''',
+     r'''re.findall(r"[A-Za-z’']+", text)''', RULES, "test_a_word_in_any_script_or_a_number_ends_a_negators_reach"),
     ("P1", "a quote mark is not punctuation", PARSER,
      r'''|(?<!\w)['’]|['’](?!\w)")''', '")', RULES, PUNCT),
     ("R4", "ask verbs joined under one negator end its reach", PARSER,

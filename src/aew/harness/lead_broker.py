@@ -217,6 +217,13 @@ def refuses_locally(ns: argparse.Namespace) -> str | None:
         return (f"`aew {command_name(ns)}` is the operator's, through the operator endpoint in their own terminal; a "
                 "Lead session can neither raise its own steering mode nor reach the endpoint: request a raise with "
                 "the `steering` tool (action request_raise), or lower the mode with `aew lead mode lower`")
+    if path == frozenset({"init"}):  # `aew init` stays the operator's own; its first configuration is at the console
+        from aew.engine.first_configuration import FLAGS
+
+        given = [flag for dest, flag in FLAGS.items() if getattr(ns, dest, None) is not None]
+        if given:
+            return (f"`aew init` with {', '.join(given)} sets what is pinned at setup, which the operator does at "
+                    "their own console (register E119); a Lead session cannot: ask the operator")
     dest, value = OPERATOR_ATTRIBUTED.get(path, ("", None))
     if value is not None and getattr(ns, dest, None) == value:
         return (f"`aew {command_name(ns)}` with `--{dest.replace('_', '-')} {value}` records the decision as the "

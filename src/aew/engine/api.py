@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
 from aew.engine import gate_ops, transitions, usage_ops
@@ -73,6 +73,9 @@ from aew.policy import execution as X
 from aew.schemas import validate
 from aew.util import dump_yaml, load_yaml, sha256_bytes, sha256_text, utc_now
 from aew.workspace import git
+
+if TYPE_CHECKING:
+    from aew.engine.first_configuration import FirstConfiguration
 
 AEW_GITIGNORE = "# Rebuildable/runtime data (KC §5.3) and spent redo records.\nlocal/\nstate/txn/\n"
 AUTHORITY_CLASSES = ("contracts", "decisions", "schemas", "source", "orientation")
@@ -558,6 +561,7 @@ class Engine:
         name: str | None = None,
         branch: str | None = None,
         workspaces_root: str | None = None,
+        first_configuration: FirstConfiguration | None = None,
     ) -> Engine:
         repo_root = repo_root.resolve()
         top = git.toplevel(repo_root)
@@ -567,7 +571,9 @@ class Engine:
             raise UsageError("initialize AEW in the main worktree, not a linked worktree")
         aew_root = repo_root / AEW_DIR
         if (aew_root / "state" / "control.yaml").exists():
-            raise IntegrityError(f"{aew_root} is already an initialized AEW project")
+            from aew.engine.first_configuration import already_initialized  # only this refusal needs its tables
+
+            raise IntegrityError(already_initialized(aew_root))
         branch = branch or git.current_branch(repo_root)
         if not branch:
             raise UsageError("HEAD is detached; pass --branch to name the authoritative branch")
@@ -591,6 +597,13 @@ class Engine:
             X.REL_PATH: X.TEMPLATE,
             "roles/README.md": roles_readme(),
         }
+        if first_configuration is not None:  # written before the pin, so checked before the pin (register E119)
+            files.update(first_configuration.files())
+            names = {rel: name for name, rel in manifest["policy"].items()}
+            for rel in policy_files(manifest):
+                if rel in files:  # the bytes that are pinned below, checked as an adoption would check them
+                    check_policy_bytes(names.get(rel, "execution"), files[rel].encode("utf-8"),
+                                       source=f"{AEW_DIR}/{rel}")
         state = {
             "schema": "aew/control/v2",
             "project_id": project_id,

@@ -21,7 +21,7 @@ from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
 from aew.engine.seams import MUTATING, NEXT_ACTIONS, NON_MUTATING, PARENT, KindRegistration
 from aew.errors import AEWError, IntegrityError
-from aew.harness.contract import EXPECT_REV
+from aew.harness.contract import EXPECT_REV, HELD_SEAT
 from aew.knowledge import evidence as E
 from aew.knowledge.manifest import MANIFEST
 from aew.knowledge.render import finished_summary, work_graph_lines
@@ -48,6 +48,9 @@ RESUME_ORDER = [
     "open_review_findings", "verification_failures", "authority_and_guardrails", "derived_knowledge",
     "next_actions",
 ]
+# The ways onto a vacant seat: one text, for `aew status` and `aew resume` both (review of #329, F3).
+VACANT_SEAT = (f"`aew opencode --acquire` takes it for a Lead session, with no credential shown, or `aew lead acquire "
+               f"{EXPECT_REV}` shows one for the edit-and-adopt route. {HELD_SEAT}")
 
 
 class Resume:
@@ -77,7 +80,7 @@ class Resume:
         actions: list[str] = []
         lead = state["lead"]
         if lead["status"] == "vacant":
-            actions.append(f"acquire Lead authority: `aew lead acquire {EXPECT_REV}`")
+            actions.append(f"no Lead holds the seat: {VACANT_SEAT}")
         elif lead["status"] == "handoff_pending":
             actions.append("a Lead handoff is pending: the successor runs `aew lead handoff accept`")
         if not H.is_v2(state):  # ADR-0011: the Lead's other mutations are refused until then
@@ -85,9 +88,13 @@ class Resume:
                            f"`aew migrate {EXPECT_REV}` at their own terminal (a Lead session is refused it)")
         if any(c["status"] == "proposed" for c in self.k.manifest["authority"]["candidates"]):
             actions.append("classify authority candidates (the operator, at their own terminal; a Lead session is "
-                           "refused it): `aew authority list`, then for each `aew authority accept <candidate> "
+                           "refused it, and it blocks nothing). A session started with `aew opencode --acquire` "
+                           "doesn't ask: that path shows no credential, and a takeover would turn the live Lead "
+                           "read-only, so the operator classifies after it exits, once the seat is released, through "
+                           f"`aew lead acquire {EXPECT_REV}`. Then `aew authority list`, and for each "
+                           "`aew authority accept <candidate> "
                            f"--class <contracts|decisions|schemas|source|orientation> {EXPECT_REV}` or "
-                           f"`aew authority reject <candidate> --reason <reason> {EXPECT_REV}`")
+                           f"`aew authority reject <candidate> --reason <reason> {EXPECT_REV}`. {HELD_SEAT}")
         try:
             unconfigured = [k for k, v in self.k.policy("checks")["checks"].items() if not v.get("configured")]
             if unconfigured:
@@ -526,7 +533,7 @@ class Resume:
         label = f" ({lead['session_label']})" if lead.get("session_label") else ""
         holder = f"generation {lead['generation']}{label}"
         guidance = {
-            "vacant": f"No Lead holds authority: acquire it with `aew lead acquire {EXPECT_REV}`.",
+            "vacant": f"No Lead holds authority: {VACANT_SEAT}.",
             "handoff_pending": "A cooperative handoff is pending; the successor accepts with the offer secret.",
         }.get(lead["status"], (
             f"Lead authority is held by {holder}. This session must not act as Lead unless authority is "

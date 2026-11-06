@@ -361,8 +361,8 @@ class ProjectAdmin:
             policy_now = self.k.execution_policy()[0]
         except Exception:
             policy_now = None
-        # The actual guarantee, probed live and never implied (AEW-INV-ISO-001, M4-B), and the tools a contained run
-        # finds from the host (the designer's RG-1).
+        # The actual guarantee, probed live and never implied (AEW-INV-ISO-001, M4-B). Its sandbox also checks the
+        # capability register's tools inside and records what it found, which the capability lines then read.
         for name, status, detail in containment.doctor_checks(policy_now, K.CONTAINMENT_NOTE):
             add(name, status, detail)
         add("git-drivers", *self._git_drivers_doctor())

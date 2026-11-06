@@ -40,7 +40,10 @@ A :class:`Layout` says what a contained process may write. Everything else is th
   would make a level read-only, a file is replaced by an empty read-only file instead (``/dev/null`` would do, but
   SELinux refuses a device node bound over a home file), and the launch names it. One in a tree that is masked whole
   (``/tmp``, ``/run``, a runs mask) is hidden with its tree and not emitted, unless it lies in one of the layout's
-  binds into that tree, such as a project under ``/run`` or ``/tmp`` (:func:`_hidden_with_its_tree`).
+  binds into that tree, such as a project under ``/run`` or ``/tmp`` (:func:`_hidden_with_its_tree`);
+* the capability register is bound read-only, and the context's own directory of entries is read-only and first on
+  every process's ``PATH`` (:meth:`Layout.contained_path`, ``aew.capability.bind``), so OpenCode's ripgrep lookup never
+  misses and its download is never reached (CAPR-04; the designer's CAP-1 ruling 1).
 
 The claim is filesystem integrity, not confidentiality: apart from the masks, a contained process can read what
 the operator's account can read.
@@ -233,10 +236,28 @@ class Layout:
     display_files: tuple[str, ...] = ()      # the display's credential files found (in ``hide_files``), for row 3
     network: str = SHARED                    # NETWORK_MODES: --unshare-net unless SHARED (F28 §3.2)
     net_dir: str | None = None               # the run's network sockets, bound in read-only (its NET_SHIM writable)
+    # The register's providers in this context (CAPR-04; aew.capability.bind): the tools' plan, the context's directory
+    # of entries first on PATH, the one last on it (None: no record is there), and what they lead to, bound read-only
+    # (the register): each with --ro-bind-try, as a payload may go during a run, which only fails a tool's use.
+    tools: tuple[Any, ...] = ()
+    tools_first: str | None = None
+    tools_last: str | None = None
+    tool_binds: tuple[str, ...] = ()
+
+    def contained_path(self, path: str | None = None) -> str | None:
+        """The ``PATH`` every process of this context gets: its entries first, ``path`` (default: this process's), and
+        its own-name entries last. None for a layout with no entries, which leaves ``PATH`` as its caller set it."""
+        if self.tools_first is None:
+            return None
+        base = os.environ.get("PATH", "") if path is None else path
+        ours = {self.tools_first, self.tools_last}
+        rest = [p for p in base.split(os.pathsep) if p and p not in ours]
+        return os.pathsep.join([self.tools_first, *rest, *([self.tools_last] if self.tools_last else [])])
 
     def describe(self) -> dict[str, Any]:
         return {"role": self.role, "workspace_access": self.access, "writable": list(self.writable),
-                "readonly": list(self.readonly),
+                "readonly": list(self.readonly), "tool_binds": list(self.tool_binds),
+                "tools_first": self.tools_first, "tools_last": self.tools_last,
                 "hidden": [*self.hide_host, *self.hide_runs, *self.hide_dirs, *self.hide_files, *self.left_out],
                 "left_out_of": list(self.left_out_of),
                 "tree_masks": [{"path": p, "by": by} for p, by in self.tree_masks],
@@ -272,8 +293,12 @@ class Layout:
         return tuple(p for p, _ in self.bind_backs())
 
 
-def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] | None = None) -> list[str]:
-    """The bubblewrap command that runs ``argv`` inside ``layout``. Only flags bubblewrap 0.4.0 (EL8) has."""
+def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] | None = None,
+               path: str | None = None) -> list[str]:
+    """The bubblewrap command that runs ``argv`` inside ``layout``. Only flags bubblewrap 0.4.0 (EL8) has. ``path`` is
+    the ``PATH`` the caller's environment gives this process (default: this process's own). What it runs gets
+    :meth:`Layout.contained_path` of it: set here, the one way into a sandbox, so a context cannot miss the register's
+    tools whichever allow-list built its environment (CAPR-04; the designer's CAP-1 ruling 1)."""
     # --new-session: no controlling terminal, so TIOCSTI has no terminal it would accept (CB-05; bubblewrap's answer to
     # CVE-2017-5226). bubblewrap's own processes stay in the caller's process group, so killing it still ends the run.
     out = [layout.bwrap, "--die-with-parent", "--new-session", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
@@ -281,6 +306,9 @@ def bwrap_argv(layout: Layout, argv: list[str], *, cwd: str | os.PathLike[str] |
            "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", SANDBOX_TMP]
     for name in DISPLAY_ENV:
         out += ["--unsetenv", name]
+    contained = layout.contained_path(path)
+    if contained is not None:
+        out += ["--setenv", "PATH", contained]
     links = dict(layout.put_back_links)
     for flag, path in order(layout):
         out += ([flag, path] if flag == "--tmpfs" else [flag, links[path], path] if flag == "--symlink"
@@ -359,14 +387,14 @@ def order(layout: Layout) -> list[tuple[str, str]]:
     readonly = (*layout.readonly, *(p for p, _ in layout.run_exceptions), *net_readonly)
     masked = _left_out_of(layout)
     hidden = (*layout.hide_host, *layout.hide_runs, *masked)
-    own = {*layout.visible, *writable, *readonly, *hidden, *layout.hide_dirs}
+    own = {*layout.visible, *writable, *readonly, *hidden, *layout.hide_dirs, *layout.tool_binds}
 
     def back(path: str) -> bool:
         return os.path.dirname(path) in masked and path not in own
 
     return bind_order(writable, readonly, hidden, visible=layout.visible,
                       put_back=[p for p in layout.put_back if back(p)],
-                      links=[p for p, _ in layout.put_back_links if back(p)])
+                      links=[p for p, _ in layout.put_back_links if back(p)], tools=layout.tool_binds)
 
 
 def for_check(layout: Layout, requested: str | None = None) -> Layout:
@@ -380,14 +408,15 @@ def for_check(layout: Layout, requested: str | None = None) -> Layout:
 
 # Within one depth: an entry put back into a directory a secret is left out of first, so a bind of the layout's own
 # there wins; then the project's visible bind, so a role's writable bind of the same path wins (the Lead's R-2 shape,
-# CS-4); then writable binds; then read-only re-binds; then masks.
-_RANK = {"put_back": -3, "--symlink": -3, "visible": -1, "--bind": 0, "--ro-bind": 1, "--tmpfs": 2}
+# CS-4); then writable binds; then read-only re-binds (the register's among them); then masks.
+_RANK = {"put_back": -3, "--symlink": -3, "visible": -1, "--bind": 0, "--ro-bind": 1, "tool": 1, "--tmpfs": 2}
 
 
 def bind_order(writable: tuple[str, ...] | list[str], readonly: tuple[str, ...] | list[str],
                hidden: tuple[str, ...] | list[str] = (), *,
                visible: tuple[str, ...] | list[str] = (), put_back: tuple[str, ...] | list[str] = (),
-               links: tuple[str, ...] | list[str] = ()) -> list[tuple[str, str]]:
+               links: tuple[str, ...] | list[str] = (),
+               tools: tuple[str, ...] | list[str] = ()) -> list[tuple[str, str]]:
     """The project's visible binds and read-only re-binds (``--ro-bind``), the writable binds (``--bind``) and the masks
     of ``hide_host`` and ``hide_runs`` (``--tmpfs``) in the order bubblewrap applies them: by depth, ancestors first, so
     each holds for its subtree except where a deeper one says otherwise. On one path the mask comes last, after a
@@ -396,13 +425,15 @@ def bind_order(writable: tuple[str, ...] | list[str], readonly: tuple[str, ...] 
     stays visible for the same reason (CS-2; the Lead's approval, 2026-10-23). Otherwise the order within a depth is
     the layout's. An entry put back into a directory a secret is left out of (``put_back``, ``links``) comes a level
     below that directory's mask, as ``--ro-bind-try`` (it may have gone since the layout was made) or ``--symlink``;
-    never as ``--ro-bind``, which the store check counts. The one owner of the order: ``bwrap_argv`` emits it and the
-    store check (:func:`_refuse_store_binds`) reasons about it."""
+    never as ``--ro-bind``, which the store check counts. The register (``tools``) is bound the same way: it is a host
+    state that may change during a run. The one owner of the order: ``bwrap_argv`` emits it and the store check
+    (:func:`_refuse_store_binds`) reasons about it."""
     tagged = ([("put_back", p) for p in put_back] + [("--symlink", p) for p in links]
               + [("visible", p) for p in visible] + [("--bind", p) for p in writable]
-              + [("--ro-bind", p) for p in readonly] + [("--tmpfs", p) for p in hidden])
+              + [("--ro-bind", p) for p in readonly] + [("tool", p) for p in tools]
+              + [("--tmpfs", p) for p in hidden])
     ranked = sorted(tagged, key=lambda t: (len(Path(t[1]).parts), _RANK[t[0]]))
-    flags = {"visible": "--ro-bind", "put_back": "--ro-bind-try"}
+    flags = {"visible": "--ro-bind", "put_back": "--ro-bind-try", "tool": "--ro-bind-try"}
     return [(flags.get(f, f), p) for f, p in ranked]
 
 
@@ -1065,12 +1096,39 @@ def _refuse_run_bind_backs(layout: Layout, *, project: str, workspace: str) -> N
                 reason="run_bind_back_not_real")
 
 
+def _tool_fields(run: Path, tools: tuple[Any, ...] | None, hide_host: tuple[str, ...], readonly: list[str],
+                 protected: list[str]) -> dict[str, Any]:
+    """The capability register in this layout (CAPR-04, CAPR-Q02; ``aew.capability.bind``): the context's own directory
+    of entries, read-only, and what its entries lead to, the register, read-only, each also a path the self-test must
+    find unwritable. Each is one for any number of records. Nothing here refuses a launch (CAPR-12). A register under a
+    host mask is not bound in: a bind there would re-open part of a tree the layout masks whole, and
+    :func:`_refuse_run_bind_backs` reads no tool bind, so this filter is what keeps the mask whole. Its copies' checks
+    then fail inside, each entry becomes the stub, and the status says why."""
+    from aew.capability import bind, status, store
+
+    if sys.platform == "win32":  # pragma: windows-only  # no contained context there, and links need a privilege
+        return {}
+    plan = bind.safe_plan() if tools is None else tools
+    first, last = bind.place(run, plan)
+    root = first.parent
+    readonly.append(_real(root))
+    protected.append(str(first))
+    binds = [_real(store.root())] if os.path.isdir(store.root()) else []
+    for tool in plan:
+        binds += [_real(os.path.dirname(p)) for kind, p in tool.candidates if kind == status.AEW_COPY]
+    binds = [b for b in dict.fromkeys(binds) if not any(_within(b, h) for h in hide_host)]
+    binds = [b for b in binds if not any(_within(b, o) and b != o for o in binds)]  # the register holds its payloads
+    protected += [b for b in binds if b not in protected]
+    return {"tools": tuple(plan), "tools_first": str(first), "tools_last": str(last) if any(
+        t.where == bind.OWN_NAME for t in plan) else None, "tool_binds": tuple(binds)}
+
+
 def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir: str | os.PathLike[str],
             scratch: str | os.PathLike[str], bridge_dir: str | None, policy: dict[str, Any] | None,
             project: str | os.PathLike[str], home: str | None = None,
             runs: str | os.PathLike[str] | None = None, env: Mapping[str, str] | None = None,
             network: str = SHARED, net_dir: str | None = None,
-            state_dir: str | os.PathLike[str] | None = None) -> Layout:
+            state_dir: str | os.PathLike[str] | None = None, tools: tuple[Any, ...] | None = None) -> Layout:
     """The layout of a run of ``role`` in ``scope``. Creates the run's private directories (and, for a writing
     role, its private git state). Raises ``ContainmentUnavailable`` when the role has no layout, bubblewrap is
     missing, or a bind would reach the store's path. ``project`` is the authoritative project root (bound read-only
@@ -1080,7 +1138,8 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     is the run's network mode (:data:`NETWORK_MODES`) and ``net_dir`` the directory of its network sockets
     (``aew.harness.containment.netns``), with its :data:`NET_SHIM` subdirectory made here. ``state_dir`` is the role's
     own harness state that outlives one run (the Lead's OpenCode state, kept per project: STG-05 CS-4 addendum 1),
-    made here and bound back writable like the run's own directories."""
+    made here and bound back writable like the run's own directories. ``tools`` is what the context gets of the
+    capability register (``aew.capability.bind.plan``; default: this host's, as every launch's)."""
     access = WORKSPACE_ACCESS.get(role)
     if access is None:
         raise ContainmentUnavailable(f"role {role!r} has no containment layout; its runs are refused", role=role)
@@ -1165,6 +1224,7 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     for prefix in {sys.prefix, sys.base_prefix}:  # the interpreter behind `aew`, wherever it lives
         if prefix and os.path.isdir(prefix) and _real(prefix) not in readonly:
             readonly.append(_real(prefix))
+    tool_fields = _tool_fields(run, tools, hide_host, readonly, protected)
     visible = [_real(project)] if os.path.isdir(project) else []
     local = Path(project) / ".aew" / "local"
     if local.parent.is_dir():  # made now, so a lock a host writer creates there later is hidden too (#231, m4)
@@ -1177,7 +1237,7 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
                     operator_writable=tuple(operator),
                     protected=tuple(protected), env=contained, hide_host=hide_host,
                     run_exceptions=run_exceptions(network), display_files=display_files(home, env), network=network,
-                    net_dir=net_dir)
+                    net_dir=net_dir, **tool_fields)
     _refuse_store_binds(role, project, order(layout))
     _refuse_run_bind_backs(layout, project=_real(project), workspace=str(ws))
     bwrap_argv(layout, [], cwd=ws)  # the layout's own arguments, counted before any bubblewrap starts (addendum 9)

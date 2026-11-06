@@ -4,7 +4,11 @@
   capability list`` and ``aew doctor`` show it, and need no authorization.
 * :func:`check`: fetch what a record pins and this host lacks (online), check every payload against its pin, run the
   health checks and record their results. It writes the checks' results and payloads to an existing pin, never a
-  record or a setting, so it changes no authority and needs none.
+  record or a setting, so it changes no authority and needs none. It is the operator's to run: AEW downloads no tool
+  unless the operator chooses it (the operator, 2026-11-05), so nothing else reaches the fetch.
+* :func:`record_contained` and :func:`flag_missing`: at a contained context's launch, the health checks' results
+  from inside, and what the run got without AEW's pinned copy, on its record and once on the operator's terminal.
+  Neither ever stops a launch (CAPR-12), and neither fetches. What the context gets is :mod:`.bind`'s.
 * The operator's changes, ``import``, ``add``, ``remove`` and ``host-copies``, change what a contained context gets,
   so they are the operator's alone (CAPR-05; the designer's CAP-1 ruling 1): a change is previewed
   (:func:`preview`), shown at the operator endpoint's console, and applied by the endpoint (:func:`apply`) once the
@@ -17,12 +21,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from aew import process_kind
+from aew.capability import bind, records, status, store
 from aew.capability import payload as P
-from aew.capability import records, status, store
 from aew.capability.status import Copy
 from aew.errors import AEWError, IntegrityError, NotFound, PermissionDenied, Unavailable, UsageError, ValidationFailed
 from aew.util import load_yaml, sha256_text, utc_now
@@ -71,6 +77,7 @@ def _provider(name: str, entry: dict[str, Any], state: dict[str, Any], facts: di
     aew = status.aew_copy(name, record, entry["problem"], state, facts=facts, directory=directory)
     host: Copy | None = None
     note = None
+    limits = [status.NOT_BOUND] if sys.platform == "win32" else []
     if record is not None and aew.status in status.NOT_SERVING:
         if state["host_copies"]:
             host = status.host_copy(name, record, state, facts=facts, directory=directory)
@@ -80,7 +87,7 @@ def _provider(name: str, entry: dict[str, Any], state: dict[str, Any], facts: di
     return {"name": name, "layer": entry["layer"], "command": (record or {}).get("command"),
             "version": (record or {}).get("version"), "aew_copy": aew.describe(),
             "host_copy": host.describe() if host is not None else None, "note": note,
-            "serving": host if host is not None else aew, "aew": aew}
+            "serving": host if host is not None else aew, "aew": aew, "limitations": limits}
 
 
 def _capability(cap: str, providers: list[dict[str, Any]]) -> dict[str, Any]:
@@ -98,7 +105,7 @@ def _capability(cap: str, providers: list[dict[str, Any]]) -> dict[str, Any]:
     return {"id": cap, "observed_status": serving.status, "assessment_status": status.NOT_ESTABLISHED,
             "provider": chosen["name"], "copy": serving.kind, "path": serving.path,
             "version": None if host else chosen["version"], "pinned": not host,
-            "cause": "; ".join(causes) or None, "limitations": list(serving.limitations),
+            "cause": "; ".join(causes) or None, "limitations": [*serving.limitations, *chosen["limitations"]],
             "checked_at": serving.checked_at, "fix": serving.fix or (aew.fix if host else None)}
 
 
@@ -114,7 +121,7 @@ def _unreadable(exc: IntegrityError) -> dict[str, Any]:
 
 def public(view: dict[str, Any]) -> dict[str, Any]:
     """A listing as commands print it: the copies' objects dropped."""
-    return {**view, "providers": [{k: v for k, v in p.items() if k not in ("serving", "aew")}
+    return {**view, "providers": [{k: v for k, v in p.items() if k not in ("serving", "aew", "limitations")}
                                   for p in view["providers"]]}
 
 
@@ -161,13 +168,23 @@ def check(selector: str | None = None, *, offline: bool = False, directory: Path
     """Fetch, verify and check every provider, or the one ``selector`` names (a provider or a capability ID), and
     record the results. Online, a payload this host lacks is fetched from its record's source, checked against its
     pin as it is read (``offline``: never). A payload that does not match its pin is refused and removed; the next
-    check fetches it again. A host copy is checked where AEW's copy cannot serve and host copies are on."""
+    check fetches it again. Each copy's health check runs inside a sandbox, as its uses run (CAPR-13), so what it says
+    is what a contained run sees; only where no sandbox can be made does it run here, and the status says so. A host
+    copy is checked where AEW's copy cannot serve and host copies are on. It is the operator's to run: an agent's own
+    `aew` (a worker run's, the contained Lead's) is refused, as AEW downloads no tool the operator did not choose (the
+    operator, 2026-11-05). A keep-out keyed on the process's declaration, not the boundary: inside a sandbox the
+    register is read-only."""
+    if process_kind.kind() == process_kind.NON_WRITER:
+        raise PermissionDenied("`aew capability check` is the operator's, at their own terminal: it may fetch a tool "
+                               "and it writes this host's capability register, and an agent's own `aew` does neither; "
+                               "ask the operator to run it", reason="operator_only")
     with store.locked(directory) as root:
         state = store.read(root)
         eff = status.effective(state)
         names = _select(eff, selector)
         facts = status.host_facts()
-        done = {name: _check_one(name, eff[name], state, facts, offline=offline, directory=root) for name in names}
+        done = {name: _acquire(name, eff[name], state, offline=offline, directory=root) for name in names}
+        _check_health(names, eff, state, facts, done, root)
         store.write(state, root)
     return {"checked": done, **public(listing(directory))}
 
@@ -184,8 +201,8 @@ def _select(eff: dict[str, dict[str, Any]], selector: str | None) -> list[str]:
     return named
 
 
-def _check_one(name: str, entry: dict[str, Any], state: dict[str, Any], facts: dict[str, str | None], *,
-               offline: bool, directory: Path) -> list[str]:
+def _acquire(name: str, entry: dict[str, Any], state: dict[str, Any], *, offline: bool, directory: Path) -> list[str]:
+    """What a check does before any health check: refuse a payload off its pin, and fetch one this host lacks."""
     record = entry["record"]
     if record is None:
         return [f"its record is refused: {entry['problem']}"]
@@ -204,31 +221,209 @@ def _check_one(name: str, entry: dict[str, Any], state: dict[str, Any], facts: d
             _installed(state, name, key)
         if not path.exists() and not offline and not refused_now:
             said.append(_fetch(name, record, pinned, state, key, directory))
+    return said
+
+
+def _check_health(names: list[str], eff: dict[str, dict[str, Any]], state: dict[str, Any],
+                  facts: dict[str, str | None], done: dict[str, list[str]], root: Path) -> None:
+    """Each named provider's health check: in one sandbox, as its uses run (CAPR-13), or here where none can be made."""
+    from aew.harness import containment
+
+    seen = containment.tool_checks(bind.plan(root, state=state, names=names))
+    if seen is None:
+        for name in names:
+            if eff[name]["record"] is not None:
+                done[name] += _check_here(name, eff[name]["record"], state, facts, root)
+        return
+    _apply_contained(state, seen, facts)
+    for name, tool in seen.items():
+        for t in tool["tried"]:
+            whose = "" if t["kind"] == status.AEW_COPY else "the host's copy: "
+            done[name].append(f"{whose}checked {t['path']} in a sandbox: "
+                              f"{'passed' if t['ok'] else 'failed: ' + str(t['cause'])}")
+
+
+def _check_here(name: str, record: dict[str, Any], state: dict[str, Any], facts: dict[str, str | None],
+                directory: Path) -> list[str]:
+    """Where no sandbox can be made: AEW's copy, and the host's where AEW's cannot serve and host copies are on."""
+    said: list[str] = []
+    pinned = record["payloads"].get(records.platform_key())
+    if pinned is not None:
+        path = P.path_of(name, record["command"], pinned, directory)
         if path.exists():
-            said.append(_record_health(state, f"{status.AEW_COPY}:{name}", path, record, pinned["sha256"], facts))
+            said.append(_record_here(state, f"{status.AEW_COPY}:{name}", path, record, pinned["sha256"], facts))
     aew = status.aew_copy(name, record, None, state, facts=facts, directory=directory)
     if aew.status in status.NOT_SERVING and state["host_copies"]:
         found = status.find_host_copy(record["command"], directory)
         if found is not None:
-            said.append("the host's copy: " + _record_health(state, f"{status.HOST_COPY}:{name}", found, record,
-                                                            status.file_sha256(found), facts, pinned=False))
+            said.append("the host's copy: " + _record_here(state, f"{status.HOST_COPY}:{name}", found, record,
+                                                          status.file_sha256(found), facts, pinned=False))
     return said
+
+
+def _fetched(pinned: dict[str, Any]) -> bytes | AEWError:
+    """The pinned executable from its record's source, or why not."""
+    try:
+        return P.member(P.fetch(pinned), pinned)
+    except (P.PinMismatch, Unavailable) as exc:
+        return exc
+
+
+def _take(name: str, record: dict[str, Any], pinned: dict[str, Any], state: dict[str, Any], key: str, directory: Path,
+          got: bytes | AEWError) -> str:
+    """Record one fetch's outcome and install what it brought."""
+    if isinstance(got, P.PinMismatch):
+        _refuse(state, name, key, pinned, got.message)
+        return f"refused the fetched payload: {got.message}"
+    if isinstance(got, AEWError):
+        state.setdefault("fetch_failures", {})[f"{name}:{key}"] = {"at": utc_now(), "reason": got.message,
+                                                                    "sha256": pinned["sha256"],
+                                                                    "code": got.details.get("fetch_reason")}
+        return f"could not fetch it: {got.message}"
+    _installed(state, name, key)
+    P.install(name, record["command"], pinned, got, directory)
+    return f"fetched {pinned['source']}"
 
 
 def _fetch(name: str, record: dict[str, Any], pinned: dict[str, Any], state: dict[str, Any], key: str,
            directory: Path) -> str:
+    return _take(name, record, pinned, state, key, directory, _fetched(pinned))
+
+
+# ---------------------------------------------------------------------------------------------- at a launch
+
+
+def missing(tools: dict[str, Any] | None, directory: Path | None = None) -> list[dict[str, Any]]:
+    """Each tool a contained run got without AEW's pinned copy, from its self-test (``probe.self_test``'s ``tools``):
+    a stub or an unpinned host copy, why AEW's copy does not serve (closed, :data:`status.NOT_SERVING_WHY`), since
+    when, and the fix. Read after :func:`record_contained`, so a check that failed inside is the reason. AEW's own words
+    only: a cause the check wrote is never in it."""
+    if not tools:
+        return []
     try:
-        body = P.member(P.fetch(pinned), pinned)
-    except P.PinMismatch as exc:
-        _refuse(state, name, key, pinned, exc.message)
-        return f"refused the fetched payload: {exc.message}"
-    except Unavailable as exc:
-        state.setdefault("fetch_failures", {})[f"{name}:{key}"] = {"at": utc_now(), "reason": exc.message,
-                                                                    "sha256": pinned["sha256"]}
-        return f"could not fetch it: {exc.message}"
-    _installed(state, name, key)
-    P.install(name, record["command"], pinned, body, directory)
-    return f"fetched {pinned['source']}"
+        state = store.read(directory)
+    except AEWError:
+        state = store.empty()
+    effective = status.effective(state)
+    facts = status.host_facts()
+    out = []
+    for name, tool in sorted(tools.items()):
+        if tool.get("served") == status.AEW_COPY or name not in effective:
+            continue
+        entry = effective[name]
+        aew = status.aew_copy(name, entry["record"], entry["problem"], state, facts=facts, directory=directory)
+        # A copy whose last check passed but did not serve this run (its result not recorded yet: the short lock gave
+        # way, or the register is masked): the run's own evidence says why, never "never checked" (quick check of
+        # #330, m-c)
+        why = aew.reason or ("check_failed" if any(t.get("kind") == status.AEW_COPY and not t.get("ok")
+                                                   for t in tool.get("tried") or []) else "not_served_here")
+        failed = (state.get("fetch_failures") or {}).get(f"{name}:{records.platform_key()}") or {}
+        since = failed.get("at") if why == "fetch_failed" else (
+            ((state.get("refused") or {}).get(f"{name}:{records.platform_key()}") or {}).get("at")
+            if why == "refused" else None)
+        out.append({"tool": tool.get("command") or name, "provider": name,
+                    "served": "host" if tool.get("served") == status.HOST_COPY else "stub",
+                    "path": tool.get("path") if tool.get("served") == status.HOST_COPY else None,
+                    "reason": why, "since": since, "fix": aew.fix})
+    return out
+
+
+def flag_line(flag: dict[str, Any]) -> str:
+    """The operator's one line for a tool a run got without AEW's pinned copy: attention, not blocked-on-you, as the
+    run goes on (the designer's rule 3)."""
+    got = f"the host's unpinned copy at {flag['path']}" if flag["served"] == "host" else "a stub that fails"
+    since = f" (at {flag['since']})" if flag.get("since") else ""
+    fix = flag["fix"] or "`aew capability check`"  # a printed command: its own constant, which both finders read
+    return (f"aew: attention: {flag['tool']} in this run is {got}, not AEW's pinned copy: "
+            f"{status.NOT_SERVING_WHY.get(flag['reason'], flag['reason'])}{since}. The run goes on. Fix: {fix}.")
+
+
+def _to_terminal() -> bool:
+    """Whether this process's stderr is a terminal: the operator's (a supervisor's goes to its run's log)."""
+    try:
+        return sys.stderr.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def flag_missing(tools: dict[str, Any] | None, directory: Path | None = None) -> list[dict[str, Any]]:
+    """The operator's flag for what a launch bound without AEW's pinned copy (the operator, 2026-11-05): every run's
+    record keeps its list (returned here); the operator's terminal gets one line per tool and state, not one per
+    launch, and the next one once that tool's state changes; a tool bound again clears it. A worker's own `aew` and a
+    process with no terminal print nothing (the designer's rule 2)."""
+    flags = missing(tools, directory)
+    if not tools or process_kind.kind() == process_kind.NON_WRITER:
+        return flags
+    keys = {f["provider"]: f"{f['served']}:{f['reason']}:{f['since']}" for f in flags}
+    try:
+        seen = store.read(directory).get("flagged") or {}
+        bound = [n for n, t in tools.items() if t.get("served") == status.AEW_COPY and n in seen]
+        show = [f for f in flags if seen.get(f["provider"]) != keys[f["provider"]]] if _to_terminal() else []
+        if show or bound:
+            with store.locked(directory, short=True) as root:
+                state = store.read(root)
+                marks = state.setdefault("flagged", {})
+                for name in bound:
+                    marks.pop(name, None)
+                marks.update({f["provider"]: keys[f["provider"]] for f in show})
+                store.write(state, root)
+    except AEWError:  # where the register cannot be written, the line still shows: a repeat beats silence
+        show = flags if _to_terminal() else []
+    try:
+        for flag in show:
+            sys.stderr.write(flag_line(flag) + "\n")
+    except OSError:  # the terminal went away: the line is lost, the launch goes on (CAPR-12; quick check of #330, m-d)
+        pass
+    return flags
+
+
+def run_record(flags: list[dict[str, Any]]) -> dict[str, Any]:
+    """What a run's label keeps of the tools it got without AEW's pinned copy (:func:`flag_missing`'s list), in the
+    shape a run's missing skills take: each tool in ``unavailable``, its closed reason in ``reasons``, and the whole of
+    each in ``detail``. Every run keeps its own, whatever the operator's line said before: nothing removes a tool from
+    a run's record (the operator, 2026-11-05)."""
+    return {"unavailable": [f["tool"] for f in flags], "reasons": {f["tool"]: f["reason"] for f in flags},
+            "detail": flags}
+
+
+def record_contained(tools: dict[str, Any] | None, directory: Path | None = None) -> None:
+    """Record what a sandbox's self-test found (``probe.self_test``'s ``tools``): the status follows the check inside
+    (CAPR-03, CAPR-13). Written only where a result changed, so an ordinary launch takes no lock; never stops anything
+    (CAPR-12): where it cannot be written, as inside a sandbox, or behind a long holder of the lock, the next one
+    does."""
+    if not tools:
+        return
+    if process_kind.kind() == process_kind.NON_WRITER:  # an agent's own `aew`: the register is the operator's
+        return
+    try:
+        facts = status.host_facts()
+        if not _apply_contained(store.read(directory), tools, facts):
+            return
+        with store.locked(directory, short=True) as root:
+            state = store.read(root)
+            _apply_contained(state, tools, facts)
+            store.write(state, root)
+    except (AEWError, OSError):
+        return
+
+
+def _apply_contained(state: dict[str, Any], tools: dict[str, Any], facts: dict[str, str | None]) -> bool:
+    """Put a self-test's results in ``state``; whether any differs from what was there, the time aside."""
+    changed = False
+    checks = state.setdefault("checks", {})
+    for name, tool in tools.items():
+        for t in tool.get("tried") or []:
+            try:
+                sha256 = t["sha256"] or status.file_sha256(Path(t["path"]))
+            except OSError:
+                continue
+            entry = {"ok": bool(t["ok"]), "cause": t["cause"], "path": str(t["path"]), "sha256": sha256, "facts": facts,
+                     "record_digest": t["record_digest"], "version": t["version"], "where": status.IN_SANDBOX}
+            key = f"{t['kind']}:{name}"
+            if {k: v for k, v in (checks.get(key) or {}).items() if k != "at"} != entry:
+                checks[key] = {**entry, "at": utc_now()}
+                changed = True
+    return changed
 
 
 def _installed(state: dict[str, Any], name: str, key: str) -> None:
@@ -241,13 +436,31 @@ def _refuse(state: dict[str, Any], name: str, key: str, pinned: dict[str, Any], 
 
 
 def _record_health(state: dict[str, Any], check_key: str, path: Path, record: dict[str, Any], sha256: str,
-                   facts: dict[str, str | None], *, pinned: bool = True) -> str:
-    """Run the record's health check on ``path`` and record its result. A host copy (``pinned=False``) takes its
-    provider's health check, and its result is bound to its file's digest alone: it has no record of its own."""
+                   facts: dict[str, str | None]) -> str:
+    """AEW's copy at ``path`` checked before it takes effect (an import, an add; CAPR-13): inside a sandbox, as its uses
+    run, or here where none can be made."""
+    from aew.harness import containment
+
+    name = check_key.split(":", 1)[1]
+    tool = bind.Tool(name, record["command"], record["path"], record, ((status.AEW_COPY, str(path)),), sha256=sha256,
+                     digest=records.digest(record))
+    seen = containment.tool_checks((tool,))
+    if seen is None or name not in seen:
+        return _record_here(state, check_key, path, record, sha256, facts)
+    _apply_contained(state, seen, facts)
+    done = seen[name]["tried"][0]
+    return f"checked {path} in a sandbox: {'passed' if done['ok'] else 'failed: ' + str(done['cause'])}"
+
+
+def _record_here(state: dict[str, Any], check_key: str, path: Path, record: dict[str, Any], sha256: str,
+                 facts: dict[str, str | None], *, pinned: bool = True) -> str:
+    """Run the record's health check on ``path``, on this host, and record its result. A host copy (``pinned=False``)
+    takes its provider's health check, and its result is bound to its file's digest alone: it has no record of its
+    own."""
     ok, cause, first = status.health(path, record, pinned=pinned)
     state.setdefault("checks", {})[check_key] = {
         "ok": ok, "cause": cause, "at": utc_now(), "path": str(path), "sha256": sha256, "facts": facts,
-        "record_digest": records.digest(record) if pinned else None, "version": first}
+        "record_digest": records.digest(record) if pinned else None, "version": first, "where": status.ON_HOST}
     return f"checked {path}: {'passed' if ok else 'failed: ' + str(cause)}"
 
 

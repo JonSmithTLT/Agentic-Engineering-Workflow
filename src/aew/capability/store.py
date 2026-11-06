@@ -35,6 +35,9 @@ REGISTER, LOCK, CHANGES, PAYLOADS = "register.json", "register.lock", "changes.j
 # lock waits. A holder may be fetching payloads and running their health checks, each bounded by its own timeout
 # (payload.FETCH_TIMEOUT_S, status.HEALTH_TIMEOUT_S) but not, all together, by this one (review N3).
 LOCK_TIMEOUT_S = 60.0
+# How long a launch waits to record a check's result, behind whoever holds the lock; the next launch records it. AEW's
+# own choice: long enough for another launch's write, short beside a run's start.
+RECORD_WAIT_S = 5.0
 NOT_WRITABLE = "register_not_writable"
 
 # Tests point the register at a directory of their own, in process; the product never sets it. (An environment
@@ -56,7 +59,7 @@ def root() -> Path:
 
 def empty() -> dict[str, Any]:
     return {"format": FORMAT, "host_copies": True, "operator_records": {}, "checks": {}, "refused": {},
-            "fetch_failures": {}}
+            "fetch_failures": {}, "flagged": {}}
 
 
 def read(directory: Path | None = None) -> dict[str, Any]:
@@ -109,14 +112,14 @@ def write(state: dict[str, Any], directory: Path | None = None) -> None:
 
 
 @contextlib.contextmanager
-def locked(directory: Path | None = None) -> Iterator[Path]:
-    """The register's lock, held for a read-change-write of its state."""
+def locked(directory: Path | None = None, *, short: bool = False) -> Iterator[Path]:
+    """The register's lock, held for a read-change-write of its state. ``short`` is a launch's wait, which gives way."""
     from aew.engine.lock import FileLock
 
     target = directory or root()
     with writing(target):
         target.mkdir(mode=0o700, parents=True, exist_ok=True)  # the register is the operator's own, as AEW's store is
-        lock = FileLock(target / LOCK, timeout=LOCK_TIMEOUT_S)
+        lock = FileLock(target / LOCK, timeout=RECORD_WAIT_S if short else LOCK_TIMEOUT_S)
         lock.__enter__()
     try:
         yield target

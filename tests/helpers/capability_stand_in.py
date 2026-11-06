@@ -4,10 +4,13 @@ payloads in an archive built here."""
 
 from __future__ import annotations
 
+import atexit
 import hashlib
 import io
 import os
+import shutil
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -17,6 +20,7 @@ from aew.engine.steering import OperatorPrincipal
 
 IS_WINDOWS = os.name == "nt"
 KEY = records.platform_key()
+SEEN_HOME = Path.home()  # as the session started: a directory a sandbox shows, whatever HOME a test then sets
 TEXT = "needle one\nhay\nneedle two needle\n"
 FOUND = "needle one\nneedle two needle"
 SCRIPT = ('#!/bin/sh\nif [ "$1" = "--version" ]; then echo "fake 1.0"; exit 0; fi\n'
@@ -102,8 +106,14 @@ def _import(reg: dict[str, Any], **kw: Any) -> dict[str, Any]:
 
 
 def _plant_host_copy(reg: dict[str, Any], monkeypatch) -> Path:
-    directory = reg["tmp"] / "host-bin"
-    directory.mkdir()
+    # Where a sandbox sees it, as a host's own copy is: a sandbox's /tmp is its own, and a test's tmp_path is under it,
+    # so a copy there reads UNAVAILABLE from inside (which test_capability_bind.py shows on purpose)
+    directory = Path(tempfile.mkdtemp(prefix="aew-test-host-bin-", dir=SEEN_HOME)) if not IS_WINDOWS \
+        else reg["tmp"] / "host-bin"
+    if IS_WINDOWS:
+        directory.mkdir()
+    else:
+        atexit.register(shutil.rmtree, directory, True)
     exe = directory / store.executable_name("fake")
     exe.write_bytes(reg["body"])
     exe.chmod(0o755)

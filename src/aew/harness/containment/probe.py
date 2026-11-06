@@ -77,6 +77,9 @@ from aew.harness.containment.layout import (
 )
 
 TIMEOUT_S = 30.0
+# Every provider's health check in one self-test, together: half the probe's own time, so a provider that hangs can use
+# up this and never the probe's, which would refuse the launch (CAPR-12). Its healthy checks take milliseconds.
+TOOLS_BUDGET_S = TIMEOUT_S / 2
 VERSION_TIMEOUT_S = 10.0
 BOUND_S = TIMEOUT_S + VERSION_TIMEOUT_S  # the self-test and the mechanism check, at a run's start
 CANARY = "aew-self-test"  # the value of each DISPLAY_ENV variable the probe is handed
@@ -317,6 +320,54 @@ def exchange(port, request):
         s.close()
     head, _, body = data.partition(b"\r\n\r\n")
     return {"status": head.split(b"\r\n")[0].decode("latin-1"), "body": body.decode("latin-1")}
+def tool_step(argv, cwd, left):
+    # one step of a provider's health check: [finished, its stdout, why not]. Judged on the host (status.judge)
+    import subprocess
+    if left <= 0:
+        return [False, "", "did not run: the self-test's time for tools ran out"]
+    try:
+        done = subprocess.run(argv, cwd=cwd, env={"PATH": os.environ.get("PATH", ""), "LANG": "C.UTF-8"},
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True, errors="replace", timeout=left)
+    except subprocess.TimeoutExpired:
+        return [False, "", "did not finish within the self-test's time for tools"]
+    except OSError as e:
+        return [False, "", "could not start in the sandbox (%s)" % errno.errorcode.get(e.errno, str(e.errno))]
+    if done.returncode != 0:
+        err = (done.stderr or "").strip().splitlines()
+        return [False, done.stdout[:4096], "exited %d%s" % (done.returncode, ": " + err[-1][:200] if err else "")]
+    return [True, done.stdout[:4096], ""]
+def tools(spec, tmp, budget):
+    # what PATH resolves each tool to in here, and each of its copies' checks in a fresh directory. It never fails the
+    # probe: a provider is never what fails a launch (CAPR-12), so one that hangs costs at most its budget
+    import tempfile
+    end = time.monotonic() + budget
+    out = {}
+    for t in spec if isinstance(spec, list) else ():
+        checks = {}
+        for path in t["paths"]:
+            try:
+                d = tempfile.mkdtemp(prefix="aew-tool-", dir=tmp)
+            except OSError as e:
+                checks[path] = {"version": [False, "", "no directory for its fixture (%s)" % e], "fixture": None}
+                continue
+            try:
+                for name, text in t["files"].items():
+                    with open(os.path.join(d, name), "w", encoding="utf-8", newline="") as f:
+                        f.write(text)
+                checks[path] = {"version": tool_step([path, *t["version"]], d, end - time.monotonic()),
+                                "fixture": tool_step([path, *t["fixture"]], d, end - time.monotonic())}
+            except OSError as e:
+                checks[path] = {"version": [False, "", "no fixture (%s)" % e], "fixture": None}
+            finally:
+                shutil.rmtree(d, ignore_errors=True)
+        out[t["provider"]] = {"found": shutil.which(t["command"]), "checks": checks}
+    return out
+def guarded_tools(spec):
+    # whatever goes wrong here is a provider's, reported as nothing for it: the host then reads its checks as not run
+    try:
+        return tools(spec["tools"], spec["tmp"], spec["tools_budget"])
+    except Exception as e:
+        return {"error": "%s: %s" % (type(e).__name__, e)}
 def network(net, server):
     import socket
     out = {"netns": os.readlink("/proc/self/ns/net"), "listening": listening(), "abstract": abstract_names(),
@@ -387,7 +438,8 @@ if __name__ == "__main__":
         "markers_visible": [m for m in spec["markers"] if os.path.lexists(m)],
         "store_shield": shield(spec.get("stores") or [], table),
         "network": network(net, server) if net else None,
-        "tools": {"rg": shutil.which("rg", path=spec["path"])},
+        "path": os.environ.get("PATH", ""),
+        "tools": guarded_tools(spec),
     }))
 """
 
@@ -574,8 +626,10 @@ def self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tup
               bridge: str | None = None, relayed_terminal: Mapping[str, Any] | None = None,
               spec_dir: Path | None = None, sentinel: Path | None = None) -> dict[str, Any]:
     """Run the probe in ``layout``. Returns ``{"ok": bool, "reason": str | None, "rows": {...}, "tools": {...}, ...}``;
-    never raises for a containment failure (the caller decides by policy). ``tools`` says where, on the launching
-    environment's ``PATH``, the sandbox finds each tool a harness needs from the host (``{"rg": path or None}``).
+    never raises for a containment failure (the caller decides by policy). ``tools`` is what each of the layout's
+    providers has here: its health checks ran inside this sandbox, its entry now serves what passed
+    (``aew.capability.bind.settle``), and this is what happened, for the register's status
+    (``aew.capability.ops.record_contained``). It never decides ``ok``: a provider never fails a launch (CAPR-12).
     ``own`` holds the run's own socket directories (its bridge, its network directory); ``env`` is the launching
     environment the socket classes read (default: this process's). For row 1: ``egress_policy`` is the run's egress
     allowlist (None: the run has no egress proxy), and ``bridge`` the run's bridge socket, which must answer inside.
@@ -641,9 +695,10 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
             "markers": [str(m) for m in markers if any(_within(str(m), h) for h in (SANDBOX_TMP, *layout.hide_runs))],
             "network": net["inside"] if net else None,
             "stores": _stores(layout),
-            # the PATH a run's harness gets (the launching environment's), on which the probe looks for the tools a
-            # harness needs from the host: ripgrep, which OpenCode otherwise downloads (the designer's RG-1)
-            "path": (os.environ if env is None else env).get("PATH", "")}
+            # each provider's health check, run in here, as its uses run (CAPR-13)
+            "tools": [t.spec() for t in layout.tools], "tmp": SANDBOX_TMP, "tools_budget": TOOLS_BUDGET_S}
+    # the PATH a run's harness gets from its launching environment, as bubblewrap sets it (bwrap_argv)
+    launching = (os.environ if env is None else env).get("PATH", "")
     result: dict[str, Any] = {"ok": False, "reason": None, "probe": name}
     argv = [sys.executable, "-I", "-c", _PAYLOAD]
     echo: threading.Thread | None = None
@@ -665,7 +720,7 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
         echo.start()
     try:
         try:  # the spec on stdin: one argument is capped at 128 KiB (MAX_ARG_STRLEN), and it grows with the sockets
-            done = subprocess.run(bwrap_argv(layout, argv), input=None if fds else json.dumps(spec),
+            done = subprocess.run(bwrap_argv(layout, argv, path=launching), input=None if fds else json.dumps(spec),
                                   stdin=fds[1] if fds else None, capture_output=True, text=True, timeout=TIMEOUT_S,
                                   env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LANG": "C.UTF-8",
                                        **dict.fromkeys(DISPLAY_ENV, CANARY)})
@@ -692,7 +747,7 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
                      name=name, net=net, tty=tty, stores=spec["stores"])
         problems = [f"row {n} ({row['name']}): {row['reason']}" for n, row in rows.items() if not row["ok"]]
         result.update(ok=not problems, reason="; ".join(problems) or None, probe_pid=seen.get("pid"), rows=rows,
-                      tools=seen.get("tools") or {})
+                      tools=_settled(layout, seen), path=seen.get("path"))
         return result
     finally:
         spec_file.unlink(missing_ok=True)
@@ -705,6 +760,20 @@ def _self_test(layout: Layout, *, sentinel_dir: Path, sibling_dir: Path, own: tu
             sibling.unlink()
         for root in layout.writable:
             (Path(root) / name).unlink(missing_ok=True)
+
+
+def _settled(layout: Layout, seen: dict[str, Any]) -> dict[str, Any]:
+    """The layout's entries as this sandbox's checks decide them, before anything else runs in it. A failure to write
+    one leaves the entry :func:`aew.capability.bind.place` made, and is no reason to refuse the launch (CAPR-12)."""
+    if layout.tools_first is None:
+        return {}
+    from aew.capability import bind
+
+    report = seen.get("tools")
+    try:
+        return bind.settle(Path(layout.tools_first).parent, layout.tools, report if isinstance(report, dict) else {})
+    except OSError:
+        return {}
 
 
 def _rows(layout: Layout, seen: dict[str, Any], *, written: tuple[Path, bytes], sibling: Path,

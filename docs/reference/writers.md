@@ -82,6 +82,15 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/R-{}-{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/supervisor.log`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.open)
+- `local/harness/runs/R-{}-{}/tools`: written or removed by `aew.capability.bind:place` (direct: shutil.rmtree)
+- `local/harness/runs/R-{}-{}/tools/first`: written or removed by `aew.capability.bind:place` (direct: Path.mkdir)
+- `local/harness/runs/R-{}-{}/tools/first/.aew-tools`: written or removed by `aew.capability.bind:place` (direct: Path.write_bytes)
+- `local/harness/runs/R-{}-{}/tools/first/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
+- `local/harness/runs/R-{}-{}/tools/first/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
+- `local/harness/runs/R-{}-{}/tools/own_name`: written or removed by `aew.capability.bind:place` (direct: Path.mkdir)
+- `local/harness/runs/R-{}-{}/tools/own_name/.aew-tools`: written or removed by `aew.capability.bind:place` (direct: Path.write_bytes)
+- `local/harness/runs/R-{}-{}/tools/own_name/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
+- `local/harness/runs/R-{}-{}/tools/own_name/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
 - `local/harness/runs/check-{}-{}`: written or removed by `aew.engine.evidence_ops:EvidenceCommands._check_run_direct` (direct: Path.mkdir, shutil.rmtree)
 - `local/harness/runs/check-{}-{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
 - `local/harness/runs/check-{}-{}/git`: written or removed by `aew.harness.containment.layout:retire_private_git` (direct: shutil.rmtree)
@@ -92,6 +101,15 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/check-{}-{}/label.json`: written or removed by `aew.engine.evidence_ops:EvidenceCommands._check_run_direct` (direct: Path.write_text)
 - `local/harness/runs/check-{}-{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/check-{}-{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/runs/check-{}-{}/tools`: written or removed by `aew.capability.bind:place` (direct: shutil.rmtree)
+- `local/harness/runs/check-{}-{}/tools/first`: written or removed by `aew.capability.bind:place` (direct: Path.mkdir)
+- `local/harness/runs/check-{}-{}/tools/first/.aew-tools`: written or removed by `aew.capability.bind:place` (direct: Path.write_bytes)
+- `local/harness/runs/check-{}-{}/tools/first/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
+- `local/harness/runs/check-{}-{}/tools/first/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
+- `local/harness/runs/check-{}-{}/tools/own_name`: written or removed by `aew.capability.bind:place` (direct: Path.mkdir)
+- `local/harness/runs/check-{}-{}/tools/own_name/.aew-tools`: written or removed by `aew.capability.bind:place` (direct: Path.write_bytes)
+- `local/harness/runs/check-{}-{}/tools/own_name/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
+- `local/harness/runs/check-{}-{}/tools/own_name/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
 - `local/harness/runs/check-{}-{}/{}`: written or removed by `aew.engine.evidence_ops:EvidenceCommands._check_run_direct` (direct: Path.unlink, shutil.rmtree)
 - `local/harness/runs/lead-{}-{}`: written or removed by `aew.harness.lead_broker:lead_run_dir` (direct: Path.mkdir)
 - `local/harness/runs/lead-{}-{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
@@ -103,6 +121,15 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/lead-{}-{}/label.json`: written or removed by `aew.harness.lead_broker:record_label` (direct: Path.write_text)
 - `local/harness/runs/lead-{}-{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/lead-{}-{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/runs/lead-{}-{}/tools`: written or removed by `aew.capability.bind:place` (direct: shutil.rmtree)
+- `local/harness/runs/lead-{}-{}/tools/first`: written or removed by `aew.capability.bind:place` (direct: Path.mkdir)
+- `local/harness/runs/lead-{}-{}/tools/first/.aew-tools`: written or removed by `aew.capability.bind:place` (direct: Path.write_bytes)
+- `local/harness/runs/lead-{}-{}/tools/first/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
+- `local/harness/runs/lead-{}-{}/tools/first/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
+- `local/harness/runs/lead-{}-{}/tools/own_name`: written or removed by `aew.capability.bind:place` (direct: Path.mkdir)
+- `local/harness/runs/lead-{}-{}/tools/own_name/.aew-tools`: written or removed by `aew.capability.bind:place` (direct: Path.write_bytes)
+- `local/harness/runs/lead-{}-{}/tools/own_name/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
+- `local/harness/runs/lead-{}-{}/tools/own_name/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
 - `local/harness/runs/{}`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.mkdir)
 - `local/harness/runs/{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
 - `local/harness/runs/{}/events.jsonl`: written or removed by `aew.harness.runlog:_open_append` (direct: os.open)
@@ -122,6 +149,15 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/{}/supervisor.log`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.open)
+- `local/harness/runs/{}/tools`: written or removed by `aew.capability.bind:place` (direct: shutil.rmtree)
+- `local/harness/runs/{}/tools/first`: written or removed by `aew.capability.bind:place` (direct: Path.mkdir)
+- `local/harness/runs/{}/tools/first/.aew-tools`: written or removed by `aew.capability.bind:place` (direct: Path.write_bytes)
+- `local/harness/runs/{}/tools/first/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
+- `local/harness/runs/{}/tools/first/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
+- `local/harness/runs/{}/tools/own_name`: written or removed by `aew.capability.bind:place` (direct: Path.mkdir)
+- `local/harness/runs/{}/tools/own_name/.aew-tools`: written or removed by `aew.capability.bind:place` (direct: Path.write_bytes)
+- `local/harness/runs/{}/tools/own_name/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
+- `local/harness/runs/{}/tools/own_name/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
 - `local/history.sqlite`, named by `aew.history.index:INDEX_REL`: written or removed by `aew.engine.history_ops:HistoryCommands.history_reindex` (direct: Path.unlink); `aew.history.index:HistoryIndex._db` (direct: sqlite3.connect); `aew.history.index:HistoryIndex._rebuild` (direct: Path.unlink); `aew.history.index:HistoryIndex.sync` (direct: Path.unlink)
 - `local/lead`: written or removed by `aew.harness.broker_liveness:write` (direct: Path.mkdir); `aew.harness.tool_calls:append` (direct: Path.mkdir)
 - `local/lead/broker.json`, named by `aew.harness.broker_liveness:REL`: written or removed by `aew.harness.broker_liveness:write` (direct: Path.unlink, Path.write_text, replace_with_retry)
@@ -159,6 +195,15 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/validation/{}/label.json`: written or removed by `aew.engine.validation_ops:Validation._execute` (direct: atomic_write)
 - `local/validation/{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/validation/{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/validation/{}/tools`: written or removed by `aew.capability.bind:place` (direct: shutil.rmtree)
+- `local/validation/{}/tools/first`: written or removed by `aew.capability.bind:place` (direct: Path.mkdir)
+- `local/validation/{}/tools/first/.aew-tools`: written or removed by `aew.capability.bind:place` (direct: Path.write_bytes)
+- `local/validation/{}/tools/first/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
+- `local/validation/{}/tools/first/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
+- `local/validation/{}/tools/own_name`: written or removed by `aew.capability.bind:place` (direct: Path.mkdir)
+- `local/validation/{}/tools/own_name/.aew-tools`: written or removed by `aew.capability.bind:place` (direct: Path.write_bytes)
+- `local/validation/{}/tools/own_name/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
+- `local/validation/{}/tools/own_name/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
 - `local/validation/{}/{}.json`: written or removed by `aew.engine.validation_ops:Validation._one_check` (direct: atomic_write)
 - `local/wake`, named by `aew.engine.outbox:WAKE_REL`: written or removed by `aew.engine.outbox:bump_wake` (direct: Path.unlink, Path.write_text, os.replace)
 
@@ -232,18 +277,20 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 
 A chain of resolved calls from the function where an entry point declares itself (see [entry-points.md](entry-points.md)), so a writer's `entry_points` is a lower bound: a callback, or a call on an object whose class is not evident, is not followed. The CLI declares its roles in one function and the command decides which runs, so the parser cuts them: the handler a command registers is reached by the role of that command (what `process_kind.cli_entry_point` says of its words), and the calls the CLI's function makes itself, which every command shares, by all of them. The role the environment selects is no command's: the call graph gives it nothing, and a write a non-writer may not make is refused there by `process_kind.require_writer`, a gate tested at run time and not proved here.
 
-A `with` statement's implicit `__enter__` and `__exit__` calls are not followed either, so what a context manager writes is attributed only to the roles that call it by name: the dashboard server takes its own lock file by `with self._lock():` (`aew.dashboard.service:Service.start`), and `local/dashboard/endpoint.lock` and `local/dashboard/endpoint.lock.queue` are listed under `aew` alone. The counts of writer functions reached below are lower bounds.
+A `with` statement's implicit `__enter__` and `__exit__` calls are not followed either, so what a context manager writes is attributed only to the roles that call it by name: the dashboard server takes its own lock file by `with self._lock():` (`aew.dashboard.service:Service.start`), and `local/dashboard/endpoint.lock` and `local/dashboard/endpoint.lock.queue` are listed only under the roles that call `FileLock.__enter__` by name, and not under the dashboard server.
+
+A write is placed per function, not per call: where its destination is a parameter of a shared helper (`aew.engine.lock:FileLock` takes its lock file's path), every path any caller gives it is attributed to every role that reaches the helper. So `entry_points` can also name a role that never writes that path: the lock files list the supervisor, which takes only the capability register's lock, outside `.aew`. The counts of writer functions reached below are lower bounds.
 
 The parser cut: 112 registrations of a command handler; handlers by role (`aew`: 110, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
-Writer functions with a store-transaction or direct write placed under `.aew`: 85; reached from at least one entry point: 58.
+Writer functions with a store-transaction or direct write placed under `.aew`: 87; reached from at least one entry point: 60.
 
-- `aew` (store_writer): 50 writer functions (24 write the store, 26 only under `local/`)
+- `aew` (store_writer): 52 writer functions (24 write the store, 28 only under `local/`)
 - `aew (contained Lead)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 - `aew (worker run)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 - `aew dashboard serve` (non_writer): 2 writer functions (0 write the store, 2 only under `local/`)
 - `aew lead mcp` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
-- `aew.harness.supervisor` (store_writer): 12 writer functions (0 write the store, 12 only under `local/`)
+- `aew.harness.supervisor` (store_writer): 16 writer functions (0 write the store, 16 only under `local/`)
 - `aew.stg02.server` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 
 **Checked:** a store write (a store-transaction writer, or a direct writer under a directory other than `local/`) reached from an entry point of kind `non_writer` (`aew (contained Lead)`, `aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.stg02.server`): none.
@@ -273,8 +320,8 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.capability.store:locked` (direct: Path.mkdir): a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.capability.store:record_change` (direct: Path.mkdir): `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.capability.store:record_change` (direct: open): `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability/changes.jsonl`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
-- `aew.capability.store:write` (direct: Path.mkdir): `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
-- `aew.capability.store:write` (direct: atomic_write): `root` is bound by `with store.locked(directory)`; a relative path, `aew/capability/register.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.capability.store:write` (direct: Path.mkdir): `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; a relative path, `aew/capability`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.capability.store:write` (direct: atomic_write): `root` is bound by `with store.locked(directory)`; `root` is bound by `with store.locked(directory, short=True)`; a relative path, `aew/capability/register.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.engine.evidence_ops:EvidenceCommands._check_run_direct` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.engine.faults:pause` (direct: open): element 2 of `item.partition(...)`, a callee this reading cannot name
 - `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir): a relative path, `aew/capability`, with no root this reading can name; a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
@@ -320,7 +367,7 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 
 Write sites whose destination this reading follows to a place outside `.aew`: each is a record, `outside:<module>:<symbol>:<primitive>`, with its root, so that nothing is dropped unseen. A site that also writes a path under `.aew` is a record there too.
 
-- a temporary directory: `aew.capability.status:health` (Path.write_bytes), `aew.engine.history_ops:HistoryCommands.history_reindex` (Path.unlink), `aew.harness.bridge:stop_listener` (shutil.rmtree), `aew.harness.containment:_doctor` (Path.mkdir), `aew.harness.containment:_doctor` (shutil.rmtree), `aew.harness.containment:establish` (shutil.rmtree), `aew.harness.containment.layout:for_run` (Path.mkdir), `aew.harness.containment.layout:for_run` (Path.write_bytes), `aew.harness.containment.layout:for_run` (os.makedirs), `aew.harness.containment.layout:private_git` (Path.mkdir), `aew.harness.containment.layout:private_git` (shutil.copy2), `aew.harness.containment.netns:RunNetwork.close` (shutil.rmtree), `aew.harness.containment.probe:_control` (shutil.rmtree), `aew.harness.containment.probe:_markers` (Path.write_bytes), `aew.harness.containment.probe:_self_test` (Path.unlink), `aew.harness.containment.probe:_self_test` (Path.write_text), `aew.harness.containment.probe:new_sentinel` (Path.write_bytes), `aew.harness.operator_endpoint:OperatorEndpoint.close` (shutil.rmtree), `aew.history.index:HistoryIndex._db` (Path.mkdir), `aew.history.index:HistoryIndex._db` (sqlite3.connect), `aew.history.index:HistoryIndex._rebuild` (Path.unlink), `aew.history.index:HistoryIndex._use_private_copy` (shutil.copy2), `aew.history.index:HistoryIndex.sync` (Path.unlink), `aew.snapshot.fingerprint:_staged_index` (shutil.copy2), `aew.snapshot.fingerprint:_staged_index` (shutil.rmtree), `aew.snapshot.fingerprint:_working_index` (shutil.copy2), `aew.snapshot.fingerprint:_working_index` (shutil.rmtree)
+- a temporary directory: `aew.capability.bind:_write_entry` (Path.unlink), `aew.capability.bind:_write_entry` (Path.write_bytes), `aew.capability.bind:_write_entry` (os.replace), `aew.capability.bind:_write_entry` (os.symlink), `aew.capability.bind:place` (Path.mkdir), `aew.capability.bind:place` (Path.write_bytes), `aew.capability.bind:place` (shutil.rmtree), `aew.capability.status:health` (Path.write_bytes), `aew.engine.history_ops:HistoryCommands.history_reindex` (Path.unlink), `aew.harness.bridge:stop_listener` (shutil.rmtree), `aew.harness.containment:_doctor` (Path.mkdir), `aew.harness.containment:_doctor` (shutil.rmtree), `aew.harness.containment:establish` (shutil.rmtree), `aew.harness.containment:tool_checks` (Path.mkdir), `aew.harness.containment.layout:for_run` (Path.mkdir), `aew.harness.containment.layout:for_run` (Path.write_bytes), `aew.harness.containment.layout:for_run` (os.makedirs), `aew.harness.containment.layout:private_git` (Path.mkdir), `aew.harness.containment.layout:private_git` (shutil.copy2), `aew.harness.containment.netns:RunNetwork.close` (shutil.rmtree), `aew.harness.containment.probe:_control` (shutil.rmtree), `aew.harness.containment.probe:_markers` (Path.write_bytes), `aew.harness.containment.probe:_self_test` (Path.unlink), `aew.harness.containment.probe:_self_test` (Path.write_text), `aew.harness.containment.probe:new_sentinel` (Path.write_bytes), `aew.harness.operator_endpoint:OperatorEndpoint.close` (shutil.rmtree), `aew.history.index:HistoryIndex._db` (Path.mkdir), `aew.history.index:HistoryIndex._db` (sqlite3.connect), `aew.history.index:HistoryIndex._rebuild` (Path.unlink), `aew.history.index:HistoryIndex._use_private_copy` (shutil.copy2), `aew.history.index:HistoryIndex.sync` (Path.unlink), `aew.snapshot.fingerprint:_staged_index` (shutil.copy2), `aew.snapshot.fingerprint:_staged_index` (shutil.rmtree), `aew.snapshot.fingerprint:_working_index` (shutil.copy2), `aew.snapshot.fingerprint:_working_index` (shutil.rmtree)
 - an absolute path: `aew.cli.credentials:_open_terminal` (os.open), `aew.operator:_ask_posix` (os.open), `aew.operator:has_terminal` (os.open)
 - an in-memory database: `aew.engine.recall:_Matcher.__init__` (sqlite3.connect), `aew.engine.recall:fts5_available` (sqlite3.connect)
 - the Windows console: `aew.cli.credentials:_open_terminal` (open), `aew.operator:_ask_windows` (open)

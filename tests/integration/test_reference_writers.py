@@ -288,8 +288,8 @@ def test_no_store_write_is_reached_from_a_role_that_may_not_write_the_store():
 
 
 def test_the_with_limit_the_page_names_is_still_the_live_case():
-    """The page says the dashboard server's lock file is attributed to `aew` alone because a `with` is not
-    followed. This holds that true: the function takes the lock by `with`, and the records do not list the dashboard
+    """The page says the dashboard server's lock file is not attributed to it because a `with` is not followed. This
+    holds that true: the function takes the lock by `with`, and the records do not list the dashboard
     role. When the reach follows `with`, this fails: update the page text and `WITH_CASE` (or drop the limit)."""
     module, qual, keys = W.WITH_CASE
     func = PROGRAM.modules[module].funcs[qual]
@@ -298,7 +298,9 @@ def test_the_with_limit_the_page_names_is_still_the_live_case():
     dashboard = process_kind.cli_entry_point(["dashboard", "serve"], {})
     for key in keys:
         reached = {k for w in (records[key].fact or {})["writers"] for k in w["entry_points"]}
-        assert dashboard not in reached and reached == {ANALYSIS.roles.general}, (key, reached)
+        # the exact set, so a new role is a visible change: the supervisor is the page's per-function over-attribution
+        assert reached == {ANALYSIS.roles.general, "aew.harness.supervisor"}, (key, reached)
+        assert dashboard not in reached
 
 
 def test_the_directory_the_finding_treats_as_local_is_one_the_project_keeps_out_of_git():

@@ -35,20 +35,64 @@ def fetch(payload: dict[str, Any]) -> bytes:
     """The archive from the record's source, read to at most its pinned size and checked against its pin. Raises
     ``Unavailable`` (reason ``fetch_failed``) when it cannot be fetched, and ``PinMismatch`` when it is not the pinned
     archive."""
+    import http.client
     import urllib.error
     import urllib.request
 
     source = payload["source"]
+    shown = shown_source(source)
     try:  # the record's source is an https URL (the schema's pattern); urllib honours HTTPS_PROXY
         with urllib.request.urlopen(source, timeout=FETCH_TIMEOUT_S) as response:  # noqa: S310  # https only
-            data = _read_bounded(response, payload["archive_size"], what=source)
+            data = _read_bounded(response, payload["archive_size"], what=shown)
     except PinMismatch:
         raise
-    except (urllib.error.URLError, OSError, ValueError) as exc:
-        raise Unavailable(f"the pinned payload could not be fetched from {source}: {exc}", source=source,
-                          reason="fetch_failed") from None
-    check_archive(data, payload, what=source)
+    except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as exc:
+        # `http.client`'s own errors (a bad proxy port, a proxy that does not answer in HTTP) are none of the
+        # others (quick check of #330, m-b)
+        # Never the error's own text: it can carry a proxy's URL with its credentials (the designer's rule 1)
+        code = fetch_reason(exc)
+        raise Unavailable(f"the pinned payload could not be fetched from {shown}: {FETCH_REASONS[code]}",
+                          source=shown, reason="fetch_failed", fetch_reason=code) from None
+    check_archive(data, payload, what=shown)
     return data
+
+
+# Why a fetch failed, closed: a reason code and AEW's own words for it, never the error's text
+FETCH_REASONS = {
+    "timed_out": "no answer within the fetch's timeout",
+    "http_status": "the server answered with an error status",
+    "bad_source": "its source is not a URL this host can fetch",
+    "unreachable": "the source could not be reached (no network, no route, or a proxy that refused it)",
+}
+
+
+def fetch_reason(exc: BaseException) -> str:
+    """The closed reason for a fetch's failure (:data:`FETCH_REASONS`)."""
+    import http.client
+    import socket
+    import urllib.error
+
+    cause = getattr(exc, "reason", None)
+    if isinstance(exc, urllib.error.HTTPError):
+        return "http_status"
+    if isinstance(exc, (TimeoutError, socket.timeout)) or isinstance(cause, (TimeoutError, socket.timeout)):
+        return "timed_out"
+    if isinstance(exc, (ValueError, http.client.InvalidURL)):
+        return "bad_source"
+    return "unreachable"
+
+
+def shown_source(source: str) -> str:
+    """``source`` as AEW shows it: any user and password in it left out."""
+    import urllib.parse
+
+    try:
+        parts = urllib.parse.urlsplit(source)
+    except ValueError:
+        return "its record's source"
+    if parts.username is None and parts.password is None:
+        return source
+    return urllib.parse.urlunsplit(parts._replace(netloc=parts.hostname or ""))
 
 
 def _read_bounded(fh: IO[bytes], size: int, *, what: str) -> bytes:

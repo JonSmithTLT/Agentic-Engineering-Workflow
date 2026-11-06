@@ -809,7 +809,7 @@ def test_a_contained_lead_on_the_hosts_network_is_live_in_the_register_while_it_
     shared = {"filesystem": "os_readonly_roots", "network": {"mode": "shared"}, "self_test": {"ok": True},
               "process_ownership": "pid_namespace"}
     monkeypatch.setattr(containment, "tree_masks_line", lambda layout: "")
-    monkeypatch.setattr(containment, "bwrap_argv", lambda layout, argv, cwd=None: ["bwrap", *argv])
+    monkeypatch.setattr(containment, "bwrap_argv", lambda layout, argv, cwd=None, path=None: ["bwrap", *argv])
     monkeypatch.setattr(netns, "shim_argv", lambda spec, argv: list(argv))
     monkeypatch.setattr(projection, "lead_config", lambda *a, **k: {})
     monkeypatch.setattr(lead.ContainedLead, "_inside", lambda self, *a, **k: {"PATH": "/usr/bin"})

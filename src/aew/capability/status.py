@@ -45,6 +45,16 @@ USABLE = frozenset({QUALIFIED, FUNCTIONAL_ONLY})  # "usable means checked" (CAPR
 NOT_SERVING = frozenset({UNAVAILABLE, REFUSED, UNSUPPORTED})  # AEW's copy cannot serve: a host copy may
 AEW_COPY, HOST_COPY = "aew", "host"
 UNPINNED = "an unpinned host copy: AEW does not know its version, and did not check it against a pin"
+# Where a check ran: CAPR-13 runs a sandbox-placed provider's check contained, as its uses run. On a Linux host with no
+# sandbox to run it in, the host is what a weaker run would use, and the status says so.
+IN_SANDBOX, ON_HOST = "sandbox", "host"
+HOST_CHECKED = ("checked on the host, not in a sandbox: no sandbox could be made here, so what a contained run would "
+                "see was not read")
+# What a context with no sandbox gets, in the words its label and (on Windows, where none exists) the status give:
+# Windows, and a Linux run the policy allows to be weaker
+NOT_BOUND = ("no sandbox here, so AEW's tools are not bound into this context: OpenCode's lookup is its own, and its "
+             "download stays reachable")
+TOOLS_MARKER = ".aew-tools"  # marks a contained context's own directory of entries (bind.py), never a host copy
 HEALTH_TIMEOUT_S = 30.0  # one step of a health check: `--version`, or the fixture query over a few lines
 
 CHECK = "aew capability check"
@@ -62,10 +72,28 @@ class Copy:
     path: str | None = None
     checked_at: str | None = None
     limitations: list[str] = field(default_factory=list)
+    reason: str | None = None  # AEW's own copy only: why it does not serve, closed (:data:`NOT_SERVING_WHY`)
 
     def describe(self) -> dict[str, Any]:
         return {"copy": self.kind, "status": self.status, "cause": self.cause, "fix": self.fix, "path": self.path,
-                "checked_at": self.checked_at, "limitations": self.limitations}
+                "checked_at": self.checked_at, "limitations": self.limitations, "reason": self.reason}
+
+
+# Why AEW's pinned copy does not serve, in AEW's own words: what the operator's flag says (the designer's rule 1)
+NOT_SERVING_WHY = {
+    "record_refused": "its record is refused",
+    "no_payload_for_platform": "its record has no payload for this platform",
+    "refused": "its payload was refused",
+    "pin_changed": "its pin changed and the new payload is not here yet",
+    "fetch_failed": "the fetch failed",
+    "not_installed": "it is not installed on this host",
+    "off_pin": "its payload does not match its pin",
+    "never_checked": "it was never checked here",
+    "record_changed": "its record or its pin changed since it was checked",
+    "host_changed": "the host changed since it was checked",
+    "check_failed": "its check failed in the sandbox",
+    "not_served_here": "it did not serve in this run's sandbox, though its last check passed",
+}
 
 
 def host_facts() -> dict[str, str | None]:
@@ -129,13 +157,15 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
     """AEW's copy of provider ``name`` on this host (the module's order)."""
     if record is None:
         return Copy(AEW_COPY, REFUSED, f"its record is refused: {problem}",
-                    f"fix the operator's record and add it again, or `aew capability remove {name}`")
+                    f"fix the operator's record and add it again, or `aew capability remove {name}`",
+                    reason="record_refused")
     key = key or records.platform_key()
     pinned = record["payloads"].get(key)
     if pinned is None:
         return Copy(AEW_COPY, UNSUPPORTED, f"its record has no payload for this platform ({key})",
                     f"install {record['command']} on this host (a host copy serves, named unpinned), or add an "
-                    "operator record with a payload for this platform (`aew capability add`)")
+                    "operator record with a payload for this platform (`aew capability add`)",
+                    reason="no_payload_for_platform")
     path = P.path_of(name, record["command"], pinned, directory)
     refused = (state.get("refused") or {}).get(f"{name}:{key}")
     if refused and refused.get("sha256") == pinned["sha256"] and not path.exists():
@@ -143,7 +173,7 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
         # refused import or fetch never makes a payload that matches its pin read REFUSED (review F4)
         return Copy(AEW_COPY, REFUSED, f"its payload was refused at {refused.get('at')}: {refused.get('reason')}",
                     f"`{CHECK}` fetches the pinned payload again (online), or `{IMPORT}` imports, from the "
-                    "operator's bundle, one that matches its pin (offline)", str(path))
+                    "operator's bundle, one that matches its pin (offline)", str(path), reason="refused")
     done = (state.get("checks") or {}).get(f"{AEW_COPY}:{name}")
     if not path.exists() and done is not None and done.get("sha256") != pinned["sha256"] \
             and not (state.get("fetch_failures") or {}).get(f"{name}:{key}"):
@@ -151,19 +181,22 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
         return Copy(AEW_COPY, STALE, f"its pin changed since it was checked (checked {str(done.get('sha256'))[:16]}, "
                     f"now pinned {pinned['sha256'][:16]}), and the newly pinned payload is not on this host yet",
                     f"`{CHECK}` fetches it (online), or `{IMPORT}` imports it from the operator's bundle (offline)",
-                    str(path), done.get("at"))
+                    str(path), done.get("at"), reason="pin_changed")
     if not path.exists():
         failed = (state.get("fetch_failures") or {}).get(f"{name}:{key}")
-        cause = (f"its pinned payload is not on this host: the fetch failed at {failed.get('at')} "
-                 f"({failed.get('reason')})" if failed and failed.get("sha256") == pinned["sha256"] else
-                 "its pinned payload is not on this host: it was never fetched or imported")
+        # AEW downloads no tool unless the operator chooses it (the operator, 2026-11-05): a launch never fetches, so
+        # a failed fetch is only ever the operator's own `aew capability check`'s
+        failed = failed if failed and failed.get("sha256") == pinned["sha256"] else None
+        cause = ("its pinned payload is not on this host: "
+                 + (f"the fetch failed at {failed.get('at')} ({failed.get('reason')})" if failed else
+                    "it is not installed"))
         return Copy(AEW_COPY, UNAVAILABLE, cause, f"`{CHECK}` fetches it (online), or `{IMPORT}` imports it from "
-                    "the operator's bundle (offline)", str(path))
+                    "the operator's bundle (offline)", str(path), reason="fetch_failed" if failed else "not_installed")
     wrong = P.verify(path, pinned)
     if wrong is not None:
         return Copy(AEW_COPY, REFUSED, f"its payload does not match its pin: {wrong}",
                     f"`{CHECK}` refuses it and fetches it again (online), or `{IMPORT}` with the operator's bundle "
-                    "(offline)", str(path))
+                    "(offline)", str(path), reason="off_pin")
     return _checked(AEW_COPY, done, path, facts, digest=records.digest(record), sha256=pinned["sha256"],
                     changed="its record or its pin changed since it was checked")
 
@@ -194,25 +227,29 @@ def host_copy(name: str, record: dict[str, Any], state: dict[str, Any], *, facts
 def _checked(kind: str, done: dict[str, Any] | None, path: Path, facts: dict[str, str | None], *, digest: str | None,
              sha256: str, changed: str) -> Copy:
     if done is None:
-        return Copy(kind, NOT_ESTABLISHED, "it was never checked on this host", f"`{CHECK}`", str(path))
+        return Copy(kind, NOT_ESTABLISHED, "it was never checked on this host", f"`{CHECK}`", str(path),
+                    reason="never_checked")
     at = done.get("at")
     if (digest is not None and done.get("record_digest") != digest) or done.get("sha256") != sha256:
-        return Copy(kind, STALE, changed, f"`{CHECK}`", str(path), at)
+        return Copy(kind, STALE, changed, f"`{CHECK}`", str(path), at, reason="record_changed")
     host = _changed(done.get("facts") or {}, facts)
     if host:
         return Copy(kind, STALE, "the host changed since it was checked: " + "; ".join(host), f"`{CHECK}`", str(path),
-                    at)
+                    at, reason="host_changed")
     if not done.get("ok"):
         return Copy(kind, UNAVAILABLE, f"its check failed: {done.get('cause')}",
-                    f"fix what the check names, then `{CHECK}`", str(path), at)
-    return Copy(kind, FUNCTIONAL_ONLY, None, None, str(path), at)
+                    f"fix what the check names, then `{CHECK}`", str(path), at, reason="check_failed")
+    limits = [HOST_CHECKED] if done.get("where") == ON_HOST and sys.platform != "win32" else []
+    return Copy(kind, FUNCTIONAL_ONLY, None, None, str(path), at, limits)
 
 
 def find_host_copy(command: str, directory: Path | None = None) -> Path | None:
-    """``command`` on this process's PATH, leaving out AEW's own register: the host copy CAPR-04 lets serve."""
+    """``command`` on this process's PATH, leaving out AEW's own register and a contained context's own entries (in a
+    sandbox a stub or a link there would read as the host's): the host copy CAPR-04 lets serve."""
     reg = os.path.normcase(os.path.realpath(directory or store.root()))
     entries = [p for p in (os.environ.get("PATH") or "").split(os.pathsep) if p
-               and not os.path.normcase(os.path.realpath(p)).startswith(reg)]
+               and not os.path.normcase(os.path.realpath(p)).startswith(reg)
+               and not os.path.exists(os.path.join(p, TOOLS_MARKER))]
     found = shutil.which(command, path=os.pathsep.join(entries))
     return Path(found).resolve() if found else None
 
@@ -225,33 +262,51 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def health(executable: Path, record: dict[str, Any], *, pinned: bool = True) -> tuple[bool, str | None, str | None]:
-    """``(passed, cause, first line of --version)``: the record's version check, then its fixture query, run on a
-    fixture written to a fresh directory. A host copy (``pinned=False``) is not AEW's pin, so its version check asks
-    only that it is the provider: the record's expected line without the record's version (``ripgrep``, for
-    ``ripgrep 15.1.0``); what version it is, is recorded. Run on the host in this slice; CAPR-13 runs a sandbox-placed
-    provider's check contained, as its uses run, which comes with the bind into every contained context (CAP-1's
-    second PR)."""
+def judge(record: dict[str, Any], version: Any, fixture: Any, *,
+          pinned: bool = True) -> tuple[bool, str | None, str | None]:
+    """``(passed, cause, first line of --version)`` from a health check's two steps, each ``[finished, its stdout, why
+    not]``, wherever they ran: the one owner of what a check means, on the host or from a sandbox's report. A host copy
+    (``pinned=False``) is not AEW's pin, so its version check asks only that it is the provider: the record's expected
+    line without the record's version (``ripgrep``, for ``ripgrep 15.1.0``); what version it is, is recorded."""
     spec = record["health"]
     expect = spec["version"]["expect"]
     if not pinned and expect.endswith(record["version"]):
         expect = expect[: -len(record["version"])].rstrip() or expect
+    version_ok, out, why = _step(version)
+    if not version_ok:
+        return False, f"`{record['command']} {' '.join(spec['version']['args'])}` {why}", None
+    first = (out.strip().splitlines() or [""])[0].strip()
+    if not first.startswith(expect):
+        return False, f"its version check printed {first[:200]!r}, not {expect!r}", first
+    fixture_ok, out, why = _step(fixture)
+    if not fixture_ok:
+        return False, f"its fixture query {why}", first
+    if out.strip() != spec["fixture"]["expect"].strip():
+        return False, (f"its fixture query printed {out.strip()[:200]!r}, not "
+                       f"{spec['fixture']['expect'].strip()!r}"), first
+    return True, None, first
+
+
+def _step(step: Any) -> tuple[bool, str, str]:
+    """One step as a report holds it; a report that is not one is a step that did not run."""
+    if isinstance(step, (list, tuple)) and len(step) == 3 and isinstance(step[1], str):
+        return bool(step[0]), step[1], str(step[2])
+    return False, "", "was not reported by the check"
+
+
+def health(executable: Path, record: dict[str, Any], *, pinned: bool = True) -> tuple[bool, str | None, str | None]:
+    """The record's health check run here, on a fixture written to a fresh directory (:func:`judge`): the record's
+    version check, then its fixture query. CAPR-13 runs a sandbox-placed provider's check contained, as its uses run:
+    this is for where no sandbox exists, Windows, or a Linux host with none to make (``ops.check``). Everywhere else
+    the check runs in the sandbox's self-test (``probe.self_test``)."""
+    spec = record["health"]
     with tempfile.TemporaryDirectory(prefix="aew-capability-") as tmp:
         for name, text in spec["fixture"]["files"].items():
             (Path(tmp) / name).write_bytes(text.encode("utf-8"))
-        ok, out, why = _run([str(executable), *spec["version"]["args"]], tmp)
-        if not ok:
-            return False, f"`{record['command']} {' '.join(spec['version']['args'])}` {why}", None
-        first = (out.strip().splitlines() or [""])[0].strip()
-        if not first.startswith(expect):
-            return False, f"its version check printed {first[:200]!r}, not {expect!r}", first
-        ok, out, why = _run([str(executable), *spec["fixture"]["args"]], tmp)
-        if not ok:
-            return False, f"its fixture query {why}", first
-        if out.strip() != spec["fixture"]["expect"].strip():
-            return False, (f"its fixture query printed {out.strip()[:200]!r}, not "
-                           f"{spec['fixture']['expect'].strip()!r}"), first
-    return True, None, first
+        version = _run([str(executable), *spec["version"]["args"]], tmp)
+        # The fixture query runs only after a version step that finished, as a report from a sandbox holds both
+        fixture = _run([str(executable), *spec["fixture"]["args"]], tmp) if version[0] else None
+        return judge(record, version, fixture, pinned=pinned)
 
 
 def _run(argv: list[str], cwd: str) -> tuple[bool, str, str]:

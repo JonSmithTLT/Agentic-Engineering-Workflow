@@ -59,6 +59,9 @@ STORE_TRANSACTION, DIRECT = "store-transaction", "direct"
 LOCAL = "local"  # the top-level directory of rebuildable runtime data, kept out of git (`AEW_GITIGNORE`)
 # The live case of the reach's `with` limit that the page names (a tree test holds it true): the function that takes a
 # lock by `with`, and the records of the lock's files, which the reach attributes to the roles that call `__enter__`.
+# The shared helper whose destination is its caller's (the page's over-attribution): every FileLock path's record
+# lists every role that takes any FileLock.
+SHARED_HELPER = "aew.engine.lock:FileLock"
 WITH_CASE = ("aew.dashboard.service", "Service.start", ("local/dashboard/endpoint.lock",
                                                        "local/dashboard/endpoint.lock.queue"))
 
@@ -713,7 +716,13 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
              "context manager writes is attributed only to the roles that call it by name: the dashboard server takes "
              f"its own lock file by `with self._lock():` (`{WITH_CASE[0]}:{WITH_CASE[1]}`), and "
              + " and ".join(f"`{key}`" for key in WITH_CASE[2])
-             + " are listed under `aew` alone. The counts of writer functions reached below are lower bounds.", ""]
+             + " are listed only under the roles that call `FileLock.__enter__` by name, and not under the dashboard "
+             "server.", "",
+             "A write is placed per function, not per call: where its destination is a parameter of a shared helper "
+             f"(`{SHARED_HELPER}` takes its lock file's path), every path any caller gives it is attributed to every "
+             "role that reaches the helper. So `entry_points` can also name a role that never writes that path: the "
+             "lock files list the supervisor, which takes only the capability register's lock, outside `.aew`. The "
+             "counts of writer functions reached below are lower bounds.", ""]
     cut = analysis.cut
     if cut is not None and analysis.roles is not None:
         roles = analysis.roles

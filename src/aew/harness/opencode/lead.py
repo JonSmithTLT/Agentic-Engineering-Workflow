@@ -93,8 +93,10 @@ MODEL_SEED_MAX = 64 * 1024
 
 def guide_of(engine: Any) -> str:
     """The project's Lead guide (F16), or nothing when its policy cannot be read (the Lead then sees why elsewhere)."""
+    from aew.surface import lead_text
+
     try:
-        return str(engine.lead_guide())
+        return lead_text.guide_for(engine)
     except AEWError:
         return ""
 

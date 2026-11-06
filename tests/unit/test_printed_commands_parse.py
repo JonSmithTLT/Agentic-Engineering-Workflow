@@ -28,6 +28,7 @@ import ast
 import re
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 
 import printed_commands as P
 import pytest
@@ -35,6 +36,7 @@ import pytest
 from aew.engine import transitions
 from aew.engine.custody_ops import LEAD_KEPT_OUT, operator_terminal_refusal
 from aew.harness import contract as K
+from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
 
 # Files B3 is changing on fix/e112-weaker-contexts (the ITEMS 56 brief, "Don't overlap"): their failing sites wait for
 # a follow-up once that branch merges, rather than conflict with it. Each is pinned by (file, printed text), since B3's
@@ -259,8 +261,11 @@ def test_a_file_the_finders_cannot_read_is_marked_not_dropped(tmp_path: Path) ->
 
 
 def test_every_placeholder_fill_parses_where_it_is_used() -> None:
-    """The table is only what is in use: each placeholder appears in some printed command."""
-    printed = "\n".join(s.text for s in P.ast_sites() if _held(s))
+    """The table is only what is in use: each placeholder appears in some printed command, in the source or in the
+    guide the source renders (E130: the guide's commands are the transition table's, filled when it renders)."""
+    from aew.surface import lead_text
+
+    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)])
     unused = [name for name in P.PLACEHOLDERS if name not in printed]
     assert not unused, unused
 
@@ -295,7 +300,9 @@ def test_a_finished_runs_ingest_command_parses(role: str, unit: dict[str, object
 
     state = {"work": {"T-0007": unit}}
     produced = [{"id": "EV-0003", "kind": "review" if role == "reviewer" else "verification"}]
-    message = Harness._after_run(Harness.__new__(Harness), state, {"work_unit": "T-0007", "role": role}, produced)
+    harness = Harness.__new__(Harness)
+    harness.gates = SimpleNamespace(stage_for=lambda state, wid, frm, dst: None)  # type: ignore[assignment]
+    message = harness._after_run(state, {"work_unit": "T-0007", "role": role}, produced)
     [(printed, fenced)] = P.commands(message)
     [args] = P.parse(printed, fenced=fenced)
     assert (args.work_id, args.evidence, args.expect_rev) == ("T-0007", "EV-0003", 17)
@@ -313,13 +320,12 @@ def test_each_next_step_a_refusal_names_parses(state: str) -> None:
 def test_every_command_the_rendered_guide_prints_passes(post_verify: bool) -> None:
     """Blind spot 2 at its largest: the guide joins its moves from the transition table at run time. Rendered for the
     default policy (and with a post-integration verifier), every command it prints passes the check."""
-    from aew.engine import guide
-    from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
+    from aew.surface import lead_text
 
     gates = {**DEFAULT_GATES, "post_integration": {**(DEFAULT_GATES.get("post_integration") or {}),
                                                    "verification": post_verify}}
-    printed = P.commands(guide.render(gates, DEFAULT_CHECKS))
-    assert len(printed) > 40
+    printed = P.commands(lead_text.render(gates, DEFAULT_CHECKS))
+    assert len(printed) > 30  # a floor on the finder: E130's guide prints each command once, not per move
     for command, fenced in printed:
         P.check(command, "fence" if fenced else "span")
 

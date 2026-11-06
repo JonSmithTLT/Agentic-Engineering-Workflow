@@ -57,6 +57,39 @@ def test_the_launcher_passes_on_only_a_closed_report_from_the_acknowledgement(ac
     assert harness_ops._acknowledged_report(ack) == passed_on
 
 
+@pytest.mark.parametrize("ack", [{"started": True, "relay_family": ["unverified"]},
+                                 {"started": False, "refusal": {"relay_family_mismatch": 1}}])
+def test_an_unhashable_value_in_the_acknowledgement_is_dropped_not_raised(ack):
+    assert harness_ops._acknowledged_report(ack) == {}
+
+
+@pytest.mark.parametrize(("check", "shown"), [
+    ("matches", "matches"), ("unverified", "unverified"),
+    ("mismatch", None),  # a mismatch refuses the launch, so a started one never shows it
+    ("trust me", None), (None, None), (["unverified"], None),
+])
+def test_the_supervisor_puts_only_a_closed_relay_check_on_the_label_and_the_acknowledgement(check, shown):
+    """The supervisor's side of the closing (register E143; #339 review m2): ``relay_family_of`` reads the adapter's
+    launch report and gives only a value a started launch may show."""
+    assert B.relay_family_of({"health": {"relay_family": {"check": check}}}) == shown
+    assert B.relay_family_of({"health": {"relay_family": check}}) is None  # not the report's shape
+    assert B.relay_family_of(None) is None and B.relay_family_of({}) is None
+
+
+@pytest.mark.parametrize(("reason", "carried"), [
+    ("relay_family_mismatch", "relay_family_mismatch"), ("provider_secret_in_sandbox", "provider_secret_in_sandbox"),
+    ("provider_env", "provider_env"),
+    ("no_upstream", None),  # a ContainmentUnavailable's reason is not an adapter's refusal
+    ("bad_egress_allow", None), ("incompatible_config", None), ("anything", None), (None, None),
+    (["provider_env"], None),
+])
+def test_the_supervisor_carries_only_a_closed_refusal_reason(reason, carried):
+    """The supervisor's side of the closing (register E143; #339 review m2): ``refusal_of`` reads an error's details
+    and gives only one of the adapters' closed refusal reasons."""
+    assert B.refusal_of({"reason": reason}) == carried
+    assert B.refusal_of(None) is None and B.refusal_of({}) is None
+
+
 @pytest.mark.parametrize("code", sorted(N8))
 def test_the_adapters_provider_auth_comparisons_never_meet_a_launch_failure(code):
     """`provider_auth_failed` keeps its own headline and next action (register V1): a `launch_failed` record carries a

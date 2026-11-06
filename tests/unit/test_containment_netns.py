@@ -171,7 +171,8 @@ def test_the_runs_egress_proxy_gets_the_allowlist_its_caller_built_and_the_netwo
                                                                                                given):
     """One allowlist for the run's self-test and its egress proxy (register E143): the supervisor builds it once and
     gives it to both, so RunNetwork.start never builds its own from the policy, even when the policy names other
-    entries. No allowlist given, no egress proxy. The proxy and its socket are stand-ins, so this runs everywhere."""
+    entries: the proxy gets the very object it is given (identity, not an equal list). No allowlist given, no egress
+    proxy. The proxy and its socket are stand-ins, so this runs everywhere."""
     layout = replace(BASE, network=L.PROXY_ONLY, net_dir=str(tmp_path / "aew-net-x"))
     (tmp_path / "aew-net-x").mkdir()
     started: list[Allowlist] = []
@@ -197,6 +198,7 @@ def test_the_runs_egress_proxy_gets_the_allowlist_its_caller_built_and_the_netwo
                                  allow=given)
     try:
         assert started == ([given] if given is not None else [])
+        assert all(got is given for got in started)  # the same object, not an equal one
         assert (net.egress is not None) == (given is not None)
     finally:
         net.close()

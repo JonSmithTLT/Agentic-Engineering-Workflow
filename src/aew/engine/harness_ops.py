@@ -779,10 +779,11 @@ def _acknowledged_report(ack: dict[str, Any]) -> dict[str, str]:
     it), and a refused launch's own reason (``refusal``). A value outside ``aew.harness.base``'s closed sets is not
     passed on."""
     out: dict[str, str] = {}
-    if ack.get("started") and ack.get("relay_family") in RELAY_FAMILY_SHOWN:
-        out["relay_family"] = str(ack["relay_family"])
-    if not ack.get("started") and ack.get("refusal") in LAUNCH_REFUSALS:
-        out["refusal"] = str(ack["refusal"])
+    family, refusal = ack.get("relay_family"), ack.get("refusal")
+    if ack.get("started") and isinstance(family, str) and family in RELAY_FAMILY_SHOWN:
+        out["relay_family"] = family
+    if not ack.get("started") and isinstance(refusal, str) and refusal in LAUNCH_REFUSALS:
+        out["refusal"] = refusal
     return out
 
 

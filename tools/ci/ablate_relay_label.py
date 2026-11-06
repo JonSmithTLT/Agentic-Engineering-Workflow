@@ -3,9 +3,12 @@
 file byte for byte.
 
 usage: python tools/ci/ablate_relay_label.py [NAME ...]   (run from the checkout; PYTHONPATH as for its tests)
-Prints one line per ablation: its name, the tests' exit code, and CAUGHT when they failed; exits 1 when any reads
-MISSED. The label and acknowledgement ablations need the relay route (Linux with `bwrap` on PATH): elsewhere they are
-skipped, never MISSED, since their tests cannot take that route there."""
+
+Each selection of tests is first run unablated and must pass (pytest exit 0); then, ablated, CAUGHT means pytest
+failed tests (exit 1) and MISSED means it passed. Any other outcome (a baseline that fails, no tests collected: exit 5,
+a collection or usage error: 2, 3 or 4) is NOT A VERDICT. The runner exits 1 unless every ablation run reads CAUGHT
+(#339 review m1). The label and acknowledgement ablations need the relay route (Linux with `bwrap` on PATH): elsewhere
+they are skipped, since their tests cannot take that route there."""
 
 from __future__ import annotations
 
@@ -28,12 +31,12 @@ ABLATIONS: dict[str, tuple[Path, str, str, str, str, bool]] = {
                          "tests/unit/test_containment_netns.py", "allowlist_its_caller_built", False),
     # Row 1 does not record the allowlist it checked.
     "row1_unrecorded": (SRC / "harness" / "containment" / "probe.py",
-                        "                egress_allow=net.get(\"egress_allow\"),\n", "",
+                        "                **(net.get(\"egress_checked\") or {}),\n", "",
                         "tests/unit/test_containment_probe.py", "records_what_it_checked", False),
     # The launcher passes on any relay-route value the acknowledgement names.
     "launcher_open": (SRC / "engine" / "harness_ops.py",
-                      'if ack.get("started") and ack.get("relay_family") in RELAY_FAMILY_SHOWN:',
-                      'if ack.get("started") and ack.get("relay_family"):',
+                      'if ack.get("started") and isinstance(family, str) and family in RELAY_FAMILY_SHOWN:',
+                      'if ack.get("started") and family:',
                       "tests/unit/test_launch_failure_vocabulary.py", "closed_report", False),
     # The label does not show the check.
     "label_unset": (SRC / "harness" / "supervisor.py",
@@ -50,28 +53,40 @@ ABLATIONS: dict[str, tuple[Path, str, str, str, str, bool]] = {
 }
 
 
+def pytest(tests: str, k: str) -> int:
+    return subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", tests, "-k", k],
+                          cwd=ROOT, capture_output=True, text=True,
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode
+
+
 def main(names: list[str]) -> int:
     relay_route = sys.platform.startswith("linux") and shutil.which("bwrap") is not None
-    missed = []
+    baselines: dict[tuple[str, str], int] = {}
+    failed = []
     for name in names or list(ABLATIONS):
         path, old, new, tests, k, needs_relay = ABLATIONS[name]
         if needs_relay and not relay_route:
             print(f"{name}: skipped (needs the relay route: Linux with bubblewrap)", flush=True)
+            continue
+        if (tests, k) not in baselines:
+            baselines[(tests, k)] = pytest(tests, k)
+        if baselines[(tests, k)] != 0:
+            print(f"{name}: NOT A VERDICT (the unablated selection exits {baselines[(tests, k)]})", flush=True)
+            failed.append(name)
             continue
         original = path.read_bytes()
         try:
             text = original.decode()
             assert text.count(old) == 1, (name, old)
             path.write_bytes(text.replace(old, new).encode())
-            code = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", tests, "-k", k],
-                                  cwd=ROOT, capture_output=True, text=True,
-                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode
+            code = pytest(tests, k)
         finally:
             path.write_bytes(original)
-        print(f"{name}: exit {code} {'CAUGHT' if code != 0 else 'MISSED'}", flush=True)
-        if code == 0:
-            missed.append(name)
-    return 1 if missed else 0
+        verdict = {1: "CAUGHT", 0: "MISSED"}.get(code, f"NOT A VERDICT (pytest exit {code})")
+        print(f"{name}: exit {code} {verdict}", flush=True)
+        if code != 1:
+            failed.append(name)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

@@ -37,14 +37,14 @@ def relay_family_of(launch: Mapping[str, Any] | None) -> str | None:
     started launch can carry; else None."""
     found = ((((launch or {}).get("health") or {}).get("relay_family")) or {}) if isinstance(launch, Mapping) else {}
     check = found.get("check") if isinstance(found, Mapping) else None
-    return check if check in RELAY_FAMILY_SHOWN else None
+    return check if isinstance(check, str) and check in RELAY_FAMILY_SHOWN else None
 
 
 def refusal_of(details: Mapping[str, Any] | None) -> str | None:
     """The adapter's refusal reason in an error's or an acknowledgement's details, if it is one of ``LAUNCH_REFUSALS``;
     else None."""
     reason = (details or {}).get("reason") if isinstance(details, Mapping) else None
-    return reason if reason in LAUNCH_REFUSALS else None
+    return reason if isinstance(reason, str) and reason in LAUNCH_REFUSALS else None
 
 
 class HarnessAdapter(ABC):

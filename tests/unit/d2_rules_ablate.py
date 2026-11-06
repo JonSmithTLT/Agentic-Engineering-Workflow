@@ -48,6 +48,7 @@ PROMPT = "test_only_typing_or_entering_is_answered_by_a_prompt"
 PUNCT = ("test_the_punctuation_class_is_every_unicode_punctuation_and_symbol or "
          "test_any_punctuation_or_line_break_ends_every_negators_reach")
 CONNECT = "test_every_connector_ends_a_negation"
+CASES = "test_each_connector_decides_its_case"  # by behaviour: a dropped connector keeps its case
 PROSE = "test_punctuation_or_a_line_break_ends_every_negators_reach_in_prose"
 HANDED = "test_nothing_is_handed_on_without_to_and_not_every_word_in_ly_is_an_adverb"
 SPAN = "test_a_negator_inside_the_asks_own_span_negates_only_what_it_governs"
@@ -290,7 +291,7 @@ def generated() -> list[tuple]:
                        if statement.count(a) == 1)
         lines.append((f"K-{word}", f"'{word}' dropped from CONNECTOR and read as filler", PARSER,
                       (statement, 'FILLER = frozenset({"ever",'), (dropped, f'FILLER = frozenset({{"{word}", "ever",'),
-                      RULES, CONNECT))
+                      RULES, CASES))
     return lines
 
 

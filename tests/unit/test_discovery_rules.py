@@ -1481,15 +1481,40 @@ NEGATOR_LEADS = {"prohibition": "AEW can't", "plain negator": "The shell has no 
                  "refusing verb": "Ignore the warning"}
 PRONOUNS = ["you", "we", "they", "I", "he", "she"]
 CONNECTOR_WORDS = re.search(r"\(\?:([a-z|]+)\)", rules.CONNECTOR.pattern).group(1).split("|")  # type: ignore[union-attr]
-# The floor: a connector may be added to CONNECTOR, never dropped, since dropping one also drops its generated case
-# below (the second quick check's ablation, which made each word filler and dropped it, survived for 14 of 16). It is
-# the proof for removal, so it restates CONNECTOR on purpose: removing a connector means editing both.
-CONNECTORS_AT_LEAST = frozenset({"then", "but", "instead", "otherwise", "unless", "if", "until", "before", "after",
-                                 "once", "so", "because", "and", "or", "while", "when"})
+# A natural ask for each connector in which that connector decides the result: read as filler, the ask is negated
+# (the control below). So a connector dropped from CONNECTOR fails its case by behaviour, not by a restated list (#335's
+# third quick check, N1, the Lead's call). A connector removed together with its case is the one change this cannot
+# see; review covers it.
+CONNECTOR_CASES = {
+    "then": "If not then set AEW_LEAD_TOKEN yourself.",
+    "but": "Ignore the old guide but set AEW_LEAD_TOKEN as shown below.",
+    "instead": "If the launcher has no session instead set AEW_LEAD_TOKEN yourself.",
+    "otherwise": "Ignore the first error otherwise paste the token again.",
+    "unless": "Ignore the prompt unless you must paste the token.",
+    "if": "Ignore the warning if you must set AEW_LEAD_TOKEN yourself.",
+    "until": "Ignore the warning until you set AEW_LEAD_TOKEN.",
+    "before": "Ignore the banner before you set AEW_LEAD_TOKEN.",
+    "after": "Ignore the warning after you set AEW_LEAD_TOKEN.",
+    "once": "Ignore the warning once you set AEW_LEAD_TOKEN.",
+    "so": "The shell has no session so set AEW_LEAD_TOKEN yourself.",
+    "because": "Ignore the warning because you must set AEW_LEAD_TOKEN anyway.",
+    "and": "Ignore the warning and set AEW_LEAD_TOKEN.",
+    "or": "Ignore the banner or paste the token into the prompt.",
+    "while": "Ignore the warning while you set AEW_LEAD_TOKEN.",
+    "when": "Ignore the prompt when you paste the token.",
+}
 
 
-def test_no_connector_is_dropped():
-    assert CONNECTORS_AT_LEAST <= set(CONNECTOR_WORDS), sorted(CONNECTORS_AT_LEAST - set(CONNECTOR_WORDS))
+def test_every_connector_has_a_case_it_decides():
+    assert sorted(set(CONNECTOR_WORDS) - set(CONNECTOR_CASES)) == []
+
+
+@pytest.mark.parametrize("word", list(CONNECTOR_CASES))
+def test_each_connector_decides_its_case(word):
+    text = CONNECTOR_CASES[word]
+    assert found(Output(site="unit", text=text), "O-SECRET"), text
+    as_filler = re.sub(rf"\b{word}\b", "please", text, count=1)
+    assert found(Output(site="unit", text=as_filler), "O-SECRET") == [], as_filler
 
 
 def test_the_punctuation_class_is_every_unicode_punctuation_and_symbol():
@@ -1532,7 +1557,7 @@ def test_the_connector_shapes_are_negated_without_a_connector():
         assert found(Output(site="unit", text=text), "O-SECRET") == [], text
 
 
-@pytest.mark.parametrize("word", sorted(set(CONNECTOR_WORDS) | CONNECTORS_AT_LEAST))
+@pytest.mark.parametrize("word", CONNECTOR_WORDS)
 def test_every_connector_ends_a_negation(word):
     for shape in CONNECTOR_SHAPES:
         text = shape.format(word=word)

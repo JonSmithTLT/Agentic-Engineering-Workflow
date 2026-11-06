@@ -767,6 +767,12 @@ def _negated(text: str, at: int, *, governs: frozenset[str] = frozenset()) -> bo
     last = negators[-1]
     if last.group("refuse") and _negated(text, start + last.start()):
         return False  # a refusal that is itself negated is a double negative: "Don't refuse to paste X"
+    if last.group("refuse") and len(negators) > 1 and not negators[-2].group("refuse"):
+        gap = before[negators[-2].end():last.start()]
+        gap_content = [w for w in _words(gap) if not _filler(w)]
+        if (not PUNCTUATION.search(re.sub(r"`[^`\n]*`", "`", gap)) and not CONNECTOR.search(gap)
+                and not (gap_content[:1] and gap_content[0] in DOUBLE_NEGATIVE)):
+            return False  # recall first: any negator in the refusal's own clause cancels it
     if PUNCTUATION.search(re.sub(r"`[^`\n]*`", "`", before[last.end():])):  # a code span is a word
         return False
     between = JOINED_ASKS.sub(" ", before[last.end():])

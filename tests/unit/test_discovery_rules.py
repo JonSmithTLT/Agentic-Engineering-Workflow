@@ -1607,7 +1607,8 @@ def test_a_negator_inside_the_asks_own_span_negates_only_what_it_governs(text):
 # #335's fourth quick check, V1: a refusing verb that a negator reaches is a double negative, so the ask stands. The
 # refusing verbs are read from NEGATOR's own `refuse` group; each needs an object here, so a new one can't arrive
 # unproved. Every prohibition form, over every refusing verb, before two asks; the refusing verb alone stays negated.
-# one verb or a group of them, so an edited group still parses and the tests that judge it run
+# The group is read whether it holds one verb or several, so an edited group still parses and the tests that judge it
+# run.
 REFUSING_VERBS = re.search(r"\(\?P<refuse>\\b(?:\(\?:)?([a-z|]+)", rules.NEGATOR.pattern).group(1).split("|")  # type: ignore[union-attr]
 REFUSING_OBJECTS = {"refuse": ["to {ask}"], "decline": ["to {ask}"], "avoid": ["the step where you {ask}"],
                     "ignore": ["the request to {ask}", "any prompt to {ask}"],
@@ -1626,7 +1627,7 @@ def test_a_negated_refusal_is_a_double_negative_and_the_ask_stands(verb):
     asks = ["paste the token", "set AEW_LEAD_TOKEN"]
     texts = [f"{form} {verb} {obj.format(ask=ask)}." for form in PROHIBITION_FORMS
              for obj in REFUSING_OBJECTS[verb] for ask in asks]
-    missed = [text for text in texts if not rules.o_secret(text, OPERATOR)]
+    missed = [(plane, text) for text in texts for plane in (OPERATOR, MODEL) if not rules.o_secret(text, plane)]
     assert missed == [], missed[:5]
     for ask in asks:  # the control: the refusal alone negates the ask
         text = f"{verb.capitalize()} {REFUSING_OBJECTS[verb][0].format(ask=ask)}."
@@ -1641,6 +1642,80 @@ def test_a_negated_refusal_is_a_double_negative_and_the_ask_stands(verb):
 def test_a_negated_refusal_in_prose_is_an_ask(text):
     for plane in (OPERATOR, MODEL):
         assert found(Output(site="unit", plane=plane, text=text), "O-SECRET"), (plane, text)
+
+
+# #335's fifth quick check, X1 (fix line G3): any prohibition or plain negator in the refusal's own clause cancels it,
+# recall first, as "Don't just paste the token" already asks. A connector between them ends that ("Not once should you
+# refuse ...", a named limit).
+@pytest.mark.parametrize("text", [
+    "Don't just ignore the request to set AEW_LEAD_TOKEN.", "Don't you dare refuse to paste the token.",
+    "Not a single worker should reject the request to paste the token.",
+])
+def test_a_negator_in_the_refusals_own_clause_cancels_it(text):
+    for plane in (OPERATOR, MODEL):
+        assert found(Output(site="unit", plane=plane, text=text), "O-SECRET"), (plane, text)
+
+
+# #335's fifth quick check: the negated-negator cross, generated, so the class two rounds rediscovered is proved by
+# construction. Every ordered pair of NEGATOR's own kinds (outer over inner) has texts in which the outer negator
+# negates the inner one, so each is a real ask. Over a refusing verb the texts are generated from every refusing verb
+# and its objects; the others are the check's natural texts. Each pair's texts all fire on both planes, unless LIMITS
+# names the pair (CROSS_LIMIT) or the text. A new negator kind has no pair here, and fails.
+KIND_LETTERS = {"prohibit": "P", "plain": "N", "refuse": "R"}
+CROSS_LIMIT = "a negator over a prohibition or a plain negator: the inner negator governs"
+REFUSAL_LEADS = {"prohibit": ["Don't just", "Don't you dare", "You cannot simply", "Never again"],
+                 "plain": ["There is no reason to", "There is no need to", "It is not wise to", "No one should",
+                           "Not a single worker should"],
+                 "refuse": ["Ignore any request to", "Disregard the advice to", "Reject the hint to"]}
+CROSS_TEXTS = {
+    ("prohibit", "plain"): ["You can't not set AEW_LEAD_TOKEN.", "Don't assume there is no need to set AEW_LEAD_TOKEN.",
+                            "Never assume there's no need to export AEW_LEAD_TOKEN.",
+                            "You cannot opt not to type the token."],
+    ("plain", "prohibit"): ["It is not true that you cannot set AEW_LEAD_TOKEN yourself.",
+                            "There is no rule that says you must not paste the token.",
+                            "No one ever said you mustn't type the token."],
+    ("refuse", "prohibit"): ["Ignore any advice to never set AEW_LEAD_TOKEN.",
+                             "Ignore the hint that you mustn't set AEW_LEAD_TOKEN.",
+                             "Disregard the line saying do not paste the token."],
+    ("refuse", "plain"): ["Disregard the note saying not to paste the token.",
+                          "Ignore the message telling you not to set AEW_LEAD_TOKEN.",
+                          "Ignore any claim that there is no need to set AEW_LEAD_TOKEN."],
+    ("prohibit", "prohibit"): ["Never assume you cannot set AEW_LEAD_TOKEN.", "Don't say you won't type the token."],
+    ("plain", "plain"): ["There is no excuse not to export AEW_LEAD_TOKEN.", "It's not okay not to type the token."],
+    ("prohibit", "refuse"): ["Don't refuse to paste the token when the worker asks.",
+                             "You should not disregard the note asking you to set AEW_LEAD_TOKEN."],
+    ("plain", "refuse"): ["Not once should you refuse to enter the token.", "It is not acceptable to refuse to supply "
+                          "the token.", "There is no excuse to disregard the note asking you to set AEW_LEAD_TOKEN."],
+    ("refuse", "refuse"): ["Refuse to ignore the request to export AEW_LEAD_TOKEN.",
+                           "Disregard the note asking you to decline to enter the token."],
+}
+
+
+def _cross_texts(outer: str, inner: str) -> list[str]:
+    generated = [] if inner != "refuse" else [
+        f"{lead} {verb} {obj.format(ask=ask)}." for lead in REFUSAL_LEADS.get(outer, []) for verb in REFUSING_VERBS
+        for obj in REFUSING_OBJECTS.get(verb, []) for ask in ("paste the token", "set AEW_LEAD_TOKEN")]
+    return generated + CROSS_TEXTS.get((outer, inner), [])
+
+
+def _limited_pairs() -> set[str]:
+    return {m.group(1) for name in LIMITS if (m := re.fullmatch(re.escape(CROSS_LIMIT) + r" \((\w>\w)\)", name))}
+
+
+NEGATOR_PAIRS = [(outer, inner) for outer in rules.NEGATOR.groupindex for inner in rules.NEGATOR.groupindex]
+
+
+@pytest.mark.parametrize(("outer", "inner"), NEGATOR_PAIRS)
+def test_a_negated_negator_asks_or_its_pair_is_a_named_limit(outer, inner):
+    pair = f"{KIND_LETTERS[outer]}>{KIND_LETTERS[inner]}"  # a new negator kind has no letter, and fails here
+    texts = _cross_texts(outer, inner)
+    assert texts, f"no texts for {pair}"
+    if pair in _limited_pairs():
+        return  # the pair's case is judged by test_each_named_limit_of_o_secret_is_as_stated
+    named = {text for text, _ in LIMITS.values()}
+    missed = [(plane, text) for text in texts if text not in named for plane in (OPERATOR, MODEL)
+              if not rules.o_secret(text, plane)]
+    assert missed == [], (pair, missed[:5])
 
 
 # #335's fourth quick check, V2: digits and words in any script are words, so they end a negator's reach as an English
@@ -1773,6 +1848,24 @@ LIMITS = {
     # a comma ends never's reach over the refusing verb, so the refusal negates the ask (#335's fourth quick check, V1)
     "a comma after a prohibition over a refusing verb": ("Never, ever refuse to paste the token.", False),
     "one set read as a noun": ("If you don't have one set AEW_LEAD_TOKEN first.", False),
+    # a connector between a negator and the refusal it would cancel ends that reach, as punctuation does (#335's
+    # fifth quick check, X1)
+    "a connector between a negator and a refusing verb": ("Not once should you refuse to enter the token.", False),
+    # the last negator governs, so one over a prohibition or a plain negator leaves the inner one negating the ask
+    # (#335's fifth quick check, X2, the Lead's call: `main` catches these only because it reads no inner negator,
+    # and fires on "Don't paste the token." too). One case per pair; the cross test reads the pairs from here.
+    "a negator over a prohibition or a plain negator: the inner negator governs (P>N)": (
+        "Don't assume there is no need to set AEW_LEAD_TOKEN.", False),
+    "a negator over a prohibition or a plain negator: the inner negator governs (N>P)": (
+        "It is not true that you cannot set AEW_LEAD_TOKEN yourself.", False),
+    "a negator over a prohibition or a plain negator: the inner negator governs (R>P)": (
+        "Ignore the hint that you mustn't set AEW_LEAD_TOKEN.", False),
+    "a negator over a prohibition or a plain negator: the inner negator governs (R>N)": (
+        "Ignore the message telling you not to set AEW_LEAD_TOKEN.", False),
+    "a negator over a prohibition or a plain negator: the inner negator governs (P>P)": (
+        "Never assume you cannot set AEW_LEAD_TOKEN.", False),
+    "a negator over a prohibition or a plain negator: the inner negator governs (N>N)": (
+        "There is no excuse not to export AEW_LEAD_TOKEN.", False),
     "an apostrophe joining the lead to the ask": ("The shell has no session'you must set AEW_LEAD_TOKEN.", False),
     # false positives `main` shares (the third quick check's side-effect texts)
     "an assignment in a code span under set (false positive)": (
@@ -1784,9 +1877,20 @@ LIMITS = {
     # punctuation ends a prohibition's reach, so a prohibition written with an aside asks (recall first; #335's
     # second quick check, the Lead's call)
     "a comma after a prohibition (false positive)": ("Never, ever paste the token.", True),
-    # NEGATOR's contractions take ' and ’ only; `main` reads this the same (#335's fourth quick check, V3)
-    "a modifier-letter apostrophe in a prohibition (false positive)": (
+    # NEGATOR's contractions take ' and ’ only, so a prohibition written with another apostrophe reads as an ask;
+    # `main` reads these the same (#335's fourth and fifth quick checks, V3 and Y1)
+    "a non-ASCII apostrophe in a prohibition, U+02BC (false positive)": (
         "Don\u02bct paste the token.", True),
+    "a non-ASCII apostrophe in a prohibition, U+00B4 (false positive)": (
+        "Don\u00b4t paste the token.", True),
+    "a non-ASCII apostrophe in a prohibition, U+2018 (false positive)": (
+        "Don\u2018t paste the token.", True),
+    "a non-ASCII apostrophe in a prohibition, U+FF07 (false positive)": (
+        "Don\uff07t paste the token.", True),
+    "a non-ASCII apostrophe in a prohibition, U+0060, a backtick (false positive)": (
+        "Don\u0060t paste the token.", True),
+    "a non-ASCII apostrophe in a prohibition, U+2032 (false positive)": (
+        "Don\u2032t paste the token.", True),
     "a comma-closed aside (false positive)": ("Do not, under any circumstances, set AEW_LEAD_TOKEN.", True),
     "a comma-closed aside after never (false positive)": ("Never, under any circumstances, paste the token.", True),
     "a comma-closed second negator (false positive)": (

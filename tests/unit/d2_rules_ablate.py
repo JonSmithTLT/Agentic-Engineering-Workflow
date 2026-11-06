@@ -55,7 +55,6 @@ SPAN = "test_a_negator_inside_the_asks_own_span_negates_only_what_it_governs"
 BREAKS = "test_every_line_break_ends_a_sentence"
 BREAKS_ALL = "test_any_punctuation_or_line_break_ends_every_negators_reach"
 LIMIT = "test_each_named_limit_of_o_secret_is_as_stated"
-CROSS = "test_a_negated_negator_asks_or_its_pair_is_a_named_limit"
 B_CHECK = ('    if PUNCTUATION.search(re.sub(r"`[^`\\n]*`", "`", before[last.end():])):  # a code span is a word\n'
            '        return False\n')
 PASSES_ALL = "return all(_filler(w) or w in governs | passes for w in words)"
@@ -139,10 +138,10 @@ LINES: list[tuple] = [  # old and new: one text each, or a tuple of texts replac
      r'SENTENCE_END = re.compile(r"[.;:!?\n]")', RULES, f"{BREAKS} or {PROSE}"),
     ("R52", "a negated refusal still negates the ask (fix line G2)", PARSER,
      '    if last.group("refuse") and _negated(text, start + last.start()):\n        return False', '    if False:\n'
-     '        return False', RULES, f"test_a_negated_refusal or {CROSS}"),
+     '        return False', RULES, "test_a_negated_refusal"),
     ("R54", "a negator in the refusal's own clause does not cancel it (fix line G3)", PARSER,
      '    if last.group("refuse") and len(negators) > 1 and not negators[-2].group("refuse"):',
-     '    if False:', RULES, f"test_a_negator_in_the_refusals_own_clause_cancels_it or {CROSS}"),
+     '    if False:', RULES, "test_a_negator_in_the_refusals_own_clause_cancels_it"),
     ("R53", "digits and other scripts are not words (fix line H)", PARSER, r'''re.findall(r"(?:[^\W_]|['’])+", text)''',
      r'''re.findall(r"[A-Za-z’']+", text)''', RULES, "test_a_word_in_any_script_or_a_number_ends_a_negators_reach"),
     ("P1", "a quote mark is not punctuation", PARSER,

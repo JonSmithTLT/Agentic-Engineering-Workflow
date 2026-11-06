@@ -230,10 +230,7 @@ def relay_family(pinned: dict[str, Any], catalog: list[dict[str, Any]], upstream
     - ``unverified``: the model states no package, or no model of the catalog is served from the upstream, so there
       is nothing to compare, and the launch goes ahead with that recorded. A catalog that spells the upstream another
       way (2.0.18's embedded snapshot gives Zen as ``opencode.ai/zen/v1``, the live catalog and ``netns.UPSTREAMS``
-      ``/inference/openai/v1``) lands here: never refused on a spelling.
-
-    A same-package neighbour cannot stand in for a model with no package (there is no package to match), so that case
-    is ``unverified`` too."""
+      ``/inference/openai/v1``) lands here: never refused on a spelling."""
     provider, package = pinned.get("providerID"), pinned.get("package")
     want = _served_at(upstream)
     served = sorted({str(m.get("package")) for m in catalog

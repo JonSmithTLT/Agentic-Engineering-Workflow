@@ -289,7 +289,7 @@ HAIKU = catalog_model("claude-haiku-5-5", ANTHROPIC, RELAY_BASE)
              {**catalog_model("made-up", ANTHROPIC, UPSTREAM), "family": None, "time": {}, "name": "made-up"},
              catalog_model("no-package", None, UPSTREAM), catalog_model("no-address", OPENAI, None)],
      opencode_adapter.RELAY_FAMILY_UNVERIFIED, []),
-    # A pin with no package: nothing to compare (no package to find neighbours by either).
+    # A pin with no package: nothing to compare.
     (catalog_model("gpt-5-nano", None, RELAY_BASE), live_catalog(catalog_model("gpt-5-nano", None, RELAY_BASE)),
      opencode_adapter.RELAY_FAMILY_UNVERIFIED, [OPENAI, COMPATIBLE]),
 ])

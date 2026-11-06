@@ -253,6 +253,26 @@ def test_relaunch_delivers_the_same_pack_plus_a_continuation_from_durable_state(
     assert "R-INV-0001-1" in tail and "INV-0001-check-unit-1 (check_result, pass)" in tail and "calc/core.py" in tail
 
 
+def test_a_run_gets_a_copy_of_the_skills_its_card_is_offered_and_its_record_says_what(lab, tmp_path):
+    """E127: the supervisor copies the plan's exposed skills before containment, and the run's contract records the plan
+    as delivered, with how the copy is protected (read-only bind where the run is contained, else the rules alone)."""
+    wid = create_planned_ticket(lab.project, tmp_path)  # the default implementer card: `engineer`
+    lab.script("default", [{"do": "exit", "code": 0}])
+    run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
+    lab.wait(run)
+    record = lab.record(run)
+    planned = record["contract"]["extra"]["skills"]
+    assert planned["requested"] == [] and planned["offered"] == ["c-development", "python-development"]
+    assert planned["exposed"] == planned["offered"] and planned["unavailable"] == [] and planned["reasons"] == {}
+    assert [d["name"] for d in planned["delivered"]] == planned["exposed"]
+    contained = record["containment"]["filesystem"] == "os_readonly_roots"
+    assert planned["copy"] == ("read_only_bind" if contained else "rules_only")
+    copy = runlog.run_dir(lab.aew_root, run) / "harness" / "skills"
+    assert sorted(p.name for p in copy.iterdir()) == planned["exposed"]
+    assert (copy / "python-development" / "SKILL.md").stat().st_size == next(
+        d["bytes"] for d in planned["delivered"] if d["name"] == "python-development")
+
+
 def test_adapter_launch_failure_is_reported_and_recoverable(lab, tmp_path):
     wid = create_planned_ticket(lab.project, tmp_path)
     res = lab.lead_res("work", "assign", wid, "--launch")  # no fake script exists for this run

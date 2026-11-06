@@ -27,7 +27,7 @@ CREDENTIAL = "aew1.tk_0123456789abcdef." + "S" * 43
 
 def contract(role: str = "implementer", *, card: str = "python_engineer", skills: list[str] | None = None,
              capabilities_: list[str] | None = None, effort: str | None = "high",
-             max_steps: int | None = None) -> LaunchContract:
+             max_steps: int | None = None, optional: list[str] | None = None) -> LaunchContract:
     return LaunchContract(
         run="R-INV-0007-2", invocation="INV-0007", work_unit="T-0003", role=role, scope="ticket",
         card={"id": card, "version": 1, "sha256": "0" * 64},
@@ -38,8 +38,17 @@ def contract(role: str = "implementer", *, card: str = "python_engineer", skills
         operations=["check.run", "context.read", "submit.implementation_report"], pack_path="/p", pack_sha256="2" * 64,
         pack_text="# pack\n", continuation=None, run_dir="/r", scratch="/r/scratch",
         extra={"card_skills": skills if skills is not None else ["python-development"],
+               "card_optional_skills": optional or [],
                "card_capabilities": capabilities_ or ["exact_code_search", "source_mutation"],
                "provider_env": ["ANTHROPIC_API_KEY"]})
+
+
+# Where a run's skills are copied, as an adapter on Linux would say (E127)
+AT = projection.skills_at("/r/harness", "/")
+
+
+def config_of(c: LaunchContract, **kw: Any) -> dict[str, Any]:
+    return projection.invocation_config(c, skills_dir=AT, **kw)
 
 
 def golden(name: str, value: Any) -> None:
@@ -56,18 +65,16 @@ def golden(name: str, value: Any) -> None:
 
 def test_implementer_projection_golden():
     c = contract(max_steps=40)
-    config = projection.invocation_config(c, private_dirs=projection.private_output_dirs("/r/harness", "/",
-                                                                                         scratch=c.scratch))
+    config = config_of(c, private_dirs=projection.private_output_dirs("/r/harness", "/", scratch=c.scratch))
     golden("projection-implementer", {"config": config, "session": projection.session_body(c, "/ws", config[
         "permissions"]), "skills": projection.skills(c)})
 
 
 def test_reviewer_and_researcher_projection_golden():
-    reviewer = contract("reviewer", card="code_reviewer", skills=["code-review"],
+    reviewer = contract("reviewer", card="code_reviewer", skills=["adversarial-review"],
                         capabilities_=["exact_code_search", "repository_exploration"], effort=None)
     researcher = contract("researcher", card="researcher", skills=[], capabilities_=["documentation_lookup"])
-    golden("projection-read-only", {"reviewer": projection.invocation_config(reviewer),
-                                    "researcher": projection.invocation_config(researcher)})
+    golden("projection-read-only", {"reviewer": config_of(reviewer), "researcher": config_of(researcher)})
 
 
 def test_lead_projection_golden():
@@ -88,7 +95,7 @@ def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str
                                              ("investigator", "deny", "deny"), ("planner", "deny", "deny")])
 def test_invocation_rules_never_ask_and_deny_what_no_role_may_do(role, edit, web):
     caps = ["documentation_lookup"] if role == "researcher" else ["exact_code_search"]
-    rules = projection.invocation_config(contract(role, capabilities_=caps))["permissions"]
+    rules = config_of(contract(role, capabilities_=caps))["permissions"]
     assert {r["effect"] for r in rules} <= {"allow", "deny"}  # an unanswered ask blocks a V2 session forever
     for action in ("subagent", "question", "external_directory", "todowrite", "some_future_tool", "skill"):
         assert effect(rules, action) == "deny", action
@@ -102,21 +109,21 @@ def test_only_the_runs_own_opencode_output_is_readable_outside_the_workspace():
     private = projection.private_output_dirs("/r/harness", "/", scratch="/r/scratch")
     assert private == ("/r/harness/xdg-data/opencode/tool-output/*", "/r/harness/xdg-data/opencode/shell/*/*",
                        "/r/harness/tmp/opencode/*", "/r/scratch/*")  # the last: the run's scratch (M3 step 8)
-    rules = projection.invocation_config(contract(), private_dirs=private)["permissions"]
+    rules = config_of(contract(), private_dirs=private)["permissions"]
     assert effect(rules, "external_directory") == "deny"
-    assert all(effect(rules, "external_directory", p) == "allow" for p in private)
+    assert all(effect(rules, "external_directory", p) == "allow" for p in (*private, AT.pattern))  # E127: + skills
 
 
-def test_requested_skills_are_reported_unavailable_and_stay_denied():
+def test_requested_skills_not_shipped_are_reported_unavailable_and_stay_denied():
     c = contract(skills=["python-development", "security-review"])
-    assert projection.skills(c) == {"requested": ["python-development", "security-review"], "exposed": [],
-                                    "unavailable": ["python-development", "security-review"]}
-    config = projection.invocation_config(c)
-    assert "python-development, security-review" in config["agents"][projection.AGENT]["system"]
-    assert effect(config["permissions"], "skill", "python-development") == "deny"
-    provided = projection.invocation_config(c, provided_skills=frozenset({"security-review"}))
-    assert effect(provided["permissions"], "skill", "security-review") == "allow"
-    assert effect(provided["permissions"], "skill", "python-development") == "deny"
+    planned = projection.skills(c)
+    assert (planned["requested"], planned["exposed"], planned["unavailable"]) == (
+        ["python-development", "security-review"], ["python-development"], ["security-review"])
+    assert planned["reasons"] == {"security-review": "not_shipped"}
+    config = config_of(c)
+    assert "does not provide: security-review." in config["agents"][projection.AGENT]["system"]
+    assert effect(config["permissions"], "skill", "security-review") == "deny"
+    assert effect(config["permissions"], "skill", "python-development") == "allow"
 
 
 def test_a_run_on_its_own_network_is_told_what_it_reaches_and_how_to_ask_for_more():
@@ -124,7 +131,7 @@ def test_a_run_on_its_own_network_is_told_what_it_reaches_and_how_to_ask_for_mor
     design, and the setting the Lead asks the operator for. The upstream and the stated limits stay the operator's;
     a run on the host's network gets no such line."""
     def line(network: dict[str, Any] | None) -> list[str]:
-        system = projection.invocation_config(contract(), network=network)["agents"][projection.AGENT]["system"]
+        system = config_of(contract(), network=network)["agents"][projection.AGENT]["system"]
         assert "https://upstream.example" not in system and "the stated residual" not in system
         return [s for s in system.splitlines() if "network of its own" in s]
 
@@ -141,7 +148,7 @@ def test_a_run_on_its_own_network_is_told_what_it_reaches_and_how_to_ask_for_mor
 
 
 def test_the_pinned_model_is_everywhere_a_model_is_chosen():
-    config = projection.invocation_config(contract())
+    config = config_of(contract())
     pinned = {"providerID": "anthropic", "model": "claude-sonnet-5", "variant": "high"}
     assert {name: a["model"] for name, a in config["agents"].items()} == {
         name: pinned for name in (projection.AGENT, *projection.AUXILIARY_AGENTS)}

@@ -123,6 +123,31 @@ def test_a_lead_writes_only_its_project_and_an_implementer_only_its_ticket(tmp_p
     assert refused.value.details["allowed"] == []
 
 
+@pytest.mark.parametrize("role", ["implementer", "reviewer"])
+def test_a_runs_skill_copy_is_bound_read_only_after_its_harness_state_and_protected_only_when_it_exists(
+        tmp_path, fake_bwrap, role):
+    """E127 (the designer's ruling of 2026-11-03, §3): the copy is read-only under the run's writable harness state, and
+    the self-test must find it unwritable. A run whose skills were not copied binds nothing, so it is never refused."""
+    repo, ws = repo_with_worktree(tmp_path)
+    run = tmp_path / "run"
+    copy = run / "harness" / "skills"
+
+    def layout() -> C.Layout:
+        return C.for_run(role=role, scope="ticket", workspace=str(ws), run_dir=run, scratch=str(run / "scratch"),
+                         bridge_dir=None, policy=None, home=str(tmp_path / "home"), project=str(repo), env={},
+                         skills_dir=str(copy))
+
+    absent = layout()
+    assert absent.skills_binds == () and not any(p.endswith("skills") for p in absent.readonly)
+    (copy / "c-development").mkdir(parents=True)
+    present = layout()
+    real, harness = os.path.realpath(copy), os.path.realpath(run / "harness")
+    assert present.skills_binds == (real,) and real in present.readonly and real in present.protected
+    steps = L.order(present)
+    assert steps.index(("--bind", harness)) < steps.index(("--ro-bind", real))
+    assert present.describe()["skills_binds"] == [real]
+
+
 def test_the_lead_layout_re_binds_aew_and_the_git_metadata_read_only_after_the_working_tree(tmp_path, fake_bwrap):
     """Ruling R-2 (CS-4 outcome 2): the Lead writes its working tree, which holds the store; `.aew` and the git
     metadata are re-bound read-only after it, so the role-bind check passes by its second clause (CB-07)."""

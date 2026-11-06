@@ -163,7 +163,7 @@ def make_git_repo(path: Path, files: dict[str, str] | None = None) -> Path:
 @dataclass
 class Project:
     root: Path
-    token: str = ""
+    token: str = field(default="", repr=False)  # a failed test's traceback prints its arguments: never a token
     extra: dict[str, Any] = field(default_factory=dict)
 
     def aew(self, *args: str, env: dict[str, str] | None = None, input: str | None = None) -> CLIResult:

@@ -259,4 +259,4 @@ A run's end moves nothing: the Lead still ingests and transitions, as above. Eve
 
 ## Useful views
 
-`aew guide` (how work flows in this project: risk classes, their gates, the Ticket lifecycle, the command for each step), `aew status`, `aew resume`, `aew work tree`, `aew work show T-0001`, `aew gate show T-0001`, `aew work roles T-0001`, `aew role list`, `aew doctor`, `aew harness status`, `aew harness config opencode <INV>|--lead`.
+`aew guide` (how work flows in this project: risk classes, their gates, the Ticket lifecycle, the tool or command for each step), `aew status`, `aew resume`, `aew work tree`, `aew work show T-0001`, `aew gate show T-0001`, `aew work roles T-0001`, `aew role list`, `aew doctor`, `aew harness status`, `aew harness config opencode <INV>|--lead`.

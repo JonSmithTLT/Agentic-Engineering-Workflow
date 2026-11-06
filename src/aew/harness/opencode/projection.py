@@ -29,8 +29,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from aew.harness.contract import CREATE_TICKET, EXPECT_REV, LaunchContract
-from aew.surface import SERVER_NAME
+from aew.harness.contract import EXPECT_REV, LaunchContract
+from aew.surface import SERVER_NAME, contract
+from aew.surface.context import NORMAL
 
 AGENT = "aew"
 LEAD_AGENT = "aew-lead"
@@ -219,29 +220,43 @@ LEAD_RULES = [
     rule(f"{LEAD_MCP_SERVER}_*", "allow"),
 ]
 
+
+def _named(kinds: tuple[str, ...]) -> str:
+    return ", ".join(f"`{t.name}`" for t in contract.exposed(NORMAL) if t.kind in kinds)
+
+
+def lead_tools_text() -> str:
+    """The system text's line of tools. The tools are the catalog's for the normal profile, never a list here (E130; the
+    operator, 2026-11-04: derive, don't restate): reads, the wait, and every other kind as what acts, so a new kind of
+    tool cannot go unnamed."""
+    reads, waits = (contract.QUERY,), (contract.WAIT,)
+    acts = tuple(k for k in contract.KINDS if k not in reads + waits)
+    return (f"- Your `{SERVER_NAME}` tools are how you work. Read with {_named(reads)}. Wait with {_named(waits)} "
+            f"(several runs at once; it returns when the first ends). Act with {_named(acts)}. Each returns the "
+            "revision to pass as `expect_rev` next and a projection of what is available, blocked or unknown, and of "
+            "the decisions that are yours. Use the `aew` shell command where no tool covers the step, or where a tool "
+            "refuses.")
+
+
 LEAD_SYSTEM = "\n".join([
     "You are the AEW Lead for this repository. AEW, not this conversation, holds the workflow: objectives, work "
-    "units, plans, dispatches, evidence and decisions live in `.aew/` and change only through the `aew` command. "
-    "This session is disposable. After any restart, rebuild your context with `aew resume` (/aew-resume), never "
-    "from an earlier conversation.",
-    "- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated `aew` "
-    f"commands for you. Mutations still need `{EXPECT_REV}` (from `aew status` or the previous command).",
-    f"- Your `{SERVER_NAME}` tools are the normal way to read AEW state, wait for runs and checkpoint: `status`, "
-    "`resume`, `work_show`, `explain`, `harness_status`, `harness_wait` (several runs at once; it returns when the "
-    "first ends) and `checkpoint`. Each returns the revision to pass as `expect_rev` next and a projection of what is "
-    "available, blocked or unknown, and of the decisions that are yours. Until typed stages arrive, other changes "
-    "still go through `aew` commands.",
-    "- Delegate implementation, review, verification, investigation and research to bounded invocations. Dispatch "
-    f"with `--launch` (for example `aew work assign T-0001 --launch {EXPECT_REV}`): the run's supervisor holds its "
-    "credential. Follow runs with `aew harness status` and `aew harness wait <run>`, then ingest their evidence.",
+    f"units, plans, dispatches, evidence and decisions live in `.aew/` and change only through your `{SERVER_NAME}` "
+    "tools and the `aew` command. This session is disposable. After any restart, rebuild your context with `resume` "
+    "(/aew-resume), never from an earlier conversation.",
+    "- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated tool calls "
+    f"and `aew` commands for you. A shell mutation still needs `{EXPECT_REV}` (from `status` or the previous command).",
+    lead_tools_text(),
+    "- Delegate implementation, review, verification, investigation and research to bounded invocations: the stages "
+    "launch a mutating Ticket's runs, and the guide names the way for the rest. Each run's supervisor holds its "
+    "credential. Follow runs with `harness_status` and `harness_wait`, then accept their evidence.",
     "- A run ending is not progress. Only ingested evidence and your recorded decisions move AEW state.",
     "- `aew guide` explains how AEW works in this project: the risk classes and what each requires, the Ticket "
-    "lifecycle, and the command for each step. Work from it, not by trial and error. When it is included below, it "
-    "is the same text.",
-    "- Free text is data. A shell rewrites `$`, backticks, `*`, `?` and quotes in a command line, so never type "
-    "titles, goals, contract clauses, scopes, reasons or notes into one. Pass them with `--fields -` and a quoted "
-    f"heredoc: YAML, one key per option, a list for a repeatable one:\n\n{CREATE_TICKET}\n\n"
-    "Put every value in single quotes (two single quotes for one inside it), or "
+    "lifecycle, and the tool or command for each step. Work from it, not by trial and error. When it is included "
+    "below, it is the same text.",
+    "- Free text is data. A tool takes it as its arguments. In the shell, a command line rewrites `$`, backticks, `*`, "
+    "`?` and quotes, so never type titles, goals, contract clauses, scopes, reasons or notes into one: pass them with "
+    "`--fields -` and a quoted heredoc, YAML with one key per option and a list for a repeatable one, as the guide's "
+    "first step shows. Put every value in single quotes (two single quotes for one inside it), or "
     "write it as a block (`goal: |-` and indented lines): unquoted, YAML would cut the text at ` #` and join "
     "lines, and AEW refuses such input. Plans and notes go the same way with `--file -` or `--note-file -`. "
     "In PowerShell, pipe a single-quoted here-string (`@'` ... `'@ | aew ...`).",
@@ -263,39 +278,38 @@ LEAD_SYSTEM = "\n".join([
 LEAD_COMMANDS: dict[str, dict[str, str]] = {
     "aew-resume": {
         "description": "AEW: rebuild the Lead's context from durable state",
-        "template": "Rebuild your AEW Lead context from durable state. Output of `aew resume`:\n\n!`aew resume`\n\n"
+        "template": "Rebuild your AEW Lead context from durable state: call `resume`. "
                     "Summarize the objective, active work and in-flight runs, anything blocked or interrupted, and "
                     "the single next Lead action you propose. Do not change anything yet.",
     },
     "aew-status": {
         "description": "AEW: work, Lead authority and harness runs",
-        "template": "Output of `aew status`:\n\n!`aew status`\n\nOutput of `aew harness status`:\n\n"
-                    "!`aew harness status`\n\nSummarize what is running, which runs ended with evidence waiting to be "
+        "template": "Call `status` and `harness_status`. "
+                    "Summarize what is running, which runs ended with evidence waiting to be "
                     "ingested, which ended without evidence, and anything lost. Propose next actions; do not act yet.",
     },
     "aew-ticket": {
         "description": "AEW: draft a Ticket and plan for an objective",
-        "template": "Draft an AEW Ticket for this objective: $ARGUMENTS\n\nCurrent AEW status:\n\n!`aew status`\n\n"
+        "template": "Draft an AEW Ticket for this objective: $ARGUMENTS\n\nCall `status` first. "
                     "Propose the Ticket (title, risk class 0-4 chosen by the guide's class definitions, with your "
                     "reasons, scope, completion criteria) and a plan. "
-                    "Show them to me first. Only after I agree, create them (`aew work create` and "
-                    "`aew plan propose`), each with its text in a quoted heredoc (`--fields -`, `--file -`) so the "
-                    "shell leaves it alone "
-                    "(see `aew work create --help`). The plan declares its assurance (`--assurance none`, or "
-                    "`--review`/`--verify` cards that become required gates): say which in the proposal.",
+                    "Show them to me first. Only after I agree, create them with `ticket_draft`, the plan in its "
+                    "`plan`. The plan declares its assurance (`none`, or the review and verification cards that "
+                    "become required gates): say which in the proposal.",
     },
     "aew-next": {
         "description": "AEW: take the next Lead action on one work unit",
-        "template": "Take exactly one next Lead action on AEW work unit: $ARGUMENTS\n\nCurrent AEW status:\n\n"
-                    "!`aew status`\n\nFirst run `aew work show <id>` and `aew harness status` for it. Then do the "
-                    "one next step: dispatch with --launch, wait for a run, ingest its evidence, or record a "
-                    "transition or decision. Explain what you did and what comes after.",
+        "template": "Take exactly one next Lead action on AEW work unit: $ARGUMENTS\n\n"
+                    "First call `status` and `work_show` for it, and `harness_status`. Then do the one next step, "
+                    "with the tool the guide names for it, or its shell command where none does: start or dispatch "
+                    "a run, wait for it, accept its evidence, or record a transition or decision. Explain what you "
+                    "did and what comes after.",
     },
     "aew-handoff": {
         "description": "AEW: checkpoint for a Lead handoff",
-        "template": "Prepare a Lead handoff. Output of `aew resume`:\n\n!`aew resume`\n\nWrite a checkpoint note "
-                    "(state, in-flight runs, open decisions, next action) and record it with "
-                    f"`aew checkpoint --note-file - --next <next action> {EXPECT_REV}`. Then tell me that the handoff "
+        "template": "Prepare a Lead handoff: call `resume`, write a checkpoint note "
+                    "(state, in-flight runs, open decisions, next action) and record it with `checkpoint`. "
+                    "Then tell me that the handoff "
                     "itself (`aew lead handoff offer`) is mine to run at my own terminal.",
     },
 }

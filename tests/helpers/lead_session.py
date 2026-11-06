@@ -255,5 +255,6 @@ def agent_session(tmp_path: Path, steps: list[dict[str, Any]] | Callable[[Harnes
 
 def guide_of(lab: HarnessLab) -> str:
     from aew.engine.api import Engine
+    from aew.surface import lead_text
 
-    return Engine.discover(lab.root).lead_guide()
+    return lead_text.guide_for(Engine.discover(lab.root))

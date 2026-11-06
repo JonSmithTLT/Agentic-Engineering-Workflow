@@ -245,9 +245,11 @@ def test_decisions_bind_only_reports_of_their_kind_from_the_current_run_and_carr
          "status": "ended_with_evidence", "reason": None, "evidence": ["EV-0006", "EV-0007", "EV-0005"],
          "action": "prose"}])
     monkeypatch.setattr(projection.E, "scan", lambda _root, _wid: ([
-        {"id": "EV-0005", "kind": "review", "producer": {"run": "R-INV-0001-1"}},  # an earlier run's report
-        {"id": "EV-0006", "kind": "check_result", "producer": {"run": run_id}},  # a check, not a report
-        {"id": "EV-0007", "kind": "review", "producer": {"run": run_id}},
+        # an earlier run's report
+        {"id": "EV-0005", "kind": "review", "producer": {"run": "R-INV-0001-1", "invocation": "INV-0001"}},
+        # a check, not a report
+        {"id": "EV-0006", "kind": "check_result", "producer": {"run": run_id, "invocation": "INV-0002"}},
+        {"id": "EV-0007", "kind": "review", "producer": {"run": run_id, "invocation": "INV-0002"}},
     ], []))
     asked = []  # the decision's availability is its stage's with that report (M4-E E4), not this test's subject
 

@@ -13,13 +13,13 @@ from __future__ import annotations
 import os
 import re
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
-from aew.engine import gate_ops, usage_ops
+from aew.engine import gate_ops, transitions, usage_ops
 from aew.engine.archive_ops import Archive
 from aew.engine.assurance_ops import Assurance
 from aew.engine.base import POLICY_PINS, Kernel, TxnContext, check_policy_bytes, policy_files
@@ -710,6 +710,10 @@ class Engine:
     def gate_context(self, state: dict[str, Any], work_id: str) -> dict[str, Any]:
         return self._gates.gate_context(state, work_id)
 
+    def stage_fit(self, state: dict[str, Any], work_id: str) -> transitions.Fit | None:
+        """What a stage may be named for on this Ticket now (E130): see ``transitions.stage_for``."""
+        return self._gates.stage_fit(state, work_id)
+
     def guard_query(self, primitive: str, work_id: str | None, args: dict[str, Any] | None = None, *,
                     state: dict[str, Any] | None = None) -> dict[str, Any]:
         """Whether ``primitive`` with ``args`` is legal now (AVAILABLE, BLOCKED or UNKNOWN), asked of the guard its own
@@ -917,8 +921,8 @@ class Engine:
     def lead_acquire(self, *, expect_rev: int, session_label: str | None = None) -> dict[str, Any]:
         return self._lead.lead_acquire(expect_rev=expect_rev, session_label=session_label)
 
-    def lead_guide(self) -> str:
-        return self._resume.lead_guide()
+    def lead_guide(self, stages: Sequence[Any]) -> str:
+        return self._resume.lead_guide(stages)
 
     def lead_handoff_accept(self, *, offer: str, expect_rev: int, session_label: str | None = None) -> dict[str, Any]:
         return self._lead.lead_handoff_accept(offer=offer, expect_rev=expect_rev, session_label=session_label)

@@ -97,9 +97,9 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     p.set_defaults(handler=_resume)
 
     p = sub.add_parser("guide", help="how work flows in AEW for this project: risk classes, the gates each "
-                                     "requires, the Ticket lifecycle and the command for each step (read-only)")
+                                     "requires, the Ticket lifecycle and the tool or command for each step (read-only)")
     _add_json(p)
-    p.set_defaults(handler=lambda a: {"guide": _engine(a).lead_guide()} if a.json else _engine(a).lead_guide())
+    p.set_defaults(handler=_guide)
 
     p = sub.add_parser("checkpoint", help="record a checkpoint and the Lead's next-action note")
     p.add_argument("--note-file", help="checkpoint notes (file or - for stdin)")
@@ -259,6 +259,13 @@ def _register_stage(sub: argparse._SubParsersAction) -> None:
         q.add_argument("--rationale", required=True, help="why (recorded on the intent)")
         _add_lead(q)
         q.set_defaults(handler=_stage_resolve, choice=choice)
+
+
+def _guide(args: argparse.Namespace) -> Any:
+    from aew.surface import lead_text
+
+    text = lead_text.guide_for(_engine(args))
+    return {"guide": text} if args.json else text
 
 
 def _stage_resolve(args: argparse.Namespace) -> Any:

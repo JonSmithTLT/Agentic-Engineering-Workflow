@@ -23,7 +23,7 @@ from capability_stand_in import KEY, SOURCE, _archive, _record, make_register
 from conftest import IS_WINDOWS
 
 from aew import errors, process_kind
-from aew.capability import consent, ops, records, store
+from aew.capability import consent, ops, records, status, store
 from aew.capability import payload as P
 from aew.engine.custody_ops import LEAD_SESSION_VARS, kept_out_refusal
 
@@ -554,6 +554,19 @@ def test_unavailable_reads_the_runs_record_stubs_only():
     assert ops.unavailable(record) == ["rg"]  # right: a stub; the host copy still runs
     assert ops.unavailable(None) == [] and ops.unavailable({}) == []  # missing
     assert ops.unavailable({"detail": "not a list"}) == []  # wrong shape
+
+
+@pytest.mark.parametrize("served", ["host", None])
+def test_a_launchs_attention_line_names_the_download_route_never_check(reg, monkeypatch, capsys, served):
+    """As a contained Lead's start printed it with the host's unpinned rg: the fix names `aew capability fetch <tool>`
+    online and `aew capability import` offline, from the status's one owner (``status.fetch_fix``), never `aew
+    capability check`, which downloads only a tool it names."""
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    tool = {"command": "fake", "served": status.HOST_COPY if served else None, "path": "/usr/bin/fake", "tried": []}
+    ops.flag_missing({"fake": tool})
+    fix = capsys.readouterr().err.split("Fix:")[1]
+    assert fix.strip() == (f"{status.fetch_fix('fake')}.") and "aew capability check" not in fix
+    assert "`aew capability fetch fake` downloads it (online)" in fix and "`aew capability import`" in fix
 
 
 def test_a_worker_launchs_flag_never_asks_or_downloads(served, terminal, monkeypatch):

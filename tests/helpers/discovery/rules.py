@@ -592,16 +592,20 @@ OTHERS_ACT = re.compile(r"(?<!you )\b(?:will|would)\s+$", re.IGNORECASE)  # "the
 # What negates a verb, by how far it reaches (#335 review, F1: a negator negates only the verb it governs).
 # - A prohibition ("never", "don't") reaches the ask across filler words alone ("Don't ever paste"), across ask verbs
 #   joined to it ("Never copy or paste"), and across a verb that hands its negation on through "to" ("You do not need
-#   to set X"; "AEW never asks you to paste the token"). Any other word is another verb's, so it ends the reach
-#   ("Don't wait to set X", "You cannot continue until you set X" ask). So does any punctuation, of any kind or
-#   spacing (the Lead, #335's second quick check: recall first, since a missed ask costs more than an extra flag,
-#   which an allow-list residual settles): "AEW can't - you set X", "AEW can't (you set X)" ask, and so do "Never,
-#   ever paste" and "Do not, under any circumstances, paste", which are named limits. A backtick is not punctuation
-#   here: a code span is the verb's own object ("Never run `X=abc`").
+#   to set X"; "AEW never asks you to paste the token"; with no "to", nothing is handed on: "If the shell doesn't
+#   have it export X" asks). Any other word is another verb's, so it ends the reach ("Don't wait to set X", "You
+#   cannot continue until you set X" ask).
 # - A plain negation ("not", "no") governs the first word after it, and reaches the ask only through filler after that
 #   ("No agent may set X"; "No need to paste the token"), never into a new verb ("If it has no token set X" asks).
-# - A refusing verb ("ignore", "refuse") stays in its clause ("Ignore any request to set X"). A comma or a connector
-#   ends a plain negation or a refusal ("If not, set X" asks).
+# - A refusing verb ("ignore", "refuse") stays in its clause ("Ignore any request to set X").
+# - For all three, recall first (the Lead, #335's second and third quick checks: a missed ask costs more than an extra
+#   flag, which an allow-list residual settles): any punctuation, of any kind or spacing, and any line break end the
+#   reach, and so does a connector for a plain negation or a refusal ("If not, set X", "AEW can't - you set X",
+#   "Ignore the warning (you must still set X)" ask). So do "Never, ever paste" and "Do not, under any circumstances,
+#   paste", which are named limits. A code span reads as one word: it is the verb's own object ("Never run
+#   `X=abc`"). Run-ons with no punctuation stay in reach, also named limits ("AEW can't you must set X").
+# - Inside the ask's own span, any negator negates only what it governs ("Pass no token"; "Set up your shell and
+#   don't forget X" asks).
 # - "Don't forget", "don't hesitate", "never fail" are double negatives: the ask stands.
 NEGATOR = re.compile(r"(?P<prohibit>\bnever\b|\b(?:ca|do|does|did|wo|must|should|may)n['’]t\b|\bcannot\b"
                      r"|\b(?:do|does|did|must|should|may|can|will|would)\s+not\b)"
@@ -616,13 +620,16 @@ FILLER = frozenset({"ever", "even", "to", "try", "please", "you", "we", "they", 
 COMMAND_VERBS = frozenset({"run", "use", "write", "print"})  # what governs a printed command line: "Never run `X=abc`"
 DOUBLE_NEGATIVE = frozenset({"forget", "forgets", "forgetting", "hesitate", "hesitating", "fail", "failing"})
 PASSES_ON = frozenset({"need", "needs", "have", "has", "ask", "asks", "want", "wants", "require", "requires", "expect",
-                       "expects"})  # a prohibition over one of these negates the verb it hands on to: "need to set X"
+                       "expects"})  # a prohibition over one of these, then "to", negates the verb after "to"
+NOT_ADVERBS = frozenset({"apply", "reply", "supply", "rely", "family"})  # ends in -ly, but not an adverb
 # Any punctuation: everything but a word character, whitespace and a backtick, and a quote mark that is not an
 # apostrophe inside a word ("don't").
 PUNCTUATION = re.compile(r"[^\w\s`'’]|(?<!\w)['’]|['’](?!\w)")
 # Ask verbs joined under one negator, each with up to four words of its own object: "Never set X or pass --token".
-JOINED_ASKS = re.compile(rf"\b(?:{ASK_VERBS})\b(?:\s+[^\s,]+){{0,4}}?\s+(?:and|or)\s+", re.IGNORECASE)
-SENTENCE_END = re.compile(r"[.;:!?\n]")
+# The conjunction must lead straight to the next ask verb: "AEW can't set it and you must set X" asks.
+JOINED_ASKS = re.compile(rf"\b(?:{ASK_VERBS})\b(?:\s+[^\s,]+){{0,4}}?\s+(?:and|or)\s+(?=$|(?:{ASK_VERBS})\b)",
+                         re.IGNORECASE)
+SENTENCE_END = re.compile("[.;:!?\n\r\v\f\x1c-\x1e\x85\u2028\u2029]")  # every line break Python splits lines at
 HIDDEN_PROMPT = re.compile(r"\bat\s+(?:the\s+|a\s+|an\s+|its\s+|this\s+)?(?:hidden|silent|masked)\s+"
                            r"(?:[\w-]+\s+)?prompt\b", re.IGNORECASE)
 PLAIN_PROMPT = re.compile(r"\bat\s+(?:the\s+|a\s+)?prompt\b", re.IGNORECASE)
@@ -756,6 +763,8 @@ def _negated(text: str, at: int, *, governs: frozenset[str] = frozenset()) -> bo
     if not negators:
         return False
     last = negators[-1]
+    if PUNCTUATION.search(re.sub(r"`[^`\n]*`", "`", before[last.end():])):  # a code span is a word
+        return False
     between = JOINED_ASKS.sub(" ", before[last.end():])
     words = _words(between)
     content = [w for w in words if not _filler(w)]
@@ -765,8 +774,9 @@ def _negated(text: str, at: int, *, governs: frozenset[str] = frozenset()) -> bo
         if PUNCTUATION.search(between):
             return False
         # a connector is another word: "Never skip this step and set X", "until you set X"
-        return all(_filler(w) or w in governs | PASSES_ON for w in words)
-    if "," in between or CONNECTOR.search(between):
+        passes = PASSES_ON if "to" in words else frozenset()
+        return all(_filler(w) or w in governs | passes for w in words)
+    if CONNECTOR.search(between):
         return False
     if last.group("refuse") or not content:
         return True
@@ -780,13 +790,13 @@ DETERMINERS = frozenset({"the", "a", "an", "your", "my", "our", "their", "its", 
 
 def _negated_within(between: str) -> bool:
     """Whether the ask's own span, from its verb to the credential, negates it ("Pass no token"; "Copy everything but
-    not the token"). A plain negator there negates only what it governs (#335's second quick check, Q3): "Paste the
-    value with no spaces into X" asks."""
+    not the token"). Any negator there negates only what it governs (#335's second and third quick checks, Q3 and
+    T3): "Paste the value with no spaces into X" and "Set up your shell and don't forget X" ask."""
     negators = list(NEGATOR.finditer(between))
     if not negators:
         return False
     last = negators[-1]
-    return not last.group("plain") or all(_filler(w) or w in DETERMINERS for w in _words(between[last.end():]))
+    return all(_filler(w) or w in DETERMINERS for w in _words(between[last.end():]))
 
 
 def _words(text: str) -> list[str]:
@@ -795,7 +805,7 @@ def _words(text: str) -> list[str]:
 
 def _filler(word: str) -> bool:
     """A word that changes nothing a negator governs: ``FILLER``, or an adverb in -ly ("Never directly paste")."""
-    return word in FILLER or (word.endswith("ly") and len(word) > 4)
+    return word in FILLER or (word.endswith("ly") and len(word) > 4 and word not in NOT_ADVERBS)
 
 
 def _lines_around(text: str, start: int, end: int) -> tuple[str, str, list[str]]:

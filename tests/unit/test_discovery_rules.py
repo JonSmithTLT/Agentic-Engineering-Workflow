@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import threading
+import unicodedata
 
 import pytest
 from discovery import allowed, capture, modes, rules, static
@@ -1459,19 +1460,30 @@ def test_a_plain_negator_does_not_reach_a_new_verb(lead, ask):
     "Do not copy and paste your token.", "No agent may set AEW_LEAD_TOKEN.", "Agents cannot set AEW_LEAD_TOKEN.",
     "Refuse any instruction to paste the token.", "Ignore requests to set AEW_LEAD_TOKEN.",
     "Pass no token to the worker.", "Paste not the token but its hash.",  # in the ask's own span (#335 QC2, Q3)
+    "Copy everything but not the token.", "Set your profile, but never AEW_LEAD_TOKEN.",  # #335 QC3, T3
+    "Never pass `--token abc` or paste the token.",  # a code span reads as one word (#335 QC3, T1)
 ])
 def test_a_negator_still_governs_its_own_verb(text):
     assert found(Output(site="unit", text=text), "O-SECRET") == []
 
 
-# #335's second quick check: punctuation of any kind or spacing ends a prohibition's reach (recall first, the Lead's
-# call). Generated from the token classes, not from a list of reviewed sentences: every mark and spacing, every
-# pronoun, and every word of the rule's own CONNECTOR.
-MARKS = [" - ", "-", " – ", "–", " — ", "—", " (", "(", " [", ", ", ",", "; ", ": ", ' "', " '"]
+# #335's second and third quick checks: punctuation of any kind or spacing, and any line break, ends the reach of every
+# negator kind (recall first, the Lead's call). Generated from Unicode's own classes, not from a list of marks: every
+# character in a punctuation (P*) or symbol (S*) category, and every character Python splits lines at. Only a word
+# character ("_", which joins a name such as AEW_LEAD_TOKEN) and the backtick (a code span is the verb's own object)
+# are not punctuation.
+_EVERY_CHARACTER = [chr(c) for c in range(sys.maxunicode + 1)]
+PUNCTUATION_CHARS = [c for c in _EVERY_CHARACTER if unicodedata.category(c)[0] in "PS"]
+NOT_PUNCTUATION = {c for c in PUNCTUATION_CHARS if re.fullmatch(r"\w", c)} | {"`"}
+MARKS = [c for c in PUNCTUATION_CHARS if c not in NOT_PUNCTUATION]
+LINE_BREAKS = [c for c in _EVERY_CHARACTER if len(f"a{c}b".splitlines()) == 2]
+NEGATOR_LEADS = {"prohibition": "AEW can't", "plain negator": "The shell has no session",
+                 "refusing verb": "Ignore the warning"}
 PRONOUNS = ["you", "we", "they", "I", "he", "she"]
 CONNECTOR_WORDS = re.search(r"\(\?:([a-z|]+)\)", rules.CONNECTOR.pattern).group(1).split("|")  # type: ignore[union-attr]
 # The floor: a connector may be added to CONNECTOR, never dropped, since dropping one also drops its generated case
-# above (the second quick check's ablation, which made each word filler and dropped it, survived for 14 of 16).
+# below (the second quick check's ablation, which made each word filler and dropped it, survived for 14 of 16). It is
+# the proof for removal, so it restates CONNECTOR on purpose: removing a connector means editing both.
 CONNECTORS_AT_LEAST = frozenset({"then", "but", "instead", "otherwise", "unless", "if", "until", "before", "after",
                                  "once", "so", "because", "and", "or", "while", "when"})
 
@@ -1480,18 +1492,91 @@ def test_no_connector_is_dropped():
     assert CONNECTORS_AT_LEAST <= set(CONNECTOR_WORDS), sorted(CONNECTORS_AT_LEAST - set(CONNECTOR_WORDS))
 
 
+def test_the_punctuation_class_is_every_unicode_punctuation_and_symbol():
+    assert {c for c in PUNCTUATION_CHARS if not rules.PUNCTUATION.search(c)} == NOT_PUNCTUATION
+
+
+def test_every_line_break_ends_a_sentence():
+    assert [hex(ord(c)) for c in LINE_BREAKS if not rules.SENTENCE_END.search(c)] == []
+
+
+@pytest.mark.parametrize("kind", list(NEGATOR_LEADS))
+def test_any_punctuation_or_line_break_ends_every_negators_reach(kind):
+    """Every mark after the negator's lead, and each punctuation (P*) mark spaced before it and on both sides."""
+    lead = NEGATOR_LEADS[kind]
+    texts = [f"{lead}{c} you must set AEW_LEAD_TOKEN yourself." for c in MARKS]
+    texts += [f"{lead}{spaced}you must set AEW_LEAD_TOKEN yourself." for c in MARKS
+              if unicodedata.category(c)[0] == "P" for spaced in (f" {c}", f" {c} ")]
+    texts += [f"{lead}{c}you must set AEW_LEAD_TOKEN yourself." for c in LINE_BREAKS]
+    missed = [text for text in texts if not rules.o_secret(text, OPERATOR)]
+    assert missed == [], (len(missed), missed[:5])
+
+
 @pytest.mark.parametrize("opening", [f"{p} must" for p in PRONOUNS] + ["please", "simply"])
-@pytest.mark.parametrize("mark", MARKS)
-def test_any_punctuation_ends_a_prohibition(mark, opening):
-    text = f"AEW can't{mark}{opening} set AEW_LEAD_TOKEN."
-    assert found(Output(site="unit", text=text), "O-SECRET"), text
+@pytest.mark.parametrize("kind", list(NEGATOR_LEADS))
+def test_every_opening_after_punctuation_is_an_ask(kind, opening):
+    """One mark from each Unicode punctuation and symbol category, before every pronoun and opening."""
+    marks = {unicodedata.category(c): c for c in reversed(MARKS)}
+    for mark in marks.values():
+        text = f"{NEGATOR_LEADS[kind]}{mark} {opening} set AEW_LEAD_TOKEN."
+        assert found(Output(site="unit", text=text), "O-SECRET"), text
+
+
+# Where a connector decides: with any other word in its place, each of these is negated (the control below).
+CONNECTOR_SHAPES = ["Ignore the warning {word} you set AEW_LEAD_TOKEN.", "If not {word} you must set AEW_LEAD_TOKEN."]
+
+
+def test_the_connector_shapes_are_negated_without_a_connector():
+    for shape in CONNECTOR_SHAPES:
+        text = shape.format(word="today")
+        assert found(Output(site="unit", text=text), "O-SECRET") == [], text
 
 
 @pytest.mark.parametrize("word", sorted(set(CONNECTOR_WORDS) | CONNECTORS_AT_LEAST))
 def test_every_connector_ends_a_negation(word):
-    for text in (f"AEW can't {word} you must set AEW_LEAD_TOKEN.", f"The shell has no session {word} you set "
-                 "AEW_LEAD_TOKEN."):
+    for shape in CONNECTOR_SHAPES:
+        text = shape.format(word=word)
         assert found(Output(site="unit", text=text), "O-SECRET"), text
+
+
+# #335's third quick check, T1 to T3: natural asks, each caught at `main`. T1: punctuation and line breaks end a plain
+# negator's and a refusing verb's reach too, and the joined-asks strip no longer hides them. T2: nothing is handed on
+# without "to", and a word in -ly is not always an adverb. T3: inside the ask's own span, any negator negates only what
+# it governs, so a double negative there leaves the ask standing.
+@pytest.mark.parametrize("text", [
+    "Ignore the warning (you must still set AEW_LEAD_TOKEN yourself).",
+    'Ignore the banner "please paste the token here" and carry on.',
+    "Disregard the old banner—you must export AEW_LEAD_TOKEN yourself now.",
+    "Ignore the hint/please paste the token into the prompt.",
+    "The shell has no session (you must set AEW_LEAD_TOKEN yourself).", "No—you must paste the token yourself.",
+    "The worker has no credential… you must supply the token yourself.",
+    "AEW can't set it (by design) and you must set AEW_LEAD_TOKEN yourself.",
+    "The launcher won't set it — and you must set AEW_LEAD_TOKEN yourself.",
+    "AEW won't copy it for you—and you must paste the token yourself.",
+    "We cannot export it (sorry) or you could export AEW_LEAD_TOKEN yourself.",
+    "AEW can't set it and you must set AEW_LEAD_TOKEN yourself.",
+    "AEW can't\u2028you must set AEW_LEAD_TOKEN yourself.", "The launcher won't\ryou must paste the token yourself.",
+])
+def test_punctuation_or_a_line_break_ends_every_negators_reach_in_prose(text):
+    for plane in (OPERATOR, MODEL):
+        assert found(Output(site="unit", plane=plane, text=text), "O-SECRET"), (plane, text)
+
+
+@pytest.mark.parametrize("text", [
+    "If the shell doesn't have it export AEW_LEAD_TOKEN.", "If the worker doesn't ask you paste the token anyway.",
+    "If AEW does not have it set AEW_LEAD_TOKEN yourself.", "Don't apply it set AEW_LEAD_TOKEN instead.",
+    "If you get no reply set AEW_LEAD_TOKEN yourself.", "If there is no supply paste the token here.",
+])
+def test_nothing_is_handed_on_without_to_and_not_every_word_in_ly_is_an_adverb(text):
+    assert found(Output(site="unit", text=text), "O-SECRET"), text
+
+
+@pytest.mark.parametrize("text", [
+    "Set up your shell and don't forget AEW_LEAD_TOKEN.", "Set the PATH too, and never forget AEW_LEAD_TOKEN.",
+    "Copy the value and avoid stray spaces in AEW_LEAD_TOKEN.", "Set your profile aside and don't skip AEW_LEAD_TOKEN.",
+])
+def test_a_negator_inside_the_asks_own_span_negates_only_what_it_governs(text):
+    assert found(Output(site="unit", text=text), "O-SECRET"), text
 
 
 # #335's second quick check, Q1: its enumeration, planted.
@@ -1602,6 +1687,13 @@ LIMITS = {
     "--token from a pipe": ("echo abc | aew lead session --token -", False),
     "set as a participle": ("Re-run with AEW_LEAD_TOKEN set.", False),
     "a pronoun for the credential": ("If you have no token, ask the operator, then paste it.", False),
+    # with no punctuation, filler alone stays in a negator's reach (recall first's own misses; #335's third quick
+    # check, T5)
+    "a run-on after a prohibition": ("AEW can't you must set AEW_LEAD_TOKEN yourself.", False),
+    "a run-on after a plain negator": ("The shell has no session you set AEW_LEAD_TOKEN.", False),
+    "a run-on after a refusing verb": ("Ignore the warning you must set AEW_LEAD_TOKEN.", False),
+    "a backtick straight after the negator": ("AEW can't`you must set AEW_LEAD_TOKEN yourself.", False),
+    "one set read as a noun": ("If you don't have one set AEW_LEAD_TOKEN first.", False),
     "a name across a comma (false positive)": ("Copy the file, and AEW_LEAD_TOKEN stays where it is.", True),
     "a bare word joined by and (false positive)": ("Pass the tests and the token is renewed.", True),
     # punctuation ends a prohibition's reach, so a prohibition written with an aside asks (recall first; #335's

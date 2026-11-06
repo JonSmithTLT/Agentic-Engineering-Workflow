@@ -45,8 +45,17 @@ TWO = "test_the_form_written_over_two_lines_in_one_block_passes"
 POSS = "test_a_possessive_of_something_other_than_the_value_is_no_ask"
 VALUE = "test_a_possessive_that_is_the_value_still_asks"
 PROMPT = "test_only_typing_or_entering_is_answered_by_a_prompt"
-PUNCT = "test_any_punctuation_ends_a_prohibition"
+PUNCT = ("test_the_punctuation_class_is_every_unicode_punctuation_and_symbol or "
+         "test_any_punctuation_or_line_break_ends_every_negators_reach")
 CONNECT = "test_every_connector_ends_a_negation"
+PROSE = "test_punctuation_or_a_line_break_ends_every_negators_reach_in_prose"
+HANDED = "test_nothing_is_handed_on_without_to_and_not_every_word_in_ly_is_an_adverb"
+SPAN = "test_a_negator_inside_the_asks_own_span_negates_only_what_it_governs"
+BREAKS = "test_every_line_break_ends_a_sentence"
+B_CHECK = ('    if PUNCTUATION.search(re.sub(r"`[^`\\n]*`", "`", before[last.end():])):  # a code span is a word\n'
+           '        return False\n')
+PASSES_ALL = "return all(_filler(w) or w in governs | passes for w in words)"
+IN_SPAN = "return all(_filler(w) or w in DETERMINERS for w in _words(between[last.end():]))"
 
 # id, what it reverts, file, old text, new text, test file, -k expression
 LINES: list[tuple] = [  # old and new: one text each, or a tuple of texts replaced together
@@ -81,9 +90,10 @@ LINES: list[tuple] = [  # old and new: one text each, or a tuple of texts replac
      POSS),
     ("R23", "every possessive passes (main caught the value's)", PARSER,
      r'''(?!['’]s?\s+(?:{OTHER_NOUN}|''', r'''(?!['’]s?\s+(?:\w+|''', RULES, VALUE),
-    ("R43", "a plain negator in the ask's own span negates what it does not govern", PARSER,
-     'return not last.group("plain") or all(_filler(w) or w in DETERMINERS for w in _words(between[last.end():]))',
-     'return True', RULES, CATCHES),
+    ("R43", "a negator in the ask's own span negates what it does not govern", PARSER, IN_SPAN, 'return True', RULES,
+     f"{CATCHES} or {SPAN}"),
+    ("R46", "only a plain negator in the ask's own span is held to what it governs (fix line D)", PARSER, IN_SPAN,
+     'return not last.group("plain") or ' + IN_SPAN[len("return "):], RULES, SPAN),
     ("R44", "a determiner ends a plain negator in the ask's own span", PARSER,
      'or w in DETERMINERS for w in', 'for w in', RULES, GOV),
     # O-SECRET: negation
@@ -99,16 +109,32 @@ LINES: list[tuple] = [  # old and new: one text each, or a tuple of texts replac
     ("S17", "negation looks past the sentence", PARSER,
      'start = max(max((m.end() for m in SENTENCE_END.finditer(text, max(0, at - 160), at)), default=0), at - 160)',
      'start = max(0, at - 160)', RULES, f"{CATCHES} or {NEG}"),
-    ("R1", "a prohibition reaches past any other word", PARSER,
-     'return all(_filler(w) or w in governs | PASSES_ON for w in words)', 'return True', RULES, NEG),
-    ("R2", "a prohibition stops at filler", PARSER,
-     'return all(_filler(w) or w in governs | PASSES_ON for w in words)',
-     'return all(w in governs | PASSES_ON for w in words)', RULES, GOV),
-    ("R32", "no verb hands a prohibition on", PARSER,
-     'return all(_filler(w) or w in governs | PASSES_ON for w in words)',
+    ("R1", "a prohibition reaches past any other word", PARSER, PASSES_ALL, 'return True', RULES, NEG),
+    ("R2", "a prohibition stops at filler", PARSER, PASSES_ALL, 'return all(w in governs | passes for w in words)',
+     RULES, GOV),
+    ("R32", "no verb hands a prohibition on", PARSER, PASSES_ALL,
      'return all(_filler(w) or w in governs for w in words)', RULES, GOV),
-    ("P0", "punctuation does not end a prohibition", PARSER,
-     '        if PUNCTUATION.search(between):\n            return False\n', '', RULES, PUNCT),
+    ("R33", "a pass-on word hands a prohibition on with no \"to\"", PARSER,
+     'passes = PASSES_ON if "to" in words else frozenset()', 'passes = PASSES_ON', RULES, HANDED),
+    ("P0", "punctuation ends no negator's reach", PARSER, B_CHECK, '', RULES, f"{PUNCT} or {PROSE}"),
+    ("R47", "punctuation ends only a prohibition's reach (fix line B)", PARSER, B_CHECK,
+     B_CHECK.replace("    if PUNCTUATION", '    if last.group("prohibit") and PUNCTUATION'), RULES,
+     f"{PUNCT} or {PROSE}"),
+    ("R48", "a code span is read as punctuation", PARSER, B_CHECK,
+     B_CHECK.replace('re.sub(r"`[^`\\n]*`", "`", before[last.end():])', 'before[last.end():]'),
+     RULES, GOV),
+    ("R49", "punctuation looked for after the joined-asks strip (fix line B)", PARSER,
+     (B_CHECK, '    between = JOINED_ASKS.sub(" ", before[last.end():])\n'),
+     ('', '    between = JOINED_ASKS.sub(" ", before[last.end():])\n' + B_CHECK.replace(
+         're.sub(r"`[^`\\n]*`", "`", before[last.end():])', 're.sub(r"`[^`\\n]*`", "`", between)')),
+     RULES, PROSE),
+    ("R50", "ask verbs joined whatever follows the conjunction (fix line F)", PARSER,
+     r'\s+(?:and|or)\s+(?=$|(?:{ASK_VERBS})\b)",', r'\s+(?:and|or)\s+",', RULES, PROSE),
+    ("R51", "only a newline ends a sentence (fix line A)", PARSER,
+     r'SENTENCE_END = re.compile("[.;:!?\n\r\v\f\x1c-\x1e\x85\u2028\u2029]")',
+     r'SENTENCE_END = re.compile(r"[.;:!?\n]")', RULES, f"{BREAKS} or {PROSE}"),
+    ("P2", "a prohibition's own punctuation check after the strip gone", PARSER,
+     '        if PUNCTUATION.search(between):\n            return False\n', '', RULES, f"{PUNCT} or {PROSE} or {GOV}"),
     ("P1", "a quote mark is not punctuation", PARSER,
      r'''|(?<!\w)['’]|['’](?!\w)")''', '")', RULES, PUNCT),
     ("R4", "ask verbs joined under one negator end its reach", PARSER,
@@ -118,11 +144,11 @@ LINES: list[tuple] = [  # old and new: one text each, or a tuple of texts replac
     ("R7", "the verb that governs a command line ends the reach", PARSER,
      'not _negated(text, at, governs=COMMAND_VERBS)', 'not _negated(text, at)', RULES, PASSES),
     ("R34", "an adverb ends a prohibition", PARSER,
-     ' or (word.endswith("ly") and len(word) > 4)', '', RULES, GOV),
-    ("S15", "a plain negation crosses a comma", PARSER,
-     'if "," in between or CONNECTOR.search(between):', 'if CONNECTOR.search(between):', RULES, CATCHES),
+     ' or (word.endswith("ly") and len(word) > 4 and word not in NOT_ADVERBS)', '', RULES, GOV),
+    ("R35", "a word in -ly that is not an adverb read as filler", PARSER,
+     ' and word not in NOT_ADVERBS)', ')', RULES, HANDED),
     ("R5", "a connector keeps a plain negation or a refusal", PARSER,
-     'if "," in between or CONNECTOR.search(between):', 'if "," in between:', RULES, CATCHES),
+     '    if CONNECTOR.search(between):\n        return False\n', '', RULES, f"{CATCHES} or {CONNECT}"),
     ("R29", "a plain negator reaches any later verb", PARSER,
      '    return bool(tail) and all(_filler(w) for w in tail)', '    return True', RULES, PLAIN),
     ("R30", "a plain negator reaches a verb straight after its word", PARSER,
@@ -246,7 +272,8 @@ def generated() -> list[tuple]:
     lines = []
     punctuation = r'''PUNCTUATION = re.compile(r"[^\w\s`'’'''
     for label, mark in (("hyphen", r"\-"), ("en dash", "–"), ("em dash", "—"), ("bracket", "("),
-                        ("square bracket", r"\["), ("comma", ","), ("double quote", r"\x22")):
+                        ("square bracket", r"\["), ("comma", ","), ("double quote", r"\x22"), ("slash", "/"),
+                        ("ellipsis", "…"), ("curly quote", "“”")):
         lines.append((f"P-{label}", f"a {label} is not punctuation", PARSER, punctuation, punctuation + mark, RULES,
                       PUNCT))
     source = (Path(__file__).resolve().parents[1] / "helpers" / "discovery" / "rules.py").read_text(encoding="utf-8")

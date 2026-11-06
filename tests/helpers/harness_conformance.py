@@ -65,6 +65,8 @@ def live_model() -> str:
     if not LIVE_MODEL:
         pytest.skip(LIVE_MODEL_SKIP)
     return LIVE_MODEL
+
+
 NO_WINDOW: dict[str, Any] = ({"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS
                              else {"start_new_session": True})
 

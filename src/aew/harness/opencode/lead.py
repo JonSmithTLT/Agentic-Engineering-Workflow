@@ -219,6 +219,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     if provider_env:
         sys.stderr.write(f"aew opencode: {', '.join(provider_env)} passed to the Lead's OpenCode; the Lead model's "
                          "shell commands can read it.\n")
+    lead_broker.require_credential(acquire)  # a missing credential refuses first, before any start line, as contained
     line = no_provider_line(provider_env, os.environ)
     if line is not None:
         sys.stderr.write(line)

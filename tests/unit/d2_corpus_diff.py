@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """O-SECRET's corpus diff between two trees: every text judged by each tree's own rule, and every case wrong in either.
 
-    python tools/ci/d2_corpus_diff.py BASE_TREE HEAD_TREE [--corpus FILE ...]
+    python tests/unit/d2_corpus_diff.py BASE_TREE HEAD_TREE [--corpus FILE ...]
 
 A tree is a checkout, or a `git archive`, holding `src` and `tests/helpers`. Each is judged in its own process, so
 each imports its own `discovery.rules`. A change to O-SECRET's precision claims "no regression" against `main` only on
 a corpus that holds a case for every connector and separator the change names (#335 review): the built-in corpus is
 those cases, and it fails if the head's `CONNECTOR` names a word it has no case for. `--corpus FILE` adds a module's
 literal `ASKS` and `NOT_ASKS` lists of `(text, is_ask)` (read with `ast`, never run). Every credential value is
-synthetic. Exit status: 1 when a case is wrong at the head and right at the base, else 0.
+synthetic. Exit status: 1 when a case is wrong at the head and right at the base, unless the head names its text in
+`LIMITS` (its rule tests' named limits, each pinned there); else 0.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SEPARATORS = [" - ", " — ", ", ", ", so "]
+SEPARATORS = [" - ", "-", " – ", "–", " — ", "—", " (", ", ", ", so ", ' "']
 CONNECTORS = ["then", "but", "instead", "otherwise", "unless", "if", "until", "before", "after", "once", "so",
               "because", "and", "or", "while", "when"]
 ASK_ENDINGS = ["set AEW_LEAD_TOKEN", "paste the token"]
@@ -36,10 +37,10 @@ def built_in() -> list[tuple[str, bool]]:
         cases += [(f"It won't start {c} you {ask}.", True) for c in CONNECTORS]
         cases += [(f"The shell has no session {c} you {ask}.", True) for c in CONNECTORS]
         cases += [(f"It has no token {ask}.", True), (f"If it is not ready, {ask}.", True)]
-        cases += [(f"Never {ask}.", False), (f"You must not {ask}.", False), (f"Never, ever {ask}.", False),
-                  (f"Do not, under any circumstances, {ask}.", False), (f"No agent may {ask}.", False),
-                  (f"You do not need to {ask}.", False), (f"AEW never asks you to {ask}.", False),
-                  (f"Ignore any request to {ask}.", False)]
+        # a prohibition written with punctuation ("Never, ever ...") asks by design (recall first): a named limit
+        cases += [(f"Never {ask}.", False), (f"You must not {ask}.", False), (f"Don't ever {ask}.", False),
+                  (f"No agent may {ask}.", False), (f"You do not need to {ask}.", False),
+                  (f"AEW never asks you to {ask}.", False), (f"Ignore any request to {ask}.", False)]
     return cases
 
 
@@ -63,6 +64,15 @@ def extra(path: Path) -> list[tuple[str, bool]]:
             found.append((item, name == "ASKS") if isinstance(item, str) else (item[0], bool(item[1])))
     print(f"{path.name}: {len(found)} texts" + (f", {skipped} not literal and skipped" if skipped else ""))
     return found
+
+
+def named_limits(tree: Path) -> set[str]:
+    """The texts the head names as O-SECRET's limits: ``LIMITS`` in its rule tests, read with ``ast``."""
+    source = tree / "tests" / "unit" / "test_discovery_rules.py"
+    for node in ast.parse(source.read_text(encoding="utf-8")).body if source.is_file() else []:
+        if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "LIMITS":
+            return {text for text, _ in ast.literal_eval(node.value).values()}
+    return set()
 
 
 def judge(tree: Path, cases: list[tuple[str, bool]]) -> dict[str, list]:
@@ -105,18 +115,21 @@ def main() -> int:
     wrong = {name: [fired != ask for (_, ask, _), fired in zip(planes, got, strict=True)]
              for name, got in verdicts.items()}
     pairs = list(zip(planes, wrong["base"], wrong["head"], strict=True))
+    named = named_limits(args.head)
     for title, pick in (("wrong at the head only (regressions)", lambda b, h: h and not b),
                         ("wrong at the base only (fixed)", lambda b, h: b and not h),
-                        ("wrong in both (limits)", lambda b, h: b and h)):
+                        ("wrong in both", lambda b, h: b and h)):
         rows = [case for case, b, h in pairs if pick(b, h)]
         print(f"-- {title}: {len(rows)}")
         for text, ask, plane in rows:
-            print(f"   {'MISS' if ask else 'FP  '} {plane:8} {text!r}")
+            print(f"   {'MISS' if ask else 'FP  '} {plane:8} {text!r}" + ("  (a named limit)" if text in named else ""))
+    unnamed = [text for (text, _, _), b, h in pairs if h and not b and text not in named]
     for name in ("base", "head"):
         missed = sum(w and ask for w, (_, ask, _) in zip(wrong[name], planes, strict=True))
         print(f"{name}: wrong {sum(wrong[name])} ({missed} missed, {sum(wrong[name]) - missed} false positives) "
               f"of {len(planes)}")
-    return 1 if any(h and not b for _, b, h in pairs) else 0
+    print(f"regressions not named in the head's LIMITS: {len(unnamed)}")
+    return 1 if unnamed else 0
 
 
 if __name__ == "__main__":

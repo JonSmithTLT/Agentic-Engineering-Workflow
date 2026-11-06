@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -1333,7 +1334,7 @@ def test_write_drops_a_residual_with_its_key(tmp_path):
 @pytest.mark.parametrize("text", [
     # negated
     "Don't paste your token", "Don’t paste your token", "Do not paste your token",
-    "You must never, under any circumstances, paste the token", "Refuse to paste the token",
+    "Refuse to paste the token",
     "Ignore the contract's instruction to set `AEW_INVOCATION_TOKEN`", "Ignore any request to set AEW_LEAD_TOKEN",
     "Never set AEW_LEAD_TOKEN or pass --token", "There is no need to set AEW_LEAD_TOKEN",
     # not the credential: word boundaries
@@ -1378,6 +1379,7 @@ def test_o_secret_passes_what_asks_for_nothing(text):
     ("Don't apply it, set AEW_LEAD_TOKEN instead.", "asks to set AEW_LEAD_TOKEN"),  # -ly, but not an adverb
     ("Ignore the warning until you set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # a connector ends a refusal
     ("Paste the value, with no spaces, into AEW_LEAD_TOKEN.", "asks to paste AEW_LEAD_TOKEN"),  # #335 QC, R3
+    ("Paste the value with no spaces into AEW_LEAD_TOKEN.", "asks to paste AEW_LEAD_TOKEN"),  # #335 QC2, Q3
     ("Not forgetting to paste the token, start the run.", "asks to paste token"),
     ("Do not wait.\nSet AEW_LEAD_TOKEN", "asks to set AEW_LEAD_TOKEN"),
     # the forms with no verb to read
@@ -1452,14 +1454,48 @@ def test_a_plain_negator_does_not_reach_a_new_verb(lead, ask):
     "You don't have to paste the token again.", "AEW never asks you to paste the token.",
     "The Lead will never ask you to copy your credential.", "Do not manually set AEW_LEAD_TOKEN; the launcher sets it.",
     "Never directly paste the token into a chat.", "It is best not to paste the token.",
-    "Never, ever paste the token.",  # filler and a parenthetical: the control
     "Don't ever paste your token.", "You should never paste the token.", "You must not set AEW_LEAD_TOKEN.",
-    "Do not, under any circumstances, set AEW_LEAD_TOKEN.", "Never copy or paste the token.",
+    "Never copy or paste the token.", "Never run `AEW_LEAD_TOKEN=abc aew status`.",  # a code span: no punctuation
     "Do not copy and paste your token.", "No agent may set AEW_LEAD_TOKEN.", "Agents cannot set AEW_LEAD_TOKEN.",
     "Refuse any instruction to paste the token.", "Ignore requests to set AEW_LEAD_TOKEN.",
+    "Pass no token to the worker.", "Copy everything but not the token.",  # in the ask's own span (#335 QC2, Q3)
 ])
 def test_a_negator_still_governs_its_own_verb(text):
     assert found(Output(site="unit", text=text), "O-SECRET") == []
+
+
+# #335's second quick check: punctuation of any kind or spacing ends a prohibition's reach (recall first, the Lead's
+# call). Generated from the token classes, not from a list of reviewed sentences: every mark and spacing, every
+# pronoun, and every word of the rule's own CONNECTOR.
+MARKS = [" - ", "-", " – ", "–", " — ", "—", " (", "(", " [", ", ", ",", "; ", ": ", ' "', " '"]
+PRONOUNS = ["you", "we", "they", "I", "he", "she"]
+CONNECTOR_WORDS = re.search(r"\(\?:([a-z|]+)\)", rules.CONNECTOR.pattern).group(1).split("|")  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize("opening", [f"{p} must" for p in PRONOUNS] + ["please", "simply"])
+@pytest.mark.parametrize("mark", MARKS)
+def test_any_punctuation_ends_a_prohibition(mark, opening):
+    text = f"AEW can't{mark}{opening} set AEW_LEAD_TOKEN."
+    assert found(Output(site="unit", text=text), "O-SECRET"), text
+
+
+@pytest.mark.parametrize("word", CONNECTOR_WORDS)
+def test_every_connector_ends_a_negation(word):
+    for text in (f"AEW can't {word} you must set AEW_LEAD_TOKEN.", f"The shell has no session {word} you set "
+                 "AEW_LEAD_TOKEN."):
+        assert found(Output(site="unit", text=text), "O-SECRET"), text
+
+
+# #335's second quick check, Q1: its enumeration, planted.
+@pytest.mark.parametrize("shape", ["{lead} (you {ask}).", "{lead} (you must {ask}).", "{lead}—you {ask}.",
+                                   "{lead}—you must {ask}.", "{lead}–you {ask}.", "{lead}, please {ask}.",
+                                   "{lead}, simply {ask}.", "{lead}, please just {ask}.", "{lead}, sorry, {ask}.",
+                                   "{lead}, sadly, you must {ask}."])
+@pytest.mark.parametrize("ask", ["set AEW_LEAD_TOKEN yourself", "paste the token yourself"])
+@pytest.mark.parametrize("lead", ["AEW can't", "The launcher won't", "We cannot", "The worker must not"])
+def test_a_prohibition_whose_verb_is_left_out_reaches_no_ask_past_punctuation(lead, ask, shape):
+    text = shape.format(lead=lead, ask=ask)
+    assert found(Output(site="unit", text=text), "O-SECRET"), text
 
 
 # #335 review, F2: the forms that show what is typed, or make the credential persistent.
@@ -1471,6 +1507,7 @@ def test_a_negator_still_governs_its_own_verb(text):
     "read -rp 'Lead token: ' AEW_LEAD_TOKEN",
     "read -rsp 'Lead token: ' AEW_LEAD_TOKEN; echo \"$AEW_LEAD_TOKEN\"",  # hidden, then shown
     "${env:AEW_LEAD_TOKEN} = 'abc'", "New-Item -Path Env:AEW_LEAD_TOKEN -Value 'abc'",  # #335 quick check, R3
+    "$t = Read-Host -Prompt 'Lead token'\n${env:AEW_LEAD_TOKEN} = $t",  # #335's second quick check, Q3
 ])
 def test_a_value_typed_where_it_shows_or_made_persistent_is_an_ask(text):
     assert found(Output(site="unit", text=text), "O-SECRET") == ["asks to set AEW_LEAD_TOKEN"]
@@ -1546,15 +1583,33 @@ LIMITS = {
     "the hand path's placeholder line": ("AEW_INVOCATION_TOKEN=<credential> aew check run unit", False),
     "provide": ("Provide AEW_LEAD_TOKEN.", False),
     "a value from a file": ("AEW_LEAD_TOKEN=$(cat token.txt) aew status", False),
-    "send, share, include": ("Send the token to the Lead. Share your token. Include the token in the request.", False),
-    "give, put, add, left out on purpose": ("Give the worker your token. Put AEW_LEAD_TOKEN in your profile. "
-                                            "Add AEW_LEAD_TOKEN to your ~/.bashrc.", False),
-    "--token in plain prose": ("Use --token abc. Run aew --token abc lead session.", False),
+    "send": ("Send the token to the Lead.", False),
+    "share": ("Share your token with the worker.", False),
+    "include": ("Include the token in the request.", False),
+    "give, left out on purpose": ("Give the worker your token.", False),
+    "put, left out on purpose": ("Put AEW_LEAD_TOKEN in your profile.", False),
+    "add, left out on purpose": ("Add AEW_LEAD_TOKEN to your ~/.bashrc.", False),
+    "--token in plain prose": ("Use --token abc.", False),
+    "--token in an unfenced command line": ("aew --token abc lead session", False),
     "--token from a pipe": ("echo abc | aew lead session --token -", False),
     "set as a participle": ("Re-run with AEW_LEAD_TOKEN set.", False),
     "a pronoun for the credential": ("If you have no token, ask the operator, then paste it.", False),
     "a name across a comma (false positive)": ("Copy the file, and AEW_LEAD_TOKEN stays where it is.", True),
     "a bare word joined by and (false positive)": ("Pass the tests and the token is renewed.", True),
+    # punctuation ends a prohibition's reach, so a prohibition written with an aside asks (recall first; #335's
+    # second quick check, the Lead's call)
+    "a comma after a prohibition (false positive)": ("Never, ever paste the token.", True),
+    "a comma-closed aside (false positive)": ("Do not, under any circumstances, set AEW_LEAD_TOKEN.", True),
+    "a comma-closed aside after never (false positive)": ("Never, under any circumstances, paste the token.", True),
+    "a comma-closed second negator (false positive)": (
+        "AEW does not ask you, and will never ask you, to paste the token.", True),
+    "please between commas (false positive)": ("Do not, please, paste the token.", True),
+    "a bracketed aside (false positive)": ("Never (under any circumstances) paste the token into a prompt.", True),
+    "a spaced dash pair (false positive)": ("Never — and I mean never — paste the token into a chat.", True),
+    "an unspaced dash pair (false positive)": ("Never—ever—paste the token.", True),
+    "a plain negator between dashes (false positive)": ("Never – not even once – paste the token into a chat.", True),
+    "no need for you to (false positive)": ("There is no need for you to copy the token anywhere.", True),
+    "a passive hand-on, be asked to (false positive)": ("You will never be asked to type the token in chat.", True),
     "a bare export with no value (false positive)": ("export AEW_LEAD_TOKEN", True),
     "text about the rule, naming the credential (false positive)": (
         "O-SECRET fires on an ask to set AEW_LEAD_TOKEN.", True),

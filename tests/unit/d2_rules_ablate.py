@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -44,6 +45,8 @@ TWO = "test_the_form_written_over_two_lines_in_one_block_passes"
 POSS = "test_a_possessive_of_something_other_than_the_value_is_no_ask"
 VALUE = "test_a_possessive_that_is_the_value_still_asks"
 PROMPT = "test_only_typing_or_entering_is_answered_by_a_prompt"
+PUNCT = "test_any_punctuation_ends_a_prohibition"
+CONNECT = "test_every_connector_ends_a_negation"
 
 # id, what it reverts, file, old text, new text, test file, -k expression
 LINES = [
@@ -78,8 +81,11 @@ LINES = [
      POSS),
     ("R23", "every possessive passes (main caught the value's)", PARSER,
      r'''(?!['’]s?\s+(?:{OTHER_NOUN}|''', r'''(?!['’]s?\s+(?:\w+|''', RULES, VALUE),
-    ("R39", "a negation inside a parenthetical negates the ask", PARSER,
-     'between = re.sub(r",[^,]*,", " ", m.group("between"))', 'between = m.group("between")', RULES, CATCHES),
+    ("R43", "a plain negator in the ask's own span negates what it does not govern", PARSER,
+     'return not last.group("plain") or all(_filler(w) or w in DETERMINERS for w in _words(between[last.end():]))',
+     'return True', RULES, CATCHES),
+    ("R44", "a determiner ends a plain negator in the ask's own span", PARSER,
+     'or w in DETERMINERS for w in', 'for w in', RULES, GOV),
     # O-SECRET: negation
     ("S9", "negation back to a 12-character window", PARSER,
      'not _negated(text, m.start()):\n            problems.append(f"asks to {m.group(1).lower()}',
@@ -94,31 +100,23 @@ LINES = [
      'start = max(max((m.end() for m in SENTENCE_END.finditer(text, max(0, at - 160), at)), default=0), at - 160)',
      'start = max(0, at - 160)', RULES, f"{CATCHES} or {NEG}"),
     ("R1", "a prohibition reaches past any other word", PARSER,
-     'return all(_filler(w) or w in governs | passes for w in rest_words)', 'return True', RULES, NEG),
+     'return all(_filler(w) or w in governs | PASSES_ON for w in words)', 'return True', RULES, NEG),
     ("R2", "a prohibition stops at filler", PARSER,
-     'return all(_filler(w) or w in governs | passes for w in rest_words)',
-     'return all(w in governs | passes for w in rest_words)', RULES, GOV),
-    ("R3", "no parenthetical crossed", PARSER,
-     'rest = re.sub(r"^\\s*,[^,]*,", " ", between, count=1)', 'rest = between', RULES, GOV),
+     'return all(_filler(w) or w in governs | PASSES_ON for w in words)',
+     'return all(w in governs | PASSES_ON for w in words)', RULES, GOV),
+    ("R32", "no verb hands a prohibition on", PARSER,
+     'return all(_filler(w) or w in governs | PASSES_ON for w in words)',
+     'return all(_filler(w) or w in governs for w in words)', RULES, GOV),
+    ("P0", "punctuation does not end a prohibition", PARSER,
+     '        if PUNCTUATION.search(between):\n            return False\n', '', RULES, PUNCT),
+    ("P1", "a quote mark is not punctuation", PARSER,
+     r'''|(?<!\w)['’]|['’](?!\w)")''', '")', RULES, PUNCT),
     ("R4", "ask verbs joined under one negator end its reach", PARSER,
      'between = JOINED_ASKS.sub(" ", before[last.end():])', 'between = before[last.end():]', RULES, GOV),
     ("R6", "a double negative negates", PARSER,
      '    if content[:1] and content[0] in DOUBLE_NEGATIVE:\n        return False\n', '', RULES, CATCHES),
     ("R7", "the verb that governs a command line ends the reach", PARSER,
      'not _negated(text, at, governs=COMMAND_VERBS)', 'not _negated(text, at)', RULES, PASSES),
-    ("R25", "a dash or a new subject does not end a prohibition", PARSER,
-     '        if NEW_SUBJECT.search(rest):\n            return False\n', '', RULES, SEP),
-    ("R26", "a dash does not end a prohibition", PARSER,
-     r'r"\s[-–—]\s|,\s*(?:you', r'r",\s*(?:you', RULES, SEP),
-    ("R27", "a comma before a new subject does not end a prohibition", PARSER,
-     r'|,\s*(?:you|we|they|i|he|she)\b", re.IGNORECASE)', r'", re.IGNORECASE)', RULES, SEP),
-    ("R28", "connectors read as filler", PARSER,
-     'FILLER = frozenset({"ever",', 'FILLER = frozenset({"so", "until", "before", "unless", "and", "ever",', RULES,
-     f"{CATCHES} or {NEG}"),
-    ("R32", "no verb hands a prohibition on", PARSER,
-     'passes = PASSES_ON if "to" in rest_words else frozenset()', 'passes = frozenset()', RULES, GOV),
-    ("R33", "a verb hands a prohibition on with no \"to\"", PARSER,
-     'passes = PASSES_ON if "to" in rest_words else frozenset()', 'passes = PASSES_ON', RULES, CATCHES),
     ("R34", "an adverb ends a prohibition", PARSER,
      ' or (word.endswith("ly") and len(word) > 4 and word not in NOT_ADVERBS)', '', RULES, GOV),
     ("R35", "every word in -ly is an adverb", PARSER,
@@ -242,6 +240,32 @@ LINES = [
      '            if git show "$GITHUB_SHA^1:tests/helpers/discovery/modes.py" > "$RUNNER_TEMP/modes-base.py"; then\n'
      '              base+=(--base-modes "$RUNNER_TEMP/modes-base.py")\n            fi\n', CI, GATE),
 ]
+
+
+def generated() -> list[tuple[str, str, str, str, str, str, str]]:
+    """One line per mark the punctuation check alone guards (";" and ":" end the sentence first), and one per word of
+    the rule's own CONNECTOR, read from rules.py beside these tests (derived, never restated)."""
+    lines = []
+    punctuation = r'''PUNCTUATION = re.compile(r"[^\w\s`'’'''
+    for label, mark in (("hyphen", r"\-"), ("en dash", "–"), ("em dash", "—"), ("bracket", "("),
+                        ("square bracket", r"\["), ("comma", ","), ("double quote", r"\x22")):
+        lines.append((f"P-{label}", f"a {label} is not punctuation", PARSER, punctuation, punctuation + mark, RULES,
+                      PUNCT))
+    source = (Path(__file__).resolve().parents[1] / "helpers" / "discovery" / "rules.py").read_text(encoding="utf-8")
+    segment = source[source.index("CONNECTOR = re.compile("):]
+    segment = re.sub(r'"\s*r"', "", segment[:segment.index("IGNORECASE")])
+    words = re.search(r"\(\?:([a-z|]+)\)", segment)
+    assert words, "CONNECTOR's words not found in rules.py"
+    for word in words.group(1).split("|"):
+        lines.append((f"K-{word}", f"'{word}' read as filler", PARSER, 'FILLER = frozenset({"ever",',
+                      f'FILLER = frozenset({{"{word}", "ever",', RULES, CONNECT))
+    return lines
+
+
+LINES += generated()
+LINES.append(("R45", "${env:X} = $v after an unmasked read not followed", PARSER,
+              r'rf"\$\{{?env:{re.escape(name)}\}}?\s*=\s*\${read.group(1)}\b"',
+              r'rf"\$env:{re.escape(name)}\s*=\s*\${read.group(1)}\b"', RULES, SHOWN))
 
 
 def sha(path: Path) -> str:

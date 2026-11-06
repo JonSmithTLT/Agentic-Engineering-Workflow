@@ -15,6 +15,8 @@ import io
 import json
 import os
 import tarfile
+import time
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -35,14 +37,382 @@ from capability_stand_in import (
 )
 from conftest import IS_WINDOWS
 
-from aew import errors
+from aew import errors, process_kind
 from aew.capability import ops, records, status, store
 from aew.capability import payload as P
+
+URLOPEN = urllib.request.urlopen  # the real one: `make_register` replaces it with one that fails the test
 
 
 @pytest.fixture
 def reg(tmp_path, monkeypatch):
     return make_register(tmp_path, monkeypatch)
+
+
+def test_a_workers_own_aew_neither_fetches_nor_records_and_the_operators_does(reg, monkeypatch):
+    """The register is the operator's, and AEW downloads no tool the operator did not choose (the operator,
+    2026-11-05). An agent's own `aew` starts on its allow-listed environment, so where no sandbox holds it, a fetch and
+    a record would land in a register of its choosing: its `aew capability check` is refused before anything is read,
+    and a self-test's results are not recorded. The operator's check fetches and records."""
+    asked: list[Any] = []
+
+    def fetched(pinned: dict[str, Any]) -> bytes:
+        asked.append(pinned)
+        return reg["archive"]
+
+    monkeypatch.setattr(P, "fetch", fetched)
+    tools = {"fake": {"tried": [{"ok": True, "cause": None, "path": "x", "sha256": "0" * 64, "record_digest": "d",
+                                 "version": "v", "kind": status.AEW_COPY}]}}
+    key = f"{status.AEW_COPY}:fake"
+    for worker in ("aew (worker run)", "aew (contained Lead)"):
+        with process_kind.declared_as(worker):
+            with pytest.raises(errors.PermissionDenied) as refused:
+                ops.check()
+            assert refused.value.details["reason"] == "operator_only" and "operator" in refused.value.message
+            ops.record_contained(tools)
+    assert asked == [] and key not in (store.read().get("checks") or {})
+    ops.record_contained(tools)
+    assert key in store.read()["checks"]
+    ops.check()
+    assert asked
+
+
+CHECK, APPLY = ("aew.capability.ops", "check"), ("aew.capability.ops", "apply")
+Name = tuple[str, str]  # (module, its top-level name or Class.method)
+
+
+def _aliases(tree: Any, mod: str, is_package: bool, modules: set[str]) -> dict[str, tuple[str, str | None]]:
+    """Each name a module imports, anywhere in it: (a module, None) or (a module, a name in it)."""
+    import ast
+
+    package = mod if is_package else mod.rpartition(".")[0]
+    out: dict[str, tuple[str, str | None]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:
+                parts = package.split(".")
+                base = ".".join(parts[:len(parts) - node.level + 1] + ([base] if base else []))
+            for a in node.names:
+                full = f"{base}.{a.name}"
+                out[a.asname or a.name] = (full, None) if full in modules else (base, a.name)
+        elif isinstance(node, ast.Import):
+            for a in node.names:
+                out[a.asname or a.name.split(".")[0]] = (a.name if a.asname else a.name.split(".")[0], None)
+    return out
+
+
+def _used(node: Any, mod: str, alias: dict[str, tuple[str, str | None]], modules: set[str]) -> set[Name]:
+    """What ``node`` names: a name of its own module, an imported name, or a name reached through an imported
+    module."""
+    import ast
+
+    found: set[Name] = set()
+    for n in ast.walk(node):
+        if isinstance(n, ast.Name):
+            target = alias.get(n.id)
+            found.add((target[0], target[1]) if target and target[1] else (mod, n.id))
+        elif isinstance(n, ast.Attribute):
+            chain, value = [n.attr], n.value
+            while isinstance(value, ast.Attribute):
+                chain.insert(0, value.attr)
+                value = value.value
+            if isinstance(value, ast.Name) and value.id in alias and alias[value.id][1] is None:
+                whole = ".".join([str(alias[value.id][0]), *chain])
+                owner = max((m for m in modules if whole == m or whole.startswith(m + ".")), key=len, default=None)
+                if owner is not None and whole != owner:
+                    found.add((owner, whole[len(owner) + 1:].split(".")[0]))
+    return found
+
+
+def test_no_route_but_the_operators_own_commands_reaches_the_fetch():
+    """The operator, 2026-11-05: AEW downloads no tool unless the operator chooses it. Every function in AEW's source
+    from which ``payload.fetch`` can be reached, by name, within a module or through an imported module, comes through
+    one of two doors: ``ops.check`` (`aew capability check`; refused to an agent's own `aew` and to the Lead's broker,
+    the tests above and ``test_capability_commands``) and ``ops.apply`` (an add the operator approved at the operator
+    endpoint, with its principal). Nothing else reaches the fetch, and each door has one caller. A launch, the broker,
+    a supervisor or an agent's tool that came to reach the fetch another way would be named here. Its limit: a method
+    called through an object is not followed, so a door's caller that is a method is named, never its own callers."""
+    import ast
+
+    src = Path(ops.__file__).resolve().parents[2]
+    files = {".".join(f.relative_to(src).with_suffix("").parts).removesuffix(".__init__"): f
+             for f in src.joinpath("aew").rglob("*.py")}
+    modules = set(files)
+    refs: dict[Name, set[Name]] = {}
+    for mod, path in files.items():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        alias = _aliases(tree, mod, path.name == "__init__.py", modules)
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                refs.setdefault((mod, node.name), set()).update(_used(node, mod, alias, modules))
+            elif isinstance(node, ast.ClassDef):
+                for item in node.body:
+                    name = f"{node.name}.{item.name}" if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                        else node.name
+                    refs.setdefault((mod, name), set()).update(_used(item, mod, alias, modules))
+            else:
+                refs.setdefault((mod, "<module>"), set()).update(_used(node, mod, alias, modules))
+    reached, todo = set(), [("aew.capability.payload", "fetch")]
+    while todo:
+        target = todo.pop()
+        for caller, used in refs.items():
+            if target in used and caller not in reached and caller != target:
+                reached.add(caller)
+                if caller not in (CHECK, APPLY):  # a door: what reaches it is the door's own caller, below
+                    todo.append(caller)
+    assert reached == {("aew.capability.ops", n) for n in ("_fetched", "_fetch", "_acquire", "_apply_add")} | {
+        CHECK, APPLY}, sorted(reached)
+    assert {c for c, used in refs.items() if CHECK in used} == {("aew.cli.capability_commands", "_check")}
+    assert {c for c, used in refs.items() if APPLY in used} == {
+        ("aew.harness.operator_endpoint", "OperatorEndpoint._capability_change")}
+
+
+def test_a_fetch_error_never_carries_its_text_into_the_status_the_record_or_the_line(reg, monkeypatch, capsys):
+    """The designer's rule 1: a proxy's URL can carry its credentials, and a fetch's error can carry that URL. The
+    status, the register's record, the run's record and the operator's line say why in AEW's own words, a closed
+    reason. The fetch is the operator's `aew capability check`'s, the only one there is."""
+    import urllib.error
+
+    proxy = "http://user:hunter2@proxy.invalid:3128"
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+
+    def through_the_proxy(*_a: Any, **_k: Any) -> Any:
+        raise urllib.error.URLError(f"Tunnel connection failed via {proxy}: 407 Proxy Authentication Required")
+
+    monkeypatch.setattr("urllib.request.urlopen", through_the_proxy)
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    with pytest.raises(errors.Unavailable) as raised:
+        P.fetch(records.shipped()["fake"]["payloads"][records.platform_key()])
+    assert "hunter2" not in raised.value.message and raised.value.details["fetch_reason"] == "unreachable"
+    checked = ops.check("fake")
+    flags = ops.flag_missing({"fake": {"command": "fake", "served": None, "path": None}})
+    said = json.dumps([store.read(), ops.listing(), checked, flags, ops.run_record(flags)], default=str)
+    said += capsys.readouterr().err
+    assert "hunter2" not in said and "user:" not in said, said
+    failed = store.read()["fetch_failures"][f"fake:{records.platform_key()}"]
+    assert failed["code"] == "unreachable" and P.FETCH_REASONS["unreachable"] in failed["reason"]
+    assert flags and flags[0]["reason"] == "fetch_failed"
+
+
+def test_a_source_with_a_user_in_it_is_shown_without_one():
+    assert P.shown_source("https://u:p@example.invalid/a.tgz") == "https://example.invalid/a.tgz"
+    assert P.shown_source("https://example.invalid/a.tgz") == "https://example.invalid/a.tgz"
+
+
+def _garbling_proxy() -> tuple[str, Any]:
+    """A loopback stand-in proxy that answers a CONNECT with something that is not HTTP, and its closer."""
+    import socket
+    import threading
+
+    server = socket.create_server(("127.0.0.1", 0))
+    server.settimeout(10)
+
+    def serve() -> None:
+        try:
+            conn, _ = server.accept()
+        except OSError:
+            return
+        with conn:
+            conn.settimeout(10)
+            try:
+                conn.recv(4096)
+                conn.sendall(b"this is not http\r\n\r\n")
+            except OSError:
+                pass
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+
+    def close() -> None:
+        server.close()
+        thread.join(10)
+
+    return f"http://user:hunter2@127.0.0.1:{server.getsockname()[1]}", close
+
+
+@pytest.mark.parametrize("proxy, code", [("garbles", "unreachable"), ("http://user:hunter2@127.0.0.1:notaport",
+                                                                     "bad_source")])
+def test_a_proxy_that_breaks_http_gives_a_closed_reason_never_a_crash(reg, monkeypatch, capsys, proxy, code):
+    """Quick check of #330, m-b: `http.client`'s own errors (a proxy that answers in something other than HTTP, a
+    proxy port that is not a number) are a closed reason too, through the real `urllib` and only to the loopback: the
+    operator's check records the failure, and no output carries the proxy's synthetic credential."""
+    import urllib.request
+
+    monkeypatch.setattr("urllib.request.urlopen", URLOPEN)
+    monkeypatch.setattr(urllib.request, "_opener", None)  # urlopen's opener reads the proxy once: rebuild it
+    for name in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY",
+                 "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    close = None
+    if proxy == "garbles":
+        proxy, close = _garbling_proxy()
+    monkeypatch.setenv("HTTPS_PROXY", proxy)
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    try:
+        checked = ops.check("fake")
+    finally:
+        if close:
+            close()
+    flags = ops.flag_missing(STUB)
+    said = json.dumps([checked, store.read(), ops.listing(), flags], default=str) + capsys.readouterr().err
+    assert "hunter2" not in said and "user:" not in said, said
+    assert store.read()["fetch_failures"][f"fake:{records.platform_key()}"]["code"] == code
+    assert [f["reason"] for f in flags] == ["fetch_failed"]
+
+
+def test_a_source_with_a_user_or_password_is_refused_at_add_and_on_a_read_without_repeating_it(reg):
+    """Quick check of #330, m-b: a source with a user and password in it is refused, so the register, which every
+    sandbox reads, never keeps one; and the refusal says so in AEW's words, never the source's."""
+    _import(reg)
+    before = (reg["root"] / store.REGISTER).read_bytes()
+    record = _record(reg["body"], reg["archive"], description="with a user")
+    record["payloads"][KEY] = {**record["payloads"][KEY], "source": SOURCE.replace("https://", "https://u:hunter2@")}
+    with pytest.raises(errors.ValidationFailed) as refused:
+        _add(reg, record)
+    said = json.dumps(refused.value.to_dict())
+    assert "user or password" in said and "hunter2" not in said, said
+    assert (reg["root"] / store.REGISTER).read_bytes() == before
+    with pytest.raises(errors.ValidationFailed):  # the schema's own pattern refuses it as well
+        from aew import schemas
+        schemas.validate("capability-records", {"schema": records.SCHEMA, "providers": {"fake": record}}, source="t")
+    state = store.read()  # one kept from before: refused on a read, without the password
+    state["operator_records"]["fake"] = {"record": record, "base_digest": records.digest(reg["shipped"]["fake"])}
+    with store.locked() as root:
+        store.write(state, root)
+    cap = _cap()
+    assert cap["observed_status"] == status.REFUSED and "user or password" in cap["cause"]
+    assert "hunter2" not in json.dumps(ops.listing(), default=str), ops.listing()
+
+
+STUB = {"fake": {"command": "fake", "served": None, "path": None}}
+
+
+def test_a_launch_without_the_pinned_copy_flags_it_once_per_state_and_one_with_it_says_nothing(reg, monkeypatch,
+                                                                                                capsys):
+    """The operator, 2026-11-05: a launch that goes on without a pinned tool never does it quietly. One line per tool
+    and state on the operator's terminal (the designer's rule 2), a change of state says so again, and a tool bound
+    again clears it. The line never names a download: a launch never makes one."""
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    first = ops.flag_missing(STUB)
+    line = capsys.readouterr().err
+    assert line.count("\n") == 1 and line.startswith("aew: attention: fake in this run is a stub that fails"), line
+    assert "it is not installed on this host" in line and "The run goes on" in line and "aew capability check" in line
+    assert "aew capability import" in line and "fetch" not in line.split("Fix:")[0] and "download" not in line, line
+    assert [f["reason"] for f in first] == ["not_installed"]
+    assert ops.flag_missing(STUB) == first and capsys.readouterr().err == ""  # the record keeps it; no repeat
+    pinned = records.shipped()["fake"]["payloads"][records.platform_key()]
+    with store.locked():
+        state = store.read()
+        state["fetch_failures"][f"fake:{records.platform_key()}"] = {
+            "at": "2026-11-05T00:00:00Z", "reason": "x", "sha256": pinned["sha256"], "code": "unreachable"}
+        store.write(state)
+    ops.flag_missing(STUB)
+    assert "the fetch failed (at 2026-11-05T00:00:00Z)" in capsys.readouterr().err  # a new state says so again
+    assert ops.flag_missing({"fake": {"command": "fake", "served": status.AEW_COPY, "path": "x"}}) == []
+    assert capsys.readouterr().err == "" and "fake" not in store.read()["flagged"]  # bound: nothing, and cleared
+    ops.flag_missing(STUB)
+    assert "aew: attention: fake" in capsys.readouterr().err  # missing again: said again
+
+
+def test_twenty_runs_without_the_pinned_copy_give_twenty_records_and_one_flag(reg, monkeypatch, capsys):
+    """The operator, 2026-11-05: "the missing tool acts the same as missing skills and is logged and not voided".
+    Every run's record carries every missing tool with its closed reason, as a run's missing skills are kept; the
+    operator's line is once per tool and state, and it never removes a tool from a record."""
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    runs = [ops.run_record(ops.flag_missing(STUB)) for _ in range(20)]
+    assert capsys.readouterr().err.count("aew: attention: fake") == 1
+    assert len(runs) == 20 and all(r["unavailable"] == ["fake"] and r["reasons"] == {"fake": "not_installed"}
+                                   and [d["served"] for d in r["detail"]] == ["stub"] for r in runs), runs
+
+
+def test_the_flag_goes_only_to_the_operators_terminal(reg, monkeypatch, capsys):
+    """A supervisor's stderr is its run's log, and a worker's own `aew` is the agent's: neither prints the line, and
+    neither marks it seen, so the operator's next launch at a terminal says it. Each run's record still has it."""
+    monkeypatch.setattr(ops, "_to_terminal", lambda: False)
+    assert ops.flag_missing(STUB) and capsys.readouterr().err == ""
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    with process_kind.declared_as("aew (worker run)"):
+        assert ops.flag_missing(STUB) and capsys.readouterr().err == ""
+    ops.flag_missing(STUB)
+    assert "aew: attention: fake" in capsys.readouterr().err
+
+
+def test_a_refused_launch_neither_says_the_run_goes_on_nor_marks_the_flag_seen(reg, monkeypatch, capsys):
+    """Quick check of #330, m-a: the line says "The run goes on", so only a launch whose self-test passed prints it and
+    marks it seen; the next launch that goes on, with the same tool missing, says it. The sandbox's pieces are stood
+    in for, in process."""
+    from types import SimpleNamespace
+
+    from aew.harness import containment as C
+    from aew.harness.containment import probe
+
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    monkeypatch.setattr(C, "supported", lambda: True)
+    monkeypatch.setattr(C, "for_run", lambda **_k: SimpleNamespace(net_dir=None))
+    monkeypatch.setattr(C, "retire_private_git", lambda *_a, **_k: None)
+    monkeypatch.setattr(C, "label", lambda **k: {"contained": k.get("contained")})
+    monkeypatch.setattr(probe, "mechanism", lambda _layout: "stand-in")
+    verdict = {"ok": False}
+    monkeypatch.setattr(probe, "self_test", lambda *_a, **_k: {"ok": verdict["ok"], "reason": "stand-in failure",
+                                                                "tools": {"fake": {**STUB["fake"], "tried": []}}})
+    base = reg["root"].parent
+    (base / "ws").mkdir()
+    launch: dict[str, Any] = dict(role="reviewer", scope="ticket", workspace=str(base / "ws"),
+                                  run_dir=base / "runs" / "r1", scratch=str(base / "s"), bridge_dir=None,
+                                  policy={"containment": {"mode": "required"}}, project=str(base))
+    with pytest.raises(errors.ContainmentUnavailable):
+        C.establish(**launch)
+    assert capsys.readouterr().err == "" and "fake" not in (store.read().get("flagged") or {})
+    verdict["ok"] = True
+    _, label = C.establish(**launch)
+    assert "aew: attention: fake" in capsys.readouterr().err and label["missing_tools"]["unavailable"] == ["fake"]
+
+
+@pytest.mark.parametrize("tried, reason", [([{"kind": status.AEW_COPY, "ok": False}], "check_failed"),
+                                           ([], "not_served_here")])
+def test_a_checked_copy_that_did_not_serve_this_run_says_why_from_the_runs_own_evidence(reg, monkeypatch, capsys,
+                                                                                         tried, reason):
+    """Quick check of #330, m-c: AEW's copy reads usable (checked, and it passed), but this run got the stub, its own
+    result not recorded yet (the short lock gave way, or the register is masked). The reason is the run's own: its
+    check failed inside, or the copy did not serve there; never "it was never checked"."""
+    _import(reg)
+    assert store.read()["checks"][f"{status.AEW_COPY}:fake"]["ok"] is True
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    flags = ops.flag_missing({"fake": {**STUB["fake"], "tried": tried}})
+    line = capsys.readouterr().err
+    assert [f["reason"] for f in flags] == [reason] and status.NOT_SERVING_WHY[reason] in line, line
+    assert "never checked" not in line
+
+
+def test_a_flag_line_that_cannot_be_written_never_stops_the_launch(reg, monkeypatch):
+    """Quick check of #330, m-d (CAPR-12): the operator's terminal went away between the check and the write. The line
+    is lost; the run's record keeps the tool."""
+
+    class Gone:
+        def write(self, _text: str) -> int:
+            raise BrokenPipeError("the terminal went away")
+
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    monkeypatch.setattr(ops.sys, "stderr", Gone())
+    assert [f["tool"] for f in ops.flag_missing(STUB)] == ["fake"]
+
+
+def test_a_launch_behind_a_long_holder_of_the_lock_gives_way_and_the_next_records_it(reg, monkeypatch):
+    """CAPR-12: recording a check never stops a launch for as long as a register command may wait."""
+    monkeypatch.setattr(store, "RECORD_WAIT_S", 0.2)
+    monkeypatch.setattr(store, "LOCK_TIMEOUT_S", 20.0)
+    tools = {"fake": {"tried": [{"ok": True, "cause": None, "path": "x", "sha256": "0" * 64, "record_digest": "d",
+                                 "version": "v", "kind": status.AEW_COPY}]}}
+    started = time.monotonic()
+    with store.locked():
+        ops.record_contained(tools)
+        spent = time.monotonic() - started
+    assert spent < 10.0, spent  # the short wait, well before the store's own would have ended
+    key = f"{status.AEW_COPY}:fake"
+    assert key not in (store.read().get("checks") or {})
+    ops.record_contained(tools)
+    assert store.read()["checks"][key]["where"] == status.IN_SANDBOX
 
 
 def _cap(cap: str = "FAKE_SEARCH") -> dict[str, Any]:
@@ -92,10 +462,21 @@ def test_platform_keys():
 # ---------------------------------------------------------------------------------------------- the statuses
 
 
-def test_a_payload_never_fetched_reads_unavailable_with_its_cause_and_fix(reg):
+def test_where_no_context_is_contained_the_status_says_the_download_stays_reachable(reg):
+    """CAP-1 PR 2: no sandbox on Windows, so no bind, and its capabilities say so. A Linux run the policy allows to be
+    weaker says so on its label, as a register per host cannot know one project's policy."""
+    from aew.harness import containment
+
+    assert _cap()["limitations"] == ([status.NOT_BOUND] if IS_WINDOWS else [])
+    assert "download stays reachable" in status.NOT_BOUND
+    assert containment.label(contained=False)["register_tools"] == status.NOT_BOUND
+    assert "register_tools" not in containment.label(contained=True, mechanism="m")
+
+
+def test_a_payload_not_installed_reads_unavailable_with_its_cause_and_fix(reg):
     cap = _cap()
     assert cap["observed_status"] == status.UNAVAILABLE and cap["assessment_status"] == status.NOT_ESTABLISHED
-    assert "never fetched or imported" in cap["cause"]
+    assert cap["cause"] == "its pinned payload is not on this host: it is not installed"
     assert "aew capability check" in cap["fix"] and "aew capability import" in cap["fix"]
 
 
@@ -378,7 +759,7 @@ def test_with_host_copies_off_a_host_copy_never_serves(reg, monkeypatch):
 def test_with_no_copy_at_all_the_capability_is_unavailable_with_its_cause(reg):
     cap = _cap()
     assert cap["observed_status"] == status.UNAVAILABLE and cap["copy"] == status.AEW_COPY
-    assert cap["limitations"] == []
+    assert cap["limitations"] == ([status.NOT_BOUND] if IS_WINDOWS else [])
 
 
 # ---------------------------------------------------------------------------------------------- operator records

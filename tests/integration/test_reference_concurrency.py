@@ -162,16 +162,21 @@ def test_the_locks_are_the_six_the_code_was_read_to_take():
 
 def test_the_capability_registers_lock_is_its_stores_own_and_a_second_taker_waits_its_timeout(tmp_path, monkeypatch):
     """CAP-1 review F3: the host register's lock, read where the code takes it (outside every project, so unplaced,
-    keyed by its opener, with the store's own timeout constant), and held against a second taker as it says."""
+    keyed by its opener, with the store's own timeout constants), and held against a second taker as it says. A launch
+    takes it too, to record what its sandbox found (CAP-1 PR 2), with the short wait."""
     from aew.capability import store
 
     fact = RECORDS["lock:unplaced:aew.capability.store:locked"].fact
-    assert fact["timeout"] == "LOCK_TIMEOUT_S"
-    assert {e for t in fact["takers"] for e in t["entry_points"]} == {"aew"}
+    assert fact["timeout"] == "RECORD_WAIT_S if short else LOCK_TIMEOUT_S"
+    assert {e for t in fact["takers"] for e in t["entry_points"]} == {"aew", "aew.harness.supervisor"}
     assert sum(CT.counts(src.text, []).get(CO.LOCK[1], 0) for name, src in CTX.sources().items()
                if name.startswith("aew.capability.")) == 1  # the register's one construction
     monkeypatch.setattr(store, "LOCK_TIMEOUT_S", 0.2)
     with store.locked(tmp_path), pytest.raises(LockTimeout), store.locked(tmp_path):
+        pass
+    monkeypatch.setattr(store, "LOCK_TIMEOUT_S", 600.0)
+    monkeypatch.setattr(store, "RECORD_WAIT_S", 0.2)
+    with store.locked(tmp_path), pytest.raises(LockTimeout), store.locked(tmp_path, short=True):
         pass
     assert (tmp_path / store.LOCK).exists()
 

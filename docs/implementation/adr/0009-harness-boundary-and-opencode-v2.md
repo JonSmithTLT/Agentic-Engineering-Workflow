@@ -1686,3 +1686,55 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   starts, carry it so the scan finds them. Its value is the path of the context's record, never a credential.
 - **Tests:** `tests/integration/test_lead_uncontained.py`, `tests/unit/test_weaker_register.py`,
   `tests/unit/test_launch_census.py` (every process start in `src/` and `eval/`, classified).
+
+## Amendment 2026-11-04 — the register's tools in every contained context (STG-15, CAP-1 PR 2)
+
+This replaces the 2026-10-24 amendment's `aew doctor` `ripgrep` line, and its "ripgrep where a run finds none".
+
+- **What it answers:** OpenCode's ripgrep lookup is `which("rg", PATH + <bin>)`, then `<bin>/rg`, then a download from
+  github.com, with no switch to turn that off (2.0.18, `core/src/ripgrep/binary.ts`; `<bin>` is
+  `$XDG_CACHE_HOME/opencode/bin`). The designer's CAP-1 ruling 1 replaces the switch with a lookup that never misses.
+- **The mechanism:** every contained context has its own directory first on `PATH`, `<run>/tools/first`, written on the
+  host and read-only inside. For each record of `path: first` it holds one entry under the record's command: a link to
+  AEW's pinned copy, a link to a copy the host has (named as unpinned in the status), or AEW's failing stub, which
+  prints the cause (`aew.capability.bind`). A record of `path: own_name` goes in `<run>/tools/own_name`, last on `PATH`,
+  with no stub, so the project keeps the host's tool under that name. One loop over the records does both.
+- **`PATH` is set by bubblewrap, in `bwrap_argv`** (`--setenv PATH`), on what the caller's environment holds. That is
+  the one way into a sandbox, so a context cannot miss it whichever allow-list built its environment. Its callers name
+  their environment's `PATH`; one that does not gets this process's.
+- **The register is bound read-only,** with `--ro-bind-try`, since a payload may go during a run, which then fails only
+  that tool. The context's directory and the register are also `protected`, so the launch self-test refuses a sandbox
+  that could write them. A register under a host mask (`/run`) is not bound in: a bind there would re-open part of a
+  tree the layout masks whole, and the bind-back refusal reads no tool bind, so `_tool_fields`' filter keeps the mask
+  whole. Its copies' checks then fail inside, each entry becomes the stub, and the launch goes on.
+- **The check runs inside.** The self-test's probe runs each copy's health check in the sandbox, and only reports it:
+  `status.judge` on the host owns what a check means. `bind.settle` then rewrites each entry from that, so a copy that
+  matches its pin but cannot run there never serves, and a host copy the sandbox cannot see becomes the stub, never a
+  dangling link, which `which` would pass over. Where no sandbox can be made, `aew capability check` runs it on the host
+  and the status says so.
+- **It never refuses a launch** (CAPR-12): the tools' health is no part of the self-test's verdict, its budget is half
+  the probe's time, and recording a result cannot stop a launch.
+- **No launch downloads a tool** (the operator, 2026-11-05: AEW downloads no tool unless the operator chooses it; it
+  amends CAPR-04's online branch and CAPR-Q10). A pinned copy reaches a host by the operator's `aew capability check`
+  (online) or `aew capability import` (offline), and by nothing else: the fetch has two doors, `ops.check` and the
+  add the operator approved at the operator endpoint (`ops.apply`), and a test reads AEW's source for any other route.
+  An agent's own `aew` (a worker run's, the contained Lead's) is refused the check, as the Lead's broker refuses it,
+  so no agent's tool chooses one either. A host without the copy reads "not installed", and its fix names both
+  commands. The two records a launch makes after its self-test (the checks' results, and the mark of the operator's
+  flag) wait only the short `store.RECORD_WAIT_S` for the lock, giving way to the next launch behind a longer holder
+  such as the operator's check; `starting_limit_s` adds both.
+- **Why a fetch failed is a closed reason** (`payload.FETCH_REASONS`), in AEW's own words, never the error's text,
+  which can carry a proxy's URL with its credentials; a source is shown without a user or password. The register's
+  record keeps the reason's code.
+- **A missing tool is logged on every run and never dropped, as a missing skill is** (the operator, 2026-11-05). A run
+  that binds a stub or an unpinned host copy keeps it on its label (`missing_tools`: each tool in `unavailable`, its
+  closed reason in `reasons`, from `status.NOT_SERVING_WHY`, and in `detail` how it was served, since when and the
+  fix), which `harness status` and the Lead's label carry; nothing removes a tool from a run's record. The operator's
+  terminal gets one line per tool and state (the register's `flagged`), not one per launch: a launch whose stderr is
+  not a terminal (a supervisor's, its run's log) and a worker's own `aew` print nothing, and a tool bound again clears
+  it. It is attention, not a stop: the run goes on, and the stub tells the agent at use what to search with meanwhile.
+- **Where it does not reach:** Windows, and a Linux run the policy allows to be weaker, have no sandbox, so no bind, and
+  the download stays reachable there. Those runs' labels say so (`register_tools`), and on Windows the capabilities'
+  limitations do.
+- **Tests:** `tests/integration/test_capability_bind.py`; CAPR-Q08's rows against a real OpenCode are
+  `tests/live/test_capability_q08_live.py`.

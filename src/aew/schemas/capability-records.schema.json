@@ -91,8 +91,9 @@
       "additionalProperties": false,
       "required": ["source", "archive_sha256", "archive_size", "member", "sha256", "size"],
       "properties": {
-        "source": {"description": "Where the online fetch takes the archive from.", "type": "string",
-                   "pattern": "^https://[^\\s]+/[^/\\s]+\\.(tar\\.gz|zip)$", "maxLength": 500},
+        "source": {"description": "Where the online fetch takes the archive from: never with a user or password, which the register would keep where every sandbox reads it.",
+                   "type": "string", "pattern": "^https://[^\\s/@]+/([^\\s]*/)?[^/\\s]+\\.(tar\\.gz|zip)$",
+                   "maxLength": 500},
         "archive_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "archive_size": {"description": "The archive's size: a fetch or an import that reads more is refused.",
                          "type": "integer", "minimum": 1},

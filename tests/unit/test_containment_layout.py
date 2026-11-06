@@ -152,9 +152,13 @@ def test_the_lead_sandbox_hides_aew_local_but_its_own_run_and_state_directories(
     assert layout.hide_runs == (local,)
     run = os.path.join(local, "harness", "runs", "lead-1")
     under = sorted(p for p in (*layout.writable, *layout.readonly) if L._within(p, local))
+    # the context's own entries (CAPR-04), written by the host and read-only here; on Linux, as only it has a sandbox
+    tools = os.path.join(run, "tools")
     assert under == sorted([os.path.join(local, "harness", "lead"), os.path.join(run, "git"),
-                            os.path.join(run, "harness"), os.path.join(run, "scratch")])
-    assert all(p in layout.writable for p in under)
+                            os.path.join(run, "harness"), os.path.join(run, "scratch"),
+                            *([] if sys.platform == "win32" else [tools])])
+    assert sys.platform == "win32" or (tools in layout.readonly and tools not in layout.writable)
+    assert all(p in layout.writable for p in under if p != tools)
     assert os.path.isdir(os.path.join(local, "harness", "lead"))  # the state directory is made by for_run
     assert mask_problems(C.bwrap_argv(layout, ["agent"]), layout.hide_runs) == []
 

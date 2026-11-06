@@ -264,7 +264,10 @@ def capability_register_dir(tmp_path_factory) -> Path:
     found = os.environ.get(name)
     if found == HOST_ENV.get(name):
         os.environ[name] = str(CHILD_DATA_BASE)
+    # No launch fetches (the operator, 2026-11-05: AEW downloads no tool unless the operator chooses it); the end of
+    # the session checks that no child's register gained a payload all the same
     yield tmp_path_factory.mktemp("capability-register")
+    assert not list((CHILD_DATA_BASE / "aew" / "capability").glob("payloads/*")), "a test's child fetched a payload"
     if found is None:
         os.environ.pop(name, None)
     else:

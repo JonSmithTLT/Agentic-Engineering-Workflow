@@ -95,12 +95,32 @@ def digest(record: dict[str, Any]) -> str:
 
 def validate(doc: Any, *, source: str) -> dict[str, dict[str, Any]]:
     """The records of ``doc``, which must match the schema; raises ``ValidationFailed`` with every violation."""
+    with_user = _sources_with_a_user(doc)
+    if with_user:  # before the schema, whose message would repeat the source and its password
+        problems = [f"{name}: payload {key}: its source carries a user or password, which the register would keep "
+                    f"where every sandbox reads it; give a source without one" for name, key in with_user]
+        raise ValidationFailed(f"{source}: the records are refused: {'; '.join(problems)}", violations=problems,
+                               reason="record_refused")
     schemas.validate("capability-records", doc, source=source)
     problems = [f"{name}: {why}" for name, record in doc["providers"].items() for why in record_problems(record)]
     if problems:
         raise ValidationFailed(f"{source}: the records are refused: {'; '.join(problems)}", violations=problems,
                                reason="record_refused")
     return dict(doc["providers"])
+
+
+def _sources_with_a_user(doc: Any) -> list[tuple[str, str]]:
+    """Each (provider, platform key) whose payload's source has a user or password in it (quick check of #330, m-b).
+    The schema's pattern refuses one too; this says so in AEW's words, never the source's own."""
+    providers = doc.get("providers") if isinstance(doc, dict) else None
+    out = []
+    for name, record in (providers or {}).items() if isinstance(providers, dict) else ():
+        payloads = record.get("payloads") if isinstance(record, dict) else None
+        for key, payload in (payloads or {}).items() if isinstance(payloads, dict) else ():
+            got = payload.get("source") if isinstance(payload, dict) else None
+            if isinstance(got, str) and "@" in got.partition("://")[2].partition("/")[0]:
+                out.append((str(name), str(key)))
+    return out
 
 
 def capability_ids(record: Any) -> list[str]:

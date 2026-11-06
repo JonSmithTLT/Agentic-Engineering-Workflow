@@ -23,6 +23,7 @@ import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from host_env import GUARDED, launching_names
@@ -303,19 +304,31 @@ def test_the_self_test_passes_the_real_layout_and_fails_a_writable_root_laid_ove
     assert not list(lab.root.glob(".aew-containment-probe-*"))
 
 
-def test_the_self_test_finds_rg_where_a_run_sees_it_and_not_where_only_the_host_has_it(lab):
-    """The designer's RG-1: the probe looks for ``rg`` from inside the sandbox, on the launching environment's PATH,
-    so ``aew doctor`` reports what a run sees. One the sandbox masks (here in a secret directory) is not found."""
+def test_the_self_test_reads_a_host_copy_from_inside_and_one_the_sandbox_masks_does_not_serve(lab, monkeypatch):
+    """The designer's RG-1, as CAP-1 PR 2 has it: the probe runs a copy's check from inside the sandbox, so what it says
+    is what a run sees. A copy the sandbox shows serves; one it masks (here in a secret directory) never does, whatever
+    the host says, and its lookup still ends at the context's own stub (``test_capability_bind.py`` has the rest)."""
+    from aew.capability import status
+
     seen, hidden = lab.outside / "bin", lab.home / ".ssh" / "bin"
     for directory in (seen, hidden):
         directory.mkdir()
-        (directory / "rg").write_text("#!/bin/sh\nexit 0\n")
+        (directory / "rg").write_text('#!/bin/sh\nif [ "$1" = --version ]; then echo "ripgrep 9"; else echo 3; fi\n')
         (directory / "rg").chmod(0o755)
-    layout = lab.layout()
-    found = probe.self_test(layout, sentinel_dir=lab.outside, sibling_dir=lab.root, env={"PATH": f"{hidden}:{seen}"})
-    assert found["ok"] is True and found["tools"] == {"rg": str(seen / "rg")}
-    missing = probe.self_test(layout, sentinel_dir=lab.outside, sibling_dir=lab.root, env={"PATH": str(hidden)})
-    assert missing["ok"] is True and missing["tools"] == {"rg": None}
+
+    def served_by(path: str) -> dict[str, Any]:
+        monkeypatch.setenv("PATH", path)
+        layout = lab.layout()
+        result = probe.self_test(layout, sentinel_dir=lab.outside, sibling_dir=lab.root, env={"PATH": path})
+        assert result["ok"] is True  # a provider never fails a launch
+        return {"layout": layout, **result["tools"]["ripgrep"]}
+
+    found = served_by(f"{seen}:/usr/bin:/bin")
+    assert found["served"] == status.HOST_COPY and found["path"] == str((seen / "rg").resolve())
+    assert (Path(found["layout"].tools_first) / "rg").resolve() == (seen / "rg").resolve()
+    missing = served_by(f"{hidden}:/usr/bin:/bin")
+    assert missing["served"] is None and "could not start in the sandbox" in missing["cause"]
+    assert not (Path(missing["layout"].tools_first) / "rg").is_symlink()
     assert os.access(hidden / "rg", os.X_OK)  # the host has it all along
 
 
@@ -1058,7 +1071,8 @@ def test_a_worker_has_no_controlling_terminal_even_when_its_launcher_has_one(lab
     import json
     import pty
 
-    spec = {"layout": dataclasses.asdict(lab.layout("reviewer")), "drop": drop, "dir": str(lab.outside)}
+    spec = {"layout": {**dataclasses.asdict(lab.layout("reviewer")), "tools": []}, "drop": drop,
+            "dir": str(lab.outside)}
     env = {"PATH": os.environ["PATH"], "HOME": str(lab.home), "LANG": "C.UTF-8"}
     if os.environ.get("PYTHONPATH"):
         env["PYTHONPATH"] = os.environ["PYTHONPATH"]  # the code under test, where it is not the installed package

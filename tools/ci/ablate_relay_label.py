@@ -17,6 +17,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from tier import UNIT_DIR  # noqa: E402  (tools/ci/tier.py owns the fast lane's directory)
+
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "aew"
 ADAPTER_TESTS = "tests/integration/test_opencode_adapter.py"
@@ -28,16 +31,16 @@ ABLATIONS: dict[str, tuple[Path, str, str, str, str, bool]] = {
     # The run's network builds its own allowlist from the policy again, beside the one it is given.
     "network_rebuilds": (SRC / "harness" / "containment" / "netns.py", "            if allow is not None:\n",
                          "            allow = egress_policy(policy, ()) or allow\n            if allow is not None:\n",
-                         "tests/unit/test_containment_netns.py", "allowlist_its_caller_built", False),
+                         UNIT_DIR + "test_containment_netns.py", "allowlist_its_caller_built", False),
     # Row 1 does not record the allowlist it checked.
     "row1_unrecorded": (SRC / "harness" / "containment" / "probe.py",
                         "                **(net.get(\"egress_checked\") or {}),\n", "",
-                        "tests/unit/test_containment_probe.py", "records_what_it_checked", False),
+                        UNIT_DIR + "test_containment_probe.py", "records_what_it_checked", False),
     # The launcher passes on any relay-route value the acknowledgement names.
     "launcher_open": (SRC / "engine" / "harness_ops.py",
                       'if ack.get("started") and isinstance(family, str) and family in RELAY_FAMILY_SHOWN:',
                       'if ack.get("started") and family:',
-                      "tests/unit/test_launch_failure_vocabulary.py", "closed_report", False),
+                      UNIT_DIR + "test_launch_failure_vocabulary.py", "closed_report", False),
     # The label does not show the check.
     "label_unset": (SRC / "harness" / "supervisor.py",
                     '                self.record["containment"]["network"]["relay_family"] = relay_family\n',

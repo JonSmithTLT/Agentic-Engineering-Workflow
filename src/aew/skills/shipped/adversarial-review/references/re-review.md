@@ -1,0 +1,14 @@
+# Re-review and delta checks
+
+Read for a fix round or a delta against a previous reviewed head. Follow the host's rules for normal versus limited delta review; this reference cannot authorize a narrower review or waive any finding.
+
+1. **Bind the comparison.** Identify the previous reviewed head, current head plus dirty changes, original findings, and actual diff. Account for intervening changes. Recheck the original finding's qualifiers and mechanisms rather than a condensed fix summary.
+2. **Treat fixes as new code.** Verify each remedy and inspect newly touched behavior. A new shared owner needs checks across existing callers, including output/error compatibility, side effects, and relevant per-platform cost. Passing the original witness alone does not cover the newly introduced surface.
+3. **Replay the original probes.** Inspect the reviewer's supplied repro before execution and run it against the fix in an isolated environment when permitted. A replacement unit test may model a narrower failure than the real repro. If the original environment is unavailable, report that gap rather than calling the original finding reproduced or closed by execution.
+4. **Challenge each claimed regression.** List every independent mechanism of the original finding. Before each ablation, predict which tests should fail and which should remain green. In a disposable copy, remove one defense or plant one mechanism at a time. Each mechanism needs at least one discriminating test; a test need not detect mechanisms outside its stated coverage. Also run the safe control to detect tests that reject correct behavior.
+5. **Investigate surprises.** An unexpectedly passing test may be blind, the ablation may be ineffective, or another defense may close the route. An unexpected failure may reveal an unmodelled mechanism. Inspect the executed path and update the review model before issuing a finding. A mutant is a fault-detection control, not proof of historical reproduction.
+6. **Compare behavior and cost.** For compatibility or monotonicity promises, use a frozen baseline with common seeded inputs. For shared cleanup, polling, or retry changes, measure representative success and error paths where relevant; compare repeated-call or job totals against the actual budget. Report noise, missing platforms, and causal limits. Compare red CI with a suitable base run before blaming the fix.
+
+Preserve existing edits: never use `git checkout --`, reset, or a baseline overwrite to undo a test mutation in the working tree. Keep probes checkout-parameterized with usage and retained outputs so a later reviewer can replay them.
+
+Report all supported findings in the permitted scope and explicitly account for unresolved original mechanisms. Do not equate an all-green probe directory with a complete re-review.

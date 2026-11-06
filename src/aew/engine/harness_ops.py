@@ -52,6 +52,7 @@ from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
 from aew.policy import execution as X
 from aew.roles import archetype
+from aew.skills import plan as skills_plan
 from aew.snapshot.fingerprint import changed_paths
 from aew.util import sha256_text, utc_now
 
@@ -300,8 +301,14 @@ class Harness:
             continuation=continuation, run_dir=str(runlog.run_dir(self.k.aew_root, run)),
             scratch=str(runlog.run_dir(self.k.aew_root, run) / "scratch"),
             # For the harness projection: the pinned card's skills and capabilities, and the NAMES of the provider
-            # variables the harness server needs (never their values; the policy's current list, not a pin).
-            extra={"card_skills": sorted(content.get("skills") or []), "card_capabilities": sorted(capabilities),
+            # variables the harness server needs (never their values; the policy's current list, not a pin). `skills`
+            # is what this run gets of them, decided once here for every caller (the copy, the projection, the launch
+            # record and `aew harness config`: the 2026-11-04 ruling, §1). A card pinned before `optional_skills`
+            # existed has none.
+            extra={"card_skills": sorted(content.get("skills") or []),
+                   "card_optional_skills": sorted(content.get("optional_skills") or []),
+                   "skills": skills_plan(content.get("skills") or [], content.get("optional_skills") or []),
+                   "card_capabilities": sorted(capabilities),
                    "provider_env": list((policy or {}).get("provider_env") or [])})
 
     def run_authority_problem(self, state: dict[str, Any], inv_id: str, run: str, token_id: str) -> str | None:
@@ -621,7 +628,8 @@ class Harness:
         contract = self.harness_contract(state, invocation or "", K.run_id(invocation or "", len(runs) + 1))
         state_dir = os.path.realpath(runlog.run_dir(self.k.aew_root, contract.run) / "harness")
         config = projection.invocation_config(contract, private_dirs=projection.private_output_dirs(
-            state_dir, os.sep, scratch=os.path.realpath(contract.scratch)))
+            state_dir, os.sep, scratch=os.path.realpath(contract.scratch)),
+            skills_dir=projection.skills_at(state_dir, os.sep))
         directory = os.path.realpath(contract.workspace)
         return {"harness": harness, "target": invocation, "for_run": contract.run, "config": config,
                 "session": projection.session_body(contract, directory, config["permissions"]),

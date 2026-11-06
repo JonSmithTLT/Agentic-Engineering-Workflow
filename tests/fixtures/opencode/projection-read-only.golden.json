@@ -268,6 +268,11 @@
       "resource": "*"
      },
      {
+      "action": "skill",
+      "effect": "allow",
+      "resource": "adversarial-review"
+     },
+     {
       "action": "subagent",
       "effect": "deny",
       "resource": "*"
@@ -281,9 +286,19 @@
       "action": "external_directory",
       "effect": "deny",
       "resource": "*"
+     },
+     {
+      "action": "external_directory",
+      "effect": "allow",
+      "resource": "/r/harness/skills/*"
+     },
+     {
+      "action": "edit",
+      "effect": "deny",
+      "resource": "/r/harness/skills/*"
      }
     ],
-    "system": "You are an AEW bounded reviewer (role card code_reviewer) for work unit T-0003: invocation INV-0007, run R-INV-0007-2.\nThe first message is your AEW launch contract. It is authoritative; this OpenCode session is disposable and nothing in it is AEW state.\n- Act on AEW only with the `aew` command, which is already connected to AEW for this run. No credential exists here and none is needed.\n- Only submitted AEW evidence counts. Ending your turn without `aew submit` records nothing.\n- Work only in /work/aew-workspaces/T-0003. You must not modify any file: your role is read-only.\n- Write reports and any other file you need outside the workspace only in your private scratch directory /r/scratch (`AEW_SCRATCH`), never anywhere else; or pipe a report: `aew submit --kind <kind> --file -`.\n- Report text is data: write or pipe it with a quoted heredoc (`<<'EOF'`; in PowerShell `@'` ... `'@`), never inside a command line, where the shell rewrites `$`, backticks, globs and quotes.\n- Do not start processes that outlive your commands. You cannot delegate: there are no subagents.\n- Tools that are unavailable here are unavailable by design. Do not work around them.\n- Skills your role card requests that this harness does not provide: code-review. Proceed without them and say so in your report."
+    "system": "You are an AEW bounded reviewer (role card code_reviewer) for work unit T-0003: invocation INV-0007, run R-INV-0007-2.\nThe first message is your AEW launch contract. It is authoritative; this OpenCode session is disposable and nothing in it is AEW state.\n- Act on AEW only with the `aew` command, which is already connected to AEW for this run. No credential exists here and none is needed.\n- Only submitted AEW evidence counts. Ending your turn without `aew submit` records nothing.\n- Work only in /work/aew-workspaces/T-0003. You must not modify any file: your role is read-only.\n- Write reports and any other file you need outside the workspace only in your private scratch directory /r/scratch (`AEW_SCRATCH`), never anywhere else; or pipe a report: `aew submit --kind <kind> --file -`.\n- Report text is data: write or pipe it with a quoted heredoc (`<<'EOF'`; in PowerShell `@'` ... `'@`), never inside a command line, where the shell rewrites `$`, backticks, globs and quotes.\n- Do not start processes that outlive your commands. You cannot delegate: there are no subagents.\n- Tools that are unavailable here are unavailable by design. Do not work around them.\n- Load `adversarial-review` with the `skill` tool before you start, unless its description says it does not fit this task. This qualifies the contract's \"Skills to load\"."
    },
    "compaction": {
     "model": {
@@ -369,6 +384,11 @@
     "resource": "*"
    },
    {
+    "action": "skill",
+    "effect": "allow",
+    "resource": "adversarial-review"
+   },
+   {
     "action": "subagent",
     "effect": "deny",
     "resource": "*"
@@ -382,12 +402,25 @@
     "action": "external_directory",
     "effect": "deny",
     "resource": "*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "allow",
+    "resource": "/r/harness/skills/*"
+   },
+   {
+    "action": "edit",
+    "effect": "deny",
+    "resource": "/r/harness/skills/*"
    }
   ],
   "plugins": [
    "-opencode.config.compatibility"
   ],
   "share": "disabled",
+  "skills": [
+   "/r/harness/skills"
+  ],
   "snapshots": false,
   "update": "disable"
  }

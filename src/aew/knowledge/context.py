@@ -175,6 +175,12 @@ def _bullets(items: list[str]) -> list[str]:
     return [f"- {i}" for i in items] or ["- (none)"]
 
 
+def _optional_skills(card: dict[str, Any]) -> list[str]:
+    """A card's ``optional_skills`` beyond its ``skills:``, in its order (a name in both counts as ``skills:``)."""
+    skills = set(card.get("skills") or [])
+    return [s for s in card.get("optional_skills") or [] if s not in skills]
+
+
 def _card_section(p: PackInputs) -> list[str]:
     card = p.card
     if not card:
@@ -194,6 +200,10 @@ def _card_section(p: PackInputs) -> list[str]:
         *_bullets(card.get("responsibilities", [])),
         "",
         "Skills to load (how the work is done): " + (", ".join(card.get("skills", [])) or "none"),
+        # Only for a card with optional skills beyond `skills:` (the 2026-11-04 ruling, §1): conditional in its own
+        # words, since the pack never states what is shipped, so a re-hash between dispatch and relaunch moves nothing
+        *(["Optional skills (load one only if the `skill` tool lists it and your task matches): "
+           + ", ".join(optional)] if (optional := _optional_skills(card)) else []),
         "Required knowledge: " + (", ".join(card.get("required_knowledge", [])) or "none beyond this package"),
         "Authority-sensitive capabilities (within the archetype envelope): " + (", ".join(sensitive) or "none"),
         "Other capabilities requested (workbench resolution pending — use only what is actually available): "

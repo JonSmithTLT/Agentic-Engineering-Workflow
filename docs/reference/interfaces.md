@@ -84,7 +84,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `pricing` | `pricing.schema.json` | 11 | 5 |
 | `project` | `project.schema.json` | 42 | 28 |
 | `role-archetype` | `role-archetype.schema.json` | 28 | 13 |
-| `role` | `role.schema.json` | 29 | 5 |
+| `role` | `role.schema.json` | 31 | 5 |
 | `run-usage` | `run-usage.schema.json` | 44 | 27 |
 | `spool-event` | `spool-event.schema.json` | 6 | 0 |
 | `stage-intent` | `stage-intent.schema.json` | 102 | 69 |

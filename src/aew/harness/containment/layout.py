@@ -243,6 +243,9 @@ class Layout:
     tools_first: str | None = None
     tools_last: str | None = None
     tool_binds: tuple[str, ...] = ()
+    # The run's copy of its skills (aew.skills.deliver), bound read-only, and protected so the self-test covers it: a
+    # copy the run could edit would make its record state a false hash (the designer's ruling of 2026-11-03, §3)
+    skills_binds: tuple[str, ...] = ()
 
     def contained_path(self, path: str | None = None) -> str | None:
         """The ``PATH`` every process of this context gets: its entries first, ``path`` (default: this process's), and
@@ -257,6 +260,7 @@ class Layout:
     def describe(self) -> dict[str, Any]:
         return {"role": self.role, "workspace_access": self.access, "writable": list(self.writable),
                 "readonly": list(self.readonly), "tool_binds": list(self.tool_binds),
+                "skills_binds": list(self.skills_binds),
                 "tools_first": self.tools_first, "tools_last": self.tools_last,
                 "hidden": [*self.hide_host, *self.hide_runs, *self.hide_dirs, *self.hide_files, *self.left_out],
                 "left_out_of": list(self.left_out_of),
@@ -1128,7 +1132,8 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
             project: str | os.PathLike[str], home: str | None = None,
             runs: str | os.PathLike[str] | None = None, env: Mapping[str, str] | None = None,
             network: str = SHARED, net_dir: str | None = None,
-            state_dir: str | os.PathLike[str] | None = None, tools: tuple[Any, ...] | None = None) -> Layout:
+            state_dir: str | os.PathLike[str] | None = None, tools: tuple[Any, ...] | None = None,
+            skills_dir: str | os.PathLike[str] | None = None) -> Layout:
     """The layout of a run of ``role`` in ``scope``. Creates the run's private directories (and, for a writing
     role, its private git state). Raises ``ContainmentUnavailable`` when the role has no layout, bubblewrap is
     missing, or a bind would reach the store's path. ``project`` is the authoritative project root (bound read-only
@@ -1139,7 +1144,9 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
     (``aew.harness.containment.netns``), with its :data:`NET_SHIM` subdirectory made here. ``state_dir`` is the role's
     own harness state that outlives one run (the Lead's OpenCode state, kept per project: STG-05 CS-4 addendum 1),
     made here and bound back writable like the run's own directories. ``tools`` is what the context gets of the
-    capability register (``aew.capability.bind.plan``; default: this host's, as every launch's)."""
+    capability register (``aew.capability.bind.plan``; default: this host's, as every launch's). ``skills_dir`` is the
+    run's copy of its skills, made before the layout (``aew.skills.deliver``): bound read-only and protected when it
+    exists, and not bound at all when it does not, so a missing skill never refuses a launch."""
     access = WORKSPACE_ACCESS.get(role)
     if access is None:
         raise ContainmentUnavailable(f"role {role!r} has no containment layout; its runs are refused", role=role)
@@ -1225,6 +1232,9 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
         if prefix and os.path.isdir(prefix) and _real(prefix) not in readonly:
             readonly.append(_real(prefix))
     tool_fields = _tool_fields(run, tools, hide_host, readonly, protected)
+    skills_binds = (_real(skills_dir),) if skills_dir is not None and os.path.isdir(skills_dir) else ()
+    readonly += [p for p in skills_binds if p not in readonly]
+    protected += [p for p in skills_binds if p not in protected]
     visible = [_real(project)] if os.path.isdir(project) else []
     local = Path(project) / ".aew" / "local"
     if local.parent.is_dir():  # made now, so a lock a host writer creates there later is hidden too (#231, m4)
@@ -1237,7 +1247,7 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
                     operator_writable=tuple(operator),
                     protected=tuple(protected), env=contained, hide_host=hide_host,
                     run_exceptions=run_exceptions(network), display_files=display_files(home, env), network=network,
-                    net_dir=net_dir, **tool_fields)
+                    net_dir=net_dir, skills_binds=skills_binds, **tool_fields)
     _refuse_store_binds(role, project, order(layout))
     _refuse_run_bind_backs(layout, project=_real(project), workspace=str(ws))
     bwrap_argv(layout, [], cwd=ws)  # the layout's own arguments, counted before any bubblewrap starts (addendum 9)

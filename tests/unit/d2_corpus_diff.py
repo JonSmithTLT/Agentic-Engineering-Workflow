@@ -8,8 +8,8 @@ each imports its own `discovery.rules`. A change to O-SECRET's precision claims 
 a corpus that holds a case for every connector and separator the change names (#335 review): the built-in corpus is
 those cases, and it fails if the head's `CONNECTOR` names a word it has no case for. `--corpus FILE` adds a module's
 literal `ASKS` and `NOT_ASKS` lists of `(text, is_ask)` (read with `ast`, never run). Every credential value is
-synthetic. Exit status: 1 when a case is wrong at the head and right at the base, unless the head names its text in
-`LIMITS` (its rule tests' named limits, each pinned there); else 0.
+synthetic. It counts the regressions the head names in `LIMITS` (its rule tests' named limits, each pinned there) apart
+from those it does not. Exit status: 1 when a case is wrong at the head and right at the base and not named; else 0.
 """
 
 from __future__ import annotations
@@ -29,11 +29,13 @@ ASK_ENDINGS = ["set AEW_LEAD_TOKEN", "paste the token"]
 
 
 def built_in() -> list[tuple[str, bool]]:
-    """Each separator after a prohibition whose verb is left out, and each connector after a prohibition and after a
-    plain negation, before a real ask; with the prohibitions and negations that do govern the ask as controls."""
+    """Each separator after a prohibition whose verb is left out, after a plain negation and after a refusing verb, and
+    each connector after a prohibition and after a plain negation, before a real ask; with the prohibitions and
+    negations that do govern the ask as controls."""
     cases = []
     for ask in ASK_ENDINGS:
-        cases += [(f"The launcher won't{sep}you {ask} yourself.", True) for sep in SEPARATORS]
+        for lead in ("The launcher won't", "The shell has no session", "Ignore the warning"):
+            cases += [(f"{lead}{sep}you {ask} yourself.", True) for sep in SEPARATORS]
         cases += [(f"It won't start {c} you {ask}.", True) for c in CONNECTORS]
         cases += [(f"The shell has no session {c} you {ask}.", True) for c in CONNECTORS]
         cases += [(f"It has no token {ask}.", True), (f"If it is not ready, {ask}.", True)]
@@ -123,11 +125,16 @@ def main() -> int:
         print(f"-- {title}: {len(rows)}")
         for text, ask, plane in rows:
             print(f"   {'MISS' if ask else 'FP  '} {plane:8} {text!r}" + ("  (a named limit)" if text in named else ""))
-    unnamed = [text for (text, _, _), b, h in pairs if h and not b and text not in named]
+    regressions = [(text, ask) for (text, ask, _), b, h in pairs if h and not b]
+    unnamed = [text for text, _ in regressions if text not in named]
     for name in ("base", "head"):
         missed = sum(w and ask for w, (_, ask, _) in zip(wrong[name], planes, strict=True))
         print(f"{name}: wrong {sum(wrong[name])} ({missed} missed, {sum(wrong[name]) - missed} false positives) "
               f"of {len(planes)}")
+    # "No regression" means neither count: a named limit is still a judgement `main` got right (#335's third check)
+    limited = [ask for text, ask in regressions if text in named]
+    print(f"regressions named in the head's LIMITS: {len(limited)} ({sum(limited)} missed, "
+          f"{len(limited) - sum(limited)} false positives)")
     print(f"regressions not named in the head's LIMITS: {len(unnamed)}")
     return 1 if unnamed else 0
 

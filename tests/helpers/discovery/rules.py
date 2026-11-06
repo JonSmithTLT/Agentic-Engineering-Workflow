@@ -771,8 +771,6 @@ def _negated(text: str, at: int, *, governs: frozenset[str] = frozenset()) -> bo
     if content[:1] and content[0] in DOUBLE_NEGATIVE:
         return False
     if last.group("prohibit"):
-        if PUNCTUATION.search(between):
-            return False
         # a connector is another word: "Never skip this step and set X", "until you set X"
         passes = PASSES_ON if "to" in words else frozenset()
         return all(_filler(w) or w in governs | passes for w in words)

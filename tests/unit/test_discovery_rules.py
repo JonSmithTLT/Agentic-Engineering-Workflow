@@ -1694,6 +1694,12 @@ LIMITS = {
     "a run-on after a refusing verb": ("Ignore the warning you must set AEW_LEAD_TOKEN.", False),
     "a backtick straight after the negator": ("AEW can't`you must set AEW_LEAD_TOKEN yourself.", False),
     "one set read as a noun": ("If you don't have one set AEW_LEAD_TOKEN first.", False),
+    "an apostrophe joining the lead to the ask": ("The shell has no session'you must set AEW_LEAD_TOKEN.", False),
+    # false positives `main` shares (the third quick check's side-effect texts)
+    "an assignment in a code span under set (false positive)": (
+        "Never set `AEW_LEAD_TOKEN=abc` or paste the token.", True),
+    "no flag to set with (false positive)": ("There is no `--token` flag to set AEW_LEAD_TOKEN with.", True),
+    "don't you dare (false positive)": ("Don't you dare paste the token.", True),
     "a name across a comma (false positive)": ("Copy the file, and AEW_LEAD_TOKEN stays where it is.", True),
     "a bare word joined by and (false positive)": ("Pass the tests and the token is renewed.", True),
     # punctuation ends a prohibition's reach, so a prohibition written with an aside asks (recall first; #335's
@@ -1710,6 +1716,7 @@ LIMITS = {
     "a spaced dash pair after do not (false positive)": ("Do not — ever — set AEW_LEAD_TOKEN.", True),
     "a bracketed intensifier (false positive)": ("Never (ever) paste the token.", True),
     "a repeated never between commas (false positive)": ("Never, simply never, paste the token.", True),
+    "an aside inside joined asks (false positive)": ("Never copy it (by mistake) or paste the token.", True),
     "a plain negator between dashes (false positive)": ("Never – not even once – paste the token into a chat.", True),
     "no need for you to (false positive)": ("There is no need for you to copy the token anywhere.", True),
     "a passive hand-on, be asked to (false positive)": ("You will never be asked to type the token in chat.", True),

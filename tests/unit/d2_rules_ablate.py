@@ -52,6 +52,8 @@ PROSE = "test_punctuation_or_a_line_break_ends_every_negators_reach_in_prose"
 HANDED = "test_nothing_is_handed_on_without_to_and_not_every_word_in_ly_is_an_adverb"
 SPAN = "test_a_negator_inside_the_asks_own_span_negates_only_what_it_governs"
 BREAKS = "test_every_line_break_ends_a_sentence"
+BREAKS_ALL = "test_any_punctuation_or_line_break_ends_every_negators_reach"
+LIMIT = "test_each_named_limit_of_o_secret_is_as_stated"
 B_CHECK = ('    if PUNCTUATION.search(re.sub(r"`[^`\\n]*`", "`", before[last.end():])):  # a code span is a word\n'
            '        return False\n')
 PASSES_ALL = "return all(_filler(w) or w in governs | passes for w in words)"
@@ -108,7 +110,7 @@ LINES: list[tuple] = [  # old and new: one text each, or a tuple of texts replac
      PASSES),
     ("S17", "negation looks past the sentence", PARSER,
      'start = max(max((m.end() for m in SENTENCE_END.finditer(text, max(0, at - 160), at)), default=0), at - 160)',
-     'start = max(0, at - 160)', RULES, f"{CATCHES} or {NEG}"),
+     'start = max(0, at - 160)', RULES, f"{CATCHES} or {NEG} or {BREAKS_ALL}"),
     ("R1", "a prohibition reaches past any other word", PARSER, PASSES_ALL, 'return True', RULES, NEG),
     ("R2", "a prohibition stops at filler", PARSER, PASSES_ALL, 'return all(w in governs | passes for w in words)',
      RULES, GOV),
@@ -127,14 +129,12 @@ LINES: list[tuple] = [  # old and new: one text each, or a tuple of texts replac
      (B_CHECK, '    between = JOINED_ASKS.sub(" ", before[last.end():])\n'),
      ('', '    between = JOINED_ASKS.sub(" ", before[last.end():])\n' + B_CHECK.replace(
          're.sub(r"`[^`\\n]*`", "`", before[last.end():])', 're.sub(r"`[^`\\n]*`", "`", between)')),
-     RULES, PROSE),
+     RULES, f"{PROSE} or {LIMIT}"),
     ("R50", "ask verbs joined whatever follows the conjunction (fix line F)", PARSER,
      r'\s+(?:and|or)\s+(?=$|(?:{ASK_VERBS})\b)",', r'\s+(?:and|or)\s+",', RULES, PROSE),
     ("R51", "only a newline ends a sentence (fix line A)", PARSER,
      r'SENTENCE_END = re.compile("[.;:!?\n\r\v\f\x1c-\x1e\x85\u2028\u2029]")',
      r'SENTENCE_END = re.compile(r"[.;:!?\n]")', RULES, f"{BREAKS} or {PROSE}"),
-    ("P2", "a prohibition's own punctuation check after the strip gone", PARSER,
-     '        if PUNCTUATION.search(between):\n            return False\n', '', RULES, f"{PUNCT} or {PROSE} or {GOV}"),
     ("P1", "a quote mark is not punctuation", PARSER,
      r'''|(?<!\w)['’]|['’](?!\w)")''', '")', RULES, PUNCT),
     ("R4", "ask verbs joined under one negator end its reach", PARSER,
@@ -311,11 +311,12 @@ def clear(root: Path) -> None:
 
 def run(root: Path, test: str, expr: str, timeout: int = 200) -> tuple[str, str]:
     env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(root / "src"), str(root / "tests" / "helpers")]),
-           "PYTHONDONTWRITEBYTECODE": "1"}
+           "PYTHONDONTWRITEBYTECODE": "1", "PYTHONIOENCODING": "utf-8"}
     cmd = [sys.executable, "-B", "-m", "pytest", "-q", "-p", "no:xdist", "-p", "no:cacheprovider", test, "-k", expr]
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     try:
-        r = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True, timeout=timeout, creationflags=flags)
+        r = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=timeout, creationflags=flags)
     except subprocess.TimeoutExpired:
         return "hung", f"timed out after {timeout}s"
     tail = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr.strip()[-200:]

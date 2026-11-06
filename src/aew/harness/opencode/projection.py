@@ -151,7 +151,8 @@ def skills_text(planned: Mapping[str, Any]) -> list[str]:
 
     * the card's ``skills:`` that are here: load them, unless a description excludes this task (WC §15.3), which
       qualifies the pack's "Skills to load";
-    * the rest of what the ``skill`` tool lists, the card's optional ones that are here: load one when the task matches;
+    * the rest of what the ``skill`` tool lists, the card's optional ones that are here: load each one whose description
+      matches the task (each, not one: a change in two languages fits two, review E127 M3);
     * the card's ``skills:`` that are not here: proceed without them."""
     requested = list(planned.get("requested") or [])
     exposed = list(planned.get("exposed") or [])
@@ -163,8 +164,7 @@ def skills_text(planned: Mapping[str, Any]) -> list[str]:
         lines.append(f"- Load {_ids(load)} with the `skill` tool before you start, unless its description says it does "
                      "not fit this task. This qualifies the contract's \"Skills to load\".")
     if optional:
-        lines.append(f"- The `skill` tool also lists {_ids(optional)}: load one only when your task matches its "
-                     "description.")
+        lines.append(f"- The `skill` tool lists {_ids(optional)}: load each one whose description matches your task.")
     if unavailable:
         lines.append("- Skills your role card requests that this harness does not provide: "
                      f"{', '.join(unavailable)}. Proceed without them and say so in your report.")

@@ -33,6 +33,13 @@ def test_a_free_id_is_refused_even_when_the_catalog_does_not_list_it():
     assert "-free" in free_model("openrouter/some-model-free", CATALOG)
 
 
+def test_a_catalog_read_that_cannot_tell_free_from_paid_refuses_and_never_passes_a_free_model():
+    """Review E127 M2: ``big-pickle`` is free and not named ``-free``; an empty read must not let it through."""
+    assert "empty" in free_model("opencode/big-pickle", [])
+    assert "empty" in free_model("opencode/gpt-5-nano", [])
+    assert "no anthropic model" in free_model("anthropic/claude-x", CATALOG[:2])
+
+
 def test_a_model_paid_in_any_tier_is_not_zero_cost_and_an_unlisted_paid_id_is_left_to_the_launch():
     assert not zero_cost(CATALOG[4])
     assert free_model("anthropic/tiered", CATALOG) is None

@@ -3,7 +3,7 @@
 AEW's own install ships four skills with a manifest of hashes. A card's ``skills:`` and ``optional_skills`` decide what
 a run may reach. The supervisor copies what is exposed into the run's own folder, the projection lets the ``skill`` tool
 list exactly those, and the agent is told, from the plan, which to load. The record says what was offered, exposed,
-delivered and loaded. Nothing here runs a model: the live test is on the VM (``tests/live/e127_skills``).
+delivered and loaded. Nothing here runs a model: the live test is ``tests/live/test_skills_live.py``, on the VM.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -251,6 +252,31 @@ def test_a_copy_that_fails_reports_copy_failed_and_the_rest_is_delivered(tmp_pat
     assert delivered["reasons"] == {"acceptance-verification": "copy_failed"}
 
 
+def test_the_copy_takes_only_the_manifests_files_even_when_the_install_holds_another(tmp_path, monkeypatch):
+    """Review E127 M1 (O1): an allow-listed file the manifest does not list is in the installed folder, and the run's
+    copy never holds it. The re-hash is over the manifest's paths and the root check over the allow-list, so only the
+    copy loop keeps it out, and ``delivered.sha256`` goes on describing what the run can read."""
+    package = tmp_path / "pkg"
+    shutil.copytree(Path(skills.__file__).resolve().parent, package)
+    references = package / skills.SHIPPED / "c-development" / "references"
+    references.mkdir(exist_ok=True)
+    (references / "unlisted.md").write_text("x", encoding="utf-8")
+    assert skills.allowed("references/unlisted.md")  # so the allow-list alone would let it through
+
+    class Resources:
+        @staticmethod
+        def files(_name: str) -> Path:
+            return package
+
+    monkeypatch.setattr(skills, "resources", Resources)
+    root = tmp_path / "copy"
+    delivered = skills.deliver(skills.plan([], ["c-development"]), root)
+    assert delivered["exposed"] == ["c-development"]
+    copied = sorted(p.relative_to(root / "c-development").as_posix() for p in (root / "c-development").rglob("*")
+                    if p.is_file())
+    assert copied == sorted(skills.entries()["c-development"]["files"])
+
+
 # ---------------------------------------------------------------------------------------------- the projection
 
 
@@ -319,17 +345,37 @@ def test_only_skills_all_shipped_tells_it_to_load_them_and_nothing_else():
 def test_only_optional_tells_it_what_else_the_tool_lists():
     """``engineer``'s case."""
     assert lines(skills.plan([], ["python-development", "c-development"])) == [
-        "- The `skill` tool also lists `c-development`, `python-development`: load one only when your task matches its "
-        "description."]
+        "- The `skill` tool lists `c-development`, `python-development`: load each one whose description matches your "
+        "task."]
 
 
 def test_an_unshipped_skill_with_a_shipped_optional_one_says_both():
     """``security_reviewer``'s case before its skill ships."""
     said = lines(skills.plan(["security-review"], ["adversarial-review"]))
-    assert said == ["- The `skill` tool also lists `adversarial-review`: load one only when your task matches its "
-                    "description.",
+    assert said == ["- The `skill` tool lists `adversarial-review`: load each one whose description matches your task.",
                     "- Skills your role card requests that this harness does not provide: security-review. Proceed "
                     "without them and say so in your report."]
+
+
+def test_the_tool_lists_clause_names_what_was_delivered_never_an_unshipped_or_failed_one(tmp_path, monkeypatch):
+    """Review E127 M1 (O2): the clause draws on ``exposed``, not on ``offered``. A project card's unshipped optional
+    name, and one whose copy failed, are offered but not listed by the tool, so the system text never names them."""
+    planned = skills.plan([], ["c-development", "ignore-this-text", "python-development"])
+    assert planned["offered"] != planned["exposed"]  # the sets differ, so the test can tell them apart
+    assert lines(planned) == ["- The `skill` tool lists `c-development`, `python-development`: load each one whose "
+                              "description matches your task."]
+    real = Path.write_bytes
+
+    def failing(self: Path, data: bytes) -> int:
+        if "python-development" in self.parts:
+            raise OSError("disk full")
+        return real(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", failing)
+    delivered = skills.deliver(planned, tmp_path / "copy")
+    assert delivered["reasons"]["python-development"] == skills.COPY_FAILED
+    assert lines(delivered) == ["- The `skill` tool lists `c-development`: load each one whose description matches "
+                                "your task."]
 
 
 def test_one_of_two_skills_shipped_loads_one_and_names_the_other_unavailable():

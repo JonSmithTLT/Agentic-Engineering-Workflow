@@ -4,8 +4,10 @@ serves it. A paid model is allowed, each run approved by the operator, and that 
 
 A model is free when its id says so (a ``-free`` id, as the Zen free models are named) or when the catalog the
 OpenCode server serves (``/api/model``, its ``cost`` list of ``Model.Cost`` in the pinned 2.0.18 schema) prices it at
-zero, every input and output rate of every tier. A model the catalog does not list cannot launch anyway (the adapter
-refuses an unlisted pin), so it is not refused here: the launch says why."""
+zero, every input and output rate of every tier. A catalog read that came back empty, or lists no model of the
+provider, cannot tell free from paid, so it refuses too (review E127 M2: an empty read let ``opencode/big-pickle``, free
+but not named ``-free``, through). A model of a listed provider that the catalog does not list cannot launch anyway
+(the adapter refuses an unlisted pin, and a keyless catalog leaves a paid one out), so it is left to the launch."""
 
 from __future__ import annotations
 
@@ -28,6 +30,10 @@ def free_model(ref: str, catalog: list[dict[str, Any]]) -> str | None:
     provider, _, model = ref.partition("/")
     if model.endswith("-free") or "-free-" in model or model == "free":
         return f"{ref}: a -free id"
+    if not catalog:
+        return f"{ref}: the catalog read came back empty, so free cannot be told from paid"
+    if not any(m.get("providerID") == provider for m in catalog):
+        return f"{ref}: the catalog lists no {provider} model, so free cannot be told from paid"
     entry = next((m for m in catalog if m.get("providerID") == provider and m.get("id") == model), None)
     if entry is not None and zero_cost(entry):
         return f"{ref}: the catalog prices it at zero"

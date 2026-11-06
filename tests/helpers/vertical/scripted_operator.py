@@ -8,9 +8,14 @@ operator has no driver for yet is recorded as ``no_driver``, which fails the ver
 ceremony as soon as the product no longer needs it.
 
 **The setup boundary** (docs/implementation/vertical-uat.md): setup is ``aew init`` and the project's first
-configuration (its check command and its harness), before the first Lead session opens. Hand-edited policy files in
+configuration (its check command, model and provider), before the first Lead session opens. Hand-edited policy files in
 setup are recorded as observations, not ``raw_yaml``; an edit after setup counts. Everything else in setup, such as an
 acquire, a credential or a separate adopt, is counted like any other step.
+
+**The driver's world isn't the operator's** (the designer's ruling of 2026-11-03, §1). What makes the offline world work
+can't and mustn't be a flag: ``harness: fake``, ``containment.writable``, the fake providers, V3's injected causes and
+the steering extras. They are test fixtures, held by :func:`world_around_init` in this process, each recorded in the
+ledger and never counted, with no parser option, environment variable or anything else an installed ``aew`` can reach.
 
 **Channels the test substitutes:** a decision AEW confirms at the operator's own terminal (a policy adoption, a
 takeover, a steering raise) runs in this process with the terminal channel substituted, the in-process channel AT-1
@@ -22,15 +27,19 @@ its variables are not the operator's (``AEW_HARNESS_ADAPTERS``, ``AEW_FAKE_SCRIP
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
+import shlex
 import subprocess
 import sys
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import autopsy
 import bounds
@@ -58,6 +67,7 @@ from vertical.ledger import (
 
 # Declared and nested under the vertical lane's --test-timeout (G3 H5): the operator's waits fail first, by name, and
 # record why the Lead was silent (`lead_silent`).
+Fixture = Callable[[dict[str, Any]], None]  # one of the offline world's changes to the execution policy
 SESSION_START_S = bounds.declare("vertical.session_start", 300, within="vertical.conversation", lanes={"vertical"},
                                  why="the operator's wait for a new Lead session's first words")
 CONVERSATION_S = bounds.declare(
@@ -149,6 +159,24 @@ class Operator:
         text = "aew " + " ".join(argv)
         self.ledger.operator_input(text, step=step, argv=argv, shown=res.stdout + res.stderr if shown_text else "")
         self.transcript.append({"step": step, "input": text, "exit": res.returncode,
+                                "output": (res.stdout + res.stderr)[-2000:]})
+        return res
+
+    def first_configuration(self, argv: list[str], fixtures: Mapping[str, Fixture],
+                            known: Mapping[str, str | None]) -> CLIResult:
+        """Steps 1 and 2 in the one line the operator types: `aew init` with its first configuration, through the real
+        ``aew.cli.main`` in this process, so that the split, the option set and ``next`` are really exercised, with the
+        world's fixtures held around ``Engine.initialize`` (:func:`world_around_init`)."""
+        from aew.cli.main import main
+
+        out, err = io.StringIO(), io.StringIO()
+        with world_around_init(self.ledger, fixtures, known), contextlib.redirect_stdout(out), \
+                contextlib.redirect_stderr(err):
+            code = main(["-C", str(self.root), "init", *argv])
+        res = CLIResult(code, out.getvalue(), err.getvalue())
+        text = shlex.join(["aew", "init", *argv])
+        self.ledger.operator_input(text, step="init", argv=["init", *argv], shown=res.stdout + res.stderr)
+        self.transcript.append({"step": "init", "input": text, "exit": code,
                                 "output": (res.stdout + res.stderr)[-2000:]})
         return res
 
@@ -436,19 +464,72 @@ def operator_login(directory: Path) -> Path:
     return db
 
 
-def execution_policy(lab: HarnessLab, *, steering: str | None = None) -> dict[str, Any]:
-    """The execution policy a user writes for the offline world (opencode.md's shape, the fake harness's names)."""
-    policy: dict[str, Any] = {
-        "schema": "aew/execution/v1", "configured": True, "harness": "fake",
-        "profiles": {"standard": {"provider": "fakeprov", "model": "fake-model", "effort": "high"}},
-        "routing": {"default": "standard", "archetypes": {}, "classes": {}, "cards": {}},
-        "provider_env": [],
-        # Contained runs (Linux) read their scripts from the offline world's directory: declared writable roots.
-        "containment": {"writable": [lab.env[SCRIPTS_ENV], str(lab.tmp / "sync")]},
-    }
+def check_line(argv: list[str]) -> str:
+    """A check's argv as the operator writes it for ``--check-command``: quoted where it needs to be, and with
+    ``{python}`` bare, which ``shlex.join`` would quote for its braces though no shell ever reads this text."""
+    return shlex.join(argv).replace("'{python}'", "{python}")
+
+
+# The model the operator names in the offline world. Its provider stands for a key-free one, as `opencode` is.
+OFFLINE_PROVIDER = "fakeprov"
+OFFLINE_MODEL = f"{OFFLINE_PROVIDER}/fake-model"
+
+
+def world_fixtures(lab: HarnessLab, *, steering: str | None = None) -> dict[str, Fixture]:
+    """What the offline world needs of the execution policy beyond what the operator types, by name: the fake harness,
+    and the writable roots where contained runs (Linux) read their scripts."""
+    writable = [lab.env[SCRIPTS_ENV], str(lab.tmp / "sync")]
+    fixtures: dict[str, Fixture] = {"harness: fake": lambda doc: doc.update(harness="fake"),
+                                    "containment.writable": lambda doc: doc.update(containment={"writable": writable})}
     if steering:
-        policy["steering"] = {"mode": steering}
-    return policy
+        fixtures["steering.mode"] = lambda doc: doc.update(steering={"mode": steering})
+    return fixtures
+
+
+class _WithFixtures:
+    """A first configuration with the world's fixtures on its execution policy. What ``Engine.initialize`` checks and
+    pins is this text, through its own path: nothing here pins anything."""
+
+    def __init__(self, given: Any, fixtures: Mapping[str, Fixture]) -> None:
+        self.given, self.fixtures = given, fixtures
+
+    def files(self) -> dict[str, str]:
+        import yaml
+
+        from aew.policy import execution as X
+
+        files = self.given.files()
+        doc = yaml.safe_load(files[X.REL_PATH])
+        for fixture in self.fixtures.values():
+            fixture(doc)
+        files[X.REL_PATH] = dump_yaml(doc)
+        return files
+
+
+@contextlib.contextmanager
+def world_around_init(ledger: Ledger, fixtures: Mapping[str, Fixture],
+                      known: Mapping[str, str | None]) -> Iterator[None]:
+    """The test-only hook. For this process and this call, the fake providers are known (``known``: each with the
+    variable it needs, or None for a key-free one) and ``Engine.initialize`` adds the world's fixtures to what it pins.
+    Each is recorded, not counted, as a hand edit in setup is. None of it is a parser option, an environment variable or
+    anything else an installed ``aew`` can reach."""
+    from aew.engine.api import Engine
+    from aew.harness.containment import netns
+
+    real = Engine.initialize
+
+    def initialize(repo_root: Path, *, first_configuration: Any = None, **kwargs: Any) -> Engine:
+        overlaid: Any = _WithFixtures(first_configuration, fixtures)
+        return real(repo_root, first_configuration=overlaid, **kwargs)
+
+    for name in (*fixtures, *(f"known provider {provider}" for provider in known)):
+        ledger.observe("setup_fixture", step="init", fixture=name)
+    needs_key = {provider: name for provider, name in known.items() if name is not None}
+    key_free = frozenset(provider for provider, name in known.items() if name is None)
+    with mock.patch.object(Engine, "initialize", initialize), \
+            mock.patch.object(netns, "PROVIDER_KEY_ENV", {**netns.PROVIDER_KEY_ENV, **needs_key}), \
+            mock.patch.object(netns, "CATALOG_ADDRESSED", netns.CATALOG_ADDRESSED | key_free):
+        yield
 
 
 def lead_spec(lab: HarnessLab, *, steering: bool = False) -> dict[str, Any]:

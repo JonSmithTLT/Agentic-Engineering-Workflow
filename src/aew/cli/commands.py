@@ -77,6 +77,14 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     p.add_argument("--name")
     p.add_argument("--branch", help="authoritative branch (default: current branch)")
     p.add_argument("--workspaces-root", help="where Ticket workspaces are created (relative to repo root)")
+    # The first configuration: written before the pin, on `init` only (register E119). Changing any of them later takes
+    # the Lead credential and an adopt.
+    p.add_argument("--check-command", metavar="COMMAND",
+                   help="the project's unit check, split as POSIX with no shell; {python} is the running Python")
+    p.add_argument("--check-timeout", metavar="SECONDS", help="with --check-command: the check's timeout")
+    p.add_argument("--model", help="the workers' model, as the harness lists it (provider/model). It doesn't set the "
+                                   "Lead's own model")
+    p.add_argument("--provider", help="with --model: the workers' provider, when the model is a bare id")
     p.set_defaults(handler=_init)
 
     p = sub.add_parser("status", help="work graph, Lead authority and knowledge health")
@@ -317,12 +325,15 @@ def _doctor(args: argparse.Namespace) -> Any:
 
 
 def _init(args: argparse.Namespace) -> Any:
+    from aew.engine import first_configuration
     from aew.engine.api import Engine
     from aew.harness.containment import netns
 
+    configuration = first_configuration.from_flags(check_command=args.check_command, check_timeout=args.check_timeout,
+                                                   model=args.model, provider=args.provider)
     engine = Engine.initialize(
         _cwd(args), project_id=args.project_id, name=args.name, branch=args.branch,
-        workspaces_root=args.workspaces_root,
+        workspaces_root=args.workspaces_root, first_configuration=configuration,
     )
     state = engine.store.current()
     return {
@@ -331,7 +342,9 @@ def _init(args: argparse.Namespace) -> Any:
         "aew_root": str(engine.aew_root),
         "revision": state["revision"],
         "authority_candidates": engine.manifest["authority"]["candidates"],
-        "next": "acquire Lead authority: aew lead acquire --expect-rev 0",
+        **({"first_configuration": configuration.report()} if configuration is not None else {}),
+        "next": configuration.next_step() if configuration is not None
+        else "acquire Lead authority: aew lead acquire --expect-rev 0",
         "provider_key": netns.FIRST_USE_LINE,
     }
 

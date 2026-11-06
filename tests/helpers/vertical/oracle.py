@@ -11,11 +11,13 @@ row's text stays in the design workspace. A step's state is never kept here. It 
   origin, no owner acts on it) or ``reaches an owner``;
 - **a D-01 read** from the routes the STG-02 server's dispatch serves (the reference's reader of ``handle``):
   ``served`` or ``not built``;
-- **a local step** from its surface: ``built`` when the CLI has the command, ``outside AEW`` for the harness's own act,
-  ``not built`` when no code serves it.
+- **a local step** from its surface: ``built`` when the CLI has the command and every option the step names, ``outside
+  AEW`` for the harness's own act, ``not built`` when no code serves it.
 
-A step is as far as its weakest part, and names what holds it (the row's "Held by") until it lands. So a newly built
-surface moves its step with no edit here. A step names no proposed command: ``proposed_names`` fails on one.
+A step is as far as its weakest part, and names what holds it (the row's "Held by") until it lands. So a surface built
+under the name a step already gives moves that step with no edit here. A step that has no surface yet to name takes an
+edit when it gets one, on the authority of the ruling that names it: step 2's did (register E119, the designer's ruling
+of 2026-11-03, §1). A step names no proposed command or option: ``proposed_names`` fails on one.
 
 **The PIN budget** (the operator's decision of 2026-10-24 on F1, the matrix's budgets since A-39): one PIN per
 G3-protected step on a scenario's path, the raise included, derived from the path, never kept by hand.
@@ -64,12 +66,14 @@ class Read(NamedTuple):
 
 class Local(NamedTuple):
     """A local or manual act: its A-32 row, its act (None: NO_COMMAND), the `aew` command that serves it (None: no
-    code surface), and whether it is served outside AEW (the harness's own act)."""
+    code surface), whether it is served outside AEW (the harness's own act), and the options of that command that serve
+    it, for a step a command's options serve rather than the command."""
 
     catalog: str
     act: str | None
     command: tuple[str, ...] | None
     outside: bool = False
+    options: tuple[str, ...] = ()
 
 
 class Step(NamedTuple):
@@ -91,8 +95,10 @@ def _s(*tags: str) -> frozenset[str]:
 # Row V01-01, its 13 steps (V-01-MATRIX.md, rows 1 to 13, as refreshed 2026-10-26 for A-39).
 STEPS: tuple[Step, ...] = (
     Step(1, "init", _s("all"), ("L10",), (Local("L10", "INIT_OR_REGISTER_PROJECT", ("init",)),), ()),
-    # A-39: a setup act at the console beside `aew init`, with no O-01 command and no PIN; no code serves it yet.
-    Step(2, "configure", _s("all"), ("L10",), (Local("L10", None, None),), ()),
+    # A-39: a setup act at the console, with no O-01 command and no PIN, served by what `aew init` takes before it pins
+    # (the designer's ruling of 2026-11-03, §1). It's built only when the real parser has all three.
+    Step(2, "configure", _s("all"), ("L10",),
+         (Local("L10", None, ("init",), options=("--check-command", "--model", "--provider")),), ()),
     Step(3, "open", _s("V1"), ("L01", "L02"),
          (Read("L01", "/v1/read/attachments"), Wire("L02", "ATTACH_LEAD", G3, "A-25")), ("G3",)),
     # R1: the chat line is the outcome's own input; the step cites the action it produces, the Lead's.
@@ -134,7 +140,7 @@ class Facts(NamedTuple):
     owner_action: str  # the one action it hands to an owner
     routes: frozenset[str]  # the D-01 routes of the vendored problem matrix
     served: frozenset[str]  # the ones the STG-02 server serves
-    commands: frozenset[str]  # the CLI's leaf commands ("init", "lead mode raise", ...)
+    commands: Mapping[str, frozenset[str]]  # the CLI's leaf commands ("init", "lead mode raise", ...) -> their options
 
 
 def readers() -> tuple[Any, Any]:
@@ -149,20 +155,20 @@ def readers() -> tuple[Any, Any]:
     return stg02_commands, stg02_server
 
 
-def cli_commands(parser: argparse.ArgumentParser) -> frozenset[str]:
-    """Every leaf command of the CLI, as its words after ``aew``."""
-    out: set[str] = set()
+def cli_commands(parser: argparse.ArgumentParser) -> dict[str, frozenset[str]]:
+    """Every leaf command of the CLI, as its words after ``aew``, with the option strings the real parser gives it."""
+    out: dict[str, frozenset[str]] = {}
 
     def walk(p: argparse.ArgumentParser, path: list[str]) -> None:
         subs = [a for a in p._actions if isinstance(a, argparse._SubParsersAction)]
         if not subs and path:
-            out.add(" ".join(path))
+            out[" ".join(path)] = frozenset(o for a in p._actions for o in a.option_strings)
         for a in subs:
             for name, child in a.choices.items():
                 walk(child, [*path, name])
 
     walk(parser, [])
-    return frozenset(out)
+    return out
 
 
 @cache
@@ -206,7 +212,10 @@ def part_state(item: Wire | Read | Local, facts: Facts) -> str:
         return SERVED if item.route in facts.served else NOT_BUILT
     if item.outside:
         return OUTSIDE
-    return BUILT if item.command is not None and " ".join(item.command) in facts.commands else NOT_BUILT
+    if item.command is None:
+        return NOT_BUILT
+    served = facts.commands.get(" ".join(item.command))
+    return BUILT if served is not None and served.issuperset(item.options) else NOT_BUILT
 
 
 def _named(item: Wire | Read | Local) -> dict[str, Any]:
@@ -215,7 +224,7 @@ def _named(item: Wire | Read | Local) -> dict[str, Any]:
     if isinstance(item, Read):
         return {"route": item.route}
     return {"act": item.act or "NO_COMMAND", "surface": "aew " + " ".join(item.command) if item.command else
-            "the harness's own" if item.outside else None}
+            "the harness's own" if item.outside else None, **({"options": list(item.options)} if item.options else {})}
 
 
 def landed(state: str) -> bool:
@@ -268,8 +277,8 @@ ACTION = re.compile(r"[A-Z][A-Z0-9_]*")
 
 
 def proposed_names(steps: Iterable[Step] = STEPS, facts: Facts | None = None) -> list[str]:
-    """Every name on the path that nothing adopted or built carries: a CLI surface the CLI does not have, a route that
-    is no route of the vendored D-01 matrix, an action neither in the registry nor placed by an adoption.
+    """Every name on the path that nothing adopted or built carries: a CLI surface or option the CLI does not have, a
+    route that is no route of the vendored D-01 matrix, an action neither in the registry nor placed by an adoption.
 
     The limit: an action the registry lacks is "placed by an adoption" when its step cites one (``A-\\d+``); its name is
     not checked against the adopted contract, which is not in this repository. A misspelled unregistered name passes,
@@ -278,8 +287,13 @@ def proposed_names(steps: Iterable[Step] = STEPS, facts: Facts | None = None) ->
     out = []
     for s in steps:
         for i in s.serves:
-            if isinstance(i, Local) and i.command is not None and " ".join(i.command) not in facts.commands:
-                out.append(f"step {s.n} ({s.key}): `aew {' '.join(i.command)}` is no command of the CLI")
+            if isinstance(i, Local) and i.command is not None:
+                name = " ".join(i.command)
+                if name not in facts.commands:
+                    out.append(f"step {s.n} ({s.key}): `aew {name}` is no command of the CLI")
+                else:
+                    out += [f"step {s.n} ({s.key}): `aew {name} {o}` is no option of the CLI" for o in i.options
+                            if o not in facts.commands[name]]
             elif isinstance(i, Read) and i.route not in facts.routes:
                 out.append(f"step {s.n} ({s.key}): {i.route} is no route of the vendored D-01 matrix")
             elif isinstance(i, Wire) and (not ACTION.fullmatch(i.action) or

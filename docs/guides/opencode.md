@@ -21,7 +21,7 @@ AEW never contacts OpenCode Desktop's own background service, and never writes t
 
 ## 1. Configure execution (once per project)
 
-`aew init` writes `.aew/policy/execution.yaml` as an unconfigured template. Until it is configured, `aew harness launch` and `--launch` refuse. A minimal configuration:
+`aew init --model openai/gpt-6-sol` configures it in that one call, before it pins: one profile named `default`, with the provider's key variable named in `provider_env`, and there's nothing to adopt ([the quickstart](quickstart.md#operator-initialize-a-project) has its bounds). Without `--model`, `aew init` writes `.aew/policy/execution.yaml` as an unconfigured template. Until it is configured, `aew harness launch` and `--launch` refuse. A minimal configuration by hand, which is also the route for a proxy variable or a provider `--model` doesn't know:
 
 ```yaml
 schema: aew/execution/v1
@@ -44,7 +44,9 @@ provider_env: [OPENAI_API_KEY]
 
 The policy files are pinned: after editing one, run `aew manifest adopt --reason ... --expect-rev N` at your own
 terminal to accept the change (until then every Lead change is refused). It asks for the Lead credential at a hidden
-prompt; see [Giving AEW the Lead credential](quickstart.md#giving-aew-the-lead-credential).
+prompt; see [Giving AEW the Lead credential](quickstart.md#giving-aew-the-lead-credential). That route holds the seat,
+and it doesn't mix with section 3's `--acquire`: a held seat refuses it, so start the Lead there with
+`aew opencode` and your credential.
 
 Then check the project:
 

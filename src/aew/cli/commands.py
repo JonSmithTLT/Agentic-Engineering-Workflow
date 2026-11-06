@@ -85,6 +85,10 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     p.add_argument("--model", help="the workers' model, as the harness lists it (provider/model). It doesn't set the "
                                    "Lead's own model")
     p.add_argument("--provider", help="with --model: the workers' provider, when the model is a bare id")
+    # The tools AEW brings: downloaded only as the operator chooses (the operator, 2026-11-05; aew.capability.consent)
+    p.add_argument("--fetch-tool", action="append", metavar="TOOL",
+                   help="download this tool AEW brings (ripgrep), as your choice, with no screen; repeat for more. "
+                        "With none named, a screen asks at a terminal, and elsewhere nothing downloads")
     p.set_defaults(handler=_init)
 
     p = sub.add_parser("status", help="work graph, Lead authority and knowledge health")
@@ -325,9 +329,11 @@ def _doctor(args: argparse.Namespace) -> Any:
 
 
 def _init(args: argparse.Namespace) -> Any:
+    from aew.capability import consent
     from aew.engine import first_configuration
     from aew.engine.api import Engine
 
+    consent.check_names(args.fetch_tool)  # an unknown tool refuses before anything is written
     configuration = first_configuration.from_flags(check_command=args.check_command, check_timeout=args.check_timeout,
                                                    model=args.model, provider=args.provider)
     engine = Engine.initialize(
@@ -335,7 +341,7 @@ def _init(args: argparse.Namespace) -> Any:
         workspaces_root=args.workspaces_root, first_configuration=configuration,
     )
     state = engine.store.current()
-    return {
+    out = {
         "ok": True,
         "project_id": engine.project_id,
         "aew_root": str(engine.aew_root),
@@ -345,6 +351,7 @@ def _init(args: argparse.Namespace) -> Any:
         "next": configuration.next_step() if configuration is not None
         else "acquire Lead authority: aew lead acquire --expect-rev 0",
     }
+    return {**out, **consent.init_keys(out["next"], consent.at_init(args.fetch_tool))}
 
 
 def _lead_tool(args: argparse.Namespace) -> Any:

@@ -188,6 +188,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         lead_broker.require_credential(acquire)
         lead = ContainedLead(engine, argv=argv, provider_env=provider_env, guide=guide, base=os.environ,
                              stages=stages)
+        _tools_before_the_tui()
         lead.announce(sys.stderr)
         stages.mark("logins")
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
@@ -197,6 +198,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     # 1); under an explicit `required` that refuses before any credential is read.
     weaker = lead_broker.WeakerLead(engine, argv, kind="lead_opencode", who="aew opencode")
     weaker.precheck()
+    _tools_before_the_tui()
     env = tui_env(os.environ, provider_env=provider_env, guide=guide)
     if provider_env:
         sys.stderr.write(f"aew opencode: {', '.join(provider_env)} passed to the Lead's OpenCode; the Lead model's "
@@ -204,6 +206,14 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                   env=env, contained=weaker)
     return {**out, "opencode": version}
+
+
+def _tools_before_the_tui() -> None:
+    """The tools AEW brings, before the TUI opens and once the start's own refusals have passed: asked for only as the
+    operator chooses, and a needed one declined named in one line (:func:`aew.capability.consent.at_lead_start`)."""
+    from aew.capability import consent
+
+    consent.at_lead_start(sys.stderr)
 
 
 # ---------------------------------------------------------------------------------------- the contained Lead (Linux)

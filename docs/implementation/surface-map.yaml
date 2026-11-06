@@ -1517,7 +1517,8 @@ commands:
     users: [operator]
     journeys: []
     mutates: "yes"
-    mutates_basis: "writes the health checks' results to the host's register, and fetches payloads to existing pins"
+    mutates_basis: "writes the health checks' results to the host's register, and downloads a payload to an existing
+      pin only for a provider it names"
     lead_disposition: forbidden-to-lead
     lead_kept_out_by: "capability_commands.refuse_lead_session: refused where a Lead session's environment is present;
       and lead_broker.run_cli, through custody_ops.LEAD_KEPT_OUT, on the Lead broker's channels"
@@ -1527,6 +1528,23 @@ commands:
     refusals: [LOCK_TIMEOUT, NOT_FOUND, PERMISSION_DENIED, USAGE]
     note: "changes no record or setting, so it changes no authority (CAPR-05); NOT_FOUND: an unknown selector;
       PERMISSION_DENIED (register_not_writable): the register cannot be written here, as in a contained run"
+  - name: capability fetch
+    home: operator-admin
+    users: [operator]
+    journeys: []
+    mutates: "yes"
+    mutates_basis: "downloads the tools the operator names or picks at the consent screen to their existing pins in the
+      host's register, and records a tool shown and not picked as declined for its pin"
+    lead_disposition: forbidden-to-lead
+    lead_kept_out_by: "capability_commands.refuse_lead_session: refused where a Lead session's environment is present;
+      and lead_broker.run_cli, through custody_ops.LEAD_KEPT_OUT, on the Lead broker's channels"
+    primitive: none
+    primitive_reason: "host state outside the control engine: no engine primitive runs it"
+    keep_out_probe: [capability, fetch]
+    refusals: [LOCK_TIMEOUT, NOT_FOUND, PERMISSION_DENIED, USAGE]
+    note: "the operator's decision of 2026-11-05: AEW downloads no tool unless the operator chooses it. NOT_FOUND: an
+      unknown tool; PERMISSION_DENIED (operator_only): an agent's own `aew`; USAGE (no_terminal): no tool named and no
+      terminal to ask at"
   - name: capability import
     home: operator-admin
     users: [operator]

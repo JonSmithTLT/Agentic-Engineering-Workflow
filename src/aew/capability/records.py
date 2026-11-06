@@ -10,7 +10,7 @@ code, 2026-10-25), so the harness gets the ripgrep it was built against. Its pay
 (https://github.com/BurntSushi/ripgrep/releases/tag/15.1.0): each archive matched the ``.sha256`` file the release
 publishes beside it, and the executable's digest was taken from the archive before anything ran. x86_64 Linux takes
 the static musl build, which runs on the Rocky 8 family (glibc 2.28); aarch64 Linux takes the release's GNU build, the
-one OpenCode takes.
+one OpenCode takes. It is needed: OpenCode's glob and grep tools run it, so its search fails without it.
 """
 
 from __future__ import annotations
@@ -41,6 +41,8 @@ providers:
     path: first
     evidence: source_text
     license: MIT OR Unlicense
+    needed: true
+    degrades: "OpenCode's search: its glob and grep tools fail without it"
     needs: {network: false, credentials: false, providers: []}
     version: 15.1.0
     payloads:
@@ -151,7 +153,17 @@ def record_problems(record: dict[str, Any]) -> list[str]:
     for key, payload in record["payloads"].items():
         if ".." in payload["member"].split("/"):
             out.append(f"payload {key}: its member {payload['member']!r} names a parent directory")
+    if record.get("needed") and not record.get("degrades"):
+        out.append("a needed provider says what degrades without it (`degrades`), which the operator's prompt shows "
+                   "beside it; add it, or mark the provider optional (`needed: false`)")
     return out
+
+
+def needed(record: dict[str, Any]) -> bool:
+    """Whether the harness relies on the provider (the record's ``needed``, default false): the operator's prompt lists
+    a needed tool in full, and Enter takes it (the designer's ruling, STG-15, 2026-11-05). Stated on the record, never
+    inferred, and an operator's record of the same name overrides it (CAPR-04's two layers)."""
+    return bool(record.get("needed"))
 
 
 @cache

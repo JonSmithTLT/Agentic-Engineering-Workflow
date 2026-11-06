@@ -331,6 +331,20 @@ def capability_register(capability_register_dir):
     store.ROOT_OVERRIDE = saved
 
 
+@pytest.fixture(autouse=True)
+def no_tool_prompt():
+    """The tool-consent screen (``aew.capability.consent``) asks only at a controlling terminal, which an in-process
+    test run from a developer's own terminal has: no test waits on it unless it drives the screen itself, replacing
+    ``consent.terminal`` and ``consent.read_terminal``. (Not through ``monkeypatch``, for the reason
+    ``capability_register`` gives.) An `aew` a test starts has no terminal (:func:`run_aew`)."""
+    from aew.capability import consent
+
+    saved = consent.terminal
+    consent.terminal = lambda: False
+    yield
+    consent.terminal = saved
+
+
 @pytest.fixture
 def repo(tmp_path) -> Path:
     return make_git_repo(tmp_path / "repo", {

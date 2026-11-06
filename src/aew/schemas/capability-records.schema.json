@@ -36,6 +36,10 @@
         "evidence": {"description": "The highest kind of evidence its output can be admitted as (CAPR-09).",
                      "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
         "license": {"type": "string", "maxLength": 100},
+        "needed": {"description": "Whether the harness relies on it, so that what `degrades` names is lost without it; otherwise it is an optional enhancement. AEW runs without either (CAPR-12): this only decides how the operator is asked to get it. Default false.",
+                   "type": "boolean"},
+        "degrades": {"description": "What degrades while it is missing, in a phrase the operator's prompt shows (ripgrep: OpenCode's search). Required where `needed` is true.",
+                     "type": "string", "minLength": 1, "maxLength": 200},
         "needs": {
           "type": "object",
           "additionalProperties": false,

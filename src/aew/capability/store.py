@@ -3,8 +3,8 @@
 Per host, outside every project and every sandbox's writable binds: ``$XDG_DATA_HOME/aew/capability`` (by default
 ``~/.local/share/aew/capability``), or ``%LOCALAPPDATA%\\aew\\capability`` on Windows. It holds:
 
-* ``register.json``: the operator's records and settings, the health checks' results and the refused payloads, one
-  document replaced whole under ``register.lock``;
+* ``register.json``: the operator's records and settings, the health checks' results, the refused payloads and the
+  tools the operator declined to download (per tool and pin), one document replaced whole under ``register.lock``;
 * ``payloads/<provider>/<sha256 prefix>/<command>``: each pinned executable, in a directory of its own that holds
   nothing else, so a later PATH entry can name it (CAPR-04);
 * ``changes.jsonl``: one line per operator change, with its time, its author and its authorization (CAPR-13).
@@ -59,7 +59,7 @@ def root() -> Path:
 
 def empty() -> dict[str, Any]:
     return {"format": FORMAT, "host_copies": True, "operator_records": {}, "checks": {}, "refused": {},
-            "fetch_failures": {}, "flagged": {}}
+            "fetch_failures": {}, "flagged": {}, "declined": {}}
 
 
 def read(directory: Path | None = None) -> dict[str, Any]:

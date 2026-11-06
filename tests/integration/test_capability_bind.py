@@ -193,11 +193,11 @@ def test_with_no_copy_at_all_the_stub_fails_with_the_cause_and_the_lookup_still_
     entry = Path(layout.tools_first) / "fake"
     done = world.sh(layout, 'command -v fake; fake --search anything; echo "exit $?"')
     assert done.stdout.splitlines() == [str(entry), "exit 127"], done
-    assert "its pinned payload is not on this host" in done.stderr and "aew capability check" in done.stderr
+    assert "its pinned payload is not on this host" in done.stderr and "aew capability fetch fake" in done.stderr
     assert "Meanwhile, search with `grep -rn` or `find`" in done.stderr  # the agent's own step (review of #330, m5)
     cap = world.status()
     assert cap["observed_status"] == status.UNAVAILABLE and "not on this host" in cap["cause"]
-    assert "aew capability check" in cap["fix"]
+    assert "aew capability fetch fake" in cap["fix"]
 
 
 def test_a_refused_payload_never_serves_and_a_host_copy_then_does_named_unpinned(world):
@@ -391,7 +391,7 @@ def test_with_no_ripgrep_anywhere_doctor_names_it_with_the_fix_and_an_agents_run
         doctor_rows = {c["check"]: c for c in lab.ok("doctor", "--json", env=env)["checks"]}
         row = doctor_rows["capability:EXACT_CODE_SEARCH"]
         assert row["status"] == "WARN" and "not on this host" in row["detail"]
-        assert "aew capability check" in row["detail"] and doctor_rows["containment"]["status"] != "FAIL"
+        assert "aew capability fetch ripgrep" in row["detail"] and doctor_rows["containment"]["status"] != "FAIL"
         assert "ripgrep" not in doctor_rows  # RG-1's own line is gone
     finally:
         lab.cleanup()
@@ -424,11 +424,11 @@ class Network:
         return io.BytesIO(self.body)
 
 
-def test_a_launch_never_fetches_and_the_operators_check_does(world, monkeypatch):
+def test_a_launch_never_fetches_and_the_operators_choice_does(world, monkeypatch):
     """The operator, 2026-11-05: AEW downloads no tool unless the operator chooses it. A launch on a host without the
     pinned copy reaches no network: it goes on with the stub (CAPR-12), and the status says the tool is not installed,
-    never that a launch will fetch it. The operator's `aew capability check` fetches it, and the next launch serves it,
-    checked inside."""
+    never that a launch will fetch it. The operator's `aew capability fetch` downloads it, and the next launch serves
+    it, checked inside."""
     net = Network(monkeypatch, world.reg["archive"])
     for _ in range(2):
         layout, label = world.establish()
@@ -436,8 +436,8 @@ def test_a_launch_never_fetches_and_the_operators_check_does(world, monkeypatch)
     assert net.asked == []
     cap = world.status()
     assert cap["observed_status"] == status.UNAVAILABLE and cap["cause"].endswith("it is not installed"), cap
-    assert "launch" not in cap["cause"] and "aew capability check" in cap["fix"]
-    ops.check()
+    assert "launch" not in cap["cause"] and "aew capability fetch fake" in cap["fix"]
+    ops.fetch(["fake"])
     assert net.asked == [world.pinned["source"]]
     _, label = world.establish()
     assert label["self_test"]["tools"]["fake"]["served"] == status.AEW_COPY and net.asked == [world.pinned["source"]]
@@ -572,7 +572,8 @@ def test_doctor_names_a_missing_provider_with_its_fix_and_stays_a_warning(world,
     """CAPR-Q06, in process: a host copy absent and present (the test plants both, whatever this host has)."""
     C.doctor_checks({"containment": {"network": {"mode": "isolated"}}}, "unsupported")
     row = next(c for c in doctor.environment_checks() if c["check"] == "capability:FAKE_SEARCH")
-    assert row["status"] == "WARN" and "not on this host" in row["detail"] and "aew capability check" in row["detail"]
+    assert row["status"] == "WARN" and "not on this host" in row["detail"]
+    assert "aew capability fetch fake" in row["detail"]
     host = _plant_host_copy(world.reg, monkeypatch)
     C.doctor_checks({"containment": {"network": {"mode": "isolated"}}}, "unsupported")
     row = next(c for c in doctor.environment_checks() if c["check"] == "capability:FAKE_SEARCH")

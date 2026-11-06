@@ -180,7 +180,8 @@ def test_flagless_init_says_what_it_always_said(tmp_path):
     out = init(root).json
     assert out["next"] == "acquire Lead authority: aew lead acquire --expect-rev 0"
     assert "first_configuration" not in out
-    assert sorted(out) == ["aew_root", "authority_candidates", "next", "ok", "project_id", "revision"]
+    # `tools`: the tools AEW brings, as the operator chose them (aew.capability.consent), in a key of its own
+    assert sorted(out) == ["aew_root", "authority_candidates", "next", "ok", "project_id", "revision", "tools"]
 
 
 def test_a_flag_is_refused_under_the_lead_broker_and_writes_nothing(tmp_path):

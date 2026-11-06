@@ -212,7 +212,7 @@ _ESCAPES = {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t"}
 
 # The credential route onto the Lead seat and the `--acquire` route don't mix, and this is the way back (E119; review of
 # #329, F2 and F3). Each text that names `aew lead acquire` carries this sentence: test_first_configuration's guard.
-_HELD_SEAT = "The acquire holds the seat, and a held seat refuses `aew opencode --acquire` until "
+_HELD_SEAT = "The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until "
 HELD_SEAT = f"{_HELD_SEAT}`aew lead release {EXPECT_REV}` gives it up"
 # D2's ratchet refuses a guide a new revision to supply (O-IDS), so a guide names the command, and says so in its prose.
 HELD_SEAT_IN_A_GUIDE = f"{_HELD_SEAT}`aew lead release` gives it up"
@@ -226,6 +226,12 @@ def _escape(c: str) -> str:
 # A Ticket's creation as the guide and the Lead's instructions show it: its text as data, in the frame above.
 CREATE_TICKET = fields_block(f"aew work create ticket --class <0-4> {EXPECT_REV}", {
     "title": "<title>", "goal": ["<goal>"], "contract": ["<clause>"], "scope": ["<path glob>"]})
+
+
+# The key in a launch contract's ``extra`` for the commands of the tools AEW brings that the run has no copy of, set
+# once its context is contained (``capability.ops.unavailable``) and named in its system text, as its missing skills
+# are (the operator, 2026-11-05: a missing tool is logged, not voided)
+UNAVAILABLE_TOOLS = "unavailable_tools"
 
 
 @dataclass

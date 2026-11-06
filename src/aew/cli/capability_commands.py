@@ -1,8 +1,10 @@
 """`aew capability`: the capability register's commands (STG-15, A-38: CAPR-05, CAPR-13; the designer's CAP-1 ruling 1).
 
-* `list` reads every capability's status on this host. `check` fetches what a record pins and the host lacks, checks
-  each payload against its pin and runs the health checks; it changes no record or setting. Neither needs
-  authorization; `check` is still never a Lead session's command (:func:`refuse_lead_session`).
+* `list` reads every capability's status on this host. `check` checks each payload against its pin and runs the
+  health checks, downloading a missing payload only for a provider it names; it changes no record or setting.
+  `fetch` downloads the tools the operator chooses, at the one consent screen or by name (the operator, 2026-11-05;
+  :mod:`aew.capability.consent`). None needs authorization; `check` and `fetch` are still never a Lead session's
+  commands (:func:`refuse_lead_session`), and never an agent's own `aew`'s.
 * `import`, `add`, `remove` and `host-copies` change what every contained context gets, so they are the operator's:
   each sends one request to the project's operator endpoint (`aew operator serve --dev`), whose console shows the
   exact change and a code the operator types here. The endpoint applies the change it showed. They are on no agent's
@@ -28,12 +30,19 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = csub.add_parser("list", help="every capability's status on this host, its provider, its cause and its fix")
     _add_json(q)
     q.set_defaults(handler=_list)
-    q = csub.add_parser("check", help="fetch what a record pins and this host lacks, check every payload against its "
-                                      "pin, and run the health checks")
-    q.add_argument("selector", nargs="?", help="one provider (ripgrep) or capability (EXACT_CODE_SEARCH); default: all")
-    q.add_argument("--offline", action="store_true", help="fetch nothing: check what is already on this host")
+    q = csub.add_parser("check", help="check every payload against its pin and run the health checks; a payload this "
+                                      "host lacks is downloaded only for a provider named here")
+    q.add_argument("selector", nargs="?", help="one provider (ripgrep) or capability (EXACT_CODE_SEARCH); default: "
+                                               "all, downloading nothing")
+    q.add_argument("--offline", action="store_true", help="download nothing, even for the provider named")
     _add_json(q)
     q.set_defaults(handler=_check)
+    q = csub.add_parser("fetch", help="download the tools you choose: with none named, a screen lists what this host "
+                                      "is missing and asks (at a terminal); each is checked against its pin")
+    q.add_argument("tools", nargs="*", help="the tools to download (ripgrep); naming them is your choice, so no "
+                                            "screen asks")
+    _add_json(q)
+    q.set_defaults(handler=_fetch)
     q = csub.add_parser("import", help="import pinned payloads from the operator's offline bundle (approved at the "
                                        "operator endpoint)")
     q.add_argument("bundle", help="a release archive, or a directory of them")
@@ -89,6 +98,17 @@ def _check(a: argparse.Namespace) -> Any:
         return out
     said = [f"{name}: {line}" for name, lines in out["checked"].items() for line in lines]
     return "\n".join([*said, ops.render(out)])
+
+
+def _fetch(a: argparse.Namespace) -> Any:
+    from aew.capability import consent, ops
+
+    refuse_lead_session("fetch")
+    ops.refuse_an_agents_own("fetch")
+    out = consent.at_fetch(list(a.tools))
+    if a.json:
+        return {**out, **ops.public(ops.listing())}
+    return "\n".join([consent.render(out), ops.render(ops.listing())])
 
 
 def _add(a: argparse.Namespace) -> Any:

@@ -2,10 +2,13 @@
 
 * :func:`listing`: every capability's status on this host, its provider, its cause and its fix. A read: ``aew
   capability list`` and ``aew doctor`` show it, and need no authorization.
-* :func:`check`: fetch what a record pins and this host lacks (online), check every payload against its pin, run the
-  health checks and record their results. It writes the checks' results and payloads to an existing pin, never a
-  record or a setting, so it changes no authority and needs none. It is the operator's to run: AEW downloads no tool
-  unless the operator chooses it (the operator, 2026-11-05), so nothing else reaches the fetch.
+* :func:`check`: check every payload against its pin, run the health checks and record their results, and download
+  a tool this host lacks only where the operator named it. It writes the checks' results and payloads to an existing
+  pin, never a record or a setting, so it changes no authority and needs none.
+* :func:`fetch`: the download itself, of the tools the operator chose: at their prompt (:mod:`.consent`), by name
+  (`aew capability fetch`), or by naming one to `aew capability check`. AEW downloads no tool unless the operator
+  chooses it (the operator, 2026-11-05), so nothing else reaches it. Each payload is downloaded and checked against
+  its pin with no lock held, and the register's lock is taken only to install it (the designer's ruling, STG-15).
 * :func:`record_contained` and :func:`flag_missing`: at a contained context's launch, the health checks' results
   from inside, and what the run got without AEW's pinned copy, on its record and once on the operator's terminal.
   Neither ever stops a launch (CAPR-12), and neither fetches. What the context gets is :mod:`.bind`'s.
@@ -165,28 +168,105 @@ def doctor_checks() -> list[tuple[str, str, str]]:
 
 
 def check(selector: str | None = None, *, offline: bool = False, directory: Path | None = None) -> dict[str, Any]:
-    """Fetch, verify and check every provider, or the one ``selector`` names (a provider or a capability ID), and
-    record the results. Online, a payload this host lacks is fetched from its record's source, checked against its
-    pin as it is read (``offline``: never). A payload that does not match its pin is refused and removed; the next
-    check fetches it again. Each copy's health check runs inside a sandbox, as its uses run (CAPR-13), so what it says
-    is what a contained run sees; only where no sandbox can be made does it run here, and the status says so. A host
-    copy is checked where AEW's copy cannot serve and host copies are on. It is the operator's to run: an agent's own
-    `aew` (a worker run's, the contained Lead's) is refused, as AEW downloads no tool the operator did not choose (the
-    operator, 2026-11-05). A keep-out keyed on the process's declaration, not the boundary: inside a sandbox the
+    """Verify and check every provider, or the one ``selector`` names (a provider or a capability ID), and record the
+    results. A payload that does not match its pin is refused and removed. A payload this host lacks is downloaded
+    only where ``selector`` named it and ``offline`` is not set, since naming it is the operator's choice; one the
+    operator declined is not, and the line says how to get it (the operator, 2026-11-05). Each copy's health check
+    runs inside a sandbox, as its uses run (CAPR-13), so what it says is what a contained run sees; only where no
+    sandbox can be made does it run here, and the status says so. A host copy is checked where AEW's copy cannot
+    serve and host copies are on. It is the operator's to run: an agent's own `aew` (a worker run's, the contained
+    Lead's) is refused. A keep-out keyed on the process's declaration, not the boundary: inside a sandbox the
     register is read-only."""
-    if process_kind.kind() == process_kind.NON_WRITER:
-        raise PermissionDenied("`aew capability check` is the operator's, at their own terminal: it may fetch a tool "
-                               "and it writes this host's capability register, and an agent's own `aew` does neither; "
-                               "ask the operator to run it", reason="operator_only")
+    refuse_an_agents_own("check")
+    names = _select(status.effective(store.read(directory)), selector)
+    done: dict[str, list[str]] = {name: [] for name in names}
+    wanted = []
+    for name, why in absent(names, directory).items():
+        if why is None and selector is not None and not offline:
+            wanted.append(name)
+        elif why is not None:
+            done[name].append(why)
+        else:
+            done[name].append(f"not on this host, and a check downloads only a tool it names: `{status.FETCH} {name}`"
+                              " downloads it")
+    for name, said in fetch(wanted, directory=directory).items():  # no lock held across the network
+        done[name] += said
     with store.locked(directory) as root:
         state = store.read(root)
         eff = status.effective(state)
-        names = _select(eff, selector)
+        names = [n for n in names if n in eff]
         facts = status.host_facts()
-        done = {name: _acquire(name, eff[name], state, offline=offline, directory=root) for name in names}
+        for name in names:
+            done[name] += _acquire(name, eff[name], state, directory=root)
         _check_health(names, eff, state, facts, done, root)
         store.write(state, root)
     return {"checked": done, **public(listing(directory))}
+
+
+# The register commands an agent's own `aew` is refused, each as printed and what it would do
+OPERATORS_OWN = {"check": ("`aew capability check`", "it may download a tool"),
+                 "fetch": ("`aew capability fetch`", "it downloads a tool")}
+
+
+def refuse_an_agents_own(command: str) -> None:
+    """`aew capability check` and `fetch` are the operator's, at their own terminal: an agent's own `aew` (a worker
+    run's, the contained Lead's) is refused before anything is read, as AEW downloads no tool the operator did not
+    choose (the operator, 2026-11-05)."""
+    if process_kind.kind() == process_kind.NON_WRITER:
+        shown, why = OPERATORS_OWN[command]
+        raise PermissionDenied(f"{shown} is the operator's, at their own terminal: {why} and it writes this host's "
+                               "capability register, and an agent's own `aew` does neither; ask the operator to run "
+                               "it", reason="operator_only")
+
+
+def absent(names: list[str], directory: Path | None = None) -> dict[str, str | None]:
+    """Each of ``names`` whose pinned payload for this platform is not on this host: None where it can be downloaded
+    now, else why not (declined, so only the operator's naming it gets it). Names whose payload is here, or that
+    have none to download, are left out."""
+    state = store.read(directory)
+    eff = status.effective(state)
+    out: dict[str, str | None] = {}
+    for name in names:
+        record = (eff.get(name) or {}).get("record")
+        pinned = (record or {}).get("payloads", {}).get(records.platform_key())
+        if record is None or pinned is None or P.path_of(name, record["command"], pinned, directory).exists():
+            continue
+        no = status.declined(state, name, pinned)
+        out[name] = (f"not downloaded: the operator declined it at {no.get('at')}; `{status.FETCH} {name}` downloads "
+                     "it" if no else None)
+    return out
+
+
+def fetch(names: list[str], *, directory: Path | None = None) -> dict[str, list[str]]:
+    """Download the pinned payload of each of ``names`` this host lacks, as the operator chose (the operator,
+    2026-11-05): from its record's source, read to at most its pinned size and checked against the archive's pin and
+    the executable's before anything is placed. It is downloaded with no lock held, and the register's lock is taken
+    only to install it, where a record or pin that changed meanwhile installs nothing (the designer's ruling, STG-15,
+    2026-11-05). A download that fails or is cut short is never placed: it is held in memory, and the install writes a
+    temporary file it renames into place or removes. Installing it clears the operator's earlier "no" to it. Returns
+    what happened, per name, in AEW's words."""
+    key = records.platform_key()
+    out: dict[str, list[str]] = {}
+    for name in names:
+        record = (status.effective(store.read(directory)).get(name) or {}).get("record")
+        pinned = (record or {}).get("payloads", {}).get(key)
+        if record is None or pinned is None:
+            out[name] = ["nothing to download: " + ("its record is refused" if record is None else
+                                                    f"its record has no payload for this platform ({key})")]
+            continue
+        if P.path_of(name, record["command"], pinned, directory).exists():
+            out[name] = ["already on this host"]
+            continue
+        got = _fetched(pinned)  # the network: no lock is held here
+        with store.locked(directory) as root:
+            state = store.read(root)
+            now = (status.effective(state).get(name) or {}).get("record")
+            if now is None or now["payloads"].get(key) != pinned:
+                out[name] = ["its record or pin changed during the download, so nothing was installed"]
+                continue
+            out[name] = [_take(name, now, pinned, state, key, root, got)]
+            store.write(state, root)
+    return out
 
 
 def _select(eff: dict[str, dict[str, Any]], selector: str | None) -> list[str]:
@@ -201,8 +281,9 @@ def _select(eff: dict[str, dict[str, Any]], selector: str | None) -> list[str]:
     return named
 
 
-def _acquire(name: str, entry: dict[str, Any], state: dict[str, Any], *, offline: bool, directory: Path) -> list[str]:
-    """What a check does before any health check: refuse a payload off its pin, and fetch one this host lacks."""
+def _acquire(name: str, entry: dict[str, Any], state: dict[str, Any], *, directory: Path) -> list[str]:
+    """What a check does before any health check, under the register's lock: refuse a payload off its pin. It never
+    downloads (:func:`fetch` does, with no lock held)."""
     record = entry["record"]
     if record is None:
         return [f"its record is refused: {entry['problem']}"]
@@ -211,16 +292,12 @@ def _acquire(name: str, entry: dict[str, Any], state: dict[str, Any], *, offline
     said: list[str] = []
     if pinned is not None:
         path = P.path_of(name, record["command"], pinned, directory)
-        refused_now = False
         if path.exists() and (wrong := P.verify(path, pinned)) is not None:
             _refuse(state, name, key, pinned, f"the installed payload {path} does not match its pin: {wrong}")
             P.discard(name, pinned, directory)
             said.append(f"refused its installed payload ({wrong})")
-            refused_now = True
         elif path.exists():  # it matches its pin: an earlier refusal (a refused import or fetch) no longer holds (F4)
             _installed(state, name, key)
-        if not path.exists() and not offline and not refused_now:
-            said.append(_fetch(name, record, pinned, state, key, directory))
     return said
 
 
@@ -280,14 +357,9 @@ def _take(name: str, record: dict[str, Any], pinned: dict[str, Any], state: dict
                                                                     "sha256": pinned["sha256"],
                                                                     "code": got.details.get("fetch_reason")}
         return f"could not fetch it: {got.message}"
-    _installed(state, name, key)
     P.install(name, record["command"], pinned, got, directory)
-    return f"fetched {pinned['source']}"
-
-
-def _fetch(name: str, record: dict[str, Any], pinned: dict[str, Any], state: dict[str, Any], key: str,
-           directory: Path) -> str:
-    return _take(name, record, pinned, state, key, directory, _fetched(pinned))
+    _installed(state, name, key)
+    return f"downloaded {P.shown_source(pinned['source'])}, matching its pin"
 
 
 # ---------------------------------------------------------------------------------------------- at a launch
@@ -386,6 +458,14 @@ def run_record(flags: list[dict[str, Any]]) -> dict[str, Any]:
             "detail": flags}
 
 
+def unavailable(missing_tools: dict[str, Any] | None) -> list[str]:
+    """The commands a run has no copy of, from its record's ``missing_tools`` (:func:`run_record`): those it got a
+    failing stub for, which its system text names. A tool an unpinned host copy served still runs, and stays on the
+    record as missing its pin."""
+    detail = (missing_tools or {}).get("detail") if isinstance(missing_tools, dict) else None
+    return [str(d.get("tool")) for d in detail or [] if isinstance(d, dict) and d.get("served") == "stub"]
+
+
 def record_contained(tools: dict[str, Any] | None, directory: Path | None = None) -> None:
     """Record what a sandbox's self-test found (``probe.self_test``'s ``tools``): the status follows the check inside
     (CAPR-03, CAPR-13). Written only where a result changed, so an ordinary launch takes no lock; never stops anything
@@ -427,8 +507,10 @@ def _apply_contained(state: dict[str, Any], tools: dict[str, Any], facts: dict[s
 
 
 def _installed(state: dict[str, Any], name: str, key: str) -> None:
-    state.setdefault("refused", {}).pop(f"{name}:{key}", None)
-    state.setdefault("fetch_failures", {}).pop(f"{name}:{key}", None)
+    """A payload that matches its pin is here: an earlier refusal, failed fetch or "no" no longer holds (an import or
+    a download the operator chose is their consent)."""
+    for part in ("refused", "fetch_failures", "declined"):
+        state.setdefault(part, {}).pop(f"{name}:{key}", None)
 
 
 def _refuse(state: dict[str, Any], name: str, key: str, pinned: dict[str, Any], reason: str) -> None:

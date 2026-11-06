@@ -120,9 +120,9 @@ def _timeout(text: str) -> int | float:
 def _provider_env(provider: str) -> tuple[str, ...]:
     """The provider rule, on the parsed provider whichever flag named it. The tables are the containment's own: a
     provider it has no address for would be refused at a contained launch anyway, which is why this is an alpha limit
-    rather than a choice."""
-    if provider in netns.CATALOG_ADDRESSED:  # its free models need no key, and a listed variable left unset refuses
-        return ()
+    rather than a choice. Every known provider needs its key, opencode's included: AEW does not use OpenCode's free
+    models, and a launch whose provider would get no key is refused (``netns.provider_key_missing``; the operator,
+    2026-11-06)."""
     name = netns.PROVIDER_KEY_ENV.get(provider)
     if name is None:
         raise _refuse("unknown_provider",
@@ -186,10 +186,6 @@ class FirstConfiguration:
         if self.identity is not None:
             out["model"] = {"profile": PROFILE, **self.identity.as_dict()}
             out["provider_env"] = list(self.provider_env)
-            if not self.provider_env:
-                out["provider_note"] = (f"provider {self.identity.provider}: no variable was written, since its free "
-                                        "models need none and a listed variable left unset refuses the launch. A paid "
-                                        f"model of it takes {post_pin_route(X.REL_PATH, fresh=True)}. {K.HELD_SEAT}")
         return out
 
     def next_step(self) -> str:
@@ -199,11 +195,16 @@ class FirstConfiguration:
             missing, file = (("check command", CHECKS_REL) if self.argv is None else ("model", X.REL_PATH))
             return (f"this project still has no {missing}. Adding it now takes "
                     f"{post_pin_route(file, fresh=True)}. {K.HELD_SEAT}")
-        if not self.provider_env:
-            return ("run `aew doctor`, then start the Lead with `aew opencode --acquire`. It holds the seat itself: a "
-                    "seat already held refuses `--acquire`")
         var = self.provider_env[0]
         hidden = "; ".join(f"{shell}: `{form}`" for shell, form in lead_credential.forms(var, var).items())
+        provider = self.identity.provider
+        if provider in netns.CATALOG_ADDRESSED:  # never relayed to the Lead: its models carry their own addresses
+            relayed = sorted(v for p, v in netns.PROVIDER_KEY_ENV.items() if p not in netns.CATALOG_ADDRESSED)
+            return (f"run `aew doctor`. Set {var} by the hidden form ({hidden}): a worker reads it from the shell that "
+                    f"launches it. The Lead can't use {provider}, whose models carry addresses of their own, so no "
+                    "relay carries its key: log in to another provider at your own terminal (`opencode auth login`), "
+                    f"or pass one AEW relays ({', '.join(relayed)}) with `--provider-env NAME`, then start the Lead "
+                    "with `aew opencode --acquire`. It holds the seat itself: a seat already held refuses `--acquire`")
         return (f"run `aew doctor`. Set {var} by the hidden form ({hidden}), then start the Lead with "
                 f"`aew opencode --acquire --provider-env {var}`; a stored login (`opencode auth login`) is the "
                 f"alternative for the Lead. A worker reads {var} from the shell that launches it, and the Lead's relay "

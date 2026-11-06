@@ -163,7 +163,7 @@ class Operator:
         return res
 
     def first_configuration(self, argv: list[str], fixtures: Mapping[str, Fixture],
-                            known: Mapping[str, str | None]) -> CLIResult:
+                            known: Mapping[str, str]) -> CLIResult:
         """Steps 1 and 2 in the one line the operator types: `aew init` with its first configuration, through the real
         ``aew.cli.main`` in this process, so that the split, the option set and ``next`` are really exercised, with the
         world's fixtures held around ``Engine.initialize`` (:func:`world_around_init`)."""
@@ -439,6 +439,7 @@ def new_world(tmp: Path, *, gate: Path | None = None, extra: dict[str, str] | No
            "AEW_OPENCODE_BIN": str(launcher),
            # The product as shipped: a lease's grant starts its custody worker (the suite turns it off by default).
            "AEW_CUSTODY_WORKER": "on",
+           OFFLINE_KEY: "synthetic-offline-provider-key",  # the world's provider key: synthetic, and never sent
            # The operator's OpenCode login: one synthetic key, which the contained Lead relays and the fake TUI never
            # calls. A contained Lead with no provider relayed is refused at start (the designer's ruling of 2026-11-06).
            "OPENCODE_DB": str(operator_login(tmp / "operator-opencode"))}
@@ -470,8 +471,10 @@ def check_line(argv: list[str]) -> str:
     return shlex.join(argv).replace("'{python}'", "{python}")
 
 
-# The model the operator names in the offline world. Its provider stands for a key-free one, as `opencode` is.
+# The model the operator names in the offline world, and its provider's key variable, which the world sets to a
+# synthetic value: every provider needs a key (AEW does not use OpenCode's free models: the operator, 2026-11-06).
 OFFLINE_PROVIDER = "fakeprov"
+OFFLINE_KEY = "FAKEPROV_API_KEY"
 OFFLINE_MODEL = f"{OFFLINE_PROVIDER}/fake-model"
 
 
@@ -508,11 +511,12 @@ class _WithFixtures:
 
 @contextlib.contextmanager
 def world_around_init(ledger: Ledger, fixtures: Mapping[str, Fixture],
-                      known: Mapping[str, str | None]) -> Iterator[None]:
+                      known: Mapping[str, str]) -> Iterator[None]:
     """The test-only hook. For this process and this call, the fake providers are known (``known``: each with the
-    variable it needs, or None for a key-free one) and ``Engine.initialize`` adds the world's fixtures to what it pins.
-    Each is recorded, not counted, as a hand edit in setup is. None of it is a parser option, an environment variable or
-    anything else an installed ``aew`` can reach."""
+    variable its key is read from: every provider needs one, since AEW does not use OpenCode's free models) and
+    ``Engine.initialize`` adds the world's fixtures to what it pins. Each is recorded, not counted, as a hand edit in
+    setup is. None of it is a parser option, an environment variable or anything else an installed ``aew`` can
+    reach."""
     from aew.engine.api import Engine
     from aew.harness.containment import netns
 
@@ -524,11 +528,8 @@ def world_around_init(ledger: Ledger, fixtures: Mapping[str, Fixture],
 
     for name in (*fixtures, *(f"known provider {provider}" for provider in known)):
         ledger.observe("setup_fixture", step="init", fixture=name)
-    needs_key = {provider: name for provider, name in known.items() if name is not None}
-    key_free = frozenset(provider for provider, name in known.items() if name is None)
     with mock.patch.object(Engine, "initialize", initialize), \
-            mock.patch.object(netns, "PROVIDER_KEY_ENV", {**netns.PROVIDER_KEY_ENV, **needs_key}), \
-            mock.patch.object(netns, "CATALOG_ADDRESSED", netns.CATALOG_ADDRESSED | key_free):
+            mock.patch.object(netns, "PROVIDER_KEY_ENV", {**netns.PROVIDER_KEY_ENV, **known}):
         yield
 
 

@@ -69,12 +69,13 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 35 | E170 | A command that prints a record's text as written |
 | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
 | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
+| 38 | E171 | The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch` |
 
 **After items 1 to 11 and 16 to 18, first use:** the operator's SPT work, image work included. CI is SPT's first ticket: AEW's workers write it and the operator pushes. SPT stays as it is until then. Later fixes come from that use.
 
 **In the alpha, not a condition of first use** (the operator, 2026-11-06, a new category): they follow the first-use list and never hold it. In this order: `report_write` (item 27), the consult (item 28, with the model pins of item 29 beside its second PR), the Lead change (item 30), the plan assessment gate (item 31), then the Lead's skills after E127 (item 32). Items 33 to 36 are the Lead's placements in the same category, after those.
 
-**Contention for a slot:** what blocks other items, starts a series or unlocks a capability that can be tested goes first, and a chain of pull requests keeps moving beside the one-offs (the operator, 2026-11-04). The Lead's placements under that rule: CAP-1 PR 2, then PR 3, hold one slot; E125 follows E119, on the way to V3's first green; E127 follows CAP-1 PR 2, since both change the same binds. Items 19 to 25 are the Lead's placements of 2026-11-05, and items 26 and 37 of 2026-11-06; none of them is a condition of first use unless the operator says so. The other one-offs keep the operator's order of 2026-11-03: E121, E122, E120, with E119 alongside, then E126, E118 and E35's probe. E117 runs when the operator judges there's something new to measure, as the last step before first use. **The numbers name the items, and don't set the order.** **New design stops until the first receipt,** except what first use surfaces, SPB's adoption question, the research the operator asked for and what the operator asks for directly (the Lead's leeway, 2026-11-06), so a new ruling becomes a row only if it serves this list. **Everything moved stays in V-01,** except the plan assessment gate (V-01's item 10), which the operator placed in the alpha on 2026-11-06 (E160), and V-01 stays the gate before any release. **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
+**Contention for a slot:** what blocks other items, starts a series or unlocks a capability that can be tested goes first, and a chain of pull requests keeps moving beside the one-offs (the operator, 2026-11-04). The Lead's placements under that rule: CAP-1 PR 2, then PR 3, hold one slot; E125 follows E119, on the way to V3's first green; E127 follows CAP-1 PR 2, since both change the same binds. Items 19 to 25 are the Lead's placements of 2026-11-05, and items 26, 37 and 38 of 2026-11-06; none of them is a condition of first use unless the operator says so. The other one-offs keep the operator's order of 2026-11-03: E121, E122, E120, with E119 alongside, then E126, E118 and E35's probe. E117 runs when the operator judges there's something new to measure, as the last step before first use. **The numbers name the items, and don't set the order.** **New design stops until the first receipt,** except what first use surfaces, SPB's adoption question, the research the operator asked for and what the operator asks for directly (the Lead's leeway, 2026-11-06), so a new ruling becomes a row only if it serves this list. **Everything moved stays in V-01,** except the plan assessment gate (V-01's item 10), which the operator placed in the alpha on 2026-11-06 (E160), and V-01 stays the gate before any release. **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
 
 **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 
@@ -1896,6 +1897,114 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. One small PR, the designer's reading
 
 *Later notes: `notes.d/E170/`, oldest first (`python tools/register.py show E170`).*
+
+### E171
+
+**Work:** The tool-consent prompt, CAP-1's follow-on: AEW downloads no tool without the operator's consent. The shipped capability record gains `needed`, with a reason naming what degrades without the tool, which the operator's record can override. One consent screen serves every caller: needed tools in full (name, purpose, version, size, source), optional ones as a count until "pick", the choices needed, all, pick or none, Enter only for what the screen names, and no timed default. `aew init` asks on a terminal; the Lead's start asks only when a needed tool is missing and not declined; a new operator-only `aew capability fetch` asks, with its surface-map entry. A worker's launch never asks or downloads, and off a terminal nothing downloads unless a flag names the tools. A "no" is remembered per tool and pinned version and stays visible in `aew doctor` and `next`; every run's record carries each missing tool with a closed reason. With it, E119 §1's seat wording
+
+**Source:** The operator's decision of 2026-11-05, no download without the operator's consent, which amends `CAPR-04`'s online branch and `CAPR-Q10`; the designer's rulings of 2026-11-05 in STG-15's log, on "needed", declines and the prompt screen; the designer's decision of 2026-11-06 on E119 §1
+
+**When:** **Now.** Item 38 of the Now list, being built
+
+**Notes:** Filed by the Lead, and already being built. STG-15's notes tracked it until now. `aew-reviewer` reviews the fetch path
+
+*Later notes: `notes.d/E171/`, oldest first (`python tools/register.py show E171`).*
+
+### E172
+
+**Work:** MCP servers for the Lead beyond AEW's own: none in the alpha. After it, a design question, with the designer's proposed bounds for a server AEW declares: the operator declares it in a settings document, never an agent; read-only servers first, with write tools at `ask` until the operator allows a named tool; its credential goes through the broker or relay, never into the Lead's environment; its egress is named in the declaration when the Lead is contained; and the Lead's text names it and what it's for. The operator's own servers in an uncontained Lead stay, and its start line names those that loaded
+
+**Source:** The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), item 7; the designer's decision of 2026-11-06, the Lead's skills and MCP servers, and documents and branch reviews as work, (b)
+
+**When:** **Unscheduled**, after the alpha. The design is the designer's when the operator queues it
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E172/`, oldest first (`python tools/register.py show E172`).*
+
+### E173
+
+**Work:** Deterministic gate tools the Lead can call, typed and with no model judgement: merge readiness, public-text hygiene, brief checking, and a secret scan before a commit
+
+**Source:** The designer's findings of 2026-11-06 on a comparison of Lead sessions, "the ranked primitives"; the operator, 2026-11-06: the Lead's needs should be first-class AEW primitives, seamless and deterministic where possible
+
+**When:** **Unscheduled.** Designed when the operator queues it
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E173/`, oldest first (`python tools/register.py show E173`).*
+
+### E174
+
+**Work:** CI status at a given head as a typed read for the Lead, which wakes the Lead when the run ends
+
+**Source:** The designer's findings of 2026-11-06 on a comparison of Lead sessions, "the ranked primitives"; the operator, 2026-11-06: the Lead's needs should be first-class AEW primitives, seamless and deterministic where possible
+
+**When:** **Unscheduled.** Designed when the operator queues it
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E174/`, oldest first (`python tools/register.py show E174`).*
+
+### E175
+
+**Work:** Messaging with delivered and read state, built on E131's typed `harness send` rather than beside it. Mostly wiring, since ADR-0017 is the adopted transport
+
+**Source:** The designer's findings of 2026-11-06 on a comparison of Lead sessions, "the ranked primitives"; the operator, 2026-11-06: the Lead's needs should be first-class AEW primitives, seamless and deterministic where possible
+
+**When:** **Unscheduled.** Designed when the operator queues it, after E131
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E175/`, oldest first (`python tools/register.py show E175`).*
+
+### E176
+
+**Work:** The Lead's own memory and rules, kept across its sessions
+
+**Source:** The designer's findings of 2026-11-06 on a comparison of Lead sessions, "the ranked primitives"; the operator, 2026-11-06: the Lead's needs should be first-class AEW primitives, seamless and deterministic where possible
+
+**When:** **Unscheduled.** Designed when the operator queues it
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E176/`, oldest first (`python tools/register.py show E176`).*
+
+### E177
+
+**Work:** The project's tests and checks with no prompt each time: a typed tool that runs them through AEW's check runner, in its check sandbox, with the checks derived from the map's pipeline section, never as unprompted shell in the Lead's own process
+
+**Source:** The designer's findings of 2026-11-06 on a comparison of Lead sessions, "the ranked primitives"; the operator, 2026-11-06: the Lead's needs should be first-class AEW primitives, seamless and deterministic where possible; the designer's constraint there on running checks, under the 2026-10-31 decision's condition 3 and A-06 `HEB-03.i`
+
+**When:** **Unscheduled.** Designed when the operator queues it
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E177/`, oldest first (`python tools/register.py show E177`).*
+
+### E178
+
+**Work:** The contained Lead's sandbox masks the project's secret files, without breaking the operator's own commands
+
+**Source:** The designer's findings of 2026-11-06 on a comparison of Lead sessions
+
+**When:** **Unscheduled**, after E156
+
+**Notes:** Filed by the Lead. Containment, so `aew-reviewer` reviews it
+
+*Later notes: `notes.d/E178/`, oldest first (`python tools/register.py show E178`).*
+
+### E179
+
+**Work:** `ticket_request_verification` on a non-mutating Ticket commits two steps before it refuses, and the refusal doesn't say what to do. Its description, "launch the verifiers policy requires", launches a verifier when policy requires none
+
+**Source:** Found in the review of #331 (E130), 2026-11-05: two pre-existing points under its finding F1
+
+**When:** **Unscheduled**, any idle slot
+
+**Notes:** Filed by the Lead
+
+*Later notes: `notes.d/E179/`, oldest first (`python tools/register.py show E179`).*
 
 ### E47
 

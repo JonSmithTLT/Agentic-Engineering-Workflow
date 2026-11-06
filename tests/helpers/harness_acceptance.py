@@ -462,8 +462,11 @@ def at16_isolated_review(lab: HarnessLab, driver: Driver, tmp_path: Path) -> Non
         config = driver.projection(lab, run)
         if config is None:
             continue
-        edits = [r["effect"] for r in config["permissions"] if r["action"] == "edit"]
+        edits = [r["effect"] for r in config["permissions"] if r["action"] == "edit" and r["resource"] == "*"]
         assert edits[-1] == ("allow" if may_edit else "deny"), (run, edits)
+        # the only narrower edit rule is the deny on the run's own copy of its skills (E127), never an allow
+        assert all(r["effect"] == "deny" and run in r["resource"] for r in config["permissions"]
+                   if r["action"] == "edit" and r["resource"] != "*"), run
         others = [r for r in runs if r != run]
         for rule in config["permissions"]:
             if rule["effect"] == "allow" and rule["action"] == "external_directory":

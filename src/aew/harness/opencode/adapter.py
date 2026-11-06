@@ -47,7 +47,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from aew.errors import HarnessError, HarnessIncompatible, HarnessLaunchFailed
+from aew.errors import HarnessError, HarnessIncompatible, HarnessLaunchFailed, ValidationFailed
 from aew.harness import agentenv, runlog, weaker_register
 from aew.harness import usage as U
 from aew.harness.base import HarnessAdapter
@@ -197,6 +197,59 @@ def declared_only(model: dict[str, Any]) -> bool:
         "id")
 
 
+# The relay-route check of the pinned model's address (``relay_address``): what the launch record keeps, and the one
+# reason it refuses with. Closed.
+RELAY_ADDRESS_MATCHES, RELAY_ADDRESS_UNVERIFIED, RELAY_ADDRESS_MISMATCH = "matches", "unverified", "mismatch"
+RELAY_ADDRESS_REFUSED = "relay_address_mismatch"
+
+
+def _served_at(address: Any) -> tuple[str, str, int, str] | None:
+    """A catalog address as the relay's upstream is compared: scheme, host, port and base path; None if not one."""
+    if not isinstance(address, str):
+        return None
+    try:
+        up = netns.relay.Upstream(address)  # the relay's own reading of an upstream URL
+    except ValidationFailed:
+        return None
+    return up.scheme, up.host.lower(), up.port, up.path
+
+
+def relay_address(pinned: dict[str, Any], catalog: list[dict[str, Any]], upstream: str,
+                  relay_base: str) -> dict[str, Any]:
+    """Whether the run's provider relay sends the pinned model's requests where the catalog serves that model (F28
+    §3.5): the relay has one fixed upstream, and a model served elsewhere would have its requests sent to an endpoint
+    that does not serve it, failing only at its first model call.
+
+    This is an INFERENCE from the pinned model's neighbours in the same catalog, not a reading of its own address. On
+    the relay route AEW's projection (``projection.relayed``) sets the pinned model's address to the relay's, and
+    OpenCode 2.0.18 then shows only that one, in ``/api/model`` and ``/api/provider`` alike (measured 2026-11-06). Its
+    ``package`` survives, and so do the addresses of the provider's other models, which AEW does not override (each
+    ``opencode/*`` model carries its own). So the models of the same provider with the same package stand in for it:
+
+    - ``matches``: one of them is served from the relay's upstream;
+    - ``mismatch``: each of them is served from somewhere else, so the launch is refused;
+    - ``unverified``: no other model shares its package (or none states an address of its own), so nothing is
+      inferred and the launch goes ahead with that recorded.
+
+    A model served from somewhere other than every neighbour with its package would be judged by them, wrongly; a
+    catalog whose models for one package are served from several places reads ``matches`` if any is the upstream."""
+    provider, package = pinned.get("providerID"), pinned.get("package")
+    relay = _served_at(relay_base)
+    neighbours = [m for m in catalog
+                  if package and m.get("providerID") == provider and m.get("id") != pinned.get("id")
+                  and m.get("package") == package and not declared_only(m)]
+    found: dict[tuple[str, str, int, str], str] = {}
+    for model in neighbours:
+        address = (model.get("settings") or {}).get("baseURL")
+        where = _served_at(address)
+        if where is not None and where != relay:  # the projection's provider-level address says nothing of the catalog
+            found.setdefault(where, str(address))
+    out: dict[str, Any] = {"package": package, "neighbours": len(neighbours), "served_from": sorted(found.values())}
+    if not found:
+        return {"check": RELAY_ADDRESS_UNVERIFIED, **out}
+    return {"check": RELAY_ADDRESS_MATCHES if _served_at(upstream) in found else RELAY_ADDRESS_MISMATCH, **out}
+
+
 class OpenCodeAdapter(HarnessAdapter):
     name = "opencode"
     # F28 §3.4-3.5: it calls its provider itself, through the relay in a network of its own, and in connected mode it
@@ -249,6 +302,7 @@ class OpenCodeAdapter(HarnessAdapter):
         self.meter: Meter | None = None
         self.meter_errors = 0
         self._relayed = False  # the pinned model is named in the server's configuration, for the provider relay
+        self._relay: tuple[str, str] | None = None  # (the relay's upstream, its base inside) on the relay route
         self._meter_wake = threading.Event()
         self._meter_stop = threading.Event()
         self._meter_thread: threading.Thread | None = None
@@ -281,6 +335,8 @@ class OpenCodeAdapter(HarnessAdapter):
         base = network.provider_base() if network is not None else None
         self._relayed = base is not None
         if base is not None:
+            assert network is not None and network.relay is not None  # a provider base is only a relay's
+            self._relay = (network.relay.upstream.url, base)
             config = projection.relayed(config, contract.execution_profile, base)
         (self.state_dir / "opencode-config.json").write_text(json.dumps(config, indent=1, sort_keys=True),
                                                              encoding="utf-8")
@@ -490,7 +546,10 @@ class OpenCodeAdapter(HarnessAdapter):
                     raise HarnessIncompatible(f"model {ref['providerID']}/{ref['id']} is disabled in this OpenCode; "
                                               f"enable it in OpenCode and relaunch with {self._relaunch_command()}, "
                                               "or dispatch a new invocation with --profile or --model", model=ref)
-                return {"catalog_wait_s": round(now - t0, 3), "catalog_size": len(catalog), "variants": variants}
+                found = {"catalog_wait_s": round(now - t0, 3), "catalog_size": len(catalog), "variants": variants}
+                if self._relay is not None:
+                    found["relay_address"] = self._require_relay_address(match, catalog, ref)
+                return found
             if catalog and first_seen is None:
                 first_seen = now
             if now - t0 > CATALOG_WAIT_S or (first_seen is not None and now - first_seen > CATALOG_SETTLE_S):
@@ -508,6 +567,26 @@ class OpenCodeAdapter(HarnessAdapter):
                     # (M4-E E8a; PR #185 review, F1).
                     launch_cause=CATALOG_TIMEOUT)
             time.sleep(0.25)
+
+    def _require_relay_address(self, match: dict[str, Any], catalog: list[dict[str, Any]],
+                               ref: dict[str, Any]) -> dict[str, Any]:
+        """The relay-route check of the pinned model's address (``relay_address``, an inference from its catalog
+        neighbours): a clear mismatch is refused now, naming where the catalog serves the model and both ways on,
+        rather than at the model's first call; otherwise its result is kept in the launch record."""
+        assert self._relay is not None
+        upstream, base = self._relay
+        found = relay_address(match, catalog, upstream, base)
+        if found["check"] == RELAY_ADDRESS_MISMATCH:
+            raise HarnessIncompatible(
+                f"model {ref['providerID']}/{ref['id']} is served from {', '.join(found['served_from'])} (where this "
+                f"OpenCode's catalog serves the other {ref['providerID']} models with its package, {found['package']}; "
+                "AEW infers it from them, since the relay's configuration hides the model's own address), but the "
+                f"run's provider relay sends only to {upstream}, so its requests would go to an endpoint that does not "
+                f"serve it; dispatch a new invocation with --profile or --model naming a model served from {upstream}, "
+                f"or the operator sets containment.network.upstreams.{ref['providerID']} to the model's address and "
+                f"relaunches with {self._relaunch_command()}", model=ref, served_from=found["served_from"],
+                upstream=upstream, reason=RELAY_ADDRESS_REFUSED)
+        return found
 
     def _await_projection(self, config: dict[str, Any]) -> dict[str, Any]:
         """The server must have loaded AEW's agent exactly as projected: its system text, the pinned model and

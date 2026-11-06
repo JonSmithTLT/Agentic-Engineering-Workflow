@@ -441,7 +441,19 @@ class FakeOpenCode:
                 if (provider, model) not in known:
                     offered.append({"id": model, "providerID": provider, "name": model, "enabled": True,
                                     "time": {"released": 0}, "variants": []})
-        return offered
+        # Each model's address as 2.0.18 shows it (measured 2026-11-06): the configuration's for that model, else the
+        # catalog's own, else the configuration's for its provider. So on the relay route the pinned model shows the
+        # relay's, and its catalog neighbours their own.
+        providers = self.config.get("providers") or {}
+        shown = []
+        for model in offered:
+            entry = providers.get(model.get("providerID")) or {}
+            named = (((entry.get("models") or {}).get(model.get("id")) or {}).get("settings") or {}).get("baseURL")
+            address = named or (model.get("settings") or {}).get("baseURL") or (entry.get("settings") or {}).get(
+                "baseURL")
+            shown.append({**model, "settings": {**(model.get("settings") or {}), "baseURL": address}} if address
+                         else model)
+        return shown
 
     def route(self, method: str, path: str, query: dict[str, list[str]], body: Any) -> tuple[int, Any]:
         m = re.fullmatch(r"/api/session/(ses[^/]+)(/.*)?", path)

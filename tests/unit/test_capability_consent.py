@@ -748,5 +748,5 @@ def test_the_screen_on_a_pseudo_terminal_takes_a_typed_answer(reg, tmp_path):
     finally:
         os.waitpid(pid, 0)
     declined = json.loads(seen.split(b"RESULT ", 1)[1].splitlines()[0])
-    assert [d["tool"] for d in declined] == ["fake", "extra"]
-    assert f"fake:{KEY}" in store.read()["declined"]
+    assert [d["tool"] for d in declined] == ["fake"]  # the optional one, shown as a count, is no "no" (m2)
+    assert list(store.read()["declined"]) == [f"fake:{KEY}"]

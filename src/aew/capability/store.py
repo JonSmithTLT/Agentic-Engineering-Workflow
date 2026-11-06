@@ -111,6 +111,15 @@ def write(state: dict[str, Any], directory: Path | None = None) -> None:
         atomic_write(target / REGISTER, json.dumps(state, indent=1, sort_keys=True) + "\n")
 
 
+def require_writable(directory: Path | None = None) -> Path:
+    """The register's directory, made where it is missing; refused with ``register_not_writable`` where this process
+    cannot write it (:func:`writing`), before anything is read, as taking its lock would be."""
+    target = directory or root()
+    with writing(target):
+        target.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return target
+
+
 @contextlib.contextmanager
 def locked(directory: Path | None = None, *, short: bool = False) -> Iterator[Path]:
     """The register's lock, held for a read-change-write of its state. ``short`` is a launch's wait, which gives way."""

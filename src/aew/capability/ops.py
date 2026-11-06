@@ -178,6 +178,7 @@ def check(selector: str | None = None, *, offline: bool = False, directory: Path
     Lead's) is refused. A keep-out keyed on the process's declaration, not the boundary: inside a sandbox the
     register is read-only."""
     refuse_an_agents_own("check")
+    store.require_writable(directory)  # an unwritable register refuses with its own reason before it is read
     names = _select(status.effective(store.read(directory)), selector)
     done: dict[str, list[str]] = {name: [] for name in names}
     wanted = []

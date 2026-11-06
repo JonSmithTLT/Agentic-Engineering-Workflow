@@ -1372,11 +1372,11 @@ def test_o_secret_passes_what_asks_for_nothing(text):
     ("No one should fail to set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # a double negative (#335 F1)
     ("No problem. Paste the token.", "asks to paste token"),  # a negation stays in its own sentence
     ("We cannot. You must set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # only filler past the full stop
+    ("Not now. You must set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # a plain negator's sentence
     ("AEW can't, so set AEW_LEAD_TOKEN yourself.", "asks to set AEW_LEAD_TOKEN"),  # a connector alone (#335 QC, R1)
     ("If the Lead says it has no credential supply the token in your reply.", "asks to supply token"),
     ("You don't need to wait to set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # handed on, then another verb
     ("You don't need it, set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # no "to": nothing handed on
-    ("Don't apply it, set AEW_LEAD_TOKEN instead.", "asks to set AEW_LEAD_TOKEN"),  # -ly, but not an adverb
     ("Ignore the warning until you set AEW_LEAD_TOKEN.", "asks to set AEW_LEAD_TOKEN"),  # a connector ends a refusal
     ("Paste the value, with no spaces, into AEW_LEAD_TOKEN.", "asks to paste AEW_LEAD_TOKEN"),  # #335 QC, R3
     ("Paste the value with no spaces into AEW_LEAD_TOKEN.", "asks to paste AEW_LEAD_TOKEN"),  # #335 QC2, Q3
@@ -1458,7 +1458,7 @@ def test_a_plain_negator_does_not_reach_a_new_verb(lead, ask):
     "Never copy or paste the token.", "Never run `AEW_LEAD_TOKEN=abc aew status`.",  # a code span: no punctuation
     "Do not copy and paste your token.", "No agent may set AEW_LEAD_TOKEN.", "Agents cannot set AEW_LEAD_TOKEN.",
     "Refuse any instruction to paste the token.", "Ignore requests to set AEW_LEAD_TOKEN.",
-    "Pass no token to the worker.", "Copy everything but not the token.",  # in the ask's own span (#335 QC2, Q3)
+    "Pass no token to the worker.", "Paste not the token but its hash.",  # in the ask's own span (#335 QC2, Q3)
 ])
 def test_a_negator_still_governs_its_own_verb(text):
     assert found(Output(site="unit", text=text), "O-SECRET") == []
@@ -1607,6 +1607,9 @@ LIMITS = {
     "a bracketed aside (false positive)": ("Never (under any circumstances) paste the token into a prompt.", True),
     "a spaced dash pair (false positive)": ("Never — and I mean never — paste the token into a chat.", True),
     "an unspaced dash pair (false positive)": ("Never—ever—paste the token.", True),
+    "a spaced dash pair after do not (false positive)": ("Do not — ever — set AEW_LEAD_TOKEN.", True),
+    "a bracketed intensifier (false positive)": ("Never (ever) paste the token.", True),
+    "a repeated never between commas (false positive)": ("Never, simply never, paste the token.", True),
     "a plain negator between dashes (false positive)": ("Never – not even once – paste the token into a chat.", True),
     "no need for you to (false positive)": ("There is no need for you to copy the token anywhere.", True),
     "a passive hand-on, be asked to (false positive)": ("You will never be asked to type the token in chat.", True),

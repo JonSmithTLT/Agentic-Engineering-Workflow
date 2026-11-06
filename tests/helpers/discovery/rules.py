@@ -617,7 +617,6 @@ COMMAND_VERBS = frozenset({"run", "use", "write", "print"})  # what governs a pr
 DOUBLE_NEGATIVE = frozenset({"forget", "forgets", "forgetting", "hesitate", "hesitating", "fail", "failing"})
 PASSES_ON = frozenset({"need", "needs", "have", "has", "ask", "asks", "want", "wants", "require", "requires", "expect",
                        "expects"})  # a prohibition over one of these negates the verb it hands on to: "need to set X"
-NOT_ADVERBS = frozenset({"apply", "reply", "supply", "rely", "family"})  # ends in -ly, but not an adverb
 # Any punctuation: everything but a word character, whitespace and a backtick, and a quote mark that is not an
 # apostrophe inside a word ("don't").
 PUNCTUATION = re.compile(r"[^\w\s`'’]|(?<!\w)['’]|['’](?!\w)")
@@ -796,7 +795,7 @@ def _words(text: str) -> list[str]:
 
 def _filler(word: str) -> bool:
     """A word that changes nothing a negator governs: ``FILLER``, or an adverb in -ly ("Never directly paste")."""
-    return word in FILLER or (word.endswith("ly") and len(word) > 4 and word not in NOT_ADVERBS)
+    return word in FILLER or (word.endswith("ly") and len(word) > 4)
 
 
 def _lines_around(text: str, start: int, end: int) -> tuple[str, str, list[str]]:

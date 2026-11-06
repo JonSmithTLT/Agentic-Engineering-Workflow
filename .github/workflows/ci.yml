@@ -549,9 +549,9 @@ jobs:
             if git show "$GITHUB_SHA^1:tests/helpers/discovery/allowed.yaml" > "$RUNNER_TEMP/allowed-base.yaml"; then
               base=(--base-allowlist "$RUNNER_TEMP/allowed-base.yaml")
             fi
-            if git show "$GITHUB_SHA^1:tests/helpers/discovery/modes.py" > "$RUNNER_TEMP/modes-base.py"; then
-              base+=(--base-modes "$RUNNER_TEMP/modes-base.py")
-            fi
+            git show "$GITHUB_SHA^1:tests/helpers/discovery/modes.py" > "$RUNNER_TEMP/modes-base.py" \
+              || rm -f "$RUNNER_TEMP/modes-base.py"  # the ratchet fails on a base it cannot read
+            base+=(--base-modes "$RUNNER_TEMP/modes-base.py")
           fi
           python tools/ci/discovery_ratchet.py lane-reports --event "$EVENT" --tier "$TIER" --assurance "$ASSURANCE" \
             "${base[@]}" --repo "$REPO" --pr "$PR" --summary "$GITHUB_STEP_SUMMARY"

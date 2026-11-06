@@ -276,10 +276,12 @@ class RunNetwork:
     @classmethod
     def start(cls, layout: Layout, *, provider: str | None, provider_env: Iterable[str],
               policy: Mapping[str, Any] | None, env: Mapping[str, str], relay_needed: bool,
-              egress_extra: Iterable[str] = ()) -> RunNetwork:
+              allow: egress.Allowlist | None = None) -> RunNetwork:
         """Start what ``layout``'s network needs: under ``proxy_only``, the relay (when the harness calls a provider,
-        ``relay_needed``) and the egress proxy (when the allowlist names something). Raises
-        ``ContainmentUnavailable`` when the relay has no upstream, or a socket cannot be made."""
+        ``relay_needed``) and the egress proxy with ``allow``, the run's allowlist (``egress_policy``), when there is
+        one. The caller builds that allowlist once and gives the same one to the run's self-test, so the self-test
+        checks the proxy the run gets (register E143). Raises ``ContainmentUnavailable`` when the relay has no
+        upstream, or a socket cannot be made."""
         names = [str(n) for n in provider_env]
         secret = [n for n in names if n.upper() not in PROXY_NAMES]
         values = {n: agentenv.lookup(env, n) or "" for n in secret}
@@ -299,11 +301,6 @@ class RunNetwork:
                     target, {sentinels[n]: v for n, v in values.items() if v}, proxy=proxy,
                     listener=listen(os.path.join(layout.net_dir, RELAY))).start()
                 net.key_relayed = bool(values.get(PROVIDER_KEY_ENV.get(provider or "", "")))
-            try:
-                allow = egress_policy(policy, egress_extra)
-            except AEWError as exc:
-                raise ContainmentUnavailable(f"containment.network.egress_allow: {exc.message}",
-                                             reason="bad_egress_allow") from None
             if allow is not None:
                 net.egress = egress.EgressProxy(allow, listener=listen(os.path.join(layout.net_dir, EGRESS))).start()
         except OSError as exc:

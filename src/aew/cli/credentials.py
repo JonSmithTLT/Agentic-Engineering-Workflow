@@ -61,7 +61,8 @@ def before(args: argparse.Namespace) -> None:
         raise UsageError(
             "this command issues a credential, and AEW writes credentials only to your terminal; this process has "
             "none (a harness tool call, a pipe or a scheduled job). Run it yourself at a terminal, or, from a script "
-            "that keeps the credential safe, run `aew --print-credential <command>` to get it on standard output")
+            "that keeps the credential safe, put `--print-credential` straight after `aew` to get it on standard "
+            "output")
 
 
 def deliver(result: Any, args: argparse.Namespace) -> Any:

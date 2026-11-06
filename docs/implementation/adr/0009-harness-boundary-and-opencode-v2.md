@@ -1740,6 +1740,26 @@ This replaces the 2026-10-24 amendment's `aew doctor` `ripgrep` line, and its "r
 - **Tests:** `tests/integration/test_capability_bind.py`; CAPR-Q08's rows against a real OpenCode are
   `tests/live/test_capability_q08_live.py`.
 
+## Amendment 2026-11-06 — the relay-route family check, and what a launch reports (register E143)
+
+This adds to the 2026-10-24 amendment's list of the label's `network` keys and its row 1 section, and to the launch's
+acknowledgements.
+
+- **The relay-route check** (#338): on the relay route the OpenCode adapter compares the pinned model's catalog
+  `package` with the packages of the provider's catalog models served from the relay's upstream, and refuses a mismatch
+  (`HARNESS_INCOMPATIBLE`). It reads `matches`, or `unverified` when nothing decides.
+- **The label's `network`** also has `relay_family` (`matches` or `unverified`) on a run whose launch made the check.
+- **Row 1** also has what its egress proxy admitted, as the label says it: `egress_allow` (the allowlist it checked)
+  or, for a policy with no list, `egress_policy` (the contained Lead's `any_public`). A run's row 1 checks the
+  allowlist its egress proxy gets, built once by the supervisor. `aew doctor`'s row 1 checks the policy's list alone,
+  without a harness's own entries.
+- **A started launch's output** (its acknowledgement, then the launcher's result) has `relay_family` beside its status.
+- **A refused launch** has the adapter's own reason as `refusal`, beside the closed launch-failure code, in its record,
+  its acknowledgement and the launcher's `HARNESS_LAUNCH_FAILED` details: `relay_family_mismatch`, the key-in-sandbox
+  reason or `provider_env`.
+- **Both values are closed sets owned by `aew.harness.base`** (`RELAY_FAMILY_SHOWN`, `LAUNCH_REFUSALS`): the
+  supervisor and the launcher pass on nothing else.
+
 ## Amendment 2026-11-06 — no free models: a launch needs a provider key (the operator's decision)
 
 - **The decision:** AEW does not rely on OpenCode's free models, for testing, the vertical or real work (the operator,

@@ -193,7 +193,8 @@ def write(args: argparse.Namespace, findings: dict[str, dict[str, Any]], errors:
         print(f"refused: {len(added)} key(s) the allow-list lacks (it may only shrink):", file=sys.stderr)
         print("\n".join(f"  {k}" for k in added[:40]), file=sys.stderr)
         return 1
-    args.allowlist.write_text(allowed.render(keys, residuals.values()), encoding="utf-8", newline="\n")
+    kept = [r for k, r in residuals.items() if k in keys]  # a residual goes with its key (#332 review, F6)
+    args.allowlist.write_text(allowed.render(keys, kept), encoding="utf-8", newline="\n")
     print(f"wrote {args.allowlist} ({len(keys)} keys, from {len(sources)} findings file(s))")
     return 0
 
@@ -209,7 +210,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base-allowlist", type=Path, default=None,
                     help="the base branch's allow-list on a pull request (absent: the base has none)")
     ap.add_argument("--base-modes", type=Path, default=None,
-                    help="the base branch's modes.py on a pull request (absent: nothing to compare)")
+                    help="the base branch's modes.py on a pull request (not given: nothing to compare; given and "
+                         "unreadable: fails)")
     ap.add_argument("--repo", default=None, help="OWNER/REPO, to read the pull request's labels live")
     ap.add_argument("--pr", default=None, help="the pull request's number, to read its labels live")
     ap.add_argument("--summary", type=Path, default=None, help="append a Markdown report (GITHUB_STEP_SUMMARY)")
@@ -245,17 +247,17 @@ def main(argv: list[str] | None = None) -> int:
     if on_pr:
         base_text = (args.base_allowlist.read_text(encoding="utf-8")
                      if args.base_allowlist is not None and args.base_allowlist.is_file() else None)
-        base = allowed.parse(base_text)[0] if base_text is not None else None
+        base = allowed.parse(base_text, known_rules=False)[0] if base_text is not None else None
     undecided = stale_undecided(args.tier, args.assurance, sources, errors)
     verdict = allowed.decide(runtime_observed, runtime_allowed, stale_scope=None if undecided else "runtime")
     signed: list[str] = []
     grown = sorted(current - base) if base is not None else []  # the whole list, static keys included, may only shrink
     lowered: list[str] = []
     unreadable_modes = None
-    if on_pr and args.base_modes is not None and args.base_modes.is_file():
-        try:
+    if on_pr and args.base_modes is not None:
+        try:  # named and absent is a failed read of the base, never "nothing to compare" (#332 review, F7)
             lowered = allowed.lowered_modes(base_modes(args.base_modes), modes.MODES)
-        except Exception as exc:  # noqa: BLE001  (the base's file, run as code: a mode it cannot read signs nothing)
+        except (Exception, SystemExit) as exc:  # noqa: BLE001  (the base's file, run as code: unread signs nothing)
             unreadable_modes = f"{type(exc).__name__}: {str(exc)[:200]}"
     # An accepted residual, and a lowered mode, are the operator's (spec §5): each counts only when the pull request
     # carries the operator-merge label, read live, which reserves the merge for the operator (AGENTS.md §5): the

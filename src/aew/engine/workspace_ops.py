@@ -22,7 +22,7 @@ from aew.errors import (
     NotFound,
     PermissionDenied,
 )
-from aew.harness import agentenv, registry
+from aew.harness import agentenv, base, registry
 from aew.harness import contract as K
 from aew.knowledge.records import format_id
 from aew.policy import execution as X
@@ -170,7 +170,7 @@ class Invocations:
                                                   os.environ)
         if problems:
             raise HarnessIncompatible("the execution policy's provider_env cannot reach the run: "
-                                      + "; ".join(why for _, why in problems), reason="provider_env",
+                                      + "; ".join(why for _, why in problems), reason=base.PROVIDER_ENV_UNUSABLE,
                                       variables=[name for name, _ in problems])
 
     def _require_provider_key(self, profile: dict[str, Any], provider_relay: bool) -> None:

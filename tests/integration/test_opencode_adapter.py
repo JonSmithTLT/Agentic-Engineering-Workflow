@@ -604,8 +604,9 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
     assert shown["server_env"]["provider_variables"] == ["OPENAI_API_KEY"]
     lead = lab.ok("harness", "config", "opencode", "--lead")
     from aew.engine.api import Engine
+    from aew.surface import lead_text
 
-    assert lead["config"] == projection.lead_config(Engine.discover(lab.root).lead_guide())
+    assert lead["config"] == projection.lead_config(lead_text.guide_for(Engine.discover(lab.root)))
     assert "OPENAI_API_KEY" not in lead["env_names"] and "AEW_LEAD_TOKEN" not in lead["env_names"]
 
 

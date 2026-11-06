@@ -42,7 +42,7 @@ def test_next_actions_surface_unignested_evidence(tmp_path):
 
     ev = review(p, wid)
     actions = p.ok("resume", "--json")["next_actions"]
-    assert f"{wid}: ingest review {ev} (`aew review ingest`)" in actions
+    assert f"{wid}: ingest review {ev}: `ticket_request_verification` (`aew review ingest`)" in actions
 
 
 @pytest.mark.acceptance("KC-existing-authority")

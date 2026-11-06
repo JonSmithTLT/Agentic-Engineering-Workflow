@@ -383,12 +383,12 @@ def test_the_lead_is_told_how_to_read_the_project_and_that_a_scope_is_fixed():
     """E11 (report §6.6; the A6 debriefs): no Lead was told it can read files (its tools were never named), and one
     guessed a scope, which is fixed once the Ticket exists. Eight of the twelve guided Leads were also surprised by
     the authority-candidate step that comes first, which the guide did not mention."""
-    from aew.engine import guide
     from aew.harness.opencode import projection
     from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
+    from aew.surface import lead_text
 
     assert "read, glob and grep" in projection.LEAD_SYSTEM
-    text = guide.render(DEFAULT_GATES, DEFAULT_CHECKS)
+    text = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
     assert "read, glob and grep" in text and "scope is fixed" in text
     assert "authority candidates" in text
 

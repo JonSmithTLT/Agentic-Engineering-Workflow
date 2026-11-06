@@ -64,8 +64,9 @@ def code(step: dict[str, Any]) -> str | None:
 def guide_of(lab) -> str:
     """The project's Lead guide, as `aew opencode` puts it in the Lead's system text (F16)."""
     from aew.engine.api import Engine
+    from aew.surface import lead_text
 
-    return Engine.discover(lab.root).lead_guide()
+    return lead_text.guide_for(Engine.discover(lab.root))
 
 
 # Where the Lead runs not contained (Windows). On Linux it runs contained, on a relayed terminal, and the same

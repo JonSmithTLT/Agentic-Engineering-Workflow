@@ -89,13 +89,13 @@ In the TUI, the agent is `aew-lead`, with these commands:
 | `/aew-next <id>` | take the next step on a unit: dispatch with `--launch`, wait, ingest, advance |
 | `/aew-handoff` | record a checkpoint for a handoff. The handoff itself (`aew lead handoff offer`) is yours, at your own terminal. |
 
-**The Lead's guide.** The Lead's system text includes the project's guide to how AEW works (`aew guide`, rendered from this project's own gates policy when `aew opencode` starts): what each risk class requires and still guarantees, the Ticket lifecycle, and the command for each step. The default-policy version is [`lead-guide.md`](lead-guide.md).
+**The Lead's guide.** The Lead's system text includes the project's guide to how AEW works (`aew guide`, rendered from this project's own gates policy when `aew opencode` starts): what each risk class requires and still guarantees, the Ticket lifecycle, and the typed tool for each step, with its shell command as the fallback. The default-policy version is [`lead-guide.md`](lead-guide.md).
 
 The Lead's permissions: reading and searching, `aew`, and `git status|diff|log|show` are allowed; editing files and subagents are denied; any other shell command or tool asks you.
 
 ## 4. Runs
 
-The Lead dispatches with `--launch` on `work assign`, `work dispatch`, `work redispatch` and `invoke create`. Each starts run 1 of the new invocation. Then:
+The Lead's stages launch a mutating Ticket's runs. From the shell, the Lead dispatches with `--launch` on `work assign`, `work dispatch`, `work redispatch` and `invoke create`. Each starts run 1 of the new invocation. Then:
 
 ```bash
 aew harness wait R-INV-0001-1 --timeout 110     # until the run stops; its evidence, each item's result, and the next action

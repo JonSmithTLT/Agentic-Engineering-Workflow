@@ -77,7 +77,6 @@ PLACEHOLDERS: dict[str, str] = {
     "<id>": "EV-0003",  # a record: evidence, or a finished unit's history record
     "<E>": "EV-0004",  # an evidence record
     "<n>": "2",  # a plan revision
-    "<run>": "R-INV-0012-1",
     "<candidate>": "C-001",  # an authority candidate
     "<card>": "default",  # a role card
     "<check id>": "unit",  # the same, as each text spells it
@@ -92,7 +91,6 @@ PLACEHOLDERS: dict[str, str] = {
     "<CLASS>": "LOCAL_IMPLEMENTATION_DEFECT",  # a verification failure's classification
     "<reason>": "why",
     "<why>": "why",  # the projection's argv lists
-    "<next action>": "review",
     "<classification>": "LOCAL_IMPLEMENTATION_DEFECT",
     "<phase>": "RUNNING",  # the phase an INTERRUPTED Ticket was interrupted from
     "{evidence}": "EV-0005",  # the projection's own marker, replaced by each report's id before it is offered

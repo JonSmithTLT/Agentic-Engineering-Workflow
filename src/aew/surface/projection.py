@@ -30,6 +30,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
+from aew.engine import transitions as T
 from aew.engine.guards import GUARD_NOT_QUERYABLE
 from aew.engine.primitives import spec_for
 from aew.errors import AEWError
@@ -357,6 +358,22 @@ def _reports(engine: Any, subject: str, runs: list[dict[str, Any]], d: dict[str,
     return sorted(out)
 
 
+# The edge each Ticket decision's stage takes, by decision and report scope.
+_DECISION_EDGE = {("ACCEPT_REVIEW_EVIDENCE", None): ("REVIEW_PENDING", "REVIEW_PASSED"),
+                  ("ACCEPT_VERIFICATION", "ticket"): ("VERIFY_PENDING", "VERIFIED"),
+                  ("PUBLISH", None): ("COMMIT_READY", "DONE")}
+
+
+def _fitting(d: dict[str, Any], fit: T.Fit | None) -> dict[str, Any]:
+    """The decision as offered: its stage only where that stage is a whole step for this Ticket now, as the engine's
+    hints name it (E130; #331 review F1), else its command alone. Read now: it reads the gates."""
+    edge = _DECISION_EDGE.get((d["decision"], d.get("scope")))
+    if edge is None or not d.get("tool") or T.stage_for(*edge, fit):
+        return d
+    return {**d, "tool": None, **({"argument": None} if "argument" in d else {}),
+            **({"arguments": None} if "arguments" in d else {})}
+
+
 def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[str, Any]],
                blockers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The decisions required, each with its stage's availability where the stage is migrated. A decision's stage
@@ -364,7 +381,8 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
     ``blockers``."""
     out = []
     listed = {e for d in part["decisions"] for e in d.get("evidence") or [] if d["decision"].startswith("DISPOSE")}
-    for d in part["decisions"]:
+    fit = engine.stage_fit(engine.store.current(), subject) if part["state"] else None
+    for d in map(lambda d: _fitting(d, fit), part["decisions"]):
         if "role" not in d:
             arguments = d.get("arguments")
             found = d.get("availability", UNKNOWN)

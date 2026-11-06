@@ -918,6 +918,15 @@ skipped:
       the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
       (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
       submission run on both platforms in tests/unit/test_g3client.py.
+    tests/unit/test_containment_netns.py::test_a_workers_network_remembers_its_provider_and_whether_its_key_was_relayed: >-
+      a worker's relays listen on socket files (AF_UNIX), and its network is Linux's (proxy_only); Windows has no
+      network containment. Covered on Linux; the note those values feed is judged on every platform in
+      tests/unit/test_provider_key_refusal.py.
+    tests/integration/test_launch_readiness_named.py::test_a_relay_route_launch_whose_provider_would_get_no_key_is_refused_before_anything_is_committed: >-
+      the relay route exists only under proxy_only, which Windows doesn't provide, so off it no launch is judged for
+      its key, by design (the designer's ruling of 2026-11-06). Covered on Linux; the engine's and the supervisor's
+      refusal run on every platform in tests/unit/test_provider_key_refusal.py, and Windows' side (no provider-key
+      line) in test_doctor_judges_no_provider_key_off_the_relay_route.
   linux:
     tests/unit/test_f9a_probe_evidence.py::test_the_f9a_probe_evidence_names_no_local_account: >-
       local-only by design, as on win32: in CI the account is the runner's. CI runs the path and key guard instead.

@@ -116,6 +116,10 @@ def test_off_linux_aew_opencode_runs_through_the_same_weaker_route_with_its_reas
     from aew.harness.opencode import lead
 
     seen = {}
+    # The credential is checked before any start line (review of #340, m2), as at an operator's shell; the login
+    # database is a synthetic absent one, so the start line reads no stored login of the machine's.
+    monkeypatch.setenv("AEW_LEAD_TOKEN", "synthetic-not-a-token")
+    monkeypatch.setenv("OPENCODE_DB", str(tmp_path / "no-login.db"))
     monkeypatch.setattr(lead, "contained_here", lambda: False)
     monkeypatch.setattr(lead, "check_version", lambda: "2.0.18")
     monkeypatch.setattr(lead, "guide_of", lambda engine: "")

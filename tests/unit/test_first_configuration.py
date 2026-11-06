@@ -174,7 +174,7 @@ def test_the_schema_refuses_a_timeout_not_above_zero(timeout):
 # ---------------------------------------------------------------------------------------------- the provider rule
 
 
-@pytest.mark.parametrize("provider", sorted(set(netns.PROVIDER_KEY_ENV) - netns.CATALOG_ADDRESSED))
+@pytest.mark.parametrize("provider", sorted(netns.PROVIDER_KEY_ENV))
 def test_a_known_provider_that_needs_a_key_names_its_variable_whichever_flag_named_it(provider):
     want = (netns.PROVIDER_KEY_ENV[provider],)
     assert parse(model=f"{provider}/m").provider_env == want
@@ -182,22 +182,22 @@ def test_a_known_provider_that_needs_a_key_names_its_variable_whichever_flag_nam
     assert parse(model=f"{provider}/m", provider=provider).provider_env == want
 
 
-def test_opencode_writes_no_variable_and_the_result_says_so():
+def test_opencode_writes_its_key_variable_as_every_known_provider_does():
+    """The operator, 2026-11-06: AEW does not use OpenCode's free models, so opencode needs its key like any other
+    provider (a launch whose provider would get no key is refused: `provider_key_missing`). Right: its variable is
+    written, whichever flag named it. Wrong (the rule this replaces): nothing written and a note saying none is
+    needed. Missing: no note at all."""
     for parsed in (parse(model="opencode/big"), parse(model="big", provider="opencode")):
-        assert parsed.provider_env == ()
+        assert parsed.provider_env == ("OPENCODE_API_KEY",)
         doc = yaml.safe_load(parsed.files()[X.REL_PATH])
-        assert doc["provider_env"] == []
-        assert "no variable was written" in parsed.report()["provider_note"]
-    assert "provider_note" not in parse(model="openai/m").report()
+        assert doc["provider_env"] == ["OPENCODE_API_KEY"]
+        assert "provider_note" not in parsed.report()
+        assert parsed.report()["provider_env"] == ["OPENCODE_API_KEY"]
 
 
-def test_a_note_printed_after_the_pin_names_no_step_the_pin_refuses():
+def test_an_unknown_provider_is_refused_naming_the_route_that_still_works():
     """Review of #329, F1: a successful init has pinned, so `aew init` is refused by then. The refusal, which has
     written nothing, is the one text where it is still a step."""
-    note = parse(model="opencode/big").report()["provider_note"]
-    assert "aew init" not in note and K.HELD_SEAT in note
-    assert printed(note)[:2] == ["aew lead acquire --expect-rev 0",
-                                 f"aew manifest adopt --reason <reason> {K.EXPECT_REV}"]
     with pytest.raises(UsageError) as refused:
         parse(model="fakeprov/m")
     assert "`aew init` without these flags" in refused.value.message and K.HELD_SEAT in refused.value.message
@@ -322,10 +322,16 @@ def test_next_gives_each_hidden_form_its_one_owner_has():
         assert f"{shell}: `{form}`" in text
 
 
-def test_next_with_a_check_and_an_opencode_model():
+def test_next_with_a_check_and_an_opencode_model_sets_its_key_for_workers_and_names_another_provider_for_the_lead():
+    """opencode's key is for the workers: the contained Lead never relays it (its models carry addresses of their
+    own), so the Lead's step names a login of another provider or `--provider-env` for one AEW relays, never
+    `--provider-env OPENCODE_API_KEY`, which the Lead refuses."""
     text = parse(check_command="make", model="opencode/big").next_step()
     assert printed(text) == ["aew doctor", "aew opencode --acquire"]
-    assert "--provider-env" not in text and "a seat already held refuses" in text
+    assert "Set OPENCODE_API_KEY by the hidden form" in text and "a worker reads it" in text
+    assert "(`opencode auth login`)" in text and "`--provider-env NAME`" in text
+    assert "--provider-env OPENCODE_API_KEY" not in text and "a seat already held refuses" in text
+    assert "ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENAI_API_KEY" in text
 
 
 @pytest.mark.parametrize(("flags", "missing", "file"), [

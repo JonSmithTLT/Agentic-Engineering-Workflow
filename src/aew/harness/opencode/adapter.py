@@ -235,7 +235,8 @@ def relay_family(pinned: dict[str, Any], catalog: list[dict[str, Any]], upstream
       ``netns.UPSTREAMS`` have ``/inference/openai/v1``, is never refused on a spelling); or no other model carries
       the package, so the pinned model, whose own address is hidden, may be the one that serves it there (the live
       catalog's one ``mistral`` model at the upstream, 2026-11-06). Other carriers only decide between ``mismatch``
-      and ``unverified``: they never pass a model.
+      and ``unverified``: they never pass a model. A carrier counts only when it states a readable address of its own
+      (not the relay's, which the projection gave the pinned model): one with none says nothing of where it is served.
 
     Limits:
 
@@ -243,7 +244,8 @@ def relay_family(pinned: dict[str, Any], catalog: list[dict[str, Any]], upstream
       itself served elsewhere (``openai-compatible`` serves many endpoints) reads ``matches``, and fails at its first
       call as before this check.
     - A package served from two addresses, the pinned model at the upstream and every other carrier elsewhere, is
-      refused although the model is served where the relay sends.
+      refused although the model is served where the relay sends. So is a carrier spelt otherwise in a catalog that
+      mixes spellings (a ``zen/v1`` carrier among live addresses); each catalog measured has one spelling.
     - A package of one model really served elsewhere reads ``unverified`` and fails at its first call.
     - Only a provider whose catalog models carry their own address (``netns.CATALOG_ADDRESSED``) can be refused: for
       any other, every model shows the relay's address after the projection, and the check reads ``unverified``."""
@@ -258,7 +260,9 @@ def relay_family(pinned: dict[str, Any], catalog: list[dict[str, Any]], upstream
         return {"check": RELAY_FAMILY_UNVERIFIED, **out}
     if package in served:
         return {"check": RELAY_FAMILY_MATCHES, **out}
-    carried = any(m.get("package") == package for m in others)
+    hidden = _served_at((pinned.get("settings") or {}).get("baseURL"))  # the relay's, as the projection set it
+    addressed = [m for m in others if _served_at((m.get("settings") or {}).get("baseURL")) not in (None, hidden)]
+    carried = any(m.get("package") == package for m in addressed)
     return {"check": RELAY_FAMILY_MISMATCH if carried else RELAY_FAMILY_UNVERIFIED, **out}
 
 

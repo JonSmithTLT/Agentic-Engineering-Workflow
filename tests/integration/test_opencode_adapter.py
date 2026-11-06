@@ -295,6 +295,19 @@ HAIKU = catalog_model("claude-haiku-5-5", ANTHROPIC, RELAY_BASE)
      live_catalog(catalog_model("mistral-medium", MISTRAL, RELAY_BASE),
                   catalog_model("mistral-small", MISTRAL, UPSTREAM)),
      opencode_adapter.RELAY_FAMILY_MATCHES, [MISTRAL, OPENAI, COMPATIBLE]),
+    # Which models are carriers on that branch: never another provider's, never one the configuration made up, and
+    # never one with no readable address of its own (none, not an upstream URL, or the relay's provider-level
+    # address): each leaves the lone pin unverified (#338 quick check, m1 and m2).
+    *[(catalog_model("mistral-medium", MISTRAL, RELAY_BASE),
+       live_catalog(catalog_model("mistral-medium", MISTRAL, RELAY_BASE), carrier),
+       opencode_adapter.RELAY_FAMILY_UNVERIFIED, [OPENAI, COMPATIBLE])
+      for carrier in (catalog_model("mistral-go", MISTRAL, "https://opencode.ai/inference/mistral/v1",
+                                    provider="opencode-go"),
+                      {**catalog_model("made-up", MISTRAL, "https://opencode.ai/inference/mistral/v1"),
+                       "family": None, "time": {}, "name": "made-up"},
+                      catalog_model("mistral-small", MISTRAL, None),
+                      catalog_model("mistral-small", MISTRAL, "not a url"),
+                      catalog_model("mistral-small", MISTRAL, RELAY_BASE))],
     # A stated limit: a package served from two addresses, the pin at the upstream and its only other carrier
     # elsewhere, is refused (the pin's own address is hidden).
     (catalog_model("mistral-medium", MISTRAL, RELAY_BASE),

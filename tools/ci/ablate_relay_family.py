@@ -3,10 +3,12 @@
 
 usage: python tools/ci/ablate_relay_family.py [NAME ...]   (run from the checkout; PYTHONPATH as for its tests)
 Prints one line per ablation: its name, the tests' exit code, and CAUGHT when they failed; exits 1 when any reads
-MISSED. The refusal ablation needs Linux with bubblewrap (the relay route): elsewhere it is skipped, never MISSED."""
+MISSED. The refusal ablation needs Linux with bubblewrap (the relay route): elsewhere, or without `bwrap` on PATH,
+it is skipped, never MISSED, since its test cannot take the relay route there."""
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -29,6 +31,8 @@ ABLATIONS = {
     # A package no other model carries refused (#338 review, F1: the lone mistral model at the upstream).
     "lone_refused": ("RELAY_FAMILY_MISMATCH if carried else RELAY_FAMILY_UNVERIFIED",
                      "RELAY_FAMILY_MISMATCH", UNIT),
+    # A carrier with no readable address of its own counted as served elsewhere (#338 quick check, m2).
+    "unaddressed_carrier": ("for m in addressed)", "for m in others)", UNIT),
 }
 RELAY_ONLY = {"no_refusal"}  # its test takes the relay route's branch on Linux only
 
@@ -38,7 +42,7 @@ def main(names: list[str]) -> int:
     missed = []
     try:
         for name in names or list(ABLATIONS):
-            if name in RELAY_ONLY and not sys.platform.startswith("linux"):
+            if name in RELAY_ONLY and not (sys.platform.startswith("linux") and shutil.which("bwrap")):
                 print(f"{name}: skipped (needs the relay route: Linux with bubblewrap)", flush=True)
                 continue
             old, new, tests = ABLATIONS[name]

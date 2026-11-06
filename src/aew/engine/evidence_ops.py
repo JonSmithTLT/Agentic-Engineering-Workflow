@@ -302,6 +302,18 @@ class Gates:
         return [g for g in gc["obligations"]["gates"]
                 if g in G.VERIFICATION_GATES or g.startswith(G.VERIFY_CARD_PREFIX)]
 
+    def stage_for(self, state: dict[str, Any], work_id: str, frm: str, dst: str) -> str | None:
+        """The stage that takes ``frm -> dst`` as a whole step for this Ticket, or None (E130; #331 review F1). The
+        gates are read only for a stage whose naming depends on them, so a status of many READY Tickets reads none of
+        their evidence (the control-plane scale guard: no per-unit work)."""
+        stage = transitions.STAGE_AT.get((frm, dst))
+        unit = state["work"].get(work_id) or {}
+        if stage is None or unit.get("kind") != "ticket" or not unit.get("mutating"):
+            return None
+        if not transitions.needs_gates(stage):
+            return stage
+        return transitions.stage_for(frm, dst, self.stage_fit(state, work_id))
+
     def stage_fit(self, state: dict[str, Any], work_id: str) -> transitions.Fit | None:
         """What the engine's words to a Lead may name a stage for (E130; #331 review F1): a mutating Ticket, with the
         review and verification its class requires and how many are still to come. None where no stage fits or the

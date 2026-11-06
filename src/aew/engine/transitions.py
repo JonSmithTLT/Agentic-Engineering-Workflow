@@ -202,6 +202,11 @@ _NEEDS = {"ticket_request_review": ("review",), "ticket_request_verification": (
           "ticket_prepare": ("last_verification",)}
 
 
+def needs_gates(stage: str) -> bool:
+    """Whether naming ``stage`` depends on the Ticket's gates, beyond its being a mutating Ticket."""
+    return bool(_NEEDS.get(stage))
+
+
 def stage_for(frm: str, dst: str, fit: Fit | None) -> str | None:
     """The stage that takes ``frm -> dst`` as a whole step for the Ticket ``fit`` describes, or None: with no fit, no
     stage is named (the command alone is never wrong)."""

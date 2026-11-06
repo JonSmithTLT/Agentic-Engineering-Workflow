@@ -92,7 +92,7 @@
         "lower-bound": 272
       }
     },
-    "digest": "sha256:102fa0cf0bae02b5ea4ceb56d2bcce04ffb87974a92f721f339f8a7d47e08a6c",
+    "digest": "sha256:7c58d52a519ff58eb641902b04b029f1b6079a9a2d9011cde55486e3b9ce6365",
     "records": 1149,
     "unresolved": 112
   },
@@ -19821,7 +19821,6 @@
         "aew.engine.outbox",
         "aew.engine.ports",
         "aew.engine.store",
-        "aew.engine.transitions",
         "aew.errors",
         "aew.harness.containment",
         "aew.harness.contract",
@@ -20263,7 +20262,6 @@
         "aew.engine.nonmutating_ops",
         "aew.engine.ports",
         "aew.engine.seams",
-        "aew.engine.transitions",
         "aew.engine.validation_ops",
         "aew.errors",
         "aew.harness.contract",

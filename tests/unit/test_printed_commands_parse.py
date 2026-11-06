@@ -301,7 +301,7 @@ def test_a_finished_runs_ingest_command_parses(role: str, unit: dict[str, object
     state = {"work": {"T-0007": unit}}
     produced = [{"id": "EV-0003", "kind": "review" if role == "reviewer" else "verification"}]
     harness = Harness.__new__(Harness)
-    harness.gates = SimpleNamespace(stage_fit=lambda state, wid: None)  # type: ignore[assignment]
+    harness.gates = SimpleNamespace(stage_for=lambda state, wid, frm, dst: None)  # type: ignore[assignment]
     message = harness._after_run(state, {"work_unit": "T-0007", "role": role}, produced)
     [(printed, fenced)] = P.commands(message)
     [args] = P.parse(printed, fenced=fenced)

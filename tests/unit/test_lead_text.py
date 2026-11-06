@@ -468,6 +468,25 @@ def test_the_gates_fit_no_stage_to_a_non_mutating_ticket_or_a_parent(unit):
     assert gates.stage_fit({"work": {"T-0007": unit}}, "T-0007") is None
 
 
+@pytest.mark.parametrize(("frm", "dst"), [("READY", "ASSIGNED"), ("COMMIT_READY", "DONE")])
+def test_a_stage_that_needs_no_gates_is_named_without_reading_them(frm, dst):
+    """The control-plane scale guard (`test_no_command_does_per_unit_work`): `status` names `ticket_start` for every
+    READY Ticket, so naming it must read no Ticket's evidence."""
+    gates = Gates.__new__(Gates)
+    gates.gate_context = lambda state, wid: pytest.fail("read the gates")  # type: ignore[method-assign]
+    state = {"work": {"T-0007": {"kind": "ticket", "mutating": True}}}
+    assert gates.stage_for(state, "T-0007", frm, dst) == T.STAGE_AT[frm, dst]
+
+
+def test_a_stage_that_needs_the_gates_reads_them_and_follows_the_fit():
+    gates = Gates.__new__(Gates)
+    gates.stage_fit = lambda state, wid: FULL._replace(verification=False)  # type: ignore[method-assign]
+    state = {"work": {"T-0007": {"kind": "ticket", "mutating": True}, "T-0008": {"kind": "ticket", "mutating": False}}}
+    assert gates.stage_for(state, "T-0007", "REVIEW_PENDING", "REVIEW_PASSED") is None
+    assert gates.stage_for(state, "T-0007", "VERIFY_PENDING", "VERIFIED") == "ticket_prepare"
+    assert gates.stage_for(state, "T-0008", "READY", "ASSIGNED") is None
+
+
 def test_the_gates_fit_reads_what_the_class_requires_and_what_is_still_due():
     gates = Gates.__new__(Gates)
     gc = {"obligations": {"gates": ["review_r1", "review_security", "verification_goal_backwards",
@@ -512,9 +531,14 @@ def test_a_moves_shell_is_the_engines_own_command():
 # ---------------------------------------------------------------------------------------- the hints a projection shows
 
 
+def gates_with(fit: T.Fit | None = FULL, **more: Any) -> SimpleNamespace:
+    """The gates as the hints read them, with a fit decided by the test (``Gates.stage_for`` is tested on its own)."""
+    return SimpleNamespace(stage_for=lambda state, wid, frm, dst: T.stage_for(frm, dst, fit), **more)
+
+
 def resume_with(fit: T.Fit | None = FULL) -> Resume:
     resume = Resume.__new__(Resume)
-    resume.gates = SimpleNamespace(stage_fit=lambda state, wid: fit)  # type: ignore[assignment]
+    resume.gates = gates_with(fit)  # type: ignore[assignment]
     return resume
 
 
@@ -560,9 +584,9 @@ def test_a_validated_candidates_hint_leads_with_the_publish_stage_and_names_the_
 
 def after_implementation(state: str, *, review: bool, verification: bool = True) -> str:
     harness = Harness.__new__(Harness)
-    harness.gates = SimpleNamespace(  # type: ignore[assignment]
-        gate_context=lambda state, wid: {}, review_gates=lambda gc: review, verification_gates=lambda gc: verification,
-        stage_fit=lambda state, wid: FULL._replace(review=review, verification=verification))
+    harness.gates = gates_with(  # type: ignore[assignment]
+        FULL._replace(review=review, verification=verification), gate_context=lambda state, wid: {},
+        review_gates=lambda gc: review, verification_gates=lambda gc: verification)
     return harness.after_implementation({"work": {"T-0007": {"state": state}}}, "T-0007")
 
 
@@ -613,7 +637,7 @@ def test_a_candidate_prepared_from_the_shell_is_still_told_to_dispatch_its_verif
 
 def harness_with(fit: T.Fit | None = FULL) -> Harness:
     harness = Harness.__new__(Harness)
-    harness.gates = SimpleNamespace(stage_fit=lambda state, wid: fit)  # type: ignore[assignment]
+    harness.gates = gates_with(fit)  # type: ignore[assignment]
     return harness
 
 

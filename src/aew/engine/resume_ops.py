@@ -16,7 +16,6 @@ from aew import SPEC_SET
 from aew.engine import gate_ops
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
-from aew.engine import transitions as T
 from aew.engine import validation_ops as VO
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
@@ -344,14 +343,14 @@ class Resume:
     def _led(self, state: dict[str, Any], wid: str, frm: str, dst: str, command: str) -> str:
         """The way to take ``frm -> dst``: the stage first, where it is a whole step for this Ticket (E130; #331 review
         F1), then the command, which alone is never wrong."""
-        stage = T.stage_for(frm, dst, self.gates.stage_fit(state, wid))
+        stage = self.gates.stage_for(state, wid, frm, dst)
         return f"`{stage}` (`{command}`)" if stage else f"`{command}`"
 
     def _publish(self, state: dict[str, Any], wid: str, command: str, report: str | None = None) -> str:
         """Publication of a COMMIT_READY Ticket's candidate, with what the stage takes: the candidate it prepared and,
         in verifier mode, the integration verifier's report (#331 review F6: a Lead told only the report is refused
         once, or reads `work_show` first)."""
-        stage = T.stage_for("COMMIT_READY", "DONE", self.gates.stage_fit(state, wid))
+        stage = self.gates.stage_for(state, wid, "COMMIT_READY", "DONE")
         if stage is None:
             return f"`{command}`"
         candidate = ((state["work"].get(wid) or {}).get("integration") or {}).get("candidate")

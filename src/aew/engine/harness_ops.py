@@ -29,7 +29,6 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import faults, outbox
-from aew.engine import transitions as T
 from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_lead, rotate_invocation_token
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
@@ -710,7 +709,7 @@ class Harness:
         edge = {"reviewer": ("REVIEW_PENDING", "REVIEW_PASSED"),
                 "verifier": ("COMMIT_READY", "DONE") if inv.get("scope") == "integration"
                 else ("VERIFY_PENDING", "VERIFIED")}.get(inv["role"])
-        stage = T.stage_for(*edge, self.gates.stage_fit(state, inv["work_unit"])) if edge else None
+        stage = self.gates.stage_for(state, inv["work_unit"], *edge) if edge else None
         return f"`{stage}`, or " if stage else ""
 
     def after_implementation(self, state: dict[str, Any], wid: str) -> str:
@@ -721,7 +720,7 @@ class Harness:
             to = ("REVIEW_PENDING" if self.gates.review_gates(gc)
                   else "VERIFY_PENDING" if self.gates.verification_gates(gc) else "COMMIT_READY")
             step = f"`aew work transition {wid} --to {to} {K.EXPECT_REV}`"
-            stage = T.stage_for("RUNNING", to, self.gates.stage_fit(state, wid))
+            stage = self.gates.stage_for(state, wid, "RUNNING", to)
             step = f"`{stage}`, or {step}" if stage else step
         except AEWError:
             step = (f"`aew work transition {wid} --to REVIEW_PENDING|VERIFY_PENDING|COMMIT_READY {K.EXPECT_REV}` (as "

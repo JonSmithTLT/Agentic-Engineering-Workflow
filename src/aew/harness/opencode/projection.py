@@ -118,7 +118,8 @@ def private_output_dirs(state_dir: str, sep: str, *, scratch: str = "") -> tuple
 
 
 def system_text(contract: LaunchContract, unavailable_skills: list[str],
-                network: Mapping[str, Any] | None = None, unavailable_tools: list[str] | None = None) -> str:
+                network: Mapping[str, Any] | None = None,
+                unavailable_tools: list[Mapping[str, Any]] | None = None) -> str:
     """The run's system text. ``unavailable_tools``: the commands of the tools AEW brings that this run got no copy of
     (``capability.ops.unavailable``, from the run's own record), told as its missing skills are, so the agent proceeds
     without them and says so (the operator, 2026-11-05: a missing tool is logged, not voided)."""
@@ -149,11 +150,11 @@ def system_text(contract: LaunchContract, unavailable_skills: list[str],
         lines.append("- Skills your role card requests that this harness does not provide: "
                      f"{', '.join(unavailable_skills)}. Proceed without them and say so in your report.")
     if unavailable_tools:
-        from aew.capability.bind import AGENT_FALLBACK
-
-        lines.append("- Tools AEW brings that this run does not have: "
-                     f"{', '.join(f'`{t}`' for t in unavailable_tools)}, so what runs them fails here (search with "
-                     f"{AGENT_FALLBACK} instead). Proceed without them and say so in your report.")
+        fallbacks = list(dict.fromkeys(str(t["fallback"]) for t in unavailable_tools if t.get("fallback")))
+        named = ", ".join(f"`{t['tool']}`" for t in unavailable_tools)
+        lines.append(f"- Tools AEW brings that this run does not have: {named}, so what runs them fails here"
+                     + (f" (search with {' or '.join(fallbacks)} instead)" if fallbacks else "")
+                     + ". Proceed without them and say so in your report.")
     return "\n".join(lines)
 
 
@@ -174,7 +175,7 @@ def network_text(network: Mapping[str, Any]) -> str:
 
 def invocation_config(contract: LaunchContract, *, provided_skills: frozenset[str] = frozenset(),
                       private_dirs: tuple[str, ...] = (), network: Mapping[str, Any] | None = None,
-                      unavailable_tools: list[str] | None = None) -> dict[str, Any]:
+                      unavailable_tools: list[Mapping[str, Any]] | None = None) -> dict[str, Any]:
     """``OPENCODE_CONFIG_CONTENT`` for one run's private server. ``network``: the label of the run's own network
     (``netns.RunNetwork.describe``), which the system text states; None for a run on the host's."""
     skill = skills(contract, provided_skills)

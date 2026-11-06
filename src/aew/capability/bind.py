@@ -40,9 +40,16 @@ FIRST, OWN_NAME = "first", "own_name"  # the schema's two values of a record's `
 STUB_EXIT = 127  # the shell's "command not found", which is what the stub stands for
 # What an agent can do while no copy serves: the shell's own tools, which every contained context has
 AGENT_FALLBACK = "`grep -rn` or `find`"
+# The capabilities that fallback stands in for: a tool that serves none of them has no fallback to name
+SEARCHES = frozenset({"EXACT_CODE_SEARCH", "TEXT_SEARCH"})
 MAX_CAUSE = 2000  # a cause is a sentence or two; a stub's text is bounded whatever a record or a host path says
 # The schema's own pattern for a command: a refused record's command becomes a file name here only if it matches
 COMMAND = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def fallback(record: dict[str, Any] | None) -> str | None:
+    """What an agent searches with while ``record``'s tool is missing, or None where it serves no search."""
+    return AGENT_FALLBACK if record is not None and SEARCHES & set(record.get("capabilities") or ()) else None
 
 
 @dataclass(frozen=True)

@@ -183,8 +183,10 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
         return Copy(AEW_COPY, REFUSED, f"its payload was refused at {refused.get('at')}: {refused.get('reason')}",
                     fetch_fix(name), str(path), reason="refused")
     done = (state.get("checks") or {}).get(f"{AEW_COPY}:{name}")
+    # A "no" to the new pin reads declined, everywhere the status is read (review of #343, m1)
     if not path.exists() and done is not None and done.get("sha256") != pinned["sha256"] \
-            and not (state.get("fetch_failures") or {}).get(f"{name}:{key}"):
+            and not (state.get("fetch_failures") or {}).get(f"{name}:{key}") \
+            and declined(state, name, pinned, key) is None:
         # A new pin (CAPR-03): checked before under another one, and this one's payload is not here yet
         return Copy(AEW_COPY, STALE, f"its pin changed since it was checked (checked {str(done.get('sha256'))[:16]}, "
                     f"now pinned {pinned['sha256'][:16]}), and the newly pinned payload is not on this host yet",
@@ -203,8 +205,8 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
     wrong = P.verify(path, pinned)
     if wrong is not None:
         return Copy(AEW_COPY, REFUSED, f"its payload does not match its pin: {wrong}",
-                    f"`{CHECK} {name}` refuses it and downloads it again (online), or `{IMPORT}` with the operator's "
-                    "bundle (offline)", str(path), reason="off_pin")
+                    f"`{CHECK} {name}` refuses it and removes it; then `{FETCH} {name}` downloads it again (online), "
+                    f"or `{IMPORT}` imports it from the operator's bundle (offline)", str(path), reason="off_pin")
     return _checked(AEW_COPY, done, path, facts, digest=records.digest(record), sha256=pinned["sha256"],
                     changed="its record or its pin changed since it was checked")
 

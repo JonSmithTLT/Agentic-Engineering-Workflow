@@ -25,6 +25,7 @@ closed reason, and the run goes on (CAPR-12).
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import urllib.parse
@@ -38,6 +39,8 @@ from aew.capability import ops, records, status, store
 from aew.capability import payload as P
 from aew.errors import AEWError, NotFound, PermissionDenied
 from aew.util import utc_now
+
+log = logging.getLogger(__name__)
 
 NEEDED, ALL, PICK, NONE = "needed", "all", "pick", "none"
 CHOICES = (NEEDED, ALL, PICK, NONE)
@@ -59,12 +62,16 @@ class Offer:
     source: str  # as AEW shows it
     degrades: str | None
     declined_at: str | None  # the operator's "no" to this pin, when there is one
+    host: str | None = None  # a copy the host has that serves contained runs meanwhile, named as unpinned
 
     def line(self) -> str:
-        """The tool in full: name, purpose, version, size, source and what degrades without it."""
+        """The tool in full: name, purpose, version, size, source, and what degrades without it or what serves
+        meanwhile."""
         said = (f"  {self.provider} {self.version} (`{self.command}`): {self.purpose}; {_size(self.size)} from "
                 f"{self.source}")
-        if self.degrades:
+        if self.host:
+            said += f"; meanwhile the host's unpinned copy at {self.host} serves"
+        elif self.degrades:
             said += f"; without it, {self.degrades}"
         if self.declined_at:
             said += f"; you declined it at {self.declined_at}"
@@ -72,7 +79,8 @@ class Offer:
 
     def report(self) -> dict[str, Any]:
         return {"tool": self.provider, "command": self.command, "needed": self.needed, "version": self.version,
-                "size": self.size, "source": self.source, "degrades": self.degrades, "declined_at": self.declined_at}
+                "size": self.size, "source": self.source, "degrades": self.degrades, "declined_at": self.declined_at,
+                "host_copy": self.host}
 
 
 def _size(n: int) -> str:
@@ -83,11 +91,25 @@ def _host(source: str) -> str:
     return urllib.parse.urlsplit(source).hostname or source
 
 
+def binds_here() -> bool:
+    """Whether AEW places its tools in any context on this host: only a contained one gets them bound (``bind``).
+    Elsewhere (Windows) OpenCode's own lookup serves (``status.NOT_BOUND``), so no tool is needed here."""
+    from aew.harness import containment
+
+    return containment.supported()
+
+
+# Said once where AEW places no tools, in place of calling one needed (review of #343, m3)
+NOT_PLACED = "this host runs no contained context, so AEW places none of its tools: OpenCode's own lookup serves"
+
+
 def offers(directory: Path | None = None) -> list[Offer]:
     """Every tool in force whose pinned payload for this platform is not on this host, needed ones first, then by
     name. A tool whose record is refused, or has no payload for this platform, has nothing to download, and its status
-    says why."""
+    says why. Derived from the status (review of #343, m3): a tool is needed only where AEW places its tools
+    (:func:`binds_here`), and a copy the host has that serves meanwhile is named."""
     state = store.read(directory)
+    bound = binds_here()
     key = records.platform_key()
     out = []
     for name, entry in sorted(status.effective(state).items()):
@@ -96,10 +118,11 @@ def offers(directory: Path | None = None) -> list[Offer]:
         if record is None or pinned is None or P.path_of(name, record["command"], pinned, directory).exists():
             continue
         no = status.declined(state, name, pinned, key)
-        out.append(Offer(name, record["command"], records.needed(record),
+        host = status.find_host_copy(record["command"], directory) if state["host_copies"] and bound else None
+        out.append(Offer(name, record["command"], bound and records.needed(record),
                          record.get("description") or f"the `{record['command']}` command", record["version"],
                          int(pinned["archive_size"]), P.shown_source(pinned["source"]), record.get("degrades"),
-                         no.get("at") if no else None))
+                         no.get("at") if no else None, str(host) if host else None))
     return sorted(out, key=lambda o: (not o.needed, o.provider))
 
 
@@ -108,21 +131,28 @@ def screen(shown: list[Offer]) -> str:
     needed = [o for o in shown if o.needed]
     optional = [o for o in shown if not o.needed]
     lines = ["", "==== AEW: tools this host is missing ====",
-             "AEW brings these tools to its contained runs. None is on this host, and AEW downloads only what you "
-             "choose. Runs go on without them."]
+             "AEW brings these tools to its contained runs, and its pinned copies are not on this host. AEW downloads "
+             "only what you choose, and runs go on without them."]
+    if not binds_here():
+        lines.append(NOT_PLACED[0].upper() + NOT_PLACED[1:] + ".")
     if needed:
         lines.append("Needed (the harness relies on them):")
         lines += [o.line() for o in needed]
     if optional:
         lines.append(f"Optional enhancements: {len(optional)} (type `{PICK}` to see them).")
-    if needed:
-        lines.append("Enter downloads the needed ones: " + ", ".join(f"{o.provider} ({_size(o.size)})" for o in needed)
-                     + f", from {', '.join(sorted({_host(o.source) for o in needed}))}.")
-    else:
-        lines.append("Enter downloads nothing.")
+    lines.append(enter_line(shown))
     lines.append(f"No network here? `{status.IMPORT}` with your offline bundle's path imports them instead.")
     lines.append(f"Choose {' / '.join(CHOICES)}: ")
     return "\n".join(lines)
+
+
+def enter_line(shown: list[Offer]) -> str:
+    """What Enter downloads, named: the needed ones with their sizes and source, or nothing."""
+    needed = [o for o in shown if o.needed]
+    if not needed:
+        return "Enter downloads nothing."
+    return ("Enter downloads the needed ones: " + ", ".join(f"{o.provider} ({_size(o.size)})" for o in needed)
+            + f", from {', '.join(sorted({_host(o.source) for o in needed}))}.")
 
 
 def _pick_screen(shown: list[Offer]) -> str:
@@ -157,10 +187,12 @@ def _picked(answer: str, shown: list[Offer]) -> list[Offer] | None:
 
 def ask(shown: list[Offer], read: Callable[[str], str]) -> Decision:
     """The screen, on the operator's terminal through ``read`` (it shows a prompt and returns the line typed, or
-    raises when the terminal ends or the prompt times out). Every tool shown and not chosen is declined."""
+    raises when the terminal ends or the prompt times out). A "no" is recorded only for a tool the screen listed in
+    full, a needed one, that was not chosen: an optional tool shown as a count is never declined by an answer that
+    did not name it, and a pick that names nothing declines nothing (review of #343, m2)."""
 
     def decided(chosen: list[Offer], said: str) -> Decision:
-        return Decision(tuple(chosen), tuple(o for o in shown if o not in chosen), True, said)
+        return Decision(tuple(chosen), tuple(o for o in shown if o.needed and o not in chosen), True, said)
 
     prompt = screen(shown)
     try:
@@ -177,10 +209,12 @@ def ask(shown: list[Offer], read: Callable[[str], str]) -> Decision:
             if answer == PICK:
                 for _ in range(TRIES):
                     picked = _picked(read(_pick_screen(shown)), shown)
+                    if picked == []:  # Enter at the pick: nothing downloaded, and nothing declined
+                        return Decision((), (), True, f"{PICK}: none named")
                     if picked is not None:
                         return decided(picked, PICK)
                 break
-            prompt = f"{answer!r} is not one of {' / '.join(CHOICES)}. Choose: "
+            prompt = f"{answer!r} is not one of {' / '.join(CHOICES)}. {enter_line(shown)} Choose: "
     except (PermissionDenied, AEWError, OSError, EOFError):
         return Decision((), (), False, "the prompt ended with no answer")
     return Decision((), (), False, "no answer was one of the choices")
@@ -344,14 +378,26 @@ def at_lead_start(out: Any = None, directory: Path | None = None, *, asking: boo
     (a reminder respects the choice). An optional tool that's missing says nothing here: it is in the run's record and
     `aew doctor`. With no terminal, nothing is asked or said, as a launch's flag says nothing there
     (:func:`ops.flag_missing`): no operator reads it, and the run's record and `aew doctor` keep it. ``asking=False``
-    is a Lead AEW binds no tools into (not contained): nothing is asked, and each needed tool missing still gets its
-    line, so it is never silent. Never stops the start (CAPR-12). Returns the lines written."""
+    is a Lead AEW binds no tools into (not contained): nothing is asked, no tool is called needed or a download
+    recommended, and one line, also logged, says AEW places no tools there and OpenCode's own lookup serves (review of
+    #343, m3). A tool the launch's own flag is about to name (:func:`ops.will_flag`) is not named here too (n6). Never
+    stops the start (CAPR-12). Returns the lines written."""
     out = out if out is not None else sys.stderr
     said: list[str] = []
     try:
-        if _never_here() is not None or not terminal():
+        if _never_here() is not None:
             return said
         missing = offers(directory)
+        if not asking:
+            if missing:
+                line = (f"aew opencode: this Lead is not contained, so AEW places none of its tools in it and "
+                        f"OpenCode's own lookup serves ({', '.join(o.command for o in missing)}: not AEW's pinned "
+                        "copy).")
+                log.info("%s", line)
+                said.append(line)
+            return _say(out, said) if terminal() else said
+        if not terminal():
+            return said
         ask_now = [o for o in missing if o.needed and not o.declined_at]
         if ask_now and asking:
             decision = ask([o for o in missing if not o.declined_at], read_terminal)
@@ -364,18 +410,19 @@ def at_lead_start(out: Any = None, directory: Path | None = None, *, asking: boo
                             "offline bundle's path imports the tools instead.")
             missing = offers(directory)
         for o in missing:
-            if not o.needed:
+            if not o.needed or ops.will_flag(o.provider, directory):  # the launch's flag names it this time
                 continue
             why = f"you declined it at {o.declined_at}" if o.declined_at else "it is not on this host"
-            if not asking:
-                said.append(f"aew opencode: attention: {o.provider}, which a contained run needs, is missing: {why}. "
-                            "This Lead is not contained, so AEW binds no tools into it and OpenCode's own lookup "
-                            f"serves. `{status.FETCH} {o.provider}` downloads it.")
-                continue
-            said.append(f"aew opencode: attention: {o.provider}, which the harness needs (without it, {o.degrades}), "
-                        f"is missing: {why}. The Lead goes on without it. `{status.FETCH} {o.provider}` downloads it.")
+            meanwhile = (f"the host's unpinned copy at {o.host} serves meanwhile" if o.host else
+                         f"the Lead goes on without it ({o.degrades})" if o.degrades else "the Lead goes on without it")
+            said.append(f"aew opencode: attention: AEW's pinned {o.provider}, which the harness needs, is missing: "
+                        f"{why}; {meanwhile}. `{status.FETCH} {o.provider}` downloads it.")
     except AEWError as exc:
         said.append(f"aew opencode: the tools AEW brings could not be read: {exc.message}. The Lead goes on.")
+    return _say(out, said)
+
+
+def _say(out: Any, said: list[str]) -> list[str]:
     try:
         for line in said:
             out.write(line + "\n")

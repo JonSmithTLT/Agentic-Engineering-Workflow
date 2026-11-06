@@ -170,9 +170,13 @@ commands:
     users: [operator]
     journeys: [V1, V2, V3, V4]
     mutates: "yes"
-    mutates_basis: "creates the project's manifest and control state (Engine.initialize)"
-    refusals: [INTEGRITY_ERROR, USAGE, VALIDATION_FAILED]
-    note: "its first configuration's flags are refused under AEW_LEAD_BROKER (register E119)"
+    mutates_basis: "creates the project's manifest and control state (Engine.initialize); then downloads the tools
+      AEW brings that the operator chooses, at the consent screen on a terminal or by --fetch-tool, into the host's
+      capability register"
+    refusals: [INTEGRITY_ERROR, NOT_FOUND, USAGE, VALIDATION_FAILED]
+    note: "its first configuration's flags are refused under AEW_LEAD_BROKER (register E119), and so is --fetch-tool
+      (the operator's decision of 2026-11-05: AEW downloads no tool unless the operator chooses it); NOT_FOUND: an
+      unknown --fetch-tool, refused before anything is written"
   - name: status
     home: product
     users: [operator, lead]
@@ -334,7 +338,9 @@ commands:
     users: [operator]
     journeys: [V1, V2, V3, V4]
     mutates: "yes"
-    mutates_basis: "runs the Lead session (lead_broker.run_session); with --acquire takes the seat"
+    mutates_basis: "runs the Lead session (lead_broker.run_session); with --acquire takes the seat; on Linux, before
+      the TUI opens, downloads the tools AEW brings that the operator chooses at the consent screen, when a needed one
+      is missing and not declined"
     refusals: [CONTAINMENT_UNAVAILABLE, PROJECT_NOT_FOUND, USAGE]
     note: "on Linux the Lead runs contained (STG-05 CS-4): at a terminal, refused when its sandbox is required and not
       established; --provider-env NAME then feeds NAME's provider relay on the host, and the Lead's shell sees a

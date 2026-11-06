@@ -389,15 +389,43 @@ def missing(tools: dict[str, Any] | None, directory: Path | None = None) -> list
         # #330, m-c)
         why = aew.reason or ("check_failed" if any(t.get("kind") == status.AEW_COPY and not t.get("ok")
                                                    for t in tool.get("tried") or []) else "not_served_here")
-        failed = (state.get("fetch_failures") or {}).get(f"{name}:{records.platform_key()}") or {}
-        since = failed.get("at") if why == "fetch_failed" else (
-            ((state.get("refused") or {}).get(f"{name}:{records.platform_key()}") or {}).get("at")
-            if why == "refused" else None)
+        since = _since(state, name, why)
         out.append({"tool": tool.get("command") or name, "provider": name,
                     "served": "host" if tool.get("served") == status.HOST_COPY else "stub",
                     "path": tool.get("path") if tool.get("served") == status.HOST_COPY else None,
                     "reason": why, "since": since, "fix": aew.fix})
     return out
+
+
+def _since(state: dict[str, Any], name: str, why: str | None) -> str | None:
+    """Since when a tool has been missing for ``why``: its failed fetch's time, or its refusal's."""
+    key = f"{name}:{records.platform_key()}"
+    if why == "fetch_failed":
+        return ((state.get("fetch_failures") or {}).get(key) or {}).get("at")
+    return ((state.get("refused") or {}).get(key) or {}).get("at") if why == "refused" else None
+
+
+def flag_key(flag: dict[str, Any]) -> str:
+    """A flag's state: the operator's terminal hears of a tool once per state (the designer's rule 2)."""
+    return f"{flag['served']}:{flag['reason']}:{flag['since']}"
+
+
+def will_flag(name: str, directory: Path | None = None) -> bool:
+    """Whether the next launch's flag on the operator's terminal will name ``name``, as far as the host can tell before
+    its sandbox exists: what would serve (a host copy, or the stub) and why AEW's copy does not, against the state the
+    terminal last heard. The Lead's start says nothing of a tool the flag is about to name (review of #343, n6)."""
+    try:
+        state = store.read(directory)
+    except AEWError:
+        return True
+    entry = status.effective(state).get(name)
+    if entry is None or entry["record"] is None:
+        return True
+    aew = status.aew_copy(name, entry["record"], entry["problem"], state, facts=status.host_facts(),
+                          directory=directory)
+    served = "host" if state["host_copies"] and status.find_host_copy(entry["record"]["command"], directory) else "stub"
+    flag = {"served": served, "reason": aew.reason, "since": _since(state, name, aew.reason)}
+    return (state.get("flagged") or {}).get(name) != flag_key(flag)
 
 
 def flag_line(flag: dict[str, Any]) -> str:
@@ -426,7 +454,7 @@ def flag_missing(tools: dict[str, Any] | None, directory: Path | None = None) ->
     flags = missing(tools, directory)
     if not tools or process_kind.kind() == process_kind.NON_WRITER:
         return flags
-    keys = {f["provider"]: f"{f['served']}:{f['reason']}:{f['since']}" for f in flags}
+    keys = {f["provider"]: flag_key(f) for f in flags}
     try:
         seen = store.read(directory).get("flagged") or {}
         bound = [n for n, t in tools.items() if t.get("served") == status.AEW_COPY and n in seen]
@@ -458,12 +486,19 @@ def run_record(flags: list[dict[str, Any]]) -> dict[str, Any]:
             "detail": flags}
 
 
-def unavailable(missing_tools: dict[str, Any] | None) -> list[str]:
-    """The commands a run has no copy of, from its record's ``missing_tools`` (:func:`run_record`): those it got a
-    failing stub for, which its system text names. A tool an unpinned host copy served still runs, and stays on the
-    record as missing its pin."""
+def unavailable(missing_tools: dict[str, Any] | None, directory: Path | None = None) -> list[dict[str, Any]]:
+    """The tools a run has no copy of, from its record's ``missing_tools`` (:func:`run_record`): those it got a failing
+    stub for, which its system text names, each ``{tool, fallback}`` with what the agent searches with instead where
+    the tool serves a search (``bind.fallback``, from its record). A tool an unpinned host copy served still runs, and
+    stays on the record as missing its pin."""
     detail = (missing_tools or {}).get("detail") if isinstance(missing_tools, dict) else None
-    return [str(d.get("tool")) for d in detail or [] if isinstance(d, dict) and d.get("served") == "stub"]
+    stubs = [d for d in detail or [] if isinstance(d, dict) and d.get("served") == "stub"]
+    try:
+        eff = status.effective(store.read(directory)) if stubs else {}
+    except AEWError:
+        eff = {}
+    return [{"tool": str(d.get("tool")),
+             "fallback": bind.fallback((eff.get(str(d.get("provider"))) or {}).get("record"))} for d in stubs]
 
 
 def record_contained(tools: dict[str, Any] | None, directory: Path | None = None) -> None:

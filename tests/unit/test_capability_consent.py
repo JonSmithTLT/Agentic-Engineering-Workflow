@@ -40,6 +40,7 @@ def reg(tmp_path, monkeypatch):
              "capabilities": ["FAKE_EXTRA"]}
     shipped = {"fake": fake, "extra": extra}
     monkeypatch.setattr(records, "shipped", lambda: shipped)
+    monkeypatch.setattr(consent, "binds_here", lambda: True)  # a host whose contained runs get AEW's tools bound
     out["shipped"] = shipped
     out["fetched"] = []
     return out
@@ -142,6 +143,29 @@ def test_the_screen_lists_needed_tools_in_full_and_optional_ones_as_a_count(reg)
     assert "aew capability import" in text and "Choose needed / all / pick / none" in text
 
 
+def test_where_aew_places_no_tools_none_is_needed_and_the_screen_says_so_once(reg, monkeypatch):
+    """Review of #343, m3: on a host with no contained context (Windows), OpenCode's own lookup serves, so ripgrep is
+    not called needed, Enter downloads nothing, and the screen says once why."""
+    monkeypatch.setattr(consent, "binds_here", lambda: False)
+    shown = consent.offers()
+    assert [o.needed for o in shown] == [False, False]
+    text = consent.screen(shown)
+    assert text.count(consent.NOT_PLACED[1:]) == 1 and "Needed" not in text and "Enter downloads nothing." in text
+
+
+def test_where_the_hosts_copy_serves_the_screen_says_so_never_that_none_is_here(reg, monkeypatch):
+    """Review of #343, m3: with host copies on and the host's own copy on PATH, the screen names it as what serves
+    meanwhile, never "none is on this host"."""
+    from capability_stand_in import _plant_host_copy
+
+    host = _plant_host_copy(reg, monkeypatch)
+    fake = next(o for o in consent.offers() if o.provider == "fake")
+    assert fake.host == str(host)
+    text = consent.screen(consent.offers())
+    assert f"meanwhile the host's unpinned copy at {host} serves" in text and "None is on this host" not in text
+    assert f"without it, {DEGRADES}" not in text
+
+
 def test_with_nothing_needed_missing_the_screen_says_enter_downloads_nothing(reg):
     optional = [o for o in consent.offers() if not o.needed]
     text = consent.screen(optional)
@@ -149,24 +173,32 @@ def test_with_nothing_needed_missing_the_screen_says_enter_downloads_nothing(reg
 
 
 @pytest.mark.parametrize("answers, chosen, declined", [
-    ([""], ["fake"], ["extra"]),  # Enter: the needed ones, which the screen named
-    (["needed"], ["fake"], ["extra"]),
+    ([""], ["fake"], []),  # Enter: the needed ones, which the screen named; the optional one is no "no"
+    (["needed"], ["fake"], []),
     (["all"], ["fake", "extra"], []),
-    (["none"], [], ["fake", "extra"]),
+    (["none"], [], ["fake"]),  # only the tool listed in full is declined (review of #343, m2)
     (["pick", "2"], ["extra"], ["fake"]),
     (["pick", "fake extra"], ["fake", "extra"], []),
-    (["yes please", "NONE"], [], ["fake", "extra"]),  # an answer that is no choice asks again
+    (["pick", ""], [], []),  # Enter at the pick: nothing named, so nothing downloaded and nothing declined
+    (["yes please", "NONE"], [], ["fake"]),  # an answer that is no choice asks again
 ])
-def test_each_answer_chooses_what_it_says_and_declines_the_rest(reg, answers, chosen, declined):
+def test_each_answer_chooses_what_it_says_and_declines_only_what_was_listed_in_full(reg, answers, chosen, declined):
     decision = consent.ask(consent.offers(), Terminal(*answers))
     assert decision.answered is True
     assert [o.provider for o in decision.chosen] == chosen and [o.provider for o in decision.declined] == declined
 
 
-def test_enter_with_nothing_needed_missing_takes_none(reg):
+def test_enter_with_nothing_needed_missing_takes_none_and_declines_none(reg):
     optional = [o for o in consent.offers() if not o.needed]
     decision = consent.ask(optional, Terminal(""))
-    assert decision.chosen == () and [o.provider for o in decision.declined] == ["extra"]
+    assert decision.chosen == () and decision.declined == ()
+
+
+def test_the_re_prompt_repeats_what_enter_downloads(reg):
+    """Review of #343, n5."""
+    term = Terminal("maybe", "none")
+    consent.ask(consent.offers(), term)
+    assert consent.enter_line(consent.offers()) in term.prompts[1] and "is not one of" in term.prompts[1]
 
 
 @pytest.mark.parametrize("ending", [errors.PermissionDenied("operator authorization timed out"), EOFError(), None])
@@ -185,21 +217,28 @@ def test_init_asks_at_a_terminal_downloads_the_choice_and_remembers_the_no(serve
     term = terminal("")  # Enter: the needed one
     out = consent.at_init(None)
     assert len(term.prompts) == 1 and served["fetched"] == [SOURCE] and _installed("fake")
-    assert [d["tool"] for d in out["declined"]] == ["extra"] and [m["tool"] for m in out["missing"]] == ["extra"]
+    assert out["declined"] == [] and [m["tool"] for m in out["missing"]] == ["extra"]
     assert any(line.startswith("downloaded ") for line in out["downloaded"]["fake"])
-    no = store.read()["declined"][f"extra:{KEY}"]
-    assert no["sha256"] == served["shipped"]["extra"]["payloads"][KEY]["sha256"] and no["at"]
+    assert store.read()["declined"] == {}  # the optional tool, shown as a count, is no "no" (review of #343, m2)
+
+
+def test_a_none_at_init_records_the_no_for_its_pin(served, terminal):
+    terminal("none")
+    consent.at_init(None)
+    no = store.read()["declined"]
+    assert list(no) == [f"fake:{KEY}"] and no[f"fake:{KEY}"]["at"]
+    assert no[f"fake:{KEY}"]["sha256"] == served["shipped"]["fake"]["payloads"][KEY]["sha256"]
 
 
 def test_init_does_not_ask_again_for_a_tool_declined_and_its_next_lists_it(served, terminal):
     terminal("none")
     consent.at_init(None)
-    term = terminal()  # any prompt now fails the test
+    term = terminal("none")  # the optional tool is asked again; the declined one is not on the screen
     out = consent.at_init(None)
-    assert term.prompts == [] and served["fetched"] == []
+    assert len(term.prompts) == 1 and "  fake 1.0" not in term.prompts[0] and served["fetched"] == []
     keys = consent.init_keys("acquire Lead authority", out)
     assert "you declined fake 1.0 at" in keys["next"] and "`aew capability fetch fake` downloads it" in keys["next"]
-    assert f"(needed: without it, {DEGRADES})" in keys["next"] and "you declined extra 1.0 at" in keys["next"]
+    assert f"(needed: without it, {DEGRADES})" in keys["next"] and "extra" not in keys["next"]
     assert keys["tools"] is out
 
 
@@ -238,18 +277,39 @@ def test_init_never_downloads_in_a_lead_session_or_an_agents_own_aew(served, ter
 # ---------------------------------------------------------------------------------------------- the Lead's start
 
 
+def _flag_seen(monkeypatch: Any) -> None:
+    """The launch's own flag, shown once on the operator's terminal, as the contained Lead's sandbox shows it."""
+    monkeypatch.setattr(ops, "_to_terminal", lambda: True)
+    ops.flag_missing({"fake": {"command": "fake", "served": None, "path": None, "tried": []}})
+
+
 def test_the_lead_start_asks_when_a_needed_tool_is_missing_and_not_declined(served, terminal):
     term = terminal("none")
     said = consent.at_lead_start(io.StringIO())
     assert len(term.prompts) == 1 and served["fetched"] == []
-    assert said == [f"aew opencode: attention: fake, which the harness needs (without it, {DEGRADES}), is missing: "
-                    f"you declined it at {store.read()['declined'][f'fake:{KEY}']['at']}. The Lead goes on without "
-                    "it. `aew capability fetch fake` downloads it."]
+    assert said == []  # the launch's own flag names it this time (review of #343, n6)
 
 
-def test_a_declined_needed_tool_gets_one_line_on_every_start_and_no_second_ask(served, terminal):
+def test_a_tool_is_named_once_at_a_start_by_the_flag_or_by_the_start_never_both(served, terminal, monkeypatch,
+                                                                               capsys):
+    """Review of #343, n6: the start's line stands down while the launch's flag is about to name the tool, and stands
+    in on every later start, when the flag has already said it and stays quiet."""
+    terminal("none")
+    assert consent.at_lead_start(io.StringIO()) == []
+    _flag_seen(monkeypatch)
+    assert "the operator declined to download it" in capsys.readouterr().err
+    said = consent.at_lead_start(io.StringIO())
+    at = store.read()["declined"][f"fake:{KEY}"]["at"]
+    assert said == [f"aew opencode: attention: AEW's pinned fake, which the harness needs, is missing: you declined "
+                    f"it at {at}; the Lead goes on without it ({DEGRADES}). `aew capability fetch fake` downloads it."]
+    _flag_seen(monkeypatch)
+    assert capsys.readouterr().err == ""  # the flag says it once per state
+
+
+def test_a_declined_needed_tool_gets_one_line_on_every_start_and_no_second_ask(served, terminal, monkeypatch):
     terminal("none")
     consent.at_lead_start(io.StringIO())
+    _flag_seen(monkeypatch)
     for _ in range(2):
         term = terminal()  # any prompt fails the test
         out = io.StringIO()
@@ -264,14 +324,17 @@ def test_an_optional_tool_missing_says_nothing_at_the_lead_start(served, termina
     assert consent.at_lead_start(io.StringIO()) == [] and term.prompts == []
 
 
-def test_a_lead_that_binds_no_tools_never_asks_and_still_names_a_missing_needed_tool(served, terminal):
+def test_a_lead_that_binds_no_tools_never_asks_and_says_once_why_none_is_placed(served, terminal, caplog):
     """Where the Lead is not contained (Windows), AEW binds no tools into it: nothing is asked, and a needed tool
     missing still gets its line, so it is logged, not voided."""
     term = terminal()
-    said = consent.at_lead_start(io.StringIO(), asking=False)
+    with caplog.at_level("INFO", logger="aew.capability.consent"):
+        said = consent.at_lead_start(io.StringIO(), asking=False)
     assert term.prompts == [] and served["fetched"] == [] and len(said) == 1
-    assert "fake, which a contained run needs, is missing: it is not on this host" in said[0]
-    assert "`aew capability fetch fake` downloads it" in said[0]
+    assert said[0] == ("aew opencode: this Lead is not contained, so AEW places none of its tools in it and "
+                       "OpenCode's own lookup serves (fake, extra: not AEW's pinned copy).")
+    assert "needs" not in said[0] and "aew capability fetch" not in said[0]  # review of #343, m3
+    assert said[0] in caplog.text  # logged, whether or not a terminal reads it
 
 
 def test_off_a_terminal_the_lead_start_neither_asks_nor_says_and_the_record_keeps_it(served):
@@ -280,7 +343,7 @@ def test_off_a_terminal_the_lead_start_neither_asks_nor_says_and_the_record_keep
     assert [o.provider for o in consent.offers() if o.needed] == ["fake"]  # still missing, still in the status
 
 
-def test_at_a_terminal_a_needed_tool_the_download_did_not_bring_gets_its_line(reg, terminal, monkeypatch):
+def test_at_a_terminal_a_download_that_found_no_route_names_the_offline_import(reg, terminal, monkeypatch):
     def down(pinned: dict[str, Any]) -> bytes:
         raise errors.Unavailable("x", reason="fetch_failed", fetch_reason="unreachable")
 
@@ -288,7 +351,7 @@ def test_at_a_terminal_a_needed_tool_the_download_did_not_bring_gets_its_line(re
     terminal("")
     said = consent.at_lead_start(io.StringIO())
     assert any("found no route" in line and "aew capability import" in line for line in said), said
-    assert said[-1].startswith("aew opencode: attention: fake") and "it is not on this host" in said[-1]
+    assert not any("attention" in line for line in said)  # its new state is the launch's flag's to name (n6)
 
 
 def test_a_new_pin_asks_again(served, terminal, monkeypatch):
@@ -323,6 +386,23 @@ def test_a_declined_tool_reads_declined_in_its_status_the_doctor_and_a_runs_flag
     assert [f["reason"] for f in flags] == ["declined"]
     assert "the operator declined to download it" in capsys.readouterr().err
     assert ops.run_record(flags)["reasons"] == {"fake": "declined"}  # logged, never voided
+
+
+def test_a_no_to_a_new_pin_after_a_check_reads_declined_everywhere(served, terminal, monkeypatch):
+    """Review of #343, m1: on a host that checked the old pin, a "no" to the new one reads declined in the status, so
+    list, doctor, a launch's flag and the run's record say so, never pin_changed."""
+    consent.at_fetch(["fake"])  # the old pin downloaded and checked
+    assert store.read()["checks"]
+    body = served["body"] + (b"\0" if IS_WINDOWS else b"\n")
+    member = "fake-1.0/fake.exe" if IS_WINDOWS else "fake-1.0/fake"
+    repinned = {**served["shipped"]["fake"], "payloads": _record(body, _archive(body, member))["payloads"]}
+    monkeypatch.setattr(records, "shipped", lambda: {**served["shipped"], "fake": repinned})
+    copy = next(p for p in ops.listing()["providers"] if p["name"] == "fake")["aew_copy"]
+    assert copy["reason"] == "pin_changed"  # control: before the "no", the new pin reads as such
+    terminal("none")
+    consent.at_lead_start(io.StringIO())
+    copy = next(p for p in ops.listing()["providers"] if p["name"] == "fake")["aew_copy"]
+    assert copy["reason"] == "declined" and "declined to download it" in copy["cause"], copy
 
 
 def test_a_download_the_operator_chose_clears_the_no(served, terminal):
@@ -480,6 +560,22 @@ def test_an_approved_add_downloads_with_no_lock_held_either(reg, local, monkeypa
     assert took == [True] and out["added"] == ["mine"]
 
 
+def test_a_pin_that_changes_during_the_download_installs_nothing(reg, local, monkeypatch):
+    """Review of #343, m6: the record is re-read under the lock, and a pin changed while the archive was on the wire
+    installs nothing, and says so."""
+    body = reg["body"] + (b"\0" if IS_WINDOWS else b"\n")
+    member = "fake-1.0/fake.exe" if IS_WINDOWS else "fake-1.0/fake"
+    repinned = {**reg["shipped"]["fake"], "payloads": _record(body, _archive(body, member))["payloads"]}
+
+    def repin() -> None:
+        monkeypatch.setattr(records, "shipped", lambda: {**reg["shipped"], "fake": repinned})
+
+    local(reg["archive"], during=repin)
+    out = consent.get(consent.named(["fake"]))
+    assert out["fake"] == ["its record or pin changed during the download, so nothing was installed"]
+    assert _leftovers() == []
+
+
 def test_offline_the_report_names_the_offline_import(reg, monkeypatch):
     def unreachable(*_a: Any, **_k: Any) -> Any:
         raise urllib.error.URLError(OSError("no route"))
@@ -526,10 +622,14 @@ def test_capability_fetch_through_the_cli_downloads_what_it_names(served, capsys
 # ---------------------------------------------------------------------------------------------- logged, not voided
 
 
+RG = {"tool": "rg", "fallback": "`grep -rn` or `find`"}
+
+
 @pytest.mark.parametrize("tools, said", [
-    (["rg"], True),  # right: the run went without it, and is told so
-    ([], False),  # missing: nothing to say
-    (None, False),
+    ([RG], "`rg`, so what runs them fails here (search with `grep -rn` or `find` instead)"),  # right
+    ([{"tool": "jq", "fallback": None}], "`jq`, so what runs them fails here."),  # no search: no fallback (n4)
+    ([], None),  # missing: nothing to say
+    (None, None),
 ])
 def test_the_agent_is_told_the_tools_its_run_goes_without_as_it_is_told_its_missing_skills(tools, said):
     """The operator's condition (2026-11-05): a missing tool acts as a missing skill does. The system text names the
@@ -540,18 +640,47 @@ def test_the_agent_is_told_the_tools_its_run_goes_without_as_it_is_told_its_miss
 
     system = projection.invocation_config(contract(), unavailable_tools=tools)["agents"][projection.AGENT]["system"]
     line = next((x for x in system.splitlines() if x.startswith("- Tools AEW brings")), None)
-    assert (line is not None) is said, system
+    assert (line is not None) is (said is not None), system
     if said:
-        assert line == ("- Tools AEW brings that this run does not have: `rg`, so what runs them fails here (search "
-                        "with `grep -rn` or `find` instead). Proceed without them and say so in your report.")
+        assert line == (f"- Tools AEW brings that this run does not have: {said}"
+                        + ("" if said.endswith(".") else ".") + " Proceed without them and say so in your report.")
     skills = next(x for x in system.splitlines() if x.startswith("- Skills"))
     assert "Proceed without them and say so in your report." in skills  # the same words as its skills line
+
+
+def test_the_adapters_launch_puts_the_runs_missing_tools_in_its_system_text(tmp_path, monkeypatch):
+    """Review of #343, m7: what the supervisor sets from the run's record (``K.UNAVAILABLE_TOOLS``) reaches the
+    system text the adapter's launch writes: planted at the launch, stopped right after the configuration is built."""
+    from test_opencode_units import contract
+
+    from aew.harness import contract as K
+    from aew.harness.opencode import adapter, projection
+
+    built: dict[str, Any] = {}
+
+    class Built(Exception):
+        pass
+
+    real = projection.invocation_config
+
+    def capture(c: Any, **kw: Any) -> Any:
+        built["system"] = real(c, **kw)["agents"][projection.AGENT]["system"]
+        raise Built
+
+    monkeypatch.setattr(projection, "invocation_config", capture)
+    tree = type("Tree", (), {"network": None})()
+    for tools, said in (([RG], True), ([], False)):  # right, and missing
+        c = contract()
+        c.extra[K.UNAVAILABLE_TOOLS] = tools
+        with pytest.raises(Built):
+            adapter.OpenCodeAdapter(tree, tmp_path / f"run-{len(tools)}", lambda _e: None).launch(c, {})
+        assert ("- Tools AEW brings that this run does not have: `rg`" in built["system"]) is said
 
 
 def test_unavailable_reads_the_runs_record_stubs_only():
     record = ops.run_record([{"tool": "rg", "provider": "ripgrep", "served": "stub", "reason": "declined"},
                              {"tool": "jq", "provider": "jq", "served": "host", "reason": "not_installed"}])
-    assert ops.unavailable(record) == ["rg"]  # right: a stub; the host copy still runs
+    assert ops.unavailable(record) == [RG]  # right: a stub, with ripgrep's search fallback; the host copy still runs
     assert ops.unavailable(None) == [] and ops.unavailable({}) == []  # missing
     assert ops.unavailable({"detail": "not a list"}) == []  # wrong shape
 

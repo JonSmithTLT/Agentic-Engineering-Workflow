@@ -99,6 +99,22 @@ def test_the_route_a_note_prints_after_the_pin_runs_as_printed(tmp_path):
     assert run_aew("-C", str(root), "lead", "acquire", "--expect-rev", "0").returncode == 0
 
 
+def test_a_fresh_init_with_an_opencode_model_names_its_key_and_a_launch_passes_only_with_it_set(tmp_path):
+    """E119's first configuration names opencode's key variable, as for every known provider (the operator,
+    2026-11-06): the pinned policy's provider_env carries it, and the launch predicate passes with it set and refuses
+    without it. The key is synthetic."""
+    root = repo(tmp_path)
+    res = init(root, "--model", "opencode/x")
+    assert res.returncode == 0, res.stdout
+    variable = netns.PROVIDER_KEY_ENV["opencode"]
+    assert variable == "OPENCODE_API_KEY" and res.json["first_configuration"]["provider_env"] == [variable]
+    policy = yaml.safe_load((root / ".aew" / "policy" / "execution.yaml").read_text(encoding="utf-8"))
+    assert policy["provider_env"] == [variable]
+    assert policy["profiles"]["default"] == {"model": "opencode/x"}
+    for env, want in (({variable: "synthetic-not-a-key"}, None), ({}, variable), ({variable: ""}, variable)):
+        assert netns.provider_key_missing("opencode", policy["provider_env"], env, on_relay_route=True) == want, env
+
+
 def test_resume_gives_a_vacant_seat_the_one_text_status_does(tmp_path):
     """Review of #329, F3: `aew resume` named the credential route alone, and following it refuses the `--acquire` that
     `next` named."""

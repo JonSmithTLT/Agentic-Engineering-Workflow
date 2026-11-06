@@ -569,22 +569,59 @@ def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str
 def test_the_lead_rules_are_unchanged_a_command_still_asks_and_an_edit_or_a_subagent_is_denied():
     """Addendum 11 changes the Lead's text, never its rules. The shell runs `aew` and read-only git; any other
     command, the tests and a commit among them, asks the operator; an edit and a subagent are denied. Nothing else is
-    allowed or denied, and a contained session's rules are the same."""
+    allowed or denied, and a contained session's rules are the same. Since 2026-11-06 the Lead denies reading `.env`
+    files as invocations do, and its git reads with an option that writes a file or runs a program ask (the
+    designer)."""
     rules = projection.lead_config()["agents"][projection.LEAD_AGENT]["permissions"]
     assert projection.lead_config(contained=LABEL)["agents"][projection.LEAD_AGENT]["permissions"] == rules
     assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "allow"} == {
         ("read", "*"), ("glob", "*"), ("grep", "*"), ("question", "*"), (f"{projection.LEAD_MCP_SERVER}_*", "*"),
         ("shell", "aew *"), ("shell", "git status*"), ("shell", "git diff*"), ("shell", "git log*"),
-        ("shell", "git show*")}
-    assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "deny"} == {("edit", "*"), ("subagent", "*")}
+        ("shell", "git show*"), ("read", "*.env.example")}
+    assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "deny"} == {
+        ("edit", "*"), ("subagent", "*"), ("read", "*.env"), ("read", "*.env.*")}
     # The asks are AEW's own, never OpenCode's default for an unmatched action (#304 review, n1).
-    assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "ask"} == {("*", "*"), ("shell", "*")}
+    assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "ask"} == {
+        ("*", "*"), ("shell", "*"), *(("shell", pattern) for pattern in projection.LEAD_GIT_ASKS)}
     for command in ("aew status", "git status --short", "git diff HEAD", "git log -1", "git show HEAD"):
         assert effect(rules, "shell", command) == "allow", command
     for command in ("python -m pytest -q", "bash scripts/check.sh", "git commit -m wip", "git push", "rm -rf build"):
         assert effect(rules, "shell", command) == "ask", command
     assert effect(rules, "edit", "src/aew/cli/main.py") == "deny" and effect(rules, "subagent", "general") == "deny"
     assert effect(rules, "webfetch", "https://example.com") == "ask"
+
+
+def test_the_lead_denies_reading_env_files_with_the_invocations_own_three_rules_in_their_order(tmp_path):
+    """The Lead's permissions deny reading `.env` files, as invocations' already do: one list, used by both, and it
+    comes after the `read` allow so it wins (the designer, 2026-11-06). The project is synthetic."""
+    (tmp_path / ".env").write_text("SYNTHETIC=not-a-secret\n", encoding="utf-8")
+    (tmp_path / ".env.local").write_text("SYNTHETIC=not-a-secret\n", encoding="utf-8")
+    (tmp_path / ".env.example").write_text("SYNTHETIC=\n", encoding="utf-8")
+    lead_rules = projection.lead_config()["agents"][projection.LEAD_AGENT]["permissions"]
+    worker = projection.permissions(SimpleNamespace(extra={}, role="reviewer"), [])
+    shared = list(projection.ENV_READ_RULES)
+    assert [(r["effect"], r["resource"]) for r in shared] == [("deny", "*.env"), ("deny", "*.env.*"),
+                                                               ("allow", "*.env.example")]
+    for rules in (lead_rules, worker):
+        start = rules.index(shared[0])
+        assert rules[start:start + 3] == shared
+        assert rules.index(projection.rule("read", "allow")) < start
+    for name, want in ((".env", "deny"), (".env.local", "deny"), (".env.example", "allow"), ("README.md", "allow")):
+        assert effect(lead_rules, "read", (tmp_path / name).as_posix()) == want, name
+
+
+def test_the_leads_git_reads_that_write_a_file_or_run_a_program_ask_and_the_plain_reads_stay_allowed():
+    """The Lead's auto-allowed git reads no longer cover options that write files or run a configured program:
+    `--output` and `--ext-diff` ask wherever they follow the subcommand, as one argument or two (the designer,
+    2026-11-06). A global option before the subcommand matches no allow, so it asks too. Nothing here runs git."""
+    rules = projection.lead_config()["agents"][projection.LEAD_AGENT]["permissions"]
+    for command in ("git diff", "git diff HEAD", "git log -5", "git log --oneline -3", "git show HEAD",
+                    "git status --short"):
+        assert effect(rules, "shell", command) == "allow", command
+    for command in ("git diff --output=x", "git log --output=x", "git show HEAD --output=x", "git diff --output x",
+                    "git log -p --output x", "git diff --ext-diff", "git log -p --ext-diff", "git show --ext-diff HEAD",
+                    "git -C /tmp diff", "git -C /tmp log"):
+        assert effect(rules, "shell", command) == "ask", command
 
 
 def test_the_lead_text_requests_a_command_that_asks_and_keeps_edits_and_commits_with_invocations():

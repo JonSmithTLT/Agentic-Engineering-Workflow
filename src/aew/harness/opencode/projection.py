@@ -46,6 +46,13 @@ def rule(action: str, effect: str, resource: str = "*") -> dict[str, str]:
     return {"action": action, "resource": resource, "effect": effect}
 
 
+# The read rules for `.env` files, after a `read` allow so that they win (last match wins): every invocation's and the
+# Lead's, one list (the designer, 2026-11-06). A harness permission rule: it is not containment, it does not cover a
+# shell command the operator approves or the history of a tracked file, and on Windows no other layer applies.
+ENV_READ_RULES = (rule("read", "deny", "*.env"), rule("read", "deny", "*.env.*"),
+                  rule("read", "allow", "*.env.example"))
+
+
 def rules_hold(loaded: list[dict[str, Any]], want: list[dict[str, Any]]) -> str | None:
     """Whether the rules OpenCode loaded for AEW's agent mean what AEW projected: ``None`` when they do, else why not.
 
@@ -99,7 +106,7 @@ def permissions(contract: LaunchContract, exposed_skills: list[str],
     web = "allow" if capabilities & WEB_CAPABILITIES else "deny"
     rules = [rule("*", "deny")]  # anything not named below does not exist for the agent
     rules += [rule(action, "allow") for action in ("read", "glob", "grep", "shell")]
-    rules += [rule("read", "deny", "*.env"), rule("read", "deny", "*.env.*"), rule("read", "allow", "*.env.example")]
+    rules += ENV_READ_RULES
     rules.append(rule("edit", "allow" if contract.role in MUTATING_ROLES else "deny"))
     rules += [rule("webfetch", web), rule("websearch", web), rule("skill", "deny")]
     rules += [rule("skill", "allow", name) for name in exposed_skills]
@@ -209,11 +216,22 @@ def session_body(contract: LaunchContract, directory: str, rules: list[dict[str,
 LEAD_MCP_SERVER = SERVER_NAME
 LEAD_MCP_COMMAND = ["aew", "lead", "mcp"]
 
+# The read-only git commands the Lead runs without asking, and their options that write a file (`--output`) or run a
+# configured program (`--ext-diff`), which ask wherever they are in the command (the designer, 2026-11-06). OpenCode's
+# `*` matches any run of characters and the pattern is anchored, so `git diff*--output*` covers `--output=x` and
+# `--output x` anywhere after the subcommand; git takes no abbreviation of either (checked: `--outp=` and `--ext` are
+# refused). A global option before the subcommand (`git -C dir diff`) matches none of these allows, so it asks too.
+LEAD_GIT_READS = ("git status*", "git diff*", "git log*", "git show*")
+LEAD_GIT_ASKS = tuple(f"git {cmd}*{option}*" for cmd in ("diff", "log", "show")
+                      for option in ("--output", "--ext-diff"))
+
 LEAD_RULES = [
     rule("*", "ask"),
     *(rule(action, "allow") for action in ("read", "glob", "grep")),
+    *ENV_READ_RULES,
     rule("shell", "ask"),
-    *(rule("shell", "allow", pattern) for pattern in ("aew *", "git status*", "git diff*", "git log*", "git show*")),
+    *(rule("shell", "allow", pattern) for pattern in ("aew *", *LEAD_GIT_READS)),
+    *(rule("shell", "ask", pattern) for pattern in LEAD_GIT_ASKS),  # after the allows, so they win
     rule("edit", "deny"),
     rule("subagent", "deny"),
     rule("question", "allow"),
@@ -264,7 +282,8 @@ LEAD_SYSTEM = "\n".join([
     # approves. The rules are unchanged (`LEAD_RULES`): a command that asks still waits on the operator. OpenCode's
     # prompt is the one approval; a yes typed in chat is not a second gate (#304 review, m2; the designer).
     "- Do not implement substantial changes yourself. You cannot edit files in this session, but you can read and "
-    "search them with your read, glob and grep tools. The shell runs `aew` and `git status|diff|log|show` directly. "
+    "search them with your read, glob and grep tools. The shell runs `aew` and `git status|diff|log|show` directly "
+    "(with `--output` or `--ext-diff`, those ask). "
     "Any other command asks the operator's permission first: when the operator asks for one, such as running the "
     "tests or a script, or one is needed to do what they asked, request it by running it: OpenCode asks the "
     "operator, and it runs once they approve. That prompt is the approval: you may say in a line what you are about "

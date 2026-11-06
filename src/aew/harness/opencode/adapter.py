@@ -198,7 +198,8 @@ def declared_only(model: dict[str, Any]) -> bool:
 
 
 # The relay-route check of the pinned model's family (``relay_family``): what the launch record keeps, and the one
-# reason it refuses with. Closed.
+# reason it refuses with. Closed. The reason is the refusal's own detail today: no launcher output or file carries it
+# yet; the supervisor's acknowledgement carries it from the pull request after #330 (register E143).
 RELAY_FAMILY_MATCHES, RELAY_FAMILY_UNVERIFIED, RELAY_FAMILY_MISMATCH = "matches", "unverified", "mismatch"
 RELAY_FAMILY_REFUSED = "relay_family_mismatch"
 
@@ -211,7 +212,7 @@ def _served_at(address: Any) -> tuple[str, str, int, str] | None:
         up = netns.relay.Upstream(address)  # the relay's own reading of an upstream URL
     except ValidationFailed:
         return None
-    return up.scheme, up.host.lower(), up.port, up.path
+    return up.scheme, up.host, up.port, up.path  # urlsplit's hostname is lower case already
 
 
 def relay_family(pinned: dict[str, Any], catalog: list[dict[str, Any]], upstream: str) -> dict[str, Any]:
@@ -220,26 +221,45 @@ def relay_family(pinned: dict[str, Any], catalog: list[dict[str, Any]], upstream
     its requests sent to an endpoint that does not serve them, failing only at its first model call.
 
     The model's family is its catalog ``package`` (the SDK its requests are made with), which OpenCode 2.0.18 keeps on
-    the relay route (measured 2026-11-06): exact, not inferred. Its address is not kept, since AEW's projection
-    (``projection.relayed``) replaces it with the relay's. The families the upstream serves are read from the same
-    catalog: the packages of the provider's models whose own address is the upstream (each ``opencode/*`` model
-    carries one, and AEW overrides only the pinned model's).
+    the relay route (measured 2026-11-06). Its address is not kept, since AEW's projection (``projection.relayed``)
+    replaces it with the relay's. The families the upstream serves are read from the same catalog: the packages of the
+    provider's other models whose own address is the upstream (each ``opencode/*`` model carries one, and AEW
+    overrides only the pinned model's).
 
     - ``matches``: the model's package is among them;
-    - ``mismatch``: it is not, so the launch is refused;
-    - ``unverified``: the model states no package, or no model of the catalog is served from the upstream, so there
-      is nothing to compare, and the launch goes ahead with that recorded. A catalog that spells the upstream another
-      way (2.0.18's embedded snapshot gives Zen as ``opencode.ai/zen/v1``, the live catalog and ``netns.UPSTREAMS``
-      ``/inference/openai/v1``) lands here: never refused on a spelling."""
-    provider, package = pinned.get("providerID"), pinned.get("package")
+    - ``mismatch``: it is not, and other models of the provider carry the package, none of them served from the
+      upstream: the launch is refused;
+    - ``unverified``: there is nothing to decide by, and the launch goes ahead with that recorded: the model states no
+      package; no model of the catalog is served from the upstream (a catalog that spells the upstream another way,
+      as 2.0.18's embedded snapshot gives Zen as ``opencode.ai/zen/v1`` where the live catalog and
+      ``netns.UPSTREAMS`` have ``/inference/openai/v1``, is never refused on a spelling); or no other model carries
+      the package, so the pinned model, whose own address is hidden, may be the one that serves it there (the live
+      catalog's one ``mistral`` model at the upstream, 2026-11-06). Other carriers only decide between ``mismatch``
+      and ``unverified``: they never pass a model.
+
+    Limits:
+
+    - The package stands in for the endpoint. A model whose package other models carry at the upstream but which is
+      itself served elsewhere (``openai-compatible`` serves many endpoints) reads ``matches``, and fails at its first
+      call as before this check.
+    - A package served from two addresses, the pinned model at the upstream and every other carrier elsewhere, is
+      refused although the model is served where the relay sends.
+    - A package of one model really served elsewhere reads ``unverified`` and fails at its first call.
+    - Only a provider whose catalog models carry their own address (``netns.CATALOG_ADDRESSED``) can be refused: for
+      any other, every model shows the relay's address after the projection, and the check reads ``unverified``."""
+    provider, package, pin = pinned.get("providerID"), pinned.get("package"), pinned.get("id")
     want = _served_at(upstream)
-    served = sorted({str(m.get("package")) for m in catalog
-                     if m.get("providerID") == provider and m.get("package") and not declared_only(m)
-                     and want is not None and _served_at((m.get("settings") or {}).get("baseURL")) == want})
+    others = [m for m in catalog if m.get("providerID") == provider and m.get("id") != pin and not declared_only(m)]
+    served = sorted({str(m.get("package")) for m in others
+                     if m.get("package") and want is not None
+                     and _served_at((m.get("settings") or {}).get("baseURL")) == want})
     out: dict[str, Any] = {"package": package, "upstream_packages": served}
     if not package or not served:
         return {"check": RELAY_FAMILY_UNVERIFIED, **out}
-    return {"check": RELAY_FAMILY_MATCHES if package in served else RELAY_FAMILY_MISMATCH, **out}
+    if package in served:
+        return {"check": RELAY_FAMILY_MATCHES, **out}
+    carried = any(m.get("package") == package for m in others)
+    return {"check": RELAY_FAMILY_MISMATCH if carried else RELAY_FAMILY_UNVERIFIED, **out}
 
 
 class OpenCodeAdapter(HarnessAdapter):
@@ -573,8 +593,8 @@ class OpenCodeAdapter(HarnessAdapter):
                 f"model {ref['providerID']}/{ref['id']} is a {found['package']} model, but the run's provider relay "
                 f"sends only to {upstream}, which this OpenCode's catalog serves "
                 f"{', '.join(found['upstream_packages'])} models from, so its requests would go to an endpoint that "
-                "does not serve them; dispatch a new invocation with --profile or --model naming a model of that "
-                "family, or the operator sets "
+                "does not serve them; dispatch a new invocation with --profile or --model naming a model of a family "
+                f"it serves ({', '.join(found['upstream_packages'])}), or the operator sets "
                 f"containment.network.upstreams.{ref['providerID']} to an address that serves {found['package']} "
                 f"models and relaunches with {self._relaunch_command()}", model=ref, package=found["package"],
                 upstream=upstream, upstream_packages=found["upstream_packages"], reason=RELAY_FAMILY_REFUSED)

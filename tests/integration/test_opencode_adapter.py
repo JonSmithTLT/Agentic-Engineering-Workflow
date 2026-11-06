@@ -245,6 +245,7 @@ SNAPSHOT = "https://opencode.ai/zen/v1"  # how 2.0.18's embedded catalog snapsho
 RELAY_BASE = f"http://127.0.0.1:{netns.PROVIDER_PORT}/inference/openai/v1"  # where the projection points the pin
 OPENAI, COMPATIBLE, ANTHROPIC = ("@opencode/ai/providers/openai", "@opencode/ai/providers/openai-compatible",
                                  "@opencode/ai/providers/anthropic")  # 2.0.18's packages (measured 2026-11-06)
+MISTRAL = "@opencode/ai/providers/mistral"  # the live catalog's one model of it is served from the upstream
 
 
 def catalog_model(model_id: str, package: str | None, address: str | None, provider: str = "opencode",
@@ -281,8 +282,25 @@ HAIKU = catalog_model("claude-haiku-5-5", ANTHROPIC, RELAY_BASE)
     (NANO, live_catalog(NANO, spelling=SNAPSHOT), opencode_adapter.RELAY_FAMILY_UNVERIFIED, []),
     (HAIKU, live_catalog(HAIKU, spelling=SNAPSHOT), opencode_adapter.RELAY_FAMILY_UNVERIFIED, []),
     # The same address spelt with its case, default port and a trailing slash is the same upstream.
-    (HAIKU, [HAIKU, catalog_model("gpt-5-mini", OPENAI, "https://OPENCODE.ai:443/inference/openai/v1/")],
+    (HAIKU, [HAIKU, catalog_model("gpt-5-mini", OPENAI, "https://OPENCODE.ai:443/inference/openai/v1/"),
+             catalog_model("claude-sonnet-5", ANTHROPIC, "https://opencode.ai/inference/anthropic/v1")],
      opencode_adapter.RELAY_FAMILY_MISMATCH, [OPENAI]),
+    # The only model of its package (the live catalog's one mistral model, served from the upstream): its own address
+    # is hidden, so nothing decides where it is served, and it is never refused (#338 review, F1).
+    (catalog_model("mistral-medium", MISTRAL, RELAY_BASE), live_catalog(catalog_model("mistral-medium", MISTRAL,
+                                                                                       RELAY_BASE)),
+     opencode_adapter.RELAY_FAMILY_UNVERIFIED, [OPENAI, COMPATIBLE]),
+    # Another model of its package served from the upstream: it matches.
+    (catalog_model("mistral-medium", MISTRAL, RELAY_BASE),
+     live_catalog(catalog_model("mistral-medium", MISTRAL, RELAY_BASE),
+                  catalog_model("mistral-small", MISTRAL, UPSTREAM)),
+     opencode_adapter.RELAY_FAMILY_MATCHES, [MISTRAL, OPENAI, COMPATIBLE]),
+    # A stated limit: a package served from two addresses, the pin at the upstream and its only other carrier
+    # elsewhere, is refused (the pin's own address is hidden).
+    (catalog_model("mistral-medium", MISTRAL, RELAY_BASE),
+     live_catalog(catalog_model("mistral-medium", MISTRAL, RELAY_BASE),
+                  catalog_model("mistral-small", MISTRAL, "https://opencode.ai/inference/mistral/v1")),
+     opencode_adapter.RELAY_FAMILY_MISMATCH, [OPENAI, COMPATIBLE]),
     # Another provider's models, models the configuration made up, and models with no package or no address say
     # nothing of what this provider's upstream serves.
     (HAIKU, [HAIKU, catalog_model("claude-x", ANTHROPIC, UPSTREAM, provider="opencode-go"),
@@ -302,22 +320,30 @@ def test_the_relay_route_compares_the_pinned_models_package_with_what_the_upstre
     assert found == {"check": check, "package": pinned.get("package"), "upstream_packages": upstream_packages}, found
 
 
-def relay_catalog(lab: HarnessLab, sibling_package: str | None) -> None:
-    """The fake server's catalog: the pinned fake model (package fake-pkg) and, when given, a sibling of the same
-    provider served from the relay's upstream with ``sibling_package``. The server shows each address as 2.0.18
-    does (fake_opencode.FakeServer.models)."""
+def fake_sibling(model_id: str, package: str, address: str) -> dict[str, Any]:
+    return {"id": model_id, "modelID": model_id, "providerID": "fakeprov", "name": model_id.title(), "family": "fake",
+            "time": {"released": 1}, "enabled": True, "variants": [], "package": package,
+            "settings": {"baseURL": address}}
+
+
+def relay_catalog(lab: HarnessLab, sibling_package: str | None, cousin_elsewhere: bool = False) -> None:
+    """The fake server's catalog: the pinned fake model (package fake-pkg); when given, a sibling of the same provider
+    served from the relay's upstream with ``sibling_package``; and with ``cousin_elsewhere``, another fake-pkg model
+    served somewhere else. The server shows each address as 2.0.18 does (fake_opencode.FakeServer.models)."""
     pinned = {**fake_opencode.DEFAULT_MODELS[0], "family": "fake", "time": {"released": 1}, "package": "fake-pkg"}
-    sibling = {"id": "fake-sibling", "modelID": "fake-sibling", "providerID": "fakeprov", "name": "Sibling",
-               "family": "fake", "time": {"released": 1}, "enabled": True, "variants": [],
-               "package": sibling_package, "settings": {"baseURL": lab.provider.url}}
-    script(lab, IMPLEMENT, models=[pinned, *([sibling] if sibling_package else [])])
+    models = [pinned]
+    if sibling_package:
+        models.append(fake_sibling("fake-sibling", sibling_package, lab.provider.url))
+    if cousin_elsewhere:
+        models.append(fake_sibling("fake-cousin", "fake-pkg", "https://elsewhere.invalid/v1"))
+    script(lab, IMPLEMENT, models=models)
 
 
 def test_on_the_relay_route_a_model_of_a_family_the_upstream_does_not_serve_is_refused_at_launch(lab, tmp_path):
     """The relay's upstream serves another family, so the model's requests would go to an endpoint that does not
     serve them: refused before the first prompt, naming both families, the upstream, and both ways on. Without a
     relay (no network of the run's own) the model is called at its own address, so the check does not apply."""
-    relay_catalog(lab, "other-pkg")
+    relay_catalog(lab, "other-pkg", cousin_elsewhere=True)
     wid = create_planned_ticket(lab.project, tmp_path)
     res = lab.lead_res("work", "assign", wid, "--launch")
     if lab.record(RUN)["containment"]["network"]["mode"] != "proxy_only":
@@ -331,16 +357,23 @@ def test_on_the_relay_route_a_model_of_a_family_the_upstream_does_not_serve_is_r
     assert (f"model fakeprov/fake-model is a fake-pkg model, but the run's provider relay sends only to "
             f"{lab.provider.url}, which this OpenCode's catalog serves other-pkg models from, so its requests would "
             "go to an endpoint that does not serve them; dispatch a new invocation with --profile or --model naming a "
-            "model of that family, or the operator sets containment.network.upstreams.fakeprov to an address that "
-            f"serves fake-pkg models and relaunches with {RELAUNCH}") in message, message
+            "model of a family it serves (other-pkg), or the operator sets containment.network.upstreams.fakeprov to "
+            f"an address that serves fake-pkg models and relaunches with {RELAUNCH}") in message, message
     assert lab.record(RUN)["status"] == "launch_failed"
     assert lab.provider.seen == [], "no model call was made"
 
 
-@pytest.mark.parametrize("sibling", ["fake-pkg", None])
-def test_on_the_relay_route_the_family_check_is_recorded_and_the_run_goes_ahead(lab, tmp_path, sibling):
-    """A sibling of the pin's family served from the relay's upstream: `matches`. None served from it: `unverified`,
-    nothing to compare, which launches all the same. Either way the launch record keeps what was found."""
+@pytest.mark.parametrize("sibling, check, upstream_packages", [
+    ("fake-pkg", "matches", ["fake-pkg"]),
+    # Only other-pkg is served from the upstream, and no other model carries fake-pkg: the pin may be what serves it
+    # there (its own address is hidden), so nothing decides, and it launches (#338 review, F1).
+    ("other-pkg", "unverified", ["other-pkg"]),
+    (None, "unverified", []),
+])
+def test_on_the_relay_route_the_family_check_is_recorded_and_the_run_goes_ahead(lab, tmp_path, sibling, check,
+                                                                                upstream_packages):
+    """A sibling of the pin's family served from the relay's upstream: `matches`. Nothing to decide by: `unverified`,
+    which launches all the same. Either way the launch record keeps what was found."""
     relay_catalog(lab, sibling)
     _, _, run = launch(lab, tmp_path)
     assert lab.wait(run)["status"] == "ended_with_evidence"
@@ -349,8 +382,7 @@ def test_on_the_relay_route_the_family_check_is_recorded_and_the_run_goes_ahead(
         assert "relay_family" not in record["launch"]["health"]
         return
     assert record["launch"]["health"]["relay_family"] == {
-        "check": "matches" if sibling else "unverified", "package": "fake-pkg",
-        "upstream_packages": ["fake-pkg"] if sibling else []}
+        "check": check, "package": "fake-pkg", "upstream_packages": upstream_packages}
 
 
 def test_on_linux_a_provider_key_that_would_reach_the_sandbox_another_way_refuses_the_launch(lab, tmp_path):

@@ -576,6 +576,7 @@ def _network(layout: Layout, *, egress_policy: Any, bridge: str | None) -> Itera
                                            listener=netns.listen(os.path.join(directory, PROBE_EGRESS))).start()
                 stack.callback(proxy.close)
                 state["egress"] = True
+                state["egress_allow"] = egress_policy.describe().get("allow")  # what row 1 checked (register E143)
         held = socket.create_server(("127.0.0.1", 0))
         stack.callback(held.close)
         abstract = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)  # pyright: ignore[reportAttributeAccessIssue]
@@ -846,6 +847,7 @@ def _row1(layout: Layout, seen: dict[str, Any], net: dict[str, Any] | None) -> d
         problems.append(f"the bridge does not answer inside by its path ({inside.get('bridge')})")
     return _row("network", problems, mode=layout.network, netns={"inside": inside.get("netns"), "launcher": launcher},
                 provider_relay="probe upstream" if net["relay"] else "none", egress=net["egress"],
+                egress_allow=net.get("egress_allow"),
                 egress_refused={"target": planted, "why": why} if net["egress"] else None,
                 checks={k: inside.get(k) for k in ("direct", "direct_udp", "direct6", "host_port", "host_abstract",
                                                    "bridge", "server")},

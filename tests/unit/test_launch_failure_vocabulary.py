@@ -7,6 +7,7 @@ from __future__ import annotations
 import pytest
 
 from aew.engine import harness_ops
+from aew.harness import base as B
 from aew.harness import contract as K
 from aew.harness.opencode import adapter as opencode
 
@@ -26,6 +27,34 @@ def test_launch_and_adapter_reason_codes_are_disjoint_and_lowercase():
     # The mapping only ever yields the closed set, whatever it is asked.
     asked = [None, "", "AEW_ERROR", "STALE_AUTHORITY", "HARNESS_INCOMPATIBLE", K.PROVIDER_AUTH_FAILED]
     assert {K.launch_failure_code(site, code) for site in SITES for code in asked} <= K.LAUNCH_FAILURE_CODES
+
+
+def test_a_launch_reports_only_closed_values_beside_its_status_and_its_code():
+    """What an adapter's launch reports beside its status (register E143) is closed like its code: the relay-route
+    check a started launch shows, and the adapter's refusal reason a refused one carries, are lowercase and apart from
+    the launch-failure and adapter codes; the adapter's own refusal reasons are all in the set."""
+    every = K.LAUNCH_FAILURE_CODES | K.ADAPTER_REASON_CODES
+    assert all(r == r.lower() and r.isidentifier() for r in B.LAUNCH_REFUSALS) and not B.LAUNCH_REFUSALS & every
+    assert B.RELAY_FAMILY_SHOWN == {B.RELAY_FAMILY_MATCHES, B.RELAY_FAMILY_UNVERIFIED}
+    assert B.RELAY_FAMILY_MISMATCH not in B.RELAY_FAMILY_SHOWN  # a mismatch refuses the launch
+    assert {opencode.RELAY_FAMILY_REFUSED, opencode.KEY_IN_SANDBOX, opencode.PROVIDER_ENV_UNUSABLE} == B.LAUNCH_REFUSALS
+
+
+@pytest.mark.parametrize(("ack", "passed_on"), [
+    ({"started": True, "relay_family": "unverified"}, {"relay_family": "unverified"}),
+    ({"started": True, "relay_family": "matches"}, {"relay_family": "matches"}),
+    ({"started": True, "relay_family": "mismatch"}, {}),  # never on a started launch: a mismatch refuses
+    ({"started": True, "relay_family": "trust me"}, {}),
+    ({"started": True, "refusal": "relay_family_mismatch"}, {}),  # a started launch refused nothing
+    ({"started": False, "refusal": "relay_family_mismatch"}, {"refusal": "relay_family_mismatch"}),
+    ({"started": False, "refusal": "provider_secret_in_sandbox"}, {"refusal": "provider_secret_in_sandbox"}),
+    ({"started": False, "refusal": "anything else"}, {}),
+    ({"started": False, "relay_family": "unverified"}, {}),
+])
+def test_the_launcher_passes_on_only_a_closed_report_from_the_acknowledgement(ack, passed_on):
+    """The supervisor's acknowledgement crosses a process boundary; the launcher passes on beside the run's status
+    only the closed values (register E143), as it does the closed code."""
+    assert harness_ops._acknowledged_report(ack) == passed_on
 
 
 @pytest.mark.parametrize("code", sorted(N8))

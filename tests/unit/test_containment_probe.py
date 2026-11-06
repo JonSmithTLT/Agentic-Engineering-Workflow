@@ -494,8 +494,9 @@ def row1(monkeypatch, inside=None, **net):
 
 
 def test_row_1_passes_on_a_network_of_the_runs_own_and_records_what_it_checked(monkeypatch):
-    row = row1(monkeypatch)
+    row = row1(monkeypatch, egress_allow=["models.opencode.ai:443"])
     assert row["ok"] is True and row["mode"] == L.PROXY_ONLY
+    assert row["egress_allow"] == ["models.opencode.ai:443"]  # the allowlist it checked (register E143)
     assert row["netns"] == {"inside": "net:[4026532900]", "launcher": "net:[4026531840]"}
     assert row["checks"]["host_abstract"] == "ECONNREFUSED" and row["listening"] == INSIDE["listening"]
 

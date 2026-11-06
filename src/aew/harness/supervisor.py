@@ -41,7 +41,7 @@ from aew.engine import faults
 from aew.engine.authority import require_invocation, token_id_of
 from aew.harness import agentenv, bridge, containment, event_spool, procs, registry, runlog, usage, weaker_register
 from aew.harness import contract as K
-from aew.harness.base import HarnessAdapter
+from aew.harness.base import HarnessAdapter, refusal_of, relay_family_of
 from aew.harness.delivery import NEXT_STEP, WHEN_DELIVERY
 from aew.knowledge import evidence as E
 from aew.util import sha256_text, utc_now
@@ -232,11 +232,14 @@ class Supervisor:
                 self.weaker.started()
             info = self.adapter.launch(contract, dict(self.agent_env))
             self.record["launch"] = info
+            relay_family = relay_family_of(info)
+            if relay_family is not None:  # the label says what the launch could check of its model (register E143)
+                self.record["containment"]["network"]["relay_family"] = relay_family
             faults.pause("harness.supervisor.launched")  # tests: a start that wedges after the custody ack
         except errors.AEWError as exc:
             cause = exc.details.get(K.LAUNCH_CAUSE)
             return self._launch_failed(f"{exc.code}: {exc.message}", exc.code,
-                                       cause=str(cause) if cause is not None else None)
+                                       cause=str(cause) if cause is not None else None, refusal=refusal_of(exc.details))
         except Exception as exc:
             log(traceback.format_exc())
             return self._launch_failed(f"{type(exc).__name__}: {exc}")
@@ -251,8 +254,10 @@ class Supervisor:
         self._event("started", pids=list(self.tree.pids))
         self._save()
         runlog.beat(self.run_dir)
+        launch = self.record.get("launch") or {}
+        relay_family = relay_family_of(launch)
         self._send_ack({"started": True, "status": K.RUNNING, "harness": profile.get("harness"),
-                        "session": (self.record.get("launch") or {}).get("session")})
+                        "session": launch.get("session"), **({"relay_family": relay_family} if relay_family else {})})
         faults.hit("harness.supervisor.after_start")
         return True
 
@@ -267,7 +272,7 @@ class Supervisor:
         assert self.bridge is not None
         network: netns.RunNetwork | None = None
         try:
-            try:
+            try:  # built once: the self-test checks the same allowlist the run's egress proxy gets (register E143)
                 allow = netns.egress_policy(policy, adapter_cls.EGRESS)
             except errors.AEWError as exc:
                 raise errors.ContainmentUnavailable(f"containment.network.egress_allow: {exc.message}",
@@ -286,7 +291,7 @@ class Supervisor:
                 network = netns.RunNetwork.start(
                     self.layout, provider=(self.record.get("execution_profile") or {}).get("provider"),
                     provider_env=[str(n) for n in contract.extra.get("provider_env") or []], policy=policy,
-                    env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, egress_extra=adapter_cls.EGRESS)
+                    env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, allow=allow)
                 self.record["containment"]["network"].update(network.describe())
         except errors.ContainmentUnavailable as exc:  # the self-test's rows, when it ran, stay on the refusal's label
             if self.layout is not None and self.layout.net_dir:
@@ -344,11 +349,17 @@ class Supervisor:
         self._drop_credential()
         return False
 
-    def _launch_failed(self, reason: str, error_code: str | None = None, *, cause: str | None = None) -> bool:
+    def _launch_failed(self, reason: str, error_code: str | None = None, *, cause: str | None = None,
+                       refusal: str | None = None) -> bool:
+        """``refusal``: the adapter's own reason for refusing the launch, one of ``base.LAUNCH_REFUSALS``, beside the
+        closed code (register E143)."""
         code = K.launch_failure_code(K.START, error_code, cause)
         spool(self.run_dir, "launch_failed", reason)  # site 2 (R2-m5), before the terminal record
+        if refusal is not None:
+            self.record["refusal"] = refusal
         self._finish(K.LAUNCH_FAILED, reason, reason_code=code)
-        self._send_ack({"started": False, "status": K.LAUNCH_FAILED, "reason": reason, "reason_code": code})
+        self._send_ack({"started": False, "status": K.LAUNCH_FAILED, "reason": reason, "reason_code": code,
+                        **({"refusal": refusal} if refusal is not None else {})})
         return False
 
     def watch(self) -> None:

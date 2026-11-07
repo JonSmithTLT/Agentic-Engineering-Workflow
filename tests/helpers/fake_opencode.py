@@ -19,7 +19,8 @@ first agent request), ``agent_override`` (fields that differ from the projection
 ``appended_rules`` (rules the server appends after the agent's own, as 2.0.22 appends ``browser: deny``),
 ``stored_credentials`` (serve 2.0.22's ``GET /api/credential`` with these entries),
 ``subagent`` (the model starts a child session, as V2's subagent tool would),
-``drop_events_every`` (close each event connection after N frames), ``ask`` (a permission request before
+``drop_events_every`` (close each event connection after N frames), ``tool_parts`` (a ``write`` step records
+2.0.18's ``write`` tool parts, which the run's progress digest reads), ``ask`` (a permission request before
 the first step), ``form`` (a form before the first step), ``queue_gap_s`` (pause at the end of a turn,
 before its queued prompts are taken), ``provider_auth`` (``{"variable", "rejected_sha256": [...]}``: when the
 server's own value of that variable hashes to one of these, the provider rejects it at the first model call, as
@@ -77,6 +78,21 @@ def now_ms() -> float:
 
 
 TOOL_INPUT = "fake-tool-input-must-not-be-logged"
+
+
+def tool_parts(step: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """The tool parts 2.0.18 records for a ``write`` step, one ``write`` part per file, shaped as the steering PR 1
+    probe measured them (``state.input.path``, ``time.completed``): what the run's progress digest reads. Served only
+    with the ``tool_parts`` knob; otherwise, and for other steps, the bare ``shell`` part, which the digest skips."""
+    if step.get("do") != "write":
+        return None
+    at = now_ms()
+    return [{"type": "tool", "id": new_id("call"), "name": "write", "executed": True,
+             "time": {"created": at, "ran": at, "completed": at},
+             "state": {"status": "completed", "input": {"path": path, "content": ""},
+                       "metadata": {"truncated": False},
+                       "content": [{"type": "text", "text": f"Created file successfully: {path}"}]}}
+            for path in sorted(step.get("files") or {})]
 
 
 def new_id(prefix: str) -> str:
@@ -201,10 +217,11 @@ class FakeOpenCode:
             return ref
         return dict(s.info["model"])
 
-    def assistant(self, s: Session, i: int, finish: str, tool: str | None = None) -> None:
+    def assistant(self, s: Session, i: int, finish: str, tool: str | None = None,
+                  parts: list[dict[str, Any]] | None = None) -> None:
         msg = {"id": new_id("msg"), "type": "assistant", "agent": s.info.get("agent") or "build",
                "model": self.pin(s, i), "time": {"created": now_ms(), "completed": now_ms()},
-               "content": [{"type": "tool", "name": tool}] if tool else [{"type": "text", "text": "ok"}],
+               "content": parts or ([{"type": "tool", "name": tool}] if tool else [{"type": "text", "text": "ok"}]),
                "tokens": {"input": 100 + i, "output": 10, "reasoning": 0, "cache": {"read": 0, "write": 0}},
                "cost": 0, "finish": finish}
         live = self.knobs.get("live_usage")
@@ -303,7 +320,8 @@ class FakeOpenCode:
     def run_step(self, s: Session, i: int, step: dict[str, Any]) -> str | None:
         """One tool call. Returns an outcome to end the turn with, or None to continue."""
         do = step["do"]
-        self.assistant(s, i, "tool-calls", tool="shell")
+        self.assistant(s, i, "tool-calls", tool="shell",
+                       parts=tool_parts(step) if self.knobs.get("tool_parts") else None)
         call = new_id("call")  # V2: a tool is named when its input starts; `called` carries the call id and input
         self.emit("session.tool.input.started", {"sessionID": s.info["id"], "id": call, "name": "shell"})
         self.emit("session.tool.called", {"sessionID": s.info["id"], "id": call, "input": {"command": TOOL_INPUT},

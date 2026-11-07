@@ -9,6 +9,10 @@ credential; the supervisor scans the directory for one when the run ends.
 ``usage.live.json`` is the run's live usage sample (``aew/usage-live/v1``; F25 for M4-H, slice L2), written by the
 adapter's meter alone, and ``usage.live.state.json`` that meter's own state. Both are non-authoritative telemetry like
 the rest: no gate reads them, and a live write wakes no waiter.
+
+``progress.json`` is the run's progress digest (``aew/run-progress/v1``; :mod:`aew.harness.progress`), written by the
+same meter's poll: what the worker touched, ran and tested, and the triggers that wake the Lead. Telemetry too: no
+gate reads it, and only a new trigger wakes a waiter.
 """
 
 from __future__ import annotations
@@ -33,6 +37,8 @@ RECORD = "run.json"                        # the run record
 LIVE_FILE = "usage.live.json"              # the run's live usage sample (F25 L2)
 LIVE_STATE_FILE = "usage.live.state.json"  # its meter's high-water state; not part of any contract
 LIVE_SCHEMA = "aew/usage-live/v1"
+PROGRESS_FILE = "progress.json"            # the run's progress digest (steering design §2)
+PROGRESS_SCHEMA = "aew/run-progress/v1"
 HEARTBEAT_S = 1.0
 # A supervisor that has not beaten for this long has stopped supervising (tests shorten it).
 STALE_AFTER_S = float(os.environ.get("AEW_RUN_STALE_S", "10"))
@@ -131,6 +137,31 @@ def read_live(directory: Path) -> dict[str, Any] | None:
     except (OSError, ValueError, RecursionError):
         return None
     return sample if isinstance(sample, dict) and sample.get("schema") == LIVE_SCHEMA else None
+
+
+def write_progress(path: Path, digest: dict[str, Any], *, woke: bool) -> None:
+    """Replace a run's progress digest atomically. It bumps the wake file only when ``woke`` (a new trigger): the
+    digest is rewritten every second, and only a trigger is news to a waiter (steering design §2)."""
+    atomic_write(path, json.dumps(digest, sort_keys=True, separators=(",", ":")))
+    if woke:
+        directory = path.parent
+        aew_root = directory.parents[len(Path(RUNS_REL).parts)] if len(directory.parents) > len(
+            Path(RUNS_REL).parts) else None
+        if aew_root is not None and directory.parent == aew_root / RUNS_REL:
+            from aew.engine.outbox import bump_wake
+
+            bump_wake(aew_root)
+
+
+def read_progress(directory: Path) -> dict[str, Any] | None:
+    """A run's progress digest, read with the run directory's guards, or None: missing, unreadable, not a regular file,
+    not JSON, or not an ``aew/run-progress/v1`` object."""
+    try:
+        text = _read_text(directory / PROGRESS_FILE)
+        digest = json.loads(text) if text is not None else None
+    except (OSError, ValueError, RecursionError):
+        return None
+    return digest if isinstance(digest, dict) and digest.get("schema") == PROGRESS_SCHEMA else None
 
 
 def beat(directory: Path) -> None:

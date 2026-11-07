@@ -46,6 +46,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from aew.harness import progress as P
 from aew.harness import runlog
 from aew.harness import usage as U
 from aew.harness.opencode.client import OpenCodeError, OpenCodeUnavailable
@@ -147,7 +148,8 @@ def _empty_session() -> dict[str, Any]:
 
 def _empty_state() -> dict[str, Any]:
     return {"schema": STATE_SCHEMA, "truncated": False, "integrity": 0, "steps": 0, "compactions": 0, "retries": 0,
-            "d_min_ms": None, "max_step": dict.fromkeys(NAMED, 0), "sessions": {}}
+            "d_min_ms": None, "max_step": dict.fromkeys(NAMED, 0), "sessions": {},
+            "progress": None}  # the run's progress digest (aew.harness.progress), when the meter keeps one
 
 
 def _is_count(v: Any) -> bool:
@@ -204,7 +206,8 @@ def _valid_state(state: Any) -> bool:
             and isinstance(max_step, dict) and set(max_step) == set(NAMED)
             and all(_is_count(v) for v in max_step.values())
             and isinstance(sessions, dict) and len(sessions) <= MAX_SESSIONS
-            and all(isinstance(k, str) and len(k) <= MAX_ID and _valid_session(v) for k, v in sessions.items()))
+            and all(isinstance(k, str) and len(k) <= MAX_ID and _valid_session(v) for k, v in sessions.items())
+            and (state["progress"] is None or P.valid_state(state["progress"])))
 
 
 class Meter:
@@ -215,7 +218,8 @@ class Meter:
                  semantics_table: Mapping[str, Mapping[str, str]], s_pot: int, k_assumed: int = 2,
                  state_path: Path, live_path: Path | None = None, request_timeout_s: float = 2.0,
                  clock: Callable[[], float] = time.monotonic, main_session: str | None = None,
-                 pinned_model: Mapping[str, Any] | None = None) -> None:
+                 pinned_model: Mapping[str, Any] | None = None, progress: P.Tracker | None = None,
+                 progress_path: Path | None = None) -> None:
         kind, sid = source.get("kind"), source.get("id")
         if kind not in SOURCE_KINDS or U.identifier(sid, MAX_ID) is None:
             raise ValueError(f"a live usage source is {{kind: run|session, id}} with an id of at most {MAX_ID} "
@@ -248,7 +252,15 @@ class Meter:
         self._gen = 0  # committed reads; a poll whose read started before another commit is dropped
         self._polls_cancelled = threading.Event()  # set by cancel_polls(): an in-flight poll stops at its next request
         self._read_ctx = threading.local()  # this thread's read: its deadline, whether it is a cancellable poll, active
+        # The run's progress digest (steering design §2): kept inside the meter's state, so a dropped read leaves no
+        # trace in it and a restarted meter carries it forward; written beside the sample by the same poll.
+        self.progress = progress
+        self.progress_path = Path(progress_path) if progress_path is not None else None
+        self.progress_errors = 0
+        self._wake_owed = False  # a trigger whose digest write failed wakes with the next write that succeeds
         self.state = self._load_state()
+        if progress is not None and self.state["progress"] is None:
+            self.state["progress"] = P.empty_state(started_at=progress.clock())
         started = time.time()
         self.epoch = f"m-{secrets.token_hex(6)}:{_iso_ms(started)}"
         self.seq = -1
@@ -272,6 +284,8 @@ class Meter:
             loaded = json.loads(text)
         except (ValueError, RecursionError):
             loaded = None
+        if isinstance(loaded, dict) and "progress" not in loaded:
+            loaded["progress"] = None  # a state written before the run's progress digest existed: still this meter's
         if not isinstance(loaded, dict) or not _valid_state(loaded):
             return {**_empty_state(), "truncated": True}
         return loaded
@@ -591,6 +605,8 @@ class Meter:
         st["n"] = min(st["n"] + 1, MAX_COUNT)
         if kind == "assistant":
             state["steps"] = min(state["steps"] + 1, MAX_COUNT)
+            if self.progress is not None and state["progress"] is not None:
+                self.progress.observe(state["progress"], m)
             retry = m.get("retry")
             attempts = retry.get("attempt") if isinstance(retry, Mapping) else None
             if isinstance(attempts, int) and not isinstance(attempts, bool) and attempts > 0:
@@ -634,6 +650,12 @@ class Meter:
         state = self.state if state is None else state
         observed = self.observed_at if observed_at is None else observed_at
         active = self._active if active is None else active
+        fired: list[str] = []
+        if self.progress is not None and state["progress"] is not None:
+            # A private copy: memory changes only once both writes succeed, as for the rest of the state.
+            state = {**state, "progress": copy.deepcopy(state["progress"])}
+            fired = self.progress.advance(state["progress"], run_state=run_state, active=bool(active),
+                                          prompt_posted=self.prompt_state in (None, "posted"))
         self._persist(state)  # first: a state past its cap marks the source truncated in this very sample
         held = self.observed_at, self._active
         self.observed_at, self._active = observed, active
@@ -647,7 +669,29 @@ class Meter:
         self.seq, self.sample = self.seq + 1, sample
         if new_read:
             self._gen += 1
+        self._write_progress(state, run_state, active, sample, fired)
         return sample
+
+    def _write_progress(self, state: dict[str, Any], run_state: str, active: set[str], sample: Mapping[str, Any],
+                        fired: list[str]) -> None:
+        """The progress digest, after the sample. A failed write is counted and costs no sample: the digest is
+        rewritten at the next poll, and a trigger it carried is still in its ``triggers``."""
+        if self.progress is None or self.progress_path is None or state["progress"] is None:
+            return
+        digest = self.progress.digest(state["progress"], run_state=run_state, active=bool(active),
+                                      steps=int(state["steps"]), tokens=sample.get("tokens"),
+                                      observed_at=str(sample.get("observed_at")))
+        woke = bool(fired) or self._wake_owed
+        try:
+            runlog.write_progress(self.progress_path, digest, woke=woke)
+        except OSError as exc:
+            self.progress_errors += 1
+            self.last_error = f"progress write: {exc}"[:300]
+            self._wake_owed = woke
+            return  # nobody was shown this digest: since_last_wake still counts from the last one written
+        self._wake_owed = False
+        if woke:  # what the digest showed with this wake is what the next one counts from (persisted next poll)
+            self.progress.mark_woken(state["progress"], steps=int(state["steps"]))
 
     def _build(self, state: dict[str, Any], run_state: str, seq: int) -> dict[str, Any]:
         effective: list[dict[str, Any]] = []

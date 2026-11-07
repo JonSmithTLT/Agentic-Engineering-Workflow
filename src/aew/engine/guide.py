@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from typing import Any, NamedTuple
 
 from aew.engine import transitions as T
-from aew.harness.contract import CREATE_TICKET, EXPECT_REV, HELD_SEAT_IN_A_GUIDE
+from aew.harness.contract import CREATE_TICKET, EXPECT_REV, HELD_SEAT_IN_A_GUIDE, WAIT_RULE
 
 CLASS_TEXT = {  # WC §7.4 definitions and §7.4 examples, verbatim in substance
     "0": ("eligible mechanical work", "work for which the Class 0 eligibility predicate holds (below)",
@@ -120,7 +120,7 @@ PATH = (
     Move("plan.accept", None, _command("plan.accept"), label="Accept the plan",
          note="The Ticket becomes READY when its plan is accepted and its dependencies are satisfied."),
     Move("work.assign", None, _command("assign"), label="Start the implementer"),
-    _transition("RUNNING", note="Follow runs with `harness_wait`."),
+    _transition("RUNNING", note=f"Wait on runs with `harness_wait`: {WAIT_RULE}."),
     _transition("REVIEW_PENDING", note=(
         "Once the implementer's report and checks are in, this accepts the implementation. **Accept the implementation "
         f"by transition**, not by ingesting it: where the class requires no review, {TRANSITION} to VERIFY_PENDING if "

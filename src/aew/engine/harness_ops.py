@@ -165,7 +165,8 @@ class Harness:
         launched = self._spawn_run(invocation, run, credential)
         del credential
         return {"ok": True, "invocation": invocation, **launched,
-                "superseded": previous["run"] if previous else None, "revision": revision}
+                "superseded": previous["run"] if previous else None, "revision": revision,
+                "next_action": K.wait_step([run])}
 
     def launch_dispatched(self, result: dict[str, Any]) -> dict[str, Any]:
         """Finish ``--launch`` on a dispatch: the dispatch-issued credential goes to the run's supervisor and
@@ -175,6 +176,7 @@ class Harness:
         run = self.k.store.current()["invocations"][inv_id]["runs"][-1]["run"]
         result["launch"] = self._spawn_run(inv_id, run, credential)
         del credential
+        result["next_action"] = K.wait_step([run])  # after a dispatch, the wait (E122)
         return result
 
     def _spawn_run(self, inv_id: str, run: str, credential: str) -> dict[str, Any]:
@@ -477,9 +479,12 @@ class Harness:
         found = outbox.wait_for(check, self.k.aew_root, timeout=timeout)
         if not found:
             statuses = {r: runlog.observed_status(runlog.run_dir(self.k.aew_root, r))[0] for r in names}
+            # A timeout is not an end: the runs still work, and `WAIT_TIMED_OUT` says what to do (E122). Text only, no
+            # state read: the broker's wait calls this with a timeout of 0 on every observation.
+            again = {"timed_out": True, "next_action": K.wait_step(names, again=True)}
             if len(names) == 1:
-                return {"run": names[0], "status": statuses[names[0]], "timed_out": True}
-            return {"runs": statuses, "timed_out": True}
+                return {"run": names[0], "status": statuses[names[0]], **again}
+            return {"runs": statuses, **again}
         run, status, record, control = found
         inv = targets[run][1]
         out: dict[str, Any] = {}
@@ -488,7 +493,7 @@ class Harness:
             out["headline"] = headline
         out.update({"run": run, "status": status, "reason": (record or {}).get("reason"),
                     "evidence": self.run_evidence(inv["work_unit"], run),
-                    "results": self.run_results(inv["work_unit"], run), "timed_out": False})
+                    "results": self.run_results(inv["work_unit"], run), "timed_out": False, "why": [K.RUN_ENDED]})
         if _reason_code(record):
             out["reason_code"] = _reason_code(record)
         missing = _missing_tools(record)
@@ -509,8 +514,10 @@ class Harness:
                 and control_end(current, r) is None)
         # the run's next action, as `aew status` gives it
         action = next((h["action"] for h in self.harness_resume(current) if h["run"] == run), None)
+        if action and out.get("still_running"):  # the others still work: after this one, the wait goes on (E122)
+            action = f"{action}; then {K.wait_step(out['still_running'])}"
         if action:
-            out["next_action"] = action
+            out["next_action"] = K.run_ended_step(action)
         return out
 
     def _control_identity(self) -> tuple[int, int, int] | None:
@@ -667,7 +674,7 @@ class Harness:
                         if e["producer"].get("run") == run]
             evidence = sorted(e["id"] for e in produced)
             if status in (K.STARTING, K.RUNNING):
-                action = f"{run} is running for {inv_id}: follow it with `harness_wait` (`aew harness wait {run}`)"
+                action = f"{run} is running for {inv_id}: {K.wait_step([run])}"
             elif status == K.ENDED_WITH_EVIDENCE:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
                           f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")

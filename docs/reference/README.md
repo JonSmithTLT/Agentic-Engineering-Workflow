@@ -10,6 +10,7 @@ What the code is, enumerated from the code. It states what the code is, never wh
 - [data-flow.md](data-flow.md): Data flow
 - [entry-points.md](entry-points.md): Entry points
 - [gaps.md](gaps.md): Gaps
+- [harness-capabilities.md](harness-capabilities.md): Harness capabilities
 - [interfaces.md](interfaces.md): Interfaces
 - [layout.md](layout.md): Layout
 - [modules.md](modules.md): Modules

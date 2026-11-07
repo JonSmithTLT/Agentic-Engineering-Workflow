@@ -1,10 +1,14 @@
 """A provider's payload: the pinned fetch, the offline import and the check of the pin (STG-15, A-38: CAPR-03, CAPR-04).
 
-A payload is one executable taken from a release archive. Both are pinned: the archive by its SHA-256 and size, the
-executable by its own SHA-256 and size. The archive's pin is checked as it is read, at the fetch and at an import;
-the executable's at its install and at every check (:func:`verify`). Nothing is run from an archive, and nothing but
-the record's one member is read out of it, so an archive's other entries (links, absolute or parent paths) are never
-written anywhere.
+A payload is one executable, taken from a release archive or released bare. Both are pinned: the download by its
+SHA-256 and size (``archive_sha256``, ``archive_size``), the executable by its own SHA-256 and size. The download's pin
+is checked as it is read, at the fetch and at an import; the executable's at its install and at every check
+(:func:`verify`). Nothing is run from an archive, and nothing but the record's one member is read out of it, so an
+archive's other entries (links, absolute or parent paths) are never written anywhere.
+
+What a download is, is its source's name (:func:`kind`, the one owner): a ``.tar.gz``, a ``.zip`` (a Python wheel,
+``.whl``, is one), or anything else, a bare executable, whose download is the executable itself, so it has no member
+and its two pins are the same (``records.record_problems`` says so of a record that differs).
 """
 
 from __future__ import annotations
@@ -25,6 +29,25 @@ from aew.util import write_temp
 
 FETCH_TIMEOUT_S = 60.0  # one socket operation (connect, or one read) of the fetch; the archive is a few MB
 CHUNK = 1 << 16
+
+
+TAR_GZ, ZIP, EXECUTABLE = "tar.gz", "zip", "executable"
+ARCHIVES = {".tar.gz": TAR_GZ, ".zip": ZIP, ".whl": ZIP}  # a source's ending, and the archive it names
+# Archives AEW does not read: a source ending so is refused, never taken for a bare executable (review of #349, m2)
+UNREAD = (".tar.xz", ".tgz", ".tar.bz2", ".tar.zst", ".7z", ".gz", ".xz", ".bz2", ".zst", ".rar", ".tar")
+
+
+def kind(source: str) -> str:
+    """What a payload's source downloads: an archive (:data:`ARCHIVES`), or else a bare executable. Endings compare
+    without case (``.ZIP`` is a zip)."""
+    low = source.lower()
+    return next((k for ending, k in ARCHIVES.items() if low.endswith(ending)), EXECUTABLE)
+
+
+def unread_archive(source: str) -> str | None:
+    """The ending of an archive AEW does not read (:data:`UNREAD`) that ``source`` has, or None."""
+    low = source.lower()
+    return None if kind(source) != EXECUTABLE else next((e for e in UNREAD if low.endswith(e)), None)
 
 
 class PinMismatch(IntegrityError):
@@ -112,10 +135,15 @@ def check_archive(data: bytes, payload: dict[str, Any], *, what: str) -> None:
 
 
 def member(data: bytes, payload: dict[str, Any]) -> bytes:
-    """The record's one member of a checked archive, a regular file, checked against the executable's pin."""
+    """The record's one member of a checked archive, a regular file, checked against the executable's pin. A bare
+    executable's download is the executable: it is checked against the executable's pin as it stands."""
+    if kind(payload["source"]) == EXECUTABLE:
+        # The second check of these bytes: every caller checked them against the download's pin, which validation
+        # makes the executable's own, so this fails only if a caller skips that check (review of #349, n1)
+        return _pinned_body(data, payload, "the downloaded executable")
     name = payload["member"]
     try:
-        if payload["source"].endswith(".zip"):
+        if kind(payload["source"]) == ZIP:
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 info = archive.getinfo(name)
                 if info.is_dir() or (info.external_attr >> 16) & 0o170000 == 0o120000:
@@ -135,10 +163,14 @@ def member(data: bytes, payload: dict[str, Any]) -> bytes:
     except (zipfile.BadZipFile, tarfile.TarError, OSError, EOFError, zlib.error, RuntimeError,
             NotImplementedError) as exc:  # the last three: an encrypted entry, an unknown method, damaged data (F7)
         raise PinMismatch(f"the pinned archive cannot be read ({exc})", reason="archive_unreadable") from None
+    return _pinned_body(body, payload, f"the archive's {name}")
+
+
+def _pinned_body(body: bytes, payload: dict[str, Any], what: str) -> bytes:
     got = hashlib.sha256(body).hexdigest()
     if got != payload["sha256"] or len(body) != payload["size"]:
-        raise PinMismatch(f"the archive's {name} does not match its pin (sha256 {got}; pinned {payload['sha256']}), "
-                          "so it is refused", reason="payload_pin", sha256=got, pinned=payload["sha256"])
+        raise PinMismatch(f"{what} does not match its pin (sha256 {got}; pinned {payload['sha256']}), so it is "
+                          "refused", reason="payload_pin", sha256=got, pinned=payload["sha256"])
     return body
 
 

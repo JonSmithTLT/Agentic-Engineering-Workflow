@@ -11,6 +11,22 @@ code, 2026-10-25), so the harness gets the ripgrep it was built against. Its pay
 publishes beside it, and the executable's digest was taken from the archive before anything ran. x86_64 Linux takes
 the static musl build, which runs on the Rocky 8 family (glibc 2.28); aarch64 Linux takes the release's GNU build, the
 one OpenCode takes. It is needed: OpenCode's glob and grep tools run it, so its search fails without it.
+
+The rest of the first bundle (FIRST-BUNDLE.md): fd, jq, yq (mikefarah's, in Go), ast-grep and Universal Ctags. Each is
+optional, since the harness runs none of them, and is offered under its own name, last on a contained context's PATH
+(``path: own_name``), so a project's own tools keep theirs (CAPR-04). yq and Universal Ctags have other
+implementations under the plain name (a Python ``yq``; Rocky 8's Exuberant ``ctags``), so AEW's are ``yq-go`` and
+``uctags``; ast-grep's is ``ast-grep``, never ``sg``, which is shadow-utils' on Rocky 8. Each payload is a release's
+own download, which matched the digest its host publishes for it, and each executable's digest was taken from the
+download before anything ran. For Linux x86_64 each runs on the Rocky 8 family (glibc 2.28), read from the executable:
+fd, jq, yq and Universal Ctags are static; ast-grep's release build needs glibc 2.34, so it is taken from the
+project's own manylinux_2_28 wheel, which needs 2.28. jq is released as a bare executable. Universal Ctags publishes
+no release build for Linux: both its payloads are the project's own nightly builds of commit 8249436 (the Linux one in
+ctags-nightly-build, the Windows one in ctags-win32), whose source, under GPL-2.0 (its COPYING; most files allow a
+later version, and a few do not, so the whole is GPL-2.0-only), is that commit's
+(https://github.com/universal-ctags/ctags/tree/82494361bb3e7d4f7cf1d2bdc0d0e9001c926e45); carrying that source in the
+operator's offline bundle is the bundle's design, still owed. Its version check asks
+only that it is Universal Ctags: the build prints 6.2.0, which is not the commit, and the payload's pin is.
 """
 
 from __future__ import annotations
@@ -23,6 +39,7 @@ from functools import cache
 from typing import Any
 
 from aew import schemas
+from aew.capability import payload as P
 from aew.errors import IntegrityError, ValidationFailed
 from aew.util import load_yaml, sha256_text
 
@@ -73,6 +90,169 @@ providers:
         files: {fixture.txt: "needle one\\nhay\\nneedle two needle\\n"}
         args: [--no-config, --count-matches, --fixed-strings, needle, fixture.txt]
         expect: "3"
+  fd:
+    description: "fd: find files by name or pattern"
+    type: cli
+    command: fd
+    capabilities: [FILE_FIND]
+    placement: sandbox
+    effect: read_only
+    path: own_name
+    evidence: source_text
+    license: MIT OR Apache-2.0
+    needs: {network: false, credentials: false, providers: []}
+    version: 10.5.0
+    payloads:
+      linux-x86_64:
+        source: https://github.com/sharkdp/fd/releases/download/v10.5.0/fd-v10.5.0-x86_64-unknown-linux-musl.tar.gz
+        archive_sha256: 761c72dc8e120d85b22292063be8a796e2eeb20eb3e4f38b8fa2343ccf3514a7
+        archive_size: 1573549
+        member: fd-v10.5.0-x86_64-unknown-linux-musl/fd
+        sha256: e79642a479d2816c887047476bbe6ad229465f30de031033574dee2a095e0037
+        size: 3708016
+      windows-x86_64:
+        source: https://github.com/sharkdp/fd/releases/download/v10.5.0/fd-v10.5.0-x86_64-pc-windows-msvc.zip
+        archive_sha256: a227701b8551c35a9931d9f6da75503cf86d88e182d71fb849a70864c5d57cd7
+        archive_size: 1535063
+        member: fd-v10.5.0-x86_64-pc-windows-msvc/fd.exe
+        sha256: d67d27a8e375ed7e9bca2b506a9dd5082bc24547aeba908b863f6f8b8ab0c3b9
+        size: 4104192
+    health:
+      version: {args: [--version], expect: fd 10.5.0}
+      fixture:
+        files: {needle.txt: "x\\n", hay.txt: "y\\n"}
+        args: [--no-ignore, --color, never, --glob, "needle*"]
+        expect: needle.txt
+  jq:
+    description: "jq: query and transform JSON"
+    type: cli
+    command: jq
+    capabilities: [JSON_QUERY]
+    placement: sandbox
+    effect: read_only
+    path: own_name
+    evidence: source_text
+    license: MIT
+    needs: {network: false, credentials: false, providers: []}
+    version: 1.8.2
+    payloads:
+      linux-x86_64:
+        source: https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-linux-amd64
+        archive_sha256: b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+        archive_size: 2267912
+        sha256: b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+        size: 2267912
+      windows-x86_64:
+        source: https://github.com/jqlang/jq/releases/download/jq-1.8.2/jq-windows-amd64.exe
+        archive_sha256: a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627
+        archive_size: 1035264
+        sha256: a6fc67fedaf9128a3309a1e2ebb8b986aeccf70122ee46d2cb4849e423f0c627
+        size: 1035264
+    health:
+      version: {args: [--version], expect: jq-1.8.2}
+      fixture:
+        files: {fixture.json: "{\\"a\\": [1, 2, 3]}\\n"}
+        args: [-c, ".a | add", fixture.json]
+        expect: "6"
+  yq:
+    description: "yq (mikefarah's, in Go): query and edit YAML; named yq-go, so a project's own yq keeps its name"
+    type: cli
+    command: yq-go
+    capabilities: [YAML_QUERY]
+    placement: sandbox
+    effect: read_only
+    path: own_name
+    evidence: source_text
+    license: MIT
+    needs: {network: false, credentials: false, providers: []}
+    version: 4.54.1
+    payloads:
+      linux-x86_64:
+        source: https://github.com/mikefarah/yq/releases/download/v4.54.1/yq_linux_amd64.tar.gz
+        archive_sha256: e68a456f90c577af3fe4960184b3a3cf5c461e0348407c10f107da3a5fec8972
+        archive_size: 5726505
+        member: ./yq_linux_amd64
+        sha256: 8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f
+        size: 14168224
+      windows-x86_64:
+        source: https://github.com/mikefarah/yq/releases/download/v4.54.1/yq_windows_amd64.zip
+        archive_sha256: c2fb1234e58a3b80e358a0a8baeaf7ec51bfa698bbe40e2fcab0ed37d590c107
+        archive_size: 5829372
+        member: yq_windows_amd64.exe
+        sha256: b645f47ebb3a0d2fbab52998550bbd0a1706f23b5ca5f5b48e638c580bb70928
+        size: 14615040
+    health:
+      version: {args: [--version], expect: "yq (https://github.com/mikefarah/yq/) version v4.54.1"}
+      fixture:
+        files: {fixture.yaml: "a:\\n  b: 3\\n"}
+        args: [eval, .a.b, fixture.yaml]
+        expect: "3"
+  ast-grep:
+    description: "ast-grep: structural code search by syntax-tree pattern"
+    type: cli
+    command: ast-grep
+    capabilities: [STRUCTURAL_CODE_SEARCH]
+    placement: sandbox
+    effect: read_only
+    path: own_name
+    evidence: source_text
+    license: MIT
+    needs: {network: false, credentials: false, providers: []}
+    version: 0.51.0
+    payloads:
+      linux-x86_64:
+        source: https://files.pythonhosted.org/packages/b5/58/5f644df6460b0788871f9354b5a61797d0ac3adbeed2786fc872d79ced30/ast_grep_cli-0.51.0-py3-none-manylinux_2_28_x86_64.whl
+        archive_sha256: 17007574681fe872473850780304b3df57ca98ac575d88957972fea8c3810c26
+        archive_size: 8753377
+        member: ast_grep_cli-0.51.0.data/scripts/ast-grep
+        sha256: bd9e202969472ab6bd1e3fa0b498ba5fc87deef0810666ee5311940befbd1e24
+        size: 52562384
+      windows-x86_64:
+        source: https://github.com/ast-grep/ast-grep/releases/download/0.51.0/app-x86_64-pc-windows-msvc.zip
+        archive_sha256: 1a5b7824c5925ac34257f806488e54860817cefd855fd308d13df7550d068908
+        archive_size: 16249102
+        member: ast-grep.exe
+        sha256: 8ac5d5e90484e727c6ca53114c77c93b26e63a42bf9db07efda5008a5a4165a3
+        size: 54041600
+    health:
+      version: {args: [--version], expect: ast-grep 0.51.0}
+      fixture:
+        files: {fixture.py: "def f(x):\\n    return x + 1\\n"}
+        args: [run, --pattern, "$A + 1", --lang, python, --files-with-matches, fixture.py]
+        expect: fixture.py
+  universal-ctags:
+    description: "Universal Ctags: a symbol outline of source files; named uctags, so another ctags keeps its name"
+    type: cli
+    command: uctags
+    capabilities: [SYMBOL_OUTLINE]
+    placement: sandbox
+    effect: read_only
+    path: own_name
+    evidence: source_text
+    license: GPL-2.0-only
+    needs: {network: false, credentials: false, providers: []}
+    version: 6.2.0+g8249436
+    payloads:
+      linux-x86_64:
+        source: https://github.com/universal-ctags/ctags-nightly-build/releases/download/2026.10.08%2B82494361bb3e7d4f7cf1d2bdc0d0e9001c926e45/uctags-2026.10.08-linux-x86_64.release.tar.gz
+        archive_sha256: 0309295a80caf71d4632badf1e94f696903598c92cc52d1c8fbbc18d03ca38d5
+        archive_size: 3603052
+        member: uctags-2026.10.08-linux-x86_64.release/bin/ctags
+        sha256: b4c060955aba2af0c2545c3915b87406b9c238cbe7d930cf9a1f1bc5901131cf
+        size: 3930048
+      windows-x86_64:
+        source: https://github.com/universal-ctags/ctags-win32/releases/download/2026-10-09/p6.2.20260927.0-3-g8249436/ctags-2026-10-09_p6.2.20260927.0-3-g8249436-x64.zip
+        archive_sha256: 6a46c61e1185abd53b7c28c91b31447f38cbaf56078a79b3473b223fa57af55d
+        archive_size: 3160613
+        member: ctags.exe
+        sha256: d771472342929bda11a6011da74de7f292384db64aa53cec15f57af9a04a8af6
+        size: 4990995
+    health:
+      version: {args: [--version], expect: Universal Ctags}
+      fixture:
+        files: {fixture.c: "int answer(void) { return 42; }\\n"}
+        args: [--options=NONE, -o, "-", --fields=, --extras=, --excmd=number, fixture.c]
+        expect: "answer\\tfixture.c\\t1"
 """
 
 # sys.platform and platform.machine() -> the payload keys of the schema
@@ -151,12 +331,32 @@ def record_problems(record: dict[str, Any]) -> list[str]:
     if record["needs"]["providers"]:
         out.append("a provider that needs other providers is not supported yet; give it a self-contained payload")
     for key, payload in record["payloads"].items():
-        if ".." in payload["member"].split("/"):
-            out.append(f"payload {key}: its member {payload['member']!r} names a parent directory")
+        out += [f"payload {key}: {why}" for why in _payload_problems(payload)]
     if record.get("needed") and not record.get("degrades"):
         out.append("a needed provider says what degrades without it (`degrades`), which the operator's prompt shows "
                    "beside it; add it, or mark the provider optional (`needed: false`)")
     return out
+
+
+def _payload_problems(payload: dict[str, Any]) -> list[str]:
+    """A payload's member, by what its source downloads (``payload.kind``): an archive names the one member it takes,
+    and a bare executable names none, its download being the executable, so its two pins are one."""
+    member = payload.get("member")
+    unread = P.unread_archive(payload["source"])
+    if unread is not None:
+        return [f"its source is a {unread} archive, which AEW does not read: AEW reads only .tar.gz, .zip and .whl "
+                "archives, and bare executables; give one of those"]
+    if P.kind(payload["source"]) != P.EXECUTABLE:
+        if member is None:
+            return ["its source is an archive, so it names the executable in it (`member`)"]
+        return [f"its member {member!r} names a parent directory"] if ".." in member.split("/") else []
+    if member is not None:
+        return ["its source is a bare executable (not a .tar.gz, .zip or .whl), so it has no `member`; name the "
+                "archive, or leave `member` out"]
+    if (payload["archive_sha256"], payload["archive_size"]) != (payload["sha256"], payload["size"]):
+        return ["its source is a bare executable, whose download is the executable itself, so its download's pin "
+                "(`archive_sha256`, `archive_size`) and the executable's (`sha256`, `size`) are the same"]
+    return []
 
 
 def needed(record: dict[str, Any]) -> bool:

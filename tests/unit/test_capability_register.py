@@ -471,6 +471,108 @@ def test_the_shipped_records_validate_and_name_capabilities_in_d01_form():
     assert rg["health"]["version"]["expect"] == f"ripgrep {rg['version']}"
 
 
+# The first bundle's other five (FIRST-BUNDLE.md): provider, command, capability
+FIRST_BUNDLE = {"fd": ("fd", "FILE_FIND"), "jq": ("jq", "JSON_QUERY"), "yq": ("yq-go", "YAML_QUERY"),
+                "ast-grep": ("ast-grep", "STRUCTURAL_CODE_SEARCH"), "universal-ctags": ("uctags", "SYMBOL_OUTLINE")}
+
+
+def test_the_first_bundle_ships_each_member_optional_under_an_unambiguous_name_for_windows_and_linux():
+    """Each of the five has a record with a payload for Windows and for Linux x86_64 (the operator's hosts), is
+    optional (the harness runs none of them) and comes last on PATH under its own name, so a project's own tool keeps
+    the plain name (CAPR-04). yq and ctags have other implementations under the plain name, and Rocky 8's `sg` is
+    shadow-utils', so none of those names is AEW's. Universal Ctags' check names the variant: Rocky 8's Exuberant
+    `ctags` never passes as it."""
+    shipped = records.shipped()
+    assert set(shipped) == {"ripgrep", *FIRST_BUNDLE}, sorted(shipped)
+    for name, (command, capability) in FIRST_BUNDLE.items():
+        record = shipped[name]
+        assert (record["command"], record["capabilities"]) == (command, [capability]), name
+        assert record["path"] == "own_name" and not records.needed(record), name
+        assert record["placement"] == "sandbox" and record["effect"] == "read_only", name
+        assert {"linux-x86_64", "windows-x86_64"} <= set(record["payloads"]), name
+        for key, pinned in record["payloads"].items():
+            assert P.kind(pinned["source"]) == P.EXECUTABLE or pinned["member"].rsplit("/", 1)[-1] in (
+                "ast-grep", "ast-grep.exe", "ctags", "ctags.exe", "fd", "fd.exe", "yq_linux_amd64",
+                "yq_windows_amd64.exe"), (name, key)
+    assert {r["command"] for r in shipped.values()}.isdisjoint({"yq", "ctags", "sg"})
+    ctags = shipped["universal-ctags"]["health"]["version"]
+    assert ctags["expect"].startswith("Universal Ctags") and not "Exuberant Ctags 5.8".startswith(ctags["expect"])
+    assert P.kind(shipped["jq"]["payloads"]["linux-x86_64"]["source"]) == P.EXECUTABLE
+    assert P.kind(shipped["ast-grep"]["payloads"]["linux-x86_64"]["source"]) == P.ZIP  # the manylinux_2_28 wheel
+
+
+@pytest.mark.parametrize("source, kind", [
+    ("https://h/a/x-1.0.tar.gz", P.TAR_GZ), ("https://h/a/x-1.0.zip", P.ZIP), ("https://h/a/x-1.0-py3-none.whl", P.ZIP),
+    ("https://h/a/x-linux-amd64", P.EXECUTABLE), ("https://h/a/x-windows-amd64.exe", P.EXECUTABLE),
+    ("https://h/a/x-1.0.ZIP", P.ZIP), ("https://h/a/x-1.0.Tar.Gz", P.TAR_GZ),  # endings compare without case
+    ("https://h/a/x-1.0.tar.xz", P.EXECUTABLE),  # not an archive AEW reads: its record is refused (below)
+])
+def test_a_payloads_kind_is_its_sources_ending(source, kind):
+    assert P.kind(source) == kind
+
+
+@pytest.mark.parametrize("ending", [".tar.xz", ".tgz", ".tar.bz2", ".tar.zst", ".7z", ".gz", ".XZ", ".bz2", ".rar",
+                                    ".tar"])
+def test_an_archive_aew_does_not_read_is_refused_never_taken_for_a_bare_executable(reg, ending):
+    """Review of #349, m2: with the download's own digest as both pins, such a record would validate as a bare
+    executable and fail only at its health check, naming the wrong cause; it is refused at validation, saying what
+    AEW reads. The control: the same payload as a bare executable validates."""
+    record = copy.deepcopy(reg["shipped"]["fake"])
+    record["payloads"][KEY] = _bare(reg["body"])
+    records.validate({"schema": records.SCHEMA, "providers": {"fake": copy.deepcopy(record)}}, source="test")
+    record["payloads"][KEY]["source"] += ending
+    with pytest.raises(errors.ValidationFailed) as exc:
+        records.validate({"schema": records.SCHEMA, "providers": {"fake": record}}, source="test")
+    assert "AEW reads only .tar.gz, .zip and .whl archives" in json.dumps(exc.value.to_dict())
+
+
+def test_a_bare_payload_off_its_pin_is_refused_by_member_itself():
+    """Review of #349, n1: the second check of a bare download, for a caller that skipped the first."""
+    pinned = {"source": "https://example.invalid/fake-linux-amd64", "archive_sha256": _sha(GOOD),
+              "archive_size": len(GOOD), "sha256": _sha(GOOD), "size": len(GOOD)}
+    assert P.member(GOOD, pinned) == GOOD
+    with pytest.raises(P.PinMismatch) as exc:
+        P.member(GOOD + b"x", pinned)
+    assert exc.value.details["reason"] == "payload_pin"
+
+
+def test_the_sandbox_checks_the_needed_tools_first(tmp_path, monkeypatch):
+    """Review of #349, m1: the self-test checks the plan's tools in order, under one budget for all of them, so
+    ripgrep, the one tool the harness needs, comes before the optional five, though it does not sort first by name."""
+    from aew.capability import bind
+
+    monkeypatch.setattr(store, "ROOT_OVERRIDE", tmp_path / "register")
+    names = [t.provider for t in bind.plan()]
+    assert names[0] == "ripgrep" and sorted(names) != names, names
+    assert names[1:] == sorted(n for n in records.shipped() if not records.needed(records.shipped()[n]))
+
+
+def _bare(body: bytes, **change: Any) -> dict[str, Any]:
+    return {"source": "https://example.invalid/releases/fake-linux-amd64", "archive_sha256": _sha(body),
+            "archive_size": len(body), "sha256": _sha(body), "size": len(body), **change}
+
+
+@pytest.mark.parametrize("base, change, refused", [
+    ("bare", lambda p, body: p.update(member="fake"), "has no `member`"),
+    ("bare", lambda p, body: p.update(archive_sha256=_sha(body + b"x")), "are the same"),
+    ("bare", lambda p, body: p.update(archive_size=len(body) + 1), "are the same"),
+    ("archive", lambda p, body: p.pop("member"), "names the executable in it"),
+    ("archive", lambda p, body: (p.pop("member"), p.update(source="https://example.invalid/fake-1.0-py3-none.whl")),
+     "names the executable in it"),
+])
+def test_a_payloads_member_follows_its_kind(reg, base, change, refused):
+    """An archive names its one member; a bare executable names none, and its download's pin is the executable's.
+    Each base validates as it stands (the right case), and each change is refused saying why."""
+    record = copy.deepcopy(reg["shipped"]["fake"])
+    if base == "bare":
+        record["payloads"][KEY] = _bare(reg["body"])
+    records.validate({"schema": records.SCHEMA, "providers": {"fake": copy.deepcopy(record)}}, source="test")
+    change(record["payloads"][KEY], reg["body"])
+    with pytest.raises(errors.ValidationFailed) as exc:
+        records.validate({"schema": records.SCHEMA, "providers": {"fake": record}}, source="test")
+    assert refused in json.dumps(exc.value.to_dict()), exc.value.to_dict()
+
+
 @pytest.mark.parametrize("change, refused", [
     (lambda r: r.update(placement="host"), "host placement"),
     (lambda r: r["needs"].update(credentials=True), "place"),  # CAPR-Q11's words: it belongs on the host
@@ -920,6 +1022,57 @@ def test_a_zip_payload_is_read_like_a_tarball(reg, monkeypatch):
     assert _cap()["observed_status"] == status.FUNCTIONAL_ONLY
 
 
+class _Response(io.BytesIO):
+    def __enter__(self) -> _Response:
+        return self
+
+    def __exit__(self, *_: Any) -> None:
+        self.close()
+
+
+def test_a_bare_executable_is_fetched_bounded_installed_and_imported_as_itself(reg, monkeypatch):
+    """jq's shape: the download is the executable. The fetch reads it to its pinned size and checks its pin, the
+    install writes it as it came, and an offline import of the same file makes it FUNCTIONAL_ONLY; bytes off the pin
+    are refused, never installed."""
+    record = copy.deepcopy(reg["shipped"]["fake"])
+    record["payloads"][KEY] = _bare(reg["body"])
+    monkeypatch.setattr(records, "shipped", lambda: {"fake": record})
+    path = P.path_of("fake", "fake", record["payloads"][KEY])
+    limit = len(reg["body"]) + 1
+    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout: _Bounded(
+        _Response(reg["body"][:-1] + b"X"), limit))
+    said = ops.fetch(["fake"])["fake"]
+    assert "refused" in said[0] and not path.exists(), said
+    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout: _Bounded(
+        _Response(reg["body"] + b"x" * 64), limit))
+    assert "refused" in ops.fetch(["fake"])["fake"][0] and not path.exists()
+    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout: _Bounded(_Response(reg["body"]), limit))
+    said = ops.fetch(["fake"])["fake"]
+    assert said[0].startswith("downloaded") and path.read_bytes() == reg["body"], said
+    assert P.verify(path, record["payloads"][KEY]) is None
+    P.discard("fake", record["payloads"][KEY])
+    _import(reg, data=reg["body"], name="fake-linux-amd64")
+    assert _cap()["observed_status"] == status.FUNCTIONAL_ONLY
+
+
+def test_a_wheel_is_read_as_the_zip_it_is(reg):
+    """ast-grep's Linux payload is its manylinux_2_28 wheel: the member is read out of it like any zip's."""
+    archive = _archive(reg["body"], MEMBER, kind="zip")
+    pinned = {**reg["shipped"]["fake"]["payloads"][KEY], "source": "https://example.invalid/fake-1.0-py3-none.whl",
+              "archive_sha256": _sha(archive), "archive_size": len(archive)}
+    assert P.member(archive, pinned) == reg["body"]
+
+
+def test_a_tar_member_named_from_the_archives_own_dot_is_read(reg):
+    """yq's Linux archive names its executable `./yq_linux_amd64`: the record names it so, and it is read."""
+    archive = _archive(reg["body"], "./fake")
+    pinned = {**reg["shipped"]["fake"]["payloads"][KEY], "member": "./fake", "archive_sha256": _sha(archive),
+              "archive_size": len(archive)}
+    records.validate({"schema": records.SCHEMA, "providers": {"fake": {**reg["shipped"]["fake"],
+                                                                       "payloads": {KEY: pinned}}}}, source="test")
+    assert P.member(archive, pinned) == reg["body"]
+
+
 def test_an_archive_without_its_member_as_a_regular_file_is_refused(reg):
     out = io.BytesIO()
     with tarfile.open(fileobj=out, mode="w:gz") as t:
@@ -967,17 +1120,45 @@ def test_a_fetch_reads_no_more_than_the_pinned_size_and_checks_the_pin(monkeypat
 
 
 def test_doctor_names_each_capability_pass_when_usable_and_warn_never_fail_otherwise(reg):
-    """CAPR-12: no provider is required, so a missing one is a WARN with its cause and fix, never a FAIL."""
+    """CAPR-12: no provider is required, so a missing needed one is a WARN with its cause and fix, never a FAIL."""
     from aew import doctor
 
+    reg["shipped"]["fake"].update(needed=True, degrades="the stand-in's search")
     rows = {c["check"]: c for c in doctor.environment_checks() if c["check"].startswith("capability:")}
-    assert rows["capability:FAKE_SEARCH"]["status"] == "WARN"
+    assert rows["capability:FAKE_SEARCH"]["status"] == "WARN" and ops.OPTIONAL_LINE not in rows
     assert rows["capability:FAKE_SEARCH"]["detail"].startswith("UNAVAILABLE:")
     assert "fix: `aew capability fetch fake` downloads it" in rows["capability:FAKE_SEARCH"]["detail"]
     _import(reg)
     rows = {c["check"]: c for c in doctor.environment_checks() if c["check"].startswith("capability:")}
     assert rows["capability:FAKE_SEARCH"]["status"] == "PASS"
     assert rows["capability:FAKE_SEARCH"]["detail"].startswith("FUNCTIONAL_ONLY: served by fake 1.0, AEW's pinned")
+
+
+def test_doctor_gives_optional_tools_the_operator_did_not_choose_one_line_not_a_warning_each(reg, monkeypatch):
+    """Review of #349, m3: an optional tool absent because the operator never chose it, or declined it, is not a
+    warning: such tools share one UNAVAILABLE line naming each and `aew capability fetch NAME`. A failed fetch of one
+    is a warning again, and a needed one always is (the test above)."""
+    from aew.capability import consent
+
+    def rows() -> dict[str, tuple[str, str]]:
+        return {n: (s, d) for n, s, d in ops.doctor_checks()}
+
+    got = rows()
+    assert "capability:FAKE_SEARCH" not in got, got
+    level, detail = got[ops.OPTIONAL_LINE]
+    assert level == "UNAVAILABLE" and "fake (FAKE_SEARCH; it is not installed on this host)" in detail, detail
+    assert "`aew capability fetch NAME` downloads one" in detail
+    consent.decline([o for o in consent.offers() if o.provider == "fake"])
+    level, detail = rows()[ops.OPTIONAL_LINE]
+    assert level == "UNAVAILABLE" and "the operator declined to download it" in detail, detail
+
+    def unreachable(url: str, timeout: float) -> Any:
+        raise OSError("no route to host")
+
+    monkeypatch.setattr("urllib.request.urlopen", unreachable)
+    ops.fetch(["fake"])
+    got = rows()
+    assert got["capability:FAKE_SEARCH"][0] == "WARN" and ops.OPTIONAL_LINE not in got, got
 
 
 def test_doctor_names_the_harness_a_host_prerequisite(tmp_path, monkeypatch):

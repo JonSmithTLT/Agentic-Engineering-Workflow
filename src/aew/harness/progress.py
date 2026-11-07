@@ -66,20 +66,18 @@ from collections.abc import Callable, Iterable, Mapping
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
 
+from aew.harness import contract as K
 from aew.harness.runlog import PROGRESS_SCHEMA as SCHEMA
 from aew.util import glob_any, to_posix
 
 STATE_VERSION = 1
 
-# The closed `why` enum, in the order a wake lists them (steering design §1).
-RUN_ENDED = "run_ended"
-TEST_FAILED = "test_failed"
-OUT_OF_SCOPE = "out_of_scope"
-WORKER_MESSAGE = "worker_message"
-WORKER_IDLE = "worker_idle"
-QUIET = "quiet"
-WHY: tuple[str, ...] = (RUN_ENDED, TEST_FAILED, OUT_OF_SCOPE, WORKER_MESSAGE, WORKER_IDLE, QUIET)
-DETECTED_IN_POLL: tuple[str, ...] = (RUN_ENDED, TEST_FAILED, OUT_OF_SCOPE, WORKER_IDLE)
+# The closed `why` enum is the wake guide's (steering design §1, §4: `aew.harness.contract.WAKE_GUIDE`); the poll
+# detects the ones a wait returns today.
+RUN_ENDED, TEST_FAILED, OUT_OF_SCOPE = K.RUN_ENDED, K.TEST_FAILED, K.OUT_OF_SCOPE
+WORKER_MESSAGE, WORKER_IDLE, QUIET = K.WORKER_MESSAGE, K.WORKER_IDLE, K.QUIET
+WHY: tuple[str, ...] = K.WHY
+DETECTED_IN_POLL: tuple[str, ...] = K.WAITED_ON
 
 UNKNOWN = "unknown"
 # The key in a launch contract's ``extra`` for the Ticket's scope paths (globs, as the gates record them). A contract

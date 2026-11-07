@@ -100,7 +100,7 @@ def test_a_run_whose_invocation_is_cancelled_ends_the_wait_from_the_control_side
     out = finish(waiter)
     assert out["run"] == RA, out
     # Whichever lane saw it first: the control state (the invocation is cancelled) or the run's own record.
-    assert out.get("ended_by", {}).get("why") == "invocation INV-0001 is cancelled" or out["status"] != "running"
+    assert out.get("ended_by", {}).get("reason") == "invocation INV-0001 is cancelled" or out["status"] != "running"
     release[RB].write_text("go", encoding="utf-8")
     lab.wait(RB)
     assert_control_invariants(lab.project)
@@ -228,7 +228,7 @@ def test_an_invocation_already_ended_when_the_wait_starts_ends_it_at_once(lab, t
     started = time.monotonic()
     out = engine.harness_wait([RA, RB], any_=True, timeout=30)
     assert out["run"] == RA and not out["timed_out"], out
-    assert out["ended_by"] == {"lane": "control", "why": "invocation INV-0001 is cancelled"}
+    assert out["ended_by"] == {"lane": "control", "reason": "invocation INV-0001 is cancelled"}
     assert time.monotonic() - started < 5, "the waiter waited for a commit it had already seen"
     assert out["still_running"] == [RB]
     monkeypatch.undo()

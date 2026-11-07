@@ -350,10 +350,10 @@ def lead_tools_text() -> str:
     reads, waits = (contract.QUERY,), (contract.WAIT,)
     acts = tuple(k for k in contract.KINDS if k not in reads + waits)
     return (f"- Your `{SERVER_NAME}` tools are how you work. Read with {_named(reads)}. Wait with {_named(waits)} "
-            f"(several runs at once; it returns when the first ends). Act with {_named(acts)}. Each returns the "
-            "revision to pass as `expect_rev` next and a projection of what is available, blocked or unknown, and of "
-            "the decisions that are yours. Use the `aew` shell command where no tool covers the step, or where a tool "
-            "refuses.")
+            f"(several runs at once; it returns when the first ends or needs you). Act with {_named(acts)}. Each "
+            "returns the revision to pass as `expect_rev` next and a projection of what is available, blocked or "
+            "unknown, and of the decisions that are yours. Use the `aew` shell command where no tool covers the step, "
+            "or where a tool refuses.")
 
 
 def wake_guide_lines() -> list[str]:

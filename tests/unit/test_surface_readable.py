@@ -131,7 +131,7 @@ def test_a_wait_says_how_its_run_ended_and_never_done_whichever_way_it_ended(sta
 def test_a_wait_the_control_lane_ended_gives_why_and_not_the_run_s_stale_status():
     """In the shape `harness_wait` builds: the run's own record may still show it running (`ended_by`)."""
     lines = lines_of(wait(run="R-1", status="running", timed_out=False, still_running=["R-2"],
-                          ended_by={"lane": "control", "why": "invocation INV-1 is cancelled"}))
+                          ended_by={"lane": "control", "reason": "invocation INV-1 is cancelled"}))
     assert lines[:2] == ["harness_wait: R-1: invocation INV-1 is cancelled",
                          "next for the project: classify authority candidates"]
 

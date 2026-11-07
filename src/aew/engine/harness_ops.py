@@ -496,7 +496,8 @@ class Harness:
         if _reason_code(record):
             out["reason_code"] = _reason_code(record)
         if control is not None:
-            out["ended_by"] = {"lane": "control", "why": control}  # the run record may still show it running
+            # `reason`, not `why`: a wait result's `why` is the wake enum (E122 review, n3)
+            out["ended_by"] = {"lane": "control", "reason": control}  # the run record may still show it running
         # The wait is over, so the control state is read once more, now: the run-record lane can return before a
         # commit since the last examined snapshot was looked at, and both the other runs' liveness and the next
         # action are answered from the state as it is (independent review of #79).

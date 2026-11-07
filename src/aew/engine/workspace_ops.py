@@ -10,6 +10,7 @@ from aew.engine import gates as G
 from aew.engine import transitions
 from aew.engine.authority import issue_token, revoke
 from aew.engine.base import TxnContext
+from aew.engine.conflicts import live_mutating_tickets
 from aew.engine.dependencies import effective_edge_set, readiness_blockers
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
@@ -267,10 +268,7 @@ class Assignment:
     @staticmethod
     def _mutating_slots_in_use(state: dict[str, Any]) -> list[str]:
         """Mutating Tickets holding a live workspace, whatever their state (review M2)."""
-        return sorted(
-            wid for wid, u in state["work"].items()
-            if u["kind"] == "ticket" and u["mutating"] and (u.get("workspace") or {}).get("status") == "active"
-        )
+        return live_mutating_tickets(state)
 
     def mutating_cap(self) -> int:
         return mutating_cap(self.k.policy("gates"))

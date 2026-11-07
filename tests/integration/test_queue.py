@@ -12,6 +12,7 @@ import pytest
 from aewflow import (
     create_planned_ticket,
     integrate,
+    own_scope,
     prepare_and_validate,
     sample_project,
     to_commit_ready,
@@ -55,7 +56,7 @@ def refused(p, *args):
 def tickets(p, tmp_path, n):
     """``n`` mutating Tickets of independent changes, all COMMIT_READY, in order."""
     _concurrency(p, n)
-    wids = [create_planned_ticket(p, tmp_path, title=f"Add op{i}") for i in range(n)]
+    wids = [create_planned_ticket(p, tmp_path, title=f"Add op{i}", scope=own_scope(i)) for i in range(n)]
     for i, wid in enumerate(wids):
         to_commit_ready(p, tmp_path, wid=wid, files=_own_change(i))
     return wids
@@ -133,16 +134,17 @@ def test_entries_are_served_fifo_and_one_lease_at_a_time(tmp_path):
 
 
 def test_a_conflict_releases_the_lease_and_never_blocks_the_entries_behind_it(tmp_path):
-    """No head-of-line blocking: an AWAITING_DISPOSITION entry holds up no independent one."""
+    """No head-of-line blocking: an AWAITING_DISPOSITION entry holds up no independent one. The conflicting change
+    is a commit made outside AEW: two Tickets whose scopes meet are never live at once (the launch conflict check)."""
     p = sample_project(tmp_path)
-    _concurrency(p, 3)
-    a = create_planned_ticket(p, tmp_path, title="Rewrite add, one way")
-    b = create_planned_ticket(p, tmp_path, title="Rewrite add, another way")
-    c = create_planned_ticket(p, tmp_path, title="Add op9")
-    to_commit_ready(p, tmp_path, wid=a, files={"calc/core.py": "def add(a, b):\n    return b + a\n"})
+    _concurrency(p, 2)
+    b = create_planned_ticket(p, tmp_path, title="Rewrite add", scope=("calc/core.py",))
+    c = create_planned_ticket(p, tmp_path, title="Add op9", scope=own_scope(9))
     to_commit_ready(p, tmp_path, wid=b, files={"calc/core.py": "def add(a, b):\n    return sum((a, b))\n"})
     to_commit_ready(p, tmp_path, wid=c, files=_own_change(9))
-    integrate(p, a)
+    (p.root / "calc/core.py").write_text("def add(a, b):\n    return b + a\n", encoding="utf-8", newline="\n")
+    git("add", "calc/core.py", cwd=p.root)
+    git("commit", "-q", "-m", "outside: rewrite add", cwd=p.root)
     res = p.aew("integrate", "prepare", b, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.json["integration"]["status"] == "conflict"
     qid, e = entry(p, b)
@@ -336,8 +338,8 @@ def test_a_candidate_refused_at_admission_never_holds_up_an_independent_entry(tm
     p = sample_project(tmp_path)
     _concurrency(p, 2)
     _max_publish_paths(p, 1)
-    big = create_planned_ticket(p, tmp_path, title="Add op1 and its test")
-    small = create_planned_ticket(p, tmp_path, title="Add op9")
+    big = create_planned_ticket(p, tmp_path, title="Add op1 and its test", scope=own_scope(1))
+    small = create_planned_ticket(p, tmp_path, title="Add op9", scope=own_scope(9))
     to_commit_ready(p, tmp_path, wid=big, files=_own_change(1))  # two paths
     to_commit_ready(p, tmp_path, wid=small, files={"calc/op9.py": "def op9():\n    return 9\n"})
     assert refused(p, "integrate", "prepare", big)["code"] == "GATE_UNSATISFIED"

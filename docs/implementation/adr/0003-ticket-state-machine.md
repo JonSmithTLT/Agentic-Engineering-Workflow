@@ -162,3 +162,22 @@ or removed.
 - **Placement.** The return is `Gates.return_admitted` (`engine/evidence_ops.py`), not `WorkUnits`, because it reads
   the gate context, VERIFY_PENDING's choice and the pinning, which `Gates` owns. `Gates` receives the guard table
   through its constructor; the reconcile's recheck stays with `WorkUnits`.
+
+## Amendment 2026-11-06 — the launch conflict check (register E151)
+
+Above a cap of 1, admission also checks files. Before a worker is given mutation authority over a Ticket (`work assign`,
+a new implementer, or a harness run holding an implementer's credential), the dispatch predicate's `conflict.files`
+guard compares the Ticket's declared scope with every other live mutating Ticket, live as the cap counts it (holding an
+active workspace, whatever its state):
+
+- **A conflict holds the dispatch** (`FILES_CONFLICT`): the two declared scopes can name a common path, decided exactly
+  on the globs rather than on the files tracked today; the live Ticket has changed a path inside the new Ticket's scope;
+  either scope is unbounded; or the live Ticket's record or changed paths cannot be read. Not being able to show that
+  two Tickets cannot meet is a conflict, never a clearance.
+- **The hold says why and what it waits on:** the live Ticket, its invocation and workspace, the paths or scope pairs
+  that meet, and that it waits until that Ticket is integrated or cancelled, either of which releases its workspace.
+- **The check runs again at every harness launch,** against what the other workers have changed by then, and every
+  decision is made inside the transaction that makes it effective and bound to its revision, so two admissions found
+  clear on the same state cannot both commit.
+- **The default is unchanged:** at `mutating_concurrency: 1` the cap answers first. Other shared resources (ports,
+  services, external effects) are not checked here.

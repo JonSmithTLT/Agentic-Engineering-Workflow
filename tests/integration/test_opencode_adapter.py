@@ -19,8 +19,8 @@ from typing import Any
 import fake_opencode
 import lead_session
 import pytest
-from aewflow import create_planned_ticket
-from fake_harness import HarnessLab, credential_hits
+from aewflow import SUBTRACT_SCOPE, create_planned_ticket, own_scope
+from fake_harness import IMPL_REPORT, HarnessLab, credential_hits
 from harness_conformance import IMPLEMENT, PROVIDER_SECRET, FakeOpenCodeDriver, evidence_of, sync_dir
 from lead_session import KEYS
 from proxy_env import RecordingProxy, proxy_env
@@ -50,8 +50,8 @@ def script(lab: HarnessLab, steps: list[dict[str, Any]], key: str = RUN, **serve
     lab.script(key, {"steps": steps, "server": server})
 
 
-def launch(lab: HarnessLab, tmp_path: Path) -> tuple[str, str, str]:
-    wid = create_planned_ticket(lab.project, tmp_path)
+def launch(lab: HarnessLab, tmp_path: Path, scope: tuple[str, ...] | None = None) -> tuple[str, str, str]:
+    wid = create_planned_ticket(lab.project, tmp_path, **({"scope": scope} if scope else {}))
     out = lab.lead("work", "assign", wid, "--launch")
     return wid, out["invocation"], out["launch"]["run"]
 
@@ -85,8 +85,18 @@ def refused_launch(lab: HarnessLab, tmp_path: Path, reason_code: str = "incompat
     return res.error["message"]
 
 
+# The second of two runs at once: its own change, in a scope disjoint from IMPLEMENT's (the launch conflict check).
+SECOND_SCOPE = own_scope(2)
+IMPLEMENT_SECOND = [{"do": "write", "files": {SECOND_SCOPE[0]: "def op2():\n    return 2\n"}},
+                    {"do": "check", "id": "unit"},
+                    {"do": "submit", "kind": "implementation_report",
+                     "meta": {**IMPL_REPORT, "implementation": {**IMPL_REPORT["implementation"],
+                                                                 "files_changed": [SECOND_SCOPE[0]]}}}]
+
+
 def two_at_once(lab: HarnessLab) -> None:
-    """`mutating_concurrency: 2`: two implementer runs may hold their workspaces at once."""
+    """`mutating_concurrency: 2`: two implementer runs may hold their workspaces at once, given disjoint scopes
+    (SUBTRACT_SCOPE for the first, SECOND_SCOPE for the second)."""
     gates = lab.root / ".aew" / "policy" / "gates.yaml"
     gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "mutating_concurrency": 2}),
                      encoding="utf-8", newline="\n")
@@ -833,11 +843,12 @@ def test_a_servers_password_is_new_per_launch_and_never_written_outside_its_run_
     reaches this test's output."""
     two_at_once(lab)
     runs = []
-    for run in ("R-INV-0001-1", "R-INV-0002-1"):
+    for run, scope, steps in (("R-INV-0001-1", SUBTRACT_SCOPE, IMPLEMENT),
+                              ("R-INV-0002-1", SECOND_SCOPE, IMPLEMENT_SECOND)):
         saved = harness_dir(lab, run) / "seen-password"  # the run's harness state: writable inside, and its own
         script(lab, [{"do": "read_parent_environ", "pid": "ppid", "names": ["OPENCODE_PASSWORD"],
-                      "save_name": "OPENCODE_PASSWORD", "save_to": str(saved)}, *IMPLEMENT], key=run)
-        assert launch(lab, tmp_path)[2] == run
+                      "save_name": "OPENCODE_PASSWORD", "save_to": str(saved)}, *steps], key=run)
+        assert launch(lab, tmp_path, scope)[2] == run
         lab.wait(run)
         assert lab.step(run, 0)["names_present"] == ["OPENCODE_PASSWORD"]
         runs.append((run, saved.read_text(encoding="utf-8")))
@@ -869,7 +880,7 @@ def test_no_context_reaches_another_runs_server_socket_or_loopback_port(lab, tmp
     port = host.getsockname()[1]
     before = set(glob.glob("/tmp/aew-net-*"))  # noqa: S108  # where netns.private_dir makes them
     try:
-        assert launch(lab, tmp_path)[2] == a
+        assert launch(lab, tmp_path, SUBTRACT_SCOPE)[2] == a
         deadline = time.monotonic() + 120
         while not ready.exists() and time.monotonic() < deadline:
             time.sleep(0.05)
@@ -882,8 +893,8 @@ def test_no_context_reaches_another_runs_server_socket_or_loopback_port(lab, tmp
                 live.append(probe.connect_ex(path) == 0)
         assert any(live), servers
         tries = [*({"do": "connect", "unix": p} for p in servers), {"do": "connect", "tcp": ["127.0.0.1", port]}]
-        script(lab, [*tries, *IMPLEMENT], key=b)
-        assert launch(lab, tmp_path)[2] == b
+        script(lab, [*tries, *IMPLEMENT_SECOND], key=b)
+        assert launch(lab, tmp_path, SECOND_SCOPE)[2] == b
         lab.wait(b)
         from_run = [lab.step(b, i) for i in range(len(tries))]
         _, steps = lead_session.agent_session(tmp_path / "lead", [

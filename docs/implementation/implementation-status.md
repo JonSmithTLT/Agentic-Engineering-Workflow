@@ -336,7 +336,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **Status:** Built (M4-C); the queue is M4-D
 
-**Acceptance evidence / next action:** Per-Ticket worktrees and a serialized, CAS-published integration. The cap is a dispatch guard that reads `gates.yaml` `mutating_concurrency` (default 1, opt-in per project) and counts live workspaces whatever their state (review M2). Several mutating Tickets work at once and integrate one after another; the integration queue and lease arrive in M4-D.
+**Acceptance evidence / next action:** Per-Ticket worktrees and a serialized, CAS-published integration. The cap is a dispatch guard that reads `gates.yaml` `mutating_concurrency` (default 1, opt-in per project) and counts live workspaces whatever their state (review M2). Several mutating Tickets work at once and integrate one after another; the integration queue and lease arrive in M4-D. Above a cap of 1, the launch conflict check (E151, ADR-0003's amendment of 2026-11-06) holds a worker whose declared scope can meet another live Ticket's scope or changed paths, or whose neighbour's paths cannot be read, at assignment and again at each harness launch.
 
 ### Controlled integration
 

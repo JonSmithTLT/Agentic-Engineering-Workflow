@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from aewflow import create_planned_ticket, sample_project
+from aewflow import create_planned_ticket, own_scope, sample_project
 from conftest import IS_WINDOWS, clean_env
 from fake_harness import HarnessLab, credential_hits
 from invariants import assert_control_invariants
@@ -47,7 +47,7 @@ def held(lab, tmp_path, *names: str) -> dict[str, Path]:
         release[run] = tmp_path / "sync" / f"release-{i}"
         lab.script(run, [{"do": "touch", "path": str(tmp_path / "sync" / f"started-{i}")},
                          {"do": "wait_file", "path": str(release[run]), "timeout": 300}])
-        wid = create_planned_ticket(lab.project, tmp_path, title=f"Add op{i}")
+        wid = create_planned_ticket(lab.project, tmp_path, title=f"Add op{i}", scope=own_scope(i))
         lab.lead("work", "assign", wid, "--launch")
         lab.project.lead("work", "transition", wid, "--to", "RUNNING")
     for i in range(len(names)):

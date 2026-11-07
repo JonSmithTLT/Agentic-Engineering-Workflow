@@ -48,6 +48,11 @@ REASONS: dict[str, Reason] = {
     "PROTECTED_CONDITION_OVERLAP": Reason(
         "a protected path lies inside the Ticket's mutation scope: the scope grants a change the policy forbids",
         failure_class="PROTECTED_ACCEPTANCE_OVERLAP"),
+    # The launch conflict check (register E151): concurrent workers' files.
+    "FILES_CONFLICT": Reason(
+        "another live mutating Ticket may change the same files: their declared scopes can meet, it has changed a "
+        "path inside this Ticket's scope, a scope is unbounded, or its changed paths cannot be read; the dispatch is "
+        "held until that Ticket is integrated or cancelled, either of which releases its workspace"),
     # Hard assurance triggers (v0.4 §22): obligations for Classes 1-4; a triggered Class 0 request fails eligibility.
     "ACCEPTANCE_INPUT_IN_SCOPE": Reason(
         "an acceptance input the Ticket declares lies inside its mutation scope",

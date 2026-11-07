@@ -8,15 +8,18 @@ the project's policy and the files tracked at the source commit the dispatch use
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aew.engine import assurance as A
+from aew.engine import conflicts as C
 from aew.engine import gates as G
 from aew.engine.dispatch import Blocker, GuardRegistration
 from aew.errors import GitError, IntegrityError
 from aew.harness.contract import EXPECT_REV
 from aew.knowledge.records import read_record
 from aew.policy import execution as X
+from aew.snapshot.fingerprint import changed_paths
 from aew.util import sha256_file
 from aew.workspace import git
 
@@ -34,7 +37,8 @@ class Assurance:
         return [GuardRegistration("protected.overlap", self.guard_protected),
                 GuardRegistration("assurance.triggers", self.guard_triggers),
                 GuardRegistration("class0.eligible", self.guard_class0),
-                GuardRegistration("git.drivers", self.guard_git_drivers)]
+                GuardRegistration("git.drivers", self.guard_git_drivers),
+                GuardRegistration("conflict.files", self.guard_conflict)]
 
     # ---- inputs
 
@@ -117,6 +121,43 @@ class Assurance:
         policy_file = path.relative_to(self.k.repo_root).as_posix() if inside else str(path)
         return Blocker("GIT_DRIVER_UNTRUSTED", git.untrusted_filters_message(found, policy_file),
                        {"drivers": found, "trusted": sorted(git.trusted_drivers()), "policy_file": policy_file})
+
+    def guard_conflict(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> list[Blocker] | None:
+        """The launch conflict check (``aew.engine.conflicts``; register E151): the Ticket's declared scope against
+        every other live mutating Ticket's declared scope and changed paths, held on any conflict. It runs at
+        assignment, at a new implementer and at each harness launch, so the check is made again when the worker's
+        run starts, against what the other workers have changed by then."""
+        if not self.grants_mutation(state, work_id, facts):
+            return None
+        others = [w for w in C.live_mutating_tickets(state) if w != work_id]
+        if not others:
+            return None
+        scope = self._inputs(state, work_id, facts)["scope"]
+        out = []
+        for other in others:
+            found = C.find_conflict(work_id, scope, self._live(state, other))
+            if found:
+                out.append(Blocker("FILES_CONFLICT", C.hold_message(work_id, scope, found), found))
+        return out
+
+    def _live(self, state: dict[str, Any], work_id: str) -> C.LiveTicket:
+        """A live Ticket's declared scope and changed paths. Either one unreadable is reported as unknown, never as
+        empty: an inability to establish non-interference is a conflict (``CNI-03.a``)."""
+        unit = state["work"][work_id]
+        ws = unit.get("workspace") or {}
+        scope: tuple[str, ...] | None = None
+        touched: tuple[str, ...] | None = None
+        why: list[str] = []
+        try:
+            scope = tuple((self.gates.record_meta(unit).get("scope") or {}).get("paths") or [])
+        except Exception as err:  # any failure leaves the scope unknown, which holds the dispatch
+            why.append(f"its record {unit.get('record')} cannot be read: {err}")
+        try:
+            touched = tuple(changed_paths(Path(ws["path"]), ws["base_commit"]))
+        except Exception as err:  # as above: unknown, never "nothing changed"
+            why.append(f"its workspace {ws.get('path')} cannot be read: {err}")
+        return C.LiveTicket(work_id=work_id, invocation=unit.get("implementer_invocation"), workspace=ws.get("id"),
+                            scope=scope, touched=touched, unreadable="; ".join(why) or None)
 
     def guard_triggers(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> None:
         """Deterministic hard triggers (v0.4 §22): recorded as obligations, never a refusal on their own."""

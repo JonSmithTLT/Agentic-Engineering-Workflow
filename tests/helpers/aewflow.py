@@ -31,6 +31,15 @@ SUBTRACT_PATCH = {
 }
 
 
+SUBTRACT_SCOPE = tuple(SUBTRACT_PATCH)  # a scope that holds SUBTRACT_PATCH and nothing else
+
+
+def own_scope(i: int) -> tuple[str, ...]:
+    """The scope of a Ticket that adds ``calc/op{i}.py`` and its test: disjoint from every other ``i`` and from
+    SUBTRACT_SCOPE, so Tickets with these scopes may run at once (the launch conflict check, register E151)."""
+    return (f"calc/op{i}.py", f"tests/test_op{i}.py")
+
+
 APPLY_PATCH = {
     "calc/core.py": SUBTRACT_PATCH["calc/core.py"] + "\n\ndef apply(op, a, b):\n    return op(a, b)\n",
     "tests/test_apply.py": "from calc.core import apply, subtract\n\n\ndef test_apply():\n"

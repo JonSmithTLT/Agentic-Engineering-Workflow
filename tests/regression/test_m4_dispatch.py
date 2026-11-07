@@ -219,7 +219,9 @@ def test_a_new_implementer_rechecks_class0_eligibility(tmp_path):
 def test_the_mutating_cap_is_the_policys(tmp_path):
     """M4-A clamped the cap to 1; since M4-C it is `mutating_concurrency` itself (the default stays 1)."""
     p = sample_project(tmp_path, gates=None)
-    t1, t2 = ticket(p, tmp_path), ticket(p, tmp_path)
+    # disjoint scopes: at cap 2 the second must not meet the launch conflict check (register E151)
+    t1 = ticket(p, tmp_path, scope=("calc/**",))
+    t2 = ticket(p, tmp_path, scope=("tests/**",), affected=("tests/test_subtract.py",))
     p.lead("work", "assign", t1)
     err = refused(p, "work", "assign", t2)
     assert err["code"] == "CONCURRENCY_LIMIT" and "mutating concurrency is 1" in err["message"]

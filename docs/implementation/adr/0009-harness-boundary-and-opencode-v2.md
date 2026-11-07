@@ -16,7 +16,7 @@
   - The fake-harness conformance tests `tests/integration/test_harness_runs.py` and `tests/regression/test_m3_harness_adversarial.py`, run on Windows and on Linux.
   - The harness conformance suite against the real OpenCode adapter: in CI against a fake V2 server (`tests/integration/test_harness_conformance.py`, `test_opencode_adapter.py`), and in the opt-in live lane against OpenCode 2.0.18 (`tests/live/test_opencode_live.py`).
   - Acceptance scenarios AT-14..AT-17 (`acceptance.md`): `tests/acceptance/test_at14_at17_harness.py` (fake harness; OpenCode adapter with fake V2 server and `aew opencode`), and their live twins on OpenCode 2.0.18 (`tests/live/test_opencode_acceptance_live.py`).
-  - Live model conformance (step 8, `harness-conformance.md` §6): real free models in every role through the production adapter, including rejection and rework (`tests/live/test_opencode_model_live.py`, results in `eval/m3/live/`).
+  - Live model conformance (step 8, `harness-conformance.md` §6): real models in every role through the production adapter, including rejection and rework (`tests/live/test_opencode_model_live.py`, results in `eval/m3/live/`). Step 8 ran on OpenCode's free models; the lane now runs only on a keyed paid model the operator names and approves for each run, since AEW does not use the free models (amendment of 2026-11-06).
   - The paid dogfood (step 9, `m3-dogfood-report.md`): 47 runs with a headless model Lead and every role a real run, on GPT-5.6 Luna and GPT-6 Sol. Every run's credential scan was clean, no run wrote to the AEW checkout, and resume after losing the Lead's harness succeeded 3 of 3.
 - **Nature:** an implementation of frozen semantics. It adds no new authority, no new state machine and no new knowledge store.
 
@@ -1274,7 +1274,8 @@ the same date (its §7) records the egress policies, ruling R-6, and where the r
   (`Authorization`, `X-Api-Key`, `Api-Key`, `X-Goog-Api-Key`); a credential header without one passes as it came.
   Closing the relay forgets the credentials.
 - **The upstream** is fixed: the policy's `containment.network.upstreams.<provider>`, else AEW's table of known
-  providers (`netns.UPSTREAMS`: `openai`, and `opencode`, the free models). A provider with neither refuses the launch
+  providers (`netns.UPSTREAMS`: `openai`, and `opencode`, OpenCode Zen's paid models with a key; the amendment of
+  2026-11-06). A provider with neither refuses the launch
   (`CONTAINMENT_UNAVAILABLE`, reason `no_upstream`), saying what to set. The operator's HTTP proxy, when the provider's
   variables name one, carries the relay's `CONNECT` to it, unless `NO_PROXY` covers it.
 - **Requests:** origin-form only (a request cannot name a host: 400 `not_origin_form`), one per connection
@@ -1758,3 +1759,75 @@ acknowledgements.
   reason or `provider_env`.
 - **Both values are closed sets owned by `aew.harness.base`** (`RELAY_FAMILY_SHOWN`, `LAUNCH_REFUSALS`): the
   supervisor and the launcher pass on nothing else.
+
+## Amendment 2026-11-06 — no free models: a launch needs a provider key (the operator's decision)
+
+- **The decision:** AEW does not rely on OpenCode's free models, for testing, the vertical or real work (the operator,
+  2026-11-06). OpenCode Zen's published rule (https://opencode.ai/docs/zen/, read 2026-11-06) says why they cannot
+  serve AEW's runs: "Free-tier chat models require OpenCode; use paid models or Go from other clients." A run through
+  AEW's provider relay is such another client, so it needs a provider key and a paid model.
+- **A correction:** a 429 from the free models through the relay was read earlier as a usage quota that would reset.
+  It was the rule above: no wait makes the free models work through the relay, and a keyed paid model does (a keyed
+  check through `main`'s relay answered 2xx on 2026-11-06).
+- **A worker launch that cannot get a key is refused before anything is committed** (`provider_key_missing`,
+  `HARNESS_INCOMPATIBLE`): on the relay route (a harness that calls its provider itself, under `proxy_only`:
+  `netns.relay_route`), when the pinned provider's key variable (`netns.PROVIDER_KEY_ENV`) is not named by the
+  policy's `provider_env` or has no value where AEW launches (`netns.provider_key_missing`, a pure predicate). The
+  engine checks it in `require_launchable` beside `provider_env`'s check, and the supervisor again at the top of
+  `_contain`, on the names the run's contract carries, before any sandbox or network exists; there it is a
+  `launch_failed` run with `incompatible_config`. The message quotes the published rule and names both steps: set a
+  key, pin a paid model. A provider whose key variable AEW does not know (a Provider Gateway upstream, F18.8) is not
+  judged. `aew doctor`'s `provider-key` line names a profile a launch from that terminal would be refused for, and
+  `aew init` says at first use that AEW needs a provider key and does not use the free models.
+- **Every Lead's configuration switches OpenCode's own providers off** (the designer's ruling of 2026-11-06):
+  `projection.lead_config` carries `experimental.policies` denying `provider.use` for `opencode` and `opencode-go`
+  (`projection.LEAD_DENIED_PROVIDERS`), so OpenCode's own policy step removes those providers with their models
+  whenever its provider state is recomputed. Nothing else AEW turns on in the Lead needs `opencode.ai`: the model
+  catalog is `models.opencode.ai`, update checks and sharing are off, and console features need a login the Lead does
+  not have. It is OpenCode's own deny, not a host deny on the egress proxy: the models would stay listed and fail on
+  use, their address is catalog data, and the Lead reads OpenCode's documentation there. There is never an `opencode`
+  entry under `providers`, which would switch the provider on. The contained Lead, the Lead that is not contained
+  and `--print-config` all get it. `Config.InfoEncoded`'s `experimental` and `experimental.policies` join the checked
+  configuration keys (`capabilities.py`), so a release that respells them is refused at a worker's launch; the Lead's
+  TUI is checked for its version only, not probed. So the cost of a respelling falls on workers' launches, whose
+  configuration doesn't carry the deny, and the Lead that does carry it is never probed. Which document's policy wins
+  when the Lead that is not contained merges this over the operator's own configuration is not established.
+- **A contained Lead with no provider relayed is refused at start** (`provider_key_missing`, before the seat and the
+  sandbox; `ContainedLead.require_provider`), after its start lines say what was found: with no key and no
+  refreshing login relayed it would have no model. The message quotes the published rule and names the operator's
+  fixes: `opencode auth login` at their own terminal, or `--provider-env NAME`. It replaces the start line of the
+  amendment of 2026-10-25 that said only the free models work; opencode's own key stays not served, and the start
+  line says the Lead's configuration switches `opencode` off. The seeded `model.json` needs no change: the TUI skips
+  an entry naming a model that is not offered. The Lead that is not contained (Windows) starts as it is, and one
+  start line names the same fixes when no `--provider-env` is passed and no stored login is for a provider its
+  configuration leaves on (`lead.no_provider_line`).
+- **A run's refused egress targets are recorded, and only recorded** (the designer's ruling of 2026-11-06): the
+  egress proxy keeps each `CONNECT` target it refuses (403), as `host:port` in a closed character set, cut to 253
+  characters; at most 20 distinct targets a run, then a count of the refusals of any other
+  (`egress.EgressProxy.refused_targets`). The run's record keeps it as `egress_refused`, beside its `containment`
+  label and never in it, so no Lead read (`harness status`, `harness wait`) and no system text carries it, and
+  nothing offers a target as an allowlist entry. Today the run's JSON record is its only form; the agent chose the
+  string, so any reader that shows it escapes it.
+- **One refused target is known and expected:** on a run whose provider is `opencode` with its key relayed, a refused
+  `opencode.ai:443` carries the fixed note "expected: OpenCode's console sync (inferred), refused by design"
+  (`netns.CONSOLE_SYNC_NOTE`, defined once, beside the record; no other target gets it). A set `OPENCODE_API_KEY`
+  makes OpenCode fetch its console's configuration; that call would bring console-managed providers, MCP servers and
+  policies into a contained run, so it stays refused and never goes on an allowlist. It carries only the relay's
+  sentinel. That it is this call is inferred from the pinned binary, not intercepted.
+- **The live lanes** have no default model: `tests/helpers/harness_conformance.py`'s `LIVE_MODEL` and the model lane
+  read `AEW_LIVE_OPENCODE_MODEL`, a keyed paid model the operator names and approves for each run, and skip without
+  it. No key is in code.
+- **The live check** ran on 2026-11-06, on Rocky 8 with OpenCode 2.0.18, approved for the event. A contained Lead with
+  no provider was refused at start (`provider_key_missing`), with the seat left vacant and no sandbox. The deny held
+  on a real server: with one synthetic key, the provider and model listings named `opencode` without the deny and
+  only the keyed provider with the Lead's configuration (`opencode-go`, which needs its own subscription, was in
+  neither). A contained Lead on the operator's stored login, relayed, listed no OpenCode provider and answered one
+  prompt.
+- **Not established:** whether the deny holds on every later recompute at runtime; which policy wins in the Lead that
+  is not contained; what call a worker's refused side request was.
+- **Tests:** `tests/unit/test_provider_key_refusal.py` (the predicate, both launch checks, the refused-target record
+  and its note, the checked keys); `tests/integration/test_launch_readiness_named.py` (a refused launch and doctor's
+  line on Linux, and no Lead read carrying the record); `tests/unit/test_lead_contained.py` (the Lead's refusal);
+  the deny in each use of the Lead's configuration in `tests/unit/test_opencode_units.py`,
+  `tests/integration/test_opencode_lead.py` and `tests/integration/test_lead_contained_session.py`; and
+  `tests/unit/test_containment_netns.py` (what a worker's network keeps for the note).

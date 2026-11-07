@@ -152,8 +152,9 @@ class Invocations:
             raise IllegalTransition(
                 f"{inv_id} has no execution profile, so no harness, provider or model is pinned for it: configure "
                 "policy/execution.yaml, or dispatch a new invocation with --profile or --model (ADR-0010)")
-        registry.check(profile["harness"])
+        adapter = registry.load(profile["harness"])  # fails before any commit when it cannot even be loaded
         self._require_provider_env()
+        self._require_provider_key(profile, adapter.PROVIDER_RELAY)
         if relaunch:  # at dispatch the workspace or observation is being allocated in this same transaction
             self.invocation_workspace(state, inv)  # its workspace, candidate or observation is still live
         return inv
@@ -171,6 +172,20 @@ class Invocations:
             raise HarnessIncompatible("the execution policy's provider_env cannot reach the run: "
                                       + "; ".join(why for _, why in problems), reason=base.PROVIDER_ENV_UNUSABLE,
                                       variables=[name for name, _ in problems])
+
+    def _require_provider_key(self, profile: dict[str, Any], provider_relay: bool) -> None:
+        """Refuse a launch, before anything is committed, whose pinned provider would get no key on the relay route
+        (``netns.provider_key_missing``; the operator's decision of 2026-11-06: AEW does not rely on OpenCode's free
+        models, which refused a keyless contained worker). The run's supervisor checks it again (``_contain``)."""
+        from aew.harness.containment import netns
+
+        policy, _ = self.k.execution_policy()
+        names = [str(n) for n in (policy or {}).get("provider_env") or []]
+        relayed = netns.relay_route(policy, provider_relay)
+        missing = netns.provider_key_missing(profile.get("provider"), names, os.environ, on_relay_route=relayed)
+        if missing is not None:
+            raise HarnessIncompatible(netns.provider_key_message(str(profile.get("provider")), missing),
+                                      reason=netns.PROVIDER_KEY_MISSING, variable=missing)
 
     def _record_launch_run(self, ctx: TxnContext, inv_id: str) -> None:
         """``--launch`` on a dispatch: run 1 adopts the credential this transaction issued."""

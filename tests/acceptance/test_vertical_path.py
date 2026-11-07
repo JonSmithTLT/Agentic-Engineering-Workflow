@@ -47,6 +47,7 @@ from vertical.ledger import (
 )
 from vertical.report import NOT_A_SCENARIO
 from vertical.scripted_operator import (
+    OFFLINE_KEY,
     OFFLINE_MODEL,
     OFFLINE_PROVIDER,
     Operator,
@@ -81,7 +82,7 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
     command = (["{python}", "-c", "open('check-output.txt', 'w').write('x')"] if cause == "check-changes-snapshot"
                else ["{python}", "-c", STAMP_CHECK] if cause == "stamp" else workers.UNIT)
     model: list[str] = ["--model", OFFLINE_MODEL]
-    known: dict[str, str | None] = {OFFLINE_PROVIDER: None}
+    known: dict[str, str] = {OFFLINE_PROVIDER: OFFLINE_KEY}
     fixtures = world_fixtures(op.lab, steering="crawl" if steering else None)
     if steering:
         notifier = recorder(op.tmp)[0]
@@ -90,7 +91,7 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
     if cause == "provider-env-unset":  # a provider that needs a key, whose variable isn't set where AEW launches
         model, known = ["--model", "vuatprov/fake-model"], {"vuatprov": "VUAT_PROVIDER_KEY"}
     if cause in ("model-not-listed", "model-id-provider-prefix"):  # what the operator typed, on the real harness name
-        known = {"vuatprov": None}
+        known = {"vuatprov": OFFLINE_KEY}
         model = ["--provider", "vuatprov", "--model",
                  "vuat-missing-model" if cause == "model-not-listed" else "vuatprov/vuat-model"]
         del fixtures["harness: fake"]

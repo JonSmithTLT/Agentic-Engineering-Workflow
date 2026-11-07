@@ -768,5 +768,10 @@ def test_the_lead_projection_cannot_edit_the_runs_directory():
     assert edits == [{"action": "edit", "effect": "deny", "resource": "*"}]
     shells = [r for r in rules if r["action"] == "shell"]
     assert shells[0] == {"action": "shell", "effect": "ask", "resource": "*"}
-    assert {r["resource"] for r in shells[1:]} == {"aew *", "git status*", "git diff*", "git log*", "git show*"}
-    assert all(r["effect"] == "allow" for r in shells[1:])
+    allows = [r for r in shells[1:] if r["effect"] == "allow"]
+    assert {r["resource"] for r in allows} == {"aew *", "git status*", "git diff*", "git log*", "git show*"}
+    # A git read that writes a file or runs a program asks, after the allows so it wins (the designer, 2026-11-06).
+    asks = ("git diff*--output*", "git diff*--ext-diff*", "git log*--output*", "git log*--ext-diff*",
+            "git show*--output*", "git show*--ext-diff*", "git diff*--no-index*", "git diff*/dev/null*",
+            "git diff*.env*", "git log*.env*", "git show*.env*")
+    assert shells[1 + len(allows):] == [{"action": "shell", "effect": "ask", "resource": p} for p in asks]

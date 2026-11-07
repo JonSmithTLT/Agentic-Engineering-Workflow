@@ -327,6 +327,7 @@ def _doctor(args: argparse.Namespace) -> Any:
 def _init(args: argparse.Namespace) -> Any:
     from aew.engine import first_configuration
     from aew.engine.api import Engine
+    from aew.harness.containment import netns
 
     configuration = first_configuration.from_flags(check_command=args.check_command, check_timeout=args.check_timeout,
                                                    model=args.model, provider=args.provider)
@@ -344,6 +345,7 @@ def _init(args: argparse.Namespace) -> Any:
         **({"first_configuration": configuration.report()} if configuration is not None else {}),
         "next": configuration.next_step() if configuration is not None
         else "acquire Lead authority: aew lead acquire --expect-rev 0",
+        "provider_key": netns.FIRST_USE_LINE,
     }
 
 

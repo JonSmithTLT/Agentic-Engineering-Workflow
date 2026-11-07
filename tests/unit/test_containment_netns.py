@@ -213,3 +213,21 @@ def test_the_shim_spec_forwards_the_server_in_and_the_relay_and_egress_out_on_fi
     assert argv[:3] == [sys.executable, "-I", "-c"] and argv[-3:] == ["--", "opencode", "serve"]
     with open(netns.SHIM, encoding="utf-8") as f:  # the shim's own text, run with an explicit call to its main
         assert argv[3] == f.read() + "\nsys.exit(main(sys.argv[1:]))\n" and json.loads(argv[4]) == spec
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the relays listen on socket files (AF_UNIX)")
+def test_a_workers_network_remembers_its_provider_and_whether_its_key_was_relayed():
+    """The console-sync note's inputs (the designer's pointer of 2026-11-06), kept from the start because closing the
+    network forgets the values: right, opencode with its key relayed; wrong, an empty value (no key relayed);
+    missing, no relay at all."""
+    for provider_env, env, relay_needed, keyed in ((["OPENCODE_API_KEY"], {"OPENCODE_API_KEY": KEY}, True, True),
+                                                   (["OPENCODE_API_KEY"], {"OPENCODE_API_KEY": ""}, True, False),
+                                                   (["OPENCODE_API_KEY"], {"OPENCODE_API_KEY": KEY}, False, False)):
+        layout = replace(BASE, network=L.PROXY_ONLY, net_dir=netns.private_dir())
+        net = netns.RunNetwork.start(layout, provider="opencode", provider_env=provider_env, policy=None, env=env,
+                                     relay_needed=relay_needed)
+        try:
+            assert (net.provider, net.key_relayed) == ("opencode", keyed), (env, relay_needed)
+        finally:
+            net.close()
+        assert (net.provider, net.key_relayed) == ("opencode", keyed)  # still there for the record at the end

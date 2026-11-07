@@ -565,8 +565,12 @@ class ContainedLead:
                     refreshing={p: StoredLogin(p, self.base) for p in self.refreshing})
                 label["network"].update(network.describe())
                 self.stages.mark("network")
+            from aew.capability import ops as capability
+
+            # The tools its sandbox's self-test settled, by the names the Lead calls them, as a worker is told
             config = projection.lead_config(self.guide, contained=label,
-                                            relays=network.lead_bases() if network else None)
+                                            relays=network.lead_bases() if network else None,
+                                            tools=capability.placed(label, contained=True))
             inside = self._inside(child_env, layout, run_dir, state, config, network)
             leaked = network.leaks(json.dumps(inside), json.dumps(config)) if network else []
             if leaked:  # F28 §3.6, row 6: names only

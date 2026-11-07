@@ -62,6 +62,7 @@ from aew.harness.base import (
 from aew.harness.containment import netns
 from aew.harness.contract import (
     AGENT_LOAD_TIMEOUT,
+    AVAILABLE_TOOLS,
     CATALOG_TIMEOUT,
     CREDENTIAL_PATTERNS,
     EXPECT_REV,
@@ -371,7 +372,8 @@ class OpenCodeAdapter(HarnessAdapter):
                 state, os.sep, scratch=os.path.realpath(contract.scratch) if contract.scratch else ""),
             skills_dir=projection.skills_at(state, os.sep),
             network=network.describe() if network is not None else None,  # the agent is told what it reaches
-            unavailable_tools=list(contract.extra.get(UNAVAILABLE_TOOLS) or []))  # and what it goes without
+            unavailable_tools=list(contract.extra.get(UNAVAILABLE_TOOLS) or []),  # and what it goes without
+            available_tools=contract.extra.get(AVAILABLE_TOOLS))  # and what it has, by name
         rules = config["permissions"]
         base = network.provider_base() if network is not None else None
         self._relayed = base is not None

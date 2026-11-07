@@ -366,6 +366,26 @@ def needed(record: dict[str, Any]) -> bool:
     return bool(record.get("needed"))
 
 
+# The role cards' capability names (the `role` schema's `required_capabilities` and `optional_capabilities`, ADR-0006)
+# that the register's capabilities serve, each with the capability IDs that serve it. A card name not here has no
+# tool of AEW's: the agent does that work with its shell and the project's own commands. The register owns this table
+# (the Lead's ruling on card-capability resolution, 2026-11-07); one vocabulary for cards and register is a possible
+# later cleanup, not owed.
+CARD_CAPABILITIES: dict[str, tuple[str, ...]] = {
+    "exact_code_search": ("EXACT_CODE_SEARCH",),
+    "repository_exploration": ("FILE_FIND", "TEXT_SEARCH"),
+    "structural_code_search": ("STRUCTURAL_CODE_SEARCH",),
+    "symbol_navigation": ("SYMBOL_OUTLINE",),
+}
+
+
+def purpose(record: dict[str, Any]) -> str:
+    """What a provider is for, in a few words an agent reads: its description's first clause after its name
+    (``ripgrep: exact code and text search; ...`` gives ``exact code and text search``), or its capabilities."""
+    said = str(record.get("description") or "").partition(": ")[2].split(";")[0].strip()
+    return said or ", ".join(c.lower().replace("_", " ") for c in record.get("capabilities") or [])
+
+
 @cache
 def shipped() -> dict[str, dict[str, Any]]:
     """AEW's own records. One that fails validation is a defect of this release, never the operator's to fix."""

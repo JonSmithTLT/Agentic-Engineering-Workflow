@@ -25,7 +25,7 @@ under ``.aew`` only where the primitive's own meaning makes it one (the store tr
 from __future__ import annotations
 
 import ast
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import NamedTuple
@@ -522,6 +522,15 @@ class _Scan(ast.NodeVisitor):
         self.func = outer
 
 
+def program_of(ctx: C.Context) -> Program:
+    """The whole parsed package as one program, built once per render: the writers, layout and concurrency families
+    each read the same one."""
+    def make() -> Program:
+        trees = {name: (src.tree, src.is_package) for name, src in ctx.sources().items() if src.tree is not None}
+        return Program.of(trees, ctx.index)
+    return ctx.once("program", make)
+
+
 @dataclass
 class Program:
     """The parsed package: every module's constants, functions and class attributes, and every static call."""
@@ -531,12 +540,16 @@ class Program:
     _typing_active: set[int] = field(default_factory=set)  # nodes whose typing is in progress (a cycle is unknown)
     _returned: dict[tuple[str, str], tuple[Module, str]] = field(default_factory=dict)
     _returning: set[tuple[str, str]] = field(default_factory=set)
+    # ``writers.path_constants``, computed once over the whole program for every analysis of it.
+    path_constants: frozenset[tuple[str, str]] | None = None
 
     @classmethod
-    def of(cls, trees: dict[str, tuple[ast.Module, bool]]) -> Program:
+    def of(cls, trees: dict[str, tuple[ast.Module, bool]], indexed: Callable[[str], C.Index] | None = None
+           ) -> Program:
+        """``indexed``, when given, gives each module's one-pass index already built (``Context.index``)."""
         modules = {}
         for name, (tree, is_package) in sorted(trees.items()):
-            index = C.index_of(tree, name, is_package)
+            index = indexed(name) if indexed is not None else C.index_of(tree, name, is_package)
             mod = Module(name, is_package, tree, index.aliases)
             _Scan(mod).visit(tree)
             modules[name] = mod

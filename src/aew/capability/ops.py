@@ -521,6 +521,34 @@ def unavailable(missing_tools: dict[str, Any] | None, directory: Path | None = N
              "fallback": bind.fallback((eff.get(str(d.get("provider"))) or {}).get("record"))} for d in stubs]
 
 
+def available(tools: dict[str, Any] | None, directory: Path | None = None) -> list[dict[str, str]]:
+    """The tools a contained run has, from its self-test (``probe.self_test``'s ``tools``, as its label records it):
+    each one a copy served, AEW's or the host's, as ``{tool, purpose}``, in the plan's order. Its system text names
+    them, so an agent knows them by the names it calls them, `yq-go` and `uctags` among them (the Lead's ruling on
+    card-capability resolution, 2026-11-07). A run's own report is not taken on trust: only a served copy of a provider
+    in force, under that provider's own command, is named."""
+    try:
+        eff = status.effective(store.read(directory)) if tools else {}
+    except AEWError:  # never a reason a launch fails (CAPR-12): with no register read, no tool is named
+        eff = {}
+    out = []
+    for name, tool in (tools or {}).items() if isinstance(tools, dict) else ():
+        record = (eff.get(name) or {}).get("record")
+        if record is None or not isinstance(tool, dict) or tool.get("served") not in (status.AEW_COPY,
+                                                                                      status.HOST_COPY):
+            continue
+        out.append({"tool": record["command"], "purpose": records.purpose(record)})
+    return out
+
+
+def placed(label: dict[str, Any] | None, *, contained: bool) -> dict[str, Any]:
+    """What a context's system text says of AEW's tools (``harness.contract.AVAILABLE_TOOLS``), from its containment
+    label (``containment.establish``): the tools its self-test settled when it is ``contained``; none otherwise, as no
+    tool of AEW's is bound there. A worker's supervisor and the Lead's start both read it here."""
+    tools = ((label or {}).get("self_test") or {}).get("tools") if contained else None
+    return {"placed": contained, "tools": available(tools)}
+
+
 def record_contained(tools: dict[str, Any] | None, directory: Path | None = None) -> None:
     """Record what a sandbox's self-test found (``probe.self_test``'s ``tools``): the status follows the check inside
     (CAPR-03, CAPR-13). Written only where a result changed, so an ordinary launch takes no lock; never stops anything

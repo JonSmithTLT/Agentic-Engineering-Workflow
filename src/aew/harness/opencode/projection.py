@@ -182,12 +182,35 @@ def _ids(names: list[str]) -> str:
     return ", ".join(f"`{n}`" for n in names)
 
 
+LEAD_TOOLS_NOTE = (" Your shell asks the operator before it runs any of them (only `aew` and git reads run without "
+                   "asking), so search with your read, glob and grep tools first.")
+
+
+def tools_text(available: Mapping[str, Any] | None, *, note: str = "") -> list[str]:
+    """The line naming the tools AEW placed in this context, by the names the agent calls them, each with what it is
+    for (``contract.AVAILABLE_TOOLS``, from ``capability.ops.available``): the role card's capabilities resolve to
+    these (the Lead's ruling on card-capability resolution, 2026-11-07). None (nothing recorded): no line. A context
+    AEW could not contain has none of its tools, and is told so. ``note`` ends the line: the Lead's says its shell asks
+    the operator first (:data:`LEAD_TOOLS_NOTE`, from its rules, :data:`LEAD_RULES`)."""
+    if available is None:
+        return []
+    if not available.get("placed"):
+        return ["- AEW's tools are not placed in this run (it is not contained): use what the host provides."]
+    tools = list(available.get("tools") or [])
+    if not tools:
+        return []
+    named = ", ".join(f"`{t['tool']}` ({t['purpose']})" for t in tools)
+    return [f"- Tools AEW placed for you, by the names to call them: {named}.{note}"]
+
+
 def system_text(contract: LaunchContract, planned: Mapping[str, Any],
                 network: Mapping[str, Any] | None = None,
-                unavailable_tools: list[Mapping[str, Any]] | None = None) -> str:
+                unavailable_tools: list[Mapping[str, Any]] | None = None,
+                available_tools: Mapping[str, Any] | None = None) -> str:
     """The run's system text. ``unavailable_tools``: the commands of the tools AEW brings that this run got no copy of
     (``capability.ops.unavailable``, from the run's own record), told beside its skills, so the agent proceeds
-    without them and says so (the operator, 2026-11-05: a missing tool is logged, not voided)."""
+    without them and says so (the operator, 2026-11-05: a missing tool is logged, not voided). ``available_tools``:
+    the tools it has (:func:`tools_text`)."""
     card = (contract.card or {}).get("id") or contract.role
     edit = ("You may edit files in the workspace." if contract.role in MUTATING_ROLES
             else "You must not modify any file: your role is read-only.")
@@ -212,6 +235,7 @@ def system_text(contract: LaunchContract, planned: Mapping[str, Any],
     if network is not None:
         lines.append(network_text(network))
     lines += skills_text(planned)
+    lines += tools_text(available_tools)
     if unavailable_tools:
         fallbacks = list(dict.fromkeys(str(t["fallback"]) for t in unavailable_tools if t.get("fallback")))
         named = ", ".join(f"`{t['tool']}`" for t in unavailable_tools)
@@ -238,7 +262,8 @@ def network_text(network: Mapping[str, Any]) -> str:
 
 def invocation_config(contract: LaunchContract, *, private_dirs: tuple[str, ...] = (),
                       skills_dir: SkillsAt | None = None, network: Mapping[str, Any] | None = None,
-                      unavailable_tools: list[Mapping[str, Any]] | None = None) -> dict[str, Any]:
+                      unavailable_tools: list[Mapping[str, Any]] | None = None,
+                      available_tools: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """``OPENCODE_CONFIG_CONTENT`` for one run's private server. ``network``: the label of the run's own network
     (``netns.RunNetwork.describe``), which the system text states; None for a run on the host's. ``skills_dir``: where
     the run's exposed skills are copied (:func:`skills_at`), needed when it has any."""
@@ -247,7 +272,7 @@ def invocation_config(contract: LaunchContract, *, private_dirs: tuple[str, ...]
     profile = contract.execution_profile
     agent: dict[str, Any] = {"mode": "primary", "description": f"AEW {contract.role} for {contract.invocation}",
                              "model": config_model(profile),
-                             "system": system_text(contract, skill, network, unavailable_tools),
+                             "system": system_text(contract, skill, network, unavailable_tools, available_tools),
                              "permissions": rules}
     if profile.get("max_steps"):
         agent["steps"] = int(profile["max_steps"])
@@ -459,9 +484,10 @@ def lead_provider_policies() -> list[dict[str, str]]:
 
 
 def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
-                relays: Mapping[str, str] | None = None) -> dict[str, Any]:
+                relays: Mapping[str, str] | None = None, tools: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """``OPENCODE_CONFIG_CONTENT`` for the Lead's TUI. It is merged over the operator's own configuration, which the
-    contained Lead does not load (STG-05 CS-4).
+    contained Lead does not load (STG-05 CS-4). ``tools``: the tools AEW placed in the Lead's sandbox, named in its
+    system text as a worker's are (:func:`tools_text`).
 
     ``guide`` is the project's Lead guide (``aew guide``, F16), rendered from its own policy: appended to the Lead's
     system text so every Lead works from how AEW actually runs here, not by trial and error. ``contained`` is a
@@ -471,6 +497,7 @@ def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
     Every Lead's configuration (contained, not contained, and ``--print-config``'s) denies
     :data:`LEAD_DENIED_PROVIDERS`."""
     system = LEAD_SYSTEM + (f"\n{lead_contained_text(contained)}" if contained is not None else "")
+    system += "".join(f"\n{line}" for line in tools_text(tools, note=LEAD_TOOLS_NOTE))
     system = f"{system}\n\n{guide}" if guide else system
     providers = {p: {"settings": {"baseURL": url, **({"transport": "http"} if p in WEBSOCKET_FIRST else {})}}
                  for p, url in sorted((relays or {}).items())}

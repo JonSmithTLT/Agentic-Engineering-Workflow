@@ -13,6 +13,7 @@ from pathlib import Path
 
 import fake_opencode
 import pytest
+from sleep_patch import patch_sleep
 
 
 def test_a_read_that_meets_the_swap_waits_it_out_and_returns_the_database(tmp_path, monkeypatch):
@@ -27,7 +28,7 @@ def test_a_read_that_meets_the_swap_waits_it_out_and_returns_the_database(tmp_pa
         return real_read(self, *args, **kwargs)
 
     monkeypatch.setattr(Path, "read_text", swapping)
-    monkeypatch.setattr(fake_opencode.time, "sleep", lambda _s: None)
+    patch_sleep(monkeypatch, fake_opencode)
     assert fake_opencode.read_db(db) == {"ses_1": {"prompts": [{"delivery": "steer"}]}}
     assert refused[0] == 3
 
@@ -42,7 +43,7 @@ def test_a_file_that_stays_locked_still_fails_after_the_bound(tmp_path, monkeypa
         raise PermissionError(13, "Permission denied", str(self))
 
     monkeypatch.setattr(Path, "read_text", locked)
-    monkeypatch.setattr(fake_opencode.time, "sleep", lambda _s: None)
+    patch_sleep(monkeypatch, fake_opencode)
     with pytest.raises(PermissionError):
         fake_opencode.read_db(db)
     assert tries[0] == 100

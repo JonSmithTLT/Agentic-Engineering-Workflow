@@ -229,8 +229,9 @@ def test_the_opencode_pack_against_the_fake_server_measures_its_api_and_names_wh
     by = {r["id"]: r["status"] for r in record.checks}
     assert record.version == "2.0.18"
     assert {k: by[k] for k in API_CHECKS[:5]} == dict.fromkeys(API_CHECKS[:5], core.PASS)
-    # the fake is a Python script: it holds none of the bundle's identifiers, which the run names
-    assert by["usage.live_citations"] == core.FAIL and by["ripgrep.download"] == core.FAIL
+    # the fake is not the build the citations were read from: not comparable, never a pass or a changed fact
+    assert by["usage.live_citations"] == core.SKIPPED and by["ripgrep.download"] == core.FAIL
+    assert diff.not_measured["live_usage.bundle_identifiers"].startswith("usage.live_citations skipped: not comparable")
     assert by["usage.openai"] == core.SKIPPED  # not selected: never reported as passed
     # The fake serves the pinned trimmed document, so the trimming reproduces it; only the full document's hash
     # (which the fake cannot have) differs.
@@ -265,3 +266,38 @@ def HQ_main(argv: list[str]) -> int:  # noqa: N802
     import importlib
 
     return importlib.import_module("harness_qualify.__main__").main(argv)
+
+
+@pytest.mark.parametrize(("body", "status"), [
+    ("def test_a():\n    pass\n", core.PASS),
+    ("import pytest\n\ndef test_a():\n    pass\n\n@pytest.mark.skip('needs a model')\ndef test_b():\n    pass\n",
+     core.SKIPPED),
+    ("def test_a():\n    assert False\n", core.FAIL),
+])
+def test_a_suite_run_with_any_skip_is_reported_skipped_never_passed(tmp_path, body, status):
+    from harness_qualify import neutral
+
+    suite = tmp_path / "suite" / "test_suite.py"
+    suite.parent.mkdir()
+    suite.write_text(body, encoding="utf-8")
+    ctx = core.Context(binary=tmp_path / "bin", work=tmp_path / "work", env=core.private_env(tmp_path / "env"),
+                       version="1")
+    assert neutral._pytest(ctx, "STUB_BIN", [str(suite)], ["--rootdir", str(suite.parent)]).status == status
+
+
+def test_in_the_binary_the_citations_were_read_from_a_missing_identifier_fails(tmp_path):
+    binary = tmp_path / "bundle.bin"
+    binary.write_bytes(b"...yield*e.project(hd,(i)=>Pc(r))...")
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    cite = "opencode-cli 9.9.9 (bundled JavaScript)"
+    doc = {"source": {"binary_sha256": core.sha256_file(binary), "evidence": [
+        {"id": "E1", "file": cite, "identifier": "yield*e.project(hd,(i)=>Pc(r))"},
+        {"id": "E2", "file": cite, "identifier": "session.step.ended"},
+        {"id": "E3", "file": "packages/core/src/x.ts", "lines": "1-2"}]}}  # a source citation: carried, not searched
+    (fixtures / "live-usage-9.9.9.json").write_text(json.dumps(doc), encoding="utf-8")
+    ctx = core.Context(binary=binary, work=tmp_path / "w", env={}, version="9.9.9")
+    out = OC.check_live_usage_citations(ctx, fixtures)
+    assert (out.status, out.facts, out.notes) == (core.FAIL, {"live_usage.bundle_identifiers": {"E1": True,
+                                                                                               "E2": False}},
+                                                  ["not in this binary: E2"])

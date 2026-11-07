@@ -41,7 +41,7 @@ from aew.harness.opencode.client import Server, location
 
 from . import model as scripted
 from .capabilities import declared_capabilities
-from .core import API, CITATION, FAIL, PASS, Check, Context, Outcome, Release, dump
+from .core import API, CITATION, FAIL, PASS, SKIPPED, Check, Context, Outcome, Release, dump
 from .core import sha256_file as core_sha256
 from .neutral import neutral_checks
 
@@ -385,20 +385,21 @@ def _bundle(ctx: Context) -> bytes:
 
 
 def check_live_usage_citations(ctx: Context, fixtures: Path) -> Outcome:
-    """Each identifier ``live-usage-<v>.json`` cites in the bundled JavaScript, searched in this binary. A version
-    that no longer holds one is the list of facts to re-probe. The file:line citations of the tag's source are not
-    in a binary, so they are carried, not checked."""
+    """Each identifier ``live-usage-<v>.json`` cites in the bundled JavaScript, searched in this binary. The bundle is
+    minified, and minified names differ from build to build (the Linux 2.0.18 build lacks 12 of the 20, measured
+    2026-11-07), so the search is a fact only in the binary the citations were read from (``source.binary_sha256``).
+    In any other build it is reported as not comparable, with the count found: the citations are then re-read for
+    that build. The file:line citations of the tag's source are not in a binary, so they are carried, not checked."""
     doc = json.loads(sorted(fixtures.glob("live-usage-*.json"))[-1].read_text(encoding="utf-8"))
     blob = _bundle(ctx)
     found = {e["id"]: e["identifier"].encode() in blob for e in doc["source"]["evidence"]
              if "bundled JavaScript" in str(e.get("file")) and e.get("identifier")}
     missing = sorted(k for k, v in found.items() if not v)
-    read_from = doc["source"].get("binary_sha256")
-    same = read_from == core_sha256(ctx.binary)
+    if doc["source"].get("binary_sha256") != core_sha256(ctx.binary):
+        return Outcome(SKIPPED, notes=[
+            f"not comparable: the citations were read from another build, and minified names differ by build "
+            f"({len(found) - len(missing)} of {len(found)} found here); re-read them for this binary"])
     notes = [f"not in this binary: {', '.join(missing)}"] if missing else []
-    notes.append("this is the binary the citations were read from" if same else
-                 "not the binary the citations were read from (another platform's build, or another version): "
-                 "each identifier was searched here")
     return Outcome(FAIL if missing else PASS, {"live_usage.bundle_identifiers": found}, notes)
 
 
@@ -470,7 +471,8 @@ class OpenCodePack:
         fx = self.fixtures
         api = [
             Check("api.openapi", check_openapi, depth=API,
-                  says="the served API has everything capabilities.problems checks; trims it as the pinned fixture"),
+                  says="the served API has everything capabilities.problems checks; trims it as the pinned fixture",
+                  measures=("openapi.min", "openapi.problems", "api.policy_actions")),
             Check("api.wake_idle_session",
                   lambda c: _api_capability(c, [("op", "POST /api/session/{sessionID}/prompt")]),
                   ("wake_idle_session",), depth=API, says="session.prompt is served"),
@@ -487,17 +489,22 @@ class OpenCodePack:
         behaviour = [
             Check("usage.openai", lambda c: check_usage(c, fx), ("read_usage", "wake_idle_session"),
                   says="each raw Responses usage, stored as the message's tokens: the token semantics; also the "
-                       "declared-only catalog entry, the http transport, and a prompt starting an idle session"),
+                       "declared-only catalog entry, the http transport, and a prompt starting an idle session",
+                  measures=("usage.openai", "catalog.declared_only", "relay.transport_http")),
             Check("progress.tool_parts", check_tool_parts, ("read_progress",),
-                  says="write input.path, edit metadata.files, shell input.command and metadata.exit, time.*"),
+                  says="write input.path, edit metadata.files, shell input.command and metadata.exit, time.*",
+                  measures=("tool_parts",)),
         ]
         behaviour.append(Check("relay.websocket_default", check_websocket_default,
-                               says="without transport http, OpenAI's SDK tries a WebSocket first"))
+                               says="without transport http, OpenAI's SDK tries a WebSocket first",
+                               measures=("relay.websocket_first",)))
         citations = [
             Check("usage.live_citations", lambda c: check_live_usage_citations(c, fx), ("read_usage",),
-                  depth=CITATION, says="every bundled-code identifier probe P1 cites is in this binary"),
+                  depth=CITATION, says="every bundled-code identifier probe P1 cites is in this binary",
+                  measures=("live_usage.bundle_identifiers",)),
             Check("ripgrep.download", check_ripgrep, depth=CITATION,
-                  says="the ripgrep version OpenCode downloads when none is on PATH"),
+                  says="the ripgrep version OpenCode downloads when none is on PATH",
+                  measures=("ripgrep.download_version",)),
         ]
         return [*api, *behaviour, *citations, *neutral_checks(HARNESS, "AEW_OPENCODE_BIN",
                                                                conformance=["tests/live/test_opencode_live.py"])]

@@ -82,6 +82,7 @@ class Check:
     depth: str = BEHAVIOUR
     slow: bool = False
     says: str = ""
+    measures: tuple[str, ...] = ()  # the fact ids it measures, so a skipped check's facts say why they are missing
 
 
 @dataclass(frozen=True)
@@ -206,6 +207,7 @@ def qualify(pack: Pack, binary: Path, *, out: Path, only: Iterable[str] | None =
         facts: dict[str, Any] = {}
         for check in pack.checks():
             row: dict[str, Any] = {"id": check.id, "capabilities": list(check.capabilities),
+                                   "measures": list(check.measures),
                                    "platform": check.platform, "depth": check.depth, "says": check.says}
             if wanted is not None and check.id not in wanted:
                 results.append({**row, "status": SKIPPED, "notes": ["not selected (--only)"]})
@@ -324,7 +326,8 @@ def fact_diff(measured: Mapping[str, Any], pinned: Mapping[str, Any], *, unmeasu
     changed: list[FactDiff] = []
     for name in sorted(set(measured) & set(pinned)):
         _walk(name, "", pinned[name], measured[name], changed)
-    why_skipped = {f: f"{r['id']} {r['status']}" for r in checks if r.get("status") != PASS for f in r.get("facts", [])}
+    why_skipped = {f: f"{r['id']} {r['status']}: {'; '.join(r.get('notes') or [])}" for r in checks
+                   if r.get("status") != PASS for f in (*r.get("measures", ()), *r.get("facts", ()))}
     not_measured: dict[str, str] = {}
     for name in sorted(set(pinned) - set(measured)):
         not_measured[name] = (unmeasured or {}).get(name) or why_skipped.get(name) or "no check in this run measures it"

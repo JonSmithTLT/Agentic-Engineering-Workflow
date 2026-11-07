@@ -13,6 +13,7 @@ import pytest
 from aewflow import (
     create_planned_ticket,
     integrate,
+    own_scope,
     prepare_and_validate,
     sample_project,
     to_commit_ready,
@@ -67,7 +68,7 @@ def _own_change(i):
 
 def tickets(p, tmp_path, n):
     _concurrency(p, n)
-    wids = [create_planned_ticket(p, tmp_path, title=f"Add op{i}") for i in range(n)]
+    wids = [create_planned_ticket(p, tmp_path, title=f"Add op{i}", scope=own_scope(i)) for i in range(n)]
     for i, wid in enumerate(wids):
         to_commit_ready(p, tmp_path, wid=wid, files=_own_change(i))
     return wids

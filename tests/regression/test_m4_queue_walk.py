@@ -2,13 +2,15 @@
 a current ALLOW and validation bound to the current head").
 
 The composition walk (``test_composition_walk.py``), with mutating concurrency 3 and up to four Tickets, so entries
-queue behind each other. Each Ticket changes a module of its own, and now and then ``calc/core.py`` too, so some
-candidates conflict. Added moves: preparing any COMMIT_READY Ticket out of turn, cancelling the lease's custodian,
-a commit to ``main`` from outside AEW (the one automatic rebuild, then AWAITING_DISPOSITION on a second move), and
-reconciling a lease; since D4 the Lead's defer, requeue and reorder; and since D5 checks-mode validation (class 1
-validates by checks, under a stand-in for Linux containment), with an infrastructure failure, a deadline expiry, an
-obligation that changes while the checks run, and crashes inside a run. Every step is followed by the whole oracle,
-queue rules 34-42 included, and injected crashes are followed by a fresh engine.
+queue behind each other. Each Ticket changes a module of its own, in a scope of its own (two Tickets whose scopes meet
+are never live at once: the launch conflict check, register E151); every fourth also holds ``calc/core.py``, which a
+commit from outside AEW sometimes rewrites too, so some candidates conflict. Added moves: preparing any COMMIT_READY
+Ticket out of turn, cancelling the lease's custodian, a commit to ``main`` from outside AEW (the one automatic
+rebuild, then AWAITING_DISPOSITION on a second move), and reconciling a lease; since D4 the Lead's defer, requeue
+and reorder; and since D5 checks-mode validation (class 1 validates by checks, under a stand-in for Linux
+containment), with an infrastructure failure, a deadline expiry, an obligation that changes while the checks run, and
+crashes inside a run. Every step is followed by the whole oracle, queue rules 34-42 included, and injected crashes
+are followed by a fresh engine.
 
 The default is a short run; the slice's acceptance run is ``AEW_QUEUE_WALK_STEPS=500`` over the three seeds.
 """
@@ -74,13 +76,29 @@ class QueueWalk(Walk):
     def queue(self) -> dict[str, Any]:
         return self.state().get("queue") or {"entries": {}, "lease": None}
 
+    def new_ticket(self) -> str:
+        """A Ticket whose scope no other live one shares: its own module, and calc/core.py for every fourth. (The base
+        walk's constructor makes the first, so the scopes are kept from here.)"""
+        if not hasattr(self, "owns"):
+            self.owns: dict[str, list[str]] = {}
+        n = len(self.owns)
+        scope = [f"calc/m_{n}.py", *(["calc/core.py"] if n % 4 == 0 else [])]
+        wid = self.lead("work_create", kind="ticket", title=f"walk ticket {n + 1}", risk_class=1, scope_paths=scope,
+                        goal_backwards=["calc.core imports and subtract works"],
+                        contract=["changes stay within the Ticket's own module"])["id"]
+        rev = self.lead("plan_propose", no_assurance=True, work_id=wid,
+                        body=f"Change {scope[0]}; keep tests green.\n")["revision_number"]
+        self.lead("plan_accept", work_id=wid, revision=rev)
+        self.owns[wid] = scope
+        return wid
+
     # ------------------------------------------------------------------ actions
 
     def implement(self, wid: str) -> None:
         ws = self.workspace(wid)
         self.variant += 1
-        files = {f"calc/m_{wid.replace('-', '_').lower()}.py": f"def f():\n    return {self.variant}\n"}
-        if self.rng.random() < 0.25:  # some Tickets also touch the shared module: candidates may conflict
+        files = {self.owns[wid][0]: f"def f():\n    return {self.variant}\n"}
+        if "calc/core.py" in self.owns[wid] and self.rng.random() < 0.5:  # the shared module: candidates may conflict
             core = (ws / "calc/core.py").read_text(encoding="utf-8")
             files["calc/core.py"] = core + f"\n# {wid} variant {self.variant}\n"
         for rel, content in files.items():
@@ -119,11 +137,18 @@ class QueueWalk(Walk):
             self.lead("integrate_reconcile", work_id=work)
 
     def outside_commit(self, wid: str) -> None:
-        """Someone commits to the authoritative branch outside AEW: a prepared candidate goes stale."""
+        """Someone commits to the authoritative branch outside AEW: a prepared candidate goes stale, and one that
+        changed calc/core.py may now conflict."""
         self.outside += 1
         note = self.root / "OUTSIDE.md"
         note.write_text(f"outside commit {self.outside}\n", encoding="utf-8", newline="\n")
-        for args in (("add", "OUTSIDE.md"), ("commit", "-q", "-m", f"outside {self.outside}")):
+        paths = ["OUTSIDE.md"]
+        if self.rng.random() < 0.5:
+            core = self.root / "calc/core.py"
+            core.write_text(core.read_text(encoding="utf-8") + f"\n# outside commit {self.outside}\n",
+                            encoding="utf-8", newline="\n")
+            paths.append("calc/core.py")
+        for args in (("add", *paths), ("commit", "-q", "-m", f"outside {self.outside}")):
             subprocess.run(["git", *args], cwd=self.root, check=True, capture_output=True, creationflags=NO_WINDOW)
 
     def defer_entry(self, wid: str) -> None:

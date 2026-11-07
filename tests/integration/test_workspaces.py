@@ -116,12 +116,12 @@ def test_concurrent_mutating_tickets_work_in_their_own_workspaces_and_integrate_
     """M4-C: with `mutating_concurrency: n`, n mutating Tickets hold live workspaces at once, each in its own
     worktree; the next one is refused at the cap. They integrate one after another: each later candidate is built on
     the authoritative head its predecessors moved, and the oracle holds at every step."""
-    from aewflow import assign, create_planned_ticket, implement, integrate, review, sample_project, verify
+    from aewflow import assign, create_planned_ticket, implement, integrate, own_scope, review, sample_project, verify
     from invariants import assert_control_invariants
 
     p = sample_project(tmp_path)
     _concurrency(p, n)
-    tickets = [create_planned_ticket(p, tmp_path, title=f"Add op{i}") for i in range(n)]
+    tickets = [create_planned_ticket(p, tmp_path, title=f"Add op{i}", scope=own_scope(i)) for i in range(n)]
     roles = [assign(p, wid) for wid in tickets]
     assert len({r.workspace for r in roles}) == n  # one worktree each
     extra = create_planned_ticket(p, tmp_path, title="One too many")
@@ -150,20 +150,21 @@ def test_concurrent_mutating_tickets_work_in_their_own_workspaces_and_integrate_
     p.lead("work", "assign", extra)  # the slots are free again
 
 
-def test_concurrent_tickets_that_change_the_same_lines_conflict_at_integration_and_publish_nothing(tmp_path):
-    """M4-C: two concurrent Tickets that rewrite the same file both reach COMMIT_READY. The first integrates; the
-    second's candidate, built on the moved head, conflicts and is recorded as a conflict. Nothing of it is published
-    and the authoritative checkout is untouched."""
-    from aewflow import create_planned_ticket, integrate, sample_project, to_commit_ready
+def test_a_ticket_whose_lines_moved_on_the_authoritative_branch_conflicts_at_integration_and_publishes_nothing(
+        tmp_path):
+    """M4-C: a Ticket rewrites a file that a commit made outside AEW also rewrote after its assignment. Its
+    candidate, built on the moved head, conflicts and is recorded as a conflict. Nothing of it is published and the
+    authoritative checkout is untouched. (Two Tickets whose scopes meet are never live at once: the launch conflict
+    check, register E151.)"""
+    from aewflow import create_planned_ticket, sample_project, to_commit_ready
     from invariants import assert_control_invariants
 
     p = sample_project(tmp_path)
-    _concurrency(p, 2)
-    first = create_planned_ticket(p, tmp_path, title="Rewrite add, one way")
-    second = create_planned_ticket(p, tmp_path, title="Rewrite add, another way")
-    to_commit_ready(p, tmp_path, wid=first, files={"calc/core.py": "def add(a, b):\n    return b + a\n"})
+    second = create_planned_ticket(p, tmp_path, title="Rewrite add", scope=("calc/core.py",))
     to_commit_ready(p, tmp_path, wid=second, files={"calc/core.py": "def add(a, b):\n    return sum((a, b))\n"})
-    integrate(p, first)
+    (p.root / "calc/core.py").write_text("def add(a, b):\n    return b + a\n", encoding="utf-8", newline="\n")
+    git("add", "calc/core.py", cwd=p.root)
+    git("commit", "-q", "-m", "outside: rewrite add", cwd=p.root)
     head = git("rev-parse", "main", cwd=p.root)
     res = p.aew("integrate", "prepare", second, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     out = res.json
@@ -200,12 +201,12 @@ def test_lowering_the_cap_drains_admitted_work_and_only_gates_new_admissions(tmp
     """M4-C (operator, 2026-10-04): the cap is an admission rule. Lowered from 4 to 1 while four workspaces are live,
     the four stay legal and keep working; a new assignment is refused until occupancy is below the new cap, then
     admission resumes."""
-    from aewflow import assign, create_planned_ticket, implement, sample_project
+    from aewflow import assign, create_planned_ticket, implement, own_scope, sample_project
     from invariants import assert_control_invariants
 
     p = sample_project(tmp_path)
     _concurrency(p, 4)
-    tickets = [create_planned_ticket(p, tmp_path, title=f"Add op{i}") for i in range(4)]
+    tickets = [create_planned_ticket(p, tmp_path, title=f"Add op{i}", scope=own_scope(i)) for i in range(4)]
     roles = [assign(p, wid) for wid in tickets]
     _concurrency(p, 1)
     assert_control_invariants(p)  # nothing illegal happened: work admitted under cap 4 stays admitted

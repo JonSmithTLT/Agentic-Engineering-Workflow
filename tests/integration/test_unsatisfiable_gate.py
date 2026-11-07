@@ -15,6 +15,7 @@ import printed_commands as P
 import pytest
 import yaml
 from aewflow import (
+    SUBTRACT_SCOPE,
     assign,
     close_parent,
     complete_investigation,
@@ -22,6 +23,7 @@ from aewflow import (
     create_planned_ticket,
     create_unit,
     implement,
+    own_scope,
     plan_unit,
     review,
     sample_project,
@@ -403,14 +405,15 @@ def test_the_s0001_shape_end_to_end_only_the_replaced_gate_re_evaluates(tmp_path
     p = sample_project(tmp_path, gates={**DEFAULT_GATES, "mutating_concurrency": 2})
     story = create_unit(p, "story", "Objective")
     record = p.root / ".aew" / load_control(p.root)["work"][story]["record"]
-    idle = create_planned_ticket(p, tmp_path, extra=("--parent", story))
+    idle = create_planned_ticket(p, tmp_path, scope=SUBTRACT_SCOPE, extra=("--parent", story))
     impl = assign(p, idle)
     implement(impl)
     p.lead("work", "transition", idle, "--to", "REVIEW_PENDING")
     p.lead("review", "ingest", idle, "--evidence", review(p, idle))
     p.lead("work", "transition", idle, "--to", "VERIFY_PENDING")
     p.lead("verify", "ingest", idle, "--evidence", verify(p, idle))
-    running = create_planned_ticket(p, tmp_path, title="Add multiply()", extra=("--parent", story))
+    running = create_planned_ticket(p, tmp_path, title="Add multiply()", scope=own_scope(1),
+                                    extra=("--parent", story))
     assign(p, running)
     survey = create_investigation(p, tmp_path, parent=story, title="Survey")
     complete_investigation(p, survey)

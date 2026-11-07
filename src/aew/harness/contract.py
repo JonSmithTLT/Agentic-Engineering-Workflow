@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, NamedTuple
 
 RUN_SCHEMA = "aew/harness-run/v1"
 # Where AEW cannot contain a run (Windows), what its runs actually have, stated so that its absence is never read as
@@ -325,3 +325,73 @@ def continuation_text(c: LaunchContract) -> str | None:
         lines.append("- Workspace changes relative to the dispatch base: "
                      + (", ".join(changed[:50]) + (" …" if len(changed) > 50 else "") if changed else "none"))
     return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------------------------------------- what a wait returns to
+
+# What the Lead does when `harness_wait` returns (E122; the dogfood finding of 2026-10-31: while a run worked, the Lead
+# either ended its turn or polled). Each return is a decision point: the Lead reads what came back, says what it sees,
+# then waits again, steers or interrupts, or asks the operator. Waiting is one blocking request, never a polling loop,
+# since every request re-sends the Lead's whole context (the designer's ruling of 2026-11-06, AEW-FR-27.b).
+#
+# ``WAKE_GUIDE`` is the one owner of what to do on each return, keyed by why the run woke the wait (the steering
+# design's closed set, of which a run's end is the one that occurs today; the steering digest adds its own as rows).
+# ``WAIT_TIMED_OUT`` is the same guidance for a wait whose own time ran out with its runs still working: no run woke it,
+# so it is no ``why``. The wait's results, a running run's next action, the launch results, the readable next line, the
+# Lead's system text and the guide all take their text from these two.
+NOT_POLLING = "do not poll, and do not end your turn while a run works"
+WAIT_RULE = f"it blocks until a run ends; {NOT_POLLING}"
+RUN_ENDED = "run_ended"
+TIMED_OUT = "timed_out"  # the wait result's own field, not a ``why``
+
+
+class Wake(NamedTuple):
+    """One kind of return: what it means, the action that usually fits, and the line the Lead tells the operator."""
+
+    means: str
+    act: str
+    tell: str
+
+
+WAKE_GUIDE: dict[str, Wake] = {
+    RUN_ENDED: Wake(
+        means="a run ended",
+        act="act on how it ended, as the result's next step says: accept its evidence, or relaunch or cancel it",
+        tell="which run ended and what its evidence shows: the files it changed and the checks it ran, with their "
+             "results"),
+}
+WAIT_TIMED_OUT = Wake(
+    means="the wait's own time ran out and its runs are still working",
+    act="wait again with `harness_wait`; steer a run (`aew harness send`) or interrupt it (`aew harness interrupt`), "
+        "or ask the operator, only when you can say why",
+    tell="which runs are still working and what you did about them")
+
+
+def wake_guidance() -> dict[str, Wake]:
+    """Every kind of return with its guidance, by the field that marks it: the wake guide's ``why`` values, then the
+    wait's ``timed_out``."""
+    return {**WAKE_GUIDE, TIMED_OUT: WAIT_TIMED_OUT}
+
+
+def wake_line(key: str) -> str:
+    """``key``'s guidance as one line (the Lead's system text lists one per kind of return)."""
+    wake = wake_guidance()[key]
+    return f"`{key}`: {wake.means}. {wake.act[0].upper()}{wake.act[1:]}. Tell the operator in a line {wake.tell}."
+
+
+def wait_step(runs: list[str], *, again: bool = False) -> str:
+    """The next step while ``runs`` work: wait on them, with the call and its command; ``again`` when a wait's own time
+    ran out with them still working. The rule comes before the command, so a reader that shortens the line keeps it."""
+    several = len(runs) > 1
+    named = ", ".join(runs)
+    command = f"(`aew harness wait {' '.join(runs)}{' --any' if several else ''}`)"
+    if not again:
+        return f"wait on {named} with `harness_wait`: {WAIT_RULE} {command}"
+    act = WAIT_TIMED_OUT.act
+    return (f"{named} {'are' if several else 'is'} still working ({TIMED_OUT}): {NOT_POLLING}. {act[0].upper()}"
+            f"{act[1:]} {command}. Tell the operator in a line {WAIT_TIMED_OUT.tell}")
+
+
+def run_ended_step(action: str) -> str:
+    """A run's end as a next step: the run's own next action, then the line for the operator."""
+    return f"{action}. Tell the operator in a line {WAKE_GUIDE[RUN_ENDED].tell}"

@@ -24,6 +24,7 @@ from aew.engine import transitions as T
 from aew.engine.evidence_ops import Gates
 from aew.engine.harness_ops import Harness
 from aew.engine.resume_ops import Resume
+from aew.harness.contract import wake_guidance
 from aew.harness.opencode import projection
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
 from aew.surface import availability as SA
@@ -48,6 +49,8 @@ NOT_TOOLS = {
     "diff": "a git command", "log": "a git command", "show": "a git command",
     "read": "OpenCode's own tool, not AEW's", "skill": "OpenCode's own tool, not AEW's",
     "use_when": "a role card's field",
+    "why": "a wait result's field: why it returned (E122)",
+    **{key: "what marks a kind of wait return, a key of the wake guidance (E122)" for key in wake_guidance()},
 }
 # Where the engine's and the surface's words to a Lead are written: every string in these, docstrings aside.
 WORDS_IN = ("src/aew/engine", "src/aew/surface", "src/aew/harness/opencode")

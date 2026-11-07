@@ -31,7 +31,7 @@ import unicodedata
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from aew.harness.contract import redact
+from aew.harness.contract import WAIT_RULE, redact
 from aew.surface import contract
 from aew.surface.scrubbing import scrub
 
@@ -176,10 +176,11 @@ def _next(result: dict[str, Any]) -> str:
     for action in [a for a in offered if a.get("kind") not in _NOT_A_NEXT_STEP] or \
             [a for a in offered if a.get("kind") == "wait"]:
         label = "next" if action.get("kind") == "wait" else f"next{scope}"  # a wait's arguments name its own runs
+        rule = f" ({WAIT_RULE})" if action.get("kind") == "wait" else ""  # how a wait is followed (E122)
         if action.get("callable"):
-            return f"{label}: " + _whole(_call(action.get("action"), action.get("arguments")))
+            return f"{label}: " + _whole(_call(action.get("action"), action.get("arguments"))) + rule
         if action.get("cli_fallback"):
-            return f"{label}: " + _whole(_command(action["cli_fallback"]))
+            return f"{label}: " + _whole(_command(action["cli_fallback"])) + rule
     for hint in projection.get("hints") or []:
         return _one_line(f"next{scope}: {hint}")
     for blocker in projection.get("blockers") or []:

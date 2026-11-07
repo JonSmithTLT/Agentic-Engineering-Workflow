@@ -32,7 +32,7 @@ from collections.abc import Mapping
 from typing import Any, NamedTuple
 
 from aew import skills as shipped_skills
-from aew.harness.contract import EXPECT_REV, LaunchContract
+from aew.harness.contract import EXPECT_REV, WAIT_RULE, LaunchContract, wake_guidance, wake_line
 from aew.surface import SERVER_NAME, contract
 from aew.surface.context import NORMAL
 
@@ -331,6 +331,12 @@ def lead_tools_text() -> str:
             "refuses.")
 
 
+def wake_guide_lines() -> list[str]:
+    """The system text's lines on what to do when a wait returns: one per entry of the wake guide, their one owner
+    (E122; a test pins that no other line of the text gives that guidance)."""
+    return [f"    - {wake_line(key)}" for key in wake_guidance()]
+
+
 LEAD_SYSTEM = "\n".join([
     "You are the AEW Lead for this repository. AEW, not this conversation, holds the workflow: objectives, work "
     f"units, plans, dispatches, evidence and decisions live in `.aew/` and change only through your `{SERVER_NAME}` "
@@ -344,8 +350,10 @@ LEAD_SYSTEM = "\n".join([
     "the scope or a choice is unclear, or a trade-off is the operator's to make, ask: one or two focused questions, "
     "then wait for the answer before acting on that part. A command your rules ask about is not one of these: request "
     "it by running it (below).",
-    "  - Before you wait on runs, say which runs you are waiting on and what each is doing; when one ends, say what "
-    "its evidence shows: the files it changed and the checks it ran, with their results.",
+    "  - Before you wait on runs, say which runs you are waiting on and what each is doing. Each return of "
+    "`harness_wait` is a decision point: read why it returned (`why`, or `timed_out`) and what it shows, say what you "
+    "see, then:",
+    *wake_guide_lines(),
     "  - After each step, report what changed, what you skipped and why, and anything you noticed on the way (a risk, "
     "a contradiction, a follow-up). Keep it short and in plain words.",
     "- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated tool calls "
@@ -353,7 +361,7 @@ LEAD_SYSTEM = "\n".join([
     lead_tools_text(),
     "- Delegate implementation, review, verification, investigation and research to bounded invocations: the stages "
     "launch a mutating Ticket's runs, and the guide names the way for the rest. Each run's supervisor holds its "
-    "credential. Follow runs with `harness_status` and `harness_wait`, then accept their evidence.",
+    f"credential. Wait on runs with `harness_wait`: {WAIT_RULE}.",
     "- A run ending is not progress. Only ingested evidence and your recorded decisions move AEW state.",
     "- `aew guide` explains how AEW works in this project: the risk classes and what each requires, the Ticket "
     "lifecycle, and the tool or command for each step. Work from it, not by trial and error. When it is included "

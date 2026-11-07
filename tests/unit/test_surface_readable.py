@@ -97,7 +97,7 @@ def test_a_project_level_next_step_never_reads_as_the_way_on_from_the_call():
     assert lines_of(stopped(projection={"hints": ["go on"]}))[1] == "next: go on"
     wait = action("harness_wait", kind="wait", arguments={"runs": ["R-1"]}, cli_fallback=None)
     assert lines_of(stage(projection={"subject": "project", "state": None, "actions": [wait]}))[1] == (
-        'next: harness_wait runs=["R-1"]')  # its arguments say what it is about
+        f'next: harness_wait runs=["R-1"] ({K.WAIT_RULE})')  # its arguments say what it is about, and how to wait
 
 
 def wait(tool: str = "harness_wait", **payload: Any) -> dict[str, Any]:
@@ -233,7 +233,7 @@ def test_the_next_step_prefers_the_lead_s_decision_then_a_move_then_a_wait_then_
     every["decisions_required"] = []
     assert lines_of(stage(projection=every))[1] == "next: ticket_start expect_rev=15 work_id=T-0001"
     every["actions"] = [query, wait]
-    assert lines_of(stage(projection=every))[1] == "next: harness_wait runs=[\"R-1\"]"
+    assert lines_of(stage(projection=every))[1] == f'next: harness_wait runs=["R-1"] ({K.WAIT_RULE})'
     every["actions"] = [query, action(availability="BLOCKED")]
     assert lines_of(stage(projection=every))[1] == "next: do this"
     every["hints"] = []

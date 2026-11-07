@@ -1973,7 +1973,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The operator's decision of 2026-11-01 selecting it; A-09
 
-**When:** **Unscheduled**, after first use and after the Lead change, E159 (the operator, 2026-11-06). The default's raise to 2 follows it as E186
+**When:** **Unscheduled**, after first use and after the Lead change, E159 (the operator, 2026-11-06). The default's raise to 2, with the `gates.yaml` migration, is F10's, right after E151 merges
 
 **Notes:** Filed by the Lead. `aew-reviewer` reviews it
 
@@ -2335,7 +2335,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **Unscheduled**, the operator's to place
 
-**Notes:** Filed by the Lead. Crawl / Walk / Run steering itself, F15.5, stays held in HOLD-19
+**Notes:** Filed by the Lead. Crawl / Walk / Run steering itself, F15.5, closed into STG-14 as a note by the hold match, adding no scope to its build
 
 *Later notes: `notes.d/E183/`, oldest first (`python tools/register.py show E183`).*
 
@@ -2353,7 +2353,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E185
 
-**Work:** History search for the Lead: a typed, read-only history-search read on the Lead's MCP server, with its surface-map entry, serving only what the history store already holds, under its existing redaction. One PR. Workers get the same read through the supervisor bridge, with no second worker credential: that is F15.3's run-side server, held in HOLD-06, and it follows the hold match. A reviewer's or verifier's lookups about the Ticket under review leave out the current implementer's reasoning and private working state by default. Done when the Lead's catalog lists the read and a test holds what it returns to what the store holds
+**Work:** History search for the Lead: a typed, read-only history-search read on the Lead's MCP server, with its surface-map entry, serving only what the history store already holds, under its existing redaction. One PR. Workers get the same read through the supervisor bridge, with no second worker credential: that is F15.3's run-side server, which the hold match restored at the Internal alpha, after first use. A reviewer's or verifier's lookups about the Ticket under review leave out the current implementer's reasoning and private working state by default. Done when the Lead's catalog lists the read and a test holds what it returns to what the store holds
 
 **Source:** The operator's decision of 2026-11-06 on the build board's open decisions (design workspace `e8fde77`), item 5, "Lead and workers" (V-01's H profile); the ruling of 2026-10-09 on knowledge tool delivery and reviewer independence
 
@@ -2362,18 +2362,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. Today `aew history search` is behind `recall.raw_history_search`, off by default, and refused inside an invocation, and no MCP tool serves it
 
 *Later notes: `notes.d/E185/`, oldest first (`python tools/register.py show E185`).*
-
-### E186
-
-**Work:** `gates.yaml`'s `mutating_concurrency` default goes from 1 to 2, with a migration for existing projects' `gates.yaml`. Done when a new project and a migrated one each admit two mutating Tickets at once, held by E151's conflict check
-
-**Source:** The operator's decision of 2026-11-06 on the build board's open decisions (design workspace `e8fde77`), item 1
-
-**When:** **Unscheduled**, once E151 merges
-
-**Notes:** Filed by the Lead
-
-*Later notes: `notes.d/E186/`, oldest first (`python tools/register.py show E186`).*
 
 ### E187
 

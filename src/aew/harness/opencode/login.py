@@ -37,6 +37,43 @@ XDG_DEFAULTS = {"data": (".local", "share"), "config": (".config",), "state": ("
 
 
 UNKNOWN = "unknown"  # a row in a shape AEW does not know: nothing of it is read out
+# The ``credential`` table's columns a login row is written with (the contained Lead's own store): checked before a
+# write, so a newer OpenCode's schema is met by skipping the write, never by a half-written row (E118).
+CREDENTIAL_COLUMNS = ("id", "integration_id", "label", "value", "method_id", "active", "time_created", "time_updated")
+# S608: the statement is built from the constant column names above; the values are bound parameters.
+CREDENTIAL_INSERT = (f"INSERT INTO credential ({', '.join(CREDENTIAL_COLUMNS)}) "  # noqa: S608
+                     f"VALUES ({', '.join('?' * len(CREDENTIAL_COLUMNS))})")
+
+
+class StoreSchemaChanged(sqlite3.DatabaseError):
+    """A table of an OpenCode store lacks a column AEW writes: the store's schema is not the one AEW knows."""
+
+
+def require_columns(con: sqlite3.Connection, table: str, columns: tuple[str, ...]) -> None:
+    """Raise :class:`StoreSchemaChanged` unless ``table`` has every one of ``columns``."""
+    have = {row[1] for row in con.execute(f"PRAGMA table_info({table})")}
+    missing = [c for c in columns if c not in have]
+    if missing:
+        raise StoreSchemaChanged(f"the {table} table has no {', '.join(missing)} column")
+
+
+def clear_saved_permissions(db: Path) -> int:
+    """Remove every saved permission from the contained Lead's own OpenCode store (never the operator's, which AEW
+    only reads), and return how many rows went: the contained Lead starts each session with none (E118). OpenCode
+    2.0.18 keeps them in the ``permission`` table, in either of its two schemas, so the whole table is cleared
+    whatever its columns; no database, or no such table, means nothing is saved. A failure raises (:class:`OSError`,
+    :class:`sqlite3.Error`), for the caller to refuse the start."""
+    if not db.is_file():
+        return 0
+    con = sqlite3.connect(db, timeout=BUSY_TIMEOUT_S)
+    try:
+        with con:
+            table = con.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'permission'")
+            if table.fetchone() is None:
+                return 0
+            return con.execute("DELETE FROM permission").rowcount
+    finally:
+        con.close()
 
 
 @dataclass(frozen=True)

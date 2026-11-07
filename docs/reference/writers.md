@@ -64,7 +64,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/events/{}.1.jsonl`: written or removed by `aew.harness.event_spool:Reader.retire` (direct: Path.unlink)
 - `local/events/{}.jsonl`: written or removed by `aew.harness.event_spool:Reader.retire` (direct: Path.unlink)
 - `local/harness/lead`, named by `aew.harness.opencode.lead:LEAD_DIR`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
-- `local/harness/lead/xdg-data/opencode/opencode.db`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_logins` (direct: sqlite3.connect)
+- `local/harness/lead/xdg-data/opencode/opencode.db`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_logins` (direct: sqlite3.connect); `aew.harness.opencode.login:clear_saved_permissions` (direct: sqlite3.connect)
 - `local/harness/lead/xdg-state/opencode`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_models` (direct: Path.mkdir)
 - `local/harness/lead/xdg-state/opencode/model.json`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_models` (direct: Path.write_text)
 - `local/harness/runs/R-{}-{}`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.mkdir)
@@ -290,7 +290,7 @@ A write is placed per function, not per call: where its destination is a paramet
 
 The parser cut: 113 registrations of a command handler; handlers by role (`aew`: 111, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
-Writer functions with a store-transaction or direct write placed under `.aew`: 91; reached from at least one entry point: 64.
+Writer functions with a store-transaction or direct write placed under `.aew`: 92; reached from at least one entry point: 64.
 
 - `aew` (store_writer): 53 writer functions (24 write the store, 29 only under `local/`)
 - `aew (contained Lead)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)

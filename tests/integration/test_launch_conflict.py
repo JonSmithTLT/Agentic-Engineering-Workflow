@@ -9,10 +9,12 @@ planted control: the same Tickets admitted once the condition is gone.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
 from aewflow import create_planned_ticket, integrate, sample_project, to_commit_ready
+from conftest import git
 from fake_harness import HarnessLab
 from invariants import assert_control_invariants
 
@@ -163,6 +165,11 @@ def test_a_launch_is_checked_again_against_what_the_other_worker_has_changed(lab
     explained = lab.ok("dispatch", "explain", second, "--invocation", two)  # the query equals the execution
     assert [b["message"] for b in explained["blocking_conditions"] if b["code"] == "FILES_CONFLICT"] == \
         [hold["message"]]
+    # Reading the other worker's workspace stored nothing: its untracked file is hashed, never written to the object
+    # store the workspaces share (the guard, and `dispatch explain`, have no side effect).
+    blob = git("hash-object", str(stray), cwd=p.root)
+    assert subprocess.run(["git", "cat-file", "-e", blob], cwd=p.root, capture_output=True,
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode != 0
 
     stray.unlink()
     lab.script(two, [])

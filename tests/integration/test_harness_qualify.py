@@ -416,3 +416,15 @@ def test_a_suite_whose_agents_would_run_another_aew_is_not_comparable_and_does_n
     assert out.status == core.SKIPPED and out.notes[0].startswith("not comparable: an agent's bare `aew` runs another")
     assert not (tmp_path / "work" / "pytest.log").exists()
     assert neutral.agents_aew(core.private_env(tmp_path / "env2")) in ("this tree", "another checkout", "none")
+
+
+@pytest.mark.parametrize("line", [
+    r"SKIPPED [2] C:\Users\runner\t\test_suite.py:5: the driver cannot drive this",  # Windows: a drive's colon
+    "SKIPPED [2] /home/runner/t/test_suite.py:5: the driver cannot drive this",
+    r"SKIPPED [2] tests\helpers\test_suite.py: the driver cannot drive this",  # no line number
+])
+def test_a_skip_line_is_read_whatever_the_platform_spells_its_path(line):
+    from harness_qualify import neutral
+
+    m = neutral._SKIP_LINE.match(line)
+    assert m is not None and (m.group(1), m.group(2)) == ("2", "the driver cannot drive this")

@@ -36,7 +36,9 @@ from .core import BEHAVIOUR, FAIL, HOST, PASS, SKIPPED, VM, Check, Context, Outc
 ROOT = Path(__file__).resolve().parents[2]
 CONTAINMENT = ["tests/integration/test_containment.py"]
 SUITE_S = 1800
-_SKIP_LINE = re.compile(r"^SKIPPED \[(\d+)\] [^:]+(?::\d+)?: (.*)$")
+# pytest's `-rs` line: `SKIPPED [n] <path>:<line>: <reason>`, or with no line number. The path may hold a drive
+# letter's colon (`C:\...` on Windows), so it ends at the first `:<digits>: `, else at the first `: `.
+_SKIP_LINE = re.compile(r"^SKIPPED \[(\d+)\] (?:.+?:\d+|[^ ]+?): (.*)$")
 
 
 def agents_aew(env: dict[str, str]) -> str:

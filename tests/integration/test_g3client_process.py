@@ -140,7 +140,7 @@ def test_an_approved_set_is_submitted_unchanged_with_its_consent_and_not_admitte
     # The client keys on the reason alone; the route's admission_state for it is the carrier's (REJECTED today).
     assert [r["reason_code"] for r in results] == ["ORIGIN_NOT_ESTABLISHED"]
     assert all(r["admission_state"] != "ADMITTED" for r in results)
-    assert result["note"] == C.NOT_ESTABLISHED
+    assert result["note"].startswith("Approved in the confirmer and submitted, and the owner refused it")
     assert TOKEN not in out + err and G.PIN not in out + err
 
 

@@ -59,6 +59,11 @@ def test_the_clients_restated_facts_are_their_owners() -> None:
     assert isinstance(timeout, ast.Constant) and C.TIMEOUT_S == timeout.value
     assert C.EXPIRY_CEILING_S == deployment.TRIPWIRES["approval_expiry_minutes"][1] * 60
     assert deployment.TRIPWIRES["approval_expiry_minutes"][0] == "max"
+    # G3's standing's window (condition 3) is G3-06's: the longest a consent stays valid, which may only shorten
+    from aew.harness import weaker_register
+
+    assert weaker_register.WINDOW_S == deployment.TRIPWIRES["consent_validity_minutes"][1] * 60
+    assert deployment.TRIPWIRES["consent_validity_minutes"][0] == "max"
     pattern = wire.schema()["$defs"]["Proof"]["pattern"]
     shortest = re.fullmatch(r"\^proof:\[0-9a-f\]\{(\d+),\d+\}\$", pattern)
     assert shortest and shortest.group(1) == str(2 * C.PROOF_BYTES)
@@ -225,7 +230,8 @@ def test_a_pending_approval_with_no_readable_expiry_is_not_g3s_and_nothing_is_wa
     svc = _Service(["PENDING"])
     monkeypatch.setattr(C, "_g3", svc)
     for pending in ({"approval_ref": "approval:one"}, {"approval_ref": "approval:one", "expires_at": "soon"},
-                    {"approval_ref": "approval:one", "expires_at": None}):
+                    {"approval_ref": "approval:one", "expires_at": None},
+                    {"approval_ref": "approval:one", "expires_at": "2026-10-25T12:00:00"}):  # no offset (QC2)
         with pytest.raises(Unavailable) as e:
             C.await_decision(pending, sleep=lambda s: None)
         assert e.value.details["reason"] == "g3_not_g3"
@@ -366,8 +372,30 @@ def test_the_set_is_submitted_with_the_o01_wire_and_the_token_in_its_one_header(
     sent = seen[0]
     assert sent["body"] == cs and sent["headers"][W.O01_HEADER] == W.O01_VERSION
     assert sent["headers"]["Authorization"] == "Bearer " + TOKEN
-    assert C.note(receipt) == C.NOT_ESTABLISHED and "Nothing was admitted" in C.NOT_ESTABLISHED
-    assert C.note({"results": [{"admission_state": "ADMITTED", "reason_code": None}]}) is None
+
+
+def test_a_receipts_note_is_keyed_on_the_admission_state_and_the_reason_and_names_the_hosts_standing() -> None:
+    """Addendum 7: the notes replace the fixed text. A held member's names what the client found failing on the host,
+    or else the project's policy, with the fix, and that the action is requested again once G3 counts; the carrier's
+    refusal today (REJECTED) is worded apart. A member the client has no note for gets none."""
+    from aew import g3standing as S
+
+    failing = S.Standing(False, 1, "G3 is not on this host: /run/aew-g3/request.sock does not exist", "install it")
+    counting = S.Standing(True, judged=(1, 3))
+    held = {"results": [{"admission_state": "HELD", "reason_code": "ORIGIN_NOT_ESTABLISHED"}]}
+    said = C.note(held, failing)
+    assert said is not None and failing.reason in said and "Fix: install it" in said
+    assert "Nothing was admitted" in said and "request the action again" in said
+    said = C.note(held, counting)
+    assert said is not None and S.POLICY_FIX in said and "the project's policy" in said
+    refused = {"results": [{"admission_state": "REJECTED", "reason_code": "ORIGIN_NOT_ESTABLISHED"}]}
+    said = C.note(refused, failing)
+    assert said is not None and said.startswith("Approved in the confirmer and submitted, and the owner refused it")
+    assert failing.reason in said and "Nothing was admitted" in said
+    assert failing.reason not in (C.note(refused, counting) or "x" + failing.reason)
+    assert C.note({"results": [{"admission_state": "ADMITTED", "reason_code": None}]}, failing) is None
+    assert C.note({"results": [{"admission_state": "REJECTED", "reason_code": "PRECONDITION_STALE"}]},
+                  failing) is None
 
 
 @pytest.mark.parametrize("status, body, error, reason", [
@@ -414,7 +442,8 @@ def test_a_lead_session_is_refused_before_anything_is_read_with_the_operators_ro
     err = json.loads(capsys.readouterr().err)["error"]
     assert err["code"] == "PERMISSION_DENIED" and err["details"]["reason"] == LEAD_SESSION
     assert err["details"]["variables"] == [LEAD_SESSION_VARS[0]]
-    assert err["message"].startswith(kept_out_refusal(frozenset({"g3", "request"})) or "")  # the one owner's (F1)
+    owners = kept_out_refusal(frozenset({"g3", "request"}))
+    assert owners and err["message"].startswith(owners)  # the one owner's text, present (QN2), and first (F1)
     assert "ask the operator to run `aew g3 request`" in err["message"]
 
 
@@ -437,6 +466,8 @@ def _command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.Cap
 
     def g3(sock_path: str | None, method: str, path: str, body: Any = None, *,
            timeout: float = C.TIMEOUT_S) -> tuple[int, Any]:
+        if path.endswith("/" + C.PROBE_REF):  # the probe before the confirmer: an approval no one made
+            return 404, None
         asked.append((method, path))
         assert len(asked) <= 5, "the wait went on after a refusal"  # a failure, never a hang
         return answers[min(len(asked), len(answers)) - 1]
@@ -510,7 +541,7 @@ def test_through_the_command_a_refusal_mid_wait_ends_the_wait_at_once_and_names_
     assert len(asked) == 2 and submitted == []  # at once: the first answer of the wait
 
 
-@pytest.mark.parametrize("expires", [None, "soon"])
+@pytest.mark.parametrize("expires", [None, "soon", "2026-10-25T12:00:00"])  # the last has no UTC offset (QC2)
 def test_through_the_command_a_pending_approval_with_no_expiry_says_nothing_of_waiting(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], expires: Any) -> None:
     """F2: the waiting line comes only once the expiry is read, so never "until None"."""

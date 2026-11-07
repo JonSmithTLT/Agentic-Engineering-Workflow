@@ -56,12 +56,8 @@ PROTECTED = "PROTECTED_G3"
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 COMMAND_SETS = "/o01/v0/command-sets"
 
-# What the operator is told once the set was submitted and its owner did not admit it for want of G3 (fixed text).
-NOT_ESTABLISHED = (
-    "Approved in the confirmer and submitted. The owner did not admit it, because G3 is not yet established on this "
-    "host: owners accept G3 consent only once the owners' side (G3-C) lands, and every agent context, the Lead "
-    "included, runs contained (CS-4). Until then no protected action is admitted. Nothing was admitted, and nothing "
-    "is wrong with the request.")
+PROBE_TIMEOUT_S = 5  # the probe's one read: it asks for an approval no one made, which the service answers at once
+PROBE_REF = "g3:approval:probe"  # a well-formed ref (the wire's Ref) that names no approval: the answer is a 404
 
 
 # ------------------------------------------------------------------------------------------------ the set
@@ -177,11 +173,15 @@ def request_approval(cset: dict[str, Any], sock_path: str | None = None) -> dict
 
 
 def expires_at(pending: dict[str, Any]) -> datetime:
-    """The pending approval's ``expires_at``; an answer without a readable one is not G3's."""
+    """The pending approval's ``expires_at``; an answer without a readable one, or with a time that names no UTC
+    offset, is not G3's (#286 quick check, QC2)."""
     try:
-        return W.parse_time(pending["expires_at"])
+        when = W.parse_time(pending["expires_at"])
     except (KeyError, AttributeError, TypeError, ValueError):  # absent, not a string, or no time
         raise Unavailable("the G3 service's answer names no expires_at", reason="g3_not_g3") from None
+    if when.tzinfo is None:
+        raise Unavailable("the G3 service's answer names an expires_at with no UTC offset", reason="g3_not_g3")
+    return when
 
 
 def await_decision(pending: dict[str, Any], sock_path: str | None = None, *,
@@ -191,7 +191,8 @@ def await_decision(pending: dict[str, Any], sock_path: str | None = None, *,
     """Step 4: the ``ConsentRecord`` once the operator approves. A decline, an expiry, or an approval lost to a restart
     of the service refuses; the wait ends with the approval's own life, ``expires_at`` and a grace, and never later
     than G3-02's ceiling. The life left is read once from ``now`` (the service's clock); the wait is measured on
-    ``clock``, which no clock step moves, and each request is bounded by the time left (#286 review F2)."""
+    ``clock``, which no clock step moves, and each read of the service's answer is bounded by the time left: an
+    answer sent in pieces can hold the wait longer, by its own length (#286 review F2; its quick check, QC1)."""
     ref = pending["approval_ref"]
     life = (expires_at(pending) - now()).total_seconds()
     deadline = clock() + min(life, EXPIRY_CEILING_S) + GRACE_S
@@ -285,7 +286,50 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
                            reason="o01_refused", o01_code=code, status=status)
 
 
-def note(receipt: dict[str, Any]) -> str | None:
-    """The fixed text for a receipt whose protected members were not admitted for want of G3, or None."""
-    reasons = {r.get("reason_code") for r in receipt.get("results", []) if isinstance(r, dict)}
-    return NOT_ESTABLISHED if "ORIGIN_NOT_ESTABLISHED" in reasons else None
+def probe(sock_path: str | None = None) -> str | None:
+    """The probe that consumes nothing (addendum 7, ruling 2): a read of an approval request no one made, on
+    ``request.sock``. None when the G3 service answers; otherwise why not, in the client's own words."""
+    try:
+        status, body = _g3(sock_path, "GET", "/g3/v1/approval-requests/" + PROBE_REF, timeout=PROBE_TIMEOUT_S)
+    except (Unavailable, PermissionDenied) as exc:
+        return exc.message
+    if status == 404:
+        return None
+    refused = _g3_refusal(status, body)
+    return getattr(refused, "message", str(refused))
+
+
+def _held(standing: Any) -> str:
+    """Why a member was held for want of an origin, as the client finds it: what failed on this host, else the
+    project's policy, the client being bound to no project (addendum 7)."""
+    from aew.g3standing import POLICY_FIX
+
+    if not standing.counts:
+        return f"{standing.reason}. Fix: {standing.fix}"
+    return ("on this host G3 counts as far as the client can tell, so the project's policy is the likely cause: it "
+            f"must keep every launch contained. Fix: {POLICY_FIX}")
+
+
+# What the operator is told of a member the owner did not admit, by its admission state and reason (addendum 7: the
+# notes are keyed on both). Each takes the host's standing, as the client found it after the submission.
+NOTES: dict[tuple[str, str], Callable[[Any], str]] = {
+    ("HELD", "ORIGIN_NOT_ESTABLISHED"): lambda st: (
+        "Approved in the confirmer and submitted, and the owner held it: G3 does not count for it, so it accepted no "
+        f"consent. {_held(st)}. Nothing was admitted. Once G3 counts, request the action again: this approval is not "
+        "used again (addendum 5)."),
+    ("REJECTED", "ORIGIN_NOT_ESTABLISHED"): lambda st: (
+        "Approved in the confirmer and submitted, and the owner refused it: it found no consent it accepts for this "
+        "member. Nothing was admitted. " + ("" if st.counts else f"On this host: {_held(st)}. ")
+        + "Request the action again once G3 counts; this approval is not used again."),
+}
+
+
+def note(receipt: dict[str, Any], standing: Any) -> str | None:
+    """The note for the first member the owner did not admit for a reason the client explains (:data:`NOTES`), or
+    None. ``standing`` is the host's, as :func:`aew.g3standing.standing` gives it to a reader bound to no project."""
+    for r in receipt.get("results", []):
+        if isinstance(r, dict):
+            said = NOTES.get((str(r.get("admission_state")), str(r.get("reason_code"))))
+            if said:
+                return said(standing)
+    return None

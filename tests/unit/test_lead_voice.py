@@ -7,6 +7,7 @@ is unclear, to say what is happening while work runs, and to report what changed
 
 from __future__ import annotations
 
+from aew.harness import contract as K
 from aew.harness.opencode import projection
 
 VOICE = (
@@ -38,3 +39,34 @@ def test_every_lead_is_told_to_say_its_plan_ask_narrate_and_report():
 def test_the_voice_comes_before_the_tool_rules_so_it_reads_as_how_the_lead_works():
     system = projection.LEAD_SYSTEM
     assert system.index(VOICE[0]) < system.index("You never hold or see the Lead credential")
+
+
+# What the Lead does when a wait returns has one owner, the wake guide (E122): the system text lists its entries, and no
+# other line of it gives such guidance. The phrases a hand-written wake rule would use, kept out of every other line.
+WAKE_WORDS = ("still working", "times out", "timed out", "when one ends", "when a run ends", "wait again",
+              "evidence shows", "Tell the operator")
+
+
+def test_the_lead_s_wake_guidance_is_generated_from_the_wake_guide_and_nowhere_else():
+    lines = projection.LEAD_SYSTEM.split("\n")
+    generated = projection.wake_guide_lines()
+    kinds = K.wake_guidance()
+    assert list(kinds) == [*K.WAKE_GUIDE, K.TIMED_OUT] and K.TIMED_OUT not in K.WAKE_GUIDE  # a timeout is no `why`
+    assert generated == [f"    - {K.wake_line(key)}" for key in kinds]
+    start = lines.index(generated[0])
+    assert lines[start:start + len(generated)] == generated  # the entries, in the table's order, together
+    assert "decision point" in lines[start - 1]  # right after the voice line that introduces them
+    for line in lines:
+        if line not in generated:
+            assert not any(w.lower() in line.lower() for w in WAKE_WORDS), line
+    for key, wake in kinds.items():  # every part of every entry reaches the Lead
+        assert all(part in projection.LEAD_SYSTEM for part in (f"`{key}`", wake.means, wake.act[1:], wake.tell))
+
+
+def test_a_wait_s_returned_steps_take_their_text_from_the_wake_guide():
+    timed_out, ended = K.WAIT_TIMED_OUT, K.WAKE_GUIDE[K.RUN_ENDED]
+    again = K.wait_step(["R-1", "R-2"], again=True)
+    assert again.startswith(f"R-1, R-2 are still working ({K.TIMED_OUT}): {K.NOT_POLLING}.")
+    assert timed_out.act[1:] in again and timed_out.tell in again and "`aew harness wait R-1 R-2 --any`" in again
+    assert K.run_ended_step("ingest it") == f"ingest it. Tell the operator in a line {ended.tell}"
+    assert K.WAIT_RULE in K.wait_step(["R-1"]) and "still working" not in K.wait_step(["R-1"])

@@ -84,6 +84,7 @@ def test_launching_a_dispatched_invocation_rotates_the_printed_credential(lab, t
     lab.script("default", IMPLEMENT)
     launched = lab.lead("harness", "launch", out["invocation"])
     assert (launched["run"], launched["superseded"]) == (f"R-{out['invocation']}-1", None)
+    assert launched["next_action"] == K.wait_step([launched["run"]])  # a launch says to wait on its run (E122)
     assert not contains_credential(str(launched))
     assert lab.aew("whoami", "--invocation-token", printed).error["code"] == "STALE_AUTHORITY"
     assert lab.wait(launched["run"])["status"] == "ended_with_evidence"

@@ -32,8 +32,9 @@ def _pytest(ctx: Context, variable: str, paths: list[str], extra: list[str]) -> 
     log = ctx.work / "pytest.log"
     ctx.work.mkdir(parents=True, exist_ok=True)
     # The suite's homes and temporary folders under a short base: its tests bind sockets there (under HOME and
-    # basetemp), and a socket's path must fit AF_UNIX's 108 bytes, which a path under the run folder does not.
-    base = Path(tempfile.mkdtemp(prefix="hq-"))
+    # basetemp), and a socket's path must fit AF_UNIX's 108 bytes, which a path under the run folder does not. Not
+    # under /tmp on POSIX: the containment self-test masks the host's /tmp, so a HOME there is hidden from its runs.
+    base = Path(tempfile.mkdtemp(prefix=".hq-", dir=None if sys.platform == "win32" else Path.home()))
     env = {**private_env(base / "e", ctx.env), variable: str(ctx.binary)}
     src = str(ROOT / "src")
     env["PYTHONPATH"] = src + (os.pathsep + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else "")

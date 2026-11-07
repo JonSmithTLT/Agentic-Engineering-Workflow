@@ -11156,5 +11156,5 @@
    "serial": 1
   }
  },
- "sized_from": "main's green push run 39900909868 (a3b33e3a, 2026-10-23), sized by tools/ci/shard_plan.py as the first history would be"
+ "sized_from": "main's green push run 39900909868 (a3b33e3a, 2026-10-23), sized by tools/ci/shard_plan.py as the first history would be; the fast (2) and serial (1) counts added 2026-11-07, when core was first sized, as the history of main run 42339620338 needed them"
 }

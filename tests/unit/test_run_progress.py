@@ -532,3 +532,83 @@ def test_a_publish_whose_write_fails_leaves_the_committed_digest_as_it_was(lab: 
     with pytest.raises(OSError):
         meter.set_prompt_state("posted")  # an idle worker whose contract is posted would start its idle clock
     assert meter.state["progress"]["idle_since"] is None
+
+
+# ---------------------------------------------------------------------------------------------- test_failed, once
+
+
+def test_a_new_failing_test_after_a_green_run_is_building_not_a_regression():
+    """Red before green inside a green suite (TDD): as many pass as before, and one new test fails."""
+    run = Run()
+    assert run.step(shell(PYTEST, 0, "3 passed in 0.1s")) == []
+    assert run.step(shell(PYTEST, 1, "FAILED tests/test_x.py::test_new - assert 0\n1 failed, 3 passed in 0.1s")) == []
+
+
+def test_fewer_passing_than_the_green_run_is_a_regression():  # the control of the case above
+    run = Run()
+    assert run.step(shell(PYTEST, 0, "4 passed in 0.1s")) == []
+    assert run.step(shell(PYTEST, 1, "FAILED tests/test_x.py::test_a - x\n1 failed, 3 passed in 0.1s")) == [
+        P.TEST_FAILED]
+
+
+def test_a_regression_wakes_once_not_on_every_later_red_run():
+    run = Run()
+    red = "FAILED tests/test_x.py::test_a - x\n1 failed, 3 passed"
+    run.step(shell(PYTEST, 0, "4 passed"))
+    woke = []
+    for _ in range(4):
+        run.clock.t += 60
+        woke.append(run.step(shell(PYTEST, 1, red)))
+    assert woke == [[P.TEST_FAILED], [], [], []]
+
+
+def test_a_stuck_failure_wakes_once_per_streak():
+    run = Run()
+    same = "FAILED tests/test_x.py::test_a - x\n1 failed"
+    woke = []
+    for _ in range(5):
+        woke.append(run.step(shell(PYTEST, 1, same)))
+        run.clock.t += 60
+    assert woke == [[], [], [P.TEST_FAILED], [], []]
+    other = "FAILED tests/test_x.py::test_b - x\n1 failed"  # a new streak: it may wake again, once
+    assert [run.step(shell(PYTEST, 1, other)) for _ in range(3)] == [[], [], [P.TEST_FAILED]]
+
+
+def test_a_regression_beside_a_later_passing_run_in_one_poll_still_wakes():
+    """Parallel tool calls, or a poll that passes several messages: every run is judged, not only the newest."""
+    run = Run()
+    run.step(shell(PYTEST, 0, "1 passed"))
+    run.clock.t += 60
+    assert run.step(shell(PYTEST, 1, "FAILED tests/test_x.py::test_a - x\n1 failed"),
+                    shell("pytest tests/other.py", 0, "1 passed")) == [P.TEST_FAILED]
+
+
+def test_a_regression_under_a_wider_command_waits_for_the_stuck_rule():
+    """The stated limit: no named evidence and another command, so no regression wake; three runs make it stuck."""
+    run = Run()
+    run.step(shell("python -m pytest tests/test_x.py", 0, "4 passed in 0.1s"))
+    wider = "FAILED tests/test_x.py::test_a - assert 0\n1 failed, 40 passed"
+    assert [run.step(shell("python -m pytest", 1, wider)) for _ in range(3)] == [[], [], [P.TEST_FAILED]]
+
+
+def test_a_huge_failing_set_keeps_the_state_bounded():
+    run = Run(scope=[])
+    names = "\n".join(f"ERROR tests/unit/test_m{i:04d}.py::test_c{i:04d} - fixture 'db' not found" for i in range(3500))
+    for _ in range(3):
+        run.step(shell(PYTEST, 1, names))
+        run.clock.t += 60
+    assert P.valid_state(run.state) and len(json.dumps(run.state)) < 16 << 10
+    assert run.state["recent_tests"][-1]["failing_n"] == 3500
+    assert len(run.state["recent_tests"][-1]["failing"]) == P.MAX_FAILING
+
+
+def test_a_dotdot_path_that_leaves_the_scope_is_out_of_scope():
+    run = Run()
+    assert run.step(write("src/a/../b/x.py")) == [P.OUT_OF_SCOPE]
+    assert run.digest()["files_touched"]["paths"] == ["src/b/x.py"]
+
+
+def test_one_file_under_two_spellings_counts_once():
+    run = Run()
+    run.step(write("src/b/x.py"), write("src/b/./x.py"), write("./src/b/x.py"))
+    assert run.digest()["files_touched"] == {"paths": ["src/b/x.py"], "count": 1}

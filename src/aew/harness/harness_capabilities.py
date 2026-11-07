@@ -44,12 +44,15 @@ FEATURES: dict[str, tuple[tuple[str, ...], str]] = {
     "interrupt_worker": (("interrupt_turn",), "steering design §3"),
 }
 
-YES, GAP = "yes", "gap"
+# yes: the harness provides it. partial: it provides it in a weaker form the feature's design accepts, which the
+# declaration's text says (OpenCode's non-operator mark is a text header the model reads, not a role of its own).
+# gap: it does not, and a register row holds the work.
+YES, PARTIAL, GAP = "yes", "partial", "gap"
 
 
 class Support(NamedTuple):
-    """One capability on one harness: ``yes`` or ``gap``; how it is provided (or what the gap is); and, for a gap, the
-    register row that holds the work."""
+    """One capability on one harness: ``yes``, ``partial`` or ``gap``; how it is provided (or what the gap is); and,
+    for a gap, the register row that holds the work."""
 
     status: str
     how: str
@@ -96,6 +99,6 @@ def problems(columns: Mapping[str, Mapping[str, Support]] | None = None) -> list
                     out.append(f"{harness}: {feature} needs {cap}, which is neither declared nor a gap")
                 elif s.status == GAP and not s.register:
                     out.append(f"{harness}: {feature} needs {cap}, a gap with no register row")
-                elif s.status not in (YES, GAP):
-                    out.append(f"{harness}: {cap} has status {s.status!r}, not yes or gap")
+                elif s.status not in (YES, PARTIAL, GAP):
+                    out.append(f"{harness}: {cap} has status {s.status!r}, not yes, partial or gap")
     return out

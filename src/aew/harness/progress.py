@@ -28,11 +28,22 @@ Ticket's scope paths, ``out_of_scope`` is ``unknown``, never "inside".
 **Triggers** (the closed ``why`` enum, :data:`WHY`). This poll detects four of them:
 
 - ``run_ended``: the meter's final sample.
-- ``test_failed``: a regression, or a stuck failure. A regression is a test run that fails after a test that passed
-  earlier in this run: a named test seen passing, or an earlier run of the same command that passed. A stuck failure
-  is the same command failing with the same failing set on :data:`STUCK_RUNS` test runs in a row, with nothing newly
-  passing (where the runner names no tests, the same command failing three times running). A first red run while
-  building wakes no one; it shows in ``last_test``.
+- ``test_failed``: a regression, or a stuck failure, each once. Every test run the poll passed is judged, in order,
+  not only the newest.
+
+  - A **regression** is a red run that fails a test that passed earlier in this run: a failing name seen passing, or
+    a red run of a command whose last run passed and which now passes fewer tests than that green run did (pytest's
+    summary counts). Where either run has no count, the same command's last run passing is taken as the evidence. A
+    red run that passes as many tests as the green one adds a failing test, which is building (red before green), not
+    a regression. A red run takes its command out of the green set, so the next red run of it is no new regression.
+  - A **stuck failure** is the same command failing with the same failing set on :data:`STUCK_RUNS` test runs in a
+    row with nothing newly passing (where the runner names no tests, the same command failing three times running).
+    It wakes once per streak, and not at all when the streak began with a regression wake.
+  - **Its limit:** a regression is seen only by the same command or by a failing name seen passing. A test that
+    passed under ``pytest tests/x.py``, whose output names no passing tests, and then fails under plain ``pytest`` is
+    a different command with no named evidence, so it shows in ``last_test`` and wakes only once it is stuck.
+
+  A first red run while building wakes no one; it shows in ``last_test``.
 - ``out_of_scope``: a written or edited path outside the Ticket's scope paths.
 - ``worker_idle``: the worker's turn ended without the run ending, and it is still idle after :data:`IDLE_DEBOUNCE_S`.
 
@@ -46,7 +57,9 @@ so a waiting ``harness_wait`` sees it; the per-second rewrite bumps nothing.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import posixpath
 import re
 import shlex
 from collections.abc import Callable, Iterable, Mapping
@@ -85,7 +98,7 @@ IDLE_DEBOUNCE_S = 30.0    # worker_idle wakes only if the worker is still idle a
 MAX_PATH = 512            # a longer path is cut, and marked by a trailing "..."
 MAX_SEEN = 256            # tool part ids remembered, so a page read again counts nothing twice
 MAX_PASSED = 200          # test names seen passing in this run
-MAX_GREEN = 20            # test commands seen passing in this run
+MAX_GREEN = 20            # test commands whose last run passed, each with its pass count
 MAX_OUTSIDE = 50          # out_of_scope paths
 MAX_TRIGGERS = 10         # the newest triggers in the digest
 
@@ -100,13 +113,15 @@ TEST_MODULES = frozenset({"pytest", "unittest"})
 _SEGMENT = re.compile(r"&&|\|\||;|\|")
 _NODE = re.compile(r"^(?:FAILED|ERROR) (\S+)")
 _PASSED = re.compile(r"^PASSED (\S+)|^(\S+::\S+) PASSED\b")
+# pytest's summary line ("1 failed, 3 passed in 0.12s", "3 passed", "2 errors"): its counts.
+_SUMMARY_PART = re.compile(r"(\d+) (passed|failed|errors?|skipped|xfailed|xpassed|deselected|warnings?)\b")
 
 
 def empty_state(*, started_at: float) -> dict[str, Any]:
     """The digest's state, kept inside the meter's state under ``progress``."""
     return {"v": STATE_VERSION, "started_at": float(started_at), "seen": [], "files": [], "files_n": 0,
             "outside": [], "commands_n": 0, "last_command": None, "tests_n": 0, "last_test": None,
-            "recent_tests": [], "passed": [], "green": [], "idle_since": None, "idle_fired": False,
+            "recent_tests": [], "passed": [], "green": [], "streak": None, "idle_since": None, "idle_fired": False,
             "ended": False, "fired": {}, "suppressed": {}, "triggers": [], "trigger_seq": 0,
             "mark": {"steps": 0, "files_n": 0, "commands_n": 0, "tests_n": 0, "trigger_seq": 0}}
 
@@ -127,7 +142,13 @@ def valid_state(state: Any) -> bool:
             and isinstance(state["suppressed"], dict) and isinstance(state["mark"], dict)
             and isinstance(state["idle_fired"], bool) and isinstance(state["ended"], bool)
             and all(isinstance(x, str) and len(x) <= MAX_PATH + 3
-                    for k in ("seen", "files", "outside", "passed", "green") for x in state[k]))
+                    for k in ("seen", "files", "outside", "passed") for x in state[k])
+            and all(isinstance(g, list) and len(g) == 2 and isinstance(g[0], str) and len(g[0]) <= MAX_PATH + 3
+                    and (g[1] is None or (isinstance(g[1], int) and not isinstance(g[1], bool)))
+                    for g in state["green"])
+            and all(isinstance(t, dict) and isinstance(t.get("failing"), (list, type(None)))
+                    and len(t.get("failing") or []) <= MAX_FAILING for t in state["recent_tests"])
+            and (state["streak"] is None or isinstance(state["streak"], dict)))
 
 
 class Tracker:
@@ -202,12 +223,12 @@ class Tracker:
                     text = rel
                     break
         text = to_posix(text)
-        while text.startswith("./"):
-            text = text[2:]
+        if text:  # one spelling per file: `src/b/./x.py` is `src/b/x.py`, and `src/a/../b/x.py` is `src/b/x.py`
+            text = posixpath.normpath(text)
         return text if len(text) <= MAX_PATH else text[:MAX_PATH] + "..."
 
     def _in_scope(self, rel: str) -> bool:
-        if _is_absolute(rel) or rel.startswith("../") or rel.endswith("..."):
+        if _is_absolute(rel) or rel == ".." or rel.startswith("../") or rel.endswith("..."):
             return False
         return glob_any(rel, self.scope_paths or [])
 
@@ -227,15 +248,26 @@ class Tracker:
             return
         output = _output(st)
         failing, passing = _names(output)
+        passed_n = _passed_count(output)
         ok = None if exit_code is None else exit_code == 0
         state["tests_n"] += 1
         key = _cut(" ".join(command.split()), MAX_PATH)
-        prior_green = key in state["green"]
+        green = {g[0]: g[1] for g in state["green"]}
         regression = False
         if ok is False:
-            regression = prior_green or (failing is not None and any(n in state["passed"] for n in failing))
+            named = failing is not None and any(n in state["passed"] for n in failing)
+            if key in green:
+                was = green[key]
+                # Fewer passing than the last green run of this command: something that passed fails now. As many
+                # passing: a test was added and fails (red before green). No count on either side: the green run is
+                # the evidence.
+                fewer = True if (was is None or passed_n is None) else passed_n < was
+                regression = named or fewer
+            else:
+                regression = named
+            state["green"] = [g for g in state["green"] if g[0] != key]  # its next red run is no new regression
         if ok is True:
-            state["green"] = ([g for g in state["green"] if g != key] + [key])[-MAX_GREEN:]
+            state["green"] = ([g for g in state["green"] if g[0] != key] + [[key, passed_n]])[-MAX_GREEN:]
         newly_passing = [n for n in passing if n not in state["passed"]]
         if ok is True and state["recent_tests"]:  # a green run passes everything the last red run of it named
             for t in state["recent_tests"]:
@@ -247,8 +279,27 @@ class Tracker:
                               "failing": (UNKNOWN if failing is None else failing[:MAX_FAILING]) if ok is False else [],
                               "failing_n": (None if failing is None else len(failing)) if ok is False else 0,
                               "at": at}
-        record = {"command": key, "ok": ok, "failing": None if failing is None else sorted(failing),
-                  "newly_passing": bool(newly_passing), "regression": regression}
+        # The failing set, bounded: its first names, its count and a digest of the whole set (what "the same failing
+        # set" compares), so three huge red runs never push the meter's state past its cap.
+        ordered = None if failing is None else sorted(failing)
+        digest = None if ordered is None else hashlib.sha256("\n".join(ordered).encode("utf-8")).hexdigest()
+        stuck = False
+        streak = state["streak"]
+        if ok is False:
+            if streak is not None and streak["command"] == key and streak["sha"] == digest and not newly_passing:
+                streak = {**streak, "n": int(streak["n"]) + 1}
+            else:
+                streak = {"command": key, "sha": digest, "n": 1, "woke": False}
+            if regression:
+                streak["woke"] = True
+            elif streak["n"] >= STUCK_RUNS and not streak["woke"]:
+                stuck = streak["woke"] = True
+        else:
+            streak = None
+        state["streak"] = streak
+        record = {"command": key, "ok": ok, "failing": None if ordered is None else ordered[:MAX_FAILING],
+                  "failing_n": None if ordered is None else len(ordered), "newly_passing": bool(newly_passing),
+                  "regression": regression, "stuck": stuck, "woke": False}
         state["recent_tests"] = (state["recent_tests"] + [record])[-STUCK_RUNS:]
 
     # ------------------------------------------------------------------ triggers and the digest
@@ -264,13 +315,13 @@ class Tracker:
                 state["ended"] = True
                 found.append((RUN_ENDED, {}))
         else:
-            last = state["recent_tests"][-1] if state["recent_tests"] else None
-            if last is not None and not last.get("woke"):
-                last["woke"] = True
-                if last["ok"] is False and last["regression"]:
-                    found.append((TEST_FAILED, {"kind": "regression", "command": last["command"][:MAX_COMMAND]}))
-                elif last["ok"] is False and _stuck(state["recent_tests"]):
-                    found.append((TEST_FAILED, {"kind": "stuck", "command": last["command"][:MAX_COMMAND]}))
+            for t in state["recent_tests"]:  # every run passed since the last poll, in order (parallel calls too)
+                if t.get("woke"):
+                    continue
+                t["woke"] = True
+                if t["ok"] is False and (t["regression"] or t.get("stuck")):
+                    found.append((TEST_FAILED, {"kind": "regression" if t["regression"] else "stuck",
+                                                "command": t["command"][:MAX_COMMAND]}))
             for path in state["outside"]:
                 if path not in state["fired"].get("out_of_scope_paths", []):
                     state["fired"]["out_of_scope_paths"] = state["fired"].get("out_of_scope_paths", []) + [path]
@@ -375,20 +426,24 @@ def _names(output: str | None) -> tuple[list[str] | None, list[str]]:
     return (failing or None), passing
 
 
+def _passed_count(output: str | None) -> int | None:
+    """The passed count of pytest's last summary line ("1 failed, 3 passed in 0.1s"): 0 when that line names no passed
+    tests, None with no summary line (another runner, or output cut short)."""
+    if output is None:
+        return None
+    for line in reversed(output.splitlines()):
+        parts = _SUMMARY_PART.findall(line)
+        if any(kind in ("passed", "failed") or kind.startswith("error") for _, kind in parts):
+            return next((int(n) for n, kind in parts if kind == "passed"), 0)
+    return None
+
+
 def _output(st: Mapping[str, Any]) -> str | None:
     content = st.get("content")
     if not isinstance(content, list):
         return None
     texts = [str(c["text"]) for c in content if isinstance(c, Mapping) and isinstance(c.get("text"), str)]
     return "\n".join(texts) if texts else None
-
-
-def _stuck(recent: list[dict[str, Any]]) -> bool:
-    if len(recent) < STUCK_RUNS:
-        return False
-    first = recent[0]
-    return all(t["ok"] is False and t["command"] == first["command"] and t["failing"] == first["failing"]
-               and not t["newly_passing"] for t in recent)
 
 
 def _completed_s(part: Mapping[str, Any]) -> float | None:

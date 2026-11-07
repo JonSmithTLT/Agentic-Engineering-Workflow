@@ -72,6 +72,7 @@ from aew.harness.contract import (
     UNAVAILABLE_TOOLS,
     LaunchContract,
 )
+from aew.harness.harness_capabilities import PARTIAL as CAP_PARTIAL
 from aew.harness.harness_capabilities import YES as CAP_YES
 from aew.harness.harness_capabilities import Support
 from aew.harness.opencode import capabilities, projection
@@ -309,8 +310,9 @@ class OpenCodeAdapter(HarnessAdapter):
         "read_usage": Support(CAP_YES, "polled: the meter (`session.list`, `session.message.list`)"),
         "attach_to_operator_session": Support(CAP_YES, "the Lead runs on AEW's OpenCode server, which the broker "
                                                        "serves"),
-        "mark_non_operator_input": Support(CAP_YES, "text only: the wake's fixed header (`session.prompt` metadata "
-                                                    "is not shown to the model)"),
+        "mark_non_operator_input": Support(CAP_PARTIAL, "text only: the wake's fixed header, which the model reads "
+                                                        "as text; `session.prompt` metadata is not shown to it, and "
+                                                        "there is no role of its own"),
     }
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

@@ -50,6 +50,20 @@ def test_the_codex_column_holds_pr0s_measured_answers():
     assert all(codex[c].status == H.YES for c in ("wake_idle_session", "steer_running_turn", "interrupt_turn"))
 
 
+def test_opencodes_non_operator_mark_is_declared_as_the_text_header_it_is():
+    """The design records OpenCode's mark as "text only": a header the model reads, not a role of its own (Codex's
+    `thread/inject_items` gives one). The declaration says so, rather than `yes`."""
+    mark = OpenCodeAdapter.harness_capabilities["mark_non_operator_input"]
+    assert mark.status == H.PARTIAL and "text only" in mark.how
+    assert H.CODEX["mark_non_operator_input"].status == H.YES
+
+
+def test_a_status_outside_yes_partial_and_gap_fails_the_check():
+    columns = {k: dict(v) for k, v in H.declarations().items()}
+    columns[H.OPENCODE]["read_usage"] = H.Support("maybe", "unsure")
+    assert H.problems(columns) == ["opencode: read_usage has status 'maybe', not yes, partial or gap"]
+
+
 def test_every_feature_needs_only_named_capabilities():
     for feature, (needs, _) in H.FEATURES.items():
         assert needs and set(needs) <= set(H.CAPABILITIES), feature

@@ -148,6 +148,25 @@ def run(cwd: str | None = None) -> dict[str, Any]:
     }
 
 
+def readiness_findings(engine: Any) -> list[str]:
+    """The readiness rows (:func:`aew.engine.api.readiness_checks`) a start shows: each FAIL and WARN, as one entry
+    with its cause and fix; empty when every row passes. It never refuses and never raises: a policy it cannot read is
+    the start's own to report (register E125)."""
+    from aew.engine.api import readiness_checks
+
+    try:
+        execution, _ = engine.execution_policy()
+        rows = readiness_checks(execution)
+    except Exception:  # a start's own checks report an unreadable policy; these entries only add to them
+        return []
+    return [f"readiness {r['status']} ({r['check']}): {r['detail']}" for r in rows if r["status"] in ("FAIL", "WARN")]
+
+
+def readiness_lines(engine: Any, who: str) -> str:
+    """:func:`readiness_findings` as lines after ``who``, for a start that prints to the terminal (``aew opencode``)."""
+    return "".join(f"{who}: {finding}\n" for finding in readiness_findings(engine))
+
+
 def render(report: dict[str, Any]) -> str:
     width = max(len(c["check"]) for c in report["checks"])
     lines = [f"aew {report['aew_version']} (spec set {report['spec_set']})"]

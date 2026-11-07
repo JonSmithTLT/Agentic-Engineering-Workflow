@@ -338,17 +338,7 @@ class ProjectAdmin:
         except Exception as exc:
             add("policy:execution", "FAIL", _with_violations(exc))
         else:
-            # Before any launch, and structural only (no provider is called): each profile's model as the harness
-            # will be given it, and the provider variables a launch from this environment would need (ADR-0010
-            # amendment 2026-10-11; the M4 user acceptance test's doubled model id and silently dropped key).
-            if execution is not None and execution.get("profiles"):
-                add("model-refs", *_model_refs_doctor(execution))
-            if execution is not None and execution.get("provider_env"):
-                add("provider-env", *_provider_env_doctor(execution))
-            if execution is not None and execution.get("profiles"):
-                found = _provider_key_doctor(execution)
-                if found is not None:
-                    add("provider-key", *found)
+            checks += readiness_checks(execution)
         # F25 (the cost and usage ledger design v0.2 R4, R6): the price table, the snapshots usage records name (the
         # hot state and the recent ring: a bounded read; `aew usage show --all` covers the whole archive), and the
         # hot runs' copy state.
@@ -406,6 +396,34 @@ def _with_violations(exc: Exception) -> str:
     """An error's message with the violations it lists, so a doctor line names the field and the fix."""
     found = (getattr(exc, "details", None) or {}).get("violations")
     return str(exc) + (": " + "; ".join(map(str, found)) if isinstance(found, list) and found else "")
+
+
+def readiness_checks(execution: dict[str, Any] | None) -> list[dict[str, str]]:
+    """Readiness: what a launch from this environment would meet in the execution policy, before any launch, and
+    structural only (no provider is called): each profile's model as the harness will be given it, the provider
+    variables, and each profile's provider key (ADR-0010 amendment 2026-10-11; the M4 user acceptance test's doubled
+    model id and silently dropped key). Each row is a launch's own check, and a FAIL names its cause and its fix.
+
+    The one owner of these rows (register E125; V-01's step 11, which the operator's decision of 2026-11-02 makes a
+    local readiness surface): ``aew doctor`` shows them, and ``aew opencode`` and ``aew harness launch`` print each
+    FAIL and WARN at their start (:func:`aew.doctor.readiness_lines`). They add no refusal of their own: a launch
+    refuses where its own check fails, as before."""
+    if execution is None:
+        return []
+    rows: list[dict[str, str]] = []
+    if execution.get("profiles"):
+        rows.append(_row("model-refs", *_model_refs_doctor(execution)))
+    if execution.get("provider_env"):
+        rows.append(_row("provider-env", *_provider_env_doctor(execution)))
+    if execution.get("profiles"):
+        found = _provider_key_doctor(execution)
+        if found is not None:
+            rows.append(_row("provider-key", *found))
+    return rows
+
+
+def _row(check: str, status: str, detail: str) -> dict[str, str]:
+    return {"check": check, "status": status, "detail": detail}
 
 
 def _model_refs_doctor(policy: dict[str, Any]) -> tuple[str, str]:

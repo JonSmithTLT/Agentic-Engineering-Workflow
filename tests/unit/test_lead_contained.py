@@ -671,13 +671,19 @@ def test_the_lead_is_refused_before_a_seat_or_sandbox_when_no_provider_is_relaye
 # ---------------------------------------------------------------- where the start reaches the tools AEW brings
 
 def _start_order(tmp_path: Path, monkeypatch: Any, *, contained_: bool, environ: dict[str, str],
-                 provider_env: list[str], credential: bool = True) -> list[Any]:
+                 provider_env: list[str], credential: bool = True,
+                 execution: dict[str, Any] | None = None) -> list[Any]:
     """Drive `lead.run` to its session with the steps that matter recorded in order: the start line, the credential
     check, the tools hook (``consent.at_lead_start``, with its ``asking``), the session that takes the seat and builds
     the sandbox, and a refusal. Synthetic environment only: no terminal read, no network, no download."""
+    from aew import doctor
     from aew.capability import consent
 
     calls: list[Any] = []
+    readiness = doctor.readiness_lines
+    monkeypatch.setattr(doctor, "readiness_lines",
+                        lambda engine, who: (lambda text: calls.append(("readiness", text)) or text)(
+                            readiness(engine, who)))
     monkeypatch.setattr(lead, "check_version", lambda: "2.0.18")
     monkeypatch.setattr(lead, "command", lambda engine, extra: ["opencode", "--standalone"])
     monkeypatch.setattr(lead, "guide_of", lambda engine: "")
@@ -696,7 +702,8 @@ def _start_order(tmp_path: Path, monkeypatch: Any, *, contained_: bool, environ:
     monkeypatch.setattr(lead_broker, "run_session", lambda *a, **k: calls.append("session") or {})
     monkeypatch.setattr(consent, "at_lead_start", lambda *a, **k: calls.append(("tools", k.get("asking", True))))
     monkeypatch.setattr(os, "environ", {"HOME": str(tmp_path), "PATH": "/usr/bin", **environ})
-    engine = SimpleNamespace(execution_policy=lambda: (None, None), repo_root=tmp_path, aew_root=tmp_path / ".aew")
+    engine = SimpleNamespace(execution_policy=lambda: (execution, None), repo_root=tmp_path,
+                             aew_root=tmp_path / ".aew")
     try:
         lead.run(engine, acquire=False, session_label=None, keep_seat=False, provider_env=provider_env, extra_args=[],
                  print_config=False)
@@ -710,7 +717,8 @@ def test_a_contained_start_the_provider_refusal_ends_never_reaches_the_tools_hoo
     """Review of #343's merge, m1: #340's refusal comes after the start line and before the tools AEW brings, so a
     start that cannot run is never asked about downloads."""
     calls = _start_order(tmp_path, monkeypatch, contained_=True, environ={}, provider_env=[])
-    assert calls == ["credential", "announce", ("refused", "no provider is relayed to the contained Lead")], calls
+    assert calls == ["credential", ("readiness", ""), "announce",
+                     ("refused", "no provider is relayed to the contained Lead")], calls
 
 
 def test_a_contained_start_that_proceeds_asks_about_the_tools_after_its_checks_and_before_its_session(
@@ -719,11 +727,30 @@ def test_a_contained_start_that_proceeds_asks_about_the_tools_after_its_checks_a
     line and refusals, and before the session takes the seat and builds the sandbox."""
     calls = _start_order(tmp_path, monkeypatch, contained_=True, environ={"OPENAI_API_KEY": KEYS["openai"]},
                          provider_env=["OPENAI_API_KEY"])
-    assert calls == ["credential", "announce", ("tools", True), "session"], calls
+    assert calls == ["credential", ("readiness", ""), "announce", ("tools", True), "session"], calls
+
+
+@pytest.mark.parametrize("contained_", [True, False], ids=["contained", "uncontained"])
+def test_aew_opencode_prints_each_failing_readiness_row_with_its_fix_first_and_starts_as_before(
+        tmp_path, monkeypatch, at_a_terminal, capsys, contained_):
+    """E125: what a launch from this terminal would meet (a provider variable the policy names, unset here) is
+    printed when the operator starts the Lead, with its fix, right after the credential check (a missing credential
+    still refuses before any start line, #340); it refuses nothing the start did not refuse before (the Lead's own
+    launches would be refused, naming the same). Names only, never a value."""
+    environ = {"OPENAI_API_KEY": KEYS["openai"]}
+    calls = _start_order(tmp_path, monkeypatch, contained_=contained_, environ=environ,
+                         provider_env=["OPENAI_API_KEY"], execution={"provider_env": ["VUAT_UNSET_KEY"]})
+    readiness = calls[calls.index("credential") + 1]
+    assert readiness[0] == "readiness" and readiness[1].startswith(
+        "aew opencode: readiness FAIL (provider-env): a harness launch from this environment is refused: "
+        "VUAT_UNSET_KEY is not set in this environment: set VUAT_UNSET_KEY in the terminal you start AEW from"), calls
+    assert calls[-1] == "session", calls  # the start went on to its session
+    assert readiness[1] in capsys.readouterr().err
+    assert KEYS["openai"] not in readiness[1]
 
 
 @pytest.mark.parametrize("credential, expected", [
-    (True, ["precheck", "credential", ("tools", False), "session"]),
+    (True, ["precheck", "credential", ("readiness", ""), ("tools", False), "session"]),
     (False, ["precheck", "credential", ("refused", "synthetic: no Lead credential")]),
 ])
 def test_an_uncontained_start_says_its_tools_line_only_after_the_credential_check(tmp_path, monkeypatch,

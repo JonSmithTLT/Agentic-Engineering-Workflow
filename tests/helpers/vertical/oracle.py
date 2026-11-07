@@ -116,7 +116,10 @@ STEPS: tuple[Step, ...] = (
     Step(10, "reopen", _s("V2"), ("L03", "U01", "C18", "L07"),
          (Wire("L03", "REATTACH_LEAD", G3, "A-25"), Read("U01", "/v1/read/waiting"), Read("U01", "/v1/read/attention"),
           Read("C18", "/v1/read/continuation-state/{work_id}"), Read("L07", "/v1/read/attachments")), ("G3",)),
-    Step(11, "preflight", _s("V3"), ("P03",), (Read("P03", "/v1/read/capabilities"),), ()),
+    # The operator's decision of 2026-11-02 amends row 11: a local readiness surface with the same regexes and
+    # `failing_entries`, and a driver that asserts the diagnosis; the surface is `aew doctor` (the Lead's choice, which
+    # the record gives it; register E125). P03's read (`/v1/read/capabilities`) stays owed, in HOLD-12.
+    Step(11, "preflight", _s("V3"), ("P03",), (Local("P03", None, ("doctor",)),), ()),
     Step(12, "setting", _s("V4"), ("P04", "P14"), (Wire("P14", "ADOPT_MANIFEST_EDIT", G3, "A-39"),), ("G3",)),
     # A raised mode lapses when its Lead generation ends (I6-R01), and a reopen starts a new one, so a steering-on path
     # raises after its open and again after its reopen, one PIN each (the designer's ruling of 2026-10-30).

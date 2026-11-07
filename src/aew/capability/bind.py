@@ -89,12 +89,20 @@ def plan(directory: Path | None = None, *, state: dict[str, Any] | None = None,
                      for name, rec in sorted(records.shipped().items()))
     facts = status.host_facts()
     tools = []
-    for name, entry in sorted(status.effective(state).items()):
+    for name, entry in sorted(status.effective(state).items(), key=_needed_first):
         if names is None or name in names:
             tool = _tool(name, entry, state, facts, directory)
             if tool is not None:
                 tools.append(tool)
     return tuple(tools)
+
+
+def _needed_first(item: tuple[str, dict[str, Any]]) -> tuple[bool, str]:
+    """The plan's order, which the sandbox's self-test checks in, under one budget for every tool (``probe``'s
+    ``TOOLS_BUDGET_S``): the tools the harness needs first, then by name, so an optional tool never spends what a
+    needed one's check needs (review of #349, m1)."""
+    name, entry = item
+    return not records.needed(entry["record"] or {}), name
 
 
 def _tool(name: str, entry: dict[str, Any], state: dict[str, Any], facts: dict[str, str | None],

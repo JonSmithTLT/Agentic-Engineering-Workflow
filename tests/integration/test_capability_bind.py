@@ -569,7 +569,10 @@ def test_doctor_shows_what_its_sandbox_found(world, monkeypatch):
 
 
 def test_doctor_names_a_missing_provider_with_its_fix_and_stays_a_warning(world, monkeypatch):
-    """CAPR-Q06, in process: a host copy absent and present (the test plants both, whatever this host has)."""
+    """CAPR-Q06, in process: a host copy absent and present (the test plants both, whatever this host has). The
+    stand-in is needed here: an optional tool the operator never chose shares doctor's one UNAVAILABLE line instead
+    (review of #349, m3; test_capability_register.py)."""
+    world.reg["shipped"]["fake"].update(needed=True, degrades="the stand-in's search")
     C.doctor_checks({"containment": {"network": {"mode": "isolated"}}}, "unsupported")
     row = next(c for c in doctor.environment_checks() if c["check"] == "capability:FAKE_SEARCH")
     assert row["status"] == "WARN" and "not on this host" in row["detail"]

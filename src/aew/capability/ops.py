@@ -88,6 +88,7 @@ def _provider(name: str, entry: dict[str, Any], state: dict[str, Any], facts: di
             note = (f"this host's {found} does not serve: the operator turned host copies off (`aew capability "
                     "host-copies on` turns them on)")
     return {"name": name, "layer": entry["layer"], "command": (record or {}).get("command"),
+            "needed": records.needed(record) if record is not None else False,
             "version": (record or {}).get("version"), "aew_copy": aew.describe(),
             "host_copy": host.describe() if host is not None else None, "note": note,
             "serving": host if host is not None else aew, "aew": aew, "limitations": limits}
@@ -145,12 +146,27 @@ def render(view: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+# Why an optional tool's AEW copy is absent that is the operator's own choice: never chosen, or declined
+NOT_CHOSEN = frozenset({"not_installed", "declined"})
+OPTIONAL_LINE = "capability:optional"  # doctor's one line for the optional tools the operator did not choose
+
+
 def doctor_checks() -> list[tuple[str, str, str]]:
     """``aew doctor``'s capability lines, read from the same listing (S01-21): PASS where the capability is usable,
-    otherwise WARN, never FAIL, since no provider is required for AEW to run (CAPR-12)."""
+    otherwise WARN, never FAIL, since no provider is required for AEW to run (CAPR-12). An optional tool that is
+    absent only because the operator never chose it or declined it is not a warning: those share one UNAVAILABLE line
+    that names each and how to download it (review of #349, m3), so a WARN stays for a needed tool, a refused pin, a
+    failed check or a failed fetch."""
     view = listing()
     out = []
+    optional = {p["name"]: p for p in view["providers"] if not p.get("needed")}
+    chose = []
     for c in view["capabilities"]:
+        p = optional.get(c["provider"])
+        if p is not None and c["copy"] == status.AEW_COPY and c["observed_status"] == status.UNAVAILABLE \
+                and p["aew"].reason in NOT_CHOSEN:
+            chose.append(f"{p['command']} ({c['id']}; {status.NOT_SERVING_WHY[p['aew'].reason]})")
+            continue
         who = (f"served by {c['provider']} {c['version']}, AEW's pinned copy at {c['path']}" if c["pinned"] and
                c["observed_status"] in status.USABLE else
                f"served by the host's {c['path']} ({c['provider']}), unpinned" if c["copy"] == status.HOST_COPY else
@@ -158,6 +174,9 @@ def doctor_checks() -> list[tuple[str, str, str]]:
         detail = f"{c['observed_status']}: {who}" + (f"; {c['cause']}" if c["cause"] else "") \
             + (f"; checked {c['checked_at']}" if c["checked_at"] else "") + (f"; fix: {c['fix']}" if c["fix"] else "")
         out.append((f"capability:{c['id']}", "PASS" if c["observed_status"] in status.USABLE else "WARN", detail))
+    if chose:
+        out.append((OPTIONAL_LINE, "UNAVAILABLE", f"optional tools not on this host, as the operator chose: "
+                    f"{', '.join(chose)}; `{status.FETCH} NAME` downloads one, and `aew capability list` shows each"))
     for o in view["overrides"]:
         out.append(("capability-records", "WARN", f"the operator's record {o['provider']} overrides AEW's shipped "
                     "record, which this AEW changed; the override is kept: " + "; ".join(o["differences"])))

@@ -33,11 +33,21 @@ CHUNK = 1 << 16
 
 TAR_GZ, ZIP, EXECUTABLE = "tar.gz", "zip", "executable"
 ARCHIVES = {".tar.gz": TAR_GZ, ".zip": ZIP, ".whl": ZIP}  # a source's ending, and the archive it names
+# Archives AEW does not read: a source ending so is refused, never taken for a bare executable (review of #349, m2)
+UNREAD = (".tar.xz", ".tgz", ".tar.bz2", ".tar.zst", ".7z", ".gz", ".xz", ".bz2", ".zst", ".rar", ".tar")
 
 
 def kind(source: str) -> str:
-    """What a payload's source downloads: an archive (:data:`ARCHIVES`), or else a bare executable."""
-    return next((k for ending, k in ARCHIVES.items() if source.endswith(ending)), EXECUTABLE)
+    """What a payload's source downloads: an archive (:data:`ARCHIVES`), or else a bare executable. Endings compare
+    without case (``.ZIP`` is a zip)."""
+    low = source.lower()
+    return next((k for ending, k in ARCHIVES.items() if low.endswith(ending)), EXECUTABLE)
+
+
+def unread_archive(source: str) -> str | None:
+    """The ending of an archive AEW does not read (:data:`UNREAD`) that ``source`` has, or None."""
+    low = source.lower()
+    return None if kind(source) != EXECUTABLE else next((e for e in UNREAD if low.endswith(e)), None)
 
 
 class PinMismatch(IntegrityError):
@@ -128,6 +138,8 @@ def member(data: bytes, payload: dict[str, Any]) -> bytes:
     """The record's one member of a checked archive, a regular file, checked against the executable's pin. A bare
     executable's download is the executable: it is checked against the executable's pin as it stands."""
     if kind(payload["source"]) == EXECUTABLE:
+        # The second check of these bytes: every caller checked them against the download's pin, which validation
+        # makes the executable's own, so this fails only if a caller skips that check (review of #349, n1)
         return _pinned_body(data, payload, "the downloaded executable")
     name = payload["member"]
     try:

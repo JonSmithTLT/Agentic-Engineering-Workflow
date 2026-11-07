@@ -22,8 +22,10 @@ download before anything ran. For Linux x86_64 each runs on the Rocky 8 family (
 fd, jq, yq and Universal Ctags are static; ast-grep's release build needs glibc 2.34, so it is taken from the
 project's own manylinux_2_28 wheel, which needs 2.28. jq is released as a bare executable. Universal Ctags publishes
 no release build for Linux: both its payloads are the project's own nightly builds of commit 8249436 (the Linux one in
-ctags-nightly-build, the Windows one in ctags-win32), whose source, under GPL-2.0, is that commit's
-(https://github.com/universal-ctags/ctags/tree/82494361bb3e7d4f7cf1d2bdc0d0e9001c926e45). Its version check asks
+ctags-nightly-build, the Windows one in ctags-win32), whose source, under GPL-2.0 (its COPYING; most files allow a
+later version, and a few do not, so the whole is GPL-2.0-only), is that commit's
+(https://github.com/universal-ctags/ctags/tree/82494361bb3e7d4f7cf1d2bdc0d0e9001c926e45); carrying that source in the
+operator's offline bundle is the bundle's design, still owed. Its version check asks
 only that it is Universal Ctags: the build prints 6.2.0, which is not the commit, and the payload's pin is.
 """
 
@@ -227,7 +229,7 @@ providers:
     effect: read_only
     path: own_name
     evidence: source_text
-    license: GPL-2.0
+    license: GPL-2.0-only
     needs: {network: false, credentials: false, providers: []}
     version: 6.2.0+g8249436
     payloads:
@@ -340,6 +342,10 @@ def _payload_problems(payload: dict[str, Any]) -> list[str]:
     """A payload's member, by what its source downloads (``payload.kind``): an archive names the one member it takes,
     and a bare executable names none, its download being the executable, so its two pins are one."""
     member = payload.get("member")
+    unread = P.unread_archive(payload["source"])
+    if unread is not None:
+        return [f"its source is a {unread} archive, which AEW does not read: AEW reads only .tar.gz, .zip and .whl "
+                "archives, and bare executables; give one of those"]
     if P.kind(payload["source"]) != P.EXECUTABLE:
         if member is None:
             return ["its source is an archive, so it names the executable in it (`member`)"]

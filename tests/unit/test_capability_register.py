@@ -504,10 +504,47 @@ def test_the_first_bundle_ships_each_member_optional_under_an_unambiguous_name_f
 @pytest.mark.parametrize("source, kind", [
     ("https://h/a/x-1.0.tar.gz", P.TAR_GZ), ("https://h/a/x-1.0.zip", P.ZIP), ("https://h/a/x-1.0-py3-none.whl", P.ZIP),
     ("https://h/a/x-linux-amd64", P.EXECUTABLE), ("https://h/a/x-windows-amd64.exe", P.EXECUTABLE),
-    ("https://h/a/x-1.0.tar.xz", P.EXECUTABLE),  # not an archive AEW reads: as an executable its pin refuses it
+    ("https://h/a/x-1.0.ZIP", P.ZIP), ("https://h/a/x-1.0.Tar.Gz", P.TAR_GZ),  # endings compare without case
+    ("https://h/a/x-1.0.tar.xz", P.EXECUTABLE),  # not an archive AEW reads: its record is refused (below)
 ])
 def test_a_payloads_kind_is_its_sources_ending(source, kind):
     assert P.kind(source) == kind
+
+
+@pytest.mark.parametrize("ending", [".tar.xz", ".tgz", ".tar.bz2", ".tar.zst", ".7z", ".gz", ".XZ", ".bz2", ".rar",
+                                    ".tar"])
+def test_an_archive_aew_does_not_read_is_refused_never_taken_for_a_bare_executable(reg, ending):
+    """Review of #349, m2: with the download's own digest as both pins, such a record would validate as a bare
+    executable and fail only at its health check, naming the wrong cause; it is refused at validation, saying what
+    AEW reads. The control: the same payload as a bare executable validates."""
+    record = copy.deepcopy(reg["shipped"]["fake"])
+    record["payloads"][KEY] = _bare(reg["body"])
+    records.validate({"schema": records.SCHEMA, "providers": {"fake": copy.deepcopy(record)}}, source="test")
+    record["payloads"][KEY]["source"] += ending
+    with pytest.raises(errors.ValidationFailed) as exc:
+        records.validate({"schema": records.SCHEMA, "providers": {"fake": record}}, source="test")
+    assert "AEW reads only .tar.gz, .zip and .whl archives" in json.dumps(exc.value.to_dict())
+
+
+def test_a_bare_payload_off_its_pin_is_refused_by_member_itself():
+    """Review of #349, n1: the second check of a bare download, for a caller that skipped the first."""
+    pinned = {"source": "https://example.invalid/fake-linux-amd64", "archive_sha256": _sha(GOOD),
+              "archive_size": len(GOOD), "sha256": _sha(GOOD), "size": len(GOOD)}
+    assert P.member(GOOD, pinned) == GOOD
+    with pytest.raises(P.PinMismatch) as exc:
+        P.member(GOOD + b"x", pinned)
+    assert exc.value.details["reason"] == "payload_pin"
+
+
+def test_the_sandbox_checks_the_needed_tools_first(tmp_path, monkeypatch):
+    """Review of #349, m1: the self-test checks the plan's tools in order, under one budget for all of them, so
+    ripgrep, the one tool the harness needs, comes before the optional five, though it does not sort first by name."""
+    from aew.capability import bind
+
+    monkeypatch.setattr(store, "ROOT_OVERRIDE", tmp_path / "register")
+    names = [t.provider for t in bind.plan()]
+    assert names[0] == "ripgrep" and sorted(names) != names, names
+    assert names[1:] == sorted(n for n in records.shipped() if not records.needed(records.shipped()[n]))
 
 
 def _bare(body: bytes, **change: Any) -> dict[str, Any]:
@@ -1083,17 +1120,45 @@ def test_a_fetch_reads_no_more_than_the_pinned_size_and_checks_the_pin(monkeypat
 
 
 def test_doctor_names_each_capability_pass_when_usable_and_warn_never_fail_otherwise(reg):
-    """CAPR-12: no provider is required, so a missing one is a WARN with its cause and fix, never a FAIL."""
+    """CAPR-12: no provider is required, so a missing needed one is a WARN with its cause and fix, never a FAIL."""
     from aew import doctor
 
+    reg["shipped"]["fake"].update(needed=True, degrades="the stand-in's search")
     rows = {c["check"]: c for c in doctor.environment_checks() if c["check"].startswith("capability:")}
-    assert rows["capability:FAKE_SEARCH"]["status"] == "WARN"
+    assert rows["capability:FAKE_SEARCH"]["status"] == "WARN" and ops.OPTIONAL_LINE not in rows
     assert rows["capability:FAKE_SEARCH"]["detail"].startswith("UNAVAILABLE:")
     assert "fix: `aew capability fetch fake` downloads it" in rows["capability:FAKE_SEARCH"]["detail"]
     _import(reg)
     rows = {c["check"]: c for c in doctor.environment_checks() if c["check"].startswith("capability:")}
     assert rows["capability:FAKE_SEARCH"]["status"] == "PASS"
     assert rows["capability:FAKE_SEARCH"]["detail"].startswith("FUNCTIONAL_ONLY: served by fake 1.0, AEW's pinned")
+
+
+def test_doctor_gives_optional_tools_the_operator_did_not_choose_one_line_not_a_warning_each(reg, monkeypatch):
+    """Review of #349, m3: an optional tool absent because the operator never chose it, or declined it, is not a
+    warning: such tools share one UNAVAILABLE line naming each and `aew capability fetch NAME`. A failed fetch of one
+    is a warning again, and a needed one always is (the test above)."""
+    from aew.capability import consent
+
+    def rows() -> dict[str, tuple[str, str]]:
+        return {n: (s, d) for n, s, d in ops.doctor_checks()}
+
+    got = rows()
+    assert "capability:FAKE_SEARCH" not in got, got
+    level, detail = got[ops.OPTIONAL_LINE]
+    assert level == "UNAVAILABLE" and "fake (FAKE_SEARCH; it is not installed on this host)" in detail, detail
+    assert "`aew capability fetch NAME` downloads one" in detail
+    consent.decline([o for o in consent.offers() if o.provider == "fake"])
+    level, detail = rows()[ops.OPTIONAL_LINE]
+    assert level == "UNAVAILABLE" and "the operator declined to download it" in detail, detail
+
+    def unreachable(url: str, timeout: float) -> Any:
+        raise OSError("no route to host")
+
+    monkeypatch.setattr("urllib.request.urlopen", unreachable)
+    ops.fetch(["fake"])
+    got = rows()
+    assert got["capability:FAKE_SEARCH"][0] == "WARN" and ops.OPTIONAL_LINE not in got, got
 
 
 def test_doctor_names_the_harness_a_host_prerequisite(tmp_path, monkeypatch):

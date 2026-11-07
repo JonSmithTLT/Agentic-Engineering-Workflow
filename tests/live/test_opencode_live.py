@@ -1,9 +1,10 @@
-"""Live lane: the harness conformance scenarios against a real OpenCode 2.0.18 server (opt-in: ``--live``).
+"""Live lane: the harness conformance scenarios against a real OpenCode server (opt-in: ``--live``).
 
 The real adapter starts a real private ``opencode-cli serve --stdio`` per run, with private XDG state, and never
 touches the operator's OpenCode state or Desktop service. Scenario steps run through the real session's shell
-endpoint (``opencode_scripted.py``); ``model_step`` is a real prompt to a free model
-(``AEW_LIVE_OPENCODE_MODEL``, default below). Run it with::
+endpoint (``opencode_scripted.py``); ``model_step`` is a real prompt to the run's model: the scripted model on loopback
+when ``AEW_LIVE_OPENCODE_MODEL`` is unset (keyless: no key, no provider), else the operator's keyed model for the run
+(``harness_conformance.OpenCodeDriver``). Run it with::
 
     pytest --live tests/live -p no:xdist -q
 """
@@ -28,7 +29,7 @@ pytestmark = pytest.mark.skipif(not os.environ.get(adapter.BIN_ENV) and adapter.
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s.name)
-def test_opencode_2_0_18_conforms(scenario, tmp_path):
+def test_the_pinned_opencode_conforms(scenario, tmp_path):
     run_scenario(scenario, OpenCodeDriver(), tmp_path)
 
 

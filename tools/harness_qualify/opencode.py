@@ -581,7 +581,7 @@ class OpenCodePack:
         # limits, not tests that went unrun.
         return [*api, *behaviour, *citations,
                 *neutral_checks(HARNESS, "AEW_OPENCODE_BIN", conformance=["tests/live/test_opencode_live.py"],
-                                allowed_skips=(r"^opencode-live cannot drive \[",))]
+                                allowed_skips={r"^opencode-live cannot drive \[": 1})]
 
     def pinned(self, fixtures: Path) -> tuple[str, dict[str, Any]]:
         version = self.pinned_version

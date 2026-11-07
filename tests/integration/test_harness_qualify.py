@@ -301,7 +301,7 @@ def test_a_suite_run_with_any_skip_is_reported_skipped_never_passed(tmp_path, mo
     ctx = core.Context(binary=tmp_path / "bin", work=tmp_path / "work", env=core.private_env(tmp_path / "env"),
                        version="1")
     out = neutral._pytest(ctx, "STUB_BIN", [str(suite)], ["--rootdir", str(suite.parent)],
-                          allowed_skips=(r"^the driver cannot drive",))
+                          allowed_skips={r"^the driver cannot drive": 1} if "cannot drive" in body else {})
     assert out.status == status, out.notes
 
 
@@ -428,3 +428,71 @@ def test_a_skip_line_is_read_whatever_the_platform_spells_its_path(line):
 
     m = neutral._SKIP_LINE.match(line)
     assert m is not None and (m.group(1), m.group(2)) == ("2", "the driver cannot drive this")
+
+
+def test_an_allowed_skip_that_now_skips_more_tests_is_not_passed(tmp_path, monkeypatch):
+    from harness_qualify import neutral
+
+    monkeypatch.setattr(neutral, "agents_aew", lambda env: "this tree")
+    suite = tmp_path / "suite" / "test_suite.py"
+    suite.parent.mkdir()
+    suite.write_text("import pytest\n\ndef test_a():\n    pass\n\n@pytest.mark.skip('the driver cannot drive x')\n"
+                     "def test_b():\n    pass\n\n@pytest.mark.skip('the driver cannot drive y')\ndef test_c():\n"
+                     "    pass\n", encoding="utf-8")
+    ctx = core.Context(binary=tmp_path / "bin", work=tmp_path / "work", env=core.private_env(tmp_path / "env"),
+                       version="1")
+    out = neutral._pytest(ctx, "STUB_BIN", [str(suite)], ["--rootdir", str(suite.parent)],
+                          allowed_skips={r"^the driver cannot drive": 1})
+    assert out.status == core.SKIPPED and "expected 1 skipped by '^the driver cannot drive', saw 2" in out.notes
+
+
+def test_a_failing_suite_records_each_failing_test_by_its_id_only(tmp_path, monkeypatch):
+    from harness_qualify import neutral
+
+    monkeypatch.setattr(neutral, "agents_aew", lambda env: "this tree")
+    suite = tmp_path / "suite" / "test_suite.py"
+    suite.parent.mkdir()
+    suite.write_text(f"def test_a():\n    assert False, {str(tmp_path)!r}\n", encoding="utf-8")
+    ctx = core.Context(binary=tmp_path / "bin", work=tmp_path / "work", env=core.private_env(tmp_path / "env"),
+                       version="1")
+    out = neutral._pytest(ctx, "STUB_BIN", [str(suite)], ["--rootdir", str(suite.parent)])
+    assert out.status == core.FAIL and "failed: test_suite.py::test_a" in out.notes
+    assert not [n for n in out.notes if str(tmp_path) in n]  # the message, which named a host path, is not kept
+
+
+def test_an_overrunning_suite_fails_and_leaves_no_folder_and_no_process(tmp_path, monkeypatch):
+    """Review of #357, minor 3 (and of #359, n2): the suite and what it started are killed, its folder removed."""
+    import time
+
+    from harness_qualify import neutral
+
+    from aew.harness import procs
+
+    monkeypatch.setattr(neutral, "agents_aew", lambda env: "this tree")
+    made: list[Path] = []
+    real = neutral.tempfile.mkdtemp
+
+    def mkdtemp(**kw: Any) -> str:
+        made.append(Path(real(**kw)))
+        return str(made[-1])
+
+    monkeypatch.setattr(neutral.tempfile, "mkdtemp", mkdtemp)
+    pid_file = tmp_path / "child.pid"
+    suite = tmp_path / "suite" / "test_slow.py"
+    suite.parent.mkdir()
+    suite.write_text(
+        "import pathlib, subprocess, sys, time\n\ndef test_slow():\n"
+        "    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'])\n"
+        f"    pathlib.Path({str(pid_file)!r}).write_text(str(child.pid))\n"
+        "    time.sleep(600)\n", encoding="utf-8")
+    ctx = core.Context(binary=tmp_path / "bin", work=tmp_path / "work", env=core.private_env(tmp_path / "env"),
+                       version="1")
+    out = neutral._pytest(ctx, "STUB_BIN", [str(suite)], ["--rootdir", str(suite.parent)], timeout_s=20)
+    assert out.status == core.FAIL and "overran 20s" in out.notes[0]
+    assert made and not made[0].exists()
+    assert pid_file.exists(), "the suite started no child before the deadline"
+    child = int(pid_file.read_text())
+    deadline = time.monotonic() + 10
+    while procs.pid_alive(child) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    assert not procs.pid_alive(child)

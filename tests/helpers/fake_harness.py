@@ -234,10 +234,13 @@ class HarnessLab:
 
         from aew.cli.work_commands import WAIT_NO_EVIDENCE_EXIT  # here: the supervisor loads this module too
 
-        res = run_aew("-C", str(self.root), "harness", "wait", run, "--timeout", str(timeout), env=self.env,
-                      timeout=timeout + 120)
-        assert res.returncode in (0, WAIT_NO_EVIDENCE_EXIT), (run, res.stderr or res.stdout)
-        out = res.json
+        while True:  # the CLI's wait also returns when the run needs the Lead (its progress triggers): wait on
+            res = run_aew("-C", str(self.root), "harness", "wait", run, "--timeout", str(timeout), env=self.env,
+                          timeout=timeout + 120)
+            assert res.returncode in (0, WAIT_NO_EVIDENCE_EXIT), (run, res.stderr or res.stdout)
+            out = res.json
+            if not out.get("triggers"):  # each trigger is returned once, so this ends
+                break
         assert not out["timed_out"], f"{run} still running after {timeout}s: {out}"
         # U8: the distinct exit status exactly when the run ended without its expected output, with its headline
         no_evidence = out["status"] == "ended_without_evidence"

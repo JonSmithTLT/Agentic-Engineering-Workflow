@@ -117,8 +117,14 @@ def test_a_run_that_ended_without_its_output_does_not_read_as_done():
 def test_a_wait_that_timed_out_says_so_for_each_of_its_runs():
     assert lines_of(wait(run="R-1", status="running", timed_out=True))[0] == (
         "harness_wait: timed out: R-1 still running")
-    assert lines_of(wait(runs={"R-1": "running", "R-2": "starting"}, timed_out=True))[0] == (
+    assert lines_of(wait(statuses={"R-1": "running", "R-2": "starting"}, timed_out=True))[0] == (
         "harness_wait: timed out: R-1 still running, R-2 still starting")
+
+
+def test_a_wait_a_trigger_ended_says_which_run_needs_the_lead_and_why():
+    out = wait(run="R-1", status="running", timed_out=False, why=["out_of_scope"], runs={"R-1": {}},
+               triggers=[{"seq": 1, "why": "out_of_scope", "path": "src/b/x.py"}], next_action="steer it")
+    assert lines_of(out)[:2] == ["harness_wait: R-1 needs you: out_of_scope", "next: steer it"]
 
 
 @pytest.mark.parametrize("status", sorted(K.TERMINAL | {K.LOST, K.UNCONFIRMED}))
@@ -290,9 +296,11 @@ def every_string(value: Any, path: tuple[Any, ...] = ()) -> Iterator[tuple[Any, 
 WAITS: dict[str, dict[str, Any]] = {
     "headline": {"headline": "h", "run": "R-1", "status": "s", "timed_out": False, "next_action": "a"},
     "timed_out": {"run": "R-1", "status": "running", "timed_out": True},
-    "several_timed_out": {"runs": {"R-1": "running", "R-2": "starting"}, "timed_out": True},
+    "several_timed_out": {"statuses": {"R-1": "running", "R-2": "starting"}, "timed_out": True},
+    "trigger": {"run": "R-1", "status": "running", "timed_out": False, "why": ["worker_idle"],
+                "triggers": [{"seq": 1, "why": "worker_idle"}], "runs": {"R-1": None}},
     "run_ended": {"run": "R-1", "status": "crashed", "timed_out": False},
-    "ended_by": {"run": "R-1", "status": "running", "timed_out": False, "ended_by": {"lane": "control", "why": "w"}},
+    "ended_by": {"run": "R-1", "status": "running", "timed_out": False, "ended_by": {"lane": "control", "reason": "w"}},
 }
 SHAPES = ["decision", "call", "command", "hint", "blocker", "next_action", "done", *WAITS]
 

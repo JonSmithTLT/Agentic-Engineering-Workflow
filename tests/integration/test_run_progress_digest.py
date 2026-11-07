@@ -55,7 +55,7 @@ def test_the_lead_catches_a_drift_and_steers_it(lab: HarnessLab, tmp_path: Path)
         out = Engine.discover(lab.root).harness_wait(run, timeout=120, triggers=True)
         assert out["run"] == run and out["status"] == "running" and not out["timed_out"], out
         assert out["why"] == [K.OUT_OF_SCOPE] and [t["path"] for t in out["triggers"]] == ["src/b/x.py"], out
-        digest = out["progress"][run]
+        digest = out["runs"][run]
         assert digest["out_of_scope"] == ["src/b/x.py"], digest
         assert digest["changed_now"] == {"paths": ["src/b/x.py"], "count": 1}, digest
         assert out["next_action"] == K.trigger_step([K.OUT_OF_SCOPE], run, []), out

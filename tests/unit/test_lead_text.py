@@ -51,6 +51,7 @@ NOT_TOOLS = {
     "use_when": "a role card's field",
     "why": "a wait result's field: why it returned (E122)",
     "last_test": "a field of a run's progress digest, which a wait returns (steering design §2)",
+    "last_message": "a field of a run's progress digest: the worker's last words, as data (steering design r4 §6)",
     **{key: "what marks a kind of wait return, a key of the wake guidance (E122)" for key in wake_guidance()},
 }
 # Where the engine's and the surface's words to a Lead are written: every string in these, docstrings aside.

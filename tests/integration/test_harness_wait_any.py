@@ -23,6 +23,7 @@ from invariants import assert_control_invariants
 
 from aew.engine import outbox
 from aew.engine.api import Engine
+from aew.harness import contract as K
 from aew.util import dump_yaml, load_yaml
 
 RA, RB = "R-INV-0001-1", "R-INV-0002-1"
@@ -85,6 +86,7 @@ def test_wait_any_returns_the_first_run_to_end_with_its_next_action(lab, tmp_pat
     out = finish(waiter)
     assert out["run"] == RB and not out["timed_out"] and out["still_running"] == [RA]
     assert out["status"].startswith("ended") and "next_action" in out
+    assert f"; then {K.wait_step([RA])}. Tell the operator" in out["next_action"]  # the wait goes on for RA (E122)
     release[RA].write_text("go", encoding="utf-8")
     assert lab.wait(RA)["run"] == RA  # the single-run form is unchanged
     assert_control_invariants(lab.project)

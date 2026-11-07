@@ -529,10 +529,9 @@ def build(ctx: C.Context) -> C.Built:
     from aew import process_kind
     from aew.engine import store
 
-    trees = {name: (src.tree, src.is_package) for name, src in ctx.sources().items() if src.tree is not None}
-    program = F.Program.of(trees)
-    kinds = {key: kind for key, (kind, _why) in process_kind.ENTRY_POINTS.items()}
-    analysis = W.analyse(program, frozenset(W.TOP_LEVEL), R.roots_of(ctx, set(kinds)), kinds, R.cli_of(ctx, program))
+    program = F.program_of(ctx)
+    analysis = W.whole_analysis(ctx)
+    kinds = analysis.kinds
     sites = lock_sites(program, F.Evaluator(program))
     takers = takers_of(program, sites)
     taking = {(t.module, t.symbol) for t in takers} | {(s.module, s.symbol) for s in sites}

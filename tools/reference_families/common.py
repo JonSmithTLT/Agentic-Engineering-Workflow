@@ -62,6 +62,14 @@ class Context:
     root: Path  # the repository root; the source tree is ``root / "src"``
     _sources: dict[str, Source] | None = None
     _indexes: dict[str, Index] = field(default_factory=dict)
+    _built: dict[str, Any] = field(default_factory=dict)
+
+    def once(self, key: str, make: Callable[[], Any]) -> Any:
+        """``make()``, made once per render: an analysis of the whole tree that several families read (the parsed
+        program, the writers' analysis) is the same input to each, so it is built once, like the sources and indexes."""
+        if key not in self._built:
+            self._built[key] = make()
+        return self._built[key]
 
     @property
     def src(self) -> Path:

@@ -1965,6 +1965,50 @@ def test_a_lane_job_over_20_minutes_warns_and_over_25_is_a_violation(minutes, le
     assert rec["run"]["wall_clock_s"] == max(40, 2 + minutes) * 60
 
 
+def test_the_job_deadlines_are_read_from_ci_yml_where_the_jobs_set_them():
+    """core runs the fast and serial lanes under one AEW_JOB_DEADLINE; each lanes shard has its own. Read from ci.yml
+    (through bounds), so a moved deadline moves the report with it."""
+    found = cost_record.job_deadlines()
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    for name in ("core", "lanes"):
+        block = re.split(r"\n  [a-z-]+:\n", ci.split(f"\n  {name}:\n", 1)[1], maxsplit=1)[0]  # this job's text only
+        set_here = re.search(r"AEW_JOB_DEADLINE=\$\(\( \$\(date \+%s\) \+ (\d+) \)\)", block)
+        assert set_here and found[name][0] == float(set_here.group(1)), name
+    assert found["core"][1] == {"fast", "serial"}
+
+
+# One session of each lane, `left` s on the job's deadline as it started and `wall` s long.
+def session(lane: str, left: float, wall: float, shard: str | None = None) -> dict:
+    return timed("linux", lane, {ALL[0]: 1.0}, shard=shard, job_remaining_s=left, wall_s=wall)
+
+
+DEADLINES = {"core": (1200.0, frozenset({"fast", "serial"})), "lanes": (1800.0, frozenset({"integration"}))}
+
+
+@pytest.mark.parametrize(("fast", "serial", "warns"), [
+    ((1170.0, 400.0), (760.0, 150.0), False),  # right: 590 of 1200 s used (49%)
+    ((1170.0, 650.0), (510.0, 150.0), True),  # wrong: 840 of 1200 s used (70%): a runner twice as slow fails
+    ((1170.0, 1150.0), None, True),  # the serial lane never reported (the job ran out): the fast lane alone says so
+])
+def test_a_job_whose_sessions_use_over_half_its_deadline_warns(fast, serial, warns):
+    reports = [session("fast", *fast)] + ([session("serial", *serial)] if serial else [])
+    f = cost_record.build(reports, None, None, deadlines=DEADLINES)["platforms"]["linux"]
+    (core,) = f["deadlines"]
+    assert core["job"] == "core" and core["deadline_s"] == 1200.0
+    assert core["used_s"] == 1200.0 - min(left - wall for left, wall in filter(None, (fast, serial)))
+    assert [h["kind"] for h in f["health"] if h["kind"] == "deadline"] == (["deadline"] if warns else [])
+    assert "Job deadlines used" in cost_record.summary(cost_record.build(reports, None, None, deadlines=DEADLINES))
+
+
+def test_each_lanes_shard_is_its_own_job_and_a_report_without_the_deadline_is_left_out():
+    reports = [session("integration", 1750.0, 300.0, shard="1/2"), session("integration", 1700.0, 1000.0, shard="2/2"),
+               timed("linux", "regression", {ALL[2]: 1.0}, shard="1/1")]  # missing: no job_remaining_s recorded
+    f = cost_record.build(reports, None, None, deadlines=DEADLINES)["platforms"]["linux"]
+    assert [(d["job"], d["shard"], d["used_s"]) for d in f["deadlines"]] == [("lanes", "1/2", 350.0),
+                                                                            ("lanes", "2/2", 1100.0)]
+    assert [h["job"] for h in f["health"] if h["kind"] == "deadline"] == ["lanes 2/2"]
+
+
 def test_the_cost_record_never_fails_the_job_whatever_it_finds(tmp_path):
     (tmp_path / "r").mkdir()
     (tmp_path / "r" / "fast.json").write_text(json.dumps(timed("linux", "fast", {ALL[0]: 600.0})), encoding="utf-8")

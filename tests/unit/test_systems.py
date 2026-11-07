@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import reference_render
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,8 +31,14 @@ _spec.loader.exec_module(systems)
 
 @cache
 def owners_at_head() -> Any:
-    """The committed board's owners: the register, and the as-built reference rendered in memory (about 10 s)."""
-    return systems.owners(ROOT)
+    """The committed board's owners: the register, and the as-built reference rendered in memory. ``systems.owners``
+    renders it as ``tools/systems.py check`` does; here the render is the one made once per process for every module
+    that reads it (``tests/helpers``), not a second one of the same tree."""
+    tool = systems._tool("reference")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(tool, "render_files", lambda root: reference_render.rendered() if root == ROOT
+                      else pytest.fail(f"the board's owners were read from {root}, not this checkout"))
+        return systems.owners(ROOT)
 
 
 # ------------------------------------------------------------------------------------------ the CI check

@@ -255,8 +255,7 @@ def page(records: list[C.Record], placed: L.Placed) -> str:
 def build(ctx: C.Context) -> C.Built:
     from aew.engine import api, store  # the owners at run time (reference.py checked that aew is this tree's)
 
-    trees = {name: (src.tree, src.is_package) for name, src in ctx.sources().items() if src.tree is not None}
-    program, top = F.Program.of(trees), frozenset(W.TOP_LEVEL)
+    program, top = F.program_of(ctx), frozenset(W.TOP_LEVEL)
     evaluator = F.Evaluator(program)
     analysis = W.analyse(program, top)  # no roots: the layout does not use the entry points' reach
     placed = L.place(L.read_sites(program, evaluator), top)

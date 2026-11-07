@@ -12,7 +12,10 @@ It reports; it never fails the gate (operator, 2026-10-06: runner speed never fa
 is the only hard bound). CI-health findings are warnings:
 
 * a lane job over 20 minutes warns, over 25 minutes is a CI-health violation (CRD-11);
-* a test over 25% of its lane's test time, or a fast-lane test over 30 seconds, is a CI-health violation (E45).
+* a test over 25% of its lane's test time, or a fast-lane test over 30 seconds, is a CI-health violation (E45);
+* a test job whose sessions used more than half of its job deadline (``AEW_JOB_DEADLINE``) warns: on a runner twice as
+  slow (``shard_plan.RUNNER_VARIANCE``) it would not finish. ``core`` runs the fast and serial lanes under one deadline,
+  so their sum is what drifts toward it (2026-11-07: every test passed and the serial lane ran out of time).
 
     python tools/ci/cost_record.py REPORT_DIR [--jobs JOBS.json] [--durations DURATIONS.json]
         [--changed-files PATHS.txt] [--summary FILE] [--out cost-record.json]
@@ -144,8 +147,57 @@ def lane_job_health(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def job_deadlines(workflow: Path = CI_WORKFLOW) -> dict[str, tuple[float, frozenset[str | None]]]:
+    """Each ci.yml test job's deadline (``AEW_JOB_DEADLINE``, seconds after its first step) and the lanes its pytest
+    sessions run, read where ci.yml sets them (``tests/helpers/bounds.py`` parses every invocation): never restated."""
+    import shard_plan  # tools/ci/shard_plan.py, which puts tests/helpers on the path for bounds
+
+    shard_plan._helpers()
+    import bounds
+
+    found: dict[str, tuple[float, frozenset[str | None]]] = {}
+    for lane in bounds.workflow_lanes(workflow.parent):
+        if lane.workflow == workflow.name and lane.job_deadline_s is not None:
+            deadline, lanes = found.get(lane.job, (lane.job_deadline_s, frozenset()))
+            found[lane.job] = (min(deadline, lane.job_deadline_s), lanes | {lane.lane})
+    return found
+
+
+def deadline_use(group: list[dict[str, Any]], deadlines: dict[str, tuple[float, frozenset[str | None]]]
+                 ) -> list[dict[str, Any]]:
+    """How much of its job deadline each test job used by the end of its last session, from its lane reports: each
+    records the time left on the job's deadline as the session started (``job_remaining_s``) and the session's wall
+    time. A shard of the ``lanes`` job is a job of its own; ``core``'s lanes share one."""
+    def job_of(r: dict[str, Any]) -> str | None:
+        if r.get("shard") is None:
+            core = deadlines.get("core")
+            if core and r.get("lane") in core[1]:
+                return "core"
+        return "lanes" if "lanes" in deadlines else None
+
+    left: dict[tuple[str, str | None], float] = {}
+    for r in group:
+        job = job_of(r)
+        if job is None or r.get("job_remaining_s") is None or r.get("wall_s") is None:
+            continue
+        key = (job, r.get("shard"))
+        end = float(r["job_remaining_s"]) - float(r["wall_s"])
+        left[key] = min(left.get(key, end), end)
+    out = []
+    for (job, shard), remaining in sorted(left.items(), key=lambda kv: (kv[0][0], kv[0][1] or "")):
+        deadline = deadlines[job][0]
+        used = deadline - remaining
+        out.append({"job": job, "shard": shard, "deadline_s": deadline, "used_s": round(used, 1),
+                    "share": round(used / deadline, 3)})
+    return out
+
+
 def test_facts(reports: list[dict[str, Any]], durations: dict[str, Any] | None,
-               changed: set[str] | None) -> dict[str, Any]:
+               changed: set[str] | None,
+               deadlines: dict[str, tuple[float, frozenset[str | None]]] | None = None) -> dict[str, Any]:
+    from shard_plan import RUNNER_VARIANCE
+
+    deadlines = job_deadlines() if deadlines is None else deadlines
     by_platform: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in reports:
         by_platform[r["platform"]].append(r)
@@ -176,8 +228,17 @@ def test_facts(reports: list[dict[str, Any]], durations: dict[str, Any] | None,
             "cli_calls": {"total": sum(t["cli_calls"] for t in tests),
                           "most": sorted((t for t in tests if t["cli_calls"]), key=lambda t: -t["cli_calls"])[:10]},
             "durations_coverage": round(len(collected & known) / len(collected), 4) if collected else None,
+            "deadlines": deadline_use(group, deadlines),
             "health": [],
         }
+        for d in facts["deadlines"]:
+            if d["share"] > 1 / RUNNER_VARIANCE:
+                job = d["job"] + (f" {d['shard']}" if d["shard"] else "")
+                facts["health"].append({"level": "warning", "kind": "deadline", "job": job, "seconds": d["used_s"],
+                                        "share": d["share"],
+                                        "detail": f"its sessions used {d['share']:.0%} of its {d['deadline_s']:g} s "
+                                                  f"job deadline: a runner {RUNNER_VARIANCE:g} times slower would not "
+                                                  "finish (make the slowest tests cheaper; never raise the deadline)"})
         if changed is not None:
             # CCI-06: the cost of the tests a change adds or edits, by the test files its diff touches (a test's node
             # id starts with its file); exact, where a stale durations file would count old tests as new
@@ -208,8 +269,9 @@ def test_facts(reports: list[dict[str, Any]], durations: dict[str, Any] | None,
 
 
 def build(reports: list[dict[str, Any]], jobs: list[dict[str, Any]] | None, durations: dict[str, Any] | None,
-          changed: set[str] | None = None, run: dict[str, Any] | None = None) -> dict[str, Any]:
-    record: dict[str, Any] = {"schema": SCHEMA, "platforms": test_facts(reports, durations, changed)}
+          changed: set[str] | None = None, run: dict[str, Any] | None = None,
+          deadlines: dict[str, tuple[float, frozenset[str | None]]] | None = None) -> dict[str, Any]:
+    record: dict[str, Any] = {"schema": SCHEMA, "platforms": test_facts(reports, durations, changed, deadlines)}
     if jobs is not None:
         record["run"] = job_facts(jobs, run)
         record["health"] = lane_job_health(record["run"]["jobs"])
@@ -255,6 +317,11 @@ def summary(record: dict[str, Any]) -> str:
                       "`python -m aew` starts and fake agents' calls are not counted), the run's durations table "
                       "covers " + (f"{f['durations_coverage']:.0%}" if f["durations_coverage"] is not None else "-")
                       + " of collected tests", ""]
+        if f.get("deadlines"):
+            lines += ["Job deadlines used (each test job's sessions, from its lane reports; a runner "
+                      "twice as slow needs under half): "
+                      + ", ".join(f"{d['job']}{' ' + d['shard'] if d['shard'] else ''} {d['used_s']:.0f} of "
+                                  f"{d['deadline_s']:g} s ({d['share']:.0%})" for d in f["deadlines"]), ""]
         if "changed_tests" in f:
             n = f["changed_tests"]
             lines += [f"New tests (in the files this change touches, unknown to the run's durations table): "

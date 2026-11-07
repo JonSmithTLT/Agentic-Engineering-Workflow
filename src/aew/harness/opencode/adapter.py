@@ -108,6 +108,8 @@ def plugins_activating(exc: OpenCodeError) -> bool:
     service), which a wait waits out, rather than a failure."""
     body = exc.body if isinstance(exc.body, dict) else {}
     return exc.status == 503 and (body.get("service") == "plugin" or PLUGINS_ACTIVATING in str(body.get("message")))
+
+
 OPENAPI_TIMEOUT_S = 60.0  # the served schema is large
 EXIT_CODES = {"succeeded": 0, "failed": 1, "interrupted": 2}
 CREDENTIALS = "/api/credential"  # 2.0.22+: stored integration credentials, values included

@@ -96,7 +96,7 @@ sections:
       and the credential never enters a sandbox or a harness''s configuration. Applies only to such providers; for others
       Q5''s hardening milestone and its order are unchanged (designer, 2026-10-11; Q5 closed in the register rebaseline).
       The forced request fields have been qualified against the provider (operator, live; AIR-85). F18.8''s other parts
-      stay held in HOLD-20, and are not prerequisites for this'
+      are its own Unscheduled row (restored from HOLD-20 by the hold match, 2026-11-06), and are not prerequisites for this'
     Source: '[decision record](../design/decisions-2026-10-11-architecture-integration.md) §6.4, §6.5, §6.8 (ledger AIR-81,
       AIR-82, AIR-85); the designer''s ruling of 2026-11-02, the relay presents the certificate'
 
@@ -2362,14 +2362,14 @@ sections:
       refuses its root and PIN steps inside an AEW-contained session and names the operator''s step to run at their own
       terminal instead, and ends with what was installed, where, and how to undo it'
     Source: The install and bootstrap UX v0.3, sections 5 and 5.1 (ledger IBU-12, IBU-13), and ADR-0014 (the signed manifest,
-      verified before anything is consumed), whose build is held in HOLD-17 as F18.3 and D2; brought forward to Internal
-      alpha by the operator's decision of 2026-10-25, in chat, on G3-B's system packages (packaging bundles every requirement
-      for an install with no internet), and extended by the per-target system packages and the guided sequence, the Lead's
-      sketch of the same day
+      verified before anything is consumed), whose build was held in HOLD-17 as F18.3 and D2 (merged here as notes by the
+      hold match, 2026-11-06); brought forward to Internal alpha by the operator's decision of 2026-10-25, in chat, on G3-B's
+      system packages (packaging bundles every requirement for an install with no internet), and extended by the per-target
+      system packages and the guided sequence, the Lead's sketch of the same day
     When: '**Internal alpha**, as its packaging (the milestone''s "an install the operator can run on their own machine
       and on a managed Linux host"). Item 13 of the Now list pulls it ahead of the work step. The designer designs it, by
-      Internal alpha. F18.3 and D2 stay held in HOLD-17; E99''s design takes IBU-12, IBU-13 and ADR-0014 as its inputs,
-      and names at the group''s exit how F18.3 and D2 are absorbed'
+      Internal alpha. F18.3 and D2 left HOLD-17 as notes on this row (the hold match, 2026-11-06), adding no scope to its
+      build; E99''s design takes IBU-12, IBU-13 and ADR-0014 as its inputs'
     Notes: 'Filed by the Lead. `g3/requirements-offline.txt` is the offline manifest the bundle''s one manifest absorbs.
       Closest mechanisms today: CAP-1''s capability register (STG-15) and H-3''s bundle import (E35). Its decisions-due
       item waits until `test_register` admits a new item (#285''s review, m5): the next register batch'

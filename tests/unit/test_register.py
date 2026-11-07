@@ -767,9 +767,15 @@ def head_problems(disp: dict[str, Any], head: dict[str, Any]) -> list[str]:
             out.append(f"{rid} (disposition {kind}) is not in the register")
         elif kind != "keep":
             row = closed.get(rid)
-            if kind == "hold" and (row is None or (row["By"] != f"held in {d['into']}"
-                                                   and HOLD_MATCH_RECORD in row["By"])):
-                continue  # restored, or closed, by the hold match
+            if kind == "hold" and row is None:
+                restored = next(r for s in head["sections"] if not s["title"].startswith("Closed")
+                                for r in s["rows"] if next(iter(r.values())) == rid)
+                if not any(HOLD_MATCH_RECORD in cell for cell in restored.values()):
+                    out.append(f"{rid}: held in {d['into']}, but open again without citing the hold match "
+                               f"({HOLD_MATCH_RECORD})")
+                continue  # restored by the hold match
+            if kind == "hold" and row["By"] != f"held in {d['into']}" and HOLD_MATCH_RECORD in row["By"]:
+                continue  # closed by the hold match
             if row is None:
                 out.append(f"{rid}: {kind}, but the row is still open")
                 continue
@@ -1087,6 +1093,14 @@ def test_the_pin_names_a_disposition_the_register_does_not_carry_out():
     changed = copy.deepcopy(head)
     next(r for r in closed_of(changed)["rows"] if r["#"] == "V3")["By"] = f"dropped, by the hold match, {HOLD_MATCH_RECORD}"
     assert not [p for p in head_problems(disp, changed) if p.startswith("V3")], head_problems(disp, changed)
+    # A held row open again without the record has left its group some other way, which is refused.
+    changed = copy.deepcopy(head)
+    f9 = next(r for s in changed["sections"] if not s["title"].startswith("Closed") for r in s["rows"]
+              if next(iter(r.values())) == "F9")
+    for column, cell in f9.items():
+        f9[column] = cell.replace(HOLD_MATCH_RECORD, "a record")
+    assert "F9: held in HOLD-09, but open again without citing the hold match" in " ".join(
+        head_problems(disp, changed))
     changed = copy.deepcopy(head)
     closed_of(changed)["rows"].append({"#": "E9999", "Was": "x", "Closed": REBASELINE_DAY, "By": "held in HOLD-02"})
     assert any("E9999 was closed in the rebaseline's form but has no disposition" in p

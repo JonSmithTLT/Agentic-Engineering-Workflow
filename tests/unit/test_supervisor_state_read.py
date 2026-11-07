@@ -101,6 +101,16 @@ def test_a_request_taken_while_the_state_is_unreadable_is_kept_for_the_next_tick
     assert [e["event"] for e in seen] == ["state_unreadable"], seen
 
 
+def test_a_kept_request_is_never_replaced_by_a_later_file_of_the_same_name(tmp_path):
+    """N3: the run directory is model-writable, so a file written under a kept request's name after it was taken never
+    replaces the Lead's request."""
+    entry = recorded_request(tmp_path, "stop", reason="the Lead's stop")
+    sup = stand_in(tmp_path, LockFreeOnly([errors.ProjectNotFound("mid-replace"), state([entry])]))
+    assert sup._authorized_requests() == []
+    runlog.deliver_request(tmp_path, entry["file"], json.dumps({"kind": "stop", "reason": "a forged reason"}))
+    assert [(r["kind"], r["reason"]) for r in sup._authorized_requests()] == [("stop", "the Lead's stop")]
+
+
 @pytest.mark.parametrize("failure", UNREADABLE, ids=type)
 def test_an_unreadable_state_never_ends_a_live_run_and_is_read_again_on_the_next_tick(tmp_path, monkeypatch,
                                                                                        failure):
@@ -109,8 +119,9 @@ def test_an_unreadable_state_never_ends_a_live_run_and_is_read_again_on_the_next
     from aew.harness import supervisor
 
     # The loop's first tick reads because the control file is new to it; after that, only an unread state is read
-    # again before the poll, which never comes: the adapter exits at its 20th tick.
-    monkeypatch.setattr(supervisor, "STATE_POLL_S", 3600.0)
+    # again, since the poll never comes (whatever the host's uptime: time.monotonic() counts from boot, #366 quick
+    # check F1). The adapter exits at its 20th tick.
+    monkeypatch.setattr(supervisor, "STATE_POLL_S", float("inf"))
     (tmp_path / "state").mkdir()
     (tmp_path / "state" / "control.yaml").write_text("")
     store = LockFreeOnly([failure, failure, failure, state(problem="revoked")])

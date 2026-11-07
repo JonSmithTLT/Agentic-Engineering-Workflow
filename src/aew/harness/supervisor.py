@@ -472,6 +472,7 @@ class Supervisor:
         deadline_s = (self.record.get("execution_profile") or {}).get("deadline_s")
         deadline = time.monotonic() + deadline_s if deadline_s else None
         last_beat = last_poll = 0.0
+        unread = False  # the last authority read failed: read again at the next tick (#366 review, M2)
         while True:
             faults.pause("harness.watchdog.tick")  # tests: a supervisor that is slow to notice anything
             now = time.monotonic()
@@ -492,11 +493,12 @@ class Supervisor:
                         self.adapter.interrupt()
                 except errors.AEWError as exc:
                     self._event("request_failed", kind=kind, error=exc.message)
-            if self._control_changed() or now - last_poll >= STATE_POLL_S:
+            if unread or self._control_changed() or now - last_poll >= STATE_POLL_S:
                 read, problem = self._authority()
                 if problem:
                     return self._finish(K.TERMINATED, f"authority ended: {problem}")
-                if read:  # an unreadable state is read again on the next tick
+                unread = not read
+                if read:
                     last_poll = now
             status = self.adapter.inspect()
             if not status.get("alive"):
@@ -517,9 +519,10 @@ class Supervisor:
         The run directory is model-writable (same user), so a file alone is no request: its name and digest must be
         on this run's entry in control state, which the Lead operation commits before it writes the file. Anything
         else is recorded and discarded (independent review R1)."""
-        # Files taken while the state was unreadable come first; a later file of the same name replaces its text, as a
-        # later take would have read it. They are bounded by the queue's distinct names.
-        pending = {**self._deferred, **dict(runlog.take_requests(self.run_dir))}
+        # Files taken while the state was unreadable are kept as they were taken: a later file of the same name (the
+        # run directory is model-writable) never replaces a kept Lead request (#366 review, N3). They are bounded by the
+        # queue's distinct names.
+        pending = {**dict(runlog.take_requests(self.run_dir)), **self._deferred}
         self._deferred = {}
         if not pending:
             return []

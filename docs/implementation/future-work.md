@@ -51,9 +51,9 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 17 | E126 | A pre-F4 correction that F4 absorbs: the Lead adds one exact test path to a Ticket's scope |
 | 18 | closed: E127 | Delivering the first four skills, labelled unevaluated, and `optional_skills` on the card, closed by #342 |
 | 19 | closed: E130 | What the Lead is told points at its typed tools and cannot go stale, closed by #331 |
-| 20 | E139 | Worker packs made true, each finding with a guard, merged as #333. Its review's follow-ons remain |
+| 20 | closed: E139 | Worker packs made true, each finding with a guard, closed by #333 (its review's follow-ons are E198) |
 | 21 | E140 | Enforcing the discovery layer's O-CMD and O-SECRET, in three PRs: the tooling merged as #332 and the rules as #335; the flip is next |
-| 22 | E143 | The relay route's model-family check, merged as #338, and its follow-on, merged as #339: one allowlist function, row 1's list and the check on the status line |
+| 22 | closed: E143 | The relay route's model-family check and its follow-on (one allowlist function, row 1's list and the check on the status line), closed by #338 and #339 |
 | 23 | E142 | Serving `security-review` and `c-review`, after E127 |
 | 24 | E136 | Serving the other eleven skills, batched, after E142 |
 | 25 | E137 | A publish that stops stale after its first commit, and the stranded stages like it |
@@ -1483,18 +1483,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E138/`, oldest first (`python tools/register.py show E138`).*
 
-### E139
-
-**Work:** Make worker packs true: findings P1 to P5 and P7 of the pack audit, each with a plain guard, plus the refusal a worker gets with no credential and `lead.yaml`'s line on credentials
-
-**Source:** The pack audit at `e69313b`; the operator's decisions of 2026-10-12 and 2026-11-04
-
-**When:** **Now.** Item 20 of the Now list. P1 to P5 and P7 merged as #333 (`c4874f7b`); its review's follow-ons remain
-
-**Notes:** Filed by the Lead, and already being built. P6 is met by E127's system text, not the pack (designer, 2026-11-04). `aew-reviewer` reviews it
-
-*Later notes: `notes.d/E139/`, oldest first (`python tools/register.py show E139`).*
-
 ### E140
 
 **Work:** Enforce the discovery layer's O-CMD and O-SECRET, in three PRs: the tooling (stale keys judged on completeness, a readable failure, safe removal, a lowered mode counted as growth), then the rules' precision and the text they fire on, then the flip, after `main` and a nightly show neither rule in new or stale
@@ -1530,18 +1518,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. Written and edited on 2026-11-04, and the public-text check passed. Labelled unevaluated: neither has run on a model
 
 *Later notes: `notes.d/E142/`, oldest first (`python tools/register.py show E142`).*
-
-### E143
-
-**Work:** On the relay route (Linux `proxy_only`, a provider key named in `provider_env`), refuse a launch whose pinned model is of a family the relay's one upstream doesn't serve, judged from the model's own catalog `package`, and read `unverified` when nothing decides, merged as #338. Then one allowlist function shared by the self-test and the run, the self-test's row 1 recording the list it checked, and the check's result on the launch's status line and network label, with `relay_family_mismatch` in the supervisor's failure acknowledgement
-
-**Source:** The operator's decision of 2026-11-06, no reliance on OpenCode's free models (design workspace `513d843`), which closed this row's first scope, a free-model carve-out for testing, unmerged (#336); the designer's terms of 2026-11-06 for the model-family check, with the Lead's ruling on #338's review
-
-**When:** **Now.** Item 22 of the Now list. The check merged as #338 (`63cd1ed1`) and the rest as #339 (`c11a61ea`)
-
-**Notes:** Filed by the Lead. `aew-reviewer` reviews it
-
-*Later notes: `notes.d/E143/`, oldest first (`python tools/register.py show E143`).*
 
 ### E144
 
@@ -2166,6 +2142,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. The designer's ruling of 2026-11-06 stands (E172): no AEW-declared MCP servers in the alpha, and the operator's own servers kept in an uncontained Lead
 
 *Later notes: `notes.d/E197/`, oldest first (`python tools/register.py show E197`).*
+
+### E198
+
+**Work:** What #333's review left owed in worker packs. Its M4: deliver the four inputs that KC §15.2, §15.3 and §15.6 list as typical and no pack delivers: `architecture_map` (investigator, planner), rendered from the recorded map reference; `validation_requirements` (planner) and `expected_observable_state` (verifier), each in a section that holds it; and `open_questions` (planner, researcher), which has no pin at dispatch, so it is a design item first. Its follow-on: `_input_summaries` keeps a consumed record's `unresolved_questions` and `uncertainties`, so a planner sees them. Done when a test holds each delivered input in the pack the run receives
+
+**Source:** The review of #333 (E139), its M4 and follow-on; E139's note of 2026-11-06
+
+**When:** **Unscheduled**, any idle slot; `open_questions` waits on its design
+
+**Notes:** Filed by the Lead. No contract breaks today, since KC calls these inputs typical
+
+*Later notes: `notes.d/E198/`, oldest first (`python tools/register.py show E198`).*
 
 ### E47
 
@@ -2919,7 +2907,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-06
 
-**By:** #342 (`bd27dc31`). Its live run used a paid model with a relayed key, never a free one. Qualification stays owed before anything beyond the personal alpha (E135). The skills after it are E142, E136 and the Lead's, E161. What its live run showed about skill uptake is a note on E139
+**By:** #342 (`bd27dc31`). Its live run used a paid model with a relayed key, never a free one. Qualification stays owed before anything beyond the personal alpha (E135). The skills after it are E142, E136 and the Lead's, E161. What its live run showed about skill uptake is a note on E162
 
 *Later notes: `notes.d/E127/`, oldest first (`python tools/register.py show E127`).*
 
@@ -2932,6 +2920,26 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #331 (`80a2360c`). The re-count of real sessions moves to E132, as its first step
 
 *Later notes: `notes.d/E130/`, oldest first (`python tools/register.py show E130`).*
+
+### E139
+
+**Was:** Make worker packs true: findings P1 to P5 and P7 of the pack audit, each with a plain guard, plus the refusal a worker gets with no credential and `lead.yaml`'s line on credentials
+
+**Closed:** 2026-11-06
+
+**By:** #333 (`c4874f7b`). P6 is met by E127's system text. Its review's M4 and `_input_summaries` follow-on, in this row's note of 2026-11-06, are E198. The notes on what the Lead is told that were owed here are on E162
+
+*Later notes: `notes.d/E139/`, oldest first (`python tools/register.py show E139`).*
+
+### E143
+
+**Was:** On the relay route, refuse a launch whose pinned model is of a family the relay's one upstream doesn't serve, read `unverified` when nothing decides; then one allowlist function for the self-test and the run, row 1 recording it, and the check on the launch's status line and network label
+
+**Closed:** 2026-11-06
+
+**By:** #338 (`63cd1ed1`) and #339 (`c11a61ea`). Its first scope, a free-model carve-out, closed unmerged (#336) on the operator's decision of 2026-11-06
+
+*Later notes: `notes.d/E143/`, oldest first (`python tools/register.py show E143`).*
 
 ### E156
 

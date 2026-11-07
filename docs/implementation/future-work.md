@@ -769,18 +769,6 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 *Later notes: `notes.d/STG-15/`, oldest first (`python tools/register.py show STG-15`).*
 
-### HOLD-02
-
-**Work:** The register rows held on the adopted position A-02, product cohesion and the operator's and Lead's experience: no rows held since the hold match of 2026-11-06
-
-**Source (governing):** the adopted position A-02; the register rebaseline (design workspace, `b598fdc`), section 5
-
-**Belongs to or gated by:** **After the trace.** The group leaves the hold only as the preamble's *Keeping it current* says
-
-**Notes:** Every member left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: F8, F37, F47.6; closed as done: F16, U5; dropped: F27. Each member's row as the register held it is at `b879f6bd`
-
-*Later notes: `notes.d/HOLD-02/`, oldest first (`python tools/register.py show HOLD-02`).*
-
 ### HOLD-04
 
 **Work:** The register rows held on the adopted position A-04, the engineering workflow: 1 row still held after the hold match of 2026-11-06, with its old title and source in Notes
@@ -809,18 +797,6 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 *Later notes: `notes.d/HOLD-05/`, oldest first (`python tools/register.py show HOLD-05`).*
 
-### HOLD-06
-
-**Work:** The register rows held on the adopted position A-06, hosting and the execution boundary: no rows held since the hold match of 2026-11-06
-
-**Source (governing):** the adopted position A-06; the register rebaseline (design workspace, `b598fdc`), section 5
-
-**Belongs to or gated by:** **After the trace.** The group leaves the hold only as the preamble's *Keeping it current* says
-
-**Notes:** Every member left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: E50, F3, F10, F15.3, F15.6, F15.7, F15.8, F24, F48; merged as notes: F24.1 into F24, F24.2 into F24; dropped: E66. Each member's row as the register held it is at `b879f6bd`
-
-*Later notes: `notes.d/HOLD-06/`, oldest first (`python tools/register.py show HOLD-06`).*
-
 ### HOLD-07
 
 **Work:** The register rows held on the adopted position A-07, assurance and evidence: 1 row still held after the hold match of 2026-11-06, with its old title and source in Notes
@@ -834,18 +810,6 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 - The other members left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: F17, F41.9, F41.10, F41.11, F49; merged as notes: F41.13 into E154; dropped: E61, E63, E77
 
 *Later notes: `notes.d/HOLD-07/`, oldest first (`python tools/register.py show HOLD-07`).*
-
-### HOLD-08
-
-**Work:** The register rows held on the adopted position A-08, work identity and scope: no rows held since the hold match of 2026-11-06
-
-**Source (governing):** the adopted position A-08; the register rebaseline (design workspace, `b598fdc`), section 5
-
-**Belongs to or gated by:** **After the trace.** The group leaves the hold only as the preamble's *Keeping it current* says
-
-**Notes:** Every member left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: F4, F5. Each member's row as the register held it is at `b879f6bd`
-
-*Later notes: `notes.d/HOLD-08/`, oldest first (`python tools/register.py show HOLD-08`).*
 
 ### HOLD-09
 
@@ -861,78 +825,6 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 *Later notes: `notes.d/HOLD-09/`, oldest first (`python tools/register.py show HOLD-09`).*
 
-### HOLD-10
-
-**Work:** The register rows held on the adopted position A-10, the operator and Lead interface: no rows held since the hold match of 2026-11-06
-
-**Source (governing):** the adopted position A-10; the register rebaseline (design workspace, `b598fdc`), section 5
-
-**Belongs to or gated by:** **After the trace.** The group leaves the hold only as the preamble's *Keeping it current* says
-
-**Notes:** Every member left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: F15.9, F42.3, F43, F44; merged as notes: E12 into E170, E69 into F44; closed as done: F15, F15.2, F15.4; dropped: E20, E28, E70, F42, F42.1, F42.2, O4. Each member's row as the register held it is at `b879f6bd`
-
-*Later notes: `notes.d/HOLD-10/`, oldest first (`python tools/register.py show HOLD-10`).*
-
-### HOLD-12
-
-**Work:** The register rows held on the adopted position A-12, the shared read wire and the dashboard's reads: no rows held since the hold match of 2026-11-06
-
-**Source (governing):** the adopted position A-12; the register rebaseline (design workspace, `b598fdc`), section 5
-
-**Belongs to or gated by:** **After the trace.** The group leaves the hold only as the preamble's *Keeping it current* says
-
-**Notes:** Every member left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: E94; merged as notes: F20 into E101, F20.6 into E103, F20.7 into E18; closed as done: F20.8. E94, which its own cell held here, was added to the list as the match's addendum. Each member's row as the register held it is at `b879f6bd`
-
-*Later notes: `notes.d/HOLD-12/`, oldest first (`python tools/register.py show HOLD-12`).*
-
-### HOLD-13
-
-**Work:** The register rows held on the adopted position A-13, knowledge and context: no rows held since the hold match of 2026-11-06
-
-**Source (governing):** the adopted position A-13; the register rebaseline (design workspace, `b598fdc`), section 5
-
-**Belongs to or gated by:** **After the trace.** The group leaves the hold only as the preamble's *Keeping it current* says
-
-**Notes:** Every member left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: F21, F35. Each member's row as the register held it is at `b879f6bd`
-
-*Later notes: `notes.d/HOLD-13/`, oldest first (`python tools/register.py show HOLD-13`).*
-
-### HOLD-14
-
-**Work:** The register rows held on the adopted position A-14, project understanding and maps: no rows held since the hold match of 2026-11-06
-
-**Source (governing):** the adopted position A-14; the register rebaseline (design workspace, `b598fdc`), section 5
-
-**Belongs to or gated by:** **After the trace.** The group leaves the hold only as the preamble's *Keeping it current* says
-
-**Notes:** Every member left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: E62, F22, F22.2, F22.3, F30, F41.7. Each member's row as the register held it is at `b879f6bd`
-
-*Later notes: `notes.d/HOLD-14/`, oldest first (`python tools/register.py show HOLD-14`).*
-
-### HOLD-15
-
-**Work:** The register rows held on the adopted position A-15, resource and progress supervision: no rows held since the hold match of 2026-11-06
-
-**Source (governing):** the adopted position A-15; the register rebaseline (design workspace, `b598fdc`), section 5
-
-**Belongs to or gated by:** **After the trace.** The group leaves the hold only as the preamble's *Keeping it current* says
-
-**Notes:** Every member left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: U1, U7, F36; merged as notes: F41.8 into U1; dropped: F11. Each member's row as the register held it is at `b879f6bd`
-
-*Later notes: `notes.d/HOLD-15/`, oldest first (`python tools/register.py show HOLD-15`).*
-
-### HOLD-17
-
-**Work:** The register rows held on the adopted position A-17, portable hosting and deployment: no rows held since the hold match of 2026-11-06
-
-**Source (governing):** the adopted position A-17; the register rebaseline (design workspace, `b598fdc`), section 5
-
-**Belongs to or gated by:** **After the trace.** The group leaves the hold only as the preamble's *Keeping it current* says
-
-**Notes:** Every member left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: F18.2, F18.6, F18.14, F31; merged as notes: D2 into E99, F18.1 into E35, F18.3 into E99, F18.4 into E123, F18.5 into F31, F18.7 into F31, F18.9 into F31, F18.12 into F24; dropped: E21, F18, F18.10, F18.13. Each member's row as the register held it is at `b879f6bd`
-
-*Later notes: `notes.d/HOLD-17/`, oldest first (`python tools/register.py show HOLD-17`).*
-
 ### HOLD-19
 
 **Work:** The register rows held on the adopted position A-19, operator intent: 2 rows still held after the hold match of 2026-11-06, each with its old title and source in Notes
@@ -947,30 +839,6 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 - The other members left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): merged as notes: F15.5 into STG-14, F46.2 into STG-14; closed as done: F46.1; dropped: F46.3
 
 *Later notes: `notes.d/HOLD-19/`, oldest first (`python tools/register.py show HOLD-19`).*
-
-### HOLD-20
-
-**Work:** The register rows held on the adopted position A-20, model access and provider delivery: no rows held since the hold match of 2026-11-06
-
-**Source (governing):** the adopted position A-20; the register rebaseline (design workspace, `b598fdc`), section 5
-
-**Belongs to or gated by:** **After the trace.** The group leaves the hold only as the preamble's *Keeping it current* says
-
-**Notes:** Every member left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: F18.8, V5; merged as notes: F18.15 into E97; dropped: D5, F32. Each member's row as the register held it is at `b879f6bd`
-
-*Later notes: `notes.d/HOLD-20/`, oldest first (`python tools/register.py show HOLD-20`).*
-
-### HOLD-21
-
-**Work:** The register rows held on the adopted position A-21, resource accounting: no rows held since the hold match of 2026-11-06
-
-**Source (governing):** the adopted position A-21; the register rebaseline (design workspace, `b598fdc`), section 5
-
-**Belongs to or gated by:** **After the trace.** The group leaves the hold only as the preamble's *Keeping it current* says
-
-**Notes:** Every member left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): restored: F25; merged as notes: U4 into F25. Each member's row as the register held it is at `b879f6bd`
-
-*Later notes: `notes.d/HOLD-21/`, oldest first (`python tools/register.py show HOLD-21`).*
 
 ## 3. Deferred by the M3 plan (out of M3 scope)
 
@@ -3979,6 +3847,116 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** the operator's security depth reset of 2026-10-24, point 1: nothing a contained agent cannot reach is filed; every precondition is the host's own (register rebaseline, design workspace `b598fdc`)
 
 *Later notes: `notes.d/F52/`, oldest first (`python tools/register.py show F52`).*
+
+### HOLD-02
+
+**Was:** The register rows held on the adopted position A-02, product cohesion and the operator's and Lead's experience
+
+**Closed:** 2026-11-06
+
+**By:** every member matched by the 2026-11-06 hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)
+
+*Later notes: `notes.d/HOLD-02/`, oldest first (`python tools/register.py show HOLD-02`).*
+
+### HOLD-06
+
+**Was:** The register rows held on the adopted position A-06, hosting and the execution boundary
+
+**Closed:** 2026-11-06
+
+**By:** every member matched by the 2026-11-06 hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)
+
+*Later notes: `notes.d/HOLD-06/`, oldest first (`python tools/register.py show HOLD-06`).*
+
+### HOLD-08
+
+**Was:** The register rows held on the adopted position A-08, work identity and scope
+
+**Closed:** 2026-11-06
+
+**By:** every member matched by the 2026-11-06 hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)
+
+*Later notes: `notes.d/HOLD-08/`, oldest first (`python tools/register.py show HOLD-08`).*
+
+### HOLD-10
+
+**Was:** The register rows held on the adopted position A-10, the operator and Lead interface
+
+**Closed:** 2026-11-06
+
+**By:** every member matched by the 2026-11-06 hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)
+
+*Later notes: `notes.d/HOLD-10/`, oldest first (`python tools/register.py show HOLD-10`).*
+
+### HOLD-12
+
+**Was:** The register rows held on the adopted position A-12, the shared read wire and the dashboard's reads
+
+**Closed:** 2026-11-06
+
+**By:** every member matched by the 2026-11-06 hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)
+
+*Later notes: `notes.d/HOLD-12/`, oldest first (`python tools/register.py show HOLD-12`).*
+
+### HOLD-13
+
+**Was:** The register rows held on the adopted position A-13, knowledge and context
+
+**Closed:** 2026-11-06
+
+**By:** every member matched by the 2026-11-06 hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)
+
+*Later notes: `notes.d/HOLD-13/`, oldest first (`python tools/register.py show HOLD-13`).*
+
+### HOLD-14
+
+**Was:** The register rows held on the adopted position A-14, project understanding and maps
+
+**Closed:** 2026-11-06
+
+**By:** every member matched by the 2026-11-06 hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)
+
+*Later notes: `notes.d/HOLD-14/`, oldest first (`python tools/register.py show HOLD-14`).*
+
+### HOLD-15
+
+**Was:** The register rows held on the adopted position A-15, resource and progress supervision
+
+**Closed:** 2026-11-06
+
+**By:** every member matched by the 2026-11-06 hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)
+
+*Later notes: `notes.d/HOLD-15/`, oldest first (`python tools/register.py show HOLD-15`).*
+
+### HOLD-17
+
+**Was:** The register rows held on the adopted position A-17, portable hosting and deployment
+
+**Closed:** 2026-11-06
+
+**By:** every member matched by the 2026-11-06 hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)
+
+*Later notes: `notes.d/HOLD-17/`, oldest first (`python tools/register.py show HOLD-17`).*
+
+### HOLD-20
+
+**Was:** The register rows held on the adopted position A-20, model access and provider delivery
+
+**Closed:** 2026-11-06
+
+**By:** every member matched by the 2026-11-06 hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)
+
+*Later notes: `notes.d/HOLD-20/`, oldest first (`python tools/register.py show HOLD-20`).*
+
+### HOLD-21
+
+**Was:** The register rows held on the adopted position A-21, resource accounting
+
+**Closed:** 2026-11-06
+
+**By:** every member matched by the 2026-11-06 hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)
+
+*Later notes: `notes.d/HOLD-21/`, oldest first (`python tools/register.py show HOLD-21`).*
 
 ### O1
 

@@ -1,0 +1,913 @@
+{
+ "about": "Known answers for A-24 SW-02's set fingerprint (profile CS-03), copied unchanged from the adopted A-24 package's fixtures: each case's request and the consent_set_digest its owner operation records, which A-24's own oracle computed. One case per distinct digest; V011-OWNER-DIGEST-SWAP is left out, as its digest is a planted swap. Do not edit: a value that disagrees with AEW is a finding, not a fixture to change.",
+ "source": {
+  "package": "AEW-O01-Selected-Command-Wire-v0.1.4-Focused-Reviewer-Candidate-2026-10-18.zip",
+  "package_sha256": "7fc128f576f22ba9be995a2d334d6e4245f6594d2cd5e2b3a80b4002b1899e22",
+  "member": "05-FIXTURES/cases.json",
+  "member_sha256": "914bc4ec48434abb6d2d6be4e201989044ef853bab3e07a9c5798cb537862481"
+ },
+ "vectors": [
+  {
+   "case": "P01",
+   "polarity": "ACCEPT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CLOSE_ATTACHMENT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "attachment_generation": "gen:alpha001",
+       "attachment_ref": "att:demo-001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "d9359816bdaa0e0e38f2c90ab033373b56bbf530f3524a2d541359e5654da684"
+  },
+  {
+   "case": "P02",
+   "polarity": "ACCEPT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "SUSPEND_GRANT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "ADC",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "grant_ref": "grant:demo001",
+       "grant_version": "rev:grant001",
+       "protection_scope": "EXACT_GRANT",
+       "reason_ref": "finding:demo001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "5098f2480cf1d5a0e164206cb888ec247f75d36ee67e56e9b44d024860d13342"
+  },
+  {
+   "case": "P03",
+   "polarity": "ACCEPT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "LIFT_OPERATOR_SUSPENSION",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "ADC",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "imposing_owner": "OPERATOR_VIA_ADC",
+       "resolution_ref": "basis:resolved001",
+       "suspension_ref": "hold:oper001",
+       "suspension_version": "rev:hold001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "faecf3dc0a5c85db2023587e2420ca326dff09584109d6c5481fd2fa6735f60b"
+  },
+  {
+   "case": "P04",
+   "polarity": "ACCEPT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "ISSUE_STANDING_POLICY",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "RESOURCE_POLICY_ISSUER",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "account_ref": "account:demo001",
+       "ceiling_units": 1000,
+       "cooperative_limit_ack": true,
+       "effective_from": "2026-10-17T20:00:00-04:00",
+       "enforcement": "COOPERATIVE",
+       "expires_at": "2026-11-17T20:00:00-05:00",
+       "policy_body_sha256": "451c6fc7b41a9fc4e374dae44d5abba98a5ae3577d289c57a392f0133f66be16",
+       "policy_decision_ref": "policy:decision001",
+       "policy_issuer_ref": "issuer:policy001",
+       "policy_revision": "rev:policy001",
+       "provider_ref": "provider:demo001",
+       "recipient_ref": "recipient:operator001",
+       "resource_scope_ref": "scope:resource001",
+       "currency_or_unit": "USD"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "5583b4644cc2ac9d729743ca31f39e5a921242dcedbf204c03d0b29798623e1b"
+  },
+  {
+   "case": "P05",
+   "polarity": "ACCEPT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "REQUEST_PROFILE_CHANGE",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "IF13",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "expected_functional_snapshot": "snapshot:001",
+       "installation_ref": "install:demo001",
+       "profile_definition_ref": "profile:work001",
+       "profile_revision": "rev:profile001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "8173200f9f16d7b0ad102667a736984ae92c76ade3b9fdfa644af5372f052b06"
+  },
+  {
+   "case": "P06",
+   "polarity": "ACCEPT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": null,
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "DELEGATED_CANCEL",
+      "actor_ref": "actor:lead001",
+      "authority_class": "CURRENT_DELEGATED_GRANT",
+      "delegated_grant_proof_ref": "grantproof:demo001",
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": null,
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "cancel_scope": "OWN_DELEGATED_INVOCATION",
+       "grant_ref": "grant:demo001",
+       "handoff_ref": null,
+       "invocation_ref": "invocation:demo001",
+       "work_ref": "work:ticket001",
+       "work_revision": "rev:work001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "0493b9a0f92acf5c631ca97006348cd5cfcb40028f7078a771db2d4e067e0072"
+  },
+  {
+   "case": "P07",
+   "polarity": "ACCEPT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": null,
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CONTINUE_ELIGIBLE_WORK",
+      "actor_ref": "actor:lead001",
+      "authority_class": "CURRENT_DELEGATED_GRANT",
+      "delegated_grant_proof_ref": "grantproof:demo001",
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": null,
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "eligible_basis_ref": "eligibility:001",
+       "grant_ref": "grant:demo001",
+       "selection_mode": "DELIBERATE_SELECTED_WORK",
+       "work_ref": "work:ticket001",
+       "work_revision": "rev:work001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "fc4d4f80a125c5fc19a97e55231e4df0f20ec9451422b2861c9d4a86fd1bd23d"
+  },
+  {
+   "case": "P08",
+   "polarity": "ACCEPT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CLOSE_ATTACHMENT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "attachment_generation": "gen:alpha001",
+       "attachment_ref": "att:demo-001"
+      }
+     },
+     {
+      "action": "SUSPEND_GRANT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo002",
+      "origin_proof_ref": "proof:demo002",
+      "owner_hint": "ADC",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "grant_ref": "grant:demo001",
+       "grant_version": "rev:grant001",
+       "protection_scope": "EXACT_GRANT",
+       "reason_ref": "finding:demo001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "cb1f3e5d731f0053042bd366aa1af4f7bb87a1f7076bbc52ad1e26d6f8ab4c3d"
+  },
+  {
+   "case": "N01",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CLOSE_ATTACHMENT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "attachment_generation": "gen:alpha001",
+       "attachment_ref": "att:demo-001",
+       "child_disposition_mode": "STOP_NOW"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "ef855d1e83f7d1a5be041dff263d6e764bcd3beb2ff6151f3c10febb88a4932f"
+  },
+  {
+   "case": "N02",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CLOSE_ATTACHMENT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "attachment_generation": "gen:alpha001",
+       "attachment_ref": "att:demo-001",
+       "explicit_child_dispositions": [
+        "child:X"
+       ]
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "c5944a6af3fc9c7c361d2a58092dd7f4d5fd7c6eca8853d0e5634ea0457a9a03"
+  },
+  {
+   "case": "N03",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CLOSE_ATTACHMENT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "attachment_generation": "gen:alpha001",
+       "attachment_ref": "att:demo-001",
+       "default_child_disposition": "STOP"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "04a1c5cbfeaa1e9e065a82cb4fa72afde2892386fa0cf4b1b652cde1b346d9c5"
+  },
+  {
+   "case": "N04",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "STOP_NOW",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "attachment_generation": "gen:alpha001",
+       "attachment_ref": "att:demo-001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "a923b60264f5d755347adbba54302939539629bc2b745ff9bf7f74eaad56d724"
+  },
+  {
+   "case": "N05",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CLOSE_ATTACHMENT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "attachment_generation": "gen:wrong001",
+       "attachment_ref": "att:demo-001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "c47537e637d1a9ab462b96bb07dde5fb533df9729a5e3b76f85237f180b0159f"
+  },
+  {
+   "case": "N06",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CLOSE_ATTACHMENT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:new001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "attachment_generation": "gen:alpha001",
+       "attachment_ref": "att:demo-001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "262dc22f0afa057c3f7bb9482a78a47c81d9aa41d23b18c2c8d83f3803dc3a8f"
+  },
+  {
+   "case": "N07",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CLOSE_ATTACHMENT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "attachment_generation": "gen:alpha001",
+       "attachment_ref": "att:foreign001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "8cc3183d538c26cbfa85acffad9516c3608a8bebcb20426b47895dfb0181f1c9"
+  },
+  {
+   "case": "N12",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CLOSE_ATTACHMENT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:wrong000",
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "attachment_generation": "gen:alpha001",
+       "attachment_ref": "att:demo-001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "ab7e64f8be940e0a6676659c800abd00166bd9b65464d3984af28777eee003c6"
+  },
+  {
+   "case": "N22",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": null,
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CONTINUE_ELIGIBLE_WORK",
+      "actor_ref": "actor:lead001",
+      "authority_class": "CURRENT_DELEGATED_GRANT",
+      "delegated_grant_proof_ref": "grantproof:demo001",
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": null,
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "eligible_basis_ref": "eligibility:001",
+       "grant_ref": "grant:demo001",
+       "selection_mode": "DELIBERATE_SELECTED_WORK",
+       "work_ref": "work:ticket001",
+       "work_revision": "rev:work999"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "a70048e08f06dfa7620946cd6be5208c39e86dcedff2e8e80a03cd454d0953e5"
+  },
+  {
+   "case": "N24",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "ISSUE_STANDING_POLICY",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "RESOURCE_POLICY_ISSUER",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "account_ref": "account:demo001",
+       "ceiling_units": 1000,
+       "cooperative_limit_ack": false,
+       "effective_from": "2026-10-17T20:00:00-04:00",
+       "enforcement": "COOPERATIVE",
+       "expires_at": "2026-11-17T20:00:00-05:00",
+       "policy_body_sha256": "451c6fc7b41a9fc4e374dae44d5abba98a5ae3577d289c57a392f0133f66be16",
+       "policy_decision_ref": "policy:decision001",
+       "policy_issuer_ref": "issuer:policy001",
+       "policy_revision": "rev:policy001",
+       "provider_ref": "provider:demo001",
+       "recipient_ref": "recipient:operator001",
+       "resource_scope_ref": "scope:resource001",
+       "currency_or_unit": "USD"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "7061d174ceb5569ebda9c670befeadceb507932c79b39db6b377ae89fc887814"
+  },
+  {
+   "case": "N25",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "ISSUE_STANDING_POLICY",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "RESOURCE_POLICY_ISSUER",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "account_ref": "account:demo001",
+       "ceiling_units": null,
+       "cooperative_limit_ack": true,
+       "effective_from": "2026-10-17T20:00:00-04:00",
+       "enforcement": "COOPERATIVE",
+       "expires_at": "2026-11-17T20:00:00-05:00",
+       "policy_body_sha256": "451c6fc7b41a9fc4e374dae44d5abba98a5ae3577d289c57a392f0133f66be16",
+       "policy_decision_ref": "policy:decision001",
+       "policy_issuer_ref": "issuer:policy001",
+       "policy_revision": "rev:policy001",
+       "provider_ref": "provider:demo001",
+       "recipient_ref": "recipient:operator001",
+       "resource_scope_ref": "scope:resource001",
+       "currency_or_unit": "USD"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "2c48ada35b6337f4fbb501ce3d56371875d89b2a2e0800881f02e37b4412b29b"
+  },
+  {
+   "case": "N27",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CLOSE_ATTACHMENT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "CURRENT_DELEGATED_GRANT",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:demo001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "attachment_generation": "gen:alpha001",
+       "attachment_ref": "att:demo-001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "2ff2d688be1960dcff08dbf18d520ce89add0dead8658773f2e847ca5cd5f2f8"
+  },
+  {
+   "case": "N28",
+   "polarity": "REJECT",
+   "request": {
+    "client_request_key": "client-key-001",
+    "consent_set_ref": "consent:demo001",
+    "installation_ref": "install:demo001",
+    "intents": [
+     {
+      "action": "CLOSE_ATTACHMENT",
+      "actor_ref": "actor:operator001",
+      "authority_class": "OPERATOR_RESERVED",
+      "delegated_grant_proof_ref": null,
+      "intent_ref": "intent:demo001",
+      "origin_proof_ref": "proof:demo001",
+      "owner_hint": "HEB",
+      "predecessor": {
+       "basis_ref": "basis:version001",
+       "basis_version": "rev:b001",
+       "source_epoch": "epoch:source001"
+      },
+      "subject": {
+       "attachment_ref": "att:demo-001",
+       "generation_ref": "gen:alpha001",
+       "installation_ref": "install:other001",
+       "project_ref": "project:demo001"
+      },
+      "target": {
+       "attachment_generation": "gen:alpha001",
+       "attachment_ref": "att:demo-001"
+      }
+     }
+    ],
+    "recipient_ref": "recipient:operator001",
+    "request_set_ref": "set:demo001",
+    "wire_version": "o01-command-0.1-candidate"
+   },
+   "set_digest": "069718c794293d93bfec6b3655cd2ece5040203c36ac9e8381376b94c0373b59"
+  }
+ ]
+}

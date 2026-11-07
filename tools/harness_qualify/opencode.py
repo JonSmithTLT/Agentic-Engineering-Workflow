@@ -381,16 +381,16 @@ def check_tool_parts(ctx: Context) -> Outcome:
 # ------------------------------------------------------------------------------------------------- the login store
 
 def credential_columns() -> list[str]:
-    """The ``credential`` columns AEW's SQL names (``login.stored``'s SELECT, the Lead's INSERT), read from that SQL
-    itself so the list has one owner."""
+    """The ``credential`` columns AEW's SQL names (``login.stored``'s SELECT, the Lead's INSERT): the INSERT is built
+    from ``login.CREDENTIAL_COLUMNS`` (E118), so that tuple is its owner; a literal SELECT adds any it reads."""
     from aew.harness.opencode import lead, login
 
-    cols: set[str] = set()
+    cols: set[str] = set(login.CREDENTIAL_COLUMNS)
     for module in (login, lead):
         for node in ast.walk(ast.parse(Path(module.__file__).read_text(encoding="utf-8"))):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                for m in re.finditer(r"SELECT (.+?) FROM credential|INSERT INTO credential \((.+?)\)", node.value):
-                    cols |= {c.strip() for c in (m.group(1) or m.group(2)).split(",")}
+                for m in re.finditer(r"SELECT (.+?) FROM credential", node.value):
+                    cols |= {c.strip() for c in m.group(1).split(",")}
     return sorted(cols)
 
 

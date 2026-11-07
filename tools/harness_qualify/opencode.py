@@ -409,7 +409,13 @@ def check_login_store(ctx: Context) -> Outcome:
     """A synthetic key stored through the server's own API (``integration.connect.key``) in this check's private
     home, then read back with AEW's own reader (``login.stored``). The database read is the one this check made: a
     path outside its folder is refused, so no operator's or run's store is ever read. OAuth rows need a real login
-    flow, so their shape stays a citation (``login.oauth_shape``)."""
+    flow, so their shape stays a citation (``login.oauth_shape``).
+
+    The store itself, for the facts the Lead's own store handling rests on (E118): the database is ``login.DB``;
+    ``credential`` is ``login.CREDENTIAL_SCHEMA``; and every table holding a session's rules column is one of
+    ``login.SESSION_TABLES``, or the Lead's clear would pass a renamed one over without a word. Every table and its
+    columns are recorded (``store.schema``, pinned as ``store-<v>.json``), so the diff names any table a release adds,
+    renames or changes."""
     import sqlite3
 
     from aew.harness.opencode import login
@@ -426,21 +432,39 @@ def check_login_store(ctx: Context) -> Outcome:
     db = login.db_path(ctx.env)
     if not db.resolve().is_relative_to(ctx.work.resolve()):
         raise RuntimeError("refused: the login database is not this check's own")
+    if not db.is_file():  # the store has another name: say which files the server made, never read them
+        made = sorted(p.name for p in db.parent.glob("*") if p.is_file()) if db.parent.is_dir() else []
+        return Outcome(FAIL, {"store.files": made}, [f"no {login.DB} in the server's data folder: it holds {made}"])
     con = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True)
     try:
-        schema = [[str(row[1]), str(row[2]).lower()] for row in con.execute("PRAGMA table_info(credential)")]
+        names = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")]
+        # S608: each table name is one this database itself listed
+        tables = {t: [[str(r[1]), str(r[2]).lower()] for r in con.execute(f"PRAGMA table_info('{t}')")]  # noqa: S608
+                  for t in names if not t.startswith("sqlite_")}
         raw = con.execute("SELECT value FROM credential WHERE integration_id = 'openai'").fetchone()
     finally:
         con.close()
+    schema = tables.get("credential", [])
+    rules = sorted(t for t, cols in tables.items()
+                   if t != "permission" and login.SESSION_RULES_COLUMN in {c for c, _ in cols})
+    unknown_rules = sorted(set(rules) - set(login.SESSION_TABLES))
     logins, why = login.stored(ctx.env)
     read = {x.integration: x.kind for x in logins}
     fields = sorted(json.loads(raw[0])) if raw else []
     # a reason code, never `why`: it names the database's host path, and records are shared
     reads_as = read.get("openai") or ("unreadable" if why else "no_row")
-    facts = {"login.store": {"schema": schema,
-                             "key_row_reads_as": reads_as, "key_value_fields": fields}}
-    ok = schema == credential_schema() and read.get("openai") == "key"
-    return Outcome(PASS if ok else FAIL, facts, [] if ok else [json.dumps(facts["login.store"])])
+    facts = {"login.store": {"schema": schema, "key_row_reads_as": reads_as, "key_value_fields": fields,
+                             "rules_tables_unknown": unknown_rules},
+             "store.schema": tables}
+    notes = []
+    if schema != credential_schema():
+        notes.append(f"credential is not login.CREDENTIAL_SCHEMA: {schema}")
+    if read.get("openai") != "key":
+        notes.append(f"the synthetic key row reads as {reads_as}")
+    if unknown_rules:
+        notes.append(f"session rules held in tables the Lead's clear does not know: {unknown_rules} "
+                     f"(login.SESSION_TABLES is {list(login.SESSION_TABLES)})")
+    return Outcome(FAIL if notes else PASS, facts, notes)
 
 
 # ------------------------------------------------------------------------------------------------ citations (bundle)
@@ -498,8 +522,10 @@ def parse_feed(text: str, url: str = FEED) -> list[Release]:
     version = re.search(r"^version:\s*(\S+)", text, re.M)
     out = []
     for m in re.finditer(r"-\s*url:\s*(\S+)\s+sha512:\s*(\S+)(?:\s+size:\s*(\d+))?", text):
-        out.append(Release(version=version.group(1) if version else "?", url=url.rsplit("/", 1)[0] + "/" + m.group(1),
-                           digest=m.group(2), size=int(m.group(3)) if m.group(3) else None))
+        # the live feed gives absolute URLs (2026-11-07); a relative one is the feed's own folder's
+        where = m.group(1) if re.match(r"https?://", m.group(1)) else url.rsplit("/", 1)[0] + "/" + m.group(1)
+        out.append(Release(version=version.group(1) if version else "?", url=where, digest=m.group(2),
+                           size=int(m.group(3)) if m.group(3) else None))
     return out
 
 
@@ -566,9 +592,9 @@ class OpenCodePack:
         behaviour.append(Check("relay.websocket_default", check_websocket_default,
                                says="without transport http, OpenAI's SDK tries a WebSocket first",
                                measures=("relay.websocket_first",)))
-        behaviour.append(Check("login.store", check_login_store, measures=("login.store",),
+        behaviour.append(Check("login.store", check_login_store, measures=("login.store", "store.schema"),
                                says="a synthetic key, stored by the server in a private home, reads as AEW's login "
-                                    "reader expects; every column AEW's SQL names exists"))
+                                    "reader expects; the store is the one the Lead's own store handling knows"))
         citations = [
             Check("usage.live_citations", lambda c: check_live_usage_citations(c, fx, pin), ("read_usage",),
                   depth=CITATION, says="every bundled-code identifier probe P1 cites is in this binary",
@@ -601,13 +627,16 @@ class OpenCodePack:
             # login._read's key shape ({type: "key", key}), and every column AEW's credential SQL names
             # login._read's key shape ({type: "key", key}), and the credential table AEW writes to (CREDENTIAL_SCHEMA)
             "login.store": {"schema": credential_schema(), "key_row_reads_as": "key",
-                            "key_value_fields": ["key", "type"]},
+                            "key_value_fields": ["key", "type"], "rules_tables_unknown": []},
             "relay.transport_http": {"upgrades": 0, "route": ["/v1/responses"]},
             "relay.websocket_first": {"openai": "openai" in projection.WEBSOCKET_FIRST},
         }
         tool_parts = fixtures / f"tool-parts-{version}.json"
         if tool_parts.exists():
             facts["tool_parts"] = load(tool_parts.name)["tool_parts"]
+        store = fixtures / f"store-{version}.json"
+        if store.exists():
+            facts["store.schema"] = load(store.name)["tables"]
         return version, facts
 
     def render(self, version: str, facts: Mapping[str, Any], fixtures: Path) -> dict[str, tuple[bytes | None, str]]:
@@ -629,6 +658,11 @@ class OpenCodePack:
             None, "authored, not a measurement: its findings, cases and event payloads are written from source "
                   "reading; the run searches the binary for each bundled-code identifier it cites and says whether the "
                   "binary is the one they were read from (usage.live_citations)")
+        if "store.schema" in facts:
+            out[f"store-{version}.json"] = (
+                dump({"harness": HARNESS, "version": version, "probe": "harness_qualify login.store",
+                      "tables": facts["store.schema"]}),
+                "measured: the store a private server made, every table and its columns")
         if "tool_parts" in facts:
             out[f"tool-parts-{version}.json"] = (
                 dump({"harness": HARNESS, "version": version, "probe": "harness_qualify progress.tool_parts",

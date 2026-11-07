@@ -496,3 +496,11 @@ def test_an_overrunning_suite_fails_and_leaves_no_folder_and_no_process(tmp_path
     while procs.pid_alive(child) and time.monotonic() < deadline:
         time.sleep(0.2)
     assert not procs.pid_alive(child)
+
+
+def test_the_feed_as_it_is_served_gives_absolute_download_urls():
+    """The live feed's shape (2026-11-07): absolute URLs, sha512 and size per file, then the version."""
+    text = ("files:\n  - url: https://example.invalid/files/bin/9.8.7/opencode-desktop-win-x64.exe\n"
+            "    sha512: c2hhNTEy\n    size: 267155312\nreleaseDate: 2026-11-06T23:28:16.000Z\nversion: 9.8.7\n")
+    assert OC.parse_feed(text) == [core.Release("9.8.7", "https://example.invalid/files/bin/9.8.7/"
+                                                "opencode-desktop-win-x64.exe", "c2hhNTEy", "sha512", 267155312)]

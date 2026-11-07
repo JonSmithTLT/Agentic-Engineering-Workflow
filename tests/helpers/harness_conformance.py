@@ -7,8 +7,10 @@ spawn_orphan, touch, wait_file, pid, cwd, model_step, exit). A ``Driver`` makes 
 * ``FakeDriver`` (CI): the fake harness runs them as one scripted agent process.
 * ``FakeOpenCodeDriver`` (CI): the real OpenCode adapter against a fake V2 server whose "model" runs each
   step as a tool call in the session's shell environment (``fake_opencode.py``).
-* ``OpenCodeDriver`` (live lane, ``tests/live``): the real OpenCode 2.0.18 server; each step runs through
-  the session's own shell endpoint, and ``model_step`` is a real prompt to a real (free) model.
+* ``OpenCodeDriver`` (live lane, ``tests/live``): the real OpenCode server; each step runs through the session's own
+  shell endpoint, and ``model_step`` is a real prompt. Its model is the scripted model (``tools/harness_qualify``'s,
+  on loopback: no key, no provider, no cost), or the operator's keyed model when ``AEW_LIVE_OPENCODE_MODEL`` names
+  one for the run.
 
 Every scenario asserts AEW-side outcomes only: evidence, state, run records, files, processes. A scenario
 needing something a driver cannot do (``capabilities``) is skipped for that driver, visibly.
@@ -58,6 +60,25 @@ LIVE_MODEL = os.environ.get(LIVE_MODEL_ENV, "").strip()
 LIVE_MODEL_SKIP = (f"{LIVE_MODEL_ENV} is unset: a live run needs a keyed paid model (provider/model) that the operator "
                    "chooses and approves for this run, with its key in the environment; AEW does not use OpenCode's "
                    "free models")
+
+
+# The keyless live lane's model: one OpenCode's own catalog offers (2.0.18 offers it once the provider's key variable is
+# set, as the lane sets it), answered by the scripted model, so a run's launch checks see a real catalog entry and its
+# `model_step` reaches no provider.
+SCRIPTED_PROFILE = ("openai", "gpt-5.5")
+TOOLS = Path(__file__).resolve().parents[2] / "tools"
+
+
+def scripted_model() -> Any:
+    """A scripted model on loopback (``tools/harness_qualify/model.py``, the Responses mode OpenAI uses), which answers
+    every request with text: a ``model_step`` ends its turn at once."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("harness_qualify_model", TOOLS / "harness_qualify" / "model.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.start("responses", [])
 
 
 def live_model() -> str:
@@ -294,9 +315,9 @@ class FakeOpenCodeDriver(Driver):
 
 
 class OpenCodeDriver(Driver):
-    """The live lane: the real adapter and a real OpenCode 2.0.18 server per run (``opencode_scripted.py``); the
-    steps run through the session's own shell endpoint, on the operator's model for the run (:func:`live_model`;
-    the steps are scripted, so no model is called). The Lead acts
+    """The live lane: the real adapter and a real OpenCode server per run (``opencode_scripted.py``); the steps run
+    through the session's own shell endpoint. Its model is the scripted model on loopback (:data:`SCRIPTED_PROFILE`),
+    which needs no key, or the operator's keyed model for the run when :data:`LIVE_MODEL` names one. The Lead acts
     through AEW's harness-neutral Lead broker (``aew lead session``): the real TUI needs a terminal, so the
     operator's own TUI session is its live check (M3 plan §9)."""
 
@@ -305,19 +326,30 @@ class OpenCodeDriver(Driver):
 
     def create_lab(self, tmp_path: Path, *, lead_session: bool = False) -> HarnessLab:
         from opencode_scripted import HERE as HELPERS
+        from opencode_scripted import SCRIPTED_MODEL_URL_ENV
 
         from aew.harness.containment import netns
 
-        provider, _, model = live_model().partition("/")
+        scripted = None if LIVE_MODEL else scripted_model()
+        if LIVE_MODEL:
+            provider, _, model = LIVE_MODEL.partition("/")
+        else:
+            provider, model = SCRIPTED_PROFILE
         # The provider's own key variable, so a launch on the relay route is not refused (provider_key_missing); its
-        # value is a placeholder: the scripted steps call no model.
+        # value is a placeholder: the scripted steps call no model, and the scripted model reads no key.
         key = netns.PROVIDER_KEY_ENV.get(provider, "OPENAI_API_KEY")
         policy = {**POLICY, "harness": "opencode-scripted", "provider_env": [key],
                   "profiles": {"standard": {"provider": provider, "model": model}}}
-        return HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy, extra_env={
-            key: PROVIDER_SECRET, "AEW_LAUNCH_ACK_S": "240",
-            "AEW_HARNESS_ADAPTERS": f"opencode-scripted={HELPERS / 'opencode_scripted.py'}:ScriptedOpenCodeAdapter"},
-            lead_session=lead_session)
+        adapter = f"opencode-scripted={HELPERS / 'opencode_scripted.py'}:ScriptedOpenCodeAdapter"
+        extra = {key: PROVIDER_SECRET, "AEW_LAUNCH_ACK_S": "240", "AEW_HARNESS_ADAPTERS": adapter}
+        if scripted is not None:  # uncontained, the projection points the provider here; contained, its relay does
+            extra[SCRIPTED_MODEL_URL_ENV] = scripted.base_url
+        lab = HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy, extra_env=extra,
+                                upstreams={provider: scripted.base_url} if scripted is not None else None,
+                                lead_session=lead_session)
+        if scripted is not None:
+            lab.closers.append(scripted.close)
+        return lab
 
     def script(self, lab, key, steps, *, effective=None, health=None):
         lab.script(key, {"steps": steps, "health": health})

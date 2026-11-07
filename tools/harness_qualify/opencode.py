@@ -18,6 +18,7 @@ The facts, and the fixtures they make (``tests/fixtures/opencode/``):
 
 from __future__ import annotations
 
+import ast
 import base64
 import contextlib
 import hashlib
@@ -377,6 +378,58 @@ def check_tool_parts(ctx: Context) -> Outcome:
     return Outcome(FAIL if notes else PASS, facts, notes)
 
 
+# ------------------------------------------------------------------------------------------------- the login store
+
+def credential_columns() -> list[str]:
+    """The ``credential`` columns AEW's SQL names (``login.stored``'s SELECT, the Lead's INSERT), read from that SQL
+    itself so the list has one owner."""
+    from aew.harness.opencode import lead, login
+
+    cols: set[str] = set()
+    for module in (login, lead):
+        for node in ast.walk(ast.parse(Path(module.__file__).read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                for m in re.finditer(r"SELECT (.+?) FROM credential|INSERT INTO credential \((.+?)\)", node.value):
+                    cols |= {c.strip() for c in (m.group(1) or m.group(2)).split(",")}
+    return sorted(cols)
+
+
+def check_login_store(ctx: Context) -> Outcome:
+    """A synthetic key stored through the server's own API (``integration.connect.key``) in this check's private
+    home, then read back with AEW's own reader (``login.stored``). The database read is the one this check made: a
+    path outside its folder is refused, so no operator's or run's store is ever read. OAuth rows need a real login
+    flow, so their shape stays a citation (``login.oauth_shape``)."""
+    import sqlite3
+
+    from aew.harness.opencode import login
+
+    work = ctx.work / "login"
+    with serve(ctx.binary, work, ctx.env) as server:
+        deadline = time.monotonic() + TURN_S
+        while time.monotonic() < deadline:  # integrations load asynchronously, like the catalog
+            listed = server.client.get("/api/integration") or {}
+            if any(i.get("id") == "openai" for i in (listed.get("data") or []) if isinstance(i, dict)):
+                break
+            time.sleep(0.25)
+        server.client.post("/api/integration/openai/connect/key", {"key": SYNTHETIC_KEY})
+    db = login.db_path(ctx.env)
+    if not db.resolve().is_relative_to(ctx.work.resolve()):
+        raise RuntimeError("refused: the login database is not this check's own")
+    con = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True)
+    try:
+        have = {row[1] for row in con.execute("PRAGMA table_info(credential)")}
+        raw = con.execute("SELECT value FROM credential WHERE integration_id = 'openai'").fetchone()
+    finally:
+        con.close()
+    logins, why = login.stored(ctx.env)
+    read = {x.integration: x.kind for x in logins}
+    fields = sorted(json.loads(raw[0])) if raw else []
+    facts = {"login.store": {"columns_missing": sorted(set(credential_columns()) - have),
+                             "key_row_reads_as": read.get("openai", why), "key_value_fields": fields}}
+    ok = not facts["login.store"]["columns_missing"] and read.get("openai") == "key"
+    return Outcome(PASS if ok else FAIL, facts, [] if ok else [json.dumps(facts["login.store"])])
+
+
 # ------------------------------------------------------------------------------------------------ citations (bundle)
 
 def _bundle(ctx: Context) -> bytes:
@@ -499,6 +552,9 @@ class OpenCodePack:
         behaviour.append(Check("relay.websocket_default", check_websocket_default,
                                says="without transport http, OpenAI's SDK tries a WebSocket first",
                                measures=("relay.websocket_first",)))
+        behaviour.append(Check("login.store", check_login_store, measures=("login.store",),
+                               says="a synthetic key, stored by the server in a private home, reads as AEW's login "
+                                    "reader expects; every column AEW's SQL names exists"))
         citations = [
             Check("usage.live_citations", lambda c: check_live_usage_citations(c, fx, pin), ("read_usage",),
                   depth=CITATION, says="every bundled-code identifier probe P1 cites is in this binary",
@@ -525,6 +581,8 @@ class OpenCodePack:
             # http transport (projection.relayed), and the ripgrep AEW ships (capability.records).
             "catalog.declared_only": {"listed": True, "declared_only": True},
             "ripgrep.download_version": [_shipped_ripgrep()],
+            # login._read's key shape ({type: "key", key}), and every column AEW's credential SQL names
+            "login.store": {"columns_missing": [], "key_row_reads_as": "key", "key_value_fields": ["key", "type"]},
             "relay.transport_http": {"upgrades": 0, "route": ["/v1/responses"]},
             "relay.websocket_first": {"openai": "openai" in projection.WEBSOCKET_FIRST},
         }
@@ -560,8 +618,8 @@ class OpenCodePack:
 
     def unmeasured(self) -> Mapping[str, str]:
         return {
-            "login.store_shapes": "the login store is OpenCode's database, which no AEW tool reads (never any "
-                                  "opencode.db); kept as login.py's citation and a register row",
+            "login.oauth_shape": "an OAuth row needs a real login flow with a provider; the key row is measured "
+                                 "(login.store), the OAuth shape stays login.py's citation",
             "lead.tui_preferences": "cli.json is read by the TUI, which needs a terminal and a person; not run "
                                     "offline",
             "readable.tui_display": "what OpenCode's TUI shows a person is seen, not served",

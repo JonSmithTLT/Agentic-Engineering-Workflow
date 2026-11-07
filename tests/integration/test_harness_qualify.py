@@ -239,7 +239,7 @@ def test_the_opencode_pack_against_the_fake_server_measures_its_api_and_names_wh
     assert [d.path for d in changed] == [".x-aew-fixture.full_sha256"]
     assert record.capabilities["read_progress"]["status"] == core.SKIPPED
     assert record.capabilities["attach_to_operator_session"]["status"] == core.UNCHECKED
-    assert "login.store_shapes" in record.unmeasured
+    assert "login.oauth_shape" in record.unmeasured
 
 
 def test_an_operation_the_served_api_drops_fails_its_capability_and_shows_in_the_diff(tmp_path):
@@ -301,3 +301,9 @@ def test_in_the_binary_the_citations_were_read_from_a_missing_identifier_fails(t
     assert (out.status, out.facts, out.notes) == (core.FAIL, {"live_usage.bundle_identifiers": {"E1": True,
                                                                                                "E2": False}},
                                                   ["not in this binary: E2"])
+
+
+def test_the_credential_columns_are_read_from_aews_own_sql():
+    cols = OC.credential_columns()
+    assert {"integration_id", "method_id", "active", "value", "time_updated", "id", "label", "time_created"} == set(
+        cols)

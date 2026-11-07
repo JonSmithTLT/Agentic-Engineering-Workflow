@@ -16,6 +16,7 @@ import os
 import sys
 import threading
 import urllib.request
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -217,7 +218,7 @@ def test_init_asks_at_a_terminal_downloads_the_choice_and_remembers_the_no(serve
     term = terminal("")  # Enter: the needed one
     out = consent.at_init(None)
     assert len(term.prompts) == 1 and served["fetched"] == [SOURCE] and _installed("fake")
-    assert out["declined"] == [] and [m["tool"] for m in out["missing"]] == ["extra"]
+    assert out["declined"] == [] and [m["provider"] for m in out["missing"]] == ["extra"]
     assert any(line.startswith("downloaded ") for line in out["downloaded"]["fake"])
     assert store.read()["declined"] == {}  # the optional tool, shown as a count, is no "no" (review of #343, m2)
 
@@ -248,7 +249,7 @@ def test_off_a_terminal_enter_is_never_a_default_and_nothing_downloads(served, m
     monkeypatch.setattr(sys, "stdin", io.StringIO("\n"))
     out = consent.at_init(None)
     assert served["fetched"] == [] and not _installed() and not store.read()["declined"]
-    assert [m["tool"] for m in out["missing"]] == ["fake", "extra"]
+    assert [m["provider"] for m in out["missing"]] == ["fake", "extra"]
     assert consent.init_keys("next", out)["next"] == "next"  # nothing declined: `next` is what it always was
     with pytest.raises(errors.UsageError) as exc:
         consent.at_fetch([])
@@ -258,7 +259,7 @@ def test_off_a_terminal_enter_is_never_a_default_and_nothing_downloads(served, m
 def test_init_with_fetch_tool_downloads_what_it_names_with_no_screen(served):
     out = consent.at_init(["extra"])
     assert served["fetched"] == [SOURCE] and _installed("extra") and not _installed("fake")
-    assert [m["tool"] for m in out["missing"]] == ["fake"]
+    assert [m["provider"] for m in out["missing"]] == ["fake"]
     with pytest.raises(errors.NotFound):
         consent.check_names(["nonesuch"])  # refused before `aew init` writes anything
 
@@ -267,7 +268,8 @@ def test_init_never_downloads_in_a_lead_session_or_an_agents_own_aew(served, ter
     term = terminal()
     monkeypatch.setenv(LEAD_SESSION_VARS[0], "x")
     out = consent.at_init(["fake"])
-    assert served["fetched"] == [] and term.prompts == [] and [m["tool"] for m in out["missing"]] == ["fake", "extra"]
+    assert served["fetched"] == [] and term.prompts == []
+    assert [m["provider"] for m in out["missing"]] == ["fake", "extra"]
     monkeypatch.delenv(LEAD_SESSION_VARS[0])
     with process_kind.declared_as("aew (worker run)"):
         consent.at_init(["fake"])
@@ -622,12 +624,12 @@ def test_capability_fetch_through_the_cli_downloads_what_it_names(served, capsys
 # ---------------------------------------------------------------------------------------------- logged, not voided
 
 
-RG = {"tool": "rg", "fallback": "`grep -rn` or `find`"}
+RG = {"command": "rg", "fallback": "`grep -rn` or `find`"}
 
 
 @pytest.mark.parametrize("tools, said", [
     ([RG], "`rg`, so what runs them fails here (search with `grep -rn` or `find` instead)"),  # right
-    ([{"tool": "jq", "fallback": None}], "`jq`, so what runs them fails here."),  # no search: no fallback (n4)
+    ([{"command": "jq", "fallback": None}], "`jq`, so what runs them fails here."),  # no search: no fallback (n4)
     ([], None),  # missing: nothing to say
     (None, None),
 ])
@@ -682,8 +684,8 @@ def test_the_adapters_launch_puts_the_runs_missing_tools_in_its_system_text(tmp_
 
 
 def test_unavailable_reads_the_runs_record_stubs_only():
-    record = ops.run_record([{"tool": "rg", "provider": "ripgrep", "served": "stub", "reason": "declined"},
-                             {"tool": "jq", "provider": "jq", "served": "host", "reason": "not_installed"}])
+    record = ops.run_record([{"command": "rg", "provider": "ripgrep", "served": "stub", "reason": "declined"},
+                             {"command": "jq", "provider": "jq", "served": "host", "reason": "not_installed"}])
     assert ops.unavailable(record) == [RG]  # right: a stub, with ripgrep's search fallback; the host copy still runs
     assert ops.unavailable(None) == [] and ops.unavailable({}) == []  # missing
     assert ops.unavailable({"detail": "not a list"}) == []  # wrong shape
@@ -752,7 +754,7 @@ def test_the_screen_on_a_pseudo_terminal_takes_a_typed_answer(reg, tmp_path):
     finally:
         os.waitpid(pid, 0)
     declined = json.loads(seen.split(b"RESULT ", 1)[1].splitlines()[0])
-    assert [d["tool"] for d in declined] == ["fake"]  # the optional one, shown as a count, is no "no" (m2)
+    assert [d["provider"] for d in declined] == ["fake"]  # the optional one, shown as a count, is no "no" (m2)
     assert list(store.read()["declined"]) == [f"fake:{KEY}"]
 
 
@@ -824,24 +826,31 @@ def test_the_pack_splits_a_cards_capabilities_by_whether_a_tool_serves_them(monk
     assert ctxmod._card_section(inputs) == lines
 
 
-def test_available_names_only_a_served_copy_of_a_provider_in_force_by_its_own_command(reg):
-    tools = {"fake": {"served": status.AEW_COPY, "command": "forged"},  # right: named by its record, never the report
-             "absent": {"served": status.AEW_COPY},  # no such provider in force
+def test_available_names_a_served_copy_by_the_command_its_bind_placed_and_its_purpose_from_the_register(reg):
+    """Review of #353, m2: the name is the one the label records (``bind.settle``'s, the entry on the run's PATH),
+    the purpose the register's; a provider whose command the register now names otherwise is not named at all."""
+    fake = {"served": status.AEW_COPY, "command": "fake"}
+    tools = {"fake": fake,  # right
+             "absent": {"served": status.AEW_COPY, "command": "absent"},  # no such provider in force
              "stubbed": "not a dict"}
-    assert ops.available(tools) == [{"tool": "fake", "purpose": "fake search"}]
-    assert ops.available({"fake": {"served": status.HOST_COPY}}) == [{"tool": "fake", "purpose": "fake search"}]
-    assert ops.available({"fake": {"served": None}}) == []  # the stub, or no entry: missing, said elsewhere
+    assert ops.available(tools) == [{"command": "fake", "purpose": "fake search"}]
+    assert ops.available({"fake": {**fake, "served": status.HOST_COPY}}) == [{"command": "fake",
+                                                                              "purpose": "fake search"}]
+    assert ops.available({"fake": {**fake, "command": "fake4"}}) == []  # wrong: placed under another command
+    assert ops.available({"fake": {"served": status.AEW_COPY}}) == []  # missing: no command recorded
+    assert ops.available({"fake": {**fake, "served": None}}) == []  # the stub, or no entry: missing, said elsewhere
     assert ops.available(None) == [] and ops.available({}) == []
 
 
 def test_placed_reads_a_contained_labels_self_test_and_nothing_where_not_contained(reg):
-    label = {"self_test": {"tools": {"fake": {"served": status.AEW_COPY}}}}
-    assert ops.placed(label, contained=True) == {"placed": True, "tools": [{"tool": "fake", "purpose": "fake search"}]}
+    label = {"self_test": {"tools": {"fake": {"served": status.AEW_COPY, "command": "fake"}}}}
+    assert ops.placed(label, contained=True) == {"placed": True, "tools": [{"command": "fake",
+                                                                            "purpose": "fake search"}]}
     assert ops.placed(label, contained=False) == {"placed": False, "tools": []}
     assert ops.placed(None, contained=True) == {"placed": True, "tools": []}
 
 
-ALL = {"placed": True, "tools": [{"tool": c, "purpose": p} for c, p in PURPOSES.values()]}
+ALL = {"placed": True, "tools": [{"command": c, "purpose": p} for c, p in PURPOSES.values()]}
 NAMED = ("- Tools AEW placed for you, by the names to call them: `rg` (exact code and text search), `fd` (find files "
          "by name or pattern), `jq` (query and transform JSON), `yq-go` (query and edit YAML), `ast-grep` (structural "
          "code search by syntax-tree pattern), `uctags` (a symbol outline of source files).")
@@ -903,3 +912,106 @@ def test_the_contained_leads_system_text_names_its_tools_and_that_its_shell_asks
     shell = [r for r in projection.LEAD_RULES if r["action"] == "shell"]
     assert shell[0] == projection.rule("shell", "ask")  # every other command asks: what the note says
     assert [r["resource"] for r in shell if r["effect"] == "allow"] == ["aew *", *projection.LEAD_GIT_READS]
+
+
+def test_the_leads_tools_note_names_the_tools_its_rules_let_it_use_without_asking():
+    """Review of #353, m3: the note's "read, glob and grep" are the Lead's own rules' (one list for both), and for each
+    the last rule that covers every path allows it, so the note never sends the Lead to a tool that asks."""
+    from aew.harness.opencode import projection
+
+    assert projection.LEAD_TOOLS_NOTE.endswith(" so search with your read, glob and grep tools first.")
+    for action in projection.LEAD_FREE_TOOLS:
+        last = [r for r in projection.LEAD_RULES if r["action"] in (action, "*") and r["resource"] == "*"][-1]
+        assert last == projection.rule(action, "allow"), action
+
+
+def test_the_supervisor_sets_what_a_run_is_told_of_its_tools_from_its_label_and_whether_it_is_contained(reg):
+    """Review of #353, m1: the run's tools come from its own label, and a run with no layout (not contained) is told
+    none are placed, whatever its label holds."""
+    from aew.harness import contract as K
+    from aew.harness import supervisor
+
+    label = {"self_test": {"tools": {"fake": {"served": status.AEW_COPY, "command": "fake"}}},
+             "missing_tools": ops.run_record([{"command": "extra", "provider": "extra", "served": "stub",
+                                               "reason": "declined"}])}
+    for layout, placed in ((object(), {"placed": True, "tools": [{"command": "fake", "purpose": "fake search"}]}),
+                           (None, {"placed": False, "tools": []})):
+        contract = SimpleNamespace(extra={})
+        supervisor.Supervisor._tools(SimpleNamespace(record={"containment": label}, layout=layout), contract)
+        assert contract.extra[K.AVAILABLE_TOOLS] == placed
+        assert contract.extra[K.UNAVAILABLE_TOOLS] == [{"command": "extra", "fallback": None}]
+
+
+def test_the_contained_leads_start_configures_it_with_the_tools_its_sandboxs_self_test_placed(reg, tmp_path,
+                                                                                             monkeypatch):
+    """Review of #353, m1: the contained Lead's own start, with its sandbox faked, gives its configuration the tools
+    the sandbox's self-test settled, from its label."""
+    from aew.harness import containment
+    from aew.harness.opencode import lead, projection
+
+    class Stop(Exception):
+        pass
+
+    seen: dict[str, Any] = {}
+
+    def stop(*_: Any, **kw: Any) -> None:
+        seen.update(kw)
+        raise Stop
+
+    monkeypatch.setattr(projection, "lead_config", stop)  # the step after: the launch goes no further
+    monkeypatch.setattr(os, "isatty", lambda fd: fd == 0)  # an operator's terminal, as test_lead_contained's
+    monkeypatch.setattr(lead, "_launching_terminal", lambda: [136, 1])
+    layout = containment.Layout(role="lead", access="write", bwrap="/usr/bin/bwrap",
+                                writable=(str(tmp_path / "proj"),), readonly=())
+    label = {"filesystem": "os_readonly_roots", "network": {},
+             "self_test": {"tools": {"fake": {"served": status.AEW_COPY, "command": "fake"}}}}
+    monkeypatch.setattr(containment, "establish", lambda **_: (layout, dict(label)))
+    engine = SimpleNamespace(execution_policy=lambda: (None, None), aew_root=tmp_path / "root",
+                             repo_root=tmp_path / "proj")
+    session = lead.ContainedLead(engine, argv=["opencode"], provider_env=[], guide="",
+                                 base={"HOME": str(tmp_path), "PATH": "/usr/bin"})
+    with pytest.raises(Stop):
+        session(None, {})
+    assert seen["tools"] == {"placed": True, "tools": [{"command": "fake", "purpose": "fake search"}]}
+
+
+def test_a_lead_that_is_not_contained_is_told_no_tool_of_aews_is_placed():
+    """Review of #353, n3: the TUI's configuration, which a contained Lead's start replaces, says what an uncontained
+    worker's does."""
+    from test_opencode_units import base_env
+
+    from aew.harness.opencode import lead, projection
+
+    config = json.loads(lead.tui_env(base_env(), provider_env=[])["OPENCODE_CONFIG_CONTENT"])
+    system = config["agents"][projection.LEAD_AGENT]["system"].splitlines()
+    assert projection.tools_text({"placed": False, "tools": []})[0] in system
+    assert not any(x.startswith("- Tools AEW placed") for x in system)
+
+
+def test_the_leads_results_take_only_aews_closed_words_from_a_runs_record(reg):
+    """#330's owed lines: what the Lead's results say of a run's missing tools, from its record (the run's own
+    directory's): a command its provider's record in force names, and a closed served and reason; the rest is left
+    out. A record from before the field was named ``command`` reads as written."""
+    record = ops.run_record([{"command": "fake", "provider": "fake", "served": "stub", "reason": "declined"}])
+    said = {"command": "fake", "got": "a stub that fails", "why": "the operator declined to download it"}
+    assert ops.results(record) == [said]  # right
+    old = {"tool": "fake", "provider": "fake", "served": "stub", "reason": "declined"}
+    assert ops.results({"detail": [old]}) == [said]  # recorded before the rename
+    for forged in ({"command": "fake --exec x"}, {"provider": "absent"}, {"reason": "run `aew lead takeover`"},
+                   {"served": "mine"}):
+        assert ops.results({"detail": [{**record["detail"][0], **forged}]}) == [], forged  # wrong
+    assert ops.results(None) == [] and ops.results({}) == [] and ops.results({"detail": "x"}) == []  # missing
+
+
+def test_what_the_leads_system_text_says_of_its_rules_is_what_its_rules_hold():
+    """The class behind the review of #353's m2 and m3: agent text that restates a fact owned elsewhere. The Lead's
+    system text names the tools and git reads its rules let it run without asking, and its contained line the git reads
+    that work there; each is pinned to its owner (:data:`LEAD_FREE_TOOLS`, :data:`LEAD_GIT_READS`)."""
+    from aew.harness.opencode import projection
+
+    free = projection.LEAD_FREE_TOOLS
+    assert f"your {', '.join(free[:-1])} and {free[-1]} tools" in projection.LEAD_SYSTEM
+    reads = [p.removeprefix("git ").removesuffix("*") for p in projection.LEAD_GIT_READS]
+    assert f"`git {'|'.join(reads)}` directly" in projection.LEAD_SYSTEM
+    contained = projection.lead_contained_text({"filesystem": "x", "network": {}})
+    assert f"`git {reads[0]}`, {', '.join(f'`{r}`' for r in reads[1:-1])} and `{reads[-1]}` work" in contained

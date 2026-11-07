@@ -431,7 +431,7 @@ def test_a_flag_line_that_cannot_be_written_never_stops_the_launch(reg, monkeypa
 
     monkeypatch.setattr(ops, "_to_terminal", lambda: True)
     monkeypatch.setattr(ops.sys, "stderr", Gone())
-    assert [f["tool"] for f in ops.flag_missing(STUB)] == ["fake"]
+    assert [f["command"] for f in ops.flag_missing(STUB)] == ["fake"]
 
 
 def test_a_launch_behind_a_long_holder_of_the_lock_gives_way_and_the_next_records_it(reg, monkeypatch):

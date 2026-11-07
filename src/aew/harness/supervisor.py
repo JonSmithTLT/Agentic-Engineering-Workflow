@@ -233,15 +233,7 @@ class Supervisor:
             self._contain(contract, adapter_cls)
             contract = self._label_skills(contract)
             self.record["contract"] = contract.to_record()
-            from aew.capability import ops as capability
-
-            # What the run goes without, from its own record, for its system text: a missing tool is logged, not
-            # voided (the operator, 2026-11-05)
-            missing = self.record["containment"].get("missing_tools")
-            contract.extra[K.UNAVAILABLE_TOOLS] = capability.unavailable(missing)
-            # And what it has, by the names it calls them (the Lead's ruling on card-capability resolution)
-            contract.extra[K.AVAILABLE_TOOLS] = capability.placed(self.record["containment"],
-                                                                 contained=self.layout is not None)
+            self._tools(contract)
             self.agent_env = agentenv.build(os.environ, endpoint=self.bridge.address, key_hex=self.bridge.key_hex,
                                             invocation=self.inv_id, run=self.run, work_unit=inv["work_unit"],
                                             scratch=contract.scratch,
@@ -314,6 +306,17 @@ class Supervisor:
         bound = self.layout is not None and os.path.realpath(self._skills_dir()) in self.layout.skills_binds
         planned = {**planned, "copy": "read_only_bind" if bound else "rules_only"}
         return dataclasses.replace(contract, extra={**contract.extra, "skills": planned})
+
+    def _tools(self, contract: K.LaunchContract) -> None:
+        """What the run's system text says of AEW's tools, from its containment label (``_contain``'s): what it goes
+        without, from its own record, as a missing tool is logged, not voided (the operator, 2026-11-05); and what it
+        has, by the names it calls them (the Lead's ruling on card-capability resolution), none where it is not
+        contained."""
+        from aew.capability import ops as capability
+
+        contract.extra[K.UNAVAILABLE_TOOLS] = capability.unavailable(self.record["containment"].get("missing_tools"))
+        contract.extra[K.AVAILABLE_TOOLS] = capability.placed(self.record["containment"],
+                                                             contained=self.layout is not None)
 
     def _contain(self, contract: K.LaunchContract, adapter_cls: type[HarnessAdapter]) -> None:
         """Build and self-test this run's sandbox before any harness process exists (F2, M4-B), and start its network

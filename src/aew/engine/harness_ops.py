@@ -388,6 +388,7 @@ class Harness:
                             "heartbeat_age_s": runlog.heartbeat_age(directory),
                             "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
                             "results": self.run_results(inv["work_unit"], r["run"], cache),
+                            "missing_tools": _missing_tools(record),
                             "model_check": _field(record, "model_check").get("status"),
                             "foreign_sessions": _list(_field(record, "result").get("foreign_sessions")),
                             "run_dir": str(directory)})
@@ -490,6 +491,9 @@ class Harness:
                     "results": self.run_results(inv["work_unit"], run), "timed_out": False})
         if _reason_code(record):
             out["reason_code"] = _reason_code(record)
+        missing = _missing_tools(record)
+        if missing:  # beside what its evidence found: what it went without (#330's owed lines)
+            out["missing_tools"] = missing
         if control is not None:
             out["ended_by"] = {"lane": "control", "why": control}  # the run record may still show it running
         # The wait is over, so the control state is read once more, now: the run-record lane can return before a
@@ -875,6 +879,13 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
             "`--when turn-end` needs coordination messaging, which this project has not enabled; nothing was sent. "
             "Use `--when next-step`, or ask the operator to enable messaging", when=when)
     return "request"
+
+
+def _missing_tools(record: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The tools a run went without, from its label, as the Lead's results say them (``capability.ops.results``)."""
+    from aew.capability import ops as capability
+
+    return capability.results(_field(record, "containment").get("missing_tools"))
 
 
 def _reason_code(record: dict[str, Any] | None) -> str | None:

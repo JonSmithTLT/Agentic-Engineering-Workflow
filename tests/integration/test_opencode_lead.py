@@ -101,7 +101,8 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
     assert not {"AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "OPENAI_API_KEY", "AEW_HARNESS_ADAPTERS",
                 "AEW_OPENCODE_BIN"} & set(env)
     assert {"AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY"} <= set(env)
-    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(guide_of(lab))  # with the guide (F16)
+    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(  # with the guide (F16)
+        guide_of(lab), tools={"placed": False, "tools": []})  # and no tool of AEW's placed: it is not contained
     # OpenCode's own providers off in the Lead that is not contained too (the designer's ruling of 2026-11-06)
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"])["experimental"]["policies"] == DENY
     assert env["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1"

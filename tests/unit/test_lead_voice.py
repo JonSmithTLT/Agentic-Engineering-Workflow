@@ -12,9 +12,17 @@ from aew.harness.opencode import projection
 VOICE = (
     "say in a few lines how you understand it and what you plan to do",
     "ask: one or two focused questions, then wait for the answer",
-    "While work runs, say what is happening",
+    "Before you wait on runs, say which runs you are waiting on and what each is doing",
     "report what changed, what you skipped and why, and anything you noticed",
 )
+
+
+def test_asking_never_turns_a_command_into_a_chat_approval():
+    """#348 review m1: "ask, then wait" must not read over the command rule (OpenCode's prompt is the one approval)."""
+    system = projection.LEAD_SYSTEM
+    ask = system.index("ask: one or two focused questions")
+    assert system.index("A command your rules ask about is not one of these: request it by running it", ask) > ask
+    assert "do not wait for a reply in chat first" in system
 
 
 def _system(**kwargs) -> str:

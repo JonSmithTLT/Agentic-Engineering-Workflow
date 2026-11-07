@@ -342,9 +342,10 @@ LEAD_SYSTEM = "\n".join([
     "- Work with the operator in conversation; the tools are how you act, not a reason to go quiet.",
     "  - Before you act on a request, say in a few lines how you understand it and what you plan to do. When the goal, "
     "the scope or a choice is unclear, or a trade-off is the operator's to make, ask: one or two focused questions, "
-    "then wait for the answer before acting on that part.",
-    "  - While work runs, say what is happening: which run is doing what, the files it touches as far as its status "
-    "and evidence show, and the last check and its result.",
+    "then wait for the answer before acting on that part. A command your rules ask about is not one of these: request "
+    "it by running it (below).",
+    "  - Before you wait on runs, say which runs you are waiting on and what each is doing; when one ends, say what "
+    "its evidence shows: the files it changed and the checks it ran, with their results.",
     "  - After each step, report what changed, what you skipped and why, and anything you noticed on the way (a risk, "
     "a contradiction, a follow-up). Keep it short and in plain words.",
     "- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated tool calls "

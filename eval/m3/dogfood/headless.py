@@ -129,6 +129,8 @@ def pinned(profile: dict[str, Any]) -> dict[str, Any]:
 
 
 GUIDE_POINTER = "- `aew guide` explains how AEW works in this project"
+HEADLESS_LINE = ("- Nobody answers in this session: where you would ask the operator, state your assumption in a line "
+                 "and proceed.")
 
 
 def lead_config(profile: dict[str, Any], steps: int, guide: str = "",
@@ -150,6 +152,8 @@ def lead_config(profile: dict[str, Any], steps: int, guide: str = "",
         if len(kept) != len(lines) - 1:
             raise RuntimeError("the Lead's system text no longer has exactly one line pointing to `aew guide`")
         agent["system"] = "\n".join(kept)
+    # The Lead's text tells it to ask when something is unclear (the operator's reset, 2026-11-06); here nobody answers.
+    agent["system"] += f"\n{HEADLESS_LINE}"
     agent.update(permissions=rules, model=pinned(profile), steps=steps)
     for name in projection.AUXILIARY_AGENTS:
         config["agents"][name] = {"model": pinned(profile)}

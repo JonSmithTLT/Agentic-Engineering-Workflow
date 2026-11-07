@@ -1310,7 +1310,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **Internal alpha**, beside the trace's flag work (S12-6): FLAG-12 clears when it is built
 
-**Notes:** Filed by the Lead after #274 merged. The plan's design is its starting point, not its authority: F4 is held in HOLD-08
+**Notes:** Filed by the Lead after #274 merged. The plan's design is its starting point, not its authority: F4 is an Unscheduled row again (restored from HOLD-08 by the hold match, 2026-11-06)
 
 *Later notes: `notes.d/E87/`, oldest first (`python tools/register.py show E87`).*
 
@@ -1322,7 +1322,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **Internal alpha**, one of the trace's removals (S12-6)
 
-**Notes:** Removing the reserved keys leaves F4 held in HOLD-08: removing the keys does not remove F4. Its registry, its digest functions, its plan and E19-B stay, and the registry's meta-test (invariant 50) makes each later F4 slice add its key back before writing it
+**Notes:** Removing the reserved keys leaves F4, an Unscheduled row since the hold match of 2026-11-06, in place: removing the keys does not remove F4. Its registry, its digest functions, its plan and E19-B stay, and the registry's meta-test (invariant 50) makes each later F4 slice add its key back before writing it
 
 *Later notes: `notes.d/E88/`, oldest first (`python tools/register.py show E88`).*
 
@@ -1430,7 +1430,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **V-01**, one of its build items. In the build order, after I-6 (STG-14), and before the qualification (E98), which judges it. Until both land, a built mission's cap is issued `COOPERATIVE` and reads `NOT_ESTABLISHED` (MSN-05); and until the build serves `MSN-00` to `MSN-12`, only `MSN-Q01`'s attended runs are missions (A-42, Not claimed)
 
-**Notes:** Filed by the Lead. Held work on the same usage path: HOLD-20's F18.15 (gateway usage convergence) and HOLD-21's F25 (the cost ledger)
+**Notes:** Filed by the Lead. Work on the same usage path: F18.15 (gateway usage convergence), merged here as a note, and F25 (the cost ledger), a V-01 row, both by the hold match of 2026-11-06
 
 *Later notes: `notes.d/E97/`, oldest first (`python tools/register.py show E97`).*
 
@@ -1550,7 +1550,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **V-01** (Q4), after S2 (E102) and S4 (E105). After CS-4's merge, which is done (#283), so Q8's earlier start no longer arises
 
-**Notes:** Filed by the Lead. U1 stays held in HOLD-15 (Q4). T is an execution-policy tripwire, 300 s by default, until the trial's measurement replaces it (`BOY-09.c`)
+**Notes:** Filed by the Lead. U1 is an On measured need row (restored from HOLD-15 by the hold match, 2026-11-06). T is an execution-policy tripwire, 300 s by default, until the trial's measurement replaces it (`BOY-09.c`)
 
 *Later notes: `notes.d/E107/`, oldest first (`python tools/register.py show E107`).*
 
@@ -1728,7 +1728,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The operator's order of 2026-11-03; the designer's decisions of 2026-11-03; the operator's answer on who decides an add, recorded by the designer on 2026-11-03
 
-**When:** **Now.** Item 17 of the Now list. F4 stays in HOLD-08, and no marker raises
+**When:** **Now.** Item 17 of the Now list. F4 stays unbuilt (an Unscheduled row since the hold match of 2026-11-06), and no marker raises
 
 **Notes:** Filed by the Lead. Before the wire the Lead decides an add alone, an interim delegation for this one class of path. A-29 is not amended: before V-01 the add routes through `DECIDE_WORK_PROPOSAL` or the operator amends the text, which the designer holds. This describes the product's Lead, not development of AEW. The stop covers added paths only: a Ticket whose scope already covers the tests has the guide and the review behind it. `aew-reviewer` reviews it, with an extra look at the path rules and the pack's labelling of added paths
 

@@ -1091,7 +1091,8 @@ def test_the_pin_names_a_disposition_the_register_does_not_carry_out():
         assert any(expected in p for p in head_problems(disp, changed)), (rid, head_problems(disp, changed))
     # A held row closed by the hold match, citing its record, has left its group the way the preamble says.
     changed = copy.deepcopy(head)
-    next(r for r in closed_of(changed)["rows"] if r["#"] == "V3")["By"] = f"dropped, by the hold match, {HOLD_MATCH_RECORD}"
+    v3 = next(r for r in closed_of(changed)["rows"] if r["#"] == "V3")
+    v3["By"] = f"dropped, by the hold match, {HOLD_MATCH_RECORD}"
     assert not [p for p in head_problems(disp, changed) if p.startswith("V3")], head_problems(disp, changed)
     # A held row open again without the record has left its group some other way, which is refused.
     changed = copy.deepcopy(head)

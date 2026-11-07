@@ -1848,3 +1848,7 @@ acknowledgements.
   top-level `policies`, so the Lead's provider deny is unchanged (register E202 moves it).
 - **What it rests on that is not measured:** probe P1's live-usage citations and the token semantics' source
   citations are 2.0.18's until they are re-read (register E200).
+- **Token semantics per route for a gateway provider** (the operator, 2026-11-07): OpenCode Zen (`opencode`) serves
+  models over several protocols, so its declaration is per route (a model's catalog `package`) instead of per provider,
+  as the ledger design's R4 rule 1 otherwise has it. Its Responses route is `disjoint`, measured by one live turn
+  through AEW's relay. Each other route reads `unknown` until it is measured (register E209).

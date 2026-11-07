@@ -248,6 +248,8 @@ def test_a_lead_whose_containment_fails_is_refused_under_required_and_runs_label
         assert refused["code"] != 0, (refused["code"], refused["stderr"])
         assert refused["error"] is not None, (refused["code"], refused["stderr"])
         assert refused["after"] == "", (refused["after"], refused["stderr"])  # the refusal is the last thing written
+        # and only the start's own lines come before it: no stray brace or JSON line (#362 review, m3)
+        assert all(line.startswith("aew opencode: ") for line in refused["before"].splitlines()), refused["stderr"]
         assert refused["error"]["code"] == "CONTAINMENT_UNAVAILABLE", refused["stderr"]
         assert "not an existing directory" in refused["error"]["message"] and refused["restored"]
         assert not (tui / "tui-argv.json").exists()

@@ -27,6 +27,7 @@ from typing import Any
 
 from aewflow import sample_project
 from conftest import clean_env
+from discovery.rules import split_refusal
 from fake_harness import AGENT, POLICY, HarnessLab
 
 from aew.harness import procs
@@ -187,7 +188,8 @@ def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, st
                     timeout: float = 120) -> dict[str, Any]:
     """`aew opencode` at a terminal the test holds: standard input is a pseudo-terminal that is its controlling
     terminal (as at the operator's shell); its standard output and error are collected. Returns the exit code, the
-    result JSON (after the relay's reset), the error, and whether the terminal got its settings back."""
+    result JSON (after the relay's reset), the refusal's error with what stderr held before and after it
+    (``discovery.rules.split_refusal``), and whether the terminal got its settings back."""
     import pty
     import termios
 
@@ -224,30 +226,9 @@ def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, st
     except ValueError:
         result = None
     stderr = err.decode("utf-8", "replace")
-    error, after = refusal_of(stderr) if proc.returncode else (None, None)
+    ahead, error, after = split_refusal(stderr) if proc.returncode else (stderr, None, "")
     return {"code": proc.returncode, "result": result, "stdout": out, "stderr": stderr, "error": error,
-            "after": after, "restored": restored, "terminal": bytes(shown)}
-
-
-def refusal_of(stderr: str) -> tuple[dict[str, Any] | None, str | None]:
-    """``(error, after)``: the CLI's refusal on ``stderr`` (the JSON object it writes, which starts on a line of its
-    own) and whatever follows it, or ``(None, None)`` when there is none. ``after`` is ``""`` when the refusal is the
-    last thing written. Located line by line, so a start line or a later writer neither hides the refusal nor passes
-    unseen (E128: three CI failures where the refusal did not parse, with no stderr shown)."""
-    decoder = json.JSONDecoder()
-    at = 0
-    while True:
-        start = stderr.find("{", at)
-        if start < 0:
-            return None, None
-        if start == 0 or stderr[start - 1] == "\n":
-            try:
-                doc, end = decoder.raw_decode(stderr, start)
-            except ValueError:
-                doc = None
-            if isinstance(doc, dict) and isinstance(doc.get("error"), dict):
-                return doc["error"], stderr[end:].strip()
-        at = start + 1
+            "before": ahead, "after": after.strip(), "restored": restored, "terminal": bytes(shown)}
 
 
 def agent_session(tmp_path: Path, steps: list[dict[str, Any]] | Callable[[HarnessLab], list[dict[str, Any]]], *,

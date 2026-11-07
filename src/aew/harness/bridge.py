@@ -207,16 +207,17 @@ class BridgeServer:
             self._stopper.start()
 
     def wait_stopped(self, timeout: float | None = None) -> bool:
-        """Wait, at most ``timeout`` (``WAKE_TIMEOUT_S`` by default), for :meth:`close`'s stop: the listener closed and
-        its private directory removed. True once stopped. The owner calls it when its session ends: a process that
-        exits right after a close otherwise exits while the stop is still running on a daemon thread, and leaves the
-        private directory behind (E128: 4 refusals in 10 on the Rocky VM left theirs)."""
+        """Wait, at most ``timeout`` (``STOP_BOUND_S`` by default, ``stop_listener``'s own bound), for :meth:`close`'s
+        stop: the listener closed and its private directory removed. True once stopped; False tells the owner the
+        directory may be left, which it records. The owner calls it when its session ends: a process that exits right
+        after a close otherwise exits while the stop is still running on a daemon thread, and leaves the private
+        directory behind (E128: 4 refusals in 10 on the Rocky VM left theirs)."""
         with self._closing:
             started = self._closed.is_set()
         if not started:
             return False
         if self._stopper is not threading.current_thread():
-            self._stopper.join(WAKE_TIMEOUT_S if timeout is None else timeout)
+            self._stopper.join(STOP_BOUND_S if timeout is None else timeout)
         return not self._stopper.is_alive()
 
     def _wake(self) -> None:
@@ -227,6 +228,9 @@ class BridgeServer:
 # How long stopping a listener waits for the serving thread to take the wake connection. It is taken at once unless
 # the serving thread has already gone; the bound only stops a stop from waiting forever.
 WAKE_TIMEOUT_S = 5.0
+# How long a whole stop can take (``stop_listener``): its two waits for the wake, each bounded by WAKE_TIMEOUT_S,
+# and the private directory's removal, given a second. An owner waits this long at most (``wait_stopped``).
+STOP_BOUND_S = 2 * WAKE_TIMEOUT_S + 1.0
 
 
 def serve_listener(listener: Listener, closed: threading.Event, handle: Callable[[Any], None]) -> None:

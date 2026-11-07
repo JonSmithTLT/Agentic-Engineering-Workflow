@@ -82,6 +82,20 @@ def test_a_launch_carries_each_readiness_row_it_does_not_refuse_on_with_its_fix_
     assert out["readiness"] == [f"readiness FAIL (model-refs): {row['detail']}"], out
 
 
+def test_a_dispatch_with_launch_carries_the_readiness_rows_too(lab, tmp_path):
+    """E125, review of #360 m1: the Lead's archetype dispatches with `--launch`, so that launch carries the rows as a
+    relaunch does (`launch_dispatched`, which the stage tools and `invoke create --launch` share)."""
+    lab.script("default", [])
+    env = {KEY: "synthetic-value"}
+    policy = load_yaml((lab.aew_root / "policy/execution.yaml").read_text(encoding="utf-8"))
+    edit_policy(lab, profiles={**policy["profiles"], "broken": {"provider": "fakeprov", "model": "elsewhere/x"}})
+    row = doctor(lab, env=env)["model-refs"]
+    wid = create_planned_ticket(lab.project, tmp_path)
+    out = lab.lead("work", "assign", wid, "--launch", env=env)
+    assert out["launch"]["run"] == "R-INV-0001-1", out
+    assert out["readiness"] == [f"readiness FAIL (model-refs): {row['detail']}"], out
+
+
 def test_a_launch_with_the_provider_variable_set_starts(lab, tmp_path):
     lab.script("R-INV-0001-1", [])
     wid = create_planned_ticket(lab.project, tmp_path)

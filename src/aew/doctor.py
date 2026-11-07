@@ -152,14 +152,13 @@ def readiness_findings(engine: Any) -> list[str]:
     """The readiness rows (:func:`aew.engine.api.readiness_checks`) a start shows: each FAIL and WARN, as one entry
     with its cause and fix; empty when every row passes. It never refuses and never raises: a policy it cannot read is
     the start's own to report (register E125)."""
-    from aew.engine.api import readiness_checks
+    from aew.engine import api
 
     try:
         execution, _ = engine.execution_policy()
-        rows = readiness_checks(execution)
+        return api.readiness_findings(execution, api.START)
     except Exception:  # a start's own checks report an unreadable policy; these entries only add to them
         return []
-    return [f"readiness {r['status']} ({r['check']}): {r['detail']}" for r in rows if r["status"] in ("FAIL", "WARN")]
 
 
 def readiness_lines(engine: Any, who: str) -> str:

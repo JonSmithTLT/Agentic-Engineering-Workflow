@@ -398,28 +398,41 @@ def _with_violations(exc: Exception) -> str:
     return str(exc) + (": " + "; ".join(map(str, found)) if isinstance(found, list) and found else "")
 
 
-def readiness_checks(execution: dict[str, Any] | None) -> list[dict[str, str]]:
+# Where a readiness row is read (review of #360, m2): ``aew doctor``, or a start or a launch (``aew opencode``, every
+# Lead launch), whose own process keeps the environment it has, so its fix says to restart that session.
+DOCTOR, START = "doctor", "start"
+
+
+def readiness_checks(execution: dict[str, Any] | None, site: str = DOCTOR) -> list[dict[str, str]]:
     """Readiness: what a launch from this environment would meet in the execution policy, before any launch, and
     structural only (no provider is called): each profile's model as the harness will be given it, the provider
     variables, and each profile's provider key (ADR-0010 amendment 2026-10-11; the M4 user acceptance test's doubled
     model id and silently dropped key). Each row is a launch's own check, and a FAIL names its cause and its fix.
 
     The one owner of these rows (register E125; V-01's step 11, which the operator's decision of 2026-11-02 makes a
-    local readiness surface): ``aew doctor`` shows them, and ``aew opencode`` and ``aew harness launch`` print each
-    FAIL and WARN at their start (:func:`aew.doctor.readiness_lines`). They add no refusal of their own: a launch
-    refuses where its own check fails, as before."""
+    local readiness surface): ``aew doctor`` shows them; ``aew opencode`` prints each FAIL and WARN at its start, and
+    every launch the Lead makes carries them in ``readiness`` (:func:`readiness_findings`). ``site`` words each fix
+    for where it is read, from the same check. They add no refusal of their own: a launch refuses where its own check
+    fails, as before."""
     if execution is None:
         return []
     rows: list[dict[str, str]] = []
     if execution.get("profiles"):
         rows.append(_row("model-refs", *_model_refs_doctor(execution)))
     if execution.get("provider_env"):
-        rows.append(_row("provider-env", *_provider_env_doctor(execution)))
+        rows.append(_row("provider-env", *_provider_env_doctor(execution, site)))
     if execution.get("profiles"):
         found = _provider_key_doctor(execution)
         if found is not None:
             rows.append(_row("provider-key", *found))
     return rows
+
+
+def readiness_findings(execution: dict[str, Any] | None, site: str = START) -> list[str]:
+    """Each FAIL and WARN readiness row as one entry with its cause and fix, worded for ``site``; empty when every row
+    passes."""
+    return [f"readiness {r['status']} ({r['check']}): {r['detail']}" for r in readiness_checks(execution, site)
+            if r["status"] in ("FAIL", "WARN")]
 
 
 def _row(check: str, status: str, detail: str) -> dict[str, str]:
@@ -445,9 +458,10 @@ def _model_refs_doctor(policy: dict[str, Any]) -> tuple[str, str]:
     return "PASS", "the harness is given " + "; ".join(refs)
 
 
-def _provider_env_doctor(policy: dict[str, Any]) -> tuple[str, str]:
+def _provider_env_doctor(policy: dict[str, Any], site: str = DOCTOR) -> tuple[str, str]:
     """The provider variables the policy names, as a launch from this environment would find them (FAIL: a launch
-    from here is refused, naming each; never their values)."""
+    from here is refused, naming each; never their values). At a start or a launch (``site`` :data:`START`) the
+    process already has its environment, so the fix is to exit the session, set the variable and start it again."""
     from aew.harness import agentenv
 
     names = [str(n) for n in policy.get("provider_env") or []]
@@ -456,6 +470,11 @@ def _provider_env_doctor(policy: dict[str, Any]) -> tuple[str, str]:
     # (review of PR #214, F2), so both lines say so.
     caveat = ("doctor checks this terminal's environment; a Lead session (`aew opencode`, `aew lead session`) that "
               "is already running keeps the environment it started with")
+    if problems and site == START:
+        missing = ", ".join(n for n, _ in problems)
+        return "FAIL", ("a harness launch from this Lead session will be refused: " + "; ".join(w for _, w in problems)
+                        + f". A Lead session keeps the environment it started with, so set {missing} first: exit "
+                        "the session, set it in the terminal you start AEW from, then start `aew opencode` again")
     if problems:
         return "FAIL", ("a harness launch from this environment is refused: " + "; ".join(w for _, w in problems)
                         + f" ({caveat})")

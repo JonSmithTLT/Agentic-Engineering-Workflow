@@ -742,8 +742,12 @@ def test_aew_opencode_prints_each_failing_readiness_row_with_its_fix_first_and_s
                          provider_env=["OPENAI_API_KEY"], execution={"provider_env": ["VUAT_UNSET_KEY"]})
     readiness = calls[calls.index("credential") + 1]
     assert readiness[0] == "readiness" and readiness[1].startswith(
-        "aew opencode: readiness FAIL (provider-env): a harness launch from this environment is refused: "
+        "aew opencode: readiness FAIL (provider-env): a harness launch from this Lead session will be refused: "
         "VUAT_UNSET_KEY is not set in this environment: set VUAT_UNSET_KEY in the terminal you start AEW from"), calls
+    # the fix for this site: the session about to start keeps its environment (review of #360, m2)
+    assert readiness[1].rstrip().endswith("so set VUAT_UNSET_KEY first: exit the session, set it in the terminal you "
+                                          "start AEW from, then start `aew opencode` again"), readiness[1]
+    assert "doctor checks" not in readiness[1]
     assert calls[-1] == "session", calls  # the start went on to its session
     assert readiness[1] in capsys.readouterr().err
     assert KEYS["openai"] not in readiness[1]

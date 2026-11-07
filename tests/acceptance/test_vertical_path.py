@@ -734,7 +734,7 @@ V3_CASES: dict[str, dict[str, Any]] = {
                                  "fix": r"(did you mean|use)[^\n]{0,20}vuatprov/vuat-model\b",
                                  "accept_as_typed": True,
                                  "accepted": r"(?m)^model-refs\s+PASS\s+the harness is given [^\n]*"
-                                             r"\bvuatprov/vuat-model\b"},
+                                             r"(?<![\w/-])vuatprov/vuat-model\b"},  # never a doubled one
 }
 # The cases readiness cannot name yet, and the row that holds each: E153's detectors need a ruling on what may run at
 # readiness (naming the failing file means running the check; naming an unlisted model means starting the harness to

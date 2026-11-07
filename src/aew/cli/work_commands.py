@@ -41,19 +41,6 @@ def _inv_token(args: argparse.Namespace) -> str:
     return token
 
 
-def _harness_launch(args: argparse.Namespace) -> Any:
-    """``aew harness launch``: the launch, which refuses where its own check fails, naming the cause and the fix, as
-    before; a launch that starts carries each FAIL and WARN readiness row it would not refuse on (another profile's,
-    say) in ``readiness``, with its fix (register E125). In the result, so the CLI's JSON stays the whole output."""
-    from aew import doctor
-
-    engine = _engine(args)
-    findings = doctor.readiness_findings(engine)
-    out = engine.harness_launch(token=_lead_token(args), expect_rev=args.expect_rev, invocation=args.invocation,
-                                replace=args.replace)
-    return {**out, "readiness": findings} if findings and isinstance(out, dict) else out
-
-
 def _as_invocation(args: argparse.Namespace, op: str, bridge_args: dict[str, Any], direct: Any) -> Any:
     """Act as a bounded role: with an explicit credential, or, inside a harness run that supplied none,
     through the run's custody bridge (the supervisor holds the credential; ADR-0009)."""
@@ -455,7 +442,8 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("--replace", action="store_true",
                    help="relaunch even if the latest run may still be running (it loses its authority now)")
     _add_lead(q)
-    q.set_defaults(handler=_harness_launch)
+    q.set_defaults(handler=lambda a: _engine(a).harness_launch(
+        token=_lead_token(a), expect_rev=a.expect_rev, invocation=a.invocation, replace=a.replace))
     q = hsub.add_parser("status", help="runs, their local status and whether they still hold authority")
     q.add_argument("invocation", nargs="?")
     q.set_defaults(handler=lambda a: _engine(a).harness_status(a.invocation))

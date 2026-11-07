@@ -1048,14 +1048,28 @@ def o_env(text: str) -> list[str]:
 
 # ---------------------------------------------------------------------------------------------- refusals in output
 
+def split_refusal(stderr: str) -> tuple[str, dict[str, Any] | None, str]:
+    """``(before, error, after)``: the CLI's refusal on ``stderr`` and the text on either side of it, or
+    ``(stderr, None, "")`` when there is none. The CLI writes its refusal (``{"ok": false, "error": {...}}``) as
+    indented JSON on lines of its own (``aew.cli.main``), so the refusal is what decodes from the first line that
+    starts with ``{``. When that line is not the start of one JSON object carrying an ``error`` object (a JSON log
+    line, a stray brace), there is no refusal: a caller never mistakes an earlier line for it, nor skips one to find
+    it. The one parser of the refusal shape in the tests (#362 review, m3 and n1)."""
+    offset = 0
+    for line in stderr.splitlines(keepends=True):
+        if line.startswith("{"):
+            try:
+                data, end = json.JSONDecoder().raw_decode(stderr, offset)
+            except ValueError:
+                return stderr, None, ""
+            error = data.get("error") if isinstance(data, dict) else None
+            return (stderr[:offset], error, stderr[end:]) if isinstance(error, dict) else (stderr, None, "")
+        offset += len(line)
+    return stderr, None, ""
+
+
 def refusal_of(stderr: str) -> dict[str, Any] | None:
-    """The CLI's refusal shape (``{"ok": false, "error": {code, message, details}}``) on stderr, else ``None``."""
-    text = stderr.strip()
-    if not text.startswith("{"):
-        return None
-    try:
-        data = json.loads(text)
-    except ValueError:
-        return None
-    error = data.get("error") if isinstance(data, dict) else None
-    return error if isinstance(error, dict) and "code" in error else None
+    """The CLI's refusal shape (``{"ok": false, "error": {code, message, details}}``) when it is all of stderr, else
+    ``None``."""
+    before, error, after = split_refusal(stderr.strip())
+    return error if error is not None and not before and not after and "code" in error else None

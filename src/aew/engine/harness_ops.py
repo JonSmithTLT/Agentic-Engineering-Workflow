@@ -165,9 +165,9 @@ class Harness:
             runlog.deliver_request(old_dir, *stop_old)  # and its supervisor notices on its own
         launched = self._spawn_run(invocation, run, credential)
         del credential
-        return {"ok": True, "invocation": invocation, **launched,
-                "superseded": previous["run"] if previous else None, "revision": revision,
-                "next_action": K.wait_step([run])}
+        return self._with_readiness({"ok": True, "invocation": invocation, **launched,
+                                     "superseded": previous["run"] if previous else None, "revision": revision,
+                                     "next_action": K.wait_step([run])})
 
     def launch_dispatched(self, result: dict[str, Any]) -> dict[str, Any]:
         """Finish ``--launch`` on a dispatch: the dispatch-issued credential goes to the run's supervisor and
@@ -178,7 +178,20 @@ class Harness:
         result["launch"] = self._spawn_run(inv_id, run, credential)
         del credential
         result["next_action"] = K.wait_step([run])  # after a dispatch, the wait (E122)
-        return result
+        return self._with_readiness(result)
+
+    def _with_readiness(self, result: dict[str, Any]) -> dict[str, Any]:
+        """A launch that started carries each FAIL and WARN readiness row it did not refuse on (another profile's,
+        say), with its fix, in ``readiness``: every launch the Lead makes, `--launch` and the stages included (register
+        E125; review of #360, m1). It never refuses, and a policy it cannot read adds nothing."""
+        from aew.engine.readiness import START, readiness_findings
+
+        try:
+            execution, _ = self.k.execution_policy()
+            findings = readiness_findings(execution, START)
+        except Exception:  # the launch's own checks report an unreadable policy; this only adds to them
+            return result
+        return {**result, "readiness": findings} if findings else result
 
     def _spawn_run(self, inv_id: str, run: str, credential: str) -> dict[str, Any]:
         """Start the run's supervisor and hand it the credential over its stdin pipe. Never raises after the

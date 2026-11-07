@@ -604,6 +604,10 @@ class Supervisor:
             if self.weaker is not None:  # ended only once its processes are proven ended (G3 addendum 7, ruling 2)
                 self.weaker.end(self.tree.survivors() + list(self._checks.left))
             containment.retire_private_git(self.run_dir)  # private staging is scratch: nothing real refers to it
+        # After the kill, so a slow stop never delays it; before the final record, so the supervisor never exits with
+        # the stop still running and its private directory left (E128). Bounded by the stop's own bound.
+        if self.bridge is not None and not self.bridge.wait_stopped():
+            self._event("bridge_stop_timeout", bound_s=bridge.STOP_BOUND_S)
         try:
             self.record["result"] = self.adapter.collect() if self.adapter is not None else {}
         except Exception as exc:

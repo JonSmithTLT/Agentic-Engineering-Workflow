@@ -425,6 +425,37 @@ def test_the_static_scan_reads_every_static_text():
     assert all(f.site.startswith(allowed.STATIC_PREFIXES) for f in static.scan(guides()))
 
 
+# ---------------------------------------------------------------------------------------------- the refusal shape
+
+REFUSAL = json.dumps({"ok": False, "error": {"code": "CONTAINMENT_UNAVAILABLE", "message": "m"}}, indent=2) + "\n"
+ERROR = {"code": "CONTAINMENT_UNAVAILABLE", "message": "m"}
+
+
+@pytest.mark.parametrize(("stderr", "split"), [
+    (REFUSAL, ("", ERROR, "\n")),
+    ("aew opencode: a start line\n" + REFUSAL, ("aew opencode: a start line\n", ERROR, "\n")),
+    (REFUSAL + "Exception ignored in atexit callback\n", ("", ERROR, "\nException ignored in atexit callback\n")),
+    # what precedes the refusal stays in `before`, for the caller to judge: a brace inside a line is not a refusal
+    ("layout {ro: /usr}\n" + REFUSAL, ("layout {ro: /usr}\n", ERROR, "\n")),
+    # the first line that starts with `{` is the refusal or there is none: an earlier JSON line is never skipped
+    ('{"event": "start"}\n' + REFUSAL, ('{"event": "start"}\n' + REFUSAL, None, "")),
+    ("{ not json\n" + REFUSAL, ("{ not json\n" + REFUSAL, None, "")),
+    ("aew: " + REFUSAL, ("aew: " + REFUSAL, None, "")),  # the CLI writes its refusal on lines of its own
+    ("no refusal at all\n", ("no refusal at all\n", None, "")),
+])
+def test_the_refusal_is_the_first_line_starting_a_json_error_object_with_what_comes_before_and_after(stderr, split):
+    """#362 review, m3: a caller that asserts what comes before the refusal and after it is strictly stronger than the
+    old parse from the first `{`, which passed a JSON log line or a brace before the refusal (`split_refusal`)."""
+    assert rules.split_refusal(stderr) == split
+
+
+def test_a_refusal_is_all_of_stderr_for_the_capture_plugin():
+    assert rules.refusal_of("\n" + REFUSAL) == ERROR
+    assert rules.refusal_of("aew opencode: a start line\n" + REFUSAL) is None
+    assert rules.refusal_of(REFUSAL + "trailing\n") is None
+    assert rules.refusal_of(json.dumps({"ok": False, "error": {"message": "no code"}})) is None
+
+
 # ---------------------------------------------------------------------------------------------- capture
 
 def test_the_capture_plugin_reads_a_real_refusal_of_the_cli(repo):

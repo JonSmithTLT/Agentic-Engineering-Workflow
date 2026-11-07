@@ -121,17 +121,22 @@ installed tool: its variables are not the operator's.
 |---|---|---|
 | **V1** | **The fresh path.** A new project (a sample the test creates) goes from setup to a published one-line fix, and the operator gets the result: diff, evidence summary, commit. | The ledger zeros in §4, with **two** operator decisions: approving the plan, and approving the publish. Publish stays a judgement unless a grant covers it. |
 | **V2** | **Close and reopen with work active.** As V1, but the operator ends the Lead session while the implementer runs, then opens AEW again **from a fresh terminal**, nothing carried over. Parametrized: a clean `/exit` (the primary case) and a killed session. | No takeover, no credential, no INTERRUPTED Ticket and no reconcile. The implementer's run is untouched (still running after the reopen, its evidence accepted, no relaunch). The operator is told where things stand in words. The same zeros. |
-| **V3** | **Preflight catches it first.** One case per cause: a `provider_env` variable unset; a configured model the harness does not list; a check that changes the snapshot; stale state the engine could recover (a Lead session that died holding the seat); a model id carrying the provider prefix. | Before any Ticket exists, a local readiness surface fails, **naming the cause and the fix**, with the same regexes and `failing_entries`, and the driver asserts the diagnosis (the operator's decision of 2026-11-02, which amends V-01's row 11; P03 stays owed). Nothing is launched. |
+| **V3** | **Preflight catches it first.** One case per cause: a `provider_env` variable unset; a configured model the harness does not list; a check that changes the snapshot; stale state the engine could recover (a Lead session that died holding the seat); a model id carrying the provider prefix. | Before any Ticket exists, a local readiness surface fails, **naming the cause and the fix**, with the same regexes and `failing_entries`, and the driver asserts the diagnosis (the operator's decision of 2026-11-02, which amends V-01's row 11; P03 stays owed). **The readiness surface is `aew doctor`** (the Lead's choice, which that record gives it; register E125): its readiness rows, which `aew opencode` and `aew harness launch` also print at their start. Nothing is launched. |
 | **V4** | **Change a setting.** Switch the implementer's model, then V1's path. | One operator action that validates and saves; saving is the adoption. No raw YAML, no separate adopt, no credential, no restart. The implementer runs on the new model. |
 
 - **The provider-prefix case** (UAT U3's shape): the operator pastes the harness's own printed `provider/model` id
   into the profile's `model`, and AEW passes the provider and the id apart, so the reference it uses is doubled
   (`<provider>/<provider>/<model>`). The ideal outcome is that AEW accepts the id as typed (no error at all);
-  otherwise readiness must name the doubled reference and suggest the listed id. The names used are synthetic.
+  otherwise readiness must name the doubled reference and suggest the listed id. The names used are synthetic. AEW
+  accepts it as typed: under its own provider, the provider's prefix is removed (`aew/harness/models.py`), so the
+  driver checks that doctor's `model-refs` line gives the harness the listed id and that nothing names a doubled one.
+- **The cases readiness can't name yet** stay red, and the driver names what holds each: `model-not-listed` and
+  `check-changes-snapshot` need detectors that run something (the check, or the harness for its listing), register
+  E153, which waits on a ruling on what may run at readiness; the stale seat is G3-C's.
 - **What counts as naming a cause (V3).** Only a FAIL or WARN entry of the readiness report (the line whose status is
   FAIL or WARN, with its continuation lines) that names the specific cause, or its fix. A PASS or INFO line that echoes
-  the configured value is not a diagnosis (`failing_entries`, `diagnoses`), for preflight and for the doctor fact the
-  ledger records. A refusal in the CLI's JSON shape (`{"ok": false, "error": {code, message, details}}`) is one failing
+  the configured value is not a diagnosis (`failing_entries`, `diagnoses`), for readiness (`aew doctor`) and for the
+  doctor fact the ledger records. A refusal in the CLI's JSON shape (`{"ok": false, "error": {code, message, details}}`) is one failing
   entry, its message and details; a JSON answer with `ok: true` never is.
 - **Opening AEW.** The `open` step is L01 and L02 (`ATTACH_LEAD`), through a G3 client and the confirmer, whose PIN
   approves the attach (§4, the PIN rule). The test records whether a console endpoint came up (`open.console`), never

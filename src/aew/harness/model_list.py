@@ -132,7 +132,7 @@ def cache_key(adapter_cls: Any, policy: dict[str, Any], pin: dict[str, Any]) -> 
         for block in iter(lambda: fh.read(1 << 20), b""):
             digest.update(block)
     projected = adapter_cls.projected_config(_contract(Path("/aew-doctor/run"), pin, policy))
-    rule = {k: policy.get(k) for k in ("containment", "network", "egress_allow", "provider_env")}
+    rule = {k: policy.get(k) for k in ("containment", "provider_env")}  # the network rule is containment's
     config = hashlib.sha256(json.dumps([projected, rule], sort_keys=True, default=str).encode()).hexdigest()
     return f"{digest.hexdigest()}:{config}"
 

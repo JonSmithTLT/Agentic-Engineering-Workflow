@@ -29,21 +29,18 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import reference_render
 
 ROOT = Path(__file__).resolve().parents[2]
-_spec = importlib.util.spec_from_file_location("reference_tool", ROOT / "tools" / "reference.py")
-assert _spec is not None and _spec.loader is not None
-reference = importlib.util.module_from_spec(_spec)
-sys.modules["reference_tool"] = reference
-_spec.loader.exec_module(reference)
+reference = reference_render.tool()
 C, PAGES, FAMILIES = reference._families()
 MODULES = next(f for f in FAMILIES if f.__name__.endswith(".modules"))
 OUT = reference.OUT
 
 
-@cache
 def rendered() -> dict[str, bytes]:
-    return reference.render_files(ROOT)
+    """This checkout's render, made once per process for every module that reads it (``tests/helpers``)."""
+    return reference_render.rendered()
 
 
 def committed() -> dict[str, bytes]:

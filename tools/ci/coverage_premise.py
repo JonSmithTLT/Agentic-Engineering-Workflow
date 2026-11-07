@@ -7,23 +7,28 @@ its base, and the guards in ``tests/unit/test_ci_tools.py`` keep heavy tests fro
 change may touch), so the total can fall only through the fast lane: a fast test deleted, skipped, narrowed, moved to
 ``serial`` (which runs without coverage) or fed different input.
 
-``fastbase`` runs the whole fast lane at the base tip (``GITHUB_SHA^1``) under coverage; ``core (ubuntu-latest)``
-runs it at the merge commit. Each side is combined with ``coverage_gate.combine``, which applies
-``[tool.coverage.paths]``, and keyed by its repository-relative path under ``src/aew``. Every base line and arc must be
-covered by this run's fast lane; an empty difference proves that the fast lane's footprint, and so the ratchet's
-total, did not fall. A base that did not pass or left no data means the premise is unknown.
+``fastbase`` runs the whole fast lane at the base tip (``GITHUB_SHA^1``) under coverage; ``core``'s Linux fast-lane
+shards run it at the merge commit, each uploading its own data (``coverage-core-fast-<k>-Linux``), so the head is
+every directory under ``--head`` whose name ``--head-name`` matches. Each side is combined with
+``coverage_gate.combine``, which applies ``[tool.coverage.paths]``, and keyed by its repository-relative path under
+``src/aew``. Every base line and arc must be covered by this run's fast lane; an empty difference proves that the fast
+lane's footprint, and so the ratchet's total, did not fall. A base that did not pass or left no data means the premise
+is unknown.
 
-    python tools/ci/coverage_premise.py --base fastbase-data --head coverage-data/coverage-core-Linux
+    python tools/ci/coverage_premise.py --base fastbase-data --head coverage-data \
+        --head-name "coverage-core-fast-*-Linux"
         [--base-result success] [--rcfile pyproject.toml] [--summary FILE] [--out FILE]
 """
 
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import shutil
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -50,12 +55,14 @@ def repo_relative(filename: str) -> str | None:
     return None if at < 0 else norm[at:]
 
 
-def footprint(data_dir: Path, rcfile: Path) -> Footprint:
-    """The lines and arcs each ``src/aew`` file has in the data under ``data_dir``, after remapping. The data are
-    copied first: ``combine`` writes its result next to its inputs, and the ratchet later reads the same directory."""
-    files = [p for p in sorted(data_dir.rglob(".coverage*")) if p.is_file()] if data_dir.is_dir() else []
+def footprint(data_dir: Path | Sequence[Path], rcfile: Path) -> Footprint:
+    """The lines and arcs each ``src/aew`` file has in the data under ``data_dir`` (one directory, or several: the
+    shards of one lane), combined, after remapping. The data are copied first: ``combine`` writes its result next to
+    its inputs, and the ratchet later reads the same directory."""
+    dirs = [data_dir] if isinstance(data_dir, Path) else list(data_dir)
+    files = [p for d in dirs if d.is_dir() for p in sorted(d.rglob(".coverage*")) if p.is_file()]
     if not files:
-        raise Unknown(f"no coverage data under {data_dir}")
+        raise Unknown(f"no coverage data under {', '.join(map(str, dirs)) or 'any directory the pattern names'}")
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:  # Windows: SQLite
         work = Path(tmp)
         for i, f in enumerate(files):
@@ -83,7 +90,8 @@ def lost(base: Footprint, head: Footprint) -> dict[str, dict[str, list[Any]]]:
     return missing
 
 
-def evaluate(base_dir: Path, head_dir: Path, rcfile: Path, base_result: str | None = None) -> dict[str, Any]:
+def evaluate(base_dir: Path, head_dir: Path | Sequence[Path], rcfile: Path, base_result: str | None = None
+             ) -> dict[str, Any]:
     """The premise's result: ``holds``, ``loss`` (with what was lost) or ``unknown`` (with why)."""
     if base_result is not None and base_result != "success":
         return {"schema": SCHEMA, "result": "unknown", "message": UNKNOWN.format(why=f"`fastbase`: {base_result}")}
@@ -128,13 +136,18 @@ def summary(result: dict[str, Any]) -> str:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     ap.add_argument("--base", type=Path, required=True, help="fastbase's coverage data (artifact fastbase-coverage)")
-    ap.add_argument("--head", type=Path, required=True, help="this run's Linux fast-lane data (coverage-core-Linux)")
+    ap.add_argument("--head", type=Path, required=True, help="this run's Linux fast-lane data, or the directory of it")
+    ap.add_argument("--head-name", metavar="PATTERN",
+                    help="the data is every directory under --head whose name matches (each fast-lane shard's)")
     ap.add_argument("--base-result", help="the fastbase job's result: anything but success means unknown")
     ap.add_argument("--rcfile", type=Path, default=Path("pyproject.toml"))
     ap.add_argument("--summary", type=Path, help="append the Markdown summary here (e.g. $GITHUB_STEP_SUMMARY)")
     ap.add_argument("--out", type=Path, help="write the result as JSON here")
     args = ap.parse_args(argv)
-    result = evaluate(args.base, args.head, args.rcfile, args.base_result)
+    heads = (args.head if args.head_name is None else
+             [d for d in sorted(args.head.iterdir()) if fnmatch.fnmatchcase(d.name, args.head_name)]
+             if args.head.is_dir() else [])
+    result = evaluate(args.base, heads, args.rcfile, args.base_result)
     text = summary(result)
     print(text)
     if args.summary:

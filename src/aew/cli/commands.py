@@ -87,7 +87,8 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     p.add_argument("--provider", help="with --model: the workers' provider, when the model is a bare id")
     # The tools AEW brings: downloaded only as the operator chooses (the operator, 2026-11-05; aew.capability.consent)
     p.add_argument("--fetch-tool", action="append", metavar="TOOL",
-                   help="download this tool AEW brings (ripgrep), as your choice, with no screen; repeat for more. "
+                   help="download this tool AEW brings (`aew capability list` names them), as your choice, with no "
+                        "screen; repeat for more. "
                         "With none named, a screen asks at a terminal, and elsewhere nothing downloads")
     p.set_defaults(handler=_init)
 

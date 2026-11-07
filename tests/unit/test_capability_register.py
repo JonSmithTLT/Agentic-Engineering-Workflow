@@ -471,6 +471,71 @@ def test_the_shipped_records_validate_and_name_capabilities_in_d01_form():
     assert rg["health"]["version"]["expect"] == f"ripgrep {rg['version']}"
 
 
+# The first bundle's other five (FIRST-BUNDLE.md): provider, command, capability
+FIRST_BUNDLE = {"fd": ("fd", "FILE_FIND"), "jq": ("jq", "JSON_QUERY"), "yq": ("yq-go", "YAML_QUERY"),
+                "ast-grep": ("ast-grep", "STRUCTURAL_CODE_SEARCH"), "universal-ctags": ("uctags", "SYMBOL_OUTLINE")}
+
+
+def test_the_first_bundle_ships_each_member_optional_under_an_unambiguous_name_for_windows_and_linux():
+    """Each of the five has a record with a payload for Windows and for Linux x86_64 (the operator's hosts), is
+    optional (the harness runs none of them) and comes last on PATH under its own name, so a project's own tool keeps
+    the plain name (CAPR-04). yq and ctags have other implementations under the plain name, and Rocky 8's `sg` is
+    shadow-utils', so none of those names is AEW's. Universal Ctags' check names the variant: Rocky 8's Exuberant
+    `ctags` never passes as it."""
+    shipped = records.shipped()
+    assert set(shipped) == {"ripgrep", *FIRST_BUNDLE}, sorted(shipped)
+    for name, (command, capability) in FIRST_BUNDLE.items():
+        record = shipped[name]
+        assert (record["command"], record["capabilities"]) == (command, [capability]), name
+        assert record["path"] == "own_name" and not records.needed(record), name
+        assert record["placement"] == "sandbox" and record["effect"] == "read_only", name
+        assert {"linux-x86_64", "windows-x86_64"} <= set(record["payloads"]), name
+        for key, pinned in record["payloads"].items():
+            assert P.kind(pinned["source"]) == P.EXECUTABLE or pinned["member"].rsplit("/", 1)[-1] in (
+                "ast-grep", "ast-grep.exe", "ctags", "ctags.exe", "fd", "fd.exe", "yq_linux_amd64",
+                "yq_windows_amd64.exe"), (name, key)
+    assert {r["command"] for r in shipped.values()}.isdisjoint({"yq", "ctags", "sg"})
+    ctags = shipped["universal-ctags"]["health"]["version"]
+    assert ctags["expect"].startswith("Universal Ctags") and not "Exuberant Ctags 5.8".startswith(ctags["expect"])
+    assert P.kind(shipped["jq"]["payloads"]["linux-x86_64"]["source"]) == P.EXECUTABLE
+    assert P.kind(shipped["ast-grep"]["payloads"]["linux-x86_64"]["source"]) == P.ZIP  # the manylinux_2_28 wheel
+
+
+@pytest.mark.parametrize("source, kind", [
+    ("https://h/a/x-1.0.tar.gz", P.TAR_GZ), ("https://h/a/x-1.0.zip", P.ZIP), ("https://h/a/x-1.0-py3-none.whl", P.ZIP),
+    ("https://h/a/x-linux-amd64", P.EXECUTABLE), ("https://h/a/x-windows-amd64.exe", P.EXECUTABLE),
+    ("https://h/a/x-1.0.tar.xz", P.EXECUTABLE),  # not an archive AEW reads: as an executable its pin refuses it
+])
+def test_a_payloads_kind_is_its_sources_ending(source, kind):
+    assert P.kind(source) == kind
+
+
+def _bare(body: bytes, **change: Any) -> dict[str, Any]:
+    return {"source": "https://example.invalid/releases/fake-linux-amd64", "archive_sha256": _sha(body),
+            "archive_size": len(body), "sha256": _sha(body), "size": len(body), **change}
+
+
+@pytest.mark.parametrize("base, change, refused", [
+    ("bare", lambda p, body: p.update(member="fake"), "has no `member`"),
+    ("bare", lambda p, body: p.update(archive_sha256=_sha(body + b"x")), "are the same"),
+    ("bare", lambda p, body: p.update(archive_size=len(body) + 1), "are the same"),
+    ("archive", lambda p, body: p.pop("member"), "names the executable in it"),
+    ("archive", lambda p, body: (p.pop("member"), p.update(source="https://example.invalid/fake-1.0-py3-none.whl")),
+     "names the executable in it"),
+])
+def test_a_payloads_member_follows_its_kind(reg, base, change, refused):
+    """An archive names its one member; a bare executable names none, and its download's pin is the executable's.
+    Each base validates as it stands (the right case), and each change is refused saying why."""
+    record = copy.deepcopy(reg["shipped"]["fake"])
+    if base == "bare":
+        record["payloads"][KEY] = _bare(reg["body"])
+    records.validate({"schema": records.SCHEMA, "providers": {"fake": copy.deepcopy(record)}}, source="test")
+    change(record["payloads"][KEY], reg["body"])
+    with pytest.raises(errors.ValidationFailed) as exc:
+        records.validate({"schema": records.SCHEMA, "providers": {"fake": record}}, source="test")
+    assert refused in json.dumps(exc.value.to_dict()), exc.value.to_dict()
+
+
 @pytest.mark.parametrize("change, refused", [
     (lambda r: r.update(placement="host"), "host placement"),
     (lambda r: r["needs"].update(credentials=True), "place"),  # CAPR-Q11's words: it belongs on the host
@@ -918,6 +983,57 @@ def test_a_zip_payload_is_read_like_a_tarball(reg, monkeypatch):
     monkeypatch.setattr(records, "shipped", lambda: {"fake": record})
     _import(reg, data=archive, name="fake-1.0.zip")
     assert _cap()["observed_status"] == status.FUNCTIONAL_ONLY
+
+
+class _Response(io.BytesIO):
+    def __enter__(self) -> _Response:
+        return self
+
+    def __exit__(self, *_: Any) -> None:
+        self.close()
+
+
+def test_a_bare_executable_is_fetched_bounded_installed_and_imported_as_itself(reg, monkeypatch):
+    """jq's shape: the download is the executable. The fetch reads it to its pinned size and checks its pin, the
+    install writes it as it came, and an offline import of the same file makes it FUNCTIONAL_ONLY; bytes off the pin
+    are refused, never installed."""
+    record = copy.deepcopy(reg["shipped"]["fake"])
+    record["payloads"][KEY] = _bare(reg["body"])
+    monkeypatch.setattr(records, "shipped", lambda: {"fake": record})
+    path = P.path_of("fake", "fake", record["payloads"][KEY])
+    limit = len(reg["body"]) + 1
+    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout: _Bounded(
+        _Response(reg["body"][:-1] + b"X"), limit))
+    said = ops.fetch(["fake"])["fake"]
+    assert "refused" in said[0] and not path.exists(), said
+    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout: _Bounded(
+        _Response(reg["body"] + b"x" * 64), limit))
+    assert "refused" in ops.fetch(["fake"])["fake"][0] and not path.exists()
+    monkeypatch.setattr("urllib.request.urlopen", lambda url, timeout: _Bounded(_Response(reg["body"]), limit))
+    said = ops.fetch(["fake"])["fake"]
+    assert said[0].startswith("downloaded") and path.read_bytes() == reg["body"], said
+    assert P.verify(path, record["payloads"][KEY]) is None
+    P.discard("fake", record["payloads"][KEY])
+    _import(reg, data=reg["body"], name="fake-linux-amd64")
+    assert _cap()["observed_status"] == status.FUNCTIONAL_ONLY
+
+
+def test_a_wheel_is_read_as_the_zip_it_is(reg):
+    """ast-grep's Linux payload is its manylinux_2_28 wheel: the member is read out of it like any zip's."""
+    archive = _archive(reg["body"], MEMBER, kind="zip")
+    pinned = {**reg["shipped"]["fake"]["payloads"][KEY], "source": "https://example.invalid/fake-1.0-py3-none.whl",
+              "archive_sha256": _sha(archive), "archive_size": len(archive)}
+    assert P.member(archive, pinned) == reg["body"]
+
+
+def test_a_tar_member_named_from_the_archives_own_dot_is_read(reg):
+    """yq's Linux archive names its executable `./yq_linux_amd64`: the record names it so, and it is read."""
+    archive = _archive(reg["body"], "./fake")
+    pinned = {**reg["shipped"]["fake"]["payloads"][KEY], "member": "./fake", "archive_sha256": _sha(archive),
+              "archive_size": len(archive)}
+    records.validate({"schema": records.SCHEMA, "providers": {"fake": {**reg["shipped"]["fake"],
+                                                                       "payloads": {KEY: pinned}}}}, source="test")
+    assert P.member(archive, pinned) == reg["body"]
 
 
 def test_an_archive_without_its_member_as_a_regular_file_is_refused(reg):

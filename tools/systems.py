@@ -31,7 +31,8 @@ and holds the file to:
   reference to the Lead's private list, no absolute path, no carriage return. A record outside this repository is
   cited by its file name only. Its limits (review of #346, n2): it does not see a ``~`` home path, ``/mnt``, ``/root``
   or ``/opt`` paths, a UNC path (``\\\\host\\share``) or one built from an environment variable (``%APPDATA%``,
-  ``$HOME``); a reviewer reads the file for those, and for names.
+  ``$HOME``), nor a private folder's sub-folder named alone (``build-board-2026-11-06/FORMAT.md``); a reviewer reads
+  the file for those, and for names.
 
 Not here yet: ``render`` and ``systems.md`` (with priority read from the Now list), state read from the code
 (``switch.default``, ``wired``) and the limit's count, and the derived ``serves``.

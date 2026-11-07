@@ -1,5 +1,5 @@
 {
- "about": "Known answers for A-24 SW-02's set fingerprint (profile CS-03), copied unchanged from the adopted A-24 package's fixtures: each case's request and the consent_set_digest its owner operation records, which A-24's own oracle computed. One case per distinct digest; V011-OWNER-DIGEST-SWAP is left out, as its digest is a planted swap. Do not edit: a value that disagrees with AEW is a finding, not a fixture to change.",
+ "about": "Known answers for A-24 SW-02's set fingerprint (profile CS-03), copied unchanged from the adopted A-24 package's fixtures: each case's request and the consent_set_digest its owner operation records, which A-24's own oracle computed. One case per distinct digest; V011-OWNER-DIGEST-SWAP is left out, as its digest is a planted swap. V012_CROSS_INSTALL_PROFILE_REJECT is left out too: it records P05's digest. The `vectors` are the package's, unchanged; `oracle_vectors` are not in the package, and are described in their own section. Do not edit: a value that disagrees with AEW is a finding, not a fixture to change.",
  "source": {
   "package": "AEW-O01-Selected-Command-Wire-v0.1.4-Focused-Reviewer-Candidate-2026-10-18.zip",
   "package_sha256": "7fc128f576f22ba9be995a2d334d6e4245f6594d2cd5e2b3a80b4002b1899e22",
@@ -909,5 +909,36 @@
    },
    "set_digest": "069718c794293d93bfec6b3655cd2ece5040203c36ac9e8381376b94c0373b59"
   }
- ]
+ ],
+ "oracle_vectors": {
+  "about": "Synthetic requests that are not A-24 fixture cases, with the set_digest A-24's own oracle computed for each (its set_digest function, run on the request as given). They exercise SW-02's encoding: non-ASCII text in and beyond the Basic Multilingual Plane, an empty string, and separator characters inside a value. Do not edit: a value that disagrees with AEW is a finding, not a fixture to change.",
+  "source": {
+   "package": "AEW-O01-Selected-Command-Wire-v0.1.4-Focused-Reviewer-Candidate-2026-10-18.zip",
+   "package_sha256": "7fc128f576f22ba9be995a2d334d6e4245f6594d2cd5e2b3a80b4002b1899e22",
+   "member": "04-ORACLE/layer_b.py",
+   "member_sha256": "2ce30968bbb93da7d0677c2d37239a46cda9e5b26570f7cf6ce1bcfae84cc807"
+  },
+  "vectors": [
+   {
+    "case": "ENC-01",
+    "request": {
+     "request_set_ref": "set:caf\u00e9",
+     "recipient_ref": "",
+     "installation_ref": "install:\u4e2d,\":",
+     "intents": [
+      {
+       "intent_ref": "intent:a",
+       "note": "\ud83d\ude00"
+      },
+      {
+       "intent_ref": "intent:b",
+       "note": ""
+      }
+     ],
+     "wire_version": "x"
+    },
+    "set_digest": "3b502683aa70cf60fbb96bbde900e65f6a183c2b63e8f5e20d7f6034330a1f50"
+   }
+  ]
+ }
 }

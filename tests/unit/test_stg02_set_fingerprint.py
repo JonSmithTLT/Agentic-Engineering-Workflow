@@ -25,7 +25,7 @@ def by_case(case: str) -> dict[str, Any]:
 
 
 def test_the_known_answers_are_the_adopted_packages_and_cover_a_two_member_set():
-    """The fixture is what it says: A-24's adopted package (its verified sha256), one case per distinct digest, and
+    """The fixture is what it says: A-24's adopted package (its recorded sha256), one case per distinct digest, and
     among them a set of two members, so the fingerprint's member order is known too."""
     assert VECTORS["source"]["package_sha256"] == "7fc128f576f22ba9be995a2d334d6e4245f6594d2cd5e2b3a80b4002b1899e22"
     digests = [v["set_digest"] for v in VECTORS["vectors"]]
@@ -37,6 +37,22 @@ def test_the_known_answers_are_the_adopted_packages_and_cover_a_two_member_set()
 def test_the_set_fingerprint_is_a24s_sw02_digest_of_each_adopted_case(vector: dict[str, Any]):
     """CS-03: lowercase hex SHA-256 of the canonical JSON of the four fields, exactly as A-24's oracle computed it."""
     assert W.set_digest(vector["request"]) == vector["set_digest"]
+
+
+@pytest.mark.parametrize("vector", VECTORS["oracle_vectors"]["vectors"], ids=lambda v: v["case"])
+def test_the_set_fingerprint_encodes_as_a24s_oracle_does(vector: dict[str, Any]):
+    """SW-02's encoding, end to end through the fingerprint (#363 review F1): a two-member set with non-ASCII text in
+    and beyond the Basic Multilingual Plane, an empty string, and separator characters inside a value has the digest
+    A-24's own oracle (``04-ORACLE/layer_b.py``, its recorded sha256) computed for it."""
+    source = VECTORS["oracle_vectors"]["source"]
+    assert source["member"] == "04-ORACLE/layer_b.py"
+    assert source["member_sha256"] == "2ce30968bbb93da7d0677c2d37239a46cda9e5b26570f7cf6ce1bcfae84cc807"
+    req = vector["request"]
+    text = json.dumps(req, ensure_ascii=False)
+    assert len(req["intents"]) == 2 and "" in req.values() and any(ord(c) > 0xFFFF for c in text)
+    assert any(ord(c) > 0x7F for c in req["request_set_ref"] + req["installation_ref"])
+    assert ',":' in req["installation_ref"]  # JSON's separators and a quote, inside a value
+    assert W.set_digest(req) == vector["set_digest"]
 
 
 def test_only_the_four_fields_are_fingerprinted():

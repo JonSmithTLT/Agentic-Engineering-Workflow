@@ -5,17 +5,22 @@ adapter declares, what the pinned version's facts are, and how measured facts be
 of any harness: it runs the pack's checks in a private environment, keys them by capability, and compares what they
 measured with the pin.
 
-Every check runs offline, with no key, and with every home, config, data, cache, state and temporary folder private to
-the run (:func:`private_env`). A check that needs the VM (bubblewrap) is skipped elsewhere and says so; it is never
-reported as passed.
+Every check needs no network (no provider, no key: the model is the scripted one on loopback), and every home, config,
+data, cache, state and temporary folder is private to the run (:func:`private_env`). Egress is not blocked unless the
+run is under ``bwrap --unshare-net`` (the CLI's ``--no-network``), and the record says which: a harness may still try
+its own fetches on a networked host. A check that needs the VM (bubblewrap) is skipped elsewhere and says so; it is
+never reported as passed.
 """
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
 import shutil
+import socket
+import subprocess
 import sys
 import tempfile
 import time
@@ -24,6 +29,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from aew.harness.harness_capabilities import GAP
+
 SCHEMA = "aew/harness-qualify/v1"
 
 # A check's result. ``unchecked`` is a capability's, never a check's: the adapter declares it and no check covers it.
@@ -31,9 +38,17 @@ PASS, FAIL, ERROR, SKIPPED, UNCHECKED = "pass", "fail", "error", "skipped", "unc
 # Where a check can run: ``ci`` on any CI runner (Linux, Windows) given the binary; ``vm`` needs bubblewrap (the Rocky 8
 # VM, or a Linux host that has it).
 CI, VM = "ci", "vm"
-# How deep a check looks: the served API only, the binary's own behaviour with the scripted model, or a citation
-# (a searchable identifier) read in the binary's bundled code.
-API, BEHAVIOUR, CITATION = "api", "behaviour", "citation"
+# How deep a check looks: the served API only (``api``), a citation read in the binary's bundled code (``source``),
+# or the binary's own behaviour on a real run with the scripted model (``run``), deepest last.
+API, CITATION, BEHAVIOUR = "api", "source", "run"
+DEPTHS = (API, CITATION, BEHAVIOUR)
+# Whose result a check is: the binary's, or the host's (AEW's own containment on this host, whatever the binary).
+BINARY, HOST = "binary", "host"
+# Exit codes: 0 every binary check that ran passed and the facts match; 1 a check failed or a fact changed; 2 a usage
+# error (an --only id that is no check); 3 no binary check ran, so nothing was qualified.
+EXIT_OK, EXIT_FAILED, EXIT_USAGE, EXIT_NOTHING_RAN = 0, 1, 2, 3
+ROOT = Path(__file__).resolve().parents[2]
+NOT_RUN = "not run"
 
 # Variables never passed to anything a check starts: credentials, proxies and the harnesses' own settings.
 _DROPPED_SUFFIXES = ("_API_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_KEY")
@@ -42,6 +57,10 @@ _DROPPED_PREFIXES = ("AEW_", "OPENAI", "ANTHROPIC", "GOOGLE", "AWS_", "AZURE_", 
 _WINDOWS_KEEP = ("SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "SYSTEMDRIVE", "NUMBER_OF_PROCESSORS",
                  "PROCESSOR_ARCHITECTURE", "OS")
 _POSIX_KEEP = ("LANG", "LC_ALL", "TZ")
+
+
+class UnknownCheck(ValueError):
+    """An ``only`` id that names no check of the pack: a usage error, never a run that skips everything."""
 
 
 @dataclass
@@ -82,6 +101,7 @@ class Check:
     slow: bool = False
     says: str = ""
     measures: tuple[str, ...] = ()  # the fact ids it measures, so a skipped check's facts say why they are missing
+    scope: str = BINARY
 
 
 @dataclass(frozen=True)
@@ -107,8 +127,9 @@ class Pack(Protocol):
     harness: str
     version_source: VersionSource | None
 
-    def declared(self) -> Mapping[str, str]:
-        """The capabilities the harness's adapter declares, by name, with how each is provided."""
+    def declared(self) -> Mapping[str, Mapping[str, Any]]:
+        """The capabilities the harness's adapter declares, by name: ``{"status": yes | partial | gap, "how", and for
+        a gap its "register" row}`` (``aew.harness.harness_capabilities``)."""
 
     def checks(self) -> Sequence[Check]: ...
 
@@ -139,12 +160,15 @@ class Record:
     unmeasured: dict[str, str]
     started: str
     seconds: float
+    network: str = ""
+    aew_revision: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {"schema": SCHEMA, "harness": self.harness, "version": self.version,
                 "binary_sha256": self.binary_sha256, "platform": self.platform, "started": self.started,
-                "seconds": self.seconds, "checks": self.checks, "capabilities": self.capabilities,
-                "unmeasured": self.unmeasured, "facts": self.facts}
+                "seconds": self.seconds, "network": self.network, "aew_revision": self.aew_revision,
+                "checks": self.checks, "capabilities": self.capabilities, "unmeasured": self.unmeasured,
+                "facts": self.facts}
 
 
 def sha256_file(path: Path) -> str:
@@ -181,6 +205,37 @@ def private_env(root: Path, base: Mapping[str, str] | None = None, *, harness: s
     return env
 
 
+def aew_revision() -> str | None:
+    """The commit of the AEW checkout whose checks made the record (``+dirty`` with local changes), or None."""
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        sha = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True,
+                             timeout=30, creationflags=flags).stdout.strip()
+        dirty = subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--untracked-files=no"],
+                               capture_output=True, text=True, timeout=30, creationflags=flags).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return (sha + ("+dirty" if dirty else "")) if sha else None
+
+
+NETWORK_BLOCKED_ENV = "HQ_UNSHARE_NET"  # set by the CLI when it runs the tool under bwrap --unshare-net
+
+
+def network_state() -> str:
+    """Whether egress was blocked, and how that was seen: under ``bwrap --unshare-net`` a connection to a public
+    address finds no route at once."""
+    if os.environ.get(NETWORK_BLOCKED_ENV) != "1":
+        return ("not blocked: no check needs the network (no provider, no key, a loopback model), but the harness may "
+                "still try its own fetches")
+    try:
+        socket.create_connection(("192.0.2.1", 443), timeout=2).close()  # TEST-NET-1 (RFC 5737): never a real host
+    except OSError as exc:
+        if exc.errno in (errno.ENETUNREACH, errno.EHOSTUNREACH):
+            return "blocked: run under bwrap --unshare-net (verified: no route out)"
+        return f"blocked: run under bwrap --unshare-net (not verified: {type(exc).__name__})"
+    return "NOT blocked: a connection out succeeded under --unshare-net"
+
+
 def _platform_ok(check: Check) -> str | None:
     if check.platform == VM and not has_bubblewrap():
         return "needs the VM: the containment self-test needs bubblewrap, which this host lacks"
@@ -194,6 +249,10 @@ def qualify(pack: Pack, binary: Path, *, out: Path, only: Iterable[str] | None =
     binary = Path(binary).resolve()
     if not binary.is_file():
         raise FileNotFoundError(f"no harness binary at {binary}")
+    ids = [c.id for c in pack.checks()]
+    unknown = sorted(set(only or ()) - set(ids))
+    if unknown:  # a typo would otherwise skip everything and look clean (review of #357, minor 1)
+        raise UnknownCheck(f"no such check: {', '.join(unknown)} (the checks: {', '.join(ids)})")
     out.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix="hq-", dir=out))
     t0 = time.monotonic()
@@ -206,7 +265,7 @@ def qualify(pack: Pack, binary: Path, *, out: Path, only: Iterable[str] | None =
         facts: dict[str, Any] = {}
         for check in pack.checks():
             row: dict[str, Any] = {"id": check.id, "capabilities": list(check.capabilities),
-                                   "measures": list(check.measures),
+                                   "measures": list(check.measures), "scope": check.scope,
                                    "platform": check.platform, "depth": check.depth, "says": check.says}
             if wanted is not None and check.id not in wanted:
                 results.append({**row, "status": SKIPPED, "notes": ["not selected (--only)"]})
@@ -231,28 +290,37 @@ def qualify(pack: Pack, binary: Path, *, out: Path, only: Iterable[str] | None =
         return Record(harness=pack.harness, version=version, binary_sha256=sha256_file(binary),
                       platform=sys.platform, checks=results, capabilities=capability_report(pack.declared(), results),
                       facts=facts, unmeasured=dict(pack.unmeasured()), started=started,
-                      seconds=round(time.monotonic() - t0, 1))
+                      seconds=round(time.monotonic() - t0, 1), network=network_state(), aew_revision=aew_revision())
     finally:
         if not keep:
             shutil.rmtree(root, ignore_errors=True)
 
 
-def capability_report(declared: Mapping[str, str], results: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
-    """For each capability the adapter declares: the checks that cover it and their statuses. A capability no check
-    covers is ``unchecked``; one whose every check was skipped is ``skipped``; any failing or broken check fails it."""
+def capability_report(declared: Mapping[str, Mapping[str, Any]],
+                      results: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """For each capability the adapter declares: the checks that cover it, their statuses, and how deep the passing
+    ones looked (``depth``: api, source or run, the deepest). A capability the adapter declares as a gap reads ``gap``
+    with its register row; one no check covers is ``unchecked``; one whose every check was skipped is ``skipped``; any
+    failing or broken check fails it."""
     out: dict[str, dict[str, Any]] = {}
     for name in sorted(declared):
         rows = [r for r in results if name in r.get("capabilities", ())]
         statuses = {r["status"] for r in rows}
-        if not rows:
+        decl = declared[name]
+        if decl.get("status") == GAP:
+            status = GAP
+        elif not rows:
             status = UNCHECKED
         elif statuses & {FAIL, ERROR}:
             status = FAIL
-        elif statuses == {SKIPPED}:
+        elif statuses <= {SKIPPED}:
             status = SKIPPED
         else:
             status = PASS
-        out[name] = {"status": status, "checks": [f"{r['id']} ({r['status']}, {r['depth']})" for r in rows]}
+        passed = [r["depth"] for r in rows if r["status"] == PASS]
+        out[name] = {"status": status, "declared": decl.get("status"), "register": decl.get("register"),
+                     "depth": max(passed, key=DEPTHS.index) if status == PASS else None,
+                     "checks": [f"{r['id']} ({r['status']}, {r['depth']})" for r in rows]}
     stray = sorted({c for r in results for c in r.get("capabilities", ())} - set(declared))
     for name in stray:  # a check keyed by a name the adapter does not declare: say so, never drop it
         out[name] = {"status": "undeclared", "checks": [r["id"] for r in results if name in r["capabilities"]]}
@@ -359,19 +427,61 @@ def write_fixtures(pack: Pack, version: str, facts: Mapping[str, Any], fixtures:
     return written
 
 
+def verdict(record: Record, diff: Diff) -> dict[str, str]:
+    """The binary's verdict and the host's, apart: a host-scoped check (the containment self-test) never decides the
+    binary's (review of #357, minor 9)."""
+    def of(scope: str) -> str:
+        ran = [r for r in record.checks if r.get("scope", BINARY) == scope and r["status"] != SKIPPED]
+        if any(r["status"] in (FAIL, ERROR) for r in ran):
+            return FAIL
+        return PASS if ran else NOT_RUN
+
+    binary = of(BINARY)
+    if binary == PASS and not diff.clean:
+        binary = FAIL
+    return {"binary": binary, "host": of(HOST)}
+
+
+def exit_code(record: Record, diff: Diff) -> int:
+    v = verdict(record, diff)["binary"]
+    return EXIT_OK if v == PASS else EXIT_NOTHING_RAN if v == NOT_RUN else EXIT_FAILED
+
+
+def document(record: Record, diff: Diff, fixtures: Sequence[Mapping[str, str]],
+             adopt: Sequence[str] = ()) -> dict[str, Any]:
+    """The published record (``record.json``, schema v1): the run, the verdicts, the diff as data and as lines, the
+    fixtures, and what is worth adopting. A wrapper of :func:`qualify` publishes this, never a shape of its own."""
+    def value(x: Any) -> Any:
+        return None if x is _MISSING else x
+
+    rows = [{"fact": d.fact, "path": d.path, "pinned": value(d.pinned), "measured": value(d.measured),
+             "kind": "added" if d.pinned is _MISSING else "removed" if d.measured is _MISSING else "changed"}
+            for d in diff.changed]
+    return {**record.to_json(), "verdict": verdict(record, diff),
+            "diff": {"changed": rows, "new": diff.new, "not_measured": diff.not_measured, "lines": diff.lines()},
+            "fixtures": list(fixtures), "adoptable": list(adopt)}
+
+
 def report(record: Record, diff: Diff, fixtures: Sequence[Mapping[str, str]], adopt: Sequence[str] = ()) -> str:
     """The run as text: checks by platform, capabilities, the fact diff, the fixtures and what is worth adopting."""
+    v = verdict(record, diff)
     lines = [f"{record.harness} {record.version} (sha256 {record.binary_sha256}) on {record.platform}, "
-             f"{record.seconds}s", "", "Checks:"]
+             f"{record.seconds}s; AEW {record.aew_revision or 'unknown'}",
+             f"Verdict: binary {v['binary']}; host {v['host']} (the host's checks never decide the binary's)",
+             f"Network: {record.network}", "", "Checks:"]
     for plat in (CI, VM):
         rows = [r for r in record.checks if r["platform"] == plat]
         if rows:
             lines.append(f"  {plat}:")
-            lines += [f"    {r['status']:8} {r['id']} [{r['depth']}]" + (f" ({'; '.join(r['notes'][:1])})"
-                                                                        if r["notes"] and r["status"] != PASS else "")
-                      for r in rows]
+            for r in rows:
+                host = " [host result, not the binary's]" if r.get("scope") == HOST else ""
+                note = f" ({'; '.join(r['notes'][:1])})" if r["notes"] and r["status"] != PASS else ""
+                lines.append(f"    {r['status']:8} {r['id']} [{r['depth']}]{host}{note}")
     lines += ["", "Capabilities (declared by the adapter):"]
-    lines += [f"  {v['status']:9} {k}: {', '.join(v['checks']) or 'no check'}" for k, v in record.capabilities.items()]
+    for name, c in record.capabilities.items():
+        status = c["status"] + (f" ({c['depth']})" if c.get("depth") else "")
+        gap = f" [gap: {c['register']}]" if c["status"] == GAP else ""
+        lines.append(f"  {status:15} {name}: {', '.join(c['checks']) or 'no check'}{gap}")
     lines += ["", "Fact diff against the pin:"] + ([f"  {x}" for x in diff.lines()] or ["  none"])
     lines += ["", "Not measurable offline (kept as citations and register rows):"]
     lines += [f"  {k}: {v}" for k, v in sorted(record.unmeasured.items())] or ["  none"]

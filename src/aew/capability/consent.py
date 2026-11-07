@@ -78,7 +78,7 @@ class Offer:
         return said
 
     def report(self) -> dict[str, Any]:
-        return {"tool": self.provider, "command": self.command, "needed": self.needed, "version": self.version,
+        return {"provider": self.provider, "command": self.command, "needed": self.needed, "version": self.version,
                 "size": self.size, "source": self.source, "degrades": self.degrades, "declined_at": self.declined_at,
                 "host_copy": self.host}
 
@@ -462,10 +462,10 @@ def render(report: dict[str, Any]) -> str:
     for name, said in (report.get("downloaded") or {}).items():
         lines += [f"{name}: {line}" for line in said]
     for d in report.get("declined") or []:
-        lines.append(f"declined {d['tool']} {d['version']}: `{status.FETCH} {d['tool']}` downloads it")
+        lines.append(f"declined {d['provider']} {d['version']}: `{status.FETCH} {d['provider']}` downloads it")
     for m in report.get("missing") or []:
-        lines.append(f"missing {m['tool']} {m['version']}" + (" (needed)" if m["needed"] else " (optional)")
-                     + f": `{status.FETCH} {m['tool']}` downloads it")
+        lines.append(f"missing {m['provider']} {m['version']}" + (" (needed)" if m["needed"] else " (optional)")
+                     + f": `{status.FETCH} {m['provider']}` downloads it")
     if report.get("offline"):
         lines.append(report["offline"])
     if report.get("error"):

@@ -101,7 +101,8 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
     assert not {"AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "OPENAI_API_KEY", "AEW_HARNESS_ADAPTERS",
                 "AEW_OPENCODE_BIN"} & set(env)
     assert {"AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY"} <= set(env)
-    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(guide_of(lab))  # with the guide (F16)
+    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(  # with the guide (F16)
+        guide_of(lab), tools={"placed": False, "tools": []})  # and no tool of AEW's placed: it is not contained
     # OpenCode's own providers off in the Lead that is not contained too (the designer's ruling of 2026-11-06)
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"])["experimental"]["policies"] == DENY
     assert env["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1"
@@ -131,7 +132,9 @@ def test_print_config_starts_nothing_and_shows_no_values(lab):
                   env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token})
     assert res.returncode == 0, res.stderr
     shown = res.json
-    assert shown["config"] == projection.lead_config(guide_of(lab))
+    # where the Lead runs as it is, what its TUI gets: the line that no tool of AEW's is placed (review of #356, n1)
+    placed = None if lead.contained_here() else {"placed": False, "tools": []}
+    assert shown["config"] == projection.lead_config(guide_of(lab), tools=placed)
     assert shown["config"]["experimental"]["policies"] == DENY  # --print-config shows the provider deny
     assert shown["command"][-2:] == ["--standalone", str(lab.root)]
     system = shown["config"]["agents"][projection.LEAD_AGENT]["system"]

@@ -393,13 +393,16 @@ class Harness:
                             "harness": r["harness"], "launched_at": r["launched_at"], "kind": r["kind"],
                             "status": observed, "reason": (record or {}).get("reason"),
                             "reason_code": _reason_code(record),
-                            "containment": containment.normalize((record or {}).get("containment")),
+                            # its missing tools are the Lead's one list, `missing_tools` (review of #356, m2)
+                            "containment": {k: v for k, v in containment.normalize(
+                                (record or {}).get("containment")).items() if k != "missing_tools"},
                             "authority": "current" if current
                             else f"none ({tok.get('revoke_reason') or inv['status']})",
                             "supervisor_pid": (record or {}).get("supervisor_pid"),
                             "heartbeat_age_s": runlog.heartbeat_age(directory),
                             "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
                             "results": self.run_results(inv["work_unit"], r["run"], cache),
+                            "missing_tools": _missing_tools(record),
                             "model_check": _field(record, "model_check").get("status"),
                             "foreign_sessions": _list(_field(record, "result").get("foreign_sessions")),
                             "run_dir": str(directory)})
@@ -542,6 +545,9 @@ class Harness:
             runlog.write_returned(runlog.run_dir(self.k.aew_root, run), int(ended_digest.get("trigger_seq") or 0))
         if _reason_code(record):
             out["reason_code"] = _reason_code(record)
+        missing = _missing_tools(record)
+        if missing:  # beside what its evidence found: what it went without (#330's owed lines)
+            out["missing_tools"] = missing
         if control is not None:
             # `reason`, not `why`: a wait result's `why` is the wake enum (E122 review, n3)
             out["ended_by"] = {"lane": "control", "reason": control}  # the run record may still show it running
@@ -945,6 +951,13 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
             "`--when turn-end` needs coordination messaging, which this project has not enabled; nothing was sent. "
             "Use `--when next-step`, or ask the operator to enable messaging", when=when)
     return "request"
+
+
+def _missing_tools(record: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The tools a run went without, from its label, as the Lead's results say them (``capability.ops.results``)."""
+    from aew.capability import ops as capability
+
+    return capability.results(_field(record, "containment").get("missing_tools"))
 
 
 def _reason_code(record: dict[str, Any] | None) -> str | None:

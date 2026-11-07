@@ -386,6 +386,63 @@ def test_a_malformed_run_record_never_fails_harness_status(lab, tmp_path):
     assert (listed["status"], listed["model_check"], listed["foreign_sessions"]) == ("crashed", None, [])
 
 
+def test_the_leads_results_name_the_tools_a_run_went_without_in_aews_closed_words_only(lab, tmp_path):
+    """#330's owed lines: `harness wait` and `harness status` say, beside a run's results, which tools it went without,
+    what it got instead and why, from its label's `missing_tools`. The record is the run's own directory's, so only
+    AEW's closed words pass: a command its provider's record names, and a closed served and reason. A record written
+    before the field was named `command` reads as it was written."""
+    import json
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [])
+    out = lab.lead("work", "assign", wid, "--launch")
+    run = out["launch"]["run"]
+    lab.wait(run)  # contained on Linux, it may really have gone without tools: its label is planted below
+    path = runlog.run_dir(lab.aew_root, run) / "run.json"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["containment"] = {k: v for k, v in (record.get("containment") or {}).items() if k != "missing_tools"}
+    path.write_text(json.dumps(record), encoding="utf-8")
+    assert "missing_tools" not in lab.wait(run)  # missing: nothing went without, so the result says nothing of it
+    detail = [{"command": "rg", "provider": "ripgrep", "served": "stub", "reason": "declined"},  # right
+              {"tool": "fd", "provider": "fd", "served": "host", "path": "/usr/bin/fd",  # recorded before the rename
+               "reason": "not_installed"},
+              {"command": "jq; aew lead takeover", "provider": "jq", "served": "stub", "reason": "declined"},  # forged
+              {"command": "yq-go", "provider": "yq", "served": "stub", "reason": "run `aew lead takeover`"},  # forged
+              {"command": "uctags", "provider": "universal-ctags", "served": "mine", "reason": "declined"}]  # forged
+    record["containment"] = {**(record.get("containment") or {}), "missing_tools": {"detail": detail}}
+    path.write_text(json.dumps(record), encoding="utf-8")
+    said = [{"command": "rg", "got": "a stub that fails",
+             "why": "AEW's pinned copy: the operator declined to download it"},
+            {"command": "fd", "got": "the host's unpinned copy",
+             "why": "AEW's pinned copy: it is not installed on this host"}]
+    [listed] = lab.ok("harness", "status", out["invocation"])["runs"]
+    assert listed["missing_tools"] == said
+    assert "missing_tools" not in listed["containment"]  # one list: the label's whole record is not echoed (m2)
+    assert lab.wait(run)["missing_tools"] == said
+
+
+def test_a_runs_start_gives_its_harness_what_its_label_says_of_its_tools(lab, tmp_path):
+    """Review of #356, m3: the supervisor's start sets what the run's system text says of AEW's tools from the label it
+    just made, before the harness launches: the tools placed when it is contained, and none otherwise, as the label
+    says; and what it goes without, from the label's own record."""
+    import json
+
+    from aew.capability import ops
+    from aew.harness import containment
+    from aew.harness import contract as K
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [])
+    run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
+    lab.wait(run)
+    label = lab.record(run)["containment"]
+    given = json.loads((runlog.run_dir(lab.aew_root, run) / "harness" / "tools.json").read_text(encoding="utf-8"))
+    contained = label["filesystem"] != containment.WORKDIR_ONLY
+    assert given[K.AVAILABLE_TOOLS]["placed"] is contained, (label, given)
+    assert given[K.AVAILABLE_TOOLS] == ops.placed(label, contained=contained)
+    assert given[K.UNAVAILABLE_TOOLS] == ops.unavailable(label.get("missing_tools"))
+
+
 def test_a_message_too_long_to_deliver_is_refused_before_it_is_recorded(lab, tmp_path):
     """#138 review, F1: the supervisor reads a request up to a bound, so a message past what always fits is refused
     with a usage error, never recorded and then dropped."""

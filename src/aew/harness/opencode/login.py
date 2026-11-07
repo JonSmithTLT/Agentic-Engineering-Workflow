@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from aew.harness.opencode import capabilities
+
 DB = "opencode.db"
 BUSY_TIMEOUT_S = 5.0  # the operator's OpenCode holds its write lock briefly; a launch waits this long at most
 # The files SQLite keeps beside a database (its write-ahead log, the log's index, the rollback journal): they hold rows
@@ -38,9 +40,9 @@ XDG_DEFAULTS = {"data": (".local", "share"), "config": (".config",), "state": ("
 
 
 UNKNOWN = "unknown"  # a row in a shape AEW does not know: nothing of it is read out
-# The ``credential`` table as OpenCode 2.0.18's migrations leave it (read in the pinned bundle): each column's name and
-# declared type, in order. The Lead's login seed writes only to a table exactly like it, and skips any other, so a
-# newer OpenCode's schema is met by not writing, never by a row in a shape AEW guessed at (E118).
+# The ``credential`` table as OpenCode 2.0.18's migrations leave it (read in the 2.0.18 bundle; unchanged at 2.2.6,
+# measured by tools/harness_qualify's `login.store`): each column's name and declared type, in order. The Lead's
+# login seed writes only to a table exactly like it, and skips any other, so a newer OpenCode's schema is met by not writing, never by a row in a shape AEW guessed at (E118).
 CREDENTIAL_SCHEMA = (("id", "text"), ("integration_id", "text"), ("label", "text"), ("value", "text"),
                      ("connector_id", "text"), ("method_id", "text"), ("active", "integer"),
                      ("time_created", "integer"), ("time_updated", "integer"))
@@ -49,14 +51,15 @@ CREDENTIAL_COLUMNS = ("id", "integration_id", "label", "value", "method_id", "ac
 CREDENTIAL_INSERT = (f"INSERT INTO credential ({', '.join(CREDENTIAL_COLUMNS)}) "  # noqa: S608
                      f"VALUES ({', '.join('?' * len(CREDENTIAL_COLUMNS))})")
 # Where 2.0.18 keeps each session's own permission rules (evaluated after the agent's): the ``permission`` column of
-# its session table, ``session_v2`` (``session`` before the migration that renamed it), read in the pinned bundle.
+# its session table, ``session_v2`` (``session`` before the migration that renamed it), read in the 2.0.18 bundle;
+# still ``session_v2`` at 2.2.6, and no other table holds the column (measured, `login.store`).
 SESSION_TABLES = ("session_v2", "session")
 SESSION_RULES_COLUMN = "permission"
 STORE_OUTSIDE_STATE = "lead_store_outside_state"
 
 
 class StoreSchemaChanged(sqlite3.DatabaseError):
-    """A table of an OpenCode store is not the one AEW knows (2.0.18's)."""
+    """A table of an OpenCode store is not the one AEW knows (the pinned version's)."""
 
 
 def _columns(con: sqlite3.Connection, table: str) -> list[tuple[str, str]]:
@@ -71,7 +74,7 @@ def require_schema(con: sqlite3.Connection, table: str, schema: tuple[tuple[str,
         names, known = dict(have), dict(schema)
         diff = [*(f"no {n}" for n in known if n not in names), *(f"an extra {n}" for n in names if n not in known),
                 *(f"{n} {names[n]}, not {known[n]}" for n in known if n in names and names[n] != known[n])]
-        raise StoreSchemaChanged(f"the {table} table is not OpenCode 2.0.18's: "
+        raise StoreSchemaChanged(f"the {table} table is not OpenCode {', '.join(capabilities.TESTED_VERSIONS)}'s: "
                                  f"{', '.join(diff) or 'its columns are in another order'}")
 
 

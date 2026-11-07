@@ -425,6 +425,8 @@ class Supervisor:
         spool(self.run_dir, "launch_failed", reason)  # site 2 (R2-m5), before the terminal record
         if refusal is not None:
             self.record["refusal"] = refusal
+        if cause is not None:  # the failure's own cause, which its code (`unknown`) does not tell apart
+            self.record[K.LAUNCH_CAUSE] = cause
         self._finish(K.LAUNCH_FAILED, reason, reason_code=code)
         self._send_ack({"started": False, "status": K.LAUNCH_FAILED, "reason": reason, "reason_code": code,
                         **({"refusal": refusal} if refusal is not None else {})})

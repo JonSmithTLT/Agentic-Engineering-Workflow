@@ -3180,17 +3180,20 @@ sections:
     Work: 'The defaults OpenCode 2.2.6 added that AEW closes (deny verdicts, the 2.2.6 bump): session `warming` off and
       `experimental.image_generate` off in every worker''s and the Lead''s configuration; the Lead''s MCP server never pooled
       (`pool: false`); every shell rule given as both `shell` and `bash`, since 2.2.5 runs a call to `bash` as `shell`;
-      the browser tool and skill denied in the Lead''s own rules, where OpenCode appends the same denies itself. Each key
-      AEW closes is a field the capability probe requires, so a release that respells one fails closed. Done in the bump''s
-      pull request, each with a test that fails without it; the row keeps the verdicts and their reasons until the feed
-      watch (H-2) decides where verdicts live'
+      the browser tool and skill denied in the Lead''s own rules, where OpenCode appends the same denies itself; the Console
+      `library` (2.2.x: session instructions and skills the console sync delivers) denied, refused with the console sync
+      wherever network containment is `proxy_only`. Each key AEW closes is a field the capability probe requires, so a release
+      that respells one fails closed. Done in the bump''s pull request, each with a test that fails without it; the row
+      keeps the verdicts and their reasons until the feed watch (H-2) decides where verdicts live'
     Source: The OpenCode 2.2.6 bump (operator go, 2026-11-07); the upgrade check of 2026-11-07, its item 10
     When: '**Unscheduled**: the defaults are closed in the 2.2.6 bump; the row stays open as the verdicts'' record until
       the feed watch (H-2) decides where verdicts live'
     Notes: 'Filed by the bump''s builder. Reasons: warming sends model requests a provider''s rate limit counts (2.2.6''s
       own default is off, and a provider''s `cache.warming` falls back to it: set anyway, so a default flip cannot open
       it); image generation is a tool whenever a connected provider has an image model; pooling shares one server connection
-      across directories; the bash name is an alias, so both names decide alike'
+      across directories; the bash name is an alias, so both names decide alike; Console library instructions and skills
+      are text from a remote origin that would enter a session, which AEW never takes from the harness. Where network containment
+      is `not_provided` (Windows), whether the limit is stated or Zen is refused on such a run is the operator''s to decide'
 
   - '#': E200
     Work: 'Re-read at OpenCode v2.2.6 the facts AEW cites from source rather than measures: probe P1''s live-usage findings

@@ -165,6 +165,11 @@ def test_the_probe_requires_the_policy_actions_aew_projects():
     action["enum"] = [v for v in action["enum"] if v != "provider.use"]
     assert ("schema Config.InfoEncoded field experimental.policies[].action lacks ['provider.use']"
             in capabilities.problems(doctored))
+    # The same values spelt as `anyOf` of `const`s still satisfy it (#364 review, n2).
+    values = list(dict.fromkeys([*action["enum"], "provider.use"]))
+    del action["enum"]
+    action["anyOf"] = [{"type": "string", "const": v} for v in values]
+    assert capabilities.problems(doctored) == []
 
 
 @pytest.mark.parametrize("role, edit, web", [("implementer", "allow", "deny"), ("reviewer", "deny", "deny"),

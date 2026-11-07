@@ -82,9 +82,11 @@ REFRESHING_UPSTREAMS = {"openai": "https://chatgpt.com/backend-api/codex"}
 LEAD_RELAY_PORT = 4111
 PROXY_NAMES = frozenset({*agentenv.PROXY_VARS, "NO_PROXY"})
 # The run record's note on a refused target that is known and expected (the designer's pointer of 2026-11-06): a set
-# OPENCODE_API_KEY makes OpenCode 2.0.18 fetch its console's configuration from opencode.ai (inferred from the pinned
-# binary: the path was not intercepted). That call would bring console-managed providers, MCP servers and policies into
-# a contained run, so it stays refused, and it is never an allowlist entry. Defined here only, beside the record
+# OPENCODE_API_KEY makes OpenCode fetch its console's configuration from opencode.ai (inferred on 2.0.18; on 2.2.6 the
+# `opencode.provider.opencode` plugin's fetch of https://opencode.ai/console/api/v2/config, measured by the #364 review
+# from the server's log). That call would bring console-managed providers, MCP servers and policies, and since 2.2.x a
+# Console `library` of session instructions and skills, into a contained run, so it stays refused, and it is never an
+# allowlist entry. Defined here only, beside the record
 # (:meth:`RunNetwork.refused`), and given to no other target.
 CONSOLE_SYNC_TARGET = "opencode.ai:443"
 CONSOLE_SYNC_NOTE = "expected: OpenCode's console sync (inferred), refused by design"

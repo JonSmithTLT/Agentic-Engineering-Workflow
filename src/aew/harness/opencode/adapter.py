@@ -97,10 +97,13 @@ PAGES = 100  # at most this many pages of 200 messages are read for a run's snap
 CATALOG_WAIT_S = float(os.environ.get("AEW_OPENCODE_CATALOG_S", "90"))
 CATALOG_SETTLE_S = float(os.environ.get("AEW_OPENCODE_CATALOG_SETTLE_S", "20"))
 # OpenCode 2.2.6 holds a location's requests until its plugins finish activating, 5 s at most each, then answers 503
-# with this message (read from its bundle, 2026-11-07). A plugin waiting on a fetch the run's network refuses (the
-# `opencode.wellknown` manifest of Zen's origin, under `proxy_only`) holds activation up to its own 15 s fetch timeout:
-# measured on the Rocky VM with Zen configured and no route, 503 at 5.1 s, then 200 at 7.8 s. The waits treat it as
-# "not yet", within their own budget (CATALOG_WAIT_S); one that never ends is `plugins_timeout`.
+# with this message (read from its bundle, 2026-11-07). With an OPENCODE_API_KEY set, the `opencode.provider.opencode`
+# plugin fetches Zen's console configuration (https://opencode.ai/console/api/v2/config, the console sync a contained
+# run refuses by design: netns.CONSOLE_SYNC_TARGET), and holds activation until that fetch fails. Measured on the Rocky
+# VM, keyless runs of the 2.2.6 binary with AEW's relayed `opencode` projection and no model call: 503 at 5.1-5.8 s,
+# then 200 at 7.8-8.5 s; the same without the `opencode.wellknown` plugin; no 503 with the key unset (the #364 review,
+# from the server's log). The waits treat it as "not yet", within their own budget (CATALOG_WAIT_S); one that never
+# ends is `plugins_timeout`.
 PLUGINS_ACTIVATING = "Location plugins did not finish activating"
 
 
@@ -592,7 +595,8 @@ class OpenCodeAdapter(HarnessAdapter):
         stored = self._stored_credentials(spec)
         return {"version": version, "tested": version in capabilities.TESTED_VERSIONS, "stored_credentials": stored,
                 "openapi_sha256": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
-                "probe_s": round(probe_s, 3), **model, **loaded}
+                "probe_s": round(probe_s, 3), **model, **loaded,
+                "plugin_waits": self._plugin_waits}  # both waits' count, the model's and the agent's (#364 n1)
 
     def _stored_credentials(self, spec: Any) -> int:
         """A run's server must hold no stored integration credential. OpenCode 2.0.22 serves them, values included,
@@ -668,8 +672,7 @@ class OpenCodeAdapter(HarnessAdapter):
                     raise HarnessIncompatible(f"model {ref['providerID']}/{ref['id']} is disabled in this OpenCode; "
                                               f"enable it in OpenCode and relaunch with {self._relaunch_command()}, "
                                               "or dispatch a new invocation with --profile or --model", model=ref)
-                found = {"catalog_wait_s": round(now - t0, 3), "catalog_size": len(catalog), "variants": variants,
-                         "plugin_waits": self._plugin_waits}
+                found = {"catalog_wait_s": round(now - t0, 3), "catalog_size": len(catalog), "variants": variants}
                 self._routes = catalog_routes(catalog, self.token_semantics)
                 if self.meter is not None:
                     self.meter.routes = self._routes

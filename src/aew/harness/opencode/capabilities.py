@@ -169,7 +169,8 @@ def _items(spec: dict[str, Any], schema: Any) -> list[Any]:
 
 def field_enum(spec: dict[str, Any], name: str, path: str) -> set[str]:
     """The values an enum declared inline at ``path`` under schema ``name`` offers: a dotted path, where ``x[]`` steps
-    into array ``x``'s items. Empty when the path or the enum is missing."""
+    into array ``x``'s items. An ``enum`` and a ``const`` each count, also as branches of ``anyOf`` or ``oneOf``. Empty
+    when the path or the enum is missing."""
     candidates = [((spec.get("components") or {}).get("schemas") or {}).get(name)]
     for part in path.split("."):
         field = part.removesuffix("[]")
@@ -202,6 +203,8 @@ def _enum(spec: dict[str, Any], schema: Any) -> set[str]:
     if not isinstance(schema, dict):
         return set()
     values = set(schema.get("enum") or [])
+    if "const" in schema:
+        values.add(schema["const"])
     for key in ("anyOf", "oneOf"):
         for part in schema.get(key) or []:
             values |= _enum(spec, part)

@@ -73,9 +73,11 @@ def events(lab: HarnessLab, run: str = RUN) -> list[dict[str, Any]]:
     return [json.loads(line) for line in text[:text.rfind("\n") + 1].splitlines()]
 
 
-def refused_launch(lab: HarnessLab, tmp_path: Path, reason_code: str = "incompatible_config") -> str:
+def refused_launch(lab: HarnessLab, tmp_path: Path, reason_code: str = "incompatible_config",
+                   cause: str | None = None) -> str:
     """A launch OpenCode refuses as HARNESS_INCOMPATIBLE, with the closed launch-failure code its record and the
-    launcher's error carry (M4-E E8a): `incompatible_config`, or `unknown` for a timing-dependent refusal."""
+    launcher's error carry (M4-E E8a): `incompatible_config`, or `unknown` for a timing-dependent refusal, whose record
+    names its own `launch_cause` (none for a refusal decided on what the server reported)."""
     wid = create_planned_ticket(lab.project, tmp_path)
     res = lab.lead_res("work", "assign", wid, "--launch")
     assert res.error["code"] == "HARNESS_LAUNCH_FAILED" and "HARNESS_INCOMPATIBLE" in res.error["message"], res.error
@@ -83,6 +85,7 @@ def refused_launch(lab: HarnessLab, tmp_path: Path, reason_code: str = "incompat
         reason_code, "acknowledgement"), res.error
     record = lab.record(RUN)
     assert record["status"] == "launch_failed" and record["reason_code"] == reason_code, record
+    assert record.get(K.LAUNCH_CAUSE) == cause, record
     assert lab.ok("invoke", "show", "INV-0001")["status"] == "active" and not evidence_of(lab, wid)
     return res.error["message"]
 
@@ -227,6 +230,25 @@ def test_a_slow_model_catalog_is_waited_for(lab, tmp_path):
     assert lab.record(run)["launch"]["health"]["catalog_wait_s"] >= 2.5
 
 
+@pytest.mark.parametrize("package, semantics", [(opencode_adapter.ZEN_RESPONSES, "disjoint"),
+                                                 ("@opencode/ai/providers/anthropic", "unknown")],
+                         ids=["zen-responses", "zen-anthropic"])
+def test_a_zen_models_route_is_read_from_the_servers_catalog_for_its_usage(lab, tmp_path, package, semantics):
+    """OpenCode Zen is declared per route (#364): the launch reads each Zen model's route, its catalog `package`, and
+    binds it to the run's meter and record, so a model on the measured Responses route reads `disjoint` in both, and
+    one on a route not measured reads `unknown` (#364 review, m3)."""
+    script(lab, IMPLEMENT, live_usage={}, models=[
+        {"id": "gpt-5.6-luna", "providerID": "opencode", "package": package, "enabled": True,
+         "variants": [{"id": "low"}, {"id": "medium"}, {"id": "high"}]}])
+    wid = create_planned_ticket(lab.project, tmp_path)
+    run = lab.lead("work", "assign", wid, "--model", "opencode/gpt-5.6-luna", "--launch")["launch"]["run"]
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    usage = lab.record(run)["result"]["usage_record"]
+    sample = runlog.read_live(runlog.run_dir(lab.aew_root, run))
+    assert sample is not None and sample["state"] == "final"
+    assert usage["token_semantics"] == sample["token_semantics"] == semantics, (usage, sample)
+
+
 def test_a_launch_behind_a_proxy_runs_and_no_loopback_call_reaches_the_proxy(lab, tmp_path):
     """Every proxy variable set, in both cases, with no NO_PROXY exception for 127.0.0.1: the supervisor's calls to
     the run's own server go direct, so the run ends normally and the proxy (answering 502) sees no connection."""
@@ -246,7 +268,7 @@ def test_a_model_the_harness_does_not_offer_fails_closed(lab, tmp_path):
     lab.env["AEW_OPENCODE_CATALOG_SETTLE_S"] = "1"
     script(lab, IMPLEMENT, models=[{"id": "cheaper-model", "providerID": "other", "enabled": True, "variants": []}])
     # Timing-dependent (the catalog's wait ran out), so never a lasting incompatibility (M4-E E8a; PR #185, F1).
-    message = refused_launch(lab, tmp_path, reason_code="unknown")
+    message = refused_launch(lab, tmp_path, reason_code="unknown", cause=K.CATALOG_TIMEOUT)
     assert "fakeprov/fake-model is not offered" in message
     relayed = lab.record(RUN)["containment"]["network"]["mode"] == "proxy_only"
     assert ("listed only because AEW names it" in message) == relayed, message
@@ -483,8 +505,10 @@ def test_an_incompatible_server_fails_closed(lab, tmp_path, knobs, expected):
     script(lab, IMPLEMENT, **knobs)
     # An ignored configuration is found only when the agent wait runs out, which a slow server also does: `unknown`
     # (M4-E E8a; PR #185 review, F3). The other refusals are decided on what the server reported.
-    code = "unknown" if knobs.get("ignore_config") else "incompatible_config"
-    assert expected in refused_launch(lab, tmp_path, reason_code=code)
+    timed_out = bool(knobs.get("ignore_config"))
+    code = "unknown" if timed_out else "incompatible_config"
+    assert expected in refused_launch(lab, tmp_path, reason_code=code,
+                                      cause=K.AGENT_LOAD_TIMEOUT if timed_out else None)
 
 
 def test_a_server_that_lists_no_agent_within_the_wait_is_not_an_incompatibility(lab, tmp_path):
@@ -492,13 +516,15 @@ def test_a_server_that_lists_no_agent_within_the_wait_is_not_an_incompatibility(
     code is `unknown` (`launch_cause: agent_load_timeout`), never `incompatible_config` (PR #185 review, F3)."""
     lab.env["AEW_OPENCODE_CATALOG_S"] = "2"
     script(lab, IMPLEMENT, agents_delay_s=60)
-    assert "did not load AEW's agent" in refused_launch(lab, tmp_path, reason_code="unknown")
+    assert "did not load AEW's agent" in refused_launch(lab, tmp_path, reason_code="unknown",
+                                                        cause=K.AGENT_LOAD_TIMEOUT)
 
 
 def test_plugins_still_activating_are_waited_out_and_counted(lab, tmp_path):
     """OpenCode 2.2.6 answers a location's listings 503 "Location plugins did not finish activating" while a plugin
-    waits on a fetch the run's network refuses (Zen's well-known manifest under proxy_only: the E17 live turn's
-    launch, 2026-11-07). The launch waits it out within the catalog's wait and records how often it was told so."""
+    waits on a fetch the run's network refuses (Zen's console sync, which a contained run refuses by design: the E17
+    live turn's launch, 2026-11-07). The launch waits it out within the catalog's wait and records how often it was
+    told so."""
     script(lab, IMPLEMENT, plugins_activating_s=2)
     _, _, run = launch(lab, tmp_path)
     assert lab.wait(run)["status"] == "ended_with_evidence"
@@ -510,7 +536,8 @@ def test_plugins_that_never_finish_activating_fail_the_launch_with_their_own_cau
     timing-dependent, so `unknown`, never a lasting incompatibility."""
     lab.env["AEW_OPENCODE_CATALOG_S"] = "2"
     script(lab, IMPLEMENT, plugins_activating_s=60)
-    assert "did not finish activating" in refused_launch(lab, tmp_path, reason_code="unknown")
+    assert "did not finish activating" in refused_launch(lab, tmp_path, reason_code="unknown",
+                                                         cause=K.PLUGINS_TIMEOUT)
 
 
 def test_a_denial_the_server_appends_after_aews_rules_is_accepted(lab, tmp_path):

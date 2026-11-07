@@ -5,7 +5,8 @@ curated session environment, watching, process tree) with one change: instead of
 launch contract, it performs the scenario's steps itself through the session's own shell endpoint
 (``POST /api/session/{id}/shell``), which runs each command in the real session environment and records it
 in OpenCode's real database, exactly as a model's shell tool call would. ``model_step`` is a real prompt to
-the pinned (free) model. ``exit`` with a non-zero code kills the server: the harness crashed.
+the run's model: the scripted model on loopback (``AEW_SCRIPTED_MODEL_URL``), or the operator's keyed model.
+``exit`` with a non-zero code kills the server: the harness crashed.
 
 Registered as ``opencode-scripted`` through ``AEW_HARNESS_ADAPTERS`` by ``OpenCodeDriver``.
 """
@@ -20,13 +21,14 @@ from typing import Any
 
 from aew.harness import procs
 from aew.harness.contract import LaunchContract
-from aew.harness.opencode import capabilities
+from aew.harness.opencode import capabilities, projection
 from aew.harness.opencode.adapter import OpenCodeAdapter, binary_command, new_message_id, server_env
 from aew.harness.opencode.client import OpenCodeError, OpenCodeUnavailable, Server, location
 
 HERE = Path(__file__).resolve().parent
 AGENT = HERE / "fake_agent.py"
 SCRIPTS_ENV = "AEW_FAKE_SCRIPTS"
+SCRIPTED_MODEL_URL_ENV = "AEW_SCRIPTED_MODEL_URL"  # the keyless lane's model, set by harness_conformance.OpenCodeDriver
 
 
 def load_script(run: str, invocation: str) -> dict[str, Any]:
@@ -42,7 +44,22 @@ class ScriptedOpenCodeAdapter(OpenCodeAdapter):
 
     def launch(self, contract: LaunchContract, agent_env: dict[str, str]) -> dict[str, Any]:
         self.spec = load_script(contract.run, contract.invocation)
-        return super().launch(contract, agent_env)
+        url = os.environ.get(SCRIPTED_MODEL_URL_ENV)
+        if not url:
+            return super().launch(contract, agent_env)
+        # The keyless lane: the run's provider points at the scripted model on loopback, as the provider relay's
+        # projection points it at the relay (``projection.relayed``). A contained run's relay projection replaces
+        # this one, and its relay's upstream is the scripted model (the lab's policy).
+        base = projection.invocation_config
+
+        def to_scripted(c: LaunchContract, **kw: Any) -> dict[str, Any]:
+            return projection.relayed(base(c, **kw), c.execution_profile, url)
+
+        projection.invocation_config = to_scripted  # type: ignore[assignment]
+        try:
+            return super().launch(contract, agent_env)
+        finally:
+            projection.invocation_config = base  # type: ignore[assignment]
 
     def extra_requirements(self) -> tuple[capabilities.Op, ...]:
         if self.spec.get("health") == "incompatible":  # a real server lacking an operation must fail closed

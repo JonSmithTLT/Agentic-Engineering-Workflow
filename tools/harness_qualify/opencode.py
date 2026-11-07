@@ -41,7 +41,6 @@ from aew.harness.opencode.adapter import OpenCodeAdapter, declared_only
 from aew.harness.opencode.client import Server, location
 
 from . import model as scripted
-from .capabilities import declared_capabilities
 from .core import API, CITATION, FAIL, PASS, SKIPPED, Check, Context, Outcome, Release, dump
 from .core import sha256_file as core_sha256
 from .neutral import neutral_checks
@@ -111,7 +110,10 @@ def raw_get(server: Server, path: str) -> bytes:
 
 def read_version(binary: Path, work: Path, env: dict[str, str]) -> str:
     with serve(binary, work, env) as server:
-        return str((server.client.get("/api/info") or {}).get("version"))
+        version = (server.client.get("/api/info") or {}).get("version")
+    if not isinstance(version, str) or not version.strip():  # never "None" in a record or a fixture's name
+        raise ValueError(f"the server's /api/info names no version ({version!r})")
+    return version.strip()
 
 
 # --------------------------------------------------------------------------------------------------- the served API
@@ -343,10 +345,17 @@ def check_websocket_default(ctx: Context) -> Outcome:
     return Outcome(PASS, {"relay.websocket_first": {"openai": run["upgrades"] > 0}})
 
 
+NOTE, EXIT = "hq-note.txt", 3  # the file the scripted run writes then edits, and its command's exit code
+
+
 def check_tool_parts(ctx: Context) -> Outcome:
-    script = [{"call": ["write"], "arguments": {"$path": "{dir}/hq-note.txt", "content": "one\n"}},
-              {"call": ["edit"], "arguments": {"$path": "{dir}/hq-note.txt", "oldString": "one", "newString": "two"}},
-              {"call": ["bash", "shell"], "arguments": {"command": "exit 3", "description": "exit three"}},
+    """A real run writes a file, edits it and runs a command that exits 3; steering's own reader of tool parts
+    (``progress.Tracker``) must then find that one file, that command and its exit code, and the command's completion
+    time. Steering's reads are its code's, not restated here; the parts' field names are recorded as
+    ``tool_parts`` for the diff."""
+    script = [{"call": ["write"], "arguments": {"$path": f"{{dir}}/{NOTE}", "content": "one\n"}},
+              {"call": ["edit"], "arguments": {"$path": f"{{dir}}/{NOTE}", "oldString": "one", "newString": "two"}},
+              {"call": ["bash", "shell"], "arguments": {"command": f"exit {EXIT}", "description": "exit"}},
               {"text": "done"}]
     directory = str((ctx.work / "parts" / "project").resolve())
     for turn in script:
@@ -369,12 +378,21 @@ def check_tool_parts(ctx: Context) -> Outcome:
             "time": sorted((p.get("time") or state.get("time") or {}).keys()),
             "where": "state" if holder is state else "part"}
     facts = {"tool_parts": by}
-    want = {"write": ("input", "path"), "edit": ("metadata", "files")}
-    notes = [f"{tool}: no {field}.{key}" for tool, (field, key) in want.items()
-             if key not in (by.get(tool) or {}).get(field, [])]
-    shell = by.get("shell") or by.get("bash") or {}
-    if "command" not in shell.get("input", []) or shell.get("metadata.exit") != 3:
-        notes.append(f"shell: input.command or metadata.exit 3 not found ({shell})")
+    from aew.harness import progress
+
+    tracker = progress.Tracker(run="harness-qualify", workspace=directory, scope_paths=None, clock=time.time)
+    state = progress.empty_state(started_at=0.0)
+    for m in run["messages"]:
+        if m.get("type") == "assistant":
+            tracker.observe(state, m)
+    last = state.get("last_command") or {}
+    notes = []
+    if state.get("files") != [NOTE]:
+        notes.append(f"steering read the files {state.get('files')}, not [{NOTE!r}] (write and edit name it)")
+    if last.get("text") != f"exit {EXIT}" or last.get("exit") != EXIT:
+        notes.append(f"steering read the last command as {last.get('text')!r}, exit {last.get('exit')!r}")
+    if last.get("at") is None:
+        notes.append("steering read no completion time on the command")
     return Outcome(FAIL if notes else PASS, facts, notes)
 
 
@@ -424,8 +442,10 @@ def check_login_store(ctx: Context) -> Outcome:
     logins, why = login.stored(ctx.env)
     read = {x.integration: x.kind for x in logins}
     fields = sorted(json.loads(raw[0])) if raw else []
+    # a reason code, never `why`: it names the database's host path, and records are shared
+    reads_as = read.get("openai") or ("unreadable" if why else "no_row")
     facts = {"login.store": {"columns_missing": sorted(set(credential_columns()) - have),
-                             "key_row_reads_as": read.get("openai", why), "key_value_fields": fields}}
+                             "key_row_reads_as": reads_as, "key_value_fields": fields}}
     ok = not facts["login.store"]["columns_missing"] and read.get("openai") == "key"
     return Outcome(PASS if ok else FAIL, facts, [] if ok else [json.dumps(facts["login.store"])])
 
@@ -515,8 +535,9 @@ class OpenCodePack:
         # The pinned version, whose fixtures are the inputs and the pin: the adapter's tested version (its owner).
         self.pinned_version = C.TESTED_VERSIONS[0]
 
-    def declared(self) -> Mapping[str, str]:
-        return declared_capabilities(OpenCodeAdapter)
+    def declared(self) -> Mapping[str, Mapping[str, Any]]:
+        return {name: {"status": s.status, "how": s.how, "register": s.register}
+                for name, s in OpenCodeAdapter.harness_capabilities.items()}
 
     def read_version(self, binary: Path, work: Path, env: dict[str, str]) -> str:
         return read_version(binary, work, env)
@@ -563,8 +584,11 @@ class OpenCodePack:
                   says="the ripgrep version OpenCode downloads when none is on PATH",
                   measures=("ripgrep.download_version",)),
         ]
-        return [*api, *behaviour, *citations, *neutral_checks(HARNESS, "AEW_OPENCODE_BIN",
-                                                               conformance=["tests/live/test_opencode_live.py"])]
+        # The live lane's driver cannot drive some actions (``harness_conformance``'s "cannot drive" skip): its
+        # limits, not tests that went unrun.
+        return [*api, *behaviour, *citations,
+                *neutral_checks(HARNESS, "AEW_OPENCODE_BIN", conformance=["tests/live/test_opencode_live.py"],
+                                allowed_skips=(r"^opencode-live cannot drive \[",))]
 
     def pinned(self, fixtures: Path) -> tuple[str, dict[str, Any]]:
         version = self.pinned_version

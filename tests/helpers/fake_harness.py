@@ -171,7 +171,7 @@ class HarnessLab:
     @classmethod
     def create(cls, project: Any, tmp: Path, *, policy: dict[str, Any] | None = None,
                extra_env: dict[str, str] | None = None, provider_upstream: str = "",
-               lead_session: bool = False) -> HarnessLab:
+               upstreams: dict[str, str] | None = None, lead_session: bool = False) -> HarnessLab:
         scripts = tmp / "fake-scripts"
         scripts.mkdir(parents=True, exist_ok=True)
         (tmp / "sync").mkdir(exist_ok=True)
@@ -185,7 +185,9 @@ class HarnessLab:
         # RFC 6761), which a fake that never calls its provider never reaches.
         containment = dict(policy["containment"])
         network = dict(containment.get("network") or {})
-        network["upstreams"] = {"fakeprov": provider_upstream or FAKE_UPSTREAM, **(network.get("upstreams") or {})}
+        # ``upstreams``: a real provider id's relay upstream, as the keyless live lane's scripted model on loopback
+        network["upstreams"] = {"fakeprov": provider_upstream or FAKE_UPSTREAM, **(network.get("upstreams") or {}),
+                                **(upstreams or {})}
         policy["containment"] = {**containment, "network": network}
         if lead_session:  # its tests run the general Lead command (`allow_weaker_lead`)
             policy["containment"]["mode"] = "allow_weaker"

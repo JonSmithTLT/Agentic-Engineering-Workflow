@@ -37,8 +37,10 @@ class StubPack:
     def __init__(self, behaviour: dict[str, Any]) -> None:
         self.behaviour = behaviour
 
-    def declared(self) -> dict[str, str]:
-        return {"cap_ok": "a", "cap_broken": "b", "cap_vm": "c", "cap_untested": "declared, but no check covers it"}
+    def declared(self) -> dict[str, dict[str, Any]]:
+        yes = {"status": "yes", "how": "stub"}
+        return {"cap_ok": yes, "cap_broken": yes, "cap_vm": yes, "cap_untested": yes,
+                "cap_gap": {"status": "gap", "how": "not in this harness", "register": "F99"}}
 
     def read_version(self, binary: Path, work: Path, env: dict[str, str]) -> str:
         assert env["HOME"].startswith(str(work)) and "STUB_API_KEY" not in env  # the core's private environment
@@ -53,17 +55,24 @@ class StubPack:
         def broken(ctx: core.Context) -> core.Outcome:
             raise RuntimeError("the stub harness crashed")
 
-        return [core.Check("stub.ok", ok, ("cap_ok",)),
-                core.Check("stub.broken", broken, ("cap_broken",)),
-                core.Check("stub.vm", ok, ("cap_vm",), platform=core.VM),
-                core.Check("stub.other", ok, ("not_declared",), depth=core.API)]
+        def host_fails(ctx: core.Context) -> core.Outcome:
+            return core.Outcome(core.FAIL, notes=["the host's own result"])
+
+        checks = [core.Check("stub.ok", ok, ("cap_ok", "cap_gap")),
+                  core.Check("stub.vm", ok, ("cap_vm",), platform=core.VM),
+                  core.Check("stub.other", ok, ("not_declared",), depth=core.API),
+                  core.Check("stub.host", host_fails, scope=core.HOST)]
+        if b.get("broken", True):
+            checks.insert(1, core.Check("stub.broken", broken, ("cap_broken",)))
+        return checks
 
     def pinned(self, fixtures: Path) -> tuple[str, dict[str, Any]]:
         return "1.0", {**json.loads((fixtures / "stub-1.0.json").read_text(encoding="utf-8")), "stub.feeling": "fine"}
 
     def render(self, version: str, facts: Any, fixtures: Path) -> dict[str, tuple[bytes | None, str]]:
-        return {f"stub-{version}.json": (core.dump({k: facts[k] for k in ("stub.answer", "stub.version")}),
-                                         "measured")}
+        keys = ("stub.answer", "stub.version")
+        made = core.dump({k: facts[k] for k in keys}) if all(k in facts for k in keys) else None
+        return {f"stub-{version}.json": (made, "measured")}
 
     def unmeasured(self) -> dict[str, str]:
         return {"stub.feeling": "a person's, not a run's"}
@@ -72,7 +81,7 @@ class StubPack:
         return []
 
 
-def stub_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, answer: int) -> tuple[Any, ...]:
+def stub_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, answer: int, **behaviour: Any) -> tuple[Any, ...]:
     monkeypatch.setattr(core, "has_bubblewrap", lambda: False)  # this host's answer is not the test's
     monkeypatch.setenv("STUB_API_KEY", "synthetic-must-not-pass")
     binary = tmp_path / "stub-binary"
@@ -80,7 +89,8 @@ def stub_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, answer: int) -> tu
     fixtures = tmp_path / "fixtures"
     fixtures.mkdir(exist_ok=True)
     (fixtures / "stub-1.0.json").write_bytes(core.dump({"stub.answer": 42, "stub.version": "1.0"}))
-    return HQ.run(StubPack({"answer": answer}), binary, out=tmp_path / "out", fixtures=fixtures)
+    return HQ.run(StubPack({"answer": answer, **behaviour}), binary, out=tmp_path / "out", fixtures=fixtures,
+                  only=behaviour.get("only"))
 
 
 def test_the_core_runs_a_second_harness_pack_and_assumes_nothing_of_opencode(tmp_path, monkeypatch):
@@ -94,7 +104,7 @@ def test_the_core_runs_a_second_harness_pack_and_assumes_nothing_of_opencode(tmp
     assert diff.clean and diff.not_measured == {"stub.feeling": "a person's, not a run's"}
     assert fixtures == [{"fixture": "stub-1.0.json", "status": "identical", "how": "measured"}]
     # The core's own modules name no harness: every harness fact is a pack's (``__init__.pack_for`` is the registry).
-    for name in ("core.py", "model.py", "neutral.py", "capabilities.py"):
+    for name in ("core.py", "model.py", "neutral.py"):
         tree = ast.parse((TOOL / name).read_text(encoding="utf-8"))
         imports = [n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)] + \
                   [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
@@ -106,7 +116,11 @@ def test_a_declared_capability_with_no_check_is_unchecked_and_a_broken_one_fails
     record, *_ = stub_run(tmp_path, monkeypatch, 42)
     caps = {k: v["status"] for k, v in record.capabilities.items()}
     assert caps == {"cap_ok": core.PASS, "cap_broken": core.FAIL, "cap_vm": core.SKIPPED,
-                    "cap_untested": core.UNCHECKED, "not_declared": "undeclared"}
+                    "cap_untested": core.UNCHECKED, "cap_gap": "gap", "not_declared": "undeclared"}
+    # a declared gap reads as a gap with its register row, even where a check covers it
+    assert record.capabilities["cap_gap"]["register"] == "F99"
+    # a pass says how deep it looked
+    assert record.capabilities["cap_ok"]["depth"] == core.BEHAVIOUR and record.capabilities["cap_vm"]["depth"] is None
 
 
 def test_a_changed_fact_appears_in_the_diff_and_the_fixture_differs(tmp_path, monkeypatch):
@@ -268,21 +282,27 @@ def HQ_main(argv: list[str]) -> int:  # noqa: N802
     return importlib.import_module("harness_qualify.__main__").main(argv)
 
 
+SKIPPING = "import pytest\n\ndef test_a():\n    pass\n\n@pytest.mark.skip('{}')\ndef test_b():\n    pass\n"
+
+
 @pytest.mark.parametrize(("body", "status"), [
     ("def test_a():\n    pass\n", core.PASS),
-    ("import pytest\n\ndef test_a():\n    pass\n\n@pytest.mark.skip('needs a model')\ndef test_b():\n    pass\n",
-     core.SKIPPED),
+    (SKIPPING.format("needs a model"), core.SKIPPED),
+    (SKIPPING.format("the driver cannot drive this"), core.PASS),  # a skip the pack names as the driver's own limit
     ("def test_a():\n    assert False\n", core.FAIL),
 ])
-def test_a_suite_run_with_any_skip_is_reported_skipped_never_passed(tmp_path, body, status):
+def test_a_suite_run_with_any_skip_is_reported_skipped_never_passed(tmp_path, monkeypatch, body, status):
     from harness_qualify import neutral
 
+    monkeypatch.setattr(neutral, "agents_aew", lambda env: "this tree")  # CI's install; a developer's may differ
     suite = tmp_path / "suite" / "test_suite.py"
     suite.parent.mkdir()
     suite.write_text(body, encoding="utf-8")
     ctx = core.Context(binary=tmp_path / "bin", work=tmp_path / "work", env=core.private_env(tmp_path / "env"),
                        version="1")
-    assert neutral._pytest(ctx, "STUB_BIN", [str(suite)], ["--rootdir", str(suite.parent)]).status == status
+    out = neutral._pytest(ctx, "STUB_BIN", [str(suite)], ["--rootdir", str(suite.parent)],
+                          allowed_skips=(r"^the driver cannot drive",))
+    assert out.status == status, out.notes
 
 
 def test_in_the_binary_the_citations_were_read_from_a_missing_identifier_fails(tmp_path):
@@ -307,3 +327,89 @@ def test_the_credential_columns_are_read_from_aews_own_sql():
     cols = OC.credential_columns()
     assert {"integration_id", "method_id", "active", "value", "time_updated", "id", "label", "time_created"} == set(
         cols)
+
+
+# ------------------------------------------------------------------- verdicts, exit codes and the published record
+
+
+def test_a_host_check_never_decides_the_binarys_verdict_or_exit_code(tmp_path, monkeypatch):
+    record, diff, fixtures, adopt = stub_run(tmp_path, monkeypatch, 42, broken=False)
+    assert core.verdict(record, diff) == {"binary": core.PASS, "host": core.FAIL}
+    assert core.exit_code(record, diff) == core.EXIT_OK
+    assert "[host result, not the binary's]" in core.report(record, diff, fixtures, adopt)
+
+
+def test_an_only_id_that_is_no_check_is_a_usage_error_never_a_clean_run(tmp_path, monkeypatch):
+    with pytest.raises(core.UnknownCheck, match="stub.okk"):
+        stub_run(tmp_path, monkeypatch, 42, only=["stub.okk"])
+    code = HQ_main(["--binary", str(fake_binary(tmp_path)), "--out", str(tmp_path / "o"), "--only", "api.opneapi"])
+    assert code == core.EXIT_USAGE and not (tmp_path / "o" / "record.json").exists()
+
+
+def test_a_run_where_no_binary_check_ran_says_nothing_was_qualified(tmp_path, monkeypatch):
+    record, diff, *_ = stub_run(tmp_path, monkeypatch, 42, only=["stub.vm", "stub.host"])  # skipped off the VM; host
+    assert core.verdict(record, diff)["binary"] == core.NOT_RUN
+    assert core.exit_code(record, diff) == core.EXIT_NOTHING_RAN
+
+
+def test_the_published_record_carries_the_diff_as_data_the_revision_and_the_network_state(tmp_path, monkeypatch):
+    monkeypatch.delenv(core.NETWORK_BLOCKED_ENV, raising=False)
+    record, diff, fixtures, adopt = stub_run(tmp_path, monkeypatch, 41)
+    doc = core.document(record, diff, fixtures, adopt)
+    assert doc["schema"] == core.SCHEMA and doc["verdict"]["binary"] == core.FAIL
+    assert doc["diff"]["changed"] == [{"fact": "stub.answer", "path": "", "pinned": 42, "measured": 41,
+                                       "kind": "changed"}]
+    assert doc["diff"]["lines"][0] == "~ stub.answer: 42 -> 41"
+    assert doc["network"].startswith("not blocked") and "aew_revision" in doc
+    json.dumps(doc)  # publishable as it is
+
+
+def test_a_server_that_names_no_version_is_refused_never_recorded_as_none(tmp_path, monkeypatch):
+    import contextlib
+
+    class Server:
+        class client:  # noqa: N801
+            @staticmethod
+            def get(path: str) -> dict[str, Any]:
+                return {"version": None}
+
+    monkeypatch.setattr(OC, "serve", lambda *a, **k: contextlib.nullcontext(Server()))
+    with pytest.raises(ValueError, match="names no version"):
+        OC.read_version(tmp_path / "bin", tmp_path, {})
+
+
+def test_the_trim_keeps_only_what_the_adapter_probes_from_a_superset(monkeypatch):
+    """The regeneration proof measured from a superset, never the pin (review of #357, minor 2): the served 2.0.18
+    document as saved on 2026-10-24 (a sorted re-dump, so its own hash is not the pin's), plus a planted operation and
+    schema nothing references, trims to the pinned fixture byte for byte."""
+    pinned = (FIXTURES / "openapi-2.0.18.min.json").read_bytes()
+    full = json.loads((FIXTURES / "openapi-2.0.18.served.json").read_text(encoding="utf-8"))
+    assert len(full["paths"]) > 17 and len(full["components"]["schemas"]) > 132  # a real superset
+    full["paths"]["/api/aew-planted"] = {"get": {"operationId": "planted",
+                                                 "responses": {"200": {"content": {"application/json": {"schema": {
+                                                     "$ref": "#/components/schemas/Planted.Reached"}}}}}}}
+    full["components"]["schemas"]["Planted.Reached"] = {"type": "object"}
+    full["components"]["schemas"]["Planted.Orphan"] = {"type": "string"}
+    trimmed = OC.trim(full, version="2.0.18", full_sha256=json.loads(pinned)["x-aew-fixture"]["full_sha256"])
+    assert "/api/aew-planted" not in trimmed["paths"]
+    assert not {"Planted.Reached", "Planted.Orphan"} & set(trimmed["components"]["schemas"])
+    assert core.dump(trimmed) == pinned
+    # a schema reached only through a probed enum's name is a seed of its own: kept while the probe names it
+    full["components"]["schemas"]["Planted.EnumOnly"] = {"enum": ["x"], "type": "string"}
+    monkeypatch.setattr(OC.C, "REQUIRED_ENUMS", {**OC.C.REQUIRED_ENUMS, "Planted.EnumOnly": frozenset({"x"})})
+    assert "Planted.EnumOnly" in OC.trim(full, version="2.0.18", full_sha256="")["components"]["schemas"]
+
+
+def test_a_suite_whose_agents_would_run_another_aew_is_not_comparable_and_does_not_run(tmp_path, monkeypatch):
+    """A qualification never judges another checkout's AEW: the agents' bare `aew` is AEW's interpreter's install."""
+    from harness_qualify import neutral
+
+    monkeypatch.setattr(neutral, "agents_aew", lambda env: "another checkout")
+    suite = tmp_path / "test_never_runs.py"
+    suite.write_text("def test_a():\n    raise SystemExit('ran')\n", encoding="utf-8")
+    ctx = core.Context(binary=tmp_path / "bin", work=tmp_path / "work", env=core.private_env(tmp_path / "env"),
+                       version="1")
+    out = neutral._pytest(ctx, "STUB_BIN", [str(suite)], [])
+    assert out.status == core.SKIPPED and out.notes[0].startswith("not comparable: an agent's bare `aew` runs another")
+    assert not (tmp_path / "work" / "pytest.log").exists()
+    assert neutral.agents_aew(core.private_env(tmp_path / "env2")) in ("this tree", "another checkout", "none")

@@ -1,13 +1,15 @@
 """harness_qualify: qualify a harness binary against what AEW relies on (a developer tool, not product surface).
 
-Given a binary path, it runs a probe pack's checks offline, with no key and with private homes and XDG folders, using
-a scripted local model. It writes a record (harness, version, binary sha256, each check's result, each declared
-capability's status) and a diff of every measured fact against the pinned version's fixtures, and it can write the
-fixtures those facts make. A later ``aew harness qualify`` wraps :func:`run` without a rewrite: the CLI is a thin layer.
+Given a binary path, it runs a probe pack's checks with no key, no provider and private homes and XDG folders, using a
+scripted local model on loopback: no check needs the network. Egress is blocked only under ``--no-network``
+(``bwrap --unshare-net``), and the record says which. It writes a record (harness, version, binary sha256, each
+check's result, each declared capability's status) and a diff of every measured fact against the pinned version's
+fixtures, and it can write the fixtures those facts make. A later ``aew harness qualify`` wraps :func:`run` and
+:func:`.core.document` without a rewrite: the CLI is a thin layer.
 
 Layout: :mod:`.core` (harness-neutral runner, record, fact diff, fixture check), :mod:`.model` (the scripted model,
-behind an interface), :mod:`.neutral` (AEW's own suites as checks), :mod:`.capabilities` (the capability names checks
-are keyed by), and one pack per harness: :mod:`.opencode`.
+behind an interface), :mod:`.neutral` (AEW's own suites as checks), and one pack per harness: :mod:`.opencode`. Checks
+are keyed by the capability names each adapter declares (``aew.harness.harness_capabilities``).
 """
 
 from __future__ import annotations

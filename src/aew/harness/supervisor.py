@@ -239,6 +239,9 @@ class Supervisor:
             # voided (the operator, 2026-11-05)
             missing = self.record["containment"].get("missing_tools")
             contract.extra[K.UNAVAILABLE_TOOLS] = capability.unavailable(missing)
+            # And what it has, by the names it calls them (the Lead's ruling on card-capability resolution)
+            contract.extra[K.AVAILABLE_TOOLS] = capability.placed(self.record["containment"],
+                                                                 contained=self.layout is not None)
             self.agent_env = agentenv.build(os.environ, endpoint=self.bridge.address, key_hex=self.bridge.key_hex,
                                             invocation=self.inv_id, run=self.run, work_unit=inv["work_unit"],
                                             scratch=contract.scratch,

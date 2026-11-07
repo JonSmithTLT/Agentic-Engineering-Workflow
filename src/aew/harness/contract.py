@@ -232,6 +232,11 @@ CREATE_TICKET = fields_block(f"aew work create ticket --class <0-4> {EXPECT_REV}
 # once its context is contained (``capability.ops.unavailable``) and named in its system text, as its missing skills
 # are (the operator, 2026-11-05: a missing tool is logged, not voided)
 UNAVAILABLE_TOOLS = "unavailable_tools"
+# The key for the tools AEW placed in the run, ``{"placed": bool, "tools": [{tool, purpose}]}``: set once its context
+# is made (``capability.ops.available``), and named in its system text by the names the agent calls them (the Lead's
+# ruling on card-capability resolution, 2026-11-07). ``placed`` is false for a run AEW could not contain, which gets
+# none of AEW's tools.
+AVAILABLE_TOOLS = "available_tools"
 
 
 @dataclass

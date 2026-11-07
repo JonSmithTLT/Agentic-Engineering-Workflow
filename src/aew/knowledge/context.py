@@ -22,6 +22,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from aew.capability.records import CARD_CAPABILITIES
 from aew.harness.bridge import OPERATIONS as BRIDGE_OPERATIONS
 from aew.knowledge import evidence as E
 from aew.roles import AUTHORITY_SENSITIVE_CAPABILITIES
@@ -181,6 +182,20 @@ def _optional_skills(card: dict[str, Any]) -> list[str]:
     return [s for s in card.get("optional_skills") or [] if s not in skills]
 
 
+def _capability_lines(requested: list[str]) -> list[str]:
+    """The card's other capabilities, split by whether a tool of AEW's serves them (the register's
+    ``CARD_CAPABILITIES``). From the card alone, never from this host: the pack does not say what a host has, so a
+    run's own system text names the tools it got."""
+    served = [c for c in requested if c in CARD_CAPABILITIES]
+    other = [c for c in requested if c not in CARD_CAPABILITIES]
+    if not requested:
+        return ["Other capabilities requested: none"]
+    return [*(["Capabilities AEW's tools serve (your system text names the tools this run has): "
+               + ", ".join(served)] if served else []),
+            *(["Capabilities no tool of AEW's serves (use your shell and the project's own commands): "
+               + ", ".join(other)] if other else [])]
+
+
 def _card_section(p: PackInputs) -> list[str]:
     card = p.card
     if not card:
@@ -206,8 +221,7 @@ def _card_section(p: PackInputs) -> list[str]:
            + ", ".join(optional)] if (optional := _optional_skills(card)) else []),
         "Required knowledge: " + (", ".join(card.get("required_knowledge", [])) or "none beyond this package"),
         "Authority-sensitive capabilities (within the archetype envelope): " + (", ".join(sensitive) or "none"),
-        "Other capabilities requested (workbench resolution pending — use only what is actually available): "
-        + (", ".join(ordinary) or "none"),
+        *_capability_lines(ordinary),
         "Expected outputs: " + (", ".join(card.get("outputs", [])) or "the archetype's standard output"),
         *(["Restricted to operations: " + ", ".join(restrict["operations"])] if restrict.get("operations") else []),
         *(["Restricted to checks: " + ", ".join(restrict["checks"])] if restrict.get("checks") else []),

@@ -754,3 +754,149 @@ def test_the_screen_on_a_pseudo_terminal_takes_a_typed_answer(reg, tmp_path):
     declined = json.loads(seen.split(b"RESULT ", 1)[1].splitlines()[0])
     assert [d["tool"] for d in declined] == ["fake"]  # the optional one, shown as a count, is no "no" (m2)
     assert list(store.read()["declined"]) == [f"fake:{KEY}"]
+
+
+# ---------------------------------------------------------------------------------------------- the tools a run has
+# Card-capability resolution (the Lead's ruling, 2026-11-07): the pack splits the card's capabilities by whether a tool
+# of AEW's serves them, from the card alone; a run's system text names the tools it has, by the names it calls them.
+
+PURPOSES = {"ripgrep": ("rg", "exact code and text search"), "fd": ("fd", "find files by name or pattern"),
+            "jq": ("jq", "query and transform JSON"), "yq": ("yq-go", "query and edit YAML"),
+            "ast-grep": ("ast-grep", "structural code search by syntax-tree pattern"),
+            "universal-ctags": ("uctags", "a symbol outline of source files")}
+
+
+def _card_capabilities() -> set[str]:
+    from aew import roles
+
+    return {c for card in roles.builtin_cards().values()
+            for c in [*card.meta.get("required_capabilities", []), *card.meta.get("optional_capabilities", [])]}
+
+
+def test_the_card_capability_table_is_pinned_both_ways_to_the_cards_and_the_shipped_records():
+    """Every row names a capability some shipped card asks for and capability IDs a shipped record serves; and every
+    card capability whose name is a shipped capability ID's has a row, so a new card name a tool serves is not left
+    unresolved."""
+    cards = _card_capabilities()
+    served = {c for r in records.shipped().values() for c in r["capabilities"]}
+    for name, ids in records.CARD_CAPABILITIES.items():
+        assert name in cards, name
+        assert ids and set(ids) <= served, (name, ids)
+    assert {c for c in cards if c.upper() in served} <= set(records.CARD_CAPABILITIES)
+
+
+def test_each_shipped_tools_purpose_is_its_descriptions_first_clause():
+    assert {n: (r["command"], records.purpose(r)) for n, r in records.shipped().items()} == PURPOSES
+    assert records.purpose({"capabilities": ["FILE_FIND"]}) == "file find"  # no description: its capabilities
+
+
+@pytest.mark.parametrize("required, optional, said", [
+    (["exact_code_search", "build_execution"], ["symbol_navigation", "static_analysis"],
+     ["Capabilities AEW's tools serve (your system text names the tools this run has): exact_code_search, "
+      "symbol_navigation",
+      "Capabilities no tool of AEW's serves (use your shell and the project's own commands): build_execution, "
+      "static_analysis"]),
+    (["repository_exploration"], [],
+     ["Capabilities AEW's tools serve (your system text names the tools this run has): repository_exploration"]),
+    (["documentation_lookup"], [],
+     ["Capabilities no tool of AEW's serves (use your shell and the project's own commands): documentation_lookup"]),
+    ([], [], ["Other capabilities requested: none"]),
+    (["source_mutation"], [], ["Other capabilities requested: none"]),  # authority-sensitive: its own line
+])
+def test_the_pack_splits_a_cards_capabilities_by_whether_a_tool_serves_them(monkeypatch, required, optional, said):
+    """The pending line is gone. The split is the card's alone, never this host's: with no shipped record at all the
+    lines are the same, so a pack's hash never moves with what a host has."""
+    from aew.knowledge import context as ctxmod
+
+    card = {"display_name": "X", "role": "x", "extends": "implementer", "purpose": "p",
+            "required_capabilities": required, "optional_capabilities": optional}
+    inputs = ctxmod.PackInputs.__new__(ctxmod.PackInputs)
+    object.__setattr__(inputs, "card", card)
+    lines = ctxmod._card_section(inputs)
+    assert not any("workbench resolution pending" in x for x in lines)
+    start = next(i for i, x in enumerate(lines) if x.startswith("Authority-sensitive")) + 1
+    end = next(i for i, x in enumerate(lines) if x.startswith("Expected outputs"))
+    assert lines[start:end] == said
+    monkeypatch.setattr(records, "shipped", lambda: {})
+    assert ctxmod._card_section(inputs) == lines
+
+
+def test_available_names_only_a_served_copy_of_a_provider_in_force_by_its_own_command(reg):
+    tools = {"fake": {"served": status.AEW_COPY, "command": "forged"},  # right: named by its record, never the report
+             "absent": {"served": status.AEW_COPY},  # no such provider in force
+             "stubbed": "not a dict"}
+    assert ops.available(tools) == [{"tool": "fake", "purpose": "fake search"}]
+    assert ops.available({"fake": {"served": status.HOST_COPY}}) == [{"tool": "fake", "purpose": "fake search"}]
+    assert ops.available({"fake": {"served": None}}) == []  # the stub, or no entry: missing, said elsewhere
+    assert ops.available(None) == [] and ops.available({}) == []
+
+
+def test_placed_reads_a_contained_labels_self_test_and_nothing_where_not_contained(reg):
+    label = {"self_test": {"tools": {"fake": {"served": status.AEW_COPY}}}}
+    assert ops.placed(label, contained=True) == {"placed": True, "tools": [{"tool": "fake", "purpose": "fake search"}]}
+    assert ops.placed(label, contained=False) == {"placed": False, "tools": []}
+    assert ops.placed(None, contained=True) == {"placed": True, "tools": []}
+
+
+ALL = {"placed": True, "tools": [{"tool": c, "purpose": p} for c, p in PURPOSES.values()]}
+NAMED = ("- Tools AEW placed for you, by the names to call them: `rg` (exact code and text search), `fd` (find files "
+         "by name or pattern), `jq` (query and transform JSON), `yq-go` (query and edit YAML), `ast-grep` (structural "
+         "code search by syntax-tree pattern), `uctags` (a symbol outline of source files).")
+
+
+@pytest.mark.parametrize("available, said", [
+    (ALL, [NAMED]),  # right
+    ({"placed": False, "tools": []}, ["- AEW's tools are not placed in this run (it is not contained): use what the "
+                                      "host provides."]),
+    ({"placed": True, "tools": []}, []),  # contained, nothing served: its missing tools have their own line
+    (None, []),  # nothing recorded
+])
+def test_the_tools_line_renders_exactly(available, said):
+    from aew.harness.opencode import projection
+
+    assert projection.tools_text(available) == said
+
+
+def test_a_runs_system_text_names_its_tools_between_its_skills_and_what_it_goes_without(tmp_path, monkeypatch):
+    """Through the adapter's launch, from what the supervisor sets (``K.AVAILABLE_TOOLS``): the skills lines, then the
+    tools the run has, then the ones it has not."""
+    from test_opencode_units import contract
+
+    from aew.harness import contract as K
+    from aew.harness.opencode import adapter, projection
+
+    built: dict[str, Any] = {}
+
+    class Built(Exception):
+        pass
+
+    real = projection.invocation_config
+
+    def capture(c: Any, **kw: Any) -> Any:
+        built["system"] = real(c, **kw)["agents"][projection.AGENT]["system"]
+        raise Built
+
+    monkeypatch.setattr(projection, "invocation_config", capture)
+    tree = type("Tree", (), {"network": None})()
+    c = contract(skills=["not-shipped"])
+    c.extra[K.AVAILABLE_TOOLS] = {"placed": True, "tools": ALL["tools"][1:]}
+    c.extra[K.UNAVAILABLE_TOOLS] = [RG]
+    with pytest.raises(Built):
+        adapter.OpenCodeAdapter(tree, tmp_path / "run", lambda _e: None).launch(c, {})
+    lines = built["system"].splitlines()
+    skills = next(i for i, x in enumerate(lines) if x.startswith("- Skills"))
+    assert lines[skills + 1] == NAMED.replace("`rg` (exact code and text search), ", "")
+    assert lines[skills + 2].startswith("- Tools AEW brings that this run does not have: `rg`")
+
+
+def test_the_contained_leads_system_text_names_its_tools_and_that_its_shell_asks_first():
+    """The Lead is told its tools as a worker is, and, from its own rules, that its shell asks the operator before
+    any of them: only `aew` and git reads run without asking."""
+    from aew.harness.opencode import projection
+
+    system = projection.lead_config(tools=ALL)["agents"][projection.LEAD_AGENT]["system"]
+    assert NAMED + projection.LEAD_TOOLS_NOTE in system.splitlines()
+    assert "Tools AEW placed" not in projection.lead_config()["agents"][projection.LEAD_AGENT]["system"]
+    shell = [r for r in projection.LEAD_RULES if r["action"] == "shell"]
+    assert shell[0] == projection.rule("shell", "ask")  # every other command asks: what the note says
+    assert [r["resource"] for r in shell if r["effect"] == "allow"] == ["aew *", *projection.LEAD_GIT_READS]

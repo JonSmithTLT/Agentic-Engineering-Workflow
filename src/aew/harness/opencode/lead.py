@@ -210,6 +210,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         # Everything that can refuse does so before a seat is taken (an acquired seat whose credential is lost
         # would stay held), a missing credential first.
         lead_broker.require_credential(acquire)
+        _readiness(engine)
         lead = ContainedLead(engine, argv=argv, provider_env=provider_env, guide=guide, base=os.environ,
                              stages=stages)
         lead.announce(sys.stderr)  # what it found, before the refusal names what is missing
@@ -228,6 +229,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         sys.stderr.write(f"aew opencode: {', '.join(provider_env)} passed to the Lead's OpenCode; the Lead model's "
                          "shell commands can read it.\n")
     lead_broker.require_credential(acquire)  # a missing credential refuses first, before any start line, as contained
+    _readiness(engine)
     _tools_before_the_tui(asking=False)
     line = no_provider_line(provider_env, os.environ)
     if line is not None:
@@ -235,6 +237,14 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                   env=env, contained=weaker)
     return {**out, "opencode": version}
+
+
+def _readiness(engine: Any) -> None:
+    """What a launch from this terminal would meet, each FAIL and WARN readiness row with its fix, as the Lead starts
+    (register E125): after the credential check, so a missing credential still refuses before any start line."""
+    from aew import doctor
+
+    sys.stderr.write(doctor.readiness_lines(engine, "aew opencode"))
 
 
 def _tools_before_the_tui(*, asking: bool = True) -> None:

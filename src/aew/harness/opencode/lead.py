@@ -216,12 +216,12 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     # 1); under an explicit `required` that refuses before any credential is read.
     weaker = lead_broker.WeakerLead(engine, argv, kind="lead_opencode", who="aew opencode")
     weaker.precheck()
-    _tools_before_the_tui(asking=False)
     env = tui_env(os.environ, provider_env=provider_env, guide=guide)
     if provider_env:
         sys.stderr.write(f"aew opencode: {', '.join(provider_env)} passed to the Lead's OpenCode; the Lead model's "
                          "shell commands can read it.\n")
     lead_broker.require_credential(acquire)  # a missing credential refuses first, before any start line, as contained
+    _tools_before_the_tui(asking=False)
     line = no_provider_line(provider_env, os.environ)
     if line is not None:
         sys.stderr.write(line)
@@ -234,10 +234,10 @@ def _tools_before_the_tui(*, asking: bool = True) -> None:
     """The tools AEW brings, before the TUI opens: asked for only as the operator chooses, and a needed one missing
     named in one line (:func:`aew.capability.consent.at_lead_start`). It comes after the start's checks of its
     credential, its terminal, its provider variables and its provider (the contained Lead: ``require_provider``) or its
-    policy (elsewhere), and before the seat is taken and the sandbox is built, either of which can still refuse the
-    start (a held seat, a failed self-test). Only the contained Lead gets AEW's tools bound (``bind``); elsewhere
-    (``asking=False``) the TUI runs as it is, with OpenCode's own lookup (``status.NOT_BOUND``), so nothing is asked
-    there."""
+    policy and its credential (elsewhere), and before the seat is taken and the sandbox is built, either of which can
+    still refuse the start (a held seat, a failed self-test). Only the contained Lead gets AEW's tools bound
+    (``bind``); elsewhere (``asking=False``) the TUI runs as it is, with OpenCode's own lookup (``status.NOT_BOUND``),
+    so nothing is asked there."""
     from aew.capability import consent
 
     consent.at_lead_start(sys.stderr, asking=asking)

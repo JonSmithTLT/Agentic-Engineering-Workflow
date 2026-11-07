@@ -713,7 +713,7 @@ def test_the_slice_rule_refuses_a_paragraph_about_several_slices_and_a_status_th
     """The control for the test above: the paragraphs the reviews found are refused, the ones in use are accepted."""
     for label in ("E5 and E6, the stage tools", "E3a and E3b", "MS0 and HS1", "Slice 2a and slice 2b", "the rest"):
         assert len(_slices_named(label)) != 1, label
-    for label in ("E3a, the journal", "D2, next", "Slice 2b, the rest (next)", "M4-H live usage, slice L1",
+    for label in ("E3a, the journal", "D2, sealing and compaction", "Slice 2b, the rest (next)", "M4-H live usage, slice L1",
                   "HS1 built (2026-10-10; register E55, the F9-A plan's amendment 2)", "F20.3, the operator session",
                   "S1, the field-group registry, canonicalization and live digests (F4 is dormant everywhere)",
                   "MS0 done (2026-10-10)", "W06"):

@@ -56,7 +56,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **D1:** typed events derived in the store, the 64-event hot bound with an overflow sidecar, the hash chain, `aew history log --since R [--kind] [--follow]`, the `local/wake` signal.
 
-**D2, next:** sealing and compaction.
+**D2, sealing and compaction:** built (PR #60): sealing into 256-transition segments and `aew history compact`, the doctor's window check, readers that resolve sealed segments, and oracle rules 27 and 28.
 
 **Later slices:** each records what it built, and its evidence, as a note on register row E18 ([`notes.d/E18/`](notes.d/README.md); `python tools/register.py show E18`), never by editing a paragraph here.
 
@@ -146,9 +146,9 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 ### The dashboard's raw-history search route (register F20.8, slice S2)
 
-**Status:** **Built (S2)**: contract 0.1.3's conditional `/history/search` and the `history_search` capability, served only while the adopted execution policy sets `recall.raw_history_search: explicit` (read from the request's snapshot, failing closed); while it is off, every `/history/search` request is answered exactly as before and no `local/recall/` file is created. On, Arm B's search runs lock-free from the snapshot (`HistoryCommands.history_search_committed`): the root and the tail are checked together first (`SEARCH_HISTORY_MOVED` otherwise), the substrate is never reset, discarded or deleted (`may_reset=False`), and one 1.25 s deadline bounds the catch-up, SQLite's waits, the ranked query and the verification. The fence token is derived, so a quiescent search answers `304`. The web UI and the build re-import are S3
+**Status:** **Built (S2)**: contract 0.1.3's conditional `/history/search` and the `history_search` capability, served only while the adopted execution policy sets `recall.raw_history_search: explicit` (read from the request's snapshot, failing closed); while it is off, every `/history/search` request is answered exactly as before and no `local/recall/` file is created. On, Arm B's search runs lock-free from the snapshot (`HistoryCommands.history_search_committed`): the root and the tail are checked together first (`SEARCH_HISTORY_MOVED` otherwise), the substrate is never reset, discarded or deleted (`may_reset=False`), and one 1.25 s deadline bounds the catch-up, SQLite's waits, the ranked query and the verification. The fence token is derived, so a quiescent search answers `304`. The web UI is on `main` (the web developer's search page, `web/src/pages/HistorySearch.tsx`); the build re-import is S3
 
-**Acceptance evidence / next action:** [change note](../design/proposals/dashboard-maps-and-history-search-v0.1.md) §5; `tests/integration/test_dashboard_history_search.py`; the CLI's unchanged output, `tests/integration/test_history_search.py`; `tools/dashboard/acceptance_project.py --search`. Next: S3, after the web developer's search page
+**Acceptance evidence / next action:** [change note](../design/proposals/dashboard-maps-and-history-search-v0.1.md) §5; `tests/integration/test_dashboard_history_search.py`; the CLI's unchanged output, `tests/integration/test_history_search.py`; `tools/dashboard/acceptance_project.py --search`. Next: S3, the build re-import
 
 ### Backlog import (SPT remediation backlog)
 
@@ -244,7 +244,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **Slice 2a:** the copy (R5) as a Lead-transaction finalizer before archival (`usage_ops.UsageCopy`): every transaction that ends or relaunches an invocation copies its ended runs, and archival copies every run of the units it archives, so a bundle carries complete usage; a run still live stays `provisional` (R6) while its invocation can still copy it, and archival records one still live then with its observed status and absent usage (R5). A malformed run record or price snapshot never fails the transaction: the copy checks every field it reads, and a record that does not parse, nests past the parser's depth or holds a non-finite number is treated as no record. The run directory's reads (`harness/runlog.py`) follow no link, never block on a FIFO or device, and read a record only up to 16 MiB: a record or heartbeat that is not a regular file is none (`tests/unit/test_runlog_reads.py`). `inv.runs[]` and its `usage` are declared in the control schema; invariant 46 (a well-formed record of its own run, at most 2 KiB); a usage copy derives no event. The manifest's optional `policy.pricing` is a classified policy file, every field operational (a price edit never stales a dispatch decision), validated at adoption and read from its pinned bytes. Tests: `tests/integration/test_usage_ledger.py`.
 
-**Slice 2b, the doctor:** `aew doctor` reports `policy:pricing` (no table is INFO, never a failure; a named table that is malformed, missing or drifted FAILs), `pricing-snapshots` (FAIL for a snapshot a hot or recently archived usage names that is missing or damaged, and for any file in `.aew/pricing/` that is not the snapshot its name says; bounded to the hot state and the recent ring: a snapshot only an older bundle names is not checked, and `aew usage show --all` will report it unpriced) and `usage-ledger` (hot runs recorded, provisional and missing; WARN when a run's usage is lost) (`usage_ops.pricing_doctor`, `snapshot_doctor`, `ledger_doctor`).
+**Slice 2b, the doctor:** `aew doctor` reports `policy:pricing` (no table is INFO, never a failure; a named table that is malformed, missing or drifted FAILs), `pricing-snapshots` (FAIL for a snapshot a hot or recently archived usage names that is missing or damaged, and for any file in `.aew/pricing/` that is not the snapshot its name says; bounded to the hot state and the recent ring: a snapshot only an older bundle names is not checked, and no command reports it yet: a usage read side is held in HOLD-21) and `usage-ledger` (hot runs recorded, provisional and missing; WARN when a run's usage is lost) (`usage_ops.pricing_doctor`, `snapshot_doctor`, `ledger_doctor`).
 
 **M4-H live usage, slice L1** ([Q7 v0.3.1](../design/q7-m4h-value-gate-experiment-v0.3.1.md) §16): one sample shape, `aew/usage-live/v1` (`schemas/usage-live.schema.json`, at most 4 KiB, R1's fields from `normalize()`), and one meter for every OpenCode server, a run's private one or an evaluator-owned one (`harness/usage_live.py`: `Meter`, `OpenCodeMeter`). Each poll lists every session unfiltered and reads each moved session's new assistant and compaction messages from saved cursors; the figure is `max(high-water totals, counted messages)` per session and category, recomputed every poll; the part of the totals on no message is priced on the pinned model only when the caller proved it pinned; a decrease is flagged once and is `integrity` when it persists, never lowering the figure; bounded at 256 sessions, a 512 KiB state and a 4 KiB sample, and carried across a restart under a new epoch. Probe P1 pinned the OpenCode 2.0.18 facts it rests on, with citations, in `tests/fixtures/opencode/live-usage-2.0.18.json` (verified afterwards in the tag's source: 2.0.18 never calls the summary agent by itself, and when a client or a configured command selects it its steps are ordinary and counted; session generation (called by its endpoint, the first-party `/btw`, the plugin host and the `warming` plugin) and the stateless generation (its endpoint and the plugin host) make model calls that record no usage, so the live figure cannot see them, and the evaluator's preflight refuses a configuration that sets `warming`); the fake V2 server pages sessions and messages as 2.0.18 does and scripts usage ([harness conformance](harness-conformance.md) §5.1). Tests: `tests/unit/test_usage_live.py`. Measurement only: the evaluator (F19) terminates and charges. Next for M4-H: L2 (a supervised run publishes its spend), L3 (the measured total and preflight), then L4 (the evaluator's reader).
 
@@ -318,7 +318,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **Status:** Staged
 
-**Acceptance evidence / next action:** Cards and archetypes carry capability names; authority-sensitive capabilities are enforced. Provider resolution and health come in M6.
+**Acceptance evidence / next action:** Cards and archetypes carry capability names; authority-sensitive capabilities are enforced. Provider resolution and health come in M6. CAP-1 (register STG-15) built AEW's capability register for its own tools: the pinned ripgrep, its fetch and offline import, and its read-only bind into every contained context (#272, #330); the consent prompt is E171, and the rest of the base bundle is CAP-1 PR 3.
 
 ### Remote validation provider
 
@@ -334,9 +334,9 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 ### Concurrent mutation isolation
 
-**Status:** Built (M4-C); the queue is M4-D
+**Status:** Built (M4-C), with the integration queue and its lease (M4-D slice D3)
 
-**Acceptance evidence / next action:** Per-Ticket worktrees and a serialized, CAS-published integration. The cap is a dispatch guard that reads `gates.yaml` `mutating_concurrency` (default 1, opt-in per project) and counts live workspaces whatever their state (review M2). Several mutating Tickets work at once and integrate one after another; the integration queue and lease arrive in M4-D.
+**Acceptance evidence / next action:** Per-Ticket worktrees and a serialized, CAS-published integration. The cap is a dispatch guard that reads `gates.yaml` `mutating_concurrency` (default 1, opt-in per project) and counts live workspaces whatever their state (review M2). Several mutating Tickets work at once and integrate one after another, through the integration queue and its lease (`engine/queue_ops.py`).
 
 ### Controlled integration
 

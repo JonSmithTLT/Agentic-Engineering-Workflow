@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.errors import HarnessError, HarnessIncompatible, HarnessLaunchFailed, ValidationFailed
-from aew.harness import agentenv, runlog, weaker_register
+from aew.harness import agentenv, progress, runlog, weaker_register
 from aew.harness import usage as U
 from aew.harness.base import (
     KEY_IN_SANDBOX,
@@ -71,6 +71,8 @@ from aew.harness.contract import (
     UNAVAILABLE_TOOLS,
     LaunchContract,
 )
+from aew.harness.harness_capabilities import YES as CAP_YES
+from aew.harness.harness_capabilities import Support
 from aew.harness.opencode import capabilities, projection
 from aew.harness.opencode.client import (
     EVENT_CONNECT_S,
@@ -296,6 +298,20 @@ class OpenCodeAdapter(HarnessAdapter):
     # So the stored input excludes cache read and write, and the stored output excludes reasoning.
     token_semantics = {"2.0.18": {"openai": U.DISJOINT}}
 
+    # The harness capabilities this adapter provides (steering design §7; aew.harness.harness_capabilities).
+    harness_capabilities: dict[str, Support] = {
+        "wake_idle_session": Support(CAP_YES, "`session.prompt`"),
+        "queue_until_turn_end": Support(CAP_YES, "`session.prompt` with `delivery: queue`"),
+        "steer_running_turn": Support(CAP_YES, "`session.prompt` with `delivery: steer`"),
+        "interrupt_turn": Support(CAP_YES, "`session.interrupt`"),
+        "read_progress": Support(CAP_YES, "polled: tool parts of `session.message.list` (the meter's poll)"),
+        "read_usage": Support(CAP_YES, "polled: the meter (`session.list`, `session.message.list`)"),
+        "attach_to_operator_session": Support(CAP_YES, "the Lead runs on AEW's OpenCode server, which the broker "
+                                                       "serves"),
+        "mark_non_operator_input": Support(CAP_YES, "text only: the wake's fixed header (`session.prompt` metadata "
+                                                    "is not shown to the model)"),
+    }
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.server: Server | None = None
@@ -427,7 +443,11 @@ class OpenCodeAdapter(HarnessAdapter):
                            version=capabilities.TESTED_VERSIONS[0], semantics_table=self.token_semantics,
                            s_pot=RUN_S_POT, state_path=self.run_dir / runlog.LIVE_STATE_FILE,
                            live_path=self.run_dir / runlog.LIVE_FILE, request_timeout_s=METER_REQUEST_S,
-                           pinned_model=projection.model_ref(contract.execution_profile))
+                           pinned_model=projection.model_ref(contract.execution_profile),
+                           progress=progress.Tracker(run=self.run_dir.name, workspace=contract.workspace,
+                                                     scope_paths=contract.extra.get(progress.SCOPE_PATHS),
+                                                     clock=time.time),
+                           progress_path=self.run_dir / runlog.PROGRESS_FILE)
         try:
             self.meter.set_prompt_state("unsent")
         except OSError as exc:

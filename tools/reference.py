@@ -43,6 +43,7 @@ FAMILY_MODULES = (
     "concurrency",
     "control_keys",
     "entry_points",
+    "harness_capabilities",
     "interfaces",
     "layout",
     "machines",

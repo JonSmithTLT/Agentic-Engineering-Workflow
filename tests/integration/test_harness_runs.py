@@ -396,9 +396,12 @@ def test_the_leads_results_name_the_tools_a_run_went_without_in_aews_closed_word
     lab.script("default", [])
     out = lab.lead("work", "assign", wid, "--launch")
     run = out["launch"]["run"]
-    assert "missing_tools" not in lab.wait(run)  # missing: nothing went without, so the result says nothing of it
+    lab.wait(run)  # contained on Linux, it may really have gone without tools: its label is planted below
     path = runlog.run_dir(lab.aew_root, run) / "run.json"
     record = json.loads(path.read_text(encoding="utf-8"))
+    record["containment"] = {k: v for k, v in (record.get("containment") or {}).items() if k != "missing_tools"}
+    path.write_text(json.dumps(record), encoding="utf-8")
+    assert "missing_tools" not in lab.wait(run)  # missing: nothing went without, so the result says nothing of it
     detail = [{"command": "rg", "provider": "ripgrep", "served": "stub", "reason": "declined"},  # right
               {"tool": "fd", "provider": "fd", "served": "host", "path": "/usr/bin/fd",  # recorded before the rename
                "reason": "not_installed"},

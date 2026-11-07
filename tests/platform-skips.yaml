@@ -100,6 +100,15 @@ skipped:
       /proc and /dev are Linux's (#316's lesson): on Windows the register has no kernel trees to resolve into, and a
       failed write there never refuses (no G3, no containment). Covered on Linux; the refusal of an unwritable register
       is tested on every platform in the same file.
+    tests/unit/test_lead_contained.py::test_neither_writer_follows_a_link_out_of_the_leads_state[store]: >-
+      Making a symlink needs a privilege on Windows, and the contained Lead is Linux's. The check that refuses a store
+      that is not a regular file inside the Lead's state runs on every platform in the same file. Covered on Linux.
+    tests/unit/test_lead_contained.py::test_neither_writer_follows_a_link_out_of_the_leads_state[directory]: >-
+      Making a symlink needs a privilege on Windows, and the contained Lead is Linux's. The check that refuses a store
+      that is not a regular file inside the Lead's state runs on every platform in the same file. Covered on Linux.
+    tests/unit/test_lead_contained.py::test_neither_writer_follows_a_link_out_of_the_leads_state[sidecar]: >-
+      Making a symlink needs a privilege on Windows, and the contained Lead is Linux's. The check that refuses a store
+      that is not a regular file inside the Lead's state runs on every platform in the same file. Covered on Linux.
     tests/unit/test_weaker_register.py::test_a_marker_through_a_link_and_up_opens_the_path_it_was_checked_at: >-
       Making a symlink needs a privilege on Windows (#321 quick check, F8), and its marker scan does not run (no /proc).
       The open is the same line on every platform. Covered on Linux.

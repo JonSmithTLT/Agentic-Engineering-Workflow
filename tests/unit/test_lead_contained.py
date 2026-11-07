@@ -347,26 +347,59 @@ def test_the_leads_own_login_row_holds_the_relays_sentinel_and_never_the_operato
     assert b"synthetic-operator-access" not in blob and b"synthetic-account-0007" not in blob
 
 
-def test_a_credential_table_without_a_column_aew_writes_skips_the_seed_and_writes_nothing(tmp_path, at_a_terminal):
-    """E118: the Lead's own store in a schema AEW does not know (a newer OpenCode's) is met by checking the
-    ``credential`` table's columns before any write: a column missing raises an ``sqlite3.Error``, which the start
-    reports as the login it could not give the Lead this session, and the table is left as it was."""
-    store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-operator-access", time.time() + 3600), 1)])
-    session = contained(tmp_path)
-    state = tmp_path / "state"
+def _lead_store(state: Path, table: str, rows: list[tuple[Any, ...]] = ()) -> Path:  # type: ignore[assignment]
+    """The Lead's own store in ``state`` with a ``credential`` table made by ``table``, holding ``rows``."""
     own = state / "xdg-data" / "opencode" / login.DB
     own.parent.mkdir(parents=True)
     con = sqlite3.connect(own)
-    con.execute("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, "
-                "secret text NOT NULL, active integer, time_created integer NOT NULL, time_updated integer NOT NULL)")
-    con.execute("INSERT INTO credential VALUES ('cred_aew_openai', 'openai', 'old', 'x', 1, 1, 1)")
+    con.execute(table)
+    for row in rows:
+        con.execute(f"INSERT INTO credential VALUES ({', '.join('?' * len(row))})", row)  # noqa: S608 -- placeholders
     con.commit()
     con.close()
+    return own
+
+
+@pytest.mark.parametrize("table, differs", [
+    ("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, secret text NOT NULL, "
+     "active integer, time_created integer NOT NULL, time_updated integer NOT NULL)", "no value"),
+    ("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, value text NOT NULL, "
+     "connector_id text, method_id text, active integer, time_created integer NOT NULL, time_updated integer NOT NULL, "
+     "scope text)", "an extra scope"),
+    ("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, value blob NOT NULL, "
+     "connector_id text, method_id text, active integer, time_created integer NOT NULL, time_updated integer NOT NULL)",
+     "value blob, not text"),
+], ids=["a-column-missing", "an-extra-column", "a-changed-type"])
+def test_a_credential_table_not_exactly_opencodes_skips_the_seed_and_writes_nothing(tmp_path, at_a_terminal, table,
+                                                                                    differs):
+    """E118: the seed writes only to a ``credential`` table exactly like 2.0.18's. Any other (a column missing or
+    extra, or one whose declared type changed, as a newer OpenCode's might be) skips the seed: an ``sqlite3.Error``,
+    which the start reports as the login it could not give the Lead this session, and no row is written. With an
+    extra nullable column the write itself would succeed, so the outcome is what is checked."""
+    store(tmp_path, [("openai", "chatgpt-browser", 1, chatgpt("synthetic-operator-access", time.time() + 3600), 1)])
+    session = contained(tmp_path)
+    state = tmp_path / "state"
+    width = len(sqlite3.connect(":memory:").execute(table).execute("SELECT * FROM credential").description)
+    own = _lead_store(state, table, [("cred_lead_own", "openai", "own", *["x"] * (width - 3))])
     before = own.read_bytes()
-    with pytest.raises(login.StoreSchemaChanged, match="no value, method_id column") as raised:
+    with pytest.raises(login.StoreSchemaChanged, match=differs) as raised:
         session._seed_logins(None, {}, "", state, {"openai": "aew-relay-" + "0" * 32})
     assert isinstance(raised.value, sqlite3.Error)  # the start's own skip path (`lead.py`, "cannot use it")
     assert own.read_bytes() == before
+    con = sqlite3.connect(own)
+    assert [r[0] for r in con.execute("SELECT id FROM credential")] == ["cred_lead_own"]  # no AEW row
+    con.close()
+
+
+def test_the_credential_schema_aew_checks_is_the_one_its_tests_seed_and_it_writes_a_subset_of():
+    """The schema the seed checks is the one the session tests' synthetic stores use, and every column it writes is
+    in it (so the check and the write cannot drift apart)."""
+    import lead_session
+
+    con = sqlite3.connect(":memory:")
+    con.execute(lead_session.CREDENTIAL_TABLE)
+    login.require_schema(con, "credential", login.CREDENTIAL_SCHEMA)
+    assert set(login.CREDENTIAL_COLUMNS) <= dict(login.CREDENTIAL_SCHEMA).keys()
 
 
 # The two schemas OpenCode 2.0.18's migrations give the ``permission`` table, read in the pinned bundle (E118).
@@ -375,39 +408,130 @@ PERMISSION_SCHEMAS = {
              "data text NOT NULL)",
     "later": "CREATE TABLE permission (id text PRIMARY KEY, project_id text NOT NULL, action text NOT NULL, "
              "resource text NOT NULL, time_created integer, time_updated integer)"}
+# A session table with its own permission rules, as 2.0.18 keeps them (``session_v2``; the columns that matter here)
+SESSION_TABLE = "CREATE TABLE {name} (id text PRIMARY KEY, title text, permission text, time_updated integer)"
+ALLOW_ALL = json.dumps([{"action": "*", "resource": "*", "effect": "allow"}])
 
 
-def saved_permissions(db: Path, schema: str) -> None:
-    """A synthetic Lead store holding saved permissions in ``schema``, beside a credential row that must stay."""
+def saved_permissions(db: Path, schema: str, session_table: str | None = "session_v2") -> None:
+    """A synthetic Lead store holding saved permissions in ``schema`` and two sessions, one with its own rules,
+    beside a credential row that must stay."""
     store(db.parent, [("openai", "api", 1, {"type": "key", "key": "sk-lead-own"}, 1)], path=db)
     con = sqlite3.connect(db)
     con.execute(PERMISSION_SCHEMAS[schema])
     width = len(con.execute("SELECT * FROM permission").description)
     con.executemany(f"INSERT INTO permission VALUES ({', '.join('?' * width)})",  # noqa: S608 -- placeholders only
                     [(f"p{i}", *[f"v{i}"] * (width - 1)) for i in range(3)])
+    if session_table:
+        con.execute(SESSION_TABLE.format(name=session_table))
+        con.executemany(f"INSERT INTO {session_table} VALUES (?, ?, ?, 1)",  # noqa: S608 -- the test's own name
+                        [("ses_ruled", "ruled", ALLOW_ALL), ("ses_plain", "plain", None)])
     con.commit()
     con.close()
 
 
-@pytest.mark.parametrize("schema", sorted(PERMISSION_SCHEMAS))
-def test_the_saved_permissions_are_cleared_in_either_schema_and_nothing_else_is(tmp_path, schema):
-    db = tmp_path / login.DB
-    saved_permissions(db, schema)
-    assert login.clear_saved_permissions(db) == 3
+def _count(db: Path, sql: str) -> int:
     con = sqlite3.connect(db)
-    assert con.execute("SELECT COUNT(*) FROM permission").fetchone() == (0,)
-    assert con.execute("SELECT COUNT(*) FROM credential").fetchone() == (1,)
+    try:
+        return con.execute(sql).fetchone()[0]
+    finally:
+        con.close()
+
+
+@pytest.mark.parametrize("session_table", ["session_v2", "session"])
+@pytest.mark.parametrize("schema", sorted(PERMISSION_SCHEMAS))
+def test_the_saved_permissions_and_session_rules_are_cleared_in_either_schema_and_nothing_else_is(tmp_path, schema,
+                                                                                                  session_table):
+    """E118: every saved permission goes, and every session's own permission rules (which 2.0.18 evaluates after the
+    agent's, so an `allow` there would answer an `ask`) are set to null; the sessions and the credential stay."""
+    db = tmp_path / login.DB
+    saved_permissions(db, schema, session_table)
+    assert login.clear_saved_permissions(db, tmp_path) == 4  # three saved, one session's rules
+    assert _count(db, "SELECT COUNT(*) FROM permission") == 0
+    assert _count(db, f"SELECT COUNT(*) FROM {session_table} WHERE permission IS NOT NULL") == 0  # noqa: S608
+    assert _count(db, f"SELECT COUNT(*) FROM {session_table}") == 2  # noqa: S608 -- the test's own name
+    assert _count(db, "SELECT COUNT(*) FROM credential") == 1
+    assert login.clear_saved_permissions(db, tmp_path) == 0
+
+
+def test_a_session_table_without_its_rules_column_refuses_the_clear(tmp_path):
+    """A session table that keeps its rules somewhere AEW does not know is not cleared by guessing: the clear raises,
+    and the start is refused (below)."""
+    db = tmp_path / login.DB
+    saved_permissions(db, "later", session_table=None)
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE session_v2 (id text PRIMARY KEY, rules text)")
+    con.commit()
     con.close()
-    assert login.clear_saved_permissions(db) == 0
+    with pytest.raises(login.StoreSchemaChanged, match="session_v2 table has no permission column"):
+        login.clear_saved_permissions(db, tmp_path)
+    assert _count(db, "SELECT COUNT(*) FROM permission") == 3  # rolled back: nothing half-cleared
 
 
 def test_a_store_with_no_saved_permissions_is_left_as_it_is(tmp_path):
-    assert login.clear_saved_permissions(tmp_path / login.DB) == 0  # no database: nothing saved
+    assert login.clear_saved_permissions(tmp_path / login.DB, tmp_path) == 0  # no database: nothing saved
     assert not (tmp_path / login.DB).exists()  # and none is made
     db = store(tmp_path, [], path=tmp_path / login.DB)
     before = db.read_bytes()
-    assert login.clear_saved_permissions(db) == 0  # no permission table: nothing saved
+    assert login.clear_saved_permissions(db, tmp_path) == 0  # no permission or session table: nothing kept
     assert db.read_bytes() == before
+
+
+# ------------------------------------------------------------------------------- the store is the Lead's own
+needs_symlinks = pytest.mark.skipif(os.name == "nt", reason="the contained Lead is Linux's, and making a symlink "
+                                                            "needs a privilege on Windows")
+
+
+def _operators_store(tmp_path: Path) -> tuple[Path, bytes]:
+    """The operator's own store, with a saved permission, a session's rules and a login, and its bytes."""
+    operator = tmp_path / "operator" / login.DB
+    operator.parent.mkdir(parents=True)
+    saved_permissions(operator, "later")
+    return operator, operator.read_bytes()
+
+
+@needs_symlinks
+@pytest.mark.parametrize("link", ["store", "directory", "sidecar"])
+def test_neither_writer_follows_a_link_out_of_the_leads_state(tmp_path, at_a_terminal, link):
+    """E118: AEW writes the Lead's store on the host, so the store, its directory and each SQLite sidecar must be a
+    regular file (a directory) whose real path is inside the Lead's state directory. One that leads elsewhere refuses
+    the start, from the clear and from the login seed alike, naming the path and its own reason, and the store it
+    leads to is untouched."""
+    operator, before = _operators_store(tmp_path)
+    state = tmp_path / "state"
+    data = state / "xdg-data" / "opencode"
+    if link == "directory":
+        data.parent.mkdir(parents=True)
+        data.symlink_to(operator.parent, target_is_directory=True)
+        named = data
+    else:
+        data.mkdir(parents=True)
+        if link == "store":
+            (data / login.DB).symlink_to(operator)
+            named = data / login.DB
+        else:
+            saved_permissions(data / login.DB, "later")
+            named = data / (login.DB + "-wal")
+            named.symlink_to(tmp_path / "operator" / (login.DB + "-wal"))
+    with pytest.raises(errors.ContainmentUnavailable, match="regular file inside its state directory") as clear:
+        login.clear_saved_permissions(data / login.DB, state)
+    with pytest.raises(errors.ContainmentUnavailable) as seed:
+        contained(tmp_path)._seed_logins(None, {}, "", state, {"openai": "aew-relay-" + "0" * 32})
+    for refused in (clear.value, seed.value):
+        assert refused.details == {"reason": login.STORE_OUTSIDE_STATE, "path": str(named)}
+        assert str(named) in refused.message and "move it aside" in refused.message
+    assert operator.read_bytes() == before
+
+
+def test_a_regular_store_inside_the_state_passes_and_one_that_is_not_a_file_is_refused(tmp_path):
+    state = tmp_path / "state"
+    data = state / "xdg-data" / "opencode"
+    data.mkdir(parents=True)
+    login.own_store(data / login.DB, state)  # nothing there yet: nothing to refuse
+    (data / login.DB).mkdir()  # a directory where the store goes
+    with pytest.raises(errors.ContainmentUnavailable) as refused:
+        login.own_store(data / login.DB, state)
+    assert refused.value.details["reason"] == login.STORE_OUTSIDE_STATE
 
 
 def _start_until_the_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[lead.ContainedLead, Path]:
@@ -431,26 +555,30 @@ def _start_until_the_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
 def test_every_contained_start_clears_the_leads_saved_permissions_before_its_session(tmp_path, monkeypatch,
                                                                                     at_a_terminal):
-    """E118: each contained session starts with no saved permission, whether or not it seeds a login (none here)."""
+    """E118: each contained session starts with no saved permission and no session rules, whether or not it seeds a
+    login (none here)."""
     session, db = _start_until_the_projection(tmp_path, monkeypatch)
     db.parent.mkdir(parents=True)
     saved_permissions(db, "later")
     with pytest.raises(RuntimeError, match="stops at the projection"):
         session(None, {})
-    con = sqlite3.connect(db)
-    assert con.execute("SELECT COUNT(*) FROM permission").fetchone() == (0,)
-    con.close()
+    assert _count(db, "SELECT COUNT(*) FROM permission") == 0
+    assert _count(db, "SELECT COUNT(*) FROM session_v2 WHERE permission IS NOT NULL") == 0
 
 
-def test_a_contained_start_whose_saved_permissions_cannot_be_cleared_is_refused(tmp_path, monkeypatch, at_a_terminal):
-    """E118: a clear that fails refuses the start, naming what it could not do and what to do, before any session."""
+def test_a_contained_start_whose_store_cannot_be_cleared_is_refused_with_the_step_that_fits(tmp_path, monkeypatch,
+                                                                                            at_a_terminal):
+    """E118: a clear that fails refuses the start, naming the store and the step that fits: a store that is not a
+    database is moved aside (starting again would fail the same way); a busy one is waited for."""
     session, db = _start_until_the_projection(tmp_path, monkeypatch)
     db.parent.mkdir(parents=True)
     db.write_bytes(b"this is not a database" * 100)
     with pytest.raises(errors.ContainmentUnavailable, match="no saved permissions") as refused:
         session(None, {})
-    assert refused.value.details["reason"] == "saved_permissions"
-    assert "start `aew opencode` again" in refused.value.message
+    assert refused.value.details == {"reason": "saved_permissions", "path": str(db)}
+    assert f"move {db} aside" in refused.value.message and "once nothing holds" not in refused.value.message
+    busy = login.clear_failure_step(db, sqlite3.OperationalError("database is locked"))
+    assert busy == f"start `aew opencode` again once nothing holds {db}"
 
 
 def test_provider_env_feeds_its_providers_relay_and_never_the_lead_shell(tmp_path, at_a_terminal):

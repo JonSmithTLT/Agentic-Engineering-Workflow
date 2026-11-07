@@ -1852,3 +1852,9 @@ acknowledgements.
   models over several protocols, so its declaration is per route (a model's catalog `package`) instead of per provider,
   as the ledger design's R4 rule 1 otherwise has it. Its Responses route is `disjoint`, measured by one live turn
   through AEW's relay. Each other route reads `unknown` until it is measured (register E209).
+- **The console sync, measured:** on 2.2.6 it is the `opencode.provider.opencode` plugin's fetch of
+  `https://opencode.ai/console/api/v2/config`, read from the server's log, so the refused target's fixed note drops
+  "(inferred)": it reads "expected: OpenCode's console sync, refused by design". Since 2.2.x its response also carries
+  a Console `library` of session instructions and skills, refused with the rest under `proxy_only`. On Windows, where
+  network containment is not provided, a Zen run receives them, and AEW neither blocks nor records them (the
+  operator, 2026-11-07: the limit is stated, in the OpenCode guide).

@@ -89,7 +89,7 @@ PROXY_NAMES = frozenset({*agentenv.PROXY_VARS, "NO_PROXY"})
 # allowlist entry. Defined here only, beside the record
 # (:meth:`RunNetwork.refused`), and given to no other target.
 CONSOLE_SYNC_TARGET = "opencode.ai:443"
-CONSOLE_SYNC_NOTE = "expected: OpenCode's console sync (inferred), refused by design"
+CONSOLE_SYNC_NOTE = "expected: OpenCode's console sync, refused by design"
 # The designer's ruling on #246's P8, as the operator decided it (2026-10-24): the one-line form, for the label.
 EGRESS_RESIDUAL = ("egress (R-6): a destination the host's own network configuration, root's, rewrites to this host "
                    "is not detected.")

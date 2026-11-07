@@ -491,16 +491,25 @@ def _operators_store(tmp_path: Path) -> tuple[Path, bytes]:
 
 
 @needs_symlinks
-@pytest.mark.parametrize("link", ["store", "directory", "sidecar"])
+@pytest.mark.parametrize("link", ["store", "directory", "sidecar", "parent"])
 def test_neither_writer_follows_a_link_out_of_the_leads_state(tmp_path, at_a_terminal, link):
     """E118: AEW writes the Lead's store on the host, so the store, its directory and each SQLite sidecar must be a
     regular file (a directory) whose real path is inside the Lead's state directory. One that leads elsewhere refuses
     the start, from the clear and from the login seed alike, naming the path and its own reason, and the store it
-    leads to is untouched."""
+    leads to is untouched. ``parent``: every path is of the right type, but a directory above them leads elsewhere,
+    so only their real path shows it."""
     operator, before = _operators_store(tmp_path)
     state = tmp_path / "state"
     data = state / "xdg-data" / "opencode"
-    if link == "directory":
+    if link == "parent":  # xdg-data leads to a real tree whose opencode/opencode.db is the operator's store
+        operator = tmp_path / "operator-data" / "opencode" / login.DB
+        operator.parent.mkdir(parents=True)
+        saved_permissions(operator, "later")
+        before = operator.read_bytes()
+        state.mkdir()
+        (state / "xdg-data").symlink_to(tmp_path / "operator-data", target_is_directory=True)
+        named = data
+    elif link == "directory":
         data.parent.mkdir(parents=True)
         data.symlink_to(operator.parent, target_is_directory=True)
         named = data

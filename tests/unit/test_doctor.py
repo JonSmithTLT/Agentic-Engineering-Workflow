@@ -7,7 +7,7 @@ import builtins
 import shutil
 
 from aew import doctor, util
-from aew.engine.api import _model_refs_doctor
+from aew.engine.readiness import _model_refs_doctor
 
 
 def _by_name(checks):

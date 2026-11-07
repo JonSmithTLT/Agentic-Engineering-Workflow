@@ -332,18 +332,19 @@ def test_doctor_names_a_profile_whose_launch_would_get_no_key(relay_route, monke
     """`aew doctor`'s `provider-key` line, from the launch's own predicate. Wrong: FAIL naming the provider, the
     variable and the profile. Right: PASS, names only. Missing: nothing judged (a harness that never calls its
     provider itself, or an unknown provider), so no line."""
-    from aew.engine import api
+    from aew.engine import readiness
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     policy = {"harness": "opencode", "provider_env": [],
               "profiles": {"standard": {"provider": "openai", "model": "synthetic-paid-model"},
                            "light": {"provider": "fakeprov", "model": "synthetic-model"}}}
-    found = api._provider_key_doctor(policy)
+    found = readiness._provider_key_doctor(policy)
     assert found is not None and found[0] == "FAIL", found
     assert "openai (OPENAI_API_KEY), for profile(s) standard" in found[1] and "provider_key_missing" in found[1]
     assert netns.FREE_TIER_RULE in found[1]
     monkeypatch.setenv("OPENAI_API_KEY", KEY)
-    found = api._provider_key_doctor({**policy, "provider_env": ["OPENAI_API_KEY"]})
+    found = readiness._provider_key_doctor({**policy, "provider_env": ["OPENAI_API_KEY"]})
     assert found == ("PASS", "a provider key reaches the run for profile(s) standard (names only)")
-    assert api._provider_key_doctor({**policy, "profiles": {"light": policy["profiles"]["light"]}}) is None
-    assert api._provider_key_doctor({**policy, "harness": "fake-not-registered"}) is None  # cannot load: not judged
+    assert readiness._provider_key_doctor({**policy, "profiles": {"light": policy["profiles"]["light"]}}) is None
+    # cannot load: not judged
+    assert readiness._provider_key_doctor({**policy, "harness": "fake-not-registered"}) is None

@@ -63,6 +63,39 @@ def test_a_launch_with_an_unset_provider_variable_is_refused_naming_it_before_an
     assert lab.project.rev() == rev and runs(lab) == [] and not lab.ok("invoke", "show", inv).get("runs")
 
 
+def test_a_launch_carries_each_readiness_row_it_does_not_refuse_on_with_its_fix_and_none_when_all_pass(lab, tmp_path):
+    """E125: a launch that starts still says what a launch from here would meet elsewhere (here another profile's
+    model maps to no pair: doctor's `model-refs` FAIL, which refuses only a dispatch with that profile), in its
+    result's ``readiness``, with the fix; a launch that meets every check carries none. No new refusal."""
+    lab.script("default", [])
+    wid = create_planned_ticket(lab.project, tmp_path)
+    env = {KEY: "synthetic-value"}
+    inv = lab.lead("work", "assign", wid, env=env)["invocation"]
+    lab.project.lead("work", "transition", wid, "--to", "RUNNING")
+    clean = lab.lead("harness", "launch", inv, env=env)
+    assert "readiness" not in clean, clean
+    policy = load_yaml((lab.aew_root / "policy/execution.yaml").read_text(encoding="utf-8"))
+    edit_policy(lab, profiles={**policy["profiles"], "broken": {"provider": "fakeprov", "model": "elsewhere/x"}})
+    row = doctor(lab, env=env)["model-refs"]
+    assert row["status"] == "FAIL" and "profiles.broken.model" in row["detail"], row
+    out = lab.lead("harness", "launch", inv, "--replace", env=env)
+    assert out["readiness"] == [f"readiness FAIL (model-refs): {row['detail']}"], out
+
+
+def test_a_dispatch_with_launch_carries_the_readiness_rows_too(lab, tmp_path):
+    """E125, review of #360 m1: the Lead's archetype dispatches with `--launch`, so that launch carries the rows as a
+    relaunch does (`launch_dispatched`, which the stage tools and `invoke create --launch` share)."""
+    lab.script("default", [])
+    env = {KEY: "synthetic-value"}
+    policy = load_yaml((lab.aew_root / "policy/execution.yaml").read_text(encoding="utf-8"))
+    edit_policy(lab, profiles={**policy["profiles"], "broken": {"provider": "fakeprov", "model": "elsewhere/x"}})
+    row = doctor(lab, env=env)["model-refs"]
+    wid = create_planned_ticket(lab.project, tmp_path)
+    out = lab.lead("work", "assign", wid, "--launch", env=env)
+    assert out["launch"]["run"] == "R-INV-0001-1", out
+    assert out["readiness"] == [f"readiness FAIL (model-refs): {row['detail']}"], out
+
+
 def test_a_launch_with_the_provider_variable_set_starts(lab, tmp_path):
     lab.script("R-INV-0001-1", [])
     wid = create_planned_ticket(lab.project, tmp_path)

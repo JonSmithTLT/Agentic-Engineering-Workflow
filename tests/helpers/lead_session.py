@@ -27,6 +27,7 @@ from typing import Any
 
 from aewflow import sample_project
 from conftest import clean_env
+from discovery.rules import split_refusal
 from fake_harness import AGENT, POLICY, HarnessLab
 
 from aew.harness import procs
@@ -188,7 +189,8 @@ def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, st
                     timeout: float = 120) -> dict[str, Any]:
     """`aew opencode` at a terminal the test holds: standard input is a pseudo-terminal that is its controlling
     terminal (as at the operator's shell); its standard output and error are collected. Returns the exit code, the
-    result JSON (after the relay's reset), the error, and whether the terminal got its settings back."""
+    result JSON (after the relay's reset), the refusal's error with what stderr held before and after it
+    (``discovery.rules.split_refusal``), and whether the terminal got its settings back."""
     import pty
     import termios
 
@@ -224,14 +226,10 @@ def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, st
         result = json.loads(text) if text else None
     except ValueError:
         result = None
-    error = None
-    if proc.returncode:
-        try:
-            error = json.loads(err.decode()[err.decode().index("{"):])["error"]
-        except (ValueError, KeyError):
-            error = None
-    return {"code": proc.returncode, "result": result, "stdout": out, "stderr": err.decode("utf-8", "replace"),
-            "error": error, "restored": restored, "terminal": bytes(shown)}
+    stderr = err.decode("utf-8", "replace")
+    ahead, error, after = split_refusal(stderr) if proc.returncode else (stderr, None, "")
+    return {"code": proc.returncode, "result": result, "stdout": out, "stderr": stderr, "error": error,
+            "before": ahead, "after": after.strip(), "restored": restored, "terminal": bytes(shown)}
 
 
 def agent_session(tmp_path: Path, steps: list[dict[str, Any]] | Callable[[HarnessLab], list[dict[str, Any]]], *,

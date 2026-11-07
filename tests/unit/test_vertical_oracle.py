@@ -43,7 +43,9 @@ def test_an_unbuilt_surface_reports_not_built_with_what_holds_it():
     assert by_key["setting"]["state"] == O.NOT_BUILT and by_key["setting"]["held_by"] == ["G3"]
     assert by_key["publish"]["held_by"] == ["G3", "I4-06", "I4-B7"]
     assert by_key["reopen"]["state"] == O.NOT_BUILT and by_key["reopen"]["held_by"] == ["G3"]
-    assert by_key["preflight"]["state"] == O.NOT_BUILT and "held_by" not in by_key["preflight"]
+    # Preflight, since the operator's decision of 2026-11-02 (register E125), is a local readiness surface, `aew
+    # doctor`: neither the registry nor the routes move it, and P03's read stays owed outside the path.
+    assert by_key["preflight"]["state"] == O.BUILT and by_key["preflight"]["parts"][0]["act"] == "NO_COMMAND"
     # Configure, A-39's console setup act, is NO_COMMAND and served by `aew init`'s options: a local step, so neither
     # the registry nor the routes move it.
     assert by_key["configure"]["state"] == O.BUILT and by_key["configure"]["parts"][0]["act"] == "NO_COMMAND"
@@ -52,7 +54,7 @@ def test_an_unbuilt_surface_reports_not_built_with_what_holds_it():
     # Without the CLI's command, the local step is not built either; the harness's own exit stays outside AEW.
     bare = {r["key"]: r for r in O.derive(facts=_facts(commands={}))}
     assert bare["init"]["state"] == O.NOT_BUILT and bare["exit"]["state"] == O.OUTSIDE
-    assert bare["configure"]["state"] == O.NOT_BUILT
+    assert bare["configure"]["state"] == O.NOT_BUILT and bare["preflight"]["state"] == O.NOT_BUILT
 
 
 def _without(*options: str):
@@ -109,8 +111,10 @@ def test_a_step_moves_when_its_registry_entry_or_route_is_added():
     assert source.count(anchor) == 1
     planted = source.replace(anchor, 'if path == "/v1/read/capabilities" or path == "/v1/read/waiting":')
     served = reader.tie(sorted(facts.routes), reader.read(ast.parse(planted), vars(server))).served
-    assert O.state_of("preflight", facts)["state"] == O.NOT_BUILT
-    moved = O.state_of("preflight", _facts(served=frozenset(served)))
+    # P03's read, as row 11 named it before the operator's amendment of 2026-11-02: a read step moves on its route
+    owed = O.Step(11, "preflight", O._s("V3"), ("P03",), (O.Read("P03", "/v1/read/capabilities"),), ())
+    assert O.derive([owed], facts)[0]["state"] == O.NOT_BUILT
+    moved = O.derive([owed], _facts(served=frozenset(served)))[0]
     assert moved["state"] == O.SERVED and "held_by" not in moved
 
 

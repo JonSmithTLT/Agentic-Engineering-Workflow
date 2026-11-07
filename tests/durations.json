@@ -11143,13 +11143,17 @@
    "integration": 6,
    "acceptance": 1,
    "regression": 3,
-   "adversarial": 1
+   "adversarial": 1,
+   "fast": 2,
+   "serial": 1
   },
   "win32": {
    "integration": 8,
    "acceptance": 1,
    "regression": 3,
-   "adversarial": 1
+   "adversarial": 1,
+   "fast": 2,
+   "serial": 1
   }
  },
  "sized_from": "main's green push run 39900909868 (a3b33e3a, 2026-10-23), sized by tools/ci/shard_plan.py as the first history would be"

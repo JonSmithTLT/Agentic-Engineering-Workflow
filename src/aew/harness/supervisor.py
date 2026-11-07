@@ -138,6 +138,8 @@ class Supervisor:
         self._start_until: float | None = None
         self.stop_reason: tuple[str, str] | None = None  # (status, reason) requested by a bridge refusal
         self._control_seen: Any = None
+        self._state_unreadable = False  # the last lock-free state read failed (logged once until one succeeds)
+        self._deferred: dict[str, str] = {}  # request files taken while the state was unreadable: name -> text
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ record
@@ -159,13 +161,46 @@ class Supervisor:
     # ------------------------------------------------------------------ authority
 
     def authority_problem(self) -> str | None:
-        """Why this run no longer holds its authority, from the committed state read lock-free
-        (``ControlStore.read_committed``). The watch loop that beats the heartbeat calls this: under the control lock,
-        another process's long hold (up to the lock's timeout, 60 s) stalled the beat past ``runlog.STALE_AFTER_S``, and
-        a live run read as ``lost`` (two CI sightings on Windows, 2026-11-07). Nothing is written on this read: every
-        engine operation re-checks the credential under the lock before it writes."""
-        state = self.engine.store.read_committed()
-        return self.engine.run_authority_problem(state, self.inv_id, self.run, self.token_id)
+        """Why this run no longer holds its authority, or None while it holds it or while the state cannot be read
+        (``_authority``)."""
+        return self._authority()[1]
+
+    def _authority(self) -> tuple[bool, str | None]:
+        """(read, problem): whether the committed state was read, and why this run no longer holds its authority.
+
+        The state is read lock-free (``ControlStore.read_committed``). The watch loop that beats the heartbeat calls
+        this: under the control lock, another process's long hold (up to the lock's timeout, 60 s) stalled the beat past
+        ``runlog.STALE_AFTER_S``, and a live run read as ``lost`` (two CI sightings on Windows, 2026-11-07).
+
+        A stale read is safe because every condition ``run_authority_problem`` checks only moves forward: an invocation
+        leaves ``active`` and never returns, ``runs[-1]`` only advances, ``revoked_at`` is only ever set, and the
+        generation only grows. So a committed state read late can only be more permissive than the truth, never less,
+        and every engine operation re-checks the credential under the lock before it writes, refusing what a stale read
+        let through. A change to ``run_authority_problem`` must keep its conditions monotonic, or this read is unsafe.
+
+        For the same reason a state that cannot be read this time (``_committed_state``) is unknown, not a problem: the
+        caller reads again on its next tick, and the engine stays the gate (#366 review, M2)."""
+        state = self._committed_state()
+        if state is None:
+            return False, None
+        return True, self.engine.run_authority_problem(state, self.inv_id, self.run, self.token_id)
+
+    def _committed_state(self) -> dict[str, Any] | None:
+        """The committed control state read lock-free, or None when it cannot be read this time.
+
+        Unlike the locked read, a lock-free read can meet a writer's replace: on Windows the mid-replace miss reaches it
+        as ``ProjectNotFound`` and a sharing violation outlasting its retries as ``PermissionError``. Neither may end a
+        live run (#366 review, M2). A failure is logged once until a read succeeds again, in the event log only, so a
+        state unreadable for long never grows the run record."""
+        try:
+            state = self.engine.store.read_committed()
+        except (errors.AEWError, OSError) as exc:
+            if not self._state_unreadable:
+                self._state_unreadable = True
+                self.events({"event": "state_unreadable", "error": getattr(exc, "message", None) or repr(exc)})
+            return None
+        self._state_unreadable = False
+        return state
 
     def _control_changed(self) -> bool:
         path = self.engine.aew_root / "state" / "control.yaml"
@@ -458,10 +493,11 @@ class Supervisor:
                 except errors.AEWError as exc:
                     self._event("request_failed", kind=kind, error=exc.message)
             if self._control_changed() or now - last_poll >= STATE_POLL_S:
-                last_poll = now
-                problem = self.authority_problem()
+                read, problem = self._authority()
                 if problem:
                     return self._finish(K.TERMINATED, f"authority ended: {problem}")
+                if read:  # an unreadable state is read again on the next tick
+                    last_poll = now
             status = self.adapter.inspect()
             if not status.get("alive"):
                 return self._finish_exited(status)
@@ -481,19 +517,22 @@ class Supervisor:
         The run directory is model-writable (same user), so a file alone is no request: its name and digest must be
         on this run's entry in control state, which the Lead operation commits before it writes the file. Anything
         else is recorded and discarded (independent review R1)."""
-        pending = runlog.take_requests(self.run_dir)
+        # Files taken while the state was unreadable come first; a later file of the same name replaces its text, as a
+        # later take would have read it. They are bounded by the queue's distinct names.
+        pending = {**self._deferred, **dict(runlog.take_requests(self.run_dir))}
+        self._deferred = {}
         if not pending:
             return []
-        try:
-            # lock-free, as ``authority_problem``: the watch loop that beats the heartbeat calls this
-            inv = self.engine.store.read_committed()["invocations"].get(self.inv_id) or {}
-            entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
-            recorded = {r["file"]: r for r in entry.get("requests") or []}
-        except errors.AEWError as exc:
-            recorded = {}
-            self._event("request_state_unreadable", error=exc.message)
+        # lock-free, as ``_authority``: the watch loop that beats the heartbeat calls this
+        state = self._committed_state()
+        if state is None:  # the files are taken already: keep them for the next tick, never refuse them (M2)
+            self._deferred = pending
+            return []
+        inv = state["invocations"].get(self.inv_id) or {}
+        entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
+        recorded = {r["file"]: r for r in entry.get("requests") or []}
         out = []
-        for name, text in pending:
+        for name, text in pending.items():
             want = recorded.get(name)
             why = ("not recorded by a Lead operation" if want is None else
                    "already handled" if name in self._handled else

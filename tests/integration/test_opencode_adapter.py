@@ -957,7 +957,7 @@ def test_a_run_whose_control_lock_is_held_elsewhere_keeps_its_heartbeat(lab, tmp
     `runlog.STALE_AFTER_S` (10 s). Two CI sightings on Windows (main at 8198c213, #362 at 6663e3d5) read a working run
     as `lost` while its step and its heartbeat stalled together. The run is held at its check (before the check's
     command starts), the lock is held from here for longer than three of the supervisor's authority polls, and the
-    heartbeat's age is sampled meanwhile: it stays within a few beats. Then the run completes."""
+    heartbeat's age is sampled meanwhile: it stays well below the hold. Then the run completes."""
     from aew.engine.api import Engine
     from aew.harness import supervisor
 
@@ -979,5 +979,7 @@ def test_a_run_whose_control_lock_is_held_elsewhere_keeps_its_heartbeat(lab, tmp
             ages.append(runlog.heartbeat_age(directory))
             time.sleep(0.2)
     gate.unlink()
-    assert None not in ages and max(ages) < 3 * runlog.HEARTBEAT_S, ages  # type: ignore[type-var]
+    # The guarantee is "below STALE_AFTER_S". Half the hold leaves a loaded runner headroom and still fails the locked
+    # read, whose beat stalls for most of the hold (7 s of 8; #366 review, N1).
+    assert None not in ages and max(ages) < held_s / 2, ages  # type: ignore[type-var]
     assert lab.wait(run)["status"] == "ended_with_evidence"

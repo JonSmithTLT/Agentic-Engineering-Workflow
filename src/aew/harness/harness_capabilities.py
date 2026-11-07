@@ -9,7 +9,7 @@ build of Codex" (or of OpenCode). So:
   declares its own when it lands, and this table goes;
 - each feature **names** the capabilities it needs (:data:`FEATURES`);
 - :func:`problems` lists every feature that needs a capability an adapter neither provides nor marks as a gap with a
-  register row. ``tests/unit/test_harness_capabilities.py`` fails on any, and the generated reference renders the
+  register row. ``tests/integration/test_harness_capabilities.py`` fails on any, and the generated reference renders the
   table (``docs/reference/harness-capabilities.md``).
 
 "Supported on both" never makes OpenCode wait: an OpenCode feature ships once its Codex rows are recorded here,

@@ -1,35 +1,13 @@
 """Harness capabilities (steering design §7): each adapter declares what it provides, each feature names what it needs,
 and a feature that needs a capability a harness neither provides nor marks as a gap with a register row fails here.
-The operator's rule: "supported on both", or "noted as work for us to add to the AEW build of Codex"."""
+That each gap's register row exists is checked by ``tests/unit/test_harness_capability_register.py`` (the register is
+a docs file, which a unit test may read). The operator's rule: "supported on both", or "noted as work for us to add
+to the AEW build of Codex"."""
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import yaml
-
 from aew.harness import harness_capabilities as H
 from aew.harness.opencode.adapter import OpenCodeAdapter
-
-REGISTER = Path(__file__).resolve().parents[2] / "docs" / "implementation" / "future-work.yaml"
-
-
-def register_ids() -> set[str]:
-    data = yaml.safe_load(REGISTER.read_text(encoding="utf-8"))
-    rows: list[dict] = []
-
-    def walk(node: object) -> None:
-        if isinstance(node, dict):
-            if "#" in node:
-                rows.append(node)
-            for v in node.values():
-                walk(v)
-        elif isinstance(node, list):
-            for v in node:
-                walk(v)
-
-    walk(data)
-    return {str(r["#"]) for r in rows}
 
 
 def test_every_feature_is_supported_or_a_recorded_gap_on_every_harness():
@@ -62,14 +40,6 @@ def test_the_opencode_adapter_declares_its_own_column_in_code():
 def test_every_harness_column_states_every_capability():
     for harness, column in H.declarations().items():
         assert set(column) == set(H.CAPABILITIES), harness
-
-
-def test_every_gap_names_a_row_of_the_register():
-    ids = register_ids()
-    gaps = [(h, c, s.register) for h, col in H.declarations().items() for c, s in col.items() if s.status == H.GAP]
-    assert gaps, "PR 0 found Codex gaps; they are recorded"
-    for harness, cap, row in gaps:
-        assert row in ids, f"{harness} {cap}: register row {row} does not exist"
 
 
 def test_the_codex_column_holds_pr0s_measured_answers():

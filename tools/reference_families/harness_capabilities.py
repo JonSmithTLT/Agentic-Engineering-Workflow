@@ -16,7 +16,7 @@ FAMILY = "harness-capabilities"
 FEATURE = "feature"  # the key space of a feature: `feature:<name>`
 OWNER = "aew.harness.harness_capabilities"
 PAGE = "harness-capabilities.md"
-_TESTS = "tests/unit/test_harness_capabilities.py::"
+_TESTS = "tests/integration/test_harness_capabilities.py::"  # never a unit module (the fast tier's rule)
 CHECKS = (
     _TESTS + "test_every_feature_is_supported_or_a_recorded_gap_on_every_harness",
     _TESTS + "test_every_harness_column_states_every_capability",

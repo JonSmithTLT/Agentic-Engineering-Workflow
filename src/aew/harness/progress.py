@@ -379,7 +379,7 @@ def _output(st: Mapping[str, Any]) -> str | None:
     content = st.get("content")
     if not isinstance(content, list):
         return None
-    texts = [c.get("text") for c in content if isinstance(c, Mapping) and isinstance(c.get("text"), str)]
+    texts = [str(c["text"]) for c in content if isinstance(c, Mapping) and isinstance(c.get("text"), str)]
     return "\n".join(texts) if texts else None
 
 

@@ -182,8 +182,9 @@ def quiet_wake_s(policy: dict[str, Any] | None) -> int:
     the default and the bounds, and an adopted policy has been validated against them."""
     spec = schema("execution")["properties"]["lead"]["properties"]["quiet_wake_s"]
     value = ((policy or {}).get("lead") or {}).get("quiet_wake_s")
-    ok = isinstance(value, int) and not isinstance(value, bool) and spec["minimum"] <= value <= spec["maximum"]
-    return int(value) if ok else int(spec["default"])
+    if isinstance(value, int) and not isinstance(value, bool) and spec["minimum"] <= value <= spec["maximum"]:
+        return value
+    return int(spec["default"])
 
 
 def presentation(policy: dict[str, Any] | None) -> str:

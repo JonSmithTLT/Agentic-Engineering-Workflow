@@ -393,6 +393,10 @@ def test_a_receipts_note_is_keyed_on_the_admission_state_and_the_reason_and_name
     assert said is not None and said.startswith("Approved in the confirmer and submitted, and the owner refused it")
     assert failing.reason in said and "Nothing was admitted" in said
     assert failing.reason not in (C.note(refused, counting) or "x" + failing.reason)
+    # until an owner consumes G3 consent, every note says so, even where G3 counts (#365 review m2)
+    for receipt in (held, refused):
+        for st in (failing, counting):
+            assert C.NOT_YET in (C.note(receipt, st) or "")
     assert C.note({"results": [{"admission_state": "ADMITTED", "reason_code": None}]}, failing) is None
     assert C.note({"results": [{"admission_state": "REJECTED", "reason_code": "PRECONDITION_STALE"}]},
                   failing) is None

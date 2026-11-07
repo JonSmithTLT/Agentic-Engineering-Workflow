@@ -312,14 +312,18 @@ def _held(standing: Any) -> str:
 
 # What the operator is told of a member the owner did not admit, by its admission state and reason (addendum 7: the
 # notes are keyed on both). Each takes the host's standing, as the client found it after the submission.
+# Until the owners' side consumes G3 consent (G3-C's next pull request), each note says no owner accepts it yet, so a
+# retry on a host where G3 counts is not taken for the fix (#365 review m2). That pull request removes it.
+NOT_YET = ("No owner accepts G3 consent yet: until AEW's owners do, no protected action is admitted whatever this "
+           "host's standing, and requesting it again changes nothing. What follows is what to fix for when they do. ")
 NOTES: dict[tuple[str, str], Callable[[Any], str]] = {
     ("HELD", "ORIGIN_NOT_ESTABLISHED"): lambda st: (
         "Approved in the confirmer and submitted, and the owner held it: G3 does not count for it, so it accepted no "
-        f"consent. {_held(st)}. Nothing was admitted. Once G3 counts, request the action again: this approval is not "
-        "used again (addendum 5)."),
+        f"consent. {NOT_YET}{_held(st)}. Nothing was admitted. Once G3 counts, request the action again: this "
+        "approval is not used again (addendum 5)."),
     ("REJECTED", "ORIGIN_NOT_ESTABLISHED"): lambda st: (
         "Approved in the confirmer and submitted, and the owner refused it: it found no consent it accepts for this "
-        "member. Nothing was admitted. " + ("" if st.counts else f"On this host: {_held(st)}. ")
+        "member. Nothing was admitted. " + NOT_YET + ("" if st.counts else f"On this host: {_held(st)}. ")
         + "Request the action again once G3 counts; this approval is not used again."),
 }
 

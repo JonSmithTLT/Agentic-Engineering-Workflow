@@ -301,11 +301,20 @@ def unreadable_process(p: Proc) -> str:
     """What the operator is told of a process that keeps an entry live because it cannot be read (B3, the designer's
     ruling for G3-C): a contained run in a project no entry names looks like this, and AEW does not trust the label it
     could read there, so the entry waits for the process to end. Its pid, command and working directory, and the
-    fix."""
-    where = f"in {p.cwd}" if p.cwd else "its working directory cannot be read"
-    return (f"process {p.pid} ({' '.join(p.cmdline)[:80] or 'no command line'}; {where}) started after this context "
-            "and cannot be read, as a contained run in a project AEW has no entry for cannot: end it, or wait for it "
-            "to end")
+    fix. A hardened supervisor is not dumpable, so its working directory usually cannot be read; its run directory,
+    which is that working directory, is named from its ``--run-dir`` instead, as :func:`hosts` reads it (#365 review
+    M1). Every piece is shown to the operator, never trusted, and so cleaned of control characters (#365 review m1)."""
+    from aew.harness.event_spool import clean
+
+    if p.cwd:
+        where = f"in {clean(p.cwd)}"
+    elif "--run-dir" in p.cmdline[:-1]:
+        where = f"its run directory {clean(p.cmdline[p.cmdline.index('--run-dir') + 1])}"
+    else:
+        where = "its working directory cannot be read"
+    command = clean(" ".join(p.cmdline), 80) or "no command line"
+    return (f"process {p.pid} ({command}; {where}) started after this context and cannot be read, as a contained run "
+            "in a project AEW has no entry for cannot: end it, or wait for it to end")
 
 
 # --------------------------------------------------------------------------------------------------------- writing

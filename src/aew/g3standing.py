@@ -47,7 +47,8 @@ class Standing:
     def line(self) -> str:
         """The one line every reader prints."""
         if not self.counts:
-            return f"G3 does not count on this host: {self.reason}. Fix: {self.fix}"
+            where = "for this project" if self.condition == 2 else "on this host"  # condition 2 is per project
+            return f"G3 does not count {where}: {self.reason}. Fix: {self.fix}"
         if 2 not in self.judged:
             return ("G3 counts on this host for a project whose policy keeps every launch contained (containment "
                     "required, network proxy_only or isolated): condition 2 is per project, and not judged here")
@@ -162,7 +163,7 @@ def weaker_launch_line(*, kind: str, project: str | None) -> str | None:
 
     if installed() is not None:
         return None
-    host = f"G3 counts on this host again {W.WINDOW_S // 60} minutes after this {kind.replace('_', ' ')} ends"
+    host = f"G3 counts on this host again {W.WINDOW_S // 60} minutes after this launch ends"
     lane = kind.startswith(("eval_", "dogfood_"))
     for_project = "" if lane or not project else f", and for {project} only while its policy keeps every launch " \
                                                   "contained"

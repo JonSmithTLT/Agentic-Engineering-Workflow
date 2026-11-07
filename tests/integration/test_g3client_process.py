@@ -254,6 +254,24 @@ def test_a_stalled_service_ends_the_wait_by_the_approvals_expiry_not_a_request_t
     assert e.value.details["reason"] == "g3_unreachable" and took < 1 + 1 + 1, took  # life, grace, and slack
 
 
+def test_the_probe_reaches_the_real_services_guarded_read_answering_when_it_runs_and_naming_it_when_it_holds(
+        world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#365 review m3: the probe's 404 is the service's own answer for an approval no one made, not the router's for a
+    path no route matches, so a service that holds every request is never read as answering."""
+    from aew_g3.ledger import LedgerUnavailable
+
+    assert C.probe() is None
+
+    def unreadable(ref: str) -> Any:
+        raise LedgerUnavailable("planted: the ledger cannot be read")
+
+    monkeypatch.setattr(world.rig.svc.ledger, "approval", unreadable)
+    said = C.probe()
+    assert said is not None and "the G3 service is holding every request" in said
+    monkeypatch.setattr(C, "REQUEST_SOCK", str(tmp_path / "absent.sock"))
+    assert "systemctl status aew-g3.service" in (C.probe() or "")
+
+
 def test_no_g3_service_is_unavailable_and_says_where_to_look(
         world: World, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(C, "REQUEST_SOCK", str(tmp_path / "absent.sock"))

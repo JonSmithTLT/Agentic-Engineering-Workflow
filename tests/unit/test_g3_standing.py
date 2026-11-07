@@ -95,6 +95,7 @@ def test_condition_2_the_projects_policy_keeps_every_launch_contained(host, poli
     found = S.standing(policy)
     assert (found.counts, found.condition) == (False, 2) and said in (found.reason or "")
     assert found.fix == S.POLICY_FIX
+    assert found.line().startswith("G3 does not count for this project: ")  # condition 2 is per project (#365 n1)
     assert S.standing(policy, project=False).counts  # a reader with no project does not judge it
 
 
@@ -221,11 +222,11 @@ def test_a_weaker_launch_on_a_g3_host_says_when_g3_counts_again(host, capsys):
     entry(project="/p/one")
     err = capsys.readouterr().err
     assert f"aew: {S.weaker_launch_line(kind='worker_run', project='/p/one')}\n" in err
-    assert "15 minutes after this worker run ends, and for /p/one only while its policy" in err
+    assert "15 minutes after this launch ends, and for /p/one only while its policy" in err
     assert "An approval window you did not open is not yours to approve: decline it." in err
     W.enter(kind="eval_raw", label=WEAK, ownership="process_group", project="/p/one")
     lane = capsys.readouterr().err
-    assert "15 minutes after this eval raw ends. An approval" in lane and "/p/one" not in lane
+    assert "15 minutes after this launch ends. An approval" in lane and "/p/one" not in lane
     host["sock"].unlink()
     entry(project="/p/one")
     assert "G3 counts" not in capsys.readouterr().err
@@ -253,6 +254,35 @@ def test_b3_what_holds_an_entry_live_is_named_with_its_process_and_working_direc
 def test_b3_a_working_directory_that_cannot_be_read_is_said_so():
     p = W.Proc(pid=7, start_id=None, ticks=None, env=None, cmdline=("x",))
     assert "its working directory cannot be read" in W.unreadable_process(p)
+
+
+def test_b3_a_hardened_supervisor_is_named_by_its_run_directory_whatever_its_command_lines_length(host, monkeypatch):
+    """#365 review M1: B3's process is a hardened supervisor, which is not dumpable, so its working directory cannot be
+    read; its command line can, and its ``--run-dir`` is that working directory. The reason names it in full, however
+    long the interpreter's path makes the command (the supervisor's argv as ``harness_ops`` spawns it)."""
+    run_dir = "/home/operator/projects/unnamed-project/.aew/runs/R-20261107-0001"
+    python = "/home/operator/.local/share/aew/venvs/aew-0.9.0-py3.11/bin/python3.11"
+    argv = (python, "-P", "-s", "-m", "aew.harness.supervisor", "--run-dir", run_dir)
+    assert len(" ".join(argv[:-1])) > 80  # the run directory falls past the command's cut
+    supervisor = W.Proc(pid=4243, start_id="linux:boot-1:3000", ticks=3000, env=None, cmdline=argv, cwd=None)
+    said = W.unreadable_process(supervisor)
+    assert f"its run directory {run_dir})" in said and said.startswith("process 4243 (")
+    e = entry(project="/p/one")
+    e.started()
+    monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: W.Scan(procs=[supervisor], boot="boot-1",
+                                                                          now_ticks=5000))
+    e.end(None)
+    assert run_dir in (S.standing(CONTAINED).reason or "")
+
+
+def test_b3_a_command_line_reaches_the_operator_without_its_control_characters():
+    """#365 review m1: an unreadable process's command line and working directory are shown to the operator (doctor,
+    `aew g3 request`), never trusted: a newline or a terminal escape in them cannot forge a line or move the cursor."""
+    forged = W.Proc(pid=9, start_id=None, ticks=None, env=None,
+                    cmdline=("x\naew g3: G3 counts here", "\x1b[2J", "--run-dir", "/r\x1b]0;t\x07"), cwd=None)
+    for p in (forged, W.Proc(pid=9, start_id=None, ticks=None, env=None, cmdline=("x",), cwd="/w\n\x1b[1A")):
+        said = W.unreadable_process(p)
+        assert not any(ord(c) < 0x20 or 0x7F <= ord(c) <= 0x9F for c in said), said
 
 
 def test_b3_the_sweep_records_what_holds_an_entry_and_the_reading_shows_it(host, monkeypatch):

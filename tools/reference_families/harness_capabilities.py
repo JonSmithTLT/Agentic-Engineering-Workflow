@@ -39,9 +39,12 @@ def build(ctx: C.Context) -> C.Built:
             records.append(C.Record(FAMILY, f"{harness}:{cap}", module, symbol, "enumerated", cov,
                                     {"harness": harness, "capability": cap, "status": s.status, "how": s.how,
                                      "register_row": bool(s.register)}))
+    columns = H.declarations()
     for feature, (needs, built_by) in sorted(H.FEATURES.items()):
+        verdicts = {h: H.verdict(columns[h], feature) for h in sorted(columns)}
         records.append(C.Record(FAMILY, f"{FEATURE}:{feature}", OWNER, "FEATURES", "enumerated", cov,
-                                {"feature": feature, "needs": ", ".join(needs), "built_by": built_by}))
+                                {"feature": feature, "needs": ", ".join(needs), "built_by": built_by,
+                                 "verdicts": verdicts}))
     return C.Built(records=records, pages={PAGE: page(records, H.CAPABILITIES)})
 
 
@@ -76,8 +79,13 @@ def page(records: list[C.Record], meanings: dict[str, str]) -> str:
     for cap in sorted(meanings):
         lines.append(f"| `{cap}` | {meanings[cap]} | "
                      + " | ".join(cell(cells.get((cap, h))) for h in harnesses) + " |")
-    lines += ["", "## Features", "", "| Feature | Needs | Built by |", "|---|---|---|"]
+    lines += ["", "## Features", "",
+              "A feature's verdict on a harness is the weakest of its needs there: **gap** when any is a gap, "
+              "**partial** when any is partial, else **yes**.", "",
+              "| Feature | Needs | Built by | " + " | ".join(harnesses) + " |",
+              "|---|---|---|" + "---|" * len(harnesses)]
     for f in features:
         needs = ", ".join(f"`{n}`" for n in f["needs"].split(", "))
-        lines.append(f"| `{f['feature']}` | {needs} | {f['built_by']} |")
+        lines.append(f"| `{f['feature']}` | {needs} | {f['built_by']} | "
+                     + " | ".join(f"**{f['verdicts'].get(h, 'not declared')}**" for h in harnesses) + " |")
     return "\n".join(lines).rstrip("\n") + "\n"

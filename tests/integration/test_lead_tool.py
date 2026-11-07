@@ -198,7 +198,7 @@ def test_the_bridge_key_is_not_a_lead_credential(held):
 
 def _fake_wait(engine, monkeypatch, seen):
     """A run that never ends: each single check (timeout 0) reports it still running."""
-    def harness_wait(runs, *, timeout=600.0, any_=False):
+    def harness_wait(runs, *, timeout=600.0, any_=False, triggers=False):
         seen.append(timeout)
         return {"run": runs if isinstance(runs, str) else runs[0], "status": "running", "timed_out": True}
 

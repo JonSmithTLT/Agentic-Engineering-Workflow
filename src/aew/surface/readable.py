@@ -135,6 +135,8 @@ def _outcome(result: dict[str, Any]) -> str:
     if payload.get("timed_out"):
         runs = payload.get("runs") or {payload.get("run"): payload.get("status")}
         return _one_line(f"{tool}: timed out: " + ", ".join(f"{run} still {status}" for run, status in runs.items()))
+    if payload.get("triggers"):  # a run that still works and needs the Lead (steering PR 1)
+        return _one_line(f"{tool}: {payload.get('run')} needs you: " + ", ".join(payload.get("why") or []))
     if payload.get("run") and payload.get("status"):  # how the run ended, which `done` would misstate
         why = (payload.get("ended_by") or {}).get("reason")  # the run's own record may still show it running
         return _one_line(f"{tool}: {payload['run']}: {why}" if why else f"{tool}: {payload['run']} {payload['status']}")

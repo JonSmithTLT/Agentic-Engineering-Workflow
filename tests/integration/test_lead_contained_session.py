@@ -243,7 +243,9 @@ def test_a_lead_whose_containment_fails_is_refused_under_required_and_runs_label
         (tui / "mode").write_text("agent")
         (tui / "tui-script.json").write_text(json.dumps([]))
         refused = at_the_terminal(lab, home)
-        assert refused["code"] != 0 and refused["error"]["code"] == "CONTAINMENT_UNAVAILABLE", refused["stderr"]
+        # The refusal's error first: a run that printed none (the E128 flake) shows its stderr, not a KeyError.
+        assert refused["code"] != 0 and refused.get("error"), refused["stderr"][-3000:]
+        assert refused["error"]["code"] == "CONTAINMENT_UNAVAILABLE", refused["stderr"][-3000:]
         assert "not an existing directory" in refused["error"]["message"] and refused["restored"]
         assert not (tui / "tui-argv.json").exists()
     finally:

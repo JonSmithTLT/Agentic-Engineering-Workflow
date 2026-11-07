@@ -416,7 +416,8 @@ class Harness:
             return inv_id, inv
         raise NotFound(f"no run {run}")
 
-    def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False) -> dict[str, Any]:
+    def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False,
+                     triggers: bool = False) -> dict[str, Any]:
         """Wait until a run is no longer running (it ended, failed, was never confirmed, or was lost); with several runs
         and ``any_``, until the first of them is (register E1; ADR-0012 D4, D5 and D8; M4 report §2.9).
 
@@ -432,7 +433,19 @@ class Harness:
         The control lane is `--any`'s (ADR-0012 D5). The single-run form waits for the run itself: its record ends, or
         it goes stale and reads as lost. A supervisor ends its run on its own once the invocation stops being active,
         and a caller that waits on one run acts on that run's end (nightly 2026-10-06: a retired implementer's run
-        read `running` from a wait that had returned)."""
+        read `running` from a wait that had returned).
+
+        ``triggers`` (the Lead's typed tool, steering PR 1): a wait also returns when a named run's progress
+        digest holds a trigger it has not returned yet and whose condition still holds (`out_of_scope`: the path
+        is still outside; `test_failed`: the last test still fails; `worker_idle`: the worker is still idle).
+        The result has the wake's shape: `why`, `progress` (each named run's digest), `messages` (none while
+        messaging is off), `next` (the wake guide's keys for its `why`), and `next_action`. What a wait returned
+        is recorded per run (`runlog.write_returned`), so a trigger is returned once, and one that fired between
+        two waits is returned by the next. The CLI's wait returns only on an end, as before.
+
+        Every return carries the named runs' digests (`progress`; a timeout's `runs` stays the runs' statuses),
+        and a run's end always carries a `next_action`, even when `aew status` no longer lists the run (E122
+        review, m1)."""
         names = [runs] if isinstance(runs, str) else list(runs)
         if not names:
             raise UsageError("name the run(s) to wait on")
@@ -449,6 +462,33 @@ class Harness:
             inv_id, inv = self._find_run(state, run)
             targets[run] = (inv_id, inv, next((r.get("launched_at") for r in inv["runs"] if r["run"] == run), None))
         unexamined: dict[str, Any] | None = state  # the first check examines the initial snapshot itself
+        returned = {run: runlog.read_returned(runlog.run_dir(self.k.aew_root, run)) for run in names}
+
+        def digests() -> dict[str, Any]:
+            return {r: runlog.read_progress(runlog.run_dir(self.k.aew_root, r)) for r in names}
+
+        def pending(run: str) -> tuple[list[dict[str, Any]], int]:
+            """The run's triggers not yet returned whose condition still holds, and the newest seq looked at."""
+            digest = runlog.read_progress(runlog.run_dir(self.k.aew_root, run))
+            if not digest:
+                return [], returned[run]
+            fresh = [t for t in digest.get("triggers") or [] if isinstance(t, dict)
+                     and isinstance(t.get("seq"), int) and t["seq"] > returned[run]]
+            outside = digest.get("out_of_scope")
+            last_test = digest.get("last_test") or {}
+
+            def holds(t: dict[str, Any]) -> bool:  # no stale wakes (steering design §1)
+                why = t.get("why")
+                if why == K.OUT_OF_SCOPE:
+                    return isinstance(outside, list) and t.get("path") in outside
+                if why == K.TEST_FAILED:
+                    return last_test.get("result") == "fail"
+                if why == K.WORKER_IDLE:
+                    return digest.get("state") == "idle"
+                return False  # run_ended is the record lane's; the rest are not a wait's
+
+            newest = max([t["seq"] for t in fresh], default=returned[run])
+            return [t for t in fresh if holds(t)], newest
 
         def control_end(fresh: dict[str, Any], run: str) -> str | None:
             inv_id = targets[run][0]
@@ -463,12 +503,21 @@ class Harness:
                     return run, why
             return None
 
+        woke: dict[str, Any] = {}
+
         def check() -> tuple[str, str, dict[str, Any] | None, str | None] | None:
             nonlocal seen, unexamined
             for run, (_inv_id, _inv, launched) in targets.items():
                 status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
                 if not runlog.possibly_live(status, launched):
                     return run, status, record, None
+            if triggers:  # a live run that needs the Lead (steering PR 1)
+                for run in targets:
+                    found, newest = pending(run)
+                    if found:
+                        woke.update(run=run, triggers=found, newest=newest)
+                        status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
+                        return run, status, record, None
             if not any_:  # the single-run form: the run's own record only
                 return None
             fresh, unexamined = unexamined, None
@@ -487,13 +536,21 @@ class Harness:
         found = outbox.wait_for(check, self.k.aew_root, timeout=timeout)
         if not found:
             statuses = {r: runlog.observed_status(runlog.run_dir(self.k.aew_root, r))[0] for r in names}
-            # A timeout is not an end: the runs still work, and `WAIT_TIMED_OUT` says what to do (E122). Text only, no
-            # state read: the broker's wait calls this with a timeout of 0 on every observation.
-            again = {"timed_out": True, "next_action": K.wait_step(names, again=True)}
+            # A timeout is not an end: the runs still work, and `WAIT_TIMED_OUT` says what to do (E122). Text and the
+            # runs' own files only, no state read: the broker's wait calls this with a timeout of 0 on every
+            # observation.
+            again = {"timed_out": True, "next_action": K.wait_step(names, again=True), "progress": digests()}
             if len(names) == 1:
                 return {"run": names[0], "status": statuses[names[0]], **again}
             return {"runs": statuses, **again}
         run, status, record, control = found
+        if woke:  # a trigger: the run still works, and the wake's shape says what it needs (steering PR 1)
+            whys = [w for w in K.WHY if any(t.get("why") == w for t in woke["triggers"])]
+            others = [r for r in names if r != run]
+            runlog.write_returned(runlog.run_dir(self.k.aew_root, run), woke["newest"])
+            return {"run": run, "status": status, "timed_out": False, "why": whys, "triggers": woke["triggers"],
+                    "progress": digests(), "messages": [], "next": whys,
+                    "next_action": K.trigger_step(whys, run, others)}
         inv = targets[run][1]
         out: dict[str, Any] = {}
         headline = _headline(run, status, record)
@@ -501,7 +558,11 @@ class Harness:
             out["headline"] = headline
         out.update({"run": run, "status": status, "reason": (record or {}).get("reason"),
                     "evidence": self.run_evidence(inv["work_unit"], run),
-                    "results": self.run_results(inv["work_unit"], run), "timed_out": False, "why": [K.RUN_ENDED]})
+                    "results": self.run_results(inv["work_unit"], run), "timed_out": False, "why": [K.RUN_ENDED],
+                    "progress": digests(), "messages": [], "next": [K.RUN_ENDED]})
+        ended_digest = out["progress"].get(run)
+        if ended_digest:  # the run is over: what it was shown is no longer news
+            runlog.write_returned(runlog.run_dir(self.k.aew_root, run), int(ended_digest.get("trigger_seq") or 0))
         if _reason_code(record):
             out["reason_code"] = _reason_code(record)
         if control is not None:
@@ -520,11 +581,26 @@ class Harness:
                 and control_end(current, r) is None)
         # the run's next action, as `aew status` gives it
         action = next((h["action"] for h in self.harness_resume(current) if h["run"] == run), None)
-        if action and out.get("still_running"):  # the others still work: after this one, the wait goes on (E122)
+        if action is None:  # `aew status` no longer lists the run: say why (E122 review, m1)
+            action = self._unlisted_run(current, run, targets[run][0])
+        if out.get("still_running"):  # the others still work: after this one, the wait goes on (E122)
             action = f"{action}; then {K.wait_step(out['still_running'])}"
-        if action:
-            out["next_action"] = K.run_ended_step(action)
+        out["next_action"] = K.run_ended_step(action)
         return out
+
+    @staticmethod
+    def _unlisted_run(state: dict[str, Any], run: str, inv_id: str) -> str:
+        """Why a run that ended has no action in ``harness_resume``: its invocation is no longer active, or a newer run
+        replaced it."""
+        inv = state["invocations"].get(inv_id)
+        if inv is None:
+            return f"{run} ended, and its invocation {inv_id} is archived: nothing more to do for it"
+        if inv["status"] != "active":
+            return f"{run} ended, and its invocation {inv_id} is {inv['status']}: nothing more to do for it"
+        latest = (inv.get("runs") or [{}])[-1].get("run")
+        if latest and latest != run:
+            return f"{run} ended, and {latest} replaced it for {inv_id}: wait on {latest} instead"
+        return f"{run} ended for {inv_id}: see `aew status` for what comes next"
 
     def _control_identity(self) -> tuple[int, int, int] | None:
         """``control.yaml``'s identity (mtime, file id, size): every commit replaces the file, so it changes."""

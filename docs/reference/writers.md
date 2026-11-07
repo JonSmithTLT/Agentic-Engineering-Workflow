@@ -145,6 +145,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/{}/harness/skills/{}`: written or removed by `aew.skills:_remove` (direct: Path.unlink, shutil.rmtree); `aew.skills:deliver` (direct: Path.mkdir)
 - `local/harness/runs/{}/harness/skills/{}/{}`: written or removed by `aew.skills:deliver` (direct: Path.write_bytes)
 - `local/harness/runs/{}/heartbeat`: written or removed by `aew.harness.runlog:beat` (direct: Path.touch, atomic_write, os.open)
+- `local/harness/runs/{}/progress.returned.json`: written or removed by `aew.harness.runlog:write_returned` (direct: atomic_write)
 - `local/harness/runs/{}/prompt.md`: written or removed by `aew.harness.supervisor:Supervisor.start` (direct: Path.write_text)
 - `local/harness/runs/{}/requests`: written or removed by `aew.harness.runlog:deliver_request` (direct: Path.mkdir)
 - `local/harness/runs/{}/requests/{}`: written or removed by `aew.harness.runlog:deliver_request` (direct: atomic_write); `aew.harness.runlog:take_requests` (direct: Path.unlink)
@@ -289,9 +290,9 @@ A write is placed per function, not per call: where its destination is a paramet
 
 The parser cut: 113 registrations of a command handler; handlers by role (`aew`: 111, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
-Writer functions with a store-transaction or direct write placed under `.aew`: 90; reached from at least one entry point: 63.
+Writer functions with a store-transaction or direct write placed under `.aew`: 91; reached from at least one entry point: 64.
 
-- `aew` (store_writer): 52 writer functions (24 write the store, 28 only under `local/`)
+- `aew` (store_writer): 53 writer functions (24 write the store, 29 only under `local/`)
 - `aew (contained Lead)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 - `aew (worker run)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 - `aew dashboard serve` (non_writer): 2 writer functions (0 write the store, 2 only under `local/`)

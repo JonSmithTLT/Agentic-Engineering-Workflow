@@ -684,12 +684,13 @@ class Meter:
         woke = bool(fired) or self._wake_owed
         try:
             runlog.write_progress(self.progress_path, digest, woke=woke)
-            self._wake_owed = False
         except OSError as exc:
             self.progress_errors += 1
             self.last_error = f"progress write: {exc}"[:300]
             self._wake_owed = woke
-        if fired:  # what the digest showed with this trigger is what the next one counts from (persisted next poll)
+            return  # nobody was shown this digest: since_last_wake still counts from the last one written
+        self._wake_owed = False
+        if woke:  # what the digest showed with this wake is what the next one counts from (persisted next poll)
             self.progress.mark_woken(state["progress"], steps=int(state["steps"]))
 
     def _build(self, state: dict[str, Any], run_state: str, seq: int) -> dict[str, Any]:

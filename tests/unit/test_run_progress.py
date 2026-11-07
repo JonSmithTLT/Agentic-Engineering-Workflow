@@ -509,6 +509,8 @@ def test_a_trigger_whose_digest_write_failed_wakes_with_the_next_write(lab: Lab,
     monkeypatch.setattr(runlog, "write_progress", real)
     meter.poll()
     assert wakes == [lab.root / ".aew"]
+    # The failed write showed nobody the trigger, so the digest that wakes still counts its changes.
+    assert runlog.read_progress(lab.run_dir)["since_last_wake"]["files"] == ["src/b/x.py"]
     meter.poll()
     assert len(wakes) == 1  # owed once, then the per-second rewrite again wakes no one
 

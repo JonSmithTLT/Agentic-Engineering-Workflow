@@ -835,6 +835,21 @@ def local_app(root: Path, knobs: dict[str, Any] | None = None) -> FakeOpenCode:
                 os.environ[k] = v
 
 
+def read_db(path: Path) -> dict[str, Any]:
+    """The fake server's database as a test reads it, ``{}`` before the first write. Every reader goes through here:
+    on Windows, a read that meets ``persist``'s ``os.replace`` gets PermissionError for that moment (the file is
+    being swapped), so the reader waits it out the way ``persist`` waits out a reader. Bounded: 100 tries 20 ms
+    apart, then the error stands."""
+    for attempt in range(100):
+        try:
+            return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        except PermissionError:
+            if attempt == 99:
+                raise
+            time.sleep(0.02)
+    raise AssertionError("unreachable")
+
+
 TUI_SCRIPT, TUI_TRANSCRIPT, TUI_ARGV = "lead-tui.json", "lead-tui.jsonl", "lead-tui-argv.json"
 
 

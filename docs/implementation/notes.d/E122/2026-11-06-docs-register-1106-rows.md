@@ -1,0 +1,1 @@
+**Waiting is one blocking request, never a polling loop** (the designer's decision of 2026-11-06, rate limits that count cached tokens per request, ruling 3; `AEW-FR-27.b`). This binds E122's design before it's built: every request re-sends the Lead's whole context, so a polling wait spends rate limit fastest.

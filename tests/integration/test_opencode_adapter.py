@@ -61,7 +61,7 @@ def harness_dir(lab: HarnessLab, run: str = RUN) -> Path:
 
 
 def fake_db(lab: HarnessLab, run: str = RUN) -> dict[str, Any]:
-    return json.loads((harness_dir(lab, run) / "xdg-data" / "opencode" / "fake-db.json").read_text(encoding="utf-8"))
+    return fake_opencode.read_db(harness_dir(lab, run) / "xdg-data" / "opencode" / "fake-db.json")
 
 
 def events(lab: HarnessLab, run: str = RUN) -> list[dict[str, Any]]:

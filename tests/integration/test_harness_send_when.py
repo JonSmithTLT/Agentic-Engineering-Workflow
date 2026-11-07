@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import fake_opencode
 import pytest
 from aewflow import create_planned_ticket
 from fake_harness import HarnessLab, credential_hits
@@ -55,8 +56,7 @@ def release(tmp_path: Path) -> None:
 
 def posted(lab: HarnessLab, run: str) -> list[dict[str, Any]]:
     """Every prompt fake V2 received for the run's session, in order (the first is the launch contract)."""
-    path = runlog.run_dir(lab.aew_root, run) / "harness" / "xdg-data" / "opencode" / "fake-db.json"
-    db = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    db = fake_opencode.read_db(runlog.run_dir(lab.aew_root, run) / "harness" / "xdg-data" / "opencode" / "fake-db.json")
     return [p for s in db.values() for p in s.get("prompts") or []]
 
 
@@ -116,8 +116,8 @@ def test_harness_send_defaults_to_next_step_and_posts_steer(lab, tmp_path):
     assert [e["delivery"] for e in prompt_events(lab, run)][1:] == ["steer"]
     release(tmp_path)
     assert lab.wait(run)["status"] == "ended_without_evidence"
-    session = next(iter(json.loads((runlog.run_dir(lab.aew_root, run) / "harness" / "xdg-data" / "opencode"
-                                    / "fake-db.json").read_text(encoding="utf-8")).values()))
+    opencode = runlog.run_dir(lab.aew_root, run) / "harness" / "xdg-data" / "opencode"
+    session = next(iter(fake_opencode.read_db(opencode / "fake-db.json").values()))
     users = [m["text"] for m in session["messages"] if m["type"] == "user"]
     assert users[-1] == "Also note the changed files."
     assert lab.record(run)["result"]["prompts"] == 2

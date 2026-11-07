@@ -115,8 +115,8 @@ def test_a_raw_cell_runs_the_pinned_model_on_the_task_and_keeps_its_harness_stat
     started = json.loads((scratch / "harness" / "harness" / "fake-server.json").read_text(encoding="utf-8"))
     assert started["config"]["agents"]["build"]["model"] == {"providerID": "fakeprov", "model": "fake-model",
                                                              "variant": "high"}
-    transcript = (scratch / "harness" / "harness" / "xdg-data" / "opencode" / "fake-db.json").read_text(
-        encoding="utf-8")
+    opencode = scratch / "harness" / "harness" / "xdg-data" / "opencode"
+    transcript = json.dumps(fake_opencode.read_db(opencode / "fake-db.json"), indent=1)
     assert TASK in transcript  # the task, verbatim, was the session's message
 
 

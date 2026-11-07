@@ -227,8 +227,7 @@ class FakeOpenCodeDriver(Driver):
         return runlog.run_dir(lab.aew_root, run) / "harness"
 
     def _db(self, lab: HarnessLab, run: str) -> dict[str, Any]:
-        db = self.state_dir(lab, run) / "xdg-data" / "opencode" / "fake-db.json"
-        return json.loads(db.read_text(encoding="utf-8")) if db.exists() else {}
+        return fake_opencode.read_db(self.state_dir(lab, run) / "xdg-data" / "opencode" / "fake-db.json")
 
     def sessions(self, lab, run):
         return set(self._db(lab, run))

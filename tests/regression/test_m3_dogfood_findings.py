@@ -419,3 +419,22 @@ def test_harness_wait_shows_the_result_of_each_evidence_item(lab, tmp_path):
     assert out["status"] == "ended_with_evidence"
     assert set(out.get("results") or {}) == set(out["evidence"]) and set(out["results"].values()) == {"pass"}, out
     assert f"aew work transition {wid} --to RUNNING" in (out.get("next_action") or ""), out
+
+
+def test_the_headless_lead_is_told_nobody_answers_so_it_assumes_instead_of_asking(monkeypatch):
+    """#348 review n1: the Lead's text now tells it to ask when something is unclear (the operator's reset,
+    2026-11-06). The dogfood's headless Lead denies `question` and has nobody to answer, so it is told to state its
+    assumption and go on, and a dogfood arm keeps measuring a Lead that works rather than one that waits."""
+    from pathlib import Path
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "eval" / "m3" / "dogfood"))
+    import headless
+
+    from aew.harness.opencode import projection
+
+    monkeypatch.setattr(headless, "pinned", lambda profile: {})
+    config, _ = headless.lead_config({}, 5)
+    system = config["agents"][projection.LEAD_AGENT]["system"]
+    assert "ask: one or two focused questions" in system
+    assert system.endswith(headless.HEADLESS_LINE)
+    assert "state your assumption in a line and proceed" in headless.HEADLESS_LINE

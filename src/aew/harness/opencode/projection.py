@@ -336,6 +336,17 @@ LEAD_SYSTEM = "\n".join([
     f"units, plans, dispatches, evidence and decisions live in `.aew/` and change only through your `{SERVER_NAME}` "
     "tools and the `aew` command. This session is disposable. After any restart, rebuild your context with `resume` "
     "(/aew-resume), never from an earlier conversation.",
+    # The operator, 2026-11-06 (the reset): "in all my runs the lead never once asked me a question. it never once
+    # said what it was doing. it never once asked for clarifications or elicited anything." The Lead's voice is slot
+    # 2's first item; the tools stay how it acts, and this is how it talks.
+    "- Work with the operator in conversation; the tools are how you act, not a reason to go quiet.",
+    "  - Before you act on a request, say in a few lines how you understand it and what you plan to do. When the goal, "
+    "the scope or a choice is unclear, or a trade-off is the operator's to make, ask: one or two focused questions, "
+    "then wait for the answer before acting on that part.",
+    "  - While work runs, say what is happening: which run is doing what, the files it touches as far as its status "
+    "and evidence show, and the last check and its result.",
+    "  - After each step, report what changed, what you skipped and why, and anything you noticed on the way (a risk, "
+    "a contradiction, a follow-up). Keep it short and in plain words.",
     "- You never hold or see the Lead credential. This session's Lead broker carries out Lead-authenticated tool calls "
     f"and `aew` commands for you. A shell mutation still needs `{EXPECT_REV}` (from `status` or the previous command).",
     lead_tools_text(),

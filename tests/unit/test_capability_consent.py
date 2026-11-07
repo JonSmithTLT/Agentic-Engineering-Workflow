@@ -783,6 +783,9 @@ def test_the_card_capability_table_is_pinned_both_ways_to_the_cards_and_the_ship
         assert name in cards, name
         assert ids and set(ids) <= served, (name, ids)
     assert {c for c in cards if c.upper() in served} <= set(records.CARD_CAPABILITIES)
+    # The rows a name match cannot find, as the Lead ruled them (2026-11-07): a dropped one is caught here
+    assert records.CARD_CAPABILITIES["symbol_navigation"] == ("SYMBOL_OUTLINE",)
+    assert records.CARD_CAPABILITIES["repository_exploration"] == ("FILE_FIND", "TEXT_SEARCH")
 
 
 def test_each_shipped_tools_purpose_is_its_descriptions_first_clause():

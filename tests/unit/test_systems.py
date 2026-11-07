@@ -187,6 +187,7 @@ PLANTED: dict[str, tuple[str, Callable[[dict[str, Any]], Any]]] = {
     "a touches glob that matches nothing": ("touches", _set("SYS-01", "touches", ["src/nothing/**"])),
     "a touches glob that matches only a directory": ("touches", _set("SYS-01", "touches", ["src/empty"])),
     "a touches glob that leaves the tree": ("touches", _set("SYS-01", "touches", ["../*/src/pkg/a.py"])),
+    "an empty touches glob": ("touches", _set("SYS-01", "touches", [""])),  # review of #346, n3: was a ValueError
     "a switch whose evidence names no file": ("switch", _set("SYS-01", "switch.default_evidence", "src/x.py:3")),
     "a dependency on an unknown system": ("depends_on", _set("SYS-02", "depends_on", ["SYS-09"])),
     "a dependency cycle": ("depends_on", _set("SYS-01", "depends_on", ["SYS-02"])),
@@ -205,6 +206,7 @@ PLANTED: dict[str, tuple[str, Callable[[dict[str, Any]], Any]]] = {
                                                        ["HOLD-01, the dashboard hold"])),
     "a slice whose row is a closed hold": ("hold", _set("SYS-02", "remaining",
                                                         [{"slice": "held work", "row": "HOLD-02", "estimate": "e"}])),
+    "a closed hold pending": ("hold", _set("SYS-02", "serves_pending", ["HOLD-01", "HOLD-02"])),  # #346 review, m2
     # the lint, one pattern per case, in different hand-kept fields
     "a Now position in purpose": ("lint", _set("SYS-01", "purpose", "the next step (Now 5)")),
     "a Now item in who": ("lint", _set("SYS-01", "who", "Lead (Now item 12)")),
@@ -249,6 +251,9 @@ def test_what_the_rules_allow_stays_allowed(own):
     assert found(own, _set("SYS-02", "remaining", [{"slice": "s", "row": "HOLD-01", "estimate": "e"}])) == []
     assert found(own, _set("SYS-02", "reason", "E2 is on the Now list; it rides on E1 (src/pkg/a.py, a.f)")) == []
     assert found(own, _set("SYS-02", "touches", ["src/pkg/a.py", "src/**/b.py"])) == []
+    # a trailing ** matches the files below it on every supported Python (review of #346, B1: Path.glob before 3.13
+    # matched only directories, so the committed board failed on Linux CI's 3.11)
+    assert found(own, _set("SYS-02", "touches", ["src/**", "src/pkg/**", "docs/**"])) == []
 
 
 def test_a_problem_names_the_row_and_how_to_settle_it(own):
@@ -259,6 +264,10 @@ def test_a_problem_names_the_row_and_how_to_settle_it(own):
     [closed] = found(own, _set("SYS-02", "remaining", [{"slice": "held work", "row": "HOLD-02", "estimate": "e"}]))
     assert closed.where == "SYS-02" and "held work" in closed.text and "HOLD-02" in closed.text
     assert "member row" in closed.text
+    [pending] = found(own, _set("SYS-02", "serves_pending", ["HOLD-02"]))
+    assert pending.where == "SYS-02" and "serves_pending" in pending.text and "HOLD-02" in pending.text
+    [empty] = found(own, _set("SYS-01", "touches", [""]))
+    assert empty.where == "SYS-01" and "empty glob" in empty.text
     [cycle] = found(own, _set("SYS-01", "depends_on", ["SYS-02"]))
     assert cycle.text == "a cycle: SYS-01 -> SYS-02 -> SYS-01"
 

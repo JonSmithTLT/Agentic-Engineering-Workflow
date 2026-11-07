@@ -395,8 +395,8 @@ systems:
   - src/aew/dashboard/projections.py:321-322 queue UNSUPPORTED (NOT_IN_CONTRACT_0_1_2), action_projection UNSUPPORTED (AWAITS_ACTION_PROJECTION)
   - 'src/aew/dashboard/projections.py:566-568 attention_list requires action_projection: ''UNSUPPORTED until F15.1: never
     reached today'''
-  - 'src/aew/dashboard/reasons.py:33-34 and projections.py:10-12 say the action projection arrives with F15.1; register
-    row F15.1 is closed (section 9, PRs #88, #93, #95)'
+  - src/aew/dashboard/reasons.py:33-34 and projections.py:10-12 say the action projection arrives with F15.1; register row
+    F15.1 is closed (section 9)
   - src/aew/surface/projection.py:1-4 the ActionProjection module, naming the dashboard's /attention as a later consumer;
     :423 its project()
   - docs/implementation/future-work.yaml (row F15.1, at c11a61ea) F15.1's close leaves 'TLS-25's dashboard half' to E18;
@@ -1128,7 +1128,7 @@ systems:
     BOARD v2 §1 lists no switch)'
   - 'src/aew/surface/mcp.py:168-170: a non-AEW exception is answered INTERNAL_ERROR (-32603, :44) with no stage result (E138)'
   - docs/implementation/future-work.yaml (row E137, at c11a61ea) (E137, 3 of 9 publishes stopped stale), :1621-1627 (E138),
-    :1569-1579 (E133), :1092-1099 (E83); Now list :137 (item 25, E137)
+    :1569-1579 (E133), :1092-1099 (E83); the Now list names E137
   - 'docs/implementation/future-work.yaml (row F15.2, at c11a61ea): F15.2 closed 2026-10-24, held in HOLD-10; :502-503 list
     F15 and F15.2 as HOLD-10 members'
   - 'src/aew/surface/contract.py:279-290: ticket_start expands to work.assign, dispatch.launch, work.transition and ticket_request_review
@@ -3154,7 +3154,7 @@ systems:
   - 'grep -w inquiry and ACCEPT_INQUIRY in tests finds nothing: no oracle or test names an inquiry'
   - 'docs/implementation/future-work.yaml (§1 text, at c11a61ea) V-01: research''s minimum slice, links in both directions
     in CNI''s vocabulary, PoCs as linked Tickets'
-  - docs/implementation/future-work.yaml (the Now list, at c11a61ea) the Now list (items 1-25) carries no research row
+  - docs/implementation/future-work.yaml (the Now list, at c11a61ea) the Now list carries no research row
   - 'docs/contracts/A-41/CNIL-POSITION.md:99 CNIL-01: Coordination''s links have five kinds'
 - id: SYS-31
   name: Bounded unattended mission and the relay's meter

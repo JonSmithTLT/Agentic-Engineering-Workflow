@@ -21,12 +21,17 @@ and holds the file to:
   listed under ``unowned:`` with a reason. An ``unowned:`` entry that is owned, closed or unknown is stale.
 - **no claimed hold.** A hold group (``HOLD-NN``) is a register row that holds work until its members are matched; a
   system names it in ``serves_pending``, never in ``register`` or among its claimed closing works (``HOLD_REFUSED``).
-  A ``remaining`` slice may wait on an open hold; one naming a closed hold is stale.
+  A ``remaining`` slice and ``serves_pending`` may name an open hold; one naming a closed hold is stale.
 - **the lint** (``LINT``) over every hand-kept string: no Now position, no pull request number and no register line
-  number, each of which another file owns and which go stale; cite the row id or the code's symbol instead.
+  number, each of which another file owns and which go stale; cite the row id or the code's symbol instead. Its
+  limits, which a stricter lint takes up once the designer has re-pointed the cites (review of #346, m1): it does not
+  see a pull request number of one or two digits (``#88``), a bare ``:NNNN`` register line after a row cite (48 in the
+  first import), or a restated Now membership such as "on the Now list".
 - **the public-text guard** (``PUBLIC``) over the whole file: no path into the operator's private working folders, no
   reference to the Lead's private list, no absolute path, no carriage return. A record outside this repository is
-  cited by its file name only.
+  cited by its file name only. Its limits (review of #346, n2): it does not see a ``~`` home path, ``/mnt``, ``/root``
+  or ``/opt`` paths, a UNC path (``\\\\host\\share``) or one built from an environment variable (``%APPDATA%``,
+  ``$HOME``); a reviewer reads the file for those, and for names.
 
 Not here yet: ``render`` and ``systems.md`` (with priority read from the Now list), state read from the code
 (``switch.default``, ``wired``) and the limit's count, and the derived ``serves``.
@@ -35,6 +40,7 @@ Not here yet: ``render`` and ``systems.md`` (with priority read from the Now lis
 from __future__ import annotations
 
 import argparse
+import glob
 import importlib.util
 import json
 import re
@@ -316,9 +322,13 @@ def _claimed_works(entry: dict[str, Any]) -> list[str]:
 
 
 def _matches(root: Path, pattern: str) -> bool:
-    if pattern.startswith("/") or ".." in Path(pattern).parts or re.match(r"[A-Za-z]:", pattern):
+    """A file under ``root`` matches the glob. ``glob.glob`` and not ``Path.glob``: before Python 3.13, ``Path.glob``
+    reads a trailing ``**`` as directories only (review of #346, B1), and ``glob.glob`` reads it the same on every
+    supported Python, as the board's first checker did."""
+    if not pattern.strip() or pattern.startswith("/") or ".." in Path(pattern).parts or re.match(r"[A-Za-z]:",
+                                                                                                    pattern):
         return False
-    return any(p.is_file() for p in root.glob(pattern))
+    return any((root / p).is_file() for p in glob.glob(pattern, root_dir=root, recursive=True))
 
 
 def existence_problems(data: Any, own: Owners) -> list[Problem]:
@@ -345,7 +355,9 @@ def existence_problems(data: Any, own: Owners) -> list[Problem]:
                 out.append(Problem("as_built", sid, f"as_built {rid} is not a record of the as-built reference "
                                                     "(`python tools/reference.py render` lists them)"))
         for pattern in _list(entry, "touches"):
-            if not _matches(own.root, pattern):
+            if not pattern.strip():
+                out.append(Problem("touches", sid, "touches holds an empty glob: remove it or name the files"))
+            elif not _matches(own.root, pattern):
                 out.append(Problem("touches", sid, f"touches {pattern} matches no file"))
         switch = entry.get("switch")
         evidence = switch.get("default_evidence") if isinstance(switch, dict) else None
@@ -437,6 +449,10 @@ def hold_problems(data: Any, own: Owners) -> list[Problem]:
                 if HOLD_RE.match(value.split(",", 1)[0].split(" ", 1)[0]):
                     out.append(Problem("hold", entry["id"], f"{place} claims the hold group {value[:40]}: name it in "
                                                             "serves_pending instead"))
+        for hold in _list(entry, "serves_pending"):  # a closed group holds nothing (review of #346, m2)
+            if HOLD_RE.match(hold) and hold in own.rows and hold not in own.open_rows:
+                out.append(Problem("hold", entry["id"], f"serves_pending names the hold group {hold}, which has "
+                                                        "closed: name the member rows that now carry its work"))
         for i, item in enumerate(_slices(entry)):
             row = item.get("row")
             if isinstance(row, str) and HOLD_RE.match(row) and row in own.rows and row not in own.open_rows:

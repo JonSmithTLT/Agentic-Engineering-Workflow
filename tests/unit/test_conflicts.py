@@ -103,16 +103,61 @@ def test_the_hold_message_says_it_is_held_why_and_what_it_waits_on():
     assert "T-0002 waits until T-0001 is integrated or cancelled, either of which releases its workspace" in text
 
 
-@pytest.mark.parametrize(("other", "scope", "says"), [
+RECREATE = "a scope is fixed when a Ticket is created, so cancel T-0002 and create it again with"
+
+
+@pytest.mark.parametrize(("other", "scope", "says", "never"), [
+    # unreadable paths: wait for integration, cancellation, or a readable workspace
     (live(touched=None, unreadable="no such directory"), ["calc/two.py"],
-     ["AEW cannot read which files T-0001 has changed (no such directory)", "or until T-0001's workspace can be read"]),
-    (live(), [], ["T-0002 declares no scope", "T-0002 needs a scope that avoids T-0001's files"]),
-    (live(scope=()), ["calc/two.py"], ["T-0001 declares no scope, so it may change any file"]),
+     ["AEW cannot read which files T-0001 has changed (no such directory)", "or until T-0001's workspace can be read"],
+     ["split the work"]),
+    # an unbounded new scope: recreate it with a scope
+    (live(), [], ["T-0002 declares no scope", "T-0002 needs a scope that avoids T-0001's files",
+                  f"{RECREATE} `--scope`"], ["split the work"]),
+    # an unbounded live scope: wait only
+    (live(scope=()), ["calc/two.py"], ["T-0001 declares no scope, so it may change any file",
+                                       "integrated or cancelled"], ["split the work", RECREATE]),
+    # overlapping scopes: wait, or split the work by recreating with a narrower scope
+    (live(scope=("calc/**",)), ["calc/two.py"], ["the two scopes can name the same files", "integrated or cancelled",
+                                                 f"split the work so their scopes cannot meet: {RECREATE} a narrower"
+                                                 " `--scope`"], []),
+    # only a stray write outside the live Ticket's own scope: its removal (or a cancel) frees it, not integration
+    (live(scope=("calc/one.py",), touched=("calc/one.py", "calc/two.py")), ["calc/two.py"],
+     ["T-0001 has changed calc/two.py, outside its own scope and inside T-0002's (calc/two.py); T-0001's integration "
+      "will refuse that change",
+      "T-0002 waits until that change is removed from T-0001's workspace, or T-0001 is cancelled, which releases its "
+      "workspace"],
+     ["integrated or cancelled", "split the work", RECREATE, "has already changed"]),
 ])
-def test_every_reason_is_named_in_plain_words(other, scope, says):
+def test_every_reason_is_named_in_plain_words_with_what_to_do(other, scope, says, never):
+    """Each branch of the hold's what-to-do text (#350 review m1): a stray write is not told to split the work."""
     text = C.hold_message("T-0002", scope, C.find_conflict("T-0002", scope, other))
     for s in says:
-        assert s in text
+        assert s in text, (s, text)
+    for s in never:
+        assert s not in text, (s, text)
+
+
+def test_a_stray_write_is_named_apart_from_a_change_inside_both_scopes():
+    found = C.find_conflict("T-0002", ["calc/**"], live(scope=("calc/one.py",), touched=("calc/one.py", "calc/x.py")))
+    assert found["touched_in_scope"] == ["calc/one.py", "calc/x.py"] and found["outside_own_scope"] == ["calc/x.py"]
+    text = C.hold_message("T-0002", ["calc/**"], found)
+    assert "T-0001 has already changed calc/one.py, inside T-0002's scope" in text
+    assert "T-0001 has changed calc/x.py, outside its own scope" in text
+    assert "integrated or cancelled" in text  # the change inside both scopes still waits on integration
+
+
+# ---------------------------------------------------------------- letter case (#350 review m2)
+
+
+def test_in_a_case_insensitive_repository_two_spellings_of_one_path_meet():
+    """Folded only when the repository is case-insensitive; the planted control is the same pair, case-sensitive."""
+    assert C.find_conflict("T-0002", ["calc/one.py"], live(scope=("calc/One.py",))) is None
+    found = C.find_conflict("T-0002", ["calc/one.py"], live(scope=("calc/One.py",)), fold=True)
+    assert found["reasons"] == ["scopes_overlap"] and found["scope_pairs"] == [["calc/one.py", "calc/One.py"]]
+    assert C.find_conflict("T-0002", ["calc/two.py"], live(touched=("Calc/Two.py",))) is None
+    found = C.find_conflict("T-0002", ["calc/two.py"], live(touched=("Calc/Two.py",)), fold=True)
+    assert found["touched_in_scope"] == ["Calc/Two.py"] and found["outside_own_scope"] == ["Calc/Two.py"]
 
 
 def test_a_long_list_is_cut_to_a_few_with_the_rest_counted():

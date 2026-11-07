@@ -133,12 +133,23 @@ class Assurance:
         if not others:
             return None
         scope = self._inputs(state, work_id, facts)["scope"]
+        fold = self._case_insensitive()
         out = []
         for other in others:
-            found = C.find_conflict(work_id, scope, self._live(state, other))
+            found = C.find_conflict(work_id, scope, self._live(state, other), fold=fold)
             if found:
                 out.append(Blocker("FILES_CONFLICT", C.hold_message(work_id, scope, found), found))
         return out
+
+    def _case_insensitive(self) -> bool:
+        """Whether the repository treats two spellings of a path as one file (git's ``core.ignorecase``). A value
+        that cannot be read counts as case-insensitive: the conflict check then errs toward holding."""
+        try:
+            found = git.out("config", "--bool", "--default", "false", "--get", "core.ignorecase",
+                            cwd=self.k.repo_root)
+        except GitError:
+            return True
+        return found.strip() != "false"
 
     def _live(self, state: dict[str, Any], work_id: str) -> C.LiveTicket:
         """A live Ticket's declared scope and changed paths. Either one unreadable is reported as unknown, never as

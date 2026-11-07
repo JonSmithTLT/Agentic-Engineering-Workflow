@@ -6,17 +6,23 @@ declared scope and the paths that Ticket has already changed in its workspace. A
 active mutation workspace: the same set the ``mutating_concurrency`` cap counts, since an unintegrated change still
 meets the other's at integration. The dispatch is held, not warned, when:
 
-* the two declared scopes can name a common path (an exact glob intersection, so two Tickets that both create files
-  in a directory nothing tracks yet still meet);
+* the two declared scopes can name a common path (an exact glob intersection in ``aew.util.glob_match``'s language,
+  so two Tickets that both create files in a directory nothing tracks yet still meet);
 * a path the live Ticket has changed lies inside the new Ticket's scope (it may have strayed outside its own);
 * either scope is unbounded (no scope declared: it may change any file);
 * the live Ticket's changed paths cannot be read: an inability to establish non-interference is a conflict, never a
   clearance (``CNI-03.a``).
 
+``glob_match`` is case-sensitive. In a case-insensitive repository (git's ``core.ignorecase``, as on Windows) two
+spellings of one path are one file, so there paths and patterns are compared with their letter case folded, which
+errs toward holding.
+
 The check runs in the dispatch predicate, inside the transaction that makes the dispatch effective and bound to its
 revision, and again at each harness launch (``CNI-03.g``): two admissions racing on one state cannot both commit, and
-a launch sees what the other worker has changed since the assignment. Other resource kinds (ports, services, external
-effects) are not checked here.
+a launch sees what the other worker has changed since the assignment. A write made after a launch is admitted is not
+this check's to catch: it is an ongoing invalidation, which ``CNI-03.g`` leaves to HEB, and the guardrails refuse it at
+integration when it falls outside the writer's scope. Other resource kinds (ports, services, external effects) are not
+checked here.
 
 Pure functions only; ``Assurance.guard_conflict`` gathers the inputs and turns a conflict into a blocker.
 """
@@ -135,9 +141,14 @@ def globs_intersect(a: str, b: str) -> bool:
     return False
 
 
-def overlapping_scopes(a: list[str], b: list[str]) -> list[list[str]]:
-    """Each pair ``[pattern of a, pattern of b]`` that can name a common path."""
-    return [[x, y] for x in a for y in b if globs_intersect(x, y)]
+def _folded(text: str, fold: bool) -> str:
+    return text.lower() if fold else text
+
+
+def overlapping_scopes(a: list[str], b: list[str], *, fold: bool = False) -> list[list[str]]:
+    """Each pair ``[pattern of a, pattern of b]`` that can name a common path. With ``fold`` (a case-insensitive
+    repository), two spellings of one path in different letter case are one path."""
+    return [[x, y] for x in a for y in b if globs_intersect(_folded(x, fold), _folded(y, fold))]
 
 
 # ------------------------------------------------------------------------------------- the check
@@ -154,14 +165,20 @@ class LiveTicket:
     unreadable: str | None = None  # why the scope or the paths could not be read
 
 
-def find_conflict(work_id: str, scope: list[str], live: LiveTicket) -> dict[str, Any] | None:
+def find_conflict(work_id: str, scope: list[str], live: LiveTicket, *, fold: bool = False) -> dict[str, Any] | None:
     """The conflict between dispatching ``work_id`` with ``scope`` and ``live``, or None when they cannot meet.
 
+    ``fold``: the repository is case-insensitive (``core.ignorecase``), so paths and patterns are compared with their
+    letter case folded; two spellings of one file are then one file, and the check errs toward holding.
+
     The result carries ``reasons`` (every condition found, in the order a hold message names them), the changed paths
-    inside the new scope, and the scope pairs that can meet."""
+    inside the new scope, those of them outside the live Ticket's own scope (``outside_own_scope``: a stray write its
+    integration will refuse), and the scope pairs that can meet."""
     reasons: list[str] = []
     touched_hits: list[str] = []
+    strays: list[str] = []
     pairs: list[list[str]] = []
+    folded_scope = [_folded(s, fold) for s in scope]
     if live.touched is None or live.scope is None:
         reasons.append("paths_unknown")
     if not scope:
@@ -169,18 +186,21 @@ def find_conflict(work_id: str, scope: list[str], live: LiveTicket) -> dict[str,
     if live.scope is not None and not live.scope:
         reasons.append("live_scope_unbounded")
     if scope and live.touched:
-        touched_hits = sorted(p for p in live.touched if glob_any(p, scope))
+        touched_hits = sorted(p for p in live.touched if glob_any(_folded(p, fold), folded_scope))
         if touched_hits:
             reasons.append("touched_in_scope")
+            if live.scope:
+                own = [_folded(s, fold) for s in live.scope]
+                strays = [p for p in touched_hits if not glob_any(_folded(p, fold), own)]
     if scope and live.scope:
-        pairs = overlapping_scopes(scope, list(live.scope))
+        pairs = overlapping_scopes(scope, list(live.scope), fold=fold)
         if pairs:
             reasons.append("scopes_overlap")
     if not reasons:
         return None
     return {"work_id": live.work_id, "invocation": live.invocation, "workspace": live.workspace,
             "reasons": reasons, "scope": None if live.scope is None else list(live.scope),
-            "touched_in_scope": touched_hits, "scope_pairs": pairs,
+            "touched_in_scope": touched_hits, "outside_own_scope": strays, "scope_pairs": pairs,
             **({"unreadable": live.unreadable} if "paths_unknown" in reasons else {})}
 
 
@@ -203,18 +223,29 @@ def hold_message(work_id: str, scope: list[str], c: dict[str, Any]) -> str:
         why.append(f"{work_id} declares no scope, so it may change any file, {other}'s included")
     if "live_scope_unbounded" in reasons:
         why.append(f"{other} declares no scope, so it may change any file, {work_id}'s included")
-    if "touched_in_scope" in reasons:
-        why.append(f"{other} has already changed {_some(c['touched_in_scope'])}, inside {work_id}'s scope "
-                   f"{', '.join(scope)}")
+    strays = list(c.get("outside_own_scope") or [])
+    inside = [p for p in c.get("touched_in_scope") or [] if p not in strays]
+    if inside:
+        why.append(f"{other} has already changed {_some(inside)}, inside {work_id}'s scope {', '.join(scope)}")
+    if strays:
+        why.append(f"{other} has changed {_some(strays)}, outside its own scope and inside {work_id}'s "
+                   f"({', '.join(scope)}); {other}'s integration will refuse that change")
     if "scopes_overlap" in reasons:
         pairs = [f"{a} with {b}" for a, b in c["scope_pairs"]]
         why.append(f"the two scopes can name the same files ({work_id}'s {_some(pairs)} of {other}'s)")
-    waits = (f"{work_id} waits until {other} is integrated or cancelled, either of which releases its "
-             "workspace")
+    if reasons == ["touched_in_scope"] and strays and not inside:
+        # Only a stray write holds it: integration is not a way out (it refuses the stray change), its removal is.
+        waits = (f"{work_id} waits until that change is removed from {other}'s workspace, or {other} is cancelled, "
+                 "which releases its workspace")
+    else:
+        waits = (f"{work_id} waits until {other} is integrated or cancelled, either of which releases its "
+                 "workspace")
     if "paths_unknown" in reasons:
         waits += f", or until {other}'s workspace can be read"
+    # A scope is fixed when a Ticket is created: narrowing one means creating the Ticket again.
+    recreate = f"a scope is fixed when a Ticket is created, so cancel {work_id} and create it again with"
     if "scope_unbounded" in reasons:
-        waits += f"; to run beside {other}, {work_id} needs a scope that avoids {other}'s files"
-    elif "scopes_overlap" in reasons or "touched_in_scope" in reasons:
-        waits += "; to run them at once, split the work so their scopes cannot meet"
+        waits += f"; to run beside {other}, {work_id} needs a scope that avoids {other}'s files: {recreate} `--scope`"
+    elif "scopes_overlap" in reasons:
+        waits += f"; to run them at once, split the work so their scopes cannot meet: {recreate} a narrower `--scope`"
     return f"{head}, and " + "; ".join(why) + f". {waits}."

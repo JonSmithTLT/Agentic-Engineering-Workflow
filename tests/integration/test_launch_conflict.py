@@ -124,6 +124,22 @@ def test_an_earlier_clear_answer_is_not_relied_on_when_the_dispatch_takes_effect
     assert not calc.ok("dispatch", "explain", second, "--entrypoint", "work.assign")["allowed"]
 
 
+def test_a_case_insensitive_repository_holds_two_spellings_of_one_file(calc, tmp_path):
+    """#350 review m2: where git treats two spellings of a path as one file (``core.ignorecase``), scopes are compared
+    with their letter case folded. The planted control: the same spellings in a case-sensitive repository run at
+    once."""
+    git("config", "core.ignorecase", "false", cwd=calc.root)
+    first = create_planned_ticket(calc, tmp_path, title="Add One", scope=("calc/One.py",))
+    second = create_planned_ticket(calc, tmp_path, title="Add one", scope=("calc/one.py",))
+    third = create_planned_ticket(calc, tmp_path, title="Add ONE", scope=("calc/ONE.py",))
+    calc.lead("work", "assign", first)
+    calc.lead("work", "assign", second)  # case-sensitive: two files
+    git("config", "core.ignorecase", "true", cwd=calc.root)
+    holds = held_by(refused(calc, "work", "assign", third))
+    assert sorted(h["details"]["work_id"] for h in holds) == sorted([first, second])
+    assert all(h["details"]["reasons"] == ["scopes_overlap"] for h in holds)
+
+
 def test_at_concurrency_one_the_cap_answers_first(tmp_path):
     """The default (``mutating_concurrency: 1``) is unchanged: a second mutating Ticket meets the cap, whatever its
     scope."""
@@ -161,7 +177,10 @@ def test_a_launch_is_checked_again_against_what_the_other_worker_has_changed(lab
     [hold] = held_by(refused(p, "harness", "launch", two, env=lab.env))
     assert hold["details"]["reasons"] == ["touched_in_scope"]
     assert hold["details"]["touched_in_scope"] == ["calc/two.py"]
-    assert f"{first} has already changed calc/two.py, inside {second}'s scope" in hold["message"]
+    assert hold["details"]["outside_own_scope"] == ["calc/two.py"]  # a stray: outside the first's own scope
+    assert f"{first} has changed calc/two.py, outside its own scope and inside {second}'s" in hold["message"]
+    assert f"{second} waits until that change is removed from {first}'s workspace, or {first} is cancelled" \
+        in hold["message"]
     explained = lab.ok("dispatch", "explain", second, "--invocation", two)  # the query equals the execution
     assert [b["message"] for b in explained["blocking_conditions"] if b["code"] == "FILES_CONFLICT"] == \
         [hold["message"]]

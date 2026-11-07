@@ -174,10 +174,15 @@ active workspace, whatever its state):
   on the globs rather than on the files tracked today; the live Ticket has changed a path inside the new Ticket's scope;
   either scope is unbounded; or the live Ticket's record or changed paths cannot be read. Not being able to show that
   two Tickets cannot meet is a conflict, never a clearance.
+- **Letter case:** the globs match case-sensitively, as everywhere in AEW. In a case-insensitive repository (git's
+  `core.ignorecase`, as on Windows) two spellings of one path are one file, so there the comparison folds letter case,
+  which errs toward holding; a value that cannot be read counts as case-insensitive.
 - **The hold says why and what it waits on:** the live Ticket, its invocation and workspace, the paths or scope pairs
   that meet, and that it waits until that Ticket is integrated or cancelled, either of which releases its workspace.
 - **The check runs again at every harness launch,** against what the other workers have changed by then, and every
   decision is made inside the transaction that makes it effective and bound to its revision, so two admissions found
-  clear on the same state cannot both commit.
+  clear on the same state cannot both commit. A write made after a launch is admitted is not this check's to catch:
+  it is an ongoing invalidation, left to HEB, and the guardrails refuse it at integration when it falls outside the
+  writer's scope.
 - **The default is unchanged:** at `mutating_concurrency: 1` the cap answers first. Other shared resources (ports,
   services, external effects) are not checked here.

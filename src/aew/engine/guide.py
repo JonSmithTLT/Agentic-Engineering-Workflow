@@ -390,8 +390,9 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "authority accept` and `aew authority reject` are refused in your session): `aew authority list` shows them. "
         "This tells AEW which documents govern the work and which only orient it, and it blocks nothing. On a session "
         "started with `aew opencode --acquire`, don't ask during the session: classifying needs a credential that path "
-        "never shows, and a takeover would turn you read-only. The operator classifies after you exit, once the seat "
-        f"is released, through `aew lead acquire`. {HELD_SEAT_IN_A_GUIDE}.",
+        "never shows, and a takeover would turn you read-only. The operator classifies after you exit, at their own "
+        "terminal: they take the seat with `aew lead acquire`, or with `aew lead takeover` if your exit left it held, "
+        f"and then classify. {HELD_SEAT_IN_A_GUIDE}.",
         "- Look at the project before you describe work in it. You cannot edit files, but you can read and search them "
         "with your read, glob and grep tools.",
         "",

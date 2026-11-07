@@ -207,6 +207,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
                              stages=stages)
         lead.announce(sys.stderr)  # what it found, before the refusal names what is missing
         lead.require_provider()
+        _tools_before_the_tui()
         stages.mark("logins")
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                       env=tui_env(os.environ, provider_env=[], guide=guide), contained=lead)
@@ -220,12 +221,26 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         sys.stderr.write(f"aew opencode: {', '.join(provider_env)} passed to the Lead's OpenCode; the Lead model's "
                          "shell commands can read it.\n")
     lead_broker.require_credential(acquire)  # a missing credential refuses first, before any start line, as contained
+    _tools_before_the_tui(asking=False)
     line = no_provider_line(provider_env, os.environ)
     if line is not None:
         sys.stderr.write(line)
     out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                   env=env, contained=weaker)
     return {**out, "opencode": version}
+
+
+def _tools_before_the_tui(*, asking: bool = True) -> None:
+    """The tools AEW brings, before the TUI opens: asked for only as the operator chooses, and a needed one missing
+    named in one line (:func:`aew.capability.consent.at_lead_start`). It comes after the start's checks of its
+    credential, its terminal, its provider variables and its provider (the contained Lead: ``require_provider``) or its
+    policy and its credential (elsewhere), and before the seat is taken and the sandbox is built, either of which can
+    still refuse the start (a held seat, a failed self-test). Only the contained Lead gets AEW's tools bound
+    (``bind``); elsewhere (``asking=False``) the TUI runs as it is, with OpenCode's own lookup (``status.NOT_BOUND``),
+    so nothing is asked there."""
+    from aew.capability import consent
+
+    consent.at_lead_start(sys.stderr, asking=asking)
 
 
 # ---------------------------------------------------------------------------------------- the contained Lead (Linux)

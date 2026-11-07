@@ -73,11 +73,12 @@ def test_a_workers_own_aew_neither_fetches_nor_records_and_the_operators_does(re
     assert asked == [] and key not in (store.read().get("checks") or {})
     ops.record_contained(tools)
     assert key in store.read()["checks"]
-    ops.check()
+    ops.check("fake")
     assert asked
 
 
 CHECK, APPLY = ("aew.capability.ops", "check"), ("aew.capability.ops", "apply")
+GET, ASK = ("aew.capability.consent", "get"), ("aew.capability.consent", "ask")
 Name = tuple[str, str]  # (module, its top-level name or Class.method)
 
 
@@ -125,14 +126,8 @@ def _used(node: Any, mod: str, alias: dict[str, tuple[str, str | None]], modules
     return found
 
 
-def test_no_route_but_the_operators_own_commands_reaches_the_fetch():
-    """The operator, 2026-11-05: AEW downloads no tool unless the operator chooses it. Every function in AEW's source
-    from which ``payload.fetch`` can be reached, by name, within a module or through an imported module, comes through
-    one of two doors: ``ops.check`` (`aew capability check`; refused to an agent's own `aew` and to the Lead's broker,
-    the tests above and ``test_capability_commands``) and ``ops.apply`` (an add the operator approved at the operator
-    endpoint, with its principal). Nothing else reaches the fetch, and each door has one caller. A launch, the broker,
-    a supervisor or an agent's tool that came to reach the fetch another way would be named here. Its limit: a method
-    called through an object is not followed, so a door's caller that is a method is named, never its own callers."""
+def _references() -> dict[Name, set[Name]]:
+    """What each function in AEW's source names, by name, within a module or through an imported module."""
     import ast
 
     src = Path(ops.__file__).resolve().parents[2]
@@ -153,19 +148,58 @@ def test_no_route_but_the_operators_own_commands_reaches_the_fetch():
                     refs.setdefault((mod, name), set()).update(_used(item, mod, alias, modules))
             else:
                 refs.setdefault((mod, "<module>"), set()).update(_used(node, mod, alias, modules))
-    reached, todo = set(), [("aew.capability.payload", "fetch")]
+    return refs
+
+
+def _reach(refs: dict[Name, set[Name]], start: Name, doors: tuple[Name, ...] = ()) -> set[Name]:
+    """Every function from which ``start`` can be reached, not following past a door."""
+    reached, todo = set(), [start]
     while todo:
         target = todo.pop()
         for caller, used in refs.items():
             if target in used and caller not in reached and caller != target:
                 reached.add(caller)
-                if caller not in (CHECK, APPLY):  # a door: what reaches it is the door's own caller, below
+                if caller not in doors:  # a door: what reaches it is the door's own caller, below
                     todo.append(caller)
-    assert reached == {("aew.capability.ops", n) for n in ("_fetched", "_fetch", "_acquire", "_apply_add")} | {
-        CHECK, APPLY}, sorted(reached)
-    assert {c for c, used in refs.items() if CHECK in used} == {("aew.cli.capability_commands", "_check")}
-    assert {c for c, used in refs.items() if APPLY in used} == {
-        ("aew.harness.operator_endpoint", "OperatorEndpoint._capability_change")}
+    return reached
+
+
+def _callers(refs: dict[Name, set[Name]], target: Name) -> set[Name]:
+    return {c for c, used in refs.items() if target in used}
+
+
+def test_no_route_but_the_operators_own_commands_reaches_the_fetch():
+    """The operator, 2026-11-05: AEW downloads no tool unless the operator chooses it. Every function in AEW's source
+    from which ``payload.fetch`` can be reached, by name, within a module or through an imported module, comes through
+    one of three doors: ``ops.check`` (`aew capability check`, which downloads only a tool it names), ``consent.get``
+    (what the operator chose: at `aew init`, at the Lead's start and by `aew capability fetch`), each refused to an
+    agent's own `aew` and to the Lead's broker, and ``ops.apply`` (an add the operator approved at the operator
+    endpoint, with its principal). Nothing else reaches the download, and each door's callers are named. A worker's
+    launch, the broker, a supervisor or an agent's tool that came to reach it another way would be named here. Its
+    limit: a method called through an object is not followed, so a door's caller that is a method is named, never its
+    own callers."""
+    refs = _references()
+    reached = _reach(refs, ("aew.capability.payload", "fetch"), (CHECK, APPLY, GET))
+    assert reached == {("aew.capability.ops", n) for n in ("_fetched", "fetch", "_add_downloads")} | {
+        CHECK, APPLY, GET}, sorted(reached)  # `_apply_add` installs what was downloaded before the lock
+    assert _callers(refs, CHECK) == {("aew.cli.capability_commands", "_check"), GET}
+    assert _callers(refs, GET) == {("aew.capability.consent", n) for n in ("at_init", "at_lead_start", "at_fetch")}
+    assert _callers(refs, APPLY) == {("aew.harness.operator_endpoint", "OperatorEndpoint._capability_change")}
+    assert _callers(refs, ("aew.capability.consent", "at_init")) == {("aew.cli.commands", "_init")}
+    hook = ("aew.harness.opencode.lead", "_tools_before_the_tui")  # after the start's own refusals, both branches
+    assert _callers(refs, ("aew.capability.consent", "at_lead_start")) == {hook}
+    assert _callers(refs, hook) == {("aew.harness.opencode.lead", "run")}
+    assert _callers(refs, ("aew.capability.consent", "at_fetch")) == {("aew.cli.capability_commands", "_fetch")}
+
+
+def test_only_the_operators_three_moments_reach_the_consent_screen():
+    """The designer's ruling (STG-15, 2026-11-05): a worker's launch never asks and never downloads, since no human is
+    there. The screen is reached through `aew init`, the Lead's start and `aew capability fetch` only, each with the
+    one caller the test above names: no supervisor, containment, adapter or broker reaches it any other way."""
+    refs = _references()
+    entries = tuple(("aew.capability.consent", n) for n in ("at_init", "at_lead_start", "at_fetch"))
+    assert _reach(refs, ASK, entries) == set(entries), sorted(_reach(refs, ASK, entries))
+    assert _reach(refs, ("aew.capability.consent", "read_terminal"), entries) == set(entries)
 
 
 def test_a_fetch_error_never_carries_its_text_into_the_status_the_record_or_the_line(reg, monkeypatch, capsys):
@@ -297,8 +331,10 @@ def test_a_launch_without_the_pinned_copy_flags_it_once_per_state_and_one_with_i
     first = ops.flag_missing(STUB)
     line = capsys.readouterr().err
     assert line.count("\n") == 1 and line.startswith("aew: attention: fake in this run is a stub that fails"), line
-    assert "it is not installed on this host" in line and "The run goes on" in line and "aew capability check" in line
-    assert "aew capability import" in line and "fetch" not in line.split("Fix:")[0] and "download" not in line, line
+    assert "it is not installed on this host" in line and "The run goes on" in line
+    assert "`aew capability fetch fake` downloads it" in line.split("Fix:")[1]  # the operator's own choice to make
+    assert "aew capability import" in line and "fetch" not in line.split("Fix:")[0], line
+    assert "download" not in line.split("Fix:")[0], line  # the launch itself never names one: it never makes one
     assert [f["reason"] for f in first] == ["not_installed"]
     assert ops.flag_missing(STUB) == first and capsys.readouterr().err == ""  # the record keeps it; no repeat
     pinned = records.shipped()["fake"]["payloads"][records.platform_key()]
@@ -477,7 +513,7 @@ def test_a_payload_not_installed_reads_unavailable_with_its_cause_and_fix(reg):
     cap = _cap()
     assert cap["observed_status"] == status.UNAVAILABLE and cap["assessment_status"] == status.NOT_ESTABLISHED
     assert cap["cause"] == "its pinned payload is not on this host: it is not installed"
-    assert "aew capability check" in cap["fix"] and "aew capability import" in cap["fix"]
+    assert "`aew capability fetch fake` downloads it" in cap["fix"] and "aew capability import" in cap["fix"]
 
 
 def test_q05_an_offline_bundle_import_makes_the_capability_functional_only(reg):
@@ -554,7 +590,9 @@ def test_q01_an_installed_payload_with_one_byte_changed_is_refused_at_the_next_c
     assert _cap()["observed_status"] == status.FUNCTIONAL_ONLY
 
 
-def test_an_online_check_fetches_checks_and_never_fetches_offline(reg, monkeypatch):
+def test_a_check_downloads_only_a_tool_it_names_and_never_offline(reg, monkeypatch):
+    """The operator, 2026-11-05: AEW downloads only what the operator chooses. A check of everything downloads nothing
+    and names the command that would; naming the tool is the choice, and offline is never."""
     fetched: list[str] = []
 
     def fetch(pinned: dict[str, Any]) -> bytes:
@@ -562,11 +600,14 @@ def test_an_online_check_fetches_checks_and_never_fetches_offline(reg, monkeypat
         return reg["archive"]
 
     monkeypatch.setattr(P, "fetch", fetch)
-    ops.check(offline=True)
+    ops.check("fake", offline=True)
     assert fetched == [] and _cap()["observed_status"] == status.UNAVAILABLE
-    ops.check()
+    out = ops.check()
+    assert fetched == [] and _cap()["observed_status"] == status.UNAVAILABLE
+    assert any("`aew capability fetch fake` downloads it" in line for line in out["checked"]["fake"]), out["checked"]
+    ops.check("fake")
     assert fetched == [SOURCE] and _cap()["observed_status"] == status.FUNCTIONAL_ONLY
-    ops.check()
+    ops.check("fake")
     assert fetched == [SOURCE]  # a payload on this host is checked, never fetched again
 
 
@@ -575,7 +616,7 @@ def test_a_failed_fetch_reads_unavailable_with_its_cause(reg, monkeypatch):
         raise errors.Unavailable("the pinned payload could not be fetched: no route", reason="fetch_failed")
 
     monkeypatch.setattr(P, "fetch", down)
-    ops.check()
+    ops.check("fake")
     cap = _cap()
     assert cap["observed_status"] == status.UNAVAILABLE and "the fetch failed" in cap["cause"]
     assert "no route" in cap["cause"]
@@ -608,7 +649,7 @@ def test_q04_a_re_pinned_record_reads_stale_until_it_is_checked(reg, monkeypatch
     monkeypatch.setattr(records, "shipped", lambda: {"fake": repinned})
     cap = _cap()
     assert cap["observed_status"] == status.STALE and "its pin changed since it was checked" in cap["cause"]
-    assert "aew capability check" in cap["fix"]
+    assert "aew capability fetch fake" in cap["fix"]
     monkeypatch.setattr(P, "fetch", lambda pinned: archive)
     ops.check("fake")
     cap = _cap()
@@ -932,7 +973,7 @@ def test_doctor_names_each_capability_pass_when_usable_and_warn_never_fail_other
     rows = {c["check"]: c for c in doctor.environment_checks() if c["check"].startswith("capability:")}
     assert rows["capability:FAKE_SEARCH"]["status"] == "WARN"
     assert rows["capability:FAKE_SEARCH"]["detail"].startswith("UNAVAILABLE:")
-    assert "fix: `aew capability check`" in rows["capability:FAKE_SEARCH"]["detail"]
+    assert "fix: `aew capability fetch fake` downloads it" in rows["capability:FAKE_SEARCH"]["detail"]
     _import(reg)
     rows = {c["check"]: c for c in doctor.environment_checks() if c["check"].startswith("capability:")}
     assert rows["capability:FAKE_SEARCH"]["status"] == "PASS"

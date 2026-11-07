@@ -7,7 +7,8 @@ all say the same (S01-21). AEW's copy of a provider is, in order:
 * ``REFUSED``: its record fails validation, its payload does not match its pin, or, while no payload is installed,
   its last fetch or import was;
 * ``UNSUPPORTED``: its record has no payload for this host's platform;
-* ``UNAVAILABLE``: its payload is not here (never fetched, or the fetch failed), or its last check failed;
+* ``UNAVAILABLE``: its payload is not here (never fetched, the operator declined it, or the fetch failed), or its
+  last check failed;
 * ``NOT_ESTABLISHED``: its payload is here and was never checked;
 * ``STALE``: its record or pin changed since its check, or the host did (the kernel, the C library, the harness);
 * ``FUNCTIONAL_ONLY``: its check passed. A check alone never makes a capability ``QUALIFIED``, which needs a
@@ -58,7 +59,14 @@ TOOLS_MARKER = ".aew-tools"  # marks a contained context's own directory of entr
 HEALTH_TIMEOUT_S = 30.0  # one step of a health check: `--version`, or the fixture query over a few lines
 
 CHECK = "aew capability check"
+FETCH = "aew capability fetch"  # with the provider's own name: AEW downloads only what the operator chooses
 IMPORT = "aew capability import"  # given the operator's bundle: a path, never a placeholder in a fix (D2 O-IDS)
+
+
+def fetch_fix(name: str) -> str:
+    """The fix for AEW's copy that is not on this host: the operator's own choice to download it (the operator,
+    2026-11-05), or their offline bundle."""
+    return f"`{FETCH} {name}` downloads it (online), or `{IMPORT}` imports it from the operator's bundle (offline)"
 
 
 @dataclass
@@ -86,6 +94,7 @@ NOT_SERVING_WHY = {
     "refused": "its payload was refused",
     "pin_changed": "its pin changed and the new payload is not here yet",
     "fetch_failed": "the fetch failed",
+    "declined": "the operator declined to download it",
     "not_installed": "it is not installed on this host",
     "off_pin": "its payload does not match its pin",
     "never_checked": "it was never checked here",
@@ -172,33 +181,41 @@ def aew_copy(name: str, record: dict[str, Any] | None, problem: str | None, stat
         # Only while no payload is installed: one that is installed is judged by its own pin, just below, so a
         # refused import or fetch never makes a payload that matches its pin read REFUSED (review F4)
         return Copy(AEW_COPY, REFUSED, f"its payload was refused at {refused.get('at')}: {refused.get('reason')}",
-                    f"`{CHECK}` fetches the pinned payload again (online), or `{IMPORT}` imports, from the "
-                    "operator's bundle, one that matches its pin (offline)", str(path), reason="refused")
+                    fetch_fix(name), str(path), reason="refused")
     done = (state.get("checks") or {}).get(f"{AEW_COPY}:{name}")
+    # A "no" to the new pin reads declined, everywhere the status is read (review of #343, m1)
     if not path.exists() and done is not None and done.get("sha256") != pinned["sha256"] \
-            and not (state.get("fetch_failures") or {}).get(f"{name}:{key}"):
+            and not (state.get("fetch_failures") or {}).get(f"{name}:{key}") \
+            and declined(state, name, pinned, key) is None:
         # A new pin (CAPR-03): checked before under another one, and this one's payload is not here yet
         return Copy(AEW_COPY, STALE, f"its pin changed since it was checked (checked {str(done.get('sha256'))[:16]}, "
                     f"now pinned {pinned['sha256'][:16]}), and the newly pinned payload is not on this host yet",
-                    f"`{CHECK}` fetches it (online), or `{IMPORT}` imports it from the operator's bundle (offline)",
-                    str(path), done.get("at"), reason="pin_changed")
+                    fetch_fix(name), str(path), done.get("at"), reason="pin_changed")
     if not path.exists():
         failed = (state.get("fetch_failures") or {}).get(f"{name}:{key}")
         # AEW downloads no tool unless the operator chooses it (the operator, 2026-11-05): a launch never fetches, so
-        # a failed fetch is only ever the operator's own `aew capability check`'s
+        # a failed fetch is only ever the operator's own choice's
         failed = failed if failed and failed.get("sha256") == pinned["sha256"] else None
+        no = declined(state, name, pinned, key)  # a "no" holds for its pin only: a new pin asks again
         cause = ("its pinned payload is not on this host: "
                  + (f"the fetch failed at {failed.get('at')} ({failed.get('reason')})" if failed else
-                    "it is not installed"))
-        return Copy(AEW_COPY, UNAVAILABLE, cause, f"`{CHECK}` fetches it (online), or `{IMPORT}` imports it from "
-                    "the operator's bundle (offline)", str(path), reason="fetch_failed" if failed else "not_installed")
+                    f"the operator declined to download it at {no.get('at')}" if no else "it is not installed"))
+        return Copy(AEW_COPY, UNAVAILABLE, cause, fetch_fix(name), str(path),
+                    reason="fetch_failed" if failed else "declined" if no else "not_installed")
     wrong = P.verify(path, pinned)
     if wrong is not None:
         return Copy(AEW_COPY, REFUSED, f"its payload does not match its pin: {wrong}",
-                    f"`{CHECK}` refuses it and fetches it again (online), or `{IMPORT}` with the operator's bundle "
-                    "(offline)", str(path), reason="off_pin")
+                    f"`{CHECK} {name}` refuses it and removes it; then `{FETCH} {name}` downloads it again (online), "
+                    f"or `{IMPORT}` imports it from the operator's bundle (offline)", str(path), reason="off_pin")
     return _checked(AEW_COPY, done, path, facts, digest=records.digest(record), sha256=pinned["sha256"],
                     changed="its record or its pin changed since it was checked")
+
+
+def declined(state: dict[str, Any], name: str, pinned: dict[str, Any], key: str | None = None) -> dict[str, Any] | None:
+    """The operator's "no" to downloading ``name``'s pinned payload, while it holds: per tool and pinned payload, so a
+    new pin asks again (the designer's ruling, STG-15, 2026-11-05). None where there is none."""
+    entry = (state.get("declined") or {}).get(f"{name}:{key or records.platform_key()}")
+    return entry if isinstance(entry, dict) and entry.get("sha256") == pinned["sha256"] else None
 
 
 def host_copy(name: str, record: dict[str, Any], state: dict[str, Any], *, facts: dict[str, str | None],

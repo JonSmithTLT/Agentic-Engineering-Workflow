@@ -1,0 +1,10 @@
+**Built in #343 (2026-11-06): the operator's consent before any tool is downloaded, and E119 §1's seat wording.**
+
+- **Built:** `src/aew/capability/consent.py`, one screen for `aew init` (at a terminal), the contained Lead's start and `aew capability fetch` (operator-only). It shows needed tools in full and optional ones as a count, takes needed, all, pick or none, and Enter means only what the screen names. There's no timed default, and off a terminal nothing downloads unless the tools are named (`aew init --fetch-tool`, `aew capability fetch <tool>`).
+  - **Records:** `needed` and `degrades` are on the records; ripgrep is needed, since OpenCode's search fails without it.
+  - **Declines:** a "no" is kept per tool and pin in the register's `declined`, a closed reason the status reports, so list, doctor, a launch's flag and each run's record name it. Only a tool listed in full is declined.
+  - **Downloads:** every download, `aew capability add`'s included, runs with no lock held and is pin-checked before anything is placed.
+  - **Elsewhere:** `aew capability check` downloads only a provider it names. Where AEW places no tools (an uncontained Lead), nothing is called needed, and the start says once that OpenCode's own lookup serves.
+- **For E120 to pick up (the Lead's results):** list each run's `missing_tools` from its record (`containment.establish` writes it, `ops.run_record`'s shape: `unavailable`, `reasons`, `detail`), beside the skills a run asked for and didn't get. A missing needed tool is attention, never blocked-on-you.
+- **For E125 to pick up (the readiness surface):** list `aew.capability.consent.declined_lines()`, one line per declined tool with when and `aew capability fetch <tool>`, and each capability's status and fix from `ops.listing()`, as `aew doctor` does.
+- **Owed, a follow-on:** `aew init` at a terminal has no up-front "none" (for example `--fetch-tool none`, recorded as no answer). It grows `init`'s option pin, so it is a row of its own (the review of #343, m8).

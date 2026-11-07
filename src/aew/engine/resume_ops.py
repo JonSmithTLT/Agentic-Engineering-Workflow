@@ -90,8 +90,11 @@ class Resume:
             actions.append("classify authority candidates (the operator, at their own terminal; a Lead session is "
                            "refused it, and it blocks nothing). A session started with `aew opencode --acquire` "
                            "doesn't ask: that path shows no credential, and a takeover would turn the live Lead "
-                           "read-only, so the operator classifies after it exits, once the seat is released, through "
-                           f"`aew lead acquire {EXPECT_REV}`. Then `aew authority list`, and for each "
+                           "read-only, so the operator classifies after it exits, at their own terminal. First they "
+                           f"take the seat: `aew lead acquire {EXPECT_REV}` when the exit reported it released, or "
+                           f"`aew lead takeover {EXPECT_REV} --reason <reason>` when it reported it held. When it "
+                           "reported superseded, the Lead that took the seat classifies. Then `aew authority list`, "
+                           "and for each "
                            "`aew authority accept <candidate> "
                            f"--class <contracts|decisions|schemas|source|orientation> {EXPECT_REV}` or "
                            f"`aew authority reject <candidate> --reason <reason> {EXPECT_REV}`. {HELD_SEAT}")

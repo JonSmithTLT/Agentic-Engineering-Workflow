@@ -131,7 +131,8 @@ def test_no_printed_command_goes_through_with_a_placeholder_in_it() -> None:
 HINT_SOURCES = ("src/aew/engine/resume_ops.py", "src/aew/engine/harness_ops.py", "src/aew/engine/gate_ops.py")
 # Commands that take no subject, so the driver's added subject cannot parse. They never reach the Lead's projection: its
 # subject is a Ticket, `_guidance` keeps only that subject's lines, and these are the project's, or a parent's.
-NOT_A_TICKETS = {f"aew lead acquire {K.EXPECT_REV}", f"aew migrate {K.EXPECT_REV}", f"aew history audit {K.EXPECT_REV}",
+NOT_A_TICKETS = {f"aew lead acquire {K.EXPECT_REV}", f"aew lead takeover {K.EXPECT_REV} --reason <reason>",
+                 f"aew migrate {K.EXPECT_REV}", f"aew history audit {K.EXPECT_REV}",
                  f"aew history audit {K.EXPECT_REV} --full"}
 
 

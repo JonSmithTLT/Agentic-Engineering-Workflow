@@ -73,7 +73,7 @@ EXEMPT = {
                                        "checked at each call",
     "src/aew/engine/custody_ops.py:158": "the command word comes from a value: test_operator_terminal_refusals_parse",
     "src/aew/engine/custody_ops.py:159": "the command word comes from a value: test_operator_terminal_refusals_parse",
-    "src/aew/cli/capability_commands.py:125": "the command word comes from a value: "
+    "src/aew/cli/capability_commands.py:145": "the command word comes from a value: "
                                               "test_each_capability_change_names_a_capability_command",
 }
 

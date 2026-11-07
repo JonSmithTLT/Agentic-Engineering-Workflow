@@ -68,6 +68,7 @@ from aew.harness.contract import (
     LONG_TOKEN,
     PROVIDER_AUTH_FAILED,
     REDACTION_FORMS,
+    UNAVAILABLE_TOOLS,
     LaunchContract,
 )
 from aew.harness.opencode import capabilities, projection
@@ -353,7 +354,8 @@ class OpenCodeAdapter(HarnessAdapter):
             contract, private_dirs=projection.private_output_dirs(
                 state, os.sep, scratch=os.path.realpath(contract.scratch) if contract.scratch else ""),
             skills_dir=projection.skills_at(state, os.sep),
-            network=network.describe() if network is not None else None)  # the agent is told what it reaches
+            network=network.describe() if network is not None else None,  # the agent is told what it reaches
+            unavailable_tools=list(contract.extra.get(UNAVAILABLE_TOOLS) or []))  # and what it goes without
         rules = config["permissions"]
         base = network.provider_base() if network is not None else None
         self._relayed = base is not None

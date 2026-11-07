@@ -183,7 +183,11 @@ def _ids(names: list[str]) -> str:
 
 
 def system_text(contract: LaunchContract, planned: Mapping[str, Any],
-                network: Mapping[str, Any] | None = None) -> str:
+                network: Mapping[str, Any] | None = None,
+                unavailable_tools: list[Mapping[str, Any]] | None = None) -> str:
+    """The run's system text. ``unavailable_tools``: the commands of the tools AEW brings that this run got no copy of
+    (``capability.ops.unavailable``, from the run's own record), told beside its skills, so the agent proceeds
+    without them and says so (the operator, 2026-11-05: a missing tool is logged, not voided)."""
     card = (contract.card or {}).get("id") or contract.role
     edit = ("You may edit files in the workspace." if contract.role in MUTATING_ROLES
             else "You must not modify any file: your role is read-only.")
@@ -208,6 +212,12 @@ def system_text(contract: LaunchContract, planned: Mapping[str, Any],
     if network is not None:
         lines.append(network_text(network))
     lines += skills_text(planned)
+    if unavailable_tools:
+        fallbacks = list(dict.fromkeys(str(t["fallback"]) for t in unavailable_tools if t.get("fallback")))
+        named = ", ".join(f"`{t['tool']}`" for t in unavailable_tools)
+        lines.append(f"- Tools AEW brings that this run does not have: {named}, so what runs them fails here"
+                     + (f" (search with {' or '.join(fallbacks)} instead)" if fallbacks else "")
+                     + ". Proceed without them and say so in your report.")
     return "\n".join(lines)
 
 
@@ -227,7 +237,8 @@ def network_text(network: Mapping[str, Any]) -> str:
 
 
 def invocation_config(contract: LaunchContract, *, private_dirs: tuple[str, ...] = (),
-                      skills_dir: SkillsAt | None = None, network: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                      skills_dir: SkillsAt | None = None, network: Mapping[str, Any] | None = None,
+                      unavailable_tools: list[Mapping[str, Any]] | None = None) -> dict[str, Any]:
     """``OPENCODE_CONFIG_CONTENT`` for one run's private server. ``network``: the label of the run's own network
     (``netns.RunNetwork.describe``), which the system text states; None for a run on the host's. ``skills_dir``: where
     the run's exposed skills are copied (:func:`skills_at`), needed when it has any."""
@@ -236,7 +247,8 @@ def invocation_config(contract: LaunchContract, *, private_dirs: tuple[str, ...]
     profile = contract.execution_profile
     agent: dict[str, Any] = {"mode": "primary", "description": f"AEW {contract.role} for {contract.invocation}",
                              "model": config_model(profile),
-                             "system": system_text(contract, skill, network), "permissions": rules}
+                             "system": system_text(contract, skill, network, unavailable_tools),
+                             "permissions": rules}
     if profile.get("max_steps"):
         agent["steps"] = int(profile["max_steps"])
     agents: dict[str, Any] = {AGENT: agent}

@@ -425,6 +425,72 @@ def test_the_lead_is_refused_before_a_seat_or_sandbox_when_no_provider_is_relaye
     assert started == []
 
 
+# ---------------------------------------------------------------- where the start reaches the tools AEW brings
+
+def _start_order(tmp_path: Path, monkeypatch: Any, *, contained_: bool, environ: dict[str, str],
+                 provider_env: list[str], credential: bool = True) -> list[Any]:
+    """Drive `lead.run` to its session with the steps that matter recorded in order: the start line, the credential
+    check, the tools hook (``consent.at_lead_start``, with its ``asking``), the session that takes the seat and builds
+    the sandbox, and a refusal. Synthetic environment only: no terminal read, no network, no download."""
+    from aew.capability import consent
+
+    calls: list[Any] = []
+    monkeypatch.setattr(lead, "check_version", lambda: "2.0.18")
+    monkeypatch.setattr(lead, "command", lambda engine, extra: ["opencode", "--standalone"])
+    monkeypatch.setattr(lead, "guide_of", lambda engine: "")
+    monkeypatch.setattr(lead, "contained_here", lambda: contained_)
+    announce = lead.ContainedLead.announce
+    monkeypatch.setattr(lead.ContainedLead, "announce",
+                        lambda self, out: calls.append("announce") or announce(self, out))
+    monkeypatch.setattr(lead_broker.WeakerLead, "precheck", lambda self: calls.append("precheck"))
+
+    def require_credential(acquire: bool) -> None:
+        calls.append("credential")
+        if not credential:
+            raise errors.AEWError("synthetic: no Lead credential")
+
+    monkeypatch.setattr(lead_broker, "require_credential", require_credential)
+    monkeypatch.setattr(lead_broker, "run_session", lambda *a, **k: calls.append("session") or {})
+    monkeypatch.setattr(consent, "at_lead_start", lambda *a, **k: calls.append(("tools", k.get("asking", True))))
+    monkeypatch.setattr(os, "environ", {"HOME": str(tmp_path), "PATH": "/usr/bin", **environ})
+    engine = SimpleNamespace(execution_policy=lambda: (None, None), repo_root=tmp_path, aew_root=tmp_path / ".aew")
+    try:
+        lead.run(engine, acquire=False, session_label=None, keep_seat=False, provider_env=provider_env, extra_args=[],
+                 print_config=False)
+    except errors.AEWError as exc:
+        calls.append(("refused", exc.message.split(",")[0]))
+    return calls
+
+
+def test_a_contained_start_the_provider_refusal_ends_never_reaches_the_tools_hook(tmp_path, monkeypatch,
+                                                                                  at_a_terminal):
+    """Review of #343's merge, m1: #340's refusal comes after the start line and before the tools AEW brings, so a
+    start that cannot run is never asked about downloads."""
+    calls = _start_order(tmp_path, monkeypatch, contained_=True, environ={}, provider_env=[])
+    assert calls == ["credential", "announce", ("refused", "no provider is relayed to the contained Lead")], calls
+
+
+def test_a_contained_start_that_proceeds_asks_about_the_tools_after_its_checks_and_before_its_session(
+        tmp_path, monkeypatch, at_a_terminal):
+    """Review of #343's merge, m1: a contained start with a provider reaches the tools hook, asking, after its start
+    line and refusals, and before the session takes the seat and builds the sandbox."""
+    calls = _start_order(tmp_path, monkeypatch, contained_=True, environ={"OPENAI_API_KEY": KEYS["openai"]},
+                         provider_env=["OPENAI_API_KEY"])
+    assert calls == ["credential", "announce", ("tools", True), "session"], calls
+
+
+@pytest.mark.parametrize("credential, expected", [
+    (True, ["precheck", "credential", ("tools", False), "session"]),
+    (False, ["precheck", "credential", ("refused", "synthetic: no Lead credential")]),
+])
+def test_an_uncontained_start_says_its_tools_line_only_after_the_credential_check(tmp_path, monkeypatch,
+                                                                                  credential, expected):
+    """Review of #343's merge, m2: off Linux a missing credential refuses first, before any start line (#340), so the
+    tools line (``asking=False``: said and logged, never asked) comes after it, and never on a start it refuses."""
+    calls = _start_order(tmp_path, monkeypatch, contained_=False, environ={}, provider_env=[], credential=credential)
+    assert calls == expected, calls
+
+
 def test_provider_variables_in_the_environment_are_named_with_whether_the_lead_serves_them(tmp_path, at_a_terminal):
     """The Lead's check: a provider key in the operator's environment, rather than stored, is never silent. One whose
     provider has a relay is named as not given to the Lead, with `--provider-env` as the way to feed it; opencode's is

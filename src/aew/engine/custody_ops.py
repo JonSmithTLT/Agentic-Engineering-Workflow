@@ -166,6 +166,7 @@ REGISTER_READ = "`aew capability list` reads the register here"
 # told the same way to ask whichever way it asked, never "run this one directly" (#272 QC3; #286 review F1).
 LEAD_KEPT_OUT: dict[tuple[str, ...], str] = {
     ("capability", "check"): REGISTER_READ,
+    ("capability", "fetch"): REGISTER_READ,
     ("g3", "request"): "",
 }
 

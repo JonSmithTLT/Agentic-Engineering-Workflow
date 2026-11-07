@@ -200,7 +200,9 @@ def test_flagless_init_says_what_it_always_said(tmp_path):
     out = init(root).json
     assert out["next"] == "acquire Lead authority: aew lead acquire --expect-rev 0"
     assert "first_configuration" not in out
-    assert sorted(out) == ["aew_root", "authority_candidates", "next", "ok", "project_id", "provider_key", "revision"]
+    # `tools`: the tools AEW brings, as the operator chose them (aew.capability.consent), in a key of its own
+    assert sorted(out) == ["aew_root", "authority_candidates", "next", "ok", "project_id", "provider_key", "revision",
+                           "tools"]
     # the first-use line (the operator's decision of 2026-11-06): a provider key and a paid model, no free models
     assert "AEW needs a provider key" in out["provider_key"] and "https://opencode.ai/docs/zen/" in out["provider_key"]
 

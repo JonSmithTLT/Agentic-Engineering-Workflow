@@ -210,16 +210,20 @@ def test_an_answer_without_the_g3_wire_is_unavailable_never_a_pending_approval(
     body = json.dumps({"approval_ref": "g3:approval:x", "expires_at": "2099-01-01T00:00:00Z"}).encode()
 
     def answer() -> None:
-        conn, _ = listener.accept()
-        got = b""
-        while b"\r\n\r\n" not in got:  # the whole request first: a close with its body unread resets the connection
-            got += conn.recv(65536)
-        head, rest = got.split(b"\r\n\r\n", 1)
-        length = int(next(ln.split(b":")[1] for ln in head.split(b"\r\n") if ln.lower().startswith(b"content-length")))
-        while len(rest) < length:
-            rest += conn.recv(65536)
-        conn.sendall(b"HTTP/1.0 201 Created\r\nContent-Length: %d\r\n\r\n%s" % (len(body), body))
-        conn.close()
+        # Two requests: the probe before the confirmer (a GET, no body), then the approval request. Each gets the
+        # same answer, which is not G3's: the probe says so and the request goes ahead, as the command does (C1).
+        for _ in range(2):
+            conn, _ = listener.accept()
+            got = b""
+            while b"\r\n\r\n" not in got:  # the whole request first: a close with its body unread resets it
+                got += conn.recv(65536)
+            head, rest = got.split(b"\r\n\r\n", 1)
+            length = int(next((ln.split(b":")[1] for ln in head.split(b"\r\n")
+                               if ln.lower().startswith(b"content-length")), b"0"))
+            while len(rest) < length:
+                rest += conn.recv(65536)
+            conn.sendall(b"HTTP/1.0 201 Created\r\nContent-Length: %d\r\n\r\n%s" % (len(body), body))
+            conn.close()
 
     t = threading.Thread(target=answer, daemon=True)
     t.start()
@@ -232,6 +236,7 @@ def test_an_answer_without_the_g3_wire_is_unavailable_never_a_pending_approval(
     error = _error(err)
     assert error["code"] == "UNAVAILABLE" and error["details"]["reason"] == "g3_not_g3" and code == 10
     assert "waiting for the operator" not in err
+    assert "aew g3: the G3 service does not answer: the answer on" in err  # the probe found it not G3's first
 
 
 def test_a_stalled_service_ends_the_wait_by_the_approvals_expiry_not_a_request_timeout_later(

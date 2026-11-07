@@ -521,14 +521,14 @@ def unavailable(missing_tools: dict[str, Any] | None, directory: Path | None = N
              "fallback": bind.fallback((eff.get(str(d.get("provider"))) or {}).get("record"))} for d in stubs]
 
 
-def available(tools: dict[str, Any] | None) -> list[dict[str, str]]:
+def available(tools: dict[str, Any] | None, directory: Path | None = None) -> list[dict[str, str]]:
     """The tools a contained run has, from its self-test (``probe.self_test``'s ``tools``, as its label records it):
     each one a copy served, AEW's or the host's, as ``{tool, purpose}``, in the plan's order. Its system text names
     them, so an agent knows them by the names it calls them, `yq-go` and `uctags` among them (the Lead's ruling on
     card-capability resolution, 2026-11-07). A run's own report is not taken on trust: only a served copy of a provider
     in force, under that provider's own command, is named."""
     try:
-        eff = status.effective(store.read()) if tools else {}
+        eff = status.effective(store.read(directory)) if tools else {}
     except AEWError:  # never a reason a launch fails (CAPR-12): with no register read, no tool is named
         eff = {}
     out = []

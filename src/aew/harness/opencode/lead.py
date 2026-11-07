@@ -566,6 +566,14 @@ class ContainedLead:
             sys.stderr.write(f"aew opencode: {line}.\n")
         network: netns.RunNetwork | None = None
         try:
+            store = state / "xdg-data" / "opencode" / login.DB
+            try:  # every contained session starts with no saved permission, or does not start (E118)
+                login.clear_saved_permissions(store, state)
+            except (OSError, sqlite3.Error) as exc:
+                raise ContainmentUnavailable(
+                    f"the contained Lead starts with no saved permissions, and its store's could not be cleared "
+                    f"({type(exc).__name__}: {exc}); {login.clear_failure_step(store, exc)}",
+                    reason="saved_permissions", path=str(store)) from None
             if layout.private_network:
                 network = netns.RunNetwork.start_lead(
                     layout, keys=self.keys, provider_env=self.provider_env, policy=policy, env=self.base,
@@ -657,6 +665,7 @@ class ContainedLead:
         from aew.harness import containment
 
         db = state / "xdg-data" / "opencode" / login.DB
+        login.own_store(db, state)
         if not db.is_file():
             subprocess.run(containment.bwrap_argv(layout, [*binary_command(), "session", "list"], cwd=project,
                                                   path=inside.get("PATH")),
@@ -664,10 +673,12 @@ class ContainedLead:
                            check=False)
         if not db.is_file():
             raise FileNotFoundError(f"OpenCode made no database at {db}")
+        login.own_store(db, state)  # as OpenCode left it
         now = int(time.time() * 1000)
         con = sqlite3.connect(db, timeout=login.BUSY_TIMEOUT_S)
         try:
             with con:
+                login.require_schema(con, "credential", login.CREDENTIAL_SCHEMA)  # else skipped, as any failure
                 con.execute("DELETE FROM credential WHERE id LIKE 'cred_aew_%'")
                 for provider, token in sorted(sentinels.items()):
                     entry = self.refreshing[provider]
@@ -676,10 +687,8 @@ class ContainedLead:
                     value = {"type": "oauth", "methodID": entry.method, "refresh": "aew-relay-no-refresh",
                              "access": token, "expires": now + INSIDE_LOGIN_S * 1000, "metadata": meta}
                     con.execute("UPDATE credential SET active = 0 WHERE integration_id = ?", (provider,))
-                    con.execute("INSERT INTO credential (id, integration_id, label, value, method_id, active, "
-                                "time_created, time_updated) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
-                                (f"cred_aew_{provider}", provider, "AEW relay", json.dumps(value), entry.method, now,
-                                 now))
+                    row = (f"cred_aew_{provider}", provider, "AEW relay", json.dumps(value), entry.method, 1, now, now)
+                    con.execute(login.CREDENTIAL_INSERT, row)
         finally:
             con.close()
 

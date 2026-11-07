@@ -56,7 +56,7 @@ flowchart LR
     proc_aew_harness_supervisor -->|"19 functions"| path_local
     no_writer -->|"1 function"| path_coordination
     no_writer -->|"2 functions"| path_history
-    no_writer -->|"16 functions"| path_local
+    no_writer -->|"17 functions"| path_local
     no_writer -->|"1 function"| path_pricing
     no_writer -->|"2 functions"| path_records
     no_writer -->|"1 function"| path_state
@@ -75,7 +75,7 @@ flowchart LR
     path_decisions -.->|"4 functions"| no_reader
     path_evidence -.->|"9 functions"| no_reader
     path_history -.->|"3 functions"| no_reader
-    path_local -.->|"39 functions"| no_reader
+    path_local -.->|"41 functions"| no_reader
     path_policy -.->|"4 functions"| no_reader
     path_pricing -.->|"3 functions"| no_reader
     path_project_yaml -.->|"10 functions"| no_reader
@@ -106,7 +106,7 @@ flowchart LR
 | `evidence` | other entries of .aew | `aew` (3) | `aew` (2) | 0 | 9 |
 | `history` | other entries of .aew | `aew` (1) | - | 2 | 3 |
 | `knowledge` | other entries of .aew | `aew` (2) | `aew` (1) | 0 | 0 |
-| `local` | masked from a contained run | `aew` (28), `aew dashboard serve` (2), `aew.harness.supervisor` (19) | `aew` (6), `aew dashboard serve` (1), `aew.harness.supervisor` (8) | 16 | 39 |
+| `local` | masked from a contained run | `aew` (28), `aew dashboard serve` (2), `aew.harness.supervisor` (19) | `aew` (6), `aew dashboard serve` (1), `aew.harness.supervisor` (8) | 17 | 41 |
 | `policy` | other entries of .aew | `aew` (2) | `aew` (1) | 0 | 4 |
 | `pricing` | other entries of .aew | - | - | 1 | 3 |
 | `project.yaml` | other entries of .aew | `aew` (2) | - | 0 | 10 |
@@ -151,6 +151,7 @@ The `writers` fact of the `writers` records.
 - `aew.harness.lead_broker:lead_run_dir`: no static call chain from any entry point's declaring function reaches this writer (1 record)
 - `aew.harness.lead_broker:record_label`: no static call chain from any entry point's declaring function reaches this writer (1 record)
 - `aew.harness.opencode.lead:ContainedLead._seed_logins`: no static call chain from any entry point's declaring function reaches this writer (1 record)
+- `aew.harness.opencode.login:clear_saved_permissions`: no static call chain from any entry point's declaring function reaches this writer (1 record)
 - `aew.harness.tool_calls:_rotate`: no static call chain from any entry point's declaring function reaches this writer (1 record)
 
 ### Readers of an entry
@@ -167,7 +168,7 @@ The `entry_points` fact of the `concurrency` records.
 
 ### Not drawn by entry point
 
-- Writes by functions the call graph attributes to no entry point: 30 (entry, function) pairs, drawn only from the box "written by functions no entry point reaches".
-- Reads by functions no record reaches from an entry point: 101 (entry, function) pairs, drawn only into the box "read by functions no entry point reaches"; each is in the layout page with its function.
+- Writes by functions the call graph attributes to no entry point: 31 (entry, function) pairs, drawn only from the box "written by functions no entry point reaches".
+- Reads by functions no record reaches from an entry point: 103 (entry, function) pairs, drawn only into the box "read by functions no entry point reaches"; each is in the layout page with its function.
 - 50 write sites outside `.aew` and 52 write sites this reading could not place belong to no entry of the map (the writers page lists them).
 - The bridge and the network. No record attributes a bridge call, or a route served, to the process that makes or serves it; the routes and tools are in [interfaces.md](interfaces.md), and what each process is stands in its reason above. Which entry points run contained is not a fact of the records either.

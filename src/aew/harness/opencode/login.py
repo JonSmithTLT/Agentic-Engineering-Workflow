@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import stat
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,6 +38,95 @@ XDG_DEFAULTS = {"data": (".local", "share"), "config": (".config",), "state": ("
 
 
 UNKNOWN = "unknown"  # a row in a shape AEW does not know: nothing of it is read out
+# The ``credential`` table as OpenCode 2.0.18's migrations leave it (read in the pinned bundle): each column's name and
+# declared type, in order. The Lead's login seed writes only to a table exactly like it, and skips any other, so a
+# newer OpenCode's schema is met by not writing, never by a row in a shape AEW guessed at (E118).
+CREDENTIAL_SCHEMA = (("id", "text"), ("integration_id", "text"), ("label", "text"), ("value", "text"),
+                     ("connector_id", "text"), ("method_id", "text"), ("active", "integer"),
+                     ("time_created", "integer"), ("time_updated", "integer"))
+CREDENTIAL_COLUMNS = ("id", "integration_id", "label", "value", "method_id", "active", "time_created", "time_updated")
+# S608: the statement is built from the constant column names above; the values are bound parameters.
+CREDENTIAL_INSERT = (f"INSERT INTO credential ({', '.join(CREDENTIAL_COLUMNS)}) "  # noqa: S608
+                     f"VALUES ({', '.join('?' * len(CREDENTIAL_COLUMNS))})")
+# Where 2.0.18 keeps each session's own permission rules (evaluated after the agent's): the ``permission`` column of
+# its session table, ``session_v2`` (``session`` before the migration that renamed it), read in the pinned bundle.
+SESSION_TABLES = ("session_v2", "session")
+SESSION_RULES_COLUMN = "permission"
+STORE_OUTSIDE_STATE = "lead_store_outside_state"
+
+
+class StoreSchemaChanged(sqlite3.DatabaseError):
+    """A table of an OpenCode store is not the one AEW knows (2.0.18's)."""
+
+
+def _columns(con: sqlite3.Connection, table: str) -> list[tuple[str, str]]:
+    return [(row[1], str(row[2]).lower()) for row in con.execute(f"PRAGMA table_info({table})")]
+
+
+def require_schema(con: sqlite3.Connection, table: str, schema: tuple[tuple[str, str], ...]) -> None:
+    """Raise :class:`StoreSchemaChanged` unless ``table``'s columns are exactly ``schema``: the same names, declared
+    types and order, none missing and none extra."""
+    have = _columns(con, table)
+    if have != list(schema):
+        names, known = dict(have), dict(schema)
+        diff = [*(f"no {n}" for n in known if n not in names), *(f"an extra {n}" for n in names if n not in known),
+                *(f"{n} {names[n]}, not {known[n]}" for n in known if n in names and names[n] != known[n])]
+        raise StoreSchemaChanged(f"the {table} table is not OpenCode 2.0.18's: "
+                                 f"{', '.join(diff) or 'its columns are in another order'}")
+
+
+def own_store(db: Path, state: Path) -> None:
+    """Refuse (``CONTAINMENT_UNAVAILABLE``, :data:`STORE_OUTSIDE_STATE`) unless the Lead's store, its directory and
+    each file SQLite keeps beside it, where present, are a regular file (a directory for the directory) whose real path
+    lies inside the Lead's state directory: AEW writes that store on the host, so it writes nothing else (E118)."""
+    from aew.errors import ContainmentUnavailable
+
+    root = Path(os.path.realpath(state))
+    for path in (db.parent, db, *(db.with_name(db.name + s) for s in SIDECARS)):
+        if not os.path.lexists(path):
+            continue
+        kind = stat.S_ISDIR if path == db.parent else stat.S_ISREG
+        if not kind(os.lstat(path).st_mode) or not Path(os.path.realpath(path)).is_relative_to(root):
+            raise ContainmentUnavailable(
+                f"the contained Lead's OpenCode store must be a regular file inside its state directory ({state}), "
+                f"and {path} is not: move it aside, then start `aew opencode` again", reason=STORE_OUTSIDE_STATE,
+                path=str(path))
+
+
+def clear_failure_step(db: Path, exc: BaseException) -> str:
+    """What the operator does when the Lead's store could not be cleared: wait for a busy store, else move it aside."""
+    if isinstance(exc, sqlite3.OperationalError) and any(w in str(exc).lower() for w in ("locked", "busy")):
+        return f"start `aew opencode` again once nothing holds {db}"
+    return (f"move {db} aside (OpenCode makes a new one, without the Lead's earlier sessions), then start "
+            f"`aew opencode` again")
+
+
+def clear_saved_permissions(db: Path, state: Path) -> int:
+    """Remove every saved permission and every session's own permission rules from the contained Lead's own OpenCode
+    store (never the operator's, which AEW only reads), and return how many rows changed: the contained Lead starts
+    each session with none (E118). OpenCode 2.0.18 keeps the saved ones in the ``permission`` table, in either of its
+    two schemas, so the whole table is cleared whatever its columns, and a session's rules in its session table's
+    ``permission`` column (:data:`SESSION_TABLES`), set to null. No database, or no such table, means nothing is kept;
+    a session table without that column is a schema AEW does not know (:class:`StoreSchemaChanged`). The store must be
+    the Lead's own (:func:`own_store`). A failure raises (:class:`OSError`, :class:`sqlite3.Error`), for the caller to
+    refuse the start."""
+    own_store(db, state)
+    if not db.is_file():
+        return 0
+    con = sqlite3.connect(db, timeout=BUSY_TIMEOUT_S)
+    try:
+        with con:
+            tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            changed = con.execute("DELETE FROM permission").rowcount if "permission" in tables else 0
+            for table in (t for t in SESSION_TABLES if t in tables):
+                if SESSION_RULES_COLUMN not in dict(_columns(con, table)):
+                    raise StoreSchemaChanged(f"the {table} table has no {SESSION_RULES_COLUMN} column")
+                # S608: the table and column names are the constants above
+                changed += con.execute(f"UPDATE {table} SET {SESSION_RULES_COLUMN} = NULL "  # noqa: S608
+                                       f"WHERE {SESSION_RULES_COLUMN} IS NOT NULL").rowcount
+            return changed
+    finally:
+        con.close()
 
 
 @dataclass(frozen=True)

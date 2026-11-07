@@ -369,3 +369,30 @@ def test_the_logged_revision_before_is_the_one_the_call_started_from(held):
     assert done["out"]["ok"]
     [line] = tool_calls.read(engine.aew_root)
     assert line["revision_before"] == line["revision_after"] == rev + 1, line
+
+
+# ------------------------------------------------------------------------------------------- the broker's end
+
+
+def test_a_closed_lead_broker_has_stopped_its_bridge_and_removed_its_endpoint(tmp_path, monkeypatch):
+    """E128: `aew opencode`'s refusal exits right after the broker's close. The close waits, within WAKE_TIMEOUT_S, for
+    its bridge's stop, so the process never exits with that stop still running on a daemon thread and its private
+    directory left behind. The stop is delayed at the race point, as the unit pin does."""
+    import os
+
+    from aew.harness import bridge
+
+    real = bridge.stop_listener
+
+    def delayed(*args, **kwargs):
+        time.sleep(0.5)  # less than WAKE_TIMEOUT_S, and far more than close() takes without waiting
+        real(*args, **kwargs)
+
+    monkeypatch.setattr(bridge, "stop_listener", delayed)
+    p = sample_project(tmp_path)
+    broker = lead_broker.LeadBroker(Engine.discover(p.root), p.token)
+    broker.start()
+    private = broker.server.private_dir
+    broker.close()
+    assert not broker.server._stopper.is_alive(), "the broker's close returned before its bridge stopped"
+    assert not (private and os.path.exists(private)), "the broker's close left its bridge's private directory"

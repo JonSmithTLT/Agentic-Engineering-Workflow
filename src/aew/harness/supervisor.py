@@ -593,6 +593,7 @@ class Supervisor:
         self._checks.end()
         if self.bridge is not None:
             self.bridge.close()
+            self.bridge.wait_stopped()  # bounded: the supervisor exits soon after, and the stop finishes first (E128)
         try:
             if self.adapter is not None:
                 self._terminate_adapter()

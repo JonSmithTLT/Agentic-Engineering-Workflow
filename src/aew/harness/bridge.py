@@ -107,8 +107,10 @@ class BridgeServer:
         self.address, family, self._private_dir = private_address()
         self._listener = Listener(self.address, family=family, authkey=self.key)
         self._closed = threading.Event()
+        self._closing = threading.Lock()  # close() sets ``_closed`` and starts ``_stopper`` as one step
         self._serial = threading.Lock()  # one engine operation at a time
         self._thread = threading.Thread(target=self._serve, name="aew-bridge", daemon=True)
+        self._stopper = threading.Thread(target=self._wake, name="aew-bridge-stop", daemon=True)
         self.requests = 0
         self.refused = 0
         # Telemetry: per operation, how many requests succeeded ("ok") or were refused, by error code. Never
@@ -194,12 +196,28 @@ class BridgeServer:
 
     def close(self) -> None:
         """Stop serving. Requests already waiting are refused; new connections fail."""
-        if self._closed.is_set():
-            return
-        # No waiting for an operation in flight: the engine re-checks the credential under the control lock
-        # before it writes anything, so an operation that races a revocation is refused there.
-        self._closed.set()
-        threading.Thread(target=self._wake, daemon=True).start()
+        with self._closing:
+            if self._closed.is_set():
+                return
+            # No waiting for an operation in flight: the engine re-checks the credential under the control lock
+            # before it writes anything, so an operation that races a revocation is refused there. The stop runs on
+            # its own thread, so a handler or watchdog that closes the bridge is never held; the owner waits for it
+            # with ``wait_stopped`` when its session ends.
+            self._closed.set()
+            self._stopper.start()
+
+    def wait_stopped(self, timeout: float | None = None) -> bool:
+        """Wait, at most ``timeout`` (``WAKE_TIMEOUT_S`` by default), for :meth:`close`'s stop: the listener closed and
+        its private directory removed. True once stopped. The owner calls it when its session ends: a process that
+        exits right after a close otherwise exits while the stop is still running on a daemon thread, and leaves the
+        private directory behind (E128: 4 refusals in 10 on the Rocky VM left theirs)."""
+        with self._closing:
+            started = self._closed.is_set()
+        if not started:
+            return False
+        if self._stopper is not threading.current_thread():
+            self._stopper.join(WAKE_TIMEOUT_S if timeout is None else timeout)
+        return not self._stopper.is_alive()
 
     def _wake(self) -> None:
         stop_listener(self._listener, self.address, "AF_PIPE" if IS_WINDOWS else "AF_UNIX", self.key,

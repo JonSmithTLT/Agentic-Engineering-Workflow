@@ -70,6 +70,62 @@ def test_closing_the_bridge_releases_its_endpoint_even_when_the_serving_thread_w
         release.set()
 
 
+STOP_DELAY_S = 0.5  # E128's race point: the stop still running when close() has returned, injected
+
+
+def _a_delayed_stop(monkeypatch: Any) -> None:
+    real = bridge.stop_listener
+
+    def delayed(*args: Any, **kwargs: Any) -> None:
+        time.sleep(STOP_DELAY_S)
+        real(*args, **kwargs)
+
+    monkeypatch.setattr(bridge, "stop_listener", delayed)
+
+
+def test_a_closed_bridge_whose_owner_waits_is_stopped_with_its_endpoint_removed(monkeypatch):
+    """E128: close() returns before its stop has run, so an owner that exits next left the stop on a daemon thread and
+    the private directory behind. ``wait_stopped`` waits for it, within WAKE_TIMEOUT_S."""
+    _a_delayed_stop(monkeypatch)
+    server = bridge.BridgeServer(lambda op, args: None)
+    server.start()
+    server.close()
+    assert server._stopper.is_alive()  # the delay holds the stop: close() did not wait
+    assert server.wait_stopped() is True
+    assert not server._stopper.is_alive()
+    assert not (server.private_dir and _exists(server.private_dir)), "the wait returned before the endpoint went"
+    with pytest.raises(OSError):  # the endpoint is gone
+        Client(server.address, family="AF_PIPE" if bridge.IS_WINDOWS else "AF_UNIX", authkey=server.key)
+    server._thread.join(5)
+    assert not server._thread.is_alive()
+
+
+def test_waiting_for_a_bridge_stop_is_bounded(monkeypatch):
+    """A stop that does not finish never holds its owner past the bound; the stop goes on, on its own thread."""
+    monkeypatch.setattr(bridge, "WAKE_TIMEOUT_S", 0.2)
+    release = threading.Event()
+    real = bridge.stop_listener
+    monkeypatch.setattr(bridge, "stop_listener", lambda *a, **k: (release.wait(30), real(*a, **k)))
+    server = bridge.BridgeServer(lambda op, args: None)
+    server.start()
+    try:
+        server.close()
+        assert _returns_within(lambda: server.wait_stopped(), 10) < 5
+        assert server.wait_stopped(0) is False
+    finally:
+        release.set()
+    assert server.wait_stopped(10) is True
+
+
+def test_a_bridge_never_closed_has_no_stop_to_wait_for():
+    server = bridge.BridgeServer(lambda op, args: None)
+    try:
+        assert server.wait_stopped(0) is False
+    finally:
+        server.close()
+        server.wait_stopped()
+
+
 def _exists(path: str) -> bool:
     import os
 

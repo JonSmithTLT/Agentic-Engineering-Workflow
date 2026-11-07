@@ -302,6 +302,7 @@ class LeadBroker:
             self.loop.close()  # an auto-run stage in flight finishes before the credential goes
         if self._beat is not None:
             self._beat.close()  # closed_at: a clean end, never a crash
+        self.server.wait_stopped()  # bounded: no stop left running on a daemon thread as the process exits (E128)
         self._token = ""
 
     def _require_lead(self, state: dict[str, Any], token: str) -> None:

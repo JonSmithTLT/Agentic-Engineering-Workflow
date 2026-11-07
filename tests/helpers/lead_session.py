@@ -223,14 +223,31 @@ def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, st
         result = json.loads(text) if text else None
     except ValueError:
         result = None
-    error = None
-    if proc.returncode:
-        try:
-            error = json.loads(err.decode()[err.decode().index("{"):])["error"]
-        except (ValueError, KeyError):
-            error = None
-    return {"code": proc.returncode, "result": result, "stdout": out, "stderr": err.decode("utf-8", "replace"),
-            "error": error, "restored": restored, "terminal": bytes(shown)}
+    stderr = err.decode("utf-8", "replace")
+    error, after = refusal_of(stderr) if proc.returncode else (None, None)
+    return {"code": proc.returncode, "result": result, "stdout": out, "stderr": stderr, "error": error,
+            "after": after, "restored": restored, "terminal": bytes(shown)}
+
+
+def refusal_of(stderr: str) -> tuple[dict[str, Any] | None, str | None]:
+    """``(error, after)``: the CLI's refusal on ``stderr`` (the JSON object it writes, which starts on a line of its
+    own) and whatever follows it, or ``(None, None)`` when there is none. ``after`` is ``""`` when the refusal is the
+    last thing written. Located line by line, so a start line or a later writer neither hides the refusal nor passes
+    unseen (E128: three CI failures where the refusal did not parse, with no stderr shown)."""
+    decoder = json.JSONDecoder()
+    at = 0
+    while True:
+        start = stderr.find("{", at)
+        if start < 0:
+            return None, None
+        if start == 0 or stderr[start - 1] == "\n":
+            try:
+                doc, end = decoder.raw_decode(stderr, start)
+            except ValueError:
+                doc = None
+            if isinstance(doc, dict) and isinstance(doc.get("error"), dict):
+                return doc["error"], stderr[end:].strip()
+        at = start + 1
 
 
 def agent_session(tmp_path: Path, steps: list[dict[str, Any]] | Callable[[HarnessLab], list[dict[str, Any]]], *,

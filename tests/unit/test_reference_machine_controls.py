@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import reference_render
 
 from aew.engine import transitions as T
 
@@ -34,9 +35,9 @@ CTX = C.Context(ROOT)  # the sources are parsed once for every test that builds 
 
 @cache
 def rendered_index() -> dict[str, Any]:
-    """The index, rendered in memory (it is not committed); ``test_reference.py`` holds the committed pages to what the
-    code gives."""
-    return json.loads(reference.render_files(ROOT)[reference.INDEX])
+    """The index, rendered in memory (it is not committed) once per process for every module that reads it
+    (``tests/helpers``); ``test_reference.py`` holds the committed pages to what the code gives."""
+    return json.loads(reference_render.rendered()[reference.INDEX])
 
 
 def site(module: str, symbol: str, form: str = "set_state", checked: bool = False):

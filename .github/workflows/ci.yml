@@ -8,7 +8,8 @@ name: ci
 #                        the tier the paths give; `tier` the one the run takes (in shadow mode, full for fast). It
 #                        also sizes the lanes (tools/ci/shard_plan.py, register E44): each lane's shard count, and
 #                        the durations its shards balance on, from the rolling history of main's green push runs
-#   core (per OS)        fast lane (unit + frozen-spec pin), then the serial lane (no xdist)
+#   core (per OS)        fast lane (unit + frozen-spec pin, xdist) and serial lane (no xdist), every tier: one job per
+#                        shard of each, in as many shards as the tier job computed
 #   lanes (per OS)       integration | acceptance | regression | adversarial, xdist inside each job (full tier only),
 #                        in as many shards as the tier job computed; never written by hand
 #   fastbase             the whole fast lane at the base tip under coverage, when the decision is fast (plan v7 §5)
@@ -60,6 +61,7 @@ jobs:
       decision: ${{ steps.tier.outputs.decision }}
       tier: ${{ steps.tier.outputs.tier }}
       modules: ${{ steps.tier.outputs.modules }}
+      core_matrix: ${{ steps.shards.outputs.core_matrix }}
       lanes_matrix: ${{ steps.shards.outputs.lanes_matrix }}
     steps:
       - uses: actions/checkout@v7
@@ -102,11 +104,14 @@ jobs:
           restore-keys: shard-durations-
       - name: PyYAML, for the lanes job's deadline as ci.yml sets it (tests/helpers/bounds.py)
         run: python -m pip install "PyYAML>=6.0" "pytest>=8"
+      # The gate's runners, each on the one Python its platform is tested on: Linux on 3.11 (the Rocky Linux 8
+      # AppStream and SPT wheelhouse target), Windows on 3.13 (the developer workstation).
       - id: shards
         name: Each lane's shard count, and the durations its shards balance on (tools/ci/shard_plan.py)
         run: >-
           python tools/ci/shard_plan.py --history shard-history/history.json
           --seed tests/durations.json --durations-out "$RUNNER_TEMP/shard-durations/durations.json"
+          --runner ubuntu-latest:3.11 --runner windows-latest:3.13
           --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
       # One table for the whole run: every shard of a lane must cut the same partition (assurance proves it ran each
       # test once).
@@ -116,16 +121,16 @@ jobs:
           path: ${{ runner.temp }}/shard-durations/
           retention-days: 30
 
+  # The fast and serial lanes, in every tier: one job per shard of each, so neither lane's session shares a deadline
+  # with the other's. Sized for every run like the `lanes` job (tools/ci/shard_plan.py: the fewest shards that fit on
+  # a runner twice as slow). Until 2026-11-07 this was one job per runner running both lanes one after the other under
+  # one deadline, which nothing sized: the fast lane grew until a slow runner left the serial lane no time.
   core:
-    name: core (${{ matrix.os }})
+    name: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
+    needs: changes
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            python: "3.11"   # Rocky Linux 8 AppStream / SPT wheelhouse target
-          - os: windows-latest
-            python: "3.13"   # developer workstation
+      matrix: ${{ fromJSON(needs.changes.outputs.core_matrix) }}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 24
@@ -148,34 +153,44 @@ jobs:
         run: |
           mkdir -p "${{ runner.temp }}/coverage"
           echo "COVERAGE_FILE=${{ runner.temp }}/coverage/.coverage" >> "$GITHUB_ENV"
-      # Under xdist (strategy §5: everything but the serial lane may run in parallel). Single-process, this lane took
-      # most of the job's 1200 s on a good runner and left the serial lane too little on a slow one (2026-10-22).
+      - uses: actions/download-artifact@v8
+        with:
+          name: shard-durations
+          path: ${{ runner.temp }}/shard-durations
+      # Under xdist (strategy §5: everything but the serial lane may run in parallel). `--durations-file=` is one word,
+      # as in the lanes job.
       - name: fast lane (unit, schemas, store model, frozen-spec pin)
+        if: matrix.lane == 'fast'
         run: >-
           ${{ runner.os == 'Linux' && 'python -m coverage run -m pytest' || 'python -m pytest' }}
           -q -p no:cacheprovider -n auto --dist worksteal --max-worker-restart 0 --durations=20 --lane fast
+          --shard ${{ matrix.shard }}/${{ matrix.of }}
+          "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
           --test-timeout 600 --session-deadline 1200
-          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast.json"
+          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-fast-${{ matrix.shard }}.json"
       - name: serial lane (racing writers, real process kills, pty takeover) — never parallel
-        if: success() || failure()
+        if: matrix.lane == 'serial'
         run: >-
-          python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600
-          --session-deadline 1200
-          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial.json"
+          python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial
+          --shard ${{ matrix.shard }}/${{ matrix.of }}
+          "--durations-file=${{ runner.temp }}/shard-durations/durations.json"
+          --test-timeout 600 --session-deadline 1200
+          "--lane-report=${{ runner.temp }}/lane-reports/${{ runner.os }}-serial-${{ matrix.shard }}.json"
       # Named per run attempt: `download-artifact` keeps one artifact of a name, not always the newest, so a re-run's
       # report must not share its earlier attempt's name (assurance keeps each shard's latest attempt).
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: lane-report-${{ runner.os }}-core-attempt-${{ github.run_attempt }}
+          name: lane-report-${{ runner.os }}-core-${{ matrix.lane }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/lane-reports/
           retention-days: 14
       # Only from a passing job: the gate reads coverage only when every shard's latest attempt passed, and a failed
-      # attempt's data, under the same name as its re-run's, could be the one `download-artifact` keeps.
+      # attempt's data, under the same name as its re-run's, could be the one `download-artifact` keeps. The serial
+      # lane runs without coverage, as it always has.
       - uses: actions/upload-artifact@v7
-        if: success() && runner.os == 'Linux'
+        if: success() && runner.os == 'Linux' && matrix.lane == 'fast'
         with:
-          name: coverage-core-${{ runner.os }}
+          name: coverage-core-fast-${{ matrix.shard }}-${{ runner.os }}
           path: ${{ runner.temp }}/coverage/
           include-hidden-files: true
           if-no-files-found: ignore
@@ -446,8 +461,8 @@ jobs:
         env:
           BASE_RESULT: ${{ needs.fastbase.result }}
         run: >-
-          python tools/ci/coverage_premise.py --base fastbase-data --head coverage-data/coverage-core-Linux
-          --base-result "$BASE_RESULT" --summary "$GITHUB_STEP_SUMMARY"
+          python tools/ci/coverage_premise.py --base fastbase-data --head coverage-data
+          --head-name "coverage-core-fast-*-Linux" --base-result "$BASE_RESULT" --summary "$GITHUB_STEP_SUMMARY"
       - id: shadow
         name: "Shadow: the fast tier's checks, computed and reported, never gating (plan v7 §7; PR 1b enforces)"
         if: always() && steps.tier.outputs.decision == 'fast' && steps.tier.outputs.tier != 'fast'
@@ -463,8 +478,8 @@ jobs:
             --require linux,win32 --tier fast --event "$EVENT" \
             --changed-modules "$RUNNER_TEMP/changed-modules.txt" > tier-shadow/lane-check.txt
           lanecheck=$?
-          python tools/ci/coverage_premise.py --base fastbase-data --head coverage-data/coverage-core-Linux \
-            --base-result "$BASE_RESULT" --out tier-shadow/premise.json > tier-shadow/premise.txt
+          python tools/ci/coverage_premise.py --base fastbase-data --head coverage-data \
+            --head-name "coverage-core-fast-*-Linux" --base-result "$BASE_RESULT" --out tier-shadow/premise.json > tier-shadow/premise.txt
           premise=$?
           cp "$RUNNER_TEMP/changed-modules.txt" tier-shadow/
           printf '{"schema": "aew/tier-shadow/v1", "fastbase": "%s", "lanecheck_exit": %d, "premise_exit": %d}\n' \

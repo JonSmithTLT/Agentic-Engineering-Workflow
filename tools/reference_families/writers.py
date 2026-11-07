@@ -390,7 +390,9 @@ def _const_ref(program: F.Program, mod: F.Module, node: ast.AST) -> tuple[str, s
 def path_constants(program: F.Program) -> set[tuple[str, str]]:
     """The module-level constants that are used to build a path: an operand of ``/``, a part of an f-string, an argument
     of ``Path`` or ``os.path.join`` or of a write primitive. A constant that merely holds the same text (a key, a label)
-    is not one."""
+    is not one. Computed once per program: every analysis of it asks."""
+    if program.path_constants is not None:
+        return set(program.path_constants)
     used: set[tuple[str, str]] = set()
     for mod in program.modules.values():
         for node in ast.walk(mod.tree):
@@ -408,6 +410,7 @@ def path_constants(program: F.Program) -> set[tuple[str, str]]:
                     ref = _const_ref(program, mod, sub_node)
                     if ref is not None:
                         used.add(ref)
+    program.path_constants = frozenset(used)
     return used
 
 
@@ -488,6 +491,18 @@ def analyse(program: F.Program, top_level: frozenset[str], roots: dict[tuple[str
                     {k: sorted(v) for k, v in sorted(outside.items())}, sorted(root_sites),
                     named_by(program, evaluator, top_level), sites, reached.entry_points, reached.undecided,
                     dict(kinds or {}), roles, cut if cli is not None else None)
+
+
+def whole_analysis(ctx: C.Context) -> Analysis:
+    """The analysis of the whole package with the entry points' reach and the CLI's roles, made once per render: the
+    writers and concurrency families read the same one."""
+    from aew import process_kind  # the owner of the entry points' kinds, at run time (reference.py checked the tree)
+
+    def make() -> Analysis:
+        program = F.program_of(ctx)
+        kinds = {key: kind for key, (kind, _why) in process_kind.ENTRY_POINTS.items()}
+        return analyse(program, frozenset(TOP_LEVEL), R.roots_of(ctx, set(kinds)), kinds, R.cli_of(ctx, program))
+    return ctx.once("writers-analysis", make)
 
 
 def derived_top_level(sites: list[Site]) -> set[str]:
@@ -842,13 +857,9 @@ def page(analysis: Analysis, records: list[C.Record], top_level: tuple[str, ...]
 
 
 def build(ctx: C.Context) -> C.Built:
-    from aew import process_kind  # the owner of the entry points' kinds, at run time (reference.py checked the tree)
-
-    trees = {name: (src.tree, src.is_package) for name, src in ctx.sources().items() if src.tree is not None}
-    kinds = {key: kind for key, (kind, _why) in process_kind.ENTRY_POINTS.items()}
     with F.measuring() as peaks:  # the program too: building it follows bases (`MRO_DEPTH`)
-        program = F.Program.of(trees)
-        analysis = analyse(program, frozenset(TOP_LEVEL), R.roots_of(ctx, set(kinds)), kinds, R.cli_of(ctx, program))
+        analysis = whole_analysis(ctx)
+        kinds = analysis.kinds
     records = records_of(analysis)
     problems = record_problems({r.id: r.as_json() for r in records}, kinds, analysis.roles, analysis.undecided)
     if problems:

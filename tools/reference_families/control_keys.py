@@ -54,6 +54,9 @@ class Inputs:
     bookkeeping: frozenset[str]  # the registry's engine bookkeeping keys
     trees: Mapping[str, ast.Module]  # module -> its parsed source
     packages: frozenset[str] = frozenset()  # the modules that are packages (a relative import resolves against them)
+    # The render's context, whose trees these are: its indexes and parsed program are reused, not built again (a
+    # planted case has none, and builds its own from ``trees``).
+    ctx: C.Context | None = None
 
 
 class _Dicts(C.Scoped):
@@ -88,13 +91,14 @@ def key_constants(trees: Mapping[str, ast.Module]) -> dict[str, list[tuple[str, 
     return {value: sorted(found) for value, found in out.items()}
 
 
-def _name_of(trees: Mapping[str, ast.Module], packages: frozenset[str], module: str, node: ast.Name
-             ) -> tuple[str, str, str] | None:
+def _name_of(trees: Mapping[str, ast.Module], packages: frozenset[str], module: str, node: ast.Name,
+             ctx: C.Context | None = None) -> tuple[str, str, str] | None:
     """The module, name and value of the string constant a name refers to: one of its own module, or imported."""
     own = _constants(trees[module])
     if node.id in own:
         return module, node.id, own[node.id]
-    imported = C.index_of(trees[module], module, module in packages).aliases.names.get(node.id)
+    index = ctx.index(module) if ctx is not None else C.index_of(trees[module], module, module in packages)
+    imported = index.aliases.names.get(node.id)
     if imported and "." in imported:
         owner, _, name = imported.rpartition(".")
         if owner in trees and name in _constants(trees[owner]):
@@ -102,8 +106,8 @@ def _name_of(trees: Mapping[str, ast.Module], packages: frozenset[str], module: 
     return None
 
 
-def initial_state(trees: Mapping[str, ast.Module], packages: frozenset[str], required: set[str]
-                  ) -> tuple[str, str, dict[str, tuple[str, str] | None], ast.Dict]:
+def initial_state(trees: Mapping[str, ast.Module], packages: frozenset[str], required: set[str],
+                  ctx: C.Context | None = None) -> tuple[str, str, dict[str, tuple[str, str] | None], ast.Dict]:
     """The module, symbol, keys and node of the dict literal that makes the control state: the one that names every key
     the schema requires. A key is a string, or a name for one (then its constant). Not exactly one is an error, never a
     guess."""
@@ -116,7 +120,7 @@ def initial_state(trees: Mapping[str, ast.Module], packages: frozenset[str], req
             for k in node.keys:
                 if isinstance(k, ast.Constant) and isinstance(k.value, str):
                     keys[k.value] = None
-                elif isinstance(k, ast.Name) and (named := _name_of(trees, packages, module, k)) is not None:
+                elif isinstance(k, ast.Name) and (named := _name_of(trees, packages, module, k, ctx)) is not None:
                     keys[named[2]] = (named[0], named[1])
             if symbol and required <= set(keys):
                 found.append((module, symbol, keys, node))
@@ -128,11 +132,12 @@ def initial_state(trees: Mapping[str, ast.Module], packages: frozenset[str], req
 
 
 def created_keys(trees: Mapping[str, ast.Module], packages: frozenset[str], module: str, symbol: str,
-                 literal: ast.Dict) -> dict[str, tuple[str, str]]:
+                 literal: ast.Dict, ctx: C.Context | None = None) -> dict[str, tuple[str, str]]:
     """The keys a function adds to the state the initial-state function hands it (``store.create(state, files)`` adds
     ``outbox``), each with the function that adds it: ``state["key"] = ...`` or ``state.setdefault("key", ...)`` on the
     parameter that receives the dict."""
-    program = F.Program.of({name: (tree, name in packages) for name, tree in trees.items()})
+    program = (F.program_of(ctx) if ctx is not None
+               else F.Program.of({name: (tree, name in packages) for name, tree in trees.items()}))
     mod = program.modules[module]
     func = mod.funcs[symbol]
     names = {name for name, values in func.assigns.items() if any(v is literal for v in values)}
@@ -175,8 +180,8 @@ def records_of(inp: Inputs) -> list[C.Record]:
     unit_def = (schema.get("$defs") or {}).get("work_unit") or {}
     unit_props, unit_required = set(unit_def.get("properties", {})), set(unit_def.get("required", []))
     constants = key_constants(inp.trees)
-    init_module, init_symbol, init_keys, literal = initial_state(inp.trees, inp.packages, required)
-    created = created_keys(inp.trees, inp.packages, init_module, init_symbol, literal)
+    init_module, init_symbol, init_keys, literal = initial_state(inp.trees, inp.packages, required, inp.ctx)
+    created = created_keys(inp.trees, inp.packages, init_module, init_symbol, literal, inp.ctx)
     closed = schema.get("additionalProperties") is False
     control_coverage = (C.complete(f"{SCHEMAS[0]}:{SCHEMAS[1]}", CONTROL_CHECKS) if closed else C.lower_bound(
         [C.unresolved_item(SCHEMAS[0], SCHEMAS[1], "the control schema allows keys it does not declare")]))
@@ -283,7 +288,7 @@ def build(ctx: C.Context) -> C.Built:
     inp = Inputs(schemas.schema("control"), tuple(base.V2_ONLY_KEYS),
                  {name: field.group for name, field in registry.store("control").items()},
                  frozenset(registry.bookkeeping), trees,
-                 frozenset(name for name, src in ctx.sources().items() if src.is_package))
+                 frozenset(name for name, src in ctx.sources().items() if src.is_package), ctx)
     records = records_of(inp)
     bad = problems({r.id: r.as_json() for r in records})
     if bad:

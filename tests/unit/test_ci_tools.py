@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -560,6 +561,49 @@ def test_the_budget_leaves_room_for_the_jobs_setup_on_a_runner_twice_as_slow():
     assert lane.budget_s == D1800.budget_s(shard_plan.DEFAULT_SETUP_S) == 844.0
 
 
+D1200 = shard_plan.Deadlines(1200.0, 1200.0)
+
+
+def core_jobs() -> list[tuple[str, str, str, tuple[str, ...]]]:
+    return shard_plan.lane_jobs(ROOT / ".github" / "workflows", shard_plan.CORE_LANES)
+
+
+def test_a_jobs_setup_is_the_least_any_of_its_lanes_measured_never_a_wait_behind_another_session():
+    """Until 2026-11-07 core ran the serial lane after the fast lane in one job, so the history has the serial lane
+    starting with ~350 s of its deadline left. That is a wait, not setup: read as setup it leaves the serial lane no
+    budget (1200 - 2 x 850 < 0) and sizes it at the 16-shard cap. Every job of a platform sets up alike, so the setup
+    is the least its lanes measured."""
+    history = sized_history({"tests/unit/test_a.py::t": 5.0}, lane="fast", remaining_s=1155.0)
+    for platform in history["lanes"]:
+        history["lanes"][platform]["tests/unit/test_s.py::t"] = "serial"
+        history["platforms"][platform]["tests/unit/test_s.py::t"] = [120.0]
+        history["job_remaining"][platform]["serial"] = [350.0]
+        history["overhead"][platform]["serial"] = [10.0]
+    sizings = shard_plan.plan(history, committed(), D1200, core_jobs())[0]
+    by = {(s.platform, s.lane): s for s in sizings}
+    assert by[("linux", "serial")].budget_s == D1200.budget_s(45.0) == 555.0  # the fast lane's 45 s of setup
+    assert by[("linux", "serial")].shards == 1 and not by[("linux", "serial")].warning
+    assert shard_plan.job_setup_s(history, "linux", ("serial",), D1200) == 850.0  # its own reading alone: the wait
+
+
+def test_the_serial_lane_is_sized_on_one_process_and_the_fast_lane_on_its_workers():
+    """The serial lane never runs under xdist (strategy §5): 1000 s of serial tests is 1000 s of one job, where the
+    same tests in the fast lane share its 4 workers."""
+    tests = {f"tests/unit/test_s.py::t{i}": 100.0 for i in range(10)}
+    for lane, shards in (("fast", 1), ("serial", 2)):
+        history = sized_history(tests, lane=lane, remaining_s=1200.0)
+        by = {(s.platform, s.lane): s for s in shard_plan.plan(history, committed(), D1200, core_jobs())[0]}
+        # fast: 1000 s over 4 workers is 250 s, under the 600 s budget; serial: 1000 s in one process needs 2
+        assert by[("linux", lane)].shards == shards, lane
+
+
+def test_the_gates_runners_are_read_from_the_tier_jobs_step_once():
+    assert shard_plan.gate_runners(ROOT / ".github" / "workflows") == [
+        ("ubuntu-latest", "3.11", "linux"), ("windows-latest", "3.13", "win32")]
+    with pytest.raises(SystemExit):
+        shard_plan.runners_of(["macos-latest:3.12"])  # Linux and Windows only
+
+
 def test_a_lane_that_no_shard_count_fits_is_a_warning_and_gets_the_closest_count_never_a_failure():
     one_long = {"tests/integration/test_x.py::huge": 1000.0, **{f"tests/integration/test_x.py::t{i}": 1.0
                                                                  for i in range(40)}}
@@ -709,8 +753,9 @@ def test_a_lane_report_records_how_much_of_the_jobs_deadline_its_session_started
     assert 900 < remaining <= 1000
 
 
-def test_the_matrix_is_shards_one_to_n_of_n_per_runner_and_lane_on_the_pythons_core_tests_on():
-    jobs = lane_jobs()
+@pytest.mark.parametrize("lanes", [shard_plan.LANES, shard_plan.CORE_LANES])
+def test_the_matrix_is_shards_one_to_n_of_n_per_runner_and_lane_on_the_pythons_core_tests_on(lanes):
+    jobs = shard_plan.lane_jobs(ROOT / ".github" / "workflows", lanes)
     sizings = [shard_plan.Sizing(p, lane, 2, 0, 0.0, 900.0) for _, _, p, lanes in jobs for lane in lanes]
     include = shard_plan.matrix(sizings, jobs)["include"]
     groups: dict[tuple[str, str], list[tuple[int, int]]] = {}
@@ -720,10 +765,11 @@ def test_the_matrix_is_shards_one_to_n_of_n_per_runner_and_lane_on_the_pythons_c
     for (os_, lane), shards in groups.items():
         n = shards[0][1]
         assert shards == [(k, n) for k in range(1, n + 1)], (os_, lane)
-    core = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]["core"]
-    pythons = {m["os"]: m["python"] for m in core["strategy"]["matrix"]["include"]}
-    assert {e["os"]: e["python"] for e in include} == pythons  # one Python per platform, the same as core's
-    assert {lane for _, lane in groups} == set(tier.LANES["full"]) - tier.FAST_LANES  # the full tier, less core's
+    # one Python per platform: Linux the SPT target's, Windows the workstation's, named once in the tier job's step
+    assert {e["os"]: e["python"] for e in include} == {"ubuntu-latest": "3.11", "windows-latest": "3.13"}
+    # core runs the fast and serial lanes, the lanes job the rest of the full tier's: between them, every lane once
+    assert {lane for _, lane in groups} == (tier.FAST_LANES if lanes == shard_plan.CORE_LANES
+                                             else set(tier.LANES["full"]) - tier.FAST_LANES)
 
 
 def test_the_committed_table_gives_every_lane_a_shard_count():
@@ -732,6 +778,8 @@ def test_the_committed_table_gives_every_lane_a_shard_count():
     seed = json.loads((ROOT / "tests" / "durations.json").read_text(encoding="utf-8"))
     counts = shard_plan.committed_counts(seed)
     assert {(p, lane) for _, _, p, lanes in lane_jobs() for lane in lanes} <= set(counts)
+    core = shard_plan.lane_jobs(ROOT / ".github" / "workflows", shard_plan.CORE_LANES)
+    assert {(p, lane) for _, _, p, lanes in core for lane in lanes} <= set(counts)  # core's lanes too (2026-11-07)
     assert seed["schema"] == "aew/test-durations/v1" and seed["sized_from"]
 
 
@@ -948,9 +996,10 @@ def test_the_sizer_reads_the_lanes_jobs_deadlines_where_ci_yml_sets_them_and_wri
     out, summary_md, table = tmp_path / "out.txt", tmp_path / "summary.md", tmp_path / "run" / "durations.json"
     assert shard_plan.main(["--history", str(history), "--seed", str(seed), "--durations-out", str(table),
                             "--github-output", str(out), "--summary", str(summary_md)]) == 0
-    line = out.read_text(encoding="utf-8").strip()
-    assert line.startswith("lanes_matrix=") and "\n" not in line
-    assert {e["of"] for e in json.loads(line.split("=", 1)[1])["include"]} == {1}
+    lines = dict(line.split("=", 1) for line in out.read_text(encoding="utf-8").strip().split("\n"))
+    assert set(lines) == {"core_matrix", "lanes_matrix"}  # each one line; core's fast and serial lanes sized too
+    assert {e["of"] for m in lines.values() for e in json.loads(m)["include"]} == {1}
+    assert {e["lane"] for e in json.loads(lines["core_matrix"])["include"]} == {"fast", "serial"}
     written = json.loads(table.read_text(encoding="utf-8"))
     assert written["platforms"]["linux"] == {"tests/integration/test_x.py::t": 5.0}
     assert written["shards"]["linux"]["integration"] == 1 and "median of 1" in written["sized_from"]
@@ -1552,7 +1601,9 @@ def test_ci_runs_the_lanes_only_in_the_full_tier_and_assurance_recomputes_the_ti
     assert "merge_group" in wf[True] and "push" in wf[True]  # PyYAML reads the `on:` key as True
     changes_run = next(s["run"] for s in jobs["changes"]["steps"] if "tools/ci/tier.py" in str(s.get("run", "")))
     assert jobs["lanes"]["needs"] == "changes" and jobs["lanes"]["if"] == "needs.changes.outputs.tier == 'full'"
-    assert "needs" not in jobs["core"] and "needs" not in jobs["static"]  # core and static run in every tier
+    # core and static run in every tier: core's shards come from the tier job, and it has no `if`
+    assert jobs["core"]["needs"] == "changes" and "if" not in jobs["core"] and "needs" not in jobs["static"]
+    assert jobs["core"]["strategy"]["matrix"] == "${{ fromJSON(needs.changes.outputs.core_matrix) }}"
     gate = jobs["assurance"]
     assert set(gate["needs"]) == {"changes", "core", "lanes", "web", "static", "fastbase"}
     assert gate["if"] == "always()"
@@ -1965,6 +2016,56 @@ def test_a_lane_job_over_20_minutes_warns_and_over_25_is_a_violation(minutes, le
     assert rec["run"]["wall_clock_s"] == max(40, 2 + minutes) * 60
 
 
+def test_the_job_deadlines_are_read_from_ci_yml_where_the_jobs_set_them():
+    """core runs the fast and serial lanes under one AEW_JOB_DEADLINE; each lanes shard has its own. Read from ci.yml
+    (through bounds), so a moved deadline moves the report with it."""
+    found = cost_record.job_deadlines()
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    for name in ("core", "lanes"):
+        block = re.split(r"\n  [a-z-]+:\n", ci.split(f"\n  {name}:\n", 1)[1], maxsplit=1)[0]  # this job's text only
+        set_here = re.search(r"AEW_JOB_DEADLINE=\$\(\( \$\(date \+%s\) \+ (\d+) \)\)", block)
+        assert set_here and found[name][0] == float(set_here.group(1)), name
+    assert found["core"][1] == {"fast", "serial"}
+
+
+# One session, `left` s on its job's deadline as it started and `wall` s long.
+def session(lane: str, left: float, wall: float, shard: str | None = "1/1") -> dict:
+    return timed("linux", lane, {ALL[0]: 1.0}, shard=shard, job_remaining_s=left, wall_s=wall)
+
+
+DEADLINES = {"core": (1200.0, frozenset({"fast", "serial"})), "lanes": (1800.0, frozenset({"X"}))}
+
+
+@pytest.mark.parametrize(("left", "wall", "warns"), [
+    (1170.0, 500.0, False),  # right: 530 of 1200 s used (44%)
+    (1170.0, 700.0, True),  # wrong: 730 of 1200 s used (61%): a runner twice as slow would not finish
+    (1170.0, 1165.0, True),  # the session met the deadline (2026-11-07's serial lane, behind the fast lane)
+])
+def test_a_job_whose_sessions_use_over_half_its_deadline_warns(left, wall, warns):
+    reports = [session("fast", left, wall, "1/2")]
+    f = cost_record.build(reports, None, None, deadlines=DEADLINES)["platforms"]["linux"]
+    (fast,) = f["deadlines"]
+    assert (fast["job"], fast["lane"], fast["shard"], fast["deadline_s"]) == ("core", "fast", "1/2", 1200.0)
+    assert fast["used_s"] == 1200.0 - (left - wall)
+    assert [h["job"] for h in f["health"] if h["kind"] == "deadline"] == (["fast 1/2"] if warns else [])
+    assert "Job deadlines used" in cost_record.summary(cost_record.build(reports, None, None, deadlines=DEADLINES))
+
+
+def test_each_shard_is_its_own_job_and_a_report_without_the_deadline_is_left_out():
+    """Each of core's shards and the lanes job's is a job with its own deadline (core's lanes by their names, the
+    lanes job's by elimination: its lane is the matrix's, `X` to the parser); one shard's two sessions count to the
+    later one's end; a report that recorded no deadline (missing) is not guessed."""
+    reports = [session("integration", 1750.0, 300.0, shard="1/2"), session("integration", 1700.0, 1000.0, shard="2/2"),
+               session("serial", 1160.0, 200.0), session("fast", 1170.0, 300.0, "2/2"),
+               session("fast", 800.0, 100.0, "2/2"),  # a second session in that job: its end is the job's
+               timed("linux", "regression", {ALL[2]: 1.0}, shard="1/1")]  # missing: no job_remaining_s recorded
+    f = cost_record.build(reports, None, None, deadlines=DEADLINES)["platforms"]["linux"]
+    assert [(d["job"], d["lane"], d["shard"], d["used_s"]) for d in f["deadlines"]] == [
+        ("core", "fast", "2/2", 500.0), ("lanes", "integration", "1/2", 350.0),
+        ("lanes", "integration", "2/2", 1100.0), ("core", "serial", "1/1", 240.0)]
+    assert [h["job"] for h in f["health"] if h["kind"] == "deadline"] == ["integration 2/2"]
+
+
 def test_the_cost_record_never_fails_the_job_whatever_it_finds(tmp_path):
     (tmp_path / "r").mkdir()
     (tmp_path / "r" / "fast.json").write_text(json.dumps(timed("linux", "fast", {ALL[0]: 600.0})), encoding="utf-8")
@@ -2007,8 +2108,9 @@ def test_the_run_counts_its_pending_time_and_skipped_jobs_count_for_nothing():
 
 
 def test_the_strategy_budgets_are_reported_as_warnings():
-    jobs = [job("core (ubuntu-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:00:00Z", "2026-10-07T00:04:00Z"),
-            job("core (windows-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:00:00Z", "2026-10-07T00:07:00Z",
+    jobs = [job("fast 1/2 (ubuntu-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:00:00Z", "2026-10-07T00:04:00Z"),
+            job("serial 1/1 (ubuntu-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:00:00Z", "2026-10-07T00:02:00Z"),
+            job("fast 1/2 (windows-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:00:00Z", "2026-10-07T00:07:00Z",
                 "windows-latest")]
     jobs.append(job("integration 1/5 (ubuntu-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:01:00Z",
                     "2026-10-07T00:16:00Z"))
@@ -2016,8 +2118,9 @@ def test_the_strategy_budgets_are_reported_as_warnings():
     rec = cost_record.build([timed("linux", "fast", slow_fast), timed("win32", "fast", slow_fast)],
                             jobs, None, run={"created_at": "2026-10-06T23:00:00Z"})
     budgets = [h for h in rec["health"] + rec["platforms"]["linux"]["health"] if h["kind"] == "budget"]
-    # the run took 16 minutes from its first job (over 15), however long it waited before that
-    assert {(h.get("job") or h.get("test")) for h in budgets} == {"core (ubuntu-latest)", "the run", "fast lane"}
+    # the run took 16 minutes from its first job (over 15), however long it waited before that; each of Linux core's
+    # jobs is a first signal (the 2-minute serial job is within its budget), Windows' and the lanes' are not
+    assert {(h.get("job") or h.get("test")) for h in budgets} == {"fast 1/2 (ubuntu-latest)", "the run", "fast lane"}
     assert rec["platforms"]["win32"]["health"] == []  # §8's fast-lane budget is the Linux lane's
     assert all(h["level"] == "warning" for h in budgets)  # §8 budgets are reported, never violations
 
@@ -2696,6 +2799,29 @@ def test_missing_base_data_leaves_the_premise_unknown(tmp_path):
     assert rc == 1 and json.loads((tmp_path / "p.json").read_text(encoding="utf-8"))["result"] == "unknown"
 
 
+def test_the_premise_combines_every_fast_lane_shards_data_the_head_name_matches(tmp_path):
+    """core runs the fast lane in shards, each uploading its own data: the head is all of them combined (a base line
+    one shard covers is covered), and a shard whose data is missing loses what only it covered."""
+    half = {"engine/a.py": FOOTPRINT["engine/a.py"]}
+    base = write_coverage(tmp_path / "base", BASE_ROOT, FOOTPRINT)
+    data = tmp_path / "coverage-data"
+    write_coverage(data / "coverage-core-fast-1-Linux", HEAD_ROOT, half)
+    write_coverage(data / "coverage-core-fast-2-Linux", HEAD_ROOT, {"cli/b.py": FOOTPRINT["cli/b.py"]})
+    write_coverage(data / "coverage-integration-1-Linux", HEAD_ROOT, FOOTPRINT)  # another lane's: never the head
+
+    def run(name: str) -> str:
+        out = tmp_path / f"{name}.json"
+        coverage_premise.main(["--base", str(base), "--head", str(data), "--head-name", "coverage-core-fast-*-Linux",
+                               "--rcfile", str(ROOT / "pyproject.toml"), "--out", str(out)])
+        return json.loads(out.read_text(encoding="utf-8"))["result"]
+
+    assert run("both") == "holds"  # right: the two shards together cover the base
+    shutil.rmtree(data / "coverage-core-fast-2-Linux")
+    assert run("one") == "loss"  # wrong: cli/b.py was only the lost shard's, and the other lane's data does not count
+    shutil.rmtree(data / "coverage-core-fast-1-Linux")
+    assert run("none") == "unknown"  # missing: no shard's data at all
+
+
 def test_the_premise_never_writes_into_the_data_the_ratchet_reads(tmp_path):
     premise(tmp_path, FOOTPRINT, FOOTPRINT)
     assert sorted(p.name for p in (tmp_path / "head").iterdir()) == [".coverage.run1"]
@@ -2738,7 +2864,8 @@ PRE_G3A_TIMEOUT_MIN = {
 }
 
 
-PER_JOB_FLAGS = ("--session-deadline", "--lane-report", "--hang-dir", "--durations")
+# ... and its shard of the lane and the table the shards balance on (core's fast step; fastbase runs the whole lane)
+PER_JOB_FLAGS = ("--session-deadline", "--lane-report", "--hang-dir", "--durations", "--shard", "--durations-file")
 
 
 def pytest_flags(run: str) -> list[str]:
@@ -2746,7 +2873,9 @@ def pytest_flags(run: str) -> list[str]:
     the ones each job sets for itself (its deadline, lane report, hang directory and durations)."""
     import shlex
 
-    words = shlex.split(run.split("}}", 1)[-1] if run.lstrip().startswith("${{") else run.split(" pytest", 1)[1])
+    after = run.split("}}", 1)[-1] if run.lstrip().startswith("${{") else run.split(" pytest", 1)[1]
+    # an expression is one word (core's `--shard ${{ matrix.shard }}/${{ matrix.of }}`, dropped with its flag)
+    words = shlex.split(re.sub(r"\$\{\{[^}]*\}\}", "EXPR", after))
     out, skip = [], False
     for word in words:
         if skip:
@@ -2846,7 +2975,8 @@ def test_assurance_requires_the_runtime_checks_by_path_and_reports_them_in_shado
     premise_step = steps["premise"]
     assert premise_step["if"] == ("(success() || failure()) && steps.tier.outputs.tier != 'full' && "
                                   "steps.tier.outputs.modules == 'true'")
-    assert "coverage_premise.py --base fastbase-data --head coverage-data/coverage-core-Linux" in premise_step["run"]
+    assert ('coverage_premise.py --base fastbase-data --head coverage-data --head-name "coverage-core-fast-*-Linux"'
+            in " ".join(premise_step["run"].split()))
     assert '--base-result "$BASE_RESULT"' in premise_step["run"]
     assert premise_step["env"]["BASE_RESULT"] == "${{ needs.fastbase.result }}"
     download = [s["with"]["pattern"] for s in gate["steps"] if "download-artifact" in s.get("uses", "")]
@@ -3110,11 +3240,11 @@ def test_the_cost_records_violation_names_each_jobs_timeout_as_ci_yml_sets_it():
     wf = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))["jobs"]
     jobs = [job("integration 1/5 (ubuntu-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:02:00Z",
                 "2026-10-07T00:30:00Z"),
-            job("core (windows-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:02:00Z", "2026-10-07T00:30:00Z")]
+            job("serial 1/1 (windows-latest)", "2026-10-07T00:00:00Z", "2026-10-07T00:02:00Z", "2026-10-07T00:30:00Z")]
     found = {h["job"]: h["detail"] for h in cost_record.build([], jobs, None)["health"] if h["kind"] == "job_time"}
     assert found["integration 1/5 (ubuntu-latest)"].endswith(
         f"(its job's timeout is {wf['lanes']['timeout-minutes']:g} minutes, ci.yml)"), found
-    assert found["core (windows-latest)"].endswith(
+    assert found["serial 1/1 (windows-latest)"].endswith(
         f"(its job's timeout is {wf['core']['timeout-minutes']:g} minutes, ci.yml)"), found
     source = (ROOT / "tools" / "ci" / "cost_record.py").read_text(encoding="utf-8")
     assert not re.search(r"\btimeout is \d+|\d+-minute job timeout", source)  # no number restated in its text

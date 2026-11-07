@@ -2,13 +2,17 @@
 """How many shards each lane of the merge gate runs, computed for every run (docs/implementation/
 testing-and-ci-strategy.md §8, "Runtime budgets"; register E44).
 
-Nobody writes the `lanes` job's matrix by hand. The `tier` job computes it here from the rolling history of `main`'s
-green push runs (``update_durations.py --history``). Each lane on each platform needs the fewest shards whose slowest
-shard fits on a runner :data:`RUNNER_VARIANCE` times slower than the ones the history was measured on: there the
-job's setup and the session both stretch, and the session must end by its own deadline and by the job's, which the
-setup came out of. A shard is estimated as ``lanes.partition`` will cut it, from the same table the shards balance on
-(the history's medians):
-- its tests' seconds over the platform's xdist workers, or its longest test if that is more;
+Nobody writes the `core` or `lanes` job's matrix by hand: `core` runs the fast and serial lanes (every tier), `lanes`
+the full tier's others, and each of their sessions is a job of its own, sized here by the same rule against its job's
+deadlines (until 2026-11-07 `core` was one job per runner running both lanes under one deadline, which nothing sized:
+its fast lane grew until a slow runner left the serial lane no time). The `tier` job computes them here from the
+rolling history of `main`'s green push runs (``update_durations.py --history``). Each lane on each platform needs
+the fewest shards whose slowest shard fits on a runner :data:`RUNNER_VARIANCE` times slower than the ones the history
+was measured on: there the job's setup and the session both stretch, and the session must end by its own deadline and
+by the job's, which the setup came out of. A shard is estimated as ``lanes.partition`` will cut it, from the same
+table the shards balance on (the history's medians):
+- its tests' seconds over the platform's xdist workers (one for the serial lane), or its longest test if that is
+  more;
 - plus the lane's time outside its tests (the median of its kept runs).
 The tests are the ones each lane held on `main`'s last kept run, so a pull request's new tests count from the first
 green `main` run after it merges whose save is the newest (overlapping runs: strategy §7).
@@ -19,7 +23,7 @@ fits before `main` has measured it. With no usable history (a first run, the cac
 a history's shape) each lane gets :data:`FALLBACK_MARGIN` times its committed count, so a stale committed table
 cannot fail a run unless a lane has more than doubled since it was refreshed. A run with a history warns when the
 committed table falls behind it (review of #235, F1). It writes:
-- the matrix (``--github-output``: ``lanes_matrix``);
+- the matrices (``--github-output``: ``core_matrix`` and ``lanes_matrix``);
 - the table the run's shards balance on (``--durations-out``), uploaded once, so every shard of a lane cuts the same
   partition. It carries each lane's count as the history sizes it, so a green `main` run's copy is the refreshed
   tests/durations.json;
@@ -31,6 +35,7 @@ Nothing here gates a change. A lane that cannot fit is a warning, and it gets th
 (E51: the operator, 2026-10-06: a wall-clock gate must never fail a correct change for runner speed.)
 
     python tools/ci/shard_plan.py --history history.json --seed tests/durations.json --durations-out durations.json \
+        --runner ubuntu-latest:3.11 --runner windows-latest:3.13 \
         [--github-output "$GITHUB_OUTPUT"] [--summary "$GITHUB_STEP_SUMMARY"]
 
 With ``--reference`` it sizes the nightly's reference lane instead (nightly.yml `reference`: the whole suite on each
@@ -97,9 +102,12 @@ FALLBACK_MAX_SHARDS = fallback_shards(MAX_SHARDS)
 # A run with a history warns when the committed table knows less than this share of a platform's tests (the drift
 # threshold of the operator's ruling on CRD-13, 2026-10-23).
 COVERAGE_WARNING = 0.9
-# The lanes the `lanes` job runs on every runner the `core` job tests on (the full tier's, less the ones `core` runs
-# itself), and each runner's sys.platform.
+# The lanes the `lanes` job runs on every runner (the full tier's, less the ones `core` runs), the ones `core` runs
+# (every tier's), and each runner's sys.platform.
 LANES = tuple(lane for lane in tier.LANES["full"] if lane not in tier.FAST_LANES)
+CORE_LANES = tuple(lane for lane in tier.LANES["full"] if lane in tier.FAST_LANES)
+# The lanes whose sessions run in one process (strategy §5: the serial lane never runs beside another test).
+ONE_PROCESS = frozenset({"serial"})
 PLATFORM_OF_OS = {"ubuntu-latest": "linux", "windows-latest": "win32"}
 REFRESH = ("copy a green `main` push run's `shard-durations` artifact (durations.json) over tests/durations.json")
 
@@ -117,13 +125,37 @@ def _lanes_module() -> Any:
     return lanes
 
 
-def lane_jobs(workflows: Path = WORKFLOWS) -> list[tuple[str, str, str, tuple[str, ...]]]:
-    """(runner, Python, sys.platform, lanes) for each runner of ci.yml's `core` matrix, on the Python `core` tests
-    that runner's platform on (review of #235, F6)."""
+def runners_of(specs: Sequence[str]) -> list[tuple[str, str, str]]:
+    """(runner, Python, sys.platform) for each ``--runner OS:PYTHON``: the gate's runners, each on the one Python its
+    platform is tested on (review of #235, F6), named once, by the step that runs this."""
+    runners = []
+    for spec in specs:
+        os_, _, python = spec.partition(":")
+        if os_ not in PLATFORM_OF_OS or not python:
+            raise SystemExit(f"--runner {spec}: expected OS:PYTHON with OS one of {', '.join(PLATFORM_OF_OS)}")
+        runners.append((os_, python, PLATFORM_OF_OS[os_]))
+    return runners
+
+
+def gate_runners(workflows: Path = WORKFLOWS) -> list[tuple[str, str, str]]:
+    """The runners ci.yml's `changes` job passes this script (its ``--runner`` words): what the `core` and `lanes`
+    matrices run on, read from the one place they are named."""
+    import shlex
+
     import yaml
 
-    core = yaml.safe_load((workflows / "ci.yml").read_text(encoding="utf-8"))["jobs"]["core"]
-    return [(m["os"], str(m["python"]), PLATFORM_OF_OS[m["os"]], LANES) for m in core["strategy"]["matrix"]["include"]]
+    steps = yaml.safe_load((workflows / "ci.yml").read_text(encoding="utf-8"))["jobs"]["changes"]["steps"]
+    (run,) = [str(s["run"]) for s in steps if "tools/ci/shard_plan.py" in str(s.get("run", ""))]
+    words = shlex.split(run)
+    return runners_of([words[i + 1] for i, w in enumerate(words[:-1]) if w == "--runner"])
+
+
+def lane_jobs(workflows_or_runners: Path | Sequence[tuple[str, str, str]] = WORKFLOWS, lanes: tuple[str, ...] = LANES
+              ) -> list[tuple[str, str, str, tuple[str, ...]]]:
+    """(runner, Python, sys.platform, lanes) for each runner: given, or the gate's (:func:`gate_runners`)."""
+    runners = (gate_runners(workflows_or_runners) if isinstance(workflows_or_runners, Path)
+               else workflows_or_runners)
+    return [(os_, python, platform, lanes) for os_, python, platform in runners]
 
 
 @dataclass(frozen=True)
@@ -138,15 +170,15 @@ class Deadlines:
         return min(self.session_s, self.job_s - RUNNER_VARIANCE * setup_s) / RUNNER_VARIANCE
 
 
-def lanes_deadlines(workflows: Path = WORKFLOWS) -> Deadlines:
-    """The `lanes` job's deadlines, read where ci.yml sets them."""
+def lanes_deadlines(workflows: Path = WORKFLOWS, job: str = "lanes") -> Deadlines:
+    """The deadlines of ci.yml's `lanes` (or `core`) job, read where ci.yml sets them."""
     _helpers()
     import bounds  # tests/helpers/bounds.py: every pytest invocation of every workflow, with its bounds
 
     found = {(lane.deadline_s, lane.job_deadline_s) for lane in bounds.workflow_lanes(workflows)
-             if lane.workflow == "ci.yml" and lane.job == "lanes"}
+             if lane.workflow == "ci.yml" and lane.job == job}
     if len(found) != 1 or None in next(iter(found)):
-        raise SystemExit(f"ci.yml's lanes job must run one pytest command with --session-deadline in a job that sets "
+        raise SystemExit(f"ci.yml's {job} job must run one pytest command with --session-deadline in a job that sets "
                          f"AEW_JOB_DEADLINE, found {found}")
     session, job = found.pop()
     return Deadlines(float(session), float(job))  # type: ignore[arg-type]
@@ -243,6 +275,16 @@ def fallback(seed: Mapping[str, Any], deadlines: Deadlines, jobs: Sequence[tuple
     return sizings, run_table(seed.get("platforms") or {}, sizings, source), source, warnings
 
 
+def job_setup_s(history: Mapping[str, Any], platform: str, lanes: Sequence[str], deadlines: Deadlines) -> float:
+    """A job's setup on a platform: the job's deadline less what was left of it as a session started, the median of each
+    lane's kept runs, and the least of the lanes. Every job of a platform sets up the same way (checkout, setup-aew,
+    the table's download); a session that started later was waiting behind another session of its job, as the serial
+    lane did behind the fast lane while `core` ran both, and that wait is not setup."""
+    left = ((history.get("job_remaining") or {}).get(platform) or {})
+    measured = [max(0.0, deadlines.job_s - statistics.median(left[lane])) for lane in lanes if left.get(lane)]
+    return min(measured) if measured else DEFAULT_SETUP_S
+
+
 def from_history(history: Mapping[str, Any], seed: Mapping[str, Any], deadlines: Deadlines,
                  jobs: Sequence[tuple[str, str, str, tuple[str, ...]]]
                  ) -> tuple[list[Sizing], dict[str, Any], str, list[str]]:
@@ -256,13 +298,13 @@ def from_history(history: Mapping[str, Any], seed: Mapping[str, Any], deadlines:
     for _, _, platform, lanes in jobs:
         durations = lanes_module.durations_for(platform, durations_table)
         workers = int(history["workers"][platform])
+        setup = job_setup_s(history, platform, lanes, deadlines)
         for lane in lanes:
             nodeids = sorted(n for n, ln in lanes_by_platform[platform].items() if ln == lane)
             kept = ((history.get("overhead") or {}).get(platform) or {}).get(lane) or []
             outside = statistics.median(kept) if kept else DEFAULT_OUTSIDE_S
-            left = ((history.get("job_remaining") or {}).get(platform) or {}).get(lane) or []
-            setup = max(0.0, deadlines.job_s - statistics.median(left)) if left else DEFAULT_SETUP_S
-            s = size_lane(platform, lane, nodeids, durations, workers, outside, deadlines.budget_s(setup))
+            s = size_lane(platform, lane, nodeids, durations, 1 if lane in ONE_PROCESS else workers, outside,
+                          deadlines.budget_s(setup))
             s.committed = counts.get((platform, lane))
             s.shards = min(MAX_SHARDS, max(s.shards, s.committed or 0))
             sizings.append(s)
@@ -402,7 +444,7 @@ def reference_summary(sizings: Sequence[Sizing], source: str, warnings: Sequence
 
 
 def matrix(sizings: Sequence[Sizing], jobs: Sequence[tuple[str, str, str, tuple[str, ...]]]) -> dict[str, Any]:
-    """The `lanes` job's matrix: per runner and lane, shards 1..N of N."""
+    """The `core` or `lanes` job's matrix: per runner and lane, shards 1..N of N."""
     count = {(s.platform, s.lane): s.shards for s in sizings}
     return {"include": [{"os": os_, "python": python, "lane": lane, "shard": k, "of": count[(platform, lane)]}
                         for os_, python, platform, lanes in jobs for lane in lanes
@@ -410,15 +452,15 @@ def matrix(sizings: Sequence[Sizing], jobs: Sequence[tuple[str, str, str, tuple[
 
 
 def other_jobs(workflows: Path) -> int:
-    """At least how many jobs a full run of ci.yml starts besides the `lanes` matrix (a job calling a local reusable
-    workflow counts that workflow's jobs)."""
+    """At least how many jobs a full run of ci.yml starts besides the `core` and `lanes` matrices (a job calling a
+    local reusable workflow counts that workflow's jobs)."""
     import yaml
 
-    def count(path: Path, skip: str = "") -> int:
+    def count(path: Path, skip: tuple[str, ...] = ()) -> int:
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         total = 0
         for name, job in (doc.get("jobs") or {}).items():
-            if name == skip:
+            if name in skip:
                 continue
             uses = str(job.get("uses") or "")
             if uses.startswith("./.github/workflows/"):
@@ -428,11 +470,11 @@ def other_jobs(workflows: Path) -> int:
                 total += len(include) if isinstance(include, list) else 1
         return total
 
-    return count(workflows / "ci.yml", skip="lanes")
+    return count(workflows / "ci.yml", skip=("core", "lanes"))
 
 
 def summary(sizings: Sequence[Sizing], source: str, warnings: Sequence[str], extra_jobs: int) -> tuple[str, list[str]]:
-    lane_jobs_n = sum(s.shards for s in sizings)
+    lane_jobs_n = sum(s.shards for s in sizings)  # core's and the lanes job's
     lines = ["## Shards (tools/ci/shard_plan.py)", "",
              f"Sized from {source}. A shard's budget on the history's runners leaves room for a runner "
              f"{RUNNER_VARIANCE:g}x slower, its setup included.", "",
@@ -454,12 +496,7 @@ def summary(sizings: Sequence[Sizing], source: str, warnings: Sequence[str], ext
 
 
 def reference_main(args: argparse.Namespace, seed: Mapping[str, Any]) -> int:
-    runners = []
-    for spec in args.runner:
-        os_, _, python = spec.partition(":")
-        if os_ not in PLATFORM_OF_OS or not python:
-            raise SystemExit(f"--runner {spec}: expected OS:PYTHON with OS one of {', '.join(PLATFORM_OF_OS)}")
-        runners.append((os_, python, PLATFORM_OF_OS[os_]))
+    runners = runners_of(args.runner)
     history, why = update_durations.read_history(args.history, of="the nightly's reference shards")
     beside = starting_jobs(args.workflows / "nightly.yml", besides="reference-plan")
     sizings, durations_table, source, warnings = reference_plan(history, seed, runners, REFERENCE_TARGET_S, why,
@@ -486,12 +523,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--durations-out", type=Path, required=True, metavar="FILE",
                     help="the table this run's shards balance on")
     ap.add_argument("--workflows", type=Path, default=WORKFLOWS, metavar="DIR")
-    ap.add_argument("--github-output", type=Path, metavar="FILE", help="append lanes_matrix=<json> here")
+    ap.add_argument("--github-output", type=Path, metavar="FILE",
+                    help="append core_matrix=<json> and lanes_matrix=<json> here")
     ap.add_argument("--summary", type=Path, metavar="FILE", help="append the Markdown summary here")
     ap.add_argument("--reference", action="store_true",
                     help="size the nightly's reference lane (nightly.yml `reference`) from its own history")
     ap.add_argument("--runner", action="append", default=[], metavar="OS:PYTHON",
-                    help="with --reference: a runner the reference lane runs on (repeat for each)")
+                    help="a runner the gate (or with --reference, the reference lane) runs on (repeat for each)")
     args = ap.parse_args(argv)
     seed = json.loads(args.seed.read_text(encoding="utf-8"))
     if args.reference:
@@ -499,12 +537,19 @@ def main(argv: list[str] | None = None) -> int:
             ap.error("--reference needs --runner")
         return reference_main(args, seed)
     history, why = update_durations.read_history(args.history)
-    jobs = lane_jobs(args.workflows)
+    runners = runners_of(args.runner) if args.runner else gate_runners(args.workflows)
+    core_jobs, jobs = lane_jobs(runners, CORE_LANES), lane_jobs(runners)
+    core_sizings, core_table, _, core_warnings = plan(history, seed, lanes_deadlines(args.workflows, "core"),
+                                                      core_jobs, why)
     sizings, durations_table, source, warnings = plan(history, seed, lanes_deadlines(args.workflows), jobs, why)
+    for platform, counts in core_table["shards"].items():  # one table: every shard of every lane balances on it
+        durations_table["shards"].setdefault(platform, {}).update(counts)
     update_durations.write_json(args.durations_out, durations_table)
-    text, warnings = summary(sizings, source, warnings, other_jobs(args.workflows))
+    text, warnings = summary([*core_sizings, *sizings], source, [*core_warnings, *warnings],
+                             other_jobs(args.workflows))
     if args.github_output:
         with args.github_output.open("a", encoding="utf-8") as fh:
+            fh.write(f"core_matrix={json.dumps(matrix(core_sizings, core_jobs), separators=(',', ':'))}\n")
             fh.write(f"lanes_matrix={json.dumps(matrix(sizings, jobs), separators=(',', ':'))}\n")
     if args.summary:
         with args.summary.open("a", encoding="utf-8") as fh:

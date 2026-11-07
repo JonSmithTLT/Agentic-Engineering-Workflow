@@ -641,11 +641,11 @@ class OpenCodePack:
             carried = json.loads(pinned_usage.read_text(encoding="utf-8"))
             doc = {"harness": HARNESS, "version": version, "provider": "openai",
                    "token_semantics": usage["token_semantics"], "source": carried["source"], "cases": usage["cases"]}
-            same = carried["version"] == version
+            tag = str(carried["source"].get("tag") or f"v{carried['version']}")  # the citations' own, not the file's
             out[f"usage-{version}-openai.json"] = (
                 (_render_json(doc) + "\n").encode(),
                 "measured: token_semantics and each case's stored tokens; carried: `source` (citations of the "
-                + ("pinned tag" if same else f"{carried['version']} tag: re-read them at v{version}") + ")")
+                + (f"{tag} tag" if tag == f"v{version}" else f"{tag} tag: re-read them at v{version}") + ")")
         out[f"live-usage-{version}.json"] = (
             None, "authored, not a measurement: its findings, cases and event payloads are written from source "
                   "reading; the run searches the binary for each bundled-code identifier it cites and says whether the "

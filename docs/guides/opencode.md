@@ -60,6 +60,8 @@ aew doctor
 
 AEW needs a provider key and a paid model, and does not use OpenCode's free models. OpenCode Zen's published rule (https://opencode.ai/docs/zen/) is "Free-tier chat models require OpenCode; use paid models or Go from other clients", and a run through AEW's provider relay is another client. On Linux a worker launch whose provider would get no key is refused before anything starts (`provider_key_missing`), naming the variable, and `aew doctor`'s `provider-key` line says the same beforehand.
 
+**OpenCode Zen's Console library on Windows.** OpenCode fetches the session instructions and skills set in your OpenCode Console account whenever an `OPENCODE_API_KEY` is set. A contained run on Linux refuses that fetch. On Windows, where AEW provides no network containment, a Zen run receives them, and AEW neither blocks nor records them. If you don't want them in AEW's runs, keep your Console account's instructions and skills empty.
+
 Set the key in the terminal you launch runs from, under the name `provider_env` lists, for that shell session only, with a form that echoes nothing and leaves nothing in history (the forms in [the quickstart](quickstart.md#giving-aew-the-lead-credential), with the variable's name in place of `AEW_LEAD_TOKEN`). Never a persistent variable or a startup file: a persistent variable reaches every process you start, and a startup file is a plain file in your home directory, like history. Runs launched from that terminal pass it to their OpenCode servers only.
 
 The Lead's own model is different. By default it uses the credentials OpenCode has stored for you (`opencode auth login`), and its environment holds no provider key.

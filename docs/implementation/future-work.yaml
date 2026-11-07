@@ -3193,7 +3193,9 @@ sections:
       it); image generation is a tool whenever a connected provider has an image model; pooling shares one server connection
       across directories; the bash name is an alias, so both names decide alike; Console library instructions and skills
       are text from a remote origin that would enter a session, which AEW never takes from the harness. Where network containment
-      is `not_provided` (Windows), whether the limit is stated or Zen is refused on such a run is the operator''s to decide'
+      is `not_provided` (Windows), the limit is stated (the operator, 2026-11-07): a Zen run receives the instructions and
+      skills of the operator''s OpenCode Console account, and AEW neither blocks nor records them; the operator keeps them
+      empty if they do not want that'
 
   - '#': E200
     Work: 'Re-read at OpenCode v2.2.6 the facts AEW cites from source rather than measures: probe P1''s live-usage findings

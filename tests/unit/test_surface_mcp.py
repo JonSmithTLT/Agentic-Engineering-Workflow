@@ -266,8 +266,14 @@ def test_the_lead_projection_matches_the_pinned_opencode_configuration_schema():
     errors = sorted(_schema_validator("Config.InfoEncoded").iter_errors(config), key=lambda e: list(e.path))
     assert not errors, [f"{list(e.path)}: {e.message}" for e in errors[:5]]
     server = config["mcp"]["servers"]["aew-lead"]
-    assert server == {"type": "local", "command": ["aew", "lead", "mcp"], "codemode": False}
-    assert "environment" not in server  # the server inherits the curated session environment, and nothing more
+    # E180: this interpreter and this process's `aew`, never whichever `aew` comes first on the session's PATH
+    from aew import __file__ as aew_init
+    from aew.harness import procs
+
+    assert server == {"type": "local", "command": [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "lead",
+                                                   "mcp"], "environment": procs.engine_imports({}), "codemode": False}
+    # Over the curated session environment, only the import path of this `aew`: no credential, nothing else
+    assert server["environment"] == {"PYTHONPATH": str(Path(aew_init).resolve().parent.parent), "PYTHONSAFEPATH": "1"}
     rules = config["agents"]["aew-lead"]["permissions"]
     assert {"action": "aew-lead_*", "effect": "allow", "resource": "*"} in rules
 
@@ -275,7 +281,7 @@ def test_the_lead_projection_matches_the_pinned_opencode_configuration_schema():
 def test_the_probe_fails_closed_on_a_release_that_respells_mcp_configuration():
     assert capabilities.problems(SPEC) == []
     for schema, field in (("Config.InfoEncoded", "mcp"), ("Mcp.LocalConfigEncoded", "codemode"),
-                          ("Mcp.LocalConfigEncoded", "command")):
+                          ("Mcp.LocalConfigEncoded", "command"), ("Mcp.LocalConfigEncoded", "environment")):
         doctored = copy.deepcopy(SPEC)
         del doctored["components"]["schemas"][schema]["properties"][field]
         assert capabilities.problems(doctored), (schema, field)

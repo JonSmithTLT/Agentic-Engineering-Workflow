@@ -330,7 +330,7 @@ commands:
     journeys: [V1, V2, V3, V4]
     mutates: "yes"
     mutates_basis: "serves the typed surface over stdio; its mutating tools commit through the broker"
-    launcher: {code: "aew.harness.opencode.projection:LEAD_MCP_COMMAND"}
+    launcher: {code: "aew.harness.opencode.projection:lead_mcp_command"}
     refusals: [USAGE]
     note: "spawned by the Lead's harness in every Lead session (not relayed)"
   - name: opencode

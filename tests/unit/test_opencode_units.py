@@ -78,7 +78,14 @@ def test_reviewer_and_researcher_projection_golden():
 
 
 def test_lead_projection_golden():
-    golden("projection-lead", projection.lead_config())
+    """The machine's own interpreter and `aew` location (E180) are placeholders here; their values are pinned by
+    ``test_the_lead_projection_matches_the_pinned_opencode_configuration_schema``."""
+    config = projection.lead_config()
+    server = config["mcp"]["servers"][projection.LEAD_MCP_SERVER]
+    assert server["command"][0] == sys.executable
+    server["command"][0] = "<this interpreter>"
+    server["environment"]["PYTHONPATH"] = "<this aew's import root>"
+    golden("projection-lead", config)
 
 
 def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str:

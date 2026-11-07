@@ -76,8 +76,9 @@ REQUIRED_FIELDS: dict[str, dict[str, str]] = {
     "Config.InfoEncoded": {"agents": O, "plugins": A, "snapshots": B, "update": S, "share": S, "lsp": B,
                            "formatter": B, "default_agent": S, "permissions": A, "commands": O, "mcp": O,
                            "mcp.servers": O, "experimental": O, "experimental.policies": A},
-    # The Lead's typed surface (F15.1): a release that respells local MCP servers fails closed at launch.
-    "Mcp.LocalConfigEncoded": {"type": S, "command": A, "codemode": B},
+    # The Lead's typed surface (F15.1): a release that respells local MCP servers fails closed at launch. Its
+    # `environment` pins the server's import path to the projecting `aew` (E180).
+    "Mcp.LocalConfigEncoded": {"type": S, "command": A, "codemode": B, "environment": O},
     "Config.AgentEncoded": {"model": O, "system": S, "mode": S, "permissions": A, "steps": I, "description": S},
     "Config.CommandEncoded": {"template": S, "description": S, "agent": S},
 }

@@ -1,0 +1,1 @@
+**CAP-1 PR 2 merged** as #330 (`eb38cd5f`): the read-only ripgrep bind, Q08's rows, the fetch at first launch and the contained health check. PR 3 is the Now list's item 14, and the consent prompt is E171.

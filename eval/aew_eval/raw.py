@@ -363,7 +363,7 @@ class RawArm:
         contain: true                        # Linux bubblewrap; refused elsewhere
         steps: 80
         cap_usd: 0.75
-        provider_env: [NAME, ...]            # names only; [] for a free model
+        provider_env: [NAME, ...]            # names only; [] for a keyless model
         session_db: {retain: true, retention_days: 180, fields: [{field, transform}, ...]}
     """
 
@@ -392,7 +392,7 @@ class RawArm:
         self._check_harness(config.get("harness"))
         names = config.get("provider_env")
         if not isinstance(names, list) or not all(isinstance(n, str) and ENV_NAME.match(n) for n in names):
-            raise Invalid("a raw arm's provider_env is a list of environment variable names ([] for a free model)")
+            raise Invalid("a raw arm's provider_env is a list of environment variable names ([] for a keyless model)")
         own = [n for n in names if n.startswith("AEW_")]
         if own:  # the adapter never passes AEW's own variables to a harness, so the provider would never get it
             raise Invalid(f"{', '.join(own)}: AEW's own variables never reach a harness; name the provider's variable")

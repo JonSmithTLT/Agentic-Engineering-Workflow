@@ -159,7 +159,12 @@ class Supervisor:
     # ------------------------------------------------------------------ authority
 
     def authority_problem(self) -> str | None:
-        state = self.engine.store.current()
+        """Why this run no longer holds its authority, from the committed state read lock-free
+        (``ControlStore.read_committed``). The watch loop that beats the heartbeat calls this: under the control lock,
+        another process's long hold (up to the lock's timeout, 60 s) stalled the beat past ``runlog.STALE_AFTER_S``, and
+        a live run read as ``lost`` (two CI sightings on Windows, 2026-11-07). Nothing is written on this read: every
+        engine operation re-checks the credential under the lock before it writes."""
+        state = self.engine.store.read_committed()
         return self.engine.run_authority_problem(state, self.inv_id, self.run, self.token_id)
 
     def _control_changed(self) -> bool:
@@ -480,7 +485,8 @@ class Supervisor:
         if not pending:
             return []
         try:
-            inv = self.engine.store.current()["invocations"].get(self.inv_id) or {}
+            # lock-free, as ``authority_problem``: the watch loop that beats the heartbeat calls this
+            inv = self.engine.store.read_committed()["invocations"].get(self.inv_id) or {}
             entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
             recorded = {r["file"]: r for r in entry.get("requests") or []}
         except errors.AEWError as exc:

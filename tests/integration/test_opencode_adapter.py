@@ -495,6 +495,24 @@ def test_a_server_that_lists_no_agent_within_the_wait_is_not_an_incompatibility(
     assert "did not load AEW's agent" in refused_launch(lab, tmp_path, reason_code="unknown")
 
 
+def test_plugins_still_activating_are_waited_out_and_counted(lab, tmp_path):
+    """OpenCode 2.2.6 answers a location's listings 503 "Location plugins did not finish activating" while a plugin
+    waits on a fetch the run's network refuses (Zen's well-known manifest under proxy_only: the E17 live turn's
+    launch, 2026-11-07). The launch waits it out within the catalog's wait and records how often it was told so."""
+    script(lab, IMPLEMENT, plugins_activating_s=2)
+    _, _, run = launch(lab, tmp_path)
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    assert lab.record(run)["launch"]["health"]["plugin_waits"] >= 1
+
+
+def test_plugins_that_never_finish_activating_fail_the_launch_with_their_own_cause(lab, tmp_path):
+    """Still activating when the catalog's wait runs out: a launch failure naming it (`plugins_timeout`), which is
+    timing-dependent, so `unknown`, never a lasting incompatibility."""
+    lab.env["AEW_OPENCODE_CATALOG_S"] = "2"
+    script(lab, IMPLEMENT, plugins_activating_s=60)
+    assert "did not finish activating" in refused_launch(lab, tmp_path, reason_code="unknown")
+
+
 def test_a_denial_the_server_appends_after_aews_rules_is_accepted(lab, tmp_path):
     """E17: OpenCode 2.0.22 appends a default `browser: deny` after AEW's rules. It can only narrow access, so the
     projection still holds and the run proceeds."""

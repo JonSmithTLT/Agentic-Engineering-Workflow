@@ -65,6 +65,7 @@ CUSTODY, START, HANDOFF, LAUNCHER = "custody", "start", "handoff", "launcher"
 LAUNCH_CAUSE = "launch_cause"
 CATALOG_TIMEOUT = "catalog_timeout"  # the pinned model never appeared in the harness's catalog within its wait
 AGENT_LOAD_TIMEOUT = "agent_load_timeout"  # the harness never listed AEW's agent within its wait
+PLUGINS_TIMEOUT = "plugins_timeout"  # the harness's plugins for the run's location never activated within its wait
 # (site, AEW error code) -> launch-failure code, keyed by the error code at that site: every failure raised there with
 # that code gets it, unless it names a `launch_cause`. A pair is mapped only where tests reproduce it at that site:
 # a cancelled or rotated invocation's credential presented at custody (tests/integration/test_launch_failure_codes.py),
@@ -73,7 +74,8 @@ AGENT_LOAD_TIMEOUT = "agent_load_timeout"  # the harness never listed AEW's agen
 # OpenAPI, an agent loaded with a different system text, model, step limit or rules, stored credentials). The two waits
 # are timing-dependent, so they name a cause and stay `unknown`: a model the catalog never offered within its wait
 # (`catalog_timeout`; PR #185 review, F1) and AEW's agent never listed within its wait (`agent_load_timeout`, which
-# also covers a server that ignored the configuration, since a wait cannot tell that from a slow one; F3). A new entry
+# also covers a server that ignored the configuration, since a wait cannot tell that from a slow one; F3), and plugins
+# that never finished activating within the same wait (`plugins_timeout`, OpenCode 2.2.6's 503). A new entry
 # comes with the test that produces it.
 _LAUNCH_FAILURES = {
     (CUSTODY, "STALE_AUTHORITY"): CREDENTIAL_DENIED,

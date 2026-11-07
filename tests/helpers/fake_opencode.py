@@ -15,7 +15,9 @@ Behaviour comes from the same script files as the fake harness (``<scripts>/<run
 ``server`` knobs: ``catalog_delay_s`` (counted from the first catalog request, not from server start, so a
 slow start cannot eat into it), ``models``, ``openapi_drop`` (``["METHOD /path", ...]``), ``version``,
 ``ignore_config`` (load no configured agent), ``agents_delay_s`` (list no agent at all until this long after the
-first agent request), ``agent_override`` (fields that differ from the projection),
+first agent request), ``plugins_activating_s`` (the location listings, agents and models, answer 2.2.6's 503 "Location
+plugins did not finish activating" until this long after the first of them), ``agent_override`` (fields that differ
+from the projection),
 ``appended_rules`` (rules the server appends after the agent's own, as 2.0.22 appends ``browser: deny``),
 ``stored_credentials`` (serve 2.0.22's ``GET /api/credential`` with these entries),
 ``subagent`` (the model starts a child session, as V2's subagent tool would),
@@ -169,6 +171,7 @@ class FakeOpenCode:
     def __init__(self, scripts: Path) -> None:
         self.catalog_asked: float | None = None
         self.agents_asked: float | None = None
+        self.plugins_asked: float | None = None
         self.data_home = Path(os.environ["XDG_DATA_HOME"])
         self.state = self.data_home.parent            # <run>/harness
         self.run = self.state.parent.name             # R-<INV>-<n>
@@ -436,6 +439,13 @@ class FakeOpenCode:
             spec["paths"]["/api/credential"] = {"get": {"operationId": "credential.list"}}
         return spec
 
+    def plugins_activating(self) -> bool:
+        """The ``plugins_activating_s`` knob: still activating, counted from the first location listing."""
+        now = time.monotonic()
+        if self.plugins_asked is None:
+            self.plugins_asked = now
+        return now - self.plugins_asked < float(self.knobs.get("plugins_activating_s") or 0)
+
     def agents(self) -> list[dict[str, Any]]:
         """Agents as V2 reports them: its defaults, then the configuration's rules, then the agent's own."""
         defaults = [{"action": "*", "resource": "*", "effect": "allow"},
@@ -507,6 +517,10 @@ class FakeOpenCode:
         if (method, path) == ("GET", "/api/info"):
             return 200, {"version": self.knobs.get("version") or PINNED, "pid": os.getpid(), "urls": [],
                          "paths": {"tmp": str(self.state / "tmp")}}
+        if (method, path) in (("GET", "/api/agent"), ("GET", "/api/model")) and self.plugins_activating():
+            # 2.2.6's body, as served on the Rocky VM (2026-11-07)
+            return 503, {"_tag": "ServiceUnavailableError", "message": "Location plugins did not finish activating",
+                         "service": "plugin"}
         if (method, path) == ("GET", "/api/agent"):
             return 200, {"location": {"directory": (query.get("location[directory]") or [""])[0]},
                          "data": self.agents()}

@@ -67,6 +67,7 @@ from aew.harness.contract import (
     CREDENTIAL_PATTERNS,
     EXPECT_REV,
     LONG_TOKEN,
+    PLUGINS_TIMEOUT,
     PROVIDER_AUTH_FAILED,
     REDACTION_FORMS,
     UNAVAILABLE_TOOLS,
@@ -94,6 +95,19 @@ POLL_S = 1.0
 PAGES = 100  # at most this many pages of 200 messages are read for a run's snapshot (more: `truncated`)
 CATALOG_WAIT_S = float(os.environ.get("AEW_OPENCODE_CATALOG_S", "90"))
 CATALOG_SETTLE_S = float(os.environ.get("AEW_OPENCODE_CATALOG_SETTLE_S", "20"))
+# OpenCode 2.2.6 holds a location's requests until its plugins finish activating, 5 s at most each, then answers 503
+# with this message (read from its bundle, 2026-11-07). A plugin waiting on a fetch the run's network refuses (the
+# `opencode.wellknown` manifest of Zen's origin, under `proxy_only`) holds activation up to its own 15 s fetch timeout:
+# measured on the Rocky VM with Zen configured and no route, 503 at 5.1 s, then 200 at 7.8 s. The waits treat it as
+# "not yet", within their own budget (CATALOG_WAIT_S); one that never ends is `plugins_timeout`.
+PLUGINS_ACTIVATING = "Location plugins did not finish activating"
+
+
+def plugins_activating(exc: OpenCodeError) -> bool:
+    """Whether a server error is OpenCode's "this location's plugins are still activating" (a 503 from the plugin
+    service), which a wait waits out, rather than a failure."""
+    body = exc.body if isinstance(exc.body, dict) else {}
+    return exc.status == 503 and (body.get("service") == "plugin" or PLUGINS_ACTIVATING in str(body.get("message")))
 OPENAPI_TIMEOUT_S = 60.0  # the served schema is large
 EXIT_CODES = {"succeeded": 0, "failed": 1, "interrupted": 2}
 CREDENTIALS = "/api/credential"  # 2.0.22+: stored integration credentials, values included
@@ -349,6 +363,7 @@ class OpenCodeAdapter(HarnessAdapter):
         self.meter: Meter | None = None
         self.meter_errors = 0
         self._relayed = False  # the pinned model is named in the server's configuration, for the provider relay
+        self._plugin_waits = 0  # the location listings answered "plugins still activating" (PLUGINS_ACTIVATING)
         self._relay: str | None = None  # the provider relay's upstream, on the relay route
         self._meter_wake = threading.Event()
         self._meter_stop = threading.Event()
@@ -569,6 +584,26 @@ class OpenCodeAdapter(HarnessAdapter):
                                       "could read; a run's server state must start empty", stored_credentials=count)
         return 0
 
+    def _location_list(self, path: str) -> list[dict[str, Any]] | None:
+        """``path``'s listing for the run's location, or None while the location's plugins are still activating
+        (:func:`plugins_activating`); any other error is raised."""
+        assert self.client is not None
+        try:
+            return (self.client.get(path, location(self.directory)) or {}).get("data") or []
+        except OpenCodeError as exc:
+            if not plugins_activating(exc):
+                raise
+            self._plugin_waits += 1
+            return None
+
+    def _plugins_never_activated(self, path: str, waited_s: float) -> HarnessIncompatible:
+        return HarnessIncompatible(
+            f"OpenCode's plugins for the run's location did not finish activating within {waited_s:.0f}s (GET {path} "
+            f"kept answering 503: {PLUGINS_ACTIVATING!r}); a plugin may be waiting on a fetch the run's network "
+            f"refuses; relaunch with {self._relaunch_command()}", plugin_waits=self._plugin_waits,
+            # A wait that ran out, like the catalog's: timing-dependent, never a lasting incompatibility.
+            launch_cause=PLUGINS_TIMEOUT)
+
     def _await_model(self, profile: dict[str, Any]) -> dict[str, Any]:
         """The pinned model and variant, from a catalog that fills in asynchronously. Never a fallback."""
         assert self.client is not None
@@ -578,7 +613,13 @@ class OpenCodeAdapter(HarnessAdapter):
         catalog: list[dict[str, Any]] = []
         declared = False
         while True:
-            catalog = (self.client.get("/api/model", location(self.directory)) or {}).get("data") or []
+            listed = self._location_list("/api/model")
+            if listed is None:  # the location's plugins are still activating: not yet
+                if time.monotonic() - t0 > CATALOG_WAIT_S:
+                    raise self._plugins_never_activated("/api/model", time.monotonic() - t0)
+                time.sleep(0.25)
+                continue
+            catalog = listed
             match = next((m for m in catalog if m.get("providerID") == ref["providerID"] and m.get("id") == ref["id"]),
                          None)
             now = time.monotonic()
@@ -600,7 +641,8 @@ class OpenCodeAdapter(HarnessAdapter):
                     raise HarnessIncompatible(f"model {ref['providerID']}/{ref['id']} is disabled in this OpenCode; "
                                               f"enable it in OpenCode and relaunch with {self._relaunch_command()}, "
                                               "or dispatch a new invocation with --profile or --model", model=ref)
-                found = {"catalog_wait_s": round(now - t0, 3), "catalog_size": len(catalog), "variants": variants}
+                found = {"catalog_wait_s": round(now - t0, 3), "catalog_size": len(catalog), "variants": variants,
+                         "plugin_waits": self._plugin_waits}
                 if self._relay is not None:
                     found["relay_family"] = self._require_relay_family(match, catalog, ref)
                 return found
@@ -652,7 +694,13 @@ class OpenCodeAdapter(HarnessAdapter):
         t0 = time.monotonic()
         first_seen: float | None = None
         while True:
-            agents = (self.client.get("/api/agent", location(self.directory)) or {}).get("data") or []
+            listed = self._location_list("/api/agent")
+            if listed is None:  # the location's plugins are still activating: not yet
+                if time.monotonic() - t0 > CATALOG_WAIT_S:
+                    raise self._plugins_never_activated("/api/agent", time.monotonic() - t0)
+                time.sleep(0.25)
+                continue
+            agents = listed
             mine = next((a for a in agents if a.get("id") == projection.AGENT), None)
             now = time.monotonic()
             if mine is not None:

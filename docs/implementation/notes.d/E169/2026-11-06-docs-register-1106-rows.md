@@ -1,0 +1,1 @@
+**Placement:** it follows E140's flip. Its method is the designer's decision of 2026-11-06, O-SECRET reads one fixed prohibition and stops parsing negation (D2): the canonical sentence form, with E155's hand path (the hidden-input form, unset at the end of each role's block). E119 §1's seat wording, from the same decision, is carried by E171 (#343).

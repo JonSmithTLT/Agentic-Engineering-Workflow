@@ -1,0 +1,3 @@
+**Request economy in what the Lead is told** (the designer's decision of 2026-11-06, rate limits that count cached tokens per request, ruling 3): batch independent tool calls into one response, read files by range, keep tool output short, and use a consult (E158) for heavy reading, since a consult reads in its own small context and returns a short answer.
+
+**Skill uptake** (E127's live run, #342): a weak model offered `c-development` and `python-development` on a Python Ticket loaded neither in 12 steps. Watch uptake in first use, from the run record's `loaded`, before changing what the Lead or the card says about skills.

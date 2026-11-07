@@ -25,6 +25,7 @@ from harness_conformance import IMPLEMENT, PROVIDER_SECRET, FakeOpenCodeDriver, 
 from lead_session import KEYS
 from proxy_env import RecordingProxy, proxy_env
 
+from aew.harness import contract as K
 from aew.harness import runlog, weaker_register
 from aew.harness.containment import netns
 from aew.harness.opencode import adapter as opencode_adapter
@@ -634,7 +635,9 @@ def test_a_rejected_provider_key_is_its_own_ending_and_a_relaunch_reads_the_key_
     assert record["harness_outcome"] == "the agent's turn ended: failed (provider.auth, 401)"
     [row] = lab.ok("harness", "status")["runs"]
     assert row["reason_code"] == "provider_auth_failed" and row["reason"] == done["reason"]
-    assert any(action in a for a in lab.ok("status", "--json")["next_actions"])
+    # the wait's step is the run's next action as `aew status` gives it, then the line for the operator (E122)
+    tell = K.run_ended_step("")
+    assert action.endswith(tell) and any(action[:-len(tell)] in a for a in lab.ok("status", "--json")["next_actions"])
     failed = [e for e in events(lab) if e["event"] == "opencode.session.execution.failed"]
     assert failed and all(e["error"] == {"type": "provider.auth", "status": 401} for e in failed), failed
     assert lab.project.rev() == rev and lab.ok("invoke", "show", inv)["status"] == "active"

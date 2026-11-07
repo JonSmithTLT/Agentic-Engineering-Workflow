@@ -172,7 +172,8 @@ def test_a_lead_reading_only_the_text_waits_through_a_long_run_without_stopping_
     and to wait again, never to poll or to stop, and when the run ends the line moves the Ticket on from its evidence.
     The run is held by a file the test releases, so how many waits time out is the test's, not the clock's."""
     p, lab = lab_project
-    release, ready = tmp_path / "release", tmp_path / "ready"
+    sync = tmp_path / "sync"  # the lab's writable sync root: a contained run (Linux) writes only its own roots
+    release, ready = sync / "release", sync / "ready"
     lab.script("default", [{"do": "wait_file", "path": str(release), "ready": str(ready), "timeout": 300},
                            {"do": "write", "files": SUBTRACT_PATCH}, {"do": "check", "id": "unit"},
                            {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT}])

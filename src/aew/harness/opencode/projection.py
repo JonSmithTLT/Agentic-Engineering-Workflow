@@ -14,8 +14,10 @@ Invocation runs:
   except the run's own private OpenCode output directories (V2 saves long tool output there and points the
   model at it); ``.env`` files are not readable (V2's own default asks; ``.env.example`` stays readable);
   ``edit`` only for implementers; web access only for cards that request documentation lookup;
-  ``skill`` only for skills the harness actually provides for the card (none in M3: they are reported
-  as unavailable, WC §16.10);
+  ``skill`` only for the skills the run was given (``aew.skills``: the card's ``skills:`` and ``optional_skills``
+  that AEW's install ships, copied into the run's own folder, which is the config's one ``skills`` entry; that
+  folder is readable and never editable, and on Linux it is bound read-only too); any other a card names is
+  reported unavailable (WC §16.10; ADR-0006, amendment 2026-11-05);
 * no project configuration, no compatibility plugin (``~/.claude``/``~/.agents`` skills), no LSP or
   formatter downloads, no snapshots, no sharing, no updates.
 
@@ -27,8 +29,9 @@ only fixed read commands as inline shell (V2 runs those outside the permission f
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, NamedTuple
 
+from aew import skills as shipped_skills
 from aew.harness.contract import EXPECT_REV, LaunchContract
 from aew.surface import SERVER_NAME, contract
 from aew.surface.context import NORMAL
@@ -44,6 +47,13 @@ ALWAYS_DENIED = ("subagent", "question", "external_directory")
 
 def rule(action: str, effect: str, resource: str = "*") -> dict[str, str]:
     return {"action": action, "resource": resource, "effect": effect}
+
+
+# The read rules for `.env` files, after a `read` allow so that they win (last match wins): every invocation's and the
+# Lead's, one list (the designer, 2026-11-06). A harness permission rule: it is not containment, it does not cover a
+# shell command the operator approves or the history of a tracked file, and on Windows no other layer applies.
+ENV_READ_RULES = (rule("read", "deny", "*.env"), rule("read", "deny", "*.env.*"),
+                  rule("read", "allow", "*.env.example"))
 
 
 def rules_hold(loaded: list[dict[str, Any]], want: list[dict[str, Any]]) -> str | None:
@@ -83,28 +93,53 @@ def config_model(profile: dict[str, Any]) -> dict[str, str]:
     return ref
 
 
-def skills(contract: LaunchContract, provided: frozenset[str] = frozenset()) -> dict[str, list[str]]:
-    requested = sorted(set(contract.extra.get("card_skills") or []))
-    return {"requested": requested, "exposed": [s for s in requested if s in provided],
-            "unavailable": [s for s in requested if s not in provided]}
+def skills(contract: LaunchContract) -> dict[str, Any]:
+    """What this run gets of its card's skills: the plan the launch contract carries (``aew.skills.plan``, decided once
+    in ``harness_contract``, and narrowed by the run's copy), or for a contract without one, the same function over its
+    card's lists. Never a computation of its own: the copy, the rules and the record read one answer."""
+    planned = contract.extra.get("skills")
+    if isinstance(planned, dict):
+        return planned
+    extra = contract.extra
+    return shipped_skills.plan(extra.get("card_skills") or [], extra.get("card_optional_skills") or [])
 
 
-def permissions(contract: LaunchContract, exposed_skills: list[str],
-                private_dirs: tuple[str, ...] = ()) -> list[dict[str, str]]:
+class SkillsAt(NamedTuple):
+    """The run's copy of its skills: the folder (the config's ``skills`` entry, a plain path string, since an object
+    entry loads nothing, silently: skills probe 2026-11-04) and the pattern its two rules match."""
+
+    folder: str
+    pattern: str
+
+
+def skills_at(state_dir: str, sep: str) -> SkillsAt:
+    """Where the run's skills are copied: ``skills`` in its harness state directory (``aew.skills.deliver``)."""
+    folder = sep.join([state_dir, "skills"])
+    return SkillsAt(folder, sep.join([folder, "*"]))
+
+
+def permissions(contract: LaunchContract, exposed_skills: list[str], private_dirs: tuple[str, ...] = (),
+                skills_dir: SkillsAt | None = None) -> list[dict[str, str]]:
     """The complete ordered rule set (last match wins). Sent on session create, where it is applied last.
 
     ``private_dirs``: path patterns of the run's own OpenCode output (tool output, shell output, temp files),
-    the only external directories the agent may read."""
+    the only external directories the agent may read. ``skills_dir``: the run's copy of its exposed skills, readable
+    so ``read`` reaches a skill's ``references/``, and never editable: the read grant alone opens writing where no bind
+    stands behind it (skills probe 2026-11-04, check 7), so both rules go together, on every platform."""
     capabilities = set(contract.extra.get("card_capabilities") or [])
     web = "allow" if capabilities & WEB_CAPABILITIES else "deny"
     rules = [rule("*", "deny")]  # anything not named below does not exist for the agent
     rules += [rule(action, "allow") for action in ("read", "glob", "grep", "shell")]
-    rules += [rule("read", "deny", "*.env"), rule("read", "deny", "*.env.*"), rule("read", "allow", "*.env.example")]
+    rules += ENV_READ_RULES
     rules.append(rule("edit", "allow" if contract.role in MUTATING_ROLES else "deny"))
     rules += [rule("webfetch", web), rule("websearch", web), rule("skill", "deny")]
     rules += [rule("skill", "allow", name) for name in exposed_skills]
     rules += [rule(action, "deny") for action in ALWAYS_DENIED]  # after the rest, so nothing above reopens them
     rules += [rule("external_directory", "allow", pattern) for pattern in private_dirs]
+    if exposed_skills:
+        if skills_dir is None:
+            raise ValueError("a run exposed to skills needs the folder they are copied to")
+        rules += [rule("external_directory", "allow", skills_dir.pattern), rule("edit", "deny", skills_dir.pattern)]
     return rules
 
 
@@ -117,11 +152,41 @@ def private_output_dirs(state_dir: str, sep: str, *, scratch: str = "") -> tuple
     return dirs + ((sep.join([scratch, "*"]),) if scratch else ())
 
 
-def system_text(contract: LaunchContract, unavailable_skills: list[str],
+def skills_text(planned: Mapping[str, Any]) -> list[str]:
+    """The system text's skill lines, each on its own condition, naming ids (the 2026-11-04 ruling, §1). The pack
+    carries the card's pinned lists; these say what this run really has:
+
+    * the card's ``skills:`` that are here: load them, unless a description excludes this task (WC §15.3), which
+      qualifies the pack's "Skills to load";
+    * the rest of what the ``skill`` tool lists, the card's optional ones that are here: load each one whose description
+      matches the task (each, not one: a change in two languages fits two, review E127 M3);
+    * the card's ``skills:`` that are not here: proceed without them."""
+    requested = list(planned.get("requested") or [])
+    exposed = list(planned.get("exposed") or [])
+    load = [s for s in exposed if s in requested]
+    optional = [s for s in exposed if s not in requested]
+    unavailable = list(planned.get("unavailable") or [])
+    lines = []
+    if load:
+        lines.append(f"- Load {_ids(load)} with the `skill` tool before you start, unless its description says it does "
+                     "not fit this task. This qualifies the contract's \"Skills to load\".")
+    if optional:
+        lines.append(f"- The `skill` tool lists {_ids(optional)}: load each one whose description matches your task.")
+    if unavailable:
+        lines.append("- Skills your role card requests that this harness does not provide: "
+                     f"{', '.join(unavailable)}. Proceed without them and say so in your report.")
+    return lines
+
+
+def _ids(names: list[str]) -> str:
+    return ", ".join(f"`{n}`" for n in names)
+
+
+def system_text(contract: LaunchContract, planned: Mapping[str, Any],
                 network: Mapping[str, Any] | None = None,
                 unavailable_tools: list[Mapping[str, Any]] | None = None) -> str:
     """The run's system text. ``unavailable_tools``: the commands of the tools AEW brings that this run got no copy of
-    (``capability.ops.unavailable``, from the run's own record), told as its missing skills are, so the agent proceeds
+    (``capability.ops.unavailable``, from the run's own record), told beside its skills, so the agent proceeds
     without them and says so (the operator, 2026-11-05: a missing tool is logged, not voided)."""
     card = (contract.card or {}).get("id") or contract.role
     edit = ("You may edit files in the workspace." if contract.role in MUTATING_ROLES
@@ -146,9 +211,7 @@ def system_text(contract: LaunchContract, unavailable_skills: list[str],
     ]
     if network is not None:
         lines.append(network_text(network))
-    if unavailable_skills:
-        lines.append("- Skills your role card requests that this harness does not provide: "
-                     f"{', '.join(unavailable_skills)}. Proceed without them and say so in your report.")
+    lines += skills_text(planned)
     if unavailable_tools:
         fallbacks = list(dict.fromkeys(str(t["fallback"]) for t in unavailable_tools if t.get("fallback")))
         named = ", ".join(f"`{t['tool']}`" for t in unavailable_tools)
@@ -173,25 +236,29 @@ def network_text(network: Mapping[str, Any]) -> str:
             "operator to add it to `containment.network.egress_allow`.")
 
 
-def invocation_config(contract: LaunchContract, *, provided_skills: frozenset[str] = frozenset(),
-                      private_dirs: tuple[str, ...] = (), network: Mapping[str, Any] | None = None,
+def invocation_config(contract: LaunchContract, *, private_dirs: tuple[str, ...] = (),
+                      skills_dir: SkillsAt | None = None, network: Mapping[str, Any] | None = None,
                       unavailable_tools: list[Mapping[str, Any]] | None = None) -> dict[str, Any]:
     """``OPENCODE_CONFIG_CONTENT`` for one run's private server. ``network``: the label of the run's own network
-    (``netns.RunNetwork.describe``), which the system text states; None for a run on the host's."""
-    skill = skills(contract, provided_skills)
-    rules = permissions(contract, skill["exposed"], private_dirs)
+    (``netns.RunNetwork.describe``), which the system text states; None for a run on the host's. ``skills_dir``: where
+    the run's exposed skills are copied (:func:`skills_at`), needed when it has any."""
+    skill = skills(contract)
+    rules = permissions(contract, skill["exposed"], private_dirs, skills_dir)
     profile = contract.execution_profile
     agent: dict[str, Any] = {"mode": "primary", "description": f"AEW {contract.role} for {contract.invocation}",
                              "model": config_model(profile),
-                             "system": system_text(contract, skill["unavailable"], network, unavailable_tools),
+                             "system": system_text(contract, skill, network, unavailable_tools),
                              "permissions": rules}
     if profile.get("max_steps"):
         agent["steps"] = int(profile["max_steps"])
     agents: dict[str, Any] = {AGENT: agent}
     for name in AUXILIARY_AGENTS:  # any auxiliary model call uses the pinned model too
         agents[name] = {"model": config_model(profile)}
+    # The one skills entry: the run's own copy, by absolute path. Nothing else: no URL, no home path, no project folder
+    # (the 2026-11-04 ruling; CAPR-05, HEB-01.i). OpenCode's own built-in skills stay denied by the rules.
+    found = {"skills": [skills_dir.folder]} if skill["exposed"] and skills_dir is not None else {}
     return {"snapshots": False, "update": "disable", "share": "disabled", "plugins": [COMPATIBILITY_PLUGIN],
-            "lsp": False, "formatter": False, "default_agent": AGENT, "permissions": rules, "agents": agents}
+            "lsp": False, "formatter": False, "default_agent": AGENT, "permissions": rules, "agents": agents, **found}
 
 
 def relayed(config: dict[str, Any], profile: dict[str, Any], base_url: str) -> dict[str, Any]:
@@ -221,11 +288,25 @@ def session_body(contract: LaunchContract, directory: str, rules: list[dict[str,
 LEAD_MCP_SERVER = SERVER_NAME
 LEAD_MCP_COMMAND = ["aew", "lead", "mcp"]
 
+# The read-only git commands the Lead runs without asking, and their options that write a file (`--output`) or run a
+# configured program (`--ext-diff`), which ask wherever they are in the command (the designer, 2026-11-06). OpenCode's
+# `*` matches any run of characters and the pattern is anchored, so `git diff*--output*` covers `--output=x` and
+# `--output x` anywhere after the subcommand; git takes no abbreviation of either (checked: `--outp=` and `--ext` are
+# refused). A global option before the subcommand (`git -C dir diff`) matches none of these allows, so it asks too.
+LEAD_GIT_READS = ("git status*", "git diff*", "git log*", "git show*")
+# They also ask for a comparison outside the working tree and for a read naming a `.env` file (the designer,
+# 2026-11-06). Other spellings and shell globs aren't matched: a containment-level mask is the follow-on.
+LEAD_GIT_ASKS = (*(f"git {cmd}*{option}*" for cmd in ("diff", "log", "show") for option in ("--output", "--ext-diff")),
+                 "git diff*--no-index*", "git diff*/dev/null*",
+                 *(f"git {cmd}*.env*" for cmd in ("diff", "log", "show")))
+
 LEAD_RULES = [
     rule("*", "ask"),
     *(rule(action, "allow") for action in ("read", "glob", "grep")),
+    *ENV_READ_RULES,
     rule("shell", "ask"),
-    *(rule("shell", "allow", pattern) for pattern in ("aew *", "git status*", "git diff*", "git log*", "git show*")),
+    *(rule("shell", "allow", pattern) for pattern in ("aew *", *LEAD_GIT_READS)),
+    *(rule("shell", "ask", pattern) for pattern in LEAD_GIT_ASKS),  # after the allows, so they win
     rule("edit", "deny"),
     rule("subagent", "deny"),
     rule("question", "allow"),
@@ -276,7 +357,9 @@ LEAD_SYSTEM = "\n".join([
     # approves. The rules are unchanged (`LEAD_RULES`): a command that asks still waits on the operator. OpenCode's
     # prompt is the one approval; a yes typed in chat is not a second gate (#304 review, m2; the designer).
     "- Do not implement substantial changes yourself. You cannot edit files in this session, but you can read and "
-    "search them with your read, glob and grep tools. The shell runs `aew` and `git status|diff|log|show` directly. "
+    "search them with your read, glob and grep tools (`.env` files aren't readable; `.env.example` is). The shell "
+    "runs `aew` and `git status|diff|log|show` directly (a few of their options and paths ask, a `.env` file named "
+    "among them). "
     "Any other command asks the operator's permission first: when the operator asks for one, such as running the "
     "tests or a script, or one is needed to do what they asked, request it by running it: OpenCode asks the "
     "operator, and it runs once they approve. That prompt is the approval: you may say in a line what you are about "
@@ -349,6 +432,20 @@ def lead_contained_text(label: Mapping[str, Any]) -> str:
             "where a setting exists. Running a command the operator approved is not working around anything.")
 
 
+# The providers every Lead's configuration switches off with OpenCode's own provider deny (the designer's ruling of
+# 2026-11-06, on the operator's decision that AEW does not use OpenCode's free models): OpenCode turns `opencode` on
+# with no key and offers its free models, and no relay serves `opencode-go` to the Lead, so it would only fail. The
+# deny removes the provider with its models on every recompute of OpenCode's provider state. Never an `opencode` entry
+# under `providers` instead: that switches the provider on.
+LEAD_DENIED_PROVIDERS = ("opencode", "opencode-go")
+
+
+def lead_provider_policies() -> list[dict[str, str]]:
+    """``experimental.policies`` for every Lead: a ``provider.use`` deny for each of :data:`LEAD_DENIED_PROVIDERS`
+    (OpenCode 2.0.18's ``Config.InfoEncoded.experimental.policies``, which the capability probe checks)."""
+    return [{"action": "provider.use", "resource": p, "effect": "deny"} for p in LEAD_DENIED_PROVIDERS]
+
+
 def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
                 relays: Mapping[str, str] | None = None) -> dict[str, Any]:
     """``OPENCODE_CONFIG_CONTENT`` for the Lead's TUI. It is merged over the operator's own configuration, which the
@@ -358,12 +455,15 @@ def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
     system text so every Lead works from how AEW actually runs here, not by trial and error. ``contained`` is a
     contained session's label, whose line the system text carries (:func:`lead_contained_text`), and ``relays`` its
     relayed providers' ``baseURL`` (provider id -> the relay's loopback address inside): provider-level only, which
-    every request of those providers' models follows (measured, 2026-10-25), so no model is made up in the list."""
+    every request of those providers' models follows (measured, 2026-10-25), so no model is made up in the list.
+    Every Lead's configuration (contained, not contained, and ``--print-config``'s) denies
+    :data:`LEAD_DENIED_PROVIDERS`."""
     system = LEAD_SYSTEM + (f"\n{lead_contained_text(contained)}" if contained is not None else "")
     system = f"{system}\n\n{guide}" if guide else system
     providers = {p: {"settings": {"baseURL": url, **({"transport": "http"} if p in WEBSOCKET_FIRST else {})}}
                  for p, url in sorted((relays or {}).items())}
     return {**({"providers": providers} if providers else {}), "share": "disabled", "default_agent": LEAD_AGENT,
+            "experimental": {"policies": lead_provider_policies()},
             # The typed surface's server: spawned by OpenCode in the session's curated environment, with no
             # `environment` of its own (it holds no credential), and with Code Mode off so its tools are function
             # tools (2.0.18's default hides MCP tools behind one `execute` tool). Its execution timeout is left at the

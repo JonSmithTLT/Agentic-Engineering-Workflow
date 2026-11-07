@@ -75,6 +75,9 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/R-{}-{}/git/objects`: written or removed by `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/harness`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/harness/.aew-containment-probe-{}.spec.json`: written or removed by `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
+- `local/harness/runs/R-{}-{}/harness/skills`: written or removed by `aew.harness.supervisor:Supervisor._deliver_skills` (direct: shutil.rmtree); `aew.skills:deliver` (direct: Path.mkdir, shutil.rmtree)
+- `local/harness/runs/R-{}-{}/harness/skills/{}`: written or removed by `aew.skills:_remove` (direct: Path.unlink, shutil.rmtree); `aew.skills:deliver` (direct: Path.mkdir)
+- `local/harness/runs/R-{}-{}/harness/skills/{}/{}`: written or removed by `aew.skills:deliver` (direct: Path.write_bytes)
 - `local/harness/runs/R-{}-{}/heartbeat`: written or removed by `aew.harness.runlog:beat` (direct: Path.touch, atomic_write, os.open)
 - `local/harness/runs/R-{}-{}/prompt.md`: written or removed by `aew.harness.supervisor:Supervisor.start` (direct: Path.write_text)
 - `local/harness/runs/R-{}-{}/requests/{}`: written or removed by `aew.harness.runlog:take_requests` (direct: Path.unlink)
@@ -138,6 +141,9 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/{}/git/objects`: written or removed by `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
 - `local/harness/runs/{}/harness`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/{}/harness/.aew-containment-probe-{}.spec.json`: written or removed by `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
+- `local/harness/runs/{}/harness/skills`: written or removed by `aew.harness.supervisor:Supervisor._deliver_skills` (direct: shutil.rmtree); `aew.skills:deliver` (direct: Path.mkdir, shutil.rmtree)
+- `local/harness/runs/{}/harness/skills/{}`: written or removed by `aew.skills:_remove` (direct: Path.unlink, shutil.rmtree); `aew.skills:deliver` (direct: Path.mkdir)
+- `local/harness/runs/{}/harness/skills/{}/{}`: written or removed by `aew.skills:deliver` (direct: Path.write_bytes)
 - `local/harness/runs/{}/heartbeat`: written or removed by `aew.harness.runlog:beat` (direct: Path.touch, atomic_write, os.open)
 - `local/harness/runs/{}/prompt.md`: written or removed by `aew.harness.supervisor:Supervisor.start` (direct: Path.write_text)
 - `local/harness/runs/{}/requests`: written or removed by `aew.harness.runlog:deliver_request` (direct: Path.mkdir)
@@ -283,14 +289,14 @@ A write is placed per function, not per call: where its destination is a paramet
 
 The parser cut: 113 registrations of a command handler; handlers by role (`aew`: 111, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
-Writer functions with a store-transaction or direct write placed under `.aew`: 87; reached from at least one entry point: 60.
+Writer functions with a store-transaction or direct write placed under `.aew`: 90; reached from at least one entry point: 63.
 
 - `aew` (store_writer): 52 writer functions (24 write the store, 28 only under `local/`)
 - `aew (contained Lead)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 - `aew (worker run)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 - `aew dashboard serve` (non_writer): 2 writer functions (0 write the store, 2 only under `local/`)
 - `aew lead mcp` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
-- `aew.harness.supervisor` (store_writer): 16 writer functions (0 write the store, 16 only under `local/`)
+- `aew.harness.supervisor` (store_writer): 19 writer functions (0 write the store, 19 only under `local/`)
 - `aew.stg02.server` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 
 **Checked:** a store write (a store-transaction writer, or a direct writer under a directory other than `local/`) reached from an entry point of kind `non_writer` (`aew (contained Lead)`, `aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.stg02.server`): none.

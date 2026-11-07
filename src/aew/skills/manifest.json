@@ -1,0 +1,67 @@
+{
+ "schema": "aew/skills-manifest/v1",
+ "about": "AEW's shipped skills (register E127; ADR-0006, amendment 2026-11-05). Each changes only by a pull request that re-hashes this file. Every skill is unevaluated: released for the personal alpha only.",
+ "skills": {
+  "acceptance-verification": {
+   "version": "0.1.0",
+   "label": "unevaluated",
+   "sha256": "9d79d89110abf14e6b22592af4408687574a06ca4c5e042c9ea81b73c34795f9",
+   "files": {
+    "SKILL.md": "abcfe892d53d74d08cd837a216f5eb4aca1ed233612c39e7613757f74c1184e3"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/acceptance-verification",
+    "snapshot": "acceptance-verification-0.1.0-abcfe892",
+    "snapshot_holds": "SKILL.md, references/, examples/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
+   }
+  },
+  "adversarial-review": {
+   "version": "0.6.0",
+   "label": "unevaluated",
+   "sha256": "e6faa279179e3b93bd94ff0bd9800d8e6869a5610d6b789fe76cc5706d5c66f2",
+   "files": {
+    "examples/bad/unreachable-and-authoritative.md": "0e8d394aafd8b86cfed473767a7e02d3466fac435e81af039ead38f55801f44c",
+    "examples/good/recovery-fence.md": "d4d80b33e73e91def65fd6c919720a8287ef3766939f98994f3ef174f7390847",
+    "references/information-flow.md": "fe4e5db25084d4fa9a1d41de89da9a7bc89e195282ea21450fd11f47b2b4aa0c",
+    "references/plan-review.md": "d03c0be41d7d7e53d06628e7087dd6288bc150768e1241241e1e0539ca6b8d30",
+    "references/re-review.md": "2addb0f3a20ea39026b7485856058e863ca3615f461e7c649205f1fe71db8f1b",
+    "references/state-and-hubs.md": "918d46622ba7c52afba63e3fee275c144ff52e37025a15c4cfa046f706539666",
+    "references/tool-config-changes.md": "2413da38c5da6621f01ed4dd812c11ed5be452077c0014edce9f33bd050bbaa3",
+    "SKILL.md": "284d630ef6529f94582bc82131ea208dead437465254e2a006c57a76cb19c8f4"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/adversarial-review",
+    "snapshot": "adversarial-review-0.6.0-284d630e",
+    "snapshot_holds": "SKILL.md, references/, examples/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
+   }
+  },
+  "c-development": {
+   "version": "0.2.0",
+   "label": "unevaluated",
+   "sha256": "4bf3e1a66155843dc94725ae15868bf814e798cd497e656b3bc22ec114671e35",
+   "files": {
+    "SKILL.md": "2d6643781458d6cdd7d63245adca678b6f8b20f99e9c490c3a7dec25cae29903"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/c-development",
+    "snapshot": "c-development-0.2.0-2d664378",
+    "snapshot_holds": "SKILL.md, references/, examples/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
+   }
+  },
+  "python-development": {
+   "version": "0.4.0",
+   "label": "unevaluated",
+   "sha256": "d817ebcb67deadc99a388b2b67e1c52be6ff527f69eeea3e2e73fe7d5734599b",
+   "files": {
+    "references/instrumentation.md": "0edf749c70ff0dffc860bdb499cfa5960d8d84bb8cfc3e9137994685617eb570",
+    "references/tool-config-changes.md": "0584ba3c64848efc6feec20a023e17f7b43f3104d012de8f853c43c19e3a2c3d",
+    "SKILL.md": "24e3214d9a575724b8305a5d056567b1d7a45d65a9946599a2d475c4cc0cd0fe"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/python-development",
+    "snapshot": "python-development-0.4.0-24e3214d",
+    "snapshot_holds": "SKILL.md, references/, examples/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
+   }
+  }
+ }
+}

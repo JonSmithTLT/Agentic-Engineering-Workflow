@@ -332,6 +332,7 @@ def _init(args: argparse.Namespace) -> Any:
     from aew.capability import consent
     from aew.engine import first_configuration
     from aew.engine.api import Engine
+    from aew.harness.containment import netns
 
     consent.check_names(args.fetch_tool)  # an unknown tool refuses before anything is written
     configuration = first_configuration.from_flags(check_command=args.check_command, check_timeout=args.check_timeout,
@@ -350,6 +351,7 @@ def _init(args: argparse.Namespace) -> Any:
         **({"first_configuration": configuration.report()} if configuration is not None else {}),
         "next": configuration.next_step() if configuration is not None
         else "acquire Lead authority: aew lead acquire --expect-rev 0",
+        "provider_key": netns.FIRST_USE_LINE,
     }
     return {**out, **consent.init_keys(out["next"], consent.at_init(args.fetch_tool))}
 

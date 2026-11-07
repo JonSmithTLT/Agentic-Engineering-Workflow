@@ -89,11 +89,30 @@ def actions(root: Path) -> list[str]:
 
 
 def test_the_route_a_note_prints_after_the_pin_runs_as_printed(tmp_path):
-    """Review of #329, F1: the first step of what a successful init prints isn't refused."""
+    """Review of #329, F1: the first step of what a successful init prints isn't refused. (The provider note that
+    first carried it is gone: opencode needs its key like any provider, the operator's decision of 2026-11-06; the
+    route is the one `next` prints for what is still missing.)"""
     root = repo(tmp_path)
-    res = init(root, "--check-command", "make", "--model", "opencode/big")
-    assert "aew lead acquire --expect-rev 0" in res.json["first_configuration"]["provider_note"]
+    res = init(root, "--model", "opencode/big")
+    assert "provider_note" not in res.json["first_configuration"]
+    assert "`aew lead acquire --expect-rev 0`" in res.json["next"]
     assert run_aew("-C", str(root), "lead", "acquire", "--expect-rev", "0").returncode == 0
+
+
+def test_a_fresh_init_with_an_opencode_model_names_its_key_and_a_launch_passes_only_with_it_set(tmp_path):
+    """E119's first configuration names opencode's key variable, as for every known provider (the operator,
+    2026-11-06): the pinned policy's provider_env carries it, and the launch predicate passes with it set and refuses
+    without it. The key is synthetic."""
+    root = repo(tmp_path)
+    res = init(root, "--model", "opencode/x")
+    assert res.returncode == 0, res.stdout
+    variable = netns.PROVIDER_KEY_ENV["opencode"]
+    assert variable == "OPENCODE_API_KEY" and res.json["first_configuration"]["provider_env"] == [variable]
+    policy = yaml.safe_load((root / ".aew" / "policy" / "execution.yaml").read_text(encoding="utf-8"))
+    assert policy["provider_env"] == [variable]
+    assert policy["profiles"]["default"] == {"model": "opencode/x"}
+    for env, want in (({variable: "synthetic-not-a-key"}, None), ({}, variable), ({variable: ""}, variable)):
+        assert netns.provider_key_missing("opencode", policy["provider_env"], env, on_relay_route=True) == want, env
 
 
 def test_resume_gives_a_vacant_seat_the_one_text_status_does(tmp_path):
@@ -139,7 +158,8 @@ def test_an_interrupted_init_may_run_again_with_other_values(tmp_path):
     (root / ".aew/state/control.yaml").unlink()  # the commit point never happened
     res = init(root, "--check-command", "make test", "--model", "opencode/big")
     assert res.returncode == 0, res.stderr
-    assert yaml.safe_load((root / ".aew/policy/execution.yaml").read_text(encoding="utf-8"))["provider_env"] == []
+    assert yaml.safe_load((root / ".aew/policy/execution.yaml").read_text(encoding="utf-8"))["provider_env"] == [
+        "OPENCODE_API_KEY"]
     state = Engine.discover(root).store.current()
     assert state["policy_sha256"]["policy/checks.yaml"] == sha256_file(root / ".aew/policy/checks.yaml")
 
@@ -181,7 +201,10 @@ def test_flagless_init_says_what_it_always_said(tmp_path):
     assert out["next"] == "acquire Lead authority: aew lead acquire --expect-rev 0"
     assert "first_configuration" not in out
     # `tools`: the tools AEW brings, as the operator chose them (aew.capability.consent), in a key of its own
-    assert sorted(out) == ["aew_root", "authority_candidates", "next", "ok", "project_id", "revision", "tools"]
+    assert sorted(out) == ["aew_root", "authority_candidates", "next", "ok", "project_id", "provider_key", "revision",
+                           "tools"]
+    # the first-use line (the operator's decision of 2026-11-06): a provider key and a paid model, no free models
+    assert "AEW needs a provider key" in out["provider_key"] and "https://opencode.ai/docs/zen/" in out["provider_key"]
 
 
 def test_a_flag_is_refused_under_the_lead_broker_and_writes_nothing(tmp_path):
@@ -206,9 +229,9 @@ def test_the_operators_recorded_line_parses_and_what_it_typed_is_what_ran(tmp_pa
     op = operator(tmp_path)
     check = ["{python}", "-c", "print('it''s')", "x y"]
     argv = ["--check-command", shlex.join(check), "--model", S.OFFLINE_MODEL]
-    res = op.first_configuration(argv, S.world_fixtures(op.lab), {S.OFFLINE_PROVIDER: None})
+    res = op.first_configuration(argv, S.world_fixtures(op.lab), {S.OFFLINE_PROVIDER: S.OFFLINE_KEY})
     assert res.returncode == 0, res.stderr
-    assert "aew opencode --acquire" in res.json["next"] and "--provider-env" not in res.json["next"]
+    assert f"aew opencode --acquire --provider-env {S.OFFLINE_KEY}" in res.json["next"]
     (typed,) = [t for t in op.transcript if t["step"] == "init"]
     words = shlex.split(typed["input"])
     assert words[0] == "aew"
@@ -227,7 +250,7 @@ def test_the_recorded_line_reads_as_an_operator_would_type_it(tmp_path):
     line = S.check_line(["{python}", "-m", "pytest", "-q", "tests"])
     assert line == "{python} -m pytest -q tests"
     res = op.first_configuration(["--check-command", line, "--model", S.OFFLINE_MODEL], S.world_fixtures(op.lab),
-                                 {S.OFFLINE_PROVIDER: None})
+                                 {S.OFFLINE_PROVIDER: S.OFFLINE_KEY})
     assert res.returncode == 0, res.stderr
     (typed,) = [t for t in op.transcript if t["step"] == "init"]
     assert typed["input"] == f"aew init --check-command '{line}' --model {S.OFFLINE_MODEL}"
@@ -240,7 +263,7 @@ def test_each_fixture_is_recorded_not_counted_and_pinned_by_the_real_path(tmp_pa
     op = operator(tmp_path)
     fixtures = S.world_fixtures(op.lab, steering="crawl")
     res = op.first_configuration(["--check-command", "make", "--model", S.OFFLINE_MODEL], fixtures,
-                                 {S.OFFLINE_PROVIDER: None})
+                                 {S.OFFLINE_PROVIDER: S.OFFLINE_KEY})
     assert res.returncode == 0, res.stderr
     recorded = {o["fixture"] for o in op.ledger.observations if o["kind"] == "setup_fixture"}
     assert recorded == {"harness: fake", "containment.writable", "steering.mode",
@@ -261,7 +284,7 @@ def test_a_fixture_is_checked_with_the_bytes_it_changes(tmp_path):
         doc["harness"] = ""
 
     res = op.first_configuration(["--check-command", "make", "--model", S.OFFLINE_MODEL], {"bad": bad},
-                                 {S.OFFLINE_PROVIDER: None})
+                                 {S.OFFLINE_PROVIDER: S.OFFLINE_KEY})
     assert res.returncode != 0 and ValidationFailed.code in res.stderr
     assert not (op.root / ".aew").exists()
 
@@ -272,7 +295,7 @@ def test_the_hook_leaves_nothing_behind_and_a_fake_provider_is_unknown_outside_i
     op = operator(tmp_path)
     tables = dict(netns.PROVIDER_KEY_ENV), netns.CATALOG_ADDRESSED
     initialize = Engine.__dict__["initialize"]
-    known = {"vuatprov": "VUAT_PROVIDER_KEY", S.OFFLINE_PROVIDER: None}
+    known = {"vuatprov": "VUAT_PROVIDER_KEY", S.OFFLINE_PROVIDER: S.OFFLINE_KEY}
     res = op.first_configuration(["--check-command", "make", "--model", "vuatprov/m"], S.world_fixtures(op.lab), known)
     assert res.returncode == 0, res.stderr
     assert "aew opencode --acquire --provider-env VUAT_PROVIDER_KEY" in res.json["next"]

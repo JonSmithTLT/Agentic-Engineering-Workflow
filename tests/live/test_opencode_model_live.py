@@ -33,9 +33,11 @@ Two scenarios:
 
 ``AEW_LIVE_ROUTING`` routes roles to other models (``implementer=opencode/<model>,reviewer=opencode/<model>#<effort>``;
 unnamed roles use ``AEW_LIVE_OPENCODE_MODEL``), through the execution policy's per-archetype routing: each invocation
-pins its own model at dispatch. ``AEW_LIVE_PROVIDER_KEY_ENV`` names the environment variable of a paid provider's key
-(``OPENAI_API_KEY`` for ``openai/...`` models, M3 step 9): the policy names it, the runs' servers receive its real value
-(never an agent's shell), and the leak checks look for that value instead of the placeholder.
+pins its own model at dispatch. Every model is a keyed paid one the operator names and approves for the run; there is
+no default (AEW does not use OpenCode's free models: the operator, 2026-11-06). ``AEW_LIVE_PROVIDER_KEY_ENV`` names the
+environment variable of that provider's key (``OPENAI_API_KEY`` for ``openai/...`` models, M3 step 9): the policy names
+it, the runs' servers receive its real value (never an agent's shell), and the leak checks look for that value. The
+lane skips without either.
 
 Each trial's record (outcomes, usage, telemetry, the project's control-state footprint) is appended to
 ``AEW_LIVE_RESULTS`` if set. Run it with::
@@ -60,11 +62,10 @@ import pytest
 from aewflow import assign, create_planned_ticket, sample_project
 from fake_harness import POLICY, HarnessLab, credential_hits
 from harness_conformance import (
-    FREE_MODEL,
     NO_WINDOW,
-    PROVIDER_SECRET,
     evidence_of,
     harness_processes,
+    live_model,
     supervisor_gone,
 )
 from invariants import assert_control_invariants
@@ -99,11 +100,12 @@ def profile(ref: str) -> dict[str, Any]:
 
 
 def provider_key() -> tuple[str, str]:
-    """The provider variable the policy names and the value its runs' servers get: a paid provider's real key when
-    ``AEW_LIVE_PROVIDER_KEY_ENV`` names one, else a placeholder (the free ``opencode/*`` models need none)."""
+    """The provider variable the policy names and the value its runs' servers get: the paid provider's real key,
+    which ``AEW_LIVE_PROVIDER_KEY_ENV`` names. The lane skips without one: it calls the model."""
     name = os.environ.get(PAID_KEY_ENV)
     if not name:
-        return "OPENAI_API_KEY", PROVIDER_SECRET
+        pytest.skip(f"{PAID_KEY_ENV} is unset: name the variable of the paid provider's key the operator approved "
+                    "for this run")
     if not os.environ.get(name):
         pytest.skip(f"{PAID_KEY_ENV}={name}, but {name} is not set")
     return name, os.environ[name]
@@ -112,7 +114,7 @@ def provider_key() -> tuple[str, str]:
 def model_lab(tmp_path: Path) -> HarnessLab:
     routes = routing()
     key_name, key_value = provider_key()
-    profiles = {"standard": profile(FREE_MODEL)}
+    profiles = {"standard": profile(live_model())}
     archetypes = {}
     for role, ref in sorted(routes.items()):
         profiles[f"{role}-route"] = profile(ref)
@@ -124,9 +126,9 @@ def model_lab(tmp_path: Path) -> HarnessLab:
 
 
 def new_trial(scenario: str, trial: int) -> dict[str, Any]:
-    return {"schema": "aew/live-model-trial/v1", "scenario": scenario, "model": FREE_MODEL, "routing": routing(),
+    return {"schema": "aew/live-model-trial/v1", "scenario": scenario, "model": live_model(), "routing": routing(),
             "trial": trial, "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "provider_key": "real" if os.environ.get(PAID_KEY_ENV) else "placeholder",
+            "provider_key": "real",
             "agent_shell": "bash" if os.environ.get("SHELL") else "powershell", "max_steps": MAX_STEPS,
             "deadline_s": DEADLINE_S, "runs": [], "lead": {}}
 

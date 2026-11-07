@@ -5,6 +5,10 @@ harness runs every launch."""
 
 from __future__ import annotations
 
+import json
+import sys
+from typing import Any
+
 import pytest
 from aewflow import create_planned_ticket, sample_project
 from fake_harness import POLICY, HarnessLab
@@ -123,3 +127,100 @@ def test_a_policy_without_provider_variables_reports_none_to_check(tmp_path):
 def test_the_lead_session_refuses_the_same_way_for_its_own_provider_variable(lab):
     res = lab.aew("opencode", "--provider-env", KEY, "--print-config")
     assert res.returncode != 0 and f"set {KEY} in the terminal you start AEW from" in res.error["message"], res.error
+
+
+# ------------------------------------------------------------- the provider key (the operator's decision, 2026-11-06)
+
+LINUX = sys.platform.startswith("linux")
+
+
+def keyless_lab(tmp_path, provider_env: list[str]) -> HarnessLab:
+    """A project whose runs use the real OpenCode adapter (it calls its provider itself, so on Linux's default
+    `proxy_only` its runs are on the relay route) with a paid openai profile. Nothing is launched by these tests."""
+    policy = {**POLICY, "harness": "opencode", "provider_env": provider_env,
+              "profiles": {"standard": {"provider": "openai", "model": "synthetic-paid-model"}}}
+    return HarnessLab.create(sample_project(tmp_path), tmp_path, policy=policy)
+
+
+@pytest.mark.skipif(not LINUX, reason="the relay route is Linux's (proxy_only); Windows has no network containment")
+def test_a_relay_route_launch_whose_provider_would_get_no_key_is_refused_before_anything_is_committed(
+        tmp_path, monkeypatch):
+    """Wrong: the policy names no key variable for its provider. The launch is refused with `provider_key_missing`,
+    naming the variable, quoting the published rule; nothing is dispatched or recorded. `aew doctor` names the same
+    beforehand. Right: the variable named and set passes doctor."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    lab = keyless_lab(tmp_path, [])
+    try:
+        found = doctor(lab)["provider-key"]
+        assert found["status"] == "FAIL" and "openai (OPENAI_API_KEY), for profile(s) standard" in found["detail"]
+        assert "provider_key_missing" in found["detail"] and "https://opencode.ai/docs/zen/" in found["detail"]
+        wid = create_planned_ticket(lab.project, tmp_path)
+        rev = lab.project.rev()
+        res = lab.lead_res("work", "assign", wid, "--launch")
+        assert res.returncode != 0 and res.error["code"] == "HARNESS_INCOMPATIBLE", res.error
+        assert res.error["details"]["reason"] == "provider_key_missing", res.error
+        assert res.error["details"]["variable"] == "OPENAI_API_KEY"
+        assert "Free-tier chat models require OpenCode" in res.error["message"]
+        assert lab.project.rev() == rev and runs(lab) == []
+        edit_policy(lab, provider_env=["OPENAI_API_KEY"])
+        found = doctor(lab, env={"OPENAI_API_KEY": "sk-synthetic-value"})["provider-key"]
+        assert found["status"] == "PASS" and "sk-synthetic-value" not in found["detail"]
+    finally:
+        lab.cleanup()
+
+
+def test_doctor_judges_no_provider_key_off_the_relay_route(tmp_path):
+    """Missing: a harness that never calls its provider itself (the fake), and on Windows any harness, has no relay
+    route, so doctor has no `provider-key` line to give."""
+    lab = HarnessLab.create(sample_project(tmp_path), tmp_path, policy={
+        **POLICY, "profiles": {"standard": {"provider": "openai", "model": "synthetic-paid-model"}}})
+    try:
+        assert "provider-key" not in doctor(lab)
+    finally:
+        lab.cleanup()
+    if not LINUX:
+        lab = keyless_lab(tmp_path / "opencode", [])
+        try:
+            assert "provider-key" not in doctor(lab)
+        finally:
+            lab.cleanup()
+
+
+def test_aew_init_says_at_first_use_that_aew_needs_a_provider_key(tmp_path):
+    from aew.harness.containment import netns
+
+    assert "AEW needs a provider key" in netns.FIRST_USE_LINE
+    line = netns.FIRST_USE_LINE
+    assert "does not use OpenCode's free models" in line and netns.FREE_TIER_RULE in line
+
+
+def test_a_runs_refused_egress_targets_reach_no_lead_read(lab, tmp_path):
+    """The designer's ruling of 2026-11-06, point 1: the refused targets are in the run's record (`egress_refused`),
+    never in what the Lead reads of it (`harness status`, `harness wait`: CS-4 addendum 4's relayed reads)."""
+    lab.script("R-INV-0001-1", [])
+    wid = create_planned_ticket(lab.project, tmp_path)
+    run = lab.lead("work", "assign", wid, "--launch", env={KEY: "synthetic-value"})["launch"]["run"]
+    lab.wait(run)
+    directory = runlog.run_dir(lab.aew_root, run)
+    record = runlog.read_record(directory) or {}
+    record["egress_refused"] = {"targets": [{"target": "secret-plan.example:443", "reasons": ["not_allowlisted"],
+                                             "count": 1}], "more": 0}
+    runlog.write_record(directory, record)
+    for args in (("harness", "status"), ("harness", "status", record["invocation"]), ("harness", "wait", run)):
+        res = lab.aew(*args)
+        # The label's self-test row 1 has an `egress_refused` key of its own (its planted probe target, CS-4 A2):
+        # what must not reach the read is the record's, by its value and by its shape.
+        assert "secret-plan" not in res.stdout and '"targets"' not in res.stdout, (args, res.stdout)
+        assert not_carried(json.loads(res.stdout)), args
+
+
+def not_carried(value: Any) -> bool:
+    """Whether no ``egress_refused`` in ``value`` has the run record's shape (a ``targets`` list)."""
+    if isinstance(value, dict):
+        found = value.get("egress_refused")
+        if isinstance(found, dict) and "targets" in found:
+            return False
+        return all(not_carried(v) for v in value.values())
+    if isinstance(value, list):
+        return all(not_carried(v) for v in value)
+    return True

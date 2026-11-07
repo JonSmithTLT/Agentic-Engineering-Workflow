@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from aew import roles
 from aew.engine import gates as G
 from aew.engine import guide, resume_ops
 from aew.engine import transitions as T
@@ -45,7 +46,8 @@ NOT_TOOLS = {
     "integration_attempt": "a record's field", "projection": "a result's field", "revision": "a result's field",
     "metadata": "a filesystem term", "chmod": "an operating-system command", "chown": "an operating-system command",
     "diff": "a git command", "log": "a git command", "show": "a git command",
-    "read": "OpenCode's own tool, not AEW's",
+    "read": "OpenCode's own tool, not AEW's", "skill": "OpenCode's own tool, not AEW's",
+    "use_when": "a role card's field",
 }
 # Where the engine's and the surface's words to a Lead are written: every string in these, docstrings aside.
 WORDS_IN = ("src/aew/engine", "src/aew/surface", "src/aew/harness/opencode")
@@ -100,7 +102,8 @@ def stage_named(text: str) -> list[str]:
 def known_words() -> set[str]:
     normal = contract.exposed(NORMAL)
     return ({t.name for t in normal} | {a for t in normal for a in t.input_schema.get("properties") or {}}
-            | set(NOT_TOOLS) | set(DEFAULT_CHECKS["checks"]) | set(G.VERIFICATION_GATES))
+            | set(NOT_TOOLS) | set(DEFAULT_CHECKS["checks"]) | set(G.VERIFICATION_GATES)
+            | set(roles.builtin_cards()))  # a card's id, which the staffing line names (E127)
 
 
 def stray_arguments(text: str) -> list[str]:

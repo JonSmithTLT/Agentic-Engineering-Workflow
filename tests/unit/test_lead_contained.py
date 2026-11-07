@@ -145,8 +145,9 @@ def test_each_api_key_login_of_a_known_provider_is_relayed_and_the_others_say_wh
     text = out.getvalue()
     assert "anthropic (key): relayed" in text
     assert "opencode (key): not served yet: OpenCode's catalog gives each opencode/* model an address of its own, so " \
-           "no relay can carry its key, and the key stays out of the Lead; without it OpenCode offers only the free " \
-           "opencode models, which work through the egress proxy" in text
+           "no relay can carry its key, and the key stays out of the Lead; the Lead's configuration switches " \
+           "opencode off" in text
+    assert "free" not in text and "egress proxy" not in text  # the free models are no route (2026-11-06)
     assert "mystery (key): not relayed; AEW does not know which variable" in text
     assert "openai (oauth): relayed as stored, 2 h left; AEW never refreshes it: when it expires, `opencode auth " \
            "list` at your own terminal refreshes it, and the Lead's next request works" in text
@@ -372,24 +373,56 @@ def test_the_contained_lead_needs_a_terminal_and_a_passable_provider_variable(tm
         contained(tmp_path, ["OPENAI_API_KEY"])  # unset
 
 
-def test_with_no_login_and_no_key_the_start_lines_say_only_free_models_work_and_name_the_operators_step(
+def test_a_contained_lead_with_no_provider_relayed_is_refused_naming_the_rule_and_the_operators_steps(
         tmp_path, at_a_terminal):
-    """The Lead's check: where the operator has no OpenCode login (no database, or none in it), the start lines say so,
-    and that no provider is relayed, so only OpenCode's free models work; and they name the operator's own step: log in
-    with their own OpenCode outside AEW, or feed a key, then start again. A relayed provider needs no such line."""
-    nothing = ("aew opencode: no provider is relayed to the Lead, so only OpenCode's free models work. Log in with "
-               "your own OpenCode at your own terminal, outside AEW (`opencode auth login`), or feed a key with "
-               "`--provider-env NAME`; then start `aew opencode` again.")
-    out = io.StringIO()
-    contained(tmp_path).announce(out)
-    assert "Your OpenCode logins: none (no OpenCode login database at" in out.getvalue() and nothing in out.getvalue()
-    store(tmp_path, [])
-    out = io.StringIO()
-    contained(tmp_path).announce(out)
-    assert "Your OpenCode logins: none." in out.getvalue() and nothing in out.getvalue()
-    out = io.StringIO()
-    contained(tmp_path, ["OPENAI_API_KEY"], OPENAI_API_KEY="sk-synthetic-fed").announce(out)
-    assert "no provider is relayed" not in out.getvalue()
+    """The designer's ruling of 2026-11-06: with no key and no refreshing login relayed, the Lead's configuration
+    leaves it no model (OpenCode's own providers are switched off), so `aew opencode` is refused at start with
+    `provider_key_missing`, quoting the published rule and naming the operator's own steps: log in with their own
+    OpenCode outside AEW, or feed a key, then start again. The start lines still say what was found, and no longer
+    say the free models work. Right case: a fed key, or a refreshing login, passes; wrong case: no login database, or
+    an empty one, is refused; missing case: an opencode key alone (never relayed) is refused too."""
+    def refused(session: lead.ContainedLead) -> errors.HarnessIncompatible:
+        out = io.StringIO()
+        session.announce(out)
+        assert "free models work" not in out.getvalue()
+        with pytest.raises(errors.HarnessIncompatible) as caught:
+            session.require_provider()
+        return caught.value
+
+    exc = refused(contained(tmp_path))
+    assert exc.details["reason"] == netns.PROVIDER_KEY_MISSING == "provider_key_missing"
+    assert netns.FREE_TIER_RULE in exc.message and "https://opencode.ai/docs/zen/" in exc.message
+    assert "`opencode auth login`" in exc.message and "`--provider-env NAME`" in exc.message
+    assert "ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENAI_API_KEY" in exc.message
+    assert "OPENCODE_API_KEY" not in exc.message  # never relayed to the Lead, so never offered as a fix
+    store(tmp_path / "empty", [])
+    refused(contained(tmp_path / "empty"))
+    store(tmp_path / "oc", [("opencode", "api", 1, {"type": "key", "key": KEYS["opencode"]}, 1)])
+    refused(contained(tmp_path / "oc", OPENCODE_API_KEY="synthetic-oc-env"))
+    contained(tmp_path, ["OPENAI_API_KEY"], OPENAI_API_KEY="sk-synthetic-fed").require_provider()  # fed: passes
+    in_two_hours = int((time.time() + 2 * 3600 + 60) * 1000)
+    store(tmp_path / "chatgpt",
+          [("openai", "chatgpt-browser", 1, {"type": "oauth", "access": "acc", "expires": in_two_hours}, 1)])
+    contained(tmp_path / "chatgpt").require_provider()  # a refreshing login relayed as stored: passes
+
+
+def test_the_lead_is_refused_before_a_seat_or_sandbox_when_no_provider_is_relayed(tmp_path, monkeypatch,
+                                                                                at_a_terminal):
+    """`aew opencode` refuses in `run`, after the start lines and before `run_session`, which takes the seat and
+    builds the sandbox (the designer's ruling: refused at start, before the sandbox)."""
+    started: list[Any] = []
+    monkeypatch.setattr(lead, "check_version", lambda: "2.0.18")
+    monkeypatch.setattr(lead, "command", lambda engine, extra: ["opencode", "--standalone"])
+    monkeypatch.setattr(lead, "guide_of", lambda engine: "")
+    monkeypatch.setattr(lead, "contained_here", lambda: True)
+    monkeypatch.setattr(lead_broker, "require_credential", lambda acquire: None)
+    monkeypatch.setattr(lead_broker, "run_session", lambda *a, **k: started.append(a) or {})
+    monkeypatch.setattr(os, "environ", {"HOME": str(tmp_path), "PATH": "/usr/bin"})
+    engine = SimpleNamespace(execution_policy=lambda: (None, None), repo_root=tmp_path)
+    with pytest.raises(errors.HarnessIncompatible, match="no provider is relayed to the contained Lead"):
+        lead.run(engine, acquire=False, session_label=None, keep_seat=False, provider_env=[], extra_args=[],
+                 print_config=False)
+    assert started == []
 
 
 def test_provider_variables_in_the_environment_are_named_with_whether_the_lead_serves_them(tmp_path, at_a_terminal):
@@ -536,22 +569,74 @@ def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str
 def test_the_lead_rules_are_unchanged_a_command_still_asks_and_an_edit_or_a_subagent_is_denied():
     """Addendum 11 changes the Lead's text, never its rules. The shell runs `aew` and read-only git; any other
     command, the tests and a commit among them, asks the operator; an edit and a subagent are denied. Nothing else is
-    allowed or denied, and a contained session's rules are the same."""
+    allowed or denied, and a contained session's rules are the same. Since 2026-11-06 the Lead denies reading `.env`
+    files as invocations do, and its git reads with an option that writes a file or runs a program ask (the
+    designer)."""
     rules = projection.lead_config()["agents"][projection.LEAD_AGENT]["permissions"]
     assert projection.lead_config(contained=LABEL)["agents"][projection.LEAD_AGENT]["permissions"] == rules
     assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "allow"} == {
         ("read", "*"), ("glob", "*"), ("grep", "*"), ("question", "*"), (f"{projection.LEAD_MCP_SERVER}_*", "*"),
         ("shell", "aew *"), ("shell", "git status*"), ("shell", "git diff*"), ("shell", "git log*"),
-        ("shell", "git show*")}
-    assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "deny"} == {("edit", "*"), ("subagent", "*")}
+        ("shell", "git show*"), ("read", "*.env.example")}
+    assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "deny"} == {
+        ("edit", "*"), ("subagent", "*"), ("read", "*.env"), ("read", "*.env.*")}
     # The asks are AEW's own, never OpenCode's default for an unmatched action (#304 review, n1).
-    assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "ask"} == {("*", "*"), ("shell", "*")}
+    assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "ask"} == {
+        ("*", "*"), ("shell", "*"), *(("shell", pattern) for pattern in projection.LEAD_GIT_ASKS)}
     for command in ("aew status", "git status --short", "git diff HEAD", "git log -1", "git show HEAD"):
         assert effect(rules, "shell", command) == "allow", command
     for command in ("python -m pytest -q", "bash scripts/check.sh", "git commit -m wip", "git push", "rm -rf build"):
         assert effect(rules, "shell", command) == "ask", command
     assert effect(rules, "edit", "src/aew/cli/main.py") == "deny" and effect(rules, "subagent", "general") == "deny"
     assert effect(rules, "webfetch", "https://example.com") == "ask"
+
+
+def test_the_lead_denies_reading_env_files_with_the_invocations_own_three_rules_in_their_order(tmp_path):
+    """The Lead's permissions deny reading `.env` files, as invocations' already do: one list, used by both, and it
+    comes after the `read` allow so it wins (the designer, 2026-11-06). The project is synthetic."""
+    (tmp_path / ".env").write_text("SYNTHETIC=not-a-secret\n", encoding="utf-8")
+    (tmp_path / ".env.local").write_text("SYNTHETIC=not-a-secret\n", encoding="utf-8")
+    (tmp_path / ".env.example").write_text("SYNTHETIC=\n", encoding="utf-8")
+    lead_rules = projection.lead_config()["agents"][projection.LEAD_AGENT]["permissions"]
+    worker = projection.permissions(SimpleNamespace(extra={}, role="reviewer"), [])
+    shared = list(projection.ENV_READ_RULES)
+    assert [(r["effect"], r["resource"]) for r in shared] == [("deny", "*.env"), ("deny", "*.env.*"),
+                                                               ("allow", "*.env.example")]
+    for rules in (lead_rules, worker):
+        start = rules.index(shared[0])
+        assert rules[start:start + 3] == shared
+        assert rules.index(projection.rule("read", "allow")) < start
+    for name, want in ((".env", "deny"), (".env.local", "deny"), (".env.example", "allow"), ("README.md", "allow")):
+        assert effect(lead_rules, "read", (tmp_path / name).as_posix()) == want, name
+
+
+def test_the_leads_git_reads_that_write_a_file_or_run_a_program_ask_and_the_plain_reads_stay_allowed():
+    """The Lead's auto-allowed git reads no longer cover options that write files or run a configured program:
+    `--output` and `--ext-diff` ask wherever they follow the subcommand, as one argument or two (the designer,
+    2026-11-06). A global option before the subcommand matches no allow, so it asks too. Nothing here runs git."""
+    rules = projection.lead_config()["agents"][projection.LEAD_AGENT]["permissions"]
+    for command in ("git diff", "git diff HEAD", "git log -5", "git log --oneline -3", "git show HEAD",
+                    "git status --short"):
+        assert effect(rules, "shell", command) == "allow", command
+    for command in ("git diff --output=x", "git log --output=x", "git show HEAD --output=x", "git diff --output x",
+                    "git log -p --output x", "git diff --ext-diff", "git log -p --ext-diff", "git show --ext-diff HEAD",
+                    "git -C /tmp diff", "git -C /tmp log"):
+        assert effect(rules, "shell", command) == "ask", command
+
+
+def test_the_leads_git_reads_ask_for_a_comparison_outside_the_working_tree_and_for_a_read_naming_an_env_file():
+    """The designer, 2026-11-06: the Lead's auto-allowed git reads also ask for comparisons outside the working tree
+    and for reads naming `.env` files. Other spellings and shell globs aren't matched; a containment-level mask is the
+    follow-on. The text says so, and `.env.example` stays readable. Nothing here runs git."""
+    rules = projection.lead_config()["agents"][projection.LEAD_AGENT]["permissions"]
+    for command in ("git diff --no-index a b", "git diff --no-index -- a b", "git diff /dev/null b",
+                    "git diff --stat /dev/null b", "git diff .env", "git diff HEAD -- .env.local", "git log -p -- .env",
+                    "git show HEAD:.env", "git show HEAD:config/.env.production"):
+        assert effect(rules, "shell", command) == "ask", command
+    for command in ("git diff", "git log -5", "git show HEAD", "git diff HEAD -- src/aew", "git log --oneline -3"):
+        assert effect(rules, "shell", command) == "allow", command
+    assert "(`.env` files aren't readable; `.env.example` is)" in projection.LEAD_SYSTEM
+    assert "a `.env` file named among them" in " ".join(projection.LEAD_SYSTEM.split())
 
 
 def test_the_lead_text_requests_a_command_that_asks_and_keeps_edits_and_commits_with_invocations():

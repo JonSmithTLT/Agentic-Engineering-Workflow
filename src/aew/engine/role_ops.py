@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from aew import roles
+from aew import roles, skills
 from aew.engine import gates as G
 from aew.engine import transitions
 from aew.engine.base import TxnContext
@@ -53,7 +53,7 @@ class Roles:
         items = [{"id": c.id, "display_name": c.meta["display_name"], "extends": c.archetype, "source": c.source,
                   "version": c.meta.get("version"), "specialty": c.meta.get("specialty"),
                   "use_when": c.meta.get("use_when", []), "skills": c.meta.get("skills", []),
-                  "purpose": c.meta["purpose"]}
+                  "optional_skills": c.meta.get("optional_skills", []), "purpose": c.meta["purpose"]}
                  for c in sorted(catalog.cards.values(), key=lambda c: (c.archetype, c.id))]
         return {"cards": items, "archetypes": list(roles.ARCHETYPES), "problems": catalog.problems}
 
@@ -64,10 +64,18 @@ class Roles:
                                             "engine_operations": base["engine_operations"],
                                             "authority_capabilities": base["authority_capabilities"]}}
 
+    @staticmethod
+    def optional_unshipped(meta: dict[str, Any]) -> list[str]:
+        """A card's ``optional_skills`` that AEW's install does not ship: never a problem (it does not set ``ok``),
+        since a run just never lists them, but said, since the card asks for them (the 2026-11-04 ruling, §2)."""
+        return sorted(set(meta.get("optional_skills") or []) - skills.shipped())
+
     def role_validate(self, path: str | None = None) -> dict[str, Any]:
         catalog = self.role_catalog()
         if path is None:
-            return {"ok": not catalog.problems, "cards": sorted(catalog.cards), "problems": catalog.problems}
+            unshipped = {c.id: names for c in catalog.cards.values() if (names := self.optional_unshipped(c.meta))}
+            return {"ok": not catalog.problems, "cards": sorted(catalog.cards), "problems": catalog.problems,
+                    **({"optional_unshipped": dict(sorted(unshipped.items()))} if unshipped else {})}
         raw = Path(path).read_bytes()
         meta = load_yaml(raw.decode("utf-8"), source=path)
         try:
@@ -78,7 +86,9 @@ class Roles:
         if existing and existing.sha256 != sha256_bytes(raw):
             return {"ok": False, "problems": [f"card id {meta['role']!r} already exists in the {existing.source} "
                                                f"catalog ({existing.path})"]}
-        return {"ok": True, "card": meta["role"], "extends": meta["extends"]}
+        unshipped = self.optional_unshipped(meta)
+        return {"ok": True, "card": meta["role"], "extends": meta["extends"],
+                **({"optional_unshipped": unshipped} if unshipped else {})}
 
     @staticmethod
     def _plan(unit: dict[str, Any]) -> dict[str, Any]:

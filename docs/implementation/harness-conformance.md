@@ -13,7 +13,7 @@ What any harness adapter must do for AEW. This is the adapter-neutral contract b
   - `tests/integration/test_opencode_lead.py` covers `aew opencode`;
   - `tests/integration/test_lead_session.py` checks Lead custody and bridge parity;
   - `tests/regression/test_m3_harness_adversarial.py` holds the step-2 race and attack regressions.
-- **Live lane (opt-in: `pytest --live tests/live`):** the same scenarios against a real OpenCode 2.0.18 server, plus a check that the real server loads the Lead projection, and (step 8) a free model carrying out real launch contracts unscripted (section 6).
+- **Live lane (opt-in: `pytest --live tests/live`):** the same scenarios against a real OpenCode 2.0.18 server, plus a check that the real server loads the Lead projection, and (step 8) a real model carrying out real launch contracts unscripted (section 6). Step 8 ran on free models; every live lane now runs on a keyed paid model the operator names and approves for each run (`AEW_LIVE_OPENCODE_MODEL`, with `AEW_LIVE_PROVIDER_KEY_ENV` for the unscripted lane), and skips without one: AEW does not use OpenCode's free models (ADR-0009's amendment of 2026-11-06).
 
 ## 1. The adapter contract
 
@@ -52,7 +52,7 @@ Two more actions serve the acceptance scenarios: `note` (a remark that stays in 
 |---|---|---|
 | `FakeDriver` | CI | the fake harness: one scripted agent process |
 | `FakeOpenCodeDriver` | CI | the production OpenCode adapter against `fake_opencode.py`, a V2 server serving the real 2.0.18 OpenAPI. Its "model" runs each action as a tool call under the session's shell environment when one was set, else the server's own (V2's rule). The policy names a provider secret for the server, so the scenarios prove the agent's shell still lacks it. |
-| `OpenCodeDriver` | live lane | the production adapter against real OpenCode 2.0.18. Each action runs through the real session's shell endpoint, in the real curated environment, recorded in OpenCode's real database; `model_step` is a real prompt to a free model. |
+| `OpenCodeDriver` | live lane | the production adapter against real OpenCode 2.0.18. Each action runs through the real session's shell endpoint, in the real curated environment, recorded in OpenCode's real database, on a keyed paid model the operator names and approves for the run (`AEW_LIVE_OPENCODE_MODEL`; no default). |
 
 | Scenario | Property |
 |---|---|

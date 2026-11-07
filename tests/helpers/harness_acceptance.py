@@ -2,7 +2,7 @@
 
 Each scenario takes a ``Driver`` (``harness_conformance.py``): in CI the fake harness and the real OpenCode adapter
 against the fake V2 server (``tests/acceptance/test_at14_at17_harness.py``); in the live lane the real OpenCode
-2.0.18 server with a free model (``tests/live/test_opencode_acceptance_live.py``).
+2.0.18 server on the operator's keyed paid model for the run (``tests/live/test_opencode_acceptance_live.py``).
 
 The Lead acts through its own harness session wherever the scenario is about the Lead (AT-14, AT-15, AT-17):
 ``aew lead session`` (harness-neutral) or ``aew opencode`` (a fake TUI in CI). Every role is a harness run. The
@@ -462,8 +462,11 @@ def at16_isolated_review(lab: HarnessLab, driver: Driver, tmp_path: Path) -> Non
         config = driver.projection(lab, run)
         if config is None:
             continue
-        edits = [r["effect"] for r in config["permissions"] if r["action"] == "edit"]
+        edits = [r["effect"] for r in config["permissions"] if r["action"] == "edit" and r["resource"] == "*"]
         assert edits[-1] == ("allow" if may_edit else "deny"), (run, edits)
+        # the only narrower edit rule is the deny on the run's own copy of its skills (E127), never an allow
+        assert all(r["effect"] == "deny" and run in r["resource"] for r in config["permissions"]
+                   if r["action"] == "edit" and r["resource"] != "*"), run
         others = [r for r in runs if r != run]
         for rule in config["permissions"]:
             if rule["effect"] == "allow" and rule["action"] == "external_directory":

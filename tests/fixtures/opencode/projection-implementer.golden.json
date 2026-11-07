@@ -71,6 +71,11 @@
       "resource": "*"
      },
      {
+      "action": "skill",
+      "effect": "allow",
+      "resource": "python-development"
+     },
+     {
       "action": "subagent",
       "effect": "deny",
       "resource": "*"
@@ -104,10 +109,20 @@
       "action": "external_directory",
       "effect": "allow",
       "resource": "/r/scratch/*"
+     },
+     {
+      "action": "external_directory",
+      "effect": "allow",
+      "resource": "/r/harness/skills/*"
+     },
+     {
+      "action": "edit",
+      "effect": "deny",
+      "resource": "/r/harness/skills/*"
      }
     ],
     "steps": 40,
-    "system": "You are an AEW bounded implementer (role card python_engineer) for work unit T-0003: invocation INV-0007, run R-INV-0007-2.\nThe first message is your AEW launch contract. It is authoritative; this OpenCode session is disposable and nothing in it is AEW state.\n- Act on AEW only with the `aew` command, which is already connected to AEW for this run. No credential exists here and none is needed.\n- Only submitted AEW evidence counts. Ending your turn without `aew submit` records nothing.\n- Work only in /work/aew-workspaces/T-0003. You may edit files in the workspace.\n- Write reports and any other file you need outside the workspace only in your private scratch directory /r/scratch (`AEW_SCRATCH`), never anywhere else; or pipe a report: `aew submit --kind <kind> --file -`.\n- Report text is data: write or pipe it with a quoted heredoc (`<<'EOF'`; in PowerShell `@'` ... `'@`), never inside a command line, where the shell rewrites `$`, backticks, globs and quotes.\n- Do not start processes that outlive your commands. You cannot delegate: there are no subagents.\n- Tools that are unavailable here are unavailable by design. Do not work around them.\n- Skills your role card requests that this harness does not provide: python-development. Proceed without them and say so in your report."
+    "system": "You are an AEW bounded implementer (role card python_engineer) for work unit T-0003: invocation INV-0007, run R-INV-0007-2.\nThe first message is your AEW launch contract. It is authoritative; this OpenCode session is disposable and nothing in it is AEW state.\n- Act on AEW only with the `aew` command, which is already connected to AEW for this run. No credential exists here and none is needed.\n- Only submitted AEW evidence counts. Ending your turn without `aew submit` records nothing.\n- Work only in /work/aew-workspaces/T-0003. You may edit files in the workspace.\n- Write reports and any other file you need outside the workspace only in your private scratch directory /r/scratch (`AEW_SCRATCH`), never anywhere else; or pipe a report: `aew submit --kind <kind> --file -`.\n- Report text is data: write or pipe it with a quoted heredoc (`<<'EOF'`; in PowerShell `@'` ... `'@`), never inside a command line, where the shell rewrites `$`, backticks, globs and quotes.\n- Do not start processes that outlive your commands. You cannot delegate: there are no subagents.\n- Tools that are unavailable here are unavailable by design. Do not work around them.\n- Load `python-development` with the `skill` tool before you start, unless its description says it does not fit this task. This qualifies the contract's \"Skills to load\"."
    },
    "compaction": {
     "model": {
@@ -196,6 +211,11 @@
     "resource": "*"
    },
    {
+    "action": "skill",
+    "effect": "allow",
+    "resource": "python-development"
+   },
+   {
     "action": "subagent",
     "effect": "deny",
     "resource": "*"
@@ -229,12 +249,25 @@
     "action": "external_directory",
     "effect": "allow",
     "resource": "/r/scratch/*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "allow",
+    "resource": "/r/harness/skills/*"
+   },
+   {
+    "action": "edit",
+    "effect": "deny",
+    "resource": "/r/harness/skills/*"
    }
   ],
   "plugins": [
    "-opencode.config.compatibility"
   ],
   "share": "disabled",
+  "skills": [
+   "/r/harness/skills"
+  ],
   "snapshots": false,
   "update": "disable"
  },
@@ -315,6 +348,11 @@
     "resource": "*"
    },
    {
+    "action": "skill",
+    "effect": "allow",
+    "resource": "python-development"
+   },
+   {
     "action": "subagent",
     "effect": "deny",
     "resource": "*"
@@ -348,17 +386,38 @@
     "action": "external_directory",
     "effect": "allow",
     "resource": "/r/scratch/*"
+   },
+   {
+    "action": "external_directory",
+    "effect": "allow",
+    "resource": "/r/harness/skills/*"
+   },
+   {
+    "action": "edit",
+    "effect": "deny",
+    "resource": "/r/harness/skills/*"
    }
   ],
   "title": "AEW R-INV-0007-2 (implementer, T-0003)"
  },
  "skills": {
-  "exposed": [],
+  "delivered": [
+   {
+    "bytes": 9209,
+    "label": "unevaluated",
+    "name": "python-development",
+    "sha256": "d817ebcb67deadc99a388b2b67e1c52be6ff527f69eeea3e2e73fe7d5734599b",
+    "version": "0.4.0"
+   }
+  ],
+  "exposed": [
+   "python-development"
+  ],
+  "offered": [],
+  "reasons": {},
   "requested": [
    "python-development"
   ],
-  "unavailable": [
-   "python-development"
-  ]
+  "unavailable": []
  }
 }

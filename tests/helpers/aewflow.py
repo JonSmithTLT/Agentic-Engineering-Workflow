@@ -7,7 +7,7 @@ generated launch contract would. Nothing here reaches into engine internals.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -107,7 +107,7 @@ def sample_project(tmp_path: Path, *, guardrails: dict[str, Any] | None = None,
 @dataclass
 class Role:
     project: Project
-    token: str
+    token: str = field(repr=False)  # a failed test's traceback prints its arguments: never a token
     workspace: Path
 
     def aew(self, *args: str, env: dict[str, str] | None = None):

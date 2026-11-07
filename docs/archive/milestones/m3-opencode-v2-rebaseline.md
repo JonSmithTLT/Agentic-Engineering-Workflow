@@ -110,6 +110,7 @@ The prompt was "list the exact names of every skill you have been told is availa
 - There is **no documented isolation recipe**. The XDG, `OPENCODE_DISABLE_PROJECT_CONFIG` and plugin-disable combination was established by this spike.
 - `wait`, `log`, export, import and stats are **experimental** routes.
 - **`/api/skill` returned an empty list** even when skills were demonstrably exposed. Skill exposure therefore cannot be verified through the API. It is controlled by config and permissions, and checked in conformance by asking the model.
+  - **Corrected 2026-11-05 (register E127; skills probe of 2026-11-04 on 2.0.18):** called with `location[directory]`, `/api/skill` lists the skills OpenCode loaded, the config's `skills` entries plus its built-ins. It is not filtered by permission rules, so it shows what is loaded, not what is exposed: it is a copy test, and exposure still needs the model (ADR-0006, amendment 2026-11-05).
 - An escape from the job object through an out-of-tree spawner (WMI, scheduled tasks) is outside the harness boundary. It is irrelevant to authority: rotation and revocation close the credential bridge (M3 plan §2.3).
 
 ## 8. Effect on the plan

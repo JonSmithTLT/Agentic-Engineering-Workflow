@@ -25,6 +25,10 @@ from aew.harness import procs
 from aew.harness.containment import netns
 from aew.harness.opencode import lead, projection
 
+# Every Lead's provider deny, written out: the designer's ruling of 2026-11-06 (both of OpenCode's own providers)
+DENY = [{"action": "provider.use", "resource": "opencode", "effect": "deny"},
+        {"action": "provider.use", "resource": "opencode-go", "effect": "deny"}]
+
 pytestmark = [pytest.mark.skipif(not sys.platform.startswith("linux") or shutil.which("bwrap") is None,
                                  reason="the Lead is contained on Linux (bubblewrap); Windows runs it labelled not "
                                  "contained"), pytest.mark.autopsy]
@@ -41,7 +45,7 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
     works."""
     lab, tui = make_lab(tmp_path)
     try:
-        home = synthetic_home(tmp_path)
+        home = synthetic_home(tmp_path, {"anthropic": KEYS["anthropic"]})  # a Lead needs a provider relayed
         (tui / "mode").write_text("agent")
         sync = tmp_path / "sync"
         (tui / "tui-script.json").write_text(json.dumps([
@@ -84,7 +88,10 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
                                                             "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"}  # none the operator's
         egress = f"http://127.0.0.1:{netns.EGRESS_PORT}"
         assert env["HTTPS_PROXY"] == env["HTTP_PROXY"] == egress and "127.0.0.1" in env["NO_PROXY"]
-        assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(guide_of(lab), contained=label)
+        config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
+        relays = {p: v["settings"]["baseURL"] for p, v in (config.get("providers") or {}).items()}
+        assert config == projection.lead_config(guide_of(lab), contained=label, relays=relays)
+        assert config["experimental"]["policies"] == DENY  # OpenCode's own providers off (2026-11-06)
         assert "your OpenCode configuration is not loaded in the contained Lead; its MCP servers are left out: docs" \
             in done["stderr"]
         # addendum 1: the operator's TUI preferences without their plugins; their recent models, never their prompts
@@ -232,7 +239,7 @@ def test_a_lead_whose_containment_fails_is_refused_under_required_and_runs_label
     missing = str(tmp_path / "no-such-root")
     lab, tui = make_lab(tmp_path, writable_extra=[missing])
     try:
-        home = synthetic_home(tmp_path)
+        home = synthetic_home(tmp_path, {"anthropic": KEYS["anthropic"]})
         (tui / "mode").write_text("agent")
         (tui / "tui-script.json").write_text(json.dumps([]))
         refused = at_the_terminal(lab, home)
@@ -245,7 +252,7 @@ def test_a_lead_whose_containment_fails_is_refused_under_required_and_runs_label
     weaker_root.mkdir()
     lab, tui = make_lab(weaker_root, mode="allow_weaker", writable_extra=[missing])
     try:
-        home = synthetic_home(weaker_root)
+        home = synthetic_home(weaker_root, {"anthropic": KEYS["anthropic"]})
         (tui / "mode").write_text("agent")
         (tui / "tui-script.json").write_text(json.dumps([]))
         done = at_the_terminal(lab, home)

@@ -268,6 +268,29 @@ def _grouped(paths: dict[str, Any]) -> list[tuple[str, list[str]]]:
     return out
 
 
+def staffing_text() -> str:
+    """Which implementer card to staff, so a language card's skills load (the designer's ruling of 2026-11-04, §6: the
+    Lead had only the cards' ``use_when``). Derived, never a list here: from the built-in implementer cards whose
+    ``skills:`` AEW ships, each with its first ``use_when``, and the archetype's default card with the shipped skills
+    its run is offered (``optional_skills``). Empty when no card has a shipped skill."""
+    from aew import roles, skills
+
+    shipped = skills.shipped()
+    cards = sorted((c for c in roles.builtin_cards().values() if c.archetype == "implementer"), key=lambda c: c.id)
+    loads = [(c, [s for s in c.meta.get("skills") or [] if s in shipped]) for c in cards]
+    loads = [(c, names) for c, names in loads if names and c.meta.get("use_when")]
+    if not loads:
+        return ""
+    picks = "; ".join(f"`{c.id}` when {c.meta['use_when'][0]}, so its run loads {', '.join(f'`{n}`' for n in names)}"
+                      for c, names in loads)
+    default = roles.builtin_cards().get(roles.default_card("implementer") or "")
+    offered = [s for s in (default.meta.get("optional_skills") or []) if s in shipped] if default else []
+    rest = (f" Otherwise the default, `{default.id}`, whose run may load "
+            f"{' or '.join(f'`{n}`' for n in offered)} when its task matches." if default and offered else "")
+    return ("Staff the implementer by the change's language, with the Ticket's `card` (`aew role list` shows each "
+            f"card's `use_when` and skills): {picks}.{rest}")
+
+
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: Sequence[Stage]) -> str:
     paths = gates_policy.get("risk_paths") or {}
     local = gates_policy.get("local_checks") or []
@@ -383,6 +406,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "Use the shell command where a step names no tool, or where a tool refuses. Below, "
         f"\"{TRANSITION}\" means {_command('transition')}, and \"{WITH_REASON}\" adds `--reason <reason>`.",
         "",
+        *([staffing, ""] if (staffing := staffing_text()) else []),
         *_steps_text(stages, post_verify),
         "",
         "Each state and the moves out of it (the engine refuses any other):",

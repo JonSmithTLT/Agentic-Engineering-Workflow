@@ -638,14 +638,18 @@ def test_the_agent_is_told_the_tools_its_run_goes_without_as_it_is_told_its_miss
 
     from aew.harness.opencode import projection
 
-    system = projection.invocation_config(contract(), unavailable_tools=tools)["agents"][projection.AGENT]["system"]
-    line = next((x for x in system.splitlines() if x.startswith("- Tools AEW brings")), None)
+    # a card skill AEW does not ship, so the run has a missing skill's line to sit beside (E127's skills lines)
+    planned = contract(skills=["not-shipped"])
+    system = projection.invocation_config(planned, unavailable_tools=tools)["agents"][projection.AGENT]["system"]
+    lines = system.splitlines()
+    line = next((x for x in lines if x.startswith("- Tools AEW brings")), None)
     assert (line is not None) is (said is not None), system
+    skills = next(x for x in lines if x.startswith("- Skills"))
+    assert "Proceed without them and say so in your report." in skills  # the same words as its skills line
     if said:
         assert line == (f"- Tools AEW brings that this run does not have: {said}"
                         + ("" if said.endswith(".") else ".") + " Proceed without them and say so in your report.")
-    skills = next(x for x in system.splitlines() if x.startswith("- Skills"))
-    assert "Proceed without them and say so in your report." in skills  # the same words as its skills line
+        assert lines.index(line) == lines.index(skills) + 1  # side by side: the skills lines, then the tools line
 
 
 def test_the_adapters_launch_puts_the_runs_missing_tools_in_its_system_text(tmp_path, monkeypatch):

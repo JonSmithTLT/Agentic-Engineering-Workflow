@@ -58,8 +58,21 @@ PROVIDER_KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "google": "GOOGLE_GENERATI
                     "openai": "OPENAI_API_KEY", "opencode": "OPENCODE_API_KEY"}
 # Providers whose models each carry an address of their own in OpenCode's catalog, which beats the provider-level
 # baseURL (measured, 2026-10-24 and 25): the Lead, which switches models from the live catalog, cannot point them at a
-# relay, so their key is never relayed for it (STG-05 CS-4). Their free models need no key and go out through egress.
+# relay, so their key is never relayed for it (STG-05 CS-4). The Lead's configuration switches them off
+# (``projection.LEAD_DENIED_PROVIDERS``): AEW does not use OpenCode's free models (the operator, 2026-11-06).
 CATALOG_ADDRESSED = frozenset({"opencode"})
+# Why AEW never relies on OpenCode's free models (the operator, 2026-11-06): OpenCode Zen's published rule, which every
+# refusal for a missing provider key quotes.
+FREE_TIER_RULE = ("OpenCode's published rule (https://opencode.ai/docs/zen/) is \"Free-tier chat models require "
+                  "OpenCode; use paid models or Go from other clients.\"")
+# What `aew init` tells the operator at first use (the designer's decision record of 2026-11-06).
+FIRST_USE_LINE = ("AEW needs a provider key and a paid model: name the key's variable in the execution policy's "
+                  "provider_env, set it in the terminal you start AEW from, and pin a paid model. AEW does not use "
+                  "OpenCode's free models; " + FREE_TIER_RULE)
+# The closed reason of a launch refused because its provider would get no key: a worker's on the relay route (the
+# engine's ``require_launchable`` and the supervisor's ``_contain``), and a contained Lead with no provider relayed
+# (``lead.ContainedLead.require_provider``).
+PROVIDER_KEY_MISSING = "provider_key_missing"
 # A refreshing (OAuth) login's own upstream, by provider id, where it differs from the provider's API: OpenCode
 # 2.0.18's ChatGPT login moves openai's requests here (its `model.request` hook; read in the bundle, and the relay
 # reached through the provider-level baseURL alone, measured on the Rocky VM, 2026-10-25). The contained Lead relays
@@ -68,6 +81,13 @@ REFRESHING_UPSTREAMS = {"openai": "https://chatgpt.com/backend-api/codex"}
 # The contained Lead's relays, one per provider, on loopback ports inside from here up (4100-4102 are the workers').
 LEAD_RELAY_PORT = 4111
 PROXY_NAMES = frozenset({*agentenv.PROXY_VARS, "NO_PROXY"})
+# The run record's note on a refused target that is known and expected (the designer's pointer of 2026-11-06): a set
+# OPENCODE_API_KEY makes OpenCode 2.0.18 fetch its console's configuration from opencode.ai (inferred from the pinned
+# binary: the path was not intercepted). That call would bring console-managed providers, MCP servers and policies into
+# a contained run, so it stays refused, and it is never an allowlist entry. Defined here only, beside the record
+# (:meth:`RunNetwork.refused`), and given to no other target.
+CONSOLE_SYNC_TARGET = "opencode.ai:443"
+CONSOLE_SYNC_NOTE = "expected: OpenCode's console sync (inferred), refused by design"
 # The designer's ruling on #246's P8, as the operator decided it (2026-10-24): the one-line form, for the label.
 EGRESS_RESIDUAL = ("egress (R-6): a destination the host's own network configuration, root's, rewrites to this host "
                    "is not detected.")
@@ -85,6 +105,51 @@ def mode(policy: Mapping[str, Any] | None) -> str:
     if sys.platform == "win32":
         return NOT_PROVIDED
     return str(settings(policy).get("mode") or PROXY_ONLY)
+
+
+def relay_route(policy: Mapping[str, Any] | None, provider_relay: bool) -> bool:
+    """Whether a run of a harness that calls its provider itself (its adapter's ``PROVIDER_RELAY``) reaches the
+    provider only through AEW's relay: its network mode under this policy is ``proxy_only`` (:func:`mode`). The
+    engine's launch check and the supervisor's both judge it so, from the policy, never from whether a sandbox was
+    then established, so the two never disagree."""
+    return bool(provider_relay) and mode(policy) == PROXY_ONLY
+
+
+def provider_key_missing(provider: str | None, provider_env: Iterable[str], env: Mapping[str, str], *,
+                         on_relay_route: bool) -> str | None:
+    """The variable a run's provider reads its key from (:data:`PROVIDER_KEY_ENV`) when no key would reach the run,
+    else None. Pure. On the relay route the harness gets only what the execution policy's ``provider_env`` names (a
+    sentinel inside, the value in the relay), so the key reaches the run only when ``provider_env`` names that variable
+    and ``env`` (the launching environment) holds a value for it; an empty value is no key (:meth:`RunNetwork.start`
+    relays none). A provider whose key variable AEW does not know is never judged: a Provider Gateway upstream
+    (F18.8) may need none. Off the relay route nothing is judged here."""
+    variable = PROVIDER_KEY_ENV.get(provider or "")
+    if not on_relay_route or variable is None:
+        return None
+    if variable in {str(n) for n in provider_env} and agentenv.lookup(env, variable):
+        return None
+    return variable
+
+
+def provider_key_message(provider: str, variable: str) -> str:
+    """The refusal of a worker launch whose provider would get no key (:func:`provider_key_missing`): why, the
+    published rule, and both steps."""
+    return (f"the run's provider {provider} would get no key: a contained run reaches its provider only through AEW's "
+            f"provider relay, which adds the key {variable} holds, and the execution policy's provider_env does not "
+            f"name {variable}, or it is not set where AEW launches. AEW does not use OpenCode's free models; "
+            f"{FREE_TIER_RULE} Set a key: name {variable} in the execution policy's provider_env "
+            f"(`provider_env: [{variable}]`) and set it in the terminal you start AEW from, or the Lead session you "
+            f"launch from (`aew opencode` keeps the environment it started with). Then pin a paid model of {provider} "
+            "in the execution policy's profile, or dispatch a new invocation with --profile or --model")
+
+
+def refused_note(target: str, provider: str | None, key_relayed: bool) -> str | None:
+    """The fixed note a refused target gets in the run's record: :data:`CONSOLE_SYNC_NOTE` for
+    :data:`CONSOLE_SYNC_TARGET` on a run whose provider is ``opencode`` with its key relayed; None for anything
+    else."""
+    if target == CONSOLE_SYNC_TARGET and provider == "opencode" and key_relayed:
+        return CONSOLE_SYNC_NOTE
+    return None
 
 
 def private_dir() -> str:
@@ -204,6 +269,8 @@ class RunNetwork:
         self.login_sentinels: dict[str, str] = {}  # the Lead's refreshing logins: provider -> its sentinel inside
         self.server_leg = True    # a worker's harness server is reached through the shim; the Lead's TUI uses stdio
         self.http_proxy = False   # the Lead's HTTP_PROXY names the egress proxy too, for its refusal's https form
+        self.provider: str | None = None  # a worker's provider, and whether its key reached its relay: kept from the
+        self.key_relayed = False          # start for the record's note (:meth:`refused`), as close() clears the values
         self._closed = False
 
     @classmethod
@@ -220,6 +287,7 @@ class RunNetwork:
         values = {n: agentenv.lookup(env, n) or "" for n in secret}
         sentinels = {n: relay.sentinel() for n in secret}
         net = cls(layout, sentinels=sentinels, values=values)
+        net.provider = provider
         if layout.network != PROXY_ONLY or not layout.net_dir:
             return net
         try:
@@ -232,6 +300,7 @@ class RunNetwork:
                 net.relay = relay.ProviderRelay(
                     target, {sentinels[n]: v for n, v in values.items() if v}, proxy=proxy,
                     listener=listen(os.path.join(layout.net_dir, RELAY))).start()
+                net.key_relayed = bool(values.get(PROVIDER_KEY_ENV.get(provider or "", "")))
             if allow is not None:
                 net.egress = egress.EgressProxy(allow, listener=listen(os.path.join(layout.net_dir, EGRESS))).start()
         except OSError as exc:
@@ -369,6 +438,22 @@ class RunNetwork:
     def _services(self) -> list[tuple[str, Any]]:
         return [*(("relay", self.relay), ("egress", self.egress)),
                 *((f"relay:{p}", r) for p, (_, r) in self.relays.items())]
+
+    def refused(self) -> dict[str, Any] | None:
+        """The run's refused egress targets, for its record at its end, or None without an egress proxy: the proxy's
+        (``egress.EgressProxy.refused_targets``), each with its fixed note where :func:`refused_note` gives one.
+        Records only: it is written beside the run's ``containment`` label, never in it, so no Lead read of the
+        label (``harness status``, ``harness wait``) and no system text carries it, and nothing offers a target as an
+        allowlist entry. The agent chose the string: today it is only in the run's JSON record, and any reader that
+        shows it escapes it."""
+        if self.egress is None:
+            return None
+        found = self.egress.refused_targets()
+        for entry in found["targets"]:
+            note = refused_note(entry["target"], self.provider, self.key_relayed)
+            if note is not None:
+                entry["note"] = note
+        return found
 
     def decisions(self) -> dict[str, dict[str, int]]:
         """What the relays and the egress proxy decided, counted by outcome, for the run's record at its end."""

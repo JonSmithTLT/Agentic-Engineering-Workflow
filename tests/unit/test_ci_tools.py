@@ -1356,6 +1356,8 @@ def covered(refs: list[tuple[str, str, str]], source: Path, tracked: list[str]) 
 # tier.SHARED: a change to it runs the heavy lanes' tests that import the family), so the heavy lanes' tests may import
 # those (tests/integration/test_reference_entry_points.py, tests/integration/test_reference_interfaces.py).
 CORE_ONLY_READERS = ("tools/register.py", "tools/ci/tier.py", "tools/dashboard/import_build.py", "tools/reference.py",
+                     # the build board's check: only tests/unit/test_systems.py runs it (the systems generator)
+                     "tools/systems.py",
                      # the launch census's helper: only tests/unit/test_launch_census.py imports it (E112)
                      "tests/helpers/launch_census.py")
 # Rooted expressions without a literal base that do not read the repository widely (PR #163 review, V7-3), by file

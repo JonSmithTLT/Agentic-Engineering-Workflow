@@ -170,5 +170,5 @@ The `entry_points` fact of the `concurrency` records.
 
 - Writes by functions the call graph attributes to no entry point: 31 (entry, function) pairs, drawn only from the box "written by functions no entry point reaches".
 - Reads by functions no record reaches from an entry point: 103 (entry, function) pairs, drawn only into the box "read by functions no entry point reaches"; each is in the layout page with its function.
-- 50 write sites outside `.aew` and 51 write sites this reading could not place belong to no entry of the map (the writers page lists them).
+- 50 write sites outside `.aew` and 52 write sites this reading could not place belong to no entry of the map (the writers page lists them).
 - The bridge and the network. No record attributes a bridge call, or a route served, to the process that makes or serves it; the routes and tools are in [interfaces.md](interfaces.md), and what each process is stands in its reason above. Which entry points run contained is not a fact of the records either.

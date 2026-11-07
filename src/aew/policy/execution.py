@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from aew.errors import UsageError, ValidationFailed
-from aew.schemas import validate
+from aew.schemas import schema, validate
 from aew.util import load_yaml, sha256_bytes
 
 REL_PATH = "policy/execution.yaml"  # conventional location; project.yaml policy.execution overrides it
@@ -174,6 +174,17 @@ def messaging(policy: dict[str, Any] | None) -> str:
     is read from adopted bytes, ``aew.engine.coordination_ops.messaging_switch``)."""
     value = ((policy or {}).get("coordination") or {}).get("messaging")
     return MESSAGING_ENABLED if value == MESSAGING_ENABLED else MESSAGING_DISABLED
+
+
+def quiet_wake_s(policy: dict[str, Any] | None) -> int:
+    """The Lead's quiet backstop (``lead.quiet_wake_s``, steering design §1): a live run with no wake for this many
+    seconds wakes the Lead with why ``quiet``. Absent policy and absent key are the schema's default; the schema owns
+    the default and the bounds, and an adopted policy has been validated against them."""
+    spec = schema("execution")["properties"]["lead"]["properties"]["quiet_wake_s"]
+    value = ((policy or {}).get("lead") or {}).get("quiet_wake_s")
+    if isinstance(value, int) and not isinstance(value, bool) and spec["minimum"] <= value <= spec["maximum"]:
+        return value
+    return int(spec["default"])
 
 
 def presentation(policy: dict[str, Any] | None) -> str:

@@ -353,6 +353,7 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.opencode.lead:ContainedLead._retire` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.opencode.login:stored` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.runlog:write_live` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
+- `aew.harness.runlog:write_progress` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.supervisor:Supervisor._contain` (direct: shutil.rmtree): the attribute `self.layout.net_dir` is not a value this reading can follow
 - `aew.harness.supervisor:Supervisor.start` (direct: Path.mkdir): the attribute `contract.scratch` is not a value this reading can follow
 - `aew.harness.usage_live:Meter._persist` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds

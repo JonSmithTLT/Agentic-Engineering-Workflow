@@ -18,7 +18,6 @@ The facts, and the fixtures they make (``tests/fixtures/opencode/``):
 
 from __future__ import annotations
 
-import ast
 import base64
 import contextlib
 import hashlib
@@ -398,18 +397,12 @@ def check_tool_parts(ctx: Context) -> Outcome:
 
 # ------------------------------------------------------------------------------------------------- the login store
 
-def credential_columns() -> list[str]:
-    """The ``credential`` columns AEW's SQL names (``login.stored``'s SELECT, the Lead's INSERT), read from that SQL
-    itself so the list has one owner."""
-    from aew.harness.opencode import lead, login
+def credential_schema() -> list[list[str]]:
+    """The ``credential`` table AEW knows, each column's name and declared type in order: ``login.CREDENTIAL_SCHEMA``,
+    its one owner (the Lead's login seed writes only to a table exactly like it, E118)."""
+    from aew.harness.opencode import login
 
-    cols: set[str] = set()
-    for module in (login, lead):
-        for node in ast.walk(ast.parse(Path(module.__file__).read_text(encoding="utf-8"))):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                for m in re.finditer(r"SELECT (.+?) FROM credential|INSERT INTO credential \((.+?)\)", node.value):
-                    cols |= {c.strip() for c in (m.group(1) or m.group(2)).split(",")}
-    return sorted(cols)
+    return [[name, kind] for name, kind in login.CREDENTIAL_SCHEMA]
 
 
 def check_login_store(ctx: Context) -> Outcome:
@@ -435,7 +428,7 @@ def check_login_store(ctx: Context) -> Outcome:
         raise RuntimeError("refused: the login database is not this check's own")
     con = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True)
     try:
-        have = {row[1] for row in con.execute("PRAGMA table_info(credential)")}
+        schema = [[str(row[1]), str(row[2]).lower()] for row in con.execute("PRAGMA table_info(credential)")]
         raw = con.execute("SELECT value FROM credential WHERE integration_id = 'openai'").fetchone()
     finally:
         con.close()
@@ -444,9 +437,9 @@ def check_login_store(ctx: Context) -> Outcome:
     fields = sorted(json.loads(raw[0])) if raw else []
     # a reason code, never `why`: it names the database's host path, and records are shared
     reads_as = read.get("openai") or ("unreadable" if why else "no_row")
-    facts = {"login.store": {"columns_missing": sorted(set(credential_columns()) - have),
+    facts = {"login.store": {"schema": schema,
                              "key_row_reads_as": reads_as, "key_value_fields": fields}}
-    ok = not facts["login.store"]["columns_missing"] and read.get("openai") == "key"
+    ok = schema == credential_schema() and read.get("openai") == "key"
     return Outcome(PASS if ok else FAIL, facts, [] if ok else [json.dumps(facts["login.store"])])
 
 
@@ -606,7 +599,9 @@ class OpenCodePack:
             "catalog.declared_only": {"listed": True, "declared_only": True},
             "ripgrep.download_version": [_shipped_ripgrep()],
             # login._read's key shape ({type: "key", key}), and every column AEW's credential SQL names
-            "login.store": {"columns_missing": [], "key_row_reads_as": "key", "key_value_fields": ["key", "type"]},
+            # login._read's key shape ({type: "key", key}), and the credential table AEW writes to (CREDENTIAL_SCHEMA)
+            "login.store": {"schema": credential_schema(), "key_row_reads_as": "key",
+                            "key_value_fields": ["key", "type"]},
             "relay.transport_http": {"upgrades": 0, "route": ["/v1/responses"]},
             "relay.websocket_first": {"openai": "openai" in projection.WEBSOCKET_FIRST},
         }

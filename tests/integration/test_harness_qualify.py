@@ -323,10 +323,13 @@ def test_in_the_binary_the_citations_were_read_from_a_missing_identifier_fails(t
                                                   ["not in this binary: E2"])
 
 
-def test_the_credential_columns_are_read_from_aews_own_sql():
-    cols = OC.credential_columns()
-    assert {"integration_id", "method_id", "active", "value", "time_updated", "id", "label", "time_created"} == set(
-        cols)
+def test_the_login_store_is_pinned_to_the_credential_table_aew_owns():
+    from aew.harness.opencode import login
+
+    _, pinned = OC.OpenCodePack(FIXTURES).pinned(FIXTURES)
+    assert pinned["login.store"]["schema"] == [list(c) for c in login.CREDENTIAL_SCHEMA]
+    # every column AEW's SQL names is one of the table's
+    assert set(login.CREDENTIAL_COLUMNS) <= {name for name, _ in pinned["login.store"]["schema"]}
 
 
 # ------------------------------------------------------------------- verdicts, exit codes and the published record

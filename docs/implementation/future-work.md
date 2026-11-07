@@ -2615,6 +2615,30 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E207/`, oldest first (`python tools/register.py show E207`).*
 
+### E208
+
+**Work:** A reason code of its own for a provider's quota or budget refusal on OpenCode 2.2.6 (a 402, a quota code, or a quota-worded 429, which 2.2.6 types `QuotaExceeded`, `provider.quota`, `free-limit`, `budget-limit`, `model-budget-limit` or `go-limit`). Today such a run ends with its type named only in the run's reason text, while a 401 or 403 (`provider.auth`) ends as `provider_auth_failed`; a code would let the Lead and the dashboard tell "the account is out of budget" from a failed model call without reading text
+
+**Source:** The OpenCode 2.2.6 bump (2026-11-07), its provider-refusal tests; the operator's ruling that the code is filed, not built in the bump
+
+**When:** **Unscheduled**, the operator's to place
+
+**Notes:** Filed by the bump's builder
+
+*Later notes: `notes.d/E208/`, oldest first (`python tools/register.py show E208`).*
+
+### E209
+
+**Work:** Measure the token semantics of OpenCode Zen's other routes on 2.2.6, one live turn each through AEW's relay, each approved by the operator: Anthropic messages (`@opencode/ai/providers/anthropic`), OpenAI-compatible chat (`@opencode/ai/providers/openai-compatible`), Google (`@opencode/ai/providers/google`) and Mistral (`@opencode/ai/providers/mistral`). Until a route is measured, its models' tokens read `unknown` and are never priced; each measured route adds its entry to `OpenCodeAdapter.token_semantics` with its calls as the fixture
+
+**Source:** The OpenCode 2.2.6 bump (2026-11-07): Zen's Responses route was measured disjoint by one live turn, and the operator ruled that Zen is declared per route
+
+**When:** **Unscheduled**, each run the operator's to approve
+
+**Notes:** Filed by the bump's builder
+
+*Later notes: `notes.d/E209/`, oldest first (`python tools/register.py show E209`).*
+
 ### E47
 
 **Work:** Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do), a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the classifier with a test pinning the case; repeated wall-clock violations on `main` open or update a CI-health issue

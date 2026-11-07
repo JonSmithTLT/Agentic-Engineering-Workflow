@@ -235,8 +235,9 @@ def _tools_before_the_tui(*, asking: bool = True) -> None:
     named in one line (:func:`aew.capability.consent.at_lead_start`). It comes after the start's checks of its
     credential, its terminal, its provider variables and its provider (the contained Lead: ``require_provider``) or its
     policy (elsewhere), and before the seat is taken and the sandbox is built, either of which can still refuse the
-    start (a held seat, a failed self-test). Only the contained Lead gets AEW's tools bound (``bind``); elsewhere (``asking=False``) the TUI runs as
-    it is, with OpenCode's own lookup (``status.NOT_BOUND``), so nothing is asked there."""
+    start (a held seat, a failed self-test). Only the contained Lead gets AEW's tools bound (``bind``); elsewhere
+    (``asking=False``) the TUI runs as it is, with OpenCode's own lookup (``status.NOT_BOUND``), so nothing is asked
+    there."""
     from aew.capability import consent
 
     consent.at_lead_start(sys.stderr, asking=asking)

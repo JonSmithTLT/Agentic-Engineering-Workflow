@@ -161,7 +161,10 @@ commands:
     users: [operator]
     journeys: [V3]
     mutates: "no"
-    mutates_basis: "a read: validates the environment and the project state and reports"
+    mutates_basis: "a read: validates the environment and the project state and reports. It changes no project or
+      control state: it caches the harness's model list in the project's local folder (`--refresh` reads it again),
+      and its reads run in directories it removes after (register E153): the harness's server, started as a launch
+      starts it with no session, and with --run-checks each configured check, once, on a disposable copy"
     probe: [doctor]
     refusals: [USAGE]
     note: "V3's counted fallback while `aew preflight` does not exist"

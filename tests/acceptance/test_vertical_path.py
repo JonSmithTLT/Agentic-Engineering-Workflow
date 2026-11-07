@@ -736,11 +736,9 @@ V3_CASES: dict[str, dict[str, Any]] = {
                                  "accepted": r"(?m)^model-refs\s+PASS\s+the harness is given [^\n]*"
                                              r"(?<![\w/-])vuatprov/vuat-model\b"},  # never a doubled one
 }
-# The cases readiness cannot name yet, and the row that holds each: E153's detectors need a ruling on what may run at
-# readiness (naming the failing file means running the check; naming an unlisted model means starting the harness to
-# read its listing), and the stale seat is G3-C's (vertical-uat.md §3; the designer's position of 2026-11-02). They
-# stay red, and say so.
-V3_HELD = {"model-not-listed": "E153", "check-changes-snapshot": "E153", "stale-lead-session": "G3-C"}
+# The case readiness cannot name yet, and the row that holds it: the stale seat is G3-C's (vertical-uat.md §3; the
+# designer's position of 2026-11-02). It stays red, and says so.
+V3_HELD = {"stale-lead-session": "G3-C"}
 V3_MODELS = [{"id": "vuat-model", "modelID": "vuat-model", "providerID": "vuatprov", "name": "VUAT", "enabled": True,
               "variants": []}]
 
@@ -768,7 +766,10 @@ def test_v3_preflight_names_the_cause_and_the_fix_before_any_ticket(tmp_path, wo
     try:
         v3_setup(op, case)
         op.in_setup = False
-        doctor = op.type("preflight:doctor", ["doctor"])  # step 11, the local readiness surface (E125)
+        # Step 11, the local readiness surface (E125). Whether the check changes its snapshot is named only when the
+        # operator lets doctor run it, which it says how to do without the flag (E153, the designer's ruling (b)).
+        argv = ["doctor", "--run-checks"] if case == "check-changes-snapshot" else ["doctor"]
+        doctor = op.type("preflight:doctor", argv)
         said = doctor.stdout + doctor.stderr
         names_cause, names_fix = diagnoses(said, want["cause"]), diagnoses(said, want["fix"])
         accepted = (bool(want.get("accept_as_typed")) and bool(re.search(want["accepted"], said))

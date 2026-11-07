@@ -67,6 +67,8 @@ KINDS = frozenset({
     "worker_run",        # a run's supervisor
     "validation_run",    # a checks-mode validation run, authoritative or diagnostic
     "check_run",         # the operator's own `aew check run`
+    "doctor_model_list",  # `aew doctor`'s read of the harness's model list, as a launch reads it (E153)
+    "doctor_check",      # `aew doctor --run-checks`: the project's check, once, on a disposable copy (E153)
     "eval_raw",          # an eval raw arm, the qualification's included
     "eval_scoring",      # eval's scorer of a model-written tree
     "eval_live",         # the qualification's live lane

@@ -313,6 +313,8 @@ class OpenCodeAdapter(HarnessAdapter):
         "mark_non_operator_input": Support(CAP_PARTIAL, "text only: the wake's fixed header, which the model reads "
                                                         "as text; `session.prompt` metadata is not shown to it, and "
                                                         "there is no role of its own"),
+        "read_model_list": Support(CAP_YES, "`GET /api/model` on a server started as a launch starts it, with no "
+                                            "session"),
     }
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -361,22 +363,41 @@ class OpenCodeAdapter(HarnessAdapter):
         invocation = contract.invocation if contract is not None else "<invocation from aew harness status>"
         return f"`aew harness launch {invocation} {EXPECT_REV}`"
 
-    def launch(self, contract: LaunchContract, agent_env: dict[str, str]) -> dict[str, Any]:
+    @staticmethod
+    def projected_config(contract: LaunchContract, state: str | None = None,
+                         network: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The run's projected configuration before its provider relay (``projection.relayed``, which needs the run's
+        network): the one owner for a launch and for the key ``aew doctor`` caches the harness's model list under
+        (``aew.harness.model_list.cache_key``; register E153). ``state`` is the run's harness state directory (default:
+        the contract's run directory's ``harness``); ``network`` its network's label, or None on the host's."""
+        state = state if state is not None else os.path.realpath(os.path.join(contract.run_dir, "harness"))
+        scratch = os.path.realpath(contract.scratch) if contract.scratch else ""
+        return projection.invocation_config(
+            contract, private_dirs=projection.private_output_dirs(state, os.sep, scratch=scratch),
+            skills_dir=projection.skills_at(state, os.sep),
+            network=network,  # the agent is told what it reaches
+            unavailable_tools=list(contract.extra.get(UNAVAILABLE_TOOLS) or []),  # and what it goes without
+            available_tools=contract.extra.get(AVAILABLE_TOOLS))  # and what it has, by name
+
+    @staticmethod
+    def model_list_binary() -> str | None:
+        """The harness binary a launch from here starts (``binary_command``), for the model list's cache key; raises
+        where there is none, as a launch does."""
+        return binary_command()[-1]
+
+    def _start_server(self, contract: LaunchContract, agent_env: dict[str, str], *,
+                      timeout: float = START_TIMEOUT_S, metered: bool = True) -> dict[str, Any]:
+        """The run's server, started as a launch starts it: its projected configuration (relayed when the run has a
+        provider relay), written to the state directory, its environment, its network and its process tree. Returns
+        the configuration. One owner for :meth:`launch` and :meth:`read_model_list` (register E153)."""
         self.contract = contract
         self.state_dir = self.run_dir / "harness"
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.directory = os.path.realpath(contract.workspace)  # 8.3 short paths break OpenCode's project detection
         network = self.tree.network  # a network of the run's own (F28; STG-05 CS-3b), or None
-        state = os.path.realpath(self.state_dir)
         self.skills = projection.skills(contract)  # as the supervisor copied them (aew.skills.deliver)
-        config = projection.invocation_config(
-            contract, private_dirs=projection.private_output_dirs(
-                state, os.sep, scratch=os.path.realpath(contract.scratch) if contract.scratch else ""),
-            skills_dir=projection.skills_at(state, os.sep),
-            network=network.describe() if network is not None else None,  # the agent is told what it reaches
-            unavailable_tools=list(contract.extra.get(UNAVAILABLE_TOOLS) or []),  # and what it goes without
-            available_tools=contract.extra.get(AVAILABLE_TOOLS))  # and what it has, by name
-        rules = config["permissions"]
+        config = self.projected_config(contract, os.path.realpath(self.state_dir),
+                                       network.describe() if network is not None else None)
         base = network.provider_base() if network is not None else None
         self._relayed = base is not None
         if base is not None:
@@ -386,7 +407,8 @@ class OpenCodeAdapter(HarnessAdapter):
         (self.state_dir / "opencode-config.json").write_text(json.dumps(config, indent=1, sort_keys=True),
                                                              encoding="utf-8")
         command = binary_command()
-        self._start_meter(contract)  # before any server exists: no server, and so no prompt, without a live file
+        if metered:
+            self._start_meter(contract)  # before any server exists: no server, and so no prompt, without a live file
         env = server_env(dict(os.environ), self.state_dir, provider_env=list(contract.extra.get("provider_env") or []),
                          config=config, password=secrets.token_urlsafe(32))
         if agent_env.get(weaker_register.MARKER):  # a weaker run's server, and all it starts, carry its marker too
@@ -401,10 +423,16 @@ class OpenCodeAdapter(HarnessAdapter):
                                           reason=KEY_IN_SANDBOX, variables=leaked)
         spawn = self.tree.spawn if network is None else functools.partial(self.tree.spawn, network_shim=True)
         self.server = Server.start(spawn, command, env=env, cwd=self.directory, log_path=self.state_dir / "server.log",
-                                   **({"port": netns.SERVER_PORT, "unix": network.server_socket}
-                                      if network is not None else {}))
+                                   timeout=timeout, **({"port": netns.SERVER_PORT, "unix": network.server_socket}
+                                                       if network is not None else {}))
         del env
         self.client = self.server.client
+        return config
+
+    def launch(self, contract: LaunchContract, agent_env: dict[str, str]) -> dict[str, Any]:
+        config = self._start_server(contract, agent_env)
+        assert self.server is not None and self.client is not None
+        rules = config["permissions"]
         self._bind_meter()
         self.emit({"event": "opencode.server", "pid": self.server.proc.pid, "start_s": round(self.server.started_s, 3)})
         self.health = self._health(contract, config)
@@ -530,15 +558,20 @@ class OpenCodeAdapter(HarnessAdapter):
                 raise
             self._server_gone()
 
-    def _health(self, contract: LaunchContract, config: dict[str, Any]) -> dict[str, Any]:
+    def _probe_version(self) -> tuple[Any, Any]:
+        """The server's version and served schema, refused where they lack what AEW needs."""
         assert self.client is not None
-        t0 = time.monotonic()
         version = (self.client.get("/api/info") or {}).get("version")
         spec = self.client.get("/openapi.json", timeout=OPENAPI_TIMEOUT_S)
         gaps = capabilities.version_problems(version) + capabilities.problems(spec, self.extra_requirements())
         if gaps:
             raise HarnessIncompatible(f"OpenCode {version} lacks what AEW needs: " + "; ".join(gaps),
                                       version=version, problems=gaps)
+        return version, spec
+
+    def _health(self, contract: LaunchContract, config: dict[str, Any]) -> dict[str, Any]:
+        t0 = time.monotonic()
+        version, spec = self._probe_version()
         probe_s = time.monotonic() - t0
         model = self._await_model(contract.execution_profile)
         loaded = self._await_projection(config)
@@ -616,6 +649,44 @@ class OpenCodeAdapter(HarnessAdapter):
                     # (M4-E E8a; PR #185 review, F1).
                     launch_cause=CATALOG_TIMEOUT)
             time.sleep(0.25)
+
+    def read_model_list(self, contract: LaunchContract, *, until: float) -> dict[str, Any]:
+        """The harness's model list as a launch of ``contract`` would read it (``aew doctor``; register E153): its
+        server started exactly as :meth:`launch` starts it, the catalog read as :meth:`_await_model` reads it, and
+        nothing more: no session and no model call. The read ends once the contract's pinned model is listed, or once
+        the catalog has settled without it (``CATALOG_SETTLE_S``, as a launch waits), and by ``until`` (a monotonic
+        time: the launch's own start deadline) in any case. Returns
+        ``{"version", "models": [{"providerID", "id", "variants", "enabled"}], "complete"}``; ``complete`` is False
+        when ``until`` came first. A model the server lists only because the relay projection names it is not one it
+        offers (:func:`declared_only`), and is left out. The caller's process tree ends the server."""
+        remaining = until - time.monotonic()
+        if remaining <= 0:
+            raise HarnessLaunchFailed("no time was left to start the OpenCode server")
+        self._start_server(contract, {}, timeout=min(START_TIMEOUT_S, remaining), metered=False)
+        assert self.client is not None and self.server is not None
+        wanted = projection.model_ref(contract.execution_profile)
+        try:
+            version, _ = self._probe_version()
+            t0 = time.monotonic()
+            first_seen: float | None = None
+            while True:
+                catalog = (self.client.get("/api/model", location(self.directory)) or {}).get("data") or []
+                offered = [m for m in catalog if not (self._relayed and declared_only(m))]
+                now = time.monotonic()
+                listed = {(str(m.get("providerID")), str(m.get("id"))) for m in offered}
+                done = (wanted["providerID"], wanted["id"]) in listed
+                if catalog and first_seen is None:
+                    first_seen = now
+                settled = (now - t0 > CATALOG_WAIT_S
+                           or (first_seen is not None and now - first_seen > CATALOG_SETTLE_S))
+                if done or settled or now >= until:
+                    return {"version": version, "complete": done or settled,
+                            "models": [{"providerID": str(m.get("providerID")), "id": str(m.get("id")),
+                                        "variants": [str(v.get("id")) for v in m.get("variants") or []],
+                                        "enabled": m.get("enabled") is not False} for m in offered]}
+                time.sleep(min(0.25, max(0.0, until - now)))
+        finally:
+            self.server.close(wait_s=3.0)
 
     def _require_relay_family(self, match: dict[str, Any], catalog: list[dict[str, Any]],
                               ref: dict[str, Any]) -> dict[str, Any]:

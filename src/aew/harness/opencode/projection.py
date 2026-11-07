@@ -63,6 +63,10 @@ def shell_rule(effect: str, resource: str = "*") -> list[dict[str, str]]:
     return [rule(action, effect, resource) for action in SHELL_ACTIONS]
 
 
+# The Lead's tools that never ask the operator: its rules allow them (:data:`LEAD_RULES`), and its tools note names them
+# (:data:`LEAD_TOOLS_NOTE`), from this one list (review of #353, m3).
+LEAD_FREE_TOOLS = ("read", "glob", "grep")
+
 # The read rules for `.env` files, after a `read` allow so that they win (last match wins): every invocation's and the
 # Lead's, one list (the designer, 2026-11-06). A harness permission rule: it is not containment, it does not cover a
 # shell command the operator approves or the history of a tracked file, and on Windows no other layer applies.
@@ -197,7 +201,8 @@ def _ids(names: list[str]) -> str:
 
 
 LEAD_TOOLS_NOTE = (" Your shell asks the operator before it runs any of them (only `aew` and git reads run without "
-                   "asking), so search with your read, glob and grep tools first.")
+                   f"asking), so search with your {', '.join(LEAD_FREE_TOOLS[:-1])} and {LEAD_FREE_TOOLS[-1]} tools "
+                   "first.")
 
 
 def tools_text(available: Mapping[str, Any] | None, *, note: str = "") -> list[str]:
@@ -213,7 +218,7 @@ def tools_text(available: Mapping[str, Any] | None, *, note: str = "") -> list[s
     tools = list(available.get("tools") or [])
     if not tools:
         return []
-    named = ", ".join(f"`{t['tool']}` ({t['purpose']})" for t in tools)
+    named = ", ".join(f"`{t['command']}` ({t['purpose']})" for t in tools)
     return [f"- Tools AEW placed for you, by the names to call them: {named}.{note}"]
 
 
@@ -252,7 +257,7 @@ def system_text(contract: LaunchContract, planned: Mapping[str, Any],
     lines += tools_text(available_tools)
     if unavailable_tools:
         fallbacks = list(dict.fromkeys(str(t["fallback"]) for t in unavailable_tools if t.get("fallback")))
-        named = ", ".join(f"`{t['tool']}`" for t in unavailable_tools)
+        named = ", ".join(f"`{t['command']}`" for t in unavailable_tools)
         lines.append(f"- Tools AEW brings that this run does not have: {named}, so what runs them fails here"
                      + (f" (search with {' or '.join(fallbacks)} instead)" if fallbacks else "")
                      + ". Proceed without them and say so in your report.")
@@ -342,7 +347,7 @@ LEAD_GIT_ASKS = (*(f"git {cmd}*{option}*" for cmd in ("diff", "log", "show") for
 
 LEAD_RULES = [
     rule("*", "ask"),
-    *(rule(action, "allow") for action in ("read", "glob", "grep")),
+    *(rule(action, "allow") for action in LEAD_FREE_TOOLS),
     *ENV_READ_RULES,
     *shell_rule("ask"),
     *(r for pattern in ("aew *", *LEAD_GIT_READS) for r in shell_rule("allow", pattern)),

@@ -42,7 +42,8 @@ XDG_DEFAULTS = {"data": (".local", "share"), "config": (".config",), "state": ("
 UNKNOWN = "unknown"  # a row in a shape AEW does not know: nothing of it is read out
 # The ``credential`` table as OpenCode 2.0.18's migrations leave it (read in the 2.0.18 bundle; unchanged at 2.2.6,
 # measured by tools/harness_qualify's `login.store`): each column's name and declared type, in order. The Lead's
-# login seed writes only to a table exactly like it, and skips any other, so a newer OpenCode's schema is met by not writing, never by a row in a shape AEW guessed at (E118).
+# login seed writes only to a table exactly like it, and skips any other, so a newer OpenCode's schema is met by not
+# writing, never by a row in a shape AEW guessed at (E118).
 CREDENTIAL_SCHEMA = (("id", "text"), ("integration_id", "text"), ("label", "text"), ("value", "text"),
                      ("connector_id", "text"), ("method_id", "text"), ("active", "integer"),
                      ("time_created", "integer"), ("time_updated", "integer"))

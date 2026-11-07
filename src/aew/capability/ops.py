@@ -410,7 +410,7 @@ def missing(tools: dict[str, Any] | None, directory: Path | None = None) -> list
         why = aew.reason or ("check_failed" if any(t.get("kind") == status.AEW_COPY and not t.get("ok")
                                                    for t in tool.get("tried") or []) else "not_served_here")
         since = _since(state, name, why)
-        out.append({"tool": tool.get("command") or name, "provider": name,
+        out.append({"command": tool.get("command") or name, "provider": name,
                     "served": "host" if tool.get("served") == status.HOST_COPY else "stub",
                     "path": tool.get("path") if tool.get("served") == status.HOST_COPY else None,
                     "reason": why, "since": since, "fix": aew.fix})
@@ -448,13 +448,24 @@ def will_flag(name: str, directory: Path | None = None) -> bool:
     return (state.get("flagged") or {}).get(name) != flag_key(flag)
 
 
+# What a run got in place of AEW's pinned copy, by the label's closed ``served``: in the operator's line (with the host
+# copy's path) and in the Lead's results (without it: closed words only, as the run record is in the run's directory)
+GOT = {"host": "the host's unpinned copy", "stub": "a stub that fails"}
+
+
+def _command_of(entry: dict[str, Any]) -> str:
+    """A missing tool's command. A run recorded before the field was named ``command`` named it ``tool`` (D2's O-CMD
+    sweep: a payload's ``tool`` names a typed Lead tool), and its record is read as it was written."""
+    return str(entry.get("command") or entry.get("tool"))
+
+
 def flag_line(flag: dict[str, Any]) -> str:
     """The operator's one line for a tool a run got without AEW's pinned copy: attention, not blocked-on-you, as the
     run goes on (the designer's rule 3)."""
-    got = f"the host's unpinned copy at {flag['path']}" if flag["served"] == "host" else "a stub that fails"
+    got = f"{GOT['host']} at {flag['path']}" if flag["served"] == "host" else GOT["stub"]
     since = f" (at {flag['since']})" if flag.get("since") else ""
     fix = flag["fix"] or "`aew capability check`"  # a printed command: its own constant, which both finders read
-    return (f"aew: attention: {flag['tool']} in this run is {got}, not AEW's pinned copy: "
+    return (f"aew: attention: {flag['command']} in this run is {got}, not AEW's pinned copy: "
             f"{status.NOT_SERVING_WHY.get(flag['reason'], flag['reason'])}{since}. The run goes on. Fix: {fix}.")
 
 
@@ -502,13 +513,35 @@ def run_record(flags: list[dict[str, Any]]) -> dict[str, Any]:
     shape a run's missing skills take: each tool in ``unavailable``, its closed reason in ``reasons``, and the whole of
     each in ``detail``. Every run keeps its own, whatever the operator's line said before: nothing removes a tool from
     a run's record (the operator, 2026-11-05)."""
-    return {"unavailable": [f["tool"] for f in flags], "reasons": {f["tool"]: f["reason"] for f in flags},
+    return {"unavailable": [f["command"] for f in flags], "reasons": {f["command"]: f["reason"] for f in flags},
             "detail": flags}
+
+
+def results(missing_tools: dict[str, Any] | None) -> list[dict[str, str]]:
+    """What the Lead's results say of the tools a run went without, from its record's ``missing_tools``
+    (:func:`run_record`), as they say what its evidence found: each tool's command, what the run got instead, and why
+    AEW's pinned copy did not serve. A missing tool acts as a missing skill does: logged, never voided (the operator,
+    2026-11-05). The run's own label is the source, never today's register, which may have changed or be unreadable
+    since (review of #356, m1).
+
+    Only AEW's closed words pass from the record: a command of a command's form (``bind.COMMAND``, as every record's
+    is), :data:`GOT`'s word for what served, and :data:`status.NOT_SERVING_WHY`'s reason. An entry with anything else
+    is left out, and the host copy's path and the fix stay in the operator's line and `aew doctor`."""
+    detail = (missing_tools or {}).get("detail") if isinstance(missing_tools, dict) else None
+    out = []
+    for d in detail or []:
+        if not isinstance(d, dict):
+            continue
+        command, reason, served = _command_of(d), str(d.get("reason")), str(d.get("served"))
+        if bind.COMMAND.fullmatch(command) and reason in status.NOT_SERVING_WHY and served in GOT:
+            out.append({"command": command, "got": GOT[served],
+                        "why": f"AEW's pinned copy: {status.NOT_SERVING_WHY[reason]}"})
+    return out
 
 
 def unavailable(missing_tools: dict[str, Any] | None, directory: Path | None = None) -> list[dict[str, Any]]:
     """The tools a run has no copy of, from its record's ``missing_tools`` (:func:`run_record`): those it got a failing
-    stub for, which its system text names, each ``{tool, fallback}`` with what the agent searches with instead where
+    stub for, which its system text names, each ``{command, fallback}`` with what the agent searches with instead where
     the tool serves a search (``bind.fallback``, from its record). A tool an unpinned host copy served still runs, and
     stays on the record as missing its pin."""
     detail = (missing_tools or {}).get("detail") if isinstance(missing_tools, dict) else None
@@ -517,16 +550,18 @@ def unavailable(missing_tools: dict[str, Any] | None, directory: Path | None = N
         eff = status.effective(store.read(directory)) if stubs else {}
     except AEWError:
         eff = {}
-    return [{"tool": str(d.get("tool")),
+    return [{"command": _command_of(d),
              "fallback": bind.fallback((eff.get(str(d.get("provider"))) or {}).get("record"))} for d in stubs]
 
 
 def available(tools: dict[str, Any] | None, directory: Path | None = None) -> list[dict[str, str]]:
     """The tools a contained run has, from its self-test (``probe.self_test``'s ``tools``, as its label records it):
-    each one a copy served, AEW's or the host's, as ``{tool, purpose}``, in the plan's order. Its system text names
+    each one a copy served, AEW's or the host's, as ``{command, purpose}``, in the plan's order. Its system text names
     them, so an agent knows them by the names it calls them, `yq-go` and `uctags` among them (the Lead's ruling on
-    card-capability resolution, 2026-11-07). A run's own report is not taken on trust: only a served copy of a provider
-    in force, under that provider's own command, is named."""
+    card-capability resolution, 2026-11-07). The name is the one the bind placed on its ``PATH``, as the label records
+    it (``bind.settle``, AEW's own, host-side); the register gives only what it is for. Only a served copy of a provider
+    in force is named, and not one whose command the register now names otherwise: its purpose would be another
+    tool's (review of #353, m2)."""
     try:
         eff = status.effective(store.read(directory)) if tools else {}
     except AEWError:  # never a reason a launch fails (CAPR-12): with no register read, no tool is named
@@ -537,7 +572,9 @@ def available(tools: dict[str, Any] | None, directory: Path | None = None) -> li
         if record is None or not isinstance(tool, dict) or tool.get("served") not in (status.AEW_COPY,
                                                                                       status.HOST_COPY):
             continue
-        out.append({"tool": record["command"], "purpose": records.purpose(record)})
+        if tool.get("command") != record["command"]:  # the register changed since this launch's bind
+            continue
+        out.append({"command": str(tool["command"]), "purpose": records.purpose(record)})
     return out
 
 

@@ -326,7 +326,7 @@ def test_the_lead_tui_environment_has_no_credential_and_no_provider_key():
     assert not {"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN", "AEW_LEAD_TOKEN", "AEW_HARNESS_ADAPTERS",
                 "OPENCODE_PASSWORD"} & set(env)
     assert env["XDG_CONFIG_HOME"] == "/c" and env["OPENCODE_CONFIG"] == "/cfg/opencode.json"
-    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config()
+    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(tools={"placed": False, "tools": []})
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"])["experimental"]["policies"] == [
         {"action": "provider.use", "resource": "opencode", "effect": "deny"},
         {"action": "provider.use", "resource": "opencode-go", "effect": "deny"}]  # the designer's ruling, 2026-11-06

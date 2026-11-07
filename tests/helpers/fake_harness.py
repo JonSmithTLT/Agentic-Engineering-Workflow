@@ -86,6 +86,12 @@ class FakeAdapter(HarnessAdapter):
         hdir = self.run_dir / "harness"
         hdir.mkdir(exist_ok=True)
         (hdir / "prompt.md").write_text(contract.prompt, encoding="utf-8")
+        # What the supervisor's start set for the run's system text about its tools (review of #356, m3)
+        from aew.harness import contract as K
+
+        (hdir / "tools.json").write_text(json.dumps({k: contract.extra[k] for k in (K.AVAILABLE_TOOLS,
+                                                                                   K.UNAVAILABLE_TOOLS)
+                                                     if k in contract.extra}), encoding="utf-8")
         self.transcript = hdir / "transcript.jsonl"
         self._out = (hdir / "agent.log").open("ab")
         self.proc = self.tree.spawn([sys.executable, str(AGENT), "--script", str(script),

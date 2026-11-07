@@ -53,9 +53,10 @@ class HarnessAdapter(ABC):
     name = ""
     # How the harness's reported token counters overlap, per qualified harness version and provider:
     # ``{version: {provider: semantics}}``, values from ``aew.harness.usage.TOKEN_SEMANTICS``, each pinned by a harness
-    # conformance test (F25, cost and usage ledger v0.2 R4 rule 1). A version or provider it does not name resolves to
+    # conformance test (F25, cost and usage ledger v0.2 R4 rule 1); a gateway provider's entry is ``{route: semantics}``
+    # (``aew.harness.usage.resolve_semantics``). A version, provider or route it does not name resolves to
     # ``unknown``, which is never priced.
-    token_semantics: Mapping[str, Mapping[str, str]] = {}
+    token_semantics: Mapping[str, Mapping[str, str | Mapping[str, str]]] = {}
     # The longest a successful ``launch`` can take, for an adapter that does not compute it (``launch_bound_s``).
     LAUNCH_BOUND_S = 240.0
     # F28 (STG-05 CS-3b): whether the harness calls a model provider itself, so that its run, in a network of its own,

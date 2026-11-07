@@ -44,6 +44,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -293,6 +294,22 @@ def relay_family(pinned: dict[str, Any], catalog: list[dict[str, Any]], upstream
     return {"check": RELAY_FAMILY_MISMATCH if carried else RELAY_FAMILY_UNVERIFIED, **out}
 
 
+# OpenCode Zen's routes (a model's catalog ``package``): a route is declared in the token-semantics table only once it
+# is measured (register E200).
+ZEN_RESPONSES = "@opencode/ai/providers/openai/responses"
+
+
+def catalog_routes(catalog: list[dict[str, Any]], table: U.SemanticsTable) -> dict[tuple[str, str], str]:
+    """``{(provider, model): route}`` for the catalog's models of each provider ``table`` declares per route
+    (``U.resolve_semantics``). A model's route is its catalog ``package``, the SDK its requests are made with, which
+    OpenCode 2.2.6 keeps for the model AEW's relay projection re-addresses (measured on the Rocky VM, 2026-11-07, for
+    Zen's Responses, Anthropic and OpenAI-compatible models). A model with no package has no route, so it reads
+    ``unknown``."""
+    routed = {p for by_provider in table.values() for p, entry in by_provider.items() if isinstance(entry, Mapping)}
+    return {(str(m["providerID"]), str(m["id"])): str(m["package"]) for m in catalog
+            if m.get("providerID") in routed and isinstance(m.get("id"), str) and isinstance(m.get("package"), str)}
+
+
 class OpenCodeAdapter(HarnessAdapter):
     name = "opencode"
     # F28 §3.4-3.5: it calls its provider itself, through the relay in a network of its own, and in connected mode it
@@ -319,7 +336,14 @@ class OpenCodeAdapter(HarnessAdapter):
     # case's stored tokens, from a raw Responses usage through the real server, are the disjoint ones
     # (tests/fixtures/opencode/usage-2.2.6-openai.json). Its source citations are still the v2.0.18 tag's, carried,
     # until they are re-read at v2.2.6 (register E200).
-    token_semantics = {"2.0.18": {"openai": U.DISJOINT}, "2.2.6": {"openai": U.DISJOINT}}
+    #
+    # 2.2.6 / opencode (Zen), per route: its models reach several protocols, so it is declared per route, never for
+    # the provider (U.resolve_semantics); a route not named is `unknown` until it is measured.
+    # - ZEN_RESPONSES -> disjoint, measured by a live turn through AEW's relay (E17 part 2, 2026-11-07): the meter's
+    #   stored tokens equal Zen's raw usage split into disjoint parts, input less cache reads and cache writes, output
+    #   less reasoning (tests/fixtures/opencode/usage-2.2.6-opencode-responses.json).
+    token_semantics: U.SemanticsTable = {"2.0.18": {"openai": U.DISJOINT},
+                                         "2.2.6": {"openai": U.DISJOINT, "opencode": {ZEN_RESPONSES: U.DISJOINT}}}
 
     # The harness capabilities this adapter provides (steering design §7; aew.harness.harness_capabilities).
     harness_capabilities: dict[str, Support] = {
@@ -366,6 +390,7 @@ class OpenCodeAdapter(HarnessAdapter):
         self.meter_errors = 0
         self._relayed = False  # the pinned model is named in the server's configuration, for the provider relay
         self._plugin_waits = 0  # the location listings answered "plugins still activating" (PLUGINS_ACTIVATING)
+        self._routes: dict[tuple[str, str], str] = {}  # catalog_routes of the server's catalog, for the usage record
         self._relay: str | None = None  # the provider relay's upstream, on the relay route
         self._meter_wake = threading.Event()
         self._meter_stop = threading.Event()
@@ -645,6 +670,9 @@ class OpenCodeAdapter(HarnessAdapter):
                                               "or dispatch a new invocation with --profile or --model", model=ref)
                 found = {"catalog_wait_s": round(now - t0, 3), "catalog_size": len(catalog), "variants": variants,
                          "plugin_waits": self._plugin_waits}
+                self._routes = catalog_routes(catalog, self.token_semantics)
+                if self.meter is not None:
+                    self.meter.routes = self._routes
                 if self._relay is not None:
                     found["relay_family"] = self._require_relay_family(match, catalog, ref)
                 return found
@@ -1055,9 +1083,10 @@ class OpenCodeAdapter(HarnessAdapter):
             return U.normalize(None, None, effective, U.UNKNOWN, source=source,
                                foreign_sessions=len(self.foreign_sessions))
         contract = getattr(self, "contract", None)
-        pinned = (contract.execution_profile or {}).get("provider") if contract is not None else None
-        providers = [e.get("provider") for e in effective] or [pinned]
-        semantics = U.resolve_semantics(self.token_semantics, self.health.get("version"), providers)
+        profile = (contract.execution_profile or {}) if contract is not None else {}
+        providers = ([(e.get("provider"), e.get("model")) for e in effective]
+                     or [(profile.get("provider"), profile.get("model"))])
+        semantics = U.resolve_semantics(self.token_semantics, self.health.get("version"), providers, self._routes)
         return U.normalize(snap["session"], snap["assistant"], effective, semantics, source=source,
                            truncated=bool(snap.get("truncated")), foreign_sessions=len(self.foreign_sessions))
 

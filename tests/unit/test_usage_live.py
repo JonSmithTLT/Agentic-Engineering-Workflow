@@ -21,7 +21,7 @@ from aew import schemas
 from aew.engine import usage_ops as O
 from aew.harness import usage as U
 from aew.harness import usage_live as L
-from aew.harness.opencode.adapter import OpenCodeAdapter, _effective
+from aew.harness.opencode.adapter import ZEN_RESPONSES, OpenCodeAdapter, _effective
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
 from aew.harness.opencode.client import OpenCodeError, OpenCodeUnavailable
 
@@ -457,6 +457,26 @@ def test_the_meter_resolves_semantics_from_the_adapter_table_and_server_version(
     assert semantics(server="2.0.19", declared="2.0.19") == "unknown"   # a version the table does not name
     assert semantics(server="2.0.19") == "unknown"                       # the server is not the declared version
     assert semantics(model={"providerID": "anthropic", "id": "m", "variant": "default"}) == "unknown"
+
+
+def test_a_zen_models_semantics_follow_its_route_once_the_catalogs_routes_are_bound(tmp_path: Path):
+    """OpenCode Zen (``opencode``) is declared per route: the meter reads its tokens ``disjoint`` only for a model
+    whose bound route is the measured Responses route, and ``unknown`` before the routes are bound or on another."""
+    zen = {"providerID": "opencode", "id": "gpt-5.6-luna", "variant": "default"}
+
+    def semantics(routes: dict[tuple[str, str], str] | None) -> str:
+        lab = Lab(tmp_path / f"zen-{len(list(tmp_path.iterdir()))}", version="2.2.6")
+        sid = lab.app.add_session(model=zen)
+        lab.call(sid, tok(10, 1), model=zen)
+        meter = lab.meter(sid, version="2.2.6", pinned=zen)
+        if routes is not None:
+            meter.routes = routes
+        return meter.poll()["token_semantics"]
+
+    assert semantics({("opencode", "gpt-5.6-luna"): ZEN_RESPONSES}) == "disjoint"
+    assert semantics(None) == "unknown"
+    assert semantics({("opencode", "gpt-5.6-luna"): "@opencode/ai/providers/anthropic"}) == "unknown"
+    assert semantics({("opencode", "another-model"): ZEN_RESPONSES}) == "unknown"
 
 
 # ---------------------------------------------------------------------------------------------- lifecycle

@@ -28,10 +28,12 @@ FIXTURES = ROOT / "tests" / "fixtures" / "opencode"
 
 
 def test_the_pinned_binary_regenerates_its_fixtures_exactly(tmp_path):
-    record, diff, fixtures, _ = HQ.run(HQ.pack_for("opencode"), Path(BINARY), out=tmp_path, fixtures=FIXTURES)
-    assert record.version == "2.0.18"
+    pack = HQ.pack_for("opencode")
+    v = pack.pinned_version
+    record, diff, fixtures, _ = HQ.run(pack, Path(BINARY), out=tmp_path, fixtures=FIXTURES)
+    assert record.version == v
     assert not [r for r in record.checks if r["status"] not in ("pass", "skipped")], record.checks
     assert diff.clean, diff.lines()
     status = {f["fixture"]: f["status"] for f in fixtures}
-    assert status == {"openapi-2.0.18.min.json": "identical", "usage-2.0.18-openai.json": "identical",
-                      "tool-parts-2.0.18.json": "identical", "live-usage-2.0.18.json": "not regenerated"}
+    assert status == {f"openapi-{v}.min.json": "identical", f"usage-{v}-openai.json": "identical",
+                      f"tool-parts-{v}.json": "identical", f"live-usage-{v}.json": "not regenerated"}

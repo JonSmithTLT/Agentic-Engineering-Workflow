@@ -19,7 +19,6 @@ import shutil
 import sys
 import tempfile
 import time
-import traceback
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -224,8 +223,8 @@ def qualify(pack: Pack, binary: Path, *, out: Path, only: Iterable[str] | None =
             try:
                 outcome = check.run(ctx)
             except Exception as exc:  # a check that breaks is an error, never a pass
-                outcome = Outcome(ERROR, notes=[f"{type(exc).__name__}: {exc}",
-                                                *traceback.format_exc().strip().splitlines()[-3:]])
+                # the exception line only: a traceback carries host paths, and records are shared
+                outcome = Outcome(ERROR, notes=[f"{type(exc).__name__}: {exc}"])
             facts.update(outcome.facts)
             results.append({**row, "status": outcome.status, "notes": outcome.notes,
                             "facts": sorted(outcome.facts), "seconds": round(time.monotonic() - c0, 1)})

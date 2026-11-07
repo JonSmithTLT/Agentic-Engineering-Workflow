@@ -305,15 +305,14 @@ def classify(cases: list[dict[str, Any]]) -> str:
     return U.DISJOINT
 
 
-def usage_inputs(fixtures: Path) -> list[dict[str, Any]]:
+def usage_inputs(fixtures: Path, version: str) -> list[dict[str, Any]]:
     """The probe's inputs: each pinned case's name and raw usage (its ``stored`` is what the run measures)."""
-    pinned = sorted(fixtures.glob("usage-*-openai.json"))
-    doc = json.loads(pinned[-1].read_text(encoding="utf-8"))
+    doc = json.loads((fixtures / f"usage-{version}-openai.json").read_text(encoding="utf-8"))
     return [{"name": c["name"], "raw": c["raw"]} for c in doc["cases"]]
 
 
-def check_usage(ctx: Context, fixtures: Path) -> Outcome:
-    cases = usage_inputs(fixtures)
+def check_usage(ctx: Context, fixtures: Path, pinned: str) -> Outcome:
+    cases = usage_inputs(fixtures, pinned)
     script = [{"call": ["bash", "shell"], "arguments": {"command": "echo step", "description": "step"},
                "usage": c["raw"]} for c in cases] + [{"text": "done"}]
     run = run_turns(ctx, script, "run the scripted steps", "usage")
@@ -384,13 +383,13 @@ def _bundle(ctx: Context) -> bytes:
     return ctx.once("bundle", lambda: ctx.binary.read_bytes())
 
 
-def check_live_usage_citations(ctx: Context, fixtures: Path) -> Outcome:
+def check_live_usage_citations(ctx: Context, fixtures: Path, pinned: str) -> Outcome:
     """Each identifier ``live-usage-<v>.json`` cites in the bundled JavaScript, searched in this binary. The bundle is
     minified, and minified names differ from build to build (the Linux 2.0.18 build lacks 12 of the 20, measured
     2026-11-07), so the search is a fact only in the binary the citations were read from (``source.binary_sha256``).
     In any other build it is reported as not comparable, with the count found: the citations are then re-read for
     that build. The file:line citations of the tag's source are not in a binary, so they are carried, not checked."""
-    doc = json.loads(sorted(fixtures.glob("live-usage-*.json"))[-1].read_text(encoding="utf-8"))
+    doc = json.loads((fixtures / f"live-usage-{pinned}.json").read_text(encoding="utf-8"))
     blob = _bundle(ctx)
     found = {e["id"]: e["identifier"].encode() in blob for e in doc["source"]["evidence"]
              if "bundled JavaScript" in str(e.get("file")) and e.get("identifier")}
@@ -460,6 +459,8 @@ class OpenCodePack:
     def __init__(self, fixtures: Path) -> None:
         self.fixtures = fixtures
         self.version_source = Feed()
+        # The pinned version, whose fixtures are the inputs and the pin: the adapter's tested version (its owner).
+        self.pinned_version = C.TESTED_VERSIONS[0]
 
     def declared(self) -> Mapping[str, str]:
         return declared_capabilities(OpenCodeAdapter)
@@ -468,7 +469,7 @@ class OpenCodePack:
         return read_version(binary, work, env)
 
     def checks(self) -> list[Check]:
-        fx = self.fixtures
+        fx, pin = self.fixtures, self.pinned_version
         api = [
             Check("api.openapi", check_openapi, depth=API,
                   says="the served API has everything capabilities.problems checks; trims it as the pinned fixture",
@@ -487,7 +488,7 @@ class OpenCodePack:
                   ("interrupt_turn",), depth=API, says="session.interrupt is served"),
         ]
         behaviour = [
-            Check("usage.openai", lambda c: check_usage(c, fx), ("read_usage", "wake_idle_session"),
+            Check("usage.openai", lambda c: check_usage(c, fx, pin), ("read_usage", "wake_idle_session"),
                   says="each raw Responses usage, stored as the message's tokens: the token semantics; also the "
                        "declared-only catalog entry, the http transport, and a prompt starting an idle session",
                   measures=("usage.openai", "catalog.declared_only", "relay.transport_http")),
@@ -499,7 +500,7 @@ class OpenCodePack:
                                says="without transport http, OpenAI's SDK tries a WebSocket first",
                                measures=("relay.websocket_first",)))
         citations = [
-            Check("usage.live_citations", lambda c: check_live_usage_citations(c, fx), ("read_usage",),
+            Check("usage.live_citations", lambda c: check_live_usage_citations(c, fx, pin), ("read_usage",),
                   depth=CITATION, says="every bundled-code identifier probe P1 cites is in this binary",
                   measures=("live_usage.bundle_identifiers",)),
             Check("ripgrep.download", check_ripgrep, depth=CITATION,
@@ -510,7 +511,7 @@ class OpenCodePack:
                                                                conformance=["tests/live/test_opencode_live.py"])]
 
     def pinned(self, fixtures: Path) -> tuple[str, dict[str, Any]]:
-        version = C.TESTED_VERSIONS[0]
+        version = self.pinned_version
         load = lambda name: json.loads((fixtures / name).read_text(encoding="utf-8"))  # noqa: E731
         spec = load(f"openapi-{version}.min.json")
         usage = load(f"usage-{version}-openai.json")
@@ -537,9 +538,9 @@ class OpenCodePack:
         if "openapi.min" in facts:
             out[f"openapi-{version}.min.json"] = (dump(facts["openapi.min"]), "measured: the served API, trimmed")
         usage = facts.get("usage.openai")
-        pinned_usage = sorted(fixtures.glob("usage-*-openai.json"))
-        if usage and pinned_usage:
-            carried = json.loads(pinned_usage[-1].read_text(encoding="utf-8"))
+        pinned_usage = fixtures / f"usage-{self.pinned_version}-openai.json"
+        if usage and pinned_usage.exists():
+            carried = json.loads(pinned_usage.read_text(encoding="utf-8"))
             doc = {"harness": HARNESS, "version": version, "provider": "openai",
                    "token_semantics": usage["token_semantics"], "source": carried["source"], "cases": usage["cases"]}
             same = carried["version"] == version

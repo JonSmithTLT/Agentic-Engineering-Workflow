@@ -21,7 +21,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .core import BEHAVIOUR, FAIL, PASS, SKIPPED, VM, Check, Context, Outcome
+from .core import BEHAVIOUR, FAIL, PASS, SKIPPED, VM, Check, Context, Outcome, private_env
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTAINMENT = ["tests/integration/test_containment.py"]
@@ -29,14 +29,14 @@ SUITE_S = 1800
 
 
 def _pytest(ctx: Context, variable: str, paths: list[str], extra: list[str]) -> Outcome:
-    env = {**ctx.env, variable: str(ctx.binary)}
-    src = str(ROOT / "src")
-    env["PYTHONPATH"] = src + (os.pathsep + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else "")
     log = ctx.work / "pytest.log"
     ctx.work.mkdir(parents=True, exist_ok=True)
-    # A short base for the suite's own temporary folders: a socket's path must fit AF_UNIX's ~108 bytes, which a
-    # path under the run folder does not.
+    # The suite's homes and temporary folders under a short base: its tests bind sockets there (under HOME and
+    # basetemp), and a socket's path must fit AF_UNIX's 108 bytes, which a path under the run folder does not.
     base = Path(tempfile.mkdtemp(prefix="hq-"))
+    env = {**private_env(base / "e", ctx.env), variable: str(ctx.binary)}
+    src = str(ROOT / "src")
+    env["PYTHONPATH"] = src + (os.pathsep + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else "")
     with log.open("wb") as fh:
         code = subprocess.run([sys.executable, "-m", "pytest", *paths, *extra, "-p", "no:xdist", "-q",
                                "-p", "no:cacheprovider", f"--basetemp={base / 't'}"], cwd=ROOT, env=env,

@@ -297,7 +297,7 @@ def test_in_the_binary_the_citations_were_read_from_a_missing_identifier_fails(t
         {"id": "E3", "file": "packages/core/src/x.ts", "lines": "1-2"}]}}  # a source citation: carried, not searched
     (fixtures / "live-usage-9.9.9.json").write_text(json.dumps(doc), encoding="utf-8")
     ctx = core.Context(binary=binary, work=tmp_path / "w", env={}, version="9.9.9")
-    out = OC.check_live_usage_citations(ctx, fixtures)
+    out = OC.check_live_usage_citations(ctx, fixtures, "9.9.9")
     assert (out.status, out.facts, out.notes) == (core.FAIL, {"live_usage.bundle_identifiers": {"E1": True,
                                                                                                "E2": False}},
                                                   ["not in this binary: E2"])

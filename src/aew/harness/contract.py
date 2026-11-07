@@ -228,6 +228,12 @@ CREATE_TICKET = fields_block(f"aew work create ticket --class <0-4> {EXPECT_REV}
     "title": "<title>", "goal": ["<goal>"], "contract": ["<clause>"], "scope": ["<path glob>"]})
 
 
+# The keys in a launch contract's ``extra`` for the run's progress digest (steering design §2): the Ticket's scope
+# paths (globs, as the gates record them) and the commit the workspace was made from. Absent or None, the digest reads
+# ``out_of_scope`` and ``changed_now`` as ``unknown``.
+SCOPE_PATHS = "scope_paths"
+WORKSPACE_BASE = "workspace_base"
+
 # The key in a launch contract's ``extra`` for the commands of the tools AEW brings that the run has no copy of, set
 # once its context is contained (``capability.ops.unavailable``) and named in its system text, as its missing skills
 # are (the operator, 2026-11-05: a missing tool is logged, not voided)

@@ -75,13 +75,24 @@ def message(*parts: dict[str, Any]) -> dict[str, Any]:
 class Run:
     """A tracker and its state, driven step by step."""
 
-    def __init__(self, *, scope: list[str] | None = SCOPE, workspace: str | None = None) -> None:
+    def __init__(self, *, scope: list[str] | None = SCOPE, workspace: str | None = None,
+                 changed: list[str] | None | bool = False) -> None:
+        """``changed``: what the workspace reads as changed now (a list, or None for unreadable); False: no reader."""
         self.clock = Clock()
-        self.t = P.Tracker(run="R-1", workspace=workspace, scope_paths=scope, clock=self.clock)
+        self.diff: list[str] | None = changed if isinstance(changed, list) or changed is None else []
+        self.reads = 0
+
+        def read() -> list[str] | None:
+            self.reads += 1
+            return None if self.diff is None else list(self.diff)
+
+        self.t = P.Tracker(run="R-1", workspace=workspace, scope_paths=scope, clock=self.clock,
+                           changed=None if changed is False else read)
         self.state = P.empty_state(started_at=self.clock())
 
     def step(self, *parts: dict[str, Any], active: bool = True, run_state: str = "live") -> list[str]:
         self.t.observe(self.state, message(*parts))
+        self.t.refresh_changed(self.state, busy=active)  # the meter's read phase
         return self.t.advance(self.state, run_state=run_state, active=active, prompt_posted=True)
 
     def digest(self, *, active: bool = True, run_state: str = "live", steps: int = 0) -> dict[str, Any]:
@@ -612,3 +623,78 @@ def test_one_file_under_two_spellings_counts_once():
     run = Run()
     run.step(write("src/b/x.py"), write("src/b/./x.py"), write("./src/b/x.py"))
     assert run.digest()["files_touched"] == {"paths": ["src/b/x.py"], "count": 1}
+
+
+# ---------------------------------------------------------------------------------------------- what is changed now
+
+
+def test_a_shell_write_outside_the_scope_is_seen_in_the_workspace_and_wakes():
+    """`sed -i` names no file in a tool part: the workspace's diff does (the review's case E)."""
+    run = Run(changed=[])
+    run.diff = ["src/b/x.py"]
+    assert run.step(shell("sed -i s/a/b/ src/b/x.py", 0)) == [P.OUT_OF_SCOPE]
+    d = run.digest()
+    assert d["changed_now"] == {"paths": ["src/b/x.py"], "count": 1} and d["out_of_scope"] == ["src/b/x.py"]
+
+
+def test_without_a_workspace_reader_a_shell_write_is_not_seen():  # the control of the case above
+    run = Run()
+    assert run.step(shell("sed -i s/a/b/ src/b/x.py", 0)) == []
+    assert run.digest()["changed_now"] == P.UNKNOWN
+
+
+def test_a_reverted_file_leaves_out_of_scope_and_stays_in_the_history():
+    run = Run(changed=[])
+    run.diff = ["src/b/x.py"]
+    assert run.step(write("src/b/x.py")) == [P.OUT_OF_SCOPE]
+    run.clock.t += 60
+    run.diff = ["src/a/y.py"]
+    assert run.step(shell("git checkout -- src/b/x.py", 0), write("src/a/y.py")) == []
+    d = run.digest()
+    assert d["out_of_scope"] == [] and d["changed_now"]["paths"] == ["src/a/y.py"]
+    assert d["files_touched"]["paths"] == ["src/b/x.py", "src/a/y.py"]
+
+
+def test_a_write_since_the_last_read_counts_as_current_until_the_next_read():
+    run = Run(changed=[])
+    run.step(write("src/a/y.py"))  # first read: nothing changed yet in the fake workspace
+    run.clock.t += 1
+    assert run.step(write("src/b/x.py")) == [P.OUT_OF_SCOPE]  # inside the read interval: no read, the part counts
+    assert run.reads == 1 and run.digest()["out_of_scope"] == ["src/b/x.py"]
+
+
+def test_the_workspace_is_read_only_after_a_new_tool_part_and_at_most_every_five_seconds_while_busy():
+    run = Run(changed=[])
+    run.step(write("src/a/1.py"))
+    run.step()  # no new part: no read
+    run.clock.t += 1
+    run.step(write("src/a/2.py"))  # busy, inside the interval: no read
+    assert run.reads == 1
+    run.clock.t += P.CHANGED_EVERY_S
+    run.step(write("src/a/3.py"))
+    assert run.reads == 2
+    run.clock.t += 1
+    run.step(write("src/a/4.py"), active=False)  # the turn ended: read at once
+    assert run.reads == 3
+
+
+def test_an_unreadable_workspace_is_unknown_never_empty():
+    run = Run(changed=None)
+    run.step(write("src/b/x.py"))
+    d = run.digest()
+    assert d["changed_now"] == P.UNKNOWN and d["out_of_scope"] == ["src/b/x.py"]  # the tool parts' history
+
+
+def test_the_digest_carries_absolute_counts():
+    run = Run()
+    run.step(write("src/a/1.py"), shell("echo", 0), shell(PYTEST, 0, "1 passed"))
+    assert run.digest(steps=4)["counts"] == {"steps": 4, "files": 1, "commands": 2, "tests": 1, "triggers": 0}
+
+
+def test_a_regression_after_a_red_run_while_building_still_wakes():
+    """The quick check's case: a new failing test keeps the green count as the mark the next red run is held to."""
+    run = Run()
+    assert run.step(shell(PYTEST, 0, "3 passed")) == []
+    assert run.step(shell(PYTEST, 1, "FAILED tests/test_x.py::test_new - x\n1 failed, 3 passed")) == []
+    assert run.step(shell(PYTEST, 1, "FAILED tests/test_x.py::test_new - x\nFAILED tests/test_x.py::test_a - x\n"
+                                      "2 failed, 2 passed")) == [P.TEST_FAILED]

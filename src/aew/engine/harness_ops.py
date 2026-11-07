@@ -295,6 +295,14 @@ class Harness:
         capabilities |= set(content.get("required_capabilities") or [])
         capabilities |= set(content.get("optional_capabilities") or [])
         policy, _ = self.k.execution_policy()
+        # For the run's progress digest (steering design §2): the Ticket's scope paths, so it can tell a write outside
+        # them (`out_of_scope`), and the workspace's base, so it can read what is changed now. None when unreadable:
+        # the digest then says `unknown`, never "inside".
+        try:
+            scope_paths: list[str] | None = list(
+                (self.gates.record_meta(state["work"][inv["work_unit"]]).get("scope") or {}).get("paths") or [])
+        except Exception:  # noqa: BLE001 - a record that cannot be read gives no scope, and the digest says so
+            scope_paths = None
         return K.LaunchContract(
             run=run, invocation=inv_id, work_unit=inv["work_unit"], role=inv["role"],
             scope=inv.get("scope") or "ticket",
@@ -313,7 +321,8 @@ class Harness:
                    "card_optional_skills": sorted(content.get("optional_skills") or []),
                    "skills": skills_plan(content.get("skills") or [], content.get("optional_skills") or []),
                    "card_capabilities": sorted(capabilities),
-                   "provider_env": list((policy or {}).get("provider_env") or [])})
+                   "provider_env": list((policy or {}).get("provider_env") or []),
+                   K.SCOPE_PATHS: scope_paths, K.WORKSPACE_BASE: base})
 
     def run_authority_problem(self, state: dict[str, Any], inv_id: str, run: str, token_id: str) -> str | None:
         """Why a run may no longer act (None while it may). The engine's credential checks remain authoritative;

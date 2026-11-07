@@ -469,6 +469,12 @@ class Meter:
                 for kind in TYPES:
                     if not self._read_messages(state, s, sid, kind, moved):
                         break  # the session vanished between the list and its messages: it keeps its figure
+        # What is changed now in the run's workspace (the progress digest), read here in the read phase and never
+        # under the lock. Not in the final sample's budgeted read: a git read has no deadline of its own, and the
+        # polls before it have read the workspace since the worker's last step.
+        if self.progress is not None and state["progress"] is not None \
+                and getattr(self._read_ctx, "deadline", None) is None:
+            self.progress.refresh_changed(state["progress"], busy=bool(self._read_ctx.active))
         return state
 
     def _observe_totals(self, state: dict[str, Any], s: dict[str, Any], info: Mapping[str, Any]) -> bool:

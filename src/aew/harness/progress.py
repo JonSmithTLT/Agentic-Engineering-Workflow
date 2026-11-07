@@ -21,6 +21,17 @@ restarted meter carries the digest forward.
   ``metadata.files[].file`` is workspace-relative. Every path is made workspace-relative, so the two are one file.
 - Every tool part has ``time.completed`` (epoch ms) once it ends.
 
+**What is changed now.** ``files_touched`` is the run's history: every path a ``write`` or ``edit`` part named. The
+workspace says what is changed now: ``changed_now`` is its diff against the commit it was made from, read with the
+tracker's ``changed`` callable (``aew.snapshot.fingerprint.changed_paths``, which stores no object). It is read in the
+meter's read phase, never under its lock, and only when a new tool part has been seen since the last read: at most
+every :data:`CHANGED_EVERY_S` while the worker is busy, at once when its turn has ended. So a shell write (``sed -i``,
+a redirect, a script) is seen too, and a reverted file leaves it. ``out_of_scope`` is current: the changed-now paths
+outside the scope, with any outside path a tool part named since that read. Its trigger still fires once per path.
+Without a base or a readable workspace, ``changed_now`` is ``unknown`` and ``out_of_scope`` falls back to the tool
+parts' history. The digest's ``counts`` are absolute (steps, files, commands, tests, triggers), so a reader in
+another process (the Lead broker) can keep its own mark.
+
 A field the harness does not carry reads ``unknown``. The digest never guesses: a failing test's names are read only
 from pytest's ``FAILED <node id>`` and ``ERROR <node id>`` lines, and are ``unknown`` for any other runner. Without the
 Ticket's scope paths, ``out_of_scope`` is ``unknown``, never "inside".
@@ -80,9 +91,7 @@ WHY: tuple[str, ...] = K.WHY
 DETECTED_IN_POLL: tuple[str, ...] = K.WAITED_ON
 
 UNKNOWN = "unknown"
-# The key in a launch contract's ``extra`` for the Ticket's scope paths (globs, as the gates record them). A contract
-# without it gives the digest no scope, so ``out_of_scope`` reads ``unknown``.
-SCOPE_PATHS = "scope_paths"
+SCOPE_PATHS, WORKSPACE_BASE = K.SCOPE_PATHS, K.WORKSPACE_BASE  # the launch contract's keys (contract.py owns them)
 WORKING, IDLE, ENDED = "working", "idle", "ended"
 
 # Bounds, each from the steering design §2 unless said otherwise.
@@ -99,6 +108,8 @@ MAX_PASSED = 200          # test names seen passing in this run
 MAX_GREEN = 20            # test commands whose last run passed, each with its pass count
 MAX_OUTSIDE = 50          # out_of_scope paths
 MAX_TRIGGERS = 10         # the newest triggers in the digest
+MAX_CHANGED = 500         # changed-now paths kept (the digest shows MAX_FILES of them); the count is exact
+CHANGED_EVERY_S = 5.0     # the workspace is read at most this often while the worker is busy
 
 # A test command, by its runner (the first word of a command segment, or `python -m <module>`). The structural map's
 # runners (`pytest`, `npm test`) plus the usual runner of each language it maps. Anything else is a command, not a
@@ -121,6 +132,8 @@ def empty_state(*, started_at: float) -> dict[str, Any]:
             "outside": [], "commands_n": 0, "last_command": None, "tests_n": 0, "last_test": None,
             "recent_tests": [], "passed": [], "green": [], "streak": None, "idle_since": None, "idle_fired": False,
             "ended": False, "fired": {}, "suppressed": {}, "triggers": [], "trigger_seq": 0,
+            "parts_n": 0, "changed": None, "changed_n": 0, "changed_parts_n": 0, "changed_at": None,
+            "outside_since": [],
             "mark": {"steps": 0, "files_n": 0, "commands_n": 0, "tests_n": 0, "trigger_seq": 0}}
 
 
@@ -146,7 +159,14 @@ def valid_state(state: Any) -> bool:
                     for g in state["green"])
             and all(isinstance(t, dict) and isinstance(t.get("failing"), (list, type(None)))
                     and len(t.get("failing") or []) <= MAX_FAILING for t in state["recent_tests"])
-            and (state["streak"] is None or isinstance(state["streak"], dict)))
+            and (state["streak"] is None or isinstance(state["streak"], dict))
+            and isinstance(state["parts_n"], int) and isinstance(state["changed_n"], int)
+            and isinstance(state["changed_parts_n"], int) and isinstance(state["outside_since"], list)
+            and len(state["outside_since"]) <= MAX_OUTSIDE
+            and (state["changed"] is None or (isinstance(state["changed"], list)
+                                              and len(state["changed"]) <= MAX_CHANGED
+                                              and all(isinstance(x, str) and len(x) <= MAX_PATH + 3
+                                                      for x in state["changed"]))))
 
 
 class Tracker:
@@ -154,13 +174,14 @@ class Tracker:
     ``out_of_scope`` reads ``unknown``) and the wall clock. Its methods change only the state they are given."""
 
     def __init__(self, *, run: str, workspace: str | None, scope_paths: Iterable[str] | None,
-                 clock: Callable[[], float]) -> None:
+                 clock: Callable[[], float], changed: Callable[[], list[str] | None] | None = None) -> None:
         self.run = run
         self.workspace = workspace
         # The workspace as given and as resolved: a path the model sends may name either (a link in the path).
         self._roots = [] if not workspace else list(dict.fromkeys([workspace, os.path.realpath(workspace)]))
         self.scope_paths = None if scope_paths is None else [to_posix(p) for p in scope_paths]
         self.clock = clock
+        self.changed = changed  # the workspace's changed paths now, or None when they cannot be read
 
     # ------------------------------------------------------------------ observing the worker's messages
 
@@ -181,6 +202,7 @@ class Tracker:
             if pid in state["seen"]:
                 continue
             state["seen"] = (state["seen"] + [pid])[-MAX_SEEN:]
+            state["parts_n"] += 1
             name = part.get("name")
             if name in ("write", "edit"):
                 self._touched(state, st)
@@ -203,9 +225,51 @@ class Tracker:
             state["files_n"] += 1
             if len(state["files"]) < MAX_FILES:
                 state["files"].append(rel)
-            if self.scope_paths is not None and not self._in_scope(rel) and rel not in state["outside"] \
-                    and len(state["outside"]) < MAX_OUTSIDE:
-                state["outside"].append(rel)
+            self._outside(state, rel)
+
+    def _outside(self, state: dict[str, Any], rel: str) -> None:
+        """A path outside the scope: in the history of outside paths, and among those named since the last read of the
+        workspace (so it counts as current until that read says otherwise)."""
+        if self.scope_paths is None or self._in_scope(rel):
+            return
+        if rel not in state["outside"] and len(state["outside"]) < MAX_OUTSIDE:
+            state["outside"].append(rel)
+        if rel not in state["outside_since"] and len(state["outside_since"]) < MAX_OUTSIDE:
+            state["outside_since"].append(rel)
+
+    def refresh_changed(self, state: dict[str, Any], *, busy: bool) -> None:
+        """Read what is changed now, when a tool part was seen since the last read: at most every
+        :data:`CHANGED_EVERY_S` while ``busy``, at once otherwise. Called in the meter's read phase, outside its lock.
+        A read that fails leaves ``changed`` as ``None`` (``unknown``)."""
+        if self.changed is None or state["parts_n"] == state["changed_parts_n"]:
+            return
+        now = self.clock()
+        if busy and state["changed_at"] is not None and now - float(state["changed_at"]) < CHANGED_EVERY_S:
+            return
+        try:
+            found = self.changed()
+        except Exception:  # noqa: BLE001 - a workspace that cannot be read is not known, never empty
+            found = None
+        state["changed_parts_n"], state["changed_at"] = state["parts_n"], now
+        if found is None:
+            state["changed"], state["changed_n"] = None, 0
+            return
+        paths = sorted({self.relative(p) for p in found})
+        state["changed"], state["changed_n"] = paths[:MAX_CHANGED], len(paths)
+        state["outside_since"] = []
+        for rel in paths:
+            self._outside(state, rel)
+        state["outside_since"] = []  # the read is now current: it names every outside path itself
+
+    def outside_now(self, state: dict[str, Any]) -> list[str] | None:
+        """The paths outside the scope now: the last read's, with any named by a tool part since. None without a
+        scope. Without a readable workspace, the tool parts' history (a reverted file stays in it)."""
+        if self.scope_paths is None:
+            return None
+        if state["changed"] is None:
+            return list(state["outside"])
+        now = [p for p in state["changed"] if not self._in_scope(p)]
+        return now + [p for p in state["outside_since"] if p not in now]
 
     def relative(self, raw: str) -> str:
         """A workspace-relative POSIX path. A path outside the workspace keeps its own spelling (it is outside the
@@ -263,7 +327,12 @@ class Tracker:
                 regression = named or fewer
             else:
                 regression = named
-            state["green"] = [g for g in state["green"] if g[0] != key]  # its next red run is no new regression
+            if regression or key not in green:  # its next red run is no new regression
+                state["green"] = [g for g in state["green"] if g[0] != key]
+            else:  # building: the green run's count stays the mark a later red run is held to (a high-water mark)
+                was = green[key]
+                mark = was if passed_n is None else passed_n if was is None else max(was, passed_n)
+                state["green"] = [g if g[0] != key else [key, mark] for g in state["green"]]
         if ok is True:
             state["green"] = ([g for g in state["green"] if g[0] != key] + [[key, passed_n]])[-MAX_GREEN:]
         newly_passing = [n for n in passing if n not in state["passed"]]
@@ -365,7 +434,9 @@ class Tracker:
             "elapsed_s": round(max(0.0, now - float(state["started_at"])), 1),
             "steps": steps, "tokens": tokens,
             "files_touched": {"paths": list(state["files"]), "count": state["files_n"]},
-            "out_of_scope": UNKNOWN if self.scope_paths is None else list(state["outside"]),
+            "changed_now": (UNKNOWN if state["changed"] is None
+                            else {"paths": state["changed"][:MAX_FILES], "count": state["changed_n"]}),
+            "out_of_scope": UNKNOWN if self.scope_paths is None else self.outside_now(state),
             "last_command": state["last_command"],
             "last_test": state["last_test"],
             "since_last_wake": {"steps": max(0, steps - int(mark["steps"])),
@@ -377,6 +448,8 @@ class Tracker:
             # sends a worker no message, so there is none to show.
             "messages_out": [],
             "triggers": list(state["triggers"]), "trigger_seq": state["trigger_seq"],
+            "counts": {"steps": steps, "files": state["files_n"], "commands": state["commands_n"],
+                       "tests": state["tests_n"], "triggers": state["trigger_seq"]},
         }
 
 

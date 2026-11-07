@@ -9,8 +9,8 @@ and a weaker launch's line all use one reason and one fix. Its conditions, in or
   2. **the project's policy keeps every launch contained:** its containment mode is ``required`` and its network mode
      ``proxy_only`` or ``isolated``, both read through the policy's pin, as every launch reads them. A project with no
      execution policy has none to judge, so it fails;
-  3. **no weaker agent context was live on this host in the last 15 minutes,** in any project (``G3-06``'s window),
-     from the register of weaker contexts (:mod:`aew.harness.weaker_register`).
+  3. **no weaker agent context was live on this host within the window,** in any project (``G3-06``'s window, owned
+     by the register as ``WINDOW_S``), from the register of weaker contexts (:mod:`aew.harness.weaker_register`).
 
 Condition 4, "G3 answers", is the owner's consume call itself (G3-C's PR C2). The readers that are not an owner add a
 probe that consumes nothing (:func:`aew.g3client.probe`). The standing is computed per call and never cached.
@@ -51,8 +51,10 @@ class Standing:
         if 2 not in self.judged:
             return ("G3 counts on this host for a project whose policy keeps every launch contained (containment "
                     "required, network proxy_only or isolated): condition 2 is per project, and not judged here")
-        return "G3 counts here: it is installed, this project's policy keeps every launch contained, and no weaker " \
-               "agent context was live on this host in the last 15 minutes"
+        from aew.harness.weaker_register import WINDOW_S
+
+        return ("G3 counts here: it is installed, this project's policy keeps every launch contained, and no weaker "
+                f"agent context was live on this host in the last {WINDOW_S // 60} minutes")
 
 
 def _fail(condition: int, reason: str, fix: str, judged: tuple[int, ...]) -> Standing:

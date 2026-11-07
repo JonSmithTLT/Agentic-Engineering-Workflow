@@ -35,7 +35,6 @@ systems:
   - docs/implementation/adr/0018-evaluator-arm-host-split.md
   register:
   - F19
-  - Q7
   as_built: []
   touches:
   - eval/aew_eval/**
@@ -115,8 +114,7 @@ systems:
     - HEB-03.p
     - R-1
     - R-6
-  serves_pending:
-  - HOLD-06
+  serves_pending: []
   design:
   - docs/contracts/A-33/BUILD-BRIEF-PROPOSED.md
   - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md
@@ -209,9 +207,8 @@ systems:
       row found)'
     row: row owed
     estimate: 1 PR (estimate; census)
-  - slice: 'F48: the Windows containment backend, held; leaves HOLD-06 only after the designer''s match and the operator''s
-      placement'
-    row: HOLD-06
+  - slice: 'F48: the Windows containment backend, restored as its own row by the hold match (main 5308bd8c)'
+    row: F48
     estimate: 5+ PRs (estimate; census)
   - slice: 'E143: the free-model egress carve-out for testing ; its follow-on, the relay-route family in the launch report,
       has merged'
@@ -261,8 +258,7 @@ systems:
   serves_claims:
     closing_works: []
     extra: []
-  serves_pending:
-  - HOLD-12
+  serves_pending: []
   design:
   - docs/design/proposals/dashboard-main-line-api-design-v0.1.md
   - docs/design/proposals/dashboard-maps-and-history-search-v0.1.md
@@ -270,10 +266,6 @@ systems:
   - docs/implementation/adr/0005-authority-credentials-operator.md
   - docs/implementation/adr/0012-transaction-outbox.md
   register:
-  - F20
-  - F20.6
-  - F20.7
-  - F20.8
   - E73
   - E94
   - E148
@@ -351,23 +343,10 @@ systems:
     one lock-free reader, the event endpoint (F20.7) and the provider route (E148) are served, the packaged frontend matches
     the served contract (E94), and F20.6's browser acceptance is recorded against a real project's live state.
   remaining:
-  - slice: /attention served from the typed surface's action projection (surface/projection.py:423), adding anomalies, dispositions
-      and stage intents; the stale 'until F15.1' reasons (reasons.py:33-34, projections.py:10-12, :502, :567) go with it.
-      E101 (SYS-21's S1) carries the 403 reason's correction, and the register leaves TLS-25's dashboard half to E18 (future-work.yaml
-      (row F15.1, at c11a61ea))
-    row: HOLD-12
-    estimate: 1-2 PRs (estimate)
   - slice: 'E73: the maps registry reader converges on engine/store.py read_lock_free instead of returning NONE on the first
       FileNotFoundError'
     row: E73
     estimate: 1 small PR (estimate)
-  - slice: 'F20.7: the event endpoint (ADR-0012 D8), a bounded long poll over the outbox''s revision cursor'
-    row: HOLD-12
-    estimate: 1-2 PRs (estimate)
-  - slice: 'F20.6: integrated browser and security acceptance against authenticated live state (web side); E103 (A-44 S2w)
-      draws it out of HOLD-12 in part'
-    row: HOLD-12
-    estimate: 1 recorded acceptance run (estimate)
   - slice: 'E94: the web package refresh (S3); the packaged build still names contract 0.1.2''s digest while the served
       contract is 0.1.3. The web developer''s'
     row: E94
@@ -434,7 +413,6 @@ systems:
   - docs/contracts/A-19/A-19__AEW-O01-Core-Operator-Intent-and-Reconciliation-Contract-candidate-v0.2.md
   - docs/contracts/A-37/G3-PROFILE.md
   register:
-  - F15.5
   - F18.6
   as_built:
   - modules:aew.engine.steering
@@ -517,7 +495,7 @@ systems:
     row: HOLD-19
     estimate: 2-3 PRs (estimate), held
   - slice: 'F18.6, the principal proof, so operator records can carry more than guarantee: dev'
-    row: HOLD-17
+    row: F18.6
     estimate: 1-2 PRs (estimate), held
   decision: 'decided: hide request_raise and request_confirmation from the Lead''s normal catalog, keep lower; they return
     with a real grant path (operator, 2026-11-06 (design workspace decision record: board decisions))'
@@ -565,9 +543,7 @@ systems:
   serves_claims:
     closing_works: []
     extra: []
-  serves_pending:
-  - HOLD-06
-  - HOLD-17
+  serves_pending: []
   design:
   - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md
   - docs/research/harness-native-integration-research-v0.3.md
@@ -583,6 +559,7 @@ systems:
   - E150
   - E152
   - E156
+  - F24
   as_built:
   - modules:aew.harness.registry
   - modules:aew.harness.base
@@ -660,7 +637,7 @@ systems:
     estimate: a measurement, no product PR (estimate)
   - slice: F24.1, the Codex runtime-semantics probe, the first slice of any Codex adapter work (F24.2, Claude Code headless,
       after it); held in HOLD-06
-    row: HOLD-06
+    row: F24
     estimate: 1-2 PRs once released; an adapter not sized (estimate)
   decision: 'decided: E149 and E150 after first use; E149 forward if first-use runs hit 429s (operator, 2026-11-06 (design
     workspace decision record: board decisions))'
@@ -715,13 +692,11 @@ systems:
   serves_claims:
     closing_works: []
     extra: []
-  serves_pending:
-  - HOLD-06
+  serves_pending: []
   design:
   - docs/design/typed-lead-surface-design-v0.2.md
   - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md
   register:
-  - F15.1
   - F15.3
   - F15.8
   - E130
@@ -783,15 +758,15 @@ systems:
   remaining:
   - slice: 'F15.3: the aew-run role server over the existing run bridge (whoami, check.run and typed submit as in-sandbox
       MCP tools; the supervisor keeps the credential). Held in HOLD-06 until the designer''s match and the operator''s placement'
-    row: HOLD-06
+    row: F15.3
     estimate: 1-2 PRs (estimate, census)
   - slice: 'F15.8: the aew-run read half (map.* reads, evidence.show, check.suggest as bridge operations; tools.presentation).
       Waits on typed map and evidence reads'
-    row: HOLD-06
+    row: F15.8
     estimate: 2-3 PRs (estimate, census)
   - slice: 'aew-knowledge as its own capability namespace over the shared transport library: part of F15.3''s text, so held
       with it in HOLD-06; what it serves waits on K-01''s increment'
-    row: HOLD-06
+    row: F15.3
     estimate: not sized (census)
   - slice: typed Lead rows for maps, history, settings, usage and g3, reachable today only untyped through the shell rule
       `aew *`
@@ -856,9 +831,7 @@ systems:
     closing_works: []
     extra:
     - P01-21
-  serves_pending:
-  - HOLD-12
-  - HOLD-14
+  serves_pending: []
   design:
   - docs/contracts/A-14/A-14__AEW-P01-Project-Understanding-and-Maps-Contract-candidate-v0.2.1.md
   - docs/design/project-maps-design-v0.5.md
@@ -867,7 +840,6 @@ systems:
   - docs/design/proposals/dashboard-maps-and-history-search-v0.1.md
   register:
   - F22
-  - F22.1
   - F22.2
   - F22.3
   - E62
@@ -953,7 +925,7 @@ systems:
     row: row owed
     estimate: 1 small PR, batched (estimate)
   - slice: 'F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03)'
-    row: HOLD-14
+    row: F22.2
     estimate: many PRs, unsized (estimate)
   decision: 'decided: maps on for all cards (pack size measured and recorded, not a gate); the 10-07 gate is superseded
     for agents'' packs (operator, 2026-11-06 (design workspace decision record: board decisions))'
@@ -1006,15 +978,12 @@ systems:
     - EW-U09.d
     - I6-06.c
     - R01-38
-  serves_pending:
-  - HOLD-10
+  serves_pending: []
   design:
   - docs/design/typed-lead-surface-design-v0.2.md
   - docs/implementation/m4-e-plan-v3.md
   - docs/design/aew-two-interaction-surfaces-idea-v0.4-2026-10-01.md
   register:
-  - F15
-  - F15.2
   - E137
   - E138
   - E133
@@ -1092,10 +1061,6 @@ systems:
       set equals it'
     row: E83
     estimate: 1 small PR (estimate)
-  - slice: 'E6b, PIC: a custody publish under the operator''s publication envelope and the §17 predicate (refused unconditionally
-      today), tracked only through F15.2 in HOLD-10'
-    row: HOLD-10
-    estimate: 2-3 PRs once placed (estimate, census)
   - slice: 'designer decision D4: what a listed unrequired verification result marks, before that half of requires_disposition
       can mark anything'
     row: row owed
@@ -1154,8 +1119,6 @@ systems:
   - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md
   register:
   - STG-15
-  - F12
-  - F13
   - E171
   as_built:
   - modules:aew.capability
@@ -1424,15 +1387,13 @@ systems:
     closing_works: []
     extra:
     - AEW-FR-10.c
-  serves_pending:
-  - HOLD-21
+  serves_pending: []
   design:
   - docs/design/cost-usage-ledger-design-v0.2.md
   - docs/contracts/A-21/A-21__AEW-IF10-Resource-Policy-Admissibility-and-Accounting-Interface-Contract-candidate-v0.2.1.md
   - docs/design/q7-m4h-value-gate-experiment-v0.3.1.md
   register:
   - F25
-  - U4
   as_built:
   - modules:aew.harness.usage
   - modules:aew.engine.usage_ops
@@ -1483,7 +1444,7 @@ systems:
   - slice: R9's `aew usage show [WORK-ID] [--all]` and `aew usage runs`, and the status summary, over the existing projections
       (unit_projection, project_projection, Reader.invocation), with the surface-map entry; it shows requests, tokens in
       the declared rate basis and the largest request (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 2)
-    row: HOLD-21
+    row: F25
     estimate: 1-2 PRs (estimate)
   - slice: 'Until R9 merges, the two texts that name `aew usage show --all` as if it existed say it is designed, not built:
       implementation-status.md:247 (listed in BOARD v2 §6''s docs PR) and the code comment at engine/api.py:349 (not listed
@@ -1492,10 +1453,10 @@ systems:
     estimate: part of BOARD v2 §6's docs PR (estimate)
   - slice: A reader of the live sample (runlog.read_live has no caller), and M4-H's L3 (measured total, preflight) and L4
       (the evaluator's reader); L3 and L4 serve the evaluation instrument (SYS-01, frozen)
-    row: HOLD-21
+    row: F25
     estimate: 2 PRs for L3 and L4 (estimate); the live reader not sized
   - slice: 'U4: the Lead''s own usage, provider and cost (`aew usage lead`); the Lead part waits for the designer'
-    row: HOLD-21
+    row: F25
     estimate: not sized
   - slice: Token semantics qualified for more providers than OpenCode 2.0.18 with openai, with the harness's next qualification
     row: row owed
@@ -1542,8 +1503,7 @@ systems:
   serves_claims:
     closing_works: []
     extra: []
-  serves_pending:
-  - HOLD-02
+  serves_pending: []
   design:
   - docs/implementation/vertical-uat.md
   register:
@@ -1758,9 +1718,7 @@ systems:
     - K01-24
     - K01-47
     - P01-02
-  serves_pending:
-  - HOLD-12
-  - HOLD-13
+  serves_pending: []
   design:
   - docs/contracts/A-13/A-13__AEW-K01-Knowledge-Boundary-Contract-candidate-v0.3.3.md
   - docs/implementation/adr/0013-knowledge-storage-placement.md
@@ -1817,10 +1775,10 @@ systems:
     row: row owed
     estimate: 1 PR if a typed read; 0 if recorded operator-only (estimate)
   - slice: 'After V-01: K-01''s L profile and F35''s pack serving'
-    row: HOLD-13
+    row: F35
     estimate: 4-8 PRs (estimate)
   - slice: 'After V-01: M6b capture and admission, with ADR-0013''s service credential kind'
-    row: HOLD-13
+    row: F21
     estimate: unsized, larger than the L profile (estimate)
   - slice: Arm B's A/B evaluation, frozen with the evaluation instrument (BOARD v2 §4)
     row: F19
@@ -1870,11 +1828,6 @@ systems:
   - docs/contracts/A-19/A-19__AEW-O01-Core-Operator-Intent-and-Reconciliation-Contract-candidate-v0.2.md
   - docs/design/decisions-2026-10-11-architecture-integration.md
   register:
-  - F46
-  - F46.1
-  - F46.2
-  - F46.3
-  - F46.4
   - E119
   as_built:
   - modules:aew.engine.configuration
@@ -2103,8 +2056,7 @@ systems:
   serves_claims:
     closing_works: []
     extra: []
-  serves_pending:
-  - HOLD-08
+  serves_pending: []
   design:
   - docs/implementation/adr/0016-ticket-revisions.md
   - docs/design/ticket-revision-amendment-2026-09-30.md
@@ -2115,6 +2067,7 @@ systems:
   - E126
   - E88
   - E87
+  - F4
   as_built:
   - modules:aew.engine.ticket_fields
   - schemas:ticket-field-registry
@@ -2158,8 +2111,8 @@ systems:
       its own row)'
     row: E87
     estimate: 1-2 PRs (estimate, census)
-  - slice: 'F4 S2a onward: enablement, format raise, records, binding, confirmation, holds (held)'
-    row: HOLD-08
+  - slice: 'F4 S2a onward: enablement, format raise, records, binding, confirmation, holds'
+    row: F4
     estimate: about 15 PRs if released (estimate, census)
   decision: none
   recommendation: freeze
@@ -2283,7 +2236,6 @@ systems:
   register:
   - STG-03
   - E82
-  - E112
   as_built:
   - modules:aew.g3client
   - modules:aew.cli.g3_commands
@@ -2358,8 +2310,7 @@ systems:
     closing_works:
     - 'blocked-on-you (A-44, STG-20), built in its slices: S1, S2 and S2w at Contained, S3 to S6 in V-01'
     extra: []
-  serves_pending:
-  - HOLD-10
+  serves_pending: []
   design:
   - docs/contracts/A-44/BOY-POSITION.md
   - docs/contracts/A-10/A-10__AEW-api-operator-interface-semantic-boundary-contract-candidate-v0.2.2.md
@@ -2375,17 +2326,9 @@ systems:
   - E109
   - E110
   - F43
-  - F42
-  - F42.1
-  - F42.2
   - F42.3
   - F44
   - F15.9
-  - E12
-  - E20
-  - E28
-  - E69
-  - E70
   as_built:
   - modules:aew.engine.resume_ops
   - modules:aew.engine.status_ops
@@ -2464,9 +2407,9 @@ systems:
       once S7''s data and the answer to Q9 or Q10 are in'
     row: E110
     estimate: not sized
-  - slice: HOLD-10 members (F43 S2 and S3, F42, F44, F15.9, E12, E20, E28, E69, E70) stay held until the designer's match
-      and the operator's placement
-    row: HOLD-10
+  - slice: 'HOLD-10''s members as the hold match (main 5308bd8c) placed them: F43 (S2 and S3), F44 and F15.9 restored as
+      rows; E12 merged into E170 and E69 into F44; F42, E20, E28 and E70 dropped'
+    row: F43
     estimate: not sized
   decision: none
   recommendation: finish
@@ -2513,9 +2456,6 @@ systems:
   - E142
   - E136
   - E135
-  - D3
-  - F26
-  - U9
   as_built: []
   touches:
   - src/aew/harness/opencode/projection.py
@@ -2646,9 +2586,7 @@ systems:
   serves_claims:
     closing_works: []
     extra: []
-  serves_pending:
-  - HOLD-06
-  - HOLD-17
+  serves_pending: []
   design:
   - docs/design/decisions-2026-10-06-q12-hosting-and-lead-attachment.md
   - docs/design/f18-harness-hosting-attachment-authority-design-v0.6.md
@@ -2658,12 +2596,8 @@ systems:
   - docs/contracts/A-06/A-06__AEW-hosting-execution-boundary-contract-candidate-v0.3.1.md
   register:
   - F31
-  - F18.5
-  - F18.7
-  - F18.9
   - E50
   - E129
-  - Q12
   as_built: []
   touches:
   - src/aew/engine/lead_ops.py
@@ -2695,10 +2629,10 @@ systems:
     estimate: design first; PRs unknown
   - slice: 'F31 / F18.5 / F18.7 / F18.9: attachment record and states, aew open and aew close, the custodian surviving the
       attachment''s end, detached-child disposition'
-    row: HOLD-17
+    row: F31
     estimate: 4-6 PRs (estimate), once the hold is released
   - slice: E50 inactivity expiry
-    row: HOLD-06
+    row: E50
     estimate: 1 PR (estimate)
   - slice: 'Lease-expiry automatic takeover: a future ADR (ambiguity report A2) before any build'
     row: row owed
@@ -2745,8 +2679,7 @@ systems:
   serves_claims:
     closing_works: []
     extra: []
-  serves_pending:
-  - HOLD-20
+  serves_pending: []
   design:
   - docs/design/network-containment-design-v0.2.md
   - docs/design/decisions-2026-10-11-architecture-integration.md
@@ -2827,7 +2760,6 @@ systems:
     extra: []
   serves_pending:
   - HOLD-05
-  - HOLD-15
   design:
   - docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md
   - docs/design/run-health-projection-design-v0.1.md
@@ -2835,9 +2767,7 @@ systems:
   register:
   - U1
   - U7
-  - F41.8
   - F36
-  - F11
   as_built: []
   touches:
   - src/aew/engine/harness_ops.py
@@ -2859,17 +2789,14 @@ systems:
   remaining:
   - slice: 'U1 + F41.8: the run-health fields and a `stalled` wait result (the slice to pull forward if first use repeats
       the 20-minute hang)'
-    row: HOLD-15
+    row: U1
     estimate: 1-2 PRs (estimate)
   - slice: U7 automatic stall recovery, after U1
-    row: HOLD-15
+    row: U7
     estimate: 1 PR (estimate)
   - slice: F36 the bounded handoff note, then recitation
-    row: HOLD-15
+    row: F36
     estimate: 2 PRs (estimate)
-  - slice: F11 the dynamic scheduler, after a design refresh against the steering loop
-    row: HOLD-15
-    estimate: several PRs (estimate)
   - slice: implementation-status.md:333 says the scheduler comes in M5, a milestone the rebaseline replaced
     row: row owed
     estimate: part of a docs PR (estimate)
@@ -3301,8 +3228,7 @@ systems:
     - 'the upgrade path (A-46, U-01, STG-22): its format declarations, refusals, migration, restore point and move, built
       as the register''s rows place them'
     extra: []
-  serves_pending:
-  - HOLD-17
+  serves_pending: []
   design:
   - docs/implementation/adr/0014-release-signing-air-gap-bundle.md
   - docs/design/install-bootstrap-ux-design-v0.3.md
@@ -3310,8 +3236,6 @@ systems:
   - docs/contracts/A-17/A-17__AEW-S01-Portable-Hosting-and-Deployment-Profile-Contract-candidate-v0.2.1.md
   register:
   - E99
-  - F18.3
-  - D2
   as_built: []
   touches:
   - src/aew/doctor.py
@@ -3343,10 +3267,6 @@ systems:
   - slice: 'E99''s build: the bundle, the preflight, the root step calling g3/install.sh, the PIN step and the self-tests'
     row: E99
     estimate: 2-4 PRs (estimate; part of the census's 6-10)
-  - slice: F18.3 (signed manifest, verifier, aew doctor --bundle) and D2 (installer), after the designer's match and the
-      operator's placement
-    row: HOLD-17
-    estimate: 2-3 PRs (estimate; part of the census's 6-10)
   - slice: 'U-01 (A-46): per-release format declarations, refusal by name, operator-terminal migration with a recorded restore
       point, rollback and move'
     row: row owed
@@ -3452,7 +3372,6 @@ systems:
     closing_works: []
     extra: []
   serves_pending:
-  - HOLD-02
   - HOLD-09
   design:
   - docs/agent-engineering-workflow-design-v0.7.md
@@ -3486,7 +3405,7 @@ systems:
     a remote-SHA check). SCM/Jira enforcement needs a requirement that defines it before any build.'
   remaining:
   - slice: 'F37: canonical redaction source, correlation ids, aew debug bundle, metadata-only mode, operator-reviewed manifest'
-    row: HOLD-02
+    row: F37
     estimate: 3-5 PRs (estimate; census)
   - slice: 'F33, after F37 (D4): operator-approved exact-commit push with a receipt'
     row: HOLD-09
@@ -3527,8 +3446,7 @@ systems:
   serves_claims:
     closing_works: []
     extra: []
-  serves_pending:
-  - HOLD-14
+  serves_pending: []
   design:
   - docs/contracts/A-14/A-14__AEW-P01-Project-Understanding-and-Maps-Contract-candidate-v0.2.1.md
   - docs/design/project-maps-design-v0.5.md
@@ -3554,7 +3472,7 @@ systems:
   remaining:
   - slice: 'F30: the impact operation, its Lead command and the Plan Assurance hook, after SYS-07''s F22.3 test relationship
       index and constraint locators'
-    row: HOLD-14
+    row: F30
     estimate: 2-3 PRs (estimate), after F22.3
   decision: none
   recommendation: keep
@@ -3707,7 +3625,6 @@ systems:
     extra:
     - CNI-03.g
   serves_pending:
-  - HOLD-06
   - HOLD-09
   design:
   - docs/implementation/adr/0004-controlled-integration.md
@@ -4231,8 +4148,7 @@ systems:
   serves_claims:
     closing_works: []
     extra: []
-  serves_pending:
-  - HOLD-10
+  serves_pending: []
   design: []
   design_unpublished:
   - designer-decisions-2026-11-06-lead-skills-mcp-and-document-work-v2.md
@@ -4370,8 +4286,7 @@ systems:
   serves_claims:
     closing_works: []
     extra: []
-  serves_pending:
-  - HOLD-20
+  serves_pending: []
   design:
   - docs/design/network-containment-design-v0.2.md
   - docs/contracts/A-20/A-20__AEW-IF12-Model-Access-Delivery-and-Recipient-Boundary-Contract-candidate-v0.2.md

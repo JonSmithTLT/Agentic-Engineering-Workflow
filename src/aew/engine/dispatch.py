@@ -49,8 +49,9 @@ def channel(name: str) -> Iterator[None]:
 
 # --------------------------------------------------------------------------------------------- the registry
 
-# New in M4-A (git.drivers: the M4-B review), evaluated after the rest; every one reports, none stops the others.
-MUTATION = ("protected.overlap", "assurance.triggers", "class0.eligible", "git.drivers")
+# New in M4-A (git.drivers: the M4-B review; conflict.files: register E151), evaluated after the rest; every one
+# reports, none stops the others.
+MUTATION = ("protected.overlap", "assurance.triggers", "class0.eligible", "git.drivers", "conflict.files")
 # The assurance guards apply only when the archetype being dispatched is known (``facts["archetype"]``); an entrypoint
 # that reaches them without resolving it would make them silently do nothing (area 3 note 5).
 NEEDS_ARCHETYPE = frozenset(MUTATION) - {"git.drivers"}

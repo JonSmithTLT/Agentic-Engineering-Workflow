@@ -7,7 +7,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from aewflow import DISCOVERY, SUBTRACT_PATCH, create_investigation, create_planned_ticket, sample_project
+from aewflow import (
+    DISCOVERY,
+    SUBTRACT_PATCH,
+    create_investigation,
+    create_planned_ticket,
+    own_scope,
+    sample_project,
+)
 from fake_harness import IMPL_REPORT, POLICY, HarnessLab, contains_credential, credential_hits, watch_agent_pid
 from invariants import assert_control_invariants
 
@@ -333,7 +340,7 @@ def test_concurrent_implementer_runs_work_at_once_in_their_own_workspaces(lab, t
     sync = tmp_path / "sync"
     tickets, runs = [], []
     for i in range(n):
-        wid = create_planned_ticket(lab.project, tmp_path, title=f"Add op{i}")
+        wid = create_planned_ticket(lab.project, tmp_path, title=f"Add op{i}", scope=own_scope(i))
         change = {f"calc/op{i}.py": f"def op{i}():\n    return {i}\n"}
         lab.script(f"INV-{i + 1:04d}", [
             {"do": "write", "files": change},

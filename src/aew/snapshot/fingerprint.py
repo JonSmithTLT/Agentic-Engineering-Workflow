@@ -398,13 +398,15 @@ def evaluated_snapshot(
     }
 
 
-def changed_paths(workspace: Path, base: str) -> list[str]:
+def changed_paths(workspace: Path, base: str, *, stores: bool | None = None) -> list[str]:
     """Paths differing between ``base`` and the working state, including untracked files.
 
-    Deliberately *includes* the AEW root so guardrails can reject a Ticket that touches it.
+    Deliberately *includes* the AEW root so guardrails can reject a Ticket that touches it. ``stores=False`` hashes the
+    working files without writing an object (a check that must have no side effect, such as a dispatch guard reading
+    another worker's workspace); the default is :func:`_stores_objects`.
     """
     workspace = workspace.resolve()
-    with _working_index(workspace) as idx:  # the names only: the diff reads no blob, stored or not
+    with _working_index(workspace, stores=stores) as idx:  # the names only: the diff reads no blob, stored or not
         raw = git.out("diff", "--cached", "--name-only", "--no-renames", "-z", base, cwd=workspace, env=idx.env)
     return [p for p in raw.split(NUL) if p]
 

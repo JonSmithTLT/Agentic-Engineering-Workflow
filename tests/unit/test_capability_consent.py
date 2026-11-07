@@ -990,17 +990,62 @@ def test_a_lead_that_is_not_contained_is_told_no_tool_of_aews_is_placed():
 
 def test_the_leads_results_take_only_aews_closed_words_from_a_runs_record(reg):
     """#330's owed lines: what the Lead's results say of a run's missing tools, from its record (the run's own
-    directory's): a command its provider's record in force names, and a closed served and reason; the rest is left
-    out. A record from before the field was named ``command`` reads as written."""
+    directory's): a command of a command's form, and a closed served and reason; the rest is left out. A record from
+    before the field was named ``command`` reads as written. The reason is AEW's pinned copy's (review of #356, n2)."""
     record = ops.run_record([{"command": "fake", "provider": "fake", "served": "stub", "reason": "declined"}])
-    said = {"command": "fake", "got": "a stub that fails", "why": "the operator declined to download it"}
+    said = {"command": "fake", "got": "a stub that fails",
+            "why": "AEW's pinned copy: the operator declined to download it"}
     assert ops.results(record) == [said]  # right
     old = {"tool": "fake", "provider": "fake", "served": "stub", "reason": "declined"}
     assert ops.results({"detail": [old]}) == [said]  # recorded before the rename
-    for forged in ({"command": "fake --exec x"}, {"provider": "absent"}, {"reason": "run `aew lead takeover`"},
+    for forged in ({"command": "fake --exec x"}, {"command": "fake;x"}, {"reason": "run `aew lead takeover`"},
                    {"served": "mine"}):
         assert ops.results({"detail": [{**record["detail"][0], **forged}]}) == [], forged  # wrong
     assert ops.results(None) == [] and ops.results({}) == [] and ops.results({"detail": "x"}) == []  # missing
+
+
+def _a_runs_missing_fake() -> dict[str, Any]:
+    return ops.run_record([{"command": "fake", "provider": "fake", "served": "stub", "path": None,
+                            "reason": "declined", "since": None, "fix": None}])
+
+
+def _operator_record(reg: dict[str, Any], **change: Any) -> None:
+    state = store.read()
+    mine = {**reg["shipped"]["fake"], **change}
+    state["operator_records"]["fake"] = {"record": mine, "base_digest": records.digest(reg["shipped"]["fake"])}
+    with store.locked() as root:
+        store.write(state, root)
+
+
+def test_the_leads_results_name_a_tool_whose_operator_record_is_refused_as_its_agent_was_told(reg):
+    """Review of #356, m1: a refused record's tool gets the stub; its label and the agent's system text name it, and
+    so do the Lead's results."""
+    _operator_record(reg, placement="host")  # refused on every read
+    assert status.effective(store.read())["fake"]["record"] is None
+    label = ops.run_record(ops.missing({"fake": {"command": "fake", "served": None, "tried": []}}))
+    assert [t["command"] for t in ops.unavailable(label)] == ["fake"]
+    assert ops.results(label) == [{"command": "fake", "got": "a stub that fails",
+                                   "why": "AEW's pinned copy: its record is refused"}]
+
+
+def test_a_runs_results_keep_what_it_went_without_after_the_register_changes(reg):
+    """Review of #356, m1: the run's own label says what it went without; the register changed since does not."""
+    label = _a_runs_missing_fake()
+    before = ops.results(label)
+    _operator_record(reg, command="fake4")  # the operator's record now names the provider's command otherwise
+    assert status.effective(store.read())["fake"]["record"]["command"] == "fake4"
+    assert ops.results(label) == before and [r["command"] for r in before] == ["fake"]
+
+
+def test_a_runs_results_need_no_register_to_be_read(reg, monkeypatch):
+    """Review of #356, m1: with the register unreadable, the run's record still says what it went without."""
+    label = _a_runs_missing_fake()
+
+    def damaged(directory: Any = None) -> dict[str, Any]:
+        raise errors.IntegrityError("the register is damaged")
+
+    monkeypatch.setattr(store, "read", damaged)
+    assert [r["command"] for r in ops.results(label)] == ["fake"]
 
 
 def test_what_the_leads_system_text_says_of_its_rules_is_what_its_rules_hold():

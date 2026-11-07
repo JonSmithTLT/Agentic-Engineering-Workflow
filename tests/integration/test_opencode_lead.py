@@ -132,7 +132,9 @@ def test_print_config_starts_nothing_and_shows_no_values(lab):
                   env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token})
     assert res.returncode == 0, res.stderr
     shown = res.json
-    assert shown["config"] == projection.lead_config(guide_of(lab))
+    # where the Lead runs as it is, what its TUI gets: the line that no tool of AEW's is placed (review of #356, n1)
+    placed = None if lead.contained_here() else {"placed": False, "tools": []}
+    assert shown["config"] == projection.lead_config(guide_of(lab), tools=placed)
     assert shown["config"]["experimental"]["policies"] == DENY  # --print-config shows the provider deny
     assert shown["command"][-2:] == ["--standalone", str(lab.root)]
     system = shown["config"]["agents"][projection.LEAD_AGENT]["system"]

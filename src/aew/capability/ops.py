@@ -517,29 +517,25 @@ def run_record(flags: list[dict[str, Any]]) -> dict[str, Any]:
             "detail": flags}
 
 
-def results(missing_tools: dict[str, Any] | None, directory: Path | None = None) -> list[dict[str, str]]:
+def results(missing_tools: dict[str, Any] | None) -> list[dict[str, str]]:
     """What the Lead's results say of the tools a run went without, from its record's ``missing_tools``
-    (:func:`run_record`), as they say what its evidence found: each tool's command, what the run got instead and why.
-    A missing tool acts as a missing skill does: logged, never voided (the operator, 2026-11-05).
+    (:func:`run_record`), as they say what its evidence found: each tool's command, what the run got instead, and why
+    AEW's pinned copy did not serve. A missing tool acts as a missing skill does: logged, never voided (the operator,
+    2026-11-05). The run's own label is the source, never today's register, which may have changed or be unreadable
+    since (review of #356, m1).
 
-    The record is in the run's own directory, so only AEW's closed words reach the Lead: a command its provider's
-    record in force names, :data:`GOT`'s word for what served, and :data:`status.NOT_SERVING_WHY`'s reason. An entry
-    with anything else is left out, and the host copy's path and the fix stay in the operator's line and `aew
-    doctor`."""
+    Only AEW's closed words pass from the record: a command of a command's form (``bind.COMMAND``, as every record's
+    is), :data:`GOT`'s word for what served, and :data:`status.NOT_SERVING_WHY`'s reason. An entry with anything else
+    is left out, and the host copy's path and the fix stay in the operator's line and `aew doctor`."""
     detail = (missing_tools or {}).get("detail") if isinstance(missing_tools, dict) else None
-    entries = [d for d in detail or [] if isinstance(d, dict)]
-    try:
-        eff = status.effective(store.read(directory)) if entries else {}
-    except AEWError:  # never a reason a result fails: with no register read, no tool is named
-        eff = {}
     out = []
-    for d in entries:
-        record = (eff.get(str(d.get("provider"))) or {}).get("record")
-        reason, served = str(d.get("reason")), str(d.get("served"))
-        if (record is None or record["command"] != _command_of(d) or reason not in status.NOT_SERVING_WHY
-                or served not in GOT):
+    for d in detail or []:
+        if not isinstance(d, dict):
             continue
-        out.append({"command": record["command"], "got": GOT[served], "why": status.NOT_SERVING_WHY[reason]})
+        command, reason, served = _command_of(d), str(d.get("reason")), str(d.get("served"))
+        if bind.COMMAND.fullmatch(command) and reason in status.NOT_SERVING_WHY and served in GOT:
+            out.append({"command": command, "got": GOT[served],
+                        "why": f"AEW's pinned copy: {status.NOT_SERVING_WHY[reason]}"})
     return out
 
 

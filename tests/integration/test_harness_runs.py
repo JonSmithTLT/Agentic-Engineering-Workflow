@@ -411,11 +411,36 @@ def test_the_leads_results_name_the_tools_a_run_went_without_in_aews_closed_word
               {"command": "uctags", "provider": "universal-ctags", "served": "mine", "reason": "declined"}]  # forged
     record["containment"] = {**(record.get("containment") or {}), "missing_tools": {"detail": detail}}
     path.write_text(json.dumps(record), encoding="utf-8")
-    said = [{"command": "rg", "got": "a stub that fails", "why": "the operator declined to download it"},
-            {"command": "fd", "got": "the host's unpinned copy", "why": "it is not installed on this host"}]
+    said = [{"command": "rg", "got": "a stub that fails",
+             "why": "AEW's pinned copy: the operator declined to download it"},
+            {"command": "fd", "got": "the host's unpinned copy",
+             "why": "AEW's pinned copy: it is not installed on this host"}]
     [listed] = lab.ok("harness", "status", out["invocation"])["runs"]
     assert listed["missing_tools"] == said
+    assert "missing_tools" not in listed["containment"]  # one list: the label's whole record is not echoed (m2)
     assert lab.wait(run)["missing_tools"] == said
+
+
+def test_a_runs_start_gives_its_harness_what_its_label_says_of_its_tools(lab, tmp_path):
+    """Review of #356, m3: the supervisor's start sets what the run's system text says of AEW's tools from the label it
+    just made, before the harness launches: the tools placed when it is contained, and none otherwise, as the label
+    says; and what it goes without, from the label's own record."""
+    import json
+
+    from aew.capability import ops
+    from aew.harness import containment
+    from aew.harness import contract as K
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [])
+    run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
+    lab.wait(run)
+    label = lab.record(run)["containment"]
+    given = json.loads((runlog.run_dir(lab.aew_root, run) / "harness" / "tools.json").read_text(encoding="utf-8"))
+    contained = label["filesystem"] != containment.WORKDIR_ONLY
+    assert given[K.AVAILABLE_TOOLS]["placed"] is contained, (label, given)
+    assert given[K.AVAILABLE_TOOLS] == ops.placed(label, contained=contained)
+    assert given[K.UNAVAILABLE_TOOLS] == ops.unavailable(label.get("missing_tools"))
 
 
 def test_a_message_too_long_to_deliver_is_refused_before_it_is_recorded(lab, tmp_path):

@@ -383,7 +383,9 @@ class Harness:
                             "harness": r["harness"], "launched_at": r["launched_at"], "kind": r["kind"],
                             "status": observed, "reason": (record or {}).get("reason"),
                             "reason_code": _reason_code(record),
-                            "containment": containment.normalize((record or {}).get("containment")),
+                            # its missing tools are the Lead's one list, `missing_tools` (review of #356, m2)
+                            "containment": {k: v for k, v in containment.normalize(
+                                (record or {}).get("containment")).items() if k != "missing_tools"},
                             "authority": "current" if current
                             else f"none ({tok.get('revoke_reason') or inv['status']})",
                             "supervisor_pid": (record or {}).get("supervisor_pid"),

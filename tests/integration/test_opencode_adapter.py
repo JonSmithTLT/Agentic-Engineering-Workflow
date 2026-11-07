@@ -694,6 +694,45 @@ def test_a_rejected_provider_key_is_its_own_ending_and_a_relaunch_reads_the_key_
                     assert secret not in text, (path, secret)
 
 
+def _aew_files(lab: HarnessLab, run: str) -> list[tuple[Path, str]]:
+    """Every file AEW wrote for the run (not OpenCode's own private state, its XDG directories)."""
+    directory = runlog.run_dir(lab.aew_root, run)
+    return [(p, p.read_text(encoding="utf-8", errors="replace")) for p in directory.rglob("*")
+            if p.is_file() and not any(part.startswith("xdg-") for part in p.relative_to(directory).parts)]
+
+
+def test_a_2_2_6_provider_403_is_the_rejected_key_ending_and_its_raw_body_is_never_recorded(lab, tmp_path):
+    """The 2.2.6 bump (E17's live turn, 2026-11-07: Zen answered 403). 2.2.6 classes a 401 or a 403 as
+    `provider.auth` (unless its body names a quota), and its error carries the provider's raw body
+    (`response.body`). The run is still the rejected-key ending, and neither the message nor the body, which can quote
+    part of the key, is in anything AEW wrote."""
+    rejected = hashlib.sha256(PROVIDER_SECRET.encode()).hexdigest()
+    script(lab, IMPLEMENT, provider_auth={"variable": "OPENAI_API_KEY", "rejected_sha256": [rejected], "status": 403,
+                                          "shape": "2.2.6", "code": "account_forbidden_e17"})
+    _, _, run = launch(lab, tmp_path)
+    done = lab.wait(run)
+    assert done["status"] == "crashed" and done["reason_code"] == "provider_auth_failed", done
+    assert lab.record(run)["harness_outcome"] == "the agent's turn ended: failed (provider.auth, 403)"
+    for path, text in _aew_files(lab, run):
+        for leaked in ("account_forbidden_e17", "Incorrect API key", f"{PROVIDER_SECRET[:3]}***"):
+            assert leaked not in text, (path, leaked)
+
+
+def test_a_2_2_6_budget_limit_is_named_in_the_runs_reason(lab, tmp_path):
+    """2.2.6 classes a provider's spend or credit refusal as its own type (`provider.budget-limit`; also `quota`,
+    `free-limit`, `model-budget-limit`, `go-limit`), not `provider.auth`. It is not a rejected key, so it has no reason
+    code of its own, but the run's reason, which the Lead is shown, names it."""
+    rejected = hashlib.sha256(PROVIDER_SECRET.encode()).hexdigest()
+    script(lab, IMPLEMENT, provider_auth={"variable": "OPENAI_API_KEY", "rejected_sha256": [rejected], "status": 402,
+                                          "type": "provider.budget-limit", "shape": "2.2.6", "code": "BudgetLimitError",
+                                          "message": "Workspace usage limit reached. Model use is paused until the "
+                                                     "limit resets."})
+    _, _, run = launch(lab, tmp_path)
+    done = lab.wait(run)
+    assert done["status"] == "crashed" and "reason_code" not in done, done
+    assert "provider.budget-limit, 402: Workspace usage limit reached" in done["reason"], done
+
+
 def test_a_credential_error_loses_its_message_and_key_shaped_text_is_redacted_from_any_other():
     """Fail closed (PR #165 review, finding 2): the message goes for an auth-like type or a 401, 403 or 407 whatever
     the type says, and key-shaped text is redacted from every message kept. Only `provider.auth` has a reason code."""

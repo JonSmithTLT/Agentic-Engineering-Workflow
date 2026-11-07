@@ -26,7 +26,9 @@ from the projection),
 the first step), ``form`` (a form before the first step), ``queue_gap_s`` (pause at the end of a turn,
 before its queued prompts are taken), ``provider_auth`` (``{"variable", "rejected_sha256": [...]}``: when the
 server's own value of that variable hashes to one of these, the provider rejects it at the first model call, as
-2.0.18 reports a 401: the turn fails with ``provider.auth``, no retry), ``live_usage`` (F25 L1: sessions carry the
+2.0.18 reports a 401: the turn fails with ``provider.auth``, no retry; optional ``status``, ``type`` and ``message``
+override the failed turn's error, and ``"shape": "2.2.6"`` adds the provider's raw body, ``response.body``, which
+2.2.6's ``Session.StructuredError`` carries), ``live_usage`` (F25 L1: sessions carry the
 pinned ``TokenUsage.Info`` totals, and each model step adds its tokens to its session's totals; ``{"order":
 "message_first" | "totals_first", "gap_s": s}`` says which of the two a reader can see first, and for how long; 2.0.18
 commits a step's message and totals together, P1(e), so ``gap_s`` 0 is the pinned behaviour).
@@ -296,12 +298,16 @@ class FakeOpenCode:
         key = os.environ.get(knob["variable"]) or ""
         base = provider_base(s.info["model"])
         if base is not None:  # a network of the run's own (F28): the relay holds the key, and the provider answers
-            if call_provider(base, key, knob["rejected_sha256"]) != 401:
+            if call_provider(base, key, knob["rejected_sha256"]) < 400:
                 return None
         elif hashlib.sha256(key.encode()).hexdigest() not in knob["rejected_sha256"]:
             return None
-        error = {"type": "provider.auth", "message": f"Incorrect API key provided: {key[:3]}***{key[-4:]}.",
-                 "status": 401}
+        message = knob.get("message") or f"Incorrect API key provided: {key[:3]}***{key[-4:]}."
+        error: dict[str, Any] = {"type": knob.get("type") or "provider.auth", "message": message,
+                                 "status": int(knob.get("status") or 401)}
+        if knob.get("shape") == "2.2.6":  # the provider's own body, as 2.2.6 keeps it beside the message
+            error["response"] = {"body": json.dumps({"error": {"message": message, "type": "invalid_request_error",
+                                                               "code": knob.get("code") or "invalid_api_key"}})}
         msg = {"id": new_id("msg"), "type": "assistant", "agent": s.info.get("agent") or "build",
                "model": self.pin(s, 0), "time": {"created": now_ms(), "completed": now_ms()}, "content": [],
                "finish": "error", "error": error}

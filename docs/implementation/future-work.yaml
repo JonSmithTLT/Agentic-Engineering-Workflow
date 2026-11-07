@@ -154,7 +154,7 @@ sections:
 
     **In the alpha, not a condition of first use** (the operator, 2026-11-06, a new category): they follow the first-use list and never hold it. In this order: `report_write` (item 27), the consult (item 28, with the model pins of item 29 beside its second PR), the Lead change (item 30), the plan assessment gate (item 31), then the Lead's skills after E127 (item 32). Items 33 to 35 are the Lead's placements in the same category, after those, and item 36 is the designer's, last, after first use. The six designs of 2026-11-06 among them (`report_write`, the consult, the Lead change, the plan assessment gate, the Lead's skills, and branch review with document work, last, after first use) are new systems, so each starts only under the limit on half-built work.
 
-    **The limit on half-built work** (the operator, 2026-11-06): N = 12. No new system starts building while more than 12 systems have code not fully in and are not frozen; the count was above 12 on 2026-11-06, and first use counts toward bringing it down. Until the systems generator's third PR (E182) computes it, the count is the build board's.
+    **The limit on half-built work** (the operator, 2026-11-06): N = 12. No new system starts building while more than 12 systems have code not fully in and are not frozen, and a new system starts only when the count, with it added, stays at most 12, so the count must first be under 12 (the operator's answer of the same day: the limit holds the new designs); the count was above 12 on 2026-11-06, and first use counts toward bringing it down. Until the systems generator's third PR (E182) computes it, the count is the build board's.
 
     **The systems generator** (item 39; the operator, 2026-11-06, "Now, PR 1 first"): its PR 1 takes the next free slot after the first-use one-offs in flight, and PRs 2 and 3 follow it. It doesn't delay first use.
 
@@ -2086,7 +2086,8 @@ sections:
       the record'
     Source: The designer's decision of 2026-11-06, rate limits that count cached tokens per request, ruling 4; `AEW-FR-26.b`,
       `AEW-FR-26.c`, `IF10-05`
-    When: '**Unscheduled**, after first use, the operator''s to place'
+    When: '**Unscheduled**, after first use, the operator''s to place. Like the six designs of 2026-11-06, it starts only
+      under the limit on half-built work, N = 12 (§1)'
     Notes: Filed by the Lead. The declared limit and window are the provider profile's `rate_basis` and window (the notes
       on E97 and STG-14)
 

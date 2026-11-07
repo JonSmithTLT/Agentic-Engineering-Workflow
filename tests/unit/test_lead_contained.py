@@ -23,6 +23,7 @@ from aew import errors
 from aew.harness import lead_broker, procs
 from aew.harness.containment import netns
 from aew.harness.opencode import lead, login, projection
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
 
 KEYS = {"openai": "sk-synthetic-openai-0001", "anthropic": "sk-ant-synthetic-0002", "opencode": "synthetic-oc-0003",
         "mystery": "synthetic-mystery-0004"}
@@ -214,9 +215,9 @@ def test_a_login_in_a_shape_aew_does_not_know_is_refused_and_named_at_launch_and
     Never guessed, and no value in either message."""
     from aew.harness.containment import relay
 
-    unknown = ("in a shape AEW does not know (AEW reads OpenCode 2.0.18's, and never guesses at another), so the "
-               "contained Lead does not use it; to serve openai with an API key instead, start `aew opencode "
-               "--provider-env OPENAI_API_KEY`")
+    unknown = (f"in a shape AEW does not know (AEW reads OpenCode {TESTED_VERSIONS[0]}'s, and never guesses at "
+               "another), so the contained Lead does not use it; to serve openai with an API key instead, start "
+               "`aew opencode --provider-env OPENAI_API_KEY`")
     db = store(tmp_path, [("openai", "chatgpt-browser", 1, {"type": "oauth2", "token": "synthetic-new-shape"}, 1)])
     session = contained(tmp_path)
     assert session.refreshing == {} and session.keys == {}
@@ -885,13 +886,15 @@ def test_the_lead_rules_are_unchanged_a_command_still_asks_and_an_edit_or_a_suba
     assert projection.lead_config(contained=LABEL)["agents"][projection.LEAD_AGENT]["permissions"] == rules
     assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "allow"} == {
         ("read", "*"), ("glob", "*"), ("grep", "*"), ("question", "*"), (f"{projection.LEAD_MCP_SERVER}_*", "*"),
-        ("shell", "aew *"), ("shell", "git status*"), ("shell", "git diff*"), ("shell", "git log*"),
-        ("shell", "git show*"), ("read", "*.env.example")}
+        *((shell, pattern) for shell in projection.SHELL_ACTIONS
+          for pattern in ("aew *", "git status*", "git diff*", "git log*", "git show*")), ("read", "*.env.example")}
     assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "deny"} == {
-        ("edit", "*"), ("subagent", "*"), ("read", "*.env"), ("read", "*.env.*")}
+        ("edit", "*"), ("subagent", "*"), ("read", "*.env"), ("read", "*.env.*"), ("browser", "*"),
+        ("skill", "browser")}
     # The asks are AEW's own, never OpenCode's default for an unmatched action (#304 review, n1).
     assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "ask"} == {
-        ("*", "*"), ("shell", "*"), *(("shell", pattern) for pattern in projection.LEAD_GIT_ASKS)}
+        ("*", "*"),
+        *((shell, pattern) for shell in projection.SHELL_ACTIONS for pattern in ("*", *projection.LEAD_GIT_ASKS))}
     for command in ("aew status", "git status --short", "git diff HEAD", "git log -1", "git show HEAD"):
         assert effect(rules, "shell", command) == "allow", command
     for command in ("python -m pytest -q", "bash scripts/check.sh", "git commit -m wip", "git push", "rm -rf build"):

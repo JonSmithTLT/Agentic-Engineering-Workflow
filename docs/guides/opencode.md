@@ -10,9 +10,9 @@ How to install, configure and use OpenCode as AEW's harness. The design is ADR-0
 
 ## Requirements
 
-- **OpenCode V2, version 2.0.18.** It is the only version tested. V1 is not supported, and a server that is not V2 is refused.
-- **Windows** is where real runs are tested. On Windows, AEW uses OpenCode Desktop's versioned CLI at `%APPDATA%\ai.opencode.desktop\cli\2.0.18\opencode-cli.exe`. Elsewhere it uses `opencode-cli` (or `opencode`) on `PATH`. To use another copy, set `AEW_OPENCODE_BIN` to its path.
-- **Linux** is covered in CI by a fake V2 server that serves the real 2.0.18 API description. No real Linux run has been made.
+- **OpenCode V2, version 2.2.6.** It is the only version tested (`capabilities.TESTED_VERSIONS`). V1 is not supported, and a server that is not V2 is refused.
+- **Windows** is where real runs are tested. On Windows, AEW uses OpenCode Desktop's versioned CLI at `%APPDATA%\ai.opencode.desktop\cli\2.2.6\opencode-cli.exe`. Elsewhere it uses `opencode-cli` (or `opencode`) on `PATH`. To use another copy, set `AEW_OPENCODE_BIN` to its path.
+- **Linux** is covered in CI by a fake V2 server that serves the real pinned API description, and on the Rocky 8 VM by the conformance suite and the containment self-test against the real binary.
 - A provider account for the models you configure.
 
 AEW never contacts OpenCode Desktop's own background service, and never writes to your OpenCode configuration or state.

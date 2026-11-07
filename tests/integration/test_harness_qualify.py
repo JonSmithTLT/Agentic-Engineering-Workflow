@@ -197,14 +197,15 @@ def test_a_doctored_pin_shows_the_changed_fact_in_the_diff(tmp_path):
     """The ablation through the pack's own pin reader: one stored count changed in a copy of the fixtures."""
     doctored = tmp_path / "fixtures"
     shutil.copytree(FIXTURES, doctored)
-    path = doctored / "usage-2.0.18-openai.json"
+    path = doctored / f"usage-{OC.C.TESTED_VERSIONS[0]}-openai.json"
     doc = json.loads(path.read_text(encoding="utf-8"))
-    doc["cases"][0]["stored"]["input"] = 3001
+    was = doc["cases"][0]["stored"]["input"]
+    doc["cases"][0]["stored"]["input"] = was + 1
     path.write_text(json.dumps(doc), encoding="utf-8")
     pack = OC.OpenCodePack(FIXTURES)
     _, measured = pack.pinned(FIXTURES)
     _, pinned = pack.pinned(doctored)
-    assert core.fact_diff(measured, pinned).lines() == ["~ usage.openai.cases[0].stored.input: 3001 -> 3000"]
+    assert core.fact_diff(measured, pinned).lines() == [f"~ usage.openai.cases[0].stored.input: {was + 1} -> {was}"]
 
 
 def test_the_feed_gives_the_version_and_each_files_digest():
@@ -241,7 +242,7 @@ def test_the_opencode_pack_against_the_fake_server_measures_its_api_and_names_wh
     record, diff, fixtures, _ = HQ.run(OC.OpenCodePack(FIXTURES), fake_binary(tmp_path), out=tmp_path / "out",
                                        fixtures=FIXTURES, only=API_CHECKS)
     by = {r["id"]: r["status"] for r in record.checks}
-    assert record.version == "2.0.18"
+    assert record.version == OC.C.TESTED_VERSIONS[0]
     assert {k: by[k] for k in API_CHECKS[:5]} == dict.fromkeys(API_CHECKS[:5], core.PASS)
     # the fake is not the build the citations were read from: not comparable, never a pass or a changed fact
     assert by["usage.live_citations"] == core.SKIPPED and by["ripgrep.download"] == core.FAIL

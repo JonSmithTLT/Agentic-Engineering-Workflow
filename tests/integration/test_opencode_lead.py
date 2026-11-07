@@ -19,12 +19,13 @@ from conftest import run_aew
 from fake_harness import AGENT, HarnessLab, contains_credential, credential_hits
 
 from aew.harness.opencode import lead, projection
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
 
 SECRET = "sk-provider-secret-must-not-reach-the-lead-model"
 LAUNCHER = """import json, pathlib, sys
 here = pathlib.Path(__file__).resolve().parent
 if sys.argv[1:2] == ["--version"]:
-    print("opencode v2.0.18")
+    print("opencode v{version}")
     sys.exit(0)
 (here / "tui-argv.json").write_text(json.dumps(sys.argv[1:]))
 sys.argv = ["fake_agent", "--script", str(here / "tui-script.json"), "--transcript", str(here / "tui.jsonl")]
@@ -43,7 +44,8 @@ def lab(tmp_path):
     lab = HarnessLab.create(sample_project(tmp_path), tmp_path, extra_env={"OPENAI_API_KEY": SECRET})
     tui = tmp_path / "tui"
     tui.mkdir()
-    (tui / "opencode.py").write_text(LAUNCHER.format(helpers=str(AGENT.parent)), encoding="utf-8")
+    launcher = LAUNCHER.format(helpers=str(AGENT.parent), version=TESTED_VERSIONS[0])
+    (tui / "opencode.py").write_text(launcher, encoding="utf-8")
     lab.env["AEW_OPENCODE_BIN"] = str(tui / "opencode.py")
     yield lab
     lab.cleanup()
@@ -92,7 +94,7 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
         {"do": "aew", "args": ["resume", "--json"]}])
     assert res.returncode == 0, res.stderr
     out = res.json
-    assert (out["exit"], out["seat"], out["opencode"]) == (0, "held by your AEW_LEAD_TOKEN", "2.0.18")
+    assert (out["exit"], out["seat"], out["opencode"]) == (0, "held by your AEW_LEAD_TOKEN", TESTED_VERSIONS[0])
     assert out["containment"]["filesystem"] == "workdir_separation_only"  # labelled not contained (STG-05 CS-4)
     assert argv == ["--standalone", str(lab.root)]
     env = json.loads((sync / "env").read_text())

@@ -291,8 +291,8 @@ def test_a_release_that_respells_the_leads_provider_deny_is_refused_at_a_workers
 
     from aew.harness.opencode import capabilities
 
-    spec = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode" / "openapi-2.0.18.min.json")
-                      .read_text(encoding="utf-8"))
+    spec = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode"
+                       / f"openapi-{capabilities.TESTED_VERSIONS[0]}.min.json").read_text(encoding="utf-8"))
     assert capabilities.problems(spec) == []
     config = "Config.InfoEncoded"
     renamed = copy.deepcopy(spec)

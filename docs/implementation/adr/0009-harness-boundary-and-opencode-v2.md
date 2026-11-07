@@ -1831,3 +1831,20 @@ acknowledgements.
   the deny in each use of the Lead's configuration in `tests/unit/test_opencode_units.py`,
   `tests/integration/test_opencode_lead.py` and `tests/integration/test_lead_contained_session.py`; and
   `tests/unit/test_containment_netns.py` (what a worker's network keeps for the note).
+
+## Amendment 2026-11-07 — the pin moves to OpenCode 2.2.6
+
+- **The pin:** `capabilities.TESTED_VERSIONS` is `("2.2.6",)` (the operator's go for the bump, 2026-11-07), so the
+  binary on Windows is Desktop's `cli\2.2.6\opencode-cli.exe`. The section above that names `cli\2.0.18` describes the
+  pin of its day; the path is derived from `TESTED_VERSIONS`.
+- **How it was qualified:** `tools/harness_qualify` against the 2.2.6 binary on Windows and on the Rocky 8 VM, offline,
+  with the scripted model and synthetic credentials only. Every measured fact was identical on both. Its fact diff
+  against the 2.0.18 fixtures is the bump's change list, and the 2.2.6 fixtures are the tool's output.
+- **What changed in the projection:** session `warming` and `experimental.image_generate` are off in every
+  configuration, the Lead's MCP server is never pooled, every shell rule is given under both `shell` and `bash`
+  (2.2.5 runs a call to `bash` as `shell`), and the Lead's rules deny the browser tool and skill themselves. Each key
+  AEW closes is a field the probe requires, and the probe now checks the policy action enum AEW projects
+  (`capabilities.REQUIRED_FIELD_ENUMS`). `experimental.policies` is deprecated in 2.2.6 and still merged with the
+  top-level `policies`, so the Lead's provider deny is unchanged (register E202 moves it).
+- **What it rests on that is not measured:** probe P1's live-usage citations and the token semantics' source
+  citations are 2.0.18's until they are re-read (register E200).

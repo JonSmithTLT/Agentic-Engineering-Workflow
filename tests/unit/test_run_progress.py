@@ -20,9 +20,10 @@ from aew.harness import progress as P
 from aew.harness import runlog
 from aew.harness import usage_live as L
 from aew.harness.opencode.adapter import OpenCodeAdapter
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
 
 OPENAPI = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode" /
-                      "openapi-2.0.18.min.json").read_text(encoding="utf-8"))
+                      f"openapi-{TESTED_VERSIONS[0]}.min.json").read_text(encoding="utf-8"))
 SCOPE = ["src/a/**"]
 PYTEST = "python -m pytest tests/test_x.py"
 

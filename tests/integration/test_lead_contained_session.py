@@ -24,6 +24,7 @@ from lead_session import KEYS, RECENT_MODELS, SECRET, Upstream, at_the_terminal,
 from aew.harness import procs
 from aew.harness.containment import netns
 from aew.harness.opencode import lead, projection
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
 
 # Every Lead's provider deny, written out: the designer's ruling of 2026-11-06 (both of OpenCode's own providers)
 DENY = [{"action": "provider.use", "resource": "opencode", "effect": "deny"},
@@ -62,7 +63,7 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         out = done["result"]
         transcript = (tui / "tui.jsonl").read_text() if (tui / "tui.jsonl").exists() else ""
         assert out["exit"] == 0, (done["stdout"].split(procs.TERMINAL_LEAVE)[0][-3000:], transcript)
-        assert (out["seat"], out["opencode"]) == ("held by your AEW_LEAD_TOKEN", "2.0.18")
+        assert (out["seat"], out["opencode"]) == ("held by your AEW_LEAD_TOKEN", TESTED_VERSIONS[0])
         label = out["containment"]
         assert label["filesystem"] == "os_readonly_roots" and sorted(label["self_test"]["rows"]) == list("123456")
         assert all(r["ok"] for r in label["self_test"]["rows"].values())

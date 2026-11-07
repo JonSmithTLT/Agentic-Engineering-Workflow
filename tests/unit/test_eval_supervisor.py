@@ -19,6 +19,8 @@ from typing import Any
 import jsonschema
 import pytest
 
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "eval"))
 
@@ -37,7 +39,8 @@ from aew_eval.supervisor import (  # noqa: E402
 
 TASK = b"Fix add so that it adds.\n"
 PASSWORD = "worker-password-synthetic-7f3c"
-FIXTURE = json.loads((ROOT / "tests/fixtures/opencode/openapi-2.0.18.min.json").read_text(encoding="utf-8"))
+FIXTURE = json.loads((ROOT / f"tests/fixtures/opencode/openapi-{TESTED_VERSIONS[0]}.min.json")
+                     .read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------------------------- fakes

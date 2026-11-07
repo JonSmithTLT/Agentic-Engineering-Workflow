@@ -27,7 +27,7 @@ from aew.harness.opencode.client import OpenCodeError, OpenCodeUnavailable
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "opencode"
 P1 = json.loads((FIXTURES / "live-usage-2.0.18.json").read_text(encoding="utf-8"))
-OPENAPI = json.loads((FIXTURES / "openapi-2.0.18.min.json").read_text(encoding="utf-8"))
+OPENAPI = json.loads((FIXTURES / f"openapi-{TESTED_VERSIONS[0]}.min.json").read_text(encoding="utf-8"))
 GPT = {"providerID": "openai", "id": "gpt-6.1", "variant": "default"}
 MINI = {"providerID": "openai", "id": "gpt-6.1-mini", "variant": "low"}
 PRICES = O.Prices(b"schema: aew/pricing/v1\ncurrency: USD\nas_of: 2026-10-01\nsource: test\nprices:\n"
@@ -72,7 +72,7 @@ class Lab:
         self.n = 0
 
     def meter(self, root_session: str | None = None, *, pinned: dict[str, Any] | None = GPT, s_pot: int = 1,
-              state: str = "state.json", version: str = "2.0.18") -> L.Meter:
+              state: str = "state.json", version: str = TESTED_VERSIONS[0]) -> L.Meter:
         return L.OpenCodeMeter(self.client, root_session=root_session or "ses_root", version=version, s_pot=s_pot,
                                state_path=self.root / state, pinned_model=pinned)
 
@@ -786,7 +786,8 @@ class FixtureClient:
 
 def test_live_usage_fixture_is_self_consistent_and_cites_the_pinned_commit():
     source = P1["source"]
-    assert P1["version"] in TESTED_VERSIONS and source["tag"] == f"v{P1['version']}"
+    # P1 was read at 2.0.18; the pin has moved past it, so its citations wait to be re-read (register E200)
+    assert P1["version"] == "2.0.18" and source["tag"] == f"v{P1['version']}"
     assert re.fullmatch(r"[0-9a-f]{40}", source["commit"]) and re.fullmatch(r"[0-9a-f]{64}", source["binary_sha256"])
     ids = {e["id"] for e in source["evidence"]}
     assert len(ids) == len(source["evidence"])

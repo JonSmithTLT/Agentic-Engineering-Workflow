@@ -76,7 +76,7 @@ The lanes, the CI tiers, the static checks and the local commands are in
 - **Derive, don't restate** (operator, 2026-10-12). Every fact has one owner. Its consumers derive it from the owner's
   accessor and never restate it by hand: restating a fact is a defect. Every plan names the facts it consumes and their
   owners.
-- External harness facts: trust the pinned fixture (for example `tests/fixtures/opencode/openapi-2.0.18.min.json`) over
+- External harness facts: trust the pinned fixture (for example `tests/fixtures/opencode/openapi-2.2.6.min.json`) over
   a harness's current online documentation.
 
 ## Git

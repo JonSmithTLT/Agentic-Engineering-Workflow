@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import base64
 import http.server
+import importlib.util
 import json
 import os
 import queue
@@ -63,7 +64,25 @@ from urllib.parse import parse_qs, urlparse
 
 HERE = Path(__file__).resolve().parent
 AGENT = HERE / "fake_agent.py"
-SPEC = HERE.parent / "fixtures" / "opencode" / "openapi-2.0.18.min.json"
+
+
+def _pinned() -> str:
+    """The pinned OpenCode version, from this tree's ``capabilities.TESTED_VERSIONS`` (its one owner), loaded by path:
+    the fake runs as its own process, whose ``aew`` import could be another checkout's."""
+    path = HERE.parents[1] / "src" / "aew" / "harness" / "opencode" / "capabilities.py"
+    spec = importlib.util.spec_from_file_location("_fake_opencode_capabilities", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # its dataclasses look their module up while it loads
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        del sys.modules[spec.name]
+    return str(module.TESTED_VERSIONS[0])
+
+
+PINNED = _pinned()
+SPEC = HERE.parent / "fixtures" / "opencode" / f"openapi-{PINNED}.min.json"
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 DEFAULT_MODELS = [
     {"id": "fake-model", "modelID": "fake-model", "providerID": "fakeprov", "name": "Fake", "enabled": True,
@@ -486,7 +505,7 @@ class FakeOpenCode:
         if (method, path) == ("GET", "/api/credential") and "stored_credentials" in self.knobs:
             return 200, {"data": self.knobs["stored_credentials"]}
         if (method, path) == ("GET", "/api/info"):
-            return 200, {"version": self.knobs.get("version") or "2.0.18", "pid": os.getpid(), "urls": [],
+            return 200, {"version": self.knobs.get("version") or PINNED, "pid": os.getpid(), "urls": [],
                          "paths": {"tmp": str(self.state / "tmp")}}
         if (method, path) == ("GET", "/api/agent"):
             return 200, {"location": {"directory": (query.get("location[directory]") or [""])[0]},
@@ -954,7 +973,7 @@ class ProviderUpstream:
 
 def main(argv: list[str], scripts: Path) -> int:
     if argv[:1] == ["--version"]:
-        print("opencode v2.0.18")
+        print(f"opencode v{PINNED}")
         return 0
     if argv[:1] == ["--standalone"]:
         return tui(argv, scripts)

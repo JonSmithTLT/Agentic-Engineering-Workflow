@@ -284,8 +284,8 @@ class OpenCodeAdapter(HarnessAdapter):
     PROVIDER_RELAY = True
     EGRESS = ("models.opencode.ai:443",)
     # How each provider's reported counters overlap, per qualified OpenCode version (F25, cost and usage ledger v0.2
-    # R4 rule 1), pinned by tests/unit/test_usage_conformance.py against the fixture
-    # tests/fixtures/opencode/usage-2.0.18-openai.json.
+    # R4 rule 1), pinned by tests/unit/test_usage_conformance.py against the fixtures
+    # tests/fixtures/opencode/usage-<version>-openai.json.
     # A provider not named here is `unknown` and is never priced: no other provider is inferred (register F25).
     #
     # 2.0.18 / openai -> disjoint, qualified from source (sst/opencode tag v2.0.18, commit
@@ -298,7 +298,12 @@ class OpenCodeAdapter(HarnessAdapter):
     #   input_tokens - (cached_tokens + cache_write_tokens); outputTokens = output_tokens; reasoningTokens =
     #   output_tokens_details.reasoning_tokens.
     # So the stored input excludes cache read and write, and the stored output excludes reasoning.
-    token_semantics = {"2.0.18": {"openai": U.DISJOINT}}
+    #
+    # 2.2.6 / openai -> disjoint, measured (tools/harness_qualify `usage.openai`, 2026-11-07, Windows and Linux): each
+    # case's stored tokens, from a raw Responses usage through the real server, are the disjoint ones
+    # (tests/fixtures/opencode/usage-2.2.6-openai.json). Its source citations are still the v2.0.18 tag's, carried,
+    # until they are re-read at v2.2.6 (register E200).
+    token_semantics = {"2.0.18": {"openai": U.DISJOINT}, "2.2.6": {"openai": U.DISJOINT}}
 
     # The harness capabilities this adapter provides (steering design §7; aew.harness.harness_capabilities).
     harness_capabilities: dict[str, Support] = {

@@ -36,4 +36,5 @@ def test_the_pinned_binary_regenerates_its_fixtures_exactly(tmp_path):
     assert diff.clean, diff.lines()
     status = {f["fixture"]: f["status"] for f in fixtures}
     assert status == {f"openapi-{v}.min.json": "identical", f"usage-{v}-openai.json": "identical",
-                      f"tool-parts-{v}.json": "identical", f"live-usage-{v}.json": "not regenerated"}
+                      f"tool-parts-{v}.json": "identical", f"store-{v}.json": "identical",
+                      f"live-usage-{v}.json": "not regenerated"}

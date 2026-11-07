@@ -18,7 +18,8 @@ from aew.harness import usage as U
 from aew.harness.opencode.adapter import OpenCodeAdapter
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
 
-FIXTURE = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode" / "usage-2.0.18-openai.json")
+FIXTURE = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode"
+                      / f"usage-{TESTED_VERSIONS[0]}-openai.json")
                      .read_text(encoding="utf-8"))
 UNIT_PRICES = O.Prices(b"schema: aew/pricing/v1\ncurrency: USD\nas_of: 2026-10-01\nsource: test\nprices:\n"
                        b"  openai/gpt-6.1: {input: 1, output: 1, reasoning: 1, cache_read: 1, cache_write: 1}\n",
@@ -31,7 +32,8 @@ def declared(version: str, provider: str) -> str:
 
 def test_the_mapping_names_only_the_qualified_version_and_provider():
     assert FIXTURE["version"] in TESTED_VERSIONS
-    assert {v: dict(m) for v, m in OpenCodeAdapter.token_semantics.items()} == {"2.0.18": {"openai": "disjoint"}}
+    assert {v: dict(m) for v, m in OpenCodeAdapter.token_semantics.items()} == {"2.0.18": {"openai": "disjoint"},
+                                                                              "2.2.6": {"openai": "disjoint"}}
     assert declared(FIXTURE["version"], FIXTURE["provider"]) == FIXTURE["token_semantics"] == "disjoint"
 
 

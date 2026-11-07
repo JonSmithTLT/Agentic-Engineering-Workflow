@@ -30,6 +30,7 @@ from aew.harness import runlog, weaker_register
 from aew.harness.containment import netns
 from aew.harness.opencode import adapter as opencode_adapter
 from aew.harness.opencode import projection
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
 from aew.util import dump_yaml, load_yaml
 
 RUN = "R-INV-0001-1"
@@ -142,7 +143,7 @@ def test_the_projection_reaches_the_server_and_the_session(lab, tmp_path):
     assert info["location"] == {"directory": workspace} and info["permissions"] == config["permissions"]
     assert info["metadata"] == {"aew_invocation": inv, "aew_run": run, "aew_work_unit": wid}
     record = lab.record(run)
-    assert record["launch"]["health"]["version"] == "2.0.18" and record["launch"]["health"]["tested"]
+    assert record["launch"]["health"]["version"] == TESTED_VERSIONS[0] and record["launch"]["health"]["tested"]
     assert record["result"]["effective"] == [{"provider": "fakeprov", "model": "fake-model", "effort": "high"}]
     assert record["model_check"]["status"] == "match" and record["result"]["prompts"] == 1
     if record["containment"]["network"]["mode"] == "proxy_only":  # Linux (F28 §3.5): the provider through the relay

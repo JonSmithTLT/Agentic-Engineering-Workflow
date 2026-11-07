@@ -2507,6 +2507,114 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E198/`, oldest first (`python tools/register.py show E198`).*
 
+### E199
+
+**Work:** The defaults OpenCode 2.2.6 added that AEW closes (deny verdicts, the 2.2.6 bump): session `warming` off and `experimental.image_generate` off in every worker's and the Lead's configuration; the Lead's MCP server never pooled (`pool: false`); every shell rule given as both `shell` and `bash`, since 2.2.5 runs a call to `bash` as `shell`; the browser tool and skill denied in the Lead's own rules, where OpenCode appends the same denies itself. Each key AEW closes is a field the capability probe requires, so a release that respells one fails closed. Done in the bump's pull request, each with a test that fails without it; the row keeps the verdicts and their reasons until the feed watch (H-2) decides where verdicts live
+
+**Source:** The OpenCode 2.2.6 bump (operator go, 2026-11-07); the upgrade check of 2026-11-07, its item 10
+
+**When:** **Unscheduled**: the defaults are closed in the 2.2.6 bump; the row stays open as the verdicts' record until the feed watch (H-2) decides where verdicts live
+
+**Notes:** Filed by the bump's builder. Reasons: warming sends model requests a provider's rate limit counts (2.2.6's own default is off, and a provider's `cache.warming` falls back to it: set anyway, so a default flip cannot open it); image generation is a tool whenever a connected provider has an image model; pooling shares one server connection across directories; the bash name is an alias, so both names decide alike
+
+*Later notes: `notes.d/E199/`, oldest first (`python tools/register.py show E199`).*
+
+### E200
+
+**Work:** Re-read at OpenCode v2.2.6 the facts AEW cites from source rather than measures: probe P1's live-usage findings and bundled-code identifiers (`live-usage-2.0.18.json`; 2 of its 20 identifiers are in the 2.2.6 build, so `usage.live_citations` reports them not comparable, and `harness_qualify`'s `LIVE_USAGE_READ_AT` moves when they are re-read); the token semantics' source citations (`usage-2.2.6-openai.json` carries v2.0.18's, while its stored counts are measured on 2.2.6); what `readable.py` says OpenCode shows a person; the TUI preferences file the Lead reads (`lead.py`); and the OAuth row's shape (`login.py`). Done when `live-usage-2.2.6.json` exists and `usage.live_citations` passes on the pinned binary, and each other citation names the v2.2.6 tag
+
+**Source:** The OpenCode 2.2.6 bump (2026-11-07), its done-when item 2 (what cannot be measured offline stays a row)
+
+**When:** **Unscheduled**, a hold: before steering builds on live usage on 2.2.6; the conformance suite passing is not evidence that `usage_live` holds on 2.2.6
+
+**Notes:** Filed by the bump's builder
+
+*Later notes: `notes.d/E200/`, oldest first (`python tools/register.py show E200`).*
+
+### E201
+
+**Work:** Map OpenCode's structured rate-limit facts into run outcomes (hold verdict): the error type (`provider.rate-limit`, `provider.quota`), `status` and `retryAfterMs`, and the `session.retry.scheduled` event, so a retry reads as "rate-limited, OpenCode retries at T" and wakes the Lead, not as a stall. Behind a LiteLLM proxy an upstream provider's `retry-after` does not reach OpenCode, so the deployed proxy's version, or one captured 429, decides how much it gives there
+
+**Source:** The OpenCode upgrade check of 2026-11-07, adopt list item 1; the 2.2.6 bump brief, "Not in this PR"
+
+**When:** **Unscheduled**, the operator's to place
+
+**Notes:** Filed by the bump's builder. A consume verdict once built: AEW reads the signal and keeps its own wake
+
+*Later notes: `notes.d/E201/`, oldest first (`python tools/register.py show E201`).*
+
+### E202
+
+**Work:** OpenCode policies for tools, MCP, skills, plugins and web search (`tool.use`, `mcp.use`, `skill.use`, `plugin.use`, `websearch.use`), as a layer beside the permission rules (hold verdict: never in place of AEW's own boundary). With it, move the Lead's provider deny from `experimental.policies` (deprecated in 2.2.6 and still merged with the top-level key) to the top-level `policies`, and the probe's required enum with it
+
+**Source:** The OpenCode upgrade check of 2026-11-07, adopt list item 2; the 2.2.6 bump brief, "Not in this PR"
+
+**When:** **Unscheduled**; the move to `policies` before a release drops the deprecated key
+
+**Notes:** Filed by the bump's builder. Adopting needs both harnesses to declare the capability, or AEW keeps its permission rules alone for the one that lacks it
+
+*Later notes: `notes.d/E202/`, oldest first (`python tools/register.py show E202`).*
+
+### E203
+
+**Work:** OpenCode's typed events and `GET /api/event?types=` (hold verdict): the wake path subscribes only to the idle, failed, retry and tool events it reads, and the probe checks those events' fields
+
+**Source:** The OpenCode upgrade check of 2026-11-07, adopt list item 3; the 2.2.6 bump brief, "Not in this PR"
+
+**When:** **Unscheduled**, the operator's to place; steering's push wake is its first consumer
+
+**Notes:** Filed by the bump's builder
+
+*Later notes: `notes.d/E203/`, oldest first (`python tools/register.py show E203`).*
+
+### E204
+
+**Work:** Client-hosted MCP (hold verdict, experimental in 2.2.6): the supervisor serves the Lead's typed tools over a WebSocket, so `aew lead mcp` no longer runs in the Lead's sandbox. It moves where the Lead's tools run, so it needs a containment review before any build
+
+**Source:** The OpenCode upgrade check of 2026-11-07, adopt list item 4; the 2.2.6 bump brief, "Not in this PR"
+
+**When:** **Unscheduled**, after it leaves experimental
+
+**Notes:** Filed by the bump's builder
+
+*Later notes: `notes.d/E204/`, oldest first (`python tools/register.py show E204`).*
+
+### E205
+
+**Work:** Plugin session instruction entries (hold verdict, 2.2.0): keyed steering notes that keep the prompt cache and survive compaction. They need an AEW plugin in the run
+
+**Source:** The OpenCode upgrade check of 2026-11-07, adopt list item 5; the 2.2.6 bump brief, "Not in this PR"
+
+**When:** **Unscheduled**; relevant to steering MS3 to MS6
+
+**Notes:** Filed by the bump's builder
+
+*Later notes: `notes.d/E205/`, oldest first (`python tools/register.py show E205`).*
+
+### E206
+
+**Work:** OpenCode's background job list (hold verdict): a worker that reads idle while its shells or subagents still run is not idle, so `worker_idle` wakes read the list (the 2.2.6 store's new `job` table holds it)
+
+**Source:** The OpenCode upgrade check of 2026-11-07, adopt list item 6; the 2.2.6 bump brief, "Not in this PR"
+
+**When:** **Unscheduled**, with steering's push wake
+
+**Notes:** Filed by the bump's builder
+
+*Later notes: `notes.d/E206/`, oldest first (`python tools/register.py show E206`).*
+
+### E207
+
+**Work:** A raw-arm eval experiment on the pinned OpenCode 2.2.6: its own preregistration, pinning `version: 2.2.6` and each platform's binary (`linux-x64` `50503d24577fa4117a7c95ee85b2cd679606a87eacf20ca54ed5db5c9e1cf895`, `win32-x64` `eafc3f9a9b2757809a3102aded913f3741373968f0130c924c2256a80d679abc`), on a keyed paid model the operator approves. The lower-bound preregistrations stay as they were frozen: a change after a run is a new experiment
+
+**Source:** The OpenCode 2.2.6 bump brief, done-when item 1 (the eval raw arm's pin); the lane's own rule that a frozen preregistration is never edited
+
+**When:** **Unscheduled**, the operator's to place; any raw-arm run on 2.2.6 needs it first
+
+**Notes:** Filed by the bump's builder
+
+*Later notes: `notes.d/E207/`, oldest first (`python tools/register.py show E207`).*
+
 ### E47
 
 **Work:** Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do), a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the classifier with a test pinning the case; repeated wall-clock violations on `main` open or update a CI-health issue

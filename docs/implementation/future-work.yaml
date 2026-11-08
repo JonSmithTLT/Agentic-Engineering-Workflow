@@ -3292,12 +3292,14 @@ sections:
     Notes: Filed by the bump's builder
 
   - '#': E210
-    Work: Reach the Lead's OpenCode session from the Lead broker, so a push wake can be posted (`attach_to_operator_session`).
+    Work: 'Reach the Lead''s OpenCode session from the Lead broker, so a push wake can be posted (`attach_to_operator_session`).
       The `--standalone` TUI starts its own private server, whose address and password AEW never learns, and on Linux that
-      server is inside the Lead's sandbox. Steering PR 2 is built behind a poster interface until this lands
+      server is inside the Lead''s sandbox. Built by steering PR 2: AEW starts that server, and the broker reaches it. What
+      is left is Windows, where no wake has been run, and steering PR 3''s switch'
     Source: Found while building steering PR 2 (2026-11-08); the steering design r4 §5 and §7 assumed the broker serves
       the Lead's server, and `adapter.py` declared so
-    When: '**Unscheduled**, built with steering PR 2 (the designer''s ruling of 2026-11-08: AEW starts the Lead''s server)'
+    When: '**Unscheduled** for Windows; steering PR 3 switches the wake on (the designer''s ruling of 2026-11-08: AEW starts
+      the Lead''s server)'
     Notes: Filed by the push wake's builder. It corrects a false capability declaration
 
   - '#': E211

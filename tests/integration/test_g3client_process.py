@@ -13,6 +13,7 @@ import functools
 import http.client
 import json
 import os
+import re
 import socket
 import sys
 import threading
@@ -22,13 +23,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 
 from aew import g3client as C
 from aew import g3standing as S
 from aew.cli.main import main
-from aew.errors import OperatorAuthorizationRequired, Unavailable
+from aew.errors import OperatorAuthorizationRequired, Unavailable, ValidationFailed
 from aew.stg02 import ledger as L
 from aew.stg02 import server as SV
 from aew.stg02 import wire as W
@@ -200,6 +202,21 @@ def test_an_approved_set_is_admitted_and_its_member_consumed_once_against_the_ro
         "REJECTED", "CONSENT_ALREADY_USED_OR_MISSING", None)
 
 
+def _do_the_printed_get(world: World, said: str) -> list[dict[str, Any]]:
+    """Does what the client printed, its path and its header read from the words, and gives the list's items."""
+    found = re.search(r"GET (/\S+) on the route, with the bearer token and the header ([\w-]+): (\S+?),", said)
+    assert found, said
+    target = urlsplit(world.url)
+    conn = http.client.HTTPConnection(target.hostname or "", target.port, timeout=10)
+    token = world.token_file.read_text(encoding="utf-8").strip()
+    conn.request("GET", found[1], headers={found[2]: found[3], "Authorization": "Bearer " + token})
+    reply = conn.getresponse()
+    body = json.loads(reply.read())
+    conn.close()
+    assert reply.status == 200, body
+    return body["items"]
+
+
 def test_the_held_notes_way_on_can_be_followed_to_an_admission(
         world: World, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     """The operator does what the client says, end to end. Held, with a note. The same file again is refused, naming the
@@ -218,7 +235,8 @@ def test_the_held_notes_way_on_can_be_followed_to_an_admission(
     code, out, err = _run(world, capsys)
     t.join(10)
     assert code != 0 and "request_key_conflict" in err and "new client_request_key in the set file" in err
-    assert "approval is unused" in err
+    assert "approval is unused" in err and "for another set" not in err and "may be this file's" in err
+    assert _do_the_printed_get(world, err) == []  # it was held, so the list says it was not admitted
     cs = json.loads(world.set_file.read_bytes())
     cs["client_request_key"] += ".again"
     world.set_file.write_bytes(json.dumps(cs).encode())
@@ -230,6 +248,11 @@ def test_the_held_notes_way_on_can_be_followed_to_an_admission(
     (admitted,) = third["receipt"]["results"]
     assert admitted["admission_state"] == "ADMITTED" and admitted["operation_ref"]
     assert world.rig.svc.ledger.consumed(third["consent_set_ref"], admitted["intent_ref"])
+    t = approve()
+    code, out, err = _run(world, capsys)  # the same file again: the list it names now shows the admission
+    t.join(10)
+    assert code != 0 and "request_key_conflict" in err
+    assert [i["data"]["operation_ref"] for i in _do_the_printed_get(world, err)] == [admitted["operation_ref"]]
 
 
 def test_the_human_output_of_an_admitted_member_says_no_effect_and_nothing_else_happens(
@@ -293,7 +316,8 @@ def test_a_transaction_that_fails_after_consumed_stores_nothing_and_its_retry_is
     t = _operator(world.rig, lambda ref: world.rig.svc.decide(ref, {"decision": "APPROVE", "pin": G.PIN}))
     code, out, err = _run(world, capsys)
     t.join(10)
-    assert code != 0 and "approval may have been used" in err and "owner-operations" in err
+    assert code != 0 and "approval may have been used" in err
+    assert _do_the_printed_get(world, err) == []  # nothing survives on the route
     consent, intent = kept[0]["consent_set_ref"], kept[0]["intents"][0]["intent_ref"]
     assert world.rig.svc.ledger.consumed(consent, intent) is True
     with world.o01.ledger.reading() as txn:
@@ -302,6 +326,32 @@ def test_a_transaction_that_fails_after_consumed_stores_nothing_and_its_retry_is
     (again,) = real_submit(kept[0], world.url, token)["results"]
     assert (again["admission_state"], again["reason_code"], again["operation_ref"]) == (
         "REJECTED", "CONSENT_ALREADY_USED_OR_MISSING", None)
+
+
+def test_a_set_refused_as_it_stands_says_a_new_key_does_not_change_it_and_what_to_check_does(
+        world: World, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """A set for another installation, which the client's own checks cannot catch. The operator follows the words: a
+    new key meets the same refusal, the route's log names the cause, and the installation_ref they say to check is the
+    fix."""
+    caplog.set_level("WARNING", logger="aew.stg02")
+    _g3_counts(world, monkeypatch)
+    token = world.token_file.read_text(encoding="utf-8").strip()
+    good = json.loads(world.set_file.read_bytes())
+    good["consent_set_ref"] = "consent:g3:any"
+    for i in good["intents"]:
+        i["origin_proof_ref"] = "fixture:not-a-proof-the-wire-allows"
+    bad = dict(copy.deepcopy(good), installation_ref="installation:another")
+    with pytest.raises(ValidationFailed) as refused:
+        C.submit(bad, world.url, token)
+    said = refused.value.message
+    assert "invalid_request" in said and "approval is unused" in said and "does not change this" in said
+    assert "installation_ref" in said and "request it again" not in said
+    assert "INSTALLATION_NOT_THIS_DEPLOYMENT" in caplog.text
+    bad["client_request_key"] += ".again"
+    with pytest.raises(ValidationFailed) as again:
+        C.submit(bad, world.url, token)
+    assert again.value.message == said
+    assert C.submit(good, world.url, token)["results"]
 
 
 def test_a_held_note_after_a_refused_consume_sends_the_operator_to_the_routes_log_not_to_the_policy_alone(
@@ -318,7 +368,7 @@ def test_a_held_note_after_a_refused_consume_sends_the_operator_to_the_routes_lo
     receipt = C.submit(cs, world.url, token)
     assert receipt["results"][0]["admission_state"] == "HELD" and "STRUCTURAL" in caplog.text
     note = C.note(receipt, S.Standing(True, judged=(1, 3)), C.probe()) or ""
-    assert "The route's log names the cause" in note
+    assert "The route's log, its stderr, names the cause" in note
     assert "G3 does not count" not in note and "accepted no consent" not in note
 
 

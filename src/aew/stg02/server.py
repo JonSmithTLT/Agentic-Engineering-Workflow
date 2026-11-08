@@ -269,6 +269,7 @@ def _command(s: Slice, method: str, headers: dict[str, str], body: bytes | None,
     try:
         receipt, _ = s.carrier.submit(req, recipient, s.clock())
     except Refused as r:
+        LOG.warning("a command set is refused: %s", r.cause)  # the wire's code is wider: the client's text sends here
         return o01_problem(r.code, corr)
     except LedgerBusy:
         return o01_problem("owner_unavailable", corr)

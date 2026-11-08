@@ -323,9 +323,9 @@ Under CS-04, a key can never be forgotten. If a dropped key came back as unused,
 
 **What happened.** Once G3 counts, an admitted `ISSUE_STANDING_POLICY` lists an operation whose owner has no stamp the schema allows, and copying the owner into the stamp makes the list fail the adopted schema.
 
-**The designer's ruling, 2026-11-08.** A bridge, with no overlay, since `SourceStamp` goes out on every D-01 route. That one item's `source.owner` is CNI, through `wire.stamp` unchanged and so unqualified, with `fact_ref` naming the operation record, and `data.owner` stays the real owner. It departs from OP-01 and from the selection profile's row, and qualifies nothing. `HEB`, `ADC` and `IF13` items keep their own owner, as the pin says, each with its own fixture issuer and epoch. No sealed file changes.
+**The designer's ruling, 2026-11-08.** A bridge, with no overlay, since `SourceStamp` goes out on every D-01 route. That one item's `source.owner` is CNI, through `wire.stamp` unchanged and so unqualified, with `fact_ref` naming the operation record, and `data.owner` stays the real owner. It departs from OP-01 and from the selection profile's row, and qualifies nothing. That item's `data.owner_epoch` and `data.source_version` stay the real owner's, since the ruling moves only the stamp. `HEB`, `ADC` and `IF13` items keep their own owner, as the pin says, each with its own fixture epoch, and its own issuer where the fixture world has one (`IF13` has none, so a generic fixture issuer, never HEB's). No sealed file changes.
 
-**When it ends.** At D-01's next revision, which adds the owner to `SourceStamp.owner` as a non-governing namespace (OP-02's second bullet), and before anything real issues standing policy: register E210.
+**When it ends.** At D-01's next revision, which adds the owner to `SourceStamp.owner` as a non-governing namespace (OP-02's second bullet), and before anything real issues standing policy: register E214.
 
 ---
 

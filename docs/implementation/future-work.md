@@ -2639,7 +2639,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E209/`, oldest first (`python tools/register.py show E209`).*
 
-### E210
+### E214
 
 **Work:** D-01's next revision adds `RESOURCE_POLICY_ISSUER` to `SourceStamp.owner` as a non-governing namespace (OP-02's second bullet: `governing_owner` null, as for `IF10` and `R01`). An `owner_operation_index` item for that owner is then stamped with its `data.owner`, as OP-01 says, in place of the bridge in `Reads._index_item`, and `test_the_cni_stamp_is_for_the_one_owner_the_wire_cannot_name_and_no_other` goes
 
@@ -2649,7 +2649,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Notes:** Filed by G3-C's owner side
 
-*Later notes: `notes.d/E210/`, oldest first (`python tools/register.py show E210`).*
+*Later notes: `notes.d/E214/`, oldest first (`python tools/register.py show E214`).*
 
 ### E47
 

@@ -516,7 +516,7 @@ def test_the_set_is_submitted_with_the_o01_wire_and_the_token_in_its_one_header(
 
 def test_a_receipts_note_is_keyed_on_the_admission_state_and_the_reason_and_names_the_hosts_standing() -> None:
     """Addendum 7: the notes replace the fixed text. A held member's names what the client found failing on the host,
-    what the probe found, or else the project's policy, with the fix, and that the action is requested again once G3
+    what the probe found, or else that the route's log names the cause, and that the action is requested again once G3
     counts. Each refusal of the service's is worded apart, and each says to request it again. A member the client has
     no note for gets none."""
     from aew import g3standing as S
@@ -529,8 +529,8 @@ def test_a_receipts_note_is_keyed_on_the_admission_state_and_the_reason_and_name
     assert "Nothing was admitted" in said and "request the action again" in said
     assert "new client_request_key in the set file" in said
     said = C.note(held, counting)
-    assert said is not None and S.POLICY_FIX in said and "the project's policy" in said
-    assert "The route's log names the cause" in said and "--project" in said
+    assert said is not None and S.POLICY_FIX not in said and "the project's policy" not in said
+    assert "The route's log, its stderr, names the cause" in said and "--project" in said
     said = C.note(held, counting, "planted: the service is down")
     assert said is not None and "the G3 service does not answer: planted: the service is down" in said
     assert S.POLICY_FIX not in said
@@ -616,6 +616,7 @@ def test_a_partial_sets_note_names_each_side_and_never_says_nothing_was_admitted
         said = C.note({"results": [admitted, other]}, counting) or ""
         assert "Nothing was admitted" not in said and "Admitted: intent:a" in said
         assert f"Not admitted: intent:b ({state} {reason})" in said and C.SOME_ADMITTED in said
+        assert "request only the members not admitted, with a new client_request_key" in said
     assert C.note({"results": [admitted]}, counting) == C.NO_EFFECT + "."
 
 

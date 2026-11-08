@@ -620,6 +620,9 @@ def test_each_protected_action_consumed_gives_a_valid_receipt_owners_read_and_li
     assert (source["qualification"], source["authority_class"], source["governing_owner"]) == (
         "unqualified", "unqualified_report", None)
     assert item["data"]["subject_ref"] == req["intents"][0]["target"][COMMANDS.SUBJECT_FIELD[action]]
+    assert item["data"]["owner_epoch"] == seen["source_epoch"]  # the item's data and its own read agree
+    assert item["data"]["source_version"] == f"fixture:{owner.lower()}-v1"
+    assert source["source_version"] == f"fixture:{stamped.lower()}-v1"
     if owner != "HEB":
         heb = live.s.fx.heb
         assert "heb" not in item["source"]["issuer_ref"] and item["source"]["source_epoch"] != heb["epoch"]
@@ -627,7 +630,7 @@ def test_each_protected_action_consumed_gives_a_valid_receipt_owners_read_and_li
 
 
 def test_the_cni_stamp_is_for_the_one_owner_the_wire_cannot_name_and_no_other(live: Live):
-    """The designer's bridge departs from OP-01 for one owner (gap entry STG02-BE-17, register E210). Any other owner
+    """The designer's bridge departs from OP-01 for one owner (gap entry STG02-BE-17, register E214). Any other owner
     the stamp cannot name keeps its name, so the adopted schema refuses it rather than CNI quietly reporting it. This
     test goes when D-01's next revision adds that owner to SourceStamp.owner."""
     d01 = A.load("aew-d01-read-v0.3.4-FULL.schema.json")["$defs"]
@@ -641,6 +644,7 @@ def test_the_cni_stamp_is_for_the_one_owner_the_wire_cannot_name_and_no_other(li
     assert {o: m["source"]["owner"] for o, m in made.items()} == {
         "RESOURCE_POLICY_ISSUER": "CNI", "NOT_A_D01_AXIS": "NOT_A_D01_AXIS", "ADC": "ADC"}
     assert all(m["data"]["owner"] == o for o, m in made.items())
+    assert all(m["data"]["owner_epoch"] == live.s.fx.owner_epoch(o) for o, m in made.items())  # only the stamp moves
 
 
 def test_a_set_of_two_protected_members_consumes_each_with_its_own_proof_and_results_each_alone(
@@ -731,7 +735,8 @@ def test_a_policy_that_cannot_be_read_holds_the_member_and_never_raises(
 
 
 def test_a_carrier_with_no_project_holds_its_members_and_never_calls_consume(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture):
+    caplog.set_level("WARNING", logger="aew.stg02")
     calls: list[Any] = []
     monkeypatch.setattr(C, "consume", lambda **sent: calls.append(sent))
     monkeypatch.setattr(S, "standing", lambda *_, **__: S.Standing(True))  # were it to ask, it would be told yes
@@ -740,16 +745,19 @@ def test_a_carrier_with_no_project_holds_its_members_and_never_calls_consume(
     req = SV.driver_config(s)["command"]["protected_without_g3"]
     receipt, _ = s.carrier.submit(req, s.fx.recipient, T0)
     assert state_of(receipt["results"][0]) == HELD_NO_ORIGIN and calls == []
+    assert "started with no --project" in caplog.text  # the held note sends the operator to this log
 
 
 def test_a_member_with_no_proof_to_present_is_held_and_never_calls_consume(
-        live: Live, cfg: dict[str, Any], g3_owner: G3Owner):
+        live: Live, cfg: dict[str, Any], g3_owner: G3Owner, caplog: pytest.LogCaptureFixture):
     """The carrier's schema allows a null proof and the G3 wire does not: there is nothing to present."""
+    caplog.set_level("WARNING", logger="aew.stg02")
     req = attach_set(cfg, "no-proof")
     req["intents"][0]["origin_proof_ref"] = None
     st, h, r = live.post(req)
     receipt_ok(req, st, h, r, T0)
     assert state_of(r["results"][0]) == HELD_NO_ORIGIN and g3_owner.calls == []
+    assert "no origin proof to present" in caplog.text
 
 
 @pytest.mark.parametrize("answer, state", [(C.Consumed(None, "no answer"), "HELD"),
@@ -839,11 +847,13 @@ def test_a_client_that_went_away_is_a_line_on_the_routes_log_never_a_traceback(
         live: Live, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture):
     """As one does while a consume stalls. Anything else still reaches the server's own report."""
     caplog.set_level("INFO", logger="aew.stg02")
-    try:
-        raise BrokenPipeError("planted: the client gave up")
-    except BrokenPipeError:
-        live.srv.handle_error(None, ("127.0.0.1", 1))
-    assert "the client went away" in caplog.text and "Traceback" not in capsys.readouterr().err
+    for gone in (BrokenPipeError, ConnectionResetError):
+        caplog.clear()
+        try:
+            raise gone("planted: the client gave up")
+        except gone:
+            live.srv.handle_error(None, ("127.0.0.1", 1))
+        assert "the client went away" in caplog.text and "Traceback" not in capsys.readouterr().err
     try:
         raise ValueError("planted: another fault")
     except ValueError:

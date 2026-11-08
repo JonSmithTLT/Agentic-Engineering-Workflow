@@ -268,8 +268,15 @@ def read_token(path: str) -> str:
 _NEW_KEY = "with a new client_request_key in the set file"
 _UNUSED = f"the approval is unused: request it again {_NEW_KEY}"
 # The route consumes a protected member as it admits it, so one that gave no receipt may have used it.
-_MAY_BE_USED = ("the approval may have been used: GET /v1/read/owner-operations shows whether it was admitted, and if "
-                f"it was not, request it again {_NEW_KEY}")
+# No `aew` command reads the owners' list, and the route refuses it without its wire header, so the words give both.
+_SEE_THE_LIST = (f"GET /v1/read/owner-operations on the route, with the bearer token and the header {W.D01_HEADER}: "
+                 f"{W.D01_VERSION}, shows whether it was admitted, and if it was not, request it again {_NEW_KEY}")
+_MAY_BE_USED = f"the approval may have been used: {_SEE_THE_LIST}"
+# Every 400 the route gives a set comes before any receipt is stored, so a new key meets the same refusal. The wire says
+# only `invalid_request`: the route's log names the row. These are the rows the client's own checks do not catch first.
+_AS_IT_STANDS = ("the approval is unused, and the set is refused as it stands, so a new client_request_key does not "
+                 "change this. The route's log, its stderr, names the cause. Check the set's installation_ref, each "
+                 "member's subject, and that its intents are sorted by intent_ref, each once")
 
 
 def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
@@ -303,11 +310,13 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
     if status == 503:
         raise Unavailable(f"the O-01 route is unavailable; {_MAY_BE_USED}", reason="o01_unavailable")
     if code == "request_key_conflict":
-        said = f"the set's client_request_key already has a receipt, for another set; {_UNUSED}"
+        said = ("the set's client_request_key already has a receipt from an earlier request, which may be this file's, "
+                f"as each request makes new proofs; the approval is unused. {_SEE_THE_LIST}")
     elif code == "unresolved_no_redispatch":  # says nothing of this approval: a used member can reach it too
-        said = ("the route can no longer show this client_request_key's receipt. GET /v1/read/owner-operations shows "
-                f"whether it was admitted, and if it was not, request it again {_NEW_KEY}")
-    elif status in (400, 409):  # the statuses the route declares for a set it refuses before any owner
+        said = f"the route can no longer show this client_request_key's receipt. {_SEE_THE_LIST}"
+    elif status == 400:
+        said = _AS_IT_STANDS
+    elif status == 409:  # as a 400, a status the route declares for a set it refuses before any owner
         said = _UNUSED
     else:
         raise ValidationFailed(f"the O-01 route gave no receipt ({code or status}); {_MAY_BE_USED}",
@@ -327,8 +336,9 @@ class Consumed:
     (``held_why``: no answer, a ``503``, a ``403``, a ``400``, or an answer that is not one). An owner holds the action
     for a None, allocates nothing and falls back to no other origin (G3-11; addendum 7, ruling 2).
 
-    A None after the request went out may follow a member the service did use, its reply lost, so ``held_why`` says the
-    next request may need a new approval. Only ``result == "CONSUMED"`` admits: the object itself is always true."""
+    A None after the request went out may follow a member the service did use, its reply lost. ``held_why`` gives the
+    way on either way: a new request, which always has a new approval. Only ``result == "CONSUMED"`` admits: the object
+    itself is always true."""
 
     result: str | None
     held_why: str | None = None
@@ -375,17 +385,15 @@ def probe(sock_path: str | None = None) -> str | None:
 
 def _held(standing: Any, answers: str | None) -> str:
     """Why a member was held for want of an origin, as the client finds it: what failed on this host, else that the
-    service did not answer the probe (``answers``), else the project's policy, the client being bound to no project
-    (addendum 7)."""
-    from aew.g3standing import POLICY_FIX
-
+    service did not answer the probe (``answers``), else the route's log, the client being bound to no project and the
+    wire having no field for why (addendum 7)."""
     if not standing.counts:
         return f"{standing.reason}. Fix: {standing.fix}"
     if answers is not None:
         return f"the G3 service does not answer: {answers}"
-    return ("on this host G3 counts as far as the client can tell, and the service answers. The route's log names the "
-            "cause. If it names none, it is the project's policy, which must keep every launch contained, or a route "
-            f"started with no --project. For the policy: {POLICY_FIX}")
+    return ("on this host G3 counts as far as the client can tell, and the service answers. The route's log, its "
+            "stderr, names the cause: a failing standing with its fix, a route started with no --project, or what the "
+            "service said")
 
 
 # What the operator is told of a member the owner did not admit, by its admission state and reason (addendum 7: the

@@ -969,6 +969,9 @@ skipped:
     tests/integration/test_g3client_process.py::test_a_transaction_that_fails_after_consumed_stores_nothing_and_its_retry_is_refused: >-
       the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
       Windows. Covered on Linux; the carrier's fence runs on both platforms in tests/integration/test_stg02_slice.py.
+    tests/integration/test_g3client_process.py::test_a_set_refused_as_it_stands_says_a_new_key_does_not_change_it_and_what_to_check_does: >-
+      the module's fixture runs the G3 service on its Unix filesystem socket, with SO_PEERCRED (A-37), which never runs
+      on Windows. Covered on Linux; the words run on both platforms in tests/unit/test_g3client.py.
     tests/integration/test_g3client_process.py::test_a_held_note_after_a_refused_consume_sends_the_operator_to_the_routes_log_not_to_the_policy_alone: >-
       the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
       Windows. Covered on Linux; the route's log line runs on both platforms in tests/integration/test_stg02_slice.py.

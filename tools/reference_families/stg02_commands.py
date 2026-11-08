@@ -7,8 +7,7 @@ states them, and ``reaches_owner``: whether admission can go on to the action's 
 that; the code does, in ``Carrier._member``: an action of the protected origin goes on to ``_protected``, which
 consumes its consent and records it, while no owner performs it; any other action whose origin is not the one
 delegated-grant origin is held before any owner state is read, and of the rest only the one action ``_member`` names
-goes on to
-``_heb_continue``. The literals are read from ``_member`` (by ``ast``, and by ``stg02_commands_text.py``, an
+goes on to ``_heb_continue``. The literals are read from ``_member`` (by ``ast``, and by ``stg02_commands_text.py``, an
 independently written second reading), so ``reaches_owner`` follows the code.
 If the shape of ``_member`` is not found the field is null and the cause is an unresolved item of every record.
 

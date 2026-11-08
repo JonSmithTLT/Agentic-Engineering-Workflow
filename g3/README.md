@@ -123,7 +123,8 @@ names the variables that showed a Lead session, and says to ask the operator to 
   does not count or did not answer, and the note says what the client found. The route's log names the cause it saw.
   `REJECTED` means the service refused the proof. Each stays under its `client_request_key`, so **requesting the action
   again needs a new `client_request_key` in the set file**, and always a new approval. If the client gets no receipt, the
-  member may have been used: `GET /v1/read/owner-operations` on the route shows whether it was admitted.
+  member may have been used: `GET /v1/read/owner-operations` on the route, with the bearer token and the header
+  `X-AEW-Wire-Version: 0.3.4`, shows whether it was admitted.
 
 ## Install (root, on the host)
 

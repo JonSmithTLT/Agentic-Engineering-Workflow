@@ -403,8 +403,9 @@ def test_an_unpriced_run_is_never_shown_as_a_dollar_figure(lab, tmp_path):
         text = lab.aew(*argv).stdout
         assert "$" not in text and "unpriced" in text, (argv, text)
     totals = lab.ok("usage", "show", "--json")["totals"]
-    assert totals["estimated_at_record"] == {"usd": 0, "priced": 0, "unpriced": 1,
+    assert totals["estimated_at_record"] == {"usd": None, "priced": 0, "unpriced": 1,  # never a 0 (#368, M1)
                                              "reasons": {O.UNPRICED_NO_TABLE: 1}}
+    assert lab.ok("status", "--json")["usage"]["estimated_at_record"]["usd"] is None
 
 
 def test_a_provisional_run_is_shown_and_labelled_before_its_copy(lab, tmp_path):
@@ -467,3 +468,73 @@ def test_an_unknown_id_and_a_window_without_all_are_refused(lab, tmp_path):
                        (["usage", "show", "--all", "--since", "yesterday"], "USAGE")):
         res = lab.aew(*argv, "--json")
         assert res.returncode != 0 and code in (res.stdout + res.stderr), (argv, res.stdout, res.stderr)
+
+
+def test_the_dashboard_guidance_never_builds_the_usage_summary(lab, tmp_path, monkeypatch):
+    """#368 review, m1: the dashboard's guidance reads `status` for its next actions only, so it never pays for the
+    usage projection (which reads each provisional run's record)."""
+    from aew.engine.api import Engine
+    from aew.engine.usage_read import UsageReads
+    from aew.surface import projection
+
+    accepted(lab, tmp_path)
+
+    def refused(self, state):
+        raise AssertionError("the guidance built the usage summary")
+
+    monkeypatch.setattr(UsageReads, "summary", refused)
+    engine = Engine.discover(lab.root)
+    projection._guidance(engine, "project")
+    assert "usage" not in engine.status(usage=False)
+
+
+def test_a_named_price_table_that_cannot_be_read_is_a_typed_refusal(lab, tmp_path, monkeypatch):
+    """#368 review, m2 and m6: a table the manifest names and that cannot be read refuses `usage show` with
+    VALIDATION_FAILED and the doctor check to run, never a bare FileNotFoundError; `aew status` still answers, its
+    figures under current prices unpriced with their own reason."""
+    from aew.engine.api import Engine
+    from aew.engine.base import Kernel
+    from aew.errors import ValidationFailed
+
+    accepted(lab, tmp_path)
+
+    def gone(self):
+        raise FileNotFoundError("policy/pricing.yaml")
+
+    monkeypatch.setattr(Kernel, "pricing", gone)
+    engine = Engine.discover(lab.root)
+    with pytest.raises(ValidationFailed) as refused:
+        engine.usage_show()
+    assert refused.value.details["reason"] == "pricing_table_missing" and "aew doctor" in refused.value.message
+    usage = engine.status()["usage"]
+    assert usage["estimated_under_current_prices"]["reasons"] == {O.UNPRICED_TABLE_UNUSABLE: 1}
+    assert usage["pricing_problem"].startswith("VALIDATION_FAILED: ")  # the same typed refusal, reported
+
+
+def test_the_all_walk_loads_each_archived_bundle_once(lab, tmp_path, monkeypatch):
+    """R7 (#368 review, m3): the `--all` walk and the recent ring load each archived bundle once and never rehydrate a
+    unit's current parent, which the project's totals do not need."""
+    from aew.engine.api import Engine
+    from aew.engine.archive_ops import Archive
+
+    wid, inv, run = launched(lab, tmp_path, [], {"tokens": TOKENS})
+    lab.wait(run)
+    lab.project.lead("invoke", "cancel", inv, "--reason", "stop the test run")
+    lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "abandoned")
+    loads: list[str] = []
+    real = Archive.bundle
+
+    def counted(self, state, work_id):
+        loads.append(work_id)
+        return real(self, state, work_id)
+
+    def never(self, state, work_id):
+        raise AssertionError("the project's walk rehydrated a unit")
+
+    monkeypatch.setattr(Archive, "bundle", counted)
+    monkeypatch.setattr(Archive, "archived_unit", never)
+    engine = Engine.discover(lab.root)
+    for walk in (True, False):
+        loads.clear()
+        assert engine.usage_show(walk_all=walk)["totals"]["runs"] == 1
+        assert loads == [wid]

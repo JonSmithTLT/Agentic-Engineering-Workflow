@@ -272,7 +272,7 @@ def _cached_control_part(engine: Any, subject: str) -> dict[str, Any]:
 def _guidance(engine: Any, subject: str) -> tuple[list[str], list[dict[str, Any]]]:
     """The engine's own guidance, read now: it reflects run telemetry and submitted evidence, which change without a
     commit. Hints are for a reader and never parsed; contradictions are blockers of the project."""
-    report = engine.status()
+    report = engine.status(usage=False)  # the guidance only: no usage projection on every read (#368 review, m1)
     lines = [str(x) for x in report.get("next_actions") or []]
     if subject == "project":
         return lines, [_blocker("CONTRADICTION", str(c)) for c in report.get("contradictions") or []]

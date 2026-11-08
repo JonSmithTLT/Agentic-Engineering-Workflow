@@ -125,10 +125,8 @@ class StatusViews:
                              f"{last.get('reason')}{'; ' + last['detail'] if last.get('detail') else ''}); check the "
                              "execution policy's `notify.command` and `.aew/local/notify/deliveries.jsonl`")
         usage = report.get("usage")
-        if usage:  # F25 R9: one line for the hot state; `aew usage show` has the rest
-            from aew.engine.usage_ops import summary_line
-
-            lines += ["", summary_line(usage)]
+        if usage:  # F25 R9: one line for the hot state, rendered with the summary; `aew usage show` has the rest
+            lines += ["", usage["line"]]
             if usage.get("pricing_problem"):
                 lines.append(f"  ! the price table cannot be used ({usage['pricing_problem']}); see `aew doctor`")
         if report.get("hierarchy"):

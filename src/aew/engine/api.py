@@ -1022,7 +1022,8 @@ class Engine:
     def snapshot_of(self, path: str | Path, workspace_id: str) -> dict[str, Any]:
         return self._invocations.snapshot_of(path, workspace_id)
 
-    def status(self, work_id: str | None = None) -> dict[str, Any]:
+    def status(self, work_id: str | None = None, *, usage: bool = True) -> dict[str, Any]:
+        """``usage=False``: without the usage summary, for a caller that reads only the guidance (#368 review, m1)."""
         out = self._resume.status(work_id)
         if work_id is None:
             state = self._k.store.current()
@@ -1034,7 +1035,8 @@ class Engine:
             notifier = self._views.notifier()  # M4-E E7a: the operator notifier's deliveries, once it has watched
             if notifier is not None:
                 out["notifier"] = notifier
-            out["usage"] = self._usage.summary(state)  # F25 R9: the hot state's bounded usage summary
+            if usage:
+                out["usage"] = self._usage.summary(state)  # F25 R9: the hot state's bounded usage summary
         return out
 
     # ---------------------------------------------------------------- steering (M4-E E2; A1 §1)

@@ -168,6 +168,9 @@ def test_a_stage_intent_is_found_by_its_id_alone(tmp_path):
     for name in ("../../beside", str(engine.aew_root / "beside")):
         with pytest.raises(errors.NotFound, match="no stage intent"):
             engine.stage_intent(name)
+    (engine.aew_root / "records" / "dispositions").mkdir(parents=True, exist_ok=True)
+    with pytest.raises(errors.NotFound, match="no disposition"):
+        engine.disposition("../../beside")
     out = run.run_tool(engine, CTX, "resolve", {"subject": "../../beside", "choice": "abandon", "rationale": "r",
                                                 "expect_rev": _rev(engine)}, token=p.token)
     assert not out["ok"] and out["stopped"]["error"]["code"] == "NOT_FOUND", out["stopped"]
@@ -176,18 +179,41 @@ def test_a_stage_intent_is_found_by_its_id_alone(tmp_path):
 # ------------------------------------------------------------------------------------- what the broker opens
 
 
-def test_no_relayed_command_opens_a_file_it_is_given_as_any_argument(tmp_path):
-    """Every relayed command, every value naming one file, in a process with an audit hook on every open. This sees what
-    the parser walks cannot: an argument whose name says nothing, read anywhere below its handler."""
+# What a row may do with its value, and why: `git rev-parse` resolves a revision, and refuses an option-shaped one.
+MAY_TOUCH = {("map generate", "--commit"): {"subprocess.Popen"}}
+
+
+def _walk(tmp_path, *more):
+    """The walk, in a process of its own, with no way to start a real harness."""
     p = sample_project(tmp_path)
     wid = create_planned_ticket(p, tmp_path)
-    target = tmp_path / "named-by-every-argument.txt"
-    target.write_bytes(b"next: nothing\n")
     done = subprocess.run(
-        [sys.executable, "-B", str(PROBE), str(p.root), p.token, wid, str(target)], capture_output=True, text=True,
-        env={**clean_env({}), "PYTHONPATH": os.pathsep.join(q for q in sys.path if q)}, cwd=p.root,
-        stdin=subprocess.DEVNULL, timeout=300, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        [sys.executable, "-B", str(PROBE), str(p.root), p.token, wid, str(tmp_path / "values"), *more],
+        capture_output=True, text=True, cwd=p.root, stdin=subprocess.DEVNULL, timeout=540,
+        env={**clean_env({}), "PYTHONPATH": os.pathsep.join(q for q in sys.path if q),
+             "AEW_OPENCODE_BIN": str(tmp_path / "no-such-harness")},
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     assert done.returncode == 0, done.stderr[-3000:]
-    report = json.loads(done.stdout.splitlines()[-1])
-    assert report["opened"] == []
-    assert report["walked"] >= 50  # the walk reached the command set, not a part of it
+    return json.loads(done.stdout.splitlines()[-1])
+
+
+def test_no_relayed_command_or_typed_tool_touches_a_path_it_is_given_in_any_one_argument(tmp_path):
+    """Each argument alone, on the command's required arguments: what the parser walks cannot see, an argument whose
+    name says nothing. The walk's own docstring says what it does not see."""
+    report = _walk(tmp_path)
+    touched = [(r["command"], r["argument"], r["events"]) for r in report["rows"]
+               if r["events"] and not set(r["events"]) <= MAY_TOUCH.get((r["command"], r["argument"]), set())]
+    assert touched == []
+    assert report["commands"] >= 50 and len(report["rows"]) >= 200  # it walked the command set, not a part of it
+    assert {r["route"] for r in report["rows"]} == {"lead.cli", "lead.tool"}
+    # A row that never parsed proves nothing: this is how a walk comes to reach less than it says.
+    assert [(r["command"], r["argument"], r["outcome"]) for r in report["rows"]
+            if "invalid command" in r["outcome"]] == []
+
+
+@pytest.mark.parametrize(("plant", "words"), [("open", ["open"]), ("exists", ["stat", "exists"])])
+def test_the_walk_fails_on_a_silent_argument_read_through_a_helper(tmp_path, plant, words):
+    """Planted: `checkpoint --attachment`, no help text, read by a helper, directly or behind a check it exists."""
+    report = _walk(tmp_path, "--only", "checkpoint", "--plant", plant)
+    rows = [r for r in report["rows"] if r["argument"] == "--attachment"]
+    assert rows and all(any(word in e for e in r["events"] for word in words) for r in rows), rows

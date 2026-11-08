@@ -695,7 +695,14 @@ def forward(argv: list[str], args: argparse.Namespace) -> dict[str, Any]:
     """Client side: send a Lead-authenticated command to this Lead session's broker, with its file arguments as text."""
     cwd = Path(args.cwd or os.getcwd()).resolve()
     sent, stdin = _as_bytes(argv, args, cwd)
-    return bridge.call("lead.cli", {"argv": sent, "cwd": str(cwd), "stdin": stdin}, env_names=ENV_NAMES)
+    request = {"argv": sent, "cwd": str(cwd), "stdin": stdin}
+    size = len(json.dumps({"op": "lead.cli", "args": request}).encode("utf-8"))  # as bridge.call sends it, escapes too
+    if size > bridge.MAX_REQUEST:
+        raise errors.UsageError(f"this command and its text make a {size}-byte request, and a Lead session's broker "
+                                f"takes at most {bridge.MAX_REQUEST}: nothing was sent, so split the text or shorten "
+                                "it",
+                                size=size, limit=bridge.MAX_REQUEST, reason="relayed_too_large")
+    return bridge.call("lead.cli", request, env_names=ENV_NAMES)
 
 
 def session_authority() -> dict[str, Any] | None:

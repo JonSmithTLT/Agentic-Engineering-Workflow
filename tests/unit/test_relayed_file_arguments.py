@@ -1,7 +1,8 @@
 """A relayed Lead command takes bytes: its file arguments are read by the ``aew`` client, and the broker's process reads
-no path. The walks below read the live parsers and the handlers' source, so a new file argument fails here until the
-client handles it. tests/integration/test_relayed_file_arguments_through_a_broker.py has the same guarantee through a
-real broker."""
+no path. The walks below read the live parsers and the handlers' source, so a new file argument that says so in its
+name, metavar or help, or that a handler passes straight to a reader, fails here until the client handles it. One that
+does neither is for the walk in tests/integration/test_relayed_file_arguments_through_a_broker.py, which runs each
+argument and has the same guarantee through a real broker."""
 
 from __future__ import annotations
 
@@ -16,7 +17,9 @@ import pytest
 from aew import errors, util
 from aew.cli import fields
 from aew.cli.main import build_parser
-from aew.harness import lead_broker
+from aew.engine import disposition_ops, stage_intents
+from aew.harness import bridge, lead_broker
+from aew.schemas import schema
 
 CLI_SOURCE = Path(util.__file__).parent / "cli"
 # The file arguments of today's relayed commands: a floor, so the walks cannot pass by finding nothing.
@@ -221,6 +224,24 @@ def test_a_command_given_two_inputs_is_refused_saying_there_is_one_stdin(tmp_pat
         lead_broker._as_bytes(argv, planted.parse_args(argv), tmp_path)
 
 
+def test_a_request_over_the_bridges_limit_is_refused_saying_so_and_nothing_is_sent(tmp_path, monkeypatch):
+    """Non-ASCII text counts as JSON sends it, so a file well under the limit in bytes can be over it as a request."""
+    sent: list[str] = []
+    monkeypatch.setattr(lead_broker.bridge, "call", lambda op, args, **k: sent.append(op))
+    big = tmp_path / "big.md"
+    big.write_bytes(("\u00e9" * (bridge.MAX_REQUEST // 6 + 1)).encode())  # 6 bytes as JSON, 2 in the file
+    assert big.stat().st_size < bridge.MAX_REQUEST
+    parsed = build_parser().parse_args(["checkpoint", *REV, "--note-file", "big.md"])
+    parsed.cwd = str(tmp_path)
+    with pytest.raises(errors.UsageError, match="nothing was sent") as refused:
+        lead_broker.forward(["checkpoint", *REV, "--note-file", "big.md"], parsed)
+    assert sent == [] and refused.value.details["reason"] == "relayed_too_large"
+    assert refused.value.details["limit"] == bridge.MAX_REQUEST
+    big.write_bytes(b"small")
+    lead_broker.forward(["checkpoint", *REV, "--note-file", "big.md"], parsed)
+    assert sent == ["lead.cli"]
+
+
 # ----------------------------------------------------------------------------------- the broker's half
 
 
@@ -246,6 +267,11 @@ def test_the_refusal_ends_with_the_relayed_command(tmp_path):
         with pytest.raises(errors.UsageError):  # a nested use leaves the outer one standing
             util.read_text_input(str(target))
     assert util.read_text_input(str(target)) == "content"
+
+
+def test_a_records_name_check_is_its_schemas_id_pattern():
+    assert f"^{stage_intents.INTENT_ID.pattern}$" == schema("stage-intent")["$defs"]["intent_id"]["pattern"]
+    assert f"^{disposition_ops.DISPOSITION_ID.pattern}$" == schema("disposition")["properties"]["id"]["pattern"]
 
 
 def test_stdin_and_no_input_still_work_while_a_relayed_command_runs(monkeypatch):

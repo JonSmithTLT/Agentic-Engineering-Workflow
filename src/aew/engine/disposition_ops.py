@@ -96,6 +96,7 @@ SIGNAL_TEXT = {"WORKSPACE_MUTATED": "{inv} ({role}) changed the workspace it eva
                HARD_DEADLINE: "{inv} ({role}): a run was terminated at its hard deadline; nothing was advanced or "
                               "released, and nothing relaunched"}
 RECORDS_DIR = "records/dispositions"
+DISPOSITION_ID = re.compile(r"DP-[0-9]{4,}")  # the record's id, as its schema has it: a name, never a path
 UNIT_KEY = "dispositions"  # the hot index on a live Ticket
 MAX_TEXT = 2000
 
@@ -530,7 +531,7 @@ class Dispositions:
         if notes:
             rel, _, sha = str(self.archive.record(notes[-1])["note"]).partition(" sha256:")
             return self._load(rel, sha)
-        if (self.k.aew_root / RECORDS_DIR / f"{ref}.yaml").is_file():
+        if DISPOSITION_ID.fullmatch(ref) and (self.k.aew_root / RECORDS_DIR / f"{ref}.yaml").is_file():
             return self._load(f"{RECORDS_DIR}/{ref}.yaml", None)
         raise NotFound(f"no disposition {ref}", disposition=ref)
 

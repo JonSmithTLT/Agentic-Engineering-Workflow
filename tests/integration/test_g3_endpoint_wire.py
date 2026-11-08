@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+import runpy
 import sys
 import threading
 import time
@@ -89,9 +90,9 @@ def _mode(world: Any) -> str | None:
     return steering.effective(Engine.discover(world.project.root).store.current())["mode"]
 
 
-def _wait_for(done: Any) -> None:
+def _wait_for(predicate: Any) -> None:
     deadline = time.monotonic() + ENDED
-    while not done():
+    while not predicate():
         assert time.monotonic() < deadline, "it did not end"
         time.sleep(0.02)
 
@@ -145,11 +146,9 @@ def test_a_service_older_than_the_overlay_holds_and_names_the_reinstall(world, m
 
 
 def test_the_runbooks_replay_script_consumes_once_and_is_refused_the_second_time(world, capsys):
-    """The runbook's script, from the runbook: no command makes a replay, so a host's acceptance runs this."""
-    text = (ROOT / "g3" / "README.md").read_text(encoding="utf-8")
-    script = re.search(r"```python\n(.*?)```", text[text.index("### Acceptance on a real host"):], re.S).group(1)
+    """No command makes a replay, so a host's acceptance runs this script, which the runbook names."""
     t = _confirmer(world)
-    exec(compile(script, "g3/README.md", "exec"), {})  # noqa: S102 - the repository's own runbook
+    runpy.run_path(str(ROOT / "g3" / "acceptance_replay.py"))
     t.join(ENDED)
     printed = capsys.readouterr().out.splitlines()
     assert printed[-2:] == ["CONSUMED", "CONSENT_ALREADY_USED"], json.dumps(printed)

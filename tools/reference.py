@@ -236,8 +236,8 @@ def importers(module: str, root: Path = ROOT) -> list[str] | None:
     return modules.importers_of(mods, module) if any(m.name == module for m in mods) else None
 
 
-def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8",
+def _git(root: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8", input=stdin,
                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
@@ -268,6 +268,9 @@ def resolve(root: Path = ROOT) -> int:
     tracked = set(_git(root, "ls-files", "-z", "--", prefix).stdout.split("\0"))
     pages = [prefix + name for name in sorted(conflicted | set(changed))
              if (root / prefix / name).is_file() or prefix + name in tracked]
+    # A page render writes and git ignores (`index.json`, the machine index, not committed) would stop `git add` too
+    ignored = _git(root, "check-ignore", "-z", "--stdin", stdin="\0".join(pages)).stdout.split("\0")
+    pages = [page for page in pages if page not in ignored]
     added = _git(root, "add", "-A", "--", *pages) if pages else None
     if added is not None and added.returncode != 0:
         print(f"could not stage {prefix}: {added.stderr.strip()}", file=sys.stderr)

@@ -241,6 +241,39 @@ def test_resolve_settles_a_conflicted_page_the_render_did_not_change_and_a_remov
     repo.git("commit", "-q", "--no-edit")
 
 
+def test_resolve_finishes_a_real_merge_when_render_also_writes_a_page_git_ignores(tmp_path, monkeypatch, capsys):
+    """`render` writes `index.json`, which this repository ignores, and `git add` refuses to name an ignored path. It
+    printed that failure and exited 2 on every merge that re-rendered, with the other pages staged all the same."""
+    repo = stopped_merge(tmp_path, tracked=(".gitignore",))
+    (repo.path / ".gitignore").write_text("/docs/reference/index.json\n", encoding="utf-8", newline="\n")
+
+    def render(root: Path, out: Path) -> list[str]:
+        (out / "modules.md").write_text("# Modules\n\nImports: a, b, c.\n", encoding="utf-8", newline="\n")
+        (out / "index.json").write_text("{}\n", encoding="utf-8", newline="\n")
+        return ["index.json", "modules.md"]
+
+    monkeypatch.setattr(reference, "render", render)
+    assert reference.resolve(repo.path) == 0, capsys.readouterr().err
+    assert repo.git("diff", "--name-only", "--diff-filter=U").stdout == ""
+    assert "docs/reference/index.json" not in repo.git("diff", "--cached", "--name-only").stdout
+    repo.git("commit", "-q", "--no-edit")
+    assert (repo.path / "docs/reference/index.json").is_file()
+
+
+def test_resolve_still_stages_a_tracked_page_that_git_would_ignore(tmp_path, monkeypatch):
+    """`check-ignore` says nothing of a tracked path, so a committed page is settled even if a rule matches it."""
+    repo = stopped_merge(tmp_path, tracked=(".gitignore", "docs/reference/kept.md"))
+    (repo.path / ".gitignore").write_text("/docs/reference/kept.md\n", encoding="utf-8", newline="\n")
+
+    def render(root: Path, out: Path) -> list[str]:
+        (out / "kept.md").write_text("new\n", encoding="utf-8", newline="\n")
+        return ["kept.md"]
+
+    monkeypatch.setattr(reference, "render", render)
+    assert reference.resolve(repo.path) == 0
+    assert "docs/reference/kept.md" in repo.git("diff", "--cached", "--name-only").stdout
+
+
 def test_resolve_stages_the_removal_of_a_tracked_page_with_a_non_ascii_name(tmp_path, monkeypatch):
     """git quotes such a name unless asked for `-z`, so it read as never tracked and stayed in the merge commit, where
     `check` then fails (review of #384, finding 6)."""

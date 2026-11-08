@@ -883,8 +883,9 @@ stale.mkdir(parents=True)
     (OUTLIVES, ("-p", "no:xdist"), DEADLINE_EXIT),
 ], ids=["healthy_one_process", "healthy_worker", "deadline_worker", "deadline_one_process"])
 def test_nothing_hung_so_no_stacks_file_is_left_empty(tmp_path, tests, args, code):
-    """Review of #387, m5. Each writer of the removal has a case: the drop as a worker's session ends, the drop as a
-    deadline's thread starts, and the sentinel's removal of the after-finish file that only it can remove."""
+    """Review of #387, m5. A worker's drop as its session ends, a worker's drop as its deadline's thread starts, and the
+    sentinel's removal of the after-finish file that only it can remove each have a case here. The controller's drop
+    doesn't: `finish` drops as well, so that one is `test_a_deadline_thread_that_is_running_...`'s."""
     hangs = tmp_path / "hangs"
     deadline = "600" if code == 0 else "5"
     proc = inner(project(tmp_path, tests), hangs, "--session-deadline", deadline, "--session-deadline-margin", "6",

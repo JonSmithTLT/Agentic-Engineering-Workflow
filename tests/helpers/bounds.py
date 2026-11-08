@@ -32,7 +32,8 @@ import flight_recorder
 # sentinel's longest path ends the set three margins after that, when the session finished only then and its exit or
 # evidence hangs: SESSION_END_MARGINS in all, which must still be UPLOAD_CLEARANCE_S before the timeout, so the job's
 # `if: always()` upload still runs. A job's AEW_JOB_DEADLINE is its timeout less JOB_MARGIN_S and two margins, 240 s,
-# so that path leaves it 90 s, and the first upload took about 2 s in the Windows jobs read on 2026-11-08.
+# so that path leaves it 90 s. UPLOAD_CLEARANCE_S is a chosen clearance, not a measured need: its evidence is the first
+# upload, which took about 2 s in the Windows jobs read on 2026-11-08.
 DEADLINE_MARGIN_S = 30.0
 JOB_MARGIN_S = 180.0
 SESSION_END_MARGINS = 5

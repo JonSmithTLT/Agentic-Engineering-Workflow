@@ -1,5 +1,6 @@
 """`aew doctor`'s read of the model list, without a server: a weaker read enters the register of weaker contexts as a
-launch does, and its server is given the marker (G3 addendum 7; register E153). The sandbox, the process tree and the server are stood in for."""
+launch does, and its server is given the marker (G3 addendum 7; register E153), and the adapter's answer on a catalog
+that settled with nothing to offer (review of #367). The sandbox, the process tree and the server are stood in for."""
 
 from __future__ import annotations
 
@@ -7,6 +8,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+
+import pytest
 
 from aew.harness import containment, model_list, procs
 from aew.harness import weaker_register as W
@@ -56,3 +59,36 @@ def test_a_weaker_model_list_read_is_live_in_the_register_while_it_runs_and_its_
     [ended] = [json.loads(f.read_text(encoding="utf-8")) for f in W.root().glob("doctor_model_list-*.json")]
     assert ended["outcome"] == "clean"
     assert not given["run_dir"].exists()
+
+
+class _Catalog:
+    def __init__(self, models: list[dict[str, Any]]) -> None:
+        self.models = models
+
+    def get(self, *_: Any) -> dict[str, Any]:
+        return {"data": self.models}
+
+
+def _reading(models: list[dict[str, Any]], *, relayed: bool) -> A.OpenCodeAdapter:
+    adapter = A.OpenCodeAdapter.__new__(A.OpenCodeAdapter)
+    adapter._start_server = lambda *a, **kw: None  # type: ignore[method-assign]
+    adapter._probe_version = lambda: ("stand-in", None)  # type: ignore[method-assign]
+    adapter.client = _Catalog(models)  # type: ignore[assignment]
+    adapter.server = SimpleNamespace(close=lambda wait_s: None)  # type: ignore[assignment]
+    adapter.directory = "."
+    adapter._relayed = relayed
+    return adapter
+
+
+@pytest.mark.parametrize(("models", "relayed"), [
+    ([], False),
+    # A relayed catalog can hold only the entry AEW's own projection made up: the server does not offer it.
+    ([{"providerID": "fakeprov", "id": "fake-model", "name": "fake-model"}], True)],
+    ids=["nothing listed", "only what the relay projection named"])
+def test_a_catalog_that_settled_with_nothing_to_offer_is_empty_and_never_complete(monkeypatch, models, relayed):
+    """The adapter's half of review of #367, F1: `read` turns this answer into its red row, and only a complete list is
+    cached, so an answer that said complete here would be cached as a lasting one."""
+    monkeypatch.setattr(A, "CATALOG_WAIT_S", -1.0)  # the wait has run out: settled
+    contract = SimpleNamespace(execution_profile={"provider": "fakeprov", "model": "fake-model"})
+    out = _reading(models, relayed=relayed).read_model_list(contract, {}, until=A.time.monotonic() + 60)
+    assert out["complete"] is False and out["empty"] is True and out["models"] == []

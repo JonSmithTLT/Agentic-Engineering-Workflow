@@ -19,7 +19,7 @@ import pytest
 
 from aew import errors
 from aew.engine.workspace_ops import Invocations
-from aew.harness import supervisor
+from aew.harness import base, supervisor
 from aew.harness.containment import egress, netns
 from aew.harness.containment.egress import Allowlist, AnyPublic, EgressProxy
 
@@ -141,6 +141,8 @@ def test_the_supervisor_refuses_again_before_any_sandbox_or_network_exists(relay
         contain(monkeypatch, [])
     assert caught.value.details["reason"] == "provider_key_missing"
     assert caught.value.details["variable"] == "OPENAI_API_KEY"
+    # what the supervisor's record and acknowledgement carry as the refusal, beside the closed code (E189)
+    assert base.refusal_of(caught.value.details) == "provider_key_missing"
     monkeypatch.setenv("OPENAI_API_KEY", KEY)
     with pytest.raises(Reached):
         contain(monkeypatch, ["OPENAI_API_KEY"])

@@ -111,6 +111,33 @@ def test_a_kept_request_is_never_replaced_by_a_later_file_of_the_same_name(tmp_p
     assert [(r["kind"], r["reason"]) for r in sup._authorized_requests()] == [("stop", "the Lead's stop")]
 
 
+def test_kept_requests_are_judged_with_later_ones_in_the_order_the_lead_issued_them(tmp_path):
+    """N4: a request kept over an unreadable state was issued before any taken at a later tick, so it is acted on
+    first, never after a later one."""
+    first = recorded_request(tmp_path, "send", text="first")
+    sup = stand_in(tmp_path, LockFreeOnly([errors.ProjectNotFound("mid-replace")]))
+    assert sup._authorized_requests() == []
+    second = recorded_request(tmp_path, "send", text="second")
+    assert first["file"] < second["file"]  # names start with their time_ns: name order is issue order
+    sup.engine.store.script = [state([first, second])]
+    assert [r["text"] for r in sup._authorized_requests()] == ["first", "second"]
+
+
+def test_an_earlier_issued_request_delivered_late_is_still_judged_first(tmp_path):
+    """N4, the case only the sort covers (#369 review, m1): a request issued first is delivered after a later one,
+    which a tick whose state read fails takes and keeps. Issue order is name order, so the earlier one is acted on
+    first."""
+    first_name, first_text = runlog.new_request("send", {"text": "first"})  # issued first, not yet delivered
+    second = recorded_request(tmp_path, "send", text="second")  # issued and delivered later
+    assert first_name < second["file"]
+    sup = stand_in(tmp_path, LockFreeOnly([errors.ProjectNotFound("mid-replace")]))
+    assert sup._authorized_requests() == []  # `second` taken and kept
+    runlog.deliver_request(tmp_path, first_name, first_text)  # the late delivery
+    first = {"file": first_name, "kind": "send", "sha256": sha256_text(first_text)}
+    sup.engine.store.script = [state([first, second])]
+    assert [r["text"] for r in sup._authorized_requests()] == ["first", "second"]
+
+
 @pytest.mark.parametrize("failure", UNREADABLE, ids=type)
 def test_an_unreadable_state_never_ends_a_live_run_and_is_read_again_on_the_next_tick(tmp_path, monkeypatch,
                                                                                        failure):

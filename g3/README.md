@@ -11,7 +11,28 @@ an approval:
 5. If anything fails, the action is held.
 
 This directory holds part G3-A, the service and its systemd units, and part G3-B, the confirmer. Part G3-D, the CLI
-client, is `aew g3 request`, in `aew` itself (`src/aew/g3client.py`). The owners' side (G3-C) comes next.
+client, is `aew g3 request`, in `aew` itself (`src/aew/g3client.py`). The owners' side is G3-C: the operator endpoint
+takes a consumed approval for a steering raise (`src/aew/harness/g3_adapter.py`).
+
+## The first real protected action: a steering raise
+
+The action is `SET_STEERING_MODE`. The service reads it from its installed `aew` wheel (`aew.stg02.g3_overlay`), so a host
+installed before this needs the install run again with a wheel that has it. A reinstall keeps the ledger, the key and the
+PIN hash.
+
+1. Install, as root: `sudo sh g3/install.sh --operator <account> --wheelhouse <dir> --aew-wheel <aew-*.whl>`.
+2. Set the PIN, as root: `sudo /usr/local/sbin/aew-g3 set-pin`.
+3. In the project's execution policy, set `containment.mode: required`, `containment.network.mode: proxy_only` (or
+   `isolated`) and `steering.mode`, and adopt it. `aew doctor`'s `g3` line says whether G3 counts here, and why not.
+4. Start `aew operator serve --dev` in a terminal, and the Lead with `aew opencode`.
+5. After the Lead asks for a raise, run `aew lead mode raise <mode>` at your own terminal, and approve in the confirmer.
+
+**`run` also needs** an executable `notify.command`, `deadline_s` on every execution profile routing can pick, and the
+endpoint up for as long as it runs.
+
+**When G3 does not count,** the raise asks for the typed code, as it always has, and says why. **Once the approval is
+asked for it never moves to the code:** no answer from the service is held, with the mode where it was (A-37 `G3-11`).
+To get out of that, restart the service (`aew-g3.socket`), or set the project's policy away from `required` yourself.
 
 ## What runs, and as whom
 

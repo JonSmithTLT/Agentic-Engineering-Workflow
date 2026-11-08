@@ -3,7 +3,8 @@
 The wire is A-26's ``g3-wire.schema.json`` (``g3-0.6.1-candidate``), still normative under A-37 (G3 revision 7.1):
 vendored byte-exact here and refused at load if it no longer matches its adopted SHA-256. The O-01 0.2 command schema,
 the action registry and SW-02's canonical bytes and set digest are not copied: they come from ``aew.stg02``, which
-vendors the sealed STG-01 v0.5.4 files under their own pins.
+vendors the sealed STG-01 v0.5.4 files under their own pins, and adds what it owns beyond them in
+``aew.stg02.g3_overlay``, which G3 reads and the carrier does not.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
-from aew.stg02 import adopted as o01
+from aew.stg02 import g3_overlay as o01
 from aew.stg02.wire import canonical, set_digest
 
 __all__ = ["HEADER", "STATUS", "WIRE", "canonical", "o01_errors", "problem", "registry", "schema", "set_digest",
@@ -81,4 +82,4 @@ def registry() -> dict[str, dict[str, Any]]:
 
 
 def o01_schema() -> dict[str, Any]:
-    return o01.load("o01-extended-command.schema.json")
+    return o01.o01_schema()

@@ -42,7 +42,7 @@ from aew.errors import (
     UsageError,
     ValidationFailed,
 )
-from aew.stg02 import adopted as A
+from aew.stg02 import g3_overlay as A
 from aew.stg02 import wire as W
 
 REQUEST_SOCK = "/run/aew-g3/request.sock"

@@ -8,6 +8,7 @@ client command only sends a request; the operator's answer is the code shown on 
 from __future__ import annotations
 
 import json
+import sys
 import time
 from collections.abc import Callable
 from multiprocessing.connection import Client
@@ -147,6 +148,13 @@ def request_raise(aew_root: Path, mode: str, *, ask: Callable[[str], str] | None
     try:
         _send(conn, "mode_raise", {"mode": mode, "requester": who})
         shown = _reply(conn)
+        if shown.get("challenge") == "g3":  # the operator's PIN goes in G3's confirmer: there is no code to type here
+            sys.stderr.write(f"aew lead mode raise: approve or decline {shown['approval_ref']} in the confirmer (AEW "
+                             f"approvals), until {shown['expires_at']}\n")
+            sys.stderr.flush()
+            return _reply(conn)
+        if shown.get("g3"):
+            sys.stderr.write(f"aew lead mode raise: {shown['g3']}\n")
         return _answer(conn, lambda: read(raise_prompt(shown["bound"], who)))
     finally:
         conn.close()

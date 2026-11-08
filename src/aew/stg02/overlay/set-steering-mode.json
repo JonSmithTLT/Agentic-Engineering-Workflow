@@ -1,0 +1,115 @@
+{
+  "branches": [
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "SET_STEERING_MODE"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "then": {
+        "properties": {
+          "authority_class": {
+            "const": "OPERATOR_RESERVED"
+          },
+          "owner_hint": {
+            "const": "ADC"
+          },
+          "subject": {
+            "properties": {
+              "attachment_ref": {
+                "type": "null"
+              },
+              "generation_ref": {
+                "type": "null"
+              }
+            }
+          },
+          "target": {
+            "$ref": "#/$defs/SET_STEERING_MODETarget"
+          }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "SET_STEERING_MODETarget": {
+      "additionalProperties": false,
+      "properties": {
+        "current_mode": {
+          "enum": [
+            "CRAWL",
+            "WALK",
+            "RUN"
+          ]
+        },
+        "lead_generation_ref": {
+          "maxLength": 128,
+          "minLength": 3,
+          "pattern": "^[A-Za-z][A-Za-z0-9:._/-]{2,127}$",
+          "type": "string"
+        },
+        "mission_ref": {
+          "oneOf": [
+            {
+              "maxLength": 128,
+              "minLength": 3,
+              "pattern": "^[A-Za-z][A-Za-z0-9:._/-]{2,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mode": {
+          "enum": [
+            "CRAWL",
+            "WALK",
+            "RUN"
+          ]
+        },
+        "mode_version": {
+          "maxLength": 128,
+          "minLength": 3,
+          "pattern": "^[A-Za-z][A-Za-z0-9:._/-]{2,127}$",
+          "type": "string"
+        },
+        "reason_ref": {
+          "maxLength": 128,
+          "minLength": 3,
+          "pattern": "^[A-Za-z][A-Za-z0-9:._/-]{2,127}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "lead_generation_ref",
+        "current_mode",
+        "mode",
+        "mode_version",
+        "reason_ref",
+        "mission_ref"
+      ],
+      "type": "object"
+    }
+  },
+  "operator_record": "2026-11-07: the steering raise is G3's first real protected action; 2026-11-08: the overlay",
+  "rows": [
+    {
+      "action": "SET_STEERING_MODE",
+      "catalog_ids": [
+        "P08"
+      ],
+      "origin": "PROTECTED_G3",
+      "preview_runtime": "REFUSE_OR_HOLD_NO_G3",
+      "protection_direction": "PRESERVING_OR_INCREASING",
+      "sole_admitting_owner": "ADC",
+      "status": "PROPOSED_ADDITION_I6"
+    }
+  ],
+  "source": "docs/contracts/A-43 (A-39 I6-06), carried forward; the one difference is the owner label"
+}

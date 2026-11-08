@@ -73,14 +73,16 @@ class OperatorPrincipal:
     method: str  # "peer_credentials" (POSIX) or "named_pipe" (Windows)
     endpoint_pid: int
     endpoint_started_at: str
+    origin: dict[str, Any] | None = None  # how this one challenge was answered, when not by the typed code (G3-C)
 
     @property
     def guarantee(self) -> str:
         return GUARANTEE
 
     def record(self) -> dict[str, Any]:
-        return {"uid": self.uid, "method": self.method, "guarantee": self.guarantee,
-                "endpoint": {"pid": self.endpoint_pid, "started_at": self.endpoint_started_at}}
+        out = {"uid": self.uid, "method": self.method, "guarantee": self.guarantee,
+               "endpoint": {"pid": self.endpoint_pid, "started_at": self.endpoint_started_at}}
+        return out if self.origin is None else {**out, "origin": self.origin}
 
 
 def is_raise(new: str | None, standing: str | None) -> bool:
@@ -288,7 +290,8 @@ class Steering:
         state = self.k.store.current()
         self._raise_problem(state, mode)
         digests = self.k.policy_digests()
-        return {"project": self.k.project_id, "mode": mode, "previous": effective(state)["mode"],
+        now = effective(state)
+        return {"project": self.k.project_id, "mode": mode, "previous": now["mode"], "mode_rev": now["rev"],
                 "generation": int(state["lead"]["generation"]), "revision": state["revision"],
                 "legality_digest": digests["legality_digest"]}
 
@@ -418,7 +421,9 @@ class Steering:
             what = f"a raise to {mode}" if kind == "raise" else f"confirmation of {action_ref}"
             ctx.summary = f"the Lead requested {what} ({rid}); it grants nothing until the operator acts"
         return {"ok": True, "request": rid, "revision": ctx.session.committed_revision,
-                "next": "the operator decides at the operator endpoint; nothing is granted until then"}
+                "next": (f"the operator decides, by running `aew lead mode raise {mode}` at their own terminal; "
+                         "nothing is granted until then") if kind == "raise" else
+                        "the operator decides at the operator endpoint; nothing is granted until then"}
 
     # ------------------------------------------------------------------ helpers
 

@@ -29,6 +29,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--dev", action="store_true",
                    help="required: on this host the operator principal cannot be shown distinct from the Lead "
                         "host's, so every record is labelled `guarantee: dev` (not production authority until F18.6)")
+    q.add_argument("--background", action="store_true",
+                   help="as `aew opencode` starts it: no terminal, a window opens when a challenge needs one, and it "
+                        "stops when the Lead sessions it serves end")
     q.set_defaults(handler=_serve)
     q = osub.add_parser("ping", help="whether this project's operator endpoint answers, and its guarantee label")
     _add_json(q)
@@ -54,10 +57,16 @@ def register_lead_mode(lsub: argparse._SubParsersAction) -> None:
 
 def _serve(a: argparse.Namespace) -> None:
     from aew.cli.dashboard_commands import console
-    from aew.harness import operator_client, operator_endpoint
+    from aew.harness import operator_client, operator_endpoint, operator_window
 
     engine = _engine(a)
-    endpoint = operator_endpoint.OperatorEndpoint(engine, console=console, dev=a.dev)
+    if a.background:
+        window = operator_window.WindowConsole()
+        endpoint = operator_endpoint.OperatorEndpoint(engine, console=window, dev=a.dev, background=True,
+                                                      console_done=window.done)
+        window.on_unavailable = endpoint.retire
+    else:
+        endpoint = operator_endpoint.OperatorEndpoint(engine, console=console, dev=a.dev)
     operator_endpoint.harden()  # before any challenge exists in this process's memory
     endpoint.start()
     sys.stdout.write(json.dumps({"ok": True, "pid": endpoint.pid, "guarantee": "dev",

@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "helpers"))
 # starts), so no grant starts one behind a test's back; the CLI processes tests start inherit this. Withholding the
 # worker only reduces authority: the S2 check ends a custodian whose worker never registered (`custody_register_s`).
 os.environ.setdefault("AEW_CUSTODY_WORKER", "off")
+os.environ.setdefault("AEW_OPERATOR_AUTOSTART", "off")  # a session test starts no endpoint of its own
 
 import autopsy  # noqa: E402  (a hang, a deadline or a marked failure leaves an autopsy: G3 H1)
 import harness_diagnostics  # noqa: E402  (a failed harness test reports and keeps its runs' files)

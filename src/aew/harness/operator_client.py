@@ -8,6 +8,8 @@ client command only sends a request; the operator's answer is the code shown on 
 from __future__ import annotations
 
 import json
+import os
+import sys
 import time
 from collections.abc import Callable
 from multiprocessing.connection import Client
@@ -20,6 +22,7 @@ from aew.harness.bridge import rebuild_error
 
 LOCATOR_REL = "local/operator/endpoint.json"
 LOCK_NAME = "endpoint.lock"  # beside the locator: held by the live endpoint for its whole life
+SESSIONS_REL = "local/operator/sessions"  # one file per Lead session a background endpoint serves
 LOCATOR_SCHEMA = "aew/operator-endpoint/v1"
 MAX_MESSAGE = 16 * 1024
 CHALLENGE_TIMEOUT_S = 300.0
@@ -55,6 +58,66 @@ def same_process(record: dict[str, Any]) -> bool:
     ``process_started``) is alive and is that process: the locator's own check, which the endpoint's watcher also
     applies to the broker's liveness record (M4-E E7a)."""
     return _same_process(record)
+
+
+def lead_session_problem(env: dict[str, str] | None = None) -> str | None:
+    """Why this process is inside a Lead session, or ``None`` (plan v3 §2.1, P1). Dev-grade: it reads the broker's
+    environment and the process chain; a same-uid process that hides both is one of :data:`RESIDUALS`."""
+    env = dict(os.environ) if env is None else env
+    if env.get("AEW_LEAD_BROKER") or env.get("AEW_LEAD_BROKER_KEY"):
+        return "this process runs in a Lead session (its environment carries the Lead broker's coordinates)"
+    if not sys.platform.startswith("linux"):  # pragma: windows-only
+        return None
+    pid, seen = os.getppid(), 0  # pragma: posix-only
+    while pid > 1 and seen < 64:
+        seen += 1
+        proc = Path(f"/proc/{pid}")
+        try:
+            argv = [a.decode("utf-8", "replace") for a in (proc / "cmdline").read_bytes().split(b"\0") if a]
+        except OSError:
+            break
+        if _is_lead_session(argv):
+            return f"an ancestor process ({pid}: {' '.join(argv)[:120]}) is a Lead session"
+        try:
+            if b"\0AEW_LEAD_BROKER=" in b"\0" + (proc / "environ").read_bytes():
+                return f"an ancestor process ({pid}) runs in a Lead session"
+        except OSError:
+            pass  # another uid's, or a hardened broker's: its command line was checked above
+        try:
+            pid = int((proc / "stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+    return None
+
+
+def _is_lead_session(argv: list[str]) -> bool:
+    """``aew lead session ...``, ``aew opencode ...`` (and ``python -m aew`` forms)."""
+    for i, word in enumerate(argv):
+        if os.path.basename(word) in ("aew", "aew.exe") or (word == "aew" and i and argv[i - 1] == "-m"):
+            rest = [w for w in argv[i + 1:] if not w.startswith("-")]
+            return rest[:2] == ["lead", "session"] or rest[:1] == ["opencode"]
+    return False
+
+
+def session_holders_live(aew_root: Path) -> bool:
+    """Whether any Lead session a background endpoint serves is alive and is that process. A file whose process has
+    gone is removed: a session that died never keeps the endpoint up."""
+    live = False
+    try:
+        files = list((Path(aew_root) / SESSIONS_REL).glob("*.json"))
+    except OSError:
+        return False
+    for path in files:
+        data = None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        if isinstance(data, dict) and _same_process(data):
+            live = True
+        else:
+            path.unlink(missing_ok=True)
+    return live
 
 
 def read_locator(path: Path) -> dict[str, Any] | None:
@@ -130,12 +193,17 @@ def status(aew_root: Path) -> dict[str, Any]:
             "guarantee": data.get("guarantee")}
 
 
+# Where the code is shown: `aew operator serve`'s terminal, or the window of the endpoint `aew opencode` started
+SHOWN_THERE = ("The operator endpoint's console (the terminal running `aew operator serve`, or the window "
+               "`aew opencode`'s endpoint opens) now shows a one-time confirmation code. Type it here and press Enter; "
+               "anything else refuses.")
+
+
 def raise_prompt(bound: dict[str, Any], requester: str) -> str:
     return operator.challenge(
         "", f"RAISE the Lead's steering mode to {bound['mode']} for Lead generation {bound['generation']}",
         requested_by=requester, destination="a steering mode record (no credential is issued)",
-        instruction="The terminal running `aew operator serve` now shows a one-time confirmation code. Type it here "
-                    "and press Enter; anything else refuses.") + "> "
+        instruction=SHOWN_THERE) + "> "
 
 
 def request_raise(aew_root: Path, mode: str, *, ask: Callable[[str], str] | None = None,
@@ -179,8 +247,7 @@ def capability_prompt(shown: dict[str, Any], requester: str) -> str:
     return operator.challenge(
         "", "CHANGE this host's capability register:\n" + "\n".join(shown["change"]), requested_by=requester,
         destination="the capability register (no credential is issued)",
-        instruction="The terminal running `aew operator serve` now shows a one-time confirmation code. Type it here "
-                    "and press Enter; anything else refuses.") + "> "
+        instruction=SHOWN_THERE) + "> "
 
 
 def request_capability_change(aew_root: Path, change: str, args: dict[str, Any], *,

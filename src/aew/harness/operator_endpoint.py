@@ -29,6 +29,11 @@ publication grants (E6b) and the relaunch breaker reset (E8b) join them (plan v3
 is the capability register's operator changes (CAP-1; the designer's ruling 1): the register is per host, so a
 project's endpoint authorizes a change every project on the host reads.
 
+**Started by a Lead session** (``aew opencode``, :mod:`aew.harness.operator_autostart`): the same endpoint with the
+same refusals, in the background, reparented so that no Lead session is its ancestor. It has no terminal, so its console
+is a window opened when a challenge needs one (:mod:`aew.harness.operator_window`). It stops once no session it serves
+is live, and when no window can be opened it says so and stops, so that `aew operator serve --dev` can take the lock.
+
 **Notification** (plan v3 §2.8; M4-E E7a). The endpoint runs the notifier's watcher (``aew.harness.notify``) for its
 whole life, on threads of its own and through an engine of its own: it reads control state, the event spool and the
 broker's liveness record, commits nothing, and never takes ``_authorizing`` or ``_engine_lock``, so a slow notifier
@@ -47,7 +52,6 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from multiprocessing.connection import Client, Listener
-from pathlib import Path
 from typing import Any
 
 from aew import errors, operator
@@ -65,51 +69,14 @@ from aew.harness.operator_client import (
     RESIDUALS,
     WAKE_TIMEOUT_S,
     _request,
+    lead_session_problem,
     locator_path,
     read_locator,
+    session_holders_live,
 )
 
 Console = Callable[[str], None]
 CLAIM_TIMEOUT_S = 0.5  # long enough to ride out another starter's failed claim, never a wait for a live endpoint
-
-
-def lead_session_problem(env: dict[str, str] | None = None) -> str | None:
-    """Why this process is inside a Lead session, or ``None`` (plan v3 §2.1, P1). Dev-grade: it reads the broker's
-    environment and the process chain; a same-uid process that hides both is one of :data:`RESIDUALS`."""
-    env = dict(os.environ) if env is None else env
-    if env.get("AEW_LEAD_BROKER") or env.get("AEW_LEAD_BROKER_KEY"):
-        return "this process runs in a Lead session (its environment carries the Lead broker's coordinates)"
-    if not sys.platform.startswith("linux"):  # pragma: windows-only
-        return None
-    pid, seen = os.getppid(), 0  # pragma: posix-only
-    while pid > 1 and seen < 64:
-        seen += 1
-        proc = Path(f"/proc/{pid}")
-        try:
-            argv = [a.decode("utf-8", "replace") for a in (proc / "cmdline").read_bytes().split(b"\0") if a]
-        except OSError:
-            break
-        if _is_lead_session(argv):
-            return f"an ancestor process ({pid}: {' '.join(argv)[:120]}) is a Lead session"
-        try:
-            if b"\0AEW_LEAD_BROKER=" in b"\0" + (proc / "environ").read_bytes():
-                return f"an ancestor process ({pid}) runs in a Lead session"
-        except OSError:
-            pass  # another uid's, or a hardened broker's: its command line was checked above
-        try:
-            pid = int((proc / "stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()[1])
-        except (OSError, ValueError, IndexError):
-            break
-    return None
-
-
-def _is_lead_session(argv: list[str]) -> bool:
-    """``aew lead session ...``, ``aew opencode ...`` (and ``python -m aew`` forms)."""
-    for i, word in enumerate(argv):
-        if os.path.basename(word) in ("aew", "aew.exe") or (word == "aew" and i and argv[i - 1] == "-m"):
-            rest = [w for w in argv[i + 1:] if not w.startswith("-")]
-            return rest[:2] == ["lead", "session"] or rest[:1] == ["opencode"]
-    return False
 
 
 def peer_uid(conn: Any) -> int | None:
@@ -139,7 +106,8 @@ def _dumpable() -> bool | None:
 class OperatorEndpoint:
     """The serving side. ``engine`` is the project's engine; ``console`` writes to this process's own terminal."""
 
-    def __init__(self, engine: Any, *, console: Console, dev: bool, timeout: float = CHALLENGE_TIMEOUT_S) -> None:
+    def __init__(self, engine: Any, *, console: Console, dev: bool, timeout: float = CHALLENGE_TIMEOUT_S,
+                 background: bool = False, console_done: Callable[[], None] | None = None) -> None:
         if not dev:
             raise errors.OperatorAuthorizationRequired(
                 "the operator endpoint starts only with --dev: on this host the operator principal cannot be shown "
@@ -153,6 +121,9 @@ class OperatorEndpoint:
             raise errors.UsageError("the operator endpoint needs peer credentials (Linux) or a named pipe (Windows)")
         self.engine = engine
         self.console = console
+        self.console_done = console_done or (lambda: None)  # a challenge ended: a window may close
+        self.background = background  # started by a Lead session: it ends with the sessions it serves
+        self._retired = threading.Event()
         self.timeout = timeout
         self.uid = os.getuid() if sys.platform != "win32" else None
         self.pid = os.getpid()
@@ -193,9 +164,15 @@ class OperatorEndpoint:
     def serve_forever(self) -> None:
         try:
             while not self._closed.wait(0.5):
-                pass
+                if self._retired.is_set() or (self.background and not session_holders_live(self.engine.aew_root)):
+                    return
         finally:
             self.close()
+
+    def retire(self) -> None:
+        """Stop serving once the reply in hand is sent: a background endpoint that cannot show a code gives its lock
+        up, so the operator can start one at a terminal."""
+        self._retired.set()
 
     def close(self) -> None:
         if self._closed.is_set():
@@ -355,6 +332,7 @@ class OperatorEndpoint:
                          f"{out['record']})\n")
             return out
         finally:
+            self.console_done()
             self._authorizing.release()
 
     def _await_code(self, conn: Any, code: str, command: str) -> OperatorPrincipal:
@@ -404,6 +382,7 @@ class OperatorEndpoint:
             self.console(f"\n(capability register changed by `{command}`, recorded at {out['recorded']})\n")
             return out
         finally:
+            self.console_done()
             self._authorizing.release()
 
 

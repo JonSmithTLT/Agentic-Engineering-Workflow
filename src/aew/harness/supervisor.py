@@ -138,6 +138,8 @@ class Supervisor:
         self._start_until: float | None = None
         self.stop_reason: tuple[str, str] | None = None  # (status, reason) requested by a bridge refusal
         self._control_seen: Any = None
+        self._state_unreadable = False  # the last lock-free state read failed (logged once until one succeeds)
+        self._deferred: dict[str, str] = {}  # request files taken while the state was unreadable: name -> text
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ record
@@ -159,8 +161,46 @@ class Supervisor:
     # ------------------------------------------------------------------ authority
 
     def authority_problem(self) -> str | None:
-        state = self.engine.store.current()
-        return self.engine.run_authority_problem(state, self.inv_id, self.run, self.token_id)
+        """Why this run no longer holds its authority, or None while it holds it or while the state cannot be read
+        (``_authority``)."""
+        return self._authority()[1]
+
+    def _authority(self) -> tuple[bool, str | None]:
+        """(read, problem): whether the committed state was read, and why this run no longer holds its authority.
+
+        The state is read lock-free (``ControlStore.read_committed``). The watch loop that beats the heartbeat calls
+        this: under the control lock, another process's long hold (up to the lock's timeout, 60 s) stalled the beat past
+        ``runlog.STALE_AFTER_S``, and a live run read as ``lost`` (two CI sightings on Windows, 2026-11-07).
+
+        A stale read is safe because every condition ``run_authority_problem`` checks only moves forward: an invocation
+        leaves ``active`` and never returns, ``runs[-1]`` only advances, ``revoked_at`` is only ever set, and the
+        generation only grows. So a committed state read late can only be more permissive than the truth, never less,
+        and every engine operation re-checks the credential under the lock before it writes, refusing what a stale read
+        let through. A change to ``run_authority_problem`` must keep its conditions monotonic, or this read is unsafe.
+
+        For the same reason a state that cannot be read this time (``_committed_state``) is unknown, not a problem: the
+        caller reads again on its next tick, and the engine stays the gate (#366 review, M2)."""
+        state = self._committed_state()
+        if state is None:
+            return False, None
+        return True, self.engine.run_authority_problem(state, self.inv_id, self.run, self.token_id)
+
+    def _committed_state(self) -> dict[str, Any] | None:
+        """The committed control state read lock-free, or None when it cannot be read this time.
+
+        Unlike the locked read, a lock-free read can meet a writer's replace: on Windows the mid-replace miss reaches it
+        as ``ProjectNotFound`` and a sharing violation outlasting its retries as ``PermissionError``. Neither may end a
+        live run (#366 review, M2). A failure is logged once until a read succeeds again, in the event log only, so a
+        state unreadable for long never grows the run record."""
+        try:
+            state = self.engine.store.read_committed()
+        except (errors.AEWError, OSError) as exc:
+            if not self._state_unreadable:
+                self._state_unreadable = True
+                self.events({"event": "state_unreadable", "error": getattr(exc, "message", None) or repr(exc)})
+            return None
+        self._state_unreadable = False
+        return state
 
     def _control_changed(self) -> bool:
         path = self.engine.aew_root / "state" / "control.yaml"
@@ -419,8 +459,8 @@ class Supervisor:
 
     def _launch_failed(self, reason: str, error_code: str | None = None, *, cause: str | None = None,
                        refusal: str | None = None) -> bool:
-        """``refusal``: the adapter's own reason for refusing the launch, one of ``base.LAUNCH_REFUSALS``, beside the
-        closed code (register E143)."""
+        """``refusal``: the reason the launch was refused, one of ``base.LAUNCH_REFUSALS`` (an adapter's own, or this
+        supervisor's missing-key refusal, E189), beside the closed code (register E143)."""
         code = K.launch_failure_code(K.START, error_code, cause)
         spool(self.run_dir, "launch_failed", reason)  # site 2 (R2-m5), before the terminal record
         if refusal is not None:
@@ -437,6 +477,7 @@ class Supervisor:
         deadline_s = (self.record.get("execution_profile") or {}).get("deadline_s")
         deadline = time.monotonic() + deadline_s if deadline_s else None
         last_beat = last_poll = 0.0
+        unread = False  # the last authority read failed: read again at the next tick (#366 review, M2)
         while True:
             faults.pause("harness.watchdog.tick")  # tests: a supervisor that is slow to notice anything
             now = time.monotonic()
@@ -457,11 +498,13 @@ class Supervisor:
                         self.adapter.interrupt()
                 except errors.AEWError as exc:
                     self._event("request_failed", kind=kind, error=exc.message)
-            if self._control_changed() or now - last_poll >= STATE_POLL_S:
-                last_poll = now
-                problem = self.authority_problem()
+            if unread or self._control_changed() or now - last_poll >= STATE_POLL_S:
+                read, problem = self._authority()
                 if problem:
                     return self._finish(K.TERMINATED, f"authority ended: {problem}")
+                unread = not read
+                if read:
+                    last_poll = now
             status = self.adapter.inspect()
             if not status.get("alive"):
                 return self._finish_exited(status)
@@ -481,18 +524,28 @@ class Supervisor:
         The run directory is model-writable (same user), so a file alone is no request: its name and digest must be
         on this run's entry in control state, which the Lead operation commits before it writes the file. Anything
         else is recorded and discarded (independent review R1)."""
-        pending = runlog.take_requests(self.run_dir)
+        # Files taken while the state was unreadable are kept as they were taken: a later file of the same name (the
+        # run directory is model-writable) never replaces a kept Lead request (#366 review, N3). That is all the
+        # `setdefault` merge is for: the sort below decides the order. They are bounded by the queue's distinct names.
+        pending = dict(self._deferred)
+        for name, text in runlog.take_requests(self.run_dir):
+            pending.setdefault(name, text)
+        self._deferred = {}
         if not pending:
             return []
-        try:
-            inv = self.engine.store.current()["invocations"].get(self.inv_id) or {}
-            entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
-            recorded = {r["file"]: r for r in entry.get("requests") or []}
-        except errors.AEWError as exc:
-            recorded = {}
-            self._event("request_state_unreadable", error=exc.message)
+        # lock-free, as ``_authority``: the watch loop that beats the heartbeat calls this
+        state = self._committed_state()
+        if state is None:  # the files are taken already: keep them for the next tick, never refuse them (M2)
+            self._deferred = pending
+            return []
+        inv = state["invocations"].get(self.inv_id) or {}
+        entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
+        recorded = {r["file"]: r for r in entry.get("requests") or []}
         out = []
-        for name, text in pending:
+        # In issue order, kept files with new ones: a request file's name starts with its time_ns (runlog.new_request),
+        # so the sort alone decides the order, whichever tick took a file and however late it was delivered; the merge
+        # order above decides nothing (#366 review, N4)
+        for name, text in sorted(pending.items()):
             want = recorded.get(name)
             why = ("not recorded by a Lead operation" if want is None else
                    "already handled" if name in self._handled else

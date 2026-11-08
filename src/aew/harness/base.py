@@ -15,6 +15,7 @@ from typing import Any
 
 from aew.errors import HarnessIncompatible
 from aew.harness import models
+from aew.harness.containment.netns import PROVIDER_KEY_MISSING
 from aew.harness.contract import LaunchContract
 from aew.harness.procs import ProcessTree
 
@@ -29,7 +30,9 @@ RELAY_FAMILY_SHOWN = frozenset({RELAY_FAMILY_MATCHES, RELAY_FAMILY_UNVERIFIED})
 RELAY_FAMILY_REFUSED = "relay_family_mismatch"
 KEY_IN_SANDBOX = "provider_secret_in_sandbox"
 PROVIDER_ENV_UNUSABLE = "provider_env"
-LAUNCH_REFUSALS = frozenset({RELAY_FAMILY_REFUSED, KEY_IN_SANDBOX, PROVIDER_ENV_UNUSABLE})
+# The supervisor's own refusal of a worker launch whose provider would get no key is one too (E189): its record
+# carries it as its `refusal`, as an adapter's does.
+LAUNCH_REFUSALS = frozenset({RELAY_FAMILY_REFUSED, KEY_IN_SANDBOX, PROVIDER_ENV_UNUSABLE, PROVIDER_KEY_MISSING})
 
 
 def relay_family_of(launch: Mapping[str, Any] | None) -> str | None:
@@ -41,8 +44,8 @@ def relay_family_of(launch: Mapping[str, Any] | None) -> str | None:
 
 
 def refusal_of(details: Mapping[str, Any] | None) -> str | None:
-    """The adapter's refusal reason in an error's or an acknowledgement's details, if it is one of ``LAUNCH_REFUSALS``;
-    else None."""
+    """The launch refusal reason in an error's or an acknowledgement's details (an adapter's, or the supervisor's
+    missing-key refusal), if it is one of ``LAUNCH_REFUSALS``; else None."""
     reason = (details or {}).get("reason") if isinstance(details, Mapping) else None
     return reason if isinstance(reason, str) and reason in LAUNCH_REFUSALS else None
 

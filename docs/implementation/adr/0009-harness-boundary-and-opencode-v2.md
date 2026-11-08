@@ -1832,6 +1832,16 @@ acknowledgements.
   `tests/integration/test_opencode_lead.py` and `tests/integration/test_lead_contained_session.py`; and
   `tests/unit/test_containment_netns.py` (what a worker's network keeps for the note).
 
+## Amendment 2026-11-07 — the missing-key refusal is a launch refusal (register E189)
+
+- **The supervisor's refusal of a launch whose provider would get no key** (`provider_key_missing`, the 2026-11-06
+  amendment) is in `base.LAUNCH_REFUSALS`, the closed set of the 2026-11-06 amendment on what a launch reports. Its run's
+  record, its acknowledgement and the launcher's `HARNESS_LAUNCH_FAILED` details carry it as `refusal`, beside
+  `incompatible_config`, as they carry an adapter's. Before, that record had no `refusal`.
+- **Tests:** `tests/unit/test_launch_failure_vocabulary.py` (the set, and the launcher passing it on) and
+  `tests/unit/test_provider_key_refusal.py` (the supervisor's refusal yields it).
+
+
 ## Amendment 2026-11-07 — the pin moves to OpenCode 2.2.6
 
 - **The pin:** `capabilities.TESTED_VERSIONS` is `("2.2.6",)` (the operator's go for the bump, 2026-11-07), so the

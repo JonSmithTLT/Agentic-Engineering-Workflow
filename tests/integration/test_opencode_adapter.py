@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -1042,3 +1043,40 @@ def test_no_route_closing_control_is_a_harness_permission_rule(lab, tmp_path):
         assert write["wrote"] == [] and set(write["refused"].values()) == {"EROFS"}, write
         assert reach == {"connected": False, "error": "ECONNREFUSED"}, reach
         assert parent["has_credential"] is False, parent
+
+
+# ---------------------------------------------------------------------------------------------- liveness
+
+
+def test_a_run_whose_control_lock_is_held_elsewhere_keeps_its_heartbeat(lab, tmp_path, monkeypatch):
+    """A live run never reads as `lost` because another process holds the control lock (a long commit, a Windows
+    replace retrying for seconds): the lock may be held up to its timeout (60 s), and a heartbeat goes stale at
+    `runlog.STALE_AFTER_S` (10 s). Two CI sightings on Windows (main at 8198c213, #362 at 6663e3d5) read a working run
+    as `lost` while its step and its heartbeat stalled together. The run is held at its check (before the check's
+    command starts), the lock is held from here for longer than three of the supervisor's authority polls, and the
+    heartbeat's age is sampled meanwhile: it stays well below the hold. Then the run completes."""
+    from aew.engine.api import Engine
+    from aew.harness import supervisor
+
+    gate = tmp_path / "gate"
+    gate.write_text("")
+    monkeypatch.setenv("AEW_PAUSE", f"checks.before_spawn={gate}")
+    script(lab, IMPLEMENT)
+    _, _, run = launch(lab, tmp_path)
+    reached, deadline = Path(f"{gate}.reached"), time.monotonic() + 120
+    while not reached.exists() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert reached.exists(), "the run never reached its check"
+    directory = runlog.run_dir(lab.aew_root, run)
+    held_s = 4 * supervisor.STATE_POLL_S  # the loop reads the state at least every STATE_POLL_S
+    ages: list[float | None] = []
+    with Engine.discover(lab.root).store.control_lock("test: the control lock held elsewhere"):
+        until = time.monotonic() + held_s
+        while time.monotonic() < until:
+            ages.append(runlog.heartbeat_age(directory))
+            time.sleep(0.2)
+    gate.unlink()
+    # The guarantee is "below STALE_AFTER_S". Half the hold leaves a loaded runner headroom and still fails the locked
+    # read, whose beat stalls for most of the hold (7 s of 8; #366 review, N1).
+    assert None not in ages and max(ages) < held_s / 2, ages  # type: ignore[type-var]
+    assert lab.wait(run)["status"] == "ended_with_evidence"

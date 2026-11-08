@@ -1,0 +1,3 @@
+# Commits made while a test run's identity sat in a shared git configuration (fixed by the test isolation in
+# tests/helpers/git_isolation.py). They were the operator's work; the history is not rewritten.
+Jon Smith <jonksmith1990@gmail.com> AEW Test <aew-test@invalid>

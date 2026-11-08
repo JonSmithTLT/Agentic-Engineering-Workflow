@@ -61,7 +61,7 @@ PUBLISH_UNFINISHED = "publish_unfinished"  # the reason a refusal carries when t
 def _publish_unfinished(work_id: str) -> str:
     """What a Lead reads when a publish recorded its intent and did not finish (E137): where the Ticket stands, and the
     one call that finishes it. Nothing else moves it, and the lease holds up other integrations meanwhile."""
-    return (f"{work_id} is `publishing`: a publish recorded its intent and did not finish. Publishing again is refused "
+    return (f"{work_id} is publishing: a publish recorded its intent and did not finish. Publishing again is refused "
             f"and nothing is decided anew: `aew integrate reconcile {work_id} {EXPECT_REV}` finishes it, by inspecting "
             "the authoritative ref")
 

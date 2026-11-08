@@ -9,6 +9,7 @@ import pytest
 from aewflow import sample_project
 
 from aew.harness import check_changes, runlog
+from aew.util import dump_yaml, load_yaml
 
 WRITES = "open('check-output.txt', 'w').write('x')"
 
@@ -20,6 +21,15 @@ def project_with(tmp_path, code: str):
     project = sample_project(tmp_path, checks=checks)
     project.pin_policy()
     return project
+
+
+def fingerprint(project, **rules) -> None:
+    """The manifest's fingerprint rules, as the operator adopts them."""
+    path = project.root / ".aew" / "project.yaml"
+    manifest = load_yaml(path.read_text(encoding="utf-8"))
+    manifest["fingerprint"] = rules
+    path.write_text(dump_yaml(manifest), encoding="utf-8", newline="\n")
+    project.adopt_policy("the snapshot's rules")
 
 
 def row(project, *args: str):
@@ -80,3 +90,27 @@ def test_a_tracked_file_the_check_edits_is_named(tmp_path):
     project = project_with(tmp_path, "open('README.md', 'a').write('more')")  # tracked (aewflow.SAMPLE_FILES)
     _, found = row(project, "--run-checks")
     assert found is not None and found["status"] == "FAIL" and "it writes README.md" in found["detail"], found
+
+
+def test_a_path_the_snapshot_excludes_is_not_a_change(tmp_path):
+    """Review of #367, F2: the verdict is the snapshot's, as verification compares it, not git's: a path the manifest's
+    fingerprint.exclude leaves out changes nothing."""
+    project = project_with(tmp_path, "import os; os.makedirs('build-out', exist_ok=True); "
+                                     "open('build-out/x.txt', 'w').write('x')")
+    fingerprint(project, exclude=["build-out"])
+    _, found = row(project, "--run-checks")
+    assert found is not None and found["status"] == "PASS", found
+
+
+def test_an_ignored_path_the_snapshot_puts_back_is_named_with_that_rule_as_its_fix(tmp_path):
+    """Review of #367, F2: a path the manifest's fingerprint.include_ignored puts back into the snapshot changes it
+    though git ignores it; the row names it, and its fix is that rule, never .gitignore, which it already is in."""
+    project = project_with(tmp_path, "open('build.log', 'w').write('x')")
+    (project.root / ".git" / "info").mkdir(parents=True, exist_ok=True)
+    (project.root / ".git" / "info" / "exclude").write_text("build.log\n", encoding="utf-8")
+    fingerprint(project, include_ignored=["build.log"])
+    _, found = row(project, "--run-checks")
+    assert found is not None and found["status"] == "FAIL", found
+    assert "it writes build.log" in found["detail"], found
+    assert "take build.log off the project manifest's fingerprint.include_ignored" in found["detail"], found
+    assert ".gitignore" not in found["detail"], found

@@ -84,19 +84,32 @@ def doctor_rows(engine: Any, *, run: bool) -> list[dict[str, str]]:
         outcome = found["outcome"]
         ran = ("timed out" if outcome == "timeout" else "could not start" if outcome == "spawn_failed"
                else f"exited {found['exit_code']}")
-        if found["paths"] or found["mutated"]:
-            paths = found["paths"] or ["(paths not named: the snapshot's fingerprint changed)"]
+        if found["mutated"]:  # what verification compares: the snapshot's fingerprint (review of #367, F2)
             changed.append(f"check {check_id} ({ran}) changes the snapshot it runs on: it writes "
-                           f"{', '.join(paths)}, so each verification of it is inconclusive. Make it write outside the "
-                           f"project, or, for output it leaves on purpose, list "
-                           f"{'it' if len(paths) == 1 else 'them'} in .gitignore (or .git/info/exclude), which "
-                           "keeps it out of the snapshot")
+                           f"{', '.join(found['paths']) or '(paths not named: the two snapshots cannot be compared)'}"
+                           f", so each verification of it is inconclusive. {fix(engine, found['paths'])}")
         else:
             notes.append(f"check {check_id} ({ran}) changes nothing in the snapshot")
     detail = "; ".join(changed + notes) + f" (ran once on a copy of {commit[:12]}; never evidence)"
     if changed:
         return [_row("FAIL", detail)]
     return [_row("PASS" if not any("was not run" in n for n in notes) else "WARN", detail)]
+
+
+def fix(engine: Any, paths: list[str]) -> str:
+    """The fix for paths a check writes into its snapshot: written elsewhere, or kept out of the snapshot by the rule
+    that keeps a path out of it. A path the manifest's ``fingerprint.include_ignored`` puts back in is kept out only by
+    taking it off that list; any other by ``.gitignore``, ``.git/info/exclude`` or ``fingerprint.exclude``."""
+    included = [str(p).rstrip("/") for p in ((engine.manifest or {}).get("fingerprint") or {}).get("include_ignored")
+                or []]
+    forced = [p for p in paths if any(p == i or p.startswith(i + "/") for i in included)]
+    it = "it" if len(paths) == 1 else "them"
+    if forced:
+        return (f"Make the check write outside the project, or take {', '.join(sorted(set(forced)))} off the project "
+                "manifest's fingerprint.include_ignored, which puts ignored output back into the snapshot")
+    return (f"Make the check write outside the project, or, for output it leaves on purpose, list {it} in .gitignore "
+            f"(or .git/info/exclude), or in the project manifest's fingerprint.exclude, which keeps {it} out of the "
+            "snapshot")
 
 
 def run_once(engine: Any, check_id: str, cfg: dict[str, Any], commit: str) -> dict[str, Any]:
@@ -107,6 +120,7 @@ def run_once(engine: Any, check_id: str, cfg: dict[str, Any], commit: str) -> di
     from aew.harness import containment, procs, runlog, weaker_register
     from aew.policy import checks as C
     from aew.workspace import git
+    from aew.workspace.integration import changed_between
 
     policy, _ = engine.execution_policy()
     stamp = f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{secrets.token_hex(3)}"
@@ -155,10 +169,13 @@ def run_once(engine: Any, check_id: str, cfg: dict[str, Any], commit: str) -> di
             if weaker is not None:
                 weaker.end(list(trees.left))
         after = engine.snapshot_of(copy, WORKSPACE_ID)
-        status = git.git("status", "--porcelain", "-z", "--untracked-files=all", cwd=copy).stdout
-        paths = sorted({entry[3:].decode("utf-8", "replace") for entry in status.split(b"\0") if len(entry) > 3})
-        return {"outcome": out["outcome"], "exit_code": out["exit_code"], "paths": paths,
-                "mutated": before["relevant_inputs_fingerprint"] != after["relevant_inputs_fingerprint"]}
+        a, b = before["relevant_inputs_fingerprint"], after["relevant_inputs_fingerprint"]
+        try:  # the paths between the two snapshots, as a workspace's mutation is named (evidence_ops._paths_between)
+            paths = sorted(changed_between(copy, a.removeprefix("git-tree:"), b.removeprefix("git-tree:"))) \
+                if a != b else []
+        except AEWError:  # a process that stores no objects hashed the trees without writing them
+            paths = []
+        return {"outcome": out["outcome"], "exit_code": out["exit_code"], "paths": paths, "mutated": a != b}
     finally:
         containment.retire_private_git(run_dir)
         if copy.exists():

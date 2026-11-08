@@ -4,6 +4,7 @@ fake V2 server stands in for OpenCode; synthetic providers and ids only."""
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import pytest
@@ -38,6 +39,14 @@ def doctor(lab: HarnessLab, *args: str, env: dict[str, str] | None = None) -> tu
     return res.returncode, rows.get(model_list.CHECK)
 
 
+def edit_policy(lab: HarnessLab, change: Any) -> None:
+    path = lab.aew_root / "policy/execution.yaml"
+    policy = load_yaml(path.read_text(encoding="utf-8"))
+    change(policy)
+    path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
+
+
 def set_model(lab: HarnessLab, model: str) -> None:
     path = lab.aew_root / "policy/execution.yaml"
     policy = load_yaml(path.read_text(encoding="utf-8"))
@@ -66,7 +75,11 @@ def test_a_pinned_model_the_list_does_not_offer_is_a_fail_naming_it_and_what_its
 
 def test_a_listed_model_passes_and_the_list_is_read_once_until_refresh(lab):
     serve(lab, LISTED)
-    code, row = doctor(lab)
+    first = lab.aew("doctor", "--json")
+    # The default doctor may wait for the harness: it says so first, on stderr (review of #367, F5).
+    assert "aew doctor: reading opencode's model list for fakeprov/fake-model as a launch reads it" in first.stderr
+    assert "the list is cached, and `aew doctor --refresh` reads it again" in first.stderr, first.stderr
+    code, row = first.returncode, {c["check"]: c for c in first.json["checks"]}.get(model_list.CHECK)
     assert code == 0 and row is not None and row["status"] == "PASS", row
     assert row["detail"].startswith("profile standard: fakeprov/fake-model is in opencode"), row
     assert "(read just now)" in row["detail"], row
@@ -112,3 +125,64 @@ def test_without_a_harness_binary_the_list_is_not_read_and_nothing_fails_on_it(l
     code, row = doctor(lab, env={"AEW_OPENCODE_BIN": str(tmp_path / "no-such-opencode")})
     assert row is not None and row["status"] == "WARN", row
     assert row["detail"].startswith("the model list was not read: profile standard: no harness binary"), row
+
+
+def test_a_catalog_that_offers_nothing_in_time_is_never_an_answer_about_the_model_and_is_not_cached(lab):
+    """Review of #367, F1: an unreachable catalog settles empty, as a launch's wait does; a launch refuses that as
+    timing-dependent (CATALOG_TIMEOUT), never as a lasting incompatibility, so doctor neither blames the pinned model
+    nor caches it: once the catalog is back, the next plain doctor reads it again and passes."""
+    serve(lab, LISTED, catalog_delay_s=600)
+    code, row = doctor(lab, env={"AEW_OPENCODE_CATALOG_S": "2"})
+    assert code == 1 and row is not None and row["status"] == "FAIL", row
+    assert "opencode offered no model at all within its catalog wait" in row["detail"], row
+    assert "never a lasting answer about the pinned model" in row["detail"], row
+    assert "Check the network the execution policy allows for the harness's model catalog" in row["detail"], row
+    assert "Set profiles." not in row["detail"], row
+    assert not (lab.aew_root / model_list.CACHE_REL).exists()
+    serve(lab, LISTED)
+    _, again = doctor(lab)
+    assert again is not None and again["status"] == "PASS" and "(read just now)" in again["detail"], again
+
+
+def test_no_provider_value_reaches_doctors_output_or_any_file_it_leaves(lab):
+    """Review of #367, F6: the read runs with the launch's environment, so a provider variable's value reaches its
+    server as a launch's does, and never doctor's output, its cache or any other file under the project's .aew."""
+    secret = "aewtest-synthetic-provider-value-7f3e9c2b"
+    lab.env["AEWTEST_PROVIDER_KEY"] = secret
+    edit_policy(lab, lambda doc: doc.update(provider_env=["AEWTEST_PROVIDER_KEY"]))
+    serve(lab, LISTED)
+    res = lab.aew("doctor", "--json")
+    assert {c["check"]: c for c in res.json["checks"]}[model_list.CHECK]["status"] == "PASS"
+    assert secret not in res.stdout + res.stderr
+    leaked = [str(p) for p in lab.aew_root.rglob("*") if p.is_file() and secret.encode() in p.read_bytes()]
+    assert leaked == [], leaked
+    assert leftovers(lab) == [], leftovers(lab)
+
+
+def test_a_sandbox_that_cannot_be_established_here_is_a_warn_and_leaves_nothing(lab):
+    """Review of #367, F6: where a launch's containment is not established here (an egress allowlist entry that is not
+    host:port, which the launch refuses the same way, before any sandbox), the list is not read: a WARN naming why,
+    and no directory, run or process left."""
+    edit_policy(lab, lambda doc: doc["containment"]["network"].update(egress_allow=["not a host"]))
+    serve(lab, LISTED)
+    _, row = doctor(lab)
+    assert row is not None and row["status"] == "WARN", row
+    assert "a launch's containment was not established here" in row["detail"], row
+    assert "egress_allow" in row["detail"], row
+    assert leftovers(lab) == [], leftovers(lab)
+
+
+def test_a_provider_key_a_launch_would_not_get_is_named_as_the_launchs_refusal(lab):
+    """Review of #367, F4: on the relay route (Linux) a profile whose provider would get no key is refused at launch
+    (provider_key_missing), so doctor's row is red and says so, not that containment failed. Off it there is no relay
+    and nothing to judge, and the list is read as before."""
+    lab.env.pop("OPENAI_API_KEY", None)
+    edit_policy(lab, lambda doc: doc["profiles"].update(standard={"provider": "openai", "model": "gpt-test"}))
+    serve(lab, [{"id": "gpt-test", "providerID": "openai", "enabled": True, "variants": []}])
+    _, row = doctor(lab, env={"OPENAI_API_KEY": ""})
+    assert row is not None, row
+    if not sys.platform.startswith("linux"):
+        assert "provider_key_missing" not in row["detail"], row
+        return
+    assert row["status"] == "FAIL" and "a launch would be refused (provider_key_missing)" in row["detail"], row
+    assert "containment was not established" not in row["detail"], row

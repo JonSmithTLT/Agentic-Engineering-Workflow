@@ -650,19 +650,24 @@ class OpenCodeAdapter(HarnessAdapter):
                     launch_cause=CATALOG_TIMEOUT)
             time.sleep(0.25)
 
-    def read_model_list(self, contract: LaunchContract, *, until: float) -> dict[str, Any]:
+    def read_model_list(self, contract: LaunchContract, agent_env: dict[str, str], *,
+                        until: float) -> dict[str, Any]:
         """The harness's model list as a launch of ``contract`` would read it (``aew doctor``; register E153): its
-        server started exactly as :meth:`launch` starts it, the catalog read as :meth:`_await_model` reads it, and
-        nothing more: no session and no model call. The read ends once the contract's pinned model is listed, or once
-        the catalog has settled without it (``CATALOG_SETTLE_S``, as a launch waits), and by ``until`` (a monotonic
-        time: the launch's own start deadline) in any case. Returns
-        ``{"version", "models": [{"providerID", "id", "variants", "enabled"}], "complete"}``; ``complete`` is False
-        when ``until`` came first. A model the server lists only because the relay projection names it is not one it
-        offers (:func:`declared_only`), and is left out. The caller's process tree ends the server."""
+        server started by :meth:`launch`'s own start (the binary, the projected configuration for the contract's
+        provider and model, its environment, network and process tree), the catalog read as :meth:`_await_model`
+        reads it, and nothing more: no session and no model call. ``agent_env`` carries what a launch's server gets of
+        it: the weaker-context marker. The read ends once the contract's pinned model is listed, or once the catalog
+        has settled without it (``CATALOG_SETTLE_S``, as a launch waits), and by ``until`` (a monotonic time: the
+        launch's own start deadline) in any case. Returns ``{"version", "models": [{"providerID", "id", "variants",
+        "enabled"}], "complete", "empty"}``: ``complete`` only when the pin is listed or a catalog that offers
+        something has settled; ``empty`` when the wait ran out with nothing offered, which a launch refuses as
+        timing-dependent (``CATALOG_TIMEOUT``), never as a lasting answer (review of #367, F1). A model the server lists
+        only because the relay projection names it is not one it offers (:func:`declared_only`), and is left out. The
+        caller's process tree ends the server."""
         remaining = until - time.monotonic()
         if remaining <= 0:
             raise HarnessLaunchFailed("no time was left to start the OpenCode server")
-        self._start_server(contract, {}, timeout=min(START_TIMEOUT_S, remaining), metered=False)
+        self._start_server(contract, agent_env, timeout=min(START_TIMEOUT_S, remaining), metered=False)
         assert self.client is not None and self.server is not None
         wanted = projection.model_ref(contract.execution_profile)
         try:
@@ -680,7 +685,8 @@ class OpenCodeAdapter(HarnessAdapter):
                 settled = (now - t0 > CATALOG_WAIT_S
                            or (first_seen is not None and now - first_seen > CATALOG_SETTLE_S))
                 if done or settled or now >= until:
-                    return {"version": version, "complete": done or settled,
+                    return {"version": version, "complete": done or (settled and bool(offered)),
+                            "empty": settled and not done and not offered,
                             "models": [{"providerID": str(m.get("providerID")), "id": str(m.get("id")),
                                         "variants": [str(v.get("id")) for v in m.get("variants") or []],
                                         "enabled": m.get("enabled") is not False} for m in offered]}

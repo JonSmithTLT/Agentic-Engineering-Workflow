@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import secrets
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any
@@ -41,6 +42,11 @@ REVISION = "rev:"
 HELD = "g3_held"
 REFUSED = "g3_refused"
 AGAIN = "Nothing was raised: request it again"
+# A 400 at the request is the service refusing the set itself: asking again gets the same answer until this is fixed
+OLDER_SERVICE = (f"The likely cause is a G3 service installed from a wheel older than this `aew`, which does not know "
+                 f"{BINDINGS['mode_raise']}. Install it again as root, which keeps the ledger, the key and the PIN "
+                 f"hash: {g3standing.INSTALL}. Nothing was raised")
+EVERY_REQUEST = "Each `aew lead mode raise` asks for a new approval"
 
 
 def choose(operation: str, policy: dict[str, Any] | None) -> tuple[bool, str | None]:
@@ -104,7 +110,8 @@ def moved(cset: dict[str, Any], now: dict[str, Any]) -> str | None:
     """What has moved since the operator approved ``cset``, by ``now``, a fresh preview; None when nothing has."""
     target = cset["intents"][0]["target"]
     current = {"lead_generation_ref": f"{GENERATION}{now['generation']}",
-               "current_mode": (now["previous"] or "crawl").upper(), "mode_version": mode_version(now["mode_rev"])}
+               "current_mode": (now["previous"] or "crawl").upper(), "mode_version": mode_version(now["mode_rev"]),
+               "reason_ref": LEGALITY + str(now["legality_digest"])}
     changed = [k for k, v in current.items() if target[k] != v]
     return ", ".join(changed) or None
 
@@ -114,18 +121,26 @@ def operation_ref(consent_set_ref: str, intent_ref: str) -> str:
     return f"aew:steering-raise:{digest}"
 
 
-def held(why: str) -> errors.Unavailable:
-    return errors.Unavailable(f"the raise is held: {why}. {AGAIN}; the mode stays where it is", reason=HELD)
+def held(why: str, way_on: str = AGAIN) -> errors.Unavailable:
+    return errors.Unavailable(f"the raise is held: {why}. {way_on}; the mode stays where it is", reason=HELD)
 
 
 def refused(why: str) -> errors.OperatorAuthorizationRequired:
     return errors.OperatorAuthorizationRequired(f"the raise was refused: {why}. {AGAIN}", reason=REFUSED)
 
 
+def requester_gone(approval_ref: str) -> errors.OperatorAuthorizationRequired:
+    return errors.OperatorAuthorizationRequired(
+        f"the terminal that asked for the raise has gone, so this request ended and nothing will consume {approval_ref}"
+        f": approving it now raises nothing, and it stays on the confirmer until it expires. {AGAIN}",
+        reason="requester_gone", approval_ref=approval_ref)
+
+
 @contextlib.contextmanager
-def outcomes() -> Iterator[None]:
+def outcomes(bad_request: str = AGAIN) -> Iterator[None]:
     """The G3 path's two endings, for what the client raises (the designer's ruling 1): HELD for no answer, a 503, a 403
-    or a 400; a refusal for the rest. A decline or an expiry already says so, and passes as it is."""
+    or a 400, with ``bad_request`` as a 400's way on; a refusal for the rest. A decline or an expiry already says so,
+    and passes as it is."""
     try:
         yield
     except errors.OperatorAuthorizationRequired:  # declined or expired: a kind of PermissionDenied, and a refusal
@@ -136,20 +151,25 @@ def outcomes() -> Iterator[None]:
         raise held(exc.message) from None
     except errors.ValidationFailed as exc:
         if exc.details.get("status") == 400:
+            raise held(exc.message, bad_request) from None
+        if exc.details.get("status") == 403:
             raise held(exc.message) from None
         raise refused(exc.message) from None
 
 
-def approve(cset: dict[str, Any],
-            on_pending: Callable[[dict[str, Any]], None]) -> tuple[dict[str, Any], dict[str, Any]]:
+def approve(cset: dict[str, Any], on_pending: Callable[[dict[str, Any]], None],
+            wait: Callable[[float], None] = time.sleep) -> tuple[dict[str, Any], dict[str, Any]]:
     """Ask for the approval and wait for the operator: the approved set and its consent record. ``on_pending`` tells the
-    requester the approval is on the confirmer."""
+    requester the approval is on the confirmer, and ``wait`` passes the time between looks at the service, so the
+    endpoint can end the wait when the requester has gone."""
     with outcomes():
         proved = g3client.with_proofs(g3client.check_set(cset))
+    with outcomes(bad_request=OLDER_SERVICE):
         pending = g3client.request_approval(proved)
+    with outcomes():
         g3client.expires_at(pending)
         on_pending(pending)
-        record = g3client.await_decision(pending)
+        record = g3client.await_decision(pending, sleep=wait)
         return g3client.approved_set(proved, record), record
 
 
@@ -166,7 +186,8 @@ def consume_member(approved: dict[str, Any], record: dict[str, Any], policy: dic
                            intent_ref=member["intent_ref"], origin_proof_ref=member["origin_proof_ref"], owner=OWNER,
                            operation_ref=operation_ref(approved["consent_set_ref"], member["intent_ref"]))
     if out.result is None:
-        raise errors.Unavailable(f"the raise is held, and the mode stays where it is: {out.held_why}", reason=HELD)
+        raise errors.Unavailable(f"the raise is held, and the mode stays where it is: {out.held_why}. {EVERY_REQUEST}",
+                                 reason=HELD)
     if out.result == "CONSENT_ALREADY_USED":
         raise refused(f"the G3 service answered {out.result}, so the next request needs a new approval")
     if out.result != "CONSUMED":

@@ -6,13 +6,17 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import threading
+import time
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import yaml
 
 from aew import errors, g3client, g3standing
+from aew.engine import steering
 from aew.engine.api import Engine
 from aew.harness import g3_adapter as G
 from aew.harness import operator_client, operator_endpoint
@@ -21,6 +25,7 @@ from g3 import PIN, make
 
 MODE = "walk"
 ENDED = 60.0
+REAL_STANDING = g3standing.standing
 
 
 class FakeG3:
@@ -32,6 +37,7 @@ class FakeG3:
         self.requests = 0
         self.on_decide: Any = None
         self.decision = "APPROVE"
+        self.undecided = False  # the operator has not decided: the wait goes on, on the endpoint's own ``sleep``
 
     def request_approval(self, cset: dict[str, Any], sock_path: str | None = None) -> dict[str, Any]:
         self.requests += 1
@@ -40,7 +46,12 @@ class FakeG3:
             raise g3client._g3_refusal(status, body)
         return body
 
-    def await_decision(self, pending: dict[str, Any], sock_path: str | None = None, **_: Any) -> dict[str, Any]:
+    def await_decision(self, pending: dict[str, Any], sock_path: str | None = None, *, sleep: Any = time.sleep,
+                       **_: Any) -> dict[str, Any]:
+        deadline = time.monotonic() + ENDED
+        while self.undecided:
+            assert time.monotonic() < deadline, "the wait did not end"
+            sleep(0.01)
         if self.on_decide:
             self.on_decide()
         body = {"decision": "APPROVE", "pin": PIN} if self.decision == "APPROVE" else {"decision": "DECLINE"}
@@ -87,9 +98,11 @@ def _raise(steered, ask=_no_typing) -> dict[str, Any]:
     return operator_client.request_raise(steered.root, MODE, ask=ask, requester="test")
 
 
-def _mode(steered) -> str | None:
-    from aew.engine import steering
+def _no_code(lines: list[str]) -> bool:
+    return "confirmation code" not in "".join(lines)
 
+
+def _mode(steered) -> str | None:
     return steering.effective(steered.engine.store.current())["mode"]
 
 
@@ -101,7 +114,8 @@ def _records(steered) -> list[dict[str, Any]]:
 def test_an_approval_consumed_raises_the_mode_and_its_record_names_the_consent(steered, endpoint):
     out = _raise(steered)
     assert out["mode"] == MODE and _mode(steered) == MODE
-    assert endpoint.lines == [], "no code, and nothing on the console"
+    assert _no_code(endpoint.lines), "no code"
+    assert any(f"steering mode raised to {MODE}" in line and "G3 approval" in line for line in endpoint.lines)
     assert [f["owner"] for f in steered.fake.consumed] == ["ADC"]
     record = next(r for r in _records(steered) if r.get("source") == "raise")
     origin = record["by"]["principal"]["origin"]
@@ -109,7 +123,7 @@ def test_an_approval_consumed_raises_the_mode_and_its_record_names_the_consent(s
     assert steered.fake.consumed[0]["operation_ref"].startswith("aew:steering-raise:")
 
 
-def test_a_replayed_consent_is_refused_by_the_service(steered, endpoint, monkeypatch):
+def test_a_replayed_consent_is_refused_by_the_service(steered, endpoint):
     """The endpoint never takes a consent from a requester, so a replay is the same consent consumed twice."""
     _raise(steered)
     replay = {**steered.fake.consumed[0], "operation_ref": "aew:steering-raise:again"}
@@ -125,7 +139,8 @@ def test_a_consume_answered_with_anything_else_is_refused_and_nothing_rises(stee
     assert result in refused.value.message and "request it again" in refused.value.message
     assert refused.value.details["reason"] == G.REFUSED
     assert ("new approval" in refused.value.message) == (result == "CONSENT_ALREADY_USED")
-    assert _mode(steered) != MODE and endpoint.lines == []
+    assert _mode(steered) != MODE and _no_code(endpoint.lines)
+    assert any(result in line for line in endpoint.lines), "the console says how it ended"
 
 
 def test_a_reply_lost_after_the_member_was_used_is_held_and_the_next_request_takes_a_new_approval(steered, endpoint,
@@ -140,7 +155,8 @@ def test_a_reply_lost_after_the_member_was_used_is_held_and_the_next_request_tak
     with pytest.raises(errors.Unavailable) as held:
         _raise(steered)
     assert held.value.details["reason"] == G.HELD and "new approval" in held.value.message
-    assert _mode(steered) != MODE and endpoint.lines == []
+    assert G.EVERY_REQUEST in held.value.message
+    assert _mode(steered) != MODE and _no_code(endpoint.lines)
     status, out = steered.fake.service.consume(steered.fake.consumed[0])
     assert status == 200 and out["result"] == "CONSENT_ALREADY_USED", "the lost reply's member stays used"
 
@@ -176,7 +192,7 @@ def test_where_the_standing_fails_the_typed_code_runs_with_the_reason(steered, e
                         lambda *a, **k: g3standing.Standing(False, 3, "a weaker launch", "wait"))
     out = operator_client.request_raise(
         steered.root, MODE, requester="test",
-        ask=lambda prompt: __import__("re").findall(r"confirmation code ([0-9A-F]{6})", "".join(endpoint.lines))[-1])
+        ask=lambda prompt: re.findall(r"confirmation code ([0-9A-F]{6})", "".join(endpoint.lines))[-1])
     assert out["mode"] == MODE and steered.fake.requests == 0 and steered.fake.consumed == []
     assert "a weaker launch" in capsys.readouterr().err
     assert "origin" not in next(r for r in _records(steered) if r.get("source") == "raise")["by"]["principal"]
@@ -185,8 +201,9 @@ def test_where_the_standing_fails_the_typed_code_runs_with_the_reason(steered, e
 @pytest.mark.parametrize("failure", [errors.Unavailable("no answer", reason="g3_unreachable"),
                                      errors.Unavailable("503", reason="g3_unavailable"),
                                      errors.PermissionDenied("403", reason="g3_peer_not_permitted"),
-                                     errors.ValidationFailed("400", reason="g3_refused", status=400)],
-                         ids=["no-answer", "503", "403", "400"])
+                                     errors.ValidationFailed("400", reason="g3_refused", status=400),
+                                     errors.ValidationFailed("a 403 with no code", reason="g3_refused", status=403)],
+                         ids=["no-answer", "503", "403", "400", "403-no-code"])
 @pytest.mark.parametrize("where", ["request_approval", "await_decision"])
 def test_no_answer_or_a_refused_peer_or_a_bad_request_is_held_before_consume_and_never_the_code(
         steered, endpoint, monkeypatch, failure, where):
@@ -197,7 +214,24 @@ def test_no_answer_or_a_refused_peer_or_a_bad_request_is_held_before_consume_and
     with pytest.raises(errors.Unavailable) as held:
         _raise(steered)
     assert held.value.details["reason"] == G.HELD, held.value.details
-    assert _mode(steered) != MODE and endpoint.lines == [], "nothing raised, and no code shown"
+    assert _mode(steered) != MODE and _no_code(endpoint.lines), "nothing raised, and no code shown"
+    older = where == "request_approval" and failure.details.get("status") == 400
+    assert (g3standing.INSTALL in held.value.message) == older, "only a refused set is taken for an older service"
+
+
+def test_a_service_older_than_the_overlay_holds_and_names_the_reinstall(steered, endpoint, monkeypatch):
+    """Planted: the service reads the sealed files only. The standing counts, so the code is not offered, and asking
+    again gets the same answer: the reply gives the reason and the fix (ruling 1)."""
+    from aew.stg02 import adopted
+    from aew_g3 import wire as service_wire
+
+    monkeypatch.setattr(service_wire, "o01_errors", lambda body: adopted.o01_errors("CommandSet", body))
+    with pytest.raises(errors.Unavailable) as held:
+        _raise(steered)
+    message = held.value.message
+    assert held.value.details["reason"] == G.HELD and "STRUCTURAL" in message
+    assert g3standing.INSTALL in message and "keeps the ledger" in message and "request it again" not in message
+    assert steered.fake.requests == 1 and steered.fake.consumed == [] and _no_code(endpoint.lines)
 
 
 def _raises(failure: Exception) -> Any:
@@ -223,7 +257,8 @@ def test_a_consume_that_gets_no_result_is_held_and_never_the_code(steered, endpo
         _raise(steered)
     assert held.value.details["reason"] == G.HELD, held.value.details
     assert "new approval" in held.value.message, "the client's way on reaches the operator"
-    assert _mode(steered) != MODE and endpoint.lines == [], "nothing raised, and no code shown"
+    assert G.EVERY_REQUEST in held.value.message
+    assert _mode(steered) != MODE and _no_code(endpoint.lines), "nothing raised, and no code shown"
 
 
 def test_a_decline_is_refused_and_never_becomes_a_console_approval(steered, endpoint):
@@ -231,7 +266,8 @@ def test_a_decline_is_refused_and_never_becomes_a_console_approval(steered, endp
     with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
         _raise(steered)
     assert refused.value.details["reason"] == "declined"
-    assert endpoint.lines == [] and steered.fake.consumed == [] and _mode(steered) != MODE
+    assert _no_code(endpoint.lines) and steered.fake.consumed == [] and _mode(steered) != MODE
+    assert any("declined" in line for line in endpoint.lines), "the console says how it ended"
 
 
 def test_a_standing_that_fails_after_the_approval_holds_and_the_next_request_takes_the_code(steered, endpoint,
@@ -253,8 +289,6 @@ def test_a_standing_that_fails_after_the_approval_holds_and_the_next_request_tak
 def test_what_moved_after_the_approval_refuses_before_consume_and_does_not_spend_it(steered, endpoint):
     """Each bound value that moves is named, and a generation that moves between the approval and the consume refuses
     with consume not called."""
-    from aew.engine import steering
-
     bound = steered.engine.steering_raise_preview(MODE)
     assert G.moved(G.raise_set(bound), bound) is None
     later = {**bound, "generation": bound["generation"] + 1}
@@ -263,6 +297,8 @@ def test_what_moved_after_the_approval_refuses_before_consume_and_does_not_spend
     assert G.moved(G.raise_set(bound), later) == "mode_version"
     later = {**bound, "previous": "walk"}
     assert G.moved(G.raise_set(bound), later) == "current_mode"
+    later = {**bound, "legality_digest": "f" * 64}
+    assert G.moved(G.raise_set(bound), later) == "reason_ref"
     assert steering.RANK[None] == steering.RANK["crawl"], "a mode never set is carried as the lowest"
 
     real = steered.engine.steering_raise_preview
@@ -277,15 +313,129 @@ def test_what_moved_after_the_approval_refuses_before_consume_and_does_not_spend
     assert steered.fake.consumed == [] and _mode(steered) != MODE
 
 
+def _principal() -> Any:
+    return operator_endpoint.OperatorPrincipal(uid=None, method="peer_credentials", endpoint_pid=1,
+                                               endpoint_started_at="t")
+
+
+def test_a_mode_that_left_and_came_back_during_the_wait_refuses_on_its_version(steered, endpoint):
+    """The current mode reads the same, so only the record's version shows it moved (I6-06.a): real records, between
+    the approval and the consume."""
+    engine, project = steered.engine, steered.project
+
+    def left_and_back() -> None:
+        now = engine.steering_raise_preview(MODE)
+        engine.steering_raise(_principal(), mode=MODE, generation=now["generation"],
+                              legality_digest=now["legality_digest"])
+        engine.steering_lower(token=project.token, expect_rev=project.rev(), mode="crawl")
+
+    steered.fake.on_decide = left_and_back
+    with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
+        _raise(steered)
+    assert "mode_version moved" in refused.value.message and "not spent" in refused.value.message
+    assert steered.fake.consumed == [] and _mode(steered) == "crawl"
+
+
+def test_a_policy_adopted_during_the_wait_refuses_and_does_not_spend_the_approval(steered, endpoint):
+    steered.fake.on_decide = lambda: _policy(steered.project, mode="allow_weaker")  # the digest covers this field
+    with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
+        _raise(steered)
+    assert "reason_ref moved" in refused.value.message and "not spent" in refused.value.message
+    assert steered.fake.consumed == [] and _mode(steered) != MODE
+
+
+def _policy(project, **containment) -> None:
+    path = project.root / ".aew/policy/execution.yaml"
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    doc["containment"] = {**(doc.get("containment") or {}), **containment}
+    path.write_bytes(yaml.safe_dump(doc).encode())
+    project.adopt_policy()
+
+
+@pytest.fixture
+def judged(steered, monkeypatch):
+    """The real standing, on the project's real policy: only the host's conditions, 1 and 3, are stood in."""
+    monkeypatch.setattr(g3standing, "standing", REAL_STANDING)
+    monkeypatch.setattr(g3standing, "installed", lambda platform=None: None)
+    monkeypatch.setattr(g3standing, "no_weaker_context", lambda now=None: None)
+    return steered
+
+
+def test_the_real_standing_judges_this_projects_policy_at_the_challenge(judged, capsys):
+    """A policy that does count is the real-wire tests' (Linux: Windows has no containment, so nothing counts there)."""
+    _policy(judged.project, mode="allow_weaker")
+    lines: list[str] = []
+    ep = operator_endpoint.OperatorEndpoint(Engine.discover(judged.project.root), console=lines.append, dev=True,
+                                            timeout=30)
+    ep.start()
+    try:
+        out = operator_client.request_raise(
+            judged.root, MODE, requester="test",
+            ask=lambda prompt: re.findall(r"confirmation code ([0-9A-F]{6})", "".join(lines))[-1])
+    finally:
+        ep.close()
+    assert out["mode"] == MODE and judged.fake.requests == 0, "a project that lets launches run weaker takes the code"
+    assert "containment.mode" in capsys.readouterr().err
+
+
+def test_the_real_standing_judges_the_projects_policy_again_before_consume(judged):
+    _policy(judged.project, mode="required", network={"mode": "proxy_only"})
+    policy, _ = judged.engine.execution_policy()
+    approved, record = G.approve(G.raise_set(judged.engine.steering_raise_preview(MODE)), lambda p: None)
+    with pytest.raises(errors.Unavailable) as held:
+        G.consume_member(approved, record, {**policy, "containment": {"mode": "allow_weaker"}})
+    assert held.value.details["reason"] == G.HELD and "containment.mode" in held.value.message
+    assert judged.fake.consumed == []
+
+
+def test_a_requester_that_has_gone_ends_the_wait_and_says_so_and_frees_the_endpoint(steered, endpoint):
+    steered.fake.undecided = True
+    conn = operator_client._connect(steered.root)
+    operator_client._send(conn, "mode_raise", {"mode": MODE, "requester": "test"})
+    approval = operator_client._reply(conn)["approval_ref"]
+    conn.close()
+    deadline = time.monotonic() + ENDED
+    while not any("has gone" in line for line in endpoint.lines):
+        assert time.monotonic() < deadline, "the wait did not end"
+        time.sleep(0.01)
+    assert any(approval in line for line in endpoint.lines) and steered.fake.consumed == [] and _mode(steered) != MODE
+    steered.fake.undecided = False
+    assert _raise(steered)["mode"] == MODE, "the endpoint is free again"
+
+
+def test_a_requester_gone_when_the_approval_arrives_spends_nothing(steered, endpoint):
+    conn = operator_client._connect(steered.root)
+    steered.fake.on_decide = conn.close  # gone between the operator's approval and the consume
+    operator_client._send(conn, "mode_raise", {"mode": MODE, "requester": "test"})
+    deadline = time.monotonic() + ENDED
+    while not any("has gone" in line for line in endpoint.lines):
+        assert time.monotonic() < deadline, "the request did not end"
+        time.sleep(0.01)
+    assert steered.fake.consumed == [] and _mode(steered) != MODE
+
+
+def test_while_an_approval_waits_the_busy_refusal_names_it_and_the_confirmer(steered, endpoint):
+    steered.fake.undecided = True
+    conn = operator_client._connect(steered.root)
+    try:
+        operator_client._send(conn, "mode_raise", {"mode": MODE, "requester": "test"})
+        approval = operator_client._reply(conn)["approval_ref"]
+        with pytest.raises(errors.PermissionDenied) as busy:
+            _raise(steered)
+        assert approval in busy.value.message and "decline" in busy.value.message and "confirmer" in busy.value.message
+    finally:
+        steered.fake.undecided = False
+        conn.close()
+
+
 def test_the_raise_gets_the_values_the_consent_bound_so_its_own_staleness_refusals_decide(steered):
     bound = steered.engine.steering_raise_preview(MODE)
     values = G.bound_values(G.raise_set(bound))
     assert (values.mode, values.generation, values.legality_digest) == (MODE, bound["generation"],
                                                                         bound["legality_digest"])
     with pytest.raises(errors.AEWError) as stale:
-        steered.engine.steering_raise(operator_endpoint.OperatorPrincipal(
-            uid=None, method="peer_credentials", endpoint_pid=1, endpoint_started_at="t"), mode=values.mode,
-            generation=values.generation + 1, legality_digest=values.legality_digest)
+        steered.engine.steering_raise(_principal(), mode=values.mode, generation=values.generation + 1,
+                                      legality_digest=values.legality_digest)
     assert "generation" in stale.value.message
 
 

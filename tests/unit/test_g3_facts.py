@@ -260,7 +260,7 @@ ALLOWED_AEW = {"aew.errors", "aew.stg02.g3_overlay", "aew.stg02.wire"}
 THROUGH_OVERLAY = {"aew.stg02.adopted"}  # what the overlay reads: the sealed files
 
 
-def test_the_service_imports_from_aew_only_the_sealed_o01_files_sw02_and_the_error_types() -> None:
+def test_the_service_imports_from_aew_only_the_sealed_o01_files_the_overlay_sw02_and_the_error_types() -> None:
     """The service stays small and apart: it derives O-01 and SW-02 from their one owner and takes AEW's typed
     errors, and nothing else of AEW (no engine, no harness, no store)."""
     modules: dict[str, set[str]] = {}

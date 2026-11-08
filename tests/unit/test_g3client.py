@@ -558,6 +558,19 @@ def test_every_refusal_of_the_o01_route_is_typed_and_the_token_is_in_none_of_the
     assert TOKEN not in repr(e.value) + str(e.value) + json.dumps(e.value.to_dict())
 
 
+def test_a_refused_set_only_the_overlay_has_points_at_the_operator_endpoint(route: Any) -> None:
+    """A hand-written raise takes a PIN and fails at the carrier, unconsumed: the refusal names the governed way."""
+    url, _, answers = route
+    answers.append((400, {"code": "STRUCTURAL"}))
+    with pytest.raises(ValidationFailed) as e:
+        C.submit({"intents": [{"action": "SET_STEERING_MODE"}]}, url, TOKEN)
+    assert "aew lead mode raise" in e.value.message and "approval is unused" in e.value.message
+    answers.append((400, {"code": "STRUCTURAL"}))
+    with pytest.raises(ValidationFailed) as e:
+        C.submit({"intents": [{"action": "ATTACH_LEAD"}]}, url, TOKEN)
+    assert "aew lead mode raise" not in e.value.message
+
+
 def test_a_route_that_does_not_answer_is_unavailable_and_the_token_is_not_in_it() -> None:
     import socket
 

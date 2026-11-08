@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Iterable
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,12 @@ def _registry() -> dict[str, dict[str, Any]]:
 def registry() -> dict[str, dict[str, Any]]:
     """The sealed action registry plus the overlay's rows."""
     return copy.deepcopy(_registry())
+
+
+def owned_elsewhere(actions: Iterable[str]) -> list[str]:
+    """Those of ``actions`` only the overlay has: the carrier has no owner for them."""
+    rows = {row["action"] for row in _document()["rows"]}
+    return [action for action in actions if action in rows]
 
 
 @cache

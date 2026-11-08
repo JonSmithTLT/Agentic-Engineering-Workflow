@@ -102,7 +102,7 @@ def with_proofs(cset: dict[str, Any], token: Callable[[int], str] = secrets.toke
         i["origin_proof_ref"] = "proof:" + token(PROOF_BYTES)
     errors = A.o01_errors("CommandSet", out)
     if errors:
-        raise ValidationFailed("the set is not a valid O-01 0.2 CommandSet: " + "; ".join(errors[:5]),
+        raise ValidationFailed("the set is not a valid O-01 CommandSet: " + "; ".join(errors[:5]),
                                reason="command_set_schema", errors=errors)
     return out
 
@@ -292,7 +292,11 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
                                reason="o01_unauthenticated")
     if status == 503:
         raise Unavailable("the O-01 route is unavailable; the approval is unused", reason="o01_unavailable")
-    raise ValidationFailed(f"the O-01 route refused the set: {code or status}; the approval is unused",
+    # What only the overlay has, no owner on this route takes: the operator endpoint's is the governed way
+    elsewhere = A.owned_elsewhere(i.get("action") for i in cset.get("intents") or [])
+    way = f". {', '.join(elsewhere)} is taken at the operator endpoint: run `aew lead mode raise <mode>`" if elsewhere \
+        else ""
+    raise ValidationFailed(f"the O-01 route refused the set: {code or status}; the approval is unused{way}",
                            reason="o01_refused", o01_code=code, status=status)
 
 

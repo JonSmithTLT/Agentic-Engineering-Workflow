@@ -72,12 +72,12 @@ def wire_errors(ref: str, body: Any) -> list[str]:
 
 
 def o01_errors(body: Any) -> list[str]:
-    """Schema errors of a command set against the sealed O-01 0.2 ``CommandSet`` (G3-02 step 1)."""
+    """Schema errors of a command set against the sealed O-01 0.2 ``CommandSet`` plus the overlay (G3-02 step 1)."""
     return o01.o01_errors("CommandSet", body)
 
 
 def registry() -> dict[str, dict[str, Any]]:
-    """The adopted action registry: each action's ``origin`` and ``sole_admitting_owner``."""
+    """The adopted action registry plus the overlay's rows: each action's ``origin`` and ``sole_admitting_owner``."""
     return o01.registry()
 
 

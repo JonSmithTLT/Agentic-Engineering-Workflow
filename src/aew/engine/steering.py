@@ -65,7 +65,8 @@ RECORD_SCHEMA = "aew/steering-record/v1"
 @dataclass(frozen=True)
 class OperatorPrincipal:
     """Who authorized an operator operation, as the operator endpoint established it: the endpoint's peer check and
-    the challenge answered at its console. Constructed only by ``aew.harness.operator_endpoint`` (a static test pins
+    the challenge answered, by the code from its console or, where ``origin`` says so, a consumed G3 approval.
+    Constructed only by ``aew.harness.operator_endpoint`` (a static test pins
     it); no CLI parser, broker relay, typed tool or recovery escape can build one. ``guarantee`` is not a field: it
     is ``dev`` for every principal until F18.6."""
 
@@ -298,7 +299,7 @@ class Steering:
     def raise_mode(self, principal: OperatorPrincipal, *, mode: str, generation: int,
                    legality_digest: str) -> dict[str, Any]:
         """Raise the effective mode to ``mode`` for Lead generation ``generation``: the operator endpoint's commit,
-        after its peer check and the challenge at its console. Refused if the generation or the legality digest the
+        after its peer check and the challenge it answered. Refused if the generation or the legality digest the
         operator was shown has moved since."""
         if not isinstance(principal, OperatorPrincipal):
             raise PermissionDenied("a steering raise is the operator's, through the operator endpoint "

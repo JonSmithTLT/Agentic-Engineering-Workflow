@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -58,6 +59,22 @@ def test_the_overlay_equals_a43_apart_from_the_owner_label():
     assert other["then"]["properties"]["owner_hint"]["const"] == "R01"
     other["then"]["properties"]["owner_hint"]["const"] = "ADC"
     assert branch == other
+
+
+def test_the_overlay_holds_that_one_action_and_nothing_else():
+    """The equality above finds its entries by name, so an added one has to be refused here."""
+    doc = O._document()
+    assert [row["action"] for row in doc["rows"]] == [ACTION]
+    assert list(doc["definitions"]) == ["SET_STEERING_MODETarget"]
+    assert [b["if"]["properties"]["action"]["const"] for b in doc["branches"]] == [ACTION]
+
+
+def test_the_wheel_ships_the_overlay():
+    """The service reads it at construction, from its installed wheel, so a wheel without it cannot start."""
+    data = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8"))
+    package = O.FILE.parents[1]
+    shipped = {p for glob in data["tool"]["setuptools"]["package-data"]["aew.stg02"] for p in package.glob(glob)}
+    assert O.FILE in shipped
 
 
 def test_adc_is_in_the_pinned_g3_wire_and_r01_is_not():

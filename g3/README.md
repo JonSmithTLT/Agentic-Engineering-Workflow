@@ -30,9 +30,47 @@ PIN hash.
 **`run` also needs** an executable `notify.command`, `deadline_s` on every execution profile routing can pick, and the
 endpoint up for as long as it runs.
 
+**A service older than `aew`** answers every raise with a hold that names the install command: run step 1 again.
+
+**Leaving the terminal** ends the request: nothing consumes its approval, so approving it later raises nothing, and it
+leaves the confirmer when it expires. The endpoint's console shows how each request ended.
+
 **When G3 does not count,** the raise asks for the typed code, as it always has, and says why. **Once the approval is
 asked for it never moves to the code:** no answer from the service is held, with the mode where it was (A-37 `G3-11`).
 To get out of that, restart the service (`aew-g3.socket`), or set the project's policy away from `required` yourself.
+
+### Acceptance on a real host
+
+The tests have no GTK, no systemd and no real PIN entry, so a host's first raise has to show these:
+
+1. Before the reinstall, a raise is held and the reply names the install command.
+2. After it, `aew/stg02/overlay/set-steering-mode.json` is in the service's install, and `aew-g3.socket` activates the
+   service under `SocketUser=`, with a hardened `aew operator serve --dev` as a separate process.
+3. The confirmer's window takes a real PIN, and every target field can be read there.
+4. The raise lands, and the mode's record names the consent set (`by.principal.origin`).
+5. A replay is refused. No command makes one, so use the script below.
+6. After a real weaker launch, the next raise takes the typed code, and its line names the launch's pid and directory.
+7. With the service stopped during the wait, and again at the consume, the raise is held and no code is shown.
+8. Restarting `aew-g3.socket` gets out of that.
+
+The replay, with a set that is not this project's, so it moves no mode. Approve it in the confirmer. It prints `CONSUMED`,
+then `CONSENT_ALREADY_USED`:
+
+```python
+from aew import g3client as C
+from aew.harness import g3_adapter as G
+from aew.stg02 import wire as W
+
+bound = {"project": "replay-check", "mode": "walk", "previous": None, "mode_rev": 0, "generation": 1,
+         "legality_digest": "0" * 64}
+approved, _ = G.approve(G.raise_set(bound), lambda pending: print("approve", pending["approval_ref"]))
+member = approved["intents"][0]
+for op in ("first", "replay"):
+    print(C.consume(consent_set_ref=approved["consent_set_ref"], set_digest=W.set_digest(approved),
+                    recipient_ref=approved["recipient_ref"], installation_ref=approved["installation_ref"],
+                    intent_ref=member["intent_ref"], origin_proof_ref=member["origin_proof_ref"], owner=G.OWNER,
+                    operation_ref=f"aew:steering-raise:{op}").result)
+```
 
 ## What runs, and as whom
 

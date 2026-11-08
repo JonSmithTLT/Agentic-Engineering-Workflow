@@ -263,8 +263,9 @@ def resolve(root: Path = ROOT) -> int:
     conflicted = {name.removeprefix(prefix) for name in unmerged if name}
     changed = render(root, root / prefix)
     # Only what is the generator's to settle, never another file there. A name render removed that git never tracked
-    # (or a directory's own name) is nothing to stage, and naming it would stop `git add`.
-    tracked = set(_git(root, "ls-files", "--", prefix).stdout.splitlines())
+    # (or a directory's own name) is nothing to stage, and naming it would stop `git add`. `-z`, or git quotes a
+    # non-ASCII name and a tracked one reads as never tracked (review of #384, finding 6).
+    tracked = set(_git(root, "ls-files", "-z", "--", prefix).stdout.split("\0"))
     pages = [prefix + name for name in sorted(conflicted | set(changed))
              if (root / prefix / name).is_file() or prefix + name in tracked]
     added = _git(root, "add", "-A", "--", *pages) if pages else None

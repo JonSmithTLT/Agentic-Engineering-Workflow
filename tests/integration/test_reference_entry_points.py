@@ -293,16 +293,35 @@ def test_one_list_holds_every_start_of_an_entry_point_with_its_form_and_says_how
         mine = {(i["module"], i["symbol"]) for i in fact["starts"] if i["form"] == E.PATH_FORM}
         assert mine == (path_sites if key in roles else set()), key  # the PATH makes every role of the CLI startable
         assert {(i["module"], i["symbol"]) for i in fact["starts"] if i["form"] == E.DASH_M} == {
-            (s.module, s.symbol) for s in spawns if s.target is not None and E.entry_for(s.target) == key}, key
+            (s.module, s.symbol) for s in spawns if s.target is not None and E.entry_for(s.target, s.words) == key}, key
     argv_sites = {(m, c.symbol) for m, c in consoles if c.form == E.ARGV_FORM}
-    # the Lead's MCP server starts as this interpreter's `-m aew` (E180): a `-m` start is the CLI's, whatever its words
-    cli = {(i["module"], i["symbol"]) for i in by_key["aew"]["starts"] if i["form"] == E.DASH_M}
-    assert ("aew.harness.opencode.projection", "lead_mcp_command") in cli
+    # The Lead's MCP server starts as this interpreter's `-m aew lead mcp` (E180), and declares `aew lead mcp`, a
+    # non-writer, at run time: the page lists it there (review of #384, finding 2)
+    mcp = ("aew.harness.opencode.projection", "lead_mcp_command")
+    assert mcp in {(i["module"], i["symbol"]) for i in by_key["aew lead mcp"]["starts"] if i["form"] == E.DASH_M}
+    assert mcp not in {(i["module"], i["symbol"]) for i in by_key["aew"]["starts"]}
+    assert by_key["aew lead mcp"]["kind"] == "non_writer"
     assert ("aew.dashboard.projections", "Projector._search_hit") in {
         (i["module"], i["symbol"]) for i in by_key["aew"]["starts"] if i["form"] == E.ARGV_FORM}
     unresolved = {(i["module"], i["symbol"])
                   for k in by_key for i in coverage_of[k]["starts"]["unresolved"]}
     assert set(argv_sites) <= unresolved  # an argv constant is listed, and its being run is not decided
+
+
+@pytest.mark.parametrize(("argv", "row"), [
+    ('[sys.executable, *FLAGS, "-m", "aew", "lead", "mcp"]', "aew lead mcp"),
+    ('[sys.executable, "-m", "aew.__main__", "dashboard", "serve", port]', "aew dashboard serve"),
+    ('[sys.executable, "-m", "aew", "resume"]', "aew"),
+    ('[sys.executable, "-m", "aew", *argv]', "aew"),
+    ('[sys.executable, "-m", "aew", "lead", name]', "aew"),
+    ('[sys.executable, "-m", "aew", "-C", root, "lead", "mcp"]', "aew"),
+    ('[sys.executable, "-m", "aew", word, "lead", "mcp"]', "aew"),
+])
+def test_a_dash_m_start_of_the_cli_is_on_the_row_its_constant_words_give(argv, row):
+    """The owner's ``cli_entry_point`` decides, as for a console-script argv. Words not all constants don't decide, and
+    the start stays on ``aew``: the page's lists are lower-bound, and a run-time role is not read from here."""
+    site = planted(f"import sys\nargv = {argv}\n")[0][0]
+    assert E.entry_for(site.target, site.words) == row
 
 
 def test_a_literal_declaration_planted_in_the_defining_module_is_seen_and_its_own_forwarding_is_not_one():

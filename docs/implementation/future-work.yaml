@@ -3003,17 +3003,6 @@ sections:
     When: '**Unscheduled**, any idle slot'
     Notes: Filed by the Lead
 
-  - '#': E180
-    Work: The Lead's MCP server starts as a bare `aew lead mcp` (`projection.py`'s `LEAD_MCP_COMMAND`), so it runs whichever
-      `aew` is first on the path, not the interpreter and code the Lead runs. In a mixed setup (a development copy, an upgrade
-      mid-session, two virtual environments) the Lead's typed tools fail with only "connection closed". Start the server
-      with the Lead's own interpreter (`sys.executable -m aew lead mcp`, or its equivalent resolved at start), keep the
-      sandbox's binds covering that interpreter, and test that the configured command names the running interpreter
-    Source: 'The operator''s live check of 2026-11-06: a contained Lead started from a branch copy, whose sandbox''s `aew`
-      was another tree''s editable install'
-    When: '**Unscheduled**, small, any time. It helps every test that runs a Lead from a copy'
-    Notes: Filed by the Lead, at the operator's request
-
   - '#': E182
     Work: 'The systems generator, in three slices. **PR 1:** `docs/implementation/systems.yaml` and `tools/systems.py check`
       in the fast lane. Ownership is checked both ways: every live register row is owned by a system or listed as unowned,
@@ -3996,6 +3985,13 @@ sections:
       model the operator approves for that event; its readiness line, which joins E125 when E125 is built; and the missing
       reason in `base.LAUNCH_REFUSALS`, E189. `eval/aew_eval/raw.py`''s two "free model" texts were reworded in the change
       that closed this row'
+
+  - '#': E180
+    Was: The Lead's MCP server started as a bare `aew lead mcp`, so it ran whichever `aew` was first on the path and the
+      Lead's typed tools failed with only "connection closed"; start it with the Lead's own interpreter and import path
+    Closed: '2026-11-08'
+    By: '#384 (`039a281e`), with its review''s follow-ons on the pull request after it. What it does not reach is in this
+      row''s note'
 
   - '#': F1
     Was: Hot and cold control state (archival of terminal records)

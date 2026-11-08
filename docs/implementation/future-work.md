@@ -2303,18 +2303,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E179/`, oldest first (`python tools/register.py show E179`).*
 
-### E180
-
-**Work:** The Lead's MCP server starts as a bare `aew lead mcp` (`projection.py`'s `LEAD_MCP_COMMAND`), so it runs whichever `aew` is first on the path, not the interpreter and code the Lead runs. In a mixed setup (a development copy, an upgrade mid-session, two virtual environments) the Lead's typed tools fail with only "connection closed". Start the server with the Lead's own interpreter (`sys.executable -m aew lead mcp`, or its equivalent resolved at start), keep the sandbox's binds covering that interpreter, and test that the configured command names the running interpreter
-
-**Source:** The operator's live check of 2026-11-06: a contained Lead started from a branch copy, whose sandbox's `aew` was another tree's editable install
-
-**When:** **Unscheduled**, small, any time. It helps every test that runs a Lead from a copy
-
-**Notes:** Filed by the Lead, at the operator's request
-
-*Later notes: `notes.d/E180/`, oldest first (`python tools/register.py show E180`).*
-
 ### E182
 
 **Work:** The systems generator, in three slices. **PR 1:** `docs/implementation/systems.yaml` and `tools/systems.py check` in the fast lane. Ownership is checked both ways: every live register row is owned by a system or listed as unowned, and no system claims a held work (a hold group or its members). A lint refuses Now-item numbers, pull-request numbers and register line citations in hand-kept fields, and nothing derived is stored (no `serves`, no counts). **PR 2:** `render` writes `systems.md`, with the views "finish and switch on soon", "finish, with more to build", "the operator's decisions" and "done", and their counts, with priority read from the Now list; `check` compares the committed copy. **PR 3:** state from the code: `switch.default` from the policy defaults, `wired` against the as-built reference and the Lead's tool catalog, and the N = 12 check (§1). **Later:** `serves`, once the requirements trace is in the repository, and lanes. Done when CI fails on an unowned row, a line citation or a count above N
@@ -3454,6 +3442,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #340 (`e945b3ca`), with ADR-0009's amendment of 2026-11-06. Owed after it: the VM live check, on a keyed, paid model the operator approves for that event; its readiness line, which joins E125 when E125 is built; and the missing reason in `base.LAUNCH_REFUSALS`, E189. `eval/aew_eval/raw.py`'s two "free model" texts were reworded in the change that closed this row
 
 *Later notes: `notes.d/E156/`, oldest first (`python tools/register.py show E156`).*
+
+### E180
+
+**Was:** The Lead's MCP server started as a bare `aew lead mcp`, so it ran whichever `aew` was first on the path and the Lead's typed tools failed with only "connection closed"; start it with the Lead's own interpreter and import path
+
+**Closed:** 2026-11-08
+
+**By:** #384 (`039a281e`), with its review's follow-ons on the pull request after it. What it does not reach is in this row's note
+
+*Later notes: `notes.d/E180/`, oldest first (`python tools/register.py show E180`).*
 
 ### F1
 

@@ -179,10 +179,11 @@ def test_only_importers_takes_a_module(args, capsys):
 
 # ------------------------------------------------------------------------------------------------------------ resolve
 
-def stopped_merge(tmp_path: Path, *, code_conflict: bool = False) -> Repo:
+def stopped_merge(tmp_path: Path, *, code_conflict: bool = False, tracked: tuple[str, ...] = ()) -> Repo:
     """A real `git merge` stopped on a collision in the same module's entry on the page."""
     repo = Repo(tmp_path / "repo")
-    files = {"docs/reference/modules.md": "# Modules\n\nImports: a.\n", "src/code.py": "x = 1\n"}
+    files = {"docs/reference/modules.md": "# Modules\n\nImports: a.\n", "src/code.py": "x = 1\n",
+             **{name: "stale\n" for name in tracked}}
     base = repo.commit(files)
     ours = repo.commit({"docs/reference/modules.md": "# Modules\n\nImports: a, b.\n",
                         **({"src/code.py": "x = 2\n"} if code_conflict else {})}, base)
@@ -238,6 +239,23 @@ def test_resolve_settles_a_conflicted_page_the_render_did_not_change_and_a_remov
     assert reference.resolve(repo.path) == 0
     assert repo.git("diff", "--name-only", "--diff-filter=U").stdout == ""
     repo.git("commit", "-q", "--no-edit")
+
+
+def test_resolve_stages_the_removal_of_a_tracked_page_with_a_non_ascii_name(tmp_path, monkeypatch):
+    """git quotes such a name unless asked for `-z`, so it read as never tracked and stayed in the merge commit, where
+    `check` then fails (review of #384, finding 6)."""
+    stray = "stäle.md"
+    repo = stopped_merge(tmp_path, tracked=(f"docs/reference/{stray}",))
+
+    def render(root: Path, out: Path) -> list[str]:
+        (out / "modules.md").write_text("# Modules\n\nImports: a, b, c.\n", encoding="utf-8", newline="\n")
+        (out / stray).unlink()
+        return ["modules.md", stray]
+
+    monkeypatch.setattr(reference, "render", render)
+    assert reference.resolve(repo.path) == 0
+    repo.git("commit", "-q", "--no-edit")
+    assert repo.git("ls-files", "-z", "--", "docs/reference/").stdout.split("\0") == ["docs/reference/modules.md", ""]
 
 
 def test_two_first_edges_to_adjacent_groups_are_a_known_collision_that_resolve_settles(tmp_path):

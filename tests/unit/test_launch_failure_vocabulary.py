@@ -9,6 +9,7 @@ import pytest
 from aew.engine import harness_ops
 from aew.harness import base as B
 from aew.harness import contract as K
+from aew.harness.containment import netns
 from aew.harness.opencode import adapter as opencode
 
 SITES = (K.CUSTODY, K.START, K.HANDOFF, K.LAUNCHER)
@@ -37,7 +38,9 @@ def test_a_launch_reports_only_closed_values_beside_its_status_and_its_code():
     assert all(r == r.lower() and r.isidentifier() for r in B.LAUNCH_REFUSALS) and not B.LAUNCH_REFUSALS & every
     assert B.RELAY_FAMILY_SHOWN == {B.RELAY_FAMILY_MATCHES, B.RELAY_FAMILY_UNVERIFIED}
     assert B.RELAY_FAMILY_MISMATCH not in B.RELAY_FAMILY_SHOWN  # a mismatch refuses the launch
-    assert {opencode.RELAY_FAMILY_REFUSED, opencode.KEY_IN_SANDBOX, opencode.PROVIDER_ENV_UNUSABLE} == B.LAUNCH_REFUSALS
+    # the adapter's reasons, and the supervisor's own refusal of a launch whose provider gets no key (E189)
+    assert {opencode.RELAY_FAMILY_REFUSED, opencode.KEY_IN_SANDBOX, opencode.PROVIDER_ENV_UNUSABLE,
+            netns.PROVIDER_KEY_MISSING} == B.LAUNCH_REFUSALS
 
 
 @pytest.mark.parametrize(("ack", "passed_on"), [
@@ -48,6 +51,7 @@ def test_a_launch_reports_only_closed_values_beside_its_status_and_its_code():
     ({"started": True, "refusal": "relay_family_mismatch"}, {}),  # a started launch refused nothing
     ({"started": False, "refusal": "relay_family_mismatch"}, {"refusal": "relay_family_mismatch"}),
     ({"started": False, "refusal": "provider_secret_in_sandbox"}, {"refusal": "provider_secret_in_sandbox"}),
+    ({"started": False, "refusal": "provider_key_missing"}, {"refusal": "provider_key_missing"}),  # E189
     ({"started": False, "refusal": "anything else"}, {}),
     ({"started": False, "relay_family": "unverified"}, {}),
 ])

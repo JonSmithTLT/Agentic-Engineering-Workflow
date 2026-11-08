@@ -5,7 +5,9 @@ meter and the supervisor write. The post into a real session is the harness's, a
 from __future__ import annotations
 
 import json
+import os
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -283,6 +285,33 @@ def test_a_later_attempt_of_the_same_ticket_supersedes_a_run_ended_wake(lab: Lab
     lab.poster.is_busy = False
     q.tick()
     assert lab.poster.posts == []
+
+
+def test_a_run_told_as_ended_whose_heartbeat_comes_back_is_watched_again(tmp_path: Path) -> None:
+    """The real `runlog`: a heartbeat older than `STALE_AFTER_S` reads as `lost`, which isn't live, and it can come
+    back. The Lead told "ended" looks, sees it running and ends its turn, so a wake has to come."""
+    lab = Lab(tmp_path)
+    lab.live()
+    directory = runlog.run_dir(lab.root, RUN)
+    (directory / runlog.RECORD).write_text(json.dumps({"status": K.RUNNING}), encoding="utf-8")
+    runlog.beat(directory)
+    q = lab.queue()
+    q.tick()
+    stalled = time.time() - runlog.STALE_AFTER_S - 5
+    os.utime(directory / "heartbeat", (stalled, stalled))
+    q.tick()
+    assert lab.shape()["why"] == [K.RUN_ENDED]
+    lab.poster.deliver()
+    q.tick()
+    assert len(lab.poster.posts) == 1 and Q.status(lab.root)["watching"] == []
+    runlog.beat(directory)
+    lab.digest(triggers=[OUTSIDE], out_of_scope=["src/b/x.py"])
+    q.tick()
+    assert lab.shape()["why"] == [K.OUT_OF_SCOPE] and Q.status(lab.root)["watching"] == [RUN]
+    lab.poster.deliver()
+    (directory / runlog.RECORD).write_text(json.dumps({"status": sorted(K.TERMINAL)[0]}), encoding="utf-8")
+    q.tick()
+    assert lab.shape()["why"] == [K.RUN_ENDED] and len(lab.poster.posts) == 3  # its real end is told too
 
 
 def test_a_superseded_end_is_let_go_and_is_never_posted_when_the_later_attempt_ends(lab: Lab) -> None:

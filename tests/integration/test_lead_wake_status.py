@@ -47,6 +47,9 @@ def test_a_lead_is_told_to_end_its_turn_only_while_a_wake_would_reach_it(project
     monkeypatch.setattr(broker_liveness, "read", lambda root: {"generation": generation})
     monkeypatch.setattr(broker_liveness, "judge", lambda record, **kw: None)
     assert _next_after_launch(project).startswith("end your turn: AEW wakes you when run-1")
+    monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_OFF)
+    assert _next_after_launch(project).startswith("wait on run-1")  # a broker posts, and the switch says off
+    monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_ON)
     assert Q.status(project.root / ".aew", generation=generation) is None  # no wake was ever recorded
     monkeypatch.setattr(broker_liveness, "judge", lambda record, **kw: object())  # crashed, stale or closed
     assert _next_after_launch(project).startswith("wait on run-1")

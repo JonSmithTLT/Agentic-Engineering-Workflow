@@ -1,5 +1,5 @@
 """The broker's way into the Lead's OpenCode session (``aew.harness.opencode.lead_wake``; the ruling of 2026-11-08): it
-may post and read, never answer for the operator; it wakes the session the operator last viewed; and a server that
+may post and read only; it wakes the session the operator last viewed; and a server that
 doesn't answer holds a wake, never loses or repeats it. The shapes are the ones measured on 2.2.6, 2026-11-08."""
 
 from __future__ import annotations
@@ -52,21 +52,17 @@ class FakeClient:
         return {"data": {"id": body["id"], "type": "user"}}
 
 
-def test_the_brokers_operations_are_posting_and_reading_and_never_answering_for_the_operator() -> None:
+def test_the_brokers_operations_are_posting_and_reading_only() -> None:
     assert W.OPERATIONS == {("GET", "/api/session"), ("GET", "/api/session/active"), ("GET", "/api/session/{id}/inbox"),
                             ("GET", "/api/session/{id}/message"), ("POST", "/api/session/{id}/prompt")}
-    assert not any("permission" in path or "form" in path or "interrupt" in path for _, path in W.OPERATIONS)
     served = {(m.upper(), p.replace("{sessionID}", "{id}")) for p, ms in OPENAPI["paths"].items() for m in ms}
     assert W.OPERATIONS <= served, "each is an operation of the pinned API"
 
 
 def test_a_call_outside_the_list_is_refused_by_the_poster_itself() -> None:
     poster = W.LeadPoster(lambda: FakeClient())
-    try:
-        poster._call(("POST", "/api/session/{id}/permission/{requestID}/reply"), "ses_new", {"reply": "always"})
-    except ValueError:
-        return
-    raise AssertionError("the poster let a permission answer through")
+    with pytest.raises(ValueError, match="may not call"):
+        poster._call(("POST", "/api/session/{id}/interrupt"), "ses_new", {})
 
 
 def test_a_wake_goes_to_the_session_the_operator_last_viewed_with_queue_delivery() -> None:

@@ -1886,13 +1886,13 @@ whole curated environment the TUI has, so the shell's is the same allowlist.
 **`--stdio` is required, and a test pins it.** Measured on OpenCode 2.2.6, with a fake loopback model and a synthetic
 password:
 
-| Launch | Shell sees `OPENCODE_PASSWORD` |
+| Launch | Shell's environment holds `OPENCODE_PASSWORD` |
 |---|---|
 | `serve --stdio --port N`, TUI `--server` | no |
 | `serve --port N`, TUI `--server` | **yes** |
 | `--standalone` (before this amendment) | no |
 
-`--stdio` still listens on a port. It also removes the password from the server's environment before tools run, and the
+`--stdio` still listens on a port. It also keeps the password out of the environment the server's tools inherit, and the
 standalone TUI and the worker adapter start the server the same way.
 
 **The shape.**
@@ -1915,8 +1915,8 @@ E118.
 header is the only mark (`mark_non_operator_input`: partial).
 
 **Windows.** The launch is the same there, and it was run for real on OpenCode 2.2.6 with a fake model: the server
-announces, the TUI connects and takes a typed prompt, the shell sees no password, and `/exit` or a Ctrl+C at startup ends
-the server. No wake has been run there, so none is posted (`wakes_reach_the_lead`, register E210's note) and the Lead
+announces, the TUI connects and takes a typed prompt, the shell's environment holds no password, and `/exit` or a Ctrl+C
+at startup ends the server. No wake has been run there, so none is posted (`wakes_reach_the_lead`, register E210's note) and the Lead
 waits with `harness_wait`. A console's Ctrl+C reaches every process on it, so the shim leaves it to the console, as it
 does on a terminal of its own.
 

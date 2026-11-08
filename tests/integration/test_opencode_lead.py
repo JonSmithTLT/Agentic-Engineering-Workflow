@@ -107,7 +107,7 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
     assert out["containment"]["filesystem"] == "workdir_separation_only"  # labelled not contained (STG-05 CS-4)
     assert argv == ["--server", "http://127.0.0.1:4100", str(lab.root)]  # the address the server announced
     served = json.loads((Path(lab.env["AEW_OPENCODE_BIN"]).parent / "serve-argv.json").read_text())
-    assert served[:2] == ["serve", "--stdio"]  # the form that keeps the password from the shell (measured on 2.2.6)
+    assert served[:2] == ["serve", "--stdio"]  # the form that keeps the password out of the shell's environment
     env = json.loads((sync / "env").read_text())
     for blob in (json.dumps(env), (sync / "child").read_text(), (sync / "shell").read_text()):
         assert SECRET not in blob and not contains_credential(blob)

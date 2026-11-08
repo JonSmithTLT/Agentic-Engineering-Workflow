@@ -15,6 +15,7 @@ module owns everything about that except the post itself, which is a harness's (
   the same Ticket and role. What fails is dropped, and named in the next wake's ``since_last_wake``.
 - **An ended run is told once.** Its invocation stays active until the Lead accepts or cancels it, so its mark stays
   too, recording that the end was told (``ended_told``), and goes once the run is no longer its invocation's live one.
+  A run that reads as ended and then goes on, as a stalled heartbeat does, is watched again.
 - **The broker's own mark.** Each run's mark is the newest trigger the Lead has been shown by a wake or by a wait
   (``runlog.read_returned``: a post moves that mark too, so neither repeats the other), with the absolute counts
   ``since_last_wake`` is computed from. ``told_outside`` settles what the digest alone cannot: a path reverted and then
@@ -266,12 +267,14 @@ class WakeQueue:
 
     def _gather(self) -> None:
         for run, mark in self.doc["marks"].items():
+            ended = self._ended(run, mark)
             if mark.get("ended_told"):
-                continue
+                if ended:
+                    continue
+                del mark["ended_told"]  # its heartbeat came back: it never ended, so it is watched again
             found: list[dict[str, Any]] = []
             newest = self._shown(run, mark)
             digest = runlog.read_progress(self._dir(run))
-            ended = self._ended(run, mark)
             if ended:
                 found.append({"why": K.RUN_ENDED})
             else:

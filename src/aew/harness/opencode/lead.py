@@ -149,9 +149,8 @@ def command(engine: Any, extra_args: list[str]) -> list[str]:
 
 
 def serve_spec(directory: Path, *, port: int = 0) -> dict[str, Any]:
-    """The shim's ``serve``: the Lead's server. ``--stdio`` is required: it is the form that removes the password from
-    the server's environment, so from every shell it starts; a plain ``serve`` leaks it (measured on 2.2.6,
-    2026-11-08)."""
+    """The shim's ``serve``: the Lead's server. ``--stdio`` is required: it is the form that keeps the password out of
+    the environment the server's shells inherit; a plain ``serve`` passes it on (measured on 2.2.6, 2026-11-08)."""
     directory.mkdir(parents=True, exist_ok=True)
     url_file = directory / SERVER_URL_FILE
     url_file.unlink(missing_ok=True)  # an earlier session's address is no address
@@ -322,10 +321,11 @@ def _outcome(out: dict[str, Any], version: Any) -> dict[str, Any]:
     result says what to do, since the shim's own line is above it."""
     from aew.harness.containment.shim import EXIT_SETUP
 
-    if out.get("exit") != EXIT_SETUP:
+    if out.get("exit") != EXIT_SETUP:  # the shim's own code, which a TUI that ran doesn't exit with
         return {**out, "opencode": version}
     return {**out, "ok": False, "opencode": version,
-            "not_started": "the Lead's TUI was not started; run `aew doctor`, and read the line above this result"}
+            "not_started": "the Lead's TUI was not started; run `aew doctor`, and read the server's log, "
+                           f"{SERVER_LOG}, under `.aew/local/`"}
 
 
 def _readiness(engine: Any) -> None:

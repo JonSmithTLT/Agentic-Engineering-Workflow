@@ -21,7 +21,8 @@ It also says ``serve``: the Lead's OpenCode server, which AEW starts so the Lead
 steering design's ruling of 2026-11-08). The shim starts it with its own environment, reads the address it announces,
 records that in ``url_file`` and gives it to the TUI in place of :data:`SERVER_URL`; it holds the server's lease on its
 stdin, so the server ends with the shim. The environment holds the server's password, which the TUI connects with and
-which the server removes from its own (``--stdio``, what keeps it out of the Lead's shell); the shim never reads it.
+which the server removes from its own (``--stdio``, what keeps it out of the environment the Lead's shell inherits); the
+shim never reads it.
 
 It runs as the harness's parent inside the one sandbox, so the two share its network namespace: ``python -I -c
 <this file's text> <spec> -- <harness argv>`` (``netns.shim_argv``). Its listeners are bound before the harness

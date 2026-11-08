@@ -28,10 +28,15 @@ from typing import Any
 import flight_recorder
 
 # The session deadline (session_deadline.py): xdist workers act at the deadline, the controller one margin later and
-# the sentinel one more margin later; all of it must end at least JOB_MARGIN_S before the job's timeout-minutes, so
-# the job's `if: always()` upload still runs with every file closed.
+# the sentinel one more margin later, and that must be at least JOB_MARGIN_S before the job's timeout-minutes. The
+# sentinel's longest path ends the set three margins after that, when the session finished only then and its exit or
+# evidence hangs: SESSION_END_MARGINS in all, which must still be UPLOAD_CLEARANCE_S before the timeout, so the job's
+# `if: always()` upload still runs. A job's AEW_JOB_DEADLINE is its timeout less JOB_MARGIN_S and two margins, 240 s,
+# so that path leaves it 90 s, and the first upload took about 2 s in the Windows jobs read on 2026-11-08.
 DEADLINE_MARGIN_S = 30.0
 JOB_MARGIN_S = 180.0
+SESSION_END_MARGINS = 5
+UPLOAD_CLEARANCE_S = 60.0
 
 
 @dataclass(frozen=True)
@@ -173,7 +178,8 @@ def workflow_lanes(workflows: Path) -> list[Lane]:
 
 def nesting_problems(lane: Lane, bounds: Iterable[Bound] | None = None) -> list[str]:
     """What breaks the nesting rule for one lane: the helper bounds its tests use, its --test-timeout, its
-    --session-deadline with both margins, and its job's timeout less :data:`JOB_MARGIN_S`."""
+    --session-deadline with both margins, and its job's timeout less :data:`JOB_MARGIN_S`; and the sentinel's longest
+    path, :data:`SESSION_END_MARGINS`, and its job's timeout less :data:`UPLOAD_CLEARANCE_S`."""
     problems = []
     every = {b.name: b for b in (BOUNDS.values() if bounds is None else bounds)}
     if lane.test_timeout_s is None:
@@ -189,6 +195,11 @@ def nesting_problems(lane: Lane, bounds: Iterable[Bound] | None = None) -> list[
             problems.append(f"{lane.label}: the session deadline ends at {latest:g}s (deadline plus two margins"
                             f"{f', {lane.repeats} times' if lane.repeats > 1 else ''}), not {JOB_MARGIN_S:g}s "
                             f"before the job's timeout-minutes ({lane.job_timeout_s:g}s)")
+        ended = latest + (SESSION_END_MARGINS - 2) * lane.margin_s  # the last session's longest path, on top of those
+        if ended > lane.job_timeout_s - UPLOAD_CLEARANCE_S:
+            problems.append(f"{lane.label}: the sentinel's longest path ends the set at {ended:g}s (deadline plus "
+                            f"{SESSION_END_MARGINS} margins), not {UPLOAD_CLEARANCE_S:g}s before the job's "
+                            f"timeout-minutes ({lane.job_timeout_s:g}s)")
     for b in every.values():
         if b.lanes and (lane.lane or "all") not in b.lanes:
             continue

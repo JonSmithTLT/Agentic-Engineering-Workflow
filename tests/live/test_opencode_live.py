@@ -1,9 +1,10 @@
-"""Live lane: the harness conformance scenarios against a real OpenCode 2.0.18 server (opt-in: ``--live``).
+"""Live lane: the harness conformance scenarios against a real OpenCode server (opt-in: ``--live``).
 
 The real adapter starts a real private ``opencode-cli serve --stdio`` per run, with private XDG state, and never
 touches the operator's OpenCode state or Desktop service. Scenario steps run through the real session's shell
-endpoint (``opencode_scripted.py``); ``model_step`` is a real prompt to a free model
-(``AEW_LIVE_OPENCODE_MODEL``, default below). Run it with::
+endpoint (``opencode_scripted.py``); ``model_step`` is a real prompt to the run's model: the scripted model on loopback
+when ``AEW_LIVE_OPENCODE_MODEL`` is unset (keyless: no key, no provider), else the operator's keyed model for the run
+(``harness_conformance.OpenCodeDriver``). Run it with::
 
     pytest --live tests/live -p no:xdist -q
 """
@@ -28,8 +29,12 @@ pytestmark = pytest.mark.skipif(not os.environ.get(adapter.BIN_ENV) and adapter.
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s.name)
-def test_opencode_2_0_18_conforms(scenario, tmp_path):
+def test_the_pinned_opencode_conforms(scenario, tmp_path):
     run_scenario(scenario, OpenCodeDriver(), tmp_path)
+
+
+# The rules the pinned OpenCode appends after an agent's own (measured on 2.2.6, 2026-11-07; 2.0.22 appended the first).
+OPENCODE_APPENDS = [projection.rule("browser", "deny"), projection.rule("skill", "deny", "browser")]
 
 
 def test_the_real_server_accepts_the_lead_projection(tmp_path):
@@ -59,7 +64,12 @@ def test_the_real_server_accepts_the_lead_projection(tmp_path):
     assert set(projection.LEAD_COMMANDS) <= commands, sorted(commands)
     lead = agents[projection.LEAD_AGENT]
     assert lead["system"] == projection.LEAD_SYSTEM
-    assert lead["permissions"][-len(projection.LEAD_RULES):] == projection.LEAD_RULES  # the Lead's rules win
+    assert projection.rules_hold(lead["permissions"], projection.LEAD_RULES) is None, lead["permissions"]
+    # What the pinned OpenCode appends after the Lead's rules, exactly: a new rule there gets a verdict before it is
+    # accepted, even a deny (one on `shell` would leave the Lead unable to run anything).
+    loaded, want = lead["permissions"], projection.LEAD_RULES
+    end = max(i for i in range(len(loaded) - len(want) + 1) if loaded[i:i + len(want)] == want) + len(want)
+    assert loaded[end:] == OPENCODE_APPENDS, loaded[end:]
     (tmp_path / "lead-agent.json").write_text(json.dumps(agents[projection.LEAD_AGENT], indent=1))
 
 

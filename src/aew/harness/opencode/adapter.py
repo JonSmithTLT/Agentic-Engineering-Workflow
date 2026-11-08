@@ -44,7 +44,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +68,7 @@ from aew.harness.contract import (
     CREDENTIAL_PATTERNS,
     EXPECT_REV,
     LONG_TOKEN,
+    PLUGINS_TIMEOUT,
     PROVIDER_AUTH_FAILED,
     REDACTION_FORMS,
     UNAVAILABLE_TOOLS,
@@ -95,6 +96,24 @@ POLL_S = 1.0
 PAGES = 100  # at most this many pages of 200 messages are read for a run's snapshot (more: `truncated`)
 CATALOG_WAIT_S = float(os.environ.get("AEW_OPENCODE_CATALOG_S", "90"))
 CATALOG_SETTLE_S = float(os.environ.get("AEW_OPENCODE_CATALOG_SETTLE_S", "20"))
+# OpenCode 2.2.6 holds a location's requests until its plugins finish activating, 5 s at most each, then answers 503
+# with this message (read from its bundle, 2026-11-07). With an OPENCODE_API_KEY set, the `opencode.provider.opencode`
+# plugin fetches Zen's console configuration (https://opencode.ai/console/api/v2/config, the console sync a contained
+# run refuses by design: netns.CONSOLE_SYNC_TARGET), and holds activation until that fetch fails. Measured on the Rocky
+# VM, keyless runs of the 2.2.6 binary with AEW's relayed `opencode` projection and no model call: 503 at 5.1-5.8 s,
+# then 200 at 7.8-8.5 s; the same without the `opencode.wellknown` plugin; no 503 with the key unset (the #364 review,
+# from the server's log). The waits treat it as "not yet", within their own budget (CATALOG_WAIT_S); one that never
+# ends is `plugins_timeout`.
+PLUGINS_ACTIVATING = "Location plugins did not finish activating"
+
+
+def plugins_activating(exc: OpenCodeError) -> bool:
+    """Whether a server error is OpenCode's "this location's plugins are still activating" (a 503 from the plugin
+    service), which a wait waits out, rather than a failure."""
+    body = exc.body if isinstance(exc.body, dict) else {}
+    return exc.status == 503 and (body.get("service") == "plugin" or PLUGINS_ACTIVATING in str(body.get("message")))
+
+
 OPENAPI_TIMEOUT_S = 60.0  # the served schema is large
 EXIT_CODES = {"succeeded": 0, "failed": 1, "interrupted": 2}
 CREDENTIALS = "/api/credential"  # 2.0.22+: stored integration credentials, values included
@@ -294,6 +313,22 @@ def relay_family(pinned: dict[str, Any], catalog: list[dict[str, Any]], upstream
     return {"check": RELAY_FAMILY_MISMATCH if carried else RELAY_FAMILY_UNVERIFIED, **out}
 
 
+# OpenCode Zen's routes (a model's catalog ``package``): a route is declared in the token-semantics table only once it
+# is measured (register E200).
+ZEN_RESPONSES = "@opencode/ai/providers/openai/responses"
+
+
+def catalog_routes(catalog: list[dict[str, Any]], table: U.SemanticsTable) -> dict[tuple[str, str], str]:
+    """``{(provider, model): route}`` for the catalog's models of each provider ``table`` declares per route
+    (``U.resolve_semantics``). A model's route is its catalog ``package``, the SDK its requests are made with, which
+    OpenCode 2.2.6 keeps for the model AEW's relay projection re-addresses (measured on the Rocky VM, 2026-11-07, for
+    Zen's Responses, Anthropic and OpenAI-compatible models). A model with no package has no route, so it reads
+    ``unknown``."""
+    routed = {p for by_provider in table.values() for p, entry in by_provider.items() if isinstance(entry, Mapping)}
+    return {(str(m["providerID"]), str(m["id"])): str(m["package"]) for m in catalog
+            if m.get("providerID") in routed and isinstance(m.get("id"), str) and isinstance(m.get("package"), str)}
+
+
 class OpenCodeAdapter(HarnessAdapter):
     name = "opencode"
     # F28 §3.4-3.5: it calls its provider itself, through the relay in a network of its own, and in connected mode it
@@ -301,8 +336,8 @@ class OpenCodeAdapter(HarnessAdapter):
     PROVIDER_RELAY = True
     EGRESS = ("models.opencode.ai:443",)
     # How each provider's reported counters overlap, per qualified OpenCode version (F25, cost and usage ledger v0.2
-    # R4 rule 1), pinned by tests/unit/test_usage_conformance.py against the fixture
-    # tests/fixtures/opencode/usage-2.0.18-openai.json.
+    # R4 rule 1), pinned by tests/unit/test_usage_conformance.py against the fixtures
+    # tests/fixtures/opencode/usage-<version>-openai.json.
     # A provider not named here is `unknown` and is never priced: no other provider is inferred (register F25).
     #
     # 2.0.18 / openai -> disjoint, qualified from source (sst/opencode tag v2.0.18, commit
@@ -315,7 +350,19 @@ class OpenCodeAdapter(HarnessAdapter):
     #   input_tokens - (cached_tokens + cache_write_tokens); outputTokens = output_tokens; reasoningTokens =
     #   output_tokens_details.reasoning_tokens.
     # So the stored input excludes cache read and write, and the stored output excludes reasoning.
-    token_semantics = {"2.0.18": {"openai": U.DISJOINT}}
+    #
+    # 2.2.6 / openai -> disjoint, measured (tools/harness_qualify `usage.openai`, 2026-11-07, Windows and Linux): each
+    # case's stored tokens, from a raw Responses usage through the real server, are the disjoint ones
+    # (tests/fixtures/opencode/usage-2.2.6-openai.json). Its source citations are still the v2.0.18 tag's, carried,
+    # until they are re-read at v2.2.6 (register E200).
+    #
+    # 2.2.6 / opencode (Zen), per route: its models reach several protocols, so it is declared per route, never for
+    # the provider (U.resolve_semantics); a route not named is `unknown` until it is measured.
+    # - ZEN_RESPONSES -> disjoint, measured by a live turn through AEW's relay (E17 part 2, 2026-11-07): the meter's
+    #   stored tokens equal Zen's raw usage split into disjoint parts, input less cache reads and cache writes, output
+    #   less reasoning (tests/fixtures/opencode/usage-2.2.6-opencode-responses.json).
+    token_semantics: U.SemanticsTable = {"2.0.18": {"openai": U.DISJOINT},
+                                         "2.2.6": {"openai": U.DISJOINT, "opencode": {ZEN_RESPONSES: U.DISJOINT}}}
 
     # The harness capabilities this adapter provides (steering design §7; aew.harness.harness_capabilities).
     harness_capabilities: dict[str, Support] = {
@@ -363,6 +410,8 @@ class OpenCodeAdapter(HarnessAdapter):
         self.meter: Meter | None = None
         self.meter_errors = 0
         self._relayed = False  # the pinned model is named in the server's configuration, for the provider relay
+        self._plugin_waits = 0  # the location listings answered "plugins still activating" (PLUGINS_ACTIVATING)
+        self._routes: dict[tuple[str, str], str] = {}  # catalog_routes of the server's catalog, for the usage record
         self._relay: str | None = None  # the provider relay's upstream, on the relay route
         self._meter_wake = threading.Event()
         self._meter_stop = threading.Event()
@@ -595,7 +644,8 @@ class OpenCodeAdapter(HarnessAdapter):
         stored = self._stored_credentials(spec)
         return {"version": version, "tested": version in capabilities.TESTED_VERSIONS, "stored_credentials": stored,
                 "openapi_sha256": hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest(),
-                "probe_s": round(probe_s, 3), **model, **loaded}
+                "probe_s": round(probe_s, 3), **model, **loaded,
+                "plugin_waits": self._plugin_waits}  # both waits' count, the model's and the agent's (#364 n1)
 
     def _stored_credentials(self, spec: Any) -> int:
         """A run's server must hold no stored integration credential. OpenCode 2.0.22 serves them, values included,
@@ -614,6 +664,26 @@ class OpenCodeAdapter(HarnessAdapter):
                                       "could read; a run's server state must start empty", stored_credentials=count)
         return 0
 
+    def _location_list(self, path: str) -> list[dict[str, Any]] | None:
+        """``path``'s listing for the run's location, or None while the location's plugins are still activating
+        (:func:`plugins_activating`); any other error is raised."""
+        assert self.client is not None
+        try:
+            return (self.client.get(path, location(self.directory)) or {}).get("data") or []
+        except OpenCodeError as exc:
+            if not plugins_activating(exc):
+                raise
+            self._plugin_waits += 1
+            return None
+
+    def _plugins_never_activated(self, path: str, waited_s: float) -> HarnessIncompatible:
+        return HarnessIncompatible(
+            f"OpenCode's plugins for the run's location did not finish activating within {waited_s:.0f}s (GET {path} "
+            f"kept answering 503: {PLUGINS_ACTIVATING!r}); a plugin may be waiting on a fetch the run's network "
+            f"refuses; relaunch with {self._relaunch_command()}", plugin_waits=self._plugin_waits,
+            # A wait that ran out, like the catalog's: timing-dependent, never a lasting incompatibility.
+            launch_cause=PLUGINS_TIMEOUT)
+
     def _await_model(self, profile: dict[str, Any]) -> dict[str, Any]:
         """The pinned model and variant, from a catalog that fills in asynchronously. Never a fallback."""
         assert self.client is not None
@@ -623,7 +693,13 @@ class OpenCodeAdapter(HarnessAdapter):
         catalog: list[dict[str, Any]] = []
         declared = False
         while True:
-            catalog = (self.client.get("/api/model", location(self.directory)) or {}).get("data") or []
+            listed = self._location_list("/api/model")
+            if listed is None:  # the location's plugins are still activating: not yet
+                if time.monotonic() - t0 > CATALOG_WAIT_S:
+                    raise self._plugins_never_activated("/api/model", time.monotonic() - t0)
+                time.sleep(0.25)
+                continue
+            catalog = listed
             match = next((m for m in catalog if m.get("providerID") == ref["providerID"] and m.get("id") == ref["id"]),
                          None)
             now = time.monotonic()
@@ -646,6 +722,9 @@ class OpenCodeAdapter(HarnessAdapter):
                                               f"enable it in OpenCode and relaunch with {self._relaunch_command()}, "
                                               "or dispatch a new invocation with --profile or --model", model=ref)
                 found = {"catalog_wait_s": round(now - t0, 3), "catalog_size": len(catalog), "variants": variants}
+                self._routes = catalog_routes(catalog, self.token_semantics)
+                if self.meter is not None:
+                    self.meter.routes = self._routes
                 if self._relay is not None:
                     found["relay_family"] = self._require_relay_family(match, catalog, ref)
                 return found
@@ -741,7 +820,13 @@ class OpenCodeAdapter(HarnessAdapter):
         t0 = time.monotonic()
         first_seen: float | None = None
         while True:
-            agents = (self.client.get("/api/agent", location(self.directory)) or {}).get("data") or []
+            listed = self._location_list("/api/agent")
+            if listed is None:  # the location's plugins are still activating: not yet
+                if time.monotonic() - t0 > CATALOG_WAIT_S:
+                    raise self._plugins_never_activated("/api/agent", time.monotonic() - t0)
+                time.sleep(0.25)
+                continue
+            agents = listed
             mine = next((a for a in agents if a.get("id") == projection.AGENT), None)
             now = time.monotonic()
             if mine is not None:
@@ -1094,9 +1179,10 @@ class OpenCodeAdapter(HarnessAdapter):
             return U.normalize(None, None, effective, U.UNKNOWN, source=source,
                                foreign_sessions=len(self.foreign_sessions))
         contract = getattr(self, "contract", None)
-        pinned = (contract.execution_profile or {}).get("provider") if contract is not None else None
-        providers = [e.get("provider") for e in effective] or [pinned]
-        semantics = U.resolve_semantics(self.token_semantics, self.health.get("version"), providers)
+        profile = (contract.execution_profile or {}) if contract is not None else {}
+        providers = ([(e.get("provider"), e.get("model")) for e in effective]
+                     or [(profile.get("provider"), profile.get("model"))])
+        semantics = U.resolve_semantics(self.token_semantics, self.health.get("version"), providers, self._routes)
         return U.normalize(snap["session"], snap["assistant"], effective, semantics, source=source,
                            truncated=bool(snap.get("truncated")), foreign_sessions=len(self.foreign_sessions))
 

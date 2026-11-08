@@ -1,6 +1,6 @@
 """The `aew-lead` MCP transport without a harness (F15.1 slice C; typed-lead-surface-design-v0.2 §4): the framing,
 profile filtering and the context budget, adapter errors that never reach the broker, the fail-closed start, the
-custody properties a static reading can prove, and the Lead projection against the pinned OpenCode 2.0.18 schema."""
+custody properties a static reading can prove, and the Lead projection against the pinned OpenCode schema."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from aew.surface.errors import AdapterInputError
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures" / "opencode"
-SPEC = json.loads((FIXTURES / "openapi-2.0.18.min.json").read_text(encoding="utf-8"))
+SPEC = json.loads((FIXTURES / f"openapi-{capabilities.TESTED_VERSIONS[0]}.min.json").read_text(encoding="utf-8"))
 
 
 def _result(ok: bool = True) -> dict[str, Any]:
@@ -267,7 +267,7 @@ def test_the_lead_projection_matches_the_pinned_opencode_configuration_schema():
     errors = sorted(_schema_validator("Config.InfoEncoded").iter_errors(config), key=lambda e: list(e.path))
     assert not errors, [f"{list(e.path)}: {e.message}" for e in errors[:5]]
     server = config["mcp"]["servers"]["aew-lead"]
-    assert server == {"type": "local", "command": ["aew", "lead", "mcp"], "codemode": False}
+    assert server == {"type": "local", "command": ["aew", "lead", "mcp"], "codemode": False, "pool": False}
     assert "environment" not in server  # the server inherits the curated session environment, and nothing more
     rules = config["agents"]["aew-lead"]["permissions"]
     assert {"action": "aew-lead_*", "effect": "allow", "resource": "*"} in rules

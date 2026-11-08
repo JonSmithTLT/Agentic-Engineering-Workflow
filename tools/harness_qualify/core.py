@@ -488,6 +488,9 @@ def report(record: Record, diff: Diff, fixtures: Sequence[Mapping[str, str]], ad
     lines += ["", "Fixtures:"] + [f"  {f['status']:15} {f['fixture']}: {f['how']}" for f in fixtures]
     if adopt:
         lines += ["", "Worth adopting (new in this version):"] + [f"  {a}" for a in adopt]
+    from harness_qualify import verdicts  # the record a bump writes and the next one reads
+
+    lines += ["", "Feature verdicts:"] + verdicts.lines(record.harness, record.version)
     return "\n".join(lines) + "\n"
 
 

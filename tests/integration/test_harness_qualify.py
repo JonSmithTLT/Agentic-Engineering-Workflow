@@ -197,14 +197,15 @@ def test_a_doctored_pin_shows_the_changed_fact_in_the_diff(tmp_path):
     """The ablation through the pack's own pin reader: one stored count changed in a copy of the fixtures."""
     doctored = tmp_path / "fixtures"
     shutil.copytree(FIXTURES, doctored)
-    path = doctored / "usage-2.0.18-openai.json"
+    path = doctored / f"usage-{OC.C.TESTED_VERSIONS[0]}-openai.json"
     doc = json.loads(path.read_text(encoding="utf-8"))
-    doc["cases"][0]["stored"]["input"] = 3001
+    was = doc["cases"][0]["stored"]["input"]
+    doc["cases"][0]["stored"]["input"] = was + 1
     path.write_text(json.dumps(doc), encoding="utf-8")
     pack = OC.OpenCodePack(FIXTURES)
     _, measured = pack.pinned(FIXTURES)
     _, pinned = pack.pinned(doctored)
-    assert core.fact_diff(measured, pinned).lines() == ["~ usage.openai.cases[0].stored.input: 3001 -> 3000"]
+    assert core.fact_diff(measured, pinned).lines() == [f"~ usage.openai.cases[0].stored.input: {was + 1} -> {was}"]
 
 
 def test_the_feed_gives_the_version_and_each_files_digest():
@@ -241,7 +242,7 @@ def test_the_opencode_pack_against_the_fake_server_measures_its_api_and_names_wh
     record, diff, fixtures, _ = HQ.run(OC.OpenCodePack(FIXTURES), fake_binary(tmp_path), out=tmp_path / "out",
                                        fixtures=FIXTURES, only=API_CHECKS)
     by = {r["id"]: r["status"] for r in record.checks}
-    assert record.version == "2.0.18"
+    assert record.version == OC.C.TESTED_VERSIONS[0]
     assert {k: by[k] for k in API_CHECKS[:6]} == dict.fromkeys(API_CHECKS[:6], core.PASS)
     # the fake is not the build the citations were read from: not comparable, never a pass or a changed fact
     assert by["usage.live_citations"] == core.SKIPPED and by["ripgrep.download"] == core.FAIL
@@ -301,7 +302,7 @@ def test_a_suite_run_with_any_skip_is_reported_skipped_never_passed(tmp_path, mo
     ctx = core.Context(binary=tmp_path / "bin", work=tmp_path / "work", env=core.private_env(tmp_path / "env"),
                        version="1")
     out = neutral._pytest(ctx, "STUB_BIN", [str(suite)], ["--rootdir", str(suite.parent)],
-                          allowed_skips=(r"^the driver cannot drive",))
+                          allowed_skips={r"^the driver cannot drive": 1} if "cannot drive" in body else {})
     assert out.status == status, out.notes
 
 
@@ -428,3 +429,105 @@ def test_a_skip_line_is_read_whatever_the_platform_spells_its_path(line):
 
     m = neutral._SKIP_LINE.match(line)
     assert m is not None and (m.group(1), m.group(2)) == ("2", "the driver cannot drive this")
+
+
+def test_an_allowed_skip_that_now_skips_more_tests_is_not_passed(tmp_path, monkeypatch):
+    from harness_qualify import neutral
+
+    monkeypatch.setattr(neutral, "agents_aew", lambda env: "this tree")
+    suite = tmp_path / "suite" / "test_suite.py"
+    suite.parent.mkdir()
+    suite.write_text("import pytest\n\ndef test_a():\n    pass\n\n@pytest.mark.skip('the driver cannot drive x')\n"
+                     "def test_b():\n    pass\n\n@pytest.mark.skip('the driver cannot drive y')\ndef test_c():\n"
+                     "    pass\n", encoding="utf-8")
+    ctx = core.Context(binary=tmp_path / "bin", work=tmp_path / "work", env=core.private_env(tmp_path / "env"),
+                       version="1")
+    out = neutral._pytest(ctx, "STUB_BIN", [str(suite)], ["--rootdir", str(suite.parent)],
+                          allowed_skips={r"^the driver cannot drive": 1})
+    assert out.status == core.SKIPPED and "expected 1 skipped by '^the driver cannot drive', saw 2" in out.notes
+
+
+def test_a_failing_suite_records_each_failing_test_by_its_id_only(tmp_path, monkeypatch):
+    from harness_qualify import neutral
+
+    monkeypatch.setattr(neutral, "agents_aew", lambda env: "this tree")
+    suite = tmp_path / "suite" / "test_suite.py"
+    suite.parent.mkdir()
+    suite.write_text(f"def test_a():\n    assert False, {str(tmp_path)!r}\n", encoding="utf-8")
+    ctx = core.Context(binary=tmp_path / "bin", work=tmp_path / "work", env=core.private_env(tmp_path / "env"),
+                       version="1")
+    out = neutral._pytest(ctx, "STUB_BIN", [str(suite)], ["--rootdir", str(suite.parent)])
+    assert out.status == core.FAIL and "failed: test_suite.py::test_a" in out.notes
+    assert not [n for n in out.notes if str(tmp_path) in n]  # the message, which named a host path, is not kept
+
+
+def test_an_overrunning_suite_fails_and_leaves_no_folder_and_no_process(tmp_path, monkeypatch):
+    """Review of #357, minor 3 (and of #359, n2): the suite and what it started are killed, its folder removed."""
+    import time
+
+    from harness_qualify import neutral
+
+    from aew.harness import procs
+
+    monkeypatch.setattr(neutral, "agents_aew", lambda env: "this tree")
+    made: list[Path] = []
+    real = neutral.tempfile.mkdtemp
+
+    def mkdtemp(**kw: Any) -> str:
+        made.append(Path(real(**kw)))
+        return str(made[-1])
+
+    monkeypatch.setattr(neutral.tempfile, "mkdtemp", mkdtemp)
+    pid_file = tmp_path / "child.pid"
+    suite = tmp_path / "suite" / "test_slow.py"
+    suite.parent.mkdir()
+    suite.write_text(
+        "import pathlib, subprocess, sys, time\n\ndef test_slow():\n"
+        "    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'])\n"
+        f"    pathlib.Path({str(pid_file)!r}).write_text(str(child.pid))\n"
+        "    time.sleep(600)\n", encoding="utf-8")
+    ctx = core.Context(binary=tmp_path / "bin", work=tmp_path / "work", env=core.private_env(tmp_path / "env"),
+                       version="1")
+    out = neutral._pytest(ctx, "STUB_BIN", [str(suite)], ["--rootdir", str(suite.parent)], timeout_s=20)
+    assert out.status == core.FAIL and "overran 20s" in out.notes[0]
+    assert made and not made[0].exists()
+    assert pid_file.exists(), "the suite started no child before the deadline"
+    child = int(pid_file.read_text())
+    deadline = time.monotonic() + 10
+    while procs.pid_alive(child) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    assert not procs.pid_alive(child)
+
+
+def test_the_feed_as_it_is_served_gives_absolute_download_urls():
+    """The live feed's shape (2026-11-07): absolute URLs, sha512 and size per file, then the version."""
+    text = ("files:\n  - url: https://example.invalid/files/bin/9.8.7/opencode-desktop-win-x64.exe\n"
+            "    sha512: c2hhNTEy\n    size: 267155312\nreleaseDate: 2026-11-06T23:28:16.000Z\nversion: 9.8.7\n")
+    assert OC.parse_feed(text) == [core.Release("9.8.7", "https://example.invalid/files/bin/9.8.7/"
+                                                "opencode-desktop-win-x64.exe", "c2hhNTEy", "sha512", 267155312)]
+
+
+# ------------------------------------------------------------------------------------------------- feature verdicts
+
+
+def test_the_feature_verdicts_record_is_readable_and_the_report_names_it():
+    """The verdicts a bump gives (the operator, 2026-11-07: committed, one owner) are read by the tool, each from the
+    closed set (the rows they name are checked against the register in tests/unit/test_register.py)."""
+    from harness_qualify import verdicts
+
+    recorded = verdicts.load("opencode")
+    assert "2.2.6" in recorded and len(recorded["2.2.6"]) >= 20
+    assert verdicts.lines("opencode", "2.2.6")[0].startswith(f"  {len(recorded['2.2.6'])} recorded for 2.2.6 (")
+    assert "none recorded for 9.9.9" in verdicts.lines("opencode", "9.9.9")[0]
+    assert verdicts.load("stubharness") == {}
+
+
+def test_a_verdict_outside_the_closed_set_is_refused(tmp_path, monkeypatch):
+    from harness_qualify import verdicts
+
+    (tmp_path / "opencode.yaml").write_text(
+        "schema: aew/harness-verdicts/v1\nharness: opencode\nversions:\n  '1.0.0':\n    verdicts:\n"
+        "      - {feature: x, verdict: maybe, reason: y, row: null}\n", encoding="utf-8")
+    monkeypatch.setattr(verdicts, "HERE", tmp_path)
+    with pytest.raises(ValueError, match="one of"):
+        verdicts.load("opencode")

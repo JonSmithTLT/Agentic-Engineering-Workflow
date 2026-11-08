@@ -141,6 +141,8 @@ RELAYED_READS: dict[frozenset[str], frozenset[str]] = {frozenset(path.split()): 
     ("harness wait", ("run", "any_", "timeout")),
     ("map show", ("commit", "root", "section", "json")),
     ("map diff", ("operands", "json")),
+    # F25 R6: a provisional run's usage is read from its run directory under `.aew/local`, which the sandbox masks
+    ("usage show", ("target", "all", "since", "until", "json")),
 )}
 RELAYED_TIMEOUT_S = 300.0  # a relayed read other than `harness wait`, whose own --timeout bounds it
 # The longest relayed `harness wait --timeout` the host can wait out: `communicate` waits in poll(2), whose timeout is

@@ -11,11 +11,12 @@ import pytest
 
 from aew.harness import usage as U
 from aew.harness.opencode import adapter
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
 from aew.harness.supervisor import Supervisor
 from aew.schemas import validate
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "opencode"
-SPEC = json.loads((FIXTURES / "openapi-2.0.18.min.json").read_text(encoding="utf-8"))
+SPEC = json.loads((FIXTURES / f"openapi-{TESTED_VERSIONS[0]}.min.json").read_text(encoding="utf-8"))
 OPENAI = [{"provider": "openai", "model": "gpt-6.1", "effort": "high"}]
 
 

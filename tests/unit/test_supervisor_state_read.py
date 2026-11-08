@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -135,6 +136,17 @@ def test_an_earlier_issued_request_delivered_late_is_still_judged_first(tmp_path
     runlog.deliver_request(tmp_path, first_name, first_text)  # the late delivery
     first = {"file": first_name, "kind": "send", "sha256": sha256_text(first_text)}
     sup.engine.store.script = [state([first, second])]
+    assert [r["text"] for r in sup._authorized_requests()] == ["first", "second"]
+
+
+def test_two_requests_of_one_kind_issued_on_one_clock_tick_are_both_acted_on_in_order(tmp_path, monkeypatch):
+    """The earlier test's name order, on the clock it failed on: one that repeats a value (a nightly on Windows and
+    Python 3.11). With one name for both, the second's file replaced the first's, and the first was lost."""
+    frozen = time.time_ns()
+    monkeypatch.setattr(time, "time_ns", lambda: frozen)
+    first = recorded_request(tmp_path, "send", text="first")
+    second = recorded_request(tmp_path, "send", text="second")
+    sup = stand_in(tmp_path, LockFreeOnly([state([first, second])]))
     assert [r["text"] for r in sup._authorized_requests()] == ["first", "second"]
 
 

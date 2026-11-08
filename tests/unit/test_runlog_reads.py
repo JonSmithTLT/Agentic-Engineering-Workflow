@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -126,6 +127,51 @@ def test_a_request_past_the_bound_is_dropped(directory, monkeypatch):
     monkeypatch.setattr(runlog, "MAX_RECORD_BYTES", 32)
     assert runlog.take_requests(directory) == [("a.json", '{"kind": "stop"}')]
     assert not list(queue.iterdir())  # taken or dropped, never read again
+
+
+def test_requests_issued_on_one_clock_tick_each_keep_their_own_file_in_issue_order(directory, monkeypatch):
+    """A clock that repeats a value (on Windows before Python 3.13 it ticks about every 15.6 ms) gives no two requests
+    one name: the second would overwrite the first's file."""
+    frozen = time.time_ns()
+    monkeypatch.setattr(time, "time_ns", lambda: frozen)
+    issued = [runlog.new_request("send", {"text": text}) for text in ("first", "second", "third")]
+    for name, text in reversed(issued):  # delivered last to first: the names alone keep the order
+        runlog.deliver_request(directory, name, text)
+    assert runlog.take_requests(directory) == issued
+
+
+def test_a_request_issued_after_the_clock_steps_back_still_sorts_after_the_earlier_ones(monkeypatch):
+    """Name order is issue order within a process, whatever the system clock does between two requests."""
+    now = time.time_ns()
+    steps = iter([now + 10 ** 12, now])
+    monkeypatch.setattr(time, "time_ns", lambda: next(steps, now))
+    before, after = runlog.new_request("send")[0], runlog.new_request("send")[0]
+    assert int(before.split("-")[0]) < int(after.split("-")[0])
+
+
+def test_requests_issued_at_once_on_several_threads_never_share_a_name(monkeypatch):
+    """The clock is held long enough that an unguarded read of the last value is always stale, so the result does not
+    depend on how the threads happen to be scheduled."""
+    frozen = time.time_ns()
+
+    def slow_clock() -> int:
+        time.sleep(0.01)
+        return frozen
+
+    monkeypatch.setattr(time, "time_ns", slow_clock)
+    names: list[str] = []
+    start = threading.Barrier(4)
+
+    def issue() -> None:
+        start.wait(timeout=10)
+        names.append(runlog.new_request("send")[0])
+
+    threads = [threading.Thread(target=issue, daemon=True) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert len(names) == 4 and len(set(names)) == 4
 
 
 @POSIX_ONLY

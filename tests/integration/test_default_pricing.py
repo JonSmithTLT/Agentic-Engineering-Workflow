@@ -51,6 +51,11 @@ def test_a_package_without_the_bundled_table_inits_with_no_table_and_says_so(tmp
     assert "$" not in capsys.readouterr().out
 
 
+def test_a_package_directory_without_the_file_reads_as_no_bundled_table(tmp_path, monkeypatch):
+    monkeypatch.setattr(O.resources, "files", lambda package: tmp_path)
+    assert O.bundled_table.__wrapped__() is None
+
+
 def test_every_row_of_the_bundled_table_is_on_a_provider_the_adapter_declares_semantics_for():
     table = bundled().table
     declared = {p for by_provider in OpenCodeAdapter.token_semantics.values() for p in by_provider}

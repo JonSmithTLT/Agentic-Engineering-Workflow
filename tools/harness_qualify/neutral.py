@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 
 from aew.harness import procs
@@ -39,6 +40,17 @@ SUITE_S = 1800
 # pytest's `-rs` line: `SKIPPED [n] <path>:<line>: <reason>`, or with no line number. The path may hold a drive
 # letter's colon (`C:\...` on Windows), so it ends at the first `:<digits>: `, else at the first `: `.
 _SKIP_LINE = re.compile(r"^SKIPPED \[(\d+)\] (?:.+?:\d+|[^ ]+?): (.*)$")
+
+
+def _test_name(line: str) -> str:
+    """A pytest FAILED or ERROR line's test, as its file's name and its node: the line's path can be a host path (a
+    temporary folder's), and the message after it is cut at the terminal's width."""
+    node = re.match(r"^(?:FAILED|ERROR) (.+?::\S+)", line)
+    if not node:
+        return "(unnamed)"
+    path, _, rest = node.group(1).partition("::")
+    name = path.replace("\\", "/").rsplit("/", 1)[-1]
+    return f"{name}::{rest}"
 
 
 def agents_aew(env: dict[str, str]) -> str:
@@ -56,7 +68,11 @@ def agents_aew(env: dict[str, str]) -> str:
 
 
 def _pytest(ctx: Context, variable: str, paths: list[str], extra: list[str],
-            allowed_skips: tuple[str, ...] = ()) -> Outcome:
+            allowed_skips: Mapping[str, int] | None = None, timeout_s: float = SUITE_S) -> Outcome:
+    """Run one suite. ``allowed_skips``: each skip reason pattern that is the driver's own limit, with how many tests
+    it skips; anything else skipped, a count that differs, or skip lines that do not add up to pytest's own total make
+    the run ``skipped``, never a pass."""
+    allowed = dict(allowed_skips or {})
     which = agents_aew(ctx.env)
     if which != "this tree":  # the suite would judge another AEW than the one under test
         return Outcome(SKIPPED, facts={}, notes=[
@@ -78,32 +94,43 @@ def _pytest(ctx: Context, variable: str, paths: list[str], extra: list[str],
                                "-p", "no:cacheprovider", f"--basetemp={base / 't'}"], cwd=ROOT, env=env,
                               stdout=fh, stderr=subprocess.STDOUT)
             try:
-                code = proc.wait(timeout=SUITE_S)
+                code = proc.wait(timeout=timeout_s)
             except subprocess.TimeoutExpired:
-                return Outcome(FAIL, notes=[f"the suite overran {SUITE_S}s and was killed with what it started"])
+                return Outcome(FAIL, notes=[f"the suite overran {timeout_s:g}s and was killed with what it started"])
     finally:
         tree.kill()  # the suite and anything it started that is still in its tree
         shutil.rmtree(base, ignore_errors=True)
     lines = log.read_text(encoding="utf-8", errors="replace").strip().splitlines()
     tail = lines[-1:] or [""]
     counts = {k: int(n) for n, k in re.findall(r"(\d+) (passed|failed|skipped|errors?)", tail[0])}
-    failed = [ln for ln in lines if ln.startswith(("FAILED ", "ERROR "))]
-    note = [f"pytest exit {code}: {tail[0]}", *failed[:5], "agents' aew: this tree"]
+    # a failing test's id only: the rest of pytest's line is its message, cut at the terminal's width, which can hold
+    # a host path (records are shared)
+    failed = [_test_name(ln) for ln in lines if ln.startswith(("FAILED ", "ERROR "))]
+    note = [f"pytest exit {code}: {tail[0]}", *(f"failed: {t}" for t in failed[:5]), "agents' aew: this tree"]
     if code != 0 or counts.get("failed") or counts.get("error") or counts.get("errors"):
         return Outcome(FAIL, notes=note)
     if not counts.get("passed"):
         return Outcome(SKIPPED, notes=[*note, "no test ran: see pytest.log"])
     reasons = [(int(m.group(1)), m.group(2)) for m in map(_SKIP_LINE.match, lines) if m]
-    unexplained = [(n, why) for n, why in reasons if not any(re.search(p, why) for p in allowed_skips)]
-    if counts.get("skipped") and (unexplained or not reasons):  # a skipped test proves nothing about this binary
+    total = counts.get("skipped", 0)
+    if sum(n for n, _ in reasons) != total:  # a skip whose line was not read is never taken as allowed
+        return Outcome(SKIPPED, notes=[*note, f"the skip lines add up to {sum(n for n, _ in reasons)}, not pytest's "
+                                              f"{total}: see pytest.log"])
+    unexplained = [(n, why) for n, why in reasons if not any(re.search(p, why) for p in allowed)]
+    if unexplained:  # a skipped test proves nothing about this binary
         return Outcome(SKIPPED, notes=[*note, *(f"{n} skipped: {why}" for n, why in unexplained[:3])])
+    seen = {p: sum(n for n, why in reasons if re.search(p, why)) for p in allowed}
+    off = {p: (allowed[p], n) for p, n in seen.items() if n != allowed[p]}
+    if off:  # the driver's limit now skips more (or fewer) tests than the pack expects: look before passing it
+        return Outcome(SKIPPED, notes=[*note, *(f"expected {want} skipped by {p!r}, saw {got}"
+                                                for p, (want, got) in off.items())])
     return Outcome(PASS, notes=[*note, *(f"{n} skipped, the driver's own limit: {why}" for n, why in reasons)])
 
 
 def neutral_checks(harness: str, variable: str, *, conformance: list[str],
-                   allowed_skips: tuple[str, ...] = ()) -> list[Check]:
-    """``allowed_skips``: patterns of skip reasons that are the driver's own limits (an action it cannot drive), not
-    a test that did not run for want of something."""
+                   allowed_skips: Mapping[str, int] | None = None) -> list[Check]:
+    """``allowed_skips``: each skip reason pattern that is the driver's own limit (an action it cannot drive), with
+    how many tests it skips, not a test that did not run for want of something."""
     return [
         Check("conformance", lambda c: _pytest(c, variable, conformance, ["--live"], allowed_skips), depth=BEHAVIOUR,
               slow=True, says=f"the harness conformance scenarios' live lane against this {harness} binary, keyless"),

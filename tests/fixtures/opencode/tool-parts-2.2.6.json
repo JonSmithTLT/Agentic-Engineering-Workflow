@@ -1,0 +1,68 @@
+{
+ "harness": "opencode",
+ "probe": "harness_qualify progress.tool_parts",
+ "tool_parts": {
+  "edit": {
+   "input": [
+    "newString",
+    "oldString",
+    "path"
+   ],
+   "metadata": [
+    "files",
+    "truncated"
+   ],
+   "metadata.exit": null,
+   "metadata.files[]": [
+    "additions",
+    "deletions",
+    "file",
+    "patch",
+    "status"
+   ],
+   "time": [
+    "completed",
+    "created",
+    "ran"
+   ],
+   "where": "state"
+  },
+  "shell": {
+   "input": [
+    "command",
+    "description"
+   ],
+   "metadata": [
+    "exit",
+    "status",
+    "truncated"
+   ],
+   "metadata.exit": 3,
+   "metadata.files[]": null,
+   "time": [
+    "completed",
+    "created",
+    "ran"
+   ],
+   "where": "state"
+  },
+  "write": {
+   "input": [
+    "content",
+    "path"
+   ],
+   "metadata": [
+    "truncated"
+   ],
+   "metadata.exit": null,
+   "metadata.files[]": null,
+   "time": [
+    "completed",
+    "created",
+    "ran"
+   ],
+   "where": "state"
+  }
+ },
+ "version": "2.2.6"
+}

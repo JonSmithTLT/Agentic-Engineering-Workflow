@@ -120,7 +120,8 @@ def test_a_server_that_exits_gets_no_tui(tmp_path: Path) -> None:
 def test_a_server_that_dies_mid_session_ends_the_session_and_says_so(tmp_path: Path) -> None:
     """Nothing restarts it, and the TUI would go on reconnecting."""
     server = "import json\nprint(json.dumps({'url': 'http://127.0.0.1:4100'}), flush=True)\n"
-    done, _ = _run(tmp_path, server=server, tui_text="import time\ntime.sleep(600)\n")
+    # The TUI's own end is inside _run's limit: on Windows a timed-out `run` still waits for whoever holds its pipes.
+    done, _ = _run(tmp_path, server=server, tui_text="import time\ntime.sleep(90)\n")
     assert "the Lead's server ended" in done.stderr and "`aew opencode` again" in done.stderr
 
 

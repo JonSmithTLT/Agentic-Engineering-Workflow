@@ -6,3 +6,5 @@ before this keep no table until the operator adopts one.
 higher above a context size holds its base tier and is named in `base_tier_only`, and every figure using it reads "at
 least $X; above Nk context costs more". An exact figure needs per-request context sizes in the run-usage record and
 tiered rows in the table.
+
+**Follow-on: existing projects.** They get the table through an offer with one confirmation, the shared switch offer, so what is built is on by default for them too. It waits for concurrency PR B, which builds that offer.

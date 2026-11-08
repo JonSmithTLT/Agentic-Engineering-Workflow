@@ -24,6 +24,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+from aew.errors import LockTimeout
 from aew.harness import operator_client, procs
 from aew.util import atomic_write
 
@@ -33,6 +34,9 @@ SECRET_ENV = ("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN")  # the operator's creden
 # The launcher on Linux: a new session, then a fork whose parent exits, so the endpoint's parent is no Lead session.
 REPARENT = "import os,sys;os.setsid();os._exit(0) if os.fork() else os.execv(sys.argv[1],sys.argv[1:])"
 SW_HIDE, STARTF_USESHOWWINDOW, CREATE_NEW_CONSOLE = 0, 0x1, 0x10
+START_FAILED = ("aew opencode: the operator endpoint did not start ({why}); a steering raise needs one: run "
+                "`aew operator serve --dev` in another terminal\n")
+NOT_HELD = START_FAILED.format(why="this session could not be named for it")
 
 
 def endpoint_env(base: dict[str, str], provider_env: list[str]) -> dict[str, str]:
@@ -61,37 +65,44 @@ def _start(argv: list[str], env: dict[str, str], log: Any) -> None:
     subprocess.run(command, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log)  # pragma: posix-only
 
 
+def _refused(env: dict[str, str]) -> str | None:
+    """The line for a session under a Lead session: it starts nothing and holds nothing."""
+    problem = operator_client.lead_session_problem(env)
+    return f"aew opencode: the operator endpoint was not started: {problem}\n" if problem else None
+
+
 def ensure(engine: Any, *, provider_env: list[str], base: dict[str, str] | None = None) -> str | None:
     """Start the project's endpoint unless one is live. The line to show, or None when there is nothing to say."""
     env = dict(os.environ) if base is None else base
     if env.get(OFF_ENV) == "off":
         return None
+    refused = _refused(env)
+    if refused:
+        return refused
     aew_root = Path(engine.aew_root)
     if operator_client.status(aew_root).get("running"):
         return None
-    problem = operator_client.lead_session_problem(env)
-    if problem:
-        return f"aew opencode: the operator endpoint was not started: {problem}\n"
     directory = operator_client.locator_path(aew_root).parent
     try:
         directory.mkdir(parents=True, exist_ok=True)
         with open(directory / LOG_NAME, "wb") as log:
             _start(endpoint_argv(Path(engine.repo_root)), endpoint_env(env, provider_env), log)
     except OSError as exc:
-        return (f"aew opencode: the operator endpoint did not start ({exc}); a steering raise needs one: run "
-                "`aew operator serve --dev` in another terminal\n")
+        return START_FAILED.format(why=exc)
     return "aew opencode: the operator endpoint runs in the background until this session ends\n"
 
 
 def _hold(aew_root: Path) -> Path | None:
-    """Name this session as one a background endpoint serves, before the endpoint starts."""
-    path = Path(aew_root) / operator_client.SESSIONS_REL / f"{os.getpid()}.json"
+    """Name this session as one a background endpoint serves, before the endpoint starts, and under the lock its last
+    look takes: from here on, a live locator is an endpoint that will see this file."""
     pid = os.getpid()
+    path = Path(aew_root) / operator_client.SESSIONS_REL / f"{pid}.json"
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write(path, json.dumps({"pid": pid, "start_id": procs.start_id(pid),
-                                       "process_started": procs.started_at(pid)}) + "\n")
-    except OSError:
+        with operator_client.sessions_lock(aew_root):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(path, json.dumps({"pid": pid, "start_id": procs.start_id(pid),
+                                           "process_started": procs.started_at(pid)}) + "\n")
+    except (LockTimeout, OSError):
         return None
     return path
 
@@ -102,8 +113,11 @@ def for_session(engine: Any, *, provider_env: list[str]) -> Iterator[None]:
     if os.environ.get(OFF_ENV) == "off":
         yield
         return
-    held = _hold(Path(engine.aew_root))
-    line = ensure(engine, provider_env=provider_env)
+    held = None
+    line = _refused(dict(os.environ))
+    if not line:
+        held = _hold(Path(engine.aew_root))
+        line = ensure(engine, provider_env=provider_env) if held else NOT_HELD
     if line:
         sys.stderr.write(line)
     try:

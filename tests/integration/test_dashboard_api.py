@@ -117,8 +117,9 @@ def world(tmp_path_factory) -> World:
     w.ids = {"epic": epic, "story": story, "done": done, "investigation": inv, "open": open_ticket,
              "blocked": blocked}
     # a selected structural map, for the maps routes the sweeps cover (contract 0.1.3; register F20.8)
-    w.ids["map"] = p.ok("map", "generate", "--select", "--expect-map-rev", "none:0",
-                        "--json", env={"AEW_LEAD_TOKEN": p.token})["root"]
+    w.ids["map"] = p.ok("map", "generate", "--select", "--expect-map-rev",
+                        p.ok("map", "show", "--json")["map_revision"], "--json",
+                        env={"AEW_LEAD_TOKEN": p.token})["root"]
     engine = Engine.discover(p.root)
     w.server = DashboardServer(engine, authenticator=OpenAccess(), validate_with=CONTRACT)
     w.server.start()

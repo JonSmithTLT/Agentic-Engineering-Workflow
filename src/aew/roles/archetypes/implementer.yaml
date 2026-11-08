@@ -26,6 +26,6 @@ outputs:
   - implementation_report with files_changed, checks_run, deviations, unexpected_findings, self_review
 context:
   knowledge: [current_ticket, accepted_plan, guardrails, ticket_scope, available_checks, open_review_findings,
-              failure_evidence]
+              failure_evidence, codebase_map]
   excluded: [other tickets' conversations, reviewer/verifier reasoning]
 capabilities: [exact_code_search, source_mutation, targeted_test_execution]

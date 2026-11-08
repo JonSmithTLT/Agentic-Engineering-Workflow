@@ -218,3 +218,53 @@ def test_without_a_live_broker_or_with_a_credential_it_refuses_to_start(tmp_path
                          creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
     assert res.returncode != 0 and why in res.stderr, res.stderr
     assert res.stdout == ""  # stdout is the protocol's, and nothing was served
+
+
+def test_the_projected_server_runs_this_aew_whatever_aew_comes_first_on_the_sessions_path(tmp_path):
+    """E180: the Lead's MCP server is started from the projected configuration as OpenCode starts it (its command's
+    first word looked up on the session's PATH, its `environment` over the session's). A stale `aew` first on that
+    PATH, and a stale `aew` package on the session's PYTHONPATH, are both passed by: the server is this interpreter's,
+    with this process's code, and answers the handshake. A bare `aew lead mcp` ran the stale one, and the Lead's typed
+    tools failed with only "connection closed"."""
+    import os
+    import shutil
+
+    from aew.engine.api import Engine
+    from aew.harness import lead_broker
+    from aew.harness.opencode import projection
+
+    stale_bin = tmp_path / "stale-bin"
+    stale_bin.mkdir()
+    (stale_bin / "aew").write_text("#!/bin/sh\necho stale aew >&2\nexit 3\n", encoding="utf-8")
+    (stale_bin / "aew").chmod(0o755)
+    (stale_bin / "aew.cmd").write_text("@echo stale aew 1>&2\r\n@exit /b 3\r\n", encoding="utf-8")
+    stale_pkg = tmp_path / "stale-src" / "aew"
+    stale_pkg.mkdir(parents=True)
+    (stale_pkg / "__init__.py").write_text("", encoding="utf-8")
+    (stale_pkg / "__main__.py").write_text("import sys\nsys.stderr.write('stale aew package')\nsys.exit(3)\n",
+                                           encoding="utf-8")
+
+    p = lead_project(tmp_path)
+    broker = lead_broker.LeadBroker(Engine.discover(p.root), p.token)
+    broker.start()
+    try:
+        env = clean_env(broker.env)
+        env.pop("AEW_LEAD_TOKEN", None)
+        env["PATH"] = os.pathsep.join([str(stale_bin), env.get("PATH", "")])
+        env["PYTHONPATH"] = str(stale_pkg.parent)
+        assert shutil.which("aew", path=env["PATH"]).startswith(str(stale_bin))  # the stale one comes first
+        server = projection.lead_config()["mcp"]["servers"][projection.LEAD_MCP_SERVER]
+        argv = list(server["command"])
+        argv[0] = shutil.which(argv[0], path=env["PATH"]) or argv[0]  # as OpenCode resolves it
+        kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if IS_WINDOWS else {}
+        proc = subprocess.Popen(argv, cwd=str(p.root), env={**env, **server.get("environment", {})},
+                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
+        hello = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                 "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                            "clientInfo": {"name": "probe", "version": "0"}}}
+        out, err = proc.communicate((json.dumps(hello) + "\n").encode(), timeout=120)
+    finally:
+        broker.close()
+    assert b"stale" not in err, err.decode(errors="replace")
+    lines = [json.loads(line) for line in out.decode().splitlines() if line.strip()]
+    assert lines and lines[0]["id"] == 1 and "serverInfo" in lines[0]["result"], (out, err)

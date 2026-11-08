@@ -1,10 +1,10 @@
 """`aew operator` and `aew lead mode` (M4-E E2; plan v3 §2.1; A1 §1).
 
 ``aew operator serve --dev`` runs the operator endpoint in the operator's own terminal; its console shows the
-one-time codes. ``aew lead mode raise`` only sends a request to it and reads the code typed at this terminal: it has
-no engine path of its own. ``aew lead mode lower`` is the Lead's (a restriction), relayed in a Lead session like any
-Lead-reachable command. The Lead broker refuses ``raise``, ``serve`` and ``ping`` in a Lead session
-(``lead_broker.OPERATOR_ENDPOINT``).
+one-time codes. ``aew lead mode raise`` only sends a request to it, and then reads the code typed at this terminal or,
+where G3 counts, waits while the operator approves in G3's confirmer: it has no engine path of its own. ``aew lead mode
+lower`` is the Lead's (a restriction), relayed in a Lead session like any Lead-reachable command. The Lead broker
+refuses ``raise``, ``serve`` and ``ping`` in a Lead session (``lead_broker.OPERATOR_ENDPOINT``).
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ def register(sub: argparse._SubParsersAction) -> None:
                    help="required: on this host the operator principal cannot be shown distinct from the Lead "
                         "host's, so every record is labelled `guarantee: dev` (not production authority until F18.6)")
     q.add_argument("--background", action="store_true",
-                   help="as `aew opencode` starts it: no terminal, a window opens when a challenge needs one, and it "
-                        "stops when the Lead sessions it serves end")
+                   help="as `aew opencode` starts it: no terminal, so a request that needs a typed code says to run "
+                        "this without --background, and it stops when the Lead sessions it serves end")
     q.set_defaults(handler=_serve)
     q = osub.add_parser("ping", help="whether this project's operator endpoint answers, and its guarantee label")
     _add_json(q)
@@ -61,10 +61,9 @@ def _serve(a: argparse.Namespace) -> None:
 
     engine = _engine(a)
     if a.background:
-        window = operator_window.WindowConsole()
+        window = operator_window.BackgroundConsole()
         endpoint = operator_endpoint.OperatorEndpoint(engine, console=window, dev=a.dev, background=True,
-                                                      console_done=window.done)
-        window.on_unavailable = endpoint.retire
+                                                      console_done=window.done, code_problem=window.problem)
     else:
         endpoint = operator_endpoint.OperatorEndpoint(engine, console=console, dev=a.dev)
     operator_endpoint.harden()  # before any challenge exists in this process's memory
@@ -89,8 +88,9 @@ def _raise(a: argparse.Namespace) -> Any:
     engine = _engine(a)
     if not operator.has_terminal():
         # Refused before the endpoint is contacted: a requester that cannot type the code back must never put a
-        # challenge on the operator's console (as `aew dashboard open`).
+        # challenge on the operator's console (as `aew dashboard open`), or an approval on their confirmer.
         raise OperatorAuthorizationRequired(
-            "`aew lead mode raise` reads the confirmation code from your terminal, and this process has none (a "
-            "harness tool call, a pipe or a scheduled job); run it yourself in a terminal", detail="no terminal")
+            "`aew lead mode raise` is answered from your terminal (the confirmation code, or waiting while you approve "
+            "in G3's confirmer), and this process has none (a harness tool call, a pipe or a scheduled job); run it "
+            "yourself in a terminal", detail="no terminal")
     return operator_client.request_raise(engine.aew_root, a.mode)

@@ -17,8 +17,8 @@ from aew.util import load_yaml
 
 REPO = Path(__file__).resolve().parents[2]
 
-# Each owner that enters the register (the census's registered_by and weaker_registered_by), with the test that sees
-# its context's processes given the marker.
+# Each owner that enters the register (the census's registered_by and weaker_registered_by), with the tests that see
+# its contexts' processes given the marker: one per context, where an owner has several.
 ROUTES = {
     "eval/aew_eval/hidden.py::score":
         "tests/unit/test_eval_hidden.py::test_a_scorer_is_live_in_the_register_of_weaker_contexts_while_it_runs",
@@ -46,10 +46,13 @@ ROUTES = {
     "src/aew/harness/check_changes.py::run_once":
         "tests/unit/test_doctor_check_register.py::"
         "test_a_weaker_doctor_check_is_live_in_the_register_while_it_runs_and_carries_the_marker",
-    # A run's supervisor and doctor's read of the model list share it (register E153); the run's route is the test's
-    "src/aew/harness/supervisor.py::contain_launch":
+    # A run's supervisor and doctor's read of the model list share it (register E153). `model_list.read` is not an owner
+    # of its own: it enters the register through this one, so the census names this one for it.
+    "src/aew/harness/supervisor.py::contain_launch": (
         "tests/integration/test_harness_runs.py::"
         "test_a_weaker_run_is_live_in_the_register_while_its_harness_runs_and_its_agent_carries_the_marker",
+        "tests/unit/test_doctor_model_list_read.py::"
+        "test_a_weaker_model_list_read_is_live_in_the_register_while_it_runs_and_its_server_carries_the_marker"),
 }
 
 
@@ -57,13 +60,14 @@ def test_every_owner_the_census_names_has_a_test_that_sees_its_marker_and_the_te
     table = load_yaml((REPO / "tests/launch-census.yaml").read_text(encoding="utf-8"), source="launch-census.yaml")
     owners = {o for r in table["starts"] for f in ("registered_by", "weaker_registered_by") for o in r.get(f) or []}
     assert set(ROUTES) == owners
-    for owner, test in ROUTES.items():
-        path, _, name = test.partition("::")
-        text = (REPO / path).read_text(encoding="utf-8")
-        assert re.search(rf"^def {re.escape(name)}\(", text, re.M), f"{owner}: {test} does not exist"
-        body = text[text.index(f"def {name}("):]
-        body = body[:m.start()] if (m := re.search(r"^def ", body[1:], re.M)) else body
-        assert "marker" in body.lower(), f"{owner}: {test} never looks at the marker"
+    for owner, tests in ROUTES.items():
+        for test in (tests,) if isinstance(tests, str) else tests:
+            path, _, name = test.partition("::")
+            text = (REPO / path).read_text(encoding="utf-8")
+            assert re.search(rf"^def {re.escape(name)}\(", text, re.M), f"{owner}: {test} does not exist"
+            body = text[text.index(f"def {name}("):]
+            body = body[:m.start()] if (m := re.search(r"^def ", body[1:], re.M)) else body
+            assert "marker" in body.lower(), f"{owner}: {test} never looks at the marker"
 
 
 @pytest.fixture

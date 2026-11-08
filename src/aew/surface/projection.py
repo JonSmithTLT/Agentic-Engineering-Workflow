@@ -244,6 +244,11 @@ def _ticket_actions(part: dict[str, Any], wid: str, rev: int) -> None:
                                   "arguments": {"expect_rev": rev, "work_id": wid,
                                                 **({"prepared_candidate": str(candidate)} if candidate else {})},
                                   "cli": ["integrate", "publish", wid, "--expect-rev", r]})
+    elif st == "COMMIT_READY" and integration.get("status") == "publishing":
+        # A publish that recorded its intent and did not finish (E137): no stage takes it from here, so without this
+        # the projection offers nothing while the lease holds up every other integration.
+        part["decisions"].append({"decision": "FINISH_PUBLISH", "tool": None,
+                                  "cli": ["integrate", "reconcile", wid, "--expect-rev", r]})
     elif st == "INTERRUPTED":
         part["decisions"].append({"decision": "RECONCILE", "tool": None,
                                   "cli": ["work", "reconcile", wid, "--to", "<phase>", "--reason", "<reason>",

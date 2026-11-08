@@ -32,6 +32,8 @@ NO_OWNER = ("An answering listener with no LISTEN row on its port, or a row with
             "and frees the port once that accept returns, as the probe's upstream did after one answer (register E75).")
 SHARED = ("Two LISTENING rows on one port are two listeners sharing it, which Windows allows when both set "
           "SO_REUSEADDR (register E75).")
+NO_LISTENING_ROW = ("netstat has no LISTENING row on this port, though something answered on it: some Windows hosts "
+                    "leave listeners out of its table, so this says nothing of who held the port, or how many did.")
 
 
 def request(port: int, method: str, path: str,
@@ -83,7 +85,7 @@ def describe(problem: str, *, port: int, local: int, request: str, status: int, 
         ]
     elif sys.platform == "win32":
         facts.append((f"every TCP socket on :{port} or :{local} (netstat -ano -p TCP)",
-                      lambda: _matching(_run(["netstat", "-ano", "-p", "TCP"]), (f":{port} ", f":{local} "))))
+                      lambda: _netstat_rows(_run(["netstat", "-ano", "-p", "TCP"]), port, local)))
     facts.append(("threads", lambda: "; ".join(f"{t.name} (ident {t.ident}, daemon {t.daemon})"
                                                for t in threading.enumerate())))
     # last: reading to the body's end closes this end of the connection, which the socket tables above still show
@@ -111,6 +113,17 @@ def _run(argv: list[str]) -> str:
 
 def _matching(text: str, needles: tuple[str, ...]) -> str:
     return "\n".join(line for line in text.splitlines() if any(n in line for n in needles)) or "(none)"
+
+
+def _netstat_rows(table: str, port: int, local: int | str) -> str:
+    """netstat's rows for the two ports, saying so when none is a listener on ``port``: reading their absence as
+    "nothing held it" would be wrong, since something answered. A table that never came is shown as it is."""
+    if table.startswith("(no answer") or " [exit " in table:
+        return table
+    rows = _matching(table, (f":{port} ", f":{local} "))
+    listening = any("LISTENING" in fields and fields[1].endswith(f":{port}")
+                    for fields in map(str.split, rows.splitlines()) if len(fields) > 1)
+    return rows if listening else f"{rows}\n{NO_LISTENING_ROW}"
 
 
 def _own_socket_inodes() -> str:

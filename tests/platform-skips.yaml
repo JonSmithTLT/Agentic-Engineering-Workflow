@@ -768,6 +768,17 @@ skipped:
       POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
       Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
       test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_operator_autostart.py::test_aew_opencode_under_a_lead_session_starts_nothing_and_says_why: >-
+      the check's walk of the process chain reads /proc, on Linux only; on Windows it has only the environment half,
+      covered there by test_a_lead_session_starts_no_endpoint.
+    tests/integration/test_g3_endpoint_wire.py::test_a_pin_approval_on_the_real_wire_raises_and_the_console_shows_it: &g3-endpoint-wire >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets and SO_PEERCRED; it never runs on Windows.
+      Covered on Linux; the same rules at the endpoint run on both platforms in
+      tests/integration/test_g3_endpoint_adapter.py.
+    tests/integration/test_g3_endpoint_wire.py::test_a_decline_on_the_real_wire_raises_nothing: *g3-endpoint-wire
+    tests/integration/test_g3_endpoint_wire.py::test_a_requester_that_has_gone_ends_the_wait_and_its_approval_raises_nothing: *g3-endpoint-wire
+    tests/integration/test_g3_endpoint_wire.py::test_a_service_older_than_the_overlay_holds_and_names_the_reinstall: *g3-endpoint-wire
+    tests/integration/test_g3_endpoint_wire.py::test_the_runbooks_replay_script_consumes_once_and_is_refused_the_second_time: *g3-endpoint-wire
     tests/integration/test_g3_process.py::test_the_real_service_runs_p1_over_its_two_sockets_and_every_response_carries_the_wire_header: >-
       the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
       /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in
@@ -928,6 +939,22 @@ skipped:
       the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
       (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
       submission run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_consume_on_the_real_socket_consumes_the_member_once_against_its_operation: >-
+      the G3 client's consume reaches the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; its reading of an answer runs on both platforms in
+      tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_consume_whose_reply_is_lost_gives_none_and_the_next_call_is_refused_so_it_fails_closed: >-
+      the G3 client's consume reaches the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; its reading of an answer runs on both platforms in
+      tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_consume_on_the_real_socket_gives_each_of_g3_08s_refusals_and_consumes_nothing: >-
+      the G3 client's consume reaches the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; its reading of an answer runs on both platforms in
+      tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_consume_on_the_real_socket_gives_no_result_when_the_service_holds_or_refuses_or_is_absent: >-
+      the G3 client's consume reaches the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; its reading of an answer runs on both platforms in
+      tests/unit/test_g3client.py.
     tests/integration/test_g3client_process.py::test_no_g3_service_is_unavailable_and_says_where_to_look: >-
       the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
       (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01

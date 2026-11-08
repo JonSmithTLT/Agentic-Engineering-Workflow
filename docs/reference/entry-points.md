@@ -7,7 +7,7 @@ Every AEW process entry point, from `aew.process_kind.ENTRY_POINTS`: its kind, w
 - **Kind:** store_writer
 - **Why:** the CLI the operator, the Lead and AEW's own workers (the custody worker) run: engine commands take the control lock
 - **Declares itself at:** `aew.cli.main:_main`
-- **Starts, `-m`:** `aew.engine.custody_ops:worker_argv`, `aew.harness.lead_broker:run_read`
+- **Starts, `-m`:** `aew.engine.custody_ops:worker_argv`, `aew.harness.lead_broker:run_read`, `aew.harness.opencode.projection:lead_mcp_command`, `aew.harness.operator_autostart:endpoint_argv`
 - **Starts, `console-script-argv`:** `aew.dashboard.projections:Projector._search_hit`
 - **Starts, `console-script-on-PATH`:** `aew.harness.agentenv:build`, `aew.harness.opencode.lead:tui_env`
 
@@ -37,7 +37,6 @@ Every AEW process entry point, from `aew.process_kind.ENTRY_POINTS`: its kind, w
 - **Kind:** non_writer
 - **Why:** the Lead's MCP transport: it constructs no engine and forwards every call to the Lead broker, which holds the credential
 - **Declares itself at:** `aew.cli.main:_main`
-- **Starts, `console-script-argv`:** `aew.harness.opencode.projection:LEAD_MCP_COMMAND`
 - **Starts, `console-script-on-PATH`:** `aew.harness.agentenv:build`, `aew.harness.opencode.lead:tui_env`
 
 ### `aew.harness.supervisor`

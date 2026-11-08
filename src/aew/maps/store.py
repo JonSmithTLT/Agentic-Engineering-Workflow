@@ -1,9 +1,10 @@
 """The closed writer of ``.aew/local/maps/`` (ADR-0015; design v0.5 §3.1 to §3.3; plan §4.1, §4.2).
 
 This module is the only code that writes under ``local/maps/``: the artifacts (design §3.2's ``map.artifact.*``
-family) and the registry with its log (``map.registry.*``). The Lead's synchronous ``aew map`` commands call it today;
-F22.2's ``map_service`` will call the same functions under its own principal (ADR-0015 reconciles §3.2: adoption goes
-through this closed path, and the principal in front of it is what F22.2 adds).
+family) and the registry with its log (``map.registry.*``). The Lead's synchronous ``aew map`` commands and
+``aew init``'s first map call it today; F22.2's ``map_service`` will call the same functions under its own
+principal (ADR-0015 reconciles §3.2: adoption goes through this closed path, and the principal in front of
+it is what F22.2 adds).
 
 * **Placement.** ``.aew/local/`` is git-ignored, rebuildable data (KC §5.3, ``AEW_GITIGNORE``): a committed artifact
   would change the very path listing it describes. Deleting ``local/maps/`` means "no selection", which is safe

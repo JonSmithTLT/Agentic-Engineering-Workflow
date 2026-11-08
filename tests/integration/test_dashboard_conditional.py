@@ -134,8 +134,8 @@ def world(tmp_path_factory):
     _, knowledge = w.client.ok("/knowledge")
     assert evidence["data"]["items"] and knowledge["data"]["items"], "the world needs evidence and a decision"
     # a selected structural map, for the maps routes (contract 0.1.3; register F20.8)
-    root = p.ok("map", "generate", "--select", "--expect-map-rev", "none:0", "--json",
-                env={"AEW_LEAD_TOKEN": p.token})["root"]
+    root = p.ok("map", "generate", "--select", "--expect-map-rev", p.ok("map", "show", "--json")["map_revision"],
+                "--json", env={"AEW_LEAD_TOKEN": p.token})["root"]
     w.paths = {"/work/{id}": f"/work/{w.ticket}", "/runs/{id}": f"/runs/{w.invocation}",
                "/evidence/{id}": f"/evidence/{evidence['data']['items'][0]['id']}",
                "/knowledge/{id}": f"/knowledge/{knowledge['data']['items'][0]['id']}",

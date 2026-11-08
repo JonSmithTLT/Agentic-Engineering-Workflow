@@ -65,7 +65,8 @@ RECORD_SCHEMA = "aew/steering-record/v1"
 @dataclass(frozen=True)
 class OperatorPrincipal:
     """Who authorized an operator operation, as the operator endpoint established it: the endpoint's peer check and
-    the challenge answered at its console. Constructed only by ``aew.harness.operator_endpoint`` (a static test pins
+    the challenge answered, by the code from its console or, where ``origin`` says so, a consumed G3 approval.
+    Constructed only by ``aew.harness.operator_endpoint`` (a static test pins
     it); no CLI parser, broker relay, typed tool or recovery escape can build one. ``guarantee`` is not a field: it
     is ``dev`` for every principal until F18.6."""
 
@@ -73,14 +74,16 @@ class OperatorPrincipal:
     method: str  # "peer_credentials" (POSIX) or "named_pipe" (Windows)
     endpoint_pid: int
     endpoint_started_at: str
+    origin: dict[str, Any] | None = None  # how this one challenge was answered, when not by the typed code (G3-C)
 
     @property
     def guarantee(self) -> str:
         return GUARANTEE
 
     def record(self) -> dict[str, Any]:
-        return {"uid": self.uid, "method": self.method, "guarantee": self.guarantee,
-                "endpoint": {"pid": self.endpoint_pid, "started_at": self.endpoint_started_at}}
+        out = {"uid": self.uid, "method": self.method, "guarantee": self.guarantee,
+               "endpoint": {"pid": self.endpoint_pid, "started_at": self.endpoint_started_at}}
+        return out if self.origin is None else {**out, "origin": self.origin}
 
 
 def is_raise(new: str | None, standing: str | None) -> bool:
@@ -288,14 +291,15 @@ class Steering:
         state = self.k.store.current()
         self._raise_problem(state, mode)
         digests = self.k.policy_digests()
-        return {"project": self.k.project_id, "mode": mode, "previous": effective(state)["mode"],
+        now = effective(state)
+        return {"project": self.k.project_id, "mode": mode, "previous": now["mode"], "mode_rev": now["rev"],
                 "generation": int(state["lead"]["generation"]), "revision": state["revision"],
                 "legality_digest": digests["legality_digest"]}
 
     def raise_mode(self, principal: OperatorPrincipal, *, mode: str, generation: int,
                    legality_digest: str) -> dict[str, Any]:
         """Raise the effective mode to ``mode`` for Lead generation ``generation``: the operator endpoint's commit,
-        after its peer check and the challenge at its console. Refused if the generation or the legality digest the
+        after its peer check and the challenge it answered. Refused if the generation or the legality digest the
         operator was shown has moved since."""
         if not isinstance(principal, OperatorPrincipal):
             raise PermissionDenied("a steering raise is the operator's, through the operator endpoint "
@@ -418,7 +422,9 @@ class Steering:
             what = f"a raise to {mode}" if kind == "raise" else f"confirmation of {action_ref}"
             ctx.summary = f"the Lead requested {what} ({rid}); it grants nothing until the operator acts"
         return {"ok": True, "request": rid, "revision": ctx.session.committed_revision,
-                "next": "the operator decides at the operator endpoint; nothing is granted until then"}
+                "next": (f"the operator decides, by running `aew lead mode raise {mode}` at their own terminal; "
+                         "nothing is granted until then") if kind == "raise" else
+                        "the operator decides at the operator endpoint; nothing is granted until then"}
 
     # ------------------------------------------------------------------ helpers
 

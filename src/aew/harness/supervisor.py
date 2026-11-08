@@ -562,9 +562,9 @@ class Supervisor:
         entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
         recorded = {r["file"]: r for r in entry.get("requests") or []}
         out = []
-        # In issue order, kept files with new ones: a request file's name starts with its time_ns (runlog.new_request),
-        # so the sort alone decides the order, whichever tick took a file and however late it was delivered; the merge
-        # order above decides nothing (#366 review, N4)
+        # In issue order, kept files with new ones: a request file's name starts with its issue time
+        # (runlog._next_request_ns), so the sort alone decides the order, whichever tick took a file and however late it
+        # was delivered; the merge order above decides nothing (#366 review, N4)
         for name, text in sorted(pending.items()):
             want = recorded.get(name)
             why = ("not recorded by a Lead operation" if want is None else

@@ -72,6 +72,7 @@ PLACEHOLDERS: dict[str, str] = {
     "<invocation from aew harness status>": "INV-0012",
     # The guide's and the packs' forms: each names what goes there, and the reader knows where to find it.
     "<T>": "T-0007",  # a Ticket
+    "<mode>": "walk",  # a steering mode
     "<S>": "S-0002",  # a Story or an Epic
     "<unit>": "T-0008",  # a work unit
     "<id>": "EV-0003",  # a record: evidence, or a finished unit's history record

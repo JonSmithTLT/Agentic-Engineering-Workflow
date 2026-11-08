@@ -2,7 +2,8 @@
 
 It holds no authority and constructs nothing the engine accepts as the operator's: only the endpoint
 (``aew.harness.operator_endpoint``, imported by ``aew operator serve`` alone) builds an ``OperatorPrincipal``. Every
-client command only sends a request; the operator's answer is the code shown on the endpoint's console, typed here.
+client command only sends a request; the operator's answer is the code shown on the endpoint's console, typed here, or
+for a raise where G3 counts, their approval in G3's confirmer.
 """
 
 from __future__ import annotations
@@ -17,16 +18,19 @@ from pathlib import Path
 from typing import Any
 
 from aew import errors, operator
+from aew.engine.lock import FileLock
 from aew.harness import procs
 from aew.harness.bridge import rebuild_error
 
 LOCATOR_REL = "local/operator/endpoint.json"
 LOCK_NAME = "endpoint.lock"  # beside the locator: held by the live endpoint for its whole life
 SESSIONS_REL = "local/operator/sessions"  # one file per Lead session a background endpoint serves
+SESSIONS_LOCK = "sessions.lock"  # beside the locator: a session naming itself, or an endpoint deciding to stop
 LOCATOR_SCHEMA = "aew/operator-endpoint/v1"
 MAX_MESSAGE = 16 * 1024
 CHALLENGE_TIMEOUT_S = 300.0
 WAKE_TIMEOUT_S = 5.0
+SESSIONS_LOCK_TIMEOUT_S = 5.0  # held for a few file operations; a session that misses it says what to run
 OPERATIONS = ("ping", "mode_raise", "capability_change")  # capability_change: CAP-1, the designer's ruling 1
 # What a Lead running as the operator's uid can still do (plan v3 §2.1, "the same-uid residuals, stated in full").
 # Reported by ping, status and doctor, and never claimed as closed: production authority needs F18.6.
@@ -97,6 +101,14 @@ def _is_lead_session(argv: list[str]) -> bool:
             rest = [w for w in argv[i + 1:] if not w.startswith("-")]
             return rest[:2] == ["lead", "session"] or rest[:1] == ["opencode"]
     return False
+
+
+def sessions_lock(aew_root: Path) -> FileLock:
+    """Taken to name a session and to decide to stop, so a session either is seen by the endpoint's last look or finds
+    that the endpoint has already taken its locator away, and starts another."""
+    path = locator_path(aew_root).with_name(SESSIONS_LOCK)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return FileLock(path, timeout=SESSIONS_LOCK_TIMEOUT_S)
 
 
 def session_holders_live(aew_root: Path) -> bool:
@@ -193,8 +205,8 @@ def status(aew_root: Path) -> dict[str, Any]:
             "guarantee": data.get("guarantee")}
 
 
-# Where the code is shown: `aew operator serve`'s terminal, or the window of the endpoint `aew opencode` started
-SHOWN_THERE = ("The operator endpoint's console (the terminal running `aew operator serve`, or the window "
+# Where the code is shown: `aew operator serve`'s terminal, or on Windows the window of `aew opencode`'s endpoint
+SHOWN_THERE = ("The operator endpoint's console (the terminal running `aew operator serve`, or on Windows the window "
                "`aew opencode`'s endpoint opens) now shows a one-time confirmation code. Type it here and press Enter; "
                "anything else refuses.")
 
@@ -208,13 +220,21 @@ def raise_prompt(bound: dict[str, Any], requester: str) -> str:
 
 def request_raise(aew_root: Path, mode: str, *, ask: Callable[[str], str] | None = None,
                   requester: str | None = None) -> dict[str, Any]:
-    """``aew lead mode raise``: ask the endpoint, read the code the operator types at **this** terminal, send it."""
+    """``aew lead mode raise``: ask the endpoint, read the code the operator types at **this** terminal, and send it; or
+    where G3 counts, wait here while they approve in the confirmer. Leaving ends the request, either way."""
     who = requester if requester is not None else (" <- ".join(procs.process_chain()) or "unknown")
     read = ask if ask is not None else (lambda prompt: operator.ask(prompt))
     conn = _connect(aew_root)
     try:
         _send(conn, "mode_raise", {"mode": mode, "requester": who})
         shown = _reply(conn)
+        if shown.get("challenge") == "g3":  # the operator's PIN goes in G3's confirmer: there is no code to type here
+            sys.stderr.write(f"aew lead mode raise: approve or decline {shown['approval_ref']} in the confirmer (AEW "
+                             f"approvals), until {shown['expires_at']}\n")
+            sys.stderr.flush()
+            return _reply(conn)
+        if shown.get("g3"):
+            sys.stderr.write(f"aew lead mode raise: {shown['g3']}\n")
         return _answer(conn, lambda: read(raise_prompt(shown["bound"], who)))
     finally:
         conn.close()

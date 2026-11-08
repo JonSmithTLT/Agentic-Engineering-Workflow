@@ -295,8 +295,9 @@ def test_one_list_holds_every_start_of_an_entry_point_with_its_form_and_says_how
         assert {(i["module"], i["symbol"]) for i in fact["starts"] if i["form"] == E.DASH_M} == {
             (s.module, s.symbol) for s in spawns if s.target is not None and E.entry_for(s.target) == key}, key
     argv_sites = {(m, c.symbol) for m, c in consoles if c.form == E.ARGV_FORM}
-    lead = {(i["module"], i["symbol"]) for i in by_key["aew lead mcp"]["starts"] if i["form"] == E.ARGV_FORM}
-    assert ("aew.harness.opencode.projection", "LEAD_MCP_COMMAND") in lead  # cli_entry_point decides the role
+    # the Lead's MCP server starts as this interpreter's `-m aew` (E180): a `-m` start is the CLI's, whatever its words
+    cli = {(i["module"], i["symbol"]) for i in by_key["aew"]["starts"] if i["form"] == E.DASH_M}
+    assert ("aew.harness.opencode.projection", "lead_mcp_command") in cli
     assert ("aew.dashboard.projections", "Projector._search_hit") in {
         (i["module"], i["symbol"]) for i in by_key["aew"]["starts"] if i["form"] == E.ARGV_FORM}
     unresolved = {(i["module"], i["symbol"])

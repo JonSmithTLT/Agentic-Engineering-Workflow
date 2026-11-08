@@ -209,6 +209,14 @@ def test_a_leaked_environment_variable_fails_the_leaking_test(tmp_path):
     assert proc.returncode == 1 and "test leaked process state" in proc.stdout
 
 
+def test_a_leaked_git_variable_fails_the_leaking_test(tmp_path):
+    """The variable that redirected the 2026-11-08 run's git: no test may leave one for the tests after it."""
+    root = scratch(tmp_path,
+                   {"tests/unit/test_leak.py": "import os\n\ndef test_leak():\n    os.environ['GIT_DIR'] = 'x'\n"})
+    proc = inner_pytest(root, "tests/unit/test_leak.py")
+    assert proc.returncode == 1 and "test leaked process state" in proc.stdout
+
+
 def test_a_session_that_writes_into_the_checkout_fails_the_isolation_guard(tmp_path):
     root = scratch(tmp_path, {"tests/unit/test_w.py": ("from pathlib import Path\n\n"
                                                        "def test_w():\n    Path('stray.txt').write_text('x')\n")})

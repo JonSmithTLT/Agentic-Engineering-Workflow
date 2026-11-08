@@ -10,11 +10,12 @@ from __future__ import annotations
 import ast
 import copy
 import functools
+import http.client
 import http.server
 import json
 import re
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -310,7 +311,7 @@ def test_a_consume_answered_with_no_result_gives_none_and_says_why_so_an_owner_h
     monkeypatch.setattr(C, "_g3", lambda *a, **k: (status, body))
     got = C.consume(**CONSUME_ARGS)
     assert got.result is None and said in (got.held_why or "")
-    assert C._NOT_CONSUMED in (got.held_why or "")  # what happened, and the way on, a used approval included
+    assert C._HELD_WAY_ON in (got.held_why or "")  # what happened, and the way on, a used approval included
     # What an owner shows the operator carries neither the member's proof nor the consent
     assert CONSUME_ARGS["origin_proof_ref"] not in repr(got) and CONSUME_ARGS["consent_set_ref"] not in repr(got)
 
@@ -332,21 +333,17 @@ def test_a_consume_with_no_answer_gives_none_and_raises_nothing(
 
     monkeypatch.setattr(C, "_g3", g3)
     got = C.consume(**CONSUME_ARGS)
-    assert got == C.Consumed(None, f"{said}. {C._NOT_CONSUMED}") and len(calls) == 1
+    assert got == C.Consumed(None, f"{said}. {C._HELD_WAY_ON}") and len(calls) == 1
     assert CONSUME_ARGS["origin_proof_ref"] not in repr(got) and CONSUME_ARGS["consent_set_ref"] not in repr(got)
 
 
-@pytest.mark.parametrize("raw", [b"[" * 200_000, b"{not json", b"\xff\xfe"],
-                         ids=["nested-past-the-parsers-limit", "not-json", "not-utf-8"])
-def test_an_answer_that_arrived_and_cannot_be_read_gives_none_and_never_says_no_answer(
-        monkeypatch: pytest.MonkeyPatch, raw: bytes) -> None:
-    """Through the real ``_g3``. An unreadable body raises nothing out of the call, and it is not reported as a service
-    that did not answer, whose fix is another one."""
+def _plant_a_reply(monkeypatch: pytest.MonkeyPatch, read: Callable[[], bytes]) -> None:
+    """Only the connection is planted, so the call goes through the real ``_g3``."""
     class Reply:
         status = 200
 
         def read(self) -> bytes:
-            return raw
+            return read()
 
         def getheader(self, name: str) -> str | None:
             return C.G3_WIRE if name == C.G3_HEADER else None
@@ -365,9 +362,33 @@ def test_an_answer_that_arrived_and_cannot_be_read_gives_none_and_never_says_no_
             pass
 
     monkeypatch.setattr(C, "_UnixHTTP", Conn)
+
+
+@pytest.mark.parametrize("raw", [b"[" * 200_000, b"{not json", b"\xff\xfe"],
+                         ids=["nested-past-the-parsers-limit", "not-json", "not-utf-8"])
+def test_an_answer_that_arrived_and_cannot_be_read_gives_none_and_never_says_no_answer(
+        monkeypatch: pytest.MonkeyPatch, raw: bytes) -> None:
+    """An unreadable body raises nothing out of the call, and it is not reported as a service that did not answer, whose
+    fix is another one. ``_g3``'s other callers carry its reason to the CLI's error."""
+    _plant_a_reply(monkeypatch, lambda: raw)
     got = C.consume(**CONSUME_ARGS, sock_path="/planted.sock")
     assert got.result is None and "/planted.sock cannot be read" in (got.held_why or "")
-    assert "did not answer" not in (got.held_why or "") and C._NOT_CONSUMED in (got.held_why or "")
+    assert "did not answer" not in (got.held_why or "") and C._HELD_WAY_ON in (got.held_why or "")
+    with pytest.raises(Unavailable) as e:
+        C._g3("/planted.sock", "POST", "/g3/v1/consume", {})
+    assert e.value.details["reason"] == "g3_not_g3"
+
+
+def test_an_answer_cut_off_in_its_body_gives_none_and_says_the_service_did_not_answer(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A truncated body is ``http.client``'s own error alone, no ``OSError``, so it needs its own arm in ``_g3``.
+    Without that, it escapes this call and ``_g3``'s other callers as a crash."""
+    def read() -> bytes:
+        raise http.client.IncompleteRead(b"")
+
+    _plant_a_reply(monkeypatch, read)
+    got = C.consume(**CONSUME_ARGS, sock_path="/planted.sock")
+    assert got.result is None and "did not answer" in (got.held_why or "") and C._HELD_WAY_ON in (got.held_why or "")
 
 
 @pytest.mark.parametrize("status, code, error, reason", [

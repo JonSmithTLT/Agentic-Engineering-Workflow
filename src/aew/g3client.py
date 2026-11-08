@@ -296,8 +296,8 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
                            reason="o01_refused", o01_code=code, status=status)
 
 
-_NOT_CONSUMED = ("This action is not admitted. Once the service answers, request it again, with a new approval if this "
-                 "one is refused as used")
+_HELD_WAY_ON = ("This action is not admitted. Request it again once this is fixed, with a new approval if this one is "
+                "refused as used")
 
 
 @dataclass(frozen=True)
@@ -326,16 +326,16 @@ def consume(*, consent_set_ref: str, set_digest: str, recipient_ref: str, instal
     try:
         status, reply = _g3(sock_path, "POST", "/g3/v1/consume", body)
     except (Unavailable, PermissionDenied) as exc:
-        return Consumed(None, f"{exc.message}. {_NOT_CONSUMED}")
+        return Consumed(None, f"{exc.message}. {_HELD_WAY_ON}")
     if status != 200:
         refused = _g3_refusal(status, reply)
-        return Consumed(None, f"{getattr(refused, 'message', str(refused))}. {_NOT_CONSUMED}")
+        return Consumed(None, f"{getattr(refused, 'message', str(refused))}. {_HELD_WAY_ON}")
     # The wire's whole answer (G3-13: CONSUMED alone is G3 origin), so a body that merely says the word is none.
     answer = reply if isinstance(reply, dict) else {}
     result = answer.get("result")
     if (result not in CONSUME_RESULTS or answer.get("wire_version") != G3_WIRE
             or (result == "CONSUMED" and not isinstance(answer.get("consumed_at"), str))):
-        return Consumed(None, f"the answer on {sock_path or REQUEST_SOCK} is no ConsumeResult. {_NOT_CONSUMED}")
+        return Consumed(None, f"the answer on {sock_path or REQUEST_SOCK} is no ConsumeResult. {_HELD_WAY_ON}")
     return Consumed(result)
 
 

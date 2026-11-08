@@ -330,7 +330,8 @@ def test_a_consume_whose_reply_is_lost_gives_none_and_the_next_call_is_refused_s
 
     monkeypatch.setattr(C._UnixHTTP, "getresponse", lost)
     got = _consume(cs)
-    assert got.result is None and "did not answer" in (got.held_why or "") and C._NOT_CONSUMED in (got.held_why or "")
+    assert got.result is None and "did not answer" in (got.held_why or "") and C._HELD_WAY_ON in (got.held_why or "")
+    assert "new approval" in (got.held_why or "")
     assert len(sent) == 1  # it asks once: the client never sends a used member again by itself
     assert world.rig.svc.ledger.consumed(record["consent_set_ref"], cs["intents"][0]["intent_ref"])
     monkeypatch.setattr(C._UnixHTTP, "getresponse", real)
@@ -339,7 +340,7 @@ def test_a_consume_whose_reply_is_lost_gives_none_and_the_next_call_is_refused_s
 
 def test_consume_on_the_real_socket_gives_each_of_g3_08s_refusals_and_consumes_nothing(
         world: World, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Each ConsumeResult but CONSENT_ALREADY_USED, which the test above draws, and the member stays unused."""
+    """Each refusal but CONSENT_ALREADY_USED, which the test above draws, and the member stays unused."""
     cs, record = _approved(world)
     ledger, keys = world.rig.svc.ledger, world.rig.svc.keys
     assert _consume(cs, consent_set_ref="consent:g3:no-such-record").result == "ORIGIN_NOT_ESTABLISHED"

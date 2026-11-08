@@ -932,6 +932,10 @@ skipped:
       the G3 client's consume reaches the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
       service never runs on Windows. Covered on Linux; its reading of an answer runs on both platforms in
       tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_consume_whose_reply_is_lost_gives_none_and_the_next_call_is_refused_so_it_fails_closed: >-
+      the G3 client's consume reaches the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; its reading of an answer runs on both platforms in
+      tests/unit/test_g3client.py.
     tests/integration/test_g3client_process.py::test_consume_on_the_real_socket_gives_each_of_g3_08s_refusals_and_consumes_nothing: >-
       the G3 client's consume reaches the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
       service never runs on Windows. Covered on Linux; its reading of an answer runs on both platforms in

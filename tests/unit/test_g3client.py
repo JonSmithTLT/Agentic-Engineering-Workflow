@@ -1,8 +1,8 @@
 """The G3 client, on every platform (A-37 G3-02, G3-05, G3-07; STG-03, G3-D; the Lead's rulings of 2026-10-25): the
 facts it restates, held to their owners; the sets it refuses before asking anything; the proofs it makes; the wait,
-bounded by the approval's own life; the G3-07 digest check; the O-01 route on the loopback address only; and a bearer
-token that appears in nothing it says. The run against the real service and the real O-01 route is
-``tests/integration/test_g3client_process.py`` (Linux).
+bounded by the approval's own life; an owner's consume, G3-08's results and the answers that are none; the G3-07
+digest check; the O-01 route on the loopback address only; and a bearer token that appears in nothing it says. The
+run against the real service and the real O-01 route is ``tests/integration/test_g3client_process.py`` (Linux).
 """
 
 from __future__ import annotations
@@ -278,7 +278,9 @@ def test_consume_sends_the_wires_request_on_request_sock_and_returns_the_service
 @pytest.mark.parametrize("result", C.CONSUME_RESULTS)
 def test_consume_returns_each_of_the_wires_results_as_the_service_gave_it(
         monkeypatch: pytest.MonkeyPatch, result: str) -> None:
-    monkeypatch.setattr(C, "_g3", lambda *a, **k: (200, {"wire_version": C.G3_WIRE, "result": result}))
+    body = {"wire_version": C.G3_WIRE, "result": result}  # the wire's whole answer, consumed_at with CONSUMED only
+    monkeypatch.setattr(C, "_g3", lambda *a, **k: (
+        200, dict(body, consumed_at="2026-11-08T00:00:00Z") if result == "CONSUMED" else body))
     assert C.consume(**CONSUME_ARGS) == C.Consumed(result)
 
 
@@ -287,8 +289,18 @@ def test_consume_returns_each_of_the_wires_results_as_the_service_gave_it(
     (403, {"code": "PEER_NOT_PERMITTED"}, "the operator's own account"),
     (400, {"code": "STRUCTURAL"}, "refused the request: STRUCTURAL"),
     (404, None, "refused the request: 404"),
-    (200, {"result": "A_RESULT_NO_WIRE_NAMES"}, "is no ConsumeResult"),
-    (200, {"result": None}, "is no ConsumeResult"),
+    (503, {"result": "CONSUMED", "wire_version": C.G3_WIRE, "consumed_at": "2026-11-08T00:00:00Z"},
+     "holding every request"),  # a result on a status that is no answer is no result
+    (201, {"result": "CONSUMED", "wire_version": C.G3_WIRE, "consumed_at": "2026-11-08T00:00:00Z"},
+     "refused the request: 201"),
+    (200, {"result": "CONSUMED", "wire_version": C.G3_WIRE}, "is no ConsumeResult"),  # the wire requires consumed_at
+    (200, {"result": "CONSUMED", "wire_version": C.G3_WIRE, "consumed_at": 1}, "is no ConsumeResult"),
+    (200, {"result": "CONSUMED", "consumed_at": "2026-11-08T00:00:00Z"}, "is no ConsumeResult"),  # no wire_version
+    (200, {"result": "CONSUMED", "wire_version": "another", "consumed_at": "2026-11-08T00:00:00Z"},
+     "is no ConsumeResult"),
+    (200, {"result": "CONSENT_EXPIRED", "wire_version": "another"}, "is no ConsumeResult"),
+    (200, {"result": "A_RESULT_NO_WIRE_NAMES", "wire_version": C.G3_WIRE}, "is no ConsumeResult"),
+    (200, {"result": None, "wire_version": C.G3_WIRE}, "is no ConsumeResult"),
     (200, ["CONSUMED"], "is no ConsumeResult"),
     (200, None, "is no ConsumeResult"),
 ])
@@ -298,6 +310,9 @@ def test_a_consume_answered_with_no_result_gives_none_and_says_why_so_an_owner_h
     monkeypatch.setattr(C, "_g3", lambda *a, **k: (status, body))
     got = C.consume(**CONSUME_ARGS)
     assert got.result is None and said in (got.held_why or "")
+    assert C._NOT_CONSUMED in (got.held_why or "")  # what happened, and the way on, a used approval included
+    # What an owner shows the operator carries neither the member's proof nor the consent
+    assert CONSUME_ARGS["origin_proof_ref"] not in repr(got) and CONSUME_ARGS["consent_set_ref"] not in repr(got)
 
 
 @pytest.mark.parametrize("raised, said", [
@@ -307,12 +322,52 @@ def test_a_consume_answered_with_no_result_gives_none_and_says_why_so_an_owner_h
 ])
 def test_a_consume_with_no_answer_gives_none_and_raises_nothing(
         monkeypatch: pytest.MonkeyPatch, raised: Exception, said: str) -> None:
-    """An owner holds on these: the call turns each into its result, so no owner can let one escape as a crash."""
-    def g3(*_: Any, **__: Any) -> tuple[int, Any]:
+    """An owner holds on these: the call turns each into its result, so no owner can let one escape as a crash. It asks
+    once: a second send after no answer could use a member the first did, and burn it."""
+    calls: list[Any] = []
+
+    def g3(*a: Any, **__: Any) -> tuple[int, Any]:
+        calls.append(a)
         raise raised
 
     monkeypatch.setattr(C, "_g3", g3)
-    assert C.consume(**CONSUME_ARGS) == C.Consumed(None, said)
+    got = C.consume(**CONSUME_ARGS)
+    assert got == C.Consumed(None, f"{said}. {C._NOT_CONSUMED}") and len(calls) == 1
+    assert CONSUME_ARGS["origin_proof_ref"] not in repr(got) and CONSUME_ARGS["consent_set_ref"] not in repr(got)
+
+
+@pytest.mark.parametrize("raw", [b"[" * 200_000, b"{not json", b"\xff\xfe"],
+                         ids=["nested-past-the-parsers-limit", "not-json", "not-utf-8"])
+def test_an_answer_that_arrived_and_cannot_be_read_gives_none_and_never_says_no_answer(
+        monkeypatch: pytest.MonkeyPatch, raw: bytes) -> None:
+    """Through the real ``_g3``. An unreadable body raises nothing out of the call, and it is not reported as a service
+    that did not answer, whose fix is another one."""
+    class Reply:
+        status = 200
+
+        def read(self) -> bytes:
+            return raw
+
+        def getheader(self, name: str) -> str | None:
+            return C.G3_WIRE if name == C.G3_HEADER else None
+
+    class Conn:
+        def __init__(self, path: str, timeout: float) -> None:
+            pass
+
+        def request(self, *_: Any, **__: Any) -> None:
+            pass
+
+        def getresponse(self) -> Reply:
+            return Reply()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(C, "_UnixHTTP", Conn)
+    got = C.consume(**CONSUME_ARGS, sock_path="/planted.sock")
+    assert got.result is None and "/planted.sock cannot be read" in (got.held_why or "")
+    assert "did not answer" not in (got.held_why or "") and C._NOT_CONSUMED in (got.held_why or "")
 
 
 @pytest.mark.parametrize("status, code, error, reason", [

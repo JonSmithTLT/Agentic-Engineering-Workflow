@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import functools
+import http.client
 import json
 import os
 import socket
@@ -296,7 +297,7 @@ def _consume(cs: dict[str, Any], **over: Any) -> C.Consumed:
 def test_consume_on_the_real_socket_consumes_the_member_once_against_its_operation(
         world: World, monkeypatch: pytest.MonkeyPatch) -> None:
     """G3-08 over the wire: the service takes the client's request as it stands, records the member against the
-    owner and the operation, and refuses the same member a second time, so a lost reply can only fail closed."""
+    owner and the operation, and refuses the same member a second time."""
     cs, record = _approved(world)
     ledger = world.rig.svc.ledger
     recorded: list[tuple[str, ...]] = []
@@ -314,17 +315,42 @@ def test_consume_on_the_real_socket_consumes_the_member_once_against_its_operati
     assert _consume(cs).result == "CONSENT_ALREADY_USED"
 
 
-def test_consume_on_the_real_socket_gives_each_of_g3_08s_refusals_and_consumes_nothing(world: World) -> None:
-    cs, _ = _approved(world)
+def test_a_consume_whose_reply_is_lost_gives_none_and_the_next_call_is_refused_so_it_fails_closed(
+        world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The designer's ruling: the service commits, the reply never reaches the owner, and the owner holds. Its text says
+    a new approval may be needed, because the retry is refused as used; nothing is ever admitted twice."""
+    cs, record = _approved(world)
+    real = C._UnixHTTP.getresponse
+
+    def lost(conn: Any) -> Any:
+        real(conn).read()  # the service has answered, so it has committed
+        raise http.client.RemoteDisconnected("planted: the reply is lost")
+
+    monkeypatch.setattr(C._UnixHTTP, "getresponse", lost)
+    got = _consume(cs)
+    assert got.result is None and "did not answer" in (got.held_why or "") and C._NOT_CONSUMED in (got.held_why or "")
+    assert world.rig.svc.ledger.consumed(record["consent_set_ref"], cs["intents"][0]["intent_ref"])
+    monkeypatch.setattr(C._UnixHTTP, "getresponse", real)
+    assert _consume(cs).result == "CONSENT_ALREADY_USED"
+
+
+def test_consume_on_the_real_socket_gives_each_of_g3_08s_refusals_and_consumes_nothing(
+        world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each ConsumeResult but CONSENT_ALREADY_USED, which the test above draws, and the member stays unused."""
+    cs, record = _approved(world)
+    ledger, keys = world.rig.svc.ledger, world.rig.svc.keys
     assert _consume(cs, consent_set_ref="consent:g3:no-such-record").result == "ORIGIN_NOT_ESTABLISHED"
     another_set = W.set_digest(dict(cs, request_set_ref=cs["request_set_ref"] + "-another"))
     assert _consume(cs, set_digest=another_set).result == "CONSENT_SCOPE_MISMATCH"
     assert _consume(cs, origin_proof_ref="proof:" + "0" * 32).result == "CONSENT_SCOPE_MISMATCH"
     assert _consume(cs, owner="ADC").result == "CONSENT_SCOPE_MISMATCH"
+    verifies = keys.verifies
+    monkeypatch.setattr(keys, "verifies", lambda record: False)  # a record this service's key does not verify
+    assert _consume(cs).result == "CONSENT_ISSUER_UNVERIFIED"
+    monkeypatch.setattr(keys, "verifies", verifies)
     world.rig.clock.advance(minutes=world.rig.dep.consent_validity_minutes + 1)
     assert _consume(cs).result == "CONSENT_EXPIRED"
-    fresh, _ = _approved(world)  # none of those used a member: a current consent still consumes
-    assert _consume(fresh).result == "CONSUMED"
+    assert not ledger.consumed(record["consent_set_ref"], cs["intents"][0]["intent_ref"])
 
 
 def test_consume_on_the_real_socket_gives_no_result_when_the_service_holds_or_refuses_or_is_absent(

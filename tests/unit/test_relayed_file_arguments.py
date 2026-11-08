@@ -242,6 +242,29 @@ def test_a_request_over_the_bridges_limit_is_refused_saying_so_and_nothing_is_se
     assert sent == ["lead.cli"]
 
 
+def test_a_request_of_exactly_the_bridges_limit_is_sent_and_one_byte_more_is_not(tmp_path, monkeypatch):
+    """The bridge's own read takes that many bytes, so the client refuses only what it would refuse."""
+    sent: list[str] = []
+    monkeypatch.setattr(lead_broker.bridge, "call", lambda op, args, **k: sent.append(op))
+    monkeypatch.setattr(lead_broker.bridge, "MAX_REQUEST", 1000)
+    text = tmp_path / "text.md"
+    parsed = build_parser().parse_args(["checkpoint", *REV, "--note-file", "text.md"])
+    parsed.cwd = str(tmp_path)
+
+    def forward(length: int) -> None:
+        text.write_bytes(b"x" * length)
+        lead_broker.forward(["checkpoint", *REV, "--note-file", "text.md"], parsed)
+
+    with pytest.raises(errors.UsageError) as over:
+        forward(2000)
+    fits = 1000 - (over.value.details["size"] - 2000)  # the request's size less its text: what it holds around the text
+    with pytest.raises(errors.UsageError, match="nothing was sent"):
+        forward(fits + 1)
+    assert sent == []
+    forward(fits)
+    assert sent == ["lead.cli"]
+
+
 # ----------------------------------------------------------------------------------- the broker's half
 
 
@@ -272,6 +295,8 @@ def test_the_refusal_ends_with_the_relayed_command(tmp_path):
 def test_a_records_name_check_is_its_schemas_id_pattern():
     assert f"^{stage_intents.INTENT_ID.pattern}$" == schema("stage-intent")["$defs"]["intent_id"]["pattern"]
     assert f"^{disposition_ops.DISPOSITION_ID.pattern}$" == schema("disposition")["properties"]["id"]["pattern"]
+    anomaly = schema("disposition")["properties"]["anomaly"]["oneOf"][1]["properties"]["id"]
+    assert disposition_ops.ANOMALY_ID.pattern == anomaly["pattern"]
 
 
 def test_stdin_and_no_input_still_work_while_a_relayed_command_runs(monkeypatch):

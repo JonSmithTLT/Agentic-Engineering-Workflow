@@ -1906,5 +1906,7 @@ runs where the Lead's shell runs, and arrive as text.
   source, and fails on a file argument the client does not handle.
   `tests/integration/test_relayed_file_arguments_through_a_broker.py` gives each argument of each relayed command and typed
   tool, one at a time, a value naming a path, and fails when the process opens, lists, writes or checks that path or
-  hands it to a child. It doesn't see a child's own reads, or a path past a state check its one project doesn't reach; a
-  new reader that takes a path from past those is what the broker's refusal and a review are for.
+  hands it to a child. It doesn't see a child's own reads, or a path past a state check its one project doesn't reach,
+  which includes a row stopping at a check of an argument the walk filled in itself, and it doesn't walk a typed tool's
+  object-typed properties; a new reader that takes a path from past those is what the broker's refusal and a review are
+  for.

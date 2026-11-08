@@ -8,8 +8,10 @@ open, a directory listing, a write, a child process) or a call of ``os.stat``, `
 ``os.path.exists``, ``isfile``, ``isdir`` (none of which audits, and which is how a read behind ``is_file()`` starts).
 
 What this does not see: a child process's own reads; a path past a state check this project doesn't reach (one planned
-Ticket, and what the rows before did to it); options of a dispatching command, whose id is never a real one here, so
-that no row launches anything. ``-C`` and a request's directory are not rows: the broker holds those to the project.
+Ticket, and what the rows before did to it), which includes a row that stops at a check of an argument this walk filled
+in itself; a typed tool's object-typed properties, which are not walked; options of a dispatching command, whose id is
+never a real one here, so that no row launches anything. ``-C`` and a request's directory are not rows: the broker holds
+those to the project.
 
 Arguments: the project's root, its Lead credential, a Ticket's id and a directory for the values. Options: ``--only
 COMMAND`` to walk one command, and ``--plant open|exists`` to add a ``checkpoint --attachment`` with no help text, read

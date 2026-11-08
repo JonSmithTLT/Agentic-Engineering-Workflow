@@ -531,7 +531,8 @@ class Dispositions:
         if notes:
             rel, _, sha = str(self.archive.record(notes[-1])["note"]).partition(" sha256:")
             return self._load(rel, sha)
-        if DISPOSITION_ID.fullmatch(ref) and (self.k.aew_root / RECORDS_DIR / f"{ref}.yaml").is_file():
+        if (DISPOSITION_ID.fullmatch(ref) or ANOMALY_ID.fullmatch(ref)) and (
+                self.k.aew_root / RECORDS_DIR / f"{ref}.yaml").is_file():
             return self._load(f"{RECORDS_DIR}/{ref}.yaml", None)
         raise NotFound(f"no disposition {ref}", disposition=ref)
 

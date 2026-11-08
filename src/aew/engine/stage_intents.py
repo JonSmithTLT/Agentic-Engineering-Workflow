@@ -73,6 +73,9 @@ ACTIVE = "ACTIVE"
 COMPLETED, STOPPED, REFUSED, ABANDONED = "COMPLETED", "STOPPED_AT_BOUNDARY", "REFUSED", "ABANDONED"
 TERMINAL = (COMPLETED, STOPPED, REFUSED, ABANDONED)
 RECORDS_DIR = "records/stage-intents"
+# Why a bound legality digest no longer holds. Not always an edit: a new AEW can read the same bytes differently, as
+# when a price table left the digest (A3 §2.1), and the stage stops either way.
+LEGALITY_MOVED = "the legality policy, or how this version of AEW reads it, changed"
 MAX_STEPS = 16
 MAX_REBINDS = 16  # explicit continues of one intent (the schema's bound); past it, abandon and decide anew
 LIVE_RUN = (K.STARTING, K.RUNNING)  # a launching step's run its supervisor still holds; anything else: launch_failed
@@ -383,7 +386,7 @@ class StageIntents:
             bound = si["binding"]["legality_digest"]
             checks["policy"] = {"status": OK, "message": "the legality digest it bound is in force"} if (
                 current == bound) else {"status": "stale_policy", "bound": bound, "current": current,
-                                        "message": "the legality policy changed since it opened"}
+                                        "message": f"{LEGALITY_MOVED} since it opened"}
         if contract_digest is None:
             checks["contract"] = {"status": "unknown_stage",
                                   "message": f"the surface no longer has a stage {si['tool']} to continue"}
@@ -515,7 +518,7 @@ class StageIntents:
         d = self.k.policy_digests()
         if d["legality_digest"] != si["binding"]["legality_digest"]:
             raise StalePolicy(
-                f"the legality policy changed since {binding.intent} opened: step {binding.n} ({planned['primitive']}) "
+                f"{LEGALITY_MOVED} since {binding.intent} opened: step {binding.n} ({planned['primitive']}) "
                 "is not committed. Read the projection again and decide anew", intent=binding.intent,
                 bound=si["binding"]["legality_digest"], current=d["legality_digest"])
         before = ctx.session.committed_view()
@@ -658,7 +661,7 @@ def _refuse_unless_continuable(si: dict[str, Any], check: dict[str, Any]) -> Non
     checks = check["checks"]
     policy = checks["policy"]
     if policy["status"] == "stale_policy":
-        raise StalePolicy(f"the legality policy changed since {si['id']} opened: it is not continued. Abandon it and "
+        raise StalePolicy(f"{LEGALITY_MOVED} since {si['id']} opened: it is not continued. Abandon it and "
                           "decide anew from the projection", intent=si["id"], bound=policy["bound"],
                           current=policy["current"])
     if policy["status"] != OK:

@@ -517,7 +517,7 @@ def _drift(c: Call, intent: str) -> errors.StalePolicy | None:
     current = c.engine.policy_digests()["legality_digest"]
     if current == bound:
         return None
-    return errors.StalePolicy(f"the legality policy changed since {intent} opened: its next step is not run. Read "
+    return errors.StalePolicy(f"{SI.LEGALITY_MOVED} since {intent} opened: its next step is not run. Read "
                               "the projection again and decide anew", intent=intent, bound=bound, current=current)
 
 

@@ -42,7 +42,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 
 ## `local`
 
-- `local`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir); `aew.engine.lock:FileLock._open` (direct: Path.mkdir); `aew.engine.outbox:bump_wake` (direct: Path.mkdir); `aew.engine.queue_ops:Queue._checkout_sync_lock` (direct: Path.mkdir); `aew.harness.containment.layout:for_run` (direct: Path.mkdir); `aew.history.index:HistoryIndex._db` (direct: Path.mkdir)
+- `local`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir); `aew.engine.lock:FileLock._open` (direct: Path.mkdir); `aew.engine.outbox:bump_wake` (direct: Path.mkdir); `aew.engine.queue_ops:Queue._checkout_sync_lock` (direct: Path.mkdir); `aew.harness.containment.layout:for_run` (direct: Path.mkdir); `aew.history.index:HistoryIndex._db` (direct: Path.mkdir); `aew.switch_offer:_remember_no` (direct: Path.mkdir)
 - `local/anomalies`, named by `aew.engine.disposition_ops:SPOOL_REL`: written or removed by `aew.engine.disposition_ops:signal_source` (direct: Path.mkdir)
 - `local/anomalies/{}`: written or removed by `aew.engine.disposition_ops:_unlink` (direct: Path.unlink)
 - `local/anomalies/{}.json`: written or removed by `aew.engine.disposition_ops:signal_source` (direct: Path.write_text)
@@ -236,6 +236,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/recall/history-fts.sqlite`, named by `aew.engine.recall:SUBSTRATE_REL`: written or removed by `aew.engine.recall:Substrate._connect` (direct: sqlite3.connect); `aew.engine.recall:Substrate._delete` (direct: Path.unlink)
 - `local/steering`: written or removed by `aew.harness.steering_loop:_write` (direct: Path.mkdir)
 - `local/steering/loop.json`, named by `aew.engine.steering:LOOP_REL`: written or removed by `aew.harness.steering_loop:_write` (direct: Path.unlink, Path.write_text, replace_with_retry)
+- `local/switch-offers.json`, named by `aew.switch_offer:REMEMBERED`: written or removed by `aew.switch_offer:_remember_no` (direct: atomic_write)
 - `local/validation/{}`: written or removed by `aew.engine.validation_ops:Validation._execute` (direct: Path.mkdir)
 - `local/validation/{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
 - `local/validation/{}/finished.json`: written or removed by `aew.engine.validation_ops:Validation._execute` (direct: atomic_write)
@@ -410,6 +411,9 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.stg02.ledger:Ledger.__init__` (direct: Path.mkdir): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.ledger:Ledger._connect` (direct: sqlite3.connect): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.server:_main` (direct: Path.write_text): `--write-driver-config` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
+- `aew.switch_offer:_restore` (direct: Path.unlink): under `.aew`, but its first directory or file name is computed
+- `aew.switch_offer:_restore` (direct: atomic_write): under `.aew`, but its first directory or file name is computed
+- `aew.switch_offer:_take` (direct: atomic_write): under `.aew`, but its first directory or file name is computed
 - `aew.workspace.worktrees:allocate` (direct: Path.write_text): the result of `git(*args, cwd=cwd, env=env).stdout.decode('utf-8', 'repl...(...)`, a callee this reading cannot name
 - `aew.workspace.worktrees:allocate_detached` (direct: Path.write_text): the result of `git(*args, cwd=cwd, env=env).stdout.decode('utf-8', 'repl...(...)`, a callee this reading cannot name
 - `aew.workspace.worktrees:remove` (direct: shutil.rmtree): `integ['workspace']`, from a value that is not a dict literal; `obs['path']`, from a value that is not a dict literal; `unit['workspace']['path']`, from a value that is not a dict literal; the name `p` is not bound to a value this reading can follow; the result of `record.get(...)`, a callee this reading cannot name

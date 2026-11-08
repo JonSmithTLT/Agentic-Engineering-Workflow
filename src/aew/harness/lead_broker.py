@@ -801,7 +801,8 @@ def require_credential(acquire: bool) -> None:
 
 def run_session(engine: Any, command: list[str], *, acquire: bool, session_label: str | None,
                 keep_seat: bool, contained: Callable[[str | None, dict[str, str]], Harness],
-                env: dict[str, str] | None = None) -> dict[str, Any]:
+                env: dict[str, str] | None = None,
+                with_token: Callable[[str], None] | None = None) -> dict[str, Any]:
     """``aew lead session``: broker the Lead credential for one Lead harness session.
 
     ``env`` is the harness's environment (default: the caller's, minus every credential variable). A harness
@@ -813,6 +814,10 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     contained Lead, STG-05 CS-4), or, where the policy allows a weaker run, as it is, labelled so (:class:`WeakerLead`).
     When it refuses (containment required and not established), nothing runs, and a seat this session acquired is
     released again. Its ``precheck``, where it has one, runs first: a refusal there comes before any credential is read.
+
+    ``with_token`` is called once with the Lead credential, before the broker starts: what `aew opencode`'s switch offer
+    needs, since on ``acquire`` the credential doesn't exist any earlier. It must not raise. `aew lead session` passes
+    none, so it never applies an offer.
     """
     from aew.engine.harness_ops import scrubbed_env
     from aew.harness.procs import harden_current_process, run_session_tree
@@ -832,6 +837,8 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
         token = engine.lead_acquire(expect_rev=engine.store.current()["revision"], session_label=session_label)["token"]
     else:
         token = held
+    if with_token is not None:
+        with_token(token)
     broker = LeadBroker(engine, token)
     # Every launch this session's broker relays or its steering loop makes runs in this process and reads its
     # environment: a refusal for a missing provider variable says so (review of PR #214, F2).

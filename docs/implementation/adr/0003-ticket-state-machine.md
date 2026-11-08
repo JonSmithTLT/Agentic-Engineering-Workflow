@@ -198,3 +198,8 @@ its own worktree, and integrate one after the other through the integration queu
 whose scopes can meet is held by the launch conflict check of the 2026-11-06 amendment. Nothing else in the state
 machine changes, and the cap still governs admission only. An existing project keeps the value its `gates.yaml` holds
 until the operator changes it; AEW never changes it unasked.
+
+**Follow-on, 2026-11-08 (register F10's note):** `aew opencode` now asks. A project holding the old 1 is offered 2 at the
+operator's own terminal (`aew/switch_offer.py`); the code typed back adopts it as the operator's decision, Enter alone is
+a remembered no, and any other value is never offered. So "never unasked" stands. Because the cap is legality, the screen
+says that a stage open at that moment stops as `STALE_POLICY`.

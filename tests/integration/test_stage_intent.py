@@ -7,6 +7,7 @@ then each primitive runs with its step armed (``stage_intents.step``) and commit
 from __future__ import annotations
 
 import hashlib
+import os
 
 import pytest
 import yaml
@@ -15,8 +16,10 @@ from invariants import assert_control_invariants, load_control
 
 from aew.engine import primitives as P
 from aew.engine import stage_intents as SI
+from aew.engine import steering as S
 from aew.engine.api import Engine
 from aew.errors import IllegalTransition, IntegrityError, NotFound, StaleAuthority, StalePolicy, StaleRevision
+from aew.knowledge.manifest import DEFAULT_GATES
 
 ZERO = "0" * 64
 
@@ -204,6 +207,48 @@ def test_refreshing_removing_or_adding_the_price_table_never_stales_an_open_stag
     assert len(steps) == 4 and len({s["legality_digest"] for s in steps}) == 1
     operational = [s["operational_digest"] for s in steps]
     assert len(set(operational[:3])) == 3 and operational[3] != operational[2]
+
+
+def _raise_project(p) -> None:
+    path = p.root / ".aew/policy/execution.yaml"
+    path.write_text(path.read_text(encoding="utf-8") + "\nsteering:\n  mode: crawl\n", encoding="utf-8", newline="\n")
+    p.adopt_policy()
+
+
+def _operator() -> S.OperatorPrincipal:
+    return S.OperatorPrincipal(uid=os.getuid() if hasattr(os, "getuid") else None, method="peer_credentials",
+                               endpoint_pid=os.getpid(), endpoint_started_at="2026-10-09T00:00:00Z")
+
+
+def test_a_steering_raise_shown_before_a_price_table_change_still_commits(project):
+    """`steering.py`'s digest check, through the real preview and commit: a table can't stale what it can't affect."""
+    p = project
+    _raise_project(p)
+    bound = engine(p).steering_raise_preview("walk")
+    manifest = p.root / ".aew/project.yaml"
+    data = yaml.safe_load(manifest.read_text(encoding="utf-8"))
+    del data["policy"]["pricing"]
+    manifest.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8", newline="\n")
+    p.adopt_policy()
+    out = engine(p).steering_raise(_operator(), mode="walk", generation=bound["generation"],
+                                   legality_digest=bound["legality_digest"])
+    assert out["ok"] and out["mode"] == "walk"
+
+
+def test_a_steering_raise_shown_before_a_legality_change_is_refused(project):
+    """The check above is live: a legality change at the same point is refused."""
+    p = project
+    _raise_project(p)
+    bound = engine(p).steering_raise_preview("walk")
+    gates = p.root / ".aew/policy/gates.yaml"
+    default = f"mutating_concurrency: {DEFAULT_GATES['mutating_concurrency']}"
+    gates.write_text(gates.read_text(encoding="utf-8").replace(default, f"mutating_concurrency: {NOT_THE_DEFAULT_CAP}"),
+                     encoding="utf-8", newline="\n")
+    p.adopt_policy()
+    with pytest.raises(StaleAuthority) as exc:
+        engine(p).steering_raise(_operator(), mode="walk", generation=bound["generation"],
+                                 legality_digest=bound["legality_digest"])
+    assert exc.value.details["reason"] == "stale_policy"
 
 
 def test_a_superseded_generations_stage_is_never_continued_implicitly(project):

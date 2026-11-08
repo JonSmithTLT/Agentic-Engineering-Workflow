@@ -910,8 +910,8 @@ systems:
     default_evidence: src/aew/policy/execution.py:188
     owner: operator
     turning_on_changes: structural adds a bounded structural-map section to the packs of roles whose context names codebase_map
-      (today only the investigator) and the map's row to the Lead's resume view; a map must still be generated with `aew
-      map generate`, since nothing in the default flow generates one
+      (every worker archetype, register E184) and the map's row to the Lead's resume view; `aew init` generates and
+      selects the first map when the branch has a commit, and `aew map generate` makes a later one
   state:
     board_state: built_off
     built: partly

@@ -22,7 +22,8 @@ def test_init_selects_the_map_of_the_branch_head_as_the_operator(tmp_path):
     assert shown["map_revision"] == out["map"]["map_revision"] != store.NO_REGISTRY
     assert shown["root"] == out["map"]["root"]
     [line] = (repo / ".aew" / store.LOG_REL).read_text(encoding="utf-8").splitlines()
-    assert json.loads(line)["actor"] == service.INIT_ACTOR  # attributable: the operator's init, not a Lead
+    # attributable: the operator's init, not a Lead (ADR-0015's amendment of 2026-11-07)
+    assert json.loads(line)["actor"] == {"kind": "operator", "id": "aew init", "generation": None}
 
 
 def _engine(tmp_path):
@@ -42,8 +43,8 @@ def test_a_map_that_cannot_be_built_never_fails_init(tmp_path, monkeypatch):
 
     monkeypatch.setattr(service, "build", broken)
     result = service.first_map(engine)
-    assert result["selected"] is False and result["reason"] == "OSError"
-    assert "aew map generate --select" in result["detail"]
+    assert result["selected"] is False and result["reason"] == "generation_failed"
+    assert "OSError" in result["detail"] and "aew map generate --select --expect-map-rev none:0" in result["detail"]
     assert store.read_registry(engine.aew_root) is None
 
 

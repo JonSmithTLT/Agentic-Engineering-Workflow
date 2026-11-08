@@ -124,14 +124,14 @@ INIT_ACTOR = {"kind": "operator", "id": "aew init", "generation": None}
 def first_map(engine: Any) -> dict[str, Any]:
     """`aew init`'s first structural map (register E184): generated from the authoritative branch's head and
     selected, when there is a head and no map has been selected yet. Never raises: anything that stops it is one
-    labelled line in init's report, and the project works without a map (T5-INV-01; `aew map generate --select` makes
-    one later)."""
+    labelled line in init's report, and the project works without a map (T5-INV-01; the Lead makes one later with
+    `aew map generate --select --expect-map-rev none:0`)."""
     try:
         commit = engine.authoritative_commit()
         if not commit:
             return {"selected": False, "reason": "no_commit",
                     "detail": f"the authoritative branch {engine.authoritative_branch!r} has no commit yet; after the "
-                              "first commit, the Lead runs `aew map generate --select`"}
+                              "first commit, the Lead runs `aew map generate --select --expect-map-rev none:0`"}
         if store.read_registry(engine.aew_root) is not None:
             return {"selected": False, "reason": "already_selected", "detail": "a map registry exists; left as it is"}
         record = build(engine.repo_root, commit)
@@ -141,8 +141,9 @@ def first_map(engine: Any) -> dict[str, Any]:
         return {"selected": True, "root": sha, "source_revision": record["source_revision"],
                 "map_revision": store.revision_of(new)}
     except Exception as exc:  # init never fails over a map; the line says what to run instead
-        return {"selected": False, "reason": getattr(exc, "code", type(exc).__name__),
-                "detail": f"{exc}; the project works without a map, and `aew map generate --select` makes one"}
+        return {"selected": False, "reason": getattr(exc, "code", "generation_failed"),
+                "detail": f"{type(exc).__name__}: {exc}; the project works without a map, and "
+                          "`aew map generate --select --expect-map-rev none:0` makes one"}
 
 
 DISCOVERY = "discovery_record"

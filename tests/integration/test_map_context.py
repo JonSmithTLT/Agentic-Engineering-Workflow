@@ -97,7 +97,7 @@ def test_with_the_switch_off_every_pack_and_the_resume_view_are_byte_identical_m
     """Plan §5.4 and SMQ-01: the Q7/M4-H treatment is unchanged by default. Packs built before a map existed
     regenerate to the same bytes once one is selected, a pack built with a map selected is the pack without it, and
     the resume view's derived knowledge does not move."""
-    p = sample_project(tmp_path)
+    p = without_map(sample_project(tmp_path))
     to_commit_ready(p, tmp_path)  # implementer, reviewer and verifier packs
     _, investigator = dispatch(p, create_investigation(p, tmp_path, title="Survey"))
     dispatch(p, create_investigation(p, tmp_path, title="Research", card="researcher"))

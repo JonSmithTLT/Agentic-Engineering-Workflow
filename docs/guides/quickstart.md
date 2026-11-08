@@ -42,8 +42,9 @@ on `provider-env`, because the key isn't set until the line after it: its messag
   variable's name: no flag takes a key, and `aew init` doesn't look for one. `opencode` writes no variable, since its free
   models need none; its paid models take the route below. Any other provider is refused, and takes the route below, as
   does a proxy variable such as `HTTPS_PROXY`.
-- **Nothing runs at init.** The check isn't run and the model isn't looked up: `aew doctor` has `provider-env` and
-  `model-refs`.
+- **No check or model runs at init.** The check isn't run and the model isn't looked up: `aew doctor` has
+  `provider-env` and `model-refs`. Init does read your repository once, to make the first project map from the branch's
+  head when it has a commit. Its report's `map` line says what happened, and a map that can't be made never fails init.
 - **On an initialized project** `aew init` is refused, flags or not. One interrupted before it finished may run again,
   with other values.
 

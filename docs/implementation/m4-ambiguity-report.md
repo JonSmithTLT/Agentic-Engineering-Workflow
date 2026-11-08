@@ -284,7 +284,7 @@ Built to the M4-D5 plan, revision 3, which the designer approved after two round
 - **Waking:** the 0.2 s poll is gone. The wait blocks on `local/wake` (a stat every 25 ms, a coarse re-check every 2 s) through `outbox.wait_for`, the same loop as `history log --follow`.
 - **Two lanes on each wake of `--any` (ADR-0012 D5):**
   - the runs' own records: did one end;
-  - committed control state: did an invocation one of the runs serves stop being active, cancelled, interrupted by a takeover or completed. Such a result carries `ended_by: {lane: control, why}`, and the run's own record may still say `running`.
+  - committed control state: did an invocation one of the runs serves stop being active, cancelled, interrupted by a takeover or completed. Such a result carries `ended_by: {lane: control, reason}`, and the run's own record may still say `running`.
 - **The control lane is `--any`'s only** (fixed 2026-10-09, register E3). As first built it ended a single-run wait too. Once the review of #79 had the first check examine the initial snapshot, a single-run wait started after its invocation ended returned at once, with the run still `running` because its supervisor had not yet written its end. CI failed on that four times in three adversarial tests (2026-10-06 to 10-08, Linux and Windows). The typed `harness_wait` follows the same rule: one run is the single-run form, several are `--any`.
 - **No parse between commits:** control state is parsed only when `control.yaml`'s identity changed. A wait parses nothing between commits, however often the wake file changes (OBX-38).
 - **Wake latency** (`tools/perf/wake_latency.py`, two processes, 60 commits, Windows reference machine):

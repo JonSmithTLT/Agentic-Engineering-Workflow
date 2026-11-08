@@ -43,6 +43,7 @@ def test_the_voice_comes_before_the_tool_rules_so_it_reads_as_how_the_lead_works
 
 # What the Lead does when a wait returns has one owner, the wake guide (E122): the system text lists its entries, and no
 # other line of it gives such guidance. The phrases a hand-written wake rule would use, kept out of every other line.
+# A phrase list catches the likely restatements, not every one: a rule worded otherwise passes (E122 review, n1).
 WAKE_WORDS = ("still working", "times out", "timed out", "when one ends", "when a run ends", "wait again",
               "evidence shows", "Tell the operator")
 
@@ -51,7 +52,10 @@ def test_the_lead_s_wake_guidance_is_generated_from_the_wake_guide_and_nowhere_e
     lines = projection.LEAD_SYSTEM.split("\n")
     generated = projection.wake_guide_lines()
     kinds = K.wake_guidance()
-    assert list(kinds) == [*K.WAKE_GUIDE, K.TIMED_OUT] and K.TIMED_OUT not in K.WAKE_GUIDE  # a timeout is no `why`
+    # The kinds of return a wait gives today, in the enum's order, then the timeout (no `why`). The guide holds every
+    # `why`; the Lead is told of one only once a wait can return it.
+    assert list(kinds) == [*K.WAITED_ON, K.TIMED_OUT] and K.TIMED_OUT not in K.WAKE_GUIDE
+    assert list(K.WAITED_ON) == [w for w in K.WHY if w in K.WAITED_ON]
     assert generated == [f"    - {K.wake_line(key)}" for key in kinds]
     start = lines.index(generated[0])
     assert lines[start:start + len(generated)] == generated  # the entries, in the table's order, together
@@ -67,6 +71,8 @@ def test_a_wait_s_returned_steps_take_their_text_from_the_wake_guide():
     timed_out, ended = K.WAIT_TIMED_OUT, K.WAKE_GUIDE[K.RUN_ENDED]
     again = K.wait_step(["R-1", "R-2"], again=True)
     assert again.startswith(f"R-1, R-2 are still working ({K.TIMED_OUT}): {K.NOT_POLLING}.")
-    assert timed_out.act[1:] in again and timed_out.tell in again and "`aew harness wait R-1 R-2 --any`" in again
+    # The wait command sits right after the default action, before the conditional ones (E122 review, m2).
+    assert f"{K.WAIT_AGAIN[1:]} (`aew harness wait R-1 R-2 --any`). {K.WAIT_OR_ELSE[0].upper()}" in again
+    assert timed_out.act == f"{K.WAIT_AGAIN}; {K.WAIT_OR_ELSE}" and timed_out.tell in again
     assert K.run_ended_step("ingest it") == f"ingest it. Tell the operator in a line {ended.tell}"
     assert K.WAIT_RULE in K.wait_step(["R-1"]) and "still working" not in K.wait_step(["R-1"])

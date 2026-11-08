@@ -242,7 +242,8 @@ def test_lead_rules_ask_the_present_operator_but_never_edit_or_delegate():
     assert effect(rules, "edit") == "deny" and effect(rules, "subagent") == "deny"
     assert effect(rules, "shell") == "ask" and effect(rules, "shell", "aew *") == "allow"
     assert effect(rules, "question") == "allow"
-    for cmd in projection.lead_config()["commands"].values():  # inline shell only for fixed read-only commands
+    # which command may run inline is test_lead_text's rule; here, none takes an argument
+    for cmd in projection.lead_config()["commands"].values():
         for block in __import__("re").findall(r"!`([^`]*)`", cmd["template"]):
             assert "$" not in block
 

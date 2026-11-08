@@ -25,6 +25,8 @@ import re
 from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from decimal import Decimal
+from functools import lru_cache
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -94,6 +96,16 @@ class Prices:
         """The context size above which ``key`` costs more than its row says, when its row is only the base tier."""
         entry = (self.table.get("base_tier_only") or {}).get(key)
         return entry["above_context_tokens"] if entry else None
+
+
+@lru_cache(maxsize=1)
+def bundled_table() -> bytes | None:
+    """The price table AEW ships (the design's §11), or None in a package without it: init then makes no table and says
+    so, since nothing optional fails AEW."""
+    try:
+        return (resources.files("aew.policy") / "default_pricing.yaml").read_bytes()
+    except OSError:
+        return None
 
 
 def read_price_table(path: Path) -> Prices | None:
@@ -493,7 +505,7 @@ def _plus(total: Decimal | None, part: Decimal | None) -> Decimal | None:
 
 def _empty_figure() -> dict[str, Any]:
     return {"usd": None, "priced": 0, "unpriced": 0, "reasons": {}, "floor_runs": 0, "floor_above": None,
-            "prices_as_of": None}
+            "prices_as_of": None, "other_sources": []}
 
 
 def empty_totals() -> dict[str, Any]:
@@ -510,10 +522,14 @@ def _add_floor(into: dict[str, Any], runs: int, above: int | None) -> None:
         into["floor_above"] = above if into["floor_above"] is None else min(into["floor_above"], above)
 
 
+def _oldest(held: str | None, as_of: str | None) -> str | None:
+    """The older of two table dates (`YYYY-MM-DD`, by the schema, so they sort as text)."""
+    return held if as_of is None else as_of if held is None else min(held, as_of)
+
+
 def _add_as_of(into: dict[str, Any], as_of: str | None) -> None:
-    """The oldest table date behind a sum: a figure says how old its prices may be."""
-    if as_of is not None:
-        into["prices_as_of"] = as_of if into["prices_as_of"] is None else min(into["prices_as_of"], as_of)
+    """The oldest table date behind a sum: a sum can span tables, and says how old its prices may be."""
+    into["prices_as_of"] = _oldest(into["prices_as_of"], as_of)
 
 
 def _add_figure(into: dict[str, Any], figure: Mapping[str, Any]) -> None:
@@ -522,6 +538,7 @@ def _add_figure(into: dict[str, Any], figure: Mapping[str, Any]) -> None:
     into["unpriced"] += figure["unpriced"]
     _add_floor(into, figure["floor_runs"], figure["floor_above"])
     _add_as_of(into, figure["prices_as_of"])
+    into["other_sources"] = sorted({*into["other_sources"], *figure["other_sources"]})
     for reason, n in figure["reasons"].items():
         into["reasons"][reason] = into["reasons"].get(reason, 0) + n
 
@@ -548,6 +565,8 @@ def add_totals(into: dict[str, Any], other: Mapping[str, Any]) -> dict[str, Any]
         for name in ("at_record_floor_above", "under_current_prices_floor_above"):
             floors = [v for v in (mine[name], model[name]) if v is not None]
             mine[name] = min(floors) if floors else None
+        for name in ("at_record_prices_as_of", "under_current_prices_as_of"):
+            mine[name] = _oldest(mine[name], model[name])
         for cat in U.CATEGORIES:
             mine["tokens"][cat] += model["tokens"][cat]
     return into
@@ -561,7 +580,8 @@ _MODEL_COUNTS = ("estimated_at_record_priced", "estimated_at_record_unpriced",
 def _empty_model() -> dict[str, Any]:
     return {"runs": 0, "tokens": dict.fromkeys(U.CATEGORIES, 0), "estimated_at_record_usd": None,
             "estimated_under_current_prices_usd": None, **dict.fromkeys(_MODEL_COUNTS, 0),
-            "at_record_floor_above": None, "under_current_prices_floor_above": None}
+            "at_record_floor_above": None, "under_current_prices_floor_above": None,
+            "at_record_prices_as_of": None, "under_current_prices_as_of": None}
 
 
 class Reader:
@@ -601,7 +621,8 @@ class Reader:
                 return {"run": entry["run"], "invocation": inv_id, "state": "missing", "usage": None,
                         "pricing_sha256": None, "estimated_at_record": {"unpriced": UNPRICED_USAGE_MISSING},
                         "estimated_under_current_prices": {"unpriced": UNPRICED_USAGE_MISSING},
-                        "provider_cost": {"usd": None, "trust": "absent"}, "prices_as_of": {}, "_parts": ([], [])}
+                        "provider_cost": {"usd": None, "trust": "absent"}, "prices_as_of": {}, "at_record_source": None,
+                        "_parts": ([], [])}
             result = run_record.get("result")
             record = _valid_record(result.get("usage_record") if isinstance(result, dict) else None) \
                 or U.absent_record(source=f"harness:{entry.get('harness') or U.UNKNOWN}")
@@ -610,13 +631,16 @@ class Reader:
         current, current_parts = derive(record, self.current) if not self.unusable else (
             {"unpriced": UNPRICED_TABLE_UNUSABLE}, [])
         recorded = self.snapshot(sha) if sha else None
+        source = recorded.table.get("source") if recorded else None
+        current_source = self.current.table.get("source") if self.current and not self.unusable else None
         as_of = {"estimated_at_record": recorded.table["as_of"] if recorded else None,
                  "estimated_under_current_prices": self.current.table["as_of"]
                  if self.current and not self.unusable else None}
         return {"run": entry["run"], "invocation": inv_id, "state": state, "usage": record, "pricing_sha256": sha,
                 "estimated_at_record": at_record, "estimated_under_current_prices": current,
                 "provider_cost": {"usd": record.get("provider_cost_usd"), "trust": record.get("provider_cost_trust")},
-                "prices_as_of": as_of, "_parts": (at_parts, current_parts)}
+                "prices_as_of": as_of, "at_record_source": source if source != current_source else None,
+                "_parts": (at_parts, current_parts)}
 
     def invocation(self, inv_id: str, inv: Mapping[str, Any]) -> dict[str, Any]:
         """One invocation: its rows and their sum. An invocation without runs (a custody invocation, or one not yet
@@ -648,6 +672,8 @@ def _count_row(totals: dict[str, Any], row: Mapping[str, Any]) -> None:
             if figure.get("floor"):
                 _add_floor(fig, 1, figure["floor_above"])
             _add_as_of(fig, row["prices_as_of"].get(name))
+            if name == "estimated_at_record" and row["at_record_source"]:
+                fig["other_sources"] = sorted({*fig["other_sources"], row["at_record_source"]})
         else:
             fig["unpriced"] += 1
             fig["reasons"][figure["unpriced"]] = fig["reasons"].get(figure["unpriced"], 0) + 1
@@ -702,6 +728,13 @@ def _count_models(by_model: dict[str, Any], row: Mapping[str, Any]) -> None:
             above = (figure.get("floor_models") or {}).get(key)
             if above is not None:
                 model[name] = above if model[name] is None else min(model[name], above)
+        dates = row["prices_as_of"]
+        if key in at_parts:
+            model["at_record_prices_as_of"] = _oldest(model["at_record_prices_as_of"],
+                                                      dates.get("estimated_at_record"))
+        if key in current_parts:
+            model["under_current_prices_as_of"] = _oldest(model["under_current_prices_as_of"],
+                                                          dates.get("estimated_under_current_prices"))
 
 
 def public_row(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -816,7 +849,8 @@ def basis(prices: Prices | None) -> dict[str, Any]:
                   "its declared token semantics; at record under the table in force when it was copied, and under "
                   "the table in force now",
         "current_table": None if prices is None else {"sha256": prices.sha256, "as_of": prices.table["as_of"],
-                                                      "source": prices.table.get("source")},
+                                                      "source": prices.table.get("source"),
+                                                      "bundled": prices.raw == bundled_table()},
     }
 
 
@@ -861,7 +895,9 @@ def figure_text(figure: Mapping[str, Any]) -> str:
         return f"{UNKNOWN_EXPOSURE} ({_reasons(figure['reasons'])})"
     text = f"{_amount(figure['usd'], figure.get('floor_above'))} {OBSERVED} over {figure['priced']} priced run(s)"
     if figure.get("prices_as_of"):
-        text += f", prices as of {figure['prices_as_of']}"
+        text += f", oldest prices as of {figure['prices_as_of']}"
+    if figure.get("other_sources"):
+        text += f", source: {'; '.join(figure['other_sources'])}"
     if figure["unpriced"]:
         text += f", and {figure['unpriced']} {UNKNOWN_EXPOSURE} ({_reasons(figure['reasons'])})"
     return text
@@ -928,6 +964,8 @@ def _model_figure(model: Mapping[str, Any]) -> str:
     if not priced:
         return f"{UNKNOWN_EXPOSURE} over {unpriced} run(s)"
     text = f"{_amount(usd, model['under_current_prices_floor_above'])} over {priced} run(s)"
+    if model["under_current_prices_as_of"]:
+        text += f", oldest prices as of {model['under_current_prices_as_of']}"
     return text + (f", and {unpriced} {UNKNOWN_EXPOSURE}" if unpriced else "")
 
 
@@ -939,7 +977,8 @@ def _row_lines(row: Mapping[str, Any], indent: str) -> list[str]:
     as_of = row["prices_as_of"]
     return [f"{indent}{row['run']} [{fresh}, tokens {trust}]: {tokens}",
             f"{indent}  cost at record prices "
-            f"{_row_figure(row['estimated_at_record'], as_of.get('estimated_at_record'))}; under current prices "
+            f"{_row_figure(row['estimated_at_record'], as_of.get('estimated_at_record'))}"
+            + (f", source: {row['at_record_source']}" if row["at_record_source"] else "") + "; under current prices "
             f"{_row_figure(row['estimated_under_current_prices'], as_of.get('estimated_under_current_prices'))}"]
 
 
@@ -969,8 +1008,9 @@ def basis_lines(about: Mapping[str, Any]) -> list[str]:
             f"Per-task enforcement: {about['per_task_enforcement']}. External account bound: "
             f"{about['external_account_bound']}.",
             f"Cost method: {about['method']}. Table in force now: "
-            + (f"as of {table['as_of']}, sha256 {table['sha256'][:12]}, source: {table['source']}. These are list "
-               "prices unless that source says otherwise, not a contract's or a gateway's rate" if table else
+            + (f"as of {table['as_of']}, sha256 {table['sha256'][:12]}, source: {table['source']}. "
+               + ("These are list prices, not a contract or gateway rate" if table.get("bundled") else
+                  "These are the rates this project's table records, as its source describes them") if table else
                f"none, so every figure under current prices is {UNKNOWN_EXPOSURE}") + "."]
 
 

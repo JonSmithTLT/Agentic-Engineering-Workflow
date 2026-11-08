@@ -47,7 +47,8 @@ def test_the_bundled_table_is_what_the_generator_writes_from_the_saved_catalog()
     """A hand-edited price, or a removed base-tier mark, fails here: the table is the catalog's, byte for byte."""
     saved = json.loads(T.SAVED.read_text(encoding="utf-8"))
     bundled = O.Prices(T.OUT.read_bytes(), source=str(T.OUT)).table
-    assert T.render(saved, bundled["as_of"]) == T.OUT.read_bytes()
+    as_of = saved.pop("as_of")
+    assert T.render(saved, as_of) == T.OUT.read_bytes()  # a hand-bumped date fails too
     assert T.CATALOG_URL in bundled["source"] and "list prices" in bundled["source"]
     assert hashlib.sha256(T.SAVED.read_bytes()).hexdigest() in bundled["source"]  # names the catalog it came from
 

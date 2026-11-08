@@ -3,12 +3,17 @@ cost, an unqualified route stays unpriced, and the table says how old it is."""
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from aew.engine import usage_ops as O
 from aew.harness import usage as U
 from aew.harness.opencode.adapter import OpenCodeAdapter
 from aew.util import load_yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "helpers"))
+
+from aewflow import make_git_repo  # noqa: E402
 
 TABLE = Path(O.__file__).resolve().parent.parent / "policy" / "default_pricing.yaml"
 
@@ -30,7 +35,20 @@ def test_the_report_names_the_tables_source_and_says_these_are_list_prices(proje
     """The design's amendment of 2026-11-08 rests on this: a report names its source and its kind of rate."""
     text = project.aew("usage", "show").stdout
     assert bundled().table["source"] in text
-    assert "list prices" in text and "not a contract's or a gateway's rate" in text
+    assert "These are list prices, not a contract or gateway rate" in text
+
+
+def test_a_package_without_the_bundled_table_inits_with_no_table_and_says_so(tmp_path, monkeypatch, capsys):
+    """Base tools ship and nothing optional fails AEW: no table is a project the ledger already handles."""
+    from aew.cli.main import main
+
+    monkeypatch.setattr(O, "bundled_table", lambda: None)
+    repo = make_git_repo(tmp_path / "repo")
+    assert main(["-C", str(repo), "init"]) == 0
+    assert "no bundled price table" in capsys.readouterr().out
+    assert not (repo / ".aew" / "policy" / "pricing.yaml").exists()
+    assert main(["-C", str(repo), "usage", "show"]) == 0
+    assert "$" not in capsys.readouterr().out
 
 
 def test_every_row_of_the_bundled_table_is_on_a_provider_the_adapter_declares_semantics_for():

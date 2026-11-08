@@ -393,7 +393,7 @@ def test_usage_show_derives_every_level_from_one_projection_and_status_carries_i
         assert (totals["runs"], totals["recorded"], totals["tokens"]["output"]) == (1, 1, 400)
         assert totals["estimated_at_record"] == {"usd": pytest.approx(PRICED_USD), "priced": 1, "unpriced": 0,
                                                  "reasons": {}, "floor_runs": 0, "floor_above": None,
-                                                 "prices_as_of": "2026-10-01"}
+                                                 "prices_as_of": "2026-10-01", "other_sources": []}
     project = lab.ok("usage", "show", "--json")
     assert (project["scope"], project["archive_complete"]) == ("recent", False)  # never read as a lifetime total
     usage = lab.ok("status", "--json")["usage"]
@@ -419,7 +419,8 @@ def test_an_unpriced_run_is_never_shown_as_a_dollar_figure(lab, tmp_path):
     totals = lab.ok("usage", "show", "--json")["totals"]
     assert totals["estimated_at_record"] == {"usd": None, "priced": 0, "unpriced": 1,  # never a 0 (#368, M1)
                                              "reasons": {O.UNPRICED_NO_TABLE: 1},
-                                             "floor_runs": 0, "floor_above": None, "prices_as_of": None}
+                                             "floor_runs": 0, "floor_above": None, "prices_as_of": None,
+                                             "other_sources": []}
     assert lab.ok("status", "--json")["usage"]["estimated_at_record"]["usd"] is None
 
 

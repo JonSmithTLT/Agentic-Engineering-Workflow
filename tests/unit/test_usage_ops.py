@@ -449,7 +449,8 @@ def test_an_invocation_without_runs_is_counted_and_contributes_nothing_else(tmp_
     t = O.unit_projection(state, "T-0001", O.Reader(tmp_path, PRICES))["own"]
     assert (t["invocations"], t["invocations_without_runs"], t["runs"]) == (1, 1, 0)
     assert t["estimated_under_current_prices"] == {"usd": None, "priced": 0, "unpriced": 0, "reasons": {},
-                                                   "floor_runs": 0, "floor_above": None, "prices_as_of": None}
+                                                   "floor_runs": 0, "floor_above": None, "prices_as_of": None,
+                                                   "other_sources": []}
 
 
 def test_a_mixed_run_counts_under_the_mix_never_the_requested_model(tmp_path):
@@ -655,7 +656,7 @@ def test_a_models_partial_sum_says_how_many_of_its_runs_it_covers(tmp_path):
     rolled = O.add_totals(O.empty_totals(), totals)["by_model"]["openai/gpt-6.1"]
     assert rolled["estimated_under_current_prices_unpriced"] == 1
     line = next(x for x in O._totals_lines(totals, "") if "openai/gpt-6.1" in x)
-    assert f"over 1 run(s), and 1 {O.UNKNOWN_EXPOSURE}" in line
+    assert f"over 1 run(s), oldest prices as of {PRICES.table['as_of']}, and 1 {O.UNKNOWN_EXPOSURE}" in line
 
 
 def test_an_unpriced_models_line_never_reads_as_zero_or_free(tmp_path):
@@ -725,6 +726,34 @@ def test_a_figure_at_record_keeps_its_floor_and_its_date_under_a_later_table(tmp
     assert "at least $0.001" in row and "prices as of 2026-11-08" in row and "prices as of 2026-12-01" in row
     rolled = O.add_totals(O.empty_totals(), totals)["by_model"]["openai/gpt-6.1"]
     assert rolled["at_record_floor_above"] == 272000
+
+
+def test_a_sum_over_two_tables_says_its_prices_are_as_old_as_the_oldest_and_names_the_other_source(tmp_path):
+    """Two runs copied under tables of different dates and sources: the sum's date is the older, and says it is."""
+    run_record(runlog.run_dir(tmp_path, "R-1"), record(input=1000))
+    run_record(runlog.run_dir(tmp_path, "R-2"), record(input=1000))
+    state = hand_state(("I-1", "T-0001", ["R-1"]), ("I-2", "T-0001", ["R-2"]))
+    old = FLOOR_TABLE.replace(b"as_of: 2026-11-08", b"as_of: 2026-10-01").replace(b"source: synthetic", b"source: old")
+    O.copy_run_usage(state, "I-1", tmp_path, pricing=O.Prices(old, source="t"))
+    current = O.Prices(FLOOR_TABLE, source="t")
+    O.copy_run_usage(state, "I-2", tmp_path, pricing=current)
+    reader = O.Reader(tmp_path, current)
+    totals = O.add_totals(O.empty_totals(), reader.invocation("I-2", state["invocations"]["I-2"])["totals"])
+    O.add_totals(totals, reader.invocation("I-1", state["invocations"]["I-1"])["totals"])
+    figure = totals["estimated_at_record"]
+    assert figure["prices_as_of"] == "2026-10-01" and figure["other_sources"] == ["old"]
+    assert "oldest prices as of 2026-10-01, source: old" in O.figure_text(figure)
+    model = totals["by_model"]["openai/gpt-6.1"]
+    assert (model["at_record_prices_as_of"], model["under_current_prices_as_of"]) == ("2026-10-01", "2026-11-08")
+    assert "oldest prices as of 2026-11-08" in next(x for x in O._totals_lines(totals, "") if "openai/gpt-6.1:" in x)
+
+
+def test_only_the_bundled_table_is_called_list_prices(tmp_path):
+    """An operator's contract table isn't a list price: the report says what the table records, and names its source."""
+    own = "\n".join(O.basis_lines(O.basis(O.Prices(FLOOR_TABLE, source="t"))))
+    assert "list prices" not in own and "as its source describes them" in own and "source: synthetic" in own
+    ours = O.Prices(O.bundled_table(), source="t")
+    assert "These are list prices, not a contract or gateway rate" in "\n".join(O.basis_lines(O.basis(ours)))
 
 
 @pytest.mark.parametrize(("size", "text"), [(272000, "above 272k context"), (999, "above 999 tokens of context"),

@@ -10,6 +10,10 @@ tiered rows in the table.
 **Follow-on: existing projects.** They get the table through an offer with one confirmation, the shared switch offer, so what is built is on by default for them too. It waits for concurrency PR B, which builds that offer. Until then the report's "none" line names no next step, and the
 only route is copying the bundled file by hand; the offer fixes that too.
 
+**A limit of the bundled table.** A base-tier mark is only as good as the catalog. `opencode/gpt-5.4-pro` and
+`opencode/gpt-5.5-pro` carry no tier there while their `openai/` rows do, so those two read as exact, and if Zen does charge
+more above a context size, they are floors the report doesn't call floors.
+
 **Follow-ons from the independent review.**
 - **The report reaches the model unfenced.** Inline shell output arrives as the operator's own text, and part of it comes
   from records a run's harness wrote. The size limits it (a model id: 48 bytes, no whitespace). Fence it when the next

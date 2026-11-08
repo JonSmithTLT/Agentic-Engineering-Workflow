@@ -348,6 +348,7 @@ def lead_mcp_environment() -> dict[str, str]:
     `aew` this process runs, and nothing else (it holds no credential)."""
     return procs.engine_imports({})
 
+
 # The read-only git commands the Lead runs without asking, and their options that write a file (`--output`) or run a
 # configured program (`--ext-diff`), which ask wherever they are in the command (the designer, 2026-11-06). OpenCode's
 # `*` matches any run of characters and the pattern is anchored, so `git diff*--output*` covers `--output=x` and

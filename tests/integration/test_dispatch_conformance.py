@@ -23,6 +23,7 @@ from aewflow import (
     dispatch,
     plan_unit,
     sample_project,
+    set_mutating_concurrency,
     submit_record,
 )
 from conftest import run_aew
@@ -224,6 +225,7 @@ def out_digest(decision):
 
 def test_explain_equals_the_execution_when_refused(tmp_path):
     p = sample_project(tmp_path)
+    set_mutating_concurrency(p, 1)  # the refusal under test is the cap's; the default is 2 (register F10)
     t1 = create_planned_ticket(p, tmp_path)
     t2 = create_planned_ticket(p, tmp_path, title="Independent change")
     p.lead("work", "assign", t1)

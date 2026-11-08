@@ -19,6 +19,7 @@ from aewflow import (
     redispatch_implementer,
     review,
     sample_project,
+    set_mutating_concurrency,
     to_commit_ready,
     verify,
 )
@@ -166,6 +167,7 @@ def replan(p, wid, tmp_path, revision):
 def test_repeated_replan_and_interruption_cycles_keep_the_serial_boundary(tmp_path):
     """M2 compositions: assign -> replan -> assign -> handoff -> reconcile, repeatedly, under the oracle."""
     p = sample_project(tmp_path)
+    set_mutating_concurrency(p, 1)  # the serial boundary, set by name: the default is 2 (register F10)
     first = create_planned_ticket(p, tmp_path)
     old_roles = []
     for revision in (2, 3):

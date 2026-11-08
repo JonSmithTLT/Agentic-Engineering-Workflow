@@ -525,10 +525,9 @@ def test_the_page_lists_each_entry_under_its_top_level_with_what_holds_of_it_and
     assert "- `state/log` (store)" in page and "- `work` (kept in git)" in page
     assert "read by `m.d`: `read_two`" in page
     assert "- `m.z`: `reader` (Path.read_text), `other` (open)" in page
-    assert ("Read sites found: 6; placed under `.aew`: 2; followed to a place outside it or the directory itself: 1; "
-            "not placed: 3.") in page
+    assert "Read sites found:" not in page, "a tree-wide total: it moves on nearly every pull request"
 
 
 def test_a_page_with_every_read_placed_says_so():
     page = LY.page(LY.records_of(inputs({"work/w": [W1], "state/s": [W1], "local/l": [W1]})), NO_READS)
-    assert "not placed: 0" in page and "\nNone.\n" in page
+    assert "\nNone.\n" in page

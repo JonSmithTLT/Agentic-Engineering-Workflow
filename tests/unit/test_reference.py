@@ -54,6 +54,15 @@ def index_of(files: dict[str, bytes]) -> dict[str, Any]:
 
 # ------------------------------------------------------------------------------------------ the CI check
 
+def test_counts_carries_the_totals_the_pages_leave_out(monkeypatch):
+    """`modules.md` holds no total, so that two pull requests merge: the number of import edges is here."""
+    files = rendered()
+    monkeypatch.setattr(reference, "render_files", lambda root: files)
+    records = index_of(files)["records"]
+    edges = sum(len(r["imports"]) for key, r in records.items() if key.startswith("modules:"))
+    assert edges and reference.counts()["import_edges"] == edges
+
+
 def test_the_committed_reference_is_what_the_code_gives():
     """The check CI runs. A failure names the first file that differs and the command that settles it."""
     found = reference.check(ROOT, OUT, rendered())
@@ -65,20 +74,19 @@ def test_a_planted_drift_fails_the_check_and_the_message_names_the_command(tmp_p
     stale total, a deleted file, a stray file, a stray subdirectory (a nested file included), a carriage return. Each
     is a difference, and the check's last line is the command that fixes it.
 
-    The stale total is what two pull requests leave when each edits a total to the same text and git merges them
-    cleanly: the merged page says one change's total, and ``check`` on the merged code renders the other."""
+    The stale line is what two pull requests leave when each edits one line to the same text and git merges them
+    cleanly: the merged page says one change's line, and ``check`` on the merged code renders the other."""
     files = rendered()
     page = files["entry-points.md"].decode("utf-8")
     victim = next(k for k in index_of(files)["records"] if k.startswith("entry-points:")).split(":", 1)[1]
     heading = f"### `{victim}`\n"
     gaps = files["gaps.md"].decode("utf-8")
-    total = re.search(r"Unresolved items: \*\*(\d+)\*\*", gaps)
-    assert heading in page and total, "the planted cases' anchors are gone: re-anchor them"
+    family = re.search(r"^## (\w+)$", gaps, re.M)
+    assert heading in page and family, "the planted cases' anchors are gone: re-anchor them"
     planted = {
         "a changed byte": {"entry-points.md": page.replace("**Kind:**", "**KinD:**", 1).encode()},
         "a deleted record": {"entry-points.md": page.replace(heading, "", 1).encode()},
-        "a stale total": {"gaps.md": gaps.replace(total.group(0), total.group(0).replace(
-            total.group(1), str(int(total.group(1)) + 1)), 1).encode()},
+        "a stale line": {"gaps.md": gaps.replace(family.group(0), family.group(0) + " (stale)", 1).encode()},
         "a deleted file": {"entry-points.md": None},
         "a carriage return": {"gaps.md": files["gaps.md"].replace(b"\n", b"\r\n")},
         "a stray file": {"stray.md": b"# Stray\n"},

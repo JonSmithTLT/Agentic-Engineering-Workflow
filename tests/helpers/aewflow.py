@@ -13,6 +13,7 @@ from typing import Any
 
 from conftest import Project, make_git_repo, run_aew
 
+from aew.knowledge.manifest import DEFAULT_GATES
 from aew.util import dump_yaml, glob_any, load_yaml
 
 SAMPLE_FILES = {
@@ -111,6 +112,20 @@ def sample_project(tmp_path: Path, *, guardrails: dict[str, Any] | None = None,
     p.pin_policy()
     p.token =p.ok("lead", "acquire", "--expect-rev", "0", "--session-label", "lead-a")["token"]
     return p
+
+
+def set_mutating_concurrency(p: Project, cap: int) -> None:
+    """Set ``mutating_concurrency`` in the project's ``gates.yaml`` and pin it. A test whose property is the serial
+    cap sets 1 itself: the default is 2 (register F10), and a test never leans on a default it does not name."""
+    gates = p.root / ".aew/policy/gates.yaml"
+    gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "mutating_concurrency": cap}),
+                     encoding="utf-8", newline="\n")
+    p.pin_policy()
+
+
+# A `mutating_concurrency` that is not the default, for a test that needs a real change of legality policy: appending
+# the default itself would change the file's bytes but not the policy.
+NOT_THE_DEFAULT_CAP = DEFAULT_GATES["mutating_concurrency"] + 1
 
 
 @dataclass

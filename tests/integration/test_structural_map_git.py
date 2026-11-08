@@ -60,6 +60,15 @@ def write(root: Path, files: dict[str, bytes]) -> None:
         target.write_bytes(data)
 
 
+@pytest.fixture
+def project(project):
+    """A project before its first selection. `aew init` selects the head's map (register E184); removing
+    ``local/maps/`` is the same as never having had one (ADR-0015 D1), so these tests start where the first selection
+    is theirs to make."""
+    shutil.rmtree(project.root / ".aew" / store.MAPS_REL)
+    return project
+
+
 def make_repo(path: Path, files: dict[str, bytes] = FILES) -> Path:
     path.mkdir(parents=True)
     g("init", "-q", "-b", "main", cwd=path)
@@ -522,6 +531,7 @@ def test_map_diff_compares_section_by_section_and_stores_nothing(project):
 
 def test_an_invocation_credential_is_refused_map_generate(tmp_path):
     p = sample_project(tmp_path)
+    shutil.rmtree(p.root / ".aew" / store.MAPS_REL)  # before the first selection (ADR-0015 D1; register E184)
     role, _ = dispatch(p, create_investigation(p, tmp_path))
     res = p.aew("map", "generate", "--select", "--expect-map-rev", "none:0", env={"AEW_LEAD_TOKEN": role.token})
     assert res.returncode == 4 and res.error["code"] == "PERMISSION_DENIED"

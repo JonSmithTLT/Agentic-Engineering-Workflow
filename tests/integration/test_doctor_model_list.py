@@ -144,6 +144,22 @@ def test_a_catalog_that_offers_nothing_in_time_is_never_an_answer_about_the_mode
     assert again is not None and again["status"] == "PASS" and "(read just now)" in again["detail"], again
 
 
+def test_two_profiles_on_a_catalog_that_offers_nothing_wait_for_it_once(lab):
+    """Review of #367, N2: each would wait out the catalog (about 90 s by default) for an answer that does not depend on
+    its model. Both are named, and the second points at the first."""
+    edit_policy(lab, lambda policy: policy["profiles"].update(
+        {"second": {**next(iter(policy["profiles"].values())), "model": "other-model"}}))
+    serve(lab, LISTED, catalog_delay_s=600)
+    res = lab.aew("doctor", "--json", env={"AEW_OPENCODE_CATALOG_S": "2"})
+    row = next(c for c in res.json["checks"] if c["check"] == model_list.CHECK)
+    assert row["status"] == "FAIL", row
+    assert res.stderr.count("reading opencode's model list") == 1, res.stderr
+    first = next(n for n in sorted(load_yaml((lab.aew_root / "policy/execution.yaml").read_text(encoding="utf-8"))
+                                   ["profiles"]))
+    assert f"the same catalog as profile {first}, not waited for again" in row["detail"], row
+    assert "opencode offered no model at all within its catalog wait" in row["detail"], row
+
+
 def test_no_provider_value_reaches_doctors_output_or_any_file_it_leaves(lab):
     """Review of #367, F6: the read runs with the launch's environment, so a provider variable's value reaches its
     server as a launch's does, and never doctor's output, its cache or any other file under the project's .aew."""

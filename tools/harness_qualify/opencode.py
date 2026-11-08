@@ -138,7 +138,7 @@ def trim(spec: dict[str, Any], *, version: str, full_sha256: str) -> dict[str, A
         entry = (spec["paths"].get(op.path) or {}).get(op.method.lower())
         if entry is not None:
             paths.setdefault(op.path, {})[op.method.lower()] = entry
-    seeds: set[str] = set(C.REQUIRED_FIELDS) | set(C.REQUIRED_ENUMS)
+    seeds: set[str] = set(C.REQUIRED_FIELDS) | set(C.REQUIRED_ENUMS) | {name for name, _ in C.REQUIRED_FIELD_ENUMS}
     _refs(paths, seeds)
     keep: set[str] = set()
     todo = list(seeds)
@@ -158,36 +158,16 @@ def trim(spec: dict[str, Any], *, version: str, full_sha256: str) -> dict[str, A
 
 
 def full_sha256(raw: bytes) -> str:
-    """The pinned ``full_sha256``'s serialization, found by reproducing it (2026-11-07): the served document as
-    ``json.dumps(indent=1)`` in the server's own key order, with CRLF line ends and no final newline (a Windows
-    text-mode write). It is kept so the 2.0.18 pin regenerates exactly; ``openapi.served_sha256`` is the raw bytes'."""
-    return hashlib.sha256(json.dumps(json.loads(raw), indent=1).replace("\n", "\r\n").encode()).hexdigest()
+    """The served document's own bytes' sha256 (the Lead's ruling for the bump, 2026-11-07: the raw-bytes hash is the
+    one that counts). The 2.0.18 fixture's header carries the hash of an earlier re-serialization (``json.dumps``
+    with ``indent=1``, CRLF), kept as the record of how that fixture was made."""
+    return hashlib.sha256(raw).hexdigest()
 
 
 def _policy_actions(spec: dict[str, Any]) -> list[str]:
-    """The ``action`` enum of ``Config.InfoEncoded.experimental.policies`` items (inline, so the probe misses it)."""
-    schemas = (spec.get("components") or {}).get("schemas") or {}
-    found: set[str] = set()
-
-    def items(node: Any) -> list[Any]:
-        node = C._resolve(spec, node)
-        if not isinstance(node, dict):
-            return []
-        out = [node.get("items")] if node.get("items") is not None else []
-        for k in ("anyOf", "oneOf", "allOf"):
-            for part in node.get(k) or []:
-                out += items(part)
-        return out
-
-    for experimental in C._property(spec, schemas.get("Config.InfoEncoded"), "experimental"):
-        for policies in C._property(spec, experimental, "policies"):
-            for item in items(policies):
-                for action in C._property(spec, item, "action"):
-                    found |= {str(v) for v in C._enum(spec, action)}
-                    const = C._resolve(spec, action)
-                    if isinstance(const, dict) and "const" in const:
-                        found.add(str(const["const"]))
-    return sorted(found)
+    """The ``action`` enum of ``Config.InfoEncoded.experimental.policies`` items (inline), read by the probe's own
+    accessor (``capabilities.field_enum``)."""
+    return sorted(C.field_enum(spec, "Config.InfoEncoded", "experimental.policies[].action"))
 
 
 def served_api(ctx: Context) -> dict[str, Any]:
@@ -409,7 +389,13 @@ def check_login_store(ctx: Context) -> Outcome:
     """A synthetic key stored through the server's own API (``integration.connect.key``) in this check's private
     home, then read back with AEW's own reader (``login.stored``). The database read is the one this check made: a
     path outside its folder is refused, so no operator's or run's store is ever read. OAuth rows need a real login
-    flow, so their shape stays a citation (``login.oauth_shape``)."""
+    flow, so their shape stays a citation (``login.oauth_shape``).
+
+    The store itself, for the facts the Lead's own store handling rests on (E118): the database is ``login.DB``;
+    ``credential`` is ``login.CREDENTIAL_SCHEMA``; and every table holding a session's rules column is one of
+    ``login.SESSION_TABLES``, or the Lead's clear would pass a renamed one over without a word. Every table and its
+    columns are recorded (``store.schema``, pinned as ``store-<v>.json``), so the diff names any table a release adds,
+    renames or changes."""
     import sqlite3
 
     from aew.harness.opencode import login
@@ -426,27 +412,56 @@ def check_login_store(ctx: Context) -> Outcome:
     db = login.db_path(ctx.env)
     if not db.resolve().is_relative_to(ctx.work.resolve()):
         raise RuntimeError("refused: the login database is not this check's own")
+    if not db.is_file():  # the store has another name: say which files the server made, never read them
+        made = sorted(p.name for p in db.parent.glob("*") if p.is_file()) if db.parent.is_dir() else []
+        return Outcome(FAIL, {"store.files": made}, [f"no {login.DB} in the server's data folder: it holds {made}"])
     con = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True)
     try:
-        schema = [[str(row[1]), str(row[2]).lower()] for row in con.execute("PRAGMA table_info(credential)")]
+        names = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")]
+        # S608: each table name is one this database itself listed
+        tables = {t: [[str(r[1]), str(r[2]).lower()] for r in con.execute(f"PRAGMA table_info('{t}')")]  # noqa: S608
+                  for t in names if not t.startswith("sqlite_")}
         raw = con.execute("SELECT value FROM credential WHERE integration_id = 'openai'").fetchone()
     finally:
         con.close()
+    schema = tables.get("credential", [])
+    rules = sorted(t for t, cols in tables.items()
+                   if t != "permission" and login.SESSION_RULES_COLUMN in {c for c, _ in cols})
+    unknown_rules = sorted(set(rules) - set(login.SESSION_TABLES))
     logins, why = login.stored(ctx.env)
     read = {x.integration: x.kind for x in logins}
     fields = sorted(json.loads(raw[0])) if raw else []
     # a reason code, never `why`: it names the database's host path, and records are shared
     reads_as = read.get("openai") or ("unreadable" if why else "no_row")
-    facts = {"login.store": {"schema": schema,
-                             "key_row_reads_as": reads_as, "key_value_fields": fields}}
-    ok = schema == credential_schema() and read.get("openai") == "key"
-    return Outcome(PASS if ok else FAIL, facts, [] if ok else [json.dumps(facts["login.store"])])
+    facts = {"login.store": {"schema": schema, "key_row_reads_as": reads_as, "key_value_fields": fields,
+                             "rules_tables_unknown": unknown_rules},
+             "store.schema": tables}
+    notes = []
+    if schema != credential_schema():
+        notes.append(f"credential is not login.CREDENTIAL_SCHEMA: {schema}")
+    if read.get("openai") != "key":
+        notes.append(f"the synthetic key row reads as {reads_as}")
+    if unknown_rules:
+        notes.append(f"session rules held in tables the Lead's clear does not know: {unknown_rules} "
+                     f"(login.SESSION_TABLES is {list(login.SESSION_TABLES)})")
+    return Outcome(FAIL if notes else PASS, facts, notes)
 
 
 # ------------------------------------------------------------------------------------------------ citations (bundle)
 
 def _bundle(ctx: Context) -> bytes:
     return ctx.once("bundle", lambda: ctx.binary.read_bytes())
+
+
+# The version probe P1's live-usage citations were read at (``live-usage-<v>.json``). It moves when they are re-read
+# for a new pin; until then the pin's run reports them not comparable (a hold row in the register).
+LIVE_USAGE_READ_AT = "2.0.18"
+
+
+def live_usage_version(fixtures: Path, pinned: str) -> str:
+    """The version whose ``live-usage-<v>.json`` stands for the pin: its own when the citations were re-read for it,
+    else :data:`LIVE_USAGE_READ_AT`'s."""
+    return pinned if (fixtures / f"live-usage-{pinned}.json").exists() else LIVE_USAGE_READ_AT
 
 
 def check_live_usage_citations(ctx: Context, fixtures: Path, pinned: str) -> Outcome:
@@ -498,8 +513,10 @@ def parse_feed(text: str, url: str = FEED) -> list[Release]:
     version = re.search(r"^version:\s*(\S+)", text, re.M)
     out = []
     for m in re.finditer(r"-\s*url:\s*(\S+)\s+sha512:\s*(\S+)(?:\s+size:\s*(\d+))?", text):
-        out.append(Release(version=version.group(1) if version else "?", url=url.rsplit("/", 1)[0] + "/" + m.group(1),
-                           digest=m.group(2), size=int(m.group(3)) if m.group(3) else None))
+        # the live feed gives absolute URLs (2026-11-07); a relative one is the feed's own folder's
+        where = m.group(1) if re.match(r"https?://", m.group(1)) else url.rsplit("/", 1)[0] + "/" + m.group(1)
+        out.append(Release(version=version.group(1) if version else "?", url=where, digest=m.group(2),
+                           size=int(m.group(3)) if m.group(3) else None))
     return out
 
 
@@ -553,6 +570,9 @@ class OpenCodePack:
             Check("api.interrupt_turn",
                   lambda c: _api_capability(c, [("op", "POST /api/session/{sessionID}/interrupt")]),
                   ("interrupt_turn",), depth=API, says="session.interrupt is served"),
+            Check("api.read_model_list",
+                  lambda c: _api_capability(c, [("op", "GET /api/model")]),
+                  ("read_model_list",), depth=API, says="the model catalog doctor reads is served"),
         ]
         behaviour = [
             Check("usage.openai", lambda c: check_usage(c, fx, pin), ("read_usage", "wake_idle_session"),
@@ -566,11 +586,12 @@ class OpenCodePack:
         behaviour.append(Check("relay.websocket_default", check_websocket_default,
                                says="without transport http, OpenAI's SDK tries a WebSocket first",
                                measures=("relay.websocket_first",)))
-        behaviour.append(Check("login.store", check_login_store, measures=("login.store",),
+        behaviour.append(Check("login.store", check_login_store, measures=("login.store", "store.schema"),
                                says="a synthetic key, stored by the server in a private home, reads as AEW's login "
-                                    "reader expects; every column AEW's SQL names exists"))
+                                    "reader expects; the store is the one the Lead's own store handling knows"))
         citations = [
-            Check("usage.live_citations", lambda c: check_live_usage_citations(c, fx, pin), ("read_usage",),
+            Check("usage.live_citations", lambda c: check_live_usage_citations(c, fx, live_usage_version(fx, pin)),
+                  ("read_usage",),
                   depth=CITATION, says="every bundled-code identifier probe P1 cites is in this binary",
                   measures=("live_usage.bundle_identifiers",)),
             Check("ripgrep.download", check_ripgrep, depth=CITATION,
@@ -581,14 +602,14 @@ class OpenCodePack:
         # limits, not tests that went unrun.
         return [*api, *behaviour, *citations,
                 *neutral_checks(HARNESS, "AEW_OPENCODE_BIN", conformance=["tests/live/test_opencode_live.py"],
-                                allowed_skips=(r"^opencode-live cannot drive \[",))]
+                                allowed_skips={r"^opencode-live cannot drive \[": 1})]
 
     def pinned(self, fixtures: Path) -> tuple[str, dict[str, Any]]:
         version = self.pinned_version
         load = lambda name: json.loads((fixtures / name).read_text(encoding="utf-8"))  # noqa: E731
         spec = load(f"openapi-{version}.min.json")
         usage = load(f"usage-{version}-openai.json")
-        live = load(f"live-usage-{version}.json")
+        live = load(f"live-usage-{live_usage_version(fixtures, version)}.json")
         facts: dict[str, Any] = {
             "openapi.min": spec, "openapi.problems": C.problems(spec), "api.policy_actions": _policy_actions(spec),
             "usage.openai": {"token_semantics": usage["token_semantics"], "cases": usage["cases"]},
@@ -601,13 +622,16 @@ class OpenCodePack:
             # login._read's key shape ({type: "key", key}), and every column AEW's credential SQL names
             # login._read's key shape ({type: "key", key}), and the credential table AEW writes to (CREDENTIAL_SCHEMA)
             "login.store": {"schema": credential_schema(), "key_row_reads_as": "key",
-                            "key_value_fields": ["key", "type"]},
+                            "key_value_fields": ["key", "type"], "rules_tables_unknown": []},
             "relay.transport_http": {"upgrades": 0, "route": ["/v1/responses"]},
             "relay.websocket_first": {"openai": "openai" in projection.WEBSOCKET_FIRST},
         }
         tool_parts = fixtures / f"tool-parts-{version}.json"
         if tool_parts.exists():
             facts["tool_parts"] = load(tool_parts.name)["tool_parts"]
+        store = fixtures / f"store-{version}.json"
+        if store.exists():
+            facts["store.schema"] = load(store.name)["tables"]
         return version, facts
 
     def render(self, version: str, facts: Mapping[str, Any], fixtures: Path) -> dict[str, tuple[bytes | None, str]]:
@@ -620,15 +644,20 @@ class OpenCodePack:
             carried = json.loads(pinned_usage.read_text(encoding="utf-8"))
             doc = {"harness": HARNESS, "version": version, "provider": "openai",
                    "token_semantics": usage["token_semantics"], "source": carried["source"], "cases": usage["cases"]}
-            same = carried["version"] == version
+            tag = str(carried["source"].get("tag") or f"v{carried['version']}")  # the citations' own, not the file's
             out[f"usage-{version}-openai.json"] = (
                 (_render_json(doc) + "\n").encode(),
                 "measured: token_semantics and each case's stored tokens; carried: `source` (citations of the "
-                + ("pinned tag" if same else f"{carried['version']} tag: re-read them at v{version}") + ")")
+                + (f"{tag} tag" if tag == f"v{version}" else f"{tag} tag: re-read them at v{version}") + ")")
         out[f"live-usage-{version}.json"] = (
             None, "authored, not a measurement: its findings, cases and event payloads are written from source "
                   "reading; the run searches the binary for each bundled-code identifier it cites and says whether the "
                   "binary is the one they were read from (usage.live_citations)")
+        if "store.schema" in facts:
+            out[f"store-{version}.json"] = (
+                dump({"harness": HARNESS, "version": version, "probe": "harness_qualify login.store",
+                      "tables": facts["store.schema"]}),
+                "measured: the store a private server made, every table and its columns")
         if "tool_parts" in facts:
             out[f"tool-parts-{version}.json"] = (
                 dump({"harness": HARNESS, "version": version, "probe": "harness_qualify progress.tool_parts",

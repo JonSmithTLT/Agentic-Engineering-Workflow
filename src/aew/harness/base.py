@@ -15,6 +15,7 @@ from typing import Any
 
 from aew.errors import HarnessIncompatible
 from aew.harness import models
+from aew.harness.containment.netns import PROVIDER_KEY_MISSING
 from aew.harness.contract import LaunchContract
 from aew.harness.procs import ProcessTree
 
@@ -29,7 +30,9 @@ RELAY_FAMILY_SHOWN = frozenset({RELAY_FAMILY_MATCHES, RELAY_FAMILY_UNVERIFIED})
 RELAY_FAMILY_REFUSED = "relay_family_mismatch"
 KEY_IN_SANDBOX = "provider_secret_in_sandbox"
 PROVIDER_ENV_UNUSABLE = "provider_env"
-LAUNCH_REFUSALS = frozenset({RELAY_FAMILY_REFUSED, KEY_IN_SANDBOX, PROVIDER_ENV_UNUSABLE})
+# The supervisor's own refusal of a worker launch whose provider would get no key is one too (E189): its record
+# carries it as its `refusal`, as an adapter's does.
+LAUNCH_REFUSALS = frozenset({RELAY_FAMILY_REFUSED, KEY_IN_SANDBOX, PROVIDER_ENV_UNUSABLE, PROVIDER_KEY_MISSING})
 
 
 def relay_family_of(launch: Mapping[str, Any] | None) -> str | None:
@@ -41,8 +44,8 @@ def relay_family_of(launch: Mapping[str, Any] | None) -> str | None:
 
 
 def refusal_of(details: Mapping[str, Any] | None) -> str | None:
-    """The adapter's refusal reason in an error's or an acknowledgement's details, if it is one of ``LAUNCH_REFUSALS``;
-    else None."""
+    """The launch refusal reason in an error's or an acknowledgement's details (an adapter's, or the supervisor's
+    missing-key refusal), if it is one of ``LAUNCH_REFUSALS``; else None."""
     reason = (details or {}).get("reason") if isinstance(details, Mapping) else None
     return reason if isinstance(reason, str) and reason in LAUNCH_REFUSALS else None
 
@@ -53,9 +56,10 @@ class HarnessAdapter(ABC):
     name = ""
     # How the harness's reported token counters overlap, per qualified harness version and provider:
     # ``{version: {provider: semantics}}``, values from ``aew.harness.usage.TOKEN_SEMANTICS``, each pinned by a harness
-    # conformance test (F25, cost and usage ledger v0.2 R4 rule 1). A version or provider it does not name resolves to
+    # conformance test (F25, cost and usage ledger v0.2 R4 rule 1); a gateway provider's entry is ``{route: semantics}``
+    # (``aew.harness.usage.resolve_semantics``). A version, provider or route it does not name resolves to
     # ``unknown``, which is never priced.
-    token_semantics: Mapping[str, Mapping[str, str]] = {}
+    token_semantics: Mapping[str, Mapping[str, str | Mapping[str, str]]] = {}
     # The longest a successful ``launch`` can take, for an adapter that does not compute it (``launch_bound_s``).
     LAUNCH_BOUND_S = 240.0
     # F28 (STG-05 CS-3b): whether the harness calls a model provider itself, so that its run, in a network of its own,

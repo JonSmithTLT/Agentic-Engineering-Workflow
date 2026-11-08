@@ -161,7 +161,10 @@ commands:
     users: [operator]
     journeys: [V3]
     mutates: "no"
-    mutates_basis: "a read: validates the environment and the project state and reports"
+    mutates_basis: "a read: validates the environment and the project state and reports. It changes no project or
+      control state: it caches the harness's model list in the project's local folder (`--refresh` reads it again),
+      and its reads run in directories it removes after (register E153): the harness's server, started as a launch
+      starts it with no session, and with --run-checks each configured check, once, on a disposable copy"
     probe: [doctor]
     refusals: [USAGE]
     note: "V3's counted fallback while `aew preflight` does not exist"
@@ -1590,6 +1593,21 @@ commands:
     refusals: [NOT_FOUND, OPERATOR_AUTHORIZATION_REQUIRED, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE,
                VALIDATION_FAILED]
     note: "VALIDATION_FAILED (register_changed): the register changed since the change was shown"
+  - name: usage show
+    home: product
+    users: [operator, lead]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "a read: its handler only reads the committed state, the archive and the runs' own records"
+    probe:
+      - [usage, show]
+      - [usage, show, --json]
+      - [usage, show, "{ticket}"]
+      - [usage, show, --all, --since, "2026-01-01T00:00:00Z", --until, "2100-01-01T00:00:00Z", --json]
+    relayed: contained-lead
+    refusals: [INTEGRITY_ERROR, NOT_FOUND, PROJECT_NOT_FOUND, USAGE, VALIDATION_FAILED]
+    note: "F25 R9; a provisional run is read from its run directory under .aew/local, so the contained Lead's read is
+      relayed to the host"
   - name: g3 request
     home: operator-admin
     users: [operator]

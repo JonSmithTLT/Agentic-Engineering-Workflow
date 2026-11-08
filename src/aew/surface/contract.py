@@ -209,9 +209,9 @@ TOOLS: dict[str, Tool] = _catalog(
          _obj({"invocation": {"type": "string", "minLength": 1}})),
     # ---- the wait
     Tool("harness_wait", WAIT, MECHANICAL,
-         "Block until the first of the named runs ends, then return its status, evidence and the runs still "
-         "running. With several runs, one whose invocation is no longer active counts as ended, though its record "
-         "may still say running. One call replaces polling.",
+         "Block until a named run ends or needs you (`why` says which: a test broke, a file out of scope, an idle "
+         "worker), then return each run's progress and, for an end, its status, evidence and the runs still "
+         "running. One call replaces polling.",
          _obj({"runs": {**_strings("run ids, e.g. R-INV-0003-1", min_items=1, max_items=16), "uniqueItems": True},
                "timeout_s": {"type": "integer", "minimum": 1, "maximum": 600,
                              "description": "default 600"}}, ("runs",))),

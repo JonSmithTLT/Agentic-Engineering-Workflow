@@ -61,12 +61,16 @@ UNWRITABLE = "weaker_register_unwritable"
 WINDOW_S = 15 * 60
 # How long a writer waits for the register's lock: every holder only writes or prunes small files.
 LOCK_TIMEOUT_S = 10.0
+# The most blockers an entry records for its reader (B3): enough to name what to end, bounded so one entry stays small
+HELD_BY_MAX = 5
 KINDS = frozenset({
     "lead_session",      # `aew lead session`, the dogfood's Lead included
     "lead_opencode",     # `aew opencode`: off Linux always, on Linux when its label is weaker
     "worker_run",        # a run's supervisor
     "validation_run",    # a checks-mode validation run, authoritative or diagnostic
     "check_run",         # the operator's own `aew check run`
+    "doctor_model_list",  # `aew doctor`'s read of the harness's model list, as a launch reads it (E153)
+    "doctor_check",      # `aew doctor --run-checks`: the project's check, once, on a disposable copy (E153)
     "eval_raw",          # an eval raw arm, the qualification's included
     "eval_scoring",      # eval's scorer of a model-written tree
     "eval_live",         # the qualification's live lane
@@ -112,13 +116,15 @@ def legacy_markers() -> tuple[str, ...]:
 @dataclass(frozen=True)
 class Proc:
     """One of the operator's processes, as the scan read it. ``env`` is None when its environment cannot be read (a
-    non-dumpable process); ``ticks`` is when it started, in clock ticks since boot."""
+    non-dumpable process); ``ticks`` is when it started, in clock ticks since boot; ``cwd`` is its working directory
+    as the kernel names it, or None where that cannot be read (a non-dumpable process's, too)."""
 
     pid: int
     start_id: str | None
     ticks: int | None
     env: Mapping[str, str] | None
     cmdline: tuple[str, ...]
+    cwd: str | None = None
 
 
 @dataclass
@@ -136,8 +142,9 @@ class Scan:
 
 def scan(proc: Path | None = None, uid: int | None = None) -> Scan | None:
     """Every process of the operator's UID (Linux; None elsewhere, which has no ``/proc``). Reads ``environ``,
-    ``cmdline`` and ``stat`` only, as bytes, and never follows a process's ``root`` or ``cwd`` link into its sandbox's
-    trees. A process that ends while it is read is left out; one whose environment cannot be read is kept, marked."""
+    ``cmdline`` and ``stat``, as bytes, and the ``cwd`` link's own text, so the operator can be told where a process
+    runs; it never follows a process's ``root`` or ``cwd`` link into its sandbox's trees. A process that ends while it
+    is read is left out; one whose environment cannot be read is kept, marked."""
     from aew.harness.procs import linux_start_id
 
     base = proc or PROC
@@ -176,8 +183,12 @@ def scan(proc: Path | None = None, uid: int | None = None) -> Scan | None:
             continue
         except OSError:  # PermissionError: non-dumpable (procs.harden_current_process), or a stranger's
             env = None
+        try:  # the link's text only (B3: what the operator is told), never a path into the process's trees
+            cwd: str | None = os.readlink(here / "cwd")
+        except OSError:
+            cwd = None
         start = linux_start_id(out.boot, ticks) if out.boot and ticks is not None else None
-        out.procs.append(Proc(pid=pid, start_id=start, ticks=ticks, env=env, cmdline=cmdline))
+        out.procs.append(Proc(pid=pid, start_id=start, ticks=ticks, env=env, cmdline=cmdline, cwd=cwd))
     return out
 
 
@@ -284,8 +295,28 @@ def blockers(entry: dict[str, Any], seen: Scan | None, known_hosts: set[str]) ->
         if p.env is not None or (p.start_id and p.start_id in known_hosts):
             continue
         if not same_boot or written is None or p.ticks is None or p.ticks >= written:
-            out.append(f"{p.pid} cannot be read and started after the entry ({' '.join(p.cmdline)[:80]})")
+            out.append(unreadable_process(p))
     return out
+
+
+def unreadable_process(p: Proc) -> str:
+    """What the operator is told of a process that keeps an entry live because it cannot be read (B3, the designer's
+    ruling for G3-C): a contained run in a project no entry names looks like this, and AEW does not trust the label it
+    could read there, so the entry waits for the process to end. Its pid, command and working directory, and the
+    fix. A hardened supervisor is not dumpable, so its working directory usually cannot be read; its run directory,
+    which is that working directory, is named from its ``--run-dir`` instead, as :func:`hosts` reads it (#365 review
+    M1). Every piece is shown to the operator, never trusted, and so cleaned of control characters (#365 review m1)."""
+    from aew.harness.event_spool import clean
+
+    if p.cwd:
+        where = f"in {clean(p.cwd)}"
+    elif "--run-dir" in p.cmdline[:-1]:
+        where = f"its run directory {clean(p.cmdline[p.cmdline.index('--run-dir') + 1])}"
+    else:
+        where = "its working directory cannot be read"
+    command = clean(" ".join(p.cmdline), 80) or "no command line"
+    return (f"process {p.pid} ({command}; {where}) started after this context and cannot be read, as a contained run "
+            "in a project AEW has no entry for cannot: end it, or wait for it to end")
 
 
 # --------------------------------------------------------------------------------------------------------- writing
@@ -437,6 +468,7 @@ class Entry:
                     self.data.update(cleared_at=stamp, cleared_epoch=now)
             if blocked:
                 self.data["reason"] = "; ".join(blocked)[:600]
+                self.data["held_by"] = blocked[:HELD_BY_MAX]
         with contextlib.suppress(OSError, AEWError):
             atomic_write(self.path, json.dumps(self.data, indent=1, sort_keys=True) + "\n")
 
@@ -477,7 +509,19 @@ def enter(*, kind: str, label: Mapping[str, Any] | None, ownership: str, project
         if enforced():
             raise _register_error(reg, exc) from None
         return Entry(None, data, ownership)
+    _say_when_g3_counts(kind, data["project"])
     return Entry(path, data, ownership)
+
+
+def _say_when_g3_counts(kind: str, project: str | None) -> None:
+    """On a G3 host, a weaker launch's line says when G3 counts again (addendum 7; G3-C's PR C1), from the standing's
+    owner. Never stops the launch: a line that cannot be written is lost."""
+    from aew.g3standing import weaker_launch_line
+
+    line = weaker_launch_line(kind=kind, project=project)
+    if line:
+        with contextlib.suppress(OSError, ValueError):
+            sys.stderr.write(f"aew: {line}\n")
 
 
 def ownership_of(label: Mapping[str, Any]) -> str:
@@ -599,7 +643,8 @@ def read(window_s: float = WINDOW_S, now: float | None = None) -> Reading:
             continue
         why = _why_live(entry, boot)
         if why is not None:
-            out.live.append({**brief, "why": why})
+            held = [str(h) for h in entry.get("held_by") or [] if isinstance(h, str)]
+            out.live.append({**brief, "why": why + (f"; held by {'; '.join(held)}" if held else "")})
         elif booted is None or now - booted < window_s:  # ended by a reboot inside the window
             out.recent.append({**brief, "why": "ended by a reboot"})
     return out
@@ -632,7 +677,13 @@ def sweep(now: float | None = None) -> None:
             why = _why_live(entry, boot)
             if why == "running" or (why or "").startswith("survivors"):
                 continue
-            if why is not None and blockers(entry, seen, known):
+            held = blockers(entry, seen, known) if why is not None else []
+            if held:  # what keeps it live, for G3's reader (B3): written only when it changed
+                if entry.get("held_by") != held[:HELD_BY_MAX]:
+                    entry["held_by"] = held[:HELD_BY_MAX]
+                    with contextlib.suppress(OSError, AEWError):
+                        atomic_write(directory / f"{entry['id']}.json",
+                                     json.dumps(entry, indent=1, sort_keys=True) + "\n")
                 continue
             stamp = utc_now()
             entry.update(cleared_at=stamp, cleared_epoch=now,

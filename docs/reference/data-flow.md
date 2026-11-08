@@ -45,7 +45,7 @@ flowchart LR
     proc_aew -->|"3 functions"| path_evidence
     proc_aew -->|"1 function"| path_history
     proc_aew -->|"2 functions"| path_knowledge
-    proc_aew -->|"28 functions"| path_local
+    proc_aew -->|"34 functions"| path_local
     proc_aew -->|"2 functions"| path_policy
     proc_aew -->|"2 functions"| path_project_yaml
     proc_aew -->|"1 function"| path_records
@@ -53,7 +53,7 @@ flowchart LR
     proc_aew -->|"9 functions"| path_state
     proc_aew -->|"8 functions"| path_work
     proc_aew_dashboard_serve -->|"2 functions"| path_local
-    proc_aew_harness_supervisor -->|"19 functions"| path_local
+    proc_aew_harness_supervisor -->|"21 functions"| path_local
     no_writer -->|"1 function"| path_coordination
     no_writer -->|"2 functions"| path_history
     no_writer -->|"17 functions"| path_local
@@ -64,18 +64,18 @@ flowchart LR
     path_coordination -.->|"1 function"| proc_aew
     path_evidence -.->|"2 functions"| proc_aew
     path_knowledge -.->|"1 function"| proc_aew
-    path_local -.->|"6 functions"| proc_aew
+    path_local -.->|"9 functions"| proc_aew
     path_policy -.->|"1 function"| proc_aew
     path_records -.->|"1 function"| proc_aew
     path_roles -.->|"1 function"| proc_aew
     path_state -.->|"6 functions"| proc_aew
     path_local -.->|"1 function"| proc_aew_dashboard_serve
-    path_local -.->|"8 functions"| proc_aew_harness_supervisor
+    path_local -.->|"9 functions"| proc_aew_harness_supervisor
     path_coordination -.->|"5 functions"| no_reader
     path_decisions -.->|"4 functions"| no_reader
     path_evidence -.->|"9 functions"| no_reader
     path_history -.->|"3 functions"| no_reader
-    path_local -.->|"41 functions"| no_reader
+    path_local -.->|"45 functions"| no_reader
     path_policy -.->|"4 functions"| no_reader
     path_pricing -.->|"3 functions"| no_reader
     path_project_yaml -.->|"10 functions"| no_reader
@@ -106,7 +106,7 @@ flowchart LR
 | `evidence` | other entries of .aew | `aew` (3) | `aew` (2) | 0 | 9 |
 | `history` | other entries of .aew | `aew` (1) | - | 2 | 3 |
 | `knowledge` | other entries of .aew | `aew` (2) | `aew` (1) | 0 | 0 |
-| `local` | masked from a contained run | `aew` (28), `aew dashboard serve` (2), `aew.harness.supervisor` (19) | `aew` (6), `aew dashboard serve` (1), `aew.harness.supervisor` (8) | 17 | 41 |
+| `local` | masked from a contained run | `aew` (34), `aew dashboard serve` (2), `aew.harness.supervisor` (21) | `aew` (9), `aew dashboard serve` (1), `aew.harness.supervisor` (9) | 17 | 45 |
 | `policy` | other entries of .aew | `aew` (2) | `aew` (1) | 0 | 4 |
 | `pricing` | other entries of .aew | - | - | 1 | 3 |
 | `project.yaml` | other entries of .aew | `aew` (2) | - | 0 | 10 |
@@ -117,14 +117,14 @@ flowchart LR
 
 ## Not drawn
 
-**Every edge is a lower bound.** The edges are drawn from 336 records (coverage: 336 lower-bound). The lists they give (the writers of an entry, its readers, the entry points that reach a function) are what the reading found, and each record says what it could not resolve. Those items follow, as the records give them, with the number of records that carry each; any of them may be an edge the map does not draw.
+**Every edge is a lower bound.** The edges are drawn from 398 records (coverage: 398 lower-bound). The lists they give (the writers of an entry, its readers, the entry points that reach a function) are what the reading found, and each record says what it could not resolve. Those items follow, as the records give them, with the number of records that carry each; any of them may be an edge the map does not draw.
 
 ### Writes
 
 The `writers` fact of the `writers` records.
 
-- `aew`: write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path (231 records)
-- `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here (174 records)
+- `aew`: write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path (277 records)
+- `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here (220 records)
 - `aew.history.store:prewrite`: no static call chain from any entry point's declaring function reaches this writer (6 records)
 - `aew.engine.store:ControlStore._commit_unprofiled`: no static call chain from any entry point's declaring function reaches this writer (4 records)
 - `aew.harness.notify:DeliveryLog.record`: no static call chain from any entry point's declaring function reaches this writer (3 records)
@@ -158,7 +158,7 @@ The `writers` fact of the `writers` records.
 
 The `readers` fact of the `layout` records.
 
-- `aew`: read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry (95 records)
+- `aew`: read sites whose path this reading could not place under `.aew` (a path from a parameter, the command line or the environment) are listed on the page and are not records; any of them may read this entry (111 records)
 
 ### Entry points of a lock-free member
 
@@ -169,6 +169,6 @@ The `entry_points` fact of the `concurrency` records.
 ### Not drawn by entry point
 
 - Writes by functions the call graph attributes to no entry point: 31 (entry, function) pairs, drawn only from the box "written by functions no entry point reaches".
-- Reads by functions no record reaches from an entry point: 103 (entry, function) pairs, drawn only into the box "read by functions no entry point reaches"; each is in the layout page with its function.
-- 50 write sites outside `.aew` and 52 write sites this reading could not place belong to no entry of the map (the writers page lists them).
+- Reads by functions no record reaches from an entry point: 107 (entry, function) pairs, drawn only into the box "read by functions no entry point reaches"; each is in the layout page with its function.
+- 53 write sites outside `.aew` and 57 write sites this reading could not place belong to no entry of the map (the writers page lists them).
 - The bridge and the network. No record attributes a bridge call, or a route served, to the process that makes or serves it; the routes and tools are in [interfaces.md](interfaces.md), and what each process is stands in its reason above. Which entry points run contained is not a fact of the records either.

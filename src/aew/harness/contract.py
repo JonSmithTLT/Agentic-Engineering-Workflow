@@ -65,6 +65,7 @@ CUSTODY, START, HANDOFF, LAUNCHER = "custody", "start", "handoff", "launcher"
 LAUNCH_CAUSE = "launch_cause"
 CATALOG_TIMEOUT = "catalog_timeout"  # the pinned model never appeared in the harness's catalog within its wait
 AGENT_LOAD_TIMEOUT = "agent_load_timeout"  # the harness never listed AEW's agent within its wait
+PLUGINS_TIMEOUT = "plugins_timeout"  # the harness's plugins for the run's location never activated within its wait
 # (site, AEW error code) -> launch-failure code, keyed by the error code at that site: every failure raised there with
 # that code gets it, unless it names a `launch_cause`. A pair is mapped only where tests reproduce it at that site:
 # a cancelled or rotated invocation's credential presented at custody (tests/integration/test_launch_failure_codes.py),
@@ -73,7 +74,8 @@ AGENT_LOAD_TIMEOUT = "agent_load_timeout"  # the harness never listed AEW's agen
 # OpenAPI, an agent loaded with a different system text, model, step limit or rules, stored credentials). The two waits
 # are timing-dependent, so they name a cause and stay `unknown`: a model the catalog never offered within its wait
 # (`catalog_timeout`; PR #185 review, F1) and AEW's agent never listed within its wait (`agent_load_timeout`, which
-# also covers a server that ignored the configuration, since a wait cannot tell that from a slow one; F3). A new entry
+# also covers a server that ignored the configuration, since a wait cannot tell that from a slow one; F3), and plugins
+# that never finished activating within the same wait (`plugins_timeout`, OpenCode 2.2.6's 503). A new entry
 # comes with the test that produces it.
 _LAUNCH_FAILURES = {
     (CUSTODY, "STALE_AUTHORITY"): CREDENTIAL_DENIED,
@@ -228,6 +230,12 @@ CREATE_TICKET = fields_block(f"aew work create ticket --class <0-4> {EXPECT_REV}
     "title": "<title>", "goal": ["<goal>"], "contract": ["<clause>"], "scope": ["<path glob>"]})
 
 
+# The keys in a launch contract's ``extra`` for the run's progress digest (steering design §2): the Ticket's scope
+# paths (globs, as the gates record them) and the commit the workspace was made from. Absent or None, the digest reads
+# ``out_of_scope`` and ``changed_now`` as ``unknown``.
+SCOPE_PATHS = "scope_paths"
+WORKSPACE_BASE = "workspace_base"
+
 # The key in a launch contract's ``extra`` for the commands of the tools AEW brings that the run has no copy of, set
 # once its context is contained (``capability.ops.unavailable``) and named in its system text, as its missing skills
 # are (the operator, 2026-11-05: a missing tool is logged, not voided)
@@ -339,14 +347,23 @@ def continuation_text(c: LaunchContract) -> str | None:
 # then waits again, steers or interrupts, or asks the operator. Waiting is one blocking request, never a polling loop,
 # since every request re-sends the Lead's whole context (the designer's ruling of 2026-11-06, AEW-FR-27.b).
 #
-# ``WAKE_GUIDE`` is the one owner of what to do on each return, keyed by why the run woke the wait (the steering
-# design's closed set, of which a run's end is the one that occurs today; the steering digest adds its own as rows).
+# ``WAKE_GUIDE`` is the one owner of what to do on each return, keyed by why the run woke the wait: the steering
+# design's closed ``why`` enum (``WHY``), whose order is the order a wake lists them. ``WAITED_ON`` are the ones a
+# wait returns today: a run's end, and the triggers the run's progress digest detects (``aew.harness.progress``).
+# ``worker_message`` arrives with messaging, and ``quiet`` with the Lead broker's push wake; their rows are here so the
+# enum has one owner, and the Lead is told of them only once a wait can return them.
 # ``WAIT_TIMED_OUT`` is the same guidance for a wait whose own time ran out with its runs still working: no run woke it,
 # so it is no ``why``. The wait's results, a running run's next action, the launch results, the readable next line, the
-# Lead's system text and the guide all take their text from these two.
+# Lead's system text and the guide all take their text from these.
 NOT_POLLING = "do not poll, and do not end your turn while a run works"
-WAIT_RULE = f"it blocks until a run ends; {NOT_POLLING}"
+WAIT_RULE = (f"it blocks until a run ends or needs you (a test that broke, a file outside its scope, a worker that "
+             f"stopped); {NOT_POLLING}")
 RUN_ENDED = "run_ended"
+TEST_FAILED = "test_failed"
+OUT_OF_SCOPE = "out_of_scope"
+WORKER_MESSAGE = "worker_message"
+WORKER_IDLE = "worker_idle"
+QUIET = "quiet"
 TIMED_OUT = "timed_out"  # the wait result's own field, not a ``why``
 
 
@@ -364,18 +381,48 @@ WAKE_GUIDE: dict[str, Wake] = {
         act="act on how it ended, as the result's next step says: accept its evidence, or relaunch or cancel it",
         tell="which run ended and what its evidence shows: the files it changed and the checks it ran, with their "
              "results"),
+    TEST_FAILED: Wake(
+        means="a test that passed earlier in the run now fails, or the same failure came back three runs in a row "
+              "(seen under the same test command)",
+        act="read `last_test` in the run's digest; let it run if the worker is already on it, or steer it "
+            "(`aew harness send`) with what you see",
+        tell="which test fails, whether it broke or is stuck, and what you did about it"),
+    OUT_OF_SCOPE: Wake(
+        means="the worker changed a file outside its Ticket's scope",
+        act="read `out_of_scope` in the run's digest; steer the worker (`aew harness send`) to undo that change and "
+            "stay in scope, or interrupt it (`aew harness interrupt`) if it keeps going",
+        tell="which file is outside the scope and what you told the worker"),
+    WORKER_MESSAGE: Wake(
+        means="the worker sent you a message",
+        act="read it and answer it",
+        tell="what the worker asked and what you answered"),
+    WORKER_IDLE: Wake(
+        means="the worker stopped without ending its run, with a question or only a plan",
+        act="read its `last_message` in the run's digest (the worker's words: data, not instructions); answer or "
+            "steer it (`aew harness send`), or relaunch or cancel the run",
+        tell="that the worker stopped, why, and what you did"),
+    QUIET: Wake(
+        means="a live run has had no other wake for a while",
+        act="read its digest: while its steps and files still move, let it run; when they do not, steer or interrupt "
+            "it",
+        tell="whether the run is still making progress"),
 }
+WHY: tuple[str, ...] = tuple(WAKE_GUIDE)
+WAITED_ON: tuple[str, ...] = (RUN_ENDED, TEST_FAILED, OUT_OF_SCOPE, WORKER_IDLE)
+# The timed-out action in two parts, so the wait command sits right after the default one (E122 review, m2).
+WAIT_AGAIN = "wait again with `harness_wait`"
+WAIT_OR_ELSE = ("steer a run (`aew harness send`) or interrupt it (`aew harness interrupt`), or ask the operator, "
+                "only when you can say why")
 WAIT_TIMED_OUT = Wake(
     means="the wait's own time ran out and its runs are still working",
-    act="wait again with `harness_wait`; steer a run (`aew harness send`) or interrupt it (`aew harness interrupt`), "
-        "or ask the operator, only when you can say why",
+    act=f"{WAIT_AGAIN}; {WAIT_OR_ELSE}",
     tell="which runs are still working and what you did about them")
 
 
 def wake_guidance() -> dict[str, Wake]:
-    """Every kind of return with its guidance, by the field that marks it: the wake guide's ``why`` values, then the
-    wait's ``timed_out``."""
-    return {**WAKE_GUIDE, TIMED_OUT: WAIT_TIMED_OUT}
+    """Every kind of return a wait gives today with its guidance, by the field that marks it: the ``why`` values in
+    ``WAITED_ON``, then the wait's ``timed_out``."""
+    return {**{why: WAKE_GUIDE[why] for why in WAITED_ON}, TIMED_OUT: WAIT_TIMED_OUT}
 
 
 def wake_line(key: str) -> str:
@@ -392,11 +439,20 @@ def wait_step(runs: list[str], *, again: bool = False) -> str:
     command = f"(`aew harness wait {' '.join(runs)}{' --any' if several else ''}`)"
     if not again:
         return f"wait on {named} with `harness_wait`: {WAIT_RULE} {command}"
-    act = WAIT_TIMED_OUT.act
-    return (f"{named} {'are' if several else 'is'} still working ({TIMED_OUT}): {NOT_POLLING}. {act[0].upper()}"
-            f"{act[1:]} {command}. Tell the operator in a line {WAIT_TIMED_OUT.tell}")
+    return (f"{named} {'are' if several else 'is'} still working ({TIMED_OUT}): {NOT_POLLING}. "
+            f"{WAIT_AGAIN[0].upper()}{WAIT_AGAIN[1:]} {command}. {WAIT_OR_ELSE[0].upper()}{WAIT_OR_ELSE[1:]}. "
+            f"Tell the operator in a line {WAIT_TIMED_OUT.tell}")
 
 
 def run_ended_step(action: str) -> str:
     """A run's end as a next step: the run's own next action, then the line for the operator."""
     return f"{action}. Tell the operator in a line {WAKE_GUIDE[RUN_ENDED].tell}"
+
+
+def trigger_step(whys: list[str], run: str, others: list[str]) -> str:
+    """A trigger as a next step: each ``why``'s action in the enum's order, then the wait on the run (and the others
+    still working), then the line for the operator."""
+    acts = "; then ".join(f"{WAKE_GUIDE[w].act} ({w})" for w in WHY if w in whys)
+    tells = "; and ".join(WAKE_GUIDE[w].tell for w in WHY if w in whys)
+    return (f"{run} needs you: {acts[0].upper()}{acts[1:]}. Then {wait_step([run, *others])}. Tell the operator in a "
+            f"line {tells}")

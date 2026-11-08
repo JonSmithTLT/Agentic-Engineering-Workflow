@@ -67,3 +67,12 @@ def test_a_status_outside_yes_partial_and_gap_fails_the_check():
 def test_every_feature_needs_only_named_capabilities():
     for feature, (needs, _) in H.FEATURES.items():
         assert needs and set(needs) <= set(H.CAPABILITIES), feature
+
+
+def test_a_features_verdict_on_a_harness_is_the_weakest_of_its_needs():
+    """The Features table's per-harness verdict (#354 review, nit 8): gap over partial over yes; undeclared is a gap."""
+    columns = H.declarations()
+    assert H.verdict(columns[H.OPENCODE], "push_wake") == H.PARTIAL  # its non-operator mark is the text header
+    assert H.verdict(H.CODEX, "push_wake") == H.GAP  # no native queue, and AEW hosts the app-server
+    assert H.verdict(H.CODEX, "steer_worker") == H.YES
+    assert H.verdict({}, "steer_worker") == H.GAP

@@ -10,9 +10,9 @@ How to install, configure and use OpenCode as AEW's harness. The design is ADR-0
 
 ## Requirements
 
-- **OpenCode V2, version 2.0.18.** It is the only version tested. V1 is not supported, and a server that is not V2 is refused.
-- **Windows** is where real runs are tested. On Windows, AEW uses OpenCode Desktop's versioned CLI at `%APPDATA%\ai.opencode.desktop\cli\2.0.18\opencode-cli.exe`. Elsewhere it uses `opencode-cli` (or `opencode`) on `PATH`. To use another copy, set `AEW_OPENCODE_BIN` to its path.
-- **Linux** is covered in CI by a fake V2 server that serves the real 2.0.18 API description. No real Linux run has been made.
+- **OpenCode V2, version 2.2.6.** It is the only version tested (`capabilities.TESTED_VERSIONS`). V1 is not supported, and a server that is not V2 is refused.
+- **Windows** is where real runs are tested. On Windows, AEW uses OpenCode Desktop's versioned CLI at `%APPDATA%\ai.opencode.desktop\cli\2.2.6\opencode-cli.exe`. Elsewhere it uses `opencode-cli` (or `opencode`) on `PATH`. To use another copy, set `AEW_OPENCODE_BIN` to its path.
+- **Linux** is covered in CI by a fake V2 server that serves the real pinned API description, and the real binary passed the conformance suite on Windows and on the Rocky 8 VM, and the containment self-test on the VM except one host-scoped row (`host_tmp`, the VM's own X11 socket), when the pin moved to 2.2.6 (`tools/harness_qualify`).
 - A provider account for the models you configure.
 
 AEW never contacts OpenCode Desktop's own background service, and never writes to your OpenCode configuration or state.
@@ -59,6 +59,8 @@ aew doctor
 ## 2. Set the provider key
 
 AEW needs a provider key and a paid model, and does not use OpenCode's free models. OpenCode Zen's published rule (https://opencode.ai/docs/zen/) is "Free-tier chat models require OpenCode; use paid models or Go from other clients", and a run through AEW's provider relay is another client. On Linux a worker launch whose provider would get no key is refused before anything starts (`provider_key_missing`), naming the variable, and `aew doctor`'s `provider-key` line says the same beforehand.
+
+**OpenCode Zen's Console library on Windows.** OpenCode fetches the session instructions and skills set in your OpenCode Console account whenever an `OPENCODE_API_KEY` is set. A contained run on Linux refuses that fetch. On Windows, where AEW provides no network containment, a Zen run receives them, and AEW neither blocks nor records them. If you don't want them in AEW's runs, keep your Console account's instructions and skills empty.
 
 Set the key in the terminal you launch runs from, under the name `provider_env` lists, for that shell session only, with a form that echoes nothing and leaves nothing in history (the forms in [the quickstart](quickstart.md#giving-aew-the-lead-credential), with the variable's name in place of `AEW_LEAD_TOKEN`). Never a persistent variable or a startup file: a persistent variable reaches every process you start, and a startup file is a plain file in your home directory, like history. Runs launched from that terminal pass it to their OpenCode servers only.
 

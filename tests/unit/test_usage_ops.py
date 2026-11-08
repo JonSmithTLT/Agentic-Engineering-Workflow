@@ -441,14 +441,14 @@ def test_rows_are_recorded_provisional_or_missing_and_missing_is_counted(tmp_pat
     assert t["estimated_at_record"]["reasons"] == {"unpriced_not_recorded": 1, "unpriced_usage_missing": 1}
     assert t["estimated_under_current_prices"]["usd"] == Decimal("0.004")
     assert (t["provider_cost"]["zero_with_tokens"], t["provider_cost"]["absent"]) == (1, 2)
-    assert t["provider_cost"]["reported_usd"] == 0  # a zero_with_tokens cost is never added into a reported total
+    assert t["provider_cost"]["reported_usd"] is None  # a zero_with_tokens cost is never a reported total
 
 
 def test_an_invocation_without_runs_is_counted_and_contributes_nothing_else(tmp_path):
     state = hand_state(("I-1", "T-0001", []))
     t = O.unit_projection(state, "T-0001", O.Reader(tmp_path, PRICES))["own"]
     assert (t["invocations"], t["invocations_without_runs"], t["runs"]) == (1, 1, 0)
-    assert t["estimated_under_current_prices"] == {"usd": 0, "priced": 0, "unpriced": 0, "reasons": {}}
+    assert t["estimated_under_current_prices"] == {"usd": None, "priced": 0, "unpriced": 0, "reasons": {}}
 
 
 def test_a_mixed_run_counts_under_the_mix_never_the_requested_model(tmp_path):
@@ -534,7 +534,8 @@ def test_roll_ups_equal_the_sum_of_their_parts_and_the_counts_partition_the_runs
             fig = total[name]
             assert fig["priced"] + fig["unpriced"] == len(rows)
             assert sum(fig["reasons"].values()) == fig["unpriced"]
-            assert fig["usd"] == sum((r[name]["usd"] for r in rows if "usd" in r[name]), Decimal(0))
+            priced_rows = [r[name]["usd"] for r in rows if "usd" in r[name]]
+            assert fig["usd"] == (sum(priced_rows, Decimal(0)) if priced_rows else None)  # never a zero (#368, M1)
         assert total["invocations"] == len(invs)
         assert total["invocations_without_runs"] == sum(1 for _, _, runs in invs if not runs)
         priced += total["estimated_under_current_prices"]["priced"] + total["estimated_at_record"]["priced"]
@@ -544,3 +545,93 @@ def test_roll_ups_equal_the_sum_of_their_parts_and_the_counts_partition_the_runs
     assert priced > 0
     assert seen >= {O.UNPRICED_SEMANTICS_UNKNOWN, O.UNPRICED_INCONSISTENT, O.UNPRICED_CATEGORY, O.UNPRICED_MIX,
                     O.UNPRICED_MODEL, O.UNPRICED_NO_TABLE, O.UNPRICED_NOT_RECORDED, O.UNPRICED_USAGE_MISSING}, seen
+
+
+# --------------------------------------------------------------------------- the surfaces' text (R9)
+
+
+def _figure(usd: str, priced: int, unpriced: int, reasons: dict[str, int] | None = None) -> dict[str, Any]:
+    return {"usd": Decimal(usd), "priced": priced, "unpriced": unpriced, "reasons": reasons or {}}
+
+
+def test_a_figure_without_a_priced_run_never_prints_a_dollar_amount():
+    """R4, IF10-14: a total with no priced run is unknown exposure with its reasons, never `$0`; one with some priced
+    runs names the unpriced ones beside its amount, so a partial sum is never read as the whole."""
+    unpriced = O.figure_text(_figure("0", 0, 2, {O.UNPRICED_NO_TABLE: 2}))
+    assert unpriced == f"UNPRICED_OR_UNKNOWN_EXPOSURE ({O.UNPRICED_NO_TABLE} x2)" and "$" not in unpriced
+    mixed = O.figure_text(_figure("0.5", 1, 1, {O.UNPRICED_MODEL: 1}))
+    assert mixed == (f"$0.5 USAGE_OBSERVED_COOPERATIVE over 1 priced run(s), and 1 UNPRICED_OR_UNKNOWN_EXPOSURE "
+                     f"({O.UNPRICED_MODEL} x1)")
+    assert O.figure_text(_figure("0", 0, 0)) == "no runs"
+
+
+def test_a_tiny_cost_never_prints_as_a_rounded_zero():
+    """Prices are per million tokens: one token at a cheap rate is a fraction of a millionth, printed exactly."""
+    assert O.money(Decimal(1) * Decimal("0.075") / Decimal(1_000_000)) == "$0.000000075"
+    assert O.money(Decimal("0.0052000")) == "$0.0052"
+
+
+def test_the_status_summary_is_the_hot_projection_cut_to_its_keys(tmp_path):
+    """R9: `aew status`'s summary is the hot projection's own totals for ``SUMMARY_KEYS`` (no second count), says it
+    covers the hot state only, and reads no archived unit."""
+    state = {"work": {"T-1": {"kind": "ticket"}}, "invocations": {"INV-1": {"work_unit": "T-1", "runs": []}}}
+    reader = O.Reader(tmp_path, None)
+    summary = O.hot_summary(state, reader)
+    totals = O.project_projection(state, reader)["totals"]
+    assert summary == {"scope": "hot", "archive_complete": False, **{k: totals[k] for k in O.SUMMARY_KEYS}}
+    assert O.summary_line(summary) == "Usage (hot work): no runs yet"
+
+
+def test_an_all_unpriced_total_carries_no_number_in_any_json_view(tmp_path):
+    """R4, IF10-14 (#368 review, M1): a money field is a number only once a priced or reported part went into it. With
+    no price table, the totals, each model's figures and the provider's reported cost are null in JSON, never 0; one
+    priced run makes them numbers."""
+    run_record(runlog.run_dir(tmp_path, "R-1"), record(input=1000, cost=0))
+    state = hand_state(("I-1", "T-0001", ["R-1"]))
+    O.copy_run_usage(state, "I-1", tmp_path, pricing=None)
+    totals = json.loads(json.dumps(O.to_json(O.project_projection(state, O.Reader(tmp_path, None))["totals"])))
+    for name in ("estimated_at_record", "estimated_under_current_prices"):
+        assert totals[name]["usd"] is None and totals[name]["unpriced"] == 1
+    [model] = totals["by_model"].values()
+    assert (model["estimated_at_record_usd"], model["estimated_under_current_prices_usd"]) == (None, None)
+    assert totals["provider_cost"]["reported_usd"] is None
+    priced = O.project_projection(state, O.Reader(tmp_path, PRICES))["totals"]
+    assert priced["estimated_under_current_prices"]["usd"] == Decimal("0.002")
+    assert priced["estimated_at_record"]["usd"] is None  # copied with no table: nothing at record is priced
+
+
+def test_a_named_table_that_cannot_be_used_has_its_own_reason(tmp_path):
+    """#368 review, m6: when the named table cannot be used, figures under current prices say so, never that there is
+    no table."""
+    run_record(runlog.run_dir(tmp_path, "R-1"), record(input=1000))
+    state = hand_state(("I-1", "T-0001", ["R-1"]))
+    O.copy_run_usage(state, "I-1", tmp_path, pricing=None)
+    totals = O.project_projection(state, O.Reader(tmp_path, None, unusable=True))["totals"]
+    assert totals["estimated_under_current_prices"]["reasons"] == {O.UNPRICED_TABLE_UNUSABLE: 1}
+    assert totals["estimated_at_record"]["reasons"] == {O.UNPRICED_NO_TABLE: 1}  # what the copy recorded
+
+
+def test_the_status_line_prints_the_exact_sum_never_its_json_number(tmp_path):
+    """#368 review, m5: the status line is rendered from the Decimal sums, so it prints what `aew usage show` prints,
+    even past a double's precision."""
+    table = (b"schema: aew/pricing/v1\ncurrency: USD\nas_of: 2026-10-01\nsource: test\nprices:\n"
+             b"  openai/gpt-6.1: {input: 987654321, output: 1}\n")  # integers: YAML keeps them exact
+    prices = O.Prices(table, source="pricing.yaml")
+    run_record(runlog.run_dir(tmp_path, "R-1"), record(input=123456789))
+    state = hand_state(("I-1", "T-0001", ["R-1"]))
+    O.copy_run_usage(state, "I-1", tmp_path, pricing=prices)
+    summary = O.status_summary(state, O.Reader(tmp_path, prices))
+    exact = Decimal(123456789) * Decimal(987654321) / Decimal(1_000_000)  # 18 significant digits
+    assert f"${exact} USAGE_OBSERVED_COOPERATIVE" in summary["line"]
+    assert str(float(exact)) != str(exact)  # its JSON number is not the exact sum
+
+
+def test_a_window_says_what_it_counts_and_only_the_bounds_given():
+    """#368 review, m4: a window counts the hot work whatever its time and the units archived in the bounds; a bound
+    not given is not printed."""
+    view = {"target": {"kind": "project"}, "scope": "window", "archive_complete": False,
+            "since": "2026-10-01T00:00:00Z", "until": None, "units": 0, "totals": O.empty_totals(),
+            "basis": O.basis(None)}
+    text = O.render_show(view)
+    assert "hot work, whenever it ran, and the units archived from 2026-10-01T00:00:00Z" in text
+    assert "None" not in text.split("\n")[0]

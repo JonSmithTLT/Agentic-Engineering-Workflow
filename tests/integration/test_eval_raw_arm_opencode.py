@@ -21,6 +21,8 @@ import fake_opencode
 import pytest
 import yaml
 
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "eval"))
 
@@ -74,7 +76,7 @@ def fake_server(tmp_path, monkeypatch):
               "contain": False,
               "profile": {"id": "lb-demo", "qualification_state": "unqualified",
                           "effective_profile": {"context.orientation": None, "tools.presentation": None}},
-              "harness": {"name": "opencode", "version": "2.0.18",
+              "harness": {"name": "opencode", "version": TESTED_VERSIONS[0],
                           "artifact_sha256": {raw.host_platform(): raw._sha256_file(launcher)}},  # noqa: SLF001
               "session_db": {"retain": True, "retention_days": 30, "fields": FIELDS}}
     return scripts, config
@@ -109,7 +111,7 @@ def test_a_raw_cell_runs_the_pinned_model_on_the_task_and_keeps_its_harness_stat
     db = out["session_db"]
     assert db["retain_until"] and db["fields"] == FIELDS
     assert Path(db["state_dir"]) == (tmp_path / "work" / "r1" / "harness").resolve()
-    assert record["harness"]["version"] == "2.0.18" == record["harness"]["pinned_version"]
+    assert record["harness"]["version"] == TESTED_VERSIONS[0] == record["harness"]["pinned_version"]
     assert record["cost"]["charged_usd"] is not None
     scratch = tmp_path / "work" / "r1"
     started = json.loads((scratch / "harness" / "harness" / "fake-server.json").read_text(encoding="utf-8"))

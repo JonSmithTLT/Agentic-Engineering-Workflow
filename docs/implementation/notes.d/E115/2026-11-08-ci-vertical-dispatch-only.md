@@ -1,0 +1,1 @@
+The `vertical` workflow no longer runs on pushes to `main` (operator, 2026-11-08), so the scoreboard's series gains a line only from a dispatch on `main`: `gh workflow run vertical --ref main`. The operator turns the push trigger back on. The nightly's read keeps the series from expiring meanwhile.

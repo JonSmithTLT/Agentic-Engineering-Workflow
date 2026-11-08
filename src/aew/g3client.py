@@ -29,6 +29,7 @@ import socket
 import sys
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -56,6 +57,9 @@ PROTECTED = "PROTECTED_G3"
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 COMMAND_SETS = "/o01/v0/command-sets"
 
+# G3-08's ConsumeResults: what a service that answered says of the member, held to the wire by a test
+CONSUME_RESULTS = ("CONSUMED", "ORIGIN_NOT_ESTABLISHED", "CONSENT_ISSUER_UNVERIFIED", "CONSENT_EXPIRED",
+                   "CONSENT_SCOPE_MISMATCH", "CONSENT_ALREADY_USED")
 PROBE_TIMEOUT_S = 5  # the probe's one read: it asks for an approval no one made, which the service answers at once
 PROBE_REF = "g3:approval:probe"  # a well-formed ref (the wire's Ref) that names no approval: the answer is a 404
 
@@ -284,6 +288,37 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
         raise Unavailable("the O-01 route is unavailable; the approval is unused", reason="o01_unavailable")
     raise ValidationFailed(f"the O-01 route refused the set: {code or status}; the approval is unused",
                            reason="o01_refused", o01_code=code, status=status)
+
+
+@dataclass(frozen=True)
+class Consumed:
+    """What an owner's one consume call found: ``result``, the service's ``ConsumeResult``, or None when it gave none
+    (``held_why``: no answer, a ``503``, a ``403``, a ``400``, or an answer that is not one). An owner holds the action
+    for a None, allocates nothing and falls back to no other origin (G3-11; addendum 7, ruling 2)."""
+
+    result: str | None
+    held_why: str | None = None
+
+
+def consume(*, consent_set_ref: str, set_digest: str, recipient_ref: str, installation_ref: str, intent_ref: str,
+            origin_proof_ref: str, owner: str, operation_ref: str, sock_path: str | None = None) -> Consumed:
+    """An owner's ``POST /g3/v1/consume`` at allocation (G3-08), with the SW-02 digest of the set it received and the
+    member's own proof. ``CONSUMED`` records the member as used, against ``(owner, operation_ref)``, so an owner makes
+    this call once per member. A reply lost after that fails closed: the next call gets ``CONSENT_ALREADY_USED``."""
+    body = {"wire_version": G3_WIRE, "consent_set_ref": consent_set_ref, "intent_ref": intent_ref,
+            "origin_proof_ref": origin_proof_ref, "set_digest": set_digest, "recipient_ref": recipient_ref,
+            "installation_ref": installation_ref, "owner": owner, "operation_ref": operation_ref}
+    try:
+        status, reply = _g3(sock_path, "POST", "/g3/v1/consume", body)
+    except (Unavailable, PermissionDenied) as exc:
+        return Consumed(None, exc.message)
+    if status != 200:
+        refused = _g3_refusal(status, reply)
+        return Consumed(None, getattr(refused, "message", str(refused)))
+    result = reply.get("result") if isinstance(reply, dict) else None
+    if result not in CONSUME_RESULTS:
+        return Consumed(None, f"the answer on {sock_path or REQUEST_SOCK} is no ConsumeResult")
+    return Consumed(result)
 
 
 def probe(sock_path: str | None = None) -> str | None:

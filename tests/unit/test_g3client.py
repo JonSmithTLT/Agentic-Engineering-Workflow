@@ -53,6 +53,8 @@ def operator_set() -> dict[str, Any]:
 def test_the_clients_restated_facts_are_their_owners() -> None:
     assert C.REQUEST_SOCK == (cli.RUNTIME_DIR / REQUEST_SOCK).as_posix()
     assert (C.G3_HEADER, C.G3_WIRE) == (wire.HEADER, wire.WIRE)
+    consume_results = wire.schema()["$defs"]["ConsumeResult"]["properties"]["result"]["enum"]
+    assert sorted(C.CONSUME_RESULTS) == sorted(consume_results)
     server = ast.parse((Path(aew_g3.__file__).parent / "server.py").read_bytes().decode())  # Linux-only to import
     timeout = next(n.value for n in server.body if isinstance(n, ast.Assign)
                    and [getattr(x, "id", None) for x in n.targets] == ["REQUEST_TIMEOUT_S"])
@@ -250,6 +252,67 @@ def test_a_decline_an_expiry_or_a_lost_approval_ends_the_wait_and_submits_nothin
     assert isinstance(out, OperatorAuthorizationRequired) and out.details["reason"] == reason
     assert svc.calls == 2 and waited == C.POLL_S  # at once, on the answer: never at the deadline
     assert "nothing was" in out.message.lower()
+
+
+CONSUME_ARGS = {"consent_set_ref": "consent:g3:one", "set_digest": "digest-one", "recipient_ref": "recipient:one",
+                "installation_ref": "installation:one", "intent_ref": "intent:one", "origin_proof_ref": "proof:one",
+                "owner": "HEB", "operation_ref": "op:one"}
+
+
+def test_consume_sends_the_wires_request_on_request_sock_and_returns_the_services_result(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """G3-08: every field of the wire's ConsumeRequest, from the caller's arguments, and the result as it came."""
+    sent: list[tuple[Any, ...]] = []
+
+    def g3(sock_path: str | None, method: str, path: str, body: Any = None, **_: Any) -> tuple[int, Any]:
+        sent.append((sock_path, method, path, body))
+        return 200, {"wire_version": C.G3_WIRE, "result": "CONSUMED", "consumed_at": "2026-11-08T00:00:00Z"}
+
+    monkeypatch.setattr(C, "_g3", g3)
+    assert C.consume(**CONSUME_ARGS, sock_path="/planted.sock") == C.Consumed("CONSUMED")
+    ((sock_path, method, path, body),) = sent
+    assert (sock_path, method, path) == ("/planted.sock", "POST", "/g3/v1/consume")
+    assert body == {"wire_version": C.G3_WIRE, **CONSUME_ARGS}
+
+
+@pytest.mark.parametrize("result", C.CONSUME_RESULTS)
+def test_consume_returns_each_of_the_wires_results_as_the_service_gave_it(
+        monkeypatch: pytest.MonkeyPatch, result: str) -> None:
+    monkeypatch.setattr(C, "_g3", lambda *a, **k: (200, {"wire_version": C.G3_WIRE, "result": result}))
+    assert C.consume(**CONSUME_ARGS) == C.Consumed(result)
+
+
+@pytest.mark.parametrize("status, body, said", [
+    (503, {"code": "G3_UNAVAILABLE"}, "holding every request"),
+    (403, {"code": "PEER_NOT_PERMITTED"}, "the operator's own account"),
+    (400, {"code": "STRUCTURAL"}, "refused the request: STRUCTURAL"),
+    (404, None, "refused the request: 404"),
+    (200, {"result": "A_RESULT_NO_WIRE_NAMES"}, "is no ConsumeResult"),
+    (200, {"result": None}, "is no ConsumeResult"),
+    (200, ["CONSUMED"], "is no ConsumeResult"),
+    (200, None, "is no ConsumeResult"),
+])
+def test_a_consume_answered_with_no_result_gives_none_and_says_why_so_an_owner_holds(
+        monkeypatch: pytest.MonkeyPatch, status: int, body: Any, said: str) -> None:
+    """G3-11: a 503, a 403 or a 400 is no ConsumeResult, nor is a 200 that holds none. Never a refusal of the proof."""
+    monkeypatch.setattr(C, "_g3", lambda *a, **k: (status, body))
+    got = C.consume(**CONSUME_ARGS)
+    assert got.result is None and said in (got.held_why or "")
+
+
+@pytest.mark.parametrize("raised, said", [
+    (Unavailable("no answer", reason="g3_unreachable"), "no answer"),
+    (Unavailable("not the wire", reason="g3_not_g3"), "not the wire"),
+    (PermissionDenied("not this account's", reason="g3_peer_not_permitted"), "not this account's"),
+])
+def test_a_consume_with_no_answer_gives_none_and_raises_nothing(
+        monkeypatch: pytest.MonkeyPatch, raised: Exception, said: str) -> None:
+    """An owner holds on these: the call turns each into its result, so no owner can let one escape as a crash."""
+    def g3(*_: Any, **__: Any) -> tuple[int, Any]:
+        raise raised
+
+    monkeypatch.setattr(C, "_g3", g3)
+    assert C.consume(**CONSUME_ARGS) == C.Consumed(None, said)
 
 
 @pytest.mark.parametrize("status, code, error, reason", [

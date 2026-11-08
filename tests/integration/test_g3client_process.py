@@ -277,6 +277,75 @@ def test_the_probe_reaches_the_real_services_guarded_read_answering_when_it_runs
     assert "systemctl status aew-g3.service" in (C.probe() or "")
 
 
+def _approved(world: World) -> tuple[dict[str, Any], dict[str, Any]]:
+    """A protected set the operator approved on the real service, as an owner receives it, and its consent record."""
+    cs = C.with_proofs(C.check_set(json.loads(world.set_file.read_bytes())))
+    _, record = G.approved(world.rig.svc, cs)
+    return dict(cs, consent_set_ref=record["consent_set_ref"]), record
+
+
+def _consume(cs: dict[str, Any], **over: Any) -> C.Consumed:
+    """What an owner sends: the SW-02 digest of the set it received, and the member's own proof."""
+    i = cs["intents"][0]
+    return C.consume(**{"consent_set_ref": cs["consent_set_ref"], "set_digest": W.set_digest(cs),
+                        "recipient_ref": cs["recipient_ref"], "installation_ref": cs["installation_ref"],
+                        "intent_ref": i["intent_ref"], "origin_proof_ref": i["origin_proof_ref"],
+                        "owner": i["owner_hint"], "operation_ref": "op:client-consume", **over})
+
+
+def test_consume_on_the_real_socket_consumes_the_member_once_against_its_operation(
+        world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    """G3-08 over the wire: the service takes the client's request as it stands, records the member against the
+    owner and the operation, and refuses the same member a second time, so a lost reply can only fail closed."""
+    cs, record = _approved(world)
+    ledger = world.rig.svc.ledger
+    recorded: list[tuple[str, ...]] = []
+    real = ledger.consume
+
+    def consume(consent_set_ref: str, intent_ref: str, owner: str, operation_ref: str, at: str) -> bool:
+        recorded.append((consent_set_ref, intent_ref, owner, operation_ref))
+        return real(consent_set_ref, intent_ref, owner, operation_ref, at)
+
+    monkeypatch.setattr(ledger, "consume", consume)
+    i = cs["intents"][0]
+    assert _consume(cs).result == "CONSUMED"
+    assert recorded == [(record["consent_set_ref"], i["intent_ref"], i["owner_hint"], "op:client-consume")]
+    assert ledger.consumed(record["consent_set_ref"], i["intent_ref"])
+    assert _consume(cs).result == "CONSENT_ALREADY_USED"
+
+
+def test_consume_on_the_real_socket_gives_each_of_g3_08s_refusals_and_consumes_nothing(world: World) -> None:
+    cs, _ = _approved(world)
+    assert _consume(cs, consent_set_ref="consent:g3:no-such-record").result == "ORIGIN_NOT_ESTABLISHED"
+    another_set = W.set_digest(dict(cs, request_set_ref=cs["request_set_ref"] + "-another"))
+    assert _consume(cs, set_digest=another_set).result == "CONSENT_SCOPE_MISMATCH"
+    assert _consume(cs, origin_proof_ref="proof:" + "0" * 32).result == "CONSENT_SCOPE_MISMATCH"
+    assert _consume(cs, owner="ADC").result == "CONSENT_SCOPE_MISMATCH"
+    world.rig.clock.advance(minutes=world.rig.dep.consent_validity_minutes + 1)
+    assert _consume(cs).result == "CONSENT_EXPIRED"
+    fresh, _ = _approved(world)  # none of those used a member: a current consent still consumes
+    assert _consume(fresh).result == "CONSUMED"
+
+
+def test_consume_on_the_real_socket_gives_no_result_when_the_service_holds_or_refuses_or_is_absent(
+        world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """G3-11, with the real service's answers: a 503 from its guard, a 400 for a request off the wire, no socket."""
+    from aew_g3.ledger import LedgerUnavailable
+
+    cs, _ = _approved(world)
+    bad = _consume(cs, operation_ref=None)
+    assert bad.result is None and "refused the request" in (bad.held_why or "")
+
+    def unreadable(ref: str) -> Any:
+        raise LedgerUnavailable("planted: the ledger cannot be read")
+
+    monkeypatch.setattr(world.rig.svc.ledger, "record", unreadable)
+    held = _consume(cs)
+    assert held.result is None and "holding every request" in (held.held_why or "")
+    monkeypatch.setattr(C, "REQUEST_SOCK", str(tmp_path / "absent.sock"))
+    assert "systemctl status aew-g3.service" in (_consume(cs).held_why or "")
+
+
 def test_no_g3_service_is_unavailable_and_says_where_to_look(
         world: World, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(C, "REQUEST_SOCK", str(tmp_path / "absent.sock"))

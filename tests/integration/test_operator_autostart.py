@@ -54,6 +54,12 @@ def _holder(aew_root: Path, pid: int) -> Path:
     return path
 
 
+def _still_serving(aew_root: Path, out: threading.Thread, why: str) -> None:
+    """Over two looks of its loop. Its thread alone says nothing: it is alive for all of `close`, too."""
+    out.join(1.0)
+    assert out.is_alive() and operator_client.status(aew_root)["running"], why
+
+
 def _cmdline(pid: int) -> list[str]:
     return [a.decode("utf-8", "replace") for a in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0") if a]
 
@@ -128,8 +134,7 @@ def test_an_endpoint_started_at_a_terminal_is_not_stopped_when_a_session_ends(pr
     out.start()
     try:
         assert not operator_client.session_holders_live(engine.aew_root)
-        out.join(1.0)  # two polls of the loop, with no session live
-        assert out.is_alive() and operator_client.ping(engine.aew_root)["alive"]
+        _still_serving(engine.aew_root, out, "no session is live, and it does not look")
     finally:
         ep.close()
         out.join(HANG_GUARD_S)
@@ -143,8 +148,7 @@ def test_a_background_endpoint_stays_while_any_session_it_serves_lives(project):
     out = threading.Thread(target=ep.serve_forever, daemon=True)
     out.start()
     try:
-        out.join(1.0)
-        assert out.is_alive(), "a session is live"
+        _still_serving(engine.aew_root, out, "a session is live")
         holder.unlink()
         out.join(HANG_GUARD_S)
         assert not out.is_alive(), "no session is live"
@@ -249,8 +253,7 @@ def test_a_challenge_in_hand_finishes_before_the_endpoint_stops(project):
     try:
         def code(prompt: str) -> str:
             holder.unlink()
-            out.join(1.0)  # two looks with no session live
-            assert out.is_alive()
+            _still_serving(engine.aew_root, out, "a challenge is in hand")
             return re.findall(r"confirmation code ([0-9A-F]{6})", "".join(shown))[-1]
 
         assert operator_client.request_raise(engine.aew_root, "walk", ask=code, requester="test")["mode"] == "walk"
@@ -318,11 +321,9 @@ def test_a_session_naming_itself_during_the_endpoints_last_look_is_seen(project)
     try:
         with operator_client.sessions_lock(engine.aew_root):
             leaving.unlink()
-            out.join(1.0)
-            assert out.is_alive(), "its look waits for the session"
+            _still_serving(engine.aew_root, out, "its look waits for the session")
             arriving = _holder(engine.aew_root, os.getpid())
-        out.join(1.0)
-        assert out.is_alive(), "the session is seen"
+        _still_serving(engine.aew_root, out, "the session is seen")
         assert A.ensure(engine, provider_env=[], base={}) is None
         assert operator_client.ping(engine.aew_root)["alive"]
         arriving.unlink()

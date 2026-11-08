@@ -37,7 +37,10 @@ def remove_copy(path: Path) -> None:
         except OSError:
             pass
 
-    shutil.rmtree(path, **({"onexc": writable} if sys.version_info >= (3, 12) else {"onerror": writable}))
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(path, onexc=writable)
+    else:
+        shutil.rmtree(path, onerror=writable)
 
 
 def _row(status: str, detail: str) -> dict[str, str]:

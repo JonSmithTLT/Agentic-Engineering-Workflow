@@ -553,6 +553,9 @@ class OpenCodePack:
             Check("api.interrupt_turn",
                   lambda c: _api_capability(c, [("op", "POST /api/session/{sessionID}/interrupt")]),
                   ("interrupt_turn",), depth=API, says="session.interrupt is served"),
+            Check("api.read_model_list",
+                  lambda c: _api_capability(c, [("op", "GET /api/model")]),
+                  ("read_model_list",), depth=API, says="the model catalog doctor reads is served"),
         ]
         behaviour = [
             Check("usage.openai", lambda c: check_usage(c, fx, pin), ("read_usage", "wake_idle_session"),

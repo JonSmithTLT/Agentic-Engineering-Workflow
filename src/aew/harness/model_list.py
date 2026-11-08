@@ -58,6 +58,8 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
         try:
             pin = X.resolve(policy, sha, archetype=ROLE, card_id=None, risk_class=None, request={"profile": name},
                             identity=registry.model_identity)
+            if pin is None:  # nothing selects one: an unconfigured policy (X.resolve)
+                continue
             adapter_cls = registry.load(pin["harness"])
         except AEWError:  # the model-refs row names a profile that maps to no model
             continue

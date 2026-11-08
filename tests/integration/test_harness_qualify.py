@@ -227,7 +227,7 @@ def test_every_capability_opencode_declares_is_reported_and_the_checks_split_by_
 # ----------------------------------------------------------------------------- the OpenCode pack, fake server
 
 API_CHECKS = ["api.openapi", "api.wake_idle_session", "api.queue_until_turn_end", "api.steer_running_turn",
-              "api.interrupt_turn", "usage.live_citations", "ripgrep.download"]
+              "api.interrupt_turn", "api.read_model_list", "usage.live_citations", "ripgrep.download"]
 
 
 def fake_binary(tmp_path: Path, knobs: dict[str, Any] | None = None) -> Path:
@@ -242,7 +242,7 @@ def test_the_opencode_pack_against_the_fake_server_measures_its_api_and_names_wh
                                        fixtures=FIXTURES, only=API_CHECKS)
     by = {r["id"]: r["status"] for r in record.checks}
     assert record.version == "2.0.18"
-    assert {k: by[k] for k in API_CHECKS[:5]} == dict.fromkeys(API_CHECKS[:5], core.PASS)
+    assert {k: by[k] for k in API_CHECKS[:6]} == dict.fromkeys(API_CHECKS[:6], core.PASS)
     # the fake is not the build the citations were read from: not comparable, never a pass or a changed fact
     assert by["usage.live_citations"] == core.SKIPPED and by["ripgrep.download"] == core.FAIL
     assert diff.not_measured["live_usage.bundle_identifiers"].startswith("usage.live_citations skipped: not comparable")

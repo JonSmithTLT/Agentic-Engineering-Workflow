@@ -447,7 +447,9 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q = hsub.add_parser("status", help="runs, their local status and whether they still hold authority")
     q.add_argument("invocation", nargs="?")
     q.set_defaults(handler=lambda a: _engine(a).harness_status(a.invocation))
-    q = hsub.add_parser("wait", help="wait until a run stops running; with --any, until the first of several does",
+    q = hsub.add_parser("wait", help="wait until a run stops running or needs the Lead (a test that broke, a file "
+                                     "outside its scope, a worker that stopped: `why` says which); with --any, until "
+                                     "the first of several does",
                         epilog=f"Exit status: {WAIT_NO_EVIDENCE_EXIT} when the run it returns ended without its "
                                "expected output (status ended_without_evidence; the result then starts with a "
                                "headline); otherwise 0, also when the wait timed out (see timed_out). The result is "
@@ -457,8 +459,9 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
                    help="wait on several runs and return the first to end, with its next action; a run whose "
                         "invocation is no longer active counts as ended, though its record may still say running")
     q.add_argument("--timeout", type=float, default=600.0)
+    # The same wait as the Lead's typed tool (#358 review, finding 5): the contained Lead's shell relays this command.
     q.set_defaults(handler=lambda a: _engine(a).harness_wait(a.run if len(a.run) > 1 else a.run[0],
-                                                             timeout=a.timeout, any_=a.any_),
+                                                             timeout=a.timeout, any_=a.any_, triggers=True),
                    exit_status=_wait_exit_status)
     q = hsub.add_parser("stop", help="stop a run's harness; the invocation is unchanged (Lead)")
     q.add_argument("run")

@@ -1,7 +1,7 @@
 """Two mutating workers at the default cap (register F10; ADR-0003's amendment of 2026-11-07; HEB-06.c).
 
 The default `mutating_concurrency` is 2 and nothing here sets it: a project as `init` makes it runs two workers whose
-scopes cannot meet at once, each in its own worktree, and they integrate one after the other through the queue's lease;
+scopes cannot meet at once, each in its own worktree, and they integrate one after the other;
 a pair whose scopes can meet is held by the launch conflict check (E151). The workers are the scripted fake harness,
 so no model is called.
 """

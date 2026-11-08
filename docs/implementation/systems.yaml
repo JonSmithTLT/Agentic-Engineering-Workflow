@@ -3734,8 +3734,8 @@ systems:
   decision: 'decided: finished and switched on in slot 3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: switch_on
   who: Lead
-  reason: 'The pipeline is on and used (BOARD v2 §5). E151 merged and the default is 2 for a new project, on the operator''s
-    decision of 2026-11-07 lifting F10''s "after first use" (F10''s note of that day). HOLD-09 holds this pipeline''s E59
+  reason: 'The pipeline is on and used (BOARD v2 §5). E151 merged and the default is 2 for a new project. The reset of 2026-11-06
+    reversed F10''s "after first use", and the operator confirmed that on 2026-11-07 (F10''s note of that day). HOLD-09 holds this pipeline''s E59
     (publish trailers), E64 (queue-wait events) and Q14 (the remote integration target). E137''s stranded publish is a stage
     defect on SYS-08''s row, not here.'
   evidence:

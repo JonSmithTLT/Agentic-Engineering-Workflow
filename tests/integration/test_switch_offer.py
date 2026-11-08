@@ -214,15 +214,16 @@ def test_an_absent_file_is_not_offered(old):
 
 def test_the_table_is_not_offered_to_a_project_that_names_one_and_its_file_is_untouched(old, at_terminal, monkeypatch):
     only_row(monkeypatch, TABLE)
-    (old.root / ".aew" / PRICES).write_bytes(b"schema: aew/pricing/v1\ncurrency: USD\nas_of: '2026-01-01'\n"
-                                             b"source: ours\nprices:\n  p/m: {input: 1.0}\n")
-    _manifest(old, lambda policy: policy.update(pricing=PRICES))
+    ours = "policy/our-prices.yaml"  # not init's path: only the manifest's naming it can say the project has a table
+    (old.root / ".aew" / ours).write_bytes(b"schema: aew/pricing/v1\ncurrency: USD\nas_of: '2026-01-01'\n"
+                                           b"source: ours\nprices:\n  p/m: {input: 1.0}\n")
+    _manifest(old, lambda policy: policy.update(pricing=ours))
     old.adopt_policy()
-    before = snapshot(old, PRICES, MANIFEST)
+    before = snapshot(old, ours, PRICES, MANIFEST)
     term = at_terminal("CODE")
     decision, _ = start(old)
     assert term.prompts == [] and decision.taken == [] and doctor(old) == {}
-    assert snapshot(old, PRICES, MANIFEST) == before
+    assert snapshot(old, ours, PRICES, MANIFEST) == before
 
 
 def test_the_table_is_not_offered_over_a_file_the_manifest_doesnt_name(old, at_terminal, monkeypatch):
@@ -537,7 +538,7 @@ def test_taking_the_cap_through_the_real_offer_stops_an_open_stage_as_the_screen
     take(old, "CODE", at_terminal=at_terminal)
     with pytest.raises(StalePolicy) as exc:
         run_step(old, si, 2)
-    assert exc.value.details["intent"] == si
+    assert exc.value.details["intent"] == si and "how this version of AEW reads it" in exc.value.message
 
 
 @pytest.mark.parametrize("row", switch_offer.OFFERS, ids=lambda o: o.switch)

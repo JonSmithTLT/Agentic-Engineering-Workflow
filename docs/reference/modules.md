@@ -51,7 +51,7 @@ None.
 
 - `aew.errors`
 - `aew.g3standing`
-- `aew.stg02.adopted`
+- `aew.stg02.g3_overlay`
 - `aew.stg02.wire`
 
 ### `aew.g3standing`
@@ -1198,6 +1198,7 @@ Imports from the groups:
 - `aew.schemas`
 - `aew.skills`
 - `aew.snapshot`
+- `aew.stg02`
 - `aew.surface`
 - `aew.workspace`
 
@@ -1316,6 +1317,13 @@ None.
 - `aew.errors`
 - `aew.schemas`
 - `aew.util`
+
+### `aew.harness.g3_adapter`
+
+- `aew.errors`
+- `aew.g3client`
+- `aew.g3standing`
+- `aew.stg02.wire`
 
 ### `aew.harness.harness_capabilities`
 
@@ -1460,6 +1468,7 @@ None.
 - `aew.engine.steering`
 - `aew.errors`
 - `aew.harness.bridge`
+- `aew.harness.g3_adapter`
 - `aew.harness.notify`
 - `aew.harness.operator_client`
 - `aew.harness.procs`
@@ -1848,6 +1857,10 @@ None.
 - `aew.stg02.ledger`
 - `aew.stg02.wire`
 - `aew.stg02.world`
+
+### `aew.stg02.g3_overlay`
+
+- `aew.stg02.adopted`
 
 ### `aew.stg02.ledger`
 

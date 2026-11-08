@@ -232,6 +232,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.skills`: `_read` (Path.read_bytes), `manifest` (Path.read_text)
 - `aew.snapshot.fingerprint`: `_staged_index` (Path.exists), `_staged_index` (shutil.copy2), `_working_index` (Path.exists), `_working_index` (shutil.copy2), `relevant_inputs_fingerprint` (Path.exists)
 - `aew.stg02.adopted`: `load` (Path.read_bytes)
+- `aew.stg02.g3_overlay`: `_document` (Path.read_text)
 - `aew.stg02.server`: `_main` (Path.read_text)
 - `aew.stg02.world`: `Fixture.load` (Path.read_text)
 - `aew.surface.projection`: `_stat` (Path.stat)

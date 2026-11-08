@@ -768,6 +768,14 @@ skipped:
       POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
       Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
       test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_g3_endpoint_wire.py::test_a_pin_approval_on_the_real_wire_raises_and_the_console_shows_it: &g3-endpoint-wire >-
+      the G3 service is a Linux profile (A-37): Unix filesystem sockets and SO_PEERCRED; it never runs on Windows.
+      Covered on Linux; the same rules at the endpoint run on both platforms in
+      tests/integration/test_g3_endpoint_adapter.py.
+    tests/integration/test_g3_endpoint_wire.py::test_a_decline_on_the_real_wire_raises_nothing: *g3-endpoint-wire
+    tests/integration/test_g3_endpoint_wire.py::test_a_requester_that_has_gone_ends_the_wait_and_its_approval_raises_nothing: *g3-endpoint-wire
+    tests/integration/test_g3_endpoint_wire.py::test_a_service_older_than_the_overlay_holds_and_names_the_reinstall: *g3-endpoint-wire
+    tests/integration/test_g3_endpoint_wire.py::test_the_runbooks_replay_script_consumes_once_and_is_refused_the_second_time: *g3-endpoint-wire
     tests/integration/test_g3_process.py::test_the_real_service_runs_p1_over_its_two_sockets_and_every_response_carries_the_wire_header: >-
       the G3 service is a Linux profile (A-37): Unix filesystem sockets, SO_PEERCRED, socket activation and
       /proc; it never runs on Windows. Covered on Linux; its rules run on both platforms in

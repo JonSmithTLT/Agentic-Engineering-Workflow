@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from aew.cli import fields
 from aew.errors import UsageError
 from aew.util import read_text_input
 
@@ -112,7 +113,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     p.set_defaults(handler=_guide)
 
     p = sub.add_parser("checkpoint", help="record a checkpoint and the Lead's next-action note")
-    p.add_argument("--note-file", help="checkpoint notes (file or - for stdin)")
+    p.add_argument("--note-file", action=fields.FileInput, help="checkpoint notes (file or - for stdin)")
     p.add_argument("--next", dest="next_action", help="the Lead's next intended action")
     _add_lead(p)
     p.set_defaults(handler=lambda a: _engine(a).checkpoint(token=_lead_token(a), expect_rev=a.expect_rev,
@@ -182,7 +183,7 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     hsub = hp.add_subparsers(dest="handoff_cmd", required=True)
     q = hsub.add_parser("offer")
     _add_lead(q)
-    q.add_argument("--note-file", help="handoff notes (file or - for stdin)")
+    q.add_argument("--note-file", action=fields.FileInput, help="handoff notes (file or - for stdin)")
     q.add_argument("--carry", action="append", default=[], metavar="INV", help="in-flight invocation to carry")
     q.set_defaults(handler=lambda a: _engine(a).lead_handoff_offer(
         token=_lead_token(a), expect_rev=a.expect_rev, note=_read_text_arg(a.note_file),

@@ -56,7 +56,7 @@ from aew import errors, lead_credential
 from aew.engine import dispatch, faults
 from aew.engine.authority import require_held_lead, require_lead
 from aew.harness import agentenv, bridge, broker_liveness, steering_loop, tool_calls
-from aew.util import read_text_input
+from aew.util import read_text_input, stdin_only
 
 ENV_ENDPOINT = "AEW_LEAD_BROKER"
 ENV_KEY = "AEW_LEAD_BROKER_KEY"
@@ -497,7 +497,7 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     parser = build_parser(recall_search=recall_search_for(argv, aew_root=project),
                           coordination_reads=coordination_reads_for(argv, aew_root=project))
     stdin_stream = io.StringIO(stdin)  # one input, read once: by --fields - or by the command, as in the direct CLI
-    argv = _expand_fields(argv, parser, stdin_stream, cwd)
+    argv = _expand_fields(argv, parser, stdin_stream)
     noise = io.StringIO()
     try:
         with contextlib.redirect_stderr(noise), contextlib.redirect_stdout(noise):
@@ -546,7 +546,7 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     try:  # requests are serialized, so the process-wide cwd/stdin swap is safe here
         os.chdir(target)
         sys.stdin = stdin_stream
-        with dispatch.channel(channel):  # its dispatches record which transport carried them (M4-A)
+        with dispatch.channel(channel), stdin_only():  # its dispatches record which transport carried them (M4-A)
             result = ns.handler(ns)
     finally:
         sys.stdin = stdin_before
@@ -653,33 +653,49 @@ def relay_read(argv: list[str]) -> dict[str, Any]:
     return bridge.call("lead.read", {"argv": list(argv), "cwd": str(Path.cwd().resolve())}, env_names=ENV_NAMES)
 
 
-def _expand_fields(argv: list[str], parser: argparse.ArgumentParser, stdin: io.StringIO, cwd: str) -> list[str]:
-    """``--fields FILE|-`` expanded as the ``aew`` client does, with this call's stdin and a FILE read from its
-    directory, before anything is parsed or checked. A shell command relayed through ``lead.cli`` arrives already
-    expanded (its client did it), so for it this changes nothing; the typed ``cli`` escape submits its argv as given
-    (PR #93 review). Expanded values are checked like any other argument afterwards."""
+def _expand_fields(argv: list[str], parser: argparse.ArgumentParser, stdin: io.StringIO) -> list[str]:
+    """``--fields -`` expanded as the ``aew`` client does, with this call's stdin, before anything is parsed or checked.
+    A shell command relayed through ``lead.cli`` arrives already expanded (its client did it), so for it this changes
+    nothing; the typed ``cli`` escape submits its argv as given (PR #93 review). A relayed command takes bytes, so
+    ``--fields FILE`` is refused here. Expanded values are checked like any other argument afterwards."""
     from aew.cli import fields
 
     if not any(a == fields.OPTION or a.startswith(fields.OPTION + "=") for a in argv):
         return argv
-    previous, stdin_before = os.getcwd(), sys.stdin
+    stdin_before = sys.stdin
     try:  # requests are serialized, so the process-wide swap is safe here
-        try:
-            os.chdir(Path(cwd).resolve())
-        except OSError as exc:
-            raise errors.UsageError(f"cannot use {cwd} as the command's directory: {exc.strerror or exc}") from None
         sys.stdin = stdin
-        return fields.expand(argv, parser)
+        with stdin_only():
+            return fields.expand(argv, parser)
     finally:
         sys.stdin = stdin_before
-        os.chdir(previous)
+
+
+def _as_bytes(argv: list[str], args: argparse.Namespace, cwd: Path) -> tuple[list[str], str]:
+    """The arguments to send, and the text that goes with them. A file argument is read here, in the client, relative
+    to the command's directory, and sent as ``-``: the last value of an option is the one it takes, whatever form the
+    command line spelled it in. The one stdin carries one input, so a command given two is refused."""
+    from aew.cli import fields
+
+    given = {option: value for option, dest in getattr(args, fields.GIVEN, {}).items()
+             if (value := getattr(args, dest))}
+    paths = {option: value for option, value in given.items() if value != "-"}
+    piped = "-" in argv or "-" in given.values()
+    if len(paths) + piped > 1:
+        raise errors.UsageError(f"only one file argument or - can go with a relayed command; this one gives "
+                                f"{', '.join(sorted(paths))}{' and -' if piped else ''}")
+    if not paths:
+        return list(argv), read_text_input("-") if piped else ""  # decoded here; parsed by the broker
+    (option, path), = paths.items()
+    at = argv.index("--") if "--" in argv else len(argv)
+    return [*argv[:at], f"{option}=-", *argv[at:]], read_text_input(str(cwd / path))
 
 
 def forward(argv: list[str], args: argparse.Namespace) -> dict[str, Any]:
-    """Client side: send a Lead-authenticated command to this Lead session's broker."""
-    stdin = read_text_input("-") if "-" in argv else ""  # decoded here like any text input; parsed by the broker
-    cwd = str(Path(args.cwd or os.getcwd()).resolve())
-    return bridge.call("lead.cli", {"argv": list(argv), "cwd": cwd, "stdin": stdin}, env_names=ENV_NAMES)
+    """Client side: send a Lead-authenticated command to this Lead session's broker, with its file arguments as text."""
+    cwd = Path(args.cwd or os.getcwd()).resolve()
+    sent, stdin = _as_bytes(argv, args, cwd)
+    return bridge.call("lead.cli", {"argv": sent, "cwd": str(cwd), "stdin": stdin}, env_names=ENV_NAMES)
 
 
 def session_authority() -> dict[str, Any] | None:

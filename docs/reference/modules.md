@@ -205,6 +205,7 @@ None.
 - `aew.capability.consent`
 - `aew.cli.capability_commands`
 - `aew.cli.dashboard_commands`
+- `aew.cli.fields`
 - `aew.cli.g3_commands`
 - `aew.cli.history_commands`
 - `aew.cli.map_commands`
@@ -319,6 +320,7 @@ None.
 ### `aew.cli.work_commands`
 
 - `aew.cli.commands`
+- `aew.cli.fields`
 - `aew.engine.custody_ops`
 - `aew.errors`
 - `aew.harness.bridge`

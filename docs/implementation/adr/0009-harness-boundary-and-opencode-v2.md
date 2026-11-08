@@ -1868,3 +1868,22 @@ acknowledgements.
   a Console `library` of session instructions and skills, refused with the rest under `proxy_only`. On Windows, where
   network containment is not provided, a Zen run receives them, and AEW neither blocks nor records them (the
   operator, 2026-11-07: the limit is stated, in the OpenCode guide).
+
+## Amendment 2026-11-08 — a relayed command takes bytes
+
+**A relayed Lead command reads no path in the broker's process.** Its file arguments are read by the `aew` client, which
+runs where the Lead's shell runs, and arrive as text.
+
+- **The client.** A file argument (`--note-file`, `--body-file`, `--file`, each a `fields.FileInput`) is read in the client,
+  relative to the command's directory, and sent as `-` with its text as the request's `stdin`. `--fields FILE` is
+  expanded in the client, as it already was.
+- **The broker.** While it expands `--fields` and runs a relayed command's handler, `read_text_input` takes `-` and refuses
+  a path, with a message naming `-`. This holds on `lead.cli` and on the typed `cli` tool, which submits its arguments as
+  given: there, `--fields -` with the tool's `stdin` argument takes the place of `--fields FILE`.
+- **One input.** A request has one `stdin`, so a command given two inputs is refused by the client. No relayed command
+  has two file arguments, and a test holds that.
+- **Stage intents are found by id.** `stage_intent` looks for a record file only under a name of the record's id format.
+- **How it stays true.** `tests/unit/test_relayed_file_arguments.py` walks the relayed commands' parsers and the handlers'
+  source, and fails on a file argument the client does not handle.
+  `tests/integration/test_relayed_file_arguments_through_a_broker.py` runs every relayed command with each value naming
+  one file, under an audit hook on every open.

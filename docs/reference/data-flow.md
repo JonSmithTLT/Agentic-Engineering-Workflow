@@ -75,7 +75,7 @@ flowchart LR
     path_decisions -.->|"4 functions"| no_reader
     path_evidence -.->|"9 functions"| no_reader
     path_history -.->|"3 functions"| no_reader
-    path_local -.->|"44 functions"| no_reader
+    path_local -.->|"45 functions"| no_reader
     path_policy -.->|"4 functions"| no_reader
     path_pricing -.->|"3 functions"| no_reader
     path_project_yaml -.->|"10 functions"| no_reader
@@ -106,7 +106,7 @@ flowchart LR
 | `evidence` | other entries of .aew | `aew` (3) | `aew` (2) | 0 | 9 |
 | `history` | other entries of .aew | `aew` (1) | - | 2 | 3 |
 | `knowledge` | other entries of .aew | `aew` (2) | `aew` (1) | 0 | 0 |
-| `local` | masked from a contained run | `aew` (34), `aew dashboard serve` (2), `aew.harness.supervisor` (21) | `aew` (9), `aew dashboard serve` (1), `aew.harness.supervisor` (9) | 17 | 44 |
+| `local` | masked from a contained run | `aew` (34), `aew dashboard serve` (2), `aew.harness.supervisor` (21) | `aew` (9), `aew dashboard serve` (1), `aew.harness.supervisor` (9) | 17 | 45 |
 | `policy` | other entries of .aew | `aew` (2) | `aew` (1) | 0 | 4 |
 | `pricing` | other entries of .aew | - | - | 1 | 3 |
 | `project.yaml` | other entries of .aew | `aew` (2) | - | 0 | 10 |
@@ -169,6 +169,6 @@ The `entry_points` fact of the `concurrency` records.
 ### Not drawn by entry point
 
 - Writes by functions the call graph attributes to no entry point: 31 (entry, function) pairs, drawn only from the box "written by functions no entry point reaches".
-- Reads by functions no record reaches from an entry point: 106 (entry, function) pairs, drawn only into the box "read by functions no entry point reaches"; each is in the layout page with its function.
+- Reads by functions no record reaches from an entry point: 107 (entry, function) pairs, drawn only into the box "read by functions no entry point reaches"; each is in the layout page with its function.
 - 53 write sites outside `.aew` and 57 write sites this reading could not place belong to no entry of the map (the writers page lists them).
 - The bridge and the network. No record attributes a bridge call, or a route served, to the process that makes or serves it; the routes and tools are in [interfaces.md](interfaces.md), and what each process is stands in its reason above. Which entry points run contained is not a fact of the records either.

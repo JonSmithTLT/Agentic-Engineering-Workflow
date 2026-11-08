@@ -51,7 +51,9 @@ WORKSPACES_NAME = "workspaces_root"  # the directory of the task workspaces (a m
 # layout's reads). It was 14 while a depth cut under a join read as a computed segment and hid how deep the tree goes
 # (addendum 6).
 DEPTH = 32
-CALLERS = 24  # call sites of one function that are evaluated; more is UNK
+# Call sites of one function that are evaluated; more is UNK. 64 since E153: above the widest fan-in a read flows
+# through (`aew.workspace.git.git`, 47 call sites), whose `cwd` was unknown at 24 and lost a run directory's read.
+CALLERS = 64
 # Distinct values one expression may take before it is UNK, so a set that grows toward the cap is a decision and not a
 # record silently lost. 64 since CAP-1 (STG-15): its schema made the largest set the file names of `SCHEMAS`
 # (src/aew/schemas/__init__.py), 31 (docs/reference/writers.md, "The largest in this render"), and the tree test holds

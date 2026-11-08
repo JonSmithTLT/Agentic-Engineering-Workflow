@@ -602,6 +602,10 @@ skipped:
       Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
       (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its host side runs on
       every platform in tests/unit/test_lead_contained.py.
+    tests/integration/test_lead_contained_session.py::test_a_relayed_file_argument_is_read_where_the_client_runs: >-
+      Linux bubblewrap containment of the Lead's session; the Windows Lead runs labelled not contained, and the same
+      client read runs on every platform through a real broker in
+      tests/integration/test_relayed_file_arguments_through_a_broker.py. Covered on Linux (CI and the Rocky 8 lane).
     tests/integration/test_network_shim.py::test_a_termination_reaches_the_harness_and_the_shim_ends_with_it: >-
       the shim forwards POSIX signals, and runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has
       no network containment. Covered on Linux.

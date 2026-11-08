@@ -1,4 +1,5 @@
-"""The O-01 0.2 command carrier and the fixture HEB owner it admits ``CONTINUE_ELIGIBLE_WORK`` to (STG-02).
+"""The O-01 0.2 command carrier: the fixture HEB owner it admits ``CONTINUE_ELIGIBLE_WORK`` to (STG-02), and G3's
+consume, which admits a protected member (STG-03).
 
 Written from the adopted profile's CS-01..CS-09 and A-24 SW-04/06/07/08, with the vendored registry, refusal map and
 set-level Problem map; the sealed oracle (``03-ORACLE/command_admission.py``) is a cross-check, not the source.
@@ -33,6 +34,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import logging
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -44,6 +46,7 @@ from aew.stg02 import wire as W
 from aew.stg02.ledger import Ledger
 from aew.stg02.world import DELEGATION_ISSUER, Fixture
 
+LOG = logging.getLogger("aew.stg02")
 REGISTRY = A.registry()
 ORIGIN_CLASS = {"PROTECTED_G3": "OPERATOR_RESERVED", "CURRENT_DELEGATED_GRANT": "CURRENT_DELEGATED_GRANT",
                 "CURRENT_SUCCESSOR_GENERATION": "CURRENT_SUCCESSOR_GENERATION"}
@@ -53,6 +56,12 @@ RESULT = {  # outcome -> (admission_state, effect_state, residual_remote_effect)
     "REFUSED_ALLOCATED": ("REJECTED", "FAILED_CONFIRMED_NO_EFFECT", "NONE_QUALIFIED"),
     "REFUSED": ("REJECTED", "NOT_OBSERVED", "NOT_ESTABLISHED"),
     "HELD": ("HELD", "NOT_OBSERVED", "NOT_ESTABLISHED")}
+# What each allocated action's operation is about: the target field that names it, for the owner's list (D-01's
+# `subject_ref`). A test holds each to the schema's required string fields.
+SUBJECT_FIELD = {"CONTINUE_ELIGIBLE_WORK": "work_ref", "ATTACH_LEAD": "requested_lead_ref",
+                 "REATTACH_LEAD": "successor_lead_ref", "CLOSE_ATTACHMENT": "attachment_ref",
+                 "SUSPEND_GRANT": "grant_ref", "LIFT_OPERATOR_SUSPENSION": "suspension_ref",
+                 "ISSUE_STANDING_POLICY": "policy_decision_ref", "REQUEST_PROFILE_CHANGE": "profile_definition_ref"}
 # HEB owner causes for CONTINUE_ELIGIBLE_WORK that the adopted refusal map does not list (it has the three delegation
 # causes and NOT_MODELLED only; the oracle leaves the owner check unmodelled). INTERIM, recorded as gap entry
 # STG02-BE-01: the map is "complete and fail-closed", so a real owner check needs codes the contract does not give.
@@ -133,9 +142,12 @@ class Carrier:
                 if W.parse_time(old["receipt"]["source_valid_until"]) <= now:
                     raise Refused("UNRESOLVED_NO_REDISPATCH")
                 return old["receipt"], True  # exactly as issued (CS-08, v0.5.4)
+            # G3's standing once for the request, before its first member, and not again after a CONSUMED (addendum 7).
+            # Inside the fence: a known key above is a lookup, which never needs it.
+            counts = origins == {"PROTECTED_G3"} and self._g3_counts()
             members = []
             for i in req["intents"]:
-                m = self._member(req, i, t, now)
+                m = self._member(req, i, t, now, counts)
                 if m["outcome"] in ("EFFECT_CONFIRMED", "ADMITTED", "REFUSED_ALLOCATED"):
                     m["operation_ref"] = self._allocate(req, i, m, t, now)
                 m.update(intent_ref=i["intent_ref"], action=i["action"])
@@ -150,13 +162,14 @@ class Carrier:
 
     # ------------------------------------------------------------------ one member (steps 4-5)
 
-    def _member(self, req: dict[str, Any], i: dict[str, Any], t: Any, now: datetime) -> dict[str, Any]:
+    def _member(self, req: dict[str, Any], i: dict[str, Any], t: Any, now: datetime,
+                counts: bool = False) -> dict[str, Any]:
         action = i["action"]
         r = REGISTRY[action]
         if i["owner_hint"] != r["sole_admitting_owner"] or i["authority_class"] != ORIGIN_CLASS[r["origin"]]:
             raise AssertionError(f"{action}: the schema accepted an intent the registry disagrees with")
         if r["origin"] == "PROTECTED_G3":
-            return self._protected(req, i, r["sole_admitting_owner"])
+            return self._protected(req, i, r["sole_admitting_owner"], counts)
         if r["origin"] != "CURRENT_DELEGATED_GRANT":
             # No authenticated successor session exists in the slice: no origin, so no owner state is read and nothing
             # is allocated (HELD_UNLESS_QUALIFIED_SUCCESSOR...; addendum 5).
@@ -168,20 +181,33 @@ class Carrier:
             return refusal(action, "NOT_MODELLED")  # DELEGATED_CANCEL: its HEB effect is not in the slice
         return self._heb_continue(i, t)
 
-    def _protected(self, req: dict[str, Any], i: dict[str, Any], owner: str) -> dict[str, Any]:
-        """A G3-protected member (addendum 7, ruling 2; G3-08). The standing is computed per request, never cached, and
-        not checked again after CONSUMED: a re-check could only burn a one-use member approved while all was contained.
-        A failing standing and a service that does not answer are held; a service that answers and refuses the proof
-        presented is rejected (addendum 5). Nothing is allocated unless it is consumed."""
-        if self.policy is None or not standing.standing(self.policy()).counts:
+    def _g3_counts(self) -> bool:
+        """G3's standing for this request (addendum 7, ruling 2). The wire has no field for why, so the route's log
+        says it: a held note sends the operator here. A carrier started with no project holds its G3 members."""
+        if self.policy is None:
+            LOG.warning("G3 does not count for this route: it was started with no --project, so no policy says its "
+                        "launches run contained")
+            return False
+        found = standing.standing(self.policy())
+        if not found.counts:
+            LOG.warning("G3 does not count: %s. Fix: %s", found.reason, found.fix)
+        return found.counts
+
+    def _protected(self, req: dict[str, Any], i: dict[str, Any], owner: str, counts: bool) -> dict[str, Any]:
+        """A G3-protected member (addendum 7, ruling 2; G3-08), under the request's one standing, ``counts``. A failing
+        standing and a service that does not answer are held; a service that answers and refuses the proof presented is
+        rejected (addendum 5). Nothing is allocated unless it is consumed."""
+        if not counts:
             return refusal(i["action"], "ORIGIN_NOT_ESTABLISHED", held=True)  # consume is not called
         if i["origin_proof_ref"] is None:  # the schema allows it, and the wire does not: no proof to present
+            LOG.warning("%s is held: the member has no origin proof to present", i["intent_ref"])
             return refusal(i["action"], "ORIGIN_NOT_ESTABLISHED", held=True)
         got = G3.consume(consent_set_ref=req["consent_set_ref"], set_digest=W.set_digest(req),
                          recipient_ref=req["recipient_ref"], installation_ref=req["installation_ref"],
                          intent_ref=i["intent_ref"], origin_proof_ref=i["origin_proof_ref"], owner=owner,
                          operation_ref=self._operation_ref(req, i, owner))
         if got.result is None:
+            LOG.warning("%s is held: %s", i["intent_ref"], got.held_why)  # neither the proof nor the consent is in it
             return refusal(i["action"], "ORIGIN_NOT_ESTABLISHED", held=True)
         if got.result == "CONSUMED":
             return {"outcome": "ADMITTED", "reason_code": None, "owner_reason": None}
@@ -241,7 +267,7 @@ class Carrier:
         record = {"owner": owner, "operation_ref": op, "action": i["action"], "intent_ref": i["intent_ref"],
                   "request_set_ref": req["request_set_ref"], "recipient_ref": req["recipient_ref"],
                   "installation_ref": req["installation_ref"], "consent_set_digest": W.set_digest(req),
-                  "intent_digest": W.intent_digest(i), "subject_ref": i["target"].get("work_ref") or i["intent_ref"],
+                  "intent_digest": W.intent_digest(i), "subject_ref": i["target"][SUBJECT_FIELD[i["action"]]],
                   "attachment_ref": i["subject"]["attachment_ref"],
                   "attachment_generation": i["subject"]["generation_ref"],
                   "issued_at": W.utc(now), "owner_reason": m["owner_reason"],
@@ -276,6 +302,6 @@ class Carrier:
         return {"wire_version": W.O01_VERSION, "owner": rec["owner"], "operation_ref": rec["operation_ref"],
                 "request_set_ref": rec["request_set_ref"], "intent_ref": rec["intent_ref"],
                 "recipient_ref": rec["recipient_ref"], "installation_ref": rec["installation_ref"],
-                "source_epoch": self.fx.heb["epoch"], "observed_at": W.utc(now),
+                "source_epoch": self.fx.owner_epoch(rec["owner"]), "observed_at": W.utc(now),
                 "source_valid_until": W.utc(W.later(now, int(self.fx.doc["owner_observation_valid_s"]))),
                 "result": copy.deepcopy(rec["result"])}

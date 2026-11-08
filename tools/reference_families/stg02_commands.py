@@ -3,10 +3,11 @@ actions STG-02's command path admits and the causes it can refuse them with.
 
 **``commands``.** Owner: ``aew.stg02.adopted.registry()``, the vendored action registry the command path loads (basis
 ``enumerated``): one record per action with its ``origin`` and ``owner`` (``sole_admitting_owner``) as the registry
-states them, and ``reaches_owner``: whether admission can hand the action to an owner and an effect. The registry
-cannot say that; the code does, in ``Carrier._member``: an action of the protected origin goes on to ``_protected``,
-which admits it once the G3 service consumes its member; any other action whose origin is not the one delegated-grant
-origin is held before any owner state is read, and of the rest only the one action ``_member`` names goes on to
+states them, and ``reaches_owner``: whether admission can go on to the action's owner side. The registry cannot say
+that; the code does, in ``Carrier._member``: an action of the protected origin goes on to ``_protected``, which
+consumes its consent and records it, while no owner performs it; any other action whose origin is not the one
+delegated-grant origin is held before any owner state is read, and of the rest only the one action ``_member`` names
+goes on to
 ``_heb_continue``. The literals are read from ``_member`` (by ``ast``, and by ``stg02_commands_text.py``, an
 independently written second reading), so ``reaches_owner`` follows the code.
 If the shape of ``_member`` is not found the field is null and the cause is an unresolved item of every record.

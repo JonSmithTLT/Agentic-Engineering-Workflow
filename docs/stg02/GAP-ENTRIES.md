@@ -22,6 +22,7 @@
 | [STG02-BE-13](#stg02-be-13) | wire defect | A deployment serving a subset of the 20 reads has no defined answer for the rest |
 | [STG02-BE-14](#stg02-be-14) | new feature or scope request | The provisional dashboard API, the browser origin, and where the adopted wire runs |
 | [STG02-BE-15](#stg02-be-15) | wire defect | Read entitlement is defined for lookups; what a withdrawn entitlement does to a D-01 read is not |
+| [STG02-BE-17](#stg02-be-17) | wire defect | An owner-operations item for `RESOURCE_POLICY_ISSUER` cannot carry its own owner's stamp |
 | [STG02-BE-16](#stg02-be-16) | host or profile qualification deficit | AEW's engine has no per-recipient visibility, so its real records can be disclosed to one recipient only |
 
 ---
@@ -311,6 +312,24 @@ Under CS-04, a key can never be forgotten. If a dropped key came back as unused,
 **Interim choice.** (a). While the entitlement is withdrawn, every D-01 read, the owner GET and every lookup answer `404 not_found_or_not_disclosable`. A submission under an unused key is still decided by its origin (the profile's accepted residual LEAD-F21). Test: `test_a_lookup_after_read_entitlement_is_withdrawn_is_one_nondisclosing_404`.
 
 **Entitlement is stated, never presumed.** CS-04 step 1 refuses a lookup when the recipient lacks current read entitlement "or the world does not state it". The fixture world states it (`read_entitled`: the operator and the other recipient), and the server records it at start; a withdrawal is recorded and kept across restarts, and a grant the world no longer states is dropped at the next start. A recipient the world does not name, even with a valid token, is not entitled: every read is the nondisclosing `404`, and the test-only route cannot grant it. Tests: `test_a_recipient_whose_read_entitlement_the_world_does_not_state_is_never_entitled` and `test_a_grant_the_world_no_longer_states_ends_at_restart_and_a_withdrawal_survives_it`.
+
+## STG02-BE-17
+
+**Class:** wire defect.
+
+**Clause.**
+- The owner-pin rules: an `owner_operation_index` item's `source.owner` is its `data.owner`, and CNI covers the aggregation only.
+- The D-01 schema: `OperationIndexEntry.owner` allows `RESOURCE_POLICY_ISSUER`, and `SourceStamp.owner` does not.
+
+**What happened.** Once G3 counts, an admitted `ISSUE_STANDING_POLICY` lists an operation whose owner has no stamp the schema allows. Copying the owner into the stamp makes the whole page fail the adopted schema for that recipient until the record's retention ends.
+
+**Two readings.**
+- (a) Stamp that one item with CNI, the roster's own owner. The stamp is `unqualified`, so it qualifies nothing, and `data.owner` stays the real owner. It departs from the pin.
+- (b) The wire's `SourceStamp.owner` gains `RESOURCE_POLICY_ISSUER`.
+
+**Interim choice.** (a), until (b) is decided at O-01 convergence. `HEB`, `ADC` and `IF13` items keep their own owner, as the pin says, each with its own fixture issuer and epoch.
+
+---
 
 ## STG02-BE-16
 

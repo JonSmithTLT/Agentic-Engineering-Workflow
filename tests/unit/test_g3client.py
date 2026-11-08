@@ -526,8 +526,10 @@ def test_a_receipts_note_is_keyed_on_the_admission_state_and_the_reason_and_name
     said = C.note(held, failing)
     assert said is not None and failing.reason in said and "Fix: install it" in said
     assert "Nothing was admitted" in said and "request the action again" in said
+    assert "new client_request_key in the set file" in said
     said = C.note(held, counting)
     assert said is not None and S.POLICY_FIX in said and "the project's policy" in said
+    assert "The route's log names the cause" in said and "--project" in said
     said = C.note(held, counting, "planted: the service is down")
     assert said is not None and "the G3 service does not answer: planted: the service is down" in said
     assert S.POLICY_FIX not in said
@@ -536,7 +538,7 @@ def test_a_receipts_note_is_keyed_on_the_admission_state_and_the_reason_and_name
         refused = {"results": [{"admission_state": "REJECTED", "reason_code": reason}]}
         said = C.note(refused, counting)
         assert said is not None and said.startswith("Approved in the confirmer and submitted, and the owner refused it")
-        assert why in said and "request the action again" in said
+        assert why in said and "request the action again" in said and "new client_request_key" in said
     # that no owner accepted consent yet was true until an owner did: nothing says so now (#365 review m2)
     for key in C.NOTES:
         receipt = {"results": [{"admission_state": key[0], "reason_code": key[1]}]}
@@ -552,6 +554,9 @@ def test_a_receipts_note_is_keyed_on_the_admission_state_and_the_reason_and_name
     (503, {"code": "owner_unavailable"}, Unavailable, "o01_unavailable"),
     (202, "not a receipt", ValidationFailed, "o01_refused"),
     (200, {"results": []}, ValidationFailed, "o01_refused"),  # a receipt's shape, but not the route's 202
+    (500, None, ValidationFailed, "o01_refused"),
+    (502, None, ValidationFailed, "o01_refused"),
+    (409, {"code": "request_key_conflict"}, ValidationFailed, "o01_refused"),
 ])
 def test_every_refusal_of_the_o01_route_is_typed_and_the_token_is_in_none_of_them(
         route: Any, status: int, body: Any, error: type, reason: str) -> None:
@@ -560,9 +565,57 @@ def test_every_refusal_of_the_o01_route_is_typed_and_the_token_is_in_none_of_the
     with pytest.raises(error) as e:
         C.submit({"intents": []}, url, TOKEN)
     # A route that gave no receipt may have consumed the member; a refusal of the set or the token came before any owner
-    said = "approval may have been used" if status == 503 else "approval is unused"
+    said = "approval is unused" if status in (400, 401, 409) else "approval may have been used"
     assert e.value.details["reason"] == reason and said in e.value.message
+    assert (said == "approval is unused") is ("may have been used" not in e.value.message)
     assert TOKEN not in repr(e.value) + str(e.value) + json.dumps(e.value.to_dict())
+
+
+def test_a_key_the_route_cannot_show_says_nothing_of_the_approval_and_gives_the_way_on(route: Any) -> None:
+    """A 409 unresolved_no_redispatch can follow a member that was used: only the owner's list can say."""
+    url, _, answers = route
+    answers.append((409, {"code": "unresolved_no_redispatch"}))
+    with pytest.raises(ValidationFailed) as e:
+        C.submit({"intents": []}, url, TOKEN)
+    assert "unused" not in e.value.message and "owner-operations" in e.value.message
+    assert "new client_request_key" in e.value.message
+
+
+@pytest.mark.parametrize("members", [1, 3])
+def test_the_clients_wait_on_the_route_outlasts_the_routes_wait_on_the_service(
+        monkeypatch: pytest.MonkeyPatch, members: int) -> None:
+    """The route may take one bound per member over a stalled service, and the held receipt must reach the operator."""
+    seen: list[float] = []
+
+    class Conn:
+        def __init__(self, host: str, port: int, timeout: float) -> None:
+            seen.append(timeout)
+
+        def request(self, *_: Any, **__: Any) -> None:
+            raise OSError("planted")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(C.http.client, "HTTPConnection", Conn)
+    with pytest.raises(Unavailable):
+        C.submit({"intents": [{}] * members}, "http://127.0.0.1:1", TOKEN)
+    assert seen == [C.TIMEOUT_S * (members + 1)]
+
+
+def test_a_partial_sets_note_names_each_side_and_never_says_nothing_was_admitted() -> None:
+    """Requesting all of it again would admit the first member twice, so the note says which to request."""
+    from aew import g3standing as S
+
+    counting = S.Standing(True, judged=(1, 3))
+    admitted = {"intent_ref": "intent:a", "admission_state": "ADMITTED", "effect_state": "NOT_OBSERVED",
+                "reason_code": None}
+    for state, reason in (("REJECTED", "CONSENT_ALREADY_USED_OR_MISSING"), ("HELD", "ORIGIN_NOT_ESTABLISHED")):
+        other = {"intent_ref": "intent:b", "admission_state": state, "reason_code": reason}
+        said = C.note({"results": [admitted, other]}, counting) or ""
+        assert "Nothing was admitted" not in said and "Admitted: intent:a" in said
+        assert f"Not admitted: intent:b ({state} {reason})" in said and C.SOME_ADMITTED in said
+    assert C.note({"results": [admitted]}, counting) == C.NO_EFFECT + "."
 
 
 def test_a_route_that_does_not_answer_is_unavailable_and_the_token_is_not_in_it() -> None:

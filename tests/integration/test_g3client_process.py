@@ -29,6 +29,7 @@ from aew import g3client as C
 from aew import g3standing as S
 from aew.cli.main import main
 from aew.errors import OperatorAuthorizationRequired, Unavailable
+from aew.stg02 import ledger as L
 from aew.stg02 import server as SV
 from aew.stg02 import wire as W
 from tests.helpers import g3 as G
@@ -188,7 +189,7 @@ def test_an_approved_set_is_admitted_and_its_member_consumed_once_against_the_ro
     (admitted,) = result["receipt"]["results"]
     assert (admitted["admission_state"], admitted["effect_state"], admitted["owner_evidence_ref"]) == (
         "ADMITTED", "NOT_OBSERVED", None)
-    assert admitted["operation_ref"].startswith("op:") and result["note"] is None
+    assert admitted["operation_ref"].startswith("op:") and result["note"] == C.NO_EFFECT + "."
     ledger = world.rig.svc.ledger
     assert ledger.consumed(result["consent_set_ref"], admitted["intent_ref"])
     again = dict(seen[0], client_request_key=seen[0]["client_request_key"] + ".again",
@@ -197,6 +198,128 @@ def test_an_approved_set_is_admitted_and_its_member_consumed_once_against_the_ro
     (refused,) = C.submit(again, world.url, token)["results"]
     assert (refused["admission_state"], refused["reason_code"], refused["operation_ref"]) == (
         "REJECTED", "CONSENT_ALREADY_USED_OR_MISSING", None)
+
+
+def test_the_held_notes_way_on_can_be_followed_to_an_admission(
+        world: World, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """The operator does what the client says, end to end. Held, with a note. The same file again is refused, naming the
+    key. Then a new client_request_key in the set file, and a new approval: admitted."""
+    def approve() -> threading.Thread:
+        return _operator(world.rig, lambda ref: world.rig.svc.decide(ref, {"decision": "APPROVE", "pin": G.PIN}))
+
+    t = approve()
+    code, out, err = _run(world, capsys)
+    t.join(10)
+    first = json.loads(out)
+    assert code == 0 and first["receipt"]["results"][0]["admission_state"] == "HELD"
+    assert "new client_request_key in the set file" in first["note"]
+    _g3_counts(world, monkeypatch)
+    t = approve()
+    code, out, err = _run(world, capsys)
+    t.join(10)
+    assert code != 0 and "request_key_conflict" in err and "new client_request_key in the set file" in err
+    assert "approval is unused" in err
+    cs = json.loads(world.set_file.read_bytes())
+    cs["client_request_key"] += ".again"
+    world.set_file.write_bytes(json.dumps(cs).encode())
+    t = approve()
+    code, out, err = _run(world, capsys)
+    t.join(10)
+    third = json.loads(out)
+    assert code == 0 and third["consent_set_ref"] != first["consent_set_ref"]
+    (admitted,) = third["receipt"]["results"]
+    assert admitted["admission_state"] == "ADMITTED" and admitted["operation_ref"]
+    assert world.rig.svc.ledger.consumed(third["consent_set_ref"], admitted["intent_ref"])
+
+
+def test_the_human_output_of_an_admitted_member_says_no_effect_and_nothing_else_happens(
+        world: World, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Admitted in a run must not read as performed: a one-use approval was used for a record."""
+    _g3_counts(world, monkeypatch)
+    t = _operator(world.rig, lambda ref: world.rig.svc.decide(ref, {"decision": "APPROVE", "pin": G.PIN}))
+    code = main(["g3", "request", str(world.set_file), "--o01", world.url, "--token-file", str(world.token_file)])
+    t.join(10)
+    got = capsys.readouterr()
+    assert code == 0 and "ADMITTED effect NOT_OBSERVED" in got.out and C.NO_EFFECT in got.out
+
+
+def test_a_stalled_service_reaches_the_operator_as_a_held_receipt_not_a_client_that_gave_up(
+        world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """G3-11: a service that accepts and never answers. The route's read of consume ends within its bound, and the
+    client's read of the route waits longer than that, whatever the bound is."""
+    monkeypatch.setattr(C, "TIMEOUT_S", 2)
+    _g3_counts(world, monkeypatch)
+    path = str(tmp_path / "stalled.sock")
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(path)
+    listener.listen(4)
+    monkeypatch.setattr(C, "REQUEST_SOCK", path)
+    cs = json.loads(world.set_file.read_bytes())
+    cs["consent_set_ref"] = "consent:g3:any"
+    for i in cs["intents"]:
+        i["origin_proof_ref"] = "proof:" + "0" * 32
+    token = world.token_file.read_text(encoding="utf-8").strip()
+    try:
+        results = C.submit(cs, world.url, token)["results"]
+    finally:
+        listener.close()
+    assert [(r["admission_state"], r["reason_code"]) for r in results] == [
+        ("HELD", "ORIGIN_NOT_ESTABLISHED")] * len(results)
+
+
+def test_a_transaction_that_fails_after_consumed_stores_nothing_and_its_retry_is_refused(
+        world: World, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """It fails closed. The client says the approval may have been used, no receipt or operation survives on the route,
+    the member stays used on the service, and the set resent under its key is refused with nothing allocated."""
+    _g3_counts(world, monkeypatch)
+    kept: list[dict[str, Any]] = []
+    real_submit = C.submit
+
+    def submit(cs: dict[str, Any], url: str, token: str) -> dict[str, Any]:
+        kept.append(copy.deepcopy(cs))
+        return real_submit(cs, url, token)
+
+    monkeypatch.setattr(C, "submit", submit)
+    real_store = L.Txn.store_key
+    armed = [True]
+
+    def store(self: Any, *a: Any, **k: Any) -> None:
+        if armed:
+            armed.clear()
+            raise OSError("planted: the transaction fails after CONSUMED")
+        real_store(self, *a, **k)
+
+    monkeypatch.setattr(L.Txn, "store_key", store)
+    t = _operator(world.rig, lambda ref: world.rig.svc.decide(ref, {"decision": "APPROVE", "pin": G.PIN}))
+    code, out, err = _run(world, capsys)
+    t.join(10)
+    assert code != 0 and "approval may have been used" in err and "owner-operations" in err
+    consent, intent = kept[0]["consent_set_ref"], kept[0]["intents"][0]["intent_ref"]
+    assert world.rig.svc.ledger.consumed(consent, intent) is True
+    with world.o01.ledger.reading() as txn:
+        assert txn.owner_ops(INSTALLATION, RECIPIENT, datetime.now(UTC)) == []
+    token = world.token_file.read_text(encoding="utf-8").strip()
+    (again,) = real_submit(kept[0], world.url, token)["results"]
+    assert (again["admission_state"], again["reason_code"], again["operation_ref"]) == (
+        "REJECTED", "CONSENT_ALREADY_USED_OR_MISSING", None)
+
+
+def test_a_held_note_after_a_refused_consume_sends_the_operator_to_the_routes_log_not_to_the_policy_alone(
+        world: World, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """A consume the service refuses with a 400 while the probe answers. G3 counted, and the policy was fine: the note
+    claims neither that G3 does not count nor that no consent was accepted, and the route's log has the cause."""
+    caplog.set_level("WARNING", logger="aew.stg02")
+    _g3_counts(world, monkeypatch)
+    cs = json.loads(world.set_file.read_bytes())
+    cs["consent_set_ref"] = "consent:g3:any"
+    for i in cs["intents"]:
+        i["origin_proof_ref"] = "fixture:not-a-proof-the-wire-allows"
+    token = world.token_file.read_text(encoding="utf-8").strip()
+    receipt = C.submit(cs, world.url, token)
+    assert receipt["results"][0]["admission_state"] == "HELD" and "STRUCTURAL" in caplog.text
+    note = C.note(receipt, S.Standing(True, judged=(1, 3)), C.probe()) or ""
+    assert "The route's log names the cause" in note
+    assert "G3 does not count" not in note and "accepted no consent" not in note
 
 
 def test_a_member_whose_consent_names_no_record_is_rejected_on_the_real_service(

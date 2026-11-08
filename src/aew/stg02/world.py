@@ -88,6 +88,10 @@ class Fixture:
     def recipient(self) -> str:
         return self.doc["recipient_ref"]
 
+    def owner_epoch(self, owner: str) -> str:
+        """An owner's labelled epoch in the fixture world: HEB's own, or one named for the owner, never HEB's."""
+        return str(self.doc["heb"]["epoch"]) if owner == "HEB" else f"fixture:{owner.lower()}-epoch-1"
+
     @property
     def heb(self) -> dict[str, Any]:
         return self.doc["heb"]

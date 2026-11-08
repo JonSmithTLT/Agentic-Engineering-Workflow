@@ -162,8 +162,8 @@ def operator_terminal_refusal(command: str, aside: str = "") -> str:
 REGISTER_READ = "`aew capability list` reads the register here"
 
 # The operator's commands a Lead session's environment keeps out: exactly the forbidden-to-lead rows, each with what
-# its refusal adds. `integrate custody` is the one forbidden-to-lead row outside this list: it is internal, started by
-# the engine, and not the operator's to run. The command's own check and the Lead broker's channels both take the text
+# its refusal adds. `integrate custody` stays outside this list: it is the one internal command, started by the engine,
+# and not the operator's to run. The command's own check and the Lead broker's channels both take the text
 # from here, so a Lead is told the same way to ask whichever way it asked, never "run this one directly" (#272 QC3;
 # #286 review F1).
 LEAD_KEPT_OUT: dict[tuple[str, ...], str] = {

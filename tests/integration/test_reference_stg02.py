@@ -29,7 +29,6 @@ from typing import Any
 import pytest
 
 from aew import g3client as G3
-from aew import g3standing as STANDING
 from aew.stg02 import adopted as A
 from aew.stg02 import commands as COMMANDS
 from aew.stg02 import server as SV
@@ -251,9 +250,9 @@ def test_the_continue_action_and_the_protected_ones_reach_an_owner_by_the_readin
     went_on: list[str] = []
     real = s.carrier._protected
 
-    def spy(req: dict[str, Any], i: dict[str, Any], owner: str) -> dict[str, Any]:
+    def spy(req: dict[str, Any], i: dict[str, Any], owner: str, counts: bool) -> dict[str, Any]:
         went_on.append(i["action"])
-        return real(req, i, owner)
+        return real(req, i, owner, counts)
 
     s.carrier._protected = spy  # type: ignore[method-assign]
     reached, results = owner_reached(s, copy.deepcopy(SV.driver_config(s)["command"]["protected_without_g3"]))
@@ -405,7 +404,6 @@ def battery(monkeypatch: pytest.MonkeyPatch) -> set[tuple[str, str]]:
         if row["origin"] != "PROTECTED_G3":
             continue
         # Where G3 counts, each answer the owner's consume can give (the planted client is the only way out of here)
-        monkeypatch.setattr(STANDING, "standing", lambda *_, **__: STANDING.Standing(True))
         for answer in (*G3.CONSUME_RESULTS, None):
             monkeypatch.setattr(G3, "consume", lambda answered=answer, **_: G3.Consumed(answered))
             fx = Fixture.load(T0)
@@ -416,7 +414,7 @@ def battery(monkeypatch: pytest.MonkeyPatch) -> set[tuple[str, str]]:
             req = {"installation_ref": fx.installation, "recipient_ref": fx.recipient,
                    "consent_set_ref": "consent:battery", "client_request_key": "fixture:key-battery",
                    "request_set_ref": "fixture:request-battery", "wire_version": W.O01_VERSION, "intents": [intent]}
-            result = carrier._member(req, intent, None, T0)
+            result = carrier._member(req, intent, None, T0, True)
             if result["owner_reason"] is not None:
                 seen.add((action, result["owner_reason"]))
     return seen

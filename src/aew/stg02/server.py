@@ -10,8 +10,8 @@ Routes (``SLICE-FIELD-MAP.md``'s six steps):
     GET  /v1/read/runs/{execution_id}                  run detail with progress
     GET  /v1/read/continuation-state/{work_id}         information only (C18, never C17)
     GET  /v1/read/owner-operations                     list, cursor
-    POST /o01/v0/command-sets                          CONTINUE_ELIGIBLE_WORK admitted; every other action refused
-                                                       or held; protected actions allocate nothing
+    POST /o01/v0/command-sets                          CONTINUE_ELIGIBLE_WORK admitted; a protected action admitted
+                                                       once G3 consumes it; every other outcome refused or held
     GET  /o01/v0/owner-operations/{owner}/{operation_ref}
 
 This is **not** the dashboard server and not its provisional contract
@@ -398,6 +398,16 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
 
     srv = ExclusiveServer((HOST, port), Handler)
     srv.daemon_threads = True
+
+    def handle_error(request: Any, client_address: Any) -> None:
+        """A client that gave up, as one does while a consume stalls, is a line and not a traceback (the review of
+        G3-C's owner side, N5). Anything else is as the server reports it."""
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError)):
+            LOG.info("the client went away before its answer was sent")
+        else:
+            ThreadingHTTPServer.handle_error(srv, request, client_address)
+
+    srv.handle_error = handle_error  # type: ignore[method-assign]
     return srv
 
 

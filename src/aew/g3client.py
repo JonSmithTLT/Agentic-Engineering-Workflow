@@ -263,15 +263,21 @@ def read_token(path: str) -> str:
     return token
 
 
+# A set under a client_request_key that has a receipt is that receipt or a conflict, and `aew g3 request` makes new
+# proofs each time, so a new request of the set needs a new key (CS-08: "a new key and ... a new consent").
+_NEW_KEY = "with a new client_request_key in the set file"
+_UNUSED = f"the approval is unused: request it again {_NEW_KEY}"
 # The route consumes a protected member as it admits it, so one that gave no receipt may have used it.
-_MAY_BE_USED = "the approval may have been used: submit again, with a new approval if this one is refused as used"
+_MAY_BE_USED = ("the approval may have been used: GET /v1/read/owner-operations shows whether it was admitted, and if "
+                f"it was not, request it again {_NEW_KEY}")
 
 
 def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
     """Step 5: ``POST /o01/v0/command-sets``, and its receipt (202). Every answer's text is built here, so the token
-    reaches the request's one header and nothing else."""
+    reaches the request's one header and nothing else. Each read waits longer than the route can take over a stalled
+    service, one bound per member and one for the rest, so a held receipt reaches the operator (G3-11)."""
     host, port = o01_target(url)
-    conn = http.client.HTTPConnection(host, port, timeout=TIMEOUT_S)
+    conn = http.client.HTTPConnection(host, port, timeout=TIMEOUT_S * (len(cset.get("intents") or []) + 1))
     try:
         conn.request("POST", COMMAND_SETS, body=json.dumps(cset).encode("utf-8"),
                      headers={W.O01_HEADER: W.O01_VERSION, "Content-Type": W.JSON_TYPE,
@@ -296,8 +302,18 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
                                reason="o01_unauthenticated")
     if status == 503:
         raise Unavailable(f"the O-01 route is unavailable; {_MAY_BE_USED}", reason="o01_unavailable")
-    raise ValidationFailed(f"the O-01 route refused the set: {code or status}; the approval is unused",
-                           reason="o01_refused", o01_code=code, status=status)
+    if code == "request_key_conflict":
+        said = f"the set's client_request_key already has a receipt, for another set; {_UNUSED}"
+    elif code == "unresolved_no_redispatch":  # says nothing of this approval: a used member can reach it too
+        said = ("the route can no longer show this client_request_key's receipt. GET /v1/read/owner-operations shows "
+                f"whether it was admitted, and if it was not, request it again {_NEW_KEY}")
+    elif status in (400, 409):  # the statuses the route declares for a set it refuses before any owner
+        said = _UNUSED
+    else:
+        raise ValidationFailed(f"the O-01 route gave no receipt ({code or status}); {_MAY_BE_USED}",
+                               reason="o01_refused", o01_code=code, status=status)
+    raise ValidationFailed(f"the O-01 route refused the set: {code or status}; {said}", reason="o01_refused",
+                           o01_code=code, status=status)
 
 
 _HELD_WAY_ON = ("This action is not admitted. Request it again once this is fixed, with a new approval if this one is "
@@ -328,7 +344,7 @@ def consume(*, consent_set_ref: str, set_digest: str, recipient_ref: str, instal
             "origin_proof_ref": origin_proof_ref, "set_digest": set_digest, "recipient_ref": recipient_ref,
             "installation_ref": installation_ref, "owner": owner, "operation_ref": operation_ref}
     try:
-        status, reply = _g3(sock_path, "POST", "/g3/v1/consume", body)
+        status, reply = _g3(sock_path, "POST", "/g3/v1/consume", body, timeout=TIMEOUT_S)
     except (Unavailable, PermissionDenied) as exc:
         return Consumed(None, f"{exc.message}. {_HELD_WAY_ON}")
     if status != 200:
@@ -366,39 +382,53 @@ def _held(standing: Any, answers: str | None) -> str:
         return f"{standing.reason}. Fix: {standing.fix}"
     if answers is not None:
         return f"the G3 service does not answer: {answers}"
-    return ("on this host G3 counts as far as the client can tell, so the project's policy is the likely cause: it "
-            f"must keep every launch contained. Fix: {POLICY_FIX}")
+    return ("on this host G3 counts as far as the client can tell, and the service answers. The route's log names the "
+            "cause. If it names none, it is the project's policy, which must keep every launch contained, or a route "
+            f"started with no --project. For the policy: {POLICY_FIX}")
 
 
 # What the operator is told of a member the owner did not admit, by its admission state and reason (addendum 7: the
 # notes are keyed on both). Each takes the host's standing, as the client found it after the submission, and the probe's
 # answer then (None when the service answered).
-AGAIN = "Nothing was admitted, and this approval is not used again: request the action again"
+AGAIN = f"Nothing was admitted, and this approval is not used again: request the action again {_NEW_KEY}"
+SOME_ADMITTED = ("Requesting the whole set again would admit the admitted members a second time: request only the "
+                 f"members not admitted, {_NEW_KEY}, on a new approval")
+NO_EFFECT = "Consumed and recorded: no owner on this route performs a protected action, so nothing else happens"
 NOTES: dict[tuple[str, str], Callable[[Any, str | None], str]] = {
     ("HELD", "ORIGIN_NOT_ESTABLISHED"): lambda st, answers: (
-        "Approved in the confirmer and submitted, and the owner held it: G3 does not count for it, so it accepted no "
-        f"consent. {_held(st, answers)}. {AGAIN} once G3 counts (addendum 5)."),
+        f"Approved in the confirmer and submitted, and the owner held it: {_held(st, answers)}. It can be requested "
+        "again once this is fixed (addendum 5)"),
     ("REJECTED", "ORIGIN_NOT_ESTABLISHED"): lambda st, answers: (
         "Approved in the confirmer and submitted, and the owner refused it: the G3 service has no consent record for "
-        f"this member. {AGAIN}."),
+        "this member"),
     ("REJECTED", "ORIGIN_UNQUALIFIED"): lambda st, answers: (
         "Approved in the confirmer and submitted, and the owner refused it: the consent is not one the G3 service "
-        f"issued for exactly this set, member and owner. {AGAIN}."),
+        "issued for exactly this set, member and owner"),
     ("REJECTED", "CURRENTNESS_EXPIRED"): lambda st, answers: (
-        f"Approved in the confirmer and submitted, and the owner refused it: the consent has expired. {AGAIN}."),
+        "Approved in the confirmer and submitted, and the owner refused it: the consent has expired"),
     ("REJECTED", "CONSENT_ALREADY_USED_OR_MISSING"): lambda st, answers: (
         "Approved in the confirmer and submitted, and the owner refused it: this member's consent was already used, "
-        f"and each is used once. {AGAIN}."),
+        "and each is used once"),
 }
 
 
 def note(receipt: dict[str, Any], standing: Any, answers: str | None = None) -> str | None:
-    """The note for the first member the owner did not admit for a reason the client explains (:data:`NOTES`), or
-    None. ``standing`` is the host's, as :func:`aew.g3standing.standing` gives it to a reader bound to no project, and
+    """What the operator is told of a receipt, or None. An admitted member with no effect observed says so. The first
+    member the owner did not admit for a reason the client explains (:data:`NOTES`) gets that reason, with the way on:
+    a set of which some members were admitted names each side, since requesting all of it again would admit them twice.
+    ``standing`` is the host's, as :func:`aew.g3standing.standing` gives it to a reader bound to no project, and
     ``answers`` is :func:`probe`'s."""
-    for r in receipt.get("results", []):
-        if isinstance(r, dict):
-            said = NOTES.get((str(r.get("admission_state")), str(r.get("reason_code"))))
-            if said:
-                return said(standing, answers)
-    return None
+    results = [r for r in receipt.get("results", []) if isinstance(r, dict)]
+    admitted = [r for r in results if r.get("admission_state") == "ADMITTED"]
+    others = [r for r in results if r.get("admission_state") != "ADMITTED"]
+    said = next((NOTES[key](standing, answers) for r in others
+                 if (key := (str(r.get("admission_state")), str(r.get("reason_code")))) in NOTES), None)
+    parts = []
+    if any(r.get("effect_state") == "NOT_OBSERVED" for r in admitted):
+        parts.append(NO_EFFECT)
+    if admitted and others:
+        listed = ", ".join(f"{r.get('intent_ref')} ({r.get('admission_state')} {r.get('reason_code')})" for r in others)
+        parts.append(f"Admitted: {', '.join(str(r.get('intent_ref')) for r in admitted)}. Not admitted: {listed}")
+    if said:
+        parts.extend([said, SOME_ADMITTED if admitted else AGAIN])
+    return ". ".join(parts) + "." if parts else None

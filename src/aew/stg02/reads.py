@@ -17,6 +17,7 @@ import secrets
 from datetime import datetime
 from typing import Any
 
+from aew.stg02 import adopted as A
 from aew.stg02 import wire as W
 from aew.stg02.ledger import Ledger
 from aew.stg02.world import AXES, WAITING_STATES, EngineSource, Fixture, SourceUnavailable
@@ -32,6 +33,10 @@ class ReadProblem(Exception):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+_SOURCE_STAMP = A.load("aew-d01-read-v0.3.4-FULL.schema.json")["$defs"]["SourceStamp"]
+STAMP_OWNERS = _SOURCE_STAMP["properties"]["owner"]["enum"]
 
 
 class Reads:
@@ -379,15 +384,19 @@ class Reads:
                             basis)
 
     def _index_item(self, o: dict[str, Any], recipient: str) -> dict[str, Any]:
-        heb = self.fx.heb
-        s = W.stamp(o["owner"], "op-record:" + o["operation_ref"], heb["epoch"], heb["version"], o["issued_at"],
-                    coverage_ref=self.fx.doc["scope_ref"], issuer_ref=self.fx.doc["issuers"]["HEB"])
+        # The item's source is its own owner (the profile's pin), with that owner's fixture issuer and epoch. The wire's
+        # SourceStamp cannot name RESOURCE_POLICY_ISSUER, though the entry can: gap entry STG02-BE-17.
+        stamped = o["owner"] if o["owner"] in STAMP_OWNERS else "CNI"
+        s = W.stamp(stamped, "op-record:" + o["operation_ref"], self.fx.owner_epoch(stamped),
+                    f"fixture:{stamped.lower()}-v1", o["issued_at"], coverage_ref=self.fx.doc["scope_ref"],
+                    issuer_ref=self.fx.doc["issuers"].get(stamped, "fixture:issuer"))
         return {"resource_type": "owner_operation_index",
                 "ref": W.subject("owner_operation_index", f"ownerop:{o['owner']}:{o['operation_ref']}"),
                 "source": s, "disclosure": self._disclosure(recipient),
                 "data": {"owner": o["owner"], "operation_ref": o["operation_ref"], "action": o["action"],
                          "subject_ref": o["subject_ref"], "attachment_generation": o["attachment_generation"],
-                         "issued_at": o["issued_at"], "owner_epoch": heb["epoch"], "source_version": heb["version"],
+                         "issued_at": o["issued_at"], "owner_epoch": s["source_epoch"],
+                         "source_version": s["source_version"],
                          "detail_path": f"/o01/v0/owner-operations/{o['owner']}/{o['operation_ref']}"},
                 "links": [], "field_sources": []}
 

@@ -10,7 +10,8 @@
 
 The six routes run over real HTTP on 127.0.0.1:4261, in a process of their own beside the provisional dashboard API, which is unchanged.
 - `CONTINUE_ELIGIBLE_WORK` is admitted by a fixture HEB under the fixture delegation issuer `delegation:fixture`.
-- Every other action is refused or held, and protected actions allocate nothing.
+- A protected action is admitted once G3 consumes it, where G3 counts: it is then recorded, and no owner performs it.
+- Every other outcome is refused or held, and a protected action not consumed allocates nothing.
 - The conformance driver, on its default clock and authenticated by a synthetic bearer, gives **47 passed, 0 failed, 6 skipped**.
 - That run used the driver at workspace commit `75d30cf`: the clock fix of `006f45b` (STG02-BE-02) and the config headers with the A1 authentication check. Before the clock fix, the driver's default clock gave 5 FAILs, all the driver's own; this server and the contract were not changed for them.
 

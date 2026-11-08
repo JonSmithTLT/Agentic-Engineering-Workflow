@@ -11,7 +11,8 @@ an approval:
 5. If anything fails, the action is held.
 
 This directory holds part G3-A, the service and its systemd units, and part G3-B, the confirmer. Part G3-D, the CLI
-client, is `aew g3 request`, in `aew` itself (`src/aew/g3client.py`). The owners' side (G3-C) comes next.
+client, is `aew g3 request`, in `aew` itself (`src/aew/g3client.py`). Part G3-C, the owners' side, is the O-01 carrier's
+consume (`src/aew/stg02/commands.py`).
 
 ## What runs, and as whom
 
@@ -116,10 +117,13 @@ names the variables that showed a Lead session, and says to ask the operator to 
   (before anything is asked, so a mistyped URL costs no approval). The client first checks
   that the consent record's `set_digest` is the SW-02 digest of exactly that set. The bearer token is read from the
   file and goes in the `Authorization` header only: it is never printed, logged, or put in an error.
-- **The receipt** is printed. Until G3-C, the owner cannot establish G3 as the origin, so each member comes back
-  `ORIGIN_NOT_ESTABLISHED`: the client adds a fixed note that this is not a failure of the request, and that G3 is
-  established on this host once the owners' side (G3-C) lands and every agent context, the Lead included, runs
-  contained (CS-4).
+- **The receipt** is printed, with a note. The owner consumes each member at admission if G3 counts for the project (the
+  installed service, a project whose policy keeps every launch contained, and no weaker agent context in the last 15
+  minutes). `ADMITTED` means consumed and recorded: no owner on this route performs a protected action. `HELD` means G3
+  does not count or did not answer, and the note says what the client found. The route's log names the cause it saw.
+  `REJECTED` means the service refused the proof. Each stays under its `client_request_key`, so **requesting the action
+  again needs a new `client_request_key` in the set file**, and always a new approval. If the client gets no receipt, the
+  member may have been used: `GET /v1/read/owner-operations` on the route shows whether it was admitted.
 
 ## Install (root, on the host)
 

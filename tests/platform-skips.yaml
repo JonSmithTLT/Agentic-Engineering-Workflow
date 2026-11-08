@@ -957,6 +957,21 @@ skipped:
     tests/integration/test_g3client_process.py::test_a_service_that_is_gone_holds_the_member_at_the_route: >-
       the module's fixture runs the G3 service on its Unix filesystem socket, with SO_PEERCRED (A-37), which never runs
       on Windows. Covered on Linux; the carrier's hold runs on both platforms in tests/integration/test_stg02_slice.py.
+    tests/integration/test_g3client_process.py::test_the_held_notes_way_on_can_be_followed_to_an_admission: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the note's wording runs on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_the_human_output_of_an_admitted_member_says_no_effect_and_nothing_else_happens: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the note's wording runs on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_stalled_service_reaches_the_operator_as_a_held_receipt_not_a_client_that_gave_up: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the client's wait against the route's runs on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_transaction_that_fails_after_consumed_stores_nothing_and_its_retry_is_refused: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the carrier's fence runs on both platforms in tests/integration/test_stg02_slice.py.
+    tests/integration/test_g3client_process.py::test_a_held_note_after_a_refused_consume_sends_the_operator_to_the_routes_log_not_to_the_policy_alone: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the route's log line runs on both platforms in tests/integration/test_stg02_slice.py.
     tests/integration/test_g3client_process.py::test_no_g3_service_is_unavailable_and_says_where_to_look: >-
       the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
       (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01

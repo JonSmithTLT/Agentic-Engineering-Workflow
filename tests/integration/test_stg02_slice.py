@@ -33,6 +33,7 @@ from aew.dashboard import reader as R  # noqa: E402
 from aew.harness import containment  # noqa: E402
 from aew.harness.containment import netns  # noqa: E402
 from aew.stg02 import adopted as A  # noqa: E402
+from aew.stg02 import commands as COMMANDS  # noqa: E402
 from aew.stg02 import ledger as L  # noqa: E402
 from aew.stg02 import server as SV  # noqa: E402
 from aew.stg02 import wire as W  # noqa: E402
@@ -557,6 +558,71 @@ def test_a_protected_member_the_service_consumes_is_admitted_against_the_operati
     assert st == 202 and again == r and len(g3_owner.calls) == 1
 
 
+def value_for(name: str, spec: dict[str, Any]) -> Any:
+    """A synthetic value the schema accepts, for one target field."""
+    if "const" in spec:
+        return spec["const"]
+    if "enum" in spec:
+        return spec["enum"][0]
+    if "oneOf" in spec:
+        return value_for(name, spec["oneOf"][0])
+    kind = spec.get("type")
+    if kind == "boolean":
+        return True
+    if kind == "integer":
+        return 1
+    if kind == "object":
+        return {k: value_for(k, v) for k, v in spec["properties"].items()}
+    if spec.get("format") == "date-time":
+        return "2026-10-19T12:00:00Z"
+    pattern = spec.get("pattern", "")
+    if "{64}" in pattern:
+        return ("sha256:" if "sha256" in pattern else "") + "a" * 64
+    if pattern.startswith("^[A-Z]"):
+        return "USD"
+    return "fixture:" + name
+
+
+PROTECTED = sorted(a for a, r in A.registry().items() if r["origin"] == "PROTECTED_G3")
+TARGETS = A.load("o01-extended-command.schema.json")["$defs"]
+
+
+def test_each_allocated_action_names_its_subject_from_a_required_string_field_of_its_target():
+    """D-01's `subject_ref` is what the operation is about, so a list can be read and filtered by it."""
+    assert set(COMMANDS.SUBJECT_FIELD) == {*PROTECTED, "CONTINUE_ELIGIBLE_WORK"}
+    for action, name in COMMANDS.SUBJECT_FIELD.items():
+        target = TARGETS[f"{action}Target"]
+        assert name in target["required"] and target["properties"][name].get("type") == "string", action
+
+
+@pytest.mark.parametrize("action", PROTECTED)
+def test_each_protected_action_consumed_gives_a_valid_receipt_owners_read_and_list_under_its_own_owner(
+        live: Live, cfg: dict[str, Any], g3_owner: G3Owner, action: str):
+    """The change turned all seven on, so each is held to the adopted schemas. An item's stamp is its own owner's (the
+    profile's pin), never HEB's, except the one owner the wire's stamp cannot name (gap entry STG02-BE-17)."""
+    req = attach_set(cfg, "each-" + action.lower())
+    owner = A.registry()[action]["sole_admitting_owner"]
+    req["intents"][0].update(action=action, owner_hint=owner, target=value_for("target", TARGETS[f"{action}Target"]))
+    st, h, r = live.post(req)
+    receipt_ok(req, st, h, r, T0)
+    (x,) = r["results"]
+    assert x["admission_state"] == "ADMITTED" and x["operation_ref"] == g3_owner.calls[0]["operation_ref"]
+    st, _, seen = live.owner_get(owner, x["operation_ref"])
+    assert st == 200 and not A.o01_openapi_errors("OwnerOperationRead", seen)
+    st, _, listed = live.get("/v1/read/owner-operations")
+    assert st == 200
+    schema_ok("/v1/read/owner-operations", listed)
+    (item,) = listed["items"]
+    stamped = "CNI" if owner == "RESOURCE_POLICY_ISSUER" else owner
+    assert item["data"]["owner"] == owner and item["source"]["owner"] == stamped
+    assert item["source"]["qualification"] == "unqualified"
+    assert item["data"]["subject_ref"] == req["intents"][0]["target"][COMMANDS.SUBJECT_FIELD[action]]
+    if owner != "HEB":
+        heb = live.s.fx.heb
+        assert "heb" not in item["source"]["issuer_ref"] and item["source"]["source_epoch"] != heb["epoch"]
+        assert item["data"]["owner_epoch"] != heb["epoch"] and seen["source_epoch"] != heb["epoch"]
+
+
 def test_a_set_of_two_protected_members_consumes_each_with_its_own_proof_and_results_each_alone(
         live: Live, cfg: dict[str, Any], g3_owner: G3Owner):
     req = attach_set(cfg, "two")
@@ -664,6 +730,105 @@ def test_a_member_with_no_proof_to_present_is_held_and_never_calls_consume(
     st, h, r = live.post(req)
     receipt_ok(req, st, h, r, T0)
     assert state_of(r["results"][0]) == HELD_NO_ORIGIN and g3_owner.calls == []
+
+
+@pytest.mark.parametrize("answer, state", [(C.Consumed(None, "no answer"), "HELD"),
+                                           (C.Consumed("CONSENT_EXPIRED"), "REJECTED")], ids=["held", "rejected"])
+def test_a_member_not_admitted_keeps_its_receipt_under_the_key_with_no_second_consume(
+        live: Live, cfg: dict[str, Any], g3_owner: G3Owner, answer: C.Consumed, state: str):
+    """CS-08, whatever the member's outcome: a resend of the set is the stored receipt, as issued, even once the service
+    would admit it. A new proof under that key is a conflict that reaches no consume (a new key is the way on)."""
+    g3_owner.answers[:] = [answer, C.Consumed("CONSUMED")]
+    req = attach_set(cfg, "stored-" + state.lower())
+    st, h, first = live.post(req)
+    assert first["results"][0]["admission_state"] == state
+    st, h, again = live.post(req)
+    assert st == 202 and again == first and len(g3_owner.calls) == 1
+    other = copy.deepcopy(req)
+    other["intents"][0]["origin_proof_ref"] = "proof:" + "b" * 32
+    other["consent_set_ref"] = "consent:g3:second"
+    st, h, body = live.post(other)
+    assert st == 409 and body["code"] == "request_key_conflict" and len(g3_owner.calls) == 1
+
+
+def test_two_submissions_of_one_key_consume_once_because_consume_runs_inside_the_ledgers_fence(
+        live: Live, cfg: dict[str, Any], g3_owner: G3Owner, monkeypatch: pytest.MonkeyPatch):
+    """A check-then-consume outside the write transaction would let both through. The consume holds until a second call
+    arrives or a second has passed, so it decides nothing by timing: inside the fence no second call can arrive."""
+    entered, second = threading.Event(), threading.Event()
+    calls: list[Any] = []
+
+    def consume(**sent: Any) -> C.Consumed:
+        calls.append(sent)
+        if len(calls) > 1:
+            second.set()
+        entered.set()
+        second.wait(1)
+        return C.Consumed("CONSUMED")
+
+    monkeypatch.setattr(C, "consume", consume)
+    req = attach_set(cfg, "fence")
+    got: list[Any] = []
+    first = threading.Thread(target=lambda: got.append(live.post(req)), daemon=True)
+    first.start()
+    assert entered.wait(10)
+    other = threading.Thread(target=lambda: got.append(live.post(req)), daemon=True)
+    other.start()
+    first.join(30)
+    other.join(30)
+    assert len(calls) == 1 and len(got) == 2
+    assert [g[0] for g in got] == [202, 202] and got[0][2] == got[1][2]
+
+
+def test_a_set_of_two_members_computes_the_standing_once_before_its_first_member(
+        live: Live, cfg: dict[str, Any], g3_owner: G3Owner):
+    """Addendum 7: per request. The second member takes the request's standing, so one launch between two consumes
+    cannot leave the set half admitted, and the register's sweep runs once under the ledger's lock."""
+    req = attach_set(cfg, "two-standings")
+    second = copy.deepcopy(req["intents"][0])
+    second.update(intent_ref=ATTACH + "-second", origin_proof_ref="proof:second")
+    req["intents"].append(second)
+    st, h, r = live.post(req)
+    assert [x["admission_state"] for x in r["results"]] == ["ADMITTED", "ADMITTED"]
+    assert len(g3_owner.standings) == 1 and len(g3_owner.calls) == 2
+
+
+def test_a_replay_of_a_known_key_never_computes_the_standing(live: Live, cfg: dict[str, Any], g3_owner: G3Owner):
+    req = attach_set(cfg, "replay-standing")
+    live.post(req)
+    live.post(req)
+    assert len(g3_owner.standings) == 1
+
+
+def test_the_routes_log_says_why_a_member_was_held_and_holds_neither_the_proof_nor_the_consent(
+        live: Live, cfg: dict[str, Any], g3_owner: G3Owner, monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture):
+    """The wire has no field for why, and a held note sends the operator to this log."""
+    caplog.set_level("WARNING", logger="aew.stg02")
+    g3_owner.answers[:] = [C.Consumed(None, "planted: the service refused the request: STRUCTURAL")]
+    req = attach_set(cfg, "log-no-result")
+    live.post(req)
+    monkeypatch.setattr(S, "no_weaker_context", lambda *_: ("planted: a weaker context", "end it"))
+    live.post(attach_set(cfg, "log-standing"))
+    said = caplog.text
+    assert "planted: the service refused the request: STRUCTURAL" in said and "planted: a weaker context" in said
+    assert req["intents"][0]["origin_proof_ref"] not in said and req["consent_set_ref"] not in said
+
+
+def test_a_client_that_went_away_is_a_line_on_the_routes_log_never_a_traceback(
+        live: Live, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture):
+    """As one does while a consume stalls. Anything else still reaches the server's own report."""
+    caplog.set_level("INFO", logger="aew.stg02")
+    try:
+        raise BrokenPipeError("planted: the client gave up")
+    except BrokenPipeError:
+        live.srv.handle_error(None, ("127.0.0.1", 1))
+    assert "the client went away" in caplog.text and "Traceback" not in capsys.readouterr().err
+    try:
+        raise ValueError("planted: another fault")
+    except ValueError:
+        live.srv.handle_error(None, ("127.0.0.1", 1))
+    assert "planted: another fault" in capsys.readouterr().err
 
 
 def test_the_standing_is_computed_for_each_request_and_not_again_after_consumed(

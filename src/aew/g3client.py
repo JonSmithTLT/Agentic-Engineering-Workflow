@@ -263,11 +263,28 @@ def read_token(path: str) -> str:
     return token
 
 
+# A set under a client_request_key that has a receipt is that receipt or a conflict, and `aew g3 request` makes new
+# proofs each time, so a new request of the set needs a new key (CS-08: "a new key and ... a new consent").
+_NEW_KEY = "with a new client_request_key in the set file"
+_UNUSED = f"the approval is unused: request it again {_NEW_KEY}"
+# The route consumes a protected member as it admits it, so one that gave no receipt may have used it.
+# No `aew` command reads the owners' list, and the route refuses it without its wire header, so the words give both.
+_SEE_THE_LIST = (f"GET /v1/read/owner-operations on the route, with the bearer token and the header {W.D01_HEADER}: "
+                 f"{W.D01_VERSION}, shows whether it was admitted, and if it was not, request it again {_NEW_KEY}")
+_MAY_BE_USED = f"the approval may have been used: {_SEE_THE_LIST}"
+# Every 400 the route gives a set comes before any receipt is stored, so a new key meets the same refusal. The wire says
+# only `invalid_request`: the route's log names the row. These are the rows the client's own checks do not catch first.
+_AS_IT_STANDS = ("the approval is unused, and the set is refused as it stands, so a new client_request_key does not "
+                 "change this. The route's log, its stderr, names the cause. Check the set's installation_ref, each "
+                 "member's subject, and that its intents are sorted by intent_ref, each once")
+
+
 def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
     """Step 5: ``POST /o01/v0/command-sets``, and its receipt (202). Every answer's text is built here, so the token
-    reaches the request's one header and nothing else."""
+    reaches the request's one header and nothing else. Each read waits longer than the route can take over a stalled
+    service, one bound per member and one for the rest, so a held receipt reaches the operator (G3-11)."""
     host, port = o01_target(url)
-    conn = http.client.HTTPConnection(host, port, timeout=TIMEOUT_S)
+    conn = http.client.HTTPConnection(host, port, timeout=TIMEOUT_S * (len(cset.get("intents") or []) + 1))
     try:
         conn.request("POST", COMMAND_SETS, body=json.dumps(cset).encode("utf-8"),
                      headers={W.O01_HEADER: W.O01_VERSION, "Content-Type": W.JSON_TYPE,
@@ -276,8 +293,8 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
         raw = reply.read()
         status = reply.status
     except (OSError, http.client.HTTPException) as e:
-        raise Unavailable(f"the O-01 route at http://{host}:{port} did not answer ({type(e).__name__}); the "
-                          "approval is unused", reason="o01_unreachable") from None
+        raise Unavailable(f"the O-01 route at http://{host}:{port} did not answer ({type(e).__name__}); {_MAY_BE_USED}",
+                          reason="o01_unreachable") from None
     finally:
         conn.close()
     try:
@@ -291,17 +308,33 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
         raise PermissionDenied("the O-01 route did not accept the bearer token; the approval is unused",
                                reason="o01_unauthenticated")
     if status == 503:
-        raise Unavailable("the O-01 route is unavailable; the approval is unused", reason="o01_unavailable")
-    # What only the overlay has, no owner on this route takes: the operator endpoint's is the governed way
+        raise Unavailable(f"the O-01 route is unavailable; {_MAY_BE_USED}", reason="o01_unavailable")
+    # What only the overlay has, no owner on this route takes, so the route refuses it before any receipt: the operator
+    # endpoint's is the governed way, and nothing about this set's fields would change that
     elsewhere = A.owned_elsewhere(i.get("action") for i in cset.get("intents") or [])
-    way = f". {', '.join(elsewhere)} is taken at the operator endpoint: run `aew lead mode raise <mode>`" if elsewhere \
-        else ""
-    raise ValidationFailed(f"the O-01 route refused the set: {code or status}; the approval is unused{way}",
-                           reason="o01_refused", o01_code=code, status=status)
+    if code == "request_key_conflict":
+        said = ("the set's client_request_key already has a receipt from an earlier request, which may be this file's, "
+                f"as each request makes new proofs; the approval is unused. {_SEE_THE_LIST}")
+    elif code == "unresolved_no_redispatch":  # says nothing of this approval: a used member can reach it too
+        said = f"the route can no longer show this client_request_key's receipt. {_SEE_THE_LIST}"
+    elif status == 400 and elsewhere:
+        said = (f"the approval is unused, and no owner on this route takes {', '.join(elsewhere)}. It is taken at the "
+                "operator endpoint: run `aew lead mode raise <mode>`")
+    elif status == 400:
+        said = _AS_IT_STANDS
+    elif status == 409:  # as a 400, a status the route declares for a set it refuses before any owner
+        said = _UNUSED
+    else:
+        raise ValidationFailed(f"the O-01 route gave no receipt ({code or status}); {_MAY_BE_USED}",
+                               reason="o01_refused", o01_code=code, status=status)
+    raise ValidationFailed(f"the O-01 route refused the set: {code or status}; {said}", reason="o01_refused",
+                           o01_code=code, status=status)
 
 
-_HELD_WAY_ON = ("This action is not admitted. Request it again once this is fixed, with a new approval if this one is "
-                "refused as used")
+# True for every owner that holds on a None (the review of G3-C's owner side, m2): each adds what only its own route
+# needs, as the O-01 carrier does with HELD_ON_THE_ROUTE, and the operator endpoint with the command that asks again.
+_HELD_WAY_ON = "This action is not admitted. Request it again once this is fixed, with a new approval"
+HELD_ON_THE_ROUTE = f"On this route, request it {_NEW_KEY}"
 
 
 @dataclass(frozen=True)
@@ -310,8 +343,9 @@ class Consumed:
     (``held_why``: no answer, a ``503``, a ``403``, a ``400``, or an answer that is not one). An owner holds the action
     for a None, allocates nothing and falls back to no other origin (G3-11; addendum 7, ruling 2).
 
-    A None after the request went out may follow a member the service did use, its reply lost, so ``held_why`` says the
-    next request may need a new approval. Only ``result == "CONSUMED"`` admits: the object itself is always true."""
+    A None after the request went out may follow a member the service did use, its reply lost. ``held_why`` gives the
+    way on either way: a new request, which always has a new approval. Only ``result == "CONSUMED"`` admits: the object
+    itself is always true."""
 
     result: str | None
     held_why: str | None = None
@@ -328,7 +362,7 @@ def consume(*, consent_set_ref: str, set_digest: str, recipient_ref: str, instal
             "origin_proof_ref": origin_proof_ref, "set_digest": set_digest, "recipient_ref": recipient_ref,
             "installation_ref": installation_ref, "owner": owner, "operation_ref": operation_ref}
     try:
-        status, reply = _g3(sock_path, "POST", "/g3/v1/consume", body)
+        status, reply = _g3(sock_path, "POST", "/g3/v1/consume", body, timeout=TIMEOUT_S)
     except (Unavailable, PermissionDenied) as exc:
         return Consumed(None, f"{exc.message}. {_HELD_WAY_ON}")
     if status != 200:
@@ -356,41 +390,61 @@ def probe(sock_path: str | None = None) -> str | None:
     return getattr(refused, "message", str(refused))
 
 
-def _held(standing: Any) -> str:
-    """Why a member was held for want of an origin, as the client finds it: what failed on this host, else the
-    project's policy, the client being bound to no project (addendum 7)."""
-    from aew.g3standing import POLICY_FIX
-
+def _held(standing: Any, answers: str | None) -> str:
+    """Why a member was held for want of an origin, as the client finds it: what failed on this host, else that the
+    service did not answer the probe (``answers``), else the route's log, the client being bound to no project and the
+    wire having no field for why (addendum 7)."""
     if not standing.counts:
         return f"{standing.reason}. Fix: {standing.fix}"
-    return ("on this host G3 counts as far as the client can tell, so the project's policy is the likely cause: it "
-            f"must keep every launch contained. Fix: {POLICY_FIX}")
+    if answers is not None:
+        return f"the G3 service does not answer: {answers}"
+    return ("on this host G3 counts as far as the client can tell, and the service answers. The route's log, its "
+            "stderr, names the cause: a failing standing with its fix, a route started with no --project, or what the "
+            "service said")
 
 
 # What the operator is told of a member the owner did not admit, by its admission state and reason (addendum 7: the
-# notes are keyed on both). Each takes the host's standing, as the client found it after the submission.
-# Until the owners' side consumes G3 consent (the owner side's pull request), each note says no owner accepts it yet,
-# so a retry on a host where G3 counts is not taken for the fix (#365 review m2). That pull request removes it.
-NOT_YET = ("No owner accepts G3 consent yet: until AEW's owners do, no protected action is admitted whatever this "
-           "host's standing, and requesting it again changes nothing. What follows is what to fix for when they do. ")
-NOTES: dict[tuple[str, str], Callable[[Any], str]] = {
-    ("HELD", "ORIGIN_NOT_ESTABLISHED"): lambda st: (
-        "Approved in the confirmer and submitted, and the owner held it: G3 does not count for it, so it accepted no "
-        f"consent. {NOT_YET}{_held(st)}. Nothing was admitted. Once G3 counts, request the action again: this "
-        "approval is not used again (addendum 5)."),
-    ("REJECTED", "ORIGIN_NOT_ESTABLISHED"): lambda st: (
-        "Approved in the confirmer and submitted, and the owner refused it: it found no consent it accepts for this "
-        "member. Nothing was admitted. " + NOT_YET + ("" if st.counts else f"On this host: {_held(st)}. ")
-        + "Request the action again once G3 counts; this approval is not used again."),
+# notes are keyed on both). Each takes the host's standing, as the client found it after the submission, and the probe's
+# answer then (None when the service answered).
+AGAIN = f"Nothing was admitted, and this approval is not used again: request the action again {_NEW_KEY}"
+SOME_ADMITTED = ("Requesting the whole set again would admit the admitted members a second time: request only the "
+                 f"members not admitted, {_NEW_KEY}, on a new approval")
+NO_EFFECT = "Consumed and recorded: no owner on this route performs a protected action, so nothing else happens"
+NOTES: dict[tuple[str, str], Callable[[Any, str | None], str]] = {
+    ("HELD", "ORIGIN_NOT_ESTABLISHED"): lambda st, answers: (
+        f"Approved in the confirmer and submitted, and the owner held it: {_held(st, answers)}. It can be requested "
+        "again once this is fixed (addendum 5)"),
+    ("REJECTED", "ORIGIN_NOT_ESTABLISHED"): lambda st, answers: (
+        "Approved in the confirmer and submitted, and the owner refused it: the G3 service has no consent record for "
+        "this member"),
+    ("REJECTED", "ORIGIN_UNQUALIFIED"): lambda st, answers: (
+        "Approved in the confirmer and submitted, and the owner refused it: the consent is not one the G3 service "
+        "issued for exactly this set, member and owner"),
+    ("REJECTED", "CURRENTNESS_EXPIRED"): lambda st, answers: (
+        "Approved in the confirmer and submitted, and the owner refused it: the consent has expired"),
+    ("REJECTED", "CONSENT_ALREADY_USED_OR_MISSING"): lambda st, answers: (
+        "Approved in the confirmer and submitted, and the owner refused it: this member's consent was already used, "
+        "and each is used once"),
 }
 
 
-def note(receipt: dict[str, Any], standing: Any) -> str | None:
-    """The note for the first member the owner did not admit for a reason the client explains (:data:`NOTES`), or
-    None. ``standing`` is the host's, as :func:`aew.g3standing.standing` gives it to a reader bound to no project."""
-    for r in receipt.get("results", []):
-        if isinstance(r, dict):
-            said = NOTES.get((str(r.get("admission_state")), str(r.get("reason_code"))))
-            if said:
-                return said(standing)
-    return None
+def note(receipt: dict[str, Any], standing: Any, answers: str | None = None) -> str | None:
+    """What the operator is told of a receipt, or None. An admitted member with no effect observed says so. The first
+    member the owner did not admit for a reason the client explains (:data:`NOTES`) gets that reason, with the way on:
+    a set of which some members were admitted names each side, since requesting all of it again would admit them twice.
+    ``standing`` is the host's, as :func:`aew.g3standing.standing` gives it to a reader bound to no project, and
+    ``answers`` is :func:`probe`'s."""
+    results = [r for r in receipt.get("results", []) if isinstance(r, dict)]
+    admitted = [r for r in results if r.get("admission_state") == "ADMITTED"]
+    others = [r for r in results if r.get("admission_state") != "ADMITTED"]
+    said = next((NOTES[key](standing, answers) for r in others
+                 if (key := (str(r.get("admission_state")), str(r.get("reason_code")))) in NOTES), None)
+    parts = []
+    if any(r.get("effect_state") == "NOT_OBSERVED" for r in admitted):
+        parts.append(NO_EFFECT)
+    if admitted and others:
+        listed = ", ".join(f"{r.get('intent_ref')} ({r.get('admission_state')} {r.get('reason_code')})" for r in others)
+        parts.append(f"Admitted: {', '.join(str(r.get('intent_ref')) for r in admitted)}. Not admitted: {listed}")
+    if said:
+        parts.extend([said, SOME_ADMITTED if admitted else AGAIN])
+    return ". ".join(parts) + "." if parts else None

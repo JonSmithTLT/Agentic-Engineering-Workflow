@@ -35,41 +35,41 @@ The routes of the STG-02 wire (the vendored HTTP/Problem matrix), the actions th
 
 ## Commands
 
-One row per action of the registry: its origin, its sole admitting owner, and whether admission can hand it to an owner (`reaches_owner`, read from `Carrier._member`).
+One row per action of the registry: its origin, its sole admitting owner, and whether admission can go on to its owner side (`reaches_owner`, read from `Carrier._member`). A protected action goes on to `_protected`, which consumes its consent and records it; no owner performs it.
 
 | Action | Origin | Owner | Reaches the owner |
 |---|---|---|---|
-| `ATTACH_LEAD` | `PROTECTED_G3` | `HEB` | no |
-| `CLOSE_ATTACHMENT` | `PROTECTED_G3` | `HEB` | no |
+| `ATTACH_LEAD` | `PROTECTED_G3` | `HEB` | yes |
+| `CLOSE_ATTACHMENT` | `PROTECTED_G3` | `HEB` | yes |
 | `CONTINUE_ELIGIBLE_WORK` | `CURRENT_DELEGATED_GRANT` | `HEB` | yes |
 | `DELEGATED_CANCEL` | `CURRENT_DELEGATED_GRANT` | `HEB` | no |
-| `ISSUE_STANDING_POLICY` | `PROTECTED_G3` | `RESOURCE_POLICY_ISSUER` | no |
-| `LIFT_OPERATOR_SUSPENSION` | `PROTECTED_G3` | `ADC` | no |
+| `ISSUE_STANDING_POLICY` | `PROTECTED_G3` | `RESOURCE_POLICY_ISSUER` | yes |
+| `LIFT_OPERATOR_SUSPENSION` | `PROTECTED_G3` | `ADC` | yes |
 | `REAFFIRM_ELIGIBLE_CHILD_GRANTS` | `CURRENT_SUCCESSOR_GENERATION` | `ADC` | no |
-| `REATTACH_LEAD` | `PROTECTED_G3` | `HEB` | no |
-| `REQUEST_PROFILE_CHANGE` | `PROTECTED_G3` | `IF13` | no |
-| `SUSPEND_GRANT` | `PROTECTED_G3` | `ADC` | no |
+| `REATTACH_LEAD` | `PROTECTED_G3` | `HEB` | yes |
+| `REQUEST_PROFILE_CHANGE` | `PROTECTED_G3` | `IF13` | yes |
+| `SUSPEND_GRANT` | `PROTECTED_G3` | `ADC` | yes |
 
 ## Refusal causes
 
-Each cause the lookup resolves for an action (a key of one of the two tables), with the wire reason it maps to. Source `vendored` is the loaded refusal map; source `code` is a cause the slice defines itself (`SLICE_OWNER_REASONS`). `NOT_MODELLED` is a cause of the vendored map, returned through the same lookup as every other. A pair is in a table whether or not the slice returns it: `Emitted by` lists the sites of the admission path that return it, and `-` means the slice never does. The slice returns 18 of the 72 pairs.
+Each cause the lookup resolves for an action (a key of one of the two tables), with the wire reason it maps to. Source `vendored` is the loaded refusal map; source `code` is a cause the slice defines itself (`SLICE_OWNER_REASONS`). `NOT_MODELLED` is a cause of the vendored map, returned through the same lookup as every other. A pair is in a table whether or not the slice returns it: `Emitted by` lists the sites of the admission path that return it, and `-` means the slice never does. The slice returns 46 of the 72 pairs.
 
 | Action | Cause | Reason | Source | Emitted by |
 |---|---|---|---|---|
 | `ATTACH_LEAD` | `ALREADY_ATTACHED` | `PRECONDITION_STALE` | vendored | - |
-| `ATTACH_LEAD` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | - |
-| `ATTACH_LEAD` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | - |
-| `ATTACH_LEAD` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | - |
-| `ATTACH_LEAD` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | - |
+| `ATTACH_LEAD` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | `Carrier._protected` |
+| `ATTACH_LEAD` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | `Carrier._protected` |
+| `ATTACH_LEAD` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
+| `ATTACH_LEAD` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
 | `ATTACH_LEAD` | `INVALID_INSTALLATION_OR_PROFILE` | `PROTECTIVE_SCOPE_CHANGED` | vendored | - |
-| `ATTACH_LEAD` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._member` |
+| `ATTACH_LEAD` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._protected` |
 | `ATTACH_LEAD` | `UNKNOWN_OWNER_STATE` | `SOURCE_UNAVAILABLE` | vendored | - |
-| `CLOSE_ATTACHMENT` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | - |
-| `CLOSE_ATTACHMENT` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | - |
-| `CLOSE_ATTACHMENT` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | - |
-| `CLOSE_ATTACHMENT` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | - |
+| `CLOSE_ATTACHMENT` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | `Carrier._protected` |
+| `CLOSE_ATTACHMENT` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | `Carrier._protected` |
+| `CLOSE_ATTACHMENT` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
+| `CLOSE_ATTACHMENT` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
 | `CLOSE_ATTACHMENT` | `NOT_MODELLED` | `SOURCE_UNAVAILABLE` | vendored | - |
-| `CLOSE_ATTACHMENT` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._member` |
+| `CLOSE_ATTACHMENT` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._protected` |
 | `CONTINUE_ELIGIBLE_WORK` | `DELEGATED_GRANT_UNVERIFIED` | `DELEGATED_GRANT_UNVERIFIED` | vendored | `Carrier._member` |
 | `CONTINUE_ELIGIBLE_WORK` | `DELEGATED_INTENT_NOT_GRANTED` | `DELEGATED_GRANT_UNVERIFIED` | vendored | `Carrier._member` |
 | `CONTINUE_ELIGIBLE_WORK` | `DELEGATION_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | `Carrier._member` |
@@ -78,18 +78,18 @@ Each cause the lookup resolves for an action (a key of one of the two tables), w
 | `DELEGATED_CANCEL` | `DELEGATED_INTENT_NOT_GRANTED` | `DELEGATED_GRANT_UNVERIFIED` | vendored | `Carrier._member` |
 | `DELEGATED_CANCEL` | `DELEGATION_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | `Carrier._member` |
 | `DELEGATED_CANCEL` | `NOT_MODELLED` | `SOURCE_UNAVAILABLE` | vendored | `Carrier._member` |
-| `ISSUE_STANDING_POLICY` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | - |
-| `ISSUE_STANDING_POLICY` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | - |
-| `ISSUE_STANDING_POLICY` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | - |
-| `ISSUE_STANDING_POLICY` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | - |
+| `ISSUE_STANDING_POLICY` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | `Carrier._protected` |
+| `ISSUE_STANDING_POLICY` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | `Carrier._protected` |
+| `ISSUE_STANDING_POLICY` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
+| `ISSUE_STANDING_POLICY` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
 | `ISSUE_STANDING_POLICY` | `NOT_MODELLED` | `SOURCE_UNAVAILABLE` | vendored | - |
-| `ISSUE_STANDING_POLICY` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._member` |
-| `LIFT_OPERATOR_SUSPENSION` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | - |
-| `LIFT_OPERATOR_SUSPENSION` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | - |
-| `LIFT_OPERATOR_SUSPENSION` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | - |
-| `LIFT_OPERATOR_SUSPENSION` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | - |
+| `ISSUE_STANDING_POLICY` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._protected` |
+| `LIFT_OPERATOR_SUSPENSION` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | `Carrier._protected` |
+| `LIFT_OPERATOR_SUSPENSION` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | `Carrier._protected` |
+| `LIFT_OPERATOR_SUSPENSION` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
+| `LIFT_OPERATOR_SUSPENSION` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
 | `LIFT_OPERATOR_SUSPENSION` | `NOT_MODELLED` | `SOURCE_UNAVAILABLE` | vendored | - |
-| `LIFT_OPERATOR_SUSPENSION` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._member` |
+| `LIFT_OPERATOR_SUSPENSION` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._protected` |
 | `REAFFIRM_ELIGIBLE_CHILD_GRANTS` | `ACTOR_NOT_CURRENT_SUCCESSOR` | `AUTHORITY_REFUSED` | vendored | - |
 | `REAFFIRM_ELIGIBLE_CHILD_GRANTS` | `ALREADY_REAFFIRMED` | `PRECONDITION_STALE` | vendored | - |
 | `REAFFIRM_ELIGIBLE_CHILD_GRANTS` | `CHILD_REFUSED` | `AUTHORITY_REFUSED` | vendored | - |
@@ -105,26 +105,26 @@ Each cause the lookup resolves for an action (a key of one of the two tables), w
 | `REAFFIRM_ELIGIBLE_CHILD_GRANTS` | `SOURCE_UNAVAILABLE` | `SOURCE_UNAVAILABLE` | vendored | - |
 | `REAFFIRM_ELIGIBLE_CHILD_GRANTS` | `SUCCESSOR_NOT_CURRENT` | `PRECONDITION_STALE` | vendored | - |
 | `REAFFIRM_ELIGIBLE_CHILD_GRANTS` | `UNKNOWN_OWNER_STATE` | `SOURCE_UNAVAILABLE` | vendored | - |
-| `REATTACH_LEAD` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | - |
-| `REATTACH_LEAD` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | - |
-| `REATTACH_LEAD` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | - |
-| `REATTACH_LEAD` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | - |
+| `REATTACH_LEAD` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | `Carrier._protected` |
+| `REATTACH_LEAD` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | `Carrier._protected` |
+| `REATTACH_LEAD` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
+| `REATTACH_LEAD` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
 | `REATTACH_LEAD` | `HEB_ALREADY_FENCED` | `PRECONDITION_STALE` | vendored | - |
 | `REATTACH_LEAD` | `HEB_STALE_PREDECESSOR` | `PRECONDITION_STALE` | vendored | - |
-| `REATTACH_LEAD` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._member` |
+| `REATTACH_LEAD` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._protected` |
 | `REATTACH_LEAD` | `UNKNOWN_OWNER_STATE` | `SOURCE_UNAVAILABLE` | vendored | - |
-| `REQUEST_PROFILE_CHANGE` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | - |
-| `REQUEST_PROFILE_CHANGE` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | - |
-| `REQUEST_PROFILE_CHANGE` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | - |
-| `REQUEST_PROFILE_CHANGE` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | - |
+| `REQUEST_PROFILE_CHANGE` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | `Carrier._protected` |
+| `REQUEST_PROFILE_CHANGE` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | `Carrier._protected` |
+| `REQUEST_PROFILE_CHANGE` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
+| `REQUEST_PROFILE_CHANGE` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
 | `REQUEST_PROFILE_CHANGE` | `NOT_MODELLED` | `SOURCE_UNAVAILABLE` | vendored | - |
-| `REQUEST_PROFILE_CHANGE` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._member` |
-| `SUSPEND_GRANT` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | - |
-| `SUSPEND_GRANT` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | - |
-| `SUSPEND_GRANT` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | - |
-| `SUSPEND_GRANT` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | - |
+| `REQUEST_PROFILE_CHANGE` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._protected` |
+| `SUSPEND_GRANT` | `CONSENT_ALREADY_USED` | `CONSENT_ALREADY_USED_OR_MISSING` | vendored | `Carrier._protected` |
+| `SUSPEND_GRANT` | `CONSENT_EXPIRED` | `CURRENTNESS_EXPIRED` | vendored | `Carrier._protected` |
+| `SUSPEND_GRANT` | `CONSENT_ISSUER_UNVERIFIED` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
+| `SUSPEND_GRANT` | `CONSENT_SCOPE_MISMATCH` | `ORIGIN_UNQUALIFIED` | vendored | `Carrier._protected` |
 | `SUSPEND_GRANT` | `NOT_MODELLED` | `SOURCE_UNAVAILABLE` | vendored | - |
-| `SUSPEND_GRANT` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._member` |
+| `SUSPEND_GRANT` | `ORIGIN_NOT_ESTABLISHED` | `ORIGIN_NOT_ESTABLISHED` | vendored | `Carrier._protected` |
 | `CONTINUE_ELIGIBLE_WORK` | `HEB_STALE_PREDECESSOR` | `PRECONDITION_STALE` | code | `Carrier._heb_continue` |
 | `CONTINUE_ELIGIBLE_WORK` | `HEB_STATE_UNKNOWN` | `SOURCE_UNAVAILABLE` | code | `Carrier._heb_continue` |
 | `CONTINUE_ELIGIBLE_WORK` | `WORK_NOT_CURRENTLY_ELIGIBLE` | `PRECONDITION_STALE` | code | `Carrier._heb_continue` |

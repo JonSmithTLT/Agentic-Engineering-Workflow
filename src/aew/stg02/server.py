@@ -10,8 +10,8 @@ Routes (``SLICE-FIELD-MAP.md``'s six steps):
     GET  /v1/read/runs/{execution_id}                  run detail with progress
     GET  /v1/read/continuation-state/{work_id}         information only (C18, never C17)
     GET  /v1/read/owner-operations                     list, cursor
-    POST /o01/v0/command-sets                          CONTINUE_ELIGIBLE_WORK admitted; every other action refused
-                                                       or held; protected actions allocate nothing
+    POST /o01/v0/command-sets                          CONTINUE_ELIGIBLE_WORK admitted; a protected action admitted
+                                                       once G3 consumes it; every other outcome refused or held
     GET  /o01/v0/owner-operations/{owner}/{operation_ref}
 
 This is **not** the dashboard server and not its provisional contract
@@ -87,7 +87,7 @@ class Slice:
         with self.ledger.transaction() as t:
             t.seed_entitlement(list(self.fx.doc["read_entitled"]))
         self.reads = Reads(self.fx, self.engine, self.ledger, real_recipient=real_recipient or self.fx.recipient)
-        self.carrier = Carrier(self.fx, self.ledger)
+        self.carrier = Carrier(self.fx, self.ledger, self.engine.execution_policy if self.engine else None)
         self.tokens = dict(tokens or {})
         self.fixture_recipient = fixture_recipient
         self.test_routes = test_routes
@@ -269,6 +269,7 @@ def _command(s: Slice, method: str, headers: dict[str, str], body: bytes | None,
     try:
         receipt, _ = s.carrier.submit(req, recipient, s.clock())
     except Refused as r:
+        LOG.warning("a command set is refused: %s", r.cause)  # the wire's code is wider: the client's text sends here
         return o01_problem(r.code, corr)
     except LedgerBusy:
         return o01_problem("owner_unavailable", corr)
@@ -398,6 +399,16 @@ def make_server(s: Slice, port: int) -> ThreadingHTTPServer:
 
     srv = ExclusiveServer((HOST, port), Handler)
     srv.daemon_threads = True
+
+    def handle_error(request: Any, client_address: Any) -> None:
+        """A client that gave up, as one does while a consume stalls, is a line and not a traceback (the review of
+        G3-C's owner side, N5). Anything else is as the server reports it."""
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError)):
+            LOG.info("the client went away before its answer was sent")
+        else:
+            ThreadingHTTPServer.handle_error(srv, request, client_address)
+
+    srv.handle_error = handle_error  # type: ignore[method-assign]
     return srv
 
 

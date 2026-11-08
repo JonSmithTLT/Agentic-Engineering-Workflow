@@ -50,7 +50,6 @@ None.
 ### `aew.g3client`
 
 - `aew.errors`
-- `aew.g3standing`
 - `aew.stg02.g3_overlay`
 - `aew.stg02.wire`
 
@@ -1853,6 +1852,8 @@ None.
 
 ### `aew.stg02.commands`
 
+- `aew.g3client`
+- `aew.g3standing`
 - `aew.stg02.adopted`
 - `aew.stg02.ledger`
 - `aew.stg02.wire`

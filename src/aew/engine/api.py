@@ -49,6 +49,7 @@ from aew.engine.stage_intents import StageIntents
 from aew.engine.status_ops import StatusViews
 from aew.engine.steering import OperatorPrincipal, Steering
 from aew.engine.store import STORE_DIR_MODE, STORE_FILE_MODE, ControlStore
+from aew.engine.usage_read import UsageReads
 from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
@@ -451,6 +452,7 @@ class Engine:
                                           dispatch=dispatch, coordination=coordination)
         self._lead = lead = Lead(k, archive=archive, queue=queue, coordination=coordination)
         self._views = views = StatusViews(k)
+        self._usage = UsageReads(k, archive=archive)  # the ledger's read surfaces (F25 R9)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._steering = steering = Steering(k)
@@ -1020,7 +1022,8 @@ class Engine:
     def snapshot_of(self, path: str | Path, workspace_id: str) -> dict[str, Any]:
         return self._invocations.snapshot_of(path, workspace_id)
 
-    def status(self, work_id: str | None = None) -> dict[str, Any]:
+    def status(self, work_id: str | None = None, *, usage: bool = True) -> dict[str, Any]:
+        """``usage=False``: without the usage summary, for a caller that reads only the guidance (#368 review, m1)."""
         out = self._resume.status(work_id)
         if work_id is None:
             state = self._k.store.current()
@@ -1032,6 +1035,8 @@ class Engine:
             notifier = self._views.notifier()  # M4-E E7a: the operator notifier's deliveries, once it has watched
             if notifier is not None:
                 out["notifier"] = notifier
+            if usage:
+                out["usage"] = self._usage.summary(state)  # F25 R9: the hot state's bounded usage summary
         return out
 
     # ---------------------------------------------------------------- steering (M4-E E2; A1 §1)
@@ -1150,6 +1155,12 @@ class Engine:
         return self._evidence.submit(invocation_token=invocation_token, kind=kind, text=text)
 
     # ---------------------------------------------------------------- history (ADR-0011)
+
+    def usage_show(self, target: str | None = None, *, walk_all: bool = False, since: str | None = None,
+                   until: str | None = None) -> dict[str, Any]:
+        """``aew usage show`` (F25 R9): one projection of the usage ledger, for a run, an invocation, a unit's tree or
+        the project."""
+        return self._usage.show(target, walk_all=walk_all, since=since, until=until)
 
     def history_show(self, record_id: str) -> dict[str, Any]:
         return self._history.history_show(record_id)

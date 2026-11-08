@@ -46,6 +46,7 @@ UNPRICED_CATEGORY = "unpriced_category"            # reported as "unpriced_categ
 UNPRICED_MIX = "unpriced_effective_model_mix"
 UNPRICED_MODEL = "unpriced_model"
 UNPRICED_NO_TABLE = "unpriced_no_price_table"      # no table in effect (at record: pricing_sha256 is null)
+UNPRICED_TABLE_UNUSABLE = "unpriced_price_table_unusable"  # a table is named and cannot be used now (#368 review, m6)
 UNPRICED_SNAPSHOT_MISSING = "unpriced_snapshot_missing"  # the snapshot the record names is gone (a doctor FAIL)
 UNPRICED_TOKENS_ABSENT = "unpriced_tokens_absent"  # the harness reported no counters
 UNPRICED_TOKENS_PARTIAL = "unpriced_tokens_partial"  # some categories unreported: their zeros are not counts
@@ -468,20 +469,30 @@ def _finalize(ctx: Any, aew_root: Path, pricing: Callable[[], Prices | None]) ->
 # --------------------------------------------------------------------------- projections (R6, R7)
 
 
+# A money field is a number only once a priced (or, for the provider's cost, reported) part has gone into it, and
+# None before: an all-unpriced total is never a zero in any view, JSON included (#368 review, M1).
+
+
+def _plus(total: Decimal | None, part: Decimal | None) -> Decimal | None:
+    if part is None:
+        return total
+    return part if total is None else total + part
+
+
 def _empty_figure() -> dict[str, Any]:
-    return {"usd": Decimal(0), "priced": 0, "unpriced": 0, "reasons": {}}
+    return {"usd": None, "priced": 0, "unpriced": 0, "reasons": {}}
 
 
 def empty_totals() -> dict[str, Any]:
     return {"invocations": 0, "invocations_without_runs": 0, "runs": 0, "recorded": 0, "provisional": 0,
             "missing": 0, "tokens": dict.fromkeys(U.CATEGORIES, 0), "wall_s_sum": Decimal(0), "steps": 0,
-            "provider_cost": {"reported_usd": Decimal(0), "reported": 0, "zero_with_tokens": 0, "absent": 0},
+            "provider_cost": {"reported_usd": None, "reported": 0, "zero_with_tokens": 0, "absent": 0},
             "estimated_at_record": _empty_figure(), "estimated_under_current_prices": _empty_figure(),
             "by_model": {}}
 
 
 def _add_figure(into: dict[str, Any], figure: Mapping[str, Any]) -> None:
-    into["usd"] += figure["usd"]
+    into["usd"] = _plus(into["usd"], figure["usd"])
     into["priced"] += figure["priced"]
     into["unpriced"] += figure["unpriced"]
     for reason, n in figure["reasons"].items():
@@ -496,22 +507,23 @@ def add_totals(into: dict[str, Any], other: Mapping[str, Any]) -> dict[str, Any]
     for cat in U.CATEGORIES:
         into["tokens"][cat] += other["tokens"][cat]
     for key, value in other["provider_cost"].items():
-        into["provider_cost"][key] += value
+        into["provider_cost"][key] = _plus(into["provider_cost"][key], value) if key == "reported_usd" \
+            else into["provider_cost"][key] + value
     for name in ("estimated_at_record", "estimated_under_current_prices"):
         _add_figure(into[name], other[name])
     for key, model in other["by_model"].items():
         mine = into["by_model"].setdefault(key, _empty_model())
         mine["runs"] += model["runs"]
         for name in ("estimated_at_record_usd", "estimated_under_current_prices_usd"):
-            mine[name] += model[name]
+            mine[name] = _plus(mine[name], model[name])
         for cat in U.CATEGORIES:
             mine["tokens"][cat] += model["tokens"][cat]
     return into
 
 
 def _empty_model() -> dict[str, Any]:
-    return {"runs": 0, "tokens": dict.fromkeys(U.CATEGORIES, 0), "estimated_at_record_usd": Decimal(0),
-            "estimated_under_current_prices_usd": Decimal(0)}
+    return {"runs": 0, "tokens": dict.fromkeys(U.CATEGORIES, 0), "estimated_at_record_usd": None,
+            "estimated_under_current_prices_usd": None}
 
 
 class Reader:
@@ -519,9 +531,10 @@ class Reader:
     run-record reader (the run directory by default). Snapshots are read once per reader."""
 
     def __init__(self, aew_root: Path, current: Prices | None,
-                 read_run: Callable[[str], dict[str, Any] | None] | None = None) -> None:
+                 read_run: Callable[[str], dict[str, Any] | None] | None = None, *, unusable: bool = False) -> None:
         self.aew_root = aew_root
         self.current = current
+        self.unusable = unusable  # a table is named but cannot be used: current figures say so, not "no table"
         self._read_run = read_run or (lambda run: runlog.read_record(runlog.run_dir(aew_root, run)))
         self._snapshots: dict[str, Prices | None] = {}
 
@@ -556,7 +569,8 @@ class Reader:
                 or U.absent_record(source=f"harness:{entry.get('harness') or U.UNKNOWN}")
             state, sha = "provisional", None
             at_record, at_parts = {"unpriced": UNPRICED_NOT_RECORDED}, []
-        current, current_parts = derive(record, self.current)
+        current, current_parts = derive(record, self.current) if not self.unusable else (
+            {"unpriced": UNPRICED_TABLE_UNUSABLE}, [])
         return {"run": entry["run"], "invocation": inv_id, "state": state, "usage": record, "pricing_sha256": sha,
                 "estimated_at_record": at_record, "estimated_under_current_prices": current,
                 "provider_cost": {"usd": record.get("provider_cost_usd"), "trust": record.get("provider_cost_trust")},
@@ -571,7 +585,7 @@ class Reader:
         totals["invocations_without_runs"] = 0 if rows else 1
         for row in rows:
             _count_row(totals, row)
-        return {"invocation": inv_id, "work_unit": inv.get("work_unit"), "rows": [_public(r) for r in rows],
+        return {"invocation": inv_id, "work_unit": inv.get("work_unit"), "rows": [public_row(r) for r in rows],
                 "totals": totals}
 
 
@@ -582,11 +596,12 @@ def _count_row(totals: dict[str, Any], row: Mapping[str, Any]) -> None:
     trust = row["provider_cost"]["trust"]
     totals["provider_cost"][trust if trust in U.PROVIDER_COST_TRUST else "absent"] += 1
     if trust == "reported":  # never a zero_with_tokens or absent cost (R3)
-        totals["provider_cost"]["reported_usd"] += Decimal(str(row["provider_cost"]["usd"]))
+        totals["provider_cost"]["reported_usd"] = _plus(totals["provider_cost"]["reported_usd"],
+                                                        Decimal(str(row["provider_cost"]["usd"])))
     for name in ("estimated_at_record", "estimated_under_current_prices"):
         figure, fig = row[name], totals[name]
         if "usd" in figure:
-            fig["usd"] += figure["usd"]
+            fig["usd"] = _plus(fig["usd"], figure["usd"])
             fig["priced"] += 1
         else:
             fig["unpriced"] += 1
@@ -614,11 +629,11 @@ def _count_models(by_model: dict[str, Any], row: Mapping[str, Any]) -> None:
         for cat in U.CATEGORIES:
             model["tokens"][cat] += int(record["tokens"].get(cat) or 0)
         return
-    at_parts: dict[str, Decimal] = {}  # summed per key: two parts may share one (a projection is a sum, R6)
-    current_parts: dict[str, Decimal] = {}
+    at_parts: dict[str, Decimal | None] = {}  # summed per key: two parts may share one (a projection is a sum, R6)
+    current_parts: dict[str, Decimal | None] = {}
     for acc, parts in zip((at_parts, current_parts), row["_parts"], strict=True):
         for key, usd in parts:
-            acc[key] = acc.get(key, Decimal(0)) + usd
+            acc[key] = _plus(acc.get(key), usd)
     counted: set[str] = set()
     for provider, name, tokens in pieces:
         key = _model_key(provider, name) or "no_effective_model"
@@ -629,11 +644,13 @@ def _count_models(by_model: dict[str, Any], row: Mapping[str, Any]) -> None:
             continue
         counted.add(key)
         model["runs"] += 1
-        model["estimated_at_record_usd"] += at_parts.get(key, Decimal(0))
-        model["estimated_under_current_prices_usd"] += current_parts.get(key, Decimal(0))
+        model["estimated_at_record_usd"] = _plus(model["estimated_at_record_usd"], at_parts.get(key))
+        model["estimated_under_current_prices_usd"] = _plus(model["estimated_under_current_prices_usd"],
+                                                            current_parts.get(key))
 
 
-def _public(row: Mapping[str, Any]) -> dict[str, Any]:
+def public_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    """A run row without its private parts (the priced parts the model tally reads)."""
     return {k: v for k, v in row.items() if not k.startswith("_")}
 
 
@@ -681,10 +698,18 @@ def project_projection(state: Mapping[str, Any], reader: Reader, archived: Itera
     history walk with ``--all``), saying what they cover (R7, the designer's and lead developer's 2026-10-06
     clarification): ``scope: recent`` is never complete; an unbounded walk is ``scope: all``, complete only when the
     caller's walk covered every archived unit; a bounded walk is ``scope: window`` with its bounds, never complete."""
-    work, invocations = _view(state, list(archived))
     totals = empty_totals()
-    for inv_id in sorted(invocations):
-        add_totals(totals, reader.invocation(inv_id, invocations[inv_id])["totals"])
+    work, seen = set(state.get("work") or {}), set(state.get("invocations") or {})
+    for inv_id in sorted(seen):
+        add_totals(totals, reader.invocation(inv_id, state["invocations"][inv_id])["totals"])
+    for bundle in archived:  # one at a time, as `_view` would merge them: the hot state and the first bundle win (R7)
+        if bundle["id"] in work:
+            continue
+        work.add(bundle["id"])
+        for inv_id, inv in sorted((bundle.get("invocations") or {}).items()):
+            if inv_id not in seen:
+                seen.add(inv_id)
+                add_totals(totals, reader.invocation(inv_id, inv)["totals"])
     if not walk_all:
         scope: dict[str, Any] = {"scope": "recent", "archive_complete": False}
     elif since is not None or until is not None:
@@ -703,3 +728,191 @@ def to_json(value: Any) -> Any:
     if isinstance(value, list | tuple):
         return [to_json(v) for v in value]
     return value
+
+
+# --------------------------------------------------------------------------- surfaces (R9): `aew usage show`, status
+
+# The status report's summary (R9: "one bounded `usage` summary for the hot state: runs counted, tokens summed,
+# unpriced count, nothing more"): these keys of the hot projection's totals, never a second count.
+SUMMARY_KEYS = ("runs", "recorded", "provisional", "missing", "invocations", "invocations_without_runs", "tokens",
+                "estimated_at_record", "estimated_under_current_prices")
+
+
+# IF10-14's typed financial states (A-21), as the read surfaces name them: a priced figure is a cooperative observation,
+# never a settlement or a reserved budget; an unpriced one is unknown exposure, never zero (the hold match of
+# 2026-11-06 on F25: "use IF10-14's states rather than 'estimated'").
+OBSERVED = "USAGE_OBSERVED_COOPERATIVE"
+UNKNOWN_EXPOSURE = "UNPRICED_OR_UNKNOWN_EXPOSURE"
+STATES = {"usd": OBSERVED, "unpriced": UNKNOWN_EXPOSURE}  # a figure's key names its state
+ALTERED_BY = ("each run's own harness reports its counters into its run record, which the run's user can write until "
+              "the Lead's next transaction copies it into control state")
+
+
+def basis(prices: Prices | None) -> dict[str, Any]:
+    """What every figure of a read rests on (IF10-11): who can alter the records, that no per-task cap is enforced
+    and no account bound is known, the estimate method and the table in force now. A run's own freshness is its
+    ``recorded_at`` (or ``provisional``), and its table at record is its ``pricing_sha256``."""
+    return {
+        "states": STATES,
+        "altered_by": ALTERED_BY,
+        "per_task_enforcement": "none: AEW enforces no cap on a run, Ticket or project (F25 R10)",
+        "external_account_bound": "unknown",
+        "method": "the price table's per-million-token rates over the run's harness-reported counters, bucketed by "
+                  "its declared token semantics; at record under the table in force when it was copied, and under "
+                  "the table in force now",
+        "current_table": None if prices is None else {"sha256": prices.sha256, "as_of": prices.table["as_of"],
+                                                      "source": prices.table.get("source")},
+    }
+
+
+def hot_summary(state: Mapping[str, Any], reader: Reader) -> dict[str, Any]:
+    """`aew status`'s usage summary: the hot state's projection (no archived unit is read), cut to ``SUMMARY_KEYS``.
+    Its scope says so, so it is never read as the project's total (R7)."""
+    totals = project_projection(state, reader)["totals"]
+    return {"scope": "hot", "archive_complete": False, **{k: totals[k] for k in SUMMARY_KEYS}}
+
+
+def status_summary(state: Mapping[str, Any], reader: Reader) -> dict[str, Any]:
+    """The status report's ``usage``: the hot summary as JSON, its states, and its one text line, rendered from the
+    exact sums before they become JSON numbers (#368 review, m5)."""
+    summary = hot_summary(state, reader)
+    return {**to_json(summary), "states": STATES, "line": summary_line(summary)}
+
+
+def money(usd: Decimal) -> str:
+    """Dollars exactly, as the derivation computed them, trailing zeros dropped: a small cost never prints as a
+    rounded zero."""
+    return f"${usd.normalize():f}"
+
+
+def _reasons(reasons: Mapping[str, int]) -> str:
+    return ", ".join(f"{reason} x{n}" for reason, n in sorted(reasons.items()))
+
+
+def figure_text(figure: Mapping[str, Any]) -> str:
+    """A summed figure (``priced``, ``unpriced``, ``usd``, ``reasons``) as text. A dollar amount is printed only over
+    priced runs, and the unpriced runs are always counted beside it with their reasons (R4: unpriced is never zero)."""
+    if not figure["priced"] and not figure["unpriced"]:
+        return "no runs"
+    if not figure["priced"]:
+        return f"{UNKNOWN_EXPOSURE} ({_reasons(figure['reasons'])})"
+    text = f"{money(figure['usd'])} {OBSERVED} over {figure['priced']} priced run(s)"
+    if figure["unpriced"]:
+        text += f", and {figure['unpriced']} {UNKNOWN_EXPOSURE} ({_reasons(figure['reasons'])})"
+    return text
+
+
+def _row_figure(figure: Mapping[str, Any]) -> str:
+    return f"{money(figure['usd'])} {OBSERVED}" if "usd" in figure else f"{UNKNOWN_EXPOSURE} ({figure['unpriced']})"
+
+
+def tokens_text(tokens: Mapping[str, int]) -> str:
+    return ", ".join(f"{c} {int(tokens.get(c) or 0):,}" for c in U.CATEGORIES if c != "unknown" or tokens.get(c))
+
+
+def _runs_text(totals: Mapping[str, Any]) -> str:
+    text = f"{totals['runs']} run(s): {totals['recorded']} recorded, {totals['provisional']} provisional"
+    if totals["missing"]:  # R6: a total never skips a missing run without saying how many
+        text += f", {totals['missing']} MISSING (usage lost, not counted as zero)"
+    return text
+
+
+def summary_line(summary: Mapping[str, Any]) -> str:
+    """`aew status`'s one usage line."""
+    if not summary["runs"]:
+        return "Usage (hot work): no runs yet"
+    return (f"Usage (hot work): {_runs_text(summary)}; tokens {tokens_text(summary['tokens'])}; cost "
+            f"{figure_text(summary['estimated_at_record'])}"
+            + _current_suffix(summary["estimated_at_record"], summary["estimated_under_current_prices"]))
+
+
+def _current_suffix(at_record: Mapping[str, Any], current: Mapping[str, Any]) -> str:
+    """The figure under today's table, when it says something the recorded one does not."""
+    same = (at_record["priced"], at_record["unpriced"], at_record["usd"], at_record["reasons"]) == (
+        current["priced"], current["unpriced"], current["usd"], current["reasons"])
+    return "" if same else f"; under current prices {figure_text(current)}"
+
+
+def _totals_lines(totals: Mapping[str, Any], indent: str) -> list[str]:
+    lines = [f"{indent}{_runs_text(totals)}"]
+    if totals["invocations_without_runs"]:
+        lines.append(f"{indent}{totals['invocations_without_runs']} invocation(s) without runs")
+    if not totals["runs"]:
+        return lines
+    lines += [f"{indent}tokens: {tokens_text(totals['tokens'])}",
+              f"{indent}cost at record prices: {figure_text(totals['estimated_at_record'])}",
+              f"{indent}cost under current prices: {figure_text(totals['estimated_under_current_prices'])}"]
+    cost = totals["provider_cost"]
+    if cost["reported"]:
+        lines.append(f"{indent}provider cost as the harness reported it ({OBSERVED}): {money(cost['reported_usd'])} "
+                     f"over {cost['reported']} run(s)")
+    for key, model in sorted(totals["by_model"].items()):
+        lines.append(f"{indent}  {key}: {model['runs']} run(s), tokens {tokens_text(model['tokens'])}")
+    return lines
+
+
+def _row_lines(row: Mapping[str, Any], indent: str) -> list[str]:
+    record = row["usage"] or {}
+    tokens = tokens_text(record.get("tokens") or {}) if record else "none"
+    trust = record.get("tokens_trust", "absent") if record else "missing"
+    fresh = f"recorded {record['recorded_at']}" if row["state"] == "recorded" else row["state"]
+    return [f"{indent}{row['run']} [{fresh}, tokens {trust}]: {tokens}",
+            f"{indent}  cost at record prices {_row_figure(row['estimated_at_record'])}; under current prices "
+            f"{_row_figure(row['estimated_under_current_prices'])}"]
+
+
+def _invocation_lines(inv: Mapping[str, Any], indent: str) -> list[str]:
+    lines = [f"{indent}{inv['invocation']}" + (f" ({inv['work_unit']})" if inv.get("work_unit") else "")]
+    for row in inv["rows"]:
+        lines += _row_lines(row, indent + "  ")
+    return lines + _totals_lines(inv["totals"], indent + "  ")
+
+
+def _unit_lines(unit: Mapping[str, Any], indent: str) -> list[str]:
+    lines = [f"{indent}{unit['unit']}" + (f" ({unit['kind']})" if unit.get("kind") else ""),
+             f"{indent}  own:", *_totals_lines(unit["own"], indent + "    ")]
+    if unit["children"]:
+        lines += [f"{indent}  descendants:", *_totals_lines(unit["descendants"], indent + "    ")]
+    for inv in unit["invocations"]:
+        lines += _invocation_lines(inv, indent + "  ")
+    for child in unit["children"]:
+        lines += _unit_lines(child, indent + "  ")
+    return lines
+
+
+def basis_lines(about: Mapping[str, Any]) -> list[str]:
+    """IF10-11's disclosures, conspicuously, under every view."""
+    table = about["current_table"]
+    return ["", f"These are cooperative observations ({OBSERVED}), not a bill or a budget: {about['altered_by']}.",
+            f"Per-task enforcement: {about['per_task_enforcement']}. External account bound: "
+            f"{about['external_account_bound']}.",
+            f"Cost method: {about['method']}. Table in force now: "
+            + (f"as of {table['as_of']}, sha256 {table['sha256'][:12]}" if table else
+               f"none, so every figure under current prices is {UNKNOWN_EXPOSURE}") + "."]
+
+
+def covers(view: Mapping[str, Any]) -> str:
+    """What a project view counts: the hot work always, whatever the window, and which archived units (R7)."""
+    if view["scope"] == "recent":
+        return "hot work and the recently archived units"
+    if view["scope"] == "all":
+        return "hot work and every archived unit"
+    bounds = " and ".join(f"{word} {view[key]}" for word, key in (("from", "since"), ("up to", "until"))
+                          if view.get(key) is not None)
+    return f"hot work, whenever it ran, and the units archived {bounds}"
+
+
+def render_show(view: Mapping[str, Any]) -> str:
+    """`aew usage show`'s text: the same projection the JSON is, a block per level (R9), and its basis (IF10-11)."""
+    kind = view["target"]["kind"]
+    if kind == "run":
+        lines = _row_lines(view["row"], "")
+    elif kind == "invocation":
+        lines = _invocation_lines(view, "")
+    elif kind == "unit":
+        lines = _unit_lines(view, "")
+    else:
+        complete = "complete" if view["archive_complete"] else "not a lifetime total"
+        lines = [f"Project usage, scope {view['scope']}: {covers(view)}; {view['units']} unit(s); {complete}",
+                 *_totals_lines(view["totals"], "  ")]
+    return "\n".join([*lines, *basis_lines(view["basis"])])

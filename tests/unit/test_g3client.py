@@ -574,6 +574,7 @@ def test_a_route_that_does_not_answer_is_unavailable_and_the_token_is_not_in_it(
     with pytest.raises(Unavailable) as e:
         C.submit({"intents": []}, f"http://127.0.0.1:{port}", TOKEN)
     assert e.value.details["reason"] == "o01_unreachable" and TOKEN not in repr(e.value) + str(e.value)
+    assert "approval may have been used" in e.value.message  # the route may have consumed it, its reply lost
 
 
 # ------------------------------------------------------------------------------------------------ the command

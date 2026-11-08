@@ -944,6 +944,19 @@ skipped:
       the G3 client's consume reaches the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
       service never runs on Windows. Covered on Linux; its reading of an answer runs on both platforms in
       tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_held_note_says_what_the_probe_found_after_the_submission: >-
+      the whole request path reaches the G3 service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; the note's wording runs on both platforms in
+      tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_an_approved_set_is_admitted_and_its_member_consumed_once_against_the_route_s_operation: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the carrier's admission runs on both platforms in tests/integration/test_stg02_slice.py.
+    tests/integration/test_g3client_process.py::test_a_member_whose_consent_names_no_record_is_rejected_on_the_real_service: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the carrier's mapping runs on both platforms in tests/integration/test_stg02_slice.py.
+    tests/integration/test_g3client_process.py::test_a_service_that_is_gone_holds_the_member_at_the_route: >-
+      the module's fixture runs the G3 service on its Unix filesystem socket, with SO_PEERCRED (A-37), which never runs
+      on Windows. Covered on Linux; the carrier's hold runs on both platforms in tests/integration/test_stg02_slice.py.
     tests/integration/test_g3client_process.py::test_no_g3_service_is_unavailable_and_says_where_to_look: >-
       the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
       (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01

@@ -147,6 +147,20 @@ def test_an_approved_set_is_submitted_unchanged_with_its_consent_and_not_admitte
     assert TOKEN not in out + err and G.PIN not in out + err
 
 
+def test_a_held_note_says_what_the_probe_found_after_the_submission(
+        world: World, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """The review of G3-C's first pull request, n3: where the host's conditions hold and the owner still held the
+    member, the client names the service when the probe finds it not answering, not the project's policy."""
+    monkeypatch.setattr(S, "standing", lambda *_, **__: S.Standing(True, judged=(1, 3)))
+    monkeypatch.setattr(C, "probe", lambda *_: "planted: the service stopped")
+    t = _operator(world.rig, lambda ref: world.rig.svc.decide(ref, {"decision": "APPROVE", "pin": G.PIN}))
+    code, out, err = _run(world, capsys)
+    t.join(10)
+    assert code == 0, err
+    note = json.loads(out)["note"]
+    assert "the G3 service does not answer: planted: the service stopped" in note and "the project's policy" not in note
+
+
 def _g3_counts(w: World, monkeypatch: pytest.MonkeyPatch) -> None:
     """The route's owner, on a host where G3 counts for its project: it then consumes on the real service's socket."""
     monkeypatch.setattr(S, "standing", lambda *_, **__: S.Standing(True))

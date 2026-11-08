@@ -156,8 +156,35 @@ def test_two_profiles_on_a_catalog_that_offers_nothing_wait_for_it_once(lab):
     assert res.stderr.count("reading opencode's model list") == 1, res.stderr
     first = next(n for n in sorted(load_yaml((lab.aew_root / "policy/execution.yaml").read_text(encoding="utf-8"))
                                    ["profiles"]))
-    assert f"the same catalog as profile {first}, not waited for again" in row["detail"], row
+    assert f"the same harness and provider as profile {first}, not waited for again" in row["detail"], row
     assert "opencode offered no model at all within its catalog wait" in row["detail"], row
+
+
+def test_two_profiles_wait_once_when_the_start_deadline_ends_the_read_before_the_catalog_wait(lab):
+    """Review of E137, F3: waiting once holds whatever ended the wait."""
+    edit_policy(lab, lambda policy: policy["profiles"].update(
+        {"second": {**next(iter(policy["profiles"].values())), "model": "other-model"}}))
+    serve(lab, LISTED, catalog_delay_s=600)
+    res = lab.aew("doctor", "--json", env={"AEW_RUN_START_S": "4"})
+    row = next(c for c in res.json["checks"] if c["check"] == model_list.CHECK)
+    assert row["status"] == "FAIL" and "was not read within 4s" in row["detail"], row
+    assert res.stderr.count("reading opencode's model list") == 1, res.stderr
+    assert "not waited for again" in row["detail"], row
+
+
+def test_a_profile_with_a_cached_list_gets_its_answer_after_another_profile_waited_for_nothing(lab):
+    """Review of E137, F4: the wait it skips is not one a cached answer would have made."""
+    serve(lab, LISTED)
+    code, row = doctor(lab)  # caches the list of the one profile the policy has, which sorts after the new one
+    assert code == 0 and row is not None and row["status"] == "PASS", row
+    edit_policy(lab, lambda policy: policy["profiles"].update(
+        {"afirst": {**next(iter(policy["profiles"].values())), "model": "other-model"}}))
+    serve(lab, LISTED, catalog_delay_s=600)
+    res = lab.aew("doctor", "--json", env={"AEW_OPENCODE_CATALOG_S": "2"})
+    row = next(c for c in res.json["checks"] if c["check"] == model_list.CHECK)
+    assert res.stderr.count("reading opencode's model list") == 1, res.stderr
+    assert "profile afirst: opencode offered no model at all" in row["detail"], row
+    assert "not waited for again" not in row["detail"], row  # the other answered from its cached list, and passes
 
 
 def test_no_provider_value_reaches_doctors_output_or_any_file_it_leaves(lab):

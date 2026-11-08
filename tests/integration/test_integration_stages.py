@@ -30,6 +30,8 @@ from aewflow import (
     assign,
     create_planned_ticket,
     implement,
+    integrate,
+    prepare_and_validate,
     review,
     sample_project,
     stand_in_containment,
@@ -58,6 +60,7 @@ from aew.surface import availability as SA
 from aew.surface import projection
 from aew.surface import run as R
 from aew.surface.projection import project
+from aew.util import dump_yaml, load_yaml
 
 CRED = A.TOKEN_RE
 
@@ -574,7 +577,6 @@ def test_unregistered_custodian_marks_reconcile(tmp_path, contained, custody):
     commit's `sync` ends the custodian, which marks the lease for reconciliation."""
     p = sample_project(tmp_path)
     checks_mode(p)
-    from aew.util import dump_yaml, load_yaml
 
     gates = p.root / ".aew/policy/gates.yaml"
     data = load_yaml(gates.read_text(encoding="utf-8"))
@@ -658,7 +660,9 @@ def test_custody_worker_never_races_the_leads_publish(tmp_path, contained, custo
     def finish(token: str, expect_rev: int, work_id: str, **kw: Any) -> dict[str, Any]:
         held = lease(p)
         seen["custodian"] = custodian = held["custodian"]
+        rev = p.rev()
         e.custody_register(custody[custodian])
+        seen["registered"] = p.rev() != rev  # a commit: what the finish follows (review of E137, N2)
         rev = p.rev()
         seen["between"] = e.custody_step(custodian, custody[custodian])
         seen["committed"] = p.rev() != rev
@@ -668,6 +672,7 @@ def test_custody_worker_never_races_the_leads_publish(tmp_path, contained, custo
     monkeypatch.setattr(e._integration, "_finish_publish", finish)
     out = e.integrate_publish(token=p.token, expect_rev=p.rev(), work_id=wid, candidate=candidate)
     assert out["state"] == "DONE"
+    assert seen["registered"]
     assert seen["between"] == (CO.WAITING, None) and not seen["committed"]
     assert e.custody_step(seen["custodian"], custody[seen["custodian"]]) == (CO.ENDED, None)
     assert_control_invariants(p)
@@ -762,6 +767,46 @@ def _commits_before_finishes(p: Project, e: Engine, monkeypatch, times: int) -> 
 
     monkeypatch.setattr(e._integration, "_finish_publish", finish)
     return seen
+
+
+def test_a_ticket_held_up_by_an_unfinished_publish_is_told_the_call_that_finishes_it(tmp_path, monkeypatch):
+    """Review of E137, F2: with two Tickets in the queue, the second's refusal and its queue wait name the first's
+    reconcile, since waiting for the first to publish would never end. That call frees the second."""
+    p = sample_project(tmp_path)
+    gates = p.root / ".aew/policy/gates.yaml"
+    gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "mutating_concurrency": 2}),
+                     encoding="utf-8", newline="\n")
+    p.pin_policy()
+    first = create_planned_ticket(p, tmp_path, title="Add one", scope=("calc/one.py", "tests/test_one.py"))
+    second = create_planned_ticket(p, tmp_path, title="Add two", scope=("calc/two.py", "tests/test_two.py"))
+    roles = assign(p, first), assign(p, second)
+
+    def to_ready(wid: str, role: Any, files: dict[str, str]) -> None:
+        implement(role, files)
+        p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+        p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+        p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+        p.lead("verify", "ingest", wid, "--evidence", verify(p, wid))
+        p.lead("work", "transition", wid, "--to", "COMMIT_READY")
+
+    to_ready(first, roles[0], {"calc/one.py": "ONE = 1\n"})
+    prepare_and_validate(p, first)
+    e = engine(p)
+    _commits_before_finishes(p, e, monkeypatch, IO.FINISH_ATTEMPTS)
+    with pytest.raises(AEWError):
+        e.integrate_publish(token=p.token, expect_rev=p.rev(), work_id=first)
+    to_ready(second, roles[1], {"calc/two.py": "TWO = 2\n"})
+    finishes = f"`aew integrate reconcile {first} --expect-rev <revision from aew status>` finishes it first"
+
+    refused = p.aew("integrate", "prepare", second, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    assert refused.returncode != 0 and refused.error["code"] == "LEASE_HELD", refused.error
+    assert finishes in refused.error["message"], refused.error
+    projection.clear_cache()
+    assert finishes in " ".join(project(engine(p), CTX, second)["hints"]), "the queue's wait says the same"
+
+    p.lead("integrate", "reconcile", first)
+    assert integrate(p, second)["state"] == "DONE"
+    assert_control_invariants(p)
 
 
 def _publish(p: Project, e: Engine, wid: str, candidate: str) -> dict[str, Any]:

@@ -25,28 +25,28 @@ CTX = SurfaceContext.outside_session()
 DEAD_ENDS = {
     "ASSIGNED": {
         "why": "assigned but not moved on: `ticket_start` passes through here, and no stage starts from it",
-        "hint": "launch the implementer from its pack, then move to RUNNING (names no command)"},
+        "hint": "launch the implementer from its pack (INV-0001), then move to RUNNING"},
     "REVIEW_PENDING, no report and no live run": {
         "why": "the reviewer's report or run is what offers something; a lost run leaves nothing",
         "hint": "dispatch the next planned reviewer card (`aew invoke create`)"},
     "REVIEW_FAILED": {
         "why": "rework has no typed home: `ticket_start` does not fit it (`work.assign` starts from READY)",
-        "hint": "none checked here: the hints name findings and rework by the state's own guidance"},
+        "hint": "return to RUNNING and dispatch an implementer with the findings"},
     "VERIFY_PENDING, no report and no live run": {
         "why": "the verifier's report or run is what offers something; a lost run leaves nothing",
         "hint": "dispatch the next planned verifier card (`aew invoke create`)"},
     "VERIFICATION_INCONCLUSIVE": {
         "why": "the return to VERIFY_PENDING needs a reason and the Lead's judgment; nothing offers it",
-        "hint": "resolve the environment/evidence blocker, then return to VERIFY_PENDING (names no command)"},
+        "hint": "resolve the environment/evidence blocker, then return to VERIFY_PENDING"},
     "COMMIT_READY, prepared with no report": {
         "why": "a prepared candidate's verifier is launched by a stage that already ran; nothing offers it again",
-        "hint": "dispatch post-integration verification (`aew invoke create <T> --scope integration --launch ...`)"},
+        "hint": "dispatch post-integration verification (`aew invoke create"},
     "ESCALATED": {
         "why": "the return is the Lead's decision after the escalation's outcome; nothing offers it",
-        "hint": "record the escalation outcome and return the Ticket (names no command)"},
+        "hint": "record the escalation outcome and return the Ticket"},
     "REPLAN_REQUIRED": {
         "why": "a new plan revision is the way on; nothing offers it",
-        "hint": "propose and accept a new plan revision (names no command)"},
+        "hint": "propose and accept a new plan revision"},
 }
 # Only ever lowered: an entry leaves when its exit lands, and this number goes down with it.
 MOST_DEAD_ENDS = 8
@@ -146,7 +146,10 @@ def walk(tmp_path: Path) -> dict[str, dict[str, Any]]:
 
 
 def test_every_non_terminal_state_offers_an_exit_or_is_pinned_with_its_reason(tmp_path):
-    assert differences(walk(tmp_path), DEAD_ENDS, MOST_DEAD_ENDS) == []
+    seen = walk(tmp_path)
+    assert differences(seen, DEAD_ENDS, MOST_DEAD_ENDS) == []
+    for label, pinned in DEAD_ENDS.items():  # what each hint says today, read from the projection and not remembered
+        assert any(pinned["hint"] in hint for hint in seen[label]["hints"]), (label, seen[label]["hints"])
 
 
 def test_the_check_fails_on_a_new_dead_end_a_closed_one_a_missing_state_and_a_longer_list():

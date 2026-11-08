@@ -19,6 +19,7 @@ from aew.engine import hierarchy as H
 from aew.engine import validation_ops as VO
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
+from aew.engine.queue_ops import unfinished_publish
 from aew.engine.seams import MUTATING, NEXT_ACTIONS, NON_MUTATING, PARENT, KindRegistration
 from aew.errors import AEWError, IntegrityError
 from aew.harness.contract import EXPECT_REV, HELD_SEAT
@@ -425,7 +426,8 @@ class Resume:
                     "place")
         if lease and lease["entry"] != qid:
             holder = (entries.get(lease["entry"]) or {}).get("work")
-            return f"queued ({qid}): {holder} holds the integration lease; integrate once it publishes or leaves"
+            return (f"queued ({qid}): {holder} holds the integration lease; "
+                    + (unfinished_publish(state, holder) or "integrate once it publishes or leaves"))
         return None
 
     def _plan_brief(self, u: dict[str, Any]) -> dict[str, Any] | None:

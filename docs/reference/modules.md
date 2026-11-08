@@ -1020,6 +1020,7 @@ None.
 - `aew.engine.hierarchy`
 - `aew.engine.nonmutating_ops`
 - `aew.engine.ports`
+- `aew.engine.queue_ops`
 - `aew.engine.seams`
 - `aew.engine.validation_ops`
 - `aew.errors`

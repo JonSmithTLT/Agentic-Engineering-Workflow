@@ -322,7 +322,7 @@ def _outcome(out: dict[str, Any], version: Any) -> dict[str, Any]:
     result says what to do, since the shim's own line is above it."""
     from aew.harness.containment.shim import EXIT_SETUP
 
-    if out["exit"] != EXIT_SETUP:
+    if out.get("exit") != EXIT_SETUP:
         return {**out, "opencode": version}
     return {**out, "ok": False, "opencode": version,
             "not_started": "the Lead's TUI was not started; run `aew doctor`, and read the line above this result"}

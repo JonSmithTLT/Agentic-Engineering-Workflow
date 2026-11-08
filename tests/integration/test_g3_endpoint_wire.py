@@ -132,11 +132,16 @@ def test_a_requester_that_has_gone_ends_the_wait_and_its_approval_raises_nothing
 def test_a_service_older_than_the_overlay_holds_and_names_the_reinstall(world, monkeypatch):
     from aew_g3 import wire as service_wire
 
-    monkeypatch.setattr(service_wire, "o01_errors", lambda body: adopted.o01_errors("CommandSet", body))
-    with pytest.raises(errors.Unavailable) as held:
-        _raise(world)
+    with monkeypatch.context() as older:
+        older.setattr(service_wire, "o01_errors", lambda body: adopted.o01_errors("CommandSet", body))
+        with pytest.raises(errors.Unavailable) as held:
+            _raise(world)
     assert g3standing.INSTALL in held.value.message and "STRUCTURAL" in held.value.message
     assert not re.search("confirmation code", "".join(world.lines)), "held, never the code"
+
+    t = _confirmer(world)  # the reinstall the reply names: a service with the overlay, and the same request
+    assert _raise(world)["mode"] == MODE
+    t.join(ENDED)
 
 
 def test_the_runbooks_replay_script_consumes_once_and_is_refused_the_second_time(world, capsys):

@@ -42,6 +42,7 @@ REVISION = "rev:"
 HELD = "g3_held"
 REFUSED = "g3_refused"
 AGAIN = "Nothing was raised: request it again"
+HELD_AGAIN = f"{AGAIN} once that is fixed"  # asked again before then, a held raise gets the same answer
 # A 400 at the request is the service refusing the set itself: asking again gets the same answer until this is fixed
 OLDER_SERVICE = (f"The likely cause is a G3 service installed from a wheel older than this `aew`, which does not know "
                  f"{BINDINGS['mode_raise']}. Install it again as root, which keeps the ledger, the key and the PIN "
@@ -121,7 +122,7 @@ def operation_ref(consent_set_ref: str, intent_ref: str) -> str:
     return f"aew:steering-raise:{digest}"
 
 
-def held(why: str, way_on: str = AGAIN) -> errors.Unavailable:
+def held(why: str, way_on: str = HELD_AGAIN) -> errors.Unavailable:
     return errors.Unavailable(f"the raise is held: {why}. {way_on}; the mode stays where it is", reason=HELD)
 
 
@@ -137,7 +138,7 @@ def requester_gone(approval_ref: str) -> errors.OperatorAuthorizationRequired:
 
 
 @contextlib.contextmanager
-def outcomes(bad_request: str = AGAIN) -> Iterator[None]:
+def outcomes(bad_request: str = HELD_AGAIN) -> Iterator[None]:
     """The G3 path's two endings, for what the client raises (the designer's ruling 1): HELD for no answer, a 503, a 403
     or a 400, with ``bad_request`` as a 400's way on; a refusal for the rest. A decline or an expiry already says so,
     and passes as it is."""
@@ -179,7 +180,7 @@ def consume_member(approved: dict[str, Any], record: dict[str, Any], policy: dic
     member and lost its reply, so ``held_why``, the client's way on, says a new approval may be needed."""
     standing = g3standing.standing(policy)
     if not standing.counts:
-        raise held(f"{standing.line()}. The next request takes the typed code")
+        raise held(f"{standing.line()}. The next request takes the typed code", "Nothing was raised")
     member = approved["intents"][0]
     out = g3client.consume(consent_set_ref=approved["consent_set_ref"], set_digest=W.set_digest(approved),
                            recipient_ref=approved["recipient_ref"], installation_ref=approved["installation_ref"],

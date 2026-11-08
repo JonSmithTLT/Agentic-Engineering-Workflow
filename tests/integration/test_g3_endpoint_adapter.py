@@ -35,12 +35,14 @@ class FakeG3:
         self.service = service
         self.consumed: list[dict[str, Any]] = []
         self.requests = 0
+        self.keys: list[str] = []
         self.on_decide: Any = None
         self.decision = "APPROVE"
         self.undecided = False  # the operator has not decided: the wait goes on, on the endpoint's own ``sleep``
 
     def request_approval(self, cset: dict[str, Any], sock_path: str | None = None) -> dict[str, Any]:
         self.requests += 1
+        self.keys.append(cset["client_request_key"])
         status, body = self.service.request({"wire_version": G3W.WIRE, "command_set": cset})
         if status != 201:
             raise g3client._g3_refusal(status, body)
@@ -234,6 +236,43 @@ def test_a_service_older_than_the_overlay_holds_and_names_the_reinstall(steered,
     assert steered.fake.requests == 1 and steered.fake.consumed == [] and _no_code(endpoint.lines)
 
 
+@pytest.mark.parametrize("where", ["request_approval", "await_decision", "_g3"])
+def test_doing_what_a_held_reply_says_raises_the_mode_with_a_new_set_and_key(steered, endpoint, monkeypatch, where):
+    """The way on is the operator's own: once the service answers, one more `aew lead mode raise` works, with nothing
+    left over from the held one to conflict with."""
+    real = getattr(g3client, where)
+    monkeypatch.setattr(g3client, where, _raises(errors.Unavailable("no answer", reason="g3_unreachable")))
+    with pytest.raises(errors.Unavailable) as held:
+        _raise(steered)
+    reply = held.value.message
+    assert "once that is fixed" in reply or G.EVERY_REQUEST in reply
+    with pytest.raises(errors.Unavailable):
+        _raise(steered)  # not yet fixed: the same answer, as the reply says
+    assert _mode(steered) != MODE
+
+    monkeypatch.setattr(g3client, where, real)
+    assert _raise(steered)["mode"] == MODE
+    assert len(steered.fake.consumed) == 1
+    assert len(steered.fake.keys) == len(set(steered.fake.keys)), "each request is a set of its own"
+
+
+def test_doing_what_a_refusal_says_raises_the_mode(steered, endpoint):
+    """What moved refuses with "request it again", at once: the next request binds the new values."""
+    real = steered.engine.steering_raise_preview
+    bound = real(MODE)
+
+    def moved_once(mode: str) -> dict[str, Any]:
+        steered.engine.steering_raise_preview = real
+        return {**real(mode), "generation": bound["generation"] + 1}
+
+    steered.fake.on_decide = lambda: setattr(steered.engine, "steering_raise_preview", moved_once)
+    with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
+        _raise(steered)
+    assert "request it again" in refused.value.message
+    steered.fake.on_decide = None
+    assert _raise(steered)["mode"] == MODE
+
+
 def _raises(failure: Exception) -> Any:
     def fails(*a: Any, **k: Any) -> Any:
         raise failure
@@ -284,6 +323,12 @@ def test_a_standing_that_fails_after_the_approval_holds_and_the_next_request_tak
     assert held.value.details["reason"] == G.HELD and "a weaker launch" in held.value.message
     assert "typed code" in held.value.message
     assert steered.fake.consumed == [] and _mode(steered) != MODE, "consume is not called"
+    assert "request it again" not in held.value.message, "the next request is what it names, and it takes the code"
+
+    out = operator_client.request_raise(
+        steered.root, MODE, requester="test",
+        ask=lambda prompt: re.findall(r"confirmation code ([0-9A-F]{6})", "".join(endpoint.lines))[-1])
+    assert out["mode"] == MODE and steered.fake.consumed == [], "doing what the reply says raises it by the code"
 
 
 def test_what_moved_after_the_approval_refuses_before_consume_and_does_not_spend_it(steered, endpoint):

@@ -186,3 +186,14 @@ active workspace, whatever its state):
   writer's scope.
 - **The default is unchanged:** at `mutating_concurrency: 1` the cap answers first. Other shared resources (ports,
   services, external effects) are not checked here.
+
+## Amendment 2026-11-07 — the default cap is 2 (register F10)
+
+The default `mutating_concurrency` is 2, replacing the 1 of the 2026-10-04 amendment and the "default is unchanged"
+line of the 2026-11-06 amendment (the operator's reset of 2026-11-06, slot 3; HEB-06.c). `init` writes 2 into a new
+project's `gates.yaml`, and a `gates.yaml` without the key reads the same default (`DEFAULT_GATES`, read by
+`mutating_cap`, which admission and `doctor` share). Two mutating Tickets whose scopes cannot meet work at once, each in
+its own worktree, and integrate one after the other through the integration queue and its lease (ADR-0004); a pair
+whose scopes can meet is held by the launch conflict check of the 2026-11-06 amendment. Nothing else in the state
+machine changes, and the cap still governs admission only. An existing project keeps the value its `gates.yaml` holds
+until the operator changes it; AEW never changes it unasked.

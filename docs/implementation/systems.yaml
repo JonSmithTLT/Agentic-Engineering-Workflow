@@ -3697,8 +3697,9 @@ systems:
   depends_on: []
   switch:
     key: gates.mutating_concurrency
-    default: '1'
-    default_evidence: src/aew/knowledge/manifest.py:27 (DEFAULT_GATES); fallback src/aew/engine/workspace_ops.py:235
+    default: '2'
+    default_evidence: src/aew/knowledge/manifest.py:29 (DEFAULT_GATES); fallback src/aew/engine/workspace_ops.py:254 (reads
+      DEFAULT_GATES)
     owner: operator
     turning_on_changes: Raised to N, up to N mutating Tickets hold a live worktree at once and integration stays serialized
       (doctor's line, src/aew/engine/api.py:378-380). BOARD v2 §3 recommends 2, only after E151 merges, with both defaults
@@ -3744,8 +3745,8 @@ systems:
     the operator''s to place. HOLD-09 holds this pipeline''s E59 (publish trailers), E64 (queue-wait events) and Q14 (the
     remote integration target); HOLD-06 holds F10. E137''s stranded publish is a stage defect on SYS-08''s row, not here.'
   evidence:
-  - 'src/aew/knowledge/manifest.py:27 (mutating_concurrency: 1)'
-  - 'src/aew/engine/workspace_ops.py:230-235 (mutating_cap: default 1, opt-in per project; admission and doctor read it)'
+  - 'src/aew/knowledge/manifest.py:29 (mutating_concurrency: 2, register F10)'
+  - 'src/aew/engine/workspace_ops.py:246-254 (mutating_cap: the default is DEFAULT_GATES''s; admission and doctor read it)'
   - 'src/aew/engine/workspace_ops.py:322-328 (_g_cap: the admission guard refuses past the cap)'
   - src/aew/engine/api.py:378-380 (doctor's mutating-concurrency line)
   - src/aew/engine/queue_ops.py:1-6 (the integration queue and its lease), :133 (Queue.finalize); src/aew/engine/api.py:542

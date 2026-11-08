@@ -13,7 +13,7 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
-from aewflow import create_planned_ticket, sample_project
+from aewflow import NOT_THE_DEFAULT_CAP, create_planned_ticket, sample_project
 from fake_harness import HarnessLab, contains_credential
 from invariants import assert_control_invariants, load_control
 
@@ -117,7 +117,8 @@ def intervene(monkeypatch, primitive: str, *, times: int = 1,
 
 def legality_edit(p) -> None:
     gates = p.root / ".aew/policy/gates.yaml"
-    gates.write_text(gates.read_text(encoding="utf-8") + "mutating_concurrency: 2\n", encoding="utf-8")
+    gates.write_text(gates.read_text(encoding="utf-8") + f"mutating_concurrency: {NOT_THE_DEFAULT_CAP}\n",
+                     encoding="utf-8")
 
 
 def launching(p, tmp_path, monkeypatch) -> HarnessLab:

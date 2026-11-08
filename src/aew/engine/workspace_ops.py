@@ -244,11 +244,14 @@ class Invocations:
 
 
 def mutating_cap(gates: dict[str, Any]) -> int:
-    """The policy's mutating concurrency (``gates.yaml`` ``mutating_concurrency``, default 1). Each mutating Ticket
-    works in its own worktree and integrates through the serialized, CAS-published path, so more than one may hold a
-    live workspace (M4-C, m4-ambiguity-report.md §2.5); concurrency is opt-in per project. Admission and ``doctor``
-    both read it here, so what ``doctor`` reports is what admission enforces."""
-    return max(1, int(gates.get("mutating_concurrency") or 1))
+    """The policy's mutating concurrency (``gates.yaml`` ``mutating_concurrency``; absent, the default AEW writes,
+    ``DEFAULT_GATES``). Each mutating Ticket works in its own worktree and integrates through the serialized,
+    CAS-published path, so more than one may hold a live workspace (M4-C, m4-ambiguity-report.md §2.5), and the launch
+    conflict check holds a pair whose scopes overlap (E151). Admission and ``doctor`` both read it here, so what
+    ``doctor`` reports is what admission enforces."""
+    from aew.knowledge.manifest import DEFAULT_GATES  # local, as gates.py's: manifest imports nothing from engine
+
+    return max(1, int(gates.get("mutating_concurrency") or DEFAULT_GATES["mutating_concurrency"]))
 
 
 class Assignment:

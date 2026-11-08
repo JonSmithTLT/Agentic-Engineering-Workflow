@@ -33,6 +33,7 @@ from aew.errors import (
     LeaseNotHeld,
     LeaseReconcileRequired,
     StaleCandidate,
+    StaleRevision,
     UsageError,
 )
 from aew.harness.contract import EXPECT_REV
@@ -48,6 +49,21 @@ if TYPE_CHECKING:
     from aew.engine.base import Kernel
     from aew.engine.dispatch import DispatchDecision
     from aew.engine.ports import DispatchPort, GatesPort, InvocationsPort, QueuePort, WorkUnitsPort
+
+
+# A publish's finish follows the revision across others' commits this many times (E137). A custody worker's
+# registration is one such commit, once per lease; more than this in that window is a busy project, and the refusal
+# then says what finishes the publish. As `surface.stage.STOP_ATTEMPTS` is for a stage's bookkeeping.
+FINISH_ATTEMPTS = 3
+PUBLISH_UNFINISHED = "publish_unfinished"  # the reason a refusal carries when the Ticket is left `publishing`
+
+
+def _publish_unfinished(work_id: str) -> str:
+    """What a Lead reads when a publish recorded its intent and did not finish (E137): where the Ticket stands, and the
+    one call that finishes it. Nothing else moves it, and the lease holds up other integrations meanwhile."""
+    return (f"{work_id} is `publishing`: a publish recorded its intent and did not finish. Publishing again is refused "
+            f"and nothing is decided anew: `aew integrate reconcile {work_id} {EXPECT_REV}` finishes it, by inspecting "
+            "the authoritative ref")
 
 
 # An integration record is "open" until it is published or retired; each belongs to one COMMIT_READY.
@@ -681,6 +697,9 @@ class Integration:
         def check() -> None:
             unit = self.units.unit(state, work_id)
             integ = unit.get("integration") or {}
+            if integ.get("status") == "publishing":  # E137: a publish recorded its intent and did not finish
+                raise IllegalTransition(_publish_unfinished(work_id), reason=PUBLISH_UNFINISHED,
+                                        candidate=integ.get("candidate"))
             if unit["state"] != "COMMIT_READY" or integ.get("status") not in {"prepared", "validated"}:
                 raise IllegalTransition(f"{work_id} has no validated integration candidate to publish",
                                         state=unit["state"], integration=integ.get("status"))
@@ -772,7 +791,24 @@ class Integration:
         from aew.engine.stage_intents import unarmed
 
         with unarmed():
-            return self._finish_publish(token, committed, work_id)
+            return self._finish_following(token, committed, work_id)
+
+    def _finish_following(self, token: str, rev: int, work_id: str) -> dict[str, Any]:
+        """The publish's finish, from the revision its intent commit returned and on past any commit that lands after it
+        (E137): the custody worker's registration takes no expected revision, and a refusal here stranded the Ticket in
+        `publishing`, with the ref unmoved. The Lead's revision was checked when the intent committed, and that commit
+        is its publication decision; following replays no judgment, since the finish re-verifies the authority, the
+        intent, the lease and the binding under the lock on every attempt."""
+        for attempt in range(1, FINISH_ATTEMPTS + 1):
+            try:
+                return self._finish_publish(token, rev, work_id)
+            except StaleRevision as exc:
+                if attempt == FINISH_ATTEMPTS:
+                    raise StaleRevision(f"nothing was published, but the publish did not finish. "
+                                        f"{_publish_unfinished(work_id)}", reason=PUBLISH_UNFINISHED,
+                                        **exc.details) from None
+                rev = int(exc.details["current"])
+        raise IntegrityError("engine defect: a publish's finish ended with no outcome", work_id=work_id)
 
     def _finish_publish(self, token: str, expect_rev: int, work_id: str, *,
                         reconciling: bool = False) -> dict[str, Any]:

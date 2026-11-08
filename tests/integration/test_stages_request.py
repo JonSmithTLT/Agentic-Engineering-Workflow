@@ -134,6 +134,22 @@ def test_a_request_stage_launches_one_invocation_per_required_card(lab_project, 
     assert_control_invariants(p)
 
 
+def test_ticket_request_verification_goes_on_from_review_passed_accepting_nothing(lab_project, tmp_path):
+    """E133: a review accepted in the shell, or by a stage that stopped: the verifier is what is left. The step count of
+    a per-card stage holds with its first step unplanned."""
+    p, _lab = lab_project
+    wid, _impl = implemented(p, tmp_path)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    out = call(p, "ticket_request_verification", work_id=wid)
+    assert out["ok"], out["stopped"]
+    si = intent(p, out)
+    assert [s["primitive"] for s in si["plan"]] == ["work.transition", "invoke.create.mutating", "dispatch.launch"]
+    assert "accept_review_evidence" not in si["judgment_inputs"]
+    assert si["status"] == SI.COMPLETED and unit(p, wid)["state"] == "VERIFY_PENDING"
+    assert_control_invariants(p)
+
+
 def test_ticket_request_verification_accepts_the_review_and_launches_each_verifier(lab_project, tmp_path):
     p, _lab = lab_project
     wid, _impl = implemented(p, tmp_path)

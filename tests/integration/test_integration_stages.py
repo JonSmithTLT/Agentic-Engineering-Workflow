@@ -39,7 +39,7 @@ from aewflow import (
 from conftest import Project, git, run_aew
 from invariants import assert_control_invariants, load_control
 from stage_equivalence import differences, end_state, recorded_decisions
-from test_stage_runner import CTX, call, intent, launching
+from test_stage_runner import CTX, call, intent, intervene, launching
 from test_stages_ticket import _declared, _effects, _observe, _twins
 from test_validation_checks import CONTAINED, SMOKE, policy
 
@@ -54,6 +54,8 @@ from aew.engine import validation_ops as VO
 from aew.engine.api import Engine
 from aew.errors import AEWError, IllegalTransition, PermissionDenied, StaleAuthority
 from aew.harness import containment, procs
+from aew.surface import availability as SA
+from aew.surface import projection
 from aew.surface import run as R
 from aew.surface.projection import project
 
@@ -668,6 +670,83 @@ def test_custody_worker_never_races_the_leads_publish(tmp_path, contained, custo
     assert out["state"] == "DONE"
     assert seen["between"] == (CO.WAITING, None) and not seen["committed"]
     assert e.custody_step(seen["custodian"], custody[seen["custodian"]]) == (CO.ENDED, None)
+    assert_control_invariants(p)
+
+
+# ---------------------------------------------------------------------------------------------- past the first steps
+
+
+def _to_verified(p: Project, tmp_path: Path) -> str:
+    wid, report = verifying(p, tmp_path)
+    p.lead("verify", "ingest", wid, "--evidence", report)
+    return wid
+
+
+def _offered(p: Project, wid: str) -> list[str]:
+    projection.clear_cache()
+    return [a["action"] for a in projection.project(engine(p), CTX, wid)["actions"]]
+
+
+def test_ticket_prepare_goes_on_from_verified_accepting_nothing(tmp_path, contained, custody):
+    """E133: a Ticket whose verification was accepted in the shell, or by a stage that stopped: the projection offers
+    the stage, which plans no acceptance and binds no judgment about a report."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid = _to_verified(p, tmp_path)
+    assert _offered(p, wid) == ["ticket_prepare"]
+    out = call(p, "ticket_prepare", work_id=wid)
+    assert out["ok"], out["stopped"]
+    si = intent(p, out)
+    assert [s["primitive"] for s in si["plan"]] == ["work.transition", "integrate.prepare"]
+    assert "accept_verification" not in si["judgment_inputs"] and si["binding"].get("obligations_digest") is None
+    assert si["status"] == SI.COMPLETED and control(p)["work"][wid]["integration"]["status"] == "prepared"
+    assert_control_invariants(p)
+
+
+def test_ticket_prepare_goes_on_from_commit_ready_with_no_candidate(tmp_path, contained, custody):
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid = _to_verified(p, tmp_path)
+    p.lead("work", "transition", wid, "--to", "COMMIT_READY")
+    assert _offered(p, wid) == ["ticket_prepare"]
+    out = call(p, "ticket_prepare", work_id=wid)
+    assert out["ok"], out["stopped"]
+    assert [s["primitive"] for s in intent(p, out)["plan"]] == ["integrate.prepare"]
+    assert control(p)["work"][wid]["integration"]["status"] == "prepared"
+    assert _offered(p, wid) == [], "a prepared candidate is not prepared again"
+    assert_control_invariants(p)
+
+
+def test_a_report_that_does_not_fit_is_refused_before_anything_commits(tmp_path, contained, custody):
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid, report = verifying(p, tmp_path)
+    rev = p.rev()
+    missing = call(p, "ticket_prepare", work_id=wid)
+    assert not missing["ok"] and missing["stopped"]["error"]["details"]["reason"] == SA.REPORT_NEEDED
+    assert "`verification_evidence`" in missing["stopped"]["error"]["message"] and p.rev() == rev
+    p.lead("verify", "ingest", wid, "--evidence", report)
+    rev = p.rev()
+    late = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
+    assert not late["ok"] and late["stopped"]["error"]["details"]["reason"] == SA.REPORT_ALREADY_ACCEPTED
+    assert p.rev() == rev and "stage_intents" not in {k for k, v in control(p).items() if v}
+
+
+def test_a_stage_stopped_stale_says_to_call_it_again_and_that_call_goes_on(tmp_path, contained, custody, monkeypatch):
+    """E133, with rule 5 unchanged: a judgment-bearing stage never retries a stale step. Its refusal names the call that
+    takes the Ticket on from where it stopped, and the acceptance it committed stands."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid, report = verifying(p, tmp_path)
+    intervene(monkeypatch, "work.transition")
+    stopped = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
+    assert not stopped["ok"] and control(p)["work"][wid]["state"] == "VERIFIED"
+    error = stopped["stopped"]["error"]
+    assert error["code"] == "STALE_REVISION" and error["details"]["call_again"] == "ticket_prepare"
+    assert "Call ticket_prepare again" in error["message"]
+    out = call(p, "ticket_prepare", work_id=wid)
+    assert out["ok"], out["stopped"]
+    assert control(p)["work"][wid]["integration"]["status"] == "prepared"
     assert_control_invariants(p)
 
 

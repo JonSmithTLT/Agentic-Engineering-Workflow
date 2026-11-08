@@ -235,8 +235,11 @@ def _ticket_actions(part: dict[str, Any], wid: str, rev: int) -> None:
         # A prepared candidate is validated after integration before it may be published (the engine's own guidance):
         # by an integration verifier, whose report is the decision offered here, or, in checks mode, by the engine's
         # own validation (D5), which needs no Lead decision. Publication is offered only once it is validated.
+        candidate = integration.get("candidate")
         part["decisions"].append({"decision": "ACCEPT_VERIFICATION", "role": "verifier", "kind": "verification",
-                                  "scope": "integration", "tool": None, "argument": None,
+                                  "scope": "integration", "tool": "integration_publish",
+                                  "argument": "verification_evidence",
+                                  "with": {"prepared_candidate": str(candidate)} if candidate else {},
                                   "cli": ["verify", "ingest", wid, "--evidence", "{evidence}", "--expect-rev", r]})
     elif st == "COMMIT_READY" and integration.get("status") == "validated":
         candidate = integration.get("candidate")
@@ -285,6 +288,10 @@ def _guidance(engine: Any, subject: str) -> tuple[list[str], list[dict[str, Any]
     return [a[len(prefix):] for a in lines if a.startswith(prefix)], []
 
 
+_LATER_START = frozenset(state for starts in SA.STARTS_AT.values() for state in starts)
+_HAS_CANDIDATE = frozenset({"prepared", "validated", "publishing"})  # other offers answer these (`_ticket_actions`)
+
+
 def _stage_actions(engine: Any, part: dict[str, Any], wid: str) -> tuple[list[dict[str, Any]],
                                                                             list[dict[str, Any]]]:
     """The subject's next stage (or, for a non-mutating Ticket, its next dispatch), with its availability now: a
@@ -302,6 +309,16 @@ def _stage_actions(engine: Any, part: dict[str, Any], wid: str) -> tuple[list[di
         stage, cli = "ticket_request_review", ["work", "transition", wid, "--to", "REVIEW_PENDING", "--expect-rev", r]
     elif not unit["mutating"] and st in ("READY", "BLOCKED"):
         return _nm_dispatch(engine, part, wid)
+    elif unit["mutating"] and st in _LATER_START and not (
+            st == "COMMIT_READY" and unit["integration"].get("status") in _HAS_CANDIDATE):
+        # A Ticket past a stage's first steps (E133): which stage takes it on depends on what its class requires.
+        fit = engine.stage_fit(engine.store.current(), wid)
+        to = "VERIFY_PENDING" if st == "REVIEW_PASSED" and (fit is None or fit.verification) else "COMMIT_READY"
+        stage = T.stage_for(st, to, fit) or ("ticket_prepare" if st == "COMMIT_READY" else None)
+        if stage is None:
+            return [], []
+        cli = (["integrate", "prepare", wid, "--expect-rev", r] if st == "COMMIT_READY"
+               else ["work", "transition", wid, "--to", to, "--expect-rev", r])
     else:
         return [], []
     found = SA.stage_availability(engine, stage, {"work_id": wid})
@@ -366,6 +383,7 @@ def _reports(engine: Any, subject: str, runs: list[dict[str, Any]], d: dict[str,
 # The edge each Ticket decision's stage takes, by decision and report scope.
 _DECISION_EDGE = {("ACCEPT_REVIEW_EVIDENCE", None): ("REVIEW_PENDING", "REVIEW_PASSED"),
                   ("ACCEPT_VERIFICATION", "ticket"): ("VERIFY_PENDING", "VERIFIED"),
+                  ("ACCEPT_VERIFICATION", "integration"): ("COMMIT_READY", "DONE"),
                   ("PUBLISH", None): ("COMMIT_READY", "DONE")}
 
 
@@ -405,7 +423,7 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
                                  cli_fallback=list(d["cli"]), evidence=d.get("evidence"), availability=found))
             continue
         for e in _reports(engine, subject, runs, d):  # one decision per report, bound to it
-            arguments = ({"expect_rev": part["revision"], "work_id": subject, d["argument"]: e}
+            arguments = ({"expect_rev": part["revision"], "work_id": subject, d["argument"]: e, **d.get("with", {})}
                          if d["argument"] else None)
             found = UNKNOWN
             if arguments is not None and SA.migrated(d["tool"]):  # its stage's availability with this report (E4)

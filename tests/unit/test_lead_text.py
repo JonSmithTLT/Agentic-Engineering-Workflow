@@ -217,14 +217,16 @@ def test_a_stage_planted_over_a_move_no_stage_covers_takes_it_over_with_no_other
 
 def test_a_move_a_stage_starts_at_names_it_and_one_it_passes_through_does_not():
     """A stage takes a Ticket only from its first step's state: step 1 of E130 measured the refusal from a later one
-    ("T-0001 is REVIEW_PASSED, not REVIEW_PENDING"). So the states a stage only passes through keep the command."""
+    ("T-0001 is REVIEW_PASSED, not REVIEW_PENDING"). So the states a stage only passes through keep the command, and a
+    state a stage can start from past its first steps names it (E133)."""
     text = rendered()
     named = {"READY": "ticket_start", "RUNNING": "ticket_request_review",
              "REVIEW_PENDING": "ticket_request_verification", "VERIFY_PENDING": "ticket_prepare",
+             "REVIEW_PASSED": "ticket_request_verification", "VERIFIED": "ticket_prepare",
              "COMMIT_READY": "integration_publish"}
     for state, tool in named.items():
         assert f"`{tool}`" in state_row(text, state)
-    for state in ("ASSIGNED", "REVIEW_PASSED", "REVIEW_FAILED", "VERIFIED", "VERIFICATION_INCONCLUSIVE"):
+    for state in ("ASSIGNED", "REVIEW_FAILED", "VERIFICATION_INCONCLUSIVE"):
         row = state_row(text, state)
         assert not stage_named(row) and guide.TRANSITION in row, row
 
@@ -238,7 +240,8 @@ def test_a_moves_stage_is_one_the_engine_lets_it_start_from():
             if stage is None:
                 continue
             primitive = guide._PRIMITIVE_OF.get(via, via)
-            entries = {s.primitive for s in stage.entries()}
+            entries = ({stage.steps[stage.starts[state] - 1].primitive} if state in stage.starts
+                       else {s.primitive for s in stage.entries()})
             assert primitive in entries or f"{primitive}.integration" in entries, (state, dst, stage.tool)
 
 
@@ -440,10 +443,51 @@ def test_a_refusal_names_the_stage_first_where_one_takes_the_move():
     text = T.next_steps("REVIEW_PENDING", "T-0007", FULL)
     assert text.index("`ticket_request_verification`") < text.index("`aew review ingest T-0007")
     for edge, tool in T.STAGE_AT.items():
-        assert f"`{tool}`, or `aew " in T.next_steps(edge[0], "T-0007", FULL), edge
+        if T.stage_for(*edge, FULL):
+            assert f"`{tool}`, or `aew " in T.next_steps(edge[0], "T-0007", FULL), edge
 
 
-@pytest.mark.parametrize("state", ["ASSIGNED", "REVIEW_PASSED", "REVIEW_FAILED", "VERIFIED"])
+def test_a_ticket_past_review_is_sent_to_the_stage_its_class_requires():
+    """E133: from REVIEW_PASSED, `ticket_prepare` skips the verification phase, so it is named only for a class that
+    requires none, and `ticket_request_verification` only for one that does."""
+    assert T.stage_for("REVIEW_PASSED", "VERIFY_PENDING", FULL) == "ticket_request_verification"
+    assert T.stage_for("REVIEW_PASSED", "COMMIT_READY", FULL) is None
+    none_required = FULL._replace(verification=False)
+    assert T.stage_for("REVIEW_PASSED", "VERIFY_PENDING", none_required) is None
+    assert T.stage_for("REVIEW_PASSED", "COMMIT_READY", none_required) == "ticket_prepare"
+
+
+def test_a_step_only_a_later_start_skips_is_not_optional_so_no_other_state_starts_there():
+    """E133: `ticket_prepare`'s report step is skipped from VERIFIED, and that does not make RUNNING -> COMMIT_READY
+    its move."""
+    stages = lead_text.stages()
+    assert guide._edge_stage(stages, "VERIFIED", "COMMIT_READY", "transition").tool == "ticket_prepare"
+    assert guide._edge_stage(stages, "RUNNING", "COMMIT_READY", "transition") is None
+    assert guide._edge_stage(stages, "RUNNING", "VERIFY_PENDING", "transition") is None
+
+
+def test_a_verifier_mode_decision_names_the_publish_with_its_report_and_candidate(monkeypatch):
+    """E133: after the integration verifier reports, the typed publish takes the report: the decision carries everything
+    the stage requires, and names only a command where the stage is no whole step."""
+    part: dict[str, Any] = {"state": "COMMIT_READY", "revision": 3, "decisions": [],
+                            "unit": {"integration": {"status": "prepared", "candidate": "C-1"}}}
+    surface._ticket_actions(part, "T-0007", 3)
+    monkeypatch.setattr(surface, "_reports", lambda *a: ["EV-9"])
+    monkeypatch.setattr(surface, "_items", lambda *a, **kw: [])
+    monkeypatch.setattr(surface.SA, "stage_availability", lambda *a, **kw: {"availability": "AVAILABLE"})
+    engine = SimpleNamespace(stage_fit=lambda state, wid: FULL, store=SimpleNamespace(current=dict))
+    [decision] = surface._decisions(engine, part, "T-0007", [], [])
+    assert decision["tool"] == "integration_publish" and decision["availability"] == "AVAILABLE"
+    assert decision["arguments"] == {"expect_rev": 3, "work_id": "T-0007", "verification_evidence": "EV-9",
+                                     "prepared_candidate": "C-1"}
+    required = contract.tool("integration_publish").input_schema["required"]
+    assert set(required) <= set(decision["arguments"])
+    engine.stage_fit = lambda state, wid: None
+    [command] = surface._decisions(engine, part, "T-0007", [], [])
+    assert command["tool"] is None and command["arguments"] is None and "EV-9" in command["cli_fallback"]
+
+
+@pytest.mark.parametrize("state", ["ASSIGNED", "REVIEW_FAILED"])
 def test_a_refusal_in_a_state_no_stage_starts_from_names_only_the_command(state):
     text = T.next_steps(state, "T-0007", FULL)
     assert "`aew work transition T-0007" in text and not stage_named(text)

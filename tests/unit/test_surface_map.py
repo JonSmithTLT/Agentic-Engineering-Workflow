@@ -839,9 +839,9 @@ def check_planned_by_slice(reg: dict[str, Any]) -> list[str]:
 #   (the Lead credential, the expected revisions, PRINT_ONLY).
 # What a home COVERS is read from the code when it is built and from its proposal when it is not:
 # - a built stage's `work.transition` step covers the edges into its fixed target (`availability.STAGES`) from the
-#   state its producing step leaves (`produced_by`: `availability._product` for `work.assign`, else the targets of the
-#   producer's own edges), or, when no earlier step produces the state, from the sources whose edge the step's own
-#   arguments can take (an edge requiring a reason only with a reason: the re-review's N1);
+#   states the stage can start it from: `availability.STARTS_AT`, or, when no earlier step produces the state, the
+#   sources whose edge the step's own arguments can take (an edge requiring a reason only with a reason: the re-review's
+#   N1). A state only an earlier step of the stage leaves is passed through, not covered (E133);
 # - a built stage's dispatch step covers a state-selected use only when the stage starts in that state;
 # - a proposal covers the edges its `transitions` name (`*` for any state), which a proposal running
 #   `work.transition` must declare; a built `resolve` choice running `work.transition` covers no edge until its edges
@@ -849,7 +849,7 @@ def check_planned_by_slice(reg: dict[str, Any]) -> list[str]:
 # - any other edge is covered by a home running a primitive that names the edge's command (`primitive_names`);
 # - an entrypoint, by a home running it; an option, by the plan's `options` classification.
 # What the scans cannot see: whether a home's argument implements an option's meaning (the classification is a
-# judgment; its completeness is derived); a stage running from more states than its producer leaves; a stage's earlier
+# judgment; its completeness is derived); a stage's earlier
 # steps against a state-selected use's state; a state check inside a helper a guard calls; routes of two or more
 # steps; a command's uses that are none of the four. `_COMMANDS` is one-valued: three operations have more callers in
 # the code (surface-map.md says which, and why none hides a gap today).
@@ -886,8 +886,10 @@ def command_options(name: str) -> list[str]:
 
 
 def stage_edges(name: str) -> set[tuple[str, str]]:
-    """The edges a built stage's `work.transition` steps take (above)."""
+    """The edges a built stage's `work.transition` steps take as a Ticket's move (above). An edge the stage only passes
+    through is not one: a Ticket left at that state has no stage to call (E133)."""
     t, out = contract.TOOLS[name], set()
+    starts = availability.STARTS_AT.get(name, {})
     for n, (primitive, build) in enumerate(zip(t.expands_to, availability.STAGES.get(name, ()), strict=False)):
         if primitive != "work.transition":
             continue
@@ -895,9 +897,7 @@ def stage_edges(name: str) -> set[tuple[str, str]]:
         to = args.get("to")
         producers = [m for inp, m in (t.produced_by[n] if t.produced_by else ()) if inp == contract.STATE]
         if producers:
-            p = t.expands_to[producers[0] - 1]
-            fixed = availability._product(contract.STATE, p, {})
-            sources = {fixed} if fixed else {d for (_, d), r in transitions.RULES.items() if p in (r.via, *r.also)}
+            sources = {state for state, at in starts.items() if at == n + 1}
         else:
             sources = {s for (s, d), r in transitions.RULES.items() if d == to and r.via == "transition"}
         # The A1-0 re-review's N1: an edge that requires a reason is taken only by a step that passes one.
@@ -2796,6 +2796,16 @@ def test_the_two_state_detectors_agree_on_the_engine():
     neither = _parsed(N4_FORMS["work subscript"].replace("st = unit['state']", "phase = lookup(state, w)")
                       .replace("st ", "phase "))
     assert _state_branches(neither) == [] and broad_state_guards({"neither": neither}) == set()
+
+
+def test_a_stage_covers_an_edge_only_from_a_state_it_can_start_there(monkeypatch):
+    """E133: `ticket_start` passes through ASSIGNED and `ticket_prepare` starts from VERIFIED. A Ticket left at ASSIGNED
+    has no stage to call, so that edge is uncovered until a stage can start it; planted in memory, it is credited."""
+    assert ("VERIFIED", "COMMIT_READY") in stage_edges("ticket_prepare")
+    assert ("REVIEW_PASSED", "VERIFY_PENDING") in stage_edges("ticket_request_verification")
+    assert ("ASSIGNED", "RUNNING") not in stage_edges("ticket_start")
+    monkeypatch.setitem(availability.STARTS_AT, "ticket_start", {"ASSIGNED": 3})
+    assert ("ASSIGNED", "RUNNING") in stage_edges("ticket_start")
 
 
 def test_a_home_covers_a_state_selected_use_only_if_it_starts_there(monkeypatch):

@@ -78,10 +78,10 @@ Each state and the moves out of it (the engine refuses any other):
 - **ASSIGNED** → RUNNING: transition
 - **RUNNING** → REVIEW_PENDING: `ticket_request_review`; VERIFY_PENDING, COMMIT_READY: transition
 - **REVIEW_PENDING** → REVIEW_PASSED, REVIEW_FAILED: `ticket_request_verification`; RUNNING: transition with a reason
-- **REVIEW_PASSED** → VERIFY_PENDING, COMMIT_READY: transition; RUNNING: transition with a reason
+- **REVIEW_PASSED** → VERIFY_PENDING: `ticket_request_verification`; COMMIT_READY: `ticket_prepare`; RUNNING: transition with a reason
 - **REVIEW_FAILED** → RUNNING: transition
 - **VERIFY_PENDING** → VERIFIED, VERIFICATION_FAILED, VERIFICATION_INCONCLUSIVE: `ticket_prepare`; RUNNING: transition with a reason
-- **VERIFIED** → COMMIT_READY: transition; RUNNING: transition with a reason
+- **VERIFIED** → COMMIT_READY: `ticket_prepare`; RUNNING: transition with a reason
 - **VERIFICATION_FAILED** → RUNNING, REPLAN_REQUIRED, VERIFICATION_INCONCLUSIVE: `aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>`
 - **VERIFICATION_INCONCLUSIVE** → VERIFY_PENDING, RUNNING: transition with a reason
 - **COMMIT_READY** → DONE, VERIFICATION_FAILED: `integration_publish`; RUNNING: transition with a reason

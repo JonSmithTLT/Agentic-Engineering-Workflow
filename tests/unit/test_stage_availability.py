@@ -143,7 +143,33 @@ def test_an_unmigrated_guard_makes_the_stage_unknown_never_blocked_and_never_aut
     assert out["availability"] == UNKNOWN and out["reason_codes"] == [GUARD_NOT_QUERYABLE]
     t = contract.tool("ticket_request_review")
     assert not auto_runnable(t, out["availability"], effective_class(t, {}))
-    assert SA.stage_availability(engine, "ticket_prepare", {"work_id": "T-0001"})["availability"] == UNKNOWN
+    named = {"work_id": "T-0001", "verification_evidence": "EV-0004"}
+    assert SA.stage_availability(engine, "ticket_prepare", named)["availability"] == UNKNOWN
+
+
+@pytest.mark.parametrize(("state", "named", "code"), [
+    ("VERIFY_PENDING", {}, SA.REPORT_NEEDED),
+    ("VERIFIED", {"verification_evidence": "EV-0004"}, SA.REPORT_ALREADY_ACCEPTED),
+    ("COMMIT_READY", {"verification_evidence": "EV-0004"}, SA.REPORT_ALREADY_ACCEPTED)])
+def test_a_report_that_does_not_fit_where_the_ticket_stands_blocks_the_stage_and_says_so(state, named, code):
+    """E133: a stage that accepts a report needs it named, and one started past that step records no judgment."""
+    engine = FakeEngine(_state(state))
+    out = SA.stage_availability(engine, "ticket_prepare", {"work_id": "T-0001", **named})
+    assert out["availability"] == BLOCKED and code in out["reason_codes"]
+    assert any(b["code"] == code for b in out["blockers"])
+
+
+@pytest.mark.parametrize(("stage", "state", "planned"), [
+    ("ticket_request_verification", "REVIEW_PENDING", {1: True}),
+    ("ticket_request_verification", "REVIEW_PASSED", {1: False}),
+    ("ticket_prepare", "VERIFY_PENDING", {1: True, 2: True}),
+    ("ticket_prepare", "VERIFIED", {1: False, 2: True}),
+    ("ticket_prepare", "REVIEW_PASSED", {1: False, 2: True}),
+    ("ticket_prepare", "COMMIT_READY", {1: False, 2: False})])
+def test_a_stage_plans_only_the_steps_from_where_the_ticket_stands(stage, state, planned):
+    engine = FakeEngine(_state(state))
+    shape = SA.planned_shape(engine, stage, {"work_id": "T-0001"})
+    assert {n: shape[n] for n in planned} == planned
 
 
 @pytest.mark.parametrize("stage", ["ticket_request_verification", "ticket_draft", "ticket_prepare",

@@ -49,8 +49,9 @@ class Spy:
 # `test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_budget`.
 # Decision 7's whole-surface pin: 11,694 at E6a, unchanged in A1 until the designer answers G3; 11,741 with ITEMS 55's
 # `replace_gate` choice and its `replacement` field (designer, addendum 4: measured against §2.6's stop line, +47 B);
-# 11,727 with steering PR 1's `harness_wait` description, which says it also returns when a run needs the Lead (-14 B).
-NORMAL_BYTES_PIN = 11_727
+# 11,727 with steering PR 1's `harness_wait` description, which says it also returns when a run needs the Lead (-14 B);
+# 11,685 with E133's stages that start past their report, so the report is not required (-42 B).
+NORMAL_BYTES_PIN = 11_685
 RESOLVE_BYTES_PIN = 818
 
 
@@ -124,7 +125,7 @@ def test_a_call_returns_the_stage_result_as_structured_content_with_is_error_fro
 @pytest.mark.parametrize(("profile", "params", "code"), [
     ("normal", {"name": "nope", "arguments": {}}, "UNKNOWN_TOOL"),
     # Every catalog row is built since E6a: a designed row's refusal is tested in test_surface_contract.
-    ("normal", {"name": "ticket_prepare", "arguments": {"expect_rev": 1, "work_id": "T-0001"}}, "INVALID_ARGUMENTS"),
+    ("normal", {"name": "ticket_prepare", "arguments": {"expect_rev": 1}}, "INVALID_ARGUMENTS"),
     ("normal", {"name": "cli", "arguments": {"argv": ["status"]}}, "TOOL_NOT_EXPOSED"),
     ("normal", {"name": "checkpoint", "arguments": {"expect_rev": "one"}}, "INVALID_ARGUMENTS"),
     ("recovery", {"name": "status", "arguments": "not an object"}, "INVALID_ARGUMENTS"),

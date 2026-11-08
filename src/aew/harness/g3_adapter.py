@@ -10,7 +10,7 @@ this: the operator starts it with ``aew lead mode raise``, at their terminal.
 binding or G3's standing fails. Once a challenge takes the G3 path it never moves to the code, or an outage would
 downgrade G3 to it (``G3-11``):
 
-- no answer, a 503, a 403 or a 400, at the request, the wait or the consume: HELD, nothing raised (:func:`outcomes`);
+- no answer, a 503, a 403 or a 400, at the request, the wait (:func:`outcomes`) or the consume (no result): HELD;
 - declined, expired, or any consume result but ``CONSUMED``: refused, and the reply says to request it again;
 - the standing is computed again just before consume, as an owner's rule. If it fails: HELD, consume is not called, and
   the next request takes the code, with the standing's reason.
@@ -153,25 +153,22 @@ def approve(cset: dict[str, Any],
         return g3client.approved_set(proved, record), record
 
 
-def _consume(**fields: Any) -> Any:
-    """The owner's call (``G3-08``). ``g3client.consume`` lands on main as its own pull request."""
-    return g3client.consume(**fields)  # type: ignore[attr-defined]
-
-
 def consume_member(approved: dict[str, Any], record: dict[str, Any], policy: dict[str, Any] | None) -> dict[str, Any]:
-    """Compute the standing again, then consume the set's one member. The origin for the mode's record, on ``CONSUMED``;
-    otherwise HELD or refused."""
+    """Compute the standing again, then consume the set's one member (``G3-08``). The origin for the mode's record, on
+    ``CONSUMED``; otherwise HELD or refused. Only ``CONSUMED`` admits. A service that gave no result may have used the
+    member and lost its reply, so ``held_why``, the client's way on, says a new approval may be needed."""
     standing = g3standing.standing(policy)
     if not standing.counts:
         raise held(f"{standing.line()}. The next request takes the typed code")
     member = approved["intents"][0]
-    with outcomes():
-        out = _consume(consent_set_ref=approved["consent_set_ref"], set_digest=W.set_digest(approved),
-                       recipient_ref=approved["recipient_ref"], installation_ref=approved["installation_ref"],
-                       intent_ref=member["intent_ref"], origin_proof_ref=member["origin_proof_ref"], owner=OWNER,
-                       operation_ref=operation_ref(approved["consent_set_ref"], member["intent_ref"]))
+    out = g3client.consume(consent_set_ref=approved["consent_set_ref"], set_digest=W.set_digest(approved),
+                           recipient_ref=approved["recipient_ref"], installation_ref=approved["installation_ref"],
+                           intent_ref=member["intent_ref"], origin_proof_ref=member["origin_proof_ref"], owner=OWNER,
+                           operation_ref=operation_ref(approved["consent_set_ref"], member["intent_ref"]))
     if out.result is None:
-        raise held(out.held_why)
+        raise errors.Unavailable(f"the raise is held, and the mode stays where it is: {out.held_why}", reason=HELD)
+    if out.result == "CONSENT_ALREADY_USED":
+        raise refused(f"the G3 service answered {out.result}, so the next request needs a new approval")
     if out.result != "CONSUMED":
         raise refused(f"the G3 service answered {out.result}")
     return {"kind": "g3", "consent_set_ref": record.get("consent_set_ref"), "approval_ref": record.get("approval_ref")}

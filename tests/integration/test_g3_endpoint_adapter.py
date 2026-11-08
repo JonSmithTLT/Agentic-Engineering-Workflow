@@ -51,11 +51,11 @@ class FakeG3:
         assert status == 200, out
         return out
 
-    def consume(self, **fields: Any) -> Any:
-        self.consumed.append(fields)
-        status, out = self.service.consume({"wire_version": G3W.WIRE, **fields})
-        return SimpleNamespace(result=out["result"] if status == 200 else None,
-                               held_why=f"the service answered {status}")
+    def wire(self, sock_path: str | None, method: str, path: str, body: Any = None, **_: Any) -> tuple[int, Any]:
+        """The one request left on ``g3client``'s wire, so the real ``consume`` reads the service's answer."""
+        assert (method, path) == ("POST", "/g3/v1/consume")
+        self.consumed.append(body)
+        return self.service.consume(body)
 
 
 @pytest.fixture
@@ -65,7 +65,7 @@ def steered(project, monkeypatch, tmp_path):
     fake = FakeG3(make(tmp_path / "g3").svc)
     monkeypatch.setattr(g3client, "request_approval", fake.request_approval)
     monkeypatch.setattr(g3client, "await_decision", fake.await_decision)
-    monkeypatch.setattr(G, "_consume", fake.consume)
+    monkeypatch.setattr(g3client, "_g3", fake.wire)
     monkeypatch.setattr(g3standing, "standing", lambda *a, **k: g3standing.Standing(True))
     return SimpleNamespace(project=project, fake=fake, engine=Engine.discover(project.root), root=project.root / ".aew")
 
@@ -113,16 +113,41 @@ def test_a_replayed_consent_is_refused_by_the_service(steered, endpoint, monkeyp
     """The endpoint never takes a consent from a requester, so a replay is the same consent consumed twice."""
     _raise(steered)
     replay = {**steered.fake.consumed[0], "operation_ref": "aew:steering-raise:again"}
-    status, out = steered.fake.service.consume({"wire_version": G3W.WIRE, **replay})
+    status, out = steered.fake.service.consume(replay)
     assert status == 200 and out["result"] == "CONSENT_ALREADY_USED"
 
 
-def test_a_consume_answered_with_anything_else_is_refused_and_nothing_rises(steered, endpoint, monkeypatch):
-    monkeypatch.setattr(G, "_consume", lambda **f: SimpleNamespace(result="CONSENT_SCOPE_MISMATCH", held_why=None))
-    with pytest.raises(errors.AEWError) as refused:
+@pytest.mark.parametrize("result", [r for r in g3client.CONSUME_RESULTS if r != "CONSUMED"])
+def test_a_consume_answered_with_anything_else_is_refused_and_nothing_rises(steered, endpoint, monkeypatch, result):
+    monkeypatch.setattr(g3client, "_g3", lambda *a, **k: (200, {"wire_version": G3W.WIRE, "result": result}))
+    with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
         _raise(steered)
-    assert "CONSENT_SCOPE_MISMATCH" in refused.value.message and "request it again" in refused.value.message
-    assert _mode(steered) != MODE
+    assert result in refused.value.message and "request it again" in refused.value.message
+    assert refused.value.details["reason"] == G.REFUSED
+    assert ("new approval" in refused.value.message) == (result == "CONSENT_ALREADY_USED")
+    assert _mode(steered) != MODE and endpoint.lines == []
+
+
+def test_a_reply_lost_after_the_member_was_used_is_held_and_the_next_request_takes_a_new_approval(steered, endpoint,
+                                                                                                  monkeypatch):
+    real = steered.fake.wire
+
+    def lost(*a: Any, **k: Any) -> Any:
+        real(*a, **k)
+        raise errors.Unavailable("the G3 service did not answer", reason="g3_unreachable")
+
+    monkeypatch.setattr(g3client, "_g3", lost)
+    with pytest.raises(errors.Unavailable) as held:
+        _raise(steered)
+    assert held.value.details["reason"] == G.HELD and "new approval" in held.value.message
+    assert _mode(steered) != MODE and endpoint.lines == []
+    status, out = steered.fake.service.consume(steered.fake.consumed[0])
+    assert status == 200 and out["result"] == "CONSENT_ALREADY_USED", "the lost reply's member stays used"
+
+    monkeypatch.setattr(g3client, "_g3", real)
+    assert _raise(steered)["mode"] == MODE
+    assert steered.fake.requests == 2
+    assert steered.fake.consumed[0]["consent_set_ref"] != steered.fake.consumed[1]["consent_set_ref"]
 
 
 def test_an_approval_for_other_arguments_is_refused_by_the_service(steered):
@@ -162,19 +187,42 @@ def test_where_the_standing_fails_the_typed_code_runs_with_the_reason(steered, e
                                      errors.PermissionDenied("403", reason="g3_peer_not_permitted"),
                                      errors.ValidationFailed("400", reason="g3_refused", status=400)],
                          ids=["no-answer", "503", "403", "400"])
-@pytest.mark.parametrize("where", ["request_approval", "await_decision", "consume"])
-def test_no_answer_or_a_refused_peer_or_a_bad_request_is_held_at_every_step_and_never_the_code(
+@pytest.mark.parametrize("where", ["request_approval", "await_decision"])
+def test_no_answer_or_a_refused_peer_or_a_bad_request_is_held_before_consume_and_never_the_code(
         steered, endpoint, monkeypatch, failure, where):
     def fails(*a: Any, **k: Any) -> Any:
         raise failure
 
-    if where == "consume":
-        monkeypatch.setattr(G, "_consume", fails)
-    else:
-        monkeypatch.setattr(g3client, where, fails)
+    monkeypatch.setattr(g3client, where, fails)
     with pytest.raises(errors.Unavailable) as held:
         _raise(steered)
     assert held.value.details["reason"] == G.HELD, held.value.details
+    assert _mode(steered) != MODE and endpoint.lines == [], "nothing raised, and no code shown"
+
+
+def _raises(failure: Exception) -> Any:
+    def fails(*a: Any, **k: Any) -> Any:
+        raise failure
+
+    return fails
+
+
+@pytest.mark.parametrize("wire", [
+    _raises(errors.Unavailable("no answer", reason="g3_unreachable")),
+    _raises(errors.Unavailable("an unreadable answer", reason="g3_not_g3")),
+    _raises(errors.PermissionDenied("not this account's", reason="g3_peer_not_permitted")),
+    lambda *a, **k: (503, {"code": "G3_UNAVAILABLE"}),
+    lambda *a, **k: (403, {"code": "PEER_NOT_PERMITTED"}),
+    lambda *a, **k: (400, {"code": "BAD_REQUEST"}),
+    lambda *a, **k: (200, ["not", "an", "answer"]),
+    lambda *a, **k: (200, {"wire_version": G3W.WIRE, "result": "CONSUMED"}),
+], ids=["no-answer", "not-g3", "peer", "503", "403", "400", "not-a-result", "consumed-without-its-time"])
+def test_a_consume_that_gets_no_result_is_held_and_never_the_code(steered, endpoint, monkeypatch, wire):
+    monkeypatch.setattr(g3client, "_g3", wire)
+    with pytest.raises(errors.Unavailable) as held:
+        _raise(steered)
+    assert held.value.details["reason"] == G.HELD, held.value.details
+    assert "new approval" in held.value.message, "the client's way on reaches the operator"
     assert _mode(steered) != MODE and endpoint.lines == [], "nothing raised, and no code shown"
 
 

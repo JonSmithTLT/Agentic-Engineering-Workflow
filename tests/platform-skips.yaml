@@ -932,6 +932,10 @@ skipped:
       the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
       (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
       submission run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_the_probe_reaches_the_real_services_guarded_read_answering_when_it_runs_and_naming_it_when_it_holds: >-
+      the G3 client's probe reaches the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; the probe's reading of an answer runs on both platforms in
+      tests/unit/test_g3client.py.
     tests/unit/test_containment_netns.py::test_a_workers_network_remembers_its_provider_and_whether_its_key_was_relayed: >-
       a worker's relays listen on socket files (AF_UNIX), and its network is Linux's (proxy_only); Windows has no
       network containment. Covered on Linux; the note those values feed is judged on every platform in

@@ -2,8 +2,9 @@
 
 AEW starts the Lead's server with the environment it gives the TUI, and a session's shell gets the server's, so that is
 exactly what the Lead's model and its shell commands can see (ADR-0009, amendment 2026-11-08). A fake TUI (the fake
-agent behind an `opencode` launcher) records it and acts as the Lead's model would: through `aew`, reaching the Lead broker. The session's own path here is the one where the Lead runs not
-contained (Windows); on Linux it runs contained (tests/integration/test_lead_contained_session.py, STG-05 CS-4).
+agent behind an `opencode` launcher) records it and acts as the Lead's model would: through `aew`, reaching the Lead
+broker. The session's own path here is the one where the Lead runs not contained (Windows); on Linux it runs contained
+(tests/integration/test_lead_contained_session.py, STG-05 CS-4).
 """
 
 from __future__ import annotations

@@ -2665,7 +2665,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E212
 
-**Work:** Find out when the Lead's TUI runs on a model other than the one configured or chosen. OpenCode 2.2.6's `fallbackModel` (`packages/tui/src/context/local.tsx`) takes `--model`, the config's model, the recents, then the catalogue's first, each only if the server's current list has it. A `--prompt` submitted at start can go on a model chosen before that list and the config have loaded. Read in the source, not reproduced. Measure it, including a person typing at once and `aew opencode -- --model X`, and decide whether AEW should name the Lead's model or refuse a start it can't honour
+**Work:** Find out when the Lead's TUI runs on a model other than the one configured or chosen. OpenCode 2.2.6's `fallbackModel` (`packages/tui/src/context/local.tsx`) takes `--model`, the config's model, the recents, then the catalogue's first, each only if the server's current list has it. A `--prompt` submitted at start can go on a model chosen before that list and the config have loaded. Read in the source, not reproduced. Measure it, including a person typing at once, `aew opencode -- --model X`, and which model a wake runs on after a `/model` selection no prompt has committed yet. Then AEW names the Lead's model: the project's pinned model when there is one, otherwise the operator's recents, and the start says which model it's using (the operator's decision of 2026-11-08; serves HSD-02)
 
 **Source:** Steering PR 2's measurements (2026-11-08): a scripted start sometimes ran on a model other than its configured default, under `--standalone` and `--server` alike
 

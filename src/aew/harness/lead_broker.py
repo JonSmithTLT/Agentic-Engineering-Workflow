@@ -264,6 +264,7 @@ class LeadBroker:
         self.server = bridge.BridgeServer(self.handle, OPERATIONS, COOPERATIVE)
         self.superseded: str | None = None
         self._stop = idle()
+        self._wakes: threading.Thread | None = None  # the wake queue's thread (:meth:`start_wakes`)
         self._reads: set[subprocess.Popen[str]] = set()  # the relayed reads in flight (RELAYED_READS)
         self._reads_lock = threading.Lock()
         self._watch = threading.Thread(target=self._watchdog, name="aew-lead-broker-watch", daemon=True)
@@ -291,10 +292,43 @@ class LeadBroker:
         if self.loop is not None:
             self.loop.start()
 
+    def start_wakes(self, poster: Any) -> None:
+        """Post the Lead's wakes through ``poster`` (steering design r4 §1), on a thread of its own and its own engine:
+        a tick reads the control state and files, and takes no credential. A failed tick is the next tick's: a wake is
+        held, never lost, and the Lead's fallback is `harness_wait`."""
+        from aew.harness.wake_queue import WakeQueue, mark_serving
+        from aew.policy.execution import quiet_wake_s
+
+        own = _own_engine(self.engine)
+
+        def quiet() -> int:
+            policy, _ = own.execution_policy()
+            return quiet_wake_s(policy)
+
+        queue = WakeQueue(own.aew_root, poster=poster, state=own.store.current, quiet_s=quiet, clock=time.time,
+                          new_id=poster.new_id)
+
+        def run() -> None:
+            while not self._stop.wait(POLL_S):
+                try:
+                    queue.tick()
+                except Exception as exc:  # noqa: BLE001 - a wake must never take the session down
+                    queue.failed(f"{type(exc).__name__}: {str(exc)[:200]}")  # the status line, not the TUI's terminal
+
+        mark_serving(own.aew_root, self.generation)
+        self._wakes_root = own.aew_root
+        self._wakes = threading.Thread(target=run, name="aew-lead-broker-wakes", daemon=True)
+        self._wakes.start()
+
     def close(self) -> None:
         if self.loop is not None:  # no new auto-run action once the session starts closing (review of PR #199, F4)
             self.loop.request_stop()
         self._stop.set()
+        if self._wakes is not None:
+            from aew.harness.wake_queue import clear_serving
+
+            self._wakes.join(10)
+            clear_serving(self._wakes_root)
         self.server.close()
         self._end_reads()  # a relayed read in flight (a long `harness wait`) ends with the session, never holds it
         self.server.drain(60)
@@ -714,6 +748,7 @@ class Harness:
     label: dict[str, Any]
     close: Callable[[], None]
     entry: Any = None  # its entry in the register of weaker contexts, when its label is weaker (G3 addendum 7)
+    poster: Any = None  # the way into its session for a push wake (``wake_queue.Poster``), where it has one
 
 
 # `aew lead session` under `required` (G3 addendum 7, ruling 1): what it closes, and the ways on.
@@ -848,6 +883,8 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
             raise
         survivors: list[tuple[int, str | None]] = []
         ownership = None
+        if harness.poster is not None:
+            broker.start_wakes(harness.poster)
         try:
             if harness.entry is not None:
                 harness.entry.started()

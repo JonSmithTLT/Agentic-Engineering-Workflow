@@ -2639,6 +2639,54 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E209/`, oldest first (`python tools/register.py show E209`).*
 
+### E210
+
+**Work:** Reach the Lead's OpenCode session from the Lead broker, so a push wake can be posted (`attach_to_operator_session`). The `--standalone` TUI starts its own private server, whose address and password AEW never learns, and on Linux that server is inside the Lead's sandbox. Steering PR 2 is built behind a poster interface until this lands
+
+**Source:** Found while building steering PR 2 (2026-11-08); the steering design r4 §5 and §7 assumed the broker serves the Lead's server, and `adapter.py` declared so
+
+**When:** **Unscheduled**, built with steering PR 2 (the designer's ruling of 2026-11-08: AEW starts the Lead's server)
+
+**Notes:** Filed by the push wake's builder. It corrects a false capability declaration
+
+*Later notes: `notes.d/E210/`, oldest first (`python tools/register.py show E210`).*
+
+### E211
+
+**Work:** Get a pasted attachment's local path back for the Lead. Under `--server`, OpenCode 2.2.6 sends a pasted image or other binary attachment with its bytes but without its path (`promptFilesForServer`), so the Lead's model can't name it, read it again or hand it to a worker. The ways: an upstream report, or a patch in AEW's own OpenCode build. Also measure whether Codex's `--remote` has the same loss: unmeasured
+
+**Source:** Steering PR 2's measurement (ADR-0009's amendment of 2026-11-08); the designer's check of 2026-11-08, ruling 11. The operator accepted the cost for PR 2 on 2026-11-08
+
+**When:** **Unscheduled**
+
+**Notes:** Filed by the push wake's builder. Until then, an `@` mention or a typed path keeps the path, as the OpenCode guide says
+
+*Later notes: `notes.d/E211/`, oldest first (`python tools/register.py show E211`).*
+
+### E212
+
+**Work:** Find out when the Lead's TUI runs on a model other than the one configured or chosen. OpenCode 2.2.6's `fallbackModel` (`packages/tui/src/context/local.tsx`) takes `--model`, the config's model, the recents, then the catalogue's first, each only if the server's current list has it. A `--prompt` submitted at start can go on a model chosen before that list and the config have loaded. Read in the source, not reproduced. Measure it, including a person typing at once and `aew opencode -- --model X`, and decide whether AEW should name the Lead's model or refuse a start it can't honour
+
+**Source:** Steering PR 2's measurements (2026-11-08): a scripted start sometimes ran on a model other than its configured default, under `--standalone` and `--server` alike
+
+**When:** **Unscheduled**
+
+**Notes:** Filed by the push wake's builder. `lead_config` sets no `model`, so a real Lead's is its recents or the catalogue's first
+
+*Later notes: `notes.d/E212/`, oldest first (`python tools/register.py show E212`).*
+
+### E213
+
+**Work:** A probe helper for measurements with a real harness binary, which guarantees that no request can reach a provider. On Linux it runs the whole tree (TUI, relay, fake model) in a network namespace with loopback only (`unshare -rn`), and first proves that a real provider's address fails, relay or not. It always denies OpenCode's `opencode` provider, whose models carry their own address, so a `baseURL` can't redirect them, and every other keyless provider. On Windows, which has no such namespace, a run that sends a prompt needs its own approval. A pointed `baseURL` and a default model are settings, not a block, so the guarantee rests on neither. In scope: `tools/harness_qualify`'s `server_config`, which denies no keyless provider and leaves the network open
+
+**Source:** Steering PR 2's measurements (2026-11-08)
+
+**When:** **Unscheduled**, before the next measurement with a real binary and a provider route
+
+**Notes:** Filed by the push wake's builder
+
+*Later notes: `notes.d/E213/`, oldest first (`python tools/register.py show E213`).*
+
 ### E47
 
 **Work:** Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do), a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the classifier with a test pinning the case; repeated wall-clock violations on `main` open or update a CI-health issue

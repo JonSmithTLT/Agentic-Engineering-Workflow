@@ -1202,6 +1202,7 @@ def _weaker_lead(tmp_path: Path, monkeypatch, layout: Any, label: dict[str, Any]
     from aew.harness import containment
 
     monkeypatch.setattr(containment, "establish", lambda **kw: (layout, dict(label)))
+    monkeypatch.setattr(lead, "binary_command", lambda: ["opencode"])
     engine = SimpleNamespace(execution_policy=lambda: ({"containment": {"mode": "allow_weaker"}}, None),
                              repo_root=tmp_path / "repo", aew_root=tmp_path / "repo" / ".aew")
     (tmp_path / "repo").mkdir()

@@ -371,14 +371,14 @@ class LanePlugin:
 
 @pytest.fixture(autouse=True)
 def process_isolation():
-    """Every test leaves its process as it found it: no leaked AEW_* variable, no changed working directory.
+    """Every test leaves its process as it found it: no leaked AEW_* or GIT_* variable, no changed working directory.
 
     Part of the evidence that lets non-serial tests share an xdist worker process.
     """
-    env = {k: v for k, v in os.environ.items() if k.startswith("AEW_")}
+    env = {k: v for k, v in os.environ.items() if k.startswith(("AEW_", "GIT_"))}
     cwd = os.getcwd()
     yield
-    after = {k: v for k, v in os.environ.items() if k.startswith("AEW_")}
+    after = {k: v for k, v in os.environ.items() if k.startswith(("AEW_", "GIT_"))}
     moved = os.getcwd()
     if after != env or moved != cwd:
         for k in set(after) - set(env):

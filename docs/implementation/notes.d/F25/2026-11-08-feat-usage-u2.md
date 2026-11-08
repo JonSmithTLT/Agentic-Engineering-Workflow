@@ -10,6 +10,15 @@ tiered rows in the table.
 **Follow-on: existing projects.** They get the table through an offer with one confirmation, the shared switch offer, so what is built is on by default for them too. It waits for concurrency PR B, which builds that offer. Until then the report's "none" line names no next step, and the
 only route is copying the bundled file by hand; the offer fixes that too.
 
+**The table and the legality digest.** A price table holding only operational values leaves no entry in `legality_digest`
+(`aew.policy.classes`, A3 §2.1), so a new project with the table keeps the digest it had without one, and adding, removing
+or refreshing a table moves only `operational_digest`. So the shared switch offer stales no open dispatch decision or
+stage. The pin is separate: each of those still needs the operator's adoption. **One upgrade effect:** a project that
+adopted a table by hand before this moves its legality digest once at upgrade, so its open stages stop as `STALE_POLICY`
+and are resolved as for any legality change, which is stale on the safe side. The repository holds no such project: no
+template or tracked project names a table, and the tests that adopt one each build their own project under the running
+code. Projects outside the repository weren't surveyed.
+
 **A limit of the bundled table.** A base-tier mark is only as good as the catalog. `opencode/gpt-5.4-pro` and
 `opencode/gpt-5.5-pro` carry no tier there while their `openai/` rows do, so those two read as exact, and if Zen does charge
 more above a context size, they are floors the report doesn't call floors.

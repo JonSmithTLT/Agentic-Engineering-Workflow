@@ -170,7 +170,7 @@ def test_a_wait_through_mcp_never_queues_the_next_call_on_the_same_connection(tm
 
     p = lead_project(tmp_path)
     engine = Engine.discover(p.root)
-    monkeypatch.setattr(engine, "harness_wait", lambda runs, *, timeout=600.0, any_=False: {
+    monkeypatch.setattr(engine, "harness_wait", lambda runs, *, timeout=600.0, any_=False, triggers=False: {
         "run": runs if isinstance(runs, str) else runs[0], "status": "running", "timed_out": True})
     broker = lead_broker.LeadBroker(engine, p.token)
     broker.start()

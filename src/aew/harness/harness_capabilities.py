@@ -91,6 +91,13 @@ def declarations() -> dict[str, Mapping[str, Support]]:
     return {OPENCODE: OpenCodeAdapter.harness_capabilities, CODEX_NAME: CODEX}
 
 
+def verdict(column: Mapping[str, Support], feature: str) -> str:
+    """A feature on one harness: ``gap`` when any capability it needs is a gap (or undeclared), else ``partial`` when
+    any is partial, else ``yes``. The weakest of its needs, so a reader sees at once what a harness lacks."""
+    statuses = {column[cap].status if cap in column else GAP for cap in FEATURES[feature][0]}
+    return GAP if GAP in statuses else PARTIAL if PARTIAL in statuses else YES
+
+
 def problems(columns: Mapping[str, Mapping[str, Support]] | None = None) -> list[str]:
     """Each (harness, feature, capability) a feature needs that the harness neither provides nor marks as a gap with a
     register row; and each declared name that is not a capability."""

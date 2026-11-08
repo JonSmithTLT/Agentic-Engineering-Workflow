@@ -133,10 +133,12 @@ def _outcome(result: dict[str, Any]) -> str:
     if payload.get("headline"):  # the engine's own first line for a run that ended without its output (register U8)
         return _one_line(f"{tool}: {payload['headline']}")
     if payload.get("timed_out"):
-        runs = payload.get("runs") or {payload.get("run"): payload.get("status")}
+        runs = payload.get("statuses") or {payload.get("run"): payload.get("status")}
         return _one_line(f"{tool}: timed out: " + ", ".join(f"{run} still {status}" for run, status in runs.items()))
+    if payload.get("triggers"):  # a run that still works and needs the Lead (steering PR 1)
+        return _one_line(f"{tool}: {payload.get('run')} needs you: " + ", ".join(payload.get("why") or []))
     if payload.get("run") and payload.get("status"):  # how the run ended, which `done` would misstate
-        why = (payload.get("ended_by") or {}).get("why")  # the run's own record may still show it running
+        why = (payload.get("ended_by") or {}).get("reason")  # the run's own record may still show it running
         return _one_line(f"{tool}: {payload['run']}: {why}" if why else f"{tool}: {payload['run']} {payload['status']}")
     projection = _projection(result)
     where = ": ".join(str(v) for v in (projection.get("subject"), projection.get("state")) if v)

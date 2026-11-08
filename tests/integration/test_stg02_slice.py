@@ -411,6 +411,36 @@ def test_n21_work_heb_does_not_hold_eligible_is_an_allocated_owner_refusal(live:
     assert x["operation_ref"] and live.owner_get("HEB", x["operation_ref"])[0] == 200
 
 
+@pytest.mark.parametrize("first,outcomes", [
+    # admitted, then HEB's refusal of work it does not hold eligible: the first effect does not carry the second
+    ("continue", [("ADMITTED", "EFFECT_CONFIRMED", None), ("REJECTED", "FAILED_CONFIRMED_NO_EFFECT",
+                                                           "PRECONDITION_STALE")]),
+    # refused at its origin (nothing allocated, no owner state read), and the second still reaches HEB
+    ("continue-expired", [("REJECTED", "NOT_OBSERVED", "CURRENTNESS_EXPIRED"),
+                          ("REJECTED", "FAILED_CONFIRMED_NO_EFFECT", "PRECONDITION_STALE")]),
+])
+def test_a_set_of_two_continuations_is_admitted_member_by_member_in_request_order(live: Live, cfg: dict[str, Any],
+                                                                                   first: str, outcomes: list[Any]):
+    """E82, CS-05: each member goes through the one admission path in canonical order, its outcome its own
+    (`COMPLETE_WITH_PER_INTENT_RESULTS` is not batch success); the receipt has one result per member, in request order,
+    and each allocated member has its own owner operation, which reads back from HEB. The fixture HEB records an
+    admitted continuation without changing the work it holds, so the state the first member leaves is the state the
+    second is judged against unchanged: the order and the independence are what this set can show."""
+    req = fresh(cfg["command"]["continue_eligible_work"], "cs05-" + first)
+    req["intents"] = [live.s.fx.intents[first], live.s.fx.intents["held"]]
+    assert [i["intent_ref"] for i in req["intents"]] == sorted(i["intent_ref"] for i in req["intents"])  # CS-01
+    st, h, r = live.post(req)
+    receipt_ok(req, st, h, r, T0)
+    assert r["carrier_state"] == "COMPLETE_WITH_PER_INTENT_RESULTS"
+    assert [(x["admission_state"], x["effect_state"], x["reason_code"]) for x in r["results"]] == outcomes
+    ops = [x["operation_ref"] for x in r["results"] if x["operation_ref"]]
+    assert len(ops) == len(set(ops)) == (2 if first == "continue" else 1)
+    for x in r["results"]:
+        if x["operation_ref"]:
+            st, _, g = live.owner_get("HEB", x["operation_ref"])
+            assert st == 200 and g["result"] == x and g["intent_ref"] == x["intent_ref"]
+
+
 @pytest.mark.parametrize("name,mutate,reason", [
     ("n22-revision-changed", lambda i: i["target"].update(work_revision="fixture:revision-2"),
      "DELEGATED_GRANT_UNVERIFIED"),

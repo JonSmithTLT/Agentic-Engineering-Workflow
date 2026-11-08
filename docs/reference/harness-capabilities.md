@@ -18,10 +18,12 @@ What each harness provides to AEW's steering features, and what each feature nee
 
 ## Features
 
-| Feature | Needs | Built by |
-|---|---|---|
-| `doctor_model_list` | `read_model_list` | aew doctor |
-| `interrupt_worker` | `interrupt_turn` | steering design §3 |
-| `progress_digest` | `read_progress`, `read_usage` | steering PR 1 |
-| `push_wake` | `wake_idle_session`, `queue_until_turn_end`, `attach_to_operator_session`, `mark_non_operator_input` | steering PR 2 |
-| `steer_worker` | `steer_running_turn` | messaging MS5 |
+A feature's verdict on a harness is the weakest of its needs there: **gap** when any is a gap, **partial** when any is partial, else **yes**.
+
+| Feature | Needs | Built by | codex | opencode |
+|---|---|---|---|---|
+| `doctor_model_list` | `read_model_list` | aew doctor | **gap** | **yes** |
+| `interrupt_worker` | `interrupt_turn` | steering design §3 | **yes** | **yes** |
+| `progress_digest` | `read_progress`, `read_usage` | steering PR 1 | **yes** | **yes** |
+| `push_wake` | `wake_idle_session`, `queue_until_turn_end`, `attach_to_operator_session`, `mark_non_operator_input` | steering PR 2 | **gap** | **partial** |
+| `steer_worker` | `steer_running_turn` | messaging MS5 | **yes** | **yes** |

@@ -44,6 +44,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +140,22 @@ def redact_key_shaped(text: str) -> str:
         return "<redacted>" if _LONG_TOKEN_APPLIES(m.group(0)) else m.group(0)
 
     return STRICT_SHAPED.sub("<redacted>", LONG_TOKEN.sub(mixed, KEY_SHAPED.sub("<redacted>", text)))
+
+
+def _changed_now(contract: LaunchContract) -> Callable[[], list[str] | None] | None:
+    """What the run's progress digest reads as changed now: the workspace's paths that differ from the commit it was
+    made from, hashed without storing an object (no side effect on the worker's repository). None without a base."""
+    base = contract.extra.get(progress.WORKSPACE_BASE)
+    if not base or not contract.workspace:
+        return None
+    workspace = Path(contract.workspace)
+
+    def read() -> list[str] | None:
+        from aew.snapshot.fingerprint import changed_paths  # only a run with a base reads its workspace
+
+        return changed_paths(workspace, str(base), stores=False)
+
+    return read
 
 
 def default_binary() -> Path | None:
@@ -478,7 +495,7 @@ class OpenCodeAdapter(HarnessAdapter):
                            pinned_model=projection.model_ref(contract.execution_profile),
                            progress=progress.Tracker(run=self.run_dir.name, workspace=contract.workspace,
                                                      scope_paths=contract.extra.get(progress.SCOPE_PATHS),
-                                                     clock=time.time),
+                                                     clock=time.time, changed=_changed_now(contract)),
                            progress_path=self.run_dir / runlog.PROGRESS_FILE)
         try:
             self.meter.set_prompt_state("unsent")

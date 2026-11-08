@@ -45,7 +45,7 @@ flowchart LR
     proc_aew -->|"3 functions"| path_evidence
     proc_aew -->|"1 function"| path_history
     proc_aew -->|"2 functions"| path_knowledge
-    proc_aew -->|"33 functions"| path_local
+    proc_aew -->|"34 functions"| path_local
     proc_aew -->|"2 functions"| path_policy
     proc_aew -->|"2 functions"| path_project_yaml
     proc_aew -->|"1 function"| path_records
@@ -106,7 +106,7 @@ flowchart LR
 | `evidence` | other entries of .aew | `aew` (3) | `aew` (2) | 0 | 9 |
 | `history` | other entries of .aew | `aew` (1) | - | 2 | 3 |
 | `knowledge` | other entries of .aew | `aew` (2) | `aew` (1) | 0 | 0 |
-| `local` | masked from a contained run | `aew` (33), `aew dashboard serve` (2), `aew.harness.supervisor` (21) | `aew` (9), `aew dashboard serve` (1), `aew.harness.supervisor` (9) | 17 | 44 |
+| `local` | masked from a contained run | `aew` (34), `aew dashboard serve` (2), `aew.harness.supervisor` (21) | `aew` (9), `aew dashboard serve` (1), `aew.harness.supervisor` (9) | 17 | 44 |
 | `policy` | other entries of .aew | `aew` (2) | `aew` (1) | 0 | 4 |
 | `pricing` | other entries of .aew | - | - | 1 | 3 |
 | `project.yaml` | other entries of .aew | `aew` (2) | - | 0 | 10 |
@@ -117,14 +117,14 @@ flowchart LR
 
 ## Not drawn
 
-**Every edge is a lower bound.** The edges are drawn from 397 records (coverage: 397 lower-bound). The lists they give (the writers of an entry, its readers, the entry points that reach a function) are what the reading found, and each record says what it could not resolve. Those items follow, as the records give them, with the number of records that carry each; any of them may be an edge the map does not draw.
+**Every edge is a lower bound.** The edges are drawn from 398 records (coverage: 398 lower-bound). The lists they give (the writers of an entry, its readers, the entry points that reach a function) are what the reading found, and each record says what it could not resolve. Those items follow, as the records give them, with the number of records that carry each; any of them may be an edge the map does not draw.
 
 ### Writes
 
 The `writers` fact of the `writers` records.
 
-- `aew`: write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path (276 records)
-- `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here (219 records)
+- `aew`: write sites whose destination this reading could not place under `.aew` are records of the writers family keyed `writers:unresolved:<module>:<symbol>:<primitive>`; any of them may write this path (277 records)
+- `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here (220 records)
 - `aew.history.store:prewrite`: no static call chain from any entry point's declaring function reaches this writer (6 records)
 - `aew.engine.store:ControlStore._commit_unprofiled`: no static call chain from any entry point's declaring function reaches this writer (4 records)
 - `aew.harness.notify:DeliveryLog.record`: no static call chain from any entry point's declaring function reaches this writer (3 records)

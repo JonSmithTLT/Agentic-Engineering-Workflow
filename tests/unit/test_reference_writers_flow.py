@@ -907,7 +907,9 @@ def loop_over_param(sites: int) -> str:
             "    (aew_root / 'local' / pick).write_text('x')\n\n" + calls)
 
 
-def test_a_loop_over_a_list_parameter_with_more_call_sites_than_the_cap_is_marked_and_names_the_cap():
+def test_a_loop_over_a_list_parameter_with_more_call_sites_than_the_cap_is_marked_and_names_the_cap(monkeypatch):
+    # each call site adds a value of `pick`, so the values cap is lifted clear of it: the call-site cap is the one met
+    monkeypatch.setattr(F, "VALUES", 4 * F.CALLERS)
     at = analysed(loop_over_param(F.CALLERS))
     assert "local/fixed" in at.writers and "local/a0" in at.writers and not reasons(at)
     over = analysed(loop_over_param(F.CALLERS + 1))

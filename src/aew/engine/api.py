@@ -610,6 +610,9 @@ class Engine:
     def authoritative_commit(self) -> str | None:
         return self._k.authoritative_commit()
 
+    def workspaces_root(self) -> Path:
+        return self._k.workspaces_root()
+
     def authority_accept(self, *, token: str, expect_rev: int, candidate_id: str, klass: str, decided_by: str = "lead",
                          reason: str | None = None, authorization: dict[str, str] | None = None) -> dict[str, Any]:
         return self._project.authority_accept(token=token, expect_rev=expect_rev, candidate_id=candidate_id,

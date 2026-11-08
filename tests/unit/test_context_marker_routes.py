@@ -43,7 +43,11 @@ ROUTES = {
         "test_under_allow_weaker_the_general_command_runs_labelled_with_its_label_and_a_live_entry",
     "src/aew/harness/opencode/lead.py::ContainedLead.__call__":
         "tests/unit/test_lead_contained.py::test_a_contained_lead_on_the_hosts_network_is_live_in_the_register_while_it_runs",
-    "src/aew/harness/supervisor.py::Supervisor._contain":
+    "src/aew/harness/check_changes.py::run_once":
+        "tests/unit/test_doctor_check_register.py::"
+        "test_a_weaker_doctor_check_is_live_in_the_register_while_it_runs_and_carries_the_marker",
+    # A run's supervisor and doctor's read of the model list share it (register E153); the run's route is the test's
+    "src/aew/harness/supervisor.py::contain_launch":
         "tests/integration/test_harness_runs.py::"
         "test_a_weaker_run_is_live_in_the_register_while_its_harness_runs_and_its_agent_carries_the_marker",
 }

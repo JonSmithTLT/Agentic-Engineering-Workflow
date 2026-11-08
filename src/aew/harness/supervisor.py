@@ -78,6 +78,56 @@ def starting_limit_s(harness: str | None) -> float:
     return 2 * store.RECORD_WAIT_S + probe.BOUND_S + bound + STARTING_MARGIN_S
 
 
+def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapter], *, provider: str | None,
+                   provider_env: list[str], role: str, scope: str, workspace: str, run_dir: Path, scratch: str,
+                   bridge_dir: str | None, bridge: str | None, project: Path, aew_root: Path, kind: str,
+                   marker: Path | None = None, skills_dir: str | None = None) -> tuple[Any, dict[str, Any], Any, Any]:
+    """A harness launch's containment: the provider key's check, the sandbox, self-tested, its label, the entry in the
+    register of weaker contexts when the label is weaker, and the network of its own (the provider relay when the
+    harness calls a provider, and the egress proxy when its allowlist names something). Returns ``(layout, label,
+    network, weaker entry)``; ``marker`` is the file the register entry names (default: the run's record). The caller
+    owns the network (closed with its process tree) and the entry. One owner for a run's supervisor and ``aew
+    doctor``'s read of the harness's model list (register E153), so that read meets exactly what a launch meets.
+    Raises ``ContainmentUnavailable`` (after removing what it made) where the policy refuses a launch, and
+    ``HarnessIncompatible`` for a provider key a launch would not get."""
+    from aew.harness.containment import netns
+
+    # The engine refused this before anything was committed (``require_launchable``); checked again here, on the names
+    # this launch carries, before any sandbox or network exists (the operator's decision of 2026-11-06: AEW does not
+    # rely on OpenCode's free models).
+    missing = netns.provider_key_missing(provider, provider_env, os.environ,
+                                         on_relay_route=netns.relay_route(policy, adapter_cls.PROVIDER_RELAY))
+    if missing is not None:
+        raise errors.HarnessIncompatible(netns.provider_key_message(str(provider), missing),
+                                         reason=netns.PROVIDER_KEY_MISSING, variable=missing)
+    layout = None
+    try:
+        try:  # built once: the self-test checks the same allowlist the run's egress proxy gets (register E143)
+            allow = netns.egress_policy(policy, adapter_cls.EGRESS)
+        except errors.AEWError as exc:
+            raise errors.ContainmentUnavailable(f"containment.network.egress_allow: {exc.message}",
+                                                reason="bad_egress_allow") from None
+        layout, label = containment.establish(
+            role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch, bridge_dir=bridge_dir,
+            policy=policy, project=str(project), bridge=bridge, egress_policy=allow, skills_dir=skills_dir)
+        # A weaker launch (allowed by the policy, or a sandbox on the host's network) enters the register of weaker
+        # contexts before its harness starts; on Linux one that cannot be entered is refused (G3 addendum 7).
+        weaker = weaker_register.enter_if_weaker(label, kind=kind, ownership=weaker_register.ownership_of(label),
+                                                 project=project, aew_root=aew_root, directory=run_dir,
+                                                 marker=marker if marker is not None else run_dir / runlog.RECORD)
+        network = None
+        if layout is not None and layout.private_network:
+            network = netns.RunNetwork.start(layout, provider=provider, provider_env=provider_env, policy=policy,
+                                             env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, allow=allow)
+            label["network"].update(network.describe())
+    except errors.ContainmentUnavailable:
+        if layout is not None and layout.net_dir:
+            shutil.rmtree(layout.net_dir, ignore_errors=True)
+            containment.retire_private_git(run_dir)
+        raise
+    return layout, label, network, weaker
+
+
 def record_refused(record: dict[str, Any], network: Any) -> None:
     """The run's refused egress targets (``netns.RunNetwork.refused``), when there are any, as ``egress_refused``:
     beside the run's ``containment`` label and never in it, since `harness status` and `harness wait` give the Lead
@@ -360,56 +410,26 @@ class Supervisor:
 
     def _contain(self, contract: K.LaunchContract, adapter_cls: type[HarnessAdapter]) -> None:
         """Build and self-test this run's sandbox before any harness process exists (F2, M4-B), and start its network
-        outside it (F28, STG-05 CS-3b): the provider relay when the harness calls a provider, and the egress proxy
-        when its allowlist names something. Under the default policy a sandbox or a network that cannot be established
-        refuses the launch; the label records what the run has."""
-        from aew.harness.containment import netns
-
+        outside it (F28, STG-05 CS-3b): :func:`contain_launch`, which ``aew doctor``'s read of the harness's model list
+        shares. Under the default policy a sandbox or a network that cannot be established refuses the launch; the
+        label records what the run has."""
         policy, _ = self.engine.execution_policy()
         assert self.bridge is not None
-        # The engine refused this before anything was committed (``require_launchable``); checked again here, on the
-        # names this run's contract carries, before any sandbox or network exists (the operator's decision of
-        # 2026-11-06: AEW does not rely on OpenCode's free models).
-        provider = (self.record.get("execution_profile") or {}).get("provider")
-        missing = netns.provider_key_missing(provider, [str(n) for n in contract.extra.get("provider_env") or []],
-                                             os.environ, on_relay_route=netns.relay_route(policy,
-                                                                                          adapter_cls.PROVIDER_RELAY))
-        if missing is not None:
-            raise errors.HarnessIncompatible(netns.provider_key_message(str(provider), missing),
-                                             reason=netns.PROVIDER_KEY_MISSING, variable=missing)
-        network: netns.RunNetwork | None = None
         try:
-            try:  # built once: the self-test checks the same allowlist the run's egress proxy gets (register E143)
-                allow = netns.egress_policy(policy, adapter_cls.EGRESS)
-            except errors.AEWError as exc:
-                raise errors.ContainmentUnavailable(f"containment.network.egress_allow: {exc.message}",
-                                                    reason="bad_egress_allow") from None
-            self.layout, self.record["containment"] = containment.establish(
-                role=contract.role, scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir,
-                scratch=contract.scratch, bridge_dir=self.bridge.private_dir, policy=policy,
-                project=str(self.engine.repo_root), bridge=self.bridge.address, egress_policy=allow,
+            contained = contain_launch(
+                policy, adapter_cls, provider=(self.record.get("execution_profile") or {}).get("provider"),
+                provider_env=[str(n) for n in contract.extra.get("provider_env") or []], role=contract.role,
+                scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir, scratch=contract.scratch,
+                bridge_dir=self.bridge.private_dir, bridge=self.bridge.address, project=self.engine.repo_root,
+                aew_root=self.engine.aew_root, kind="worker_run",
                 skills_dir=str(self._skills_dir()) if (contract.extra.get("skills") or {}).get("exposed") else None)
-            # A weaker run (allowed by the policy, or a sandbox on the host's network) enters the register of weaker
-            # contexts before its harness starts; on Linux one that cannot be entered is refused (G3 addendum 7).
-            self.weaker = weaker_register.enter_if_weaker(
-                self.record["containment"], kind="worker_run",
-                ownership=weaker_register.ownership_of(self.record["containment"]), project=self.engine.repo_root,
-                aew_root=self.engine.aew_root, directory=self.run_dir, marker=self.run_dir / runlog.RECORD)
-            if self.layout is not None and self.layout.private_network:
-                network = netns.RunNetwork.start(
-                    self.layout, provider=(self.record.get("execution_profile") or {}).get("provider"),
-                    provider_env=[str(n) for n in contract.extra.get("provider_env") or []], policy=policy,
-                    env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, allow=allow)
-                self.record["containment"]["network"].update(network.describe())
         except errors.ContainmentUnavailable as exc:  # the self-test's rows, when it ran, stay on the refusal's label
-            if self.layout is not None and self.layout.net_dir:
-                shutil.rmtree(self.layout.net_dir, ignore_errors=True)
-                containment.retire_private_git(self.run_dir)
             self.layout = None
             self.record["containment"] = containment.label(contained=False, reason=exc.message,
                                                            self_test=exc.details.get("self_test"))
             self._event("containment_refused", reason=exc.message)
             raise
+        self.layout, self.record["containment"], network, self.weaker = contained
         line = containment.tree_masks_line(self.layout) if self.layout is not None else None
         self._event("containment", filesystem=self.record["containment"]["filesystem"],
                     process_ownership=self.record["containment"]["process_ownership"],

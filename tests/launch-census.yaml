@@ -46,8 +46,8 @@ starts:
   call: run
   classes: [contained]
   reason: a run's check, in the layout its supervisor passes (label given; the direct route is the row above)
-  contained_by: [src/aew/harness/supervisor.py::Supervisor._contain]
-  weaker_registered_by: [src/aew/harness/supervisor.py::Supervisor._contain]
+  contained_by: [src/aew/harness/supervisor.py::contain_launch]
+  weaker_registered_by: [src/aew/harness/supervisor.py::contain_launch]
 - site: src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct
   call: establish
   classes: [contained]
@@ -179,14 +179,34 @@ starts:
   call: ProcessTree
   classes: [contained]
   reason: a worker run's tree, in its self-tested layout
-  contained_by: [src/aew/harness/supervisor.py::Supervisor._contain]
-  weaker_registered_by: [src/aew/harness/supervisor.py::Supervisor._contain]
-- site: src/aew/harness/supervisor.py::Supervisor._contain
+  contained_by: [src/aew/harness/supervisor.py::contain_launch]
+  weaker_registered_by: [src/aew/harness/supervisor.py::contain_launch]
+- site: src/aew/harness/supervisor.py::contain_launch
   call: establish
   classes: [contained]
-  reason: a worker run's sandbox
-  contained_by: [src/aew/harness/supervisor.py::Supervisor._contain]
-  weaker_registered_by: [src/aew/harness/supervisor.py::Supervisor._contain]
+  reason: a harness launch's sandbox, for a worker run's supervisor and for `aew doctor`'s read of the harness's model
+    list (register E153), which share it
+  contained_by: [src/aew/harness/supervisor.py::contain_launch]
+  weaker_registered_by: [src/aew/harness/supervisor.py::contain_launch]
+- site: src/aew/harness/check_changes.py::run_once
+  call: establish
+  classes: [contained]
+  reason: a check for `aew doctor --run-checks`, run once on a disposable copy, in a worker's sandbox (register E153)
+  contained_by: [src/aew/harness/check_changes.py::run_once]
+  weaker_registered_by: [src/aew/harness/check_changes.py::run_once]
+- site: src/aew/harness/check_changes.py::run_once
+  call: run
+  classes: [contained]
+  reason: that check, in the sandbox run_once establishes; nothing starts when it is not established
+  contained_by: [src/aew/harness/check_changes.py::run_once]
+  weaker_registered_by: [src/aew/harness/check_changes.py::run_once]
+- site: src/aew/harness/model_list.py::read
+  call: ProcessTree
+  classes: [contained]
+  reason: for the read of the harness's model list, the harness server, started as a launch starts it, in the
+    launch's own sandbox and network (register E153)
+  contained_by: [src/aew/harness/supervisor.py::contain_launch]
+  weaker_registered_by: [src/aew/harness/supervisor.py::contain_launch]
 - site: src/aew/policy/checks.py::run
   call: ProcessTree
   classes: [contained]
@@ -194,10 +214,12 @@ starts:
     the tree requires one (DV-4's backstop)
   contained_by: [src/aew/engine/validation_ops.py::Validation.establish,
                  src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct,
-                 src/aew/harness/supervisor.py::Supervisor._contain]
+                 src/aew/harness/check_changes.py::run_once,
+                 src/aew/harness/supervisor.py::contain_launch]
   weaker_registered_by: [src/aew/engine/validation_ops.py::Validation._execute,
                          src/aew/engine/evidence_ops.py::EvidenceCommands._check_run_direct,
-                         src/aew/harness/supervisor.py::Supervisor._contain]
+                         src/aew/harness/check_changes.py::run_once,
+                         src/aew/harness/supervisor.py::contain_launch]
 - site: src/aew/workspace/git.py::CatFileBatch.__enter__
   call: Popen
   classes: [not_agent_context]
@@ -367,6 +389,10 @@ ast_only:
   call: run
   count: 1
   reason: '`C.run(`, as above'
+- site: src/aew/harness/check_changes.py::run_once
+  call: run
+  count: 1
+  reason: '`C.run(`, as above'
 token_only:
 - site: src/aew/engine/validation_ops.py::Validation._execute
   call: establish
@@ -392,6 +418,21 @@ handlers:
 - site: src/aew/engine/validation_ops.py::Validation._one_check
   catches: [ContainmentUnavailable]
   does: returns
+- site: src/aew/harness/check_changes.py::run_once
+  catches: [ContainmentUnavailable]
+  does: returns
+  reason: doctor's row says the check was not run, and nothing started (no sandbox, no register entry, or refused at the
+    spawn), and nothing runs after
+- site: src/aew/harness/check_changes.py::run_once
+  catches: [ContainmentUnavailable]
+  does: returns
+  reason: doctor's row says the check was not run, and nothing started (no sandbox, no register entry, or refused at the
+    spawn), and nothing runs after
+- site: src/aew/harness/check_changes.py::run_once
+  catches: [ContainmentUnavailable]
+  does: returns
+  reason: doctor's row says the check was not run, and nothing started (no sandbox, no register entry, or refused at the
+    spawn), and nothing runs after
 - site: src/aew/harness/containment/__init__.py::establish
   catches: [ContainmentUnavailable]
   does: returns
@@ -400,9 +441,15 @@ handlers:
 - site: src/aew/harness/opencode/lead.py::ContainedLead.__call__
   catches: [BaseException]
   does: raises
+- site: src/aew/harness/model_list.py::read
+  catches: [ContainmentUnavailable]
+  does: raises
 - site: src/aew/harness/procs.py::run_session_tree
   catches: [BaseException]
   does: raises
 - site: src/aew/harness/supervisor.py::Supervisor._contain
+  catches: [ContainmentUnavailable]
+  does: raises
+- site: src/aew/harness/supervisor.py::contain_launch
   catches: [ContainmentUnavailable]
   does: raises

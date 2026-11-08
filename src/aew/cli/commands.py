@@ -70,6 +70,11 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
              coordination_reads: bool = False) -> None:
     p = sub.add_parser("doctor", help="validate the environment and project state")
     _add_json(p)
+    p.add_argument("--refresh", action="store_true",
+                   help="read the harness's model list again instead of the cached one")
+    p.add_argument("--run-checks", action="store_true",
+                   help="run the project's checks once on a disposable copy of the project, contained as a worker's "
+                        "check, and name each path they change")
     p.set_defaults(handler=_doctor)
 
     p = sub.add_parser("init", help="initialize AEW in the current git repository")
@@ -323,7 +328,7 @@ def _register_authority(sub: argparse._SubParsersAction) -> None:
 def _doctor(args: argparse.Namespace) -> Any:
     from aew import doctor
 
-    report = doctor.run(cwd=args.cwd)
+    report = doctor.run(cwd=args.cwd, refresh=args.refresh, run_checks=args.run_checks)
     # Both output modes exit 1 when any line is FAIL (WARN and UNAVAILABLE stay 0): the JSON report carries
     # `ok: false`, which main turns into 1, and the rendered text says the same through the command's exit status
     # (review of PR #214, F1: a FAIL the exit status reported as success depended on the output format).

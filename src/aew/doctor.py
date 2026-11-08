@@ -142,7 +142,10 @@ def g3_check(engine: Any = None, *, platform: str | None = None) -> dict[str, st
     return _check("g3", "PASS", f"{found.line()}; the G3 service answers")
 
 
-def run(cwd: str | None = None) -> dict[str, Any]:
+def run(cwd: str | None = None, *, refresh: bool = False, run_checks: bool = False) -> dict[str, Any]:
+    """Every check. Beyond the structural ones, two that run something (register E153; the designer's ruling): the
+    harness's model list, read by default as a launch reads it and cached (``refresh`` reads it again); and the
+    project's checks, run once on a disposable copy only with ``run_checks``, else a WARN that they were not."""
     project_checks: list[dict[str, str]] = []
     engine = None
     try:
@@ -150,6 +153,8 @@ def run(cwd: str | None = None) -> dict[str, Any]:
 
         engine = Engine.discover(Path(cwd) if cwd else Path.cwd())
         project_checks = engine.doctor_checks()
+        project_checks += _guarded("model-list", lambda: _model_list(engine, refresh))
+        project_checks += _guarded("check-changes", lambda: _check_changes(engine, run_checks))
     except ImportError:
         project_checks = []
     except Exception as exc:  # doctor must report, never crash
@@ -172,6 +177,28 @@ def run(cwd: str | None = None) -> dict[str, Any]:
         "checks": all_checks,
         "failures": failed,
     }
+
+
+def _guarded(name: str, check: Any) -> list[dict[str, str]]:
+    """A check that runs something, guarded as :func:`environment_checks` guards each: one that raises is a FAIL
+    naming what it raised, and the others still run."""
+    try:
+        return list(check())
+    except Exception as exc:  # doctor reports, never crashes
+        return [_check(name, "FAIL", f"the check itself failed ({type(exc).__name__}: {exc}); the other checks "
+                       "still ran")]
+
+
+def _model_list(engine: Any, refresh: bool) -> list[dict[str, str]]:
+    from aew.harness import model_list
+
+    return model_list.doctor_rows(engine, refresh=refresh)
+
+
+def _check_changes(engine: Any, run_checks: bool) -> list[dict[str, str]]:
+    from aew.harness import check_changes
+
+    return check_changes.doctor_rows(engine, run=run_checks)
 
 
 def readiness_findings(engine: Any) -> list[str]:

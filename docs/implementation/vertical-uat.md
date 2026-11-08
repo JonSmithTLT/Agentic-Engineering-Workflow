@@ -130,9 +130,16 @@ installed tool: its variables are not the operator's.
   otherwise readiness must name the doubled reference and suggest the listed id. The names used are synthetic. AEW
   accepts it as typed: under its own provider, the provider's prefix is removed (`aew/harness/models.py`), so the
   driver checks that doctor's `model-refs` line gives the harness the listed id and that nothing names a doubled one.
-- **The cases readiness can't name yet** stay red, and the driver names what holds each: `model-not-listed` and
-  `check-changes-snapshot` need detectors that run something (the check, or the harness for its listing), register
-  E153, which waits on a ruling on what may run at readiness; the stale seat is G3-C's.
+- **The two cases that need something run** (register E153, the designer's ruling as relayed on 2026-11-07).
+  `model-not-listed`: `aew doctor` reads the harness's model list by default, as a launch reads it (its binary,
+  projected configuration, containment and network, and catalog fetch; no session, no model call), bounded by the
+  launch's own start deadline and cached by the binary's sha256 and the projected configuration's hash
+  (`--refresh` reads it again); its `model-list` row names the unlisted model and the ones its provider lists.
+  `check-changes-snapshot`: only `aew doctor --run-checks` runs the project's checks, once each, on a disposable copy
+  of the authoritative snapshot, contained as a worker's check, and its `check-changes` row names each path a check
+  changes, with `.gitignore` or `.git/info/exclude` as the fix; never evidence. Without the flag the row is a WARN
+  that gives the command, so the driver types `aew doctor --run-checks` for this case. Neither refuses anything.
+- **The case readiness can't name yet** stays red, and the driver names what holds it: the stale seat is G3-C's.
 - **What counts as naming a cause (V3).** Only a FAIL or WARN entry of the readiness report (the line whose status is
   FAIL or WARN, with its continuation lines) that names the specific cause, or its fix. A PASS or INFO line that echoes
   the configured value is not a diagnosis (`failing_entries`, `diagnoses`), for readiness (`aew doctor`) and for the

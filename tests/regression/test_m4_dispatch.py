@@ -217,8 +217,10 @@ def test_a_new_implementer_rechecks_class0_eligibility(tmp_path):
 
 
 def test_the_mutating_cap_is_the_policys(tmp_path):
-    """M4-A clamped the cap to 1; since M4-C it is `mutating_concurrency` itself (the default stays 1)."""
+    """M4-A clamped the cap to 1; since M4-C it is `mutating_concurrency` itself, whatever value the policy holds (the
+    default is 2 since register F10, so 1 is set here by name)."""
     p = sample_project(tmp_path, gates=None)
+    set_policy(p, "gates", lambda g: g.update(mutating_concurrency=1))
     # disjoint scopes: at cap 2 the second must not meet the launch conflict check (register E151)
     t1 = ticket(p, tmp_path, scope=("calc/**",))
     t2 = ticket(p, tmp_path, scope=("tests/**",), affected=("tests/test_subtract.py",))

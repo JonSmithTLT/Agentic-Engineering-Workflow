@@ -787,6 +787,7 @@ None.
 ### `aew.engine.guide`
 
 - `aew.engine.transitions`
+- `aew.engine.workspace_ops`
 - `aew.harness.contract`
 - `aew.roles`
 - `aew.skills`
@@ -1175,6 +1176,7 @@ None.
 - `aew.harness.containment.netns`
 - `aew.harness.contract`
 - `aew.harness.registry`
+- `aew.knowledge.manifest`
 - `aew.knowledge.records`
 - `aew.policy.execution`
 - `aew.roles`

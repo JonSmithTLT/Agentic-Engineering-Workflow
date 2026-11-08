@@ -244,11 +244,14 @@ class Invocations:
 
 
 def mutating_cap(gates: dict[str, Any]) -> int:
-    """The policy's mutating concurrency (``gates.yaml`` ``mutating_concurrency``, default 1). Each mutating Ticket
-    works in its own worktree and integrates through the serialized, CAS-published path, so more than one may hold a
-    live workspace (M4-C, m4-ambiguity-report.md §2.5); concurrency is opt-in per project. Admission and ``doctor``
-    both read it here, so what ``doctor`` reports is what admission enforces."""
-    return max(1, int(gates.get("mutating_concurrency") or 1))
+    """The policy's mutating concurrency (``gates.yaml`` ``mutating_concurrency``; absent, the default AEW writes,
+    ``DEFAULT_GATES``). Each mutating Ticket works in its own worktree and integrates through the serialized,
+    CAS-published path, so more than one may hold a live workspace (M4-C, m4-ambiguity-report.md §2.5), and the launch
+    conflict check holds a pair whose scopes overlap (E151). Admission and ``doctor`` both read it here, so what
+    ``doctor`` reports is what admission enforces."""
+    from aew.knowledge.manifest import DEFAULT_GATES  # local, as gates.py's: manifest imports nothing from engine
+
+    return max(1, int(gates.get("mutating_concurrency") or DEFAULT_GATES["mutating_concurrency"]))
 
 
 class Assignment:
@@ -292,7 +295,7 @@ class Assignment:
             return blocker_from(IllegalTransition("only Tickets are assigned"))
         if not unit["mutating"]:
             # Assignment allocates a mutation workspace and an implementer; an evidence-only Ticket must
-            # never receive either (it would bypass the serial mutation cap). It is dispatched instead:
+            # never receive either (it would bypass the mutating cap). It is dispatched instead:
             # investigator/researcher/planner card, read-only observation, no workspace (ADR-0008).
             return blocker_from(IllegalTransition(
                 f"{work_id} is a non-mutating (evidence-only) Ticket; it never receives a mutation workspace or an "
@@ -338,7 +341,7 @@ class Assignment:
         if len(busy) >= cap:
             return blocker_from(ConcurrencyLimit(
                 f"mutating concurrency is {cap} (gates policy `mutating_concurrency`); {busy} still hold "
-                "unintegrated workspaces", holding=busy, cap=cap))
+                "unintegrated workspaces; integrate or cancel one of them to free a place", holding=busy, cap=cap))
         return None
 
     def _g_card(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:

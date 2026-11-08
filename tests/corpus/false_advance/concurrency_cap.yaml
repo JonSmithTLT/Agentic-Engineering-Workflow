@@ -6,6 +6,7 @@ stage: ticket_start
 arguments: {work_id: $work_id}
 expect:
   availability: BLOCKED
+  reason_codes: [CONCURRENCY_LIMIT]
   boundary: refused
   steps: []
   unit_state: READY

@@ -3697,12 +3697,13 @@ systems:
   depends_on: []
   switch:
     key: gates.mutating_concurrency
-    default: '1'
-    default_evidence: src/aew/knowledge/manifest.py:27 (DEFAULT_GATES); fallback src/aew/engine/workspace_ops.py:235
+    default: '2'
+    default_evidence: src/aew/knowledge/manifest.py:29 (DEFAULT_GATES); fallback src/aew/engine/workspace_ops.py:254 (reads
+      DEFAULT_GATES)
     owner: operator
     turning_on_changes: Raised to N, up to N mutating Tickets hold a live worktree at once and integration stays serialized
-      (doctor's line, src/aew/engine/api.py:378-380). BOARD v2 §3 recommends 2, only after E151 merges, with both defaults
-      raised and a migration for existing projects' gates.yaml.
+      (doctor's line, src/aew/engine/api.py:373-376). A new project gets 2 (ADR-0003's amendment of 2026-11-07); an existing
+      project keeps the value its gates.yaml holds until the operator takes the offer to switch it.
   state:
     board_state: on_and_used
     built: 'yes'
@@ -3721,33 +3722,28 @@ systems:
     - tool:ticket_prepare
     on_by_default: true
     used_in_default_flow: 'yes'
-  finish_line: 'Done at concurrency 1: built, on, and used every time a Ticket integrates. For more than one concurrent
-    worker: E151''s launch conflict check merged, then mutating_concurrency raised in both defaults with a gates.yaml migration,
-    and a real run with two mutating workers integrating one after the other.'
+  finish_line: 'Built, on, and used every time a Ticket integrates, and E151''s launch conflict check merged. mutating_concurrency
+    is 2 for a new project, proven by two scripted workers integrating one after the other (tests/regression/test_concurrency_two.py).
+    Still owed: the offer that switches an existing project at the operator''s terminal, which replaces the gates.yaml migration,
+    and a real run with two mutating workers.'
   remaining:
-  - slice: 'E151: the launch conflict check for concurrent workers'' files (CNI-03.a, .g), re-checked at effect; placed
-      after the Lead change (SYS-42), the designer''s recommendation in BOARD v2 §3, pending the operator'
-    row: E151
-    estimate: 1-2 PRs (estimate, BOARD v2 §3)
-  - slice: Raise mutating_concurrency to 2 at both defaults (manifest.py:27, workspace_ops.py:235), with a migration for
-      existing projects' gates.yaml
-    row: row owed
+  - slice: The offer that switches an existing project's gates.yaml to the default, at the operator's terminal, which replaces
+      the migration
+    row: F10
     estimate: 1 PR (estimate)
-  - slice: 'Stale text: implementation-status.md:337-339 says the queue is M4-D and arrives later (BOARD v2 §6''s docs PR)'
-    row: row owed
-    estimate: part of 1 docs PR (estimate, BOARD v2 §6)
   decision: 'decided: finished and switched on in slot 3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: switch_on
-  who: operator (places E151), then Lead
-  reason: 'The pipeline is on and used at concurrency 1 (BOARD v2 §5). BOARD v2 §3''s recommendation (the designer''s):
-    place E151 after the Lead change (SYS-42), and raise the default to 2 once it merges. E151''s row is unscheduled and
-    the operator''s to place. HOLD-09 holds this pipeline''s E59 (publish trailers), E64 (queue-wait events) and Q14 (the
-    remote integration target); HOLD-06 holds F10. E137''s stranded publish is a stage defect on SYS-08''s row, not here.'
+  who: Lead
+  reason: 'The pipeline is on and used (BOARD v2 §5). E151 merged and the default is 2 for a new project. The reset of 2026-11-06
+    reversed F10''s "after first use", and the operator confirmed that on 2026-11-07 (F10''s note of that day). HOLD-09 holds this pipeline''s E59
+    (publish trailers), E64 (queue-wait events) and Q14 (the remote integration target). E137''s stranded publish is a stage
+    defect on SYS-08''s row, not here.'
   evidence:
-  - 'src/aew/knowledge/manifest.py:27 (mutating_concurrency: 1)'
-  - 'src/aew/engine/workspace_ops.py:230-235 (mutating_cap: default 1, opt-in per project; admission and doctor read it)'
-  - 'src/aew/engine/workspace_ops.py:322-328 (_g_cap: the admission guard refuses past the cap)'
-  - src/aew/engine/api.py:378-380 (doctor's mutating-concurrency line)
+  - 'src/aew/knowledge/manifest.py:29 (mutating_concurrency: 2, register F10)'
+  - 'src/aew/engine/workspace_ops.py:246-254 (mutating_cap: the default is DEFAULT_GATES''s; admission and doctor read it)'
+  - 'src/aew/engine/workspace_ops.py:338-345 (_g_cap: the admission guard refuses past the cap)'
+  - src/aew/engine/conflicts.py (E151's launch conflict check)
+  - src/aew/engine/api.py:373-376 (doctor's mutating-concurrency line)
   - src/aew/engine/queue_ops.py:1-6 (the integration queue and its lease), :133 (Queue.finalize); src/aew/engine/api.py:542
     (queue.finalize registered)
   - src/aew/engine/custody_ops.py:105 (spawn_worker); src/aew/engine/api.py:486 (spawned)
@@ -3755,11 +3751,8 @@ systems:
   - src/aew/surface/contract.py:303 (ticket_prepare expands to integrate.prepare), :314-320 (integration_publish expands
     to integrate.publish)
   - src/aew/engine/outbox.py:61-62 (queue.entry and queue.lease events)
-  - 'grep: no launch conflict check under src/aew'
   - docs/implementation/future-work.yaml (row HOLD-06, at c11a61ea) (HOLD-06 members include F10, mutating concurrency above
     1), :458 (HOLD-09 members include E59, E64, Q14)
-  - 'docs/implementation/future-work.yaml (row E151, at c11a61ea) (E151: unscheduled, the operator''s to place)'
-  - 'docs/implementation/implementation-status.md:337-339 (stale: ''the queue is M4-D'', ''arrive in M4-D'')'
 - id: SYS-40
   name: Lead reports (report_write)
   purpose: Let the Lead write an explanation, plan or answer for the operator as its own record kind, through a typed tool,

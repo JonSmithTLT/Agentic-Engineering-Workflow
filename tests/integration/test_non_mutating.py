@@ -69,7 +69,7 @@ def test_changing_the_executor_between_attempts_pins_a_new_contract(tmp_path):
 
 
 def test_read_only_observation_runs_beside_mutating_work(tmp_path):
-    """WC §8.1: read-only work may run while the serial mutation slot is busy, and it observes the
+    """WC §8.1: read-only work may run beside a live mutating Ticket, and it observes the
     authoritative source, never another Ticket's unintegrated workspace."""
     p = sample_project(tmp_path)
     mutating = create_planned_ticket(p, tmp_path)

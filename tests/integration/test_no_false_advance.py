@@ -32,6 +32,7 @@ from aewflow import (
     implement,
     review,
     sample_project,
+    set_mutating_concurrency,
 )
 from conftest import Project
 from invariants import assert_control_invariants, load_control
@@ -66,9 +67,10 @@ def _proposed_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Pro
 
 def _cap_held(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Project, str | None, list[Any]]:
     p = sample_project(tmp_path)
+    set_mutating_concurrency(p, 1)  # the case is the cap's; at the default of 2 the launch conflict check answers
     first = create_planned_ticket(p, tmp_path, title="Hold the workspace")
     second = create_planned_ticket(p, tmp_path, title="Add subtract()")
-    p.lead("work", "assign", first)  # holds the one mutating workspace (default `mutating_concurrency: 1`)
+    p.lead("work", "assign", first)  # holds the one mutating workspace
     return p, second, []
 
 

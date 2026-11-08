@@ -10,7 +10,7 @@ import hashlib
 
 import pytest
 import yaml
-from aewflow import create_planned_ticket, sample_project
+from aewflow import NOT_THE_DEFAULT_CAP, create_planned_ticket, sample_project
 from invariants import assert_control_invariants, load_control
 
 from aew.engine import primitives as P
@@ -129,7 +129,8 @@ def test_a_legality_policy_change_between_steps_is_stale_policy(project):
     si = open_stage(p)
     run_step(p, si, 1)
     gates = p.root / ".aew/policy/gates.yaml"
-    gates.write_text(gates.read_text(encoding="utf-8") + "mutating_concurrency: 2\n", encoding="utf-8")
+    gates.write_text(gates.read_text(encoding="utf-8") + f"mutating_concurrency: {NOT_THE_DEFAULT_CAP}\n",
+                     encoding="utf-8")
     p.adopt_policy()
     rev = p.rev()
     with pytest.raises(StalePolicy) as exc:
@@ -145,7 +146,8 @@ def test_a_pending_policy_edit_refuses_every_step_until_it_is_adopted(project):
     p = project
     si = open_stage(p)
     gates = p.root / ".aew/policy/gates.yaml"
-    gates.write_text(gates.read_text(encoding="utf-8") + "mutating_concurrency: 2\n", encoding="utf-8")
+    gates.write_text(gates.read_text(encoding="utf-8") + f"mutating_concurrency: {NOT_THE_DEFAULT_CAP}\n",
+                     encoding="utf-8")
     with pytest.raises(IntegrityError):
         run_step(p, si, 1)
     assert hot(p)[si]["steps"] == []

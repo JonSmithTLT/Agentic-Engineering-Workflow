@@ -121,6 +121,8 @@ A driver declares `capabilities`. A scenario needing one it lacks (for example `
 4. Write a `Driver` that makes the harness perform the scenario actions deterministically, without depending on a model. For OpenCode: the session's shell endpoint runs each action as a command in the real session environment.
 5. Run `run_scenario` for every scenario in the harness's lane, and for AT-14..AT-17 (`harness_acceptance.ACCEPTANCE`) with the driver's `start_lead`, `delivered_prompt`, `projection` and `revive`. Add harness-specific tests for what the neutral scenarios cannot reach (section 5).
 
+6. **Feature verdicts.** Each version a harness is pinned to records its new features' verdicts (adopt, consume, deny, hold, hold -> consume, ignore), each with its reason and the register row that carries it, in [`tools/harness_qualify/verdicts/<harness>.yaml`](../../tools/harness_qualify/verdicts/opencode.yaml). That file is the record a bump writes and the next bump builds on; `tools/harness_qualify`'s report names the verdicts recorded for the version it measured, or that none are yet. OpenCode 2.2.6's are the first.
+
 ## 5. Watch list for the OpenCode adapter (designer, 2026-09-27)
 
 Where each concern is verified. "Fake V2" means `tests/integration/test_opencode_adapter.py` (CI); "live" means `tests/live/test_opencode_live.py` on OpenCode 2.0.18.

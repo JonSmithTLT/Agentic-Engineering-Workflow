@@ -505,3 +505,35 @@ def test_the_feed_as_it_is_served_gives_absolute_download_urls():
             "    sha512: c2hhNTEy\n    size: 267155312\nreleaseDate: 2026-11-06T23:28:16.000Z\nversion: 9.8.7\n")
     assert OC.parse_feed(text) == [core.Release("9.8.7", "https://example.invalid/files/bin/9.8.7/"
                                                 "opencode-desktop-win-x64.exe", "c2hhNTEy", "sha512", 267155312)]
+
+
+# ------------------------------------------------------------------------------------------------- feature verdicts
+
+
+def test_the_feature_verdicts_record_is_readable_and_each_row_it_names_is_in_the_register():
+    """The verdicts a bump gives (the operator, 2026-11-07: committed, one owner) are read by the tool, each from the
+    closed set, and every register row a verdict names exists."""
+    import re
+
+    from harness_qualify import verdicts
+
+    recorded = verdicts.load("opencode")
+    assert "2.2.6" in recorded and len(recorded["2.2.6"]) >= 20
+    register = (ROOT / "docs" / "implementation" / "future-work.yaml").read_text(encoding="utf-8")
+    ids = set(re.findall(r"^  - '#': ([A-Z][A-Z0-9.-]*)$", register, flags=re.M))
+    named = {v["row"] for v in recorded["2.2.6"] if v.get("row")}
+    assert named and named <= ids, sorted(named - ids)
+    assert verdicts.lines("opencode", "2.2.6")[0].startswith(f"  {len(recorded['2.2.6'])} recorded for 2.2.6 (")
+    assert "none recorded for 9.9.9" in verdicts.lines("opencode", "9.9.9")[0]
+    assert verdicts.load("stubharness") == {}
+
+
+def test_a_verdict_outside_the_closed_set_is_refused(tmp_path, monkeypatch):
+    from harness_qualify import verdicts
+
+    (tmp_path / "opencode.yaml").write_text(
+        "schema: aew/harness-verdicts/v1\nharness: opencode\nversions:\n  '1.0.0':\n    verdicts:\n"
+        "      - {feature: x, verdict: maybe, reason: y, row: null}\n", encoding="utf-8")
+    monkeypatch.setattr(verdicts, "HERE", tmp_path)
+    with pytest.raises(ValueError, match="one of"):
+        verdicts.load("opencode")

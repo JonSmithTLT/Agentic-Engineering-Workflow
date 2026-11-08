@@ -1,0 +1,123 @@
+# OpenCode feature verdicts, by the version that introduced the feature (the owner of this record; register E199
+# keeps the deny verdicts' work). Each: the feature, the verdict (adopt, consume, deny, hold, hold -> consume,
+# ignore), its reason, and the register row that carries it, or none. Read by tools/harness_qualify, whose report
+# names the verdicts recorded for the version it measured; the next bump adds a version beside this one.
+schema: aew/harness-verdicts/v1
+harness: opencode
+versions:
+  '2.2.6':
+    rules: Never hand authority, containment, credentials or evidence to the harness; adopting needs both harnesses
+      to declare the capability; no AEW code is deleted in a bump; adopt and deny verdicts become register rows.
+    verdicts:
+      - feature: 'Session `warming`'
+        verdict: 'deny'
+        reason: 'Transient model requests count against a provider''s rate limit. Its default is off ("default: false" in the bundle; the upgrade check read it as on), and it is set off anyway so a default flip cannot open it. A provider''s `cache.warming` falls back to it.'
+        row: 'E199'
+      - feature: '`experimental.image_generate`'
+        verdict: 'deny'
+        reason: 'It offers an image tool whenever a provider has an image model. No AEW role needs it.'
+        row: 'E199'
+      - feature: 'MCP `pool`'
+        verdict: 'deny'
+        reason: 'It shares one connection across directories, and each Lead session''s server is its own.'
+        row: 'E199'
+      - feature: '`bash` → `shell` alias'
+        verdict: deny
+        reason: 'Both names now decide alike, so the alias cannot reach around a rule.'
+        row: 'E199'
+      - feature: 'Browser tool and skill'
+        verdict: 'deny'
+        reason: 'They are refused by design. AEW states the deny rather than resting on OpenCode''s append.'
+        row: 'E199'
+      - feature: '`experimental.policies` → top-level `policies`'
+        verdict: 'hold'
+        reason: 'It is deprecated but still merged in 2.2.6 (bundle: `[...derived, ...experimental, ...top-level]`). It moves before a release drops it.'
+        row: 'E202'
+      - feature: 'Policies for tools, MCP, skills, plugins and web search'
+        verdict: 'hold'
+        reason: 'Only ever an extra layer. Adopting needs Codex to declare it too.'
+        row: 'E202'
+      - feature: 'Structured rate-limit facts (`retryAfterMs`, `session.retry.*`)'
+        verdict: 'hold -> consume'
+        reason: 'A retry should read as one, not a stall. LiteLLM hides upstream `retry-after`.'
+        row: 'E201'
+      - feature: 'Typed events, `GET /api/event?types=`'
+        verdict: 'hold -> consume'
+        reason: 'Steering''s push wake is the first consumer.'
+        row: 'E203'
+      - feature: 'Client-hosted MCP (experimental)'
+        verdict: 'hold'
+        reason: 'It moves where the Lead''s tools run, so it needs a containment review.'
+        row: 'E204'
+      - feature: 'Plugin session instruction entries'
+        verdict: 'hold'
+        reason: 'Steering MS3 to MS6. It needs an AEW plugin.'
+        row: 'E205'
+      - feature: 'Background job list (`job` table)'
+        verdict: 'hold -> consume'
+        reason: 'An "idle" worker whose shells still run is not idle.'
+        row: 'E206'
+      - feature: 'Schedules (`experimental.schedules`, `schedule` table)'
+        verdict: 'ignore'
+        reason: 'AEW''s supervisor owns wakes, and schedules would need a containment review. Off by default.'
+        row: null
+      - feature: 'Child sessions via `parentID`'
+        verdict: 'ignore'
+        reason: 'Workers have no subagents (`subagent` is denied).'
+        row: null
+      - feature: 'Percentage `compaction.buffer`'
+        verdict: 'ignore'
+        reason: 'AEW doesn''t set compaction.'
+        row: null
+      - feature: '`experimental.{artifacts, todo, codemode_vm, background_compaction, media_blob, part_rows, portable_shell_scanner, location_idle_timeout, all_flags}`'
+        verdict: 'ignore'
+        reason: 'They are experimental and off unless set. AEW sets none, and none touches authority or evidence.'
+        row: null
+      - feature: '`ServerInfo.hostname` and `capabilities`, `Model.type`, `usage/limits`, `generate/*`, `/goal`'
+        verdict: 'ignore'
+        reason: 'AEW reads none of them. `usage/limits` is Console-only.'
+        row: null
+      - feature: 'Console `library`: session instructions and skills delivered by the console sync (new in 2.2.x)'
+        verdict: 'deny'
+        reason: 'It is text from a remote origin that would enter a session, which AEW never takes from the harness. It is refused with the console sync wherever network containment is `proxy_only`. Where containment is `not_provided` (Windows), the limit is stated (the operator''s decision): a Zen run receives the Console account''s instructions and skills, and AEW neither blocks nor records them. The guide tells the operator to keep them empty if they don''t want that.'
+        row: 'E199'
+      - feature: '`Config.timezone` (the only other new top-level config key)'
+        verdict: 'ignore'
+        reason: 'It is for schedules, which AEW doesn''t use.'
+        row: null
+      - feature: 'Provider and model `cache.warming`'
+        verdict: deny
+        reason: 'Cache warming falls back to the top-level `warming` AEW sets off.'
+        row: 'E199'
+      - feature: 'Provider and model `cache.ttl`'
+        verdict: ignore
+        reason: 'AEW sets no TTL.'
+        row: null
+      - feature: 'Provider and model `encoding` (zstd, gzip, none)'
+        verdict: 'hold'
+        reason: 'Request compression would cross AEW''s provider relay. The relay passed on 2.2.6''s default, and AEW sets none, so it is held until something wants it, with a relay test first.'
+        row: null
+      - feature: 'Provider `headerTimeout` and `chunkTimeout`, `compatibility` flags, `Model.type` and `capabilities`'
+        verdict: 'ignore'
+        reason: 'AEW sets none of them. Defaults passed every check.'
+        row: null
+      - feature: '`Pty` and `PersistentPty` (a server terminal API)'
+        verdict: 'ignore'
+        reason: 'It is not new authority. The server''s session shell already runs commands, and the agent''s reach to its own server is E17''s matter.'
+        row: null
+      - feature: '`Session.Message.Native` (provider-native parts)'
+        verdict: 'ignore'
+        reason: 'AEW reads no native part. Steering''s tool-part reads are unchanged (measured).'
+        row: null
+      - feature: '`Session.Info.time.busy`, `Session.Message.Idle.error`'
+        verdict: 'hold -> consume'
+        reason: 'These are wake and outcome signals, read with E201 and E203.'
+        row: 'E201'
+      - feature: '2.2.x security and transport fixes (origin checks, webfetch credentials, proxy bypass for local services)'
+        verdict: adopt
+        reason: 'AEW keeps its own relay and containment, so these are extra layers only.'
+        row: null
+      - feature: '`opencode.wellknown` (stored well-known sources)'
+        verdict: ignore
+        reason: 'It loads only well-known sources already stored, and a run''s private state starts with none. Its manifest could carry `remote_config`, so a stored source would need a verdict first.'
+        row: null

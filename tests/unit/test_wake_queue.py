@@ -5,6 +5,7 @@ meter and the supervisor write. The post into a real session is the harness's, a
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -29,11 +30,12 @@ class FakePoster:
     def busy(self) -> bool:
         return self.is_busy
 
-    def post(self, wake_id: str, text: str) -> None:
+    def post(self, wake_id: str, text: str) -> str:
         self.posts.append((wake_id, text))
         self.where[wake_id] = Q.WAITING
         if self.die_in_post:
             raise KeyboardInterrupt  # the broker dies having admitted it, before it records so
+        return "ses_1"
 
     def landed(self, wake_id: str) -> str:
         return self.where.get(wake_id, Q.UNKNOWN)
@@ -244,19 +246,27 @@ def test_quiet_gives_way_to_another_wake_for_that_run(lab: Lab) -> None:
 
 
 def test_a_run_ending_wakes_the_lead_once_and_is_then_watched_no_more(lab: Lab) -> None:
+    """Its invocation stays active until the Lead accepts or cancels it, which can be many idle passes away: the real
+    engine reaches that state in `test_a_real_run_that_ended_stays_its_active_invocations_run_and_wakes_the_lead_once`.
+    """
     lab.live()
     lab.digest()
     q = lab.queue()
     q.tick()
     lab.ended.add(RUN)  # type: ignore[attr-defined]
-    lab.state["invocations"]["inv-" + RUN]["status"] = "completed"
     q.tick()
     assert lab.shape()["why"] == [K.RUN_ENDED]
-    lab.poster.deliver()
+    for _ in range(5):
+        lab.poster.deliver()
+        q.tick()
+        lab.now += QUIET_S * 2
+    assert len(lab.poster.posts) == 1 and Q.status(lab.root)["watching"] == []
+    q = lab.queue()  # the broker starts again: the end was told, and the file says so
     q.tick()
-    lab.now += QUIET_S * 2
+    assert len(lab.poster.posts) == 1
+    lab.state["invocations"]["inv-" + RUN]["status"] = "completed"
     q.tick()
-    assert len(lab.poster.posts) == 1 and RUN not in q.doc["marks"]
+    assert RUN not in q.doc["marks"] and len(lab.poster.posts) == 1
 
 
 def test_a_later_attempt_of_the_same_ticket_supersedes_a_run_ended_wake(lab: Lab) -> None:
@@ -273,6 +283,26 @@ def test_a_later_attempt_of_the_same_ticket_supersedes_a_run_ended_wake(lab: Lab
     lab.poster.is_busy = False
     q.tick()
     assert lab.poster.posts == []
+
+
+def test_a_superseded_end_is_let_go_and_is_never_posted_when_the_later_attempt_ends(lab: Lab) -> None:
+    lab.live()
+    lab.digest()
+    lab.poster.is_busy = True
+    q = lab.queue()
+    q.tick()
+    lab.ended.add(RUN)  # type: ignore[attr-defined]
+    lab.state["invocations"]["inv-" + RUN]["status"] = "interrupted"
+    q.tick()
+    lab.live(OTHER, inv="inv-new")
+    lab.digest(OTHER)
+    lab.poster.is_busy = False
+    for _ in range(20):
+        q.tick()
+    assert lab.poster.posts == [] and q.doc["dropped"] == 1 and q.doc["folded"] == {} and RUN not in q.doc["marks"]
+    lab.ended.add(OTHER)  # type: ignore[attr-defined]
+    q.tick()
+    assert list(lab.shape()["runs"]) == [OTHER]
 
 
 def test_a_broker_killed_before_the_post_posts_it_once_on_restart(lab: Lab) -> None:
@@ -373,9 +403,43 @@ def test_a_failed_pass_shows_in_the_status_line_and_the_next_pass_clears_it(lab:
     assert Q.status(lab.root)["last_failure"] is None
 
 
+def test_a_failure_line_goes_with_the_failure_when_nothing_else_changes(lab: Lab) -> None:
+    lab.live()
+    lab.digest()
+    q = lab.queue()
+    q.tick()
+    q.failed("OSError: the server hiccuped")
+    q.tick()  # no trigger, so nothing else would save the file
+    assert Q.status(lab.root)["last_failure"] is None
+    lab.digest(triggers=[OUTSIDE], out_of_scope=["src/b/x.py"])
+    q.tick()
+    q.failed("OSError: the server hiccuped")
+    q.tick()  # a posted wake still waiting to land, the other way through a pass
+    assert Q.status(lab.root)["last_failure"] is None and lab.poster.where[lab.poster.posts[0][0]] == Q.WAITING
+
+
+def test_the_status_line_says_when_a_wake_went_and_to_which_session(lab: Lab) -> None:
+    lab.now = 1794000000.25
+    lab.live()
+    lab.digest(triggers=[OUTSIDE], out_of_scope=["src/b/x.py"])
+    q = lab.queue()
+    q.tick()
+    assert re.search(r"last posted wake-1 at \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ to session ses_1;",
+                     Q.render(Q.status(lab.root))[0])
+    lab.poster.deliver()
+    q.tick()
+    assert "to session ses_1;" in Q.render(Q.status(lab.root))[0]
+
+
 def test_the_serving_mark_names_the_generation_until_the_broker_clears_it(lab: Lab) -> None:
     assert Q.serving(lab.root) is None
     Q.mark_serving(lab.root, 7)
     assert Q.serving(lab.root) == 7
-    Q.clear_serving(lab.root)
+    Q.clear_serving(lab.root, 7)
     assert Q.serving(lab.root) is None
+
+
+def test_a_superseded_broker_leaves_the_new_generations_serving_mark(lab: Lab) -> None:
+    Q.mark_serving(lab.root, 8)
+    Q.clear_serving(lab.root, 7)
+    assert Q.serving(lab.root) == 8

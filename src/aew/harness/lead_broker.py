@@ -311,6 +311,8 @@ class LeadBroker:
         def run() -> None:
             while not self._stop.wait(POLL_S):
                 try:
+                    if self.superseded or self._authority_lost():  # no more wakes into a session that lost the seat
+                        return
                     queue.tick()
                 except Exception as exc:  # noqa: BLE001 - a wake must never take the session down
                     queue.failed(f"{type(exc).__name__}: {str(exc)[:200]}")  # the status line, not the TUI's terminal
@@ -328,7 +330,7 @@ class LeadBroker:
             from aew.harness.wake_queue import clear_serving
 
             self._wakes.join(10)
-            clear_serving(self._wakes_root)
+            clear_serving(self._wakes_root, self.generation)
         self.server.close()
         self._end_reads()  # a relayed read in flight (a long `harness wait`) ends with the session, never holds it
         self.server.drain(60)

@@ -13,6 +13,8 @@ module owns everything about that except the post itself, which is a harness's (
   harness has admitted can't be withdrawn. ``progress.holds`` is the rule for what a digest detects; this module adds
   the rest: a ``quiet`` wake gives way to any other wake for that run, and a ``run_ended`` wake to a later attempt of
   the same Ticket and role. What fails is dropped, and named in the next wake's ``since_last_wake``.
+- **An ended run is told once.** Its invocation stays active until the Lead accepts or cancels it, so its mark stays
+  too, recording that the end was told (``ended_told``), and goes once the run is no longer its invocation's live one.
 - **The broker's own mark.** Each run's mark is the newest trigger the Lead has been shown by a wake or by a wait
   (``runlog.read_returned``: a post moves that mark too, so neither repeats the other), with the absolute counts
   ``since_last_wake`` is computed from. ``told_outside`` settles what the digest alone cannot: a path reverted and then
@@ -30,6 +32,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NamedTuple, Protocol
 
@@ -54,8 +57,8 @@ class Poster(Protocol):
     def busy(self) -> bool:
         """Whether a turn is running in the session: a wake is held until it is not."""
 
-    def post(self, wake_id: str, text: str) -> None:
-        """Admit the wake as input that starts the session's next turn."""
+    def post(self, wake_id: str, text: str) -> str:
+        """Admit the wake as input that starts the session's next turn, and say which session it went to."""
 
     def landed(self, wake_id: str) -> str:
         """``waiting`` (admitted, its turn has not started), ``delivered``, or ``unknown`` (this session does not know
@@ -93,8 +96,10 @@ def mark_serving(aew_root: Path, generation: int) -> None:
     atomic_write(path, str(int(generation)))
 
 
-def clear_serving(aew_root: Path) -> None:
-    (Path(aew_root) / SERVING_REL).unlink(missing_ok=True)
+def clear_serving(aew_root: Path, generation: int) -> None:
+    """This generation's broker no longer posts. A later generation's mark is that broker's, and stays."""
+    if serving(aew_root) == generation:
+        (Path(aew_root) / SERVING_REL).unlink(missing_ok=True)
 
 
 def serving(aew_root: Path) -> int | None:
@@ -142,7 +147,8 @@ def status(aew_root: Path, *, generation: int | None = None) -> dict[str, Any] |
     wake = doc["wake"]
     return {"outstanding": None if wake is None else {k: wake.get(k) for k in ("id", "phase", "why")},
             "last_posted": doc["last_posted"], "last_delivered": doc["last_delivered"],
-            "last_failure": doc["last_failure"], "watching": sorted(doc["marks"]), "dropped": doc["dropped"],
+            "last_failure": doc["last_failure"], "dropped": doc["dropped"],
+            "watching": sorted(run for run, mark in doc["marks"].items() if not mark.get("ended_told")),
             "broker_posting": generation is not None and broker_posts(aew_root, generation)}
 
 
@@ -150,8 +156,10 @@ def render(status_: Mapping[str, Any]) -> list[str]:
     """The status line, as text: one for the session, and one more for a wake still outstanding, so a wake that never
     lands is visible."""
     last = status_.get("last_delivered") or status_.get("last_posted")
-    said = f"last {'delivered' if status_.get('last_delivered') else 'posted'} {last['id']} at {last['at']}" if last \
-        else "none posted yet"
+    said = "none posted yet"
+    if last:
+        said = (f"last {'delivered' if status_.get('last_delivered') else 'posted'} {last['id']} at {_when(last['at'])}"
+                + (f" to session {last['session']}" if last.get("session") else ""))
     watching = status_.get("watching") or []
     posting = "the broker posts them" if status_.get("broker_posting") else "no broker is posting them"
     lines = [f"Lead wakes: watching {', '.join(watching) or 'no run'}; {said}; {posting}"]
@@ -162,6 +170,11 @@ def render(status_: Mapping[str, Any]) -> list[str]:
     if failure:
         lines.append(f"  ! the last pass failed: {failure['why']}")
     return lines
+
+
+def _when(at: Any) -> str:
+    """A record's time as `aew status` shows times."""
+    return datetime.fromtimestamp(float(at), UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def wake_text(wake_id: str, shape: Mapping[str, Any]) -> str:
@@ -188,16 +201,16 @@ class WakeQueue:
 
     def tick(self) -> None:
         """Settle what was posted, gather what is new, and post when the Lead is idle."""
+        before = json.dumps(self.doc, sort_keys=True)  # ahead of the clear: a failure's going is a change to save
         self.doc["last_failure"] = None
-        if not self._settle():
-            return  # a posted wake is still waiting to land: at most one undelivered wake
-        live = live_runs(self.state())
-        before = json.dumps(self.doc, sort_keys=True)
-        self._watch(live)
-        self._gather()
+        settled = self._settle()  # not settled: a posted wake is still waiting to land, at most one undelivered wake
+        live = live_runs(self.state()) if settled else []
+        if settled:
+            self._watch(live)
+            self._gather()
         if json.dumps(self.doc, sort_keys=True) != before:
             self._save()
-        if self.doc["wake"] is not None and not self.poster.busy():
+        if settled and self.doc["wake"] is not None and not self.poster.busy():
             self._post(live)
 
     def failed(self, why: str) -> None:
@@ -220,7 +233,8 @@ class WakeQueue:
         if landed == DELIVERED:
             if wake["phase"] == POSTING:
                 self._posted(wake)
-            self.doc["last_delivered"] = {"id": wake["id"], "at": self.clock(), "why": wake["why"]}
+            self.doc["last_delivered"] = {"id": wake["id"], "at": self.clock(), "why": wake["why"],
+                                          "session": wake.get("session")}
             self.doc["wake"] = None
         else:  # never admitted, or a new session: it is still news, and the post's check decides that
             wake["phase"] = PENDING
@@ -231,6 +245,9 @@ class WakeQueue:
 
     def _watch(self, live: list[Watched]) -> None:
         marks = self.doc["marks"]
+        current = {w.run for w in live}
+        for run in [r for r, mark in marks.items() if mark.get("ended_told") and r not in current]:
+            del marks[run]
         for w in live:
             marks.setdefault(w.run, {"work_unit": w.work_unit, "role": w.role, "launched_at": w.launched_at,
                                      "last_wake_at": self.clock(), "seq": 0, "told_outside": [],
@@ -249,6 +266,8 @@ class WakeQueue:
 
     def _gather(self) -> None:
         for run, mark in self.doc["marks"].items():
+            if mark.get("ended_told"):
+                continue
             found: list[dict[str, Any]] = []
             newest = self._shown(run, mark)
             digest = runlog.read_progress(self._dir(run))
@@ -305,7 +324,7 @@ class WakeQueue:
         shape = self._shape(wake)
         wake["phase"] = POSTING
         self._save()  # before the post: a broker that dies inside it finds this
-        self.poster.post(wake["id"], wake_text(wake["id"], shape))
+        wake["session"] = self.poster.post(wake["id"], wake_text(wake["id"], shape))
         self._posted(wake)
         self._save()
 
@@ -321,6 +340,10 @@ class WakeQueue:
                 else:
                     self.doc["dropped"] = int(self.doc["dropped"]) + 1
                     self.doc["folded"].setdefault(run, []).append(trigger["why"])
+                    if trigger.get("why") == K.RUN_ENDED and run in self.doc["marks"]:
+                        # A later attempt has superseded it, so it is never said: later, it would be a stale wake.
+                        self.doc["marks"][run]["ended_told"] = True
+                        self.doc["folded"].pop(run, None)
             entry["triggers"] = kept
             if not kept:
                 del wake["runs"][run]
@@ -360,7 +383,7 @@ class WakeQueue:
         """The Lead has been shown it: every run's mark moves, and the wait's with it."""
         now = self.clock()
         wake["phase"] = POSTED
-        self.doc["last_posted"] = {"id": wake["id"], "at": now, "why": wake["why"]}
+        self.doc["last_posted"] = {"id": wake["id"], "at": now, "why": wake["why"], "session": wake.get("session")}
         for run, entry in wake["runs"].items():
             mark = self.doc["marks"].get(run)
             if mark is None:
@@ -375,8 +398,8 @@ class WakeQueue:
             mark["told_outside"] = sorted(set(mark["told_outside"]) | {p for p in outside if p})
             self.doc["folded"].pop(run, None)
         for run, entry in wake["runs"].items():  # an ended run has said all it will: it is watched no more
-            if any(t.get("why") == K.RUN_ENDED for t in entry["triggers"]):
-                self.doc["marks"].pop(run, None)
+            if run in self.doc["marks"] and any(t.get("why") == K.RUN_ENDED for t in entry["triggers"]):
+                self.doc["marks"][run]["ended_told"] = True
 
     def _save(self) -> None:
         path = self.aew_root / WAKES_REL

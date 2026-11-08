@@ -64,7 +64,7 @@ class _Poster:
     def busy(self) -> bool:
         return True
 
-    def post(self, wake_id: str, text: str) -> None:
+    def post(self, wake_id: str, text: str) -> str:
         raise AssertionError("nothing to post")
 
     def landed(self, wake_id: str) -> str:
@@ -97,3 +97,27 @@ def test_the_brokers_wake_thread_survives_a_failing_pass_and_clears_its_mark_on_
     finally:
         broker.close()
     assert Q.serving(root) is None and not broker._wakes.is_alive()
+
+
+def test_a_real_takeover_ends_the_old_brokers_wake_thread_and_its_close_leaves_the_new_mark(project, monkeypatch):
+    """The seat is taken through the engine, as `aew lead takeover` takes it. A superseded session must spend no more
+    turns, and its exit must not tell the new Lead that no broker posts."""
+    from notifier import takeover
+
+    from aew.engine.api import Engine
+    from aew.harness.lead_broker import POLL_S, LeadBroker
+
+    root = project.root / ".aew"
+    poster = _Poster()
+    broker = LeadBroker(Engine.discover(project.root), project.token)
+    broker.start()
+    try:
+        broker.start_wakes(poster)
+        generation = broker.generation
+        takeover(project, monkeypatch)
+        broker._wakes.join(POLL_S * 20)
+        assert not broker._wakes.is_alive(), "still posting into a session that lost the seat"
+        Q.mark_serving(root, generation + 1)  # the new session's broker
+    finally:
+        broker.close()
+    assert Q.serving(root) == generation + 1

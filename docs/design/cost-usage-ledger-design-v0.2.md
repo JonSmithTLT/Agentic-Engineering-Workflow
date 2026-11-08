@@ -1,6 +1,6 @@
 # The cost and usage ledger: the design note for F25 (v0.2)
 
-- **Status:** **Adopted** (2026-10-06) by the designer, after a narrow revision made in this version (§10): R8 is revised from Lead-session to attachment and generation accounting (Q12), R7 and R9 gain an explicit projection scope and completeness, and PR numbers in the sequencing are implementation notes, not requirements; the other decisions of §8 are approved as asked. The Lead part (§5.7) is held for the designer's decision on the segment before F31 exists (decisions-due, F25); the rest is implementation-ready. Earlier history: **Proposed** (2026-10-05) for the designer's and operator's decision; the eight questions it asks are §8. **Revised 2026-10-05 after the designer's review** (REQUEST CHANGES: R1, R2, R3, R5, R6, R7, R9 and R10 kept; R4 and R8 revised): the reported counters are priced only after being mapped onto non-overlapping billable buckets (§5.3); a missing price is `unpriced`, never zero; a derived cost binds to an immutable pricing snapshot recorded at copy time, with the current-price figure a separate projection; an effective-model mismatch or mix is unpriced unless usage is partitioned per model; the Lead session's usage is archived into the existing cold lead history, the ring of 32 being only the hot projection (§5.7). **Second round (lead developer, 2026-10-05):** a Lead session's usage is its own `history/lead/` record written in its own commit, because one credential spans every session of a seat started without `--acquire` and a slot on the credential would overwrite them; and the semantics of the reported token counters are the adapter's declaration (`token_semantics`), pinned by the harness conformance tests, not a price-row setting (§5.3). Returned for adoption.
+- **Status:** **Adopted** (2026-10-06) by the designer, after a narrow revision made in this version (§10): R8 is revised from Lead-session to attachment and generation accounting (Q12), R7 and R9 gain an explicit projection scope and completeness, and PR numbers in the sequencing are implementation notes, not requirements; the other decisions of §8 are approved as asked. The Lead part (§5.7) is held for the designer's decision on the segment before F31 exists (decisions-due, F25); the rest is implementation-ready. Earlier history: **Proposed** (2026-10-05) for the designer's and operator's decision; the eight questions it asks are §8. **Revised 2026-10-05 after the designer's review** (REQUEST CHANGES: R1, R2, R3, R5, R6, R7, R9 and R10 kept; R4 and R8 revised): the reported counters are priced only after being mapped onto non-overlapping billable buckets (§5.3); a missing price is `unpriced`, never zero; a derived cost binds to an immutable pricing snapshot recorded at copy time, with the current-price figure a separate projection; an effective-model mismatch or mix is unpriced unless usage is partitioned per model; the Lead session's usage is archived into the existing cold lead history, the ring of 32 being only the hot projection (§5.7). **Second round (lead developer, 2026-10-05):** a Lead session's usage is its own `history/lead/` record written in its own commit, because one credential spans every session of a seat started without `--acquire` and a slot on the credential would overwrite them; and the semantics of the reported token counters are the adapter's declaration (`token_semantics`), pinned by the harness conformance tests, not a price-row setting (§5.3). Returned for adoption. **Amended 2026-11-08 by §11** (the operator's decision): `aew init` writes a default price table.
   Register F25 (absorbs U4 when built); ledger prefix CUL. Written by the lead developer of the main AEW repository.
   The build is a separate task after approval (the register's model split: this note by Fable, the build by Opus),
   and it waits for M4-D's open PRs (§6).
@@ -9,7 +9,7 @@
   efficiency comparisons (F15), and later by the dashboard (a contract change, not this note).
 - **Does not own:** budget enforcement (G7's modification: a policy decision with F7 and M5, after calibration); the
   dashboard contract 0.1.2 (a `usage` projection is a later contract version with a renewed C0 review); the harness
-  adapters' event handling; pricing data itself (the price table is the project's policy, not AEW's knowledge).
+  adapters' event handling; pricing data itself (the price table is the project's policy, not AEW's knowledge; amended by §11).
 - **Reads:** the architecture review G7 and F-D with their accepted dispositions (ledger ARR-07, ARR-46); the M4
   report §"F25 in scope, before M4-H"; the evaluation component v0.2 §3 (`aew/eval-run/v1`'s `cost` block, EVC-14);
   the register rows F25, U4, E1, F7, F19; ADR-0009 (run records, custody, "a pid is never trusted alone"); ADR-0010
@@ -202,7 +202,7 @@ developer's review of the revision (the same day):
 
 The derived cost of a priceable run is `Σ buckets[b] × prices[provider/model][b] / 1e6` over the billable buckets the
 record's `token_semantics` yields. It is computed at **read time** by every surface and never written into the record
-or into control state. `aew init` writes no price table (it cannot know prices); `aew doctor` reports a missing one as
+or into control state. `aew init` writes no price table (it cannot know prices; amended by §11); `aew doctor` reports a missing one as
 INFO, and a malformed one or a missing snapshot named by a record as ERROR.
 
 ### 5.4 Placement: the record lands in control state at the Lead's next transaction on the invocation
@@ -508,3 +508,17 @@ before F31 exists (§5.7; decisions-due, F25).
 > After those edits:
 > F25 is ADOPTED and implementation-ready.
 
+## 11. Amendment, 2026-11-08: `aew init` writes a default price table (R4)
+
+**What changes.** §5.3's "`aew init` writes no price table (it cannot know prices)" and the header's "pricing data itself" under **Does not own**:
+- **`aew init` writes `policy/pricing.yaml`** from a table AEW ships (`src/aew/policy/default_pricing.yaml`). It's dated, names its public source, and needs no network.
+- **The copy is the project's.** An operator's edit is kept and adopted through the manifest, and a project may have no table at all.
+- **`base_tier_only`** is an optional top-level map in `aew/pricing/v1`, naming models whose price rises above a context size. Their row holds the base tier, and every figure using it reads as a floor, never as exact. Rows stay flat and hold billable buckets only.
+
+**Why the earlier reason falls away.** AEW still can't know what a project pays. It can ship a dated list price from a named public catalog, labelled as an estimate. That's more use than every figure reading `unpriced`, which left the ledger built and unused.
+
+**What this depends on.** Every figure from a table shows that table's `as_of`, and a report names its `source` and says these are list prices, not a contract or gateway rate.
+
+**What doesn't change.** R4's four rules: semantics stay the adapter's, a missing price is `unpriced`, snapshots stay immutable, and a model mix stays unpriced. Derived cost is still computed at read time and never stored. A missing table stays INFO in `aew doctor`. Projects made before this keep no table until they take the shared switch offer.
+
+**Decision.** Approved by the operator, 2026-11-08: "Yes, amend it".

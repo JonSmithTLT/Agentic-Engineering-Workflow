@@ -712,8 +712,6 @@ def role_reach(analysis: Analysis, records: list[C.Record]
 
 def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
     store, local = role_reach(analysis, records)
-    writer_functions = {(w["module"], w["symbol"]) for r in records for w in (r.fact or {}).get("writers", [])}
-    reached = {fn for found in (*store.values(), *local.values()) for fn in found}
     non_writers = [key for key in sorted(analysis.kinds) if analysis.kinds[key] == NON_WRITER]
     flagged = sorted({fn for key in non_writers for fn in store[key]})
     permitted = sorted({fn for key in non_writers for fn in local[key]})
@@ -736,8 +734,7 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
              "A write is placed per function, not per call: where its destination is a parameter of a shared helper "
              f"(`{SHARED_HELPER}` takes its lock file's path), every path any caller gives it is attributed to every "
              "role that reaches the helper. So `entry_points` can also name a role that never writes that path: the "
-             "lock files list the supervisor, which takes only the capability register's lock, outside `.aew`. The "
-             "counts of writer functions reached below are lower bounds.", ""]
+             "lock files list the supervisor, which takes only the capability register's lock, outside `.aew`.", ""]
     cut = analysis.cut
     if cut is not None and analysis.roles is not None:
         roles = analysis.roles
@@ -754,11 +751,6 @@ def reach_lines(analysis: Analysis, records: list[C.Record]) -> list[str]:
                   + (" (their handlers count as run by every role, and the writers behind them say so)"
                      if undecided else "")
                   + f". Registrations whose handler is no function this reading can name: {where(nameless)}.", ""]
-    lines += [f"Writer functions with a store-transaction or direct write placed under `.aew`: "
-              f"{len(writer_functions)}; reached from at least one entry point: {len(reached)}.", ""]
-    for key in sorted(analysis.kinds):
-        lines.append(f"- `{key}` ({analysis.kinds[key]}): {len(store[key] | local[key])} writer functions "
-                     f"({len(store[key])} write the store, {len(local[key])} only under `local/`)")
     found = "none." if not flagged else ", ".join(_anchor(m, s) for m, s in flagged)
     allowed = "none." if not permitted else ", ".join(_anchor(m, s) for m, s in permitted)
     lines += ["", "**Checked:** a store write (a store-transaction writer, or a direct writer under a directory other "

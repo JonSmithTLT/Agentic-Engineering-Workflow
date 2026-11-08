@@ -384,7 +384,6 @@ def test_the_page_states_the_with_limit_and_names_its_live_case():
     page = W.page(a, W.records_of(a), tuple(sorted(TOP)))
     assert "`with` statement's implicit `__enter__` and `__exit__` calls are not followed" in page
     assert f"`{W.WITH_CASE[0]}:{W.WITH_CASE[1]}`" in page and all(f"`{key}`" in page for key in W.WITH_CASE[2])
-    assert "The counts of writer functions reached below are lower bounds." in page, "review of #258, N5"
     assert ("a write whose destination is not placed (the unresolved records) carries no role reach and is not "
             "checked") in page, "the designer's stated limit: the unresolved records are not checked"
 

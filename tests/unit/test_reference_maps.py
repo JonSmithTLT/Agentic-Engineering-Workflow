@@ -67,11 +67,9 @@ GROUPS = {"aew": ["aew", "aew.util"], "aew.cli": ["aew.cli", "aew.cli.main"],
 
 
 def by_module(text: str) -> dict[str, list[str]]:
-    """Every module's row of every group table: [imports, imported by]."""
-    found = {}
-    for heading in re.findall(r"^## (`aew[\w.]*` \(\d+\))$", text, re.M):
-        found.update(table(text, re.escape(heading)))
-    return {name.strip("`"): cells for name, cells in found.items()}
+    """Every module's block: its imports as the page lists them, one line each."""
+    return {name: re.findall(r"^- `(.*)`$", block, re.M)
+            for name, block in re.findall(r"^### `(aew[\w.]*)`\n\n((?:- .*\n|None\.\n)+)", text, re.M)}
 
 
 def test_a_module_is_listed_under_its_second_level_package_or_the_top():
@@ -80,33 +78,27 @@ def test_a_module_is_listed_under_its_second_level_package_or_the_top():
         name: g for g, names in GROUPS.items() for name in names}
 
 
-def test_a_modules_row_lists_its_imports_and_its_importers_and_says_so_when_it_has_none():
+def test_a_modules_block_lists_its_imports_and_says_so_when_it_has_none():
     rows = by_module(M.page(MODS))
-    assert rows["aew.engine.store"] == ["`aew.engine.base`, `aew.util`", "`aew.cli`, `aew.cli.main`"]
-    assert rows["aew.util"] == ["-", "`aew.cli.main`, `aew.engine.base`, `aew.engine.store`"]
-    assert rows["aew"] == ["-", "-"], "no edge in either direction says so in both columns"
+    assert set(rows) == {m.name for m in MODS}
+    assert rows["aew.engine.store"] == ["aew.engine.base", "aew.util"]
+    assert rows["aew.util"] == []
+    assert "### `aew.util`\n\nNone.\n" in M.page(MODS), "no import says so"
 
 
 def test_the_importers_of_a_module_are_the_inverse_of_its_imports():
-    rows = by_module(M.page(MODS))
-    assert set(rows) == {m.name for m in MODS}
-
-    def names(cell: str) -> list[str]:
-        return [] if cell == "-" else [n.strip("`") for n in cell.split(", ")]
-
-    for name, (imports, importers) in rows.items():
-        assert names(importers) == sorted(x for x, (theirs, _) in rows.items() if name in names(theirs)), name
-        assert names(imports) == sorted(set(names(imports)))
+    assert M.importers_of(MODS, "aew.engine.store") == ["aew.cli", "aew.cli.main"]
+    assert M.importers_of(MODS, "aew.util") == ["aew.cli.main", "aew.engine.base", "aew.engine.store"]
+    assert M.importers_of(MODS, "aew") == [], "no edge says so"
+    for m in MODS:
+        assert all(m.name in M.importers_of(MODS, target) for target in m.imports), m.name
 
 
-def test_the_packages_table_lists_the_other_groups_each_imports_from_and_is_imported_by():
+def test_each_group_lists_the_other_groups_it_imports_from():
     text = M.page(MODS)
-    assert table(text, "Packages") == {
-        "`aew`": ["2", "-", "`aew.cli`, `aew.engine`"],
-        "`aew.cli`": ["2", "`aew`, `aew.engine`", "-"],
-        "`aew.engine`": ["3", "`aew`", "`aew.cli`"]}
-    edges = sum(len(m.imports) for m in MODS)
-    assert f"{len(MODS)} modules in {len(GROUPS)} groups, {edges} import edges." in text
+    said = {name: re.findall(r"^- `(.*)`$", block, re.M) for name, block in re.findall(
+        r"^## `(aew[\w.]*)`\n\nImports from the groups:\n\n((?:- .*\n|None\.\n)+)", text, re.M)}
+    assert said == {"aew": [], "aew.cli": ["aew", "aew.engine"], "aew.engine": ["aew"]}
 
 
 def test_a_dynamic_import_the_graph_cannot_follow_is_listed_and_none_says_so():
@@ -156,21 +148,21 @@ def planted() -> dict:
     }}
 
 
-def test_a_write_is_an_entry_points_pair_with_an_entry_and_each_edge_counts_its_functions():
+def test_a_write_is_an_entry_points_pair_with_an_entry():
     lines = chart(P.data_flow_page(planted()))
-    assert 'proc_aew -->|"1 function"| path_state' in lines
-    assert 'proc_aew -->|"1 function"| path_local' in lines and 'proc_aew_dash -->|"1 function"| path_local' in lines
-    assert 'no_writer -->|"1 function"| path_local' in lines, "a writer item with no entry point is drawn, apart"
+    assert "proc_aew --> path_state" in lines
+    assert "proc_aew --> path_local" in lines and "proc_aew_dash --> path_local" in lines
+    assert "no_writer --> path_local" in lines, "a writer item with no entry point is drawn, apart"
     assert not any(ln.startswith("no_writer") and "path_state" in ln for ln in lines)
 
 
 def test_a_read_is_drawn_only_where_a_record_reaches_the_reading_function_from_an_entry_point():
     lines = chart(P.data_flow_page(planted()))
-    assert 'path_local -.->|"1 function"| proc_aew' in lines, "m.writes.put is reached from `aew` by its writer item"
-    assert 'path_local -.->|"1 function"| proc_aew_dash' in lines
-    assert 'path_state -.->|"1 function"| proc_aew_dash' in lines, "m.reads.viaLockFree: a lock-free member"
-    assert 'path_state -.->|"1 function"| no_reader' in lines, "m.cold.nobody joins nothing, once for two sub-entries"
-    assert 'path_state -.->|"1 function"| proc_aew' not in lines
+    assert "path_local -.-> proc_aew" in lines, "m.writes.put is reached from `aew` by its writer item"
+    assert "path_local -.-> proc_aew_dash" in lines
+    assert "path_state -.-> proc_aew_dash" in lines, "m.reads.viaLockFree: a lock-free member"
+    assert "path_state -.-> no_reader" in lines, "m.cold.nobody joins nothing, once for two sub-entries"
+    assert "path_state -.-> proc_aew" not in lines
 
 
 def test_the_entries_are_grouped_by_what_the_layout_says_of_them_and_a_sub_entry_is_drawn_under_its_top():
@@ -181,17 +173,16 @@ def test_the_entries_are_grouped_by_what_the_layout_says_of_them_and_a_sub_entry
     assert "path_state_log" not in box, "`state/log` is under `state`: the map is drawn by the top-level entry"
 
 
-def test_what_is_not_drawn_is_counted_from_the_records_and_the_boundaries_no_record_states_are_said():
+def test_what_is_not_drawn_is_said_and_the_boundaries_no_record_states_are_said():
     text = P.data_flow_page(planted())
-    assert "Writes by functions the call graph attributes to no entry point: 1 (entry, function) pairs" in text
-    assert "Reads by functions no record reaches from an entry point: 1 (entry, function) pairs" in text
-    assert "1 write sites outside `.aew` and 1 write sites this reading could not place" in text
+    assert "Writes by functions the call graph attributes to no entry point are drawn only" in text
+    assert "Reads by functions no record reaches from an entry point are drawn only" in text
+    assert "Write sites outside `.aew`, and write sites this reading could not place" in text
     assert "The bridge and the network. No record attributes" in text
     rows = table(text, "Entries of `.aew`")
-    assert rows["`local`"] == ["masked from a contained run", "`aew` (1), `aew dash` (1)",
-                               "`aew` (1), `aew dash` (1)", "1", "0"]
-    assert rows["`state`"] == ["the control store", "`aew` (1)", "`aew dash` (1)", "0", "1"]
-    assert rows["`docs`"] == ["other entries of .aew", "-", "-", "0", "0"]
+    assert rows["`local`"] == ["masked from a contained run", "`aew`, `aew dash`", "`aew`, `aew dash`", "yes", "-"]
+    assert rows["`state`"] == ["the control store", "`aew`", "`aew dash`", "-", "yes"]
+    assert rows["`docs`"] == ["other entries of .aew", "-", "-", "-", "-"]
 
 
 def test_the_data_flow_page_is_a_function_of_the_index_alone_and_the_same_in_any_record_order():
@@ -253,17 +244,16 @@ def test_the_page_lists_what_the_joined_records_say_they_could_not_resolve_with_
     and the page says once that its edges are a lower bound."""
     text = P.data_flow_page(planted_with_items())
     section = text.split("## Not drawn\n", 1)[1]
-    drawn = "**Every edge is a lower bound.** The edges are drawn from 7 records (coverage: "
-    assert drawn + "1 complete-by-construction, 6 lower-bound)." in section
+    assert section.count("**Every edge is a lower bound.**") == 1
     writes = section.split("### Writes\n", 1)[1].split("### ", 1)[0]
-    assert "- `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable " \
-           "(2 records)" in writes
-    assert "- `aew.engine.hidden:stash`: no static call chain reaches this writer (1 record)" in writes
-    assert writes.index("require_writer") < writes.index("hidden:stash"), "the item most records carry comes first"
+    assert "- `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable\n" \
+           in writes
+    assert "- `aew.engine.hidden:stash`: no static call chain reaches this writer\n" in writes
+    assert writes.index("hidden:stash") < writes.index("require_writer"), "in the order of their anchors"
     readers = section.split("### Readers of an entry\n", 1)[1].split("### ", 1)[0]
-    assert "- `aew`: read sites whose path this reading could not place (4 records)" in readers
+    assert "- `aew`: read sites whose path this reading could not place\n" in readers
     members = section.split("### Entry points of a lock-free member\n", 1)[1].split("### ", 1)[0]
-    assert "- `aew.process_kind`: a function that works without the control lock is not listed (1 record)" in members
+    assert "- `aew.process_kind`: a function that works without the control lock is not listed\n" in members
 
 
 def test_every_item_a_joined_record_could_not_resolve_is_on_the_page_whatever_it_says():
@@ -283,7 +273,6 @@ def test_every_item_a_joined_record_could_not_resolve_is_on_the_page_whatever_it
 def test_no_item_means_none_and_the_records_without_a_fact_coverage_are_read():
     text = P.data_flow_page(planted())
     assert text.count("\nNone.\n") == 3, "each of the three facts says None, not nothing"
-    assert "The edges are drawn from 7 records (coverage: 7 lower-bound)." in text
 
 
 def test_a_process_with_no_edge_is_said_not_to_be_shown_doing_nothing():

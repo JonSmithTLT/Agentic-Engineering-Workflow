@@ -115,30 +115,29 @@ def group_of(name: str, packages: frozenset[str]) -> str:
     return second if second in packages else TOP
 
 
-def _names(names: list[str]) -> str:
-    return ", ".join(f"`{n}`" for n in names) or "-"
+def _listed(names: list[str]) -> list[str]:
+    """One line each, and a blank line after: a list merges where a long line does not."""
+    return [*(f"- `{n}`" for n in names), ""] if names else ["None.", ""]
+
+
+def importers_of(mods: list[Module], name: str) -> list[str]:
+    """The modules that import ``name``: the inverse of ``imports``. ``tools/reference.py importers`` prints it. The
+    page does not hold it: one module's new import would rewrite another module's block."""
+    return sorted(m.name for m in mods if name in m.imports)
 
 
 def page(mods: list[Module]) -> str:
-    """The human page of the family, drawn from the modules alone: the import graph by package, each module's imports
-    and importers (the inverse of its ``imports``), and the dynamic imports the graph cannot follow."""
+    """The human page of the family, drawn from the modules alone: each group's imports from the others, a block for
+    each module holding its own imports, and the dynamic imports the graph cannot follow.
+
+    It merges: nothing on it is a total or an inverse, an unchanged heading separates any two modules' lines, and each
+    import has a line of its own, so two pull requests touch different lines that git keeps apart, even when both add to
+    one busy module (``tests/unit/test_reference_merge.py``). The totals are ``tools/reference.py counts``'s."""
     packages = frozenset(m.name for m in mods if m.is_package)
-    importers: dict[str, list[str]] = {m.name: [] for m in mods}
-    for m in mods:
-        for target in m.imports:
-            importers[target].append(m.name)
     groups: dict[str, list[Module]] = {}
     for m in sorted(mods, key=lambda m: m.name):
         groups.setdefault(group_of(m.name, packages), []).append(m)
     group_of_name = {m.name: g for g, members in groups.items() for m in members}
-    toward: dict[str, set[str]] = {g: set() for g in groups}  # package -> the other packages it imports from
-    away: dict[str, set[str]] = {g: set() for g in groups}  # package -> the other packages that import from it
-    for m in mods:
-        for target in m.imports:
-            if group_of_name[m.name] != group_of_name[target]:
-                toward[group_of_name[m.name]].add(group_of_name[target])
-                away[group_of_name[target]].add(group_of_name[m.name])
-    edges = sum(len(m.imports) for m in mods)
     lines = [
         "# Modules", "",
         "The import graph of `src/aew`, from the source alone: one record per module (`modules:<module>`), whose "
@@ -146,20 +145,16 @@ def page(mods: list[Module]) -> str:
         "tools/reference.py render`; do not edit. Nothing is imported to read it, so the graph is static and every "
         "record is **lower-bound**: a call that imports by a computed name, or loads code by file path, is a dynamic "
         "import this graph cannot follow, and is listed at the end (also in [gaps.md](gaps.md)). `from aew.engine "
-        "import store` is an edge to `aew.engine.store` when that module exists, else to the package. **Imported "
-        "by** is the inverse of **Imports**, computed from the same records.", "",
-        f"{len(mods)} modules in {len(groups)} groups, {edges} import edges.", "",
-        "## Packages", "",
-        "A group is a second-level package, or `aew` for the top and the modules directly under it. The columns are "
-        "the other groups it imports from and the other groups that import from it.", "",
-        "| Group | Modules | Imports from | Imported by |", "|---|---|---|---|"]
+        "import store` is an edge to `aew.engine.store` when that module exists, else to the package.", "",
+        "**What imports a module:** `python tools/reference.py importers <module>`. The totals: `python "
+        "tools/reference.py counts`. Neither is on this page, so that a change to one module's imports touches only "
+        "that module's lines and two pull requests merge.", "",
+        "A group is a second-level package, or `aew` for the top and the modules directly under it.", ""]
     for g, members in groups.items():
-        lines.append(f"| `{g}` | {len(members)} | {_names(sorted(toward[g]))} | {_names(sorted(away[g]))} |")
-    lines.append("")
-    for g, members in groups.items():
-        lines += [f"## `{g}` ({len(members)})", "", "| Module | Imports | Imported by |", "|---|---|---|"]
-        lines += [f"| `{m.name}` | {_names(list(m.imports))} | {_names(sorted(importers[m.name]))} |" for m in members]
-        lines.append("")
+        toward = sorted({group_of_name[t] for m in members for t in m.imports} - {g})
+        lines += [f"## `{g}`", "", "Imports from the groups:", "", *_listed(toward)]
+        for m in members:
+            lines += [f"### `{m.name}`", "", *_listed(list(m.imports))]
     dynamic = sorted((u["module"], u["symbol"] or "", u["why"]) for m in mods for u in m.unresolved)
     lines += ["## Dynamic imports this graph cannot follow", ""]
     lines += [f"- `{mod}:{sym}`: {why}" if sym else f"- `{mod}`: {why}" for mod, sym, why in dynamic] or ["None."]

@@ -86,6 +86,8 @@ class UsageReads:
 
     def _run(self, state: dict[str, Any], run: str, reader: O.Reader) -> dict[str, Any] | None:
         inv_id = K.invocation_of_run(run)
+        if inv_id is None:  # not a run id: the caller tries it as an invocation or a unit
+            return None
         inv = state["invocations"].get(inv_id) or self.archive.archived_invocation(state, inv_id)
         for entry in (inv or {}).get("runs") or []:
             if entry.get("run") == run:

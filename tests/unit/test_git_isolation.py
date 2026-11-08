@@ -45,7 +45,19 @@ if os.environ.get("COVERAGE_SAVE_MARK"):
             Path(os.environ["COVERAGE_SAVE_MARK"]).write_text("saved", encoding="utf-8")
     worker_coverage.save = save
 def pytest_configure(config):
-    git_isolation.configure(config)
+    if os.environ.get("FIRST_READ_FAILS"):
+        real, git_isolation._git = git_isolation._git, lambda *a, **k: None
+        git_isolation.configure(config)
+        git_isolation._git = real
+    else:
+        git_isolation.configure(config)
+"""
+# The real conftest's order, with the lane plugin that writes what assurance reads.
+LANE_CONFTEST = CONFTEST + """\
+    lanes.configure(config)
+import lanes
+def pytest_addoption(parser):
+    lanes.addoption(parser)
 """
 PRELUDE = """\
 import os, subprocess
@@ -275,14 +287,17 @@ def test_the_tripwire_checks_once_for_the_run_and_fails_it_under_xdist_with_the_
 def test_other_builders_ordinary_work_during_a_run_never_trips_it(tmp_path, workers):
     """Six builders share one `.git`. While this session runs, everything they do to it happens, done by a test only
     because that is what runs during the session: commits, a fetch's remote-tracking refs (even one a test identity
-    made: this history has hundreds), a branch from an old test-identity commit, tracking configuration, `pack-refs`,
-    and a worktree."""
+    made: this history has hundreds), a branch from an old test-identity commit, commits by AEW's own run identities
+    (a ticket's, while tickets run concurrently), tracking configuration, `pack-refs`, and a worktree."""
     root = new_repo(tmp_path / "enclosing")
     elsewhere = Path(tempfile.mkdtemp(prefix="aew-builder-worktree-"))
     plain_git("branch", "theirs", cwd=root)
     body = f"""\
 git("update-ref", "refs/heads/theirs", commit_as("builder@example.com"))
 git("update-ref", "refs/heads/new-branch", commit_as("builder@example.com"))
+git("update-ref", "refs/heads/ticket-a", commit_as("dogfood@example.invalid"))
+git("update-ref", "refs/heads/ticket-b", commit_as("aew-engine@invalid"))
+git("update-ref", "refs/heads/ticket-c", commit_as("aew-ci@invalid"))
 git("update-ref", "refs/remotes/origin/fetched", commit_as("aew-test@invalid"))
 git("update-ref", "refs/heads/from-old", commit_as("aew-test@invalid", date="2026-10-29T22:13:24 -0400"))
 git("config", "branch.theirs.remote", "origin")
@@ -300,22 +315,68 @@ git("worktree", "add", "-q", "-b", "builder-wt", {str(elsewhere / "wt")!r})
     assert "builder-wt" in plain_git("branch", "--list", cwd=root)  # the planted work did happen
 
 
+NO_OPTIONS: Any = type("C", (), {"getoption": staticmethod(lambda *a, **k: None)})()
+
+
 def test_a_read_that_fails_at_the_end_is_reported_and_never_fails_the_session(tmp_path, monkeypatch):
     """Another session's lock can make a read fail. That says nothing about this run."""
     root = new_repo(tmp_path / "enclosing")
-    config: Any = type("C", (), {"getoption": staticmethod(lambda *a, **k: None)})()
-    wire = git_isolation.Tripwire(config, root, root / ".git", root / ".git")
+    wire = git_isolation.Tripwire(NO_OPTIONS, root, root / ".git", root / ".git")
     monkeypatch.setattr(git_isolation, "_git", lambda *a, **k: None)
     found, unread = wire.changes()
     assert found == [] and "the refs" in unread and "the worktrees" in unread and "this checkout's HEAD" in unread
 
 
+def test_a_read_that_fails_at_the_start_is_reported_and_never_fails_the_session(tmp_path, monkeypatch):
+    """The same at the start: every test passes and nothing moved, so a HEAD read only at the end is no change."""
+    root = new_repo(tmp_path / "enclosing")
+    real = git_isolation._git
+    monkeypatch.setattr(git_isolation, "_git", lambda *a, **k: None)
+    wire = git_isolation.Tripwire(NO_OPTIONS, root, root / ".git", root / ".git")
+    monkeypatch.setattr(git_isolation, "_git", real)
+    found, unread = wire.changes()
+    assert found == [] and "this checkout's HEAD" in unread and "the refs" in unread
+
+
+def test_a_repository_that_cannot_be_read_as_the_session_starts_is_said_not_to_be_checked(tmp_path):
+    """Not the same as no repository: the backstop is off for the whole run, and the session says so."""
+    root = new_repo(tmp_path / "enclosing")
+    proc = session(root, 'git("config", "user.name", "AEW Test")\n', FIRST_READ_FAILS="1")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "could not read the repository" in proc.stdout and "did not check it" in proc.stdout, proc.stdout
+
+
+def test_the_report_says_not_to_repair_and_who_to_tell(tmp_path):
+    proc = session(new_repo(tmp_path / "enclosing"), PLANTED["user.name"][0])
+    assert "Do not repair it and do not rerun" in proc.stdout and "tell the Lead" in proc.stdout, proc.stdout
+
+
+def test_a_session_the_tripwire_failed_says_so_in_the_lane_report_assurance_reads(tmp_path):
+    """`tools/ci/check_assurance.py` judges a session by its report's `exitstatus`, which the lane plugin writes in its
+    own `pytest_sessionfinish`: the tripwire must have set the status by then, or a failed session reports 0. A
+    `user.name` writer: `core.bare` would also trip the older guard, through `git status`."""
+    root = new_repo(tmp_path / "enclosing")
+    (root / "tests" / "unit").mkdir(parents=True)
+    (root / "tests" / "unit" / "test_writer.py").write_text(
+        PRELUDE + "\ndef test_writer():\n    git(\"config\", \"user.name\", \"AEW Test\")\n", encoding="utf-8")
+    (root / "pyproject.toml").write_text(PYPROJECT, encoding="utf-8")
+    (root / "tests" / "conftest.py").write_text(LANE_CONFTEST, encoding="utf-8")
+    report = tmp_path / "report.json"
+    clean = {k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_", "AEW_", "COV_", "COVERAGE_"))}
+    proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/unit",
+                           "--lane-report", str(report)], cwd=root, env={**clean, "SESSION_ROOT": str(root)},
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, **NO_WINDOW)
+    assert proc.returncode == pytest.ExitCode.TESTS_FAILED and "1 passed" in proc.stdout, proc.stdout + proc.stderr
+    assert json.loads(report.read_text(encoding="utf-8"))["exitstatus"] == pytest.ExitCode.TESTS_FAILED
+
+
 def test_every_identity_the_tests_and_tools_configure_is_a_test_identity():
-    """The tripwire recognizes a leaked commit by its committer. Every identity a helper, a test or a tool sets, found
-    in the source, and AEW's own fallback."""
+    """The tripwire recognizes a leaked commit by its committer, from a closed set. Every identity a helper, a test or
+    a tool sets, found in the source. A limit: the scan reads only a line that holds `user.email` or `_EMAIL`, so an
+    address on the next line, or as `{"email": ...}`, is not seen. AEW's own run identities stay outside the set."""
     setting = re.compile(r"""user\.email|_EMAIL""")
     address = re.compile(r"""[A-Za-z0-9_.+-]+@[A-Za-z0-9.-]+""")
-    found: set[str] = {AEW_IDENTITY["email"]}
+    found: set[str] = set()
     for tree in ("tests", "tools"):
         for path in (ROOT / tree).rglob("*.py"):
             if path.name == Path(__file__).name:
@@ -323,9 +384,10 @@ def test_every_identity_the_tests_and_tools_configure_is_a_test_identity():
             for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
                 if setting.search(line):
                     found.update(address.findall(line))
-    assert {"aew-test@invalid", "aew-probe@invalid", "t@t", "aew-engine@invalid"} <= found
+    assert {"aew-test@invalid", "aew-probe@invalid", "t@t"} <= found
     assert sorted(email for email in found if not git_isolation.is_test_identity(email)) == []
-    assert not git_isolation.is_test_identity("builder@example.com")
+    for real in (AEW_IDENTITY["email"], "dogfood@example.invalid", "aew-ci@invalid", "builder@example.com"):
+        assert not git_isolation.is_test_identity(real), real
 
 
 def test_this_suite_is_wired_as_the_inner_sessions_are(request):

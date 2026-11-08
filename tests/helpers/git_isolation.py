@@ -12,8 +12,22 @@ into the shared repository instead: ``core.bare``, the test identity, junk commi
 
 Other sessions share this ``.git``: they commit, fetch, push, add worktrees and set branch tracking during a run. So the
 tripwire never compares refs or configuration wholesale. It checks exact keys no one changes on purpose, this
-checkout's own HEAD, and new or moved branches and tags whose tip a test identity committed during this run. Its known
-limit: a commit made by a child with a stripped environment and the user's identity, into another branch.
+checkout's own HEAD, and new or moved branches and lightweight tags whose tip a test identity committed during this run.
+
+What it does not see, on purpose or at a known cost:
+
+- a commit by a child with a stripped environment and the user's identity, into another branch;
+- an annotated tag, whose own object has no committer; a commit with a pinned old committer date; a remote-tracking ref;
+  a deleted branch; a branch moved back to an older commit;
+- any other configuration key, such as ``core.hooksPath``;
+- a worktree under a temp directory that is not pytest's;
+- the user's files where a stripped child finds them elsewhere: it reads ``~/.gitconfig`` and
+  ``~/.config/git/config`` from ``Path.home()``, so ``XDG_CONFIG_HOME``, and ``HOME`` on Windows, are not followed. With
+  a session's global file, ``lanes.py``'s guard watches that file, so that child's write to any other key of the user's
+  file passes too.
+
+A cwd exactly at the checkout is the one walk-free route left, and a test's default cwd is the checkout: a ``git
+config`` with no ``cwd=`` still writes to the shared file. Only the tripwire catches that, and only for its exact keys.
 """
 
 from __future__ import annotations
@@ -31,8 +45,9 @@ from typing import Any
 
 import pytest
 
-# What redirects git to another repository or changes what it reads. `git rev-parse --local-env-vars` lists most of
-# them, and a test compares this to what the installed git prints, so a new one fails rather than leaks.
+# What points git at another repository, or at parts of one. `git rev-parse --local-env-vars` lists most of them, and a
+# test compares this to what the installed git prints, so a new one fails rather than leaks. Variables that only tune a
+# git that is in the right repository stay set: GIT_CONFIG_NOSYSTEM, GIT_DEFAULT_HASH, GIT_INDEX_VERSION and the like.
 REDIRECTING = frozenset({
     "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_CONFIG", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS",
     "GIT_DIR", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_GRAFT_FILE", "GIT_IMPLICIT_WORK_TREE", "GIT_INDEX_FILE",
@@ -48,15 +63,23 @@ SESSION_NAME, SESSION_EMAIL = "AEW Test", "aew-test@invalid"
 # Exact: a change to any of these is never another session's ordinary work.
 WATCHED_SHARED = ("core.bare", "core.worktree", "user.name", "user.email")
 WATCHED_USER = ("user.name", "user.email")
+# A bound on a hung read, not a budget: one read took under 1 s on the shared repository at 100 % CPU (338 refs, 21
+# worktrees). A read past it reports "could not read", and never fails the session.
 GIT_TIMEOUT_S = 30.0
 _NO_WINDOW: dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 
 
+# Every identity a helper, a test or a perf tool commits as: closed, and pinned by a test against what they configure.
+# Not `.invalid` as a whole: AEW's own runs commit at that domain too, in a repository a test session may run in (the
+# product's AEW_IDENTITY, a dogfood clone's, CI's), and another ticket's commit during a run must not trip this.
+TEST_IDENTITIES = frozenset({
+    SESSION_EMAIL, "aew-perf@invalid", "aew-probe@invalid", "p@example.invalid", "perf@example.invalid", "perf@invalid",
+    "probe@invalid", "t@example.invalid", "t@invalid", "t@t",
+})
+
+
 def is_test_identity(email: str) -> bool:
-    """A committer no real person has: RFC 2606's reserved `.invalid`, or the bare `t@t` of a few fixtures. A test pins
-    this against every identity the helpers and tools configure."""
-    email = email.strip().strip("<>").lower()
-    return email == "t@t" or email.endswith(("@invalid", ".invalid"))
+    return email.strip().strip("<>").lower() in TEST_IDENTITIES
 
 
 def ceilings(root: Path) -> str:
@@ -71,7 +94,7 @@ def _session_config(root: Path) -> str:
     """This session's global git configuration: the file itself, removed at exit.
 
     It gives a commit made anywhere a test identity. The checkout is named as safe for a copy another user owns, and
-    Windows keeps long paths. The user's own file holds nothing else the suite needs: CI runs with none."""
+    Windows keeps long paths. The user's own file holds nothing else the suite needs: CI's holds only an identity."""
     directory = tempfile.mkdtemp(prefix="aew-test-gitconfig-")
     atexit.register(shutil.rmtree, directory, ignore_errors=True)
     path = Path(directory) / "gitconfig"
@@ -172,7 +195,7 @@ class Tripwire:
             elif was != now:
                 found += [f"{key} changed in {path}: {was.get(key)!r} -> {now.get(key)!r}"
                           for key in sorted(set(was) | set(now)) if was.get(key) != now.get(key)]
-        if None in after["head"]:
+        if None in after["head"] or None in self.before["head"]:  # so an unborn HEAD at the start goes unchecked
             unread.append("this checkout's HEAD")
         elif after["head"] != self.before["head"]:
             found.append(f"this checkout's HEAD moved: {self.before['head']} -> {after['head']}")
@@ -205,15 +228,27 @@ class Tripwire:
                                red=True)
             for line in found:
                 reporter.write_line(f"  {line}")
-            reporter.write_line("  (look at it before you use it: another session may share this repository)")
+            reporter.write_line("  Do not repair it and do not rerun: another session may share this repository, and "
+                                "a repair can lose its work. Stop and tell the Lead, or the operator.")
         if unread:
             reporter.write_line(f"git isolation: could not read, so did not check: {', '.join(unread)}")
+
+
+class Unchecked:
+    """A checkout whose repository could not be read as the session started: the run has no tripwire, and says so."""
+
+    def __init__(self, checkout: Path) -> None:
+        self.checkout = checkout
+
+    def pytest_terminal_summary(self, terminalreporter: Any) -> None:
+        terminalreporter.write_line(f"git isolation: could not read the repository at {self.checkout} as this session "
+                                    "started, so this session did not check it")
 
 
 def configure(config: pytest.Config) -> None:
     """In the controller, or a session without xdist: one check for the run. It registers as its own plugin because a
     conftest holds only one ``pytest_sessionfinish``, and ours is ``worker_coverage``'s. A session outside any
-    repository, or without git, has nothing to check."""
+    repository, or without git, has nothing to check; one whose repository could not be read says so."""
     if hasattr(config, "workerinput"):
         return
     checkout = Path(str(config.rootpath))
@@ -221,3 +256,5 @@ def configure(config: pytest.Config) -> None:
     lines = found.splitlines() if found else []
     if len(lines) == 2:
         config.pluginmanager.register(Tripwire(config, checkout, Path(lines[0]), Path(lines[1])), "aew-git-tripwire")
+    elif (checkout / ".git").exists():  # a directory, or a linked worktree's file
+        config.pluginmanager.register(Unchecked(checkout), "aew-git-unchecked")

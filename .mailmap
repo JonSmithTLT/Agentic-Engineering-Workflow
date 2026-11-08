@@ -1,3 +1,4 @@
-# Commits made while a test run's identity sat in a shared git configuration (fixed by the test isolation in
-# tests/helpers/git_isolation.py). They were the operator's work; the history is not rewritten.
+# Commits made while a test run's identity sat in a shared git configuration. How it got there was not found; the test
+# isolation in tests/helpers/git_isolation.py is the backstop. They were the operator's work; history is not rewritten.
+# With this file, `git log --author=aew-test@invalid` finds nothing: use `--no-mailmap`.
 Jon Smith <jonksmith1990@gmail.com> AEW Test <aew-test@invalid>

@@ -525,7 +525,9 @@ class Supervisor:
         # Files taken while the state was unreadable are kept as they were taken: a later file of the same name (the
         # run directory is model-writable) never replaces a kept Lead request (#366 review, N3). They are bounded by the
         # queue's distinct names.
-        pending = {**dict(runlog.take_requests(self.run_dir)), **self._deferred}
+        pending = dict(self._deferred)
+        for name, text in runlog.take_requests(self.run_dir):
+            pending.setdefault(name, text)
         self._deferred = {}
         if not pending:
             return []
@@ -538,7 +540,9 @@ class Supervisor:
         entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
         recorded = {r["file"]: r for r in entry.get("requests") or []}
         out = []
-        for name, text in pending.items():
+        # In issue order, kept files with new ones: a request file's name starts with its time_ns (runlog.new_request)
+        # (#366 review, N4)
+        for name, text in sorted(pending.items()):
             want = recorded.get(name)
             why = ("not recorded by a Lead operation" if want is None else
                    "already handled" if name in self._handled else

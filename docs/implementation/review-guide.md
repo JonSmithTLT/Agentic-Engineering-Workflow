@@ -55,6 +55,11 @@ reasoning for its coverage instead, and is never claimed to be mechanically comp
 A review lists every finding and nit it would raise at that commit. Nothing is held back as "optional" for a later
 round. A later review still raises a real defect an earlier pass missed.
 
+Three checks a pass makes where they apply (operator, 2026-11-08), each labelled by §3:
+- A change that turns a registry or policy row on runs its tests over every row, not a sample.
+- A way on that the product prints, such as "request it again", has a test that does it and reaches the outcome.
+- A test that sets a state by hand shows that the real path reaches that state.
+
 ## 6. CI at the exact head (designer ruling, 2026-10-12, C1)
 
 A CLEAR was recorded at heads whose CI was red, and nobody read it. Every review (the comment that carries its verdict

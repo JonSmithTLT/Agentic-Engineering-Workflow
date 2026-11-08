@@ -215,7 +215,7 @@ class Meter:
     (``"session"``, its id the root session). ``poll()`` takes one sample; ``final()`` the last one."""
 
     def __init__(self, client: Any, *, source: Mapping[str, str], version: str,
-                 semantics_table: Mapping[str, Mapping[str, str]], s_pot: int, k_assumed: int = 2,
+                 semantics_table: U.SemanticsTable, s_pot: int, k_assumed: int = 2,
                  state_path: Path, live_path: Path | None = None, request_timeout_s: float = 2.0,
                  clock: Callable[[], float] = time.monotonic, main_session: str | None = None,
                  pinned_model: Mapping[str, Any] | None = None, progress: P.Tracker | None = None,
@@ -231,6 +231,9 @@ class Meter:
         self.source = {"kind": str(kind), "id": str(sid)}
         self.version = str(version)
         self.semantics_table = semantics_table
+        # ``{(provider, model): route}`` for a provider declared per route (``U.resolve_semantics``): bound once the
+        # server's catalog is read, like ``client``. Unbound, such a provider's tokens read ``unknown``.
+        self.routes: dict[tuple[str, str], str] = {}
         self.s_pot, self.k_assumed = s_pot, k_assumed
         self.state_path, self.live_path = Path(state_path), Path(live_path) if live_path is not None else None
         self.request_timeout_s = request_timeout_s
@@ -735,9 +738,9 @@ class Meter:
             if self.main_session is not None and sid != self.main_session:
                 _add(foreign, figure)
             cost += max(float(s["hw_cost"]), counted_cost)
-        providers = [p for (p, _m) in partitions if p is not None]
+        providers = [(p, m) for (p, m) in partitions if p is not None]
         version = self.server_version if self.server_version == self.version else None
-        semantics = U.resolve_semantics(self.semantics_table, version, providers)
+        semantics = U.resolve_semantics(self.semantics_table, version, providers, self.routes)
         record = U.normalize({"tokens": total, "cost": round(cost, 9)}, None, effective, semantics,
                              source=f"harness:{HARNESS}", truncated=bool(state.get("truncated")),
                              tokens_by_model=[{"provider": p, "model": m, "tokens": t}

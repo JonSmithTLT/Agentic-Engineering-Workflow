@@ -10,10 +10,12 @@ import os
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 from conftest import IS_WINDOWS
 
+from aew.engine.harness_ops import Harness
 from aew.harness import contract as K
 from aew.harness import runlog
 
@@ -140,6 +142,17 @@ def test_requests_issued_on_one_clock_tick_each_keep_their_own_file_in_issue_ord
     assert runlog.take_requests(directory) == issued
 
 
+def test_the_lead_operations_record_their_requests_on_the_increasing_clock(monkeypatch):
+    """The path that needs the guarantee: in a Lead session these operations run in the broker's one process, so the pid
+    in the name separates nothing. Two recorded on one tick keep two names, in the order they were recorded."""
+    frozen = time.time_ns()
+    monkeypatch.setattr(time, "time_ns", lambda: frozen)
+    entry: dict[str, Any] = {}
+    first, _ = Harness._record_request(entry, "send", {"text": "first"})
+    second, _ = Harness._record_request(entry, "send", {"text": "second"})
+    assert first < second and [r["file"] for r in entry["requests"]] == [first, second]
+
+
 def test_a_request_issued_after_the_clock_steps_back_still_sorts_after_the_earlier_ones(monkeypatch):
     """Name order is issue order within a process, whatever the system clock does between two requests."""
     now = time.time_ns()
@@ -150,8 +163,8 @@ def test_a_request_issued_after_the_clock_steps_back_still_sorts_after_the_earli
 
 
 def test_requests_issued_at_once_on_several_threads_never_share_a_name(monkeypatch):
-    """The clock is held long enough that an unguarded read of the last value is always stale, so the result does not
-    depend on how the threads happen to be scheduled."""
+    """The clock is held long enough that an unguarded read of the last value is always stale, in this expression, which
+    reads the last value before the clock, so the result does not depend on how the threads happen to be scheduled."""
     frozen = time.time_ns()
 
     def slow_clock() -> int:

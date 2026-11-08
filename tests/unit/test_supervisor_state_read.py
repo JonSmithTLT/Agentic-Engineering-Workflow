@@ -119,7 +119,7 @@ def test_kept_requests_are_judged_with_later_ones_in_the_order_the_lead_issued_t
     sup = stand_in(tmp_path, LockFreeOnly([errors.ProjectNotFound("mid-replace")]))
     assert sup._authorized_requests() == []
     second = recorded_request(tmp_path, "send", text="second")
-    assert first["file"] < second["file"]  # names start with their time_ns: name order is issue order
+    assert first["file"] < second["file"]  # names start with their issue time: name order is issue order
     sup.engine.store.script = [state([first, second])]
     assert [r["text"] for r in sup._authorized_requests()] == ["first", "second"]
 

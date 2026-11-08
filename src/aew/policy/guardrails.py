@@ -15,6 +15,13 @@ from aew.util import glob_any
 ALWAYS_PROTECTED = [".aew/**"]
 
 
+def outside_ticket_scope(path: str, scope_paths: list[str] | None) -> bool:
+    """Whether a workspace-relative path is outside a Ticket's declared scope. An empty or absent scope is unbounded:
+    nothing is outside it (``engine.conflicts`` reads it the same way). The one reading of "outside the scope": this
+    gate's ``outside_ticket_scope`` rule and the run's progress digest (``harness.progress``) both use it."""
+    return bool(scope_paths) and not glob_any(path, scope_paths or [])
+
+
 def evaluate(changed: list[str], policy: dict[str, Any], scope_paths: list[str],
              acceptance_inputs: list[str] | None = None) -> dict[str, Any]:
     """``acceptance_inputs``: the paths the Ticket's acceptance checks read (M4-A). Outside its scope they are
@@ -35,7 +42,7 @@ def evaluate(changed: list[str], policy: dict[str, Any], scope_paths: list[str],
         elif glob_any(path, generated):
             violations.append({"path": path, "rule": "generated_path",
                                "detail": "generated file; change its source/generator instead"})
-        elif enforce_scope and not glob_any(path, scope_paths):
+        elif enforce_scope and outside_ticket_scope(path, scope_paths):
             violations.append({"path": path, "rule": "outside_ticket_scope",
                                "detail": f"not within the Ticket's declared scope {scope_paths}"})
     fired = [t for t in policy.get("review_triggers", []) if any(glob_any(p, t["paths"]) for p in changed)]

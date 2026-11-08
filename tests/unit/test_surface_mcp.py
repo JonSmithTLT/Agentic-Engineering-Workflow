@@ -48,8 +48,9 @@ class Spy:
 # CLEAR, §3.4 and §7 `test_a1_rows_measured`). The plan's §7 calls the cap `test_surface_cap`; it is
 # `test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_budget`.
 # Decision 7's whole-surface pin: 11,694 at E6a, unchanged in A1 until the designer answers G3; 11,741 with ITEMS 55's
-# `replace_gate` choice and its `replacement` field (designer, addendum 4: measured against §2.6's stop line, +47 B).
-NORMAL_BYTES_PIN = 11_741
+# `replace_gate` choice and its `replacement` field (designer, addendum 4: measured against §2.6's stop line, +47 B);
+# 11,727 with steering PR 1's `harness_wait` description, which says it also returns when a run needs the Lead (-14 B).
+NORMAL_BYTES_PIN = 11_727
 RESOLVE_BYTES_PIN = 818
 
 

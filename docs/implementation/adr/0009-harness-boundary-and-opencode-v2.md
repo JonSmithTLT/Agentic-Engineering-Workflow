@@ -1868,3 +1868,19 @@ acknowledgements.
   a Console `library` of session instructions and skills, refused with the rest under `proxy_only`. On Windows, where
   network containment is not provided, a Zen run receives them, and AEW neither blocks nor records them (the
   operator, 2026-11-07: the limit is stated, in the OpenCode guide).
+
+## Amendment 2026-11-08 — WSLg's directory is a host mask
+
+This amends the 2026-10-23 amendment's masks and the remedy row 2 gives for a socket with no identified holder.
+
+- **The refusal:** on a default WSL install with bubblewrap, every contained launch failed row 2. WSLg's Weston and
+  PulseAudio run in WSL's system distro, so `/proc` shows no holder for sockets the launching user owns, and D-CS2-6
+  makes such a socket a credential. Its Wayland and X11 sockets are in the display class as well. They were reachable
+  through `/mnt/wslg`.
+- **The mask:** `/mnt/wslg` is masked whole where it is a directory (`layout.WSLG`), as `/run` is. Row 2 checks it with
+  the other host masks. This only tightens: nothing inside needs a display or audio server. D-CS2-6 and the classes
+  are unchanged.
+- **The remedy:** it told the operator to stop "a process of the launching user's", which is what could not be
+  identified, and which on WSL nobody could stop. It now says what was seen, the user owns the socket and no process
+  AEW can read holds it, and offers stopping or moving the server only to someone who knows what serves it, else the
+  labelled weaker mode.

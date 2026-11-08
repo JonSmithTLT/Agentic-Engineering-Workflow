@@ -236,7 +236,16 @@ def test_a_slow_model_catalog_is_waited_for(lab, tmp_path):
 def test_a_zen_models_route_is_read_from_the_servers_catalog_for_its_usage(lab, tmp_path, package, semantics):
     """OpenCode Zen is declared per route (#364): the launch reads each Zen model's route, its catalog `package`, and
     binds it to the run's meter and record, so a model on the measured Responses route reads `disjoint` in both, and
-    one on a route not measured reads `unknown` (#364 review, m3)."""
+    one on a route not measured reads `unknown` (#364 review, m3). The policy relays a synthetic OPENCODE_API_KEY to
+    the lab's fake upstream: on the relay route (Linux) a keyless `opencode` launch is refused before it starts
+    (`netns.provider_key_missing`), and no request may leave for opencode.ai."""
+    path = lab.aew_root / "policy/execution.yaml"
+    policy = load_yaml(path.read_text(encoding="utf-8"))
+    policy["provider_env"] = [*policy["provider_env"], "OPENCODE_API_KEY"]
+    policy["containment"]["network"]["upstreams"]["opencode"] = lab.provider.url
+    path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
+    lab.env["OPENCODE_API_KEY"] = PROVIDER_SECRET
     script(lab, IMPLEMENT, live_usage={}, models=[
         {"id": "gpt-5.6-luna", "providerID": "opencode", "package": package, "enabled": True,
          "variants": [{"id": "low"}, {"id": "medium"}, {"id": "high"}]}])

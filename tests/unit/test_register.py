@@ -1111,3 +1111,15 @@ def test_the_pin_names_a_disposition_the_register_does_not_carry_out():
     assert any("F40 (disposition close) is not in the register" in p for p in head_problems(disp, changed))
     still_open = {"rows": {"E3": {"disposition": "close", "by": "x"}}, "groups": {}, "new_rows": {}, "now": []}
     assert "E3: close, but the row is still open" in head_problems(still_open, head)  # E3 is a kept row
+
+
+def test_every_register_row_a_harness_feature_verdict_names_exists():
+    """The harness feature verdicts (tools/harness_qualify/verdicts/<harness>.yaml, the record a bump writes) name the
+    register row that carries each one; every row named is a row of the register."""
+    rows = set(re.findall(r"^  - '#': (\S+)$", register.YAML.read_text(encoding="utf-8"), flags=re.M))
+    named = set()
+    for path in sorted((ROOT / "tools" / "harness_qualify" / "verdicts").glob("*.yaml")):
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for entry in (doc.get("versions") or {}).values():
+            named |= {str(v["row"]) for v in entry.get("verdicts") or [] if v.get("row")}
+    assert named and named <= rows, sorted(named - rows)

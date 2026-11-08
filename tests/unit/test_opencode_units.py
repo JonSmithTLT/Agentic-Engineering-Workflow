@@ -1,4 +1,4 @@
-"""OpenCode adapter units: the projection (golden), the capability probe against the real 2.0.18 API and doctored
+"""OpenCode adapter units: the projection (golden), the capability probe against the real pinned API and doctored
 copies of it, the server and Lead environments, and effective-model extraction.
 
 Goldens live in tests/fixtures/opencode/. A deliberate projection change is reviewed as a diff of those files:
@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -21,7 +22,7 @@ from aew.harness.contract import LaunchContract
 from aew.harness.opencode import adapter, capabilities, lead, projection
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "opencode"
-SPEC = json.loads((FIXTURES / "openapi-2.0.18.min.json").read_text(encoding="utf-8"))
+SPEC = json.loads((FIXTURES / f"openapi-{capabilities.TESTED_VERSIONS[0]}.min.json").read_text(encoding="utf-8"))
 CREDENTIAL = "aew1.tk_0123456789abcdef." + "S" * 43
 
 
@@ -88,6 +89,87 @@ def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str
         if r["action"] in (action, "*") and r["resource"] in (resource, "*"):
             out = r["effect"]
     return out
+
+
+def matches(pattern: str, text: str) -> bool:
+    """OpenCode's pattern match (read from its 2.2.6 bundle): `*` is any run of characters, `?` one character, a
+    trailing ` *` also matches nothing after it, and case is ignored."""
+    def rx(p: str) -> str:
+        return "".join(".*" if ch == "*" else "." if ch == "?" else re.escape(ch) for ch in p)
+    body = rx(pattern[:-2]) + "( .*)?" if pattern.endswith(" *") else rx(pattern)
+    return re.fullmatch(body, text, re.S | re.I) is not None
+
+
+def decided(rules: list[dict[str, str]], action: str, resource: str) -> str:
+    """OpenCode's evaluation with its own matching: the last rule whose action and resource match wins."""
+    out = "ask"
+    for r in rules:
+        if matches(r["action"], action) and matches(r["resource"], resource):
+            out = r["effect"]
+    return out
+
+
+SHELL_COMMANDS = ("aew status", "aew", "git status", "git diff HEAD", "git diff --output=x", "git log -p .env",
+                  "git diff --no-index a b", "git -C x diff", "rm -rf build", "python -m pytest", "ls")
+
+
+@pytest.mark.parametrize("who", ["implementer", "reviewer", "lead"])
+def test_a_call_to_bash_is_decided_as_a_call_to_shell(who):
+    """The 2.2.6 bump: 2.2.5 runs a call to `bash` as `shell`, so every rule set decides each command the same under
+    both names (projection.SHELL_ACTIONS), whichever name OpenCode checks."""
+    rules = projection.LEAD_RULES if who == "lead" else config_of(contract(who))["permissions"]
+    for command in SHELL_COMMANDS:
+        assert decided(rules, "bash", command) == decided(rules, "shell", command), (who, command)
+    assert decided(rules, "shell", "aew status") == "allow"
+
+
+def test_every_projection_closes_session_warming_and_image_generation():
+    """The 2.2.6 bump: session warming sends model requests a provider's rate limit counts, and image generation
+    offers a tool whenever a provider has an image model. Every worker's and the Lead's configuration turns both off."""
+    reviewer = contract("reviewer", card="code_reviewer", skills=[], capabilities_=["exact_code_search"])
+    for config in (config_of(contract()), config_of(reviewer), projection.lead_config(),
+                   projection.lead_config("guide", contained={"network": {}}, relays={"openai": "http://x"})):
+        assert config["warming"] is False
+        assert config["experimental"]["image_generate"] is False
+    assert projection.lead_config()["experimental"]["policies"] == projection.lead_provider_policies()
+
+
+def test_the_leads_mcp_server_is_never_pooled():
+    """2.2.6's `pool` shares one connection across every directory that configures a server identically."""
+    servers = projection.lead_config()["mcp"]["servers"]
+    assert servers and all(server["pool"] is False for server in servers.values())
+
+
+def test_the_closed_defaults_are_keys_the_probe_requires():
+    """A release that respells a key AEW closes fails closed at launch, rather than leaving the default open."""
+    fields = capabilities.REQUIRED_FIELDS["Config.InfoEncoded"]
+    assert set(projection.CLOSED) | {f"experimental.{k}" for k in projection.CLOSED_EXPERIMENTAL} <= set(fields)
+    assert "pool" in capabilities.REQUIRED_FIELDS["Mcp.LocalConfigEncoded"]
+
+
+def test_the_leads_rules_deny_the_browser_tool_and_skill_themselves():
+    """OpenCode appends these denies itself; AEW's own rules state them, so they do not rest on its defaults."""
+    assert effect(projection.LEAD_RULES, "browser") == "deny"
+    assert effect(projection.LEAD_RULES, "skill", "browser") == "deny"
+
+
+def test_the_probe_requires_the_policy_actions_aew_projects():
+    """2.2.3 changed `integration.use` incompatibly; the probe now checks the inline action enum, not only that the
+    policies are an array."""
+    key = ("Config.InfoEncoded", "experimental.policies[].action")
+    assert {p["action"] for p in projection.lead_provider_policies()} <= capabilities.REQUIRED_FIELD_ENUMS[key]
+    assert capabilities.problems(SPEC) == []
+    doctored = copy.deepcopy(SPEC)
+    action = (doctored["components"]["schemas"]["Config.InfoEncoded"]["properties"]["experimental"]["properties"]
+              ["policies"]["items"]["properties"]["action"])
+    action["enum"] = [v for v in action["enum"] if v != "provider.use"]
+    assert ("schema Config.InfoEncoded field experimental.policies[].action lacks ['provider.use']"
+            in capabilities.problems(doctored))
+    # The same values spelt as `anyOf` of `const`s still satisfy it (#364 review, n2).
+    values = list(dict.fromkeys([*action["enum"], "provider.use"]))
+    del action["enum"]
+    action["anyOf"] = [{"type": "string", "const": v} for v in values]
+    assert capabilities.problems(doctored) == []
 
 
 @pytest.mark.parametrize("role, edit, web", [("implementer", "allow", "deny"), ("reviewer", "deny", "deny"),

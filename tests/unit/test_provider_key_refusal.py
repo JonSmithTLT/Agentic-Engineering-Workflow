@@ -252,7 +252,7 @@ def test_the_console_sync_note_is_on_opencode_ai_443_only_for_a_keyed_opencode_r
         notes = {e["target"]: e.get("note") for e in found["targets"]}
         assert notes == {"opencode.ai:443": netns.CONSOLE_SYNC_NOTE, "opencode.ai:80": None,
                          "api.opencode.ai:443": None, "evil.example:443": None}
-        assert netns.CONSOLE_SYNC_NOTE == "expected: OpenCode's console sync (inferred), refused by design"
+        assert netns.CONSOLE_SYNC_NOTE == "expected: OpenCode's console sync, refused by design"
     finally:
         net.close()
     for provider, keyed in (("openai", True), ("opencode", False), (None, False)):
@@ -293,8 +293,8 @@ def test_a_release_that_respells_the_leads_provider_deny_is_refused_at_a_workers
 
     from aew.harness.opencode import capabilities
 
-    spec = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode" / "openapi-2.0.18.min.json")
-                      .read_text(encoding="utf-8"))
+    spec = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode"
+                       / f"openapi-{capabilities.TESTED_VERSIONS[0]}.min.json").read_text(encoding="utf-8"))
     assert capabilities.problems(spec) == []
     config = "Config.InfoEncoded"
     renamed = copy.deepcopy(spec)

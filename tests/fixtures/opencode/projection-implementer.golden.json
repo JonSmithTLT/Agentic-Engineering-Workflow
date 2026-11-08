@@ -36,6 +36,11 @@
       "resource": "*"
      },
      {
+      "action": "bash",
+      "effect": "allow",
+      "resource": "*"
+     },
+     {
       "action": "read",
       "effect": "deny",
       "resource": "*.env"
@@ -147,6 +152,9 @@
    }
   },
   "default_agent": "aew",
+  "experimental": {
+   "image_generate": false
+  },
   "formatter": false,
   "lsp": false,
   "permissions": [
@@ -172,6 +180,11 @@
    },
    {
     "action": "shell",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "bash",
     "effect": "allow",
     "resource": "*"
    },
@@ -269,7 +282,8 @@
    "/r/harness/skills"
   ],
   "snapshots": false,
-  "update": "disable"
+  "update": "disable",
+  "warming": false
  },
  "session": {
   "agent": "aew",
@@ -309,6 +323,11 @@
    },
    {
     "action": "shell",
+    "effect": "allow",
+    "resource": "*"
+   },
+   {
+    "action": "bash",
     "effect": "allow",
     "resource": "*"
    },

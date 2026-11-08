@@ -108,7 +108,7 @@ names the variables that showed a Lead session, and says to ask the operator to 
 - **The approval:** the client puts a fresh proof on each member (`proof:` and 32 hex digits from `secrets`), submits
   the set on `request.sock`, says on standard error which approval it waits for and until when, and asks the service
   every second until the operator approves or declines in the confirmer. The wait ends at the approval's own expiry,
-  never more than ten minutes and a few seconds of grace: each request to the service is bounded by the time left,
+  never more than ten minutes and a few seconds of grace: each read of the service's answer is bounded by the time left (an answer sent in pieces can hold the wait longer, by its own length),
   and the wait is measured on a clock no change of the system time moves. A decline, an expiry or a restart of the service ends it
   with `OPERATOR_AUTHORIZATION_REQUIRED` and submits nothing. The client never sees a PIN.
 - **The submission:** the approved set goes, unchanged but for its `consent_set_ref`, to the STG-02 route

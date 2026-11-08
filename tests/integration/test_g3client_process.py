@@ -321,14 +321,17 @@ def test_a_consume_whose_reply_is_lost_gives_none_and_the_next_call_is_refused_s
     a new approval may be needed, because the retry is refused as used; nothing is ever admitted twice."""
     cs, record = _approved(world)
     real = C._UnixHTTP.getresponse
+    sent: list[Any] = []
 
     def lost(conn: Any) -> Any:
+        sent.append(conn)
         real(conn).read()  # the service has answered, so it has committed
         raise http.client.RemoteDisconnected("planted: the reply is lost")
 
     monkeypatch.setattr(C._UnixHTTP, "getresponse", lost)
     got = _consume(cs)
     assert got.result is None and "did not answer" in (got.held_why or "") and C._NOT_CONSUMED in (got.held_why or "")
+    assert len(sent) == 1  # it asks once: the client never sends a used member again by itself
     assert world.rig.svc.ledger.consumed(record["consent_set_ref"], cs["intents"][0]["intent_ref"])
     monkeypatch.setattr(C._UnixHTTP, "getresponse", real)
     assert _consume(cs).result == "CONSENT_ALREADY_USED"

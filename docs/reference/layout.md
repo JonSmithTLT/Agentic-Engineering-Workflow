@@ -200,7 +200,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.steering`: `notifier_problem` (os.path.isfile)
 - `aew.engine.store`: `ControlStore._apply` (sha256_file), `ControlStore._commit_unprofiled` (sha256_file), `ControlStore._load_txn` (Path.read_bytes), `ControlStore._load_txn` (sha256_file), `ControlStore._remove_temp_files` (Path.is_file), `ControlStore._store_modes` (os.lstat), `Session._unsealed_endings` (Path.is_file), `read_lock_free` (Path.is_dir)
 - `aew.engine.ticket_fields`: `load_registry` (Path.read_text), `packaged_registries` (Path.is_file)
-- `aew.engine.usage_ops`: `read_price_table` (Path.read_bytes)
+- `aew.engine.usage_ops`: `bundled_table` (Path.read_bytes), `read_price_table` (Path.read_bytes)
 - `aew.engine.work_ops`: `WorkCommands.work_show` (Path.exists), `WorkCommands.work_show` (Path.read_text), `WorkUnits.completion_sha` (sha256_file)
 - `aew.engine.workspace_ops`: `Invocations.current_snapshot` (Path.exists)
 - `aew.g3client`: `read_token` (Path.read_text)

@@ -364,6 +364,9 @@ def _init(args: argparse.Namespace) -> Any:
         "provider_key": netns.FIRST_USE_LINE,
         "map": maps.first_map(engine),  # register E184: the first structural map, generated and selected
     }
+    if "pricing" not in engine.manifest["policy"]:
+        out["price_table"] = ("this package holds no bundled price table, so every cost reads unpriced until the "
+                              "project adopts one as policy.pricing")
     return {**out, **consent.init_keys(out["next"], consent.at_init(args.fetch_tool))}
 
 

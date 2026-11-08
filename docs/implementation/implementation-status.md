@@ -64,7 +64,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **Status:** Implemented (commands, OpenCode); skills Staged
 
-**Acceptance evidence / next action:** `aew opencode` gives the Lead `/aew-resume`, `/aew-status`, `/aew-ticket`, `/aew-next`, `/aew-handoff` (ADR-0009; `opencode.md`). Skills: see Specialist skills
+**Acceptance evidence / next action:** `aew opencode` gives the Lead `/aew-resume`, `/aew-status`, `/aew-ticket`, `/aew-next`, `/aew-usage`, `/aew-handoff` (ADR-0009; `opencode.md`). Skills: see Specialist skills
 
 ### AEW Knowledge Contract
 

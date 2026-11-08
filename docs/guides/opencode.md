@@ -93,6 +93,7 @@ In the TUI, the agent is `aew-lead`, with these commands:
 | `/aew-status` | work, Lead authority and harness runs, with proposed next actions |
 | `/aew-ticket <objective>` | draft a Ticket and a plan for an objective, show them to you, and create them only after you agree |
 | `/aew-next <id>` | take the next step on a unit: dispatch with `--launch`, wait, ingest, advance |
+| `/aew-usage` | the workers' usage and cost from `aew usage show`, with what is unpriced or reads as a floor |
 | `/aew-handoff` | record a checkpoint for a handoff. The handoff itself (`aew lead handoff offer`) is yours, at your own terminal. |
 
 **The Lead's guide.** The Lead's system text includes the project's guide to how AEW works (`aew guide`, rendered from this project's own gates policy when `aew opencode` starts): what each risk class requires and still guarantees, the Ticket lifecycle, and the typed tool for each step, with its shell command as the fallback. The default-policy version is [`lead-guide.md`](lead-guide.md).

@@ -164,7 +164,7 @@ def test_a_v1_opencode_is_refused_before_anything_starts(lab, tmp_path):
 
 def test_the_lead_commands_are_what_the_tui_is_given():
     commands = projection.lead_config()["commands"]
-    assert sorted(commands) == ["aew-handoff", "aew-next", "aew-resume", "aew-status", "aew-ticket"]
+    assert sorted(commands) == ["aew-handoff", "aew-next", "aew-resume", "aew-status", "aew-ticket", "aew-usage"]
     assert all(c["agent"] == projection.LEAD_AGENT for c in commands.values())
 
 

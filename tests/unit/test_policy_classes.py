@@ -75,6 +75,39 @@ def test_a_policy_file_without_a_classified_schema_is_legality_in_full():
     assert after["operational_digest"] == before["operational_digest"]
 
 
+PRICES: dict[str, Any] = {"schema": "aew/pricing/v1", "currency": "USD", "as_of": "2026-11-08", "source": "a test",
+                          "base_tier_only": {"p/m": {"above_context_tokens": 272000}},
+                          "prices": {"p/m": {"input": 1.0, "output": 2.0}}}
+TABLE = "policy/pricing.yaml"
+
+
+def test_adding_removing_or_refreshing_a_price_table_moves_only_the_operational_digest():
+    """A3 §2.1: nothing in an all-operational table can alter whether an action is legal, nor can its presence."""
+    none = _digests()
+    table = _digests(**{TABLE: ("pricing", PRICES)})
+    refreshed = _digests(**{TABLE: ("pricing", _changed(PRICES, lambda t: t["prices"]["p/m"].update(input=3.0)))})
+    assert none["legality_digest"] == table["legality_digest"] == refreshed["legality_digest"]
+    assert len({none["operational_digest"], table["operational_digest"], refreshed["operational_digest"]}) == 3
+
+
+def test_a_price_table_with_a_key_the_schema_does_not_name_stays_legality():
+    """A3 §8: the entry goes only when it came out empty. An unnamed key may be read, so it still binds."""
+    unnamed = {TABLE: ("pricing", {**PRICES, "future_knob": 1})}
+    assert _digests(**unnamed)["legality_digest"] != _digests()["legality_digest"]
+    other = {TABLE: ("pricing", {**PRICES, "future_knob": 2})}
+    assert _digests(**other)["legality_digest"] != _digests(**unnamed)["legality_digest"]
+
+
+def test_a_manifest_naming_an_absent_price_table_stays_legality():
+    assert _digests(**{TABLE: ("pricing", None)})["legality_digest"] != _digests()["legality_digest"]
+
+
+@pytest.mark.parametrize("name", [n for n in classes.CLASSIFIED if n != "pricing"])
+def test_any_other_classified_file_with_nothing_legal_keeps_its_empty_entry(name):
+    """Byte for byte as before: only a price table leaves the digest, so no other project's digest moves on upgrade."""
+    assert classes.digests({"policy/f.yaml": (name, {})})["legality_digest"] == classes._sha({"policy/f.yaml": {}})  # noqa: SLF001
+
+
 def test_execution_profiles_classify_through_the_profile_definition():
     execution = {"schema": "aew/execution/v1", "configured": True, "routing": {"default": "p"},
                  "profiles": {"p": {"provider": "x", "model": "m", "deadline_s": 60}}}

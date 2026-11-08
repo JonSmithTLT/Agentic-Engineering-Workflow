@@ -266,6 +266,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `policy/execution.yaml`, named by `aew.policy.execution:REL_PATH`: written or removed by `aew.engine.store:ControlStore.create` (direct: write_file)
 - `policy/gates.yaml`: written or removed by `aew.engine.store:ControlStore.create` (direct: write_file)
 - `policy/guardrails.yaml`: written or removed by `aew.engine.store:ControlStore.create` (direct: write_file)
+- `policy/pricing.yaml`: written or removed by `aew.engine.store:ControlStore.create` (direct: write_file)
 
 ## `pricing`
 

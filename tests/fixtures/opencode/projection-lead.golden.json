@@ -268,6 +268,11 @@
    "agent": "aew-lead",
    "description": "AEW: draft a Ticket and plan for an objective",
    "template": "Draft an AEW Ticket for this objective: $ARGUMENTS\n\nCall `status` first. Propose the Ticket (title, risk class 0-4 chosen by the guide's class definitions, with your reasons, scope, completion criteria) and a plan. Show them to me first. Only after I agree, create them with `ticket_draft`, the plan in its `plan`. The plan declares its assurance (`none`, or the review and verification cards that become required gates): say which in the proposal."
+  },
+  "aew-usage": {
+   "agent": "aew-lead",
+   "description": "AEW: usage and cost, the workers' runs",
+   "template": "Here is AEW's usage report. Show it to me as it stands, then say in one line what is unpriced or reads as a floor, if anything. Do not act on it.\n\n!`aew usage show`"
   }
  },
  "default_agent": "aew-lead",

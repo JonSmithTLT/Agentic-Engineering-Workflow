@@ -200,7 +200,7 @@ These make races deterministic: rotation during an in-flight submit, a check spa
 - **`aew harness config opencode <INV>|--lead`** prints the exact projection and the environment names, without values.
 
 ### The Lead's OpenCode TUI (`aew opencode`, `src/aew/harness/opencode/lead.py`)
-- `aew opencode [--acquire] [--provider-env NAME] [--print-config]` is `aew lead session` running `opencode-cli --standalone <repo root>` with the Lead projection (`aew-lead` agent; `/aew-resume`, `/aew-status`, `/aew-ticket`, `/aew-next`, `/aew-handoff`).
+- `aew opencode [--acquire] [--provider-env NAME] [--print-config]` is `aew lead session` running `opencode-cli --standalone <repo root>` with the Lead projection (`aew-lead` agent; `/aew-resume`, `/aew-status`, `/aew-ticket`, `/aew-next`, `/aew-handoff`, and `/aew-usage` from 2026-11-08, register F25).
 - **Why `--standalone`.**
   - A V2 TUI running its own server sends its own environment, minus the server password, as every session's shell environment, and its server inherits the same environment (verified in the 2.0.18 binary).
   - With `--server`, the TUI sends nothing, so the shell would get the server's environment. `aew opencode` refuses `--server`.

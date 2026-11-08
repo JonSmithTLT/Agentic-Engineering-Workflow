@@ -16,6 +16,12 @@ which fails closed. So does an instance key the schema does not name: the schema
 engine may read it (PR #130 review, finding 2), so it is digested as legality rather than dropped. A policy map key
 that is not a string is refused: it cannot be ordered against string keys, and ``1`` and ``"1"`` would share a
 pointer (finding 3).
+
+A price table holding only operational values leaves no entry in ``legality_digest``, not even an empty one, so adding,
+removing or refreshing it stales no open work (A3 §2.1: the digest "Contains only inputs whose change may alter whether
+an action is legal"). That moves the digest only: each of those still needs the operator's adoption, as above. A table
+with a key the schema does not name, a manifest naming a table that is absent, and every other classified file keep
+their entries, so those still fail closed.
 """
 
 from __future__ import annotations
@@ -149,4 +155,6 @@ def digests(files: dict[str, tuple[str | None, Any]]) -> dict[str, str]:
         oper[rel] = {}
         for pointer, cls, value in leaves(schema, data):
             (legal if cls == LEGALITY else oper)[rel][pointer] = value
+        if name == "pricing" and not legal[rel]:  # A3 §2.1: nothing here can alter whether an action is legal
+            del legal[rel]
     return {"legality_digest": _sha(legal), "operational_digest": _sha(oper)}

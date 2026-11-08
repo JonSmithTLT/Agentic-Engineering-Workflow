@@ -229,7 +229,7 @@ The design text the operator has adopted for AEW, published under the operator's
 
 ## The generated as-built reference ([`reference/`](reference/README.md))
 
-What the code is, enumerated from the code by `python tools/reference.py render` and kept true by `python tools/reference.py check`, which `tests/unit/test_reference.py` runs in CI. It states what the code is, never what it should be. These files are generated: change the code, then render (a pull request that changes enumerated code commits the re-render). One row per file, in file order.
+What the code is, enumerated from the code by `python tools/reference.py render` and kept true by `python tools/reference.py check`, which `tests/unit/test_reference.py` runs in CI. It states what the code is, never what it should be. These files are generated: change the code, then render (a pull request that changes enumerated code commits the re-render; in a merge, `python tools/reference.py resolve` renders and stages them). One row per file, in file order.
 
 | File | What it is |
 |---|---|
@@ -243,7 +243,7 @@ What the code is, enumerated from the code by `python tools/reference.py render`
 | [`harness-capabilities.md`](reference/harness-capabilities.md) | What each harness provides to the steering features (each adapter's own declaration, or the recorded column of a harness with no adapter yet) and what each feature needs; a gap is held by a register row |
 | [`interfaces.md`](reference/interfaces.md) | What the product exposes, each read from its owner: the dashboard's routes, the Lead's typed tools, the JSON schemas (flattened), the SQLite tables, and the `aew` commands linked into the surface map |
 | [`layout.md`](reference/layout.md) | The `.aew` directory tree: each entry's writers and readers, whether git keeps it, whether it is the store, and whether a contained process sees it; the reads the reading could not place |
-| [`modules.md`](reference/modules.md) | The import graph of `src/aew`, static and lower-bound: each package's modules with what each imports and is imported by, the packages that import from one another, and the dynamic imports the graph cannot follow |
+| [`modules.md`](reference/modules.md) | The import graph of `src/aew`, static and lower-bound: each package's modules with what each imports, the groups each imports from, and the dynamic imports the graph cannot follow (`python tools/reference.py importers <module>` prints what imports a module) |
 | [`state-machines.md`](reference/state-machines.md) | The Ticket state machine (`aew.engine.transitions`): every state, edge, guard and reason rule, which edges code that does not ask the table can take; the configuration and live-usage state sets |
 | [`state-transitions.md`](reference/state-transitions.md) | The as-built state-transition maps, drawn from the records alone: one diagram per machine (the Ticket machine's states and edges with their operation, guard and reason; the configuration and live-usage state sets as states only, since the code records no edge table for them) |
 | [`writers.md`](reference/writers.md) | Every path under `.aew` that AEW code writes, the module and function that writes it, its mechanism and the entry points that reach it; the writes the reading could not place |

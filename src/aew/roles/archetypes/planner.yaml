@@ -17,6 +17,6 @@ prohibited:
 outputs:
   - proposed plan revision
 context:
-  knowledge: [requirement, discovery_evidence, accepted_authority]
+  knowledge: [requirement, discovery_evidence, accepted_authority, codebase_map]
   excluded: [unrelated historical implementation chatter]
 capabilities: []

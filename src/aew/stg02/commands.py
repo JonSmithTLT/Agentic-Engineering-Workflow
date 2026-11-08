@@ -207,7 +207,8 @@ class Carrier:
                          intent_ref=i["intent_ref"], origin_proof_ref=i["origin_proof_ref"], owner=owner,
                          operation_ref=self._operation_ref(req, i, owner))
         if got.result is None:
-            LOG.warning("%s is held: %s", i["intent_ref"], got.held_why)  # neither the proof nor the consent is in it
+            # Neither the proof nor the consent is in it
+            LOG.warning("%s is held: %s. %s", i["intent_ref"], got.held_why, G3.HELD_ON_THE_ROUTE)
             return refusal(i["action"], "ORIGIN_NOT_ESTABLISHED", held=True)
         if got.result == "CONSUMED":
             return {"outcome": "ADMITTED", "reason_code": None, "owner_reason": None}

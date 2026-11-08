@@ -1,10 +1,10 @@
 """`aew operator` and `aew lead mode` (M4-E E2; plan v3 §2.1; A1 §1).
 
 ``aew operator serve --dev`` runs the operator endpoint in the operator's own terminal; its console shows the
-one-time codes. ``aew lead mode raise`` only sends a request to it and reads the code typed at this terminal: it has
-no engine path of its own. ``aew lead mode lower`` is the Lead's (a restriction), relayed in a Lead session like any
-Lead-reachable command. The Lead broker refuses ``raise``, ``serve`` and ``ping`` in a Lead session
-(``lead_broker.OPERATOR_ENDPOINT``).
+one-time codes. ``aew lead mode raise`` only sends a request to it, and then reads the code typed at this terminal or,
+where G3 counts, waits while the operator approves in G3's confirmer: it has no engine path of its own. ``aew lead mode
+lower`` is the Lead's (a restriction), relayed in a Lead session like any Lead-reachable command. The Lead broker
+refuses ``raise``, ``serve`` and ``ping`` in a Lead session (``lead_broker.OPERATOR_ENDPOINT``).
 """
 
 from __future__ import annotations
@@ -80,8 +80,9 @@ def _raise(a: argparse.Namespace) -> Any:
     engine = _engine(a)
     if not operator.has_terminal():
         # Refused before the endpoint is contacted: a requester that cannot type the code back must never put a
-        # challenge on the operator's console (as `aew dashboard open`).
+        # challenge on the operator's console (as `aew dashboard open`), or an approval on their confirmer.
         raise OperatorAuthorizationRequired(
-            "`aew lead mode raise` reads the confirmation code from your terminal, and this process has none (a "
-            "harness tool call, a pipe or a scheduled job); run it yourself in a terminal", detail="no terminal")
+            "`aew lead mode raise` is answered from your terminal (the confirmation code, or waiting while you approve "
+            "in G3's confirmer), and this process has none (a harness tool call, a pipe or a scheduled job); run it "
+            "yourself in a terminal", detail="no terminal")
     return operator_client.request_raise(engine.aew_root, a.mode)

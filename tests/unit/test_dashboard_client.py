@@ -84,9 +84,34 @@ def test_the_probes_token_fails_naming_its_mismatch_and_what_held_the_port():
         # recorded while this end of the connection was open: the client's own socket, with this pid
         assert any(f"127.0.0.1:{local} " in line and f"pid={os.getpid()}," in line for line in text.splitlines()), text
         assert "socket inodes: fd " in text and D.NO_OWNER in text
-    elif sys.platform == "win32":  # netstat's rows for the port, the listening one with this pid
-        assert any("LISTENING" in line and line.split()[-1] == str(os.getpid()) for line in text.splitlines()), text
+    elif sys.platform == "win32":  # netstat's rows for the port: the listening one with this pid, or saying it has none
+        assert (any(f"127.0.0.1:{port} " in line and "LISTENING" in line and line.split()[-1] == str(os.getpid())
+                    for line in text.splitlines()) or D.NO_LISTENING_ROW in text), text
         assert D.SHARED in text
+
+
+LISTENER = "  TCP    127.0.0.1:5000         0.0.0.0:0              LISTENING       41"
+CLIENT = "  TCP    127.0.0.1:6000         127.0.0.1:5000         ESTABLISHED     41"
+OTHER_LISTENER = "  TCP    127.0.0.1:6000         0.0.0.0:0              LISTENING       7"
+
+
+@pytest.mark.parametrize(("table", "shown", "says_so"), [
+    (f"{LISTENER}\n{CLIENT}", [LISTENER, CLIENT], False),
+    (CLIENT, [CLIENT], True),
+    (f"{OTHER_LISTENER}\n{CLIENT}", [OTHER_LISTENER, CLIENT], True),
+    ("", ["(none)"], True),
+    ("(no answer in 10s: killed)", ["(no answer in 10s: killed)"], False),
+    ("(none) [exit 1: denied]", ["(none) [exit 1: denied]"], False),
+], ids=["a_listener", "only_a_connection", "a_listener_on_the_other_port", "no_rows", "netstat_never_answered",
+        "netstat_failed"])
+def test_netstats_rows_say_when_they_hold_no_listener_on_the_port(table, shown, says_so):
+    """Some Windows hosts leave listeners out of the TCP table: on build 26300 a plain listener has no row in netstat
+    or Get-NetTCPConnection, and the LISTENING rows there are mostly sockets with a foreign address and port 0. The
+    failure then says so, rather than reading as a port nothing held. A row on another port doesn't count. A table
+    that never came says only that: it has no rows to be missing."""
+    lines = D._netstat_rows(table, 5000, 6000).splitlines()
+    assert lines[:len(shown)] == shown
+    assert (D.NO_LISTENING_ROW in lines) is says_so
 
 
 @pytest.mark.parametrize(("response", "says"), [

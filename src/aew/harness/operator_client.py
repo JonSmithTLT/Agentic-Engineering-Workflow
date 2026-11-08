@@ -2,12 +2,14 @@
 
 It holds no authority and constructs nothing the engine accepts as the operator's: only the endpoint
 (``aew.harness.operator_endpoint``, imported by ``aew operator serve`` alone) builds an ``OperatorPrincipal``. Every
-client command only sends a request; the operator's answer is the code shown on the endpoint's console, typed here.
+client command only sends a request; the operator's answer is the code shown on the endpoint's console, typed here, or
+for a raise where G3 counts, their approval in G3's confirmer.
 """
 
 from __future__ import annotations
 
 import json
+import sys
 import time
 from collections.abc import Callable
 from multiprocessing.connection import Client
@@ -140,13 +142,21 @@ def raise_prompt(bound: dict[str, Any], requester: str) -> str:
 
 def request_raise(aew_root: Path, mode: str, *, ask: Callable[[str], str] | None = None,
                   requester: str | None = None) -> dict[str, Any]:
-    """``aew lead mode raise``: ask the endpoint, read the code the operator types at **this** terminal, send it."""
+    """``aew lead mode raise``: ask the endpoint, read the code the operator types at **this** terminal, and send it; or
+    where G3 counts, wait here while they approve in the confirmer. Leaving ends the request, either way."""
     who = requester if requester is not None else (" <- ".join(procs.process_chain()) or "unknown")
     read = ask if ask is not None else (lambda prompt: operator.ask(prompt))
     conn = _connect(aew_root)
     try:
         _send(conn, "mode_raise", {"mode": mode, "requester": who})
         shown = _reply(conn)
+        if shown.get("challenge") == "g3":  # the operator's PIN goes in G3's confirmer: there is no code to type here
+            sys.stderr.write(f"aew lead mode raise: approve or decline {shown['approval_ref']} in the confirmer (AEW "
+                             f"approvals), until {shown['expires_at']}\n")
+            sys.stderr.flush()
+            return _reply(conn)
+        if shown.get("g3"):
+            sys.stderr.write(f"aew lead mode raise: {shown['g3']}\n")
         return _answer(conn, lambda: read(raise_prompt(shown["bound"], who)))
     finally:
         conn.close()

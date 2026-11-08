@@ -312,7 +312,9 @@ def test_a_consume_answered_with_no_result_gives_none_and_says_why_so_an_owner_h
     got = C.consume(**CONSUME_ARGS)
     assert got.result is None and said in (got.held_why or "")
     assert C._HELD_WAY_ON in (got.held_why or "")  # what happened, and the way on, a used approval included
-    assert "new approval" in (got.held_why or "") and "new client_request_key" in (got.held_why or "")  # as the notes
+    assert "new approval" in (got.held_why or "")
+    # Every owner prints this, and the key and the route are the carrier's alone: it adds them itself
+    assert "client_request_key" not in (got.held_why or "") and "O-01" not in (got.held_why or "")
     # What an owner shows the operator carries neither the member's proof nor the consent
     assert CONSUME_ARGS["origin_proof_ref"] not in repr(got) and CONSUME_ARGS["consent_set_ref"] not in repr(got)
 
@@ -543,7 +545,7 @@ def test_a_receipts_note_is_keyed_on_the_admission_state_and_the_reason_and_name
     # that no owner accepted consent yet was true until an owner did: nothing says so now (#365 review m2)
     for key in C.NOTES:
         receipt = {"results": [{"admission_state": key[0], "reason_code": key[1]}]}
-        assert "No owner accepts" not in (C.note(receipt, counting) or "") and not hasattr(C, "NOT_YET")
+        assert "No owner accepts" not in (C.note(receipt, counting) or "")
     assert C.note({"results": [{"admission_state": "ADMITTED", "reason_code": None}]}, failing) is None
     assert C.note({"results": [{"admission_state": "REJECTED", "reason_code": "PRECONDITION_STALE"}]},
                   failing) is None
@@ -618,6 +620,21 @@ def test_a_partial_sets_note_names_each_side_and_never_says_nothing_was_admitted
         assert f"Not admitted: intent:b ({state} {reason})" in said and C.SOME_ADMITTED in said
         assert "request only the members not admitted, with a new client_request_key" in said
     assert C.note({"results": [admitted]}, counting) == C.NO_EFFECT + "."
+
+
+def test_a_refused_set_only_the_overlay_has_points_at_the_operator_endpoint(route: Any) -> None:
+    """A hand-written raise takes a PIN and fails at the carrier, unconsumed: the refusal names the governed way, and
+    not the checks of a set's own fields, which would change nothing."""
+    url, _, answers = route
+    answers.append((400, {"code": "STRUCTURAL"}))
+    with pytest.raises(ValidationFailed) as e:
+        C.submit({"intents": [{"action": "SET_STEERING_MODE"}]}, url, TOKEN)
+    assert "aew lead mode raise" in e.value.message and "approval is unused" in e.value.message
+    assert "client_request_key" not in e.value.message and "installation_ref" not in e.value.message
+    answers.append((400, {"code": "STRUCTURAL"}))
+    with pytest.raises(ValidationFailed) as e:
+        C.submit({"intents": [{"action": "ATTACH_LEAD"}]}, url, TOKEN)
+    assert "aew lead mode raise" not in e.value.message and "installation_ref" in e.value.message
 
 
 def test_a_route_that_does_not_answer_is_unavailable_and_the_token_is_not_in_it() -> None:

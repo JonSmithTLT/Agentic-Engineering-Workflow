@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from aewflow import set_mutating_concurrency
 from conftest import git, run_aew
 
 
@@ -47,6 +48,7 @@ def test_aew_inside_workspace_resolves_to_authoritative_project(project, tmp_pat
 
 
 def test_serial_mutating_cap(project, tmp_path):
+    set_mutating_concurrency(project, 1)  # the serial cap, set by name: the default is 2 (register F10)
     t1 = planned_ticket(project, tmp_path)
     t2 = planned_ticket(project, tmp_path, title="Independent change")
     project.lead("work", "assign", t1)

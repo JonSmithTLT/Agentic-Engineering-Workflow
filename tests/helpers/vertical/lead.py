@@ -214,8 +214,9 @@ class Lead:
         server = next(iter(config["mcp"]["servers"].values()))
         argv = list(server["command"])
         argv[0] = shutil.which(argv[0], path=os.environ.get("PATH")) or argv[0]  # as OpenCode resolves it
+        env = {**os.environ, **server.get("environment", {})}  # the server's own variables over the session's
         self.server = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                       creationflags=NO_WINDOW)
+                                       env=env, creationflags=NO_WINDOW)
         self._rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
                                  "clientInfo": {"name": "vertical-lead", "version": "1"}})
         self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})

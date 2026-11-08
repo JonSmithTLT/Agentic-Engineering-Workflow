@@ -290,6 +290,54 @@ def test_a_stalled_service_reaches_the_operator_as_a_held_receipt_not_a_client_t
         ("HELD", "ORIGIN_NOT_ESTABLISHED")] * len(results)
 
 
+def test_the_way_on_in_the_routes_log_for_a_held_consume_can_be_followed_to_an_admission(
+        world: World, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture) -> None:
+    """A consume that gets no answer, on the real route and service. The log says what to do: once it is fixed, a new
+    approval and a new client_request_key in the set file. Doing that admits it."""
+    caplog.set_level("WARNING", logger="aew.stg02")
+    _g3_counts(world, monkeypatch)
+    real = C._g3
+
+    def no_consume(sock: Any, method: str, path: str, *a: Any, **k: Any) -> Any:
+        if path == "/g3/v1/consume":
+            raise Unavailable("planted: no answer", reason="g3_unreachable")
+        return real(sock, method, path, *a, **k)
+
+    monkeypatch.setattr(C, "_g3", no_consume)
+    t = _operator(world.rig, lambda ref: world.rig.svc.decide(ref, {"decision": "APPROVE", "pin": G.PIN}))
+    code, out, _ = _run(world, capsys)
+    t.join(10)
+    first = json.loads(out)
+    assert code == 0 and first["receipt"]["results"][0]["admission_state"] == "HELD"
+    assert "planted: no answer" in caplog.text and "with a new approval" in caplog.text
+    assert "new client_request_key in the set file" in caplog.text
+    monkeypatch.setattr(C, "_g3", real)
+    cs = json.loads(world.set_file.read_bytes())
+    cs["client_request_key"] += ".again"
+    world.set_file.write_bytes(json.dumps(cs).encode())
+    t = _operator(world.rig, lambda ref: world.rig.svc.decide(ref, {"decision": "APPROVE", "pin": G.PIN}))
+    code, out, _ = _run(world, capsys)
+    t.join(10)
+    second = json.loads(out)
+    assert code == 0 and second["consent_set_ref"] != first["consent_set_ref"]
+    assert second["receipt"]["results"][0]["admission_state"] == "ADMITTED"
+
+
+def test_a_steering_raise_handwritten_for_the_real_route_is_sent_to_the_operator_endpoint(world: World) -> None:
+    """The real carrier has no owner for what only the overlay has, so its 400 reaches this way on, with no consume."""
+    from aew.harness import g3_adapter as adapter
+
+    bound = {"project": "any", "mode": "walk", "previous": None, "mode_rev": 0, "generation": 1,
+             "legality_digest": "0" * 64}
+    cs = dict(C.with_proofs(adapter.raise_set(bound)), consent_set_ref="consent:g3:" + "b" * 32)
+    with pytest.raises(ValidationFailed) as e:
+        C.submit(cs, world.url, world.token_file.read_text(encoding="utf-8").strip())
+    assert e.value.details["status"] == 400 and "`aew lead mode raise <mode>`" in e.value.message
+    assert "approval is unused" in e.value.message and "installation_ref" not in e.value.message
+    assert not world.rig.svc.ledger.consumed(cs["consent_set_ref"], cs["intents"][0]["intent_ref"])
+
+
 def test_a_transaction_that_fails_after_consumed_stores_nothing_and_its_retry_is_refused(
         world: World, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     """It fails closed. The client says the approval may have been used, no receipt or operation survives on the route,

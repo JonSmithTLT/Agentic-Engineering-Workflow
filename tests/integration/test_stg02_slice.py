@@ -840,6 +840,7 @@ def test_the_routes_log_says_why_a_member_was_held_and_holds_neither_the_proof_n
     live.post(attach_set(cfg, "log-standing"))
     said = caplog.text
     assert "planted: the service refused the request: STRUCTURAL" in said and "planted: a weaker context" in said
+    assert C.HELD_ON_THE_ROUTE in said  # what only this route needs: `consume`'s text is every owner's
     assert req["intents"][0]["origin_proof_ref"] not in said and req["consent_set_ref"] not in said
 
 

@@ -45,7 +45,7 @@ from aew.errors import (
     UsageError,
     ValidationFailed,
 )
-from aew.stg02 import adopted as A
+from aew.stg02 import g3_overlay as A
 from aew.stg02 import wire as W
 
 REQUEST_SOCK = "/run/aew-g3/request.sock"
@@ -102,7 +102,7 @@ def with_proofs(cset: dict[str, Any], token: Callable[[int], str] = secrets.toke
         i["origin_proof_ref"] = "proof:" + token(PROOF_BYTES)
     errors = A.o01_errors("CommandSet", out)
     if errors:
-        raise ValidationFailed("the set is not a valid O-01 0.2 CommandSet: " + "; ".join(errors[:5]),
+        raise ValidationFailed("the set is not a valid O-01 CommandSet: " + "; ".join(errors[:5]),
                                reason="command_set_schema", errors=errors)
     return out
 
@@ -309,11 +309,17 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
                                reason="o01_unauthenticated")
     if status == 503:
         raise Unavailable(f"the O-01 route is unavailable; {_MAY_BE_USED}", reason="o01_unavailable")
+    # What only the overlay has, no owner on this route takes, so the route refuses it before any receipt: the operator
+    # endpoint's is the governed way, and nothing about this set's fields would change that
+    elsewhere = A.owned_elsewhere(i.get("action") for i in cset.get("intents") or [])
     if code == "request_key_conflict":
         said = ("the set's client_request_key already has a receipt from an earlier request, which may be this file's, "
                 f"as each request makes new proofs; the approval is unused. {_SEE_THE_LIST}")
     elif code == "unresolved_no_redispatch":  # says nothing of this approval: a used member can reach it too
         said = f"the route can no longer show this client_request_key's receipt. {_SEE_THE_LIST}"
+    elif status == 400 and elsewhere:
+        said = (f"the approval is unused, and no owner on this route takes {', '.join(elsewhere)}. It is taken at the "
+                "operator endpoint: run `aew lead mode raise <mode>`")
     elif status == 400:
         said = _AS_IT_STANDS
     elif status == 409:  # as a 400, a status the route declares for a set it refuses before any owner
@@ -325,9 +331,10 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
                            o01_code=code, status=status)
 
 
-# The route's log carries this (the review of G3-C's owner side, m2), so it gives the way that works, as the notes do.
-_HELD_WAY_ON = ("This action is not admitted. Request it again once this is fixed, with a new approval, and on the "
-                f"O-01 route {_NEW_KEY}")
+# True for every owner that holds on a None (the review of G3-C's owner side, m2): each adds what only its own route
+# needs, as the O-01 carrier does with HELD_ON_THE_ROUTE, and the operator endpoint with the command that asks again.
+_HELD_WAY_ON = "This action is not admitted. Request it again once this is fixed, with a new approval"
+HELD_ON_THE_ROUTE = f"On this route, request it {_NEW_KEY}"
 
 
 @dataclass(frozen=True)

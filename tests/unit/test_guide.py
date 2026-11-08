@@ -30,6 +30,19 @@ def test_the_workflow_contracts_classes_are_explained_with_their_examples():
     assert "not defined yet" not in text
 
 
+def test_the_guide_says_how_many_mutating_tickets_run_at_once_as_the_cap_says_and_that_scope_decides_it():
+    """A Lead that doesn't know narrow scopes let work run at once writes wide ones and learns from the hold."""
+    cap = DEFAULT_GATES["mutating_concurrency"]
+    said = f"up to {cap} mutating Tickets work at once here when their scopes cannot name the same file"
+    assert said in lead_text.render(DEFAULT_GATES, CONFIGURED)
+    assert "name every path this change needs, and no more" in lead_text.render(DEFAULT_GATES, CONFIGURED)
+    assert said in lead_text.render({k: v for k, v in DEFAULT_GATES.items() if k != "mutating_concurrency"}, CONFIGURED)
+    assert "up to 5 mutating Tickets" in lead_text.render({**DEFAULT_GATES, "mutating_concurrency": 5}, CONFIGURED)
+    serial = lead_text.render({**DEFAULT_GATES, "mutating_concurrency": 1}, CONFIGURED)
+    assert "one mutating Ticket works at a time here" in serial and "work at once here" not in serial
+    assert guide.SCOPE_RULE not in serial
+
+
 def test_each_class_lists_exactly_the_gates_this_projects_policy_requires():
     gates = copy.deepcopy(DEFAULT_GATES)
     gates["risk_paths"]["2"] = gates["risk_paths"]["2"] + ["review_security"]

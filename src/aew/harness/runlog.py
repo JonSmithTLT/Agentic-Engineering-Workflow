@@ -277,13 +277,27 @@ def may_be_live(directory: Path, launched_at: str | None, *, grace_s: float = UN
     return possibly_live(status, launched_at, grace_s=grace_s)
 
 
+_request_clock_lock = threading.Lock()
+_last_request_ns = 0
+
+
+def _next_request_ns() -> int:
+    """The clock for a request's name, strictly increasing within a process. The clock itself can repeat a value (on
+    Windows before Python 3.13 it ticks about every 15.6 ms) or step back, and the name is a request's identity and its
+    place in issue order: two requests of one kind under one name would share a file, and one would be lost."""
+    global _last_request_ns
+    with _request_clock_lock:
+        _last_request_ns = max(_last_request_ns + 1, time.time_ns())
+        return _last_request_ns
+
+
 def new_request(kind: str, payload: dict[str, Any] | None = None) -> tuple[str, str]:
     """A Lead request (stop, send, interrupt) for a run's supervisor: its file name and text.
 
     The run directory is model-writable, so a request file alone authorizes nothing: the Lead operation records the
     name and digest in control state first (``harness_ops``), then delivers the file with :func:`deliver_request`,
     and the supervisor acts only on a file that matches a recorded request (independent review R1)."""
-    name = f"{time.time_ns()}-{os.getpid()}-{kind}.json"
+    name = f"{_next_request_ns()}-{os.getpid()}-{kind}.json"
     return name, json.dumps({"kind": kind, "at": utc_now(), **(payload or {})})
 
 

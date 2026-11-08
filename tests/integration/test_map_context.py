@@ -2,10 +2,11 @@
 design v0.5 §10, §11; T5-INV-01, 07, 10).
 
 With the switch off (the default) packs and the resume view are byte-identical to a project without maps, map or no
-map. With it on, only a role whose context names codebase_map (today the investigator) gets the bounded slice, its
-pack pins the map it used, and regeneration shows the pinned map and freshness. Architecture selection records an
-existing discovery record. And no state of ``.aew/local/maps/``, before dispatch or after it, changes what dispatch,
-launch, gates, transitions or resume do: the no-authority walk."""
+map. With it on, every worker card's pack carries the bounded slice (register E184: every archetype but the Lead's
+names codebase_map; the Lead's resume row carries the map), its pack pins the map it used, and regeneration shows
+the pinned map and freshness. Architecture selection records an existing discovery record. And no state of
+``.aew/local/maps/``, before dispatch or after it, changes what dispatch, launch, gates, transitions or resume do:
+the no-authority walk."""
 
 from __future__ import annotations
 
@@ -18,10 +19,8 @@ from typing import Any
 
 from aewflow import (
     DISCOVERY,
-    assign,
     complete_investigation,
     create_investigation,
-    create_planned_ticket,
     dispatch,
     sample_project,
     submit_record,
@@ -42,6 +41,13 @@ def switch_on(p: Project) -> None:
     policy.write_text(policy.read_text(encoding="utf-8") + "maps: {pack_slices: structural}\n", encoding="utf-8",
                       newline="\n")
     p.adopt_policy("turn the structural map slices on")  # the operator's configuration decision (SMQ-01)
+
+
+def without_map(p: Project) -> Project:
+    """The project before any map: `aew init` selected one (register E184), and removing local/maps/ is the same as
+    never having had it (ADR-0015 D1)."""
+    shutil.rmtree(p.root / MAPS)
+    return p
 
 
 def map_rev(p: Project) -> str:
@@ -91,7 +97,7 @@ def test_with_the_switch_off_every_pack_and_the_resume_view_are_byte_identical_m
     """Plan §5.4 and SMQ-01: the Q7/M4-H treatment is unchanged by default. Packs built before a map existed
     regenerate to the same bytes once one is selected, a pack built with a map selected is the pack without it, and
     the resume view's derived knowledge does not move."""
-    p = sample_project(tmp_path)
+    p = without_map(sample_project(tmp_path))
     to_commit_ready(p, tmp_path)  # implementer, reviewer and verifier packs
     _, investigator = dispatch(p, create_investigation(p, tmp_path, title="Survey"))
     dispatch(p, create_investigation(p, tmp_path, title="Research", card="researcher"))
@@ -116,7 +122,18 @@ def test_with_the_switch_off_every_pack_and_the_resume_view_are_byte_identical_m
 # ------------------------------------------------------------------------------------------- the switch on
 
 
-def test_with_the_switch_on_only_the_investigator_gets_the_slice_and_its_pack_pins_the_map(tmp_path):
+def test_every_worker_archetype_names_the_codebase_map():
+    """Register E184 ("on for all cards"): every role a worker runs as names codebase_map in its context, so its pack
+    carries the slice when the switch is on and its contract lists it as required knowledge. The Lead's own archetype
+    is not a pack: its resume row carries the map."""
+    from aew import roles
+
+    names = sorted(p.stem for p in (Path(roles.__file__).parent / "archetypes").glob("*.yaml"))
+    missing = [n for n in names if n != "lead" and "codebase_map" not in roles.archetype(n)["context"]["knowledge"]]
+    assert len(names) > 1 and missing == []
+
+
+def test_with_the_switch_on_every_card_gets_the_slice_and_its_pack_pins_the_map(tmp_path):
     p = sample_project(tmp_path)
     switch_on(p)
     first = select_map(p)
@@ -127,11 +144,14 @@ def test_with_the_switch_on_only_the_investigator_gets_the_slice_and_its_pack_pi
     text = pack_text(p, inv)
     assert slices.HEADING in text and f"map {first['root'][:12]}" in text and ": CURRENT" in text
     assert text.rstrip().endswith("```")  # the last section of the pack
-    impl = create_planned_ticket(p, tmp_path)
-    assign(p, impl)
-    implementer = next(i for i in invocations(p).values() if i["role"] == "implementer")
-    assert not slices.pinned(implementer["pack"]["sources"]) and slices.HEADING not in pack_text(
-        p, next(k for k, i in invocations(p).items() if i["role"] == "implementer"))
+    to_commit_ready(p, tmp_path)  # implementer, reviewer and verifier packs (register E184: every card)
+    dispatch(p, create_investigation(p, tmp_path, title="Research", card="researcher"))
+    dispatch(p, create_investigation(p, tmp_path, title="Plan it", card="planner"))
+    packed = {k: i for k, i in invocations(p).items() if i.get("pack")}
+    assert {i["role"] for i in packed.values()} >= {"implementer", "reviewer", "verifier", "investigator",
+                                                    "researcher", "planner"}
+    for key, i in packed.items():
+        assert slices.pinned(i["pack"]["sources"]) and slices.HEADING in pack_text(p, key), i["role"]
     # Regeneration after a reselect shows the pinned map and its pinned freshness, never the new ones.
     advance_main(p, "after.txt")
     second = select_map(p)
@@ -243,7 +263,7 @@ def test_when_the_maps_commit_is_gone_as_well_the_pinned_slice_keeps_the_pack(tm
 
 
 def test_architecture_selection_records_an_existing_discovery_record_and_refuses_anything_else(tmp_path):
-    p = sample_project(tmp_path)
+    p = without_map(sample_project(tmp_path))  # "no structural map yet" below
     discovery = complete_investigation(p, create_investigation(p, tmp_path, title="Architecture survey"))
     research = complete_investigation(p, create_investigation(p, tmp_path, title="Library", card="researcher"),
                                       kind="research_record")
@@ -315,7 +335,7 @@ def test_adopting_an_unquoted_off_is_refused_with_its_cause_and_the_quoted_fix(t
 
 
 def test_an_invocation_credential_is_refused_architecture_selection(tmp_path):
-    p = sample_project(tmp_path)
+    p = without_map(sample_project(tmp_path))
     role, _ = dispatch(p, create_investigation(p, tmp_path))
     record = submit_record(role, "discovery_record")["evidence"]
     res = p.aew("map", "select-architecture", record, "--expect-map-rev", "none:0", env={"AEW_LEAD_TOKEN": role.token})

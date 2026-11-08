@@ -29,6 +29,11 @@ publication grants (E6b) and the relaunch breaker reset (E8b) join them (plan v3
 is the capability register's operator changes (CAP-1; the designer's ruling 1): the register is per host, so a
 project's endpoint authorizes a change every project on the host reads.
 
+**G3** (:mod:`aew.harness.g3_adapter`): where G3 counts and the operation is bound, a consumed approval stands in for
+the typed code, for that one challenge. No code is made, and the console shows only the outcome, as the typed path's
+does: the operator's PIN goes only in G3's confirmer. A requester that has gone ends the wait, as it voids a typed code.
+Everything else here is unchanged, and the engine's checks all still run.
+
 **Notification** (plan v3 §2.8; M4-E E7a). The endpoint runs the notifier's watcher (``aew.harness.notify``) for its
 whole life, on threads of its own and through an engine of its own: it reads control state, the event spool and the
 broker's liveness record, commits nothing, and never takes ``_authorizing`` or ``_engine_lock``, so a slow notifier
@@ -54,7 +59,7 @@ from aew import errors, operator
 from aew.engine.lock import FileLock
 from aew.engine.steering import GUARANTEE, OperatorPrincipal
 from aew.errors import LockTimeout
-from aew.harness import notify, procs
+from aew.harness import g3_adapter, notify, procs
 from aew.harness.bridge import private_address
 from aew.harness.operator_client import (
     CHALLENGE_TIMEOUT_S,
@@ -162,6 +167,7 @@ class OperatorEndpoint:
         self._locator = locator_path(engine.aew_root)
         self._closed = threading.Event()
         self._authorizing = threading.Lock()  # one challenge at a time
+        self._awaiting: str | None = None  # the G3 approval the current challenge waits on, for the busy message
         self._engine_lock = threading.Lock()
         self._listener: Any = None
         self._lock: FileLock | None = None
@@ -324,15 +330,28 @@ class OperatorEndpoint:
                 "guarantee": GUARANTEE, "dumpable": _dumpable(), "operations": list(OPERATIONS),
                 "residuals": list(RESIDUALS)}
 
+    def _busy(self) -> errors.PermissionDenied:
+        """The refusal while another challenge is open, naming what ends it."""
+        approval = self._awaiting
+        if approval:
+            return errors.PermissionDenied(f"another request is waiting on {approval} in G3's confirmer (AEW "
+                                           "approvals): approve or decline it there, or stop the terminal that asked, "
+                                           "and try again", approval_ref=approval)
+        return errors.PermissionDenied("another request is waiting for the operator at this endpoint; try again "
+                                       "after it is answered or times out")
+
     def _mode_raise(self, conn: Any, args: dict[str, Any]) -> dict[str, Any]:
         mode = str(args.get("mode") or "")
         requester = str(args.get("requester") or "unknown")[:400]
         if not self._authorizing.acquire(blocking=False):
-            raise errors.PermissionDenied("another request is waiting for the operator at this endpoint; try again "
-                                          "after it is answered or times out")
+            raise self._busy()
         try:
             with self._engine_lock:
                 bound = self.engine.steering_raise_preview(mode)  # refused here before the operator is asked
+                policy, _ = self.engine.execution_policy()
+            by_g3, why_not = g3_adapter.choose("mode_raise", policy)  # the one choice of this challenge's path
+            if by_g3:
+                return self._mode_raise_by_g3(conn, mode, bound)
             code = operator.new_code()
             self.console(operator.challenge(
                 code,
@@ -346,7 +365,7 @@ class OperatorEndpoint:
                 instruction=f"Type the confirmation code {code} into the terminal that ran `aew lead mode raise` "
                             "(not here); anything else there refuses."))
             conn.send_bytes(json.dumps({"ok": True, "result": {"challenge": "shown", "timeout_s": self.timeout,
-                                                               "bound": bound}}).encode("utf-8"))
+                                                               "bound": bound, "g3": why_not}}).encode("utf-8"))
             principal = self._await_code(conn, code, "aew lead mode raise")
             with self._engine_lock:
                 out = self.engine.steering_raise(principal, mode=mode, generation=bound["generation"],
@@ -356,6 +375,58 @@ class OperatorEndpoint:
             return out
         finally:
             self._authorizing.release()
+
+    def _mode_raise_by_g3(self, conn: Any, mode: str, bound: dict[str, Any]) -> dict[str, Any]:
+        """The raise on the G3 path, which never moves to the code: the operator approves in the confirmer, and the
+        approval is consumed once. Whatever has moved since they approved refuses before consume, and the approval is
+        not spent; ``raise_mode`` then gets the values the consent bound. A requester that has gone ends the wait, and
+        nothing consumes its approval, so a raise never lands with no terminal to tell."""
+        approval = ""
+
+        def on_pending(pending: dict[str, Any]) -> None:
+            nonlocal approval
+            approval = self._awaiting = pending["approval_ref"]
+            shown = {"challenge": "g3", "approval_ref": approval, "expires_at": pending["expires_at"], "bound": bound}
+            try:
+                conn.send_bytes(json.dumps({"ok": True, "result": shown}).encode("utf-8"))
+            except OSError:
+                raise g3_adapter.requester_gone(approval) from None
+
+        def wait(seconds: float) -> None:
+            """The time between looks at the service, on the requester's connection. It sends nothing on this path, so
+            anything readable there is its end."""
+            try:
+                ended = conn.poll(seconds)
+            except (EOFError, OSError):
+                ended = True
+            if ended:
+                raise g3_adapter.requester_gone(approval)
+
+        try:
+            approved, record = g3_adapter.approve(g3_adapter.raise_set(bound), on_pending, wait)
+            wait(0)
+            with self._engine_lock:
+                changed = g3_adapter.moved(approved, self.engine.steering_raise_preview(mode))
+                policy, _ = self.engine.execution_policy()
+            if changed:
+                raise g3_adapter.refused(f"{changed} moved after the approval, which was not spent")
+            origin = g3_adapter.consume_member(approved, record, policy)
+            values = g3_adapter.bound_values(approved)
+            with self._engine_lock:
+                out = self.engine.steering_raise(self._principal(origin), mode=values.mode,
+                                                 generation=values.generation, legality_digest=values.legality_digest)
+        except errors.AEWError as exc:
+            self.console(f"\n(the `aew lead mode raise` request ended: {exc.message})\n")
+            raise
+        finally:
+            self._awaiting = None
+        self.console(f"\n(steering mode raised to {mode} for Lead generation {values.generation} on G3 approval "
+                     f"{approval}: {out['record']})\n")
+        return out
+
+    def _principal(self, origin: dict[str, Any] | None = None) -> OperatorPrincipal:
+        return OperatorPrincipal(uid=self.uid, method="peer_credentials" if self.family == "AF_UNIX" else "named_pipe",
+                                 endpoint_pid=self.pid, endpoint_started_at=self.started_at, origin=origin)
 
     def _await_code(self, conn: Any, code: str, command: str) -> OperatorPrincipal:
         """The code typed back at the requesting terminal, within the timeout: the operator principal of this one
@@ -368,8 +439,7 @@ class OperatorEndpoint:
         if not hmac.compare_digest(given, code):
             self.console(f"\n(the `{command}` request was refused: wrong code)\n")
             raise errors.PermissionDenied("operator refused or mistyped the confirmation code")
-        return OperatorPrincipal(uid=self.uid, method="peer_credentials" if self.family == "AF_UNIX" else "named_pipe",
-                                 endpoint_pid=self.pid, endpoint_started_at=self.started_at)
+        return self._principal()
 
     def _capability_change(self, conn: Any, args: dict[str, Any]) -> dict[str, Any]:
         """One change to this host's capability register (CAP-1; the designer's ruling 1): previewed here, shown on
@@ -382,8 +452,7 @@ class OperatorEndpoint:
         requester = str(args.get("requester") or "unknown")[:400]
         command = f"aew capability {kind.replace('_', '-')}"
         if not self._authorizing.acquire(blocking=False):
-            raise errors.PermissionDenied("another request is waiting for the operator at this endpoint; try again "
-                                          "after it is answered or times out")
+            raise self._busy()
         try:
             change = ops.preview(kind, change_args)  # refused here before the operator is asked
             code = operator.new_code()

@@ -36,7 +36,7 @@ PHASE_ORDER = {
     "REVIEW_PASSED": 4, "VERIFY_PENDING": 5, "VERIFICATION_FAILED": 5, "VERIFICATION_INCONCLUSIVE": 5,
     "VERIFIED": 6, "COMMIT_READY": 7, "DONE": 8,
 }
-# The serial cap (ADR-0003 B6) counts live workspaces directly (workspace.status == active), never
+# The mutating cap (ADR-0003 B6) counts live workspaces directly (workspace.status == active), never
 # state names: a replanned Ticket in READY must not hide a workspace that is still live (review M2).
 
 VERIFICATION_CLASSIFICATIONS = {

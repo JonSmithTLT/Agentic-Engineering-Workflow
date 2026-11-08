@@ -23,6 +23,7 @@ from aewflow import (
     plan_unit,
     review,
     sample_project,
+    set_mutating_concurrency,
     submit_record,
     to_commit_ready,
     verify,
@@ -241,10 +242,11 @@ def test_fresh_session_reconstructs_an_active_hierarchy_and_takeover_interrupts_
 
 @pytest.mark.acceptance("AT-12")
 def test_read_only_work_runs_concurrently_and_stays_read_only(tmp_path):
-    """WC §8.1/§5: investigation and research run beside the serial mutation slot, each in its own
+    """WC §8.1/§5: investigation and research run beside a mutating Ticket, each in its own
     observation of the authoritative source; read-only roles cannot mutate, drive control or
     produce another archetype's output; a Planner proposes and only the Lead adopts."""
     p = sample_project(tmp_path)
+    set_mutating_concurrency(p, 1)  # the cap's refusal below is the cap's; the default is 2 (register F10)
     mutating = create_planned_ticket(p, tmp_path, title="In-flight change")
     impl = assign(p, mutating)
     impl.write(SUBTRACT_PATCH)

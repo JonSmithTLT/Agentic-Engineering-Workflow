@@ -12,7 +12,7 @@ each citing its A-32 catalog IDs and the O-01 action, D-01 route or local surfac
 derived from the code's own registries, never kept by hand. The frozen instrument (its `IDEAL_PATH`, the proposed
 `aew settings set` and `aew preflight`, and the fallbacks for the old surfaces) is retired. Where this page describes
 it, in the ledgers `main` uploaded before the rebuild, and in the vertical-path shifts plan (v15), it stands as
-history. It runs on pushes to `main` and on dispatch only (§5), and its thresholds and mode are unchanged, except the
+history. It runs on dispatch only (§5), and its thresholds and mode are unchanged, except the
 PIN rule (§4).
 
 **Spec v2** carries the amendments the operator approved on 2026-10-11 (Q8: every listed amendment; Q1(e): Windows
@@ -295,15 +295,17 @@ operator raised the Lead's minimums on 2026-10-30, to the label each platform's 
   it: a red shadow test must never block a merge, and a collected test that did not run would fail `assurance`.
   `tests/unit/test_ci_tools.py` proves both.
 - **Its own workflow, in shadow.** The `vertical` job (`vertical.yml`, Linux and Windows; outside `ci.yml`, so its red
-  never colours the merge gate's run) runs on every push to `main` and on dispatch, uploads the ledgers and summaries
+  never colours the merge gate's run) runs on dispatch only, uploads the ledgers and summaries
   as artifacts (`vertical-ledger-<OS>`), and writes the lane's report, the not-measured count first, then the
   summaries, to the run's summary page. On Linux the operator's session runs on a pseudo-terminal the test owns, the
   terminal CS-4's contained Lead requires (`start_on_terminal`). It does not run on pull
-  requests (operator, 2026-10-23): it is red on `main`, so on a pull request its result says nothing about that pull
-  request, while `main`'s runs keep the ledger's time series. A running one is never cancelled; its runs share one
-  group, so when pushes land close together GitHub keeps only the newest pending one (`ci`'s push runs, by contrast,
-  get one for every merge: [testing-and-ci-strategy.md](testing-and-ci-strategy.md) §3). It is not in `assurance`'s
-  needs. It is honestly red while the ledger is not zero: no xfail, no skip, no lowered assertion.
+  requests (operator, 2026-10-23): on a pull request its result says nothing about that pull request. It does not run
+  on pushes to `main` either (operator, 2026-11-08): with no path to green for days, its red on every merge said
+  nothing about that merge and left `main`'s page red, and the operator turns it back on. To measure,
+  `gh workflow run vertical --ref main` adds a line to `main`'s time series, and
+  `pytest --lane vertical tests/acceptance/test_vertical_path.py` runs it locally and adds none. A running one is never
+  cancelled; its runs share one group, so GitHub keeps only the newest pending one. It is not in `assurance`'s needs.
+  It is honestly red while the ledger is not zero: no xfail, no skip, no lowered assertion.
 - **Platforms.** It runs on Windows and Linux; any platform-only part is pinned in `tests/platform-skips.yaml` (none
   today). **The enforced gate is Linux only** (v2, the operator's Q1(e)): Windows is UNQUALIFIED and excluded from it,
   its job keeps running and reporting, and its state leads every verdict and summary it prints (the status above).

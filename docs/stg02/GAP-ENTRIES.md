@@ -318,16 +318,14 @@ Under CS-04, a key can never be forgotten. If a dropped key came back as unused,
 **Class:** wire defect.
 
 **Clause.**
-- The owner-pin rules: an `owner_operation_index` item's `source.owner` is its `data.owner`, and CNI covers the aggregation only.
-- The D-01 schema: `OperationIndexEntry.owner` allows `RESOURCE_POLICY_ISSUER`, and `SourceStamp.owner` does not.
+- OP-01 and the owner-pin table: an `owner_operation_index` item's `source.owner` is its `data.owner`, and CNI covers the aggregation only. The selection profile's U05/U09/L03 discovery row lists the resource policy issuer among the owners that issue operations.
+- The D-01 schema: `OperationIndexEntry.owner` allows `RESOURCE_POLICY_ISSUER`, and `SourceStamp.owner` does not. That type is the cause.
 
-**What happened.** Once G3 counts, an admitted `ISSUE_STANDING_POLICY` lists an operation whose owner has no stamp the schema allows. Copying the owner into the stamp makes the whole page fail the adopted schema for that recipient until the record's retention ends.
+**What happened.** Once G3 counts, an admitted `ISSUE_STANDING_POLICY` lists an operation whose owner has no stamp the schema allows, and copying the owner into the stamp makes the list fail the adopted schema.
 
-**Two readings.**
-- (a) Stamp that one item with CNI, the roster's own owner. The stamp is `unqualified`, so it qualifies nothing, and `data.owner` stays the real owner. It departs from the pin.
-- (b) The wire's `SourceStamp.owner` gains `RESOURCE_POLICY_ISSUER`.
+**The designer's ruling, 2026-11-08.** A bridge, with no overlay, since `SourceStamp` goes out on every D-01 route. That one item's `source.owner` is CNI, through `wire.stamp` unchanged and so unqualified, with `fact_ref` naming the operation record, and `data.owner` stays the real owner. It departs from OP-01 and from the selection profile's row, and qualifies nothing. `HEB`, `ADC` and `IF13` items keep their own owner, as the pin says, each with its own fixture issuer and epoch. No sealed file changes.
 
-**Interim choice.** (a), until (b) is decided at O-01 convergence. `HEB`, `ADC` and `IF13` items keep their own owner, as the pin says, each with its own fixture issuer and epoch.
+**When it ends.** At D-01's next revision, which adds the owner to `SourceStamp.owner` as a non-governing namespace (OP-02's second bullet), and before anything real issues standing policy: register E210.
 
 ---
 

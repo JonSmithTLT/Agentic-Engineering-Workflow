@@ -17,7 +17,6 @@ import secrets
 from datetime import datetime
 from typing import Any
 
-from aew.stg02 import adopted as A
 from aew.stg02 import wire as W
 from aew.stg02.ledger import Ledger
 from aew.stg02.world import AXES, WAITING_STATES, EngineSource, Fixture, SourceUnavailable
@@ -35,8 +34,8 @@ class ReadProblem(Exception):
         self.code = code
 
 
-_SOURCE_STAMP = A.load("aew-d01-read-v0.3.4-FULL.schema.json")["$defs"]["SourceStamp"]
-STAMP_OWNERS = _SOURCE_STAMP["properties"]["owner"]["enum"]
+# The one owner an index item may list and its stamp may not name: gap entry STG02-BE-17, register E210.
+STAMPED_AS_CNI = "RESOURCE_POLICY_ISSUER"
 
 
 class Reads:
@@ -384,9 +383,10 @@ class Reads:
                             basis)
 
     def _index_item(self, o: dict[str, Any], recipient: str) -> dict[str, Any]:
-        # The item's source is its own owner (the profile's pin), with that owner's fixture issuer and epoch. The wire's
-        # SourceStamp cannot name RESOURCE_POLICY_ISSUER, though the entry can: gap entry STG02-BE-17.
-        stamped = o["owner"] if o["owner"] in STAMP_OWNERS else "CNI"
+        # The item's source is its own owner (OP-01), with that owner's fixture issuer and epoch. SourceStamp cannot
+        # name one owner the entry can, so that item alone is CNI's unqualified report of the record, until D-01's next
+        # revision (the designer's bridge, register E210). It qualifies nothing: wire.stamp sets unqualified.
+        stamped = "CNI" if o["owner"] == STAMPED_AS_CNI else o["owner"]
         s = W.stamp(stamped, "op-record:" + o["operation_ref"], self.fx.owner_epoch(stamped),
                     f"fixture:{stamped.lower()}-v1", o["issued_at"], coverage_ref=self.fx.doc["scope_ref"],
                     issuer_ref=self.fx.doc["issuers"].get(stamped, "fixture:issuer"))

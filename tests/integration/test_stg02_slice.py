@@ -615,12 +615,32 @@ def test_each_protected_action_consumed_gives_a_valid_receipt_owners_read_and_li
     (item,) = listed["items"]
     stamped = "CNI" if owner == "RESOURCE_POLICY_ISSUER" else owner
     assert item["data"]["owner"] == owner and item["source"]["owner"] == stamped
-    assert item["source"]["qualification"] == "unqualified"
+    source = item["source"]
+    assert source["fact_ref"] == "op-record:" + x["operation_ref"]
+    assert (source["qualification"], source["authority_class"], source["governing_owner"]) == (
+        "unqualified", "unqualified_report", None)
     assert item["data"]["subject_ref"] == req["intents"][0]["target"][COMMANDS.SUBJECT_FIELD[action]]
     if owner != "HEB":
         heb = live.s.fx.heb
         assert "heb" not in item["source"]["issuer_ref"] and item["source"]["source_epoch"] != heb["epoch"]
         assert item["data"]["owner_epoch"] != heb["epoch"] and seen["source_epoch"] != heb["epoch"]
+
+
+def test_the_cni_stamp_is_for_the_one_owner_the_wire_cannot_name_and_no_other(live: Live):
+    """The designer's bridge departs from OP-01 for one owner (gap entry STG02-BE-17, register E210). Any other owner
+    the stamp cannot name keeps its name, so the adopted schema refuses it rather than CNI quietly reporting it. This
+    test goes when D-01's next revision adds that owner to SourceStamp.owner."""
+    d01 = A.load("aew-d01-read-v0.3.4-FULL.schema.json")["$defs"]
+    owners = {A.registry()[a]["sole_admitting_owner"] for a in PROTECTED}
+    assert owners - set(d01["SourceStamp"]["properties"]["owner"]["enum"]) == {"RESOURCE_POLICY_ISSUER"}
+    assert "RESOURCE_POLICY_ISSUER" in d01["FR_OperationIndexEntry"]["properties"]["owner"]["enum"]
+    record = {"operation_ref": "op:x", "action": "ATTACH_LEAD", "subject_ref": "subject:x", "attachment_generation": 1,
+              "issued_at": "2026-01-01T00:00:00Z"}
+    made = {o: live.s.reads._index_item({**record, "owner": o}, live.s.fx.recipient)
+            for o in ("RESOURCE_POLICY_ISSUER", "NOT_A_D01_AXIS", "ADC")}
+    assert {o: m["source"]["owner"] for o, m in made.items()} == {
+        "RESOURCE_POLICY_ISSUER": "CNI", "NOT_A_D01_AXIS": "NOT_A_D01_AXIS", "ADC": "ADC"}
+    assert all(m["data"]["owner"] == o for o, m in made.items())
 
 
 def test_a_set_of_two_protected_members_consumes_each_with_its_own_proof_and_results_each_alone(

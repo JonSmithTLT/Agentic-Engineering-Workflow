@@ -316,8 +316,9 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
                            o01_code=code, status=status)
 
 
-_HELD_WAY_ON = ("This action is not admitted. Request it again once this is fixed, with a new approval if this one is "
-                "refused as used")
+# The route's log carries this (the review of G3-C's owner side, m2), so it gives the way that works, as the notes do.
+_HELD_WAY_ON = ("This action is not admitted. Request it again once this is fixed, with a new approval, and on the "
+                f"O-01 route {_NEW_KEY}")
 
 
 @dataclass(frozen=True)

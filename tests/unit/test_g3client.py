@@ -312,6 +312,7 @@ def test_a_consume_answered_with_no_result_gives_none_and_says_why_so_an_owner_h
     got = C.consume(**CONSUME_ARGS)
     assert got.result is None and said in (got.held_why or "")
     assert C._HELD_WAY_ON in (got.held_why or "")  # what happened, and the way on, a used approval included
+    assert "new approval" in (got.held_why or "") and "new client_request_key" in (got.held_why or "")  # as the notes
     # What an owner shows the operator carries neither the member's proof nor the consent
     assert CONSUME_ARGS["origin_proof_ref"] not in repr(got) and CONSUME_ARGS["consent_set_ref"] not in repr(got)
 

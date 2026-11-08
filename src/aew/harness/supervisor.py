@@ -459,8 +459,8 @@ class Supervisor:
 
     def _launch_failed(self, reason: str, error_code: str | None = None, *, cause: str | None = None,
                        refusal: str | None = None) -> bool:
-        """``refusal``: the adapter's own reason for refusing the launch, one of ``base.LAUNCH_REFUSALS``, beside the
-        closed code (register E143)."""
+        """``refusal``: the reason the launch was refused, one of ``base.LAUNCH_REFUSALS`` (an adapter's own, or this
+        supervisor's missing-key refusal, E189), beside the closed code (register E143)."""
         code = K.launch_failure_code(K.START, error_code, cause)
         spool(self.run_dir, "launch_failed", reason)  # site 2 (R2-m5), before the terminal record
         if refusal is not None:
@@ -523,8 +523,8 @@ class Supervisor:
         on this run's entry in control state, which the Lead operation commits before it writes the file. Anything
         else is recorded and discarded (independent review R1)."""
         # Files taken while the state was unreadable are kept as they were taken: a later file of the same name (the
-        # run directory is model-writable) never replaces a kept Lead request (#366 review, N3). They are bounded by the
-        # queue's distinct names.
+        # run directory is model-writable) never replaces a kept Lead request (#366 review, N3). That is all the
+        # `setdefault` merge is for: the sort below decides the order. They are bounded by the queue's distinct names.
         pending = dict(self._deferred)
         for name, text in runlog.take_requests(self.run_dir):
             pending.setdefault(name, text)
@@ -540,8 +540,9 @@ class Supervisor:
         entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
         recorded = {r["file"]: r for r in entry.get("requests") or []}
         out = []
-        # In issue order, kept files with new ones: a request file's name starts with its time_ns (runlog.new_request)
-        # (#366 review, N4)
+        # In issue order, kept files with new ones: a request file's name starts with its time_ns (runlog.new_request),
+        # so the sort alone decides the order, whichever tick took a file and however late it was delivered; the merge
+        # order above decides nothing (#366 review, N4)
         for name, text in sorted(pending.items()):
             want = recorded.get(name)
             why = ("not recorded by a Lead operation" if want is None else

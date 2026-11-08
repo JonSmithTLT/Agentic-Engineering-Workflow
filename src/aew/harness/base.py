@@ -44,8 +44,8 @@ def relay_family_of(launch: Mapping[str, Any] | None) -> str | None:
 
 
 def refusal_of(details: Mapping[str, Any] | None) -> str | None:
-    """The adapter's refusal reason in an error's or an acknowledgement's details, if it is one of ``LAUNCH_REFUSALS``;
-    else None."""
+    """The launch refusal reason in an error's or an acknowledgement's details (an adapter's, or the supervisor's
+    missing-key refusal), if it is one of ``LAUNCH_REFUSALS``; else None."""
     reason = (details or {}).get("reason") if isinstance(details, Mapping) else None
     return reason if isinstance(reason, str) and reason in LAUNCH_REFUSALS else None
 

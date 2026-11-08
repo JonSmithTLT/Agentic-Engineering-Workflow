@@ -510,19 +510,13 @@ def test_the_feed_as_it_is_served_gives_absolute_download_urls():
 # ------------------------------------------------------------------------------------------------- feature verdicts
 
 
-def test_the_feature_verdicts_record_is_readable_and_each_row_it_names_is_in_the_register():
+def test_the_feature_verdicts_record_is_readable_and_the_report_names_it():
     """The verdicts a bump gives (the operator, 2026-11-07: committed, one owner) are read by the tool, each from the
-    closed set, and every register row a verdict names exists."""
-    import re
-
+    closed set (the rows they name are checked against the register in tests/unit/test_register.py)."""
     from harness_qualify import verdicts
 
     recorded = verdicts.load("opencode")
     assert "2.2.6" in recorded and len(recorded["2.2.6"]) >= 20
-    register = (ROOT / "docs" / "implementation" / "future-work.yaml").read_text(encoding="utf-8")
-    ids = set(re.findall(r"^  - '#': ([A-Z][A-Z0-9.-]*)$", register, flags=re.M))
-    named = {v["row"] for v in recorded["2.2.6"] if v.get("row")}
-    assert named and named <= ids, sorted(named - ids)
     assert verdicts.lines("opencode", "2.2.6")[0].startswith(f"  {len(recorded['2.2.6'])} recorded for 2.2.6 (")
     assert "none recorded for 9.9.9" in verdicts.lines("opencode", "9.9.9")[0]
     assert verdicts.load("stubharness") == {}

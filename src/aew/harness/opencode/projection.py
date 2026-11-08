@@ -45,11 +45,29 @@ COMPATIBILITY_PLUGIN = "-opencode.config.compatibility"
 MUTATING_ROLES = frozenset({"implementer"})
 WEB_CAPABILITIES = frozenset({"documentation_lookup"})
 ALWAYS_DENIED = ("subagent", "question", "external_directory")
+# The shell's permission names. 2.2.5 runs a call to `bash` as `shell` (2.2.6's input repair maps `bash` to `shell`
+# when no `bash` tool exists), so every shell rule is given under both names and a call decides the same either way.
+SHELL_ACTIONS = ("shell", "bash")
+# Defaults every projection closes (the 2.2.6 bump, 2026-11-07), each set explicitly so a release that changes its
+# default cannot open it: session `warming` sends transient model requests, which a provider's rate limit counts
+# (2.2.6's default is off; a provider's `cache.warming` falls back to it); `experimental.image_generate` offers an
+# image tool whenever a connected provider has an image model.
+CLOSED: dict[str, Any] = {"warming": False}
+CLOSED_EXPERIMENTAL: dict[str, Any] = {"image_generate": False}
 
 
 def rule(action: str, effect: str, resource: str = "*") -> dict[str, str]:
     return {"action": action, "resource": resource, "effect": effect}
 
+
+def shell_rule(effect: str, resource: str = "*") -> list[dict[str, str]]:
+    """One shell rule, under each of :data:`SHELL_ACTIONS`."""
+    return [rule(action, effect, resource) for action in SHELL_ACTIONS]
+
+
+# The Lead's tools that never ask the operator: its rules allow them (:data:`LEAD_RULES`), and its tools note names them
+# (:data:`LEAD_TOOLS_NOTE`), from this one list (review of #353, m3).
+LEAD_FREE_TOOLS = ("read", "glob", "grep")
 
 # The read rules for `.env` files, after a `read` allow so that they win (last match wins): every invocation's and the
 # Lead's, one list (the designer, 2026-11-06). A harness permission rule: it is not containment, it does not cover a
@@ -131,7 +149,7 @@ def permissions(contract: LaunchContract, exposed_skills: list[str], private_dir
     capabilities = set(contract.extra.get("card_capabilities") or [])
     web = "allow" if capabilities & WEB_CAPABILITIES else "deny"
     rules = [rule("*", "deny")]  # anything not named below does not exist for the agent
-    rules += [rule(action, "allow") for action in ("read", "glob", "grep", "shell")]
+    rules += [rule(action, "allow") for action in ("read", "glob", "grep")] + shell_rule("allow")
     rules += ENV_READ_RULES
     rules.append(rule("edit", "allow" if contract.role in MUTATING_ROLES else "deny"))
     rules += [rule("webfetch", web), rule("websearch", web), rule("skill", "deny")]
@@ -185,7 +203,8 @@ def _ids(names: list[str]) -> str:
 
 
 LEAD_TOOLS_NOTE = (" Your shell asks the operator before it runs any of them (only `aew` and git reads run without "
-                   "asking), so search with your read, glob and grep tools first.")
+                   f"asking), so search with your {', '.join(LEAD_FREE_TOOLS[:-1])} and {LEAD_FREE_TOOLS[-1]} tools "
+                   "first.")
 
 
 def tools_text(available: Mapping[str, Any] | None, *, note: str = "") -> list[str]:
@@ -201,7 +220,7 @@ def tools_text(available: Mapping[str, Any] | None, *, note: str = "") -> list[s
     tools = list(available.get("tools") or [])
     if not tools:
         return []
-    named = ", ".join(f"`{t['tool']}` ({t['purpose']})" for t in tools)
+    named = ", ".join(f"`{t['command']}` ({t['purpose']})" for t in tools)
     return [f"- Tools AEW placed for you, by the names to call them: {named}.{note}"]
 
 
@@ -240,7 +259,7 @@ def system_text(contract: LaunchContract, planned: Mapping[str, Any],
     lines += tools_text(available_tools)
     if unavailable_tools:
         fallbacks = list(dict.fromkeys(str(t["fallback"]) for t in unavailable_tools if t.get("fallback")))
-        named = ", ".join(f"`{t['tool']}`" for t in unavailable_tools)
+        named = ", ".join(f"`{t['command']}`" for t in unavailable_tools)
         lines.append(f"- Tools AEW brings that this run does not have: {named}, so what runs them fails here"
                      + (f" (search with {' or '.join(fallbacks)} instead)" if fallbacks else "")
                      + ". Proceed without them and say so in your report.")
@@ -285,7 +304,8 @@ def invocation_config(contract: LaunchContract, *, private_dirs: tuple[str, ...]
     # (the 2026-11-04 ruling; CAPR-05, HEB-01.i). OpenCode's own built-in skills stay denied by the rules.
     found = {"skills": [skills_dir.folder]} if skill["exposed"] and skills_dir is not None else {}
     return {"snapshots": False, "update": "disable", "share": "disabled", "plugins": [COMPATIBILITY_PLUGIN],
-            "lsp": False, "formatter": False, "default_agent": AGENT, "permissions": rules, "agents": agents, **found}
+            "lsp": False, "formatter": False, "default_agent": AGENT, "permissions": rules, "agents": agents, **found,
+            **CLOSED, "experimental": dict(CLOSED_EXPERIMENTAL)}
 
 
 def relayed(config: dict[str, Any], profile: dict[str, Any], base_url: str) -> dict[str, Any]:
@@ -342,15 +362,19 @@ LEAD_GIT_ASKS = (*(f"git {cmd}*{option}*" for cmd in ("diff", "log", "show") for
 
 LEAD_RULES = [
     rule("*", "ask"),
-    *(rule(action, "allow") for action in ("read", "glob", "grep")),
+    *(rule(action, "allow") for action in LEAD_FREE_TOOLS),
     *ENV_READ_RULES,
-    rule("shell", "ask"),
-    *(rule("shell", "allow", pattern) for pattern in ("aew *", *LEAD_GIT_READS)),
-    *(rule("shell", "ask", pattern) for pattern in LEAD_GIT_ASKS),  # after the allows, so they win
+    *shell_rule("ask"),
+    *(r for pattern in ("aew *", *LEAD_GIT_READS) for r in shell_rule("allow", pattern)),
+    *(r for pattern in LEAD_GIT_ASKS for r in shell_rule("ask", pattern)),  # after the allows, so they win
     rule("edit", "deny"),
     rule("subagent", "deny"),
     rule("question", "allow"),
     rule(f"{LEAD_MCP_SERVER}_*", "allow"),
+    # OpenCode's browser tool and skill: refused by design (the contained Lead's text says so). OpenCode appends these
+    # denies itself (2.0.22: the tool; 2.2.6: the skill too); AEW states them, so they do not rest on its defaults.
+    rule("browser", "deny"),
+    rule("skill", "deny", "browser"),
 ]
 
 
@@ -365,10 +389,10 @@ def lead_tools_text() -> str:
     reads, waits = (contract.QUERY,), (contract.WAIT,)
     acts = tuple(k for k in contract.KINDS if k not in reads + waits)
     return (f"- Your `{SERVER_NAME}` tools are how you work. Read with {_named(reads)}. Wait with {_named(waits)} "
-            f"(several runs at once; it returns when the first ends). Act with {_named(acts)}. Each returns the "
-            "revision to pass as `expect_rev` next and a projection of what is available, blocked or unknown, and of "
-            "the decisions that are yours. Use the `aew` shell command where no tool covers the step, or where a tool "
-            "refuses.")
+            f"(several runs at once; it returns when the first ends or needs you). Act with {_named(acts)}. Each "
+            "returns the revision to pass as `expect_rev` next and a projection of what is available, blocked or "
+            "unknown, and of the decisions that are yours. Use the `aew` shell command where no tool covers the step, "
+            "or where a tool refuses.")
 
 
 def wake_guide_lines() -> list[str]:
@@ -525,14 +549,16 @@ def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
     providers = {p: {"settings": {"baseURL": url, **({"transport": "http"} if p in WEBSOCKET_FIRST else {})}}
                  for p, url in sorted((relays or {}).items())}
     return {**({"providers": providers} if providers else {}), "share": "disabled", "default_agent": LEAD_AGENT,
-            "experimental": {"policies": lead_provider_policies()},
+            **CLOSED, "experimental": {"policies": lead_provider_policies(), **CLOSED_EXPERIMENTAL},
             # The typed surface's server: spawned by OpenCode in the session's curated environment, its own
             # `environment` only the import path of this process's `aew` (E180; it holds no credential), with Code
-            # Mode off so its tools are function
-            # tools (2.0.18's default hides MCP tools behind one `execute` tool). Its execution timeout is left at the
-            # pinned default (43,200,000 ms), far above harness_wait's 600 s cap.
+            # Mode off so its tools are function tools (2.0.18's default hides MCP tools behind one `execute` tool),
+            # and never pooled (2.2.6's `pool` shares one connection across every directory that configures the
+            # server identically: each Lead session's server is its own). Its execution timeout is left at the pinned
+            # default (43,200,000 ms), far above harness_wait's 600 s cap.
             "mcp": {"servers": {LEAD_MCP_SERVER: {"type": "local", "command": lead_mcp_command(),
-                                                  "environment": lead_mcp_environment(), "codemode": False}}},
+                                                  "environment": lead_mcp_environment(), "codemode": False,
+                                                  "pool": False}}},
             "agents": {LEAD_AGENT: {"mode": "primary", "description": "AEW Lead (acts through the Lead broker)",
                                     "system": system, "permissions": LEAD_RULES}},
             "commands": {name: {**cmd, "agent": LEAD_AGENT} for name, cmd in LEAD_COMMANDS.items()}}

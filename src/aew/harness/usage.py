@@ -8,7 +8,8 @@ derived cost is computed at read time by ``engine/usage_ops.py`` (R4), never sto
 
 ``token_semantics`` is the adapter's declaration of how the reported counters overlap (R4 rule 1). It is chosen per
 provider from a mapping pinned to the qualified harness version by the harness conformance tests; a version or a
-provider the mapping does not name is ``unknown``, never a guess, and ``unknown`` is never priced.
+provider the mapping does not name is ``unknown``, never a guess, and ``unknown`` is never priced. A provider whose
+models speak different protocols (OpenCode Zen's ``opencode``) is declared per route (:func:`resolve_semantics`).
 """
 
 from __future__ import annotations
@@ -180,14 +181,33 @@ def _partitions(tokens_by_model: Any) -> list[dict[str, Any]] | None:
     return list(out.values()) if 0 < len(out) <= MAX_EFFECTIVE else None
 
 
-def resolve_semantics(mapping: Mapping[str, Mapping[str, str]], version: Any, providers: Iterable[Any]) -> str:
+SemanticsTable = Mapping[str, Mapping[str, str | Mapping[str, str]]]
+
+
+def resolve_semantics(mapping: SemanticsTable, version: Any, providers: Iterable[Any],
+                      routes: Mapping[tuple[str, str], str] | None = None) -> str:
     """The declared semantics for the providers a run used, under the harness version that ran (R4 rule 1).
 
-    ``mapping`` is ``{harness version: {provider: semantics}}``, pinned by the conformance tests. A version or a
-    provider it does not name is ``unknown``; providers that disagree are ``unknown`` too (one record carries one
+    ``mapping`` is ``{harness version: {provider: semantics}}``, pinned by the conformance tests. A provider's entry is
+    either one semantics, or ``{route: semantics}`` where its models reach different protocols (a gateway such as
+    OpenCode Zen); each of ``providers`` is a provider id or a ``(provider, model)`` pair, and a routed provider's
+    model resolves through ``routes``, ``{(provider, model): route}``. A version, provider or route it does not name is
+    ``unknown``, and so is a routed provider's model with no route, or named without its model: a provider's measured
+    route never stands for its others. Entries that disagree are ``unknown`` too (one record carries one
     declaration)."""
     table = mapping.get(str(version)) if version is not None else None
-    found = {(table or {}).get(p, UNKNOWN) if isinstance(p, str) else UNKNOWN for p in providers}
+
+    def one(item: Any) -> str:
+        provider, model = item if isinstance(item, tuple) and len(item) == 2 else (item, None)
+        if not isinstance(provider, str):
+            return UNKNOWN
+        entry = (table or {}).get(provider, UNKNOWN)
+        if isinstance(entry, Mapping):
+            route = (routes or {}).get((provider, model)) if isinstance(model, str) else None
+            entry = entry.get(route, UNKNOWN) if isinstance(route, str) else UNKNOWN
+        return entry if isinstance(entry, str) else UNKNOWN
+
+    found = {one(p) for p in providers}
     if len(found) != 1:
         return UNKNOWN
     (only,) = found

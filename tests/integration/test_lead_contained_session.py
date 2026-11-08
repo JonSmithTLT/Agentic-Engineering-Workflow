@@ -24,6 +24,7 @@ from lead_session import KEYS, RECENT_MODELS, SECRET, Upstream, at_the_terminal,
 from aew.harness import procs
 from aew.harness.containment import netns
 from aew.harness.opencode import lead, projection
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
 
 # Every Lead's provider deny, written out: the designer's ruling of 2026-11-06 (both of OpenCode's own providers)
 DENY = [{"action": "provider.use", "resource": "opencode", "effect": "deny"},
@@ -62,7 +63,7 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         out = done["result"]
         transcript = (tui / "tui.jsonl").read_text() if (tui / "tui.jsonl").exists() else ""
         assert out["exit"] == 0, (done["stdout"].split(procs.TERMINAL_LEAVE)[0][-3000:], transcript)
-        assert (out["seat"], out["opencode"]) == ("held by your AEW_LEAD_TOKEN", "2.0.18")
+        assert (out["seat"], out["opencode"]) == ("held by your AEW_LEAD_TOKEN", TESTED_VERSIONS[0])
         label = out["containment"]
         assert label["filesystem"] == "os_readonly_roots" and sorted(label["self_test"]["rows"]) == list("123456")
         assert all(r["ok"] for r in label["self_test"]["rows"].values())
@@ -243,7 +244,14 @@ def test_a_lead_whose_containment_fails_is_refused_under_required_and_runs_label
         (tui / "mode").write_text("agent")
         (tui / "tui-script.json").write_text(json.dumps([]))
         refused = at_the_terminal(lab, home)
-        assert refused["code"] != 0 and refused["error"]["code"] == "CONTAINMENT_UNAVAILABLE", refused["stderr"]
+        # Each on its own, with what was written, so a failure names its writer (E128: three CI failures showed only
+        # a TypeError from subscripting a refusal that did not parse)
+        assert refused["code"] != 0, (refused["code"], refused["stderr"])
+        assert refused["error"] is not None, (refused["code"], refused["stderr"])
+        assert refused["after"] == "", (refused["after"], refused["stderr"])  # the refusal is the last thing written
+        # and only the start's own lines come before it: no stray brace or JSON line (#362 review, m3)
+        assert all(line.startswith("aew opencode: ") for line in refused["before"].splitlines()), refused["stderr"]
+        assert refused["error"]["code"] == "CONTAINMENT_UNAVAILABLE", refused["stderr"]
         assert "not an existing directory" in refused["error"]["message"] and refused["restored"]
         assert not (tui / "tui-argv.json").exists()
     finally:

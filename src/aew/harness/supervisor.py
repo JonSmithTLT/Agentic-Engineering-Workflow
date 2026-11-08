@@ -78,6 +78,56 @@ def starting_limit_s(harness: str | None) -> float:
     return 2 * store.RECORD_WAIT_S + probe.BOUND_S + bound + STARTING_MARGIN_S
 
 
+def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapter], *, provider: str | None,
+                   provider_env: list[str], role: str, scope: str, workspace: str, run_dir: Path, scratch: str,
+                   bridge_dir: str | None, bridge: str | None, project: Path, aew_root: Path, kind: str,
+                   marker: Path | None = None, skills_dir: str | None = None) -> tuple[Any, dict[str, Any], Any, Any]:
+    """A harness launch's containment: the provider key's check, the sandbox, self-tested, its label, the entry in the
+    register of weaker contexts when the label is weaker, and the network of its own (the provider relay when the
+    harness calls a provider, and the egress proxy when its allowlist names something). Returns ``(layout, label,
+    network, weaker entry)``; ``marker`` is the file the register entry names (default: the run's record). The caller
+    owns the network (closed with its process tree) and the entry. One owner for a run's supervisor and ``aew
+    doctor``'s read of the harness's model list (register E153), so that read meets exactly what a launch meets.
+    Raises ``ContainmentUnavailable`` (after removing what it made) where the policy refuses a launch, and
+    ``HarnessIncompatible`` for a provider key a launch would not get."""
+    from aew.harness.containment import netns
+
+    # The engine refused this before anything was committed (``require_launchable``); checked again here, on the names
+    # this launch carries, before any sandbox or network exists (the operator's decision of 2026-11-06: AEW does not
+    # rely on OpenCode's free models).
+    missing = netns.provider_key_missing(provider, provider_env, os.environ,
+                                         on_relay_route=netns.relay_route(policy, adapter_cls.PROVIDER_RELAY))
+    if missing is not None:
+        raise errors.HarnessIncompatible(netns.provider_key_message(str(provider), missing),
+                                         reason=netns.PROVIDER_KEY_MISSING, variable=missing)
+    layout = None
+    try:
+        try:  # built once: the self-test checks the same allowlist the run's egress proxy gets (register E143)
+            allow = netns.egress_policy(policy, adapter_cls.EGRESS)
+        except errors.AEWError as exc:
+            raise errors.ContainmentUnavailable(f"containment.network.egress_allow: {exc.message}",
+                                                reason="bad_egress_allow") from None
+        layout, label = containment.establish(
+            role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch, bridge_dir=bridge_dir,
+            policy=policy, project=str(project), bridge=bridge, egress_policy=allow, skills_dir=skills_dir)
+        # A weaker launch (allowed by the policy, or a sandbox on the host's network) enters the register of weaker
+        # contexts before its harness starts; on Linux one that cannot be entered is refused (G3 addendum 7).
+        weaker = weaker_register.enter_if_weaker(label, kind=kind, ownership=weaker_register.ownership_of(label),
+                                                 project=project, aew_root=aew_root, directory=run_dir,
+                                                 marker=marker if marker is not None else run_dir / runlog.RECORD)
+        network = None
+        if layout is not None and layout.private_network:
+            network = netns.RunNetwork.start(layout, provider=provider, provider_env=provider_env, policy=policy,
+                                             env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, allow=allow)
+            label["network"].update(network.describe())
+    except errors.ContainmentUnavailable:
+        if layout is not None and layout.net_dir:
+            shutil.rmtree(layout.net_dir, ignore_errors=True)
+            containment.retire_private_git(run_dir)
+        raise
+    return layout, label, network, weaker
+
+
 def record_refused(record: dict[str, Any], network: Any) -> None:
     """The run's refused egress targets (``netns.RunNetwork.refused``), when there are any, as ``egress_refused``:
     beside the run's ``containment`` label and never in it, since `harness status` and `harness wait` give the Lead
@@ -138,6 +188,8 @@ class Supervisor:
         self._start_until: float | None = None
         self.stop_reason: tuple[str, str] | None = None  # (status, reason) requested by a bridge refusal
         self._control_seen: Any = None
+        self._state_unreadable = False  # the last lock-free state read failed (logged once until one succeeds)
+        self._deferred: dict[str, str] = {}  # request files taken while the state was unreadable: name -> text
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ record
@@ -159,8 +211,46 @@ class Supervisor:
     # ------------------------------------------------------------------ authority
 
     def authority_problem(self) -> str | None:
-        state = self.engine.store.current()
-        return self.engine.run_authority_problem(state, self.inv_id, self.run, self.token_id)
+        """Why this run no longer holds its authority, or None while it holds it or while the state cannot be read
+        (``_authority``)."""
+        return self._authority()[1]
+
+    def _authority(self) -> tuple[bool, str | None]:
+        """(read, problem): whether the committed state was read, and why this run no longer holds its authority.
+
+        The state is read lock-free (``ControlStore.read_committed``). The watch loop that beats the heartbeat calls
+        this: under the control lock, another process's long hold (up to the lock's timeout, 60 s) stalled the beat past
+        ``runlog.STALE_AFTER_S``, and a live run read as ``lost`` (two CI sightings on Windows, 2026-11-07).
+
+        A stale read is safe because every condition ``run_authority_problem`` checks only moves forward: an invocation
+        leaves ``active`` and never returns, ``runs[-1]`` only advances, ``revoked_at`` is only ever set, and the
+        generation only grows. So a committed state read late can only be more permissive than the truth, never less,
+        and every engine operation re-checks the credential under the lock before it writes, refusing what a stale read
+        let through. A change to ``run_authority_problem`` must keep its conditions monotonic, or this read is unsafe.
+
+        For the same reason a state that cannot be read this time (``_committed_state``) is unknown, not a problem: the
+        caller reads again on its next tick, and the engine stays the gate (#366 review, M2)."""
+        state = self._committed_state()
+        if state is None:
+            return False, None
+        return True, self.engine.run_authority_problem(state, self.inv_id, self.run, self.token_id)
+
+    def _committed_state(self) -> dict[str, Any] | None:
+        """The committed control state read lock-free, or None when it cannot be read this time.
+
+        Unlike the locked read, a lock-free read can meet a writer's replace: on Windows the mid-replace miss reaches it
+        as ``ProjectNotFound`` and a sharing violation outlasting its retries as ``PermissionError``. Neither may end a
+        live run (#366 review, M2). A failure is logged once until a read succeeds again, in the event log only, so a
+        state unreadable for long never grows the run record."""
+        try:
+            state = self.engine.store.read_committed()
+        except (errors.AEWError, OSError) as exc:
+            if not self._state_unreadable:
+                self._state_unreadable = True
+                self.events({"event": "state_unreadable", "error": getattr(exc, "message", None) or repr(exc)})
+            return None
+        self._state_unreadable = False
+        return state
 
     def _control_changed(self) -> bool:
         path = self.engine.aew_root / "state" / "control.yaml"
@@ -233,15 +323,7 @@ class Supervisor:
             self._contain(contract, adapter_cls)
             contract = self._label_skills(contract)
             self.record["contract"] = contract.to_record()
-            from aew.capability import ops as capability
-
-            # What the run goes without, from its own record, for its system text: a missing tool is logged, not
-            # voided (the operator, 2026-11-05)
-            missing = self.record["containment"].get("missing_tools")
-            contract.extra[K.UNAVAILABLE_TOOLS] = capability.unavailable(missing)
-            # And what it has, by the names it calls them (the Lead's ruling on card-capability resolution)
-            contract.extra[K.AVAILABLE_TOOLS] = capability.placed(self.record["containment"],
-                                                                 contained=self.layout is not None)
+            self._tools(contract)
             self.agent_env = agentenv.build(os.environ, endpoint=self.bridge.address, key_hex=self.bridge.key_hex,
                                             invocation=self.inv_id, run=self.run, work_unit=inv["work_unit"],
                                             scratch=contract.scratch,
@@ -315,58 +397,39 @@ class Supervisor:
         planned = {**planned, "copy": "read_only_bind" if bound else "rules_only"}
         return dataclasses.replace(contract, extra={**contract.extra, "skills": planned})
 
+    def _tools(self, contract: K.LaunchContract) -> None:
+        """What the run's system text says of AEW's tools, from its containment label (``_contain``'s): what it goes
+        without, from its own record, as a missing tool is logged, not voided (the operator, 2026-11-05); and what it
+        has, by the names it calls them (the Lead's ruling on card-capability resolution), none where it is not
+        contained."""
+        from aew.capability import ops as capability
+
+        contract.extra[K.UNAVAILABLE_TOOLS] = capability.unavailable(self.record["containment"].get("missing_tools"))
+        contract.extra[K.AVAILABLE_TOOLS] = capability.placed(self.record["containment"],
+                                                             contained=self.layout is not None)
+
     def _contain(self, contract: K.LaunchContract, adapter_cls: type[HarnessAdapter]) -> None:
         """Build and self-test this run's sandbox before any harness process exists (F2, M4-B), and start its network
-        outside it (F28, STG-05 CS-3b): the provider relay when the harness calls a provider, and the egress proxy
-        when its allowlist names something. Under the default policy a sandbox or a network that cannot be established
-        refuses the launch; the label records what the run has."""
-        from aew.harness.containment import netns
-
+        outside it (F28, STG-05 CS-3b): :func:`contain_launch`, which ``aew doctor``'s read of the harness's model list
+        shares. Under the default policy a sandbox or a network that cannot be established refuses the launch; the
+        label records what the run has."""
         policy, _ = self.engine.execution_policy()
         assert self.bridge is not None
-        # The engine refused this before anything was committed (``require_launchable``); checked again here, on the
-        # names this run's contract carries, before any sandbox or network exists (the operator's decision of
-        # 2026-11-06: AEW does not rely on OpenCode's free models).
-        provider = (self.record.get("execution_profile") or {}).get("provider")
-        missing = netns.provider_key_missing(provider, [str(n) for n in contract.extra.get("provider_env") or []],
-                                             os.environ, on_relay_route=netns.relay_route(policy,
-                                                                                          adapter_cls.PROVIDER_RELAY))
-        if missing is not None:
-            raise errors.HarnessIncompatible(netns.provider_key_message(str(provider), missing),
-                                             reason=netns.PROVIDER_KEY_MISSING, variable=missing)
-        network: netns.RunNetwork | None = None
         try:
-            try:  # built once: the self-test checks the same allowlist the run's egress proxy gets (register E143)
-                allow = netns.egress_policy(policy, adapter_cls.EGRESS)
-            except errors.AEWError as exc:
-                raise errors.ContainmentUnavailable(f"containment.network.egress_allow: {exc.message}",
-                                                    reason="bad_egress_allow") from None
-            self.layout, self.record["containment"] = containment.establish(
-                role=contract.role, scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir,
-                scratch=contract.scratch, bridge_dir=self.bridge.private_dir, policy=policy,
-                project=str(self.engine.repo_root), bridge=self.bridge.address, egress_policy=allow,
+            contained = contain_launch(
+                policy, adapter_cls, provider=(self.record.get("execution_profile") or {}).get("provider"),
+                provider_env=[str(n) for n in contract.extra.get("provider_env") or []], role=contract.role,
+                scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir, scratch=contract.scratch,
+                bridge_dir=self.bridge.private_dir, bridge=self.bridge.address, project=self.engine.repo_root,
+                aew_root=self.engine.aew_root, kind="worker_run",
                 skills_dir=str(self._skills_dir()) if (contract.extra.get("skills") or {}).get("exposed") else None)
-            # A weaker run (allowed by the policy, or a sandbox on the host's network) enters the register of weaker
-            # contexts before its harness starts; on Linux one that cannot be entered is refused (G3 addendum 7).
-            self.weaker = weaker_register.enter_if_weaker(
-                self.record["containment"], kind="worker_run",
-                ownership=weaker_register.ownership_of(self.record["containment"]), project=self.engine.repo_root,
-                aew_root=self.engine.aew_root, directory=self.run_dir, marker=self.run_dir / runlog.RECORD)
-            if self.layout is not None and self.layout.private_network:
-                network = netns.RunNetwork.start(
-                    self.layout, provider=(self.record.get("execution_profile") or {}).get("provider"),
-                    provider_env=[str(n) for n in contract.extra.get("provider_env") or []], policy=policy,
-                    env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, allow=allow)
-                self.record["containment"]["network"].update(network.describe())
         except errors.ContainmentUnavailable as exc:  # the self-test's rows, when it ran, stay on the refusal's label
-            if self.layout is not None and self.layout.net_dir:
-                shutil.rmtree(self.layout.net_dir, ignore_errors=True)
-                containment.retire_private_git(self.run_dir)
             self.layout = None
             self.record["containment"] = containment.label(contained=False, reason=exc.message,
                                                            self_test=exc.details.get("self_test"))
             self._event("containment_refused", reason=exc.message)
             raise
+        self.layout, self.record["containment"], network, self.weaker = contained
         line = containment.tree_masks_line(self.layout) if self.layout is not None else None
         self._event("containment", filesystem=self.record["containment"]["filesystem"],
                     process_ownership=self.record["containment"]["process_ownership"],
@@ -416,12 +479,14 @@ class Supervisor:
 
     def _launch_failed(self, reason: str, error_code: str | None = None, *, cause: str | None = None,
                        refusal: str | None = None) -> bool:
-        """``refusal``: the adapter's own reason for refusing the launch, one of ``base.LAUNCH_REFUSALS``, beside the
-        closed code (register E143)."""
+        """``refusal``: the reason the launch was refused, one of ``base.LAUNCH_REFUSALS`` (an adapter's own, or this
+        supervisor's missing-key refusal, E189), beside the closed code (register E143)."""
         code = K.launch_failure_code(K.START, error_code, cause)
         spool(self.run_dir, "launch_failed", reason)  # site 2 (R2-m5), before the terminal record
         if refusal is not None:
             self.record["refusal"] = refusal
+        if cause is not None:  # the failure's own cause, which its code (`unknown`) does not tell apart
+            self.record[K.LAUNCH_CAUSE] = cause
         self._finish(K.LAUNCH_FAILED, reason, reason_code=code)
         self._send_ack({"started": False, "status": K.LAUNCH_FAILED, "reason": reason, "reason_code": code,
                         **({"refusal": refusal} if refusal is not None else {})})
@@ -432,6 +497,7 @@ class Supervisor:
         deadline_s = (self.record.get("execution_profile") or {}).get("deadline_s")
         deadline = time.monotonic() + deadline_s if deadline_s else None
         last_beat = last_poll = 0.0
+        unread = False  # the last authority read failed: read again at the next tick (#366 review, M2)
         while True:
             faults.pause("harness.watchdog.tick")  # tests: a supervisor that is slow to notice anything
             now = time.monotonic()
@@ -452,11 +518,13 @@ class Supervisor:
                         self.adapter.interrupt()
                 except errors.AEWError as exc:
                     self._event("request_failed", kind=kind, error=exc.message)
-            if self._control_changed() or now - last_poll >= STATE_POLL_S:
-                last_poll = now
-                problem = self.authority_problem()
+            if unread or self._control_changed() or now - last_poll >= STATE_POLL_S:
+                read, problem = self._authority()
                 if problem:
                     return self._finish(K.TERMINATED, f"authority ended: {problem}")
+                unread = not read
+                if read:
+                    last_poll = now
             status = self.adapter.inspect()
             if not status.get("alive"):
                 return self._finish_exited(status)
@@ -476,18 +544,28 @@ class Supervisor:
         The run directory is model-writable (same user), so a file alone is no request: its name and digest must be
         on this run's entry in control state, which the Lead operation commits before it writes the file. Anything
         else is recorded and discarded (independent review R1)."""
-        pending = runlog.take_requests(self.run_dir)
+        # Files taken while the state was unreadable are kept as they were taken: a later file of the same name (the
+        # run directory is model-writable) never replaces a kept Lead request (#366 review, N3). That is all the
+        # `setdefault` merge is for: the sort below decides the order. They are bounded by the queue's distinct names.
+        pending = dict(self._deferred)
+        for name, text in runlog.take_requests(self.run_dir):
+            pending.setdefault(name, text)
+        self._deferred = {}
         if not pending:
             return []
-        try:
-            inv = self.engine.store.current()["invocations"].get(self.inv_id) or {}
-            entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
-            recorded = {r["file"]: r for r in entry.get("requests") or []}
-        except errors.AEWError as exc:
-            recorded = {}
-            self._event("request_state_unreadable", error=exc.message)
+        # lock-free, as ``_authority``: the watch loop that beats the heartbeat calls this
+        state = self._committed_state()
+        if state is None:  # the files are taken already: keep them for the next tick, never refuse them (M2)
+            self._deferred = pending
+            return []
+        inv = state["invocations"].get(self.inv_id) or {}
+        entry = next((r for r in inv.get("runs") or [] if r["run"] == self.run), {})
+        recorded = {r["file"]: r for r in entry.get("requests") or []}
         out = []
-        for name, text in pending:
+        # In issue order, kept files with new ones: a request file's name starts with its issue time
+        # (runlog._next_request_ns), so the sort alone decides the order, whichever tick took a file and however late it
+        # was delivered; the merge order above decides nothing (#366 review, N4)
+        for name, text in sorted(pending.items()):
             want = recorded.get(name)
             why = ("not recorded by a Lead operation" if want is None else
                    "already handled" if name in self._handled else
@@ -601,6 +679,10 @@ class Supervisor:
             if self.weaker is not None:  # ended only once its processes are proven ended (G3 addendum 7, ruling 2)
                 self.weaker.end(self.tree.survivors() + list(self._checks.left))
             containment.retire_private_git(self.run_dir)  # private staging is scratch: nothing real refers to it
+        # After the kill, so a slow stop never delays it; before the final record, so the supervisor never exits with
+        # the stop still running and its private directory left (E128). Bounded by the stop's own bound.
+        if self.bridge is not None and not self.bridge.wait_stopped():
+            self._event("bridge_stop_timeout", bound_s=bridge.STOP_BOUND_S)
         try:
             self.record["result"] = self.adapter.collect() if self.adapter is not None else {}
         except Exception as exc:

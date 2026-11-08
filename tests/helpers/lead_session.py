@@ -27,9 +27,11 @@ from typing import Any
 
 from aewflow import sample_project
 from conftest import clean_env
+from discovery.rules import split_refusal
 from fake_harness import AGENT, POLICY, HarnessLab
 
 from aew.harness import procs
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
 
 KEYS = {"openai": "sk-synthetic-openai-0001", "anthropic": "sk-ant-synthetic-0002", "opencode": "synthetic-oc-0003"}
 SECRET = "sk-provider-secret-must-not-reach-the-lead-model"
@@ -44,7 +46,7 @@ CREDENTIAL_TABLE = ("CREATE TABLE credential (id text PRIMARY KEY, integration_i
 LAUNCHER = """import json, os, pathlib, sqlite3, sys, time
 here = pathlib.Path(__file__).resolve().parent
 if sys.argv[1:2] == ["--version"]:
-    print("opencode v2.0.18")
+    print("opencode v{version}")
     sys.exit(0)
 db = pathlib.Path(os.environ.get("XDG_DATA_HOME", "/nonexistent")) / "opencode" / "opencode.db"
 if sys.argv[1:3] == ["session", "list"]:  # its first run makes its database, as 2.0.18's does
@@ -177,8 +179,8 @@ def make_lab(tmp_path: Path, *, upstreams: dict[str, str] | None = None, mode: s
     lab = HarnessLab.create(sample_project(tmp_path), tmp_path, policy={**POLICY, "containment": containment},
                             extra_env={"OPENAI_API_KEY": SECRET})
     tui.mkdir(parents=True)
-    (tui / "opencode.py").write_text(LAUNCHER.format(helpers=str(AGENT.parent), table=CREDENTIAL_TABLE),
-                                     encoding="utf-8")
+    launcher = LAUNCHER.format(helpers=str(AGENT.parent), table=CREDENTIAL_TABLE, version=TESTED_VERSIONS[0])
+    (tui / "opencode.py").write_text(launcher, encoding="utf-8")
     lab.env["AEW_OPENCODE_BIN"] = str(tui / "opencode.py")
     return lab, tui
 
@@ -187,7 +189,8 @@ def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, st
                     timeout: float = 120) -> dict[str, Any]:
     """`aew opencode` at a terminal the test holds: standard input is a pseudo-terminal that is its controlling
     terminal (as at the operator's shell); its standard output and error are collected. Returns the exit code, the
-    result JSON (after the relay's reset), the error, and whether the terminal got its settings back."""
+    result JSON (after the relay's reset), the refusal's error with what stderr held before and after it
+    (``discovery.rules.split_refusal``), and whether the terminal got its settings back."""
     import pty
     import termios
 
@@ -223,14 +226,10 @@ def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, st
         result = json.loads(text) if text else None
     except ValueError:
         result = None
-    error = None
-    if proc.returncode:
-        try:
-            error = json.loads(err.decode()[err.decode().index("{"):])["error"]
-        except (ValueError, KeyError):
-            error = None
-    return {"code": proc.returncode, "result": result, "stdout": out, "stderr": err.decode("utf-8", "replace"),
-            "error": error, "restored": restored, "terminal": bytes(shown)}
+    stderr = err.decode("utf-8", "replace")
+    ahead, error, after = split_refusal(stderr) if proc.returncode else (stderr, None, "")
+    return {"code": proc.returncode, "result": result, "stdout": out, "stderr": stderr, "error": error,
+            "before": ahead, "after": after.strip(), "restored": restored, "terminal": bytes(shown)}
 
 
 def agent_session(tmp_path: Path, steps: list[dict[str, Any]] | Callable[[HarnessLab], list[dict[str, Any]]], *,

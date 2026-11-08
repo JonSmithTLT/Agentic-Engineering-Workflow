@@ -477,7 +477,7 @@ def test_a_launch_without_its_pinned_copy_flags_it_and_one_with_it_says_nothing(
     for label in labels:
         missing = label["missing_tools"]
         assert missing["unavailable"] == ["fake"] and missing["reasons"] == {"fake": "not_installed"}, missing
-        assert [(d["tool"], d["served"]) for d in missing["detail"]] == [("fake", "stub")], missing
+        assert [(d["command"], d["served"]) for d in missing["detail"]] == [("fake", "stub")], missing
     said = capsys.readouterr().err
     assert said.count("aew: attention: fake in this run is a stub that fails") == 1, said
     assert "it is not installed on this host" in said

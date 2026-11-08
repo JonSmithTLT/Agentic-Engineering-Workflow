@@ -351,3 +351,190 @@ def test_a_recently_archived_units_snapshot_is_checked(lab, tmp_path):
     O.snapshot_path(lab.aew_root, sha).unlink()
     snapshots = doctor(lab)["pricing-snapshots"]
     assert snapshots["status"] == "FAIL" and sha in snapshots["detail"]
+
+
+# --------------------------------------------------------------------------- `aew usage show` and the status line (R9)
+
+PRICED_USD = (1000 * 2.0 + 400 * 8.0) / 1_000_000  # TOKENS under TABLE: input 1,000 at $2/M, output 400 at $8/M
+
+
+def accepted(lab: HarnessLab, tmp_path: Path, **kw: Any) -> tuple[str, str, str]:
+    """A Ticket whose run ended with its evidence and whose usage the next transaction copied (R5)."""
+    wid, inv, run = launched(lab, tmp_path, IMPLEMENT, {"tokens": TOKENS}, **kw)
+    lab.project.lead("work", "transition", wid, "--to", "RUNNING")
+    assert lab.wait(run)["status"] == K.ENDED_WITH_EVIDENCE
+    lab.project.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    return wid, inv, run
+
+
+def test_usage_show_derives_every_level_from_one_projection_and_status_carries_its_summary(lab, tmp_path):
+    """R7, R9: a run, its invocation, its unit and the project each report the run's tokens and its derived cost, and
+    `aew status` carries the same hot totals: one projection, never a second count."""
+    adopt_prices(lab)
+    wid, inv, run = accepted(lab, tmp_path)
+    row = lab.ok("usage", "show", run, "--json")["row"]
+    assert (row["state"], row["usage"]["tokens"]["input"]) == ("recorded", 1000)
+    assert row["estimated_at_record"]["usd"] == pytest.approx(PRICED_USD)
+    figures = [lab.ok("usage", "show", inv, "--json")["totals"], lab.ok("usage", "show", wid, "--json")["own"],
+               lab.ok("usage", "show", "--json")["totals"]]
+    for totals in figures:
+        assert (totals["runs"], totals["recorded"], totals["tokens"]["output"]) == (1, 1, 400)
+        assert totals["estimated_at_record"] == {"usd": pytest.approx(PRICED_USD), "priced": 1, "unpriced": 0,
+                                                 "reasons": {}}
+    project = lab.ok("usage", "show", "--json")
+    assert (project["scope"], project["archive_complete"]) == ("recent", False)  # never read as a lifetime total
+    usage = lab.ok("status", "--json")["usage"]
+    assert usage["scope"] == "hot"
+    for key in O.SUMMARY_KEYS:
+        assert usage[key] == project["totals"][key]
+    text = lab.aew("usage", "show", wid).stdout
+    assert "$0.0052 USAGE_OBSERVED_COOPERATIVE over 1 priced run(s)" in text and run in text
+    assert "not a bill or a budget" in text and "Per-task enforcement: none" in text  # IF10-11, conspicuously
+    assert lab.ok("usage", "show", wid, "--json")["basis"]["current_table"]["as_of"] == "2026-10-01"
+    assert "Usage (hot work): 1 run(s): 1 recorded, 0 provisional" in lab.aew("status").stdout
+    assert_control_invariants(lab.project)
+
+
+def test_an_unpriced_run_is_never_shown_as_a_dollar_figure(lab, tmp_path):
+    """R4: without a price table every figure is `unpriced` with its reason, in the text and the JSON; no surface
+    prints a zero or any dollar amount for it."""
+    wid, inv, run = accepted(lab, tmp_path)
+    for argv in (["usage", "show", wid], ["usage", "show"], ["usage", "show", run], ["status"]):
+        text = lab.aew(*argv).stdout
+        assert "$" not in text and "unpriced" in text, (argv, text)
+    totals = lab.ok("usage", "show", "--json")["totals"]
+    assert totals["estimated_at_record"] == {"usd": None, "priced": 0, "unpriced": 1,  # never a 0 (#368, M1)
+                                             "reasons": {O.UNPRICED_NO_TABLE: 1}}
+    assert lab.ok("status", "--json")["usage"]["estimated_at_record"]["usd"] is None
+
+
+def test_a_provisional_run_is_shown_and_labelled_before_its_copy(lab, tmp_path):
+    """R6: a run that ended but whose usage no transaction has copied yet is read from its run directory and labelled
+    provisional, never left out."""
+    adopt_prices(lab)
+    wid, inv, run = launched(lab, tmp_path, IMPLEMENT, {"tokens": TOKENS})
+    lab.project.lead("work", "transition", wid, "--to", "RUNNING")
+    lab.wait(run)
+    row = lab.ok("usage", "show", run, "--json")["row"]
+    assert (row["state"], row["estimated_at_record"], row["estimated_under_current_prices"]["usd"]) == (
+        "provisional", {"unpriced": O.UNPRICED_NOT_RECORDED}, pytest.approx(PRICED_USD))
+    assert lab.ok("status", "--json")["usage"]["provisional"] == 1
+
+
+def test_an_archived_unit_still_answers_after_its_run_directories_are_gone(lab, tmp_path):
+    """§7: once a unit is archived its usage is read from the bundle, so `aew usage show` answers the same after
+    `local/harness/runs` is deleted; the project's `--all` walk reads it and says it is complete."""
+    import shutil
+
+    adopt_prices(lab)
+    wid, inv, run = launched(lab, tmp_path, [], {"tokens": TOKENS})
+    lab.wait(run)
+    lab.project.lead("invoke", "cancel", inv, "--reason", "stop the test run")
+    lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "abandoned")
+    before = lab.ok("usage", "show", wid, "--json")
+    shutil.rmtree(lab.aew_root / "local" / "harness" / "runs")
+    assert lab.ok("usage", "show", wid, "--json") == before
+    assert before["own"]["estimated_at_record"]["usd"] == pytest.approx(PRICED_USD)
+    assert lab.ok("usage", "show", inv, "--json")["totals"] == before["own"]
+    walked = lab.ok("usage", "show", "--all", "--json")
+    assert (walked["scope"], walked["archive_complete"], walked["totals"]["runs"]) == ("all", True, 1)
+    window = lab.ok("usage", "show", "--all", "--since", "2000-01-01T00:00:00Z", "--json")
+    assert (window["scope"], window["archive_complete"], window["totals"]["runs"]) == ("window", False, 1)
+    assert lab.ok("status", "--json")["usage"]["runs"] == 0  # the summary is the hot state's only
+
+
+def test_a_hot_parents_tree_counts_its_archived_children(lab, tmp_path):
+    """R7: a Story sums its Tickets, and a finished Ticket is archived while its Story is still open: the tree reads
+    the archived child from its bundle, so the Story's descendants are never under-counted."""
+    from aewflow import create_unit
+
+    adopt_prices(lab)
+    story = create_unit(lab.project, "story", "A story")
+    wid, inv, run = launched(lab, tmp_path, [], {"tokens": TOKENS}, extra=("--parent", story))
+    lab.wait(run)
+    lab.project.lead("invoke", "cancel", inv, "--reason", "stop the test run")
+    lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "abandoned")
+    assert wid not in load_control(lab.root)["work"]  # archived; its Story is hot
+    tree = lab.ok("usage", "show", story, "--json")
+    assert [c["unit"] for c in tree["children"]] == [wid]
+    assert (tree["own"]["runs"], tree["descendants"]["runs"]) == (0, 1)
+    assert tree["descendants"]["estimated_at_record"]["usd"] == pytest.approx(PRICED_USD)
+
+
+def test_an_unknown_id_and_a_window_without_all_are_refused(lab, tmp_path):
+    """A read names what it could not find, and `--since`/`--until` bound only the `--all` walk."""
+    for argv, code in ((["usage", "show", "T-9999"], "NOT_FOUND"),
+                       (["usage", "show", "--since", "2026-10-01T00:00:00Z"], "USAGE"),
+                       (["usage", "show", "--all", "--since", "yesterday"], "USAGE")):
+        res = lab.aew(*argv, "--json")
+        assert res.returncode != 0 and code in (res.stdout + res.stderr), (argv, res.stdout, res.stderr)
+
+
+def test_the_dashboard_guidance_never_builds_the_usage_summary(lab, tmp_path, monkeypatch):
+    """#368 review, m1: the dashboard's guidance reads `status` for its next actions only, so it never pays for the
+    usage projection (which reads each provisional run's record)."""
+    from aew.engine.api import Engine
+    from aew.engine.usage_read import UsageReads
+    from aew.surface import projection
+
+    accepted(lab, tmp_path)
+
+    def refused(self, state):
+        raise AssertionError("the guidance built the usage summary")
+
+    monkeypatch.setattr(UsageReads, "summary", refused)
+    engine = Engine.discover(lab.root)
+    projection._guidance(engine, "project")
+    assert "usage" not in engine.status(usage=False)
+
+
+def test_a_named_price_table_that_cannot_be_read_is_a_typed_refusal(lab, tmp_path, monkeypatch):
+    """#368 review, m2 and m6: a table the manifest names and that cannot be read refuses `usage show` with
+    VALIDATION_FAILED and the doctor check to run, never a bare FileNotFoundError; `aew status` still answers, its
+    figures under current prices unpriced with their own reason."""
+    from aew.engine.api import Engine
+    from aew.engine.base import Kernel
+    from aew.errors import ValidationFailed
+
+    accepted(lab, tmp_path)
+
+    def gone(self):
+        raise FileNotFoundError("policy/pricing.yaml")
+
+    monkeypatch.setattr(Kernel, "pricing", gone)
+    engine = Engine.discover(lab.root)
+    with pytest.raises(ValidationFailed) as refused:
+        engine.usage_show()
+    assert refused.value.details["reason"] == "pricing_table_missing" and "aew doctor" in refused.value.message
+    usage = engine.status()["usage"]
+    assert usage["estimated_under_current_prices"]["reasons"] == {O.UNPRICED_TABLE_UNUSABLE: 1}
+    assert usage["pricing_problem"].startswith("VALIDATION_FAILED: ")  # the same typed refusal, reported
+
+
+def test_the_all_walk_loads_each_archived_bundle_once(lab, tmp_path, monkeypatch):
+    """R7 (#368 review, m3): the `--all` walk and the recent ring load each archived bundle once and never rehydrate a
+    unit's current parent, which the project's totals do not need."""
+    from aew.engine.api import Engine
+    from aew.engine.archive_ops import Archive
+
+    wid, inv, run = launched(lab, tmp_path, [], {"tokens": TOKENS})
+    lab.wait(run)
+    lab.project.lead("invoke", "cancel", inv, "--reason", "stop the test run")
+    lab.project.lead("work", "transition", wid, "--to", "CANCELLED", "--reason", "abandoned")
+    loads: list[str] = []
+    real = Archive.bundle
+
+    def counted(self, state, work_id):
+        loads.append(work_id)
+        return real(self, state, work_id)
+
+    def never(self, state, work_id):
+        raise AssertionError("the project's walk rehydrated a unit")
+
+    monkeypatch.setattr(Archive, "bundle", counted)
+    monkeypatch.setattr(Archive, "archived_unit", never)
+    engine = Engine.discover(lab.root)
+    for walk in (True, False):
+        loads.clear()
+        assert engine.usage_show(walk_all=walk)["totals"]["runs"] == 1
+        assert loads == [wid]

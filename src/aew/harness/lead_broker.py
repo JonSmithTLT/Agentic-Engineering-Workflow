@@ -141,6 +141,8 @@ RELAYED_READS: dict[frozenset[str], frozenset[str]] = {frozenset(path.split()): 
     ("harness wait", ("run", "any_", "timeout")),
     ("map show", ("commit", "root", "section", "json")),
     ("map diff", ("operands", "json")),
+    # F25 R6: a provisional run's usage is read from its run directory under `.aew/local`, which the sandbox masks
+    ("usage show", ("target", "all", "since", "until", "json")),
 )}
 RELAYED_TIMEOUT_S = 300.0  # a relayed read other than `harness wait`, whose own --timeout bounds it
 # The longest relayed `harness wait --timeout` the host can wait out: `communicate` waits in poll(2), whose timeout is
@@ -302,6 +304,9 @@ class LeadBroker:
             self.loop.close()  # an auto-run stage in flight finishes before the credential goes
         if self._beat is not None:
             self._beat.close()  # closed_at: a clean end, never a crash
+        if not self.server.wait_stopped():  # bounded: no stop left running as the process exits (E128)
+            sys.stderr.write(f"aew: the Lead broker's bridge did not stop within {bridge.STOP_BOUND_S:g}s; its private "
+                             f"directory {self.server.private_dir} may be left behind\n")
         self._token = ""
 
     def _require_lead(self, state: dict[str, Any], token: str) -> None:

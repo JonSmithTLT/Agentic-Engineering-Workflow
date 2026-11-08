@@ -359,7 +359,7 @@ class RawArm:
         role: worker
         model: provider/model#effort         # the role's pinned model, with its effort (the runner checks)
         profile: {id, effective_profile: {context.orientation, tools.presentation}, qualification_state}
-        harness: {name: opencode, version: 2.0.18, artifact_sha256: {<platform>: <sha256>, ...}}
+        harness: {name: opencode, version: 2.2.6, artifact_sha256: {<platform>: <sha256>, ...}}
         contain: true                        # Linux bubblewrap; refused elsewhere
         steps: 80
         cap_usd: 0.75

@@ -19,12 +19,13 @@ from conftest import run_aew
 from fake_harness import AGENT, HarnessLab, contains_credential, credential_hits
 
 from aew.harness.opencode import lead, projection
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
 
 SECRET = "sk-provider-secret-must-not-reach-the-lead-model"
 LAUNCHER = """import json, pathlib, sys
 here = pathlib.Path(__file__).resolve().parent
 if sys.argv[1:2] == ["--version"]:
-    print("opencode v2.0.18")
+    print("opencode v{version}")
     sys.exit(0)
 (here / "tui-argv.json").write_text(json.dumps(sys.argv[1:]))
 sys.argv = ["fake_agent", "--script", str(here / "tui-script.json"), "--transcript", str(here / "tui.jsonl")]
@@ -43,7 +44,8 @@ def lab(tmp_path):
     lab = HarnessLab.create(sample_project(tmp_path), tmp_path, extra_env={"OPENAI_API_KEY": SECRET})
     tui = tmp_path / "tui"
     tui.mkdir()
-    (tui / "opencode.py").write_text(LAUNCHER.format(helpers=str(AGENT.parent)), encoding="utf-8")
+    launcher = LAUNCHER.format(helpers=str(AGENT.parent), version=TESTED_VERSIONS[0])
+    (tui / "opencode.py").write_text(launcher, encoding="utf-8")
     lab.env["AEW_OPENCODE_BIN"] = str(tui / "opencode.py")
     yield lab
     lab.cleanup()
@@ -92,7 +94,7 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
         {"do": "aew", "args": ["resume", "--json"]}])
     assert res.returncode == 0, res.stderr
     out = res.json
-    assert (out["exit"], out["seat"], out["opencode"]) == (0, "held by your AEW_LEAD_TOKEN", "2.0.18")
+    assert (out["exit"], out["seat"], out["opencode"]) == (0, "held by your AEW_LEAD_TOKEN", TESTED_VERSIONS[0])
     assert out["containment"]["filesystem"] == "workdir_separation_only"  # labelled not contained (STG-05 CS-4)
     assert argv == ["--standalone", str(lab.root)]
     env = json.loads((sync / "env").read_text())
@@ -101,7 +103,8 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
     assert not {"AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "OPENAI_API_KEY", "AEW_HARNESS_ADAPTERS",
                 "AEW_OPENCODE_BIN"} & set(env)
     assert {"AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY"} <= set(env)
-    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(guide_of(lab))  # with the guide (F16)
+    assert json.loads(env["OPENCODE_CONFIG_CONTENT"]) == projection.lead_config(  # with the guide (F16)
+        guide_of(lab), tools={"placed": False, "tools": []})  # and no tool of AEW's placed: it is not contained
     # OpenCode's own providers off in the Lead that is not contained too (the designer's ruling of 2026-11-06)
     assert json.loads(env["OPENCODE_CONFIG_CONTENT"])["experimental"]["policies"] == DENY
     assert env["OPENCODE_DISABLE_PROJECT_CONFIG"] == "1"
@@ -131,7 +134,9 @@ def test_print_config_starts_nothing_and_shows_no_values(lab):
                   env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token})
     assert res.returncode == 0, res.stderr
     shown = res.json
-    assert shown["config"] == projection.lead_config(guide_of(lab))
+    # where the Lead runs as it is, what its TUI gets: the line that no tool of AEW's is placed (review of #356, n1)
+    placed = None if lead.contained_here() else {"placed": False, "tools": []}
+    assert shown["config"] == projection.lead_config(guide_of(lab), tools=placed)
     assert shown["config"]["experimental"]["policies"] == DENY  # --print-config shows the provider deny
     assert shown["command"][-2:] == ["--standalone", str(lab.root)]
     system = shown["config"]["agents"][projection.LEAD_AGENT]["system"]

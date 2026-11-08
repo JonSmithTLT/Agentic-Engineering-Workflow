@@ -15,7 +15,9 @@ Behaviour comes from the same script files as the fake harness (``<scripts>/<run
 ``server`` knobs: ``catalog_delay_s`` (counted from the first catalog request, not from server start, so a
 slow start cannot eat into it), ``models``, ``openapi_drop`` (``["METHOD /path", ...]``), ``version``,
 ``ignore_config`` (load no configured agent), ``agents_delay_s`` (list no agent at all until this long after the
-first agent request), ``agent_override`` (fields that differ from the projection),
+first agent request), ``plugins_activating_s`` (the location listings, agents and models, answer 2.2.6's 503 "Location
+plugins did not finish activating" until this long after the first of them), ``agent_override`` (fields that differ
+from the projection),
 ``appended_rules`` (rules the server appends after the agent's own, as 2.0.22 appends ``browser: deny``),
 ``stored_credentials`` (serve 2.0.22's ``GET /api/credential`` with these entries),
 ``subagent`` (the model starts a child session, as V2's subagent tool would),
@@ -24,7 +26,9 @@ first agent request), ``agent_override`` (fields that differ from the projection
 the first step), ``form`` (a form before the first step), ``queue_gap_s`` (pause at the end of a turn,
 before its queued prompts are taken), ``provider_auth`` (``{"variable", "rejected_sha256": [...]}``: when the
 server's own value of that variable hashes to one of these, the provider rejects it at the first model call, as
-2.0.18 reports a 401: the turn fails with ``provider.auth``, no retry), ``live_usage`` (F25 L1: sessions carry the
+2.0.18 reports a 401: the turn fails with ``provider.auth``, no retry; optional ``status``, ``type`` and ``message``
+override the failed turn's error, and ``"shape": "2.2.6"`` adds the provider's raw body, ``response.body``, which
+2.2.6's ``Session.StructuredError`` carries), ``live_usage`` (F25 L1: sessions carry the
 pinned ``TokenUsage.Info`` totals, and each model step adds its tokens to its session's totals; ``{"order":
 "message_first" | "totals_first", "gap_s": s}`` says which of the two a reader can see first, and for how long; 2.0.18
 commits a step's message and totals together, P1(e), so ``gap_s`` 0 is the pinned behaviour).
@@ -48,6 +52,7 @@ from __future__ import annotations
 
 import base64
 import http.server
+import importlib.util
 import json
 import os
 import queue
@@ -63,7 +68,25 @@ from urllib.parse import parse_qs, urlparse
 
 HERE = Path(__file__).resolve().parent
 AGENT = HERE / "fake_agent.py"
-SPEC = HERE.parent / "fixtures" / "opencode" / "openapi-2.0.18.min.json"
+
+
+def _pinned() -> str:
+    """The pinned OpenCode version, from this tree's ``capabilities.TESTED_VERSIONS`` (its one owner), loaded by path:
+    the fake runs as its own process, whose ``aew`` import could be another checkout's."""
+    path = HERE.parents[1] / "src" / "aew" / "harness" / "opencode" / "capabilities.py"
+    spec = importlib.util.spec_from_file_location("_fake_opencode_capabilities", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # its dataclasses look their module up while it loads
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        del sys.modules[spec.name]
+    return str(module.TESTED_VERSIONS[0])
+
+
+PINNED = _pinned()
+SPEC = HERE.parent / "fixtures" / "opencode" / f"openapi-{PINNED}.min.json"
 NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 DEFAULT_MODELS = [
     {"id": "fake-model", "modelID": "fake-model", "providerID": "fakeprov", "name": "Fake", "enabled": True,
@@ -150,6 +173,7 @@ class FakeOpenCode:
     def __init__(self, scripts: Path) -> None:
         self.catalog_asked: float | None = None
         self.agents_asked: float | None = None
+        self.plugins_asked: float | None = None
         self.data_home = Path(os.environ["XDG_DATA_HOME"])
         self.state = self.data_home.parent            # <run>/harness
         self.run = self.state.parent.name             # R-<INV>-<n>
@@ -274,12 +298,16 @@ class FakeOpenCode:
         key = os.environ.get(knob["variable"]) or ""
         base = provider_base(s.info["model"])
         if base is not None:  # a network of the run's own (F28): the relay holds the key, and the provider answers
-            if call_provider(base, key, knob["rejected_sha256"]) != 401:
+            if call_provider(base, key, knob["rejected_sha256"]) < 400:
                 return None
         elif hashlib.sha256(key.encode()).hexdigest() not in knob["rejected_sha256"]:
             return None
-        error = {"type": "provider.auth", "message": f"Incorrect API key provided: {key[:3]}***{key[-4:]}.",
-                 "status": 401}
+        message = knob.get("message") or f"Incorrect API key provided: {key[:3]}***{key[-4:]}."
+        error: dict[str, Any] = {"type": knob.get("type") or "provider.auth", "message": message,
+                                 "status": int(knob.get("status") or 401)}
+        if knob.get("shape") == "2.2.6":  # the provider's own body, as 2.2.6 keeps it beside the message
+            error["response"] = {"body": json.dumps({"error": {"message": message, "type": "invalid_request_error",
+                                                               "code": knob.get("code") or "invalid_api_key"}})}
         msg = {"id": new_id("msg"), "type": "assistant", "agent": s.info.get("agent") or "build",
                "model": self.pin(s, 0), "time": {"created": now_ms(), "completed": now_ms()}, "content": [],
                "finish": "error", "error": error}
@@ -417,6 +445,13 @@ class FakeOpenCode:
             spec["paths"]["/api/credential"] = {"get": {"operationId": "credential.list"}}
         return spec
 
+    def plugins_activating(self) -> bool:
+        """The ``plugins_activating_s`` knob: still activating, counted from the first location listing."""
+        now = time.monotonic()
+        if self.plugins_asked is None:
+            self.plugins_asked = now
+        return now - self.plugins_asked < float(self.knobs.get("plugins_activating_s") or 0)
+
     def agents(self) -> list[dict[str, Any]]:
         """Agents as V2 reports them: its defaults, then the configuration's rules, then the agent's own."""
         defaults = [{"action": "*", "resource": "*", "effect": "allow"},
@@ -486,8 +521,12 @@ class FakeOpenCode:
         if (method, path) == ("GET", "/api/credential") and "stored_credentials" in self.knobs:
             return 200, {"data": self.knobs["stored_credentials"]}
         if (method, path) == ("GET", "/api/info"):
-            return 200, {"version": self.knobs.get("version") or "2.0.18", "pid": os.getpid(), "urls": [],
+            return 200, {"version": self.knobs.get("version") or PINNED, "pid": os.getpid(), "urls": [],
                          "paths": {"tmp": str(self.state / "tmp")}}
+        if (method, path) in (("GET", "/api/agent"), ("GET", "/api/model")) and self.plugins_activating():
+            # 2.2.6's body, as served on the Rocky VM (2026-11-07)
+            return 503, {"_tag": "ServiceUnavailableError", "message": "Location plugins did not finish activating",
+                         "service": "plugin"}
         if (method, path) == ("GET", "/api/agent"):
             return 200, {"location": {"directory": (query.get("location[directory]") or [""])[0]},
                          "data": self.agents()}
@@ -954,7 +993,7 @@ class ProviderUpstream:
 
 def main(argv: list[str], scripts: Path) -> int:
     if argv[:1] == ["--version"]:
-        print("opencode v2.0.18")
+        print(f"opencode v{PINNED}")
         return 0
     if argv[:1] == ["--standalone"]:
         return tui(argv, scripts)

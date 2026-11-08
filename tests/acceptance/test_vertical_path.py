@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -95,6 +96,12 @@ def configure(op: Operator, *, steering: bool = False, cause: str | None = None)
         model = ["--provider", "vuatprov", "--model",
                  "vuat-missing-model" if cause == "model-not-listed" else "vuatprov/vuat-model"]
         del fixtures["harness: fake"]
+        # The real harness calls its provider through the run's relay (Linux), which needs the provider's address, as
+        # the lab gives its own provider one (HarnessLab.create): one that resolves nowhere, since nothing calls it.
+        # Without it a launch, and so doctor's read of the model list, stops at the relay before the list.
+        # (After containment.writable, which sets the containment block this adds to.)
+        fixtures["containment.network.upstreams"] = lambda doc: doc["containment"].update(
+            network={"upstreams": {"vuatprov": "https://vuatprov.invalid/v1"}})
     res = op.first_configuration(["--check-command", check_line(command), *model], fixtures, known)
     assert res.returncode == 0, res.stderr
 
@@ -709,9 +716,10 @@ def v2_problems(facts: dict[str, Any]) -> list[str]:
 
 
 # Each case's cause and fix are regular expressions over what readiness says: the specific variable, model id, path or
-# session, and the specific instruction (review of PR #211, F6: a loose word must not pass). Readiness is step 11
-# (P03, `/v1/read/capabilities`); until it lands they are measured on doctor's report, which is not V3's verdict, and
-# its driver judges readiness by them (a cause and a fix named, or `accept_as_typed`).
+# session, and the specific instruction (review of PR #211, F6: a loose word must not pass). Readiness is step 11, a
+# local readiness surface since the operator's decision of 2026-11-02: `aew doctor` (register E125; P03's read stays
+# owed). The driver asserts the diagnosis: a FAIL or WARN entry naming the cause and one naming the fix
+# (`diagnoses`), or, for a case whose ideal is no error at all (`accept_as_typed`), the id accepted as typed.
 V3_CASES: dict[str, dict[str, Any]] = {
     # A provider variable the policy names is not set where AEW launches.
     "provider-env-unset": {"cause": r"VUAT_PROVIDER_KEY",
@@ -730,8 +738,13 @@ V3_CASES: dict[str, dict[str, Any]] = {
     # otherwise readiness names the doubled reference and suggests the listed id.
     "model-id-provider-prefix": {"cause": r"vuatprov/vuatprov/vuat-model",
                                  "fix": r"(did you mean|use)[^\n]{0,20}vuatprov/vuat-model\b",
-                                 "accept_as_typed": True},
+                                 "accept_as_typed": True,
+                                 "accepted": r"(?m)^model-refs\s+PASS\s+the harness is given [^\n]*"
+                                             r"(?<![\w/-])vuatprov/vuat-model\b"},  # never a doubled one
 }
+# The case readiness cannot name yet, and the row that holds it: the stale seat is G3-C's (vertical-uat.md §3; the
+# designer's position of 2026-11-02). It stays red, and says so.
+V3_HELD = {"stale-lead-session": "G3-C"}
 V3_MODELS = [{"id": "vuat-model", "modelID": "vuat-model", "providerID": "vuatprov", "name": "VUAT", "enabled": True,
               "variants": []}]
 
@@ -759,20 +772,36 @@ def test_v3_preflight_names_the_cause_and_the_fix_before_any_ticket(tmp_path, wo
     try:
         v3_setup(op, case)
         op.in_setup = False
-        op.workaround("preflight", "aew doctor (structural health only)")
-        doctor = op.type("preflight:doctor", ["doctor"])
+        # Step 11, the local readiness surface (E125). Whether the check changes its snapshot is named only when the
+        # operator lets doctor run it, which it says how to do without the flag (E153, the designer's ruling (b)).
+        argv = ["doctor", "--run-checks"] if case == "check-changes-snapshot" else ["doctor"]
+        doctor = op.type("preflight:doctor", argv)
         said = doctor.stdout + doctor.stderr
+        names_cause, names_fix = diagnoses(said, want["cause"]), diagnoses(said, want["fix"])
+        accepted = (bool(want.get("accept_as_typed")) and bool(re.search(want["accepted"], said))
+                    and not re.search(want["cause"], said))
         op.ledger.observe("v3", case=case, readiness=oracle.state_of("preflight")["state"],
-                          doctor_exit=doctor.returncode, doctor_names_cause=diagnoses(said, want["cause"]),
-                          doctor_names_fix=diagnoses(said, want["fix"]),
+                          doctor_exit=doctor.returncode, doctor_names_cause=names_cause,
+                          doctor_names_fix=names_fix, accepted_as_typed=accepted,
                           operator_input_was_the_harness_id=bool(want.get("accept_as_typed")))
         problems += path_problems(op)
+        problems += v3_diagnosis(case, names_cause=names_cause, names_fix=names_fix, accepted=accepted)
         launched = launched_anything(op)
         if launched:
             problems.append(f"something was launched before any Ticket: {launched}")
     finally:
         write_out(op, request, asks_result=False)
     assert_verdict(op, problems)
+
+
+def v3_diagnosis(case: str, *, names_cause: bool, names_fix: bool, accepted: bool) -> list[str]:
+    """The driver's assertion of the diagnosis (the operator's decision of 2026-11-02: without it the green is
+    hollow): readiness names the cause and the fix, or accepted the id as typed; a held case says what holds it."""
+    if accepted or (names_cause and names_fix):
+        return []
+    missing = " and ".join(w for w, named in (("the cause", names_cause), ("the fix", names_fix)) if not named)
+    held = f" (held by register {V3_HELD[case]})" if case in V3_HELD else ""
+    return [f"readiness (`aew doctor`) did not name {missing}{held}"]
 
 
 def launched_anything(op: Operator) -> list[str]:

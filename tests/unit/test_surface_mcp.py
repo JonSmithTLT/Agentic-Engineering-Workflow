@@ -1,6 +1,6 @@
 """The `aew-lead` MCP transport without a harness (F15.1 slice C; typed-lead-surface-design-v0.2 §4): the framing,
 profile filtering and the context budget, adapter errors that never reach the broker, the fail-closed start, the
-custody properties a static reading can prove, and the Lead projection against the pinned OpenCode 2.0.18 schema."""
+custody properties a static reading can prove, and the Lead projection against the pinned OpenCode schema."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from aew.surface.errors import AdapterInputError
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures" / "opencode"
-SPEC = json.loads((FIXTURES / "openapi-2.0.18.min.json").read_text(encoding="utf-8"))
+SPEC = json.loads((FIXTURES / f"openapi-{capabilities.TESTED_VERSIONS[0]}.min.json").read_text(encoding="utf-8"))
 
 
 def _result(ok: bool = True) -> dict[str, Any]:
@@ -48,8 +48,9 @@ class Spy:
 # CLEAR, §3.4 and §7 `test_a1_rows_measured`). The plan's §7 calls the cap `test_surface_cap`; it is
 # `test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_budget`.
 # Decision 7's whole-surface pin: 11,694 at E6a, unchanged in A1 until the designer answers G3; 11,741 with ITEMS 55's
-# `replace_gate` choice and its `replacement` field (designer, addendum 4: measured against §2.6's stop line, +47 B).
-NORMAL_BYTES_PIN = 11_741
+# `replace_gate` choice and its `replacement` field (designer, addendum 4: measured against §2.6's stop line, +47 B);
+# 11,727 with steering PR 1's `harness_wait` description, which says it also returns when a run needs the Lead (-14 B).
+NORMAL_BYTES_PIN = 11_727
 RESOLVE_BYTES_PIN = 818
 
 
@@ -271,7 +272,8 @@ def test_the_lead_projection_matches_the_pinned_opencode_configuration_schema():
     from aew.harness import procs
 
     assert server == {"type": "local", "command": [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "lead",
-                                                   "mcp"], "environment": procs.engine_imports({}), "codemode": False}
+                                                   "mcp"], "environment": procs.engine_imports({}), "codemode": False,
+                      "pool": False}
     # Over the curated session environment, only the import path of this `aew`: no credential, nothing else
     assert server["environment"] == {"PYTHONPATH": str(Path(aew_init).resolve().parent.parent), "PYTHONSAFEPATH": "1"}
     rules = config["agents"]["aew-lead"]["permissions"]

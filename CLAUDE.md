@@ -43,7 +43,8 @@ How each of these is done is in [`docs/README.md`](docs/README.md), "Keeping thi
   Notes cell. A merge that stops on the register is settled with `python tools/register.py resolve`, not by hand.
   `python tools/register.py show <id>` prints a row with its notes.
 - **`docs/reference/` is generated from the code.** A pull request that changes what it enumerates runs
-  `python tools/reference.py render` and commits the result ([its README](docs/reference/README.md)).
+  `python tools/reference.py render` and commits the result ([its README](docs/reference/README.md)). A merge that
+  stops on those pages is settled with `python tools/reference.py resolve`, not by hand.
 
 ## Tests
 
@@ -76,7 +77,7 @@ The lanes, the CI tiers, the static checks and the local commands are in
 - **Derive, don't restate** (operator, 2026-10-12). Every fact has one owner. Its consumers derive it from the owner's
   accessor and never restate it by hand: restating a fact is a defect. Every plan names the facts it consumes and their
   owners.
-- External harness facts: trust the pinned fixture (for example `tests/fixtures/opencode/openapi-2.0.18.min.json`) over
+- External harness facts: trust the pinned fixture (for example `tests/fixtures/opencode/openapi-2.2.6.min.json`) over
   a harness's current online documentation.
 
 ## Git

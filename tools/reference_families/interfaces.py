@@ -179,7 +179,7 @@ def page(records: list[C.Record]) -> str:
                      f"{words(c['name'] for c in f['columns'])} | {words(i['name'] for i in f['indexes'])} |")
     commands = by.get(interfaces_cli.FAMILY, [])
     lines += ["", "## CLI commands", "",
-              f"{len(commands)} commands, each linked to its entry in the `commands` section of "
+              f"Each command is linked to its entry in the `commands` section of "
               f"`{interfaces_cli.SURFACE_MAP}`, which owns what each is for. Nothing of the entry is copied here.", "",
               words((r.fact or {})["command"] for r in commands)]
     return "\n".join(lines).rstrip("\n") + "\n"

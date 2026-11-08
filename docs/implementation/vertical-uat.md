@@ -12,7 +12,7 @@ each citing its A-32 catalog IDs and the O-01 action, D-01 route or local surfac
 derived from the code's own registries, never kept by hand. The frozen instrument (its `IDEAL_PATH`, the proposed
 `aew settings set` and `aew preflight`, and the fallbacks for the old surfaces) is retired. Where this page describes
 it, in the ledgers `main` uploaded before the rebuild, and in the vertical-path shifts plan (v15), it stands as
-history. It runs on pushes to `main` and on dispatch only (§5), and its thresholds and mode are unchanged, except the
+history. It runs on dispatch only (§5), and its thresholds and mode are unchanged, except the
 PIN rule (§4).
 
 **Spec v2** carries the amendments the operator approved on 2026-10-11 (Q8: every listed amendment; Q1(e): Windows
@@ -121,17 +121,29 @@ installed tool: its variables are not the operator's.
 |---|---|---|
 | **V1** | **The fresh path.** A new project (a sample the test creates) goes from setup to a published one-line fix, and the operator gets the result: diff, evidence summary, commit. | The ledger zeros in §4, with **two** operator decisions: approving the plan, and approving the publish. Publish stays a judgement unless a grant covers it. |
 | **V2** | **Close and reopen with work active.** As V1, but the operator ends the Lead session while the implementer runs, then opens AEW again **from a fresh terminal**, nothing carried over. Parametrized: a clean `/exit` (the primary case) and a killed session. | No takeover, no credential, no INTERRUPTED Ticket and no reconcile. The implementer's run is untouched (still running after the reopen, its evidence accepted, no relaunch). The operator is told where things stand in words. The same zeros. |
-| **V3** | **Preflight catches it first.** One case per cause: a `provider_env` variable unset; a configured model the harness does not list; a check that changes the snapshot; stale state the engine could recover (a Lead session that died holding the seat); a model id carrying the provider prefix. | Before any Ticket exists, a local readiness surface fails, **naming the cause and the fix**, with the same regexes and `failing_entries`, and the driver asserts the diagnosis (the operator's decision of 2026-11-02, which amends V-01's row 11; P03 stays owed). Nothing is launched. |
+| **V3** | **Preflight catches it first.** One case per cause: a `provider_env` variable unset; a configured model the harness does not list; a check that changes the snapshot; stale state the engine could recover (a Lead session that died holding the seat); a model id carrying the provider prefix. | Before any Ticket exists, a local readiness surface fails, **naming the cause and the fix**, with the same regexes and `failing_entries`, and the driver asserts the diagnosis (the operator's decision of 2026-11-02, which amends V-01's row 11; P03 stays owed). **The readiness surface is `aew doctor`** (the Lead's choice, which that record gives it; register E125): its readiness rows, which `aew opencode` and `aew harness launch` also print at their start. Nothing is launched. |
 | **V4** | **Change a setting.** Switch the implementer's model, then V1's path. | One operator action that validates and saves; saving is the adoption. No raw YAML, no separate adopt, no credential, no restart. The implementer runs on the new model. |
 
 - **The provider-prefix case** (UAT U3's shape): the operator pastes the harness's own printed `provider/model` id
   into the profile's `model`, and AEW passes the provider and the id apart, so the reference it uses is doubled
   (`<provider>/<provider>/<model>`). The ideal outcome is that AEW accepts the id as typed (no error at all);
-  otherwise readiness must name the doubled reference and suggest the listed id. The names used are synthetic.
+  otherwise readiness must name the doubled reference and suggest the listed id. The names used are synthetic. AEW
+  accepts it as typed: under its own provider, the provider's prefix is removed (`aew/harness/models.py`), so the
+  driver checks that doctor's `model-refs` line gives the harness the listed id and that nothing names a doubled one.
+- **The two cases that need something run** (register E153, the designer's ruling as relayed on 2026-11-07).
+  `model-not-listed`: `aew doctor` reads the harness's model list by default, as a launch reads it (its binary,
+  projected configuration, containment and network, and catalog fetch; no session, no model call), bounded by the
+  launch's own start deadline and cached by the binary's sha256 and the projected configuration's hash
+  (`--refresh` reads it again); its `model-list` row names the unlisted model and the ones its provider lists.
+  `check-changes-snapshot`: only `aew doctor --run-checks` runs the project's checks, once each, on a disposable copy
+  of the authoritative snapshot, contained as a worker's check, and its `check-changes` row names each path a check
+  changes, with `.gitignore` or `.git/info/exclude` as the fix; never evidence. Without the flag the row is a WARN
+  that gives the command, so the driver types `aew doctor --run-checks` for this case. Neither refuses anything.
+- **The case readiness can't name yet** stays red, and the driver names what holds it: the stale seat is G3-C's.
 - **What counts as naming a cause (V3).** Only a FAIL or WARN entry of the readiness report (the line whose status is
   FAIL or WARN, with its continuation lines) that names the specific cause, or its fix. A PASS or INFO line that echoes
-  the configured value is not a diagnosis (`failing_entries`, `diagnoses`), for preflight and for the doctor fact the
-  ledger records. A refusal in the CLI's JSON shape (`{"ok": false, "error": {code, message, details}}`) is one failing
+  the configured value is not a diagnosis (`failing_entries`, `diagnoses`), for readiness (`aew doctor`) and for the
+  doctor fact the ledger records. A refusal in the CLI's JSON shape (`{"ok": false, "error": {code, message, details}}`) is one failing
   entry, its message and details; a JSON answer with `ok: true` never is.
 - **Opening AEW.** The `open` step is L01 and L02 (`ATTACH_LEAD`), through a G3 client and the confirmer, whose PIN
   approves the attach (§4, the PIN rule). The test records whether a console endpoint came up (`open.console`), never
@@ -283,15 +295,17 @@ operator raised the Lead's minimums on 2026-10-30, to the label each platform's 
   it: a red shadow test must never block a merge, and a collected test that did not run would fail `assurance`.
   `tests/unit/test_ci_tools.py` proves both.
 - **Its own workflow, in shadow.** The `vertical` job (`vertical.yml`, Linux and Windows; outside `ci.yml`, so its red
-  never colours the merge gate's run) runs on every push to `main` and on dispatch, uploads the ledgers and summaries
+  never colours the merge gate's run) runs on dispatch only, uploads the ledgers and summaries
   as artifacts (`vertical-ledger-<OS>`), and writes the lane's report, the not-measured count first, then the
   summaries, to the run's summary page. On Linux the operator's session runs on a pseudo-terminal the test owns, the
   terminal CS-4's contained Lead requires (`start_on_terminal`). It does not run on pull
-  requests (operator, 2026-10-23): it is red on `main`, so on a pull request its result says nothing about that pull
-  request, while `main`'s runs keep the ledger's time series. A running one is never cancelled; its runs share one
-  group, so when pushes land close together GitHub keeps only the newest pending one (`ci`'s push runs, by contrast,
-  get one for every merge: [testing-and-ci-strategy.md](testing-and-ci-strategy.md) §3). It is not in `assurance`'s
-  needs. It is honestly red while the ledger is not zero: no xfail, no skip, no lowered assertion.
+  requests (operator, 2026-10-23): on a pull request its result says nothing about that pull request. It does not run
+  on pushes to `main` either (operator, 2026-11-08): with no path to green for days, its red on every merge said
+  nothing about that merge and left `main`'s page red, and the operator turns it back on. To measure,
+  `gh workflow run vertical --ref main` adds a line to `main`'s time series, and
+  `pytest --lane vertical tests/acceptance/test_vertical_path.py` runs it locally and adds none. A running one is never
+  cancelled; its runs share one group, so GitHub keeps only the newest pending one. It is not in `assurance`'s needs.
+  It is honestly red while the ledger is not zero: no xfail, no skip, no lowered assertion.
 - **Platforms.** It runs on Windows and Linux; any platform-only part is pinned in `tests/platform-skips.yaml` (none
   today). **The enforced gate is Linux only** (v2, the operator's Q1(e)): Windows is UNQUALIFIED and excluded from it,
   its job keeps running and reporting, and its state leads every verdict and summary it prints (the status above).

@@ -120,7 +120,12 @@ def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = ""
     for name in provider_env:
         env[name] = str(agentenv.lookup(base, name))  # the same lookup the checks use (Windows: any case)
     agentenv.bypass_proxy_for_loopback(env)
-    env.update({"OPENCODE_CONFIG_CONTENT": json.dumps(projection.lead_config(guide), sort_keys=True),
+    from aew.capability import ops as capability
+
+    # A Lead that runs here is not contained (the contained Lead's start replaces this configuration): it is told no
+    # tool of AEW's is placed, as an uncontained worker is (review of #353, n3)
+    config = projection.lead_config(guide, tools=capability.placed(None, contained=False))
+    env.update({"OPENCODE_CONFIG_CONTENT": json.dumps(config, sort_keys=True),
                 "OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_DISABLE_AUTOUPDATE": "1"})
     return env
 
@@ -169,7 +174,9 @@ def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | No
                   "host, and the sandbox holds a placeholder."]
     else:
         notes.append("No AEW credential and no provider key is in it unless passed with --provider-env.")
-    return {"command": argv, "config": projection.lead_config(guide),
+    # what the TUI is given where it runs as it is: an uncontained Lead's line included (review of #356, n1)
+    config = projection.lead_config(guide) if contained_here() else json.loads(env["OPENCODE_CONFIG_CONTENT"])
+    return {"command": argv, "config": config,
             "env_names": sorted([*env, *lead_broker.ENV_NAMES]), "provider_env": provider_env, "notes": notes}
 
 
@@ -203,6 +210,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         # Everything that can refuse does so before a seat is taken (an acquired seat whose credential is lost
         # would stay held), a missing credential first.
         lead_broker.require_credential(acquire)
+        _readiness(engine)
         lead = ContainedLead(engine, argv=argv, provider_env=provider_env, guide=guide, base=os.environ,
                              stages=stages)
         lead.announce(sys.stderr)  # what it found, before the refusal names what is missing
@@ -221,6 +229,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         sys.stderr.write(f"aew opencode: {', '.join(provider_env)} passed to the Lead's OpenCode; the Lead model's "
                          "shell commands can read it.\n")
     lead_broker.require_credential(acquire)  # a missing credential refuses first, before any start line, as contained
+    _readiness(engine)
     _tools_before_the_tui(asking=False)
     line = no_provider_line(provider_env, os.environ)
     if line is not None:
@@ -228,6 +237,14 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                   env=env, contained=weaker)
     return {**out, "opencode": version}
+
+
+def _readiness(engine: Any) -> None:
+    """What a launch from this terminal would meet, each FAIL and WARN readiness row with its fix, as the Lead starts
+    (register E125): after the credential check, so a missing credential still refuses before any start line."""
+    from aew import doctor
+
+    sys.stderr.write(doctor.readiness_lines(engine, "aew opencode"))
 
 
 def _tools_before_the_tui(*, asking: bool = True) -> None:

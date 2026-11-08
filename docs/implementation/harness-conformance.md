@@ -13,7 +13,11 @@ What any harness adapter must do for AEW. This is the adapter-neutral contract b
   - `tests/integration/test_opencode_lead.py` covers `aew opencode`;
   - `tests/integration/test_lead_session.py` checks Lead custody and bridge parity;
   - `tests/regression/test_m3_harness_adversarial.py` holds the step-2 race and attack regressions.
-- **Live lane (opt-in: `pytest --live tests/live`):** the same scenarios against a real OpenCode 2.0.18 server, plus a check that the real server loads the Lead projection, and (step 8) a real model carrying out real launch contracts unscripted (section 6). Step 8 ran on free models; every live lane now runs on a keyed paid model the operator names and approves for each run (`AEW_LIVE_OPENCODE_MODEL`, with `AEW_LIVE_PROVIDER_KEY_ENV` for the unscripted lane), and skips without one: AEW does not use OpenCode's free models (ADR-0009's amendment of 2026-11-06).
+- **Live lane (opt-in: `pytest --live tests/live`):** the same scenarios against a real OpenCode server (the pinned version, `capabilities.TESTED_VERSIONS`), plus a check that the real server loads the Lead projection, and (step 8) a real model carrying out real launch contracts unscripted (section 6). The scenarios run in one of two modes:
+  - **keyless (the default):** with no `AEW_LIVE_OPENCODE_MODEL`, the run's model is the scripted model of `tools/harness_qualify` on loopback, for a model OpenCode's own catalog offers. It needs no key, no provider and no network, and `tools/harness_qualify`'s conformance check runs the lane this way;
+  - **keyed:** a paid model the operator names and approves for each run (`AEW_LIVE_OPENCODE_MODEL`, with `AEW_LIVE_PROVIDER_KEY_ENV` for the unscripted lane).
+
+  The unscripted lane (step 8) needs a real model, so it runs keyed only and skips without one. Step 8 ran on free models; AEW no longer uses OpenCode's free models (ADR-0009's amendment of 2026-11-06).
 
 ## 1. The adapter contract
 
@@ -52,7 +56,7 @@ Two more actions serve the acceptance scenarios: `note` (a remark that stays in 
 |---|---|---|
 | `FakeDriver` | CI | the fake harness: one scripted agent process |
 | `FakeOpenCodeDriver` | CI | the production OpenCode adapter against `fake_opencode.py`, a V2 server serving the real 2.0.18 OpenAPI. Its "model" runs each action as a tool call under the session's shell environment when one was set, else the server's own (V2's rule). The policy names a provider secret for the server, so the scenarios prove the agent's shell still lacks it. |
-| `OpenCodeDriver` | live lane | the production adapter against real OpenCode 2.0.18. Each action runs through the real session's shell endpoint, in the real curated environment, recorded in OpenCode's real database, on a keyed paid model the operator names and approves for the run (`AEW_LIVE_OPENCODE_MODEL`; no default). |
+| `OpenCodeDriver` | live lane | the production adapter against the real pinned OpenCode. Each action runs through the real session's shell endpoint, in the real curated environment, recorded in OpenCode's real database. Its model is the scripted model on loopback (keyless, the default), or a keyed paid model the operator names and approves for the run (`AEW_LIVE_OPENCODE_MODEL`). |
 
 | Scenario | Property |
 |---|---|
@@ -117,6 +121,8 @@ A driver declares `capabilities`. A scenario needing one it lacks (for example `
 4. Write a `Driver` that makes the harness perform the scenario actions deterministically, without depending on a model. For OpenCode: the session's shell endpoint runs each action as a command in the real session environment.
 5. Run `run_scenario` for every scenario in the harness's lane, and for AT-14..AT-17 (`harness_acceptance.ACCEPTANCE`) with the driver's `start_lead`, `delivered_prompt`, `projection` and `revive`. Add harness-specific tests for what the neutral scenarios cannot reach (section 5).
 
+6. **Feature verdicts.** Each version a harness is pinned to records its new features' verdicts (adopt, consume, deny, hold, hold -> consume, ignore), each with its reason and the register row that carries it, in [`tools/harness_qualify/verdicts/<harness>.yaml`](../../tools/harness_qualify/verdicts/opencode.yaml). That file is the record a bump writes and the next bump builds on; `tools/harness_qualify`'s report names the verdicts recorded for the version it measured, or that none are yet. OpenCode 2.2.6's are the first.
+
 ## 5. Watch list for the OpenCode adapter (designer, 2026-09-27)
 
 Where each concern is verified. "Fake V2" means `tests/integration/test_opencode_adapter.py` (CI); "live" means `tests/live/test_opencode_live.py` on OpenCode 2.0.18.
@@ -140,7 +146,7 @@ Where each concern is verified. "Fake V2" means `tests/integration/test_opencode
 
 ### 5.1 Live usage (register F25, for M4-H; slice L1)
 
-One sample shape, `aew/usage-live/v1` (`schemas/usage-live.schema.json`), and one meter for every OpenCode server: a supervised run's private server and an evaluator-owned one (R, R+, the A arm's headless Lead) alike (`harness/usage_live.py`: `Meter`, `OpenCodeMeter`). It measures only; the M4-H evaluator (F19) terminates and charges. Probe P1 pinned the facts it rests on, from the pinned 2.0.18 release's bundled JavaScript and the pinned OpenAPI, with a searchable identifier per citation, in `tests/fixtures/opencode/live-usage-2.0.18.json`; `tests/unit/test_usage_live.py` runs the fixture's cases against the meter and checks the citations' shape.
+One sample shape, `aew/usage-live/v1` (`schemas/usage-live.schema.json`), and one meter for every OpenCode server: a supervised run's private server and an evaluator-owned one (R, R+, the A arm's headless Lead) alike (`harness/usage_live.py`: `Meter`, `OpenCodeMeter`). It measures only; the M4-H evaluator (F19) terminates and charges. Probe P1 pinned the facts it rests on, from the pinned 2.0.18 release's bundled JavaScript and the pinned OpenAPI, with a searchable identifier per citation, in `tests/fixtures/opencode/live-usage-2.0.18.json` (re-read at the 2.2.6 pin: register E200); `tests/unit/test_usage_live.py` runs the fixture's cases against the meter and checks the citations' shape.
 
 **Operations relied on, and nothing else:** `server.info` (the version, for `token_semantics` from the adapter's table); `session.list` with no filter, `order=asc`, `limit=50`, then `cursor` (2.0.18 anchors it on `time.updated`, so a session updated while the list is paged moves later and is met again); `session.active`; `session.message.list` with `type=assistant` or `type=compaction`, `limit=200`, `order=asc` on the first page and `cursor` alone after it (the pinned operation refuses a cursor with `order`, and the same `type` is passed on every page); `session.message.get`, only to check that a cursor's anchor message still exists. A test checks every query parameter the meter sends against the pinned operation.
 

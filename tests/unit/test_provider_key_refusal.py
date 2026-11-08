@@ -19,7 +19,7 @@ import pytest
 
 from aew import errors
 from aew.engine.workspace_ops import Invocations
-from aew.harness import supervisor
+from aew.harness import base, supervisor
 from aew.harness.containment import egress, netns
 from aew.harness.containment.egress import Allowlist, AnyPublic, EgressProxy
 
@@ -141,6 +141,8 @@ def test_the_supervisor_refuses_again_before_any_sandbox_or_network_exists(relay
         contain(monkeypatch, [])
     assert caught.value.details["reason"] == "provider_key_missing"
     assert caught.value.details["variable"] == "OPENAI_API_KEY"
+    # what the supervisor's record and acknowledgement carry as the refusal, beside the closed code (E189)
+    assert base.refusal_of(caught.value.details) == "provider_key_missing"
     monkeypatch.setenv("OPENAI_API_KEY", KEY)
     with pytest.raises(Reached):
         contain(monkeypatch, ["OPENAI_API_KEY"])
@@ -250,7 +252,7 @@ def test_the_console_sync_note_is_on_opencode_ai_443_only_for_a_keyed_opencode_r
         notes = {e["target"]: e.get("note") for e in found["targets"]}
         assert notes == {"opencode.ai:443": netns.CONSOLE_SYNC_NOTE, "opencode.ai:80": None,
                          "api.opencode.ai:443": None, "evil.example:443": None}
-        assert netns.CONSOLE_SYNC_NOTE == "expected: OpenCode's console sync (inferred), refused by design"
+        assert netns.CONSOLE_SYNC_NOTE == "expected: OpenCode's console sync, refused by design"
     finally:
         net.close()
     for provider, keyed in (("openai", True), ("opencode", False), (None, False)):
@@ -291,8 +293,8 @@ def test_a_release_that_respells_the_leads_provider_deny_is_refused_at_a_workers
 
     from aew.harness.opencode import capabilities
 
-    spec = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode" / "openapi-2.0.18.min.json")
-                      .read_text(encoding="utf-8"))
+    spec = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode"
+                       / f"openapi-{capabilities.TESTED_VERSIONS[0]}.min.json").read_text(encoding="utf-8"))
     assert capabilities.problems(spec) == []
     config = "Config.InfoEncoded"
     renamed = copy.deepcopy(spec)
@@ -332,18 +334,19 @@ def test_doctor_names_a_profile_whose_launch_would_get_no_key(relay_route, monke
     """`aew doctor`'s `provider-key` line, from the launch's own predicate. Wrong: FAIL naming the provider, the
     variable and the profile. Right: PASS, names only. Missing: nothing judged (a harness that never calls its
     provider itself, or an unknown provider), so no line."""
-    from aew.engine import api
+    from aew.engine import readiness
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     policy = {"harness": "opencode", "provider_env": [],
               "profiles": {"standard": {"provider": "openai", "model": "synthetic-paid-model"},
                            "light": {"provider": "fakeprov", "model": "synthetic-model"}}}
-    found = api._provider_key_doctor(policy)
+    found = readiness._provider_key_doctor(policy)
     assert found is not None and found[0] == "FAIL", found
     assert "openai (OPENAI_API_KEY), for profile(s) standard" in found[1] and "provider_key_missing" in found[1]
     assert netns.FREE_TIER_RULE in found[1]
     monkeypatch.setenv("OPENAI_API_KEY", KEY)
-    found = api._provider_key_doctor({**policy, "provider_env": ["OPENAI_API_KEY"]})
+    found = readiness._provider_key_doctor({**policy, "provider_env": ["OPENAI_API_KEY"]})
     assert found == ("PASS", "a provider key reaches the run for profile(s) standard (names only)")
-    assert api._provider_key_doctor({**policy, "profiles": {"light": policy["profiles"]["light"]}}) is None
-    assert api._provider_key_doctor({**policy, "harness": "fake-not-registered"}) is None  # cannot load: not judged
+    assert readiness._provider_key_doctor({**policy, "profiles": {"light": policy["profiles"]["light"]}}) is None
+    # cannot load: not judged
+    assert readiness._provider_key_doctor({**policy, "harness": "fake-not-registered"}) is None

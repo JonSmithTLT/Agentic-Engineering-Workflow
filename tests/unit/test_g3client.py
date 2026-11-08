@@ -1,8 +1,8 @@
 """The G3 client, on every platform (A-37 G3-02, G3-05, G3-07; STG-03, G3-D; the Lead's rulings of 2026-10-25): the
 facts it restates, held to their owners; the sets it refuses before asking anything; the proofs it makes; the wait,
-bounded by the approval's own life; the G3-07 digest check; the O-01 route on the loopback address only; and a bearer
-token that appears in nothing it says. The run against the real service and the real O-01 route is
-``tests/integration/test_g3client_process.py`` (Linux).
+bounded by the approval's own life; an owner's consume, G3-08's results and the answers that are none; the G3-07
+digest check; the O-01 route on the loopback address only; and a bearer token that appears in nothing it says. The
+run against the real service and the real O-01 route is ``tests/integration/test_g3client_process.py`` (Linux).
 """
 
 from __future__ import annotations
@@ -10,11 +10,12 @@ from __future__ import annotations
 import ast
 import copy
 import functools
+import http.client
 import http.server
 import json
 import re
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -53,12 +54,19 @@ def operator_set() -> dict[str, Any]:
 def test_the_clients_restated_facts_are_their_owners() -> None:
     assert C.REQUEST_SOCK == (cli.RUNTIME_DIR / REQUEST_SOCK).as_posix()
     assert (C.G3_HEADER, C.G3_WIRE) == (wire.HEADER, wire.WIRE)
+    consume_results = wire.schema()["$defs"]["ConsumeResult"]["properties"]["result"]["enum"]
+    assert sorted(C.CONSUME_RESULTS) == sorted(consume_results)
     server = ast.parse((Path(aew_g3.__file__).parent / "server.py").read_bytes().decode())  # Linux-only to import
     timeout = next(n.value for n in server.body if isinstance(n, ast.Assign)
                    and [getattr(x, "id", None) for x in n.targets] == ["REQUEST_TIMEOUT_S"])
     assert isinstance(timeout, ast.Constant) and C.TIMEOUT_S == timeout.value
     assert C.EXPIRY_CEILING_S == deployment.TRIPWIRES["approval_expiry_minutes"][1] * 60
     assert deployment.TRIPWIRES["approval_expiry_minutes"][0] == "max"
+    # G3's standing's window (condition 3) is G3-06's: the longest a consent stays valid, which may only shorten
+    from aew.harness import weaker_register
+
+    assert weaker_register.WINDOW_S == deployment.TRIPWIRES["consent_validity_minutes"][1] * 60
+    assert deployment.TRIPWIRES["consent_validity_minutes"][0] == "max"
     pattern = wire.schema()["$defs"]["Proof"]["pattern"]
     shortest = re.fullmatch(r"\^proof:\[0-9a-f\]\{(\d+),\d+\}\$", pattern)
     assert shortest and shortest.group(1) == str(2 * C.PROOF_BYTES)
@@ -225,7 +233,8 @@ def test_a_pending_approval_with_no_readable_expiry_is_not_g3s_and_nothing_is_wa
     svc = _Service(["PENDING"])
     monkeypatch.setattr(C, "_g3", svc)
     for pending in ({"approval_ref": "approval:one"}, {"approval_ref": "approval:one", "expires_at": "soon"},
-                    {"approval_ref": "approval:one", "expires_at": None}):
+                    {"approval_ref": "approval:one", "expires_at": None},
+                    {"approval_ref": "approval:one", "expires_at": "2026-10-25T12:00:00"}):  # no offset (QC2)
         with pytest.raises(Unavailable) as e:
             C.await_decision(pending, sleep=lambda s: None)
         assert e.value.details["reason"] == "g3_not_g3"
@@ -244,6 +253,142 @@ def test_a_decline_an_expiry_or_a_lost_approval_ends_the_wait_and_submits_nothin
     assert isinstance(out, OperatorAuthorizationRequired) and out.details["reason"] == reason
     assert svc.calls == 2 and waited == C.POLL_S  # at once, on the answer: never at the deadline
     assert "nothing was" in out.message.lower()
+
+
+CONSUME_ARGS = {"consent_set_ref": "consent:g3:one", "set_digest": "digest-one", "recipient_ref": "recipient:one",
+                "installation_ref": "installation:one", "intent_ref": "intent:one", "origin_proof_ref": "proof:one",
+                "owner": "HEB", "operation_ref": "op:one"}
+
+
+def test_consume_sends_the_wires_request_on_request_sock_and_returns_the_services_result(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """G3-08: every field of the wire's ConsumeRequest, from the caller's arguments, and the result as it came."""
+    sent: list[tuple[Any, ...]] = []
+
+    def g3(sock_path: str | None, method: str, path: str, body: Any = None, **_: Any) -> tuple[int, Any]:
+        sent.append((sock_path, method, path, body))
+        return 200, {"wire_version": C.G3_WIRE, "result": "CONSUMED", "consumed_at": "2026-11-08T00:00:00Z"}
+
+    monkeypatch.setattr(C, "_g3", g3)
+    assert C.consume(**CONSUME_ARGS, sock_path="/planted.sock") == C.Consumed("CONSUMED")
+    ((sock_path, method, path, body),) = sent
+    assert (sock_path, method, path) == ("/planted.sock", "POST", "/g3/v1/consume")
+    assert body == {"wire_version": C.G3_WIRE, **CONSUME_ARGS}
+
+
+@pytest.mark.parametrize("result", C.CONSUME_RESULTS)
+def test_consume_returns_each_of_the_wires_results_as_the_service_gave_it(
+        monkeypatch: pytest.MonkeyPatch, result: str) -> None:
+    body = {"wire_version": C.G3_WIRE, "result": result}  # the wire's whole answer, consumed_at with CONSUMED only
+    monkeypatch.setattr(C, "_g3", lambda *a, **k: (
+        200, dict(body, consumed_at="2026-11-08T00:00:00Z") if result == "CONSUMED" else body))
+    assert C.consume(**CONSUME_ARGS) == C.Consumed(result)
+
+
+@pytest.mark.parametrize("status, body, said", [
+    (503, {"code": "G3_UNAVAILABLE"}, "holding every request"),
+    (403, {"code": "PEER_NOT_PERMITTED"}, "the operator's own account"),
+    (400, {"code": "STRUCTURAL"}, "refused the request: STRUCTURAL"),
+    (404, None, "refused the request: 404"),
+    (503, {"result": "CONSUMED", "wire_version": C.G3_WIRE, "consumed_at": "2026-11-08T00:00:00Z"},
+     "holding every request"),  # a result on a status that is no answer is no result
+    (201, {"result": "CONSUMED", "wire_version": C.G3_WIRE, "consumed_at": "2026-11-08T00:00:00Z"},
+     "refused the request: 201"),
+    (200, {"result": "CONSUMED", "wire_version": C.G3_WIRE}, "is no ConsumeResult"),  # the wire requires consumed_at
+    (200, {"result": "CONSUMED", "wire_version": C.G3_WIRE, "consumed_at": 1}, "is no ConsumeResult"),
+    (200, {"result": "CONSUMED", "consumed_at": "2026-11-08T00:00:00Z"}, "is no ConsumeResult"),  # no wire_version
+    (200, {"result": "CONSUMED", "wire_version": "another", "consumed_at": "2026-11-08T00:00:00Z"},
+     "is no ConsumeResult"),
+    (200, {"result": "CONSENT_EXPIRED", "wire_version": "another"}, "is no ConsumeResult"),
+    (200, {"result": "A_RESULT_NO_WIRE_NAMES", "wire_version": C.G3_WIRE}, "is no ConsumeResult"),
+    (200, {"result": None, "wire_version": C.G3_WIRE}, "is no ConsumeResult"),
+    (200, ["CONSUMED"], "is no ConsumeResult"),
+    (200, None, "is no ConsumeResult"),
+])
+def test_a_consume_answered_with_no_result_gives_none_and_says_why_so_an_owner_holds(
+        monkeypatch: pytest.MonkeyPatch, status: int, body: Any, said: str) -> None:
+    """G3-11: a 503, a 403 or a 400 is no ConsumeResult, nor is a 200 that holds none. Never a refusal of the proof."""
+    monkeypatch.setattr(C, "_g3", lambda *a, **k: (status, body))
+    got = C.consume(**CONSUME_ARGS)
+    assert got.result is None and said in (got.held_why or "")
+    assert C._HELD_WAY_ON in (got.held_why or "")  # what happened, and the way on, a used approval included
+    # What an owner shows the operator carries neither the member's proof nor the consent
+    assert CONSUME_ARGS["origin_proof_ref"] not in repr(got) and CONSUME_ARGS["consent_set_ref"] not in repr(got)
+
+
+@pytest.mark.parametrize("raised, said", [
+    (Unavailable("no answer", reason="g3_unreachable"), "no answer"),
+    (Unavailable("not the wire", reason="g3_not_g3"), "not the wire"),
+    (PermissionDenied("not this account's", reason="g3_peer_not_permitted"), "not this account's"),
+])
+def test_a_consume_with_no_answer_gives_none_and_raises_nothing(
+        monkeypatch: pytest.MonkeyPatch, raised: Exception, said: str) -> None:
+    """An owner holds on these: the call turns each into its result, so no owner can let one escape as a crash. It asks
+    once: a second send after no answer could use a member the first did, and burn it."""
+    calls: list[Any] = []
+
+    def g3(*a: Any, **__: Any) -> tuple[int, Any]:
+        calls.append(a)
+        raise raised
+
+    monkeypatch.setattr(C, "_g3", g3)
+    got = C.consume(**CONSUME_ARGS)
+    assert got == C.Consumed(None, f"{said}. {C._HELD_WAY_ON}") and len(calls) == 1
+    assert CONSUME_ARGS["origin_proof_ref"] not in repr(got) and CONSUME_ARGS["consent_set_ref"] not in repr(got)
+
+
+def _plant_a_reply(monkeypatch: pytest.MonkeyPatch, read: Callable[[], bytes]) -> None:
+    """Only the connection is planted, so the call goes through the real ``_g3``."""
+    class Reply:
+        status = 200
+
+        def read(self) -> bytes:
+            return read()
+
+        def getheader(self, name: str) -> str | None:
+            return C.G3_WIRE if name == C.G3_HEADER else None
+
+    class Conn:
+        def __init__(self, path: str, timeout: float) -> None:
+            pass
+
+        def request(self, *_: Any, **__: Any) -> None:
+            pass
+
+        def getresponse(self) -> Reply:
+            return Reply()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(C, "_UnixHTTP", Conn)
+
+
+@pytest.mark.parametrize("raw", [b"[" * 200_000, b"{not json", b"\xff\xfe"],
+                         ids=["nested-past-the-parsers-limit", "not-json", "not-utf-8"])
+def test_an_answer_that_arrived_and_cannot_be_read_gives_none_and_never_says_no_answer(
+        monkeypatch: pytest.MonkeyPatch, raw: bytes) -> None:
+    """An unreadable body raises nothing out of the call, and it is not reported as a service that did not answer, whose
+    fix is another one. ``_g3``'s other callers carry its reason to the CLI's error."""
+    _plant_a_reply(monkeypatch, lambda: raw)
+    got = C.consume(**CONSUME_ARGS, sock_path="/planted.sock")
+    assert got.result is None and "/planted.sock cannot be read" in (got.held_why or "")
+    assert "did not answer" not in (got.held_why or "") and C._HELD_WAY_ON in (got.held_why or "")
+    with pytest.raises(Unavailable) as e:
+        C._g3("/planted.sock", "POST", "/g3/v1/consume", {})
+    assert e.value.details["reason"] == "g3_not_g3"
+
+
+def test_an_answer_cut_off_in_its_body_gives_none_and_says_the_service_did_not_answer(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """A truncated body is ``http.client``'s own error alone, no ``OSError``, so it needs its own arm in ``_g3``.
+    Without that, it escapes this call and ``_g3``'s other callers as a crash."""
+    def read() -> bytes:
+        raise http.client.IncompleteRead(b"")
+
+    _plant_a_reply(monkeypatch, read)
+    got = C.consume(**CONSUME_ARGS, sock_path="/planted.sock")
+    assert got.result is None and "did not answer" in (got.held_why or "") and C._HELD_WAY_ON in (got.held_why or "")
 
 
 @pytest.mark.parametrize("status, code, error, reason", [
@@ -366,8 +511,34 @@ def test_the_set_is_submitted_with_the_o01_wire_and_the_token_in_its_one_header(
     sent = seen[0]
     assert sent["body"] == cs and sent["headers"][W.O01_HEADER] == W.O01_VERSION
     assert sent["headers"]["Authorization"] == "Bearer " + TOKEN
-    assert C.note(receipt) == C.NOT_ESTABLISHED and "Nothing was admitted" in C.NOT_ESTABLISHED
-    assert C.note({"results": [{"admission_state": "ADMITTED", "reason_code": None}]}) is None
+
+
+def test_a_receipts_note_is_keyed_on_the_admission_state_and_the_reason_and_names_the_hosts_standing() -> None:
+    """Addendum 7: the notes replace the fixed text. A held member's names what the client found failing on the host,
+    or else the project's policy, with the fix, and that the action is requested again once G3 counts; the carrier's
+    refusal today (REJECTED) is worded apart. A member the client has no note for gets none."""
+    from aew import g3standing as S
+
+    failing = S.Standing(False, 1, "G3 is not on this host: /run/aew-g3/request.sock does not exist", "install it")
+    counting = S.Standing(True, judged=(1, 3))
+    held = {"results": [{"admission_state": "HELD", "reason_code": "ORIGIN_NOT_ESTABLISHED"}]}
+    said = C.note(held, failing)
+    assert said is not None and failing.reason in said and "Fix: install it" in said
+    assert "Nothing was admitted" in said and "request the action again" in said
+    said = C.note(held, counting)
+    assert said is not None and S.POLICY_FIX in said and "the project's policy" in said
+    refused = {"results": [{"admission_state": "REJECTED", "reason_code": "ORIGIN_NOT_ESTABLISHED"}]}
+    said = C.note(refused, failing)
+    assert said is not None and said.startswith("Approved in the confirmer and submitted, and the owner refused it")
+    assert failing.reason in said and "Nothing was admitted" in said
+    assert failing.reason not in (C.note(refused, counting) or "x" + failing.reason)
+    # until an owner consumes G3 consent, every note says so, even where G3 counts (#365 review m2)
+    for receipt in (held, refused):
+        for st in (failing, counting):
+            assert C.NOT_YET in (C.note(receipt, st) or "")
+    assert C.note({"results": [{"admission_state": "ADMITTED", "reason_code": None}]}, failing) is None
+    assert C.note({"results": [{"admission_state": "REJECTED", "reason_code": "PRECONDITION_STALE"}]},
+                  failing) is None
 
 
 @pytest.mark.parametrize("status, body, error, reason", [
@@ -414,7 +585,8 @@ def test_a_lead_session_is_refused_before_anything_is_read_with_the_operators_ro
     err = json.loads(capsys.readouterr().err)["error"]
     assert err["code"] == "PERMISSION_DENIED" and err["details"]["reason"] == LEAD_SESSION
     assert err["details"]["variables"] == [LEAD_SESSION_VARS[0]]
-    assert err["message"].startswith(kept_out_refusal(frozenset({"g3", "request"})) or "")  # the one owner's (F1)
+    owners = kept_out_refusal(frozenset({"g3", "request"}))
+    assert owners and err["message"].startswith(owners)  # the one owner's text, present (QN2), and first (F1)
     assert "ask the operator to run `aew g3 request`" in err["message"]
 
 
@@ -437,6 +609,8 @@ def _command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.Cap
 
     def g3(sock_path: str | None, method: str, path: str, body: Any = None, *,
            timeout: float = C.TIMEOUT_S) -> tuple[int, Any]:
+        if path.endswith("/" + C.PROBE_REF):  # the probe before the confirmer: an approval no one made
+            return 404, None
         asked.append((method, path))
         assert len(asked) <= 5, "the wait went on after a refusal"  # a failure, never a hang
         return answers[min(len(asked), len(answers)) - 1]
@@ -510,7 +684,7 @@ def test_through_the_command_a_refusal_mid_wait_ends_the_wait_at_once_and_names_
     assert len(asked) == 2 and submitted == []  # at once: the first answer of the wait
 
 
-@pytest.mark.parametrize("expires", [None, "soon"])
+@pytest.mark.parametrize("expires", [None, "soon", "2026-10-25T12:00:00"])  # the last has no UTC offset (QC2)
 def test_through_the_command_a_pending_approval_with_no_expiry_says_nothing_of_waiting(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], expires: Any) -> None:
     """F2: the waiting line comes only once the expiry is read, so never "until None"."""

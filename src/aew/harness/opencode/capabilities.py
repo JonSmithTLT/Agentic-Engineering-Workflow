@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 SUPPORTED_MAJOR = 2
-TESTED_VERSIONS = ("2.0.18",)
+TESTED_VERSIONS = ("2.2.6",)
 
 
 @dataclass(frozen=True)
@@ -73,12 +73,15 @@ REQUIRED_FIELDS: dict[str, dict[str, str]] = {
     "Permission.Rule": {"action": S, "resource": S, "effect": S},
     # `experimental.policies` carries the Lead's provider deny (projection.LEAD_DENIED_PROVIDERS): a release that
     # respells it fails closed at a worker's launch, which probes this schema; the Lead's TUI is not probed.
+    # `warming` and `experimental.image_generate` are the defaults every projection closes (projection.CLOSED), and
+    # `pool` the Lead's MCP server's: a release that respells one fails closed rather than leaving it open.
     "Config.InfoEncoded": {"agents": O, "plugins": A, "snapshots": B, "update": S, "share": S, "lsp": B,
                            "formatter": B, "default_agent": S, "permissions": A, "commands": O, "mcp": O,
-                           "mcp.servers": O, "experimental": O, "experimental.policies": A},
+                           "mcp.servers": O, "experimental": O, "experimental.policies": A, "warming": B,
+                           "experimental.image_generate": B},
     # The Lead's typed surface (F15.1): a release that respells local MCP servers fails closed at launch. Its
     # `environment` pins the server's import path to the projecting `aew` (E180).
-    "Mcp.LocalConfigEncoded": {"type": S, "command": A, "codemode": B, "environment": O},
+    "Mcp.LocalConfigEncoded": {"type": S, "command": A, "codemode": B, "environment": O, "pool": B},
     "Config.AgentEncoded": {"model": O, "system": S, "mode": S, "permissions": A, "steps": I, "description": S},
     "Config.CommandEncoded": {"template": S, "description": S, "agent": S},
 }
@@ -86,6 +89,14 @@ REQUIRED_ENUMS: dict[str, frozenset[str]] = {
     "Permission.Effect": frozenset({"allow", "deny"}),
     "Permission.Reply": frozenset({"reject"}),
     "Session.Inbox.Delivery": frozenset({"queue"}),
+}
+# Enums declared inline, under a field of a named schema (``[]`` steps into an array's items): the policy actions AEW
+# projects (projection.lead_provider_policies). 2.2.3 changed `integration.use` incompatibly, and the schema check
+# alone saw only that the policies are an array, so a release that dropped `provider.use` would have passed.
+# `experimental.policies` is deprecated in 2.2.6 for a top-level `policies`, and still honoured: 2.2.6 merges both
+# (read from its bundle, 2026-11-07).
+REQUIRED_FIELD_ENUMS: dict[tuple[str, str], frozenset[str]] = {
+    ("Config.InfoEncoded", "experimental.policies[].action"): frozenset({"provider.use"}),
 }
 
 
@@ -145,6 +156,31 @@ def _types(spec: dict[str, Any], schema: Any, depth: int = 0) -> set[str]:
     return out
 
 
+def _items(spec: dict[str, Any], schema: Any) -> list[Any]:
+    """An array schema's ``items`` (one per ``anyOf``/``oneOf``/``allOf`` branch)."""
+    schema = _resolve(spec, schema)
+    if not isinstance(schema, dict):
+        return []
+    found = [schema["items"]] if isinstance(schema.get("items"), dict) else []
+    for key in ("anyOf", "oneOf", "allOf"):
+        for part in schema.get(key) or []:
+            found += _items(spec, part)
+    return found
+
+
+def field_enum(spec: dict[str, Any], name: str, path: str) -> set[str]:
+    """The values an enum declared inline at ``path`` under schema ``name`` offers: a dotted path, where ``x[]`` steps
+    into array ``x``'s items. An ``enum`` and a ``const`` each count, also as branches of ``anyOf`` or ``oneOf``. Empty
+    when the path or the enum is missing."""
+    candidates = [((spec.get("components") or {}).get("schemas") or {}).get(name)]
+    for part in path.split("."):
+        field = part.removesuffix("[]")
+        candidates = [d for c in candidates for d in _property(spec, c, field)]
+        if part.endswith("[]"):
+            candidates = [d for c in candidates for d in _items(spec, c)]
+    return {str(v) for c in candidates for v in _enum(spec, c)}
+
+
 def _field_problem(spec: dict[str, Any], schema: Any, path: str, want: str) -> str | None:
     """Why the schema does not offer ``path`` with type ``want`` (None when it does)."""
     candidates = [schema]
@@ -168,6 +204,8 @@ def _enum(spec: dict[str, Any], schema: Any) -> set[str]:
     if not isinstance(schema, dict):
         return set()
     values = set(schema.get("enum") or [])
+    if "const" in schema:
+        values.add(schema["const"])
     for key in ("anyOf", "oneOf"):
         for part in schema.get(key) or []:
             values |= _enum(spec, part)
@@ -213,4 +251,11 @@ def problems(spec: Any, extra: tuple[Op, ...] = ()) -> list[str]:
         missing = values - _enum(spec, schemas[name])
         if missing:
             out.append(f"{name} lacks {sorted(missing)}")
+    for (name, path), values in REQUIRED_FIELD_ENUMS.items():
+        if name not in schemas:
+            out.append(f"schema {name} is missing")
+            continue
+        missing = values - field_enum(spec, name, path)
+        if missing:
+            out.append(f"schema {name} field {path} lacks {sorted(missing)}")
     return out

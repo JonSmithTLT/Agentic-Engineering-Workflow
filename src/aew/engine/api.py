@@ -41,6 +41,7 @@ from aew.engine.migrate_ops import Migration
 from aew.engine.nonmutating_ops import Inputs, NonMutating
 from aew.engine.ports import ArchivePort, CoordinationPort, RolesPort, SteeringPort
 from aew.engine.queue_ops import Queue
+from aew.engine.readiness import readiness_checks
 from aew.engine.resume_ops import Resume
 from aew.engine.role_ops import Roles
 from aew.engine.seams import GuardTable, KindRegistry, StateHooks
@@ -48,6 +49,7 @@ from aew.engine.stage_intents import StageIntents
 from aew.engine.status_ops import StatusViews
 from aew.engine.steering import OperatorPrincipal, Steering
 from aew.engine.store import STORE_DIR_MODE, STORE_FILE_MODE, ControlStore
+from aew.engine.usage_read import UsageReads
 from aew.engine.validation_ops import Validation
 from aew.engine.work_ops import WorkCommands, WorkUnits
 from aew.engine.workspace_ops import Assignment, Invocations, mutating_cap
@@ -338,17 +340,7 @@ class ProjectAdmin:
         except Exception as exc:
             add("policy:execution", "FAIL", _with_violations(exc))
         else:
-            # Before any launch, and structural only (no provider is called): each profile's model as the harness
-            # will be given it, and the provider variables a launch from this environment would need (ADR-0010
-            # amendment 2026-10-11; the M4 user acceptance test's doubled model id and silently dropped key).
-            if execution is not None and execution.get("profiles"):
-                add("model-refs", *_model_refs_doctor(execution))
-            if execution is not None and execution.get("provider_env"):
-                add("provider-env", *_provider_env_doctor(execution))
-            if execution is not None and execution.get("profiles"):
-                found = _provider_key_doctor(execution)
-                if found is not None:
-                    add("provider-key", *found)
+            checks += readiness_checks(execution)
         # F25 (the cost and usage ledger design v0.2 R4, R6): the price table, the snapshots usage records name (the
         # hot state and the recent ring: a bounded read; `aew usage show --all` covers the whole archive), and the
         # hot runs' copy state.
@@ -408,80 +400,6 @@ def _with_violations(exc: Exception) -> str:
     return str(exc) + (": " + "; ".join(map(str, found)) if isinstance(found, list) and found else "")
 
 
-def _model_refs_doctor(policy: dict[str, Any]) -> tuple[str, str]:
-    """Each profile's model through its harness adapter's model identity: the reference the harness is given, or
-    why the profile's model maps to no provider/model pair and what to write instead (FAIL). Structural: whether the
-    harness lists that model is readiness, which needs the harness itself."""
-    from aew.harness import registry
-
-    refs, problems = [], []
-    for name in sorted(policy["profiles"]):
-        try:
-            pair = X.model_pair(policy, name, registry.model_identity)
-        except AEWError as exc:
-            problems.append(exc.message)
-            continue
-        refs.append(f"{name}: {pair.harness_ref}")
-    if problems:
-        return "FAIL", "; ".join(problems) + "; dispatch with these profiles is refused until they are fixed"
-    return "PASS", "the harness is given " + "; ".join(refs)
-
-
-def _provider_env_doctor(policy: dict[str, Any]) -> tuple[str, str]:
-    """The provider variables the policy names, as a launch from this environment would find them (FAIL: a launch
-    from here is refused, naming each; never their values)."""
-    from aew.harness import agentenv
-
-    names = [str(n) for n in policy.get("provider_env") or []]
-    problems = agentenv.provider_env_problems(names, os.environ)
-    # Doctor reads its own terminal's environment; a Lead session already running reads the one it started with
-    # (review of PR #214, F2), so both lines say so.
-    caveat = ("doctor checks this terminal's environment; a Lead session (`aew opencode`, `aew lead session`) that "
-              "is already running keeps the environment it started with")
-    if problems:
-        return "FAIL", ("a harness launch from this environment is refused: " + "; ".join(w for _, w in problems)
-                        + f" ({caveat})")
-    return "PASS", (f"set in this environment: {', '.join(names)} (values not shown; {caveat}: restart one that "
-                    "started before they were set)")
-
-
-def _provider_key_doctor(policy: dict[str, Any]) -> tuple[str, str] | None:
-    """Each profile's provider as a launch from this environment would find its key on the relay route
-    (``netns.provider_key_missing``, the check every such launch makes): FAIL naming the profiles whose launch is
-    refused (``provider_key_missing``) and the fix; PASS when every profile whose key AEW can judge has one; None
-    when there is nothing to judge (no profile on the relay route, as on Windows, or no provider whose key variable
-    AEW knows). Names only, never a value."""
-    from aew.harness import registry
-    from aew.harness.containment import netns
-
-    names = [str(n) for n in policy.get("provider_env") or []]
-    missing: dict[str, list[str]] = {}
-    judged = []
-    for name in sorted(policy["profiles"]):
-        try:
-            pair = X.model_pair(policy, name, registry.model_identity)
-            relay = registry.load(X.profile_harness(policy, policy["profiles"][name])).PROVIDER_RELAY
-        except AEWError:  # reported by the model-refs line, or the launch's own refusal
-            continue
-        on_route = netns.relay_route(policy, relay)
-        if not on_route or pair.provider not in netns.PROVIDER_KEY_ENV:
-            continue
-        judged.append(name)
-        variable = netns.provider_key_missing(pair.provider, names, os.environ, on_relay_route=on_route)
-        if variable is not None:
-            missing.setdefault(f"{pair.provider} ({variable})", []).append(name)
-    if missing:
-        return "FAIL", ("a harness launch from this environment is refused (provider_key_missing), since its provider "
-                        "would get no key: " + "; ".join(f"{p}, for profile(s) {', '.join(v)}"
-                                                          for p, v in sorted(missing.items()))
-                        + ". AEW does not use OpenCode's free models; " + netns.FREE_TIER_RULE + " Name the variable "
-                        "in the execution policy's provider_env, set it in the terminal you start AEW from, and pin "
-                        "a paid model")
-    if judged:
-        return "PASS", f"a provider key reaches the run for profile(s) {', '.join(judged)} (names only)"
-    return None
-
-
 class Engine:
     """The facade over the Engine's collaborators; see the module docstring."""
 
@@ -534,6 +452,7 @@ class Engine:
                                           dispatch=dispatch, coordination=coordination)
         self._lead = lead = Lead(k, archive=archive, queue=queue, coordination=coordination)
         self._views = views = StatusViews(k)
+        self._usage = UsageReads(k, archive=archive)  # the ledger's read surfaces (F25 R9)
         self._resume = resume = Resume(k, units=units, roles=roles, inputs=inputs, gates=gates, hierarchy=hierarchy,
                                        lead=lead, views=views, harness=harness, history=history, kinds=kinds)
         self._steering = steering = Steering(k)
@@ -690,6 +609,9 @@ class Engine:
 
     def authoritative_commit(self) -> str | None:
         return self._k.authoritative_commit()
+
+    def workspaces_root(self) -> Path:
+        return self._k.workspaces_root()
 
     def authority_accept(self, *, token: str, expect_rev: int, candidate_id: str, klass: str, decided_by: str = "lead",
                          reason: str | None = None, authorization: dict[str, str] | None = None) -> dict[str, Any]:
@@ -872,8 +794,9 @@ class Engine:
     def harness_stop(self, *, token: str, run: str, reason: str) -> dict[str, Any]:
         return self._harness.harness_stop(token=token, run=run, reason=reason)
 
-    def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False) -> dict[str, Any]:
-        return self._harness.harness_wait(runs, timeout=timeout, any_=any_)
+    def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False,
+                     triggers: bool = False) -> dict[str, Any]:
+        return self._harness.harness_wait(runs, timeout=timeout, any_=any_, triggers=triggers)
 
     def ingest_evidence_unit_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                                     kind: str) -> dict[str, Any]:
@@ -1102,7 +1025,8 @@ class Engine:
     def snapshot_of(self, path: str | Path, workspace_id: str) -> dict[str, Any]:
         return self._invocations.snapshot_of(path, workspace_id)
 
-    def status(self, work_id: str | None = None) -> dict[str, Any]:
+    def status(self, work_id: str | None = None, *, usage: bool = True) -> dict[str, Any]:
+        """``usage=False``: without the usage summary, for a caller that reads only the guidance (#368 review, m1)."""
         out = self._resume.status(work_id)
         if work_id is None:
             state = self._k.store.current()
@@ -1114,6 +1038,8 @@ class Engine:
             notifier = self._views.notifier()  # M4-E E7a: the operator notifier's deliveries, once it has watched
             if notifier is not None:
                 out["notifier"] = notifier
+            if usage:
+                out["usage"] = self._usage.summary(state)  # F25 R9: the hot state's bounded usage summary
         return out
 
     # ---------------------------------------------------------------- steering (M4-E E2; A1 §1)
@@ -1233,6 +1159,12 @@ class Engine:
 
     # ---------------------------------------------------------------- history (ADR-0011)
 
+    def usage_show(self, target: str | None = None, *, walk_all: bool = False, since: str | None = None,
+                   until: str | None = None) -> dict[str, Any]:
+        """``aew usage show`` (F25 R9): one projection of the usage ledger, for a run, an invocation, a unit's tree or
+        the project."""
+        return self._usage.show(target, walk_all=walk_all, since=since, until=until)
+
     def history_show(self, record_id: str) -> dict[str, Any]:
         return self._history.history_show(record_id)
 
@@ -1286,7 +1218,6 @@ class Engine:
 
     def _control_identity(self) -> tuple[int, int, int] | None:
         """``control.yaml``'s identity (mtime, size, file id): a commit replaces the file, so it changes."""
-        import os
 
         try:
             st = os.stat(self._k.store.control_path)

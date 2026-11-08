@@ -48,6 +48,7 @@ from aew.errors import (
 from aew.harness import containment, procs, runlog
 from aew.harness import contract as K
 from aew.harness import delivery as L
+from aew.harness import progress as P
 from aew.harness.base import LAUNCH_REFUSALS, RELAY_FAMILY_SHOWN
 from aew.knowledge import context as ctxmod
 from aew.knowledge import evidence as E
@@ -164,9 +165,9 @@ class Harness:
             runlog.deliver_request(old_dir, *stop_old)  # and its supervisor notices on its own
         launched = self._spawn_run(invocation, run, credential)
         del credential
-        return {"ok": True, "invocation": invocation, **launched,
-                "superseded": previous["run"] if previous else None, "revision": revision,
-                "next_action": K.wait_step([run])}
+        return self._with_readiness({"ok": True, "invocation": invocation, **launched,
+                                     "superseded": previous["run"] if previous else None, "revision": revision,
+                                     "next_action": K.wait_step([run])})
 
     def launch_dispatched(self, result: dict[str, Any]) -> dict[str, Any]:
         """Finish ``--launch`` on a dispatch: the dispatch-issued credential goes to the run's supervisor and
@@ -177,7 +178,20 @@ class Harness:
         result["launch"] = self._spawn_run(inv_id, run, credential)
         del credential
         result["next_action"] = K.wait_step([run])  # after a dispatch, the wait (E122)
-        return result
+        return self._with_readiness(result)
+
+    def _with_readiness(self, result: dict[str, Any]) -> dict[str, Any]:
+        """A launch that started carries each FAIL and WARN readiness row it did not refuse on (another profile's,
+        say), with its fix, in ``readiness``: every launch the Lead makes, `--launch` and the stages included (register
+        E125; review of #360, m1). It never refuses, and a policy it cannot read adds nothing."""
+        from aew.engine.readiness import START, readiness_findings
+
+        try:
+            execution, _ = self.k.execution_policy()
+            findings = readiness_findings(execution, START)
+        except Exception:  # the launch's own checks report an unreadable policy; this only adds to them
+            return result
+        return {**result, "readiness": findings} if findings else result
 
     def _spawn_run(self, inv_id: str, run: str, credential: str) -> dict[str, Any]:
         """Start the run's supervisor and hand it the credential over its stdin pipe. Never raises after the
@@ -295,6 +309,14 @@ class Harness:
         capabilities |= set(content.get("required_capabilities") or [])
         capabilities |= set(content.get("optional_capabilities") or [])
         policy, _ = self.k.execution_policy()
+        # For the run's progress digest (steering design §2): the Ticket's scope paths, so it can tell a write outside
+        # them (`out_of_scope`), and the workspace's base, so it can read what is changed now. None when unreadable:
+        # the digest then says `unknown`, never "inside".
+        try:
+            scope_paths: list[str] | None = list(
+                (self.gates.record_meta(state["work"][inv["work_unit"]]).get("scope") or {}).get("paths") or [])
+        except Exception:  # noqa: BLE001 - a record that cannot be read gives no scope, and the digest says so
+            scope_paths = None
         return K.LaunchContract(
             run=run, invocation=inv_id, work_unit=inv["work_unit"], role=inv["role"],
             scope=inv.get("scope") or "ticket",
@@ -313,7 +335,8 @@ class Harness:
                    "card_optional_skills": sorted(content.get("optional_skills") or []),
                    "skills": skills_plan(content.get("skills") or [], content.get("optional_skills") or []),
                    "card_capabilities": sorted(capabilities),
-                   "provider_env": list((policy or {}).get("provider_env") or [])})
+                   "provider_env": list((policy or {}).get("provider_env") or []),
+                   K.SCOPE_PATHS: scope_paths, K.WORKSPACE_BASE: base})
 
     def run_authority_problem(self, state: dict[str, Any], inv_id: str, run: str, token_id: str) -> str | None:
         """Why a run may no longer act (None while it may). The engine's credential checks remain authoritative;
@@ -383,13 +406,16 @@ class Harness:
                             "harness": r["harness"], "launched_at": r["launched_at"], "kind": r["kind"],
                             "status": observed, "reason": (record or {}).get("reason"),
                             "reason_code": _reason_code(record),
-                            "containment": containment.normalize((record or {}).get("containment")),
+                            # its missing tools are the Lead's one list, `missing_tools` (review of #356, m2)
+                            "containment": {k: v for k, v in containment.normalize(
+                                (record or {}).get("containment")).items() if k != "missing_tools"},
                             "authority": "current" if current
                             else f"none ({tok.get('revoke_reason') or inv['status']})",
                             "supervisor_pid": (record or {}).get("supervisor_pid"),
                             "heartbeat_age_s": runlog.heartbeat_age(directory),
                             "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
                             "results": self.run_results(inv["work_unit"], r["run"], cache),
+                            "missing_tools": _missing_tools(record),
                             "model_check": _field(record, "model_check").get("status"),
                             "foreign_sessions": _list(_field(record, "result").get("foreign_sessions")),
                             "run_dir": str(directory)})
@@ -407,7 +433,8 @@ class Harness:
             return inv_id, inv
         raise NotFound(f"no run {run}")
 
-    def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False) -> dict[str, Any]:
+    def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False,
+                     triggers: bool = False) -> dict[str, Any]:
         """Wait until a run is no longer running (it ended, failed, was never confirmed, or was lost); with several runs
         and ``any_``, until the first of them is (register E1; ADR-0012 D4, D5 and D8; M4 report §2.9).
 
@@ -423,7 +450,19 @@ class Harness:
         The control lane is `--any`'s (ADR-0012 D5). The single-run form waits for the run itself: its record ends, or
         it goes stale and reads as lost. A supervisor ends its run on its own once the invocation stops being active,
         and a caller that waits on one run acts on that run's end (nightly 2026-10-06: a retired implementer's run
-        read `running` from a wait that had returned)."""
+        read `running` from a wait that had returned).
+
+        ``triggers`` (the Lead's waits, the typed tool's and the CLI's, steering PR 1): a wait also returns when a
+        named run's progress digest holds a trigger it has not returned yet and whose condition still holds
+        (``progress.holds``: no stale wakes). The result has the wake's shape (``progress.wake``): `why`, `runs`
+        (each named run's digest), `messages` (none while messaging is off), `next` (the wake guide's keys for its
+        `why`), and `next_action`. What a wait returned is recorded per run (`runlog.write_returned`), so a trigger
+        is returned once, and one that fired between two waits is returned by the next. The lanes are checked in
+        order: a run's record, then (with `--any`) the control state, then the triggers, so a run whose invocation
+        ended is returned as ended, never as one to steer.
+
+        Every return carries the named runs' digests (`runs`; a timeout's statuses are `statuses`), and a run's end
+        always carries a `next_action`, even when `aew status` no longer lists the run (E122 review, m1)."""
         names = [runs] if isinstance(runs, str) else list(runs)
         if not names:
             raise UsageError("name the run(s) to wait on")
@@ -440,6 +479,10 @@ class Harness:
             inv_id, inv = self._find_run(state, run)
             targets[run] = (inv_id, inv, next((r.get("launched_at") for r in inv["runs"] if r["run"] == run), None))
         unexamined: dict[str, Any] | None = state  # the first check examines the initial snapshot itself
+        returned = {run: runlog.read_returned(runlog.run_dir(self.k.aew_root, run)) for run in names}
+
+        def digests() -> dict[str, Any]:
+            return {r: runlog.read_progress(runlog.run_dir(self.k.aew_root, r)) for r in names}
 
         def control_end(fresh: dict[str, Any], run: str) -> str | None:
             inv_id = targets[run][0]
@@ -454,37 +497,53 @@ class Harness:
                     return run, why
             return None
 
+        woke: dict[str, Any] = {}
+
         def check() -> tuple[str, str, dict[str, Any] | None, str | None] | None:
             nonlocal seen, unexamined
             for run, (_inv_id, _inv, launched) in targets.items():
                 status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
                 if not runlog.possibly_live(status, launched):
                     return run, status, record, None
-            if not any_:  # the single-run form: the run's own record only
-                return None
-            fresh, unexamined = unexamined, None
-            if fresh is None:
-                now = self._control_identity()
-                if now != seen:  # a commit happened: the one parse a wake may cost (OBX-38)
-                    seen = now
-                    fresh = self.k.store.current()
-            if fresh is not None:
-                ended = ended_by_control(fresh)
-                if ended is not None:
-                    status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, ended[0]))
-                    return ended[0], status, record, ended[1]
+            if any_:  # the control lane before the triggers: an ended invocation's run is no run to steer
+                fresh, unexamined = unexamined, None
+                if fresh is None:
+                    now = self._control_identity()
+                    if now != seen:  # a commit happened: the one parse a wake may cost (OBX-38)
+                        seen = now
+                        fresh = self.k.store.current()
+                if fresh is not None:
+                    ended = ended_by_control(fresh)
+                    if ended is not None:
+                        status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, ended[0]))
+                        return ended[0], status, record, ended[1]
+            if triggers:  # a live run that needs the Lead (steering PR 1)
+                for run in targets:
+                    found, newest = P.pending(runlog.read_progress(runlog.run_dir(self.k.aew_root, run)),
+                                              returned[run])
+                    if found:
+                        woke.update(run=run, triggers=found, newest=newest)
+                        status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
+                        return run, status, record, None
             return None
 
         found = outbox.wait_for(check, self.k.aew_root, timeout=timeout)
         if not found:
             statuses = {r: runlog.observed_status(runlog.run_dir(self.k.aew_root, r))[0] for r in names}
-            # A timeout is not an end: the runs still work, and `WAIT_TIMED_OUT` says what to do (E122). Text only, no
-            # state read: the broker's wait calls this with a timeout of 0 on every observation.
-            again = {"timed_out": True, "next_action": K.wait_step(names, again=True)}
+            # A timeout is not an end: the runs still work, and `WAIT_TIMED_OUT` says what to do (E122). Text and the
+            # runs' own files only, no state read: the broker's wait calls this with a timeout of 0 on every
+            # observation.
+            again = {"timed_out": True, "next_action": K.wait_step(names, again=True), "runs": digests()}
             if len(names) == 1:
                 return {"run": names[0], "status": statuses[names[0]], **again}
-            return {"runs": statuses, **again}
+            return {"statuses": statuses, **again}
         run, status, record, control = found
+        if woke:  # a trigger: the run still works, and the wake's shape says what it needs (steering PR 1)
+            shape = P.wake([t["why"] for t in woke["triggers"]], digests())
+            others = [r for r in names if r != run]
+            runlog.write_returned(runlog.run_dir(self.k.aew_root, run), woke["newest"])
+            return {"run": run, "status": status, "timed_out": False, **shape, "triggers": woke["triggers"],
+                    "next_action": K.trigger_step(shape["why"], run, others)}
         inv = targets[run][1]
         out: dict[str, Any] = {}
         headline = _headline(run, status, record)
@@ -492,11 +551,19 @@ class Harness:
             out["headline"] = headline
         out.update({"run": run, "status": status, "reason": (record or {}).get("reason"),
                     "evidence": self.run_evidence(inv["work_unit"], run),
-                    "results": self.run_results(inv["work_unit"], run), "timed_out": False, "why": [K.RUN_ENDED]})
+                    "results": self.run_results(inv["work_unit"], run), "timed_out": False,
+                    **P.wake([K.RUN_ENDED], digests())})
+        ended_digest = out["runs"].get(run)
+        if ended_digest:  # the run is over: what it was shown is no longer news
+            runlog.write_returned(runlog.run_dir(self.k.aew_root, run), int(ended_digest.get("trigger_seq") or 0))
         if _reason_code(record):
             out["reason_code"] = _reason_code(record)
+        missing = _missing_tools(record)
+        if missing:  # beside what its evidence found: what it went without (#330's owed lines)
+            out["missing_tools"] = missing
         if control is not None:
-            out["ended_by"] = {"lane": "control", "why": control}  # the run record may still show it running
+            # `reason`, not `why`: a wait result's `why` is the wake enum (E122 review, n3)
+            out["ended_by"] = {"lane": "control", "reason": control}  # the run record may still show it running
         # The wait is over, so the control state is read once more, now: the run-record lane can return before a
         # commit since the last examined snapshot was looked at, and both the other runs' liveness and the next
         # action are answered from the state as it is (independent review of #79).
@@ -510,11 +577,26 @@ class Harness:
                 and control_end(current, r) is None)
         # the run's next action, as `aew status` gives it
         action = next((h["action"] for h in self.harness_resume(current) if h["run"] == run), None)
-        if action and out.get("still_running"):  # the others still work: after this one, the wait goes on (E122)
+        if action is None:  # `aew status` no longer lists the run: say why (E122 review, m1)
+            action = self._unlisted_run(current, run, targets[run][0])
+        if out.get("still_running"):  # the others still work: after this one, the wait goes on (E122)
             action = f"{action}; then {K.wait_step(out['still_running'])}"
-        if action:
-            out["next_action"] = K.run_ended_step(action)
+        out["next_action"] = K.run_ended_step(action)
         return out
+
+    @staticmethod
+    def _unlisted_run(state: dict[str, Any], run: str, inv_id: str) -> str:
+        """Why a run that ended has no action in ``harness_resume``: its invocation is no longer active, or a newer run
+        replaced it."""
+        inv = state["invocations"].get(inv_id)
+        if inv is None:
+            return f"{run} ended, and its invocation {inv_id} is archived: nothing more to do for it"
+        if inv["status"] != "active":
+            return f"{run} ended, and its invocation {inv_id} is {inv['status']}: nothing more to do for it"
+        latest = (inv.get("runs") or [{}])[-1].get("run")
+        if latest and latest != run:
+            return f"{run} ended, and {latest} replaced it for {inv_id}: wait on {latest} instead"
+        return f"{run} ended for {inv_id}: see `aew status` for what comes next"
 
     def _control_identity(self) -> tuple[int, int, int] | None:
         """``control.yaml``'s identity (mtime, file id, size): every commit replaces the file, so it changes."""
@@ -882,6 +964,13 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
             "`--when turn-end` needs coordination messaging, which this project has not enabled; nothing was sent. "
             "Use `--when next-step`, or ask the operator to enable messaging", when=when)
     return "request"
+
+
+def _missing_tools(record: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The tools a run went without, from its label, as the Lead's results say them (``capability.ops.results``)."""
+    from aew.capability import ops as capability
+
+    return capability.results(_field(record, "containment").get("missing_tools"))
 
 
 def _reason_code(record: dict[str, Any] | None) -> str | None:

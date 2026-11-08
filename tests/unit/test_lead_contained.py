@@ -23,6 +23,7 @@ from aew import errors
 from aew.harness import lead_broker, procs
 from aew.harness.containment import netns
 from aew.harness.opencode import lead, login, projection
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
 
 KEYS = {"openai": "sk-synthetic-openai-0001", "anthropic": "sk-ant-synthetic-0002", "opencode": "synthetic-oc-0003",
         "mystery": "synthetic-mystery-0004"}
@@ -214,9 +215,9 @@ def test_a_login_in_a_shape_aew_does_not_know_is_refused_and_named_at_launch_and
     Never guessed, and no value in either message."""
     from aew.harness.containment import relay
 
-    unknown = ("in a shape AEW does not know (AEW reads OpenCode 2.0.18's, and never guesses at another), so the "
-               "contained Lead does not use it; to serve openai with an API key instead, start `aew opencode "
-               "--provider-env OPENAI_API_KEY`")
+    unknown = (f"in a shape AEW does not know (AEW reads OpenCode {TESTED_VERSIONS[0]}'s, and never guesses at "
+               "another), so the contained Lead does not use it; to serve openai with an API key instead, start "
+               "`aew opencode --provider-env OPENAI_API_KEY`")
     db = store(tmp_path, [("openai", "chatgpt-browser", 1, {"type": "oauth2", "token": "synthetic-new-shape"}, 1)])
     session = contained(tmp_path)
     assert session.refreshing == {} and session.keys == {}
@@ -671,13 +672,19 @@ def test_the_lead_is_refused_before_a_seat_or_sandbox_when_no_provider_is_relaye
 # ---------------------------------------------------------------- where the start reaches the tools AEW brings
 
 def _start_order(tmp_path: Path, monkeypatch: Any, *, contained_: bool, environ: dict[str, str],
-                 provider_env: list[str], credential: bool = True) -> list[Any]:
+                 provider_env: list[str], credential: bool = True,
+                 execution: dict[str, Any] | None = None) -> list[Any]:
     """Drive `lead.run` to its session with the steps that matter recorded in order: the start line, the credential
     check, the tools hook (``consent.at_lead_start``, with its ``asking``), the session that takes the seat and builds
     the sandbox, and a refusal. Synthetic environment only: no terminal read, no network, no download."""
+    from aew import doctor
     from aew.capability import consent
 
     calls: list[Any] = []
+    readiness = doctor.readiness_lines
+    monkeypatch.setattr(doctor, "readiness_lines",
+                        lambda engine, who: (lambda text: calls.append(("readiness", text)) or text)(
+                            readiness(engine, who)))
     monkeypatch.setattr(lead, "check_version", lambda: "2.0.18")
     monkeypatch.setattr(lead, "command", lambda engine, extra: ["opencode", "--standalone"])
     monkeypatch.setattr(lead, "guide_of", lambda engine: "")
@@ -696,7 +703,8 @@ def _start_order(tmp_path: Path, monkeypatch: Any, *, contained_: bool, environ:
     monkeypatch.setattr(lead_broker, "run_session", lambda *a, **k: calls.append("session") or {})
     monkeypatch.setattr(consent, "at_lead_start", lambda *a, **k: calls.append(("tools", k.get("asking", True))))
     monkeypatch.setattr(os, "environ", {"HOME": str(tmp_path), "PATH": "/usr/bin", **environ})
-    engine = SimpleNamespace(execution_policy=lambda: (None, None), repo_root=tmp_path, aew_root=tmp_path / ".aew")
+    engine = SimpleNamespace(execution_policy=lambda: (execution, None), repo_root=tmp_path,
+                             aew_root=tmp_path / ".aew")
     try:
         lead.run(engine, acquire=False, session_label=None, keep_seat=False, provider_env=provider_env, extra_args=[],
                  print_config=False)
@@ -710,7 +718,8 @@ def test_a_contained_start_the_provider_refusal_ends_never_reaches_the_tools_hoo
     """Review of #343's merge, m1: #340's refusal comes after the start line and before the tools AEW brings, so a
     start that cannot run is never asked about downloads."""
     calls = _start_order(tmp_path, monkeypatch, contained_=True, environ={}, provider_env=[])
-    assert calls == ["credential", "announce", ("refused", "no provider is relayed to the contained Lead")], calls
+    assert calls == ["credential", ("readiness", ""), "announce",
+                     ("refused", "no provider is relayed to the contained Lead")], calls
 
 
 def test_a_contained_start_that_proceeds_asks_about_the_tools_after_its_checks_and_before_its_session(
@@ -719,11 +728,34 @@ def test_a_contained_start_that_proceeds_asks_about_the_tools_after_its_checks_a
     line and refusals, and before the session takes the seat and builds the sandbox."""
     calls = _start_order(tmp_path, monkeypatch, contained_=True, environ={"OPENAI_API_KEY": KEYS["openai"]},
                          provider_env=["OPENAI_API_KEY"])
-    assert calls == ["credential", "announce", ("tools", True), "session"], calls
+    assert calls == ["credential", ("readiness", ""), "announce", ("tools", True), "session"], calls
+
+
+@pytest.mark.parametrize("contained_", [True, False], ids=["contained", "uncontained"])
+def test_aew_opencode_prints_each_failing_readiness_row_with_its_fix_first_and_starts_as_before(
+        tmp_path, monkeypatch, at_a_terminal, capsys, contained_):
+    """E125: what a launch from this terminal would meet (a provider variable the policy names, unset here) is
+    printed when the operator starts the Lead, with its fix, right after the credential check (a missing credential
+    still refuses before any start line, #340); it refuses nothing the start did not refuse before (the Lead's own
+    launches would be refused, naming the same). Names only, never a value."""
+    environ = {"OPENAI_API_KEY": KEYS["openai"]}
+    calls = _start_order(tmp_path, monkeypatch, contained_=contained_, environ=environ,
+                         provider_env=["OPENAI_API_KEY"], execution={"provider_env": ["VUAT_UNSET_KEY"]})
+    readiness = calls[calls.index("credential") + 1]
+    assert readiness[0] == "readiness" and readiness[1].startswith(
+        "aew opencode: readiness FAIL (provider-env): a harness launch from this Lead session will be refused: "
+        "VUAT_UNSET_KEY is not set in this environment: set VUAT_UNSET_KEY in the terminal you start AEW from"), calls
+    # the fix for this site: the session about to start keeps its environment (review of #360, m2)
+    assert readiness[1].rstrip().endswith("so set VUAT_UNSET_KEY first: exit the session, set it in the terminal you "
+                                          "start AEW from, then start `aew opencode` again"), readiness[1]
+    assert "doctor checks" not in readiness[1]
+    assert calls[-1] == "session", calls  # the start went on to its session
+    assert readiness[1] in capsys.readouterr().err
+    assert KEYS["openai"] not in readiness[1]
 
 
 @pytest.mark.parametrize("credential, expected", [
-    (True, ["precheck", "credential", ("tools", False), "session"]),
+    (True, ["precheck", "credential", ("readiness", ""), ("tools", False), "session"]),
     (False, ["precheck", "credential", ("refused", "synthetic: no Lead credential")]),
 ])
 def test_an_uncontained_start_says_its_tools_line_only_after_the_credential_check(tmp_path, monkeypatch,
@@ -885,13 +917,15 @@ def test_the_lead_rules_are_unchanged_a_command_still_asks_and_an_edit_or_a_suba
     assert projection.lead_config(contained=LABEL)["agents"][projection.LEAD_AGENT]["permissions"] == rules
     assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "allow"} == {
         ("read", "*"), ("glob", "*"), ("grep", "*"), ("question", "*"), (f"{projection.LEAD_MCP_SERVER}_*", "*"),
-        ("shell", "aew *"), ("shell", "git status*"), ("shell", "git diff*"), ("shell", "git log*"),
-        ("shell", "git show*"), ("read", "*.env.example")}
+        *((shell, pattern) for shell in projection.SHELL_ACTIONS
+          for pattern in ("aew *", "git status*", "git diff*", "git log*", "git show*")), ("read", "*.env.example")}
     assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "deny"} == {
-        ("edit", "*"), ("subagent", "*"), ("read", "*.env"), ("read", "*.env.*")}
+        ("edit", "*"), ("subagent", "*"), ("read", "*.env"), ("read", "*.env.*"), ("browser", "*"),
+        ("skill", "browser")}
     # The asks are AEW's own, never OpenCode's default for an unmatched action (#304 review, n1).
     assert {(r["action"], r["resource"]) for r in rules if r["effect"] == "ask"} == {
-        ("*", "*"), ("shell", "*"), *(("shell", pattern) for pattern in projection.LEAD_GIT_ASKS)}
+        ("*", "*"),
+        *((shell, pattern) for shell in projection.SHELL_ACTIONS for pattern in ("*", *projection.LEAD_GIT_ASKS))}
     for command in ("aew status", "git status --short", "git diff HEAD", "git log -1", "git show HEAD"):
         assert effect(rules, "shell", command) == "allow", command
     for command in ("python -m pytest -q", "bash scripts/check.sh", "git commit -m wip", "git push", "rm -rf build"):

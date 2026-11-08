@@ -100,7 +100,7 @@ def test_a_run_whose_invocation_is_cancelled_ends_the_wait_from_the_control_side
     out = finish(waiter)
     assert out["run"] == RA, out
     # Whichever lane saw it first: the control state (the invocation is cancelled) or the run's own record.
-    assert out.get("ended_by", {}).get("why") == "invocation INV-0001 is cancelled" or out["status"] != "running"
+    assert out.get("ended_by", {}).get("reason") == "invocation INV-0001 is cancelled" or out["status"] != "running"
     release[RB].write_text("go", encoding="utf-8")
     lab.wait(RB)
     assert_control_invariants(lab.project)
@@ -228,7 +228,7 @@ def test_an_invocation_already_ended_when_the_wait_starts_ends_it_at_once(lab, t
     started = time.monotonic()
     out = engine.harness_wait([RA, RB], any_=True, timeout=30)
     assert out["run"] == RA and not out["timed_out"], out
-    assert out["ended_by"] == {"lane": "control", "why": "invocation INV-0001 is cancelled"}
+    assert out["ended_by"] == {"lane": "control", "reason": "invocation INV-0001 is cancelled"}
     assert time.monotonic() - started < 5, "the waiter waited for a commit it had already seen"
     assert out["still_running"] == [RB]
     monkeypatch.undo()
@@ -303,3 +303,156 @@ def test_still_running_reflects_a_commit_the_record_lane_returned_before(lab, tm
 
 # G3 H1: a failure here keeps an autopsy (stacks, processes, helper children, files; tests/helpers/autopsy.py).
 pytestmark = pytest.mark.autopsy
+
+
+def test_a_wait_any_ended_by_a_cancelled_invocation_still_says_to_wait_on_the_rest(lab, tmp_path, monkeypatch):
+    """`aew status` no longer lists a cancelled invocation's run, so its end has no resume action: the wait still
+    says why, then to wait on the runs that still work, then the operator line (E122 review, m1)."""
+    release = held(lab, tmp_path, RA, RB)
+    lab.lead("invoke", "cancel", "INV-0001", "--reason", "no longer needed")
+    engine = Engine.discover(lab.root)
+    _records_say_running(monkeypatch, RA, RB)
+    out = engine.harness_wait([RA, RB], any_=True, timeout=30)
+    monkeypatch.undo()
+    try:
+        assert out["run"] == RA and out["still_running"] == [RB] and out["why"] == [K.RUN_ENDED], out
+        assert "INV-0001 is cancelled" in out["next_action"], out
+        assert f"; then {K.wait_step([RB])}. Tell the operator" in out["next_action"], out
+    finally:
+        release[RB].write_text("go", encoding="utf-8")
+        lab.wait(RB)
+
+
+def test_a_wait_any_whose_invocations_all_ended_still_gives_a_next_action(lab, tmp_path, monkeypatch):
+    """Every named invocation inactive: the end says so, with no wait step (no run still works) (E122 review, m1)."""
+    release = held(lab, tmp_path, RA, RB)
+    lab.lead("invoke", "cancel", "INV-0001", "--reason", "no longer needed")
+    lab.lead("invoke", "cancel", "INV-0002", "--reason", "no longer needed")
+    engine = Engine.discover(lab.root)
+    _records_say_running(monkeypatch, RA, RB)
+    out = engine.harness_wait([RA, RB], any_=True, timeout=30)
+    monkeypatch.undo()
+    try:
+        assert out["still_running"] == [] and out["why"] == [K.RUN_ENDED], out
+        assert f"{out['run'][2:-2]} is cancelled" in out["next_action"], out
+        assert "harness_wait" not in out["next_action"].split("Tell the operator")[0], out
+    finally:
+        for f in release.values():
+            f.write_text("go", encoding="utf-8")
+        lab.wait(RA)
+        lab.wait(RB)
+
+
+def test_a_wait_on_a_run_a_replace_superseded_names_the_run_that_replaced_it(lab, tmp_path):
+    """A single-run wait on a run `--replace` superseded: the invocation is active but serves the new run, so the end
+    names it to wait on instead (E122 review, m1)."""
+    release = held(lab, tmp_path, RA)
+    replaced = "R-INV-0001-2"
+    lab.script(replaced, [{"do": "wait_file", "path": str(release[RA]), "timeout": 300}])
+    assert lab.lead("harness", "launch", "INV-0001", "--replace")["superseded"] == RA
+    out = Engine.discover(lab.root).harness_wait(RA, timeout=60)
+    try:
+        assert out["run"] == RA and out["why"] == [K.RUN_ENDED], out
+        assert f"{replaced} replaced it for INV-0001: wait on {replaced} instead" in out["next_action"], out
+    finally:
+        release[RA].write_text("go", encoding="utf-8")
+        lab.wait(replaced)
+
+
+def _progress(lab, run: str, *, triggers: list[dict[str, Any]], out_of_scope: Any = None, last_test: Any = None,
+              state: str = "working", red_commands: list[str] | None = None) -> None:
+    """A run's progress digest as its meter's poll writes it (the fake harness here runs no meter)."""
+    from aew.harness import runlog
+
+    seq = max((t["seq"] for t in triggers), default=0)
+    runlog.write_progress(runlog.run_dir(lab.aew_root, run) / runlog.PROGRESS_FILE,
+                          {"schema": runlog.PROGRESS_SCHEMA, "run": run, "state": state, "triggers": triggers,
+                           "trigger_seq": seq, "out_of_scope": [] if out_of_scope is None else out_of_scope,
+                           "last_test": last_test,
+                           **({} if red_commands is None else {"red_commands": red_commands})}, woke=bool(triggers))
+
+
+def test_the_lead_wait_returns_once_on_a_trigger_that_still_holds(lab, tmp_path):
+    """Steering PR 1: the Lead's wait returns on a run that needs the Lead, in the wake's shape, and returns that
+    trigger once; the next wait blocks until the run ends. The CLI's wait is the same wait (#358 review, finding 5):
+    the contained Lead's shell relays it."""
+    release = held(lab, tmp_path, RA, RB)
+    engine = Engine.discover(lab.root)
+    try:
+        _progress(lab, RB, triggers=[{"seq": 1, "why": K.OUT_OF_SCOPE, "path": "src/b/x.py"}],
+                  out_of_scope=["src/b/x.py"])
+        out = engine.harness_wait([RA, RB], any_=True, timeout=30, triggers=True)
+        assert out["run"] == RB and out["status"] == "running" and not out["timed_out"], out
+        assert out["why"] == [K.OUT_OF_SCOPE] and out["next"] == [K.OUT_OF_SCOPE] and out["messages"] == [], out
+        assert out["runs"][RB]["out_of_scope"] == ["src/b/x.py"] and set(out["runs"]) == {RA, RB}, out
+        assert out["next_action"] == K.trigger_step([K.OUT_OF_SCOPE], RB, [RA]), out
+        again = engine.harness_wait([RA, RB], any_=True, timeout=0, triggers=True)
+        assert again["timed_out"] and again["runs"][RB]["trigger_seq"] == 1, again  # returned once
+        assert set(again["statuses"]) == {RA, RB}, again
+        _progress(lab, RB, triggers=[{"seq": 1, "why": K.OUT_OF_SCOPE, "path": "src/b/x.py"},
+                                     {"seq": 2, "why": K.WORKER_IDLE, "idle_s": 31.0}],
+                  out_of_scope=["src/b/x.py"], state="idle")
+        cli = lab.ok("harness", "wait", RB, "--timeout", "30")
+        assert cli["why"] == [K.WORKER_IDLE] and [t["seq"] for t in cli["triggers"]] == [2], cli
+        assert lab.ok("harness", "wait", RB, "--timeout", "0")["timed_out"]  # one returned mark for both forms
+    finally:
+        for f in release.values():
+            f.write_text("go", encoding="utf-8")
+        lab.wait(RA)
+        lab.wait(RB)
+
+
+X_TESTS, Y_TESTS = "python -m pytest tests/test_x.py", "python -m pytest tests/test_y.py"
+
+
+def test_the_lead_wait_never_returns_a_stale_trigger(lab, tmp_path):
+    """A trigger whose condition no longer holds (the file is back in scope, its own test command passes again, the
+    worker works again) is passed over (steering design §1, "no stale wakes"). The returned mark is a high-water mark:
+    once a later trigger is returned, a stale one before it is never returned, even if its condition holds again."""
+    release = held(lab, tmp_path, RA)
+    engine = Engine.discover(lab.root)
+    try:
+        _progress(lab, RA, triggers=[{"seq": 1, "why": K.OUT_OF_SCOPE, "path": "src/b/x.py"},
+                                     {"seq": 2, "why": K.TEST_FAILED, "kind": "regression", "command": X_TESTS},
+                                     {"seq": 3, "why": K.WORKER_IDLE, "idle_s": 31.0}],
+                  out_of_scope=[], last_test={"command": X_TESTS, "result": "pass"}, red_commands=[],
+                  state="working")
+        assert engine.harness_wait(RA, timeout=0, triggers=True)["timed_out"]
+        # X regressed and passed again; Y is red while it is built: X's trigger is stale (#358 review, finding 2).
+        _progress(lab, RA, triggers=[{"seq": 1, "why": K.OUT_OF_SCOPE, "path": "src/b/x.py"},
+                                     {"seq": 2, "why": K.TEST_FAILED, "kind": "regression", "command": X_TESTS}],
+                  out_of_scope=[], last_test={"command": Y_TESTS, "result": "fail"}, red_commands=[Y_TESTS])
+        assert engine.harness_wait(RA, timeout=0, triggers=True)["timed_out"]
+        _progress(lab, RA, triggers=[{"seq": 1, "why": K.OUT_OF_SCOPE, "path": "src/b/x.py"},
+                                     {"seq": 4, "why": K.TEST_FAILED, "kind": "stuck", "command": Y_TESTS}],
+                  out_of_scope=[], last_test={"command": Y_TESTS, "result": "fail"}, red_commands=[Y_TESTS])
+        out = engine.harness_wait(RA, timeout=0, triggers=True)
+        assert out["why"] == [K.TEST_FAILED] and [t["seq"] for t in out["triggers"]] == [4], out  # seq 1 still stale
+        _progress(lab, RA, triggers=[{"seq": 1, "why": K.OUT_OF_SCOPE, "path": "src/b/x.py"},
+                                     {"seq": 4, "why": K.TEST_FAILED, "kind": "stuck", "command": Y_TESTS}],
+                  out_of_scope=["src/b/x.py"], last_test={"command": Y_TESTS, "result": "fail"},
+                  red_commands=[Y_TESTS])
+        assert engine.harness_wait(RA, timeout=0, triggers=True)["timed_out"]  # seq 4 returned: the mark passed seq 1
+    finally:
+        release[RA].write_text("go", encoding="utf-8")
+        lab.wait(RA)
+
+
+def test_a_run_whose_invocation_ended_is_returned_as_ended_not_as_one_to_steer(lab, tmp_path, monkeypatch):
+    """The control lane comes before the triggers (#358 review, finding 6): a cancelled invocation's run with a
+    pending trigger is returned as its end, with m1's reason, never as "needs you: steer it"."""
+    release = held(lab, tmp_path, RA, RB)
+    _progress(lab, RA, triggers=[{"seq": 1, "why": K.OUT_OF_SCOPE, "path": "src/b/x.py"}],
+              out_of_scope=["src/b/x.py"])
+    lab.lead("invoke", "cancel", "INV-0001", "--reason", "no longer needed")
+    engine = Engine.discover(lab.root)
+    _records_say_running(monkeypatch, RA, RB)
+    out = engine.harness_wait([RA, RB], any_=True, timeout=30, triggers=True)
+    monkeypatch.undo()
+    try:
+        assert out["run"] == RA and out["why"] == [K.RUN_ENDED] and "triggers" not in out, out
+        assert out["ended_by"] == {"lane": "control", "reason": "invocation INV-0001 is cancelled"}, out
+        assert "INV-0001 is cancelled" in out["next_action"], out
+    finally:
+        release[RB].write_text("go", encoding="utf-8")
+        lab.wait(RB)

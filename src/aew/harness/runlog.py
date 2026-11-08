@@ -12,7 +12,9 @@ the rest: no gate reads them, and a live write wakes no waiter.
 
 ``progress.json`` is the run's progress digest (``aew/run-progress/v1``; :mod:`aew.harness.progress`), written by the
 same meter's poll: what the worker touched, ran and tested, and the triggers that wake the Lead. Telemetry too: no
-gate reads it, and only a new trigger wakes a waiter.
+gate reads it, and only a new trigger wakes a waiter. ``progress.returned.json`` is the other side: the newest trigger
+a Lead's wait has returned for this run, written by the wait (:func:`write_returned`), so a trigger is returned once
+and one that fired between two waits is not lost.
 """
 
 from __future__ import annotations
@@ -39,6 +41,7 @@ LIVE_STATE_FILE = "usage.live.state.json"  # its meter's high-water state; not p
 LIVE_SCHEMA = "aew/usage-live/v1"
 PROGRESS_FILE = "progress.json"            # the run's progress digest (steering design §2)
 PROGRESS_SCHEMA = "aew/run-progress/v1"
+RETURNED_FILE = "progress.returned.json"   # the newest trigger a wait returned for the run (steering design §1)
 HEARTBEAT_S = 1.0
 # A supervisor that has not beaten for this long has stopped supervising (tests shorten it).
 STALE_AFTER_S = float(os.environ.get("AEW_RUN_STALE_S", "10"))
@@ -164,6 +167,25 @@ def read_progress(directory: Path) -> dict[str, Any] | None:
     return digest if isinstance(digest, dict) and digest.get("schema") == PROGRESS_SCHEMA else None
 
 
+def read_returned(directory: Path) -> int:
+    """The ``seq`` of the newest progress trigger a Lead's wait has returned for this run: 0 when none has, or when
+    the file is missing or not one this module wrote (the wait then returns every trigger the digest holds, once).
+
+    What the Lead has been shown, per run: steering PR 2's broker inherits this mark for its own wakes."""
+    try:
+        text = _read_text(directory / RETURNED_FILE)
+        value = json.loads(text).get("trigger_seq") if text is not None else 0
+    except (OSError, ValueError, RecursionError, AttributeError):
+        return 0
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def write_returned(directory: Path, trigger_seq: int) -> None:
+    """Record that a wait returned the run's triggers up to ``trigger_seq``. It never moves the mark back."""
+    if trigger_seq > read_returned(directory):
+        atomic_write(directory / RETURNED_FILE, json.dumps({"trigger_seq": int(trigger_seq)}))
+
+
 def beat(directory: Path) -> None:
     """The heartbeat is the modification time of ``heartbeat``: touching it never collides with a reader.
 
@@ -255,13 +277,27 @@ def may_be_live(directory: Path, launched_at: str | None, *, grace_s: float = UN
     return possibly_live(status, launched_at, grace_s=grace_s)
 
 
+_request_clock_lock = threading.Lock()
+_last_request_ns = 0
+
+
+def _next_request_ns() -> int:
+    """The clock for a request's name, strictly increasing within a process. The clock itself can repeat a value (on
+    Windows before Python 3.13 it ticks about every 15.6 ms) or step back, and the name is a request's identity and its
+    place in issue order: two requests of one kind under one name would share a file, and one would be lost."""
+    global _last_request_ns
+    with _request_clock_lock:
+        _last_request_ns = max(_last_request_ns + 1, time.time_ns())
+        return _last_request_ns
+
+
 def new_request(kind: str, payload: dict[str, Any] | None = None) -> tuple[str, str]:
     """A Lead request (stop, send, interrupt) for a run's supervisor: its file name and text.
 
     The run directory is model-writable, so a request file alone authorizes nothing: the Lead operation records the
     name and digest in control state first (``harness_ops``), then delivers the file with :func:`deliver_request`,
     and the supervisor acts only on a file that matches a recorded request (independent review R1)."""
-    name = f"{time.time_ns()}-{os.getpid()}-{kind}.json"
+    name = f"{_next_request_ns()}-{os.getpid()}-{kind}.json"
     return name, json.dumps({"kind": kind, "at": utc_now(), **(payload or {})})
 
 

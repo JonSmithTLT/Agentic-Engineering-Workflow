@@ -196,46 +196,67 @@ def test_the_bridge_key_is_not_a_lead_credential(held):
 # ---------------------------------------------------------------------------------------------- channels and waiting
 
 
-def _fake_wait(engine, monkeypatch, seen):
-    """A run that never ends: each single check (timeout 0) reports it still running."""
-    def harness_wait(runs, *, timeout=600.0, any_=False):
+def _fake_wait(engine, monkeypatch, seen, until=None):
+    """A run that never ends, or that ends once ``until`` is set: each single check (timeout 0) reports it."""
+    def harness_wait(runs, *, timeout=600.0, any_=False, triggers=False):
         seen.append(timeout)
-        return {"run": runs if isinstance(runs, str) else runs[0], "status": "running", "timed_out": True}
+        run = runs if isinstance(runs, str) else runs[0]
+        if until is not None and until.is_set():
+            return {"run": run, "status": "ended_with_evidence", "timed_out": False}
+        return {"run": run, "status": "running", "timed_out": True}
 
     monkeypatch.setattr(engine, "harness_wait", harness_wait)
 
 
+HELD_WAIT_S = 30  # a wait the test ends itself: a broker that held it would answer nothing for this long
+
+
 def test_a_wait_never_holds_the_broker_and_channels_never_bleed(held, monkeypatch):
+    """Every request is answered while a typed wait blocks, judged by order, not by the clock (E193). The wait's run
+    ends only when the test says so, so a request answered while the waiting thread is still alive did not wait behind
+    the wait. A bound of 3 s on each round of requests measured their own engine work instead (about 1.5 s here, and
+    over 3 s on a loaded Windows runner, with the wait holding the broker for about 15 ms per observation), and the
+    wait's own 4 s timeout ended it during the second round, so the later rounds checked nothing."""
+    from aew.engine import outbox
+    from aew.harness import bridge
+
     p, wid, engine, broker = held
     seen: list[float] = []
-    _fake_wait(engine, monkeypatch, seen)
+    ended = threading.Event()
+    _fake_wait(engine, monkeypatch, seen, until=ended)
     waited: dict = {}
-
-    def waiter():
-        started = time.monotonic()
-        waited["out"] = call("harness_wait", {"runs": ["R-INV-0009-1", "R-INV-0010-1"], "timeout_s": 4})
-        waited["took"] = time.monotonic() - started
-
-    thread = threading.Thread(target=waiter)
+    thread = threading.Thread(target=lambda: waited.update(
+        out=call("harness_wait", {"runs": ["R-INV-0009-1", "R-INV-0010-1"], "timeout_s": HELD_WAIT_S})))
     thread.start()
-    time.sleep(0.5)
+    until = time.monotonic() + HELD_WAIT_S
+    while not seen and time.monotonic() < until:
+        time.sleep(0.05)
+    assert seen, "the wait never made its first check"
     for _ in range(3):  # explain from both ingresses and a query, all while the wait blocks
-        started = time.monotonic()
         mcp = call("explain", {"work_id": wid}, ingress="mcp")
         cli = call("explain", {"work_id": wid}, ingress="cli")
         status = call("status", {}, ingress="mcp")
         assert mcp["result"]["channel"] == "lead_mcp" and cli["result"]["channel"] == "lead_broker"
-        assert status["ok"] and time.monotonic() - started < 3.0, "a request waited behind the blocking wait"
+        assert status["ok"] and thread.is_alive(), "a request waited behind the blocking wait"
     rev = _rev(engine)
-    from aew.harness import bridge
-
     out = bridge.call("lead.cli", {"argv": ["checkpoint", "--next", "during the wait", "--expect-rev", str(rev)],
                                    "cwd": str(p.root), "stdin": ""}, env_names=lead_broker.ENV_NAMES)
-    assert out["result"]["revision"] == rev + 1  # a relayed command commits while the wait blocks
-    thread.join(30)
-    assert waited["out"]["ok"] and waited["out"]["result"]["timed_out"] is True
-    assert 3.5 <= waited["took"] < 15
-    assert seen and set(seen) == {0}, "the cooperative wait checks once per observation, never blocking in the engine"
+    assert out["result"]["revision"] == rev + 1 and thread.is_alive()  # a relayed command commits while it blocks
+    ended.set()
+    outbox.bump_wake(engine.aew_root)  # the wait's next check sees its run end (its coarse check covers a missed wake)
+    thread.join(HELD_WAIT_S)
+    assert not thread.is_alive() and waited["out"]["ok"] and waited["out"]["result"]["timed_out"] is False
+    assert set(seen) == {0}, "the cooperative wait checks once per observation, never blocking in the engine"
+
+
+def test_a_typed_wait_ends_at_its_own_timeout(held, monkeypatch):
+    p, wid, engine, broker = held
+    seen: list[float] = []
+    _fake_wait(engine, monkeypatch, seen)
+    started = time.monotonic()
+    out = call("harness_wait", {"runs": ["R-INV-0009-1"], "timeout_s": 1})
+    assert out["ok"] and out["result"]["timed_out"] is True
+    assert 1 <= time.monotonic() - started < 15 and set(seen) == {0}
 
 
 def test_a_wait_ends_with_a_real_stale_result_when_authority_goes_and_then_the_broker_is_unreachable(held,
@@ -369,3 +390,30 @@ def test_the_logged_revision_before_is_the_one_the_call_started_from(held):
     assert done["out"]["ok"]
     [line] = tool_calls.read(engine.aew_root)
     assert line["revision_before"] == line["revision_after"] == rev + 1, line
+
+
+# ------------------------------------------------------------------------------------------- the broker's end
+
+
+def test_a_closed_lead_broker_has_stopped_its_bridge_and_removed_its_endpoint(tmp_path, monkeypatch):
+    """E128: `aew opencode`'s refusal exits right after the broker's close. The close waits, within WAKE_TIMEOUT_S, for
+    its bridge's stop, so the process never exits with that stop still running on a daemon thread and its private
+    directory left behind. The stop is delayed at the race point, as the unit pin does."""
+    import os
+
+    from aew.harness import bridge
+
+    real = bridge.stop_listener
+
+    def delayed(*args, **kwargs):
+        time.sleep(0.5)  # less than WAKE_TIMEOUT_S, and far more than close() takes without waiting
+        real(*args, **kwargs)
+
+    monkeypatch.setattr(bridge, "stop_listener", delayed)
+    p = sample_project(tmp_path)
+    broker = lead_broker.LeadBroker(Engine.discover(p.root), p.token)
+    broker.start()
+    private = broker.server.private_dir
+    broker.close()
+    assert not broker.server._stopper.is_alive(), "the broker's close returned before its bridge stopped"
+    assert not (private and os.path.exists(private)), "the broker's close left its bridge's private directory"

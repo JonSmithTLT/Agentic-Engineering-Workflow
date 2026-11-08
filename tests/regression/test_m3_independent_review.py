@@ -30,7 +30,8 @@ from racing_read import read_text_or_none
 from aew.harness import runlog
 from aew.harness.opencode import capabilities
 
-SPEC = Path(__file__).resolve().parents[1] / "fixtures" / "opencode" / "openapi-2.0.18.min.json"
+SPEC = Path(__file__).resolve().parents[1] / "fixtures" / "opencode" / (
+    f"openapi-{capabilities.TESTED_VERSIONS[0]}.min.json")
 
 
 # ------------------------------------------------------------------------------------------------ R1: run requests

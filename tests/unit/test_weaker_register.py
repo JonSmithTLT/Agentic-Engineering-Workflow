@@ -188,7 +188,8 @@ def test_a_forged_aew_command_line_makes_no_host(reg, monkeypatch, tmp_path):
     monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: scan_of(forged))
     e.end([])
     data = json.loads(e.path.read_text())
-    assert data["outcome"] == "unowned" and "9 cannot be read" in data["reason"]
+    assert data["outcome"] == "unowned" and data["reason"].startswith("process 9 (")
+    assert "cannot be read" in data["reason"]
     real = W.Proc(pid=8, start_id="linux:boot-1:9000", ticks=9000, env=None, cmdline=argv)
     monkeypatch.setattr(W, "scan", lambda proc=None, uid=None: scan_of(real))
     e2 = entry(ownership="subreaper", marker="/p/two.json", aew_root=aew)

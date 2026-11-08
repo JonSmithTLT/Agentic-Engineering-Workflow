@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from aew.harness import runlog, weaker_register
 from aew.harness.containment import netns
 from aew.harness.opencode import adapter as opencode_adapter
 from aew.harness.opencode import projection
+from aew.harness.opencode.capabilities import TESTED_VERSIONS
 from aew.util import dump_yaml, load_yaml
 
 RUN = "R-INV-0001-1"
@@ -72,9 +74,11 @@ def events(lab: HarnessLab, run: str = RUN) -> list[dict[str, Any]]:
     return [json.loads(line) for line in text[:text.rfind("\n") + 1].splitlines()]
 
 
-def refused_launch(lab: HarnessLab, tmp_path: Path, reason_code: str = "incompatible_config") -> str:
+def refused_launch(lab: HarnessLab, tmp_path: Path, reason_code: str = "incompatible_config",
+                   cause: str | None = None) -> str:
     """A launch OpenCode refuses as HARNESS_INCOMPATIBLE, with the closed launch-failure code its record and the
-    launcher's error carry (M4-E E8a): `incompatible_config`, or `unknown` for a timing-dependent refusal."""
+    launcher's error carry (M4-E E8a): `incompatible_config`, or `unknown` for a timing-dependent refusal, whose record
+    names its own `launch_cause` (none for a refusal decided on what the server reported)."""
     wid = create_planned_ticket(lab.project, tmp_path)
     res = lab.lead_res("work", "assign", wid, "--launch")
     assert res.error["code"] == "HARNESS_LAUNCH_FAILED" and "HARNESS_INCOMPATIBLE" in res.error["message"], res.error
@@ -82,6 +86,7 @@ def refused_launch(lab: HarnessLab, tmp_path: Path, reason_code: str = "incompat
         reason_code, "acknowledgement"), res.error
     record = lab.record(RUN)
     assert record["status"] == "launch_failed" and record["reason_code"] == reason_code, record
+    assert record.get(K.LAUNCH_CAUSE) == cause, record
     assert lab.ok("invoke", "show", "INV-0001")["status"] == "active" and not evidence_of(lab, wid)
     return res.error["message"]
 
@@ -142,7 +147,7 @@ def test_the_projection_reaches_the_server_and_the_session(lab, tmp_path):
     assert info["location"] == {"directory": workspace} and info["permissions"] == config["permissions"]
     assert info["metadata"] == {"aew_invocation": inv, "aew_run": run, "aew_work_unit": wid}
     record = lab.record(run)
-    assert record["launch"]["health"]["version"] == "2.0.18" and record["launch"]["health"]["tested"]
+    assert record["launch"]["health"]["version"] == TESTED_VERSIONS[0] and record["launch"]["health"]["tested"]
     assert record["result"]["effective"] == [{"provider": "fakeprov", "model": "fake-model", "effort": "high"}]
     assert record["model_check"]["status"] == "match" and record["result"]["prompts"] == 1
     if record["containment"]["network"]["mode"] == "proxy_only":  # Linux (F28 §3.5): the provider through the relay
@@ -226,6 +231,34 @@ def test_a_slow_model_catalog_is_waited_for(lab, tmp_path):
     assert lab.record(run)["launch"]["health"]["catalog_wait_s"] >= 2.5
 
 
+@pytest.mark.parametrize("package, semantics", [(opencode_adapter.ZEN_RESPONSES, "disjoint"),
+                                                 ("@opencode/ai/providers/anthropic", "unknown")],
+                         ids=["zen-responses", "zen-anthropic"])
+def test_a_zen_models_route_is_read_from_the_servers_catalog_for_its_usage(lab, tmp_path, package, semantics):
+    """OpenCode Zen is declared per route (#364): the launch reads each Zen model's route, its catalog `package`, and
+    binds it to the run's meter and record, so a model on the measured Responses route reads `disjoint` in both, and
+    one on a route not measured reads `unknown` (#364 review, m3). The policy relays a synthetic OPENCODE_API_KEY to
+    the lab's fake upstream: on the relay route (Linux) a keyless `opencode` launch is refused before it starts
+    (`netns.provider_key_missing`), and no request may leave for opencode.ai."""
+    path = lab.aew_root / "policy/execution.yaml"
+    policy = load_yaml(path.read_text(encoding="utf-8"))
+    policy["provider_env"] = [*policy["provider_env"], "OPENCODE_API_KEY"]
+    policy["containment"]["network"]["upstreams"]["opencode"] = lab.provider.url
+    path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
+    lab.env["OPENCODE_API_KEY"] = PROVIDER_SECRET
+    script(lab, IMPLEMENT, live_usage={}, models=[
+        {"id": "gpt-5.6-luna", "providerID": "opencode", "package": package, "enabled": True,
+         "variants": [{"id": "low"}, {"id": "medium"}, {"id": "high"}]}])
+    wid = create_planned_ticket(lab.project, tmp_path)
+    run = lab.lead("work", "assign", wid, "--model", "opencode/gpt-5.6-luna", "--launch")["launch"]["run"]
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    usage = lab.record(run)["result"]["usage_record"]
+    sample = runlog.read_live(runlog.run_dir(lab.aew_root, run))
+    assert sample is not None and sample["state"] == "final"
+    assert usage["token_semantics"] == sample["token_semantics"] == semantics, (usage, sample)
+
+
 def test_a_launch_behind_a_proxy_runs_and_no_loopback_call_reaches_the_proxy(lab, tmp_path):
     """Every proxy variable set, in both cases, with no NO_PROXY exception for 127.0.0.1: the supervisor's calls to
     the run's own server go direct, so the run ends normally and the proxy (answering 502) sees no connection."""
@@ -245,7 +278,7 @@ def test_a_model_the_harness_does_not_offer_fails_closed(lab, tmp_path):
     lab.env["AEW_OPENCODE_CATALOG_SETTLE_S"] = "1"
     script(lab, IMPLEMENT, models=[{"id": "cheaper-model", "providerID": "other", "enabled": True, "variants": []}])
     # Timing-dependent (the catalog's wait ran out), so never a lasting incompatibility (M4-E E8a; PR #185, F1).
-    message = refused_launch(lab, tmp_path, reason_code="unknown")
+    message = refused_launch(lab, tmp_path, reason_code="unknown", cause=K.CATALOG_TIMEOUT)
     assert "fakeprov/fake-model is not offered" in message
     relayed = lab.record(RUN)["containment"]["network"]["mode"] == "proxy_only"
     assert ("listed only because AEW names it" in message) == relayed, message
@@ -482,8 +515,10 @@ def test_an_incompatible_server_fails_closed(lab, tmp_path, knobs, expected):
     script(lab, IMPLEMENT, **knobs)
     # An ignored configuration is found only when the agent wait runs out, which a slow server also does: `unknown`
     # (M4-E E8a; PR #185 review, F3). The other refusals are decided on what the server reported.
-    code = "unknown" if knobs.get("ignore_config") else "incompatible_config"
-    assert expected in refused_launch(lab, tmp_path, reason_code=code)
+    timed_out = bool(knobs.get("ignore_config"))
+    code = "unknown" if timed_out else "incompatible_config"
+    assert expected in refused_launch(lab, tmp_path, reason_code=code,
+                                      cause=K.AGENT_LOAD_TIMEOUT if timed_out else None)
 
 
 def test_a_server_that_lists_no_agent_within_the_wait_is_not_an_incompatibility(lab, tmp_path):
@@ -491,7 +526,28 @@ def test_a_server_that_lists_no_agent_within_the_wait_is_not_an_incompatibility(
     code is `unknown` (`launch_cause: agent_load_timeout`), never `incompatible_config` (PR #185 review, F3)."""
     lab.env["AEW_OPENCODE_CATALOG_S"] = "2"
     script(lab, IMPLEMENT, agents_delay_s=60)
-    assert "did not load AEW's agent" in refused_launch(lab, tmp_path, reason_code="unknown")
+    assert "did not load AEW's agent" in refused_launch(lab, tmp_path, reason_code="unknown",
+                                                        cause=K.AGENT_LOAD_TIMEOUT)
+
+
+def test_plugins_still_activating_are_waited_out_and_counted(lab, tmp_path):
+    """OpenCode 2.2.6 answers a location's listings 503 "Location plugins did not finish activating" while a plugin
+    waits on a fetch the run's network refuses (Zen's console sync, which a contained run refuses by design: the E17
+    live turn's launch, 2026-11-07). The launch waits it out within the catalog's wait and records how often it was
+    told so."""
+    script(lab, IMPLEMENT, plugins_activating_s=2)
+    _, _, run = launch(lab, tmp_path)
+    assert lab.wait(run)["status"] == "ended_with_evidence"
+    assert lab.record(run)["launch"]["health"]["plugin_waits"] >= 1
+
+
+def test_plugins_that_never_finish_activating_fail_the_launch_with_their_own_cause(lab, tmp_path):
+    """Still activating when the catalog's wait runs out: a launch failure naming it (`plugins_timeout`), which is
+    timing-dependent, so `unknown`, never a lasting incompatibility."""
+    lab.env["AEW_OPENCODE_CATALOG_S"] = "2"
+    script(lab, IMPLEMENT, plugins_activating_s=60)
+    assert "did not finish activating" in refused_launch(lab, tmp_path, reason_code="unknown",
+                                                         cause=K.PLUGINS_TIMEOUT)
 
 
 def test_a_denial_the_server_appends_after_aews_rules_is_accepted(lab, tmp_path):
@@ -673,6 +729,45 @@ def test_a_rejected_provider_key_is_its_own_ending_and_a_relaunch_reads_the_key_
                 text = path.read_text(encoding="utf-8", errors="replace")
                 for secret in (expired, fresh, f"{expired[:3]}***{expired[-4:]}", "Incorrect API key"):
                     assert secret not in text, (path, secret)
+
+
+def _aew_files(lab: HarnessLab, run: str) -> list[tuple[Path, str]]:
+    """Every file AEW wrote for the run (not OpenCode's own private state, its XDG directories)."""
+    directory = runlog.run_dir(lab.aew_root, run)
+    return [(p, p.read_text(encoding="utf-8", errors="replace")) for p in directory.rglob("*")
+            if p.is_file() and not any(part.startswith("xdg-") for part in p.relative_to(directory).parts)]
+
+
+def test_a_2_2_6_provider_403_is_the_rejected_key_ending_and_its_raw_body_is_never_recorded(lab, tmp_path):
+    """The 2.2.6 bump (E17's live turn, 2026-11-07: Zen answered 403). 2.2.6 classes a 401 or a 403 as
+    `provider.auth` (unless its body names a quota), and its error carries the provider's raw body
+    (`response.body`). The run is still the rejected-key ending, and neither the message nor the body, which can quote
+    part of the key, is in anything AEW wrote."""
+    rejected = hashlib.sha256(PROVIDER_SECRET.encode()).hexdigest()
+    script(lab, IMPLEMENT, provider_auth={"variable": "OPENAI_API_KEY", "rejected_sha256": [rejected], "status": 403,
+                                          "shape": "2.2.6", "code": "account_forbidden_e17"})
+    _, _, run = launch(lab, tmp_path)
+    done = lab.wait(run)
+    assert done["status"] == "crashed" and done["reason_code"] == "provider_auth_failed", done
+    assert lab.record(run)["harness_outcome"] == "the agent's turn ended: failed (provider.auth, 403)"
+    for path, text in _aew_files(lab, run):
+        for leaked in ("account_forbidden_e17", "Incorrect API key", f"{PROVIDER_SECRET[:3]}***"):
+            assert leaked not in text, (path, leaked)
+
+
+def test_a_2_2_6_budget_limit_is_named_in_the_runs_reason(lab, tmp_path):
+    """2.2.6 classes a provider's spend or credit refusal as its own type (`provider.budget-limit`; also `quota`,
+    `free-limit`, `model-budget-limit`, `go-limit`), not `provider.auth`. It is not a rejected key, so it has no reason
+    code of its own, but the run's reason, which the Lead is shown, names it."""
+    rejected = hashlib.sha256(PROVIDER_SECRET.encode()).hexdigest()
+    script(lab, IMPLEMENT, provider_auth={"variable": "OPENAI_API_KEY", "rejected_sha256": [rejected], "status": 402,
+                                          "type": "provider.budget-limit", "shape": "2.2.6", "code": "BudgetLimitError",
+                                          "message": "Workspace usage limit reached. Model use is paused until the "
+                                                     "limit resets."})
+    _, _, run = launch(lab, tmp_path)
+    done = lab.wait(run)
+    assert done["status"] == "crashed" and "reason_code" not in done, done
+    assert "provider.budget-limit, 402: Workspace usage limit reached" in done["reason"], done
 
 
 def test_a_credential_error_loses_its_message_and_key_shaped_text_is_redacted_from_any_other():
@@ -948,3 +1043,40 @@ def test_no_route_closing_control_is_a_harness_permission_rule(lab, tmp_path):
         assert write["wrote"] == [] and set(write["refused"].values()) == {"EROFS"}, write
         assert reach == {"connected": False, "error": "ECONNREFUSED"}, reach
         assert parent["has_credential"] is False, parent
+
+
+# ---------------------------------------------------------------------------------------------- liveness
+
+
+def test_a_run_whose_control_lock_is_held_elsewhere_keeps_its_heartbeat(lab, tmp_path, monkeypatch):
+    """A live run never reads as `lost` because another process holds the control lock (a long commit, a Windows
+    replace retrying for seconds): the lock may be held up to its timeout (60 s), and a heartbeat goes stale at
+    `runlog.STALE_AFTER_S` (10 s). Two CI sightings on Windows (main at 8198c213, #362 at 6663e3d5) read a working run
+    as `lost` while its step and its heartbeat stalled together. The run is held at its check (before the check's
+    command starts), the lock is held from here for longer than three of the supervisor's authority polls, and the
+    heartbeat's age is sampled meanwhile: it stays well below the hold. Then the run completes."""
+    from aew.engine.api import Engine
+    from aew.harness import supervisor
+
+    gate = tmp_path / "gate"
+    gate.write_text("")
+    monkeypatch.setenv("AEW_PAUSE", f"checks.before_spawn={gate}")
+    script(lab, IMPLEMENT)
+    _, _, run = launch(lab, tmp_path)
+    reached, deadline = Path(f"{gate}.reached"), time.monotonic() + 120
+    while not reached.exists() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert reached.exists(), "the run never reached its check"
+    directory = runlog.run_dir(lab.aew_root, run)
+    held_s = 4 * supervisor.STATE_POLL_S  # the loop reads the state at least every STATE_POLL_S
+    ages: list[float | None] = []
+    with Engine.discover(lab.root).store.control_lock("test: the control lock held elsewhere"):
+        until = time.monotonic() + held_s
+        while time.monotonic() < until:
+            ages.append(runlog.heartbeat_age(directory))
+            time.sleep(0.2)
+    gate.unlink()
+    # The guarantee is "below STALE_AFTER_S". Half the hold leaves a loaded runner headroom and still fails the locked
+    # read, whose beat stalls for most of the hold (7 s of 8; #366 review, N1).
+    assert None not in ages and max(ages) < held_s / 2, ages  # type: ignore[type-var]
+    assert lab.wait(run)["status"] == "ended_with_evidence"

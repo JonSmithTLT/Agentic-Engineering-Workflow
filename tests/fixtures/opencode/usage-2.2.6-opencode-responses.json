@@ -1,0 +1,73 @@
+{
+ "harness": "opencode",
+ "version": "2.2.6",
+ "provider": "opencode",
+ "route": "@opencode/ai/providers/openai/responses",
+ "model": "gpt-5.6-luna",
+ "token_semantics": "disjoint",
+ "source": {
+  "measured": "2026-11-07",
+  "how": "one live turn of a contained AEW run through AEW's provider relay, which kept each provider response's usage object and nothing else; token counts and cost only",
+  "says": "Zen's input_tokens counts its cache reads (input_tokens_details.cached_tokens) and its cache writes (cache_write_tokens); its output_tokens counts reasoning (output_tokens_details.reasoning_tokens); split into disjoint parts, the calls equal the live meter's final record in every category"
+ },
+ "meter": {
+  "tokens": {
+   "input": 241,
+   "output": 80,
+   "reasoning": 115,
+   "cache_read": 2163,
+   "cache_write": 3427
+  },
+  "provider_cost_usd": 0.00118221
+ },
+ "calls": [
+  {
+   "input_tokens": 2238,
+   "output_tokens": 167,
+   "total_tokens": 2405,
+   "input_tokens_details": {
+    "cached_tokens": 0,
+    "cache_write_tokens": 2235
+   },
+   "output_tokens_details": {
+    "reasoning_tokens": 94
+   },
+   "cost": 0.00075975,
+   "opencode": {
+    "list_cost": 0.00075975,
+    "tokens": {
+     "input": 3,
+     "output": 167,
+     "reasoning": 94,
+     "cache_read": 0,
+     "cache_write_5m": 2235,
+     "cache_write_1h": 0
+    }
+   }
+  },
+  {
+   "input_tokens": 3593,
+   "output_tokens": 28,
+   "total_tokens": 3621,
+   "input_tokens_details": {
+    "cached_tokens": 2163,
+    "cache_write_tokens": 1192
+   },
+   "output_tokens_details": {
+    "reasoning_tokens": 21
+   },
+   "cost": 0.00042246,
+   "opencode": {
+    "list_cost": 0.00042246,
+    "tokens": {
+     "input": 238,
+     "output": 28,
+     "reasoning": 21,
+     "cache_read": 2163,
+     "cache_write_5m": 1192,
+     "cache_write_1h": 0
+    }
+   }
+  }
+ ]
+}

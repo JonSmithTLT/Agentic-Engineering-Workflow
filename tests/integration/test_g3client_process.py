@@ -140,7 +140,7 @@ def test_an_approved_set_is_submitted_unchanged_with_its_consent_and_not_admitte
     # The client keys on the reason alone; the route's admission_state for it is the carrier's (REJECTED today).
     assert [r["reason_code"] for r in results] == ["ORIGIN_NOT_ESTABLISHED"]
     assert all(r["admission_state"] != "ADMITTED" for r in results)
-    assert result["note"] == C.NOT_ESTABLISHED
+    assert result["note"].startswith("Approved in the confirmer and submitted, and the owner refused it")
     assert TOKEN not in out + err and G.PIN not in out + err
 
 
@@ -210,16 +210,20 @@ def test_an_answer_without_the_g3_wire_is_unavailable_never_a_pending_approval(
     body = json.dumps({"approval_ref": "g3:approval:x", "expires_at": "2099-01-01T00:00:00Z"}).encode()
 
     def answer() -> None:
-        conn, _ = listener.accept()
-        got = b""
-        while b"\r\n\r\n" not in got:  # the whole request first: a close with its body unread resets the connection
-            got += conn.recv(65536)
-        head, rest = got.split(b"\r\n\r\n", 1)
-        length = int(next(ln.split(b":")[1] for ln in head.split(b"\r\n") if ln.lower().startswith(b"content-length")))
-        while len(rest) < length:
-            rest += conn.recv(65536)
-        conn.sendall(b"HTTP/1.0 201 Created\r\nContent-Length: %d\r\n\r\n%s" % (len(body), body))
-        conn.close()
+        # Two requests: the probe before the confirmer (a GET, no body), then the approval request. Each gets the
+        # same answer, which is not G3's: the probe says so and the request goes ahead, as the command does (C1).
+        for _ in range(2):
+            conn, _ = listener.accept()
+            got = b""
+            while b"\r\n\r\n" not in got:  # the whole request first: a close with its body unread resets it
+                got += conn.recv(65536)
+            head, rest = got.split(b"\r\n\r\n", 1)
+            length = int(next((ln.split(b":")[1] for ln in head.split(b"\r\n")
+                               if ln.lower().startswith(b"content-length")), b"0"))
+            while len(rest) < length:
+                rest += conn.recv(65536)
+            conn.sendall(b"HTTP/1.0 201 Created\r\nContent-Length: %d\r\n\r\n%s" % (len(body), body))
+            conn.close()
 
     t = threading.Thread(target=answer, daemon=True)
     t.start()
@@ -232,6 +236,7 @@ def test_an_answer_without_the_g3_wire_is_unavailable_never_a_pending_approval(
     error = _error(err)
     assert error["code"] == "UNAVAILABLE" and error["details"]["reason"] == "g3_not_g3" and code == 10
     assert "waiting for the operator" not in err
+    assert "aew g3: the G3 service does not answer: the answer on" in err  # the probe found it not G3's first
 
 
 def test_a_stalled_service_ends_the_wait_by_the_approvals_expiry_not_a_request_timeout_later(
@@ -252,6 +257,24 @@ def test_a_stalled_service_ends_the_wait_by_the_approvals_expiry_not_a_request_t
         listener.close()
     took = time.monotonic() - started
     assert e.value.details["reason"] == "g3_unreachable" and took < 1 + 1 + 1, took  # life, grace, and slack
+
+
+def test_the_probe_reaches_the_real_services_guarded_read_answering_when_it_runs_and_naming_it_when_it_holds(
+        world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#365 review m3: the probe's 404 is the service's own answer for an approval no one made, not the router's for a
+    path no route matches, so a service that holds every request is never read as answering."""
+    from aew_g3.ledger import LedgerUnavailable
+
+    assert C.probe() is None
+
+    def unreadable(ref: str) -> Any:
+        raise LedgerUnavailable("planted: the ledger cannot be read")
+
+    monkeypatch.setattr(world.rig.svc.ledger, "approval", unreadable)
+    said = C.probe()
+    assert said is not None and "the G3 service is holding every request" in said
+    monkeypatch.setattr(C, "REQUEST_SOCK", str(tmp_path / "absent.sock"))
+    assert "systemctl status aew-g3.service" in (C.probe() or "")
 
 
 def test_no_g3_service_is_unavailable_and_says_where_to_look(

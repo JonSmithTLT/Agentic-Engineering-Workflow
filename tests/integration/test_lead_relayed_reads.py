@@ -94,7 +94,8 @@ def cases(run: str, invocation: str) -> list[list[str]]:
     out = [["status"], ["status", "--json"], ["resume"], ["resume", "--json"], ["harness", "status"],
            ["harness", "status", invocation], ["harness", "wait", run, "--timeout", "0"], ["harness", "wait", run],
            ["map", "show"],
-           ["map", "show", "--json"], ["map", "diff", "--commit", "HEAD", "--commit", "HEAD"], ["map", "diff"]]
+           ["map", "show", "--json"], ["map", "diff", "--commit", "HEAD", "--commit", "HEAD"], ["map", "diff"],
+           ["usage", "show"], ["usage", "show", run, "--json"], ["usage", "show", invocation]]
     assert {frozenset(worker_surface.words(a)) for a in out} == set(lead_broker.RELAYED_READS)
     return out
 

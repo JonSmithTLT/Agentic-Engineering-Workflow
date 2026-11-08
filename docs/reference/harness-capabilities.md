@@ -10,6 +10,7 @@ What each harness provides to AEW's steering features, and what each feature nee
 | `interrupt_turn` | stop the current turn and keep the session | **yes**: `turn/interrupt` | **yes**: `session.interrupt` |
 | `mark_non_operator_input` | input the model can tell from the operator's | **yes**: `thread/inject_items` with a developer-role message, and the text header | **partial**: text only: the wake's fixed header, which the model reads as text; `session.prompt` metadata is not shown to it, and there is no role of its own |
 | `queue_until_turn_end` | input admitted when the current turn ends | **gap**: `turn/start` on a busy thread steers the running turn and there is no native queue: the adapter holds a wake until `thread/status/changed` reports idle (a register row holds the work) | **yes**: `session.prompt` with `delivery: queue` |
+| `read_model_list` | list the models the harness offers, read as a launch reads them, with no session | **gap**: `model/list` on the app-server; doctor's read is built for OpenCode only (a register row holds the work) | **yes**: `GET /api/model` on a server started as a launch starts it, with no session |
 | `read_progress` | read the worker's tool calls: paths, commands and exit codes | **yes**: pushed: `item/started`, `item/completed`, `item/commandExecution/*`, `item/fileChange/patchUpdated` (not probed yet) | **yes**: polled: tool parts of `session.message.list` (the meter's poll) |
 | `read_usage` | read the worker's token usage | **yes**: pushed: `thread/tokenUsage/updated` (not probed yet) | **yes**: polled: the meter (`session.list`, `session.message.list`) |
 | `steer_running_turn` | input admitted at the running turn's next step | **yes**: `turn/steer` with `expectedTurnId` | **yes**: `session.prompt` with `delivery: steer` |
@@ -21,6 +22,7 @@ A feature's verdict on a harness is the weakest of its needs there: **gap** when
 
 | Feature | Needs | Built by | codex | opencode |
 |---|---|---|---|---|
+| `doctor_model_list` | `read_model_list` | aew doctor | **gap** | **yes** |
 | `interrupt_worker` | `interrupt_turn` | steering design §3 | **yes** | **yes** |
 | `progress_digest` | `read_progress`, `read_usage` | steering PR 1 | **yes** | **yes** |
 | `push_wake` | `wake_idle_session`, `queue_until_turn_end`, `attach_to_operator_session`, `mark_non_operator_input` | steering PR 2 | **gap** | **partial** |

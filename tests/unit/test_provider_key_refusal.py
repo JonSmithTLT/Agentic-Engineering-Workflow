@@ -19,7 +19,7 @@ import pytest
 
 from aew import errors
 from aew.engine.workspace_ops import Invocations
-from aew.harness import supervisor
+from aew.harness import base, supervisor
 from aew.harness.containment import egress, netns
 from aew.harness.containment.egress import Allowlist, AnyPublic, EgressProxy
 
@@ -141,6 +141,8 @@ def test_the_supervisor_refuses_again_before_any_sandbox_or_network_exists(relay
         contain(monkeypatch, [])
     assert caught.value.details["reason"] == "provider_key_missing"
     assert caught.value.details["variable"] == "OPENAI_API_KEY"
+    # what the supervisor's record and acknowledgement carry as the refusal, beside the closed code (E189)
+    assert base.refusal_of(caught.value.details) == "provider_key_missing"
     monkeypatch.setenv("OPENAI_API_KEY", KEY)
     with pytest.raises(Reached):
         contain(monkeypatch, ["OPENAI_API_KEY"])
@@ -250,7 +252,7 @@ def test_the_console_sync_note_is_on_opencode_ai_443_only_for_a_keyed_opencode_r
         notes = {e["target"]: e.get("note") for e in found["targets"]}
         assert notes == {"opencode.ai:443": netns.CONSOLE_SYNC_NOTE, "opencode.ai:80": None,
                          "api.opencode.ai:443": None, "evil.example:443": None}
-        assert netns.CONSOLE_SYNC_NOTE == "expected: OpenCode's console sync (inferred), refused by design"
+        assert netns.CONSOLE_SYNC_NOTE == "expected: OpenCode's console sync, refused by design"
     finally:
         net.close()
     for provider, keyed in (("openai", True), ("opencode", False), (None, False)):
@@ -291,8 +293,8 @@ def test_a_release_that_respells_the_leads_provider_deny_is_refused_at_a_workers
 
     from aew.harness.opencode import capabilities
 
-    spec = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode" / "openapi-2.0.18.min.json")
-                      .read_text(encoding="utf-8"))
+    spec = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "opencode"
+                       / f"openapi-{capabilities.TESTED_VERSIONS[0]}.min.json").read_text(encoding="utf-8"))
     assert capabilities.problems(spec) == []
     config = "Config.InfoEncoded"
     renamed = copy.deepcopy(spec)

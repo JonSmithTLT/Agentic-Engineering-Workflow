@@ -35,6 +35,7 @@ def register(sub: argparse._SubParsersAction) -> None:
 
 def _request(a: argparse.Namespace) -> Any:
     from aew import g3client as C
+    from aew import g3standing as S
     from aew.engine.custody_ops import refuse_kept_out
 
     refuse_kept_out(("g3", "request"))
@@ -50,6 +51,16 @@ def _request(a: argparse.Namespace) -> Any:
     except (UnicodeDecodeError, ValueError):
         raise ValidationFailed(f"{path} is not JSON", reason="not_a_command_set") from None
     proved = C.with_proofs(C.check_set(cset))
+    # Before the confirmer is asked: whether G3 counts here, and whether its service answers (addendum 7, ruling 2).
+    # The request goes ahead either way: an approval made while G3 does not count admits nothing, and says so.
+    standing = S.standing(project=False)
+    answers = C.probe()
+    sys.stderr.write(f"aew g3: {standing.line()}\n")
+    if answers is not None:
+        sys.stderr.write(f"aew g3: the G3 service does not answer: {answers}\n")
+    if not standing.counts:
+        sys.stderr.write("aew g3: approving admits nothing; the action stays held\n")
+    sys.stderr.flush()
     pending = C.request_approval(proved)
     C.expires_at(pending)  # read first: an answer without one is refused, and nothing is said to wait for (F2)
     sys.stderr.write(f"aew g3: waiting for the operator to approve or decline {pending['approval_ref']} in the "
@@ -58,10 +69,12 @@ def _request(a: argparse.Namespace) -> Any:
     record = C.await_decision(pending)
     receipt = C.submit(C.approved_set(proved, record), a.o01, token)
     out = {"approval_ref": pending["approval_ref"], "consent_set_ref": record.get("consent_set_ref"),
-           "set_digest": record.get("set_digest"), "receipt": receipt, "note": C.note(receipt)}
+           "set_digest": record.get("set_digest"), "receipt": receipt,
+           "note": C.note(receipt, S.standing(project=False))}
     if a.json:
         return out
-    lines = [f"approved: {out['approval_ref']} (consent {out['consent_set_ref']})", "submitted; the receipt:"]
+    # the ref names itself (`consent:g3:...`): no label before it (the operator's G3-D trial, 2026-10-28)
+    lines = [f"approved: {out['approval_ref']}; consent set {out['consent_set_ref']}", "submitted; the receipt:"]
     lines += [f"  {r.get('intent_ref')}: {r.get('admission_state')} {r.get('reason_code') or ''}".rstrip()
               for r in receipt["results"]]
     if out["note"]:

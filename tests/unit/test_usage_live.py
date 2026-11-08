@@ -21,13 +21,13 @@ from aew import schemas
 from aew.engine import usage_ops as O
 from aew.harness import usage as U
 from aew.harness import usage_live as L
-from aew.harness.opencode.adapter import OpenCodeAdapter, _effective
+from aew.harness.opencode.adapter import ZEN_RESPONSES, OpenCodeAdapter, _effective
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
 from aew.harness.opencode.client import OpenCodeError, OpenCodeUnavailable
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "opencode"
 P1 = json.loads((FIXTURES / "live-usage-2.0.18.json").read_text(encoding="utf-8"))
-OPENAPI = json.loads((FIXTURES / "openapi-2.0.18.min.json").read_text(encoding="utf-8"))
+OPENAPI = json.loads((FIXTURES / f"openapi-{TESTED_VERSIONS[0]}.min.json").read_text(encoding="utf-8"))
 GPT = {"providerID": "openai", "id": "gpt-6.1", "variant": "default"}
 MINI = {"providerID": "openai", "id": "gpt-6.1-mini", "variant": "low"}
 PRICES = O.Prices(b"schema: aew/pricing/v1\ncurrency: USD\nas_of: 2026-10-01\nsource: test\nprices:\n"
@@ -72,7 +72,7 @@ class Lab:
         self.n = 0
 
     def meter(self, root_session: str | None = None, *, pinned: dict[str, Any] | None = GPT, s_pot: int = 1,
-              state: str = "state.json", version: str = "2.0.18") -> L.Meter:
+              state: str = "state.json", version: str = TESTED_VERSIONS[0]) -> L.Meter:
         return L.OpenCodeMeter(self.client, root_session=root_session or "ses_root", version=version, s_pot=s_pot,
                                state_path=self.root / state, pinned_model=pinned)
 
@@ -459,6 +459,26 @@ def test_the_meter_resolves_semantics_from_the_adapter_table_and_server_version(
     assert semantics(model={"providerID": "anthropic", "id": "m", "variant": "default"}) == "unknown"
 
 
+def test_a_zen_models_semantics_follow_its_route_once_the_catalogs_routes_are_bound(tmp_path: Path):
+    """OpenCode Zen (``opencode``) is declared per route: the meter reads its tokens ``disjoint`` only for a model
+    whose bound route is the measured Responses route, and ``unknown`` before the routes are bound or on another."""
+    zen = {"providerID": "opencode", "id": "gpt-5.6-luna", "variant": "default"}
+
+    def semantics(routes: dict[tuple[str, str], str] | None) -> str:
+        lab = Lab(tmp_path / f"zen-{len(list(tmp_path.iterdir()))}", version="2.2.6")
+        sid = lab.app.add_session(model=zen)
+        lab.call(sid, tok(10, 1), model=zen)
+        meter = lab.meter(sid, version="2.2.6", pinned=zen)
+        if routes is not None:
+            meter.routes = routes
+        return meter.poll()["token_semantics"]
+
+    assert semantics({("opencode", "gpt-5.6-luna"): ZEN_RESPONSES}) == "disjoint"
+    assert semantics(None) == "unknown"
+    assert semantics({("opencode", "gpt-5.6-luna"): "@opencode/ai/providers/anthropic"}) == "unknown"
+    assert semantics({("opencode", "another-model"): ZEN_RESPONSES}) == "unknown"
+
+
 # ---------------------------------------------------------------------------------------------- lifecycle
 
 
@@ -786,7 +806,8 @@ class FixtureClient:
 
 def test_live_usage_fixture_is_self_consistent_and_cites_the_pinned_commit():
     source = P1["source"]
-    assert P1["version"] in TESTED_VERSIONS and source["tag"] == f"v{P1['version']}"
+    # P1 was read at 2.0.18; the pin has moved past it, so its citations wait to be re-read (register E200)
+    assert P1["version"] == "2.0.18" and source["tag"] == f"v{P1['version']}"
     assert re.fullmatch(r"[0-9a-f]{40}", source["commit"]) and re.fullmatch(r"[0-9a-f]{64}", source["binary_sha256"])
     ids = {e["id"] for e in source["evidence"]}
     assert len(ids) == len(source["evidence"])

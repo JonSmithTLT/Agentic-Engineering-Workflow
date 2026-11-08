@@ -63,9 +63,9 @@ def test_only_a_role_whose_context_names_codebase_map_gets_the_slice(role):
 
     on = {"maps": {"pack_slices": "structural"}}
     role_def = roles.archetype(role)
-    assert slices.wanted(role_def, on) is ("codebase_map" in role_def["context"]["knowledge"])
+    assert slices.wanted(role_def, on) is True  # every worker's card names it (register E184)
     assert slices.wanted(role_def, None) is False and slices.wanted(role_def, {"maps": {"pack_slices": "off"}}) is False
-    assert slices.wanted(roles.archetype("investigator"), on) is True  # today, only the investigator (decision 6)
+    assert slices.wanted(roles.archetype("lead"), on) is False  # the Lead has no pack
 
 
 # ------------------------------------------------------------------------------------------- bounds and scope

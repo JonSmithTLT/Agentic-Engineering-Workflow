@@ -16,6 +16,6 @@ prohibited:
 outputs:
   - escalation analysis
 context:
-  knowledge: [escalation_package]
+  knowledge: [escalation_package, codebase_map]
   excluded: []
 capabilities: []

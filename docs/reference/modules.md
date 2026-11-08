@@ -221,6 +221,7 @@ None.
 - `aew.harness.lead_broker`
 - `aew.harness.opencode.lead`
 - `aew.lead_credential`
+- `aew.maps.service`
 - `aew.operator`
 - `aew.surface`
 - `aew.surface.client`

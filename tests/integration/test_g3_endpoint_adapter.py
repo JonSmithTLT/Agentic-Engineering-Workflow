@@ -37,12 +37,15 @@ class FakeG3:
         self.requests = 0
         self.keys: list[str] = []
         self.on_decide: Any = None
+        self.on_request: Any = None
         self.decision = "APPROVE"
         self.undecided = False  # the operator has not decided: the wait goes on, on the endpoint's own ``sleep``
 
     def request_approval(self, cset: dict[str, Any], sock_path: str | None = None) -> dict[str, Any]:
         self.requests += 1
         self.keys.append(cset["client_request_key"])
+        if self.on_request:
+            self.on_request()
         status, body = self.service.request({"wire_version": G3W.WIRE, "command_set": cset})
         if status != 201:
             raise g3client._g3_refusal(status, body)
@@ -337,13 +340,13 @@ def test_what_moved_after_the_approval_refuses_before_consume_and_does_not_spend
     bound = steered.engine.steering_raise_preview(MODE)
     assert G.moved(G.raise_set(bound), bound) is None
     later = {**bound, "generation": bound["generation"] + 1}
-    assert G.moved(G.raise_set(bound), later) == "lead_generation_ref"
+    assert G.moved(G.raise_set(bound), later) == "the Lead generation"
     later = {**bound, "mode_rev": (bound["mode_rev"] or 0) + 1}
-    assert G.moved(G.raise_set(bound), later) == "mode_version"
+    assert G.moved(G.raise_set(bound), later) == "the current mode's record"
     later = {**bound, "previous": "walk"}
-    assert G.moved(G.raise_set(bound), later) == "current_mode"
+    assert G.moved(G.raise_set(bound), later) == "the current mode"
     later = {**bound, "legality_digest": "f" * 64}
-    assert G.moved(G.raise_set(bound), later) == "reason_ref"
+    assert G.moved(G.raise_set(bound), later) == "the adopted policy's legality digest"
     assert steering.RANK[None] == steering.RANK["crawl"], "a mode never set is carried as the lowest"
 
     real = steered.engine.steering_raise_preview
@@ -354,7 +357,7 @@ def test_what_moved_after_the_approval_refuses_before_consume_and_does_not_spend
     steered.fake.on_decide = lambda: setattr(steered.engine, "steering_raise_preview", moving)
     with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
         _raise(steered)
-    assert "lead_generation_ref" in refused.value.message and "not spent" in refused.value.message
+    assert "the Lead generation moved" in refused.value.message and "not spent" in refused.value.message
     assert steered.fake.consumed == [] and _mode(steered) != MODE
 
 
@@ -377,7 +380,7 @@ def test_a_mode_that_left_and_came_back_during_the_wait_refuses_on_its_version(s
     steered.fake.on_decide = left_and_back
     with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
         _raise(steered)
-    assert "mode_version moved" in refused.value.message and "not spent" in refused.value.message
+    assert "the current mode's record moved" in refused.value.message and "not spent" in refused.value.message
     assert steered.fake.consumed == [] and _mode(steered) == "crawl"
 
 
@@ -385,7 +388,8 @@ def test_a_policy_adopted_during_the_wait_refuses_and_does_not_spend_the_approva
     steered.fake.on_decide = lambda: _policy(steered.project, mode="allow_weaker")  # the digest covers this field
     with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
         _raise(steered)
-    assert "reason_ref moved" in refused.value.message and "not spent" in refused.value.message
+    assert "the adopted policy's legality digest moved" in refused.value.message
+    assert "not spent" in refused.value.message and "reason_ref" not in refused.value.message
     assert steered.fake.consumed == [] and _mode(steered) != MODE
 
 
@@ -446,6 +450,58 @@ def test_a_requester_that_has_gone_ends_the_wait_and_says_so_and_frees_the_endpo
     assert any(approval in line for line in endpoint.lines) and steered.fake.consumed == [] and _mode(steered) != MODE
     steered.fake.undecided = False
     assert _raise(steered)["mode"] == MODE, "the endpoint is free again"
+
+
+def test_a_requester_gone_before_the_acknowledgement_still_says_how_it_ended(steered, endpoint):
+    conn = operator_client._connect(steered.root)
+    steered.fake.on_request = conn.close  # gone once the approval exists, before the endpoint can say so
+    operator_client._send(conn, "mode_raise", {"mode": MODE, "requester": "test"})
+    deadline = time.monotonic() + ENDED
+    while not any("has gone" in line for line in endpoint.lines):
+        assert time.monotonic() < deadline, "the console did not say how it ended"
+        time.sleep(0.01)
+    steered.fake.on_request = None
+    assert steered.fake.consumed == [] and _mode(steered) != MODE
+    assert _raise(steered)["mode"] == MODE, "the endpoint is free again"
+
+
+@pytest.mark.parametrize("failure", [errors.PermissionDenied("not this account's", reason="g3_peer_not_permitted"),
+                                     errors.ValidationFailed("a 403 with no code", reason="g3_refused", status=403)],
+                         ids=["peer", "403-no-code"])
+def test_a_hold_for_the_wrong_account_names_the_step_that_fixes_it(steered, endpoint, monkeypatch, failure):
+    monkeypatch.setattr(g3client, "request_approval", _raises(failure))
+    with pytest.raises(errors.Unavailable) as held:
+        _raise(steered)
+    assert "--operator" in held.value.message and "outside any sandbox" in held.value.message
+    assert "once that is fixed" not in held.value.message
+
+
+def test_a_hold_for_an_answer_that_is_not_g3s_names_where_to_look_and_the_install(steered, endpoint, monkeypatch):
+    monkeypatch.setattr(g3client, "await_decision",
+                        _raises(errors.Unavailable("not the G3 wire's", reason="g3_not_g3")))
+    with pytest.raises(errors.Unavailable) as held:
+        _raise(steered)
+    assert "systemctl status aew-g3.service" in held.value.message and g3standing.INSTALL in held.value.message
+    assert "once that is fixed" not in held.value.message
+
+
+def test_the_busy_refusal_stops_naming_an_approval_once_its_request_has_ended(steered, endpoint, monkeypatch):
+    """A later typed challenge is the one to answer: deciding a finished approval would change nothing."""
+    steered.fake.decision = "DECLINE"
+    with pytest.raises(errors.OperatorAuthorizationRequired):
+        _raise(steered)
+    monkeypatch.setattr(g3standing, "standing",
+                        lambda *a, **k: g3standing.Standing(False, 3, "a weaker launch", "wait"))
+    conn = operator_client._connect(steered.root)
+    try:
+        operator_client._send(conn, "mode_raise", {"mode": MODE, "requester": "test"})
+        assert operator_client._reply(conn)["challenge"] == "shown"
+        with pytest.raises(errors.PermissionDenied) as busy:
+            _raise(steered)
+        assert "confirmer" not in busy.value.message and "g3:approval" not in busy.value.message
+        assert "another request" in busy.value.message
+    finally:
+        conn.close()
 
 
 def test_a_requester_gone_when_the_approval_arrives_spends_nothing(steered, endpoint):

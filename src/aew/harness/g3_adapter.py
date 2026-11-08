@@ -11,7 +11,8 @@ binding or G3's standing fails. Once a challenge takes the G3 path it never move
 downgrade G3 to it (``G3-11``):
 
 - no answer, a 503, a 403 or a 400, at the request, the wait (:func:`outcomes`) or the consume (no result): HELD;
-- declined, expired, or any consume result but ``CONSUMED``: refused, and the reply says to request it again;
+- declined: refused, as the operator chose, with no way on to give;
+- expired, or any consume result but ``CONSUMED``: refused, and the reply says to request it again;
 - the standing is computed again just before consume, as an owner's rule. If it fails: HELD, consume is not called, and
   the next request takes the code, with the standing's reason.
 
@@ -47,6 +48,12 @@ HELD_AGAIN = f"{AGAIN} once that is fixed"  # asked again before then, a held ra
 OLDER_SERVICE = (f"The likely cause is a G3 service installed from a wheel older than this `aew`, which does not know "
                  f"{BINDINGS['mode_raise']}. Install it again as root, which keeps the ledger, the key and the PIN "
                  f"hash: {g3standing.INSTALL}. Nothing was raised")
+# The service answers only the operator's account: asked again from here, it gives the same answer
+WRONG_ACCOUNT = ("Nothing was raised: run `aew operator serve --dev` in the account G3 was installed for (its "
+                 "`--operator`), outside any sandbox, or install G3 again naming this account, then request it again")
+# Something else answers on the service's socket, or the service is not this `aew`'s
+NOT_G3 = ("Nothing was raised: see what answers there with `systemctl status aew-g3.service`, or install G3 again "
+          f"({g3standing.INSTALL}), then request it again")
 EVERY_REQUEST = "Each `aew lead mode raise` asks for a new approval"
 
 
@@ -108,12 +115,14 @@ def bound_values(cset: dict[str, Any]) -> RaiseValues:
 
 
 def moved(cset: dict[str, Any], now: dict[str, Any]) -> str | None:
-    """What has moved since the operator approved ``cset``, by ``now``, a fresh preview; None when nothing has."""
+    """What has moved since the operator approved ``cset``, by ``now``, a fresh preview, in the operator's words; None
+    when nothing has."""
     target = cset["intents"][0]["target"]
-    current = {"lead_generation_ref": f"{GENERATION}{now['generation']}",
-               "current_mode": (now["previous"] or "crawl").upper(), "mode_version": mode_version(now["mode_rev"]),
-               "reason_ref": LEGALITY + str(now["legality_digest"])}
-    changed = [k for k, v in current.items() if target[k] != v]
+    current = {"lead_generation_ref": ("the Lead generation", f"{GENERATION}{now['generation']}"),
+               "current_mode": ("the current mode", (now["previous"] or "crawl").upper()),
+               "mode_version": ("the current mode's record", mode_version(now["mode_rev"])),
+               "reason_ref": ("the adopted policy's legality digest", LEGALITY + str(now["legality_digest"]))}
+    changed = [words for field, (words, value) in current.items() if target[field] != value]
     return ", ".join(changed) or None
 
 
@@ -147,14 +156,14 @@ def outcomes(bad_request: str = HELD_AGAIN) -> Iterator[None]:
     except errors.OperatorAuthorizationRequired:  # declined or expired: a kind of PermissionDenied, and a refusal
         raise
     except errors.Unavailable as exc:
-        raise held(exc.message) from None
+        raise held(exc.message, NOT_G3 if exc.details.get("reason") == "g3_not_g3" else HELD_AGAIN) from None
     except errors.PermissionDenied as exc:  # the 403: the service answers only the operator's account
-        raise held(exc.message) from None
+        raise held(exc.message, WRONG_ACCOUNT) from None
     except errors.ValidationFailed as exc:
         if exc.details.get("status") == 400:
             raise held(exc.message, bad_request) from None
         if exc.details.get("status") == 403:
-            raise held(exc.message) from None
+            raise held(exc.message, WRONG_ACCOUNT) from None
         raise refused(exc.message) from None
 
 

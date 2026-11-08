@@ -3,8 +3,8 @@
 ``aew operator serve --dev`` runs the operator endpoint in the operator's own terminal; its console shows the
 one-time codes. ``aew lead mode raise`` only sends a request to it, and then reads the code typed at this terminal or,
 where G3 counts, waits while the operator approves in G3's confirmer: it has no engine path of its own. ``aew lead mode
-lower`` is the Lead's (a restriction), relayed in a Lead session like any Lead-reachable command. The Lead broker refuses ``raise``, ``serve`` and ``ping`` in a Lead session
-(``lead_broker.OPERATOR_ENDPOINT``).
+lower`` is the Lead's (a restriction), relayed in a Lead session like any Lead-reachable command. The Lead broker
+refuses ``raise``, ``serve`` and ``ping`` in a Lead session (``lead_broker.OPERATOR_ENDPOINT``).
 """
 
 from __future__ import annotations

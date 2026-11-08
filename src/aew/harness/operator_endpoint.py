@@ -387,7 +387,10 @@ class OperatorEndpoint:
             nonlocal approval
             approval = self._awaiting = pending["approval_ref"]
             shown = {"challenge": "g3", "approval_ref": approval, "expires_at": pending["expires_at"], "bound": bound}
-            conn.send_bytes(json.dumps({"ok": True, "result": shown}).encode("utf-8"))
+            try:
+                conn.send_bytes(json.dumps({"ok": True, "result": shown}).encode("utf-8"))
+            except OSError:
+                raise g3_adapter.requester_gone(approval) from None
 
         def wait(seconds: float) -> None:
             """The time between looks at the service, on the requester's connection. It sends nothing on this path, so

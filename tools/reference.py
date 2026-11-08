@@ -5,14 +5,17 @@
     python tools/reference.py check     # exit 1 if the committed pages under docs/reference/ are not what render
                                         # would write
     python tools/reference.py counts    # print the measured counts of the index
+    python tools/reference.py importers aew.engine.store    # print the modules that import a module
+    python tools/reference.py resolve   # in a merge: render the pages from the merged code and stage them
 
 One generator. ``render`` writes the machine index (``index.json``, keyed by record id), the human pages and
 ``gaps.md``; ``check`` regenerates them in memory and fails on any difference in the committed files, naming the first
 one and the command that settles it. CI runs ``check`` as a fast-lane test (``tests/unit/test_reference.py``), so a pull
 request that changes enumerated code re-renders in the same change; the second of two changes to merge re-renders after
-the first. The index is not committed (operator, 2026-11-05): git ignores it, ``render`` writes it for local use and
-``counts`` prints its counts, which CI does for every pull request. The pages are drawn from the index rendered in
-memory, so they carry what it measures.
+the first. The pages hold no tree-wide totals and no inverses, so two changes to different things merge; a collision
+on one thing is settled by ``resolve``, never by hand. The index is not committed (operator, 2026-11-05): git ignores
+it, ``render`` writes it for local use and ``counts`` prints its counts, which CI does for every pull request. The pages
+are drawn from the index rendered in memory, so they carry what it measures.
 
 The output is deterministic and the same on Windows and Linux: sorted, POSIX paths, LF, no timestamp, no absolute path.
 It states what the code is and never what it should be, and holds no requirement. No model is in the generator.
@@ -27,6 +30,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import subprocess
 import sys
 from collections.abc import Iterable
 from pathlib import Path
@@ -192,7 +196,7 @@ def check(root: Path = ROOT, out: Path = OUT, files: dict[str, bytes] | None = N
     found = differences(files, out)
     if found:
         found.append("docs/reference/ is generated from the code: run `python tools/reference.py render` and commit "
-                     "the result (after a merge conflict there, take either side and render)")
+                     "the result (in a merge, `python tools/reference.py resolve`)")
     return found
 
 
@@ -217,8 +221,52 @@ def render(root: Path = ROOT, out: Path = OUT, files: dict[str, bytes] | None = 
 
 def counts(root: Path = ROOT) -> dict[str, Any]:
     """The measured counts of a render: what CI prints for each pull request (the index that carries them is not
-    committed)."""
-    return json.loads(render_files(root)[INDEX])["counts"]
+    committed), with the totals the pages leave out so that they merge: the import edges."""
+    index = json.loads(render_files(root)[INDEX])
+    return {**index["counts"], "import_edges": sum(len(r.get("imports") or ()) for r in index["records"].values())}
+
+
+def importers(module: str, root: Path = ROOT) -> list[str] | None:
+    """The modules that import ``module`` (what ``modules.md`` does not hold), or None if there is no such module. It
+    reads the import graph alone, so it answers without a render."""
+    common, _, _ = _families()
+    from reference_families import modules
+
+    mods = modules.scan(common.Context(root))
+    return modules.importers_of(mods, module) if any(m.name == module for m in mods) else None
+
+
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, encoding="utf-8",
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+def resolve(root: Path = ROOT) -> int:
+    """Finish a merge's reference pages: they are a function of the merged code, so they are rendered and staged, never
+    merged by hand. It works for a merge git completed cleanly too, whose pages may still be stale.
+
+    It refuses outside a merge (or a cherry-pick, revert or rebase), and while any other file is in conflict: the code
+    with its conflict markers is not what the pages should say. ``python tools/register.py resolve`` settles a register
+    conflict first."""
+    if not any(_git(root, "rev-parse", "-q", "--verify", ref).returncode == 0
+               for ref in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD")):
+        print("no merge in progress: `resolve` finishes one; outside one, use `python tools/reference.py render`",
+              file=sys.stderr)
+        return 2
+    prefix = OUT.relative_to(ROOT).as_posix() + "/"
+    unmerged = _git(root, "diff", "--name-only", "--diff-filter=U", "-z").stdout.split("\0")
+    others = sorted(name for name in unmerged if name and not name.startswith(prefix))
+    if others:
+        print("settle these and `git add` them first, then run `resolve` again: the pages are drawn from the merged "
+              "code:\n  " + "\n  ".join(others), file=sys.stderr)
+        return 2
+    changed = render(root, root / prefix)
+    added = _git(root, "add", "-A", "--", prefix)
+    if added.returncode != 0:
+        print(f"could not stage {prefix}: {added.stderr.strip()}", file=sys.stderr)
+        return 2
+    print(f"rendered and staged {prefix} ({len(changed)} file(s) changed): finish the merge with `git commit`")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -227,8 +275,11 @@ def main(argv: list[str] | None = None) -> int:
         if reconfigure is not None:
             reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(prog="python tools/reference.py", description=(__doc__ or "").split("\n\n")[0])
-    ap.add_argument("command", choices=("render", "check", "counts"))
+    ap.add_argument("command", choices=("render", "check", "counts", "importers", "resolve"))
+    ap.add_argument("module", nargs="?", help="importers: the module, as in modules.md (aew.engine.store)")
     args = ap.parse_args(argv)
+    if (args.command == "importers") != (args.module is not None):
+        ap.error("`importers` takes one module, and no other command takes one")
     common = _families()[0]
     try:
         if args.command == "render":
@@ -237,6 +288,16 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "counts":
             print(json.dumps(counts(), indent=2, sort_keys=True))
+            return 0
+        if args.command == "resolve":
+            return resolve()
+        if args.command == "importers":
+            found_by = importers(args.module)
+            if found_by is None:
+                print(f"{args.module} is no module of src/aew (the names are in docs/reference/modules.md)",
+                      file=sys.stderr)
+                return 2
+            print("\n".join(found_by) or f"nothing imports {args.module}")
             return 0
         found = check()
     except common.ReferenceError as exc:

@@ -237,7 +237,10 @@ def test_doctor_names_a_socket_whose_holder_cannot_be_identified_and_the_remedy(
                                                                 f"{row['reason']}", "rows": {"2": row}})
     status, detail = C.doctor({"containment": {"mode": "required"}}, "unsupported")
     assert status == "FAIL" and "/home/u/tools/svc.sock" in detail
-    assert "stop that process, move its socket under a masked path, or set containment.mode: allow_weaker" in detail
+    # The remedy claims nothing the launcher couldn't see: the holder may not be a process it can name, or stop.
+    assert ("if you know what serves it, stop that or have it listen under a masked path; otherwise set "
+            "containment.mode: allow_weaker") in detail
+    assert "stop that process" not in detail
 
 
 def test_establish_makes_the_self_tests_sentinel_before_the_layout_lists_its_directory(tmp_path, monkeypatch):

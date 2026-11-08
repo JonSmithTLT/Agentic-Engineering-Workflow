@@ -30,6 +30,7 @@ _RETURN_STR = re.compile(r"""^\s*return\s+["']([A-Z_0-9]+)["']""")
 _RETURN_ANY = re.compile(r"""^\s*return\s+(\S.*)$""")
 _IF_ORIGIN = re.compile(r"""^\s*if\s+\w+\[\s*["']origin["']\s*\]\s*!=\s*["']([A-Z_0-9]+)["']\s*:""")
 _IF_STATE = re.compile(r"""^\s*if\s+(\w+)\s*:\s*(?:#.*)?$""")
+_IF_ORIGIN_IS = re.compile(r"""^\s*if\s+\w+\[\s*["']origin["']\s*\]\s*==\s*["']([A-Z_0-9]+)["']\s*:""")
 _IF_ACTION = re.compile(r"""^\s*if\s+action\s*!=\s*["']([A-Z_0-9]+)["']\s*:""")
 _RETURN_REFUSAL = re.compile(r"""^\s*return\s+refusal\(\s*[^,()]*(?:\[[^\]]*\])?[^,()]*\s*,\s*"""
                              r"""(?:["']([A-Z_0-9]+)["']|([^,)\s]+(?:\([^)]*\))?))""")
@@ -129,6 +130,11 @@ def _steps(lines: list[str], symbols: list[str],
     for k, line in enumerate(rows):
         following = rows[k + 1] if k + 1 < len(rows) else ""
         kind = literal = None
+        if (hit := _IF_ORIGIN_IS.match(line)) is not None:
+            method = _RETURN_SELF.match(following)
+            if method is not None:
+                steps.append((member, "origin-hand-on", method.group(1), hit.group(1)))
+            continue
         if (hit := _IF_ORIGIN.match(line)) is not None:
             kind, literal = "origin-test", hit.group(1)
         elif (hit := _IF_STATE.match(line)) is not None and hit.group(1) in held:
@@ -140,7 +146,7 @@ def _steps(lines: list[str], symbols: list[str],
             if ref is not None:
                 name = ref.group(2)
                 steps.append((member, kind, literal, ref.group(1) or (f"${held[name]}" if name in held else "?")))
-        elif (hit := _RETURN_SELF.match(line)) is not None:
+        elif (hit := _RETURN_SELF.match(line)) is not None and not _IF_ORIGIN_IS.match(rows[k - 1] if k else ""):
             steps.append((member, "hand-on", hit.group(1), ""))
     return steps
 

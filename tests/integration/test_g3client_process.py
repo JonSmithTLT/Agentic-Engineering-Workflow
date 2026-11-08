@@ -26,6 +26,7 @@ from typing import Any
 import pytest
 
 from aew import g3client as C
+from aew import g3standing as S
 from aew.cli.main import main
 from aew.errors import OperatorAuthorizationRequired, Unavailable
 from aew.stg02 import server as SV
@@ -107,7 +108,7 @@ def _error(err: str) -> dict[str, Any]:
 def test_an_approved_set_is_submitted_unchanged_with_its_consent_and_not_admitted_for_want_of_g3(
         world: World, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     """G3-02 then G3-07: the record's set_digest is the SW-02 digest of the set the O-01 route received, and the
-    receipt, ORIGIN_NOT_ESTABLISHED until G3-C, carries the fixed note that says why."""
+    receipt, held while G3 does not count for the route, carries the note that says why. Nothing is consumed."""
     seen: list[dict[str, Any]] = []
     real = C.submit
 
@@ -138,11 +139,79 @@ def test_an_approved_set_is_submitted_unchanged_with_its_consent_and_not_admitte
     assert dict(sent, consent_set_ref=None) == asked  # unchanged but for the proofs and the consent
     assert all(p and p.startswith("proof:") for p in proofs) and len(set(proofs)) == len(proofs)
     results = result["receipt"]["results"]
-    # The client keys on the reason alone; the route's admission_state for it is the carrier's (REJECTED today).
-    assert [r["reason_code"] for r in results] == ["ORIGIN_NOT_ESTABLISHED"]
-    assert all(r["admission_state"] != "ADMITTED" for r in results)
-    assert result["note"].startswith("Approved in the confirmer and submitted, and the owner refused it")
+    # This route has no project, so G3 does not count for it and the member is held (addendum 5; addendum 7, ruling 2).
+    assert [(r["admission_state"], r["reason_code"], r["operation_ref"]) for r in results] == [
+        ("HELD", "ORIGIN_NOT_ESTABLISHED", None)]
+    assert result["note"].startswith("Approved in the confirmer and submitted, and the owner held it")
+    assert world.rig.svc.ledger.consumed(result["consent_set_ref"], results[0]["intent_ref"]) is False
     assert TOKEN not in out + err and G.PIN not in out + err
+
+
+def _g3_counts(w: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The route's owner, on a host where G3 counts for its project: it then consumes on the real service's socket."""
+    monkeypatch.setattr(S, "standing", lambda *_, **__: S.Standing(True))
+    w.o01.carrier.policy = lambda: {}
+
+
+def test_an_approved_set_is_admitted_and_its_member_consumed_once_against_the_route_s_operation(
+        world: World, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """The whole path on the real sockets: approved in the confirmer, submitted, consumed by the owner at admission, and
+    admitted against the operation the service recorded. Submitting the same approval under a new key is refused."""
+    _g3_counts(world, monkeypatch)
+    seen: list[dict[str, Any]] = []
+    real = C.submit
+
+    def submit(cs: dict[str, Any], url: str, token: str) -> dict[str, Any]:
+        seen.append(copy.deepcopy(cs))
+        return real(cs, url, token)
+
+    monkeypatch.setattr(C, "submit", submit)
+    t = _operator(world.rig, lambda ref: world.rig.svc.decide(ref, {"decision": "APPROVE", "pin": G.PIN}))
+    code, out, err = _run(world, capsys)
+    t.join(10)
+    assert code == 0, err
+    result = json.loads(out)
+    (admitted,) = result["receipt"]["results"]
+    assert (admitted["admission_state"], admitted["effect_state"], admitted["owner_evidence_ref"]) == (
+        "ADMITTED", "NOT_OBSERVED", None)
+    assert admitted["operation_ref"].startswith("op:") and result["note"] is None
+    ledger = world.rig.svc.ledger
+    assert ledger.consumed(result["consent_set_ref"], admitted["intent_ref"])
+    again = dict(seen[0], client_request_key=seen[0]["client_request_key"] + ".again",
+                 request_set_ref=seen[0]["request_set_ref"])
+    token = world.token_file.read_text(encoding="utf-8").strip()
+    (refused,) = C.submit(again, world.url, token)["results"]
+    assert (refused["admission_state"], refused["reason_code"], refused["operation_ref"]) == (
+        "REJECTED", "CONSENT_ALREADY_USED_OR_MISSING", None)
+
+
+def test_a_member_whose_consent_names_no_record_is_rejected_on_the_real_service(
+        world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Addendum 5's pin: G3 is established and answers, and it has no such record: REJECTED, not held, no operation."""
+    _g3_counts(world, monkeypatch)
+    cs = json.loads(world.set_file.read_bytes())
+    cs["consent_set_ref"] = "consent:g3:no-such-record"
+    for i in cs["intents"]:
+        i["origin_proof_ref"] = "proof:" + "0" * 32
+    token = world.token_file.read_text(encoding="utf-8").strip()
+    results = C.submit(cs, world.url, token)["results"]
+    assert [(r["admission_state"], r["reason_code"], r["operation_ref"]) for r in results] == [
+        ("REJECTED", "ORIGIN_NOT_ESTABLISHED", None)] * len(results)
+
+
+def test_a_service_that_is_gone_holds_the_member_at_the_route(
+        world: World, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """G3-11 on the real client: G3 counts by the conditions the standing can see, and consume gets no answer."""
+    _g3_counts(world, monkeypatch)
+    monkeypatch.setattr(C, "REQUEST_SOCK", str(tmp_path / "gone.sock"))
+    cs = json.loads(world.set_file.read_bytes())
+    cs["consent_set_ref"] = "consent:g3:any"
+    for i in cs["intents"]:
+        i["origin_proof_ref"] = "proof:" + "0" * 32
+    token = world.token_file.read_text(encoding="utf-8").strip()
+    results = C.submit(cs, world.url, token)["results"]
+    assert [(r["admission_state"], r["reason_code"], r["operation_ref"]) for r in results] == [
+        ("HELD", "ORIGIN_NOT_ESTABLISHED", None)] * len(results)
 
 
 @pytest.mark.parametrize("decision", ["DECLINE", "EXPIRE", "RESTART"])

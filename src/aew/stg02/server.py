@@ -87,7 +87,7 @@ class Slice:
         with self.ledger.transaction() as t:
             t.seed_entitlement(list(self.fx.doc["read_entitled"]))
         self.reads = Reads(self.fx, self.engine, self.ledger, real_recipient=real_recipient or self.fx.recipient)
-        self.carrier = Carrier(self.fx, self.ledger)
+        self.carrier = Carrier(self.fx, self.ledger, self.engine.execution_policy if self.engine else None)
         self.tokens = dict(tokens or {})
         self.fixture_recipient = fixture_recipient
         self.test_routes = test_routes

@@ -132,6 +132,17 @@ class EngineSource:
         self.outage = False  # the test-only outage switch (server --test-routes); never set otherwise
         self._lock = threading.Lock()
 
+    def execution_policy(self) -> dict[str, Any] | None:
+        """The project's execution policy as a launch reads it, through its pin. None when it has none, or when it
+        cannot be read: nothing then says its launches run contained, so its G3 members are held (addendum 7)."""
+        from aew.errors import AEWError
+
+        try:
+            with self._lock:
+                return self.engine.execution_policy()[0]
+        except (AEWError, OSError, ValueError, KeyError):
+            return None
+
     def snapshot(self) -> Any:
         from aew.errors import AEWError
 

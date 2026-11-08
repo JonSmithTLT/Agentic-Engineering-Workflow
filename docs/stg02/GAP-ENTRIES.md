@@ -166,7 +166,7 @@ What the website gets is all-unknown. The directives `no_unknown_owners`, `list_
 - `02-WIRE/openapi-d01-v0.3.4-REVIEW-CANDIDATE.yaml` line 13 (`security: readSession`) and line 2391: an opaque bearer.
 - The driver's `http()` sent no credentials, and its config had no auth field except on setup and teardown steps (the driver up to `006f45b`; `75d30cf` sends the config's `headers` on every request and adds the A1 check).
 
-**What happened.** AEW has no read-session issuer. The A04 session is not used in the slice: `REAFFIRM_ELIGIBLE_CHILD_GRANTS` is refused `ORIGIN_NOT_ESTABLISHED` and nothing is allocated.
+**What happened.** AEW has no read-session issuer. The A04 session is not used in the slice: `REAFFIRM_ELIGIBLE_CHILD_GRANTS` is held `ORIGIN_NOT_ESTABLISHED` and nothing is allocated.
 
 **Interim choice.**
 - `--tokens` takes a file of synthetic opaque tokens, each mapped to a recipient. An unknown or malformed `Authorization` is `401 authentication_unqualified` (recorded).
@@ -255,7 +255,7 @@ Under CS-04, a key can never be forgotten. If a dropped key came back as unused,
 
 **Interim choice.**
 - `G3_unqualified` is included in the limitations of `continuation-state` (where the operator decides what to do next) and `owner-operations`.
-- A protected set without G3 is refused per intent with `ORIGIN_NOT_ESTABLISHED`, nothing allocated, no owner operation.
+- A protected set without G3 is held per intent with `ORIGIN_NOT_ESTABLISHED`, nothing allocated, no owner operation (hand-off addendum 5).
 - A protected set without a `consent_set_ref` is `400`.
 
 ## STG02-BE-12

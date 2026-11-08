@@ -4,10 +4,11 @@ actions STG-02's command path admits and the causes it can refuse them with.
 **``commands``.** Owner: ``aew.stg02.adopted.registry()``, the vendored action registry the command path loads (basis
 ``enumerated``): one record per action with its ``origin`` and ``owner`` (``sole_admitting_owner``) as the registry
 states them, and ``reaches_owner``: whether admission can hand the action to an owner and an effect. The registry
-cannot say that; the code does, in ``Carrier._member``: an action whose origin is not the one delegated-grant origin
-is refused before any owner state is read, and of the rest only the one action ``_member`` names goes on to
-``_heb_continue``. The two literals are read from ``_member`` (by ``ast``, and by ``stg02_commands_text.py``, an
-independently written second reading), so ``reaches_owner`` follows the code: today only ``CONTINUE_ELIGIBLE_WORK``.
+cannot say that; the code does, in ``Carrier._member``: an action of the protected origin goes on to ``_protected``,
+which admits it once the G3 service consumes its member; any other action whose origin is not the one delegated-grant
+origin is held before any owner state is read, and of the rest only the one action ``_member`` names goes on to
+``_heb_continue``. The literals are read from ``_member`` (by ``ast``, and by ``stg02_commands_text.py``, an
+independently written second reading), so ``reaches_owner`` follows the code.
 If the shape of ``_member`` is not found the field is null and the cause is an unresolved item of every record.
 
 **``command-refusals``.** One record per refusal cause the lookup resolves: ``adopted.refusals()`` (source
@@ -73,6 +74,7 @@ REGISTRY = f"{ADOPTED}:registry"
 # pass-throughs of a member's reason (a subscript), into the owner's record and into the receipt.
 BUILDERS: frozenset[tuple[str, str, str]] = frozenset({
     ("refusal", "literal", "name"), ("Carrier._heb_continue", "literal", "none"),
+    ("Carrier._protected", "literal", "none"),
     ("Carrier._allocate", "literal", "subscript"), ("Carrier._result", "literal", "subscript")})
 # Every occurrence of the string ``"reason_code"`` in the module, by symbol and by what the node is, counted: the
 # lookup's two dict literals, the owner's success, and the two pass-throughs of a member's reason (a dict key and a
@@ -80,7 +82,7 @@ BUILDERS: frozenset[tuple[str, str, str]] = frozenset({
 # unresolved item until it is declared here.
 OCCURRENCES: tuple[tuple[str, str], ...] = (
     ("Carrier._allocate", "dict-key"), ("Carrier._allocate", "subscript-load"),
-    ("Carrier._heb_continue", "dict-key"),
+    ("Carrier._heb_continue", "dict-key"), ("Carrier._protected", "dict-key"),
     ("Carrier._result", "dict-key"), ("Carrier._result", "subscript-load"),
     ("refusal", "dict-key"), ("refusal", "dict-key"))
 _TESTS = "tests/integration/test_reference_stg02.py"
@@ -113,7 +115,8 @@ class Reading(NamedTuple):
     calls: list[tuple[str, str, str]]
     # the steps of ``Carrier._member``, in order: (symbol, kind, literal, cause), the kind being ``origin-test`` (the
     # origin is not the literal: refused), ``state-test`` (a helper's verdict is true: refused), ``action-test`` (the
-    # action is not the literal: refused) or ``hand-on`` (the literal is the method the rest go on to)
+    # action is not the literal: refused), ``origin-hand-on`` (the origin is the cause: those actions go on to the
+    # method named by the literal) or ``hand-on`` (the literal is the method the rest go on to)
     steps: list[tuple[str, str, str, str]]
     # (symbol, kind) of every occurrence of the string "reason_code", sorted, repeats kept
     occurrences: list[tuple[str, str]]
@@ -258,6 +261,14 @@ def _steps(symbol: str, member: ast.FunctionDef) -> list[tuple[str, str, str, st
     for stmt in member.body:
         if isinstance(stmt, ast.If) and not stmt.orelse and len(stmt.body) == 1:
             ret = stmt.body[0]
+            test = stmt.test
+            if (isinstance(ret, ast.Return) and (method := _self_call(ret.value)) is not None
+                    and isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], ast.Eq)
+                    and isinstance(test.left, ast.Subscript) and isinstance(test.left.slice, ast.Constant)
+                    and test.left.slice.value == "origin" and isinstance(test.comparators[0], ast.Constant)
+                    and isinstance(test.comparators[0].value, str)):
+                steps.append((symbol, "origin-hand-on", method, test.comparators[0].value))
+                continue
             call = _refusal_call(ret.value) if isinstance(ret, ast.Return) else None
             if call is None or len(call.args) < 2:
                 continue
@@ -407,6 +418,10 @@ def emitted(reading: Reading, registry: Mapping[str, Mapping[str, Any]],
             taken = {a for a in remaining if a != literal}
             remaining -= taken
             returns(symbol, "action", cause, taken)
+        elif kind == "origin-hand-on":
+            taken = {a for a in remaining if registry[a]["origin"] == cause}
+            remaining -= taken
+            handed.append((f"{symbol.rsplit('.', 1)[0]}.{literal}", taken))
         elif kind == "hand-on":
             handed.append((f"{symbol.rsplit('.', 1)[0]}.{literal}", set(remaining)))
     for symbol, actions in handed:
@@ -434,7 +449,9 @@ def build(ctx: C.Context) -> list[C.Record]:
 
     records: list[C.Record] = []
     for action, row in sorted(registry.items()):
-        reaches = (row["origin"] == reading.origin and action == reading.action) if found_shape else None
+        handed_on = {cause for _, kind, _, cause in reading.steps if kind == "origin-hand-on"}
+        reaches = ((row["origin"] == reading.origin and action == reading.action) or row["origin"] in handed_on
+                   ) if found_shape else None
         fact = {"action": action, "origin": row["origin"], "owner": row["sole_admitting_owner"],
                 "reaches_owner": reaches}
         problems = [] if found_shape else [C.unresolved_item(

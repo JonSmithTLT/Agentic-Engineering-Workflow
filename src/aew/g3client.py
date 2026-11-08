@@ -263,6 +263,10 @@ def read_token(path: str) -> str:
     return token
 
 
+# The route consumes a protected member as it admits it, so one that gave no receipt may have used it.
+_MAY_BE_USED = "the approval may have been used: submit again, with a new approval if this one is refused as used"
+
+
 def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
     """Step 5: ``POST /o01/v0/command-sets``, and its receipt (202). Every answer's text is built here, so the token
     reaches the request's one header and nothing else."""
@@ -276,8 +280,8 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
         raw = reply.read()
         status = reply.status
     except (OSError, http.client.HTTPException) as e:
-        raise Unavailable(f"the O-01 route at http://{host}:{port} did not answer ({type(e).__name__}); the "
-                          "approval is unused", reason="o01_unreachable") from None
+        raise Unavailable(f"the O-01 route at http://{host}:{port} did not answer ({type(e).__name__}); {_MAY_BE_USED}",
+                          reason="o01_unreachable") from None
     finally:
         conn.close()
     try:
@@ -291,7 +295,7 @@ def submit(cset: dict[str, Any], url: str, token: str) -> dict[str, Any]:
         raise PermissionDenied("the O-01 route did not accept the bearer token; the approval is unused",
                                reason="o01_unauthenticated")
     if status == 503:
-        raise Unavailable("the O-01 route is unavailable; the approval is unused", reason="o01_unavailable")
+        raise Unavailable(f"the O-01 route is unavailable; {_MAY_BE_USED}", reason="o01_unavailable")
     raise ValidationFailed(f"the O-01 route refused the set: {code or status}; the approval is unused",
                            reason="o01_refused", o01_code=code, status=status)
 
@@ -352,41 +356,49 @@ def probe(sock_path: str | None = None) -> str | None:
     return getattr(refused, "message", str(refused))
 
 
-def _held(standing: Any) -> str:
-    """Why a member was held for want of an origin, as the client finds it: what failed on this host, else the
-    project's policy, the client being bound to no project (addendum 7)."""
+def _held(standing: Any, answers: str | None) -> str:
+    """Why a member was held for want of an origin, as the client finds it: what failed on this host, else that the
+    service did not answer the probe (``answers``), else the project's policy, the client being bound to no project
+    (addendum 7)."""
     from aew.g3standing import POLICY_FIX
 
     if not standing.counts:
         return f"{standing.reason}. Fix: {standing.fix}"
+    if answers is not None:
+        return f"the G3 service does not answer: {answers}"
     return ("on this host G3 counts as far as the client can tell, so the project's policy is the likely cause: it "
             f"must keep every launch contained. Fix: {POLICY_FIX}")
 
 
 # What the operator is told of a member the owner did not admit, by its admission state and reason (addendum 7: the
-# notes are keyed on both). Each takes the host's standing, as the client found it after the submission.
-# Until the owners' side consumes G3 consent (the owner side's pull request), each note says no owner accepts it yet,
-# so a retry on a host where G3 counts is not taken for the fix (#365 review m2). That pull request removes it.
-NOT_YET = ("No owner accepts G3 consent yet: until AEW's owners do, no protected action is admitted whatever this "
-           "host's standing, and requesting it again changes nothing. What follows is what to fix for when they do. ")
-NOTES: dict[tuple[str, str], Callable[[Any], str]] = {
-    ("HELD", "ORIGIN_NOT_ESTABLISHED"): lambda st: (
+# notes are keyed on both). Each takes the host's standing, as the client found it after the submission, and the probe's
+# answer then (None when the service answered).
+AGAIN = "Nothing was admitted, and this approval is not used again: request the action again"
+NOTES: dict[tuple[str, str], Callable[[Any, str | None], str]] = {
+    ("HELD", "ORIGIN_NOT_ESTABLISHED"): lambda st, answers: (
         "Approved in the confirmer and submitted, and the owner held it: G3 does not count for it, so it accepted no "
-        f"consent. {NOT_YET}{_held(st)}. Nothing was admitted. Once G3 counts, request the action again: this "
-        "approval is not used again (addendum 5)."),
-    ("REJECTED", "ORIGIN_NOT_ESTABLISHED"): lambda st: (
-        "Approved in the confirmer and submitted, and the owner refused it: it found no consent it accepts for this "
-        "member. Nothing was admitted. " + NOT_YET + ("" if st.counts else f"On this host: {_held(st)}. ")
-        + "Request the action again once G3 counts; this approval is not used again."),
+        f"consent. {_held(st, answers)}. {AGAIN} once G3 counts (addendum 5)."),
+    ("REJECTED", "ORIGIN_NOT_ESTABLISHED"): lambda st, answers: (
+        "Approved in the confirmer and submitted, and the owner refused it: the G3 service has no consent record for "
+        f"this member. {AGAIN}."),
+    ("REJECTED", "ORIGIN_UNQUALIFIED"): lambda st, answers: (
+        "Approved in the confirmer and submitted, and the owner refused it: the consent is not one the G3 service "
+        f"issued for exactly this set, member and owner. {AGAIN}."),
+    ("REJECTED", "CURRENTNESS_EXPIRED"): lambda st, answers: (
+        f"Approved in the confirmer and submitted, and the owner refused it: the consent has expired. {AGAIN}."),
+    ("REJECTED", "CONSENT_ALREADY_USED_OR_MISSING"): lambda st, answers: (
+        "Approved in the confirmer and submitted, and the owner refused it: this member's consent was already used, "
+        f"and each is used once. {AGAIN}."),
 }
 
 
-def note(receipt: dict[str, Any], standing: Any) -> str | None:
+def note(receipt: dict[str, Any], standing: Any, answers: str | None = None) -> str | None:
     """The note for the first member the owner did not admit for a reason the client explains (:data:`NOTES`), or
-    None. ``standing`` is the host's, as :func:`aew.g3standing.standing` gives it to a reader bound to no project."""
+    None. ``standing`` is the host's, as :func:`aew.g3standing.standing` gives it to a reader bound to no project, and
+    ``answers`` is :func:`probe`'s."""
     for r in receipt.get("results", []):
         if isinstance(r, dict):
             said = NOTES.get((str(r.get("admission_state")), str(r.get("reason_code"))))
             if said:
-                return said(standing)
+                return said(standing, answers)
     return None

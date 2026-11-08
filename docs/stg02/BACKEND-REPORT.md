@@ -109,7 +109,7 @@ python -m aew.stg02.server --state-dir <dir> --tokens <synthetic tokens file> --
 
 ### Step 6: protected actions
 
-Shown held. `ATTACH_LEAD`, `REATTACH_LEAD`, `CLOSE_ATTACHMENT` and the rest of the G3 class get `REJECTED` / `ORIGIN_NOT_ESTABLISHED`, with no `operation_ref` and no owner record. `G3_unqualified` is on the continuation-state and owner-operations reads (BE-11).
+Shown held. `ATTACH_LEAD`, `REATTACH_LEAD`, `CLOSE_ATTACHMENT` and the rest of the G3 class get `HELD` / `ORIGIN_NOT_ESTABLISHED` while G3 does not count on the host, with no `operation_ref` and no owner record (hand-off addendum 5). Once it counts, the owner consumes each member: `CONSUMED` is `ADMITTED`, and a refusal is `REJECTED`. `G3_unqualified` is on the continuation-state and owner-operations reads (BE-11).
 
 ## 2. Wire fields that cannot be produced yet, and why
 
@@ -181,7 +181,7 @@ Before running against the server, the driver's self-test passed on this machine
 - the revoked delegation, an unknown proof and another actor;
 - mixed sets, consent on a delegated set, and member order;
 - `DELEGATED_CANCEL` with a current, bound delegation: held `SOURCE_UNAVAILABLE`, nothing allocated;
-- A04 `REAFFIRM_ELIGIBLE_CHILD_GRANTS`: `ORIGIN_NOT_ESTABLISHED`, nothing allocated;
+- A04 `REAFFIRM_ELIGIBLE_CHILD_GRANTS`: `HELD` / `ORIGIN_NOT_ESTABLISHED`, nothing allocated;
 - HEB's own outcomes from a fixed state: no eligibility for the work (`HEB_STATE_UNKNOWN`) is held, nothing allocated; a predecessor from an earlier HEB epoch (`HEB_STALE_PREDECESSOR`) is an allocated `PRECONDITION_STALE`;
 - an expired entry and a dropped receipt (`409 unresolved_no_redispatch`);
 - an owner record past its retention, never disclosed, before any purge has run;
@@ -200,7 +200,7 @@ Before running against the server, the driver's self-test passed on this machine
 ## 5. The four push-back points: what actually happened
 
 1. **Delegation issuance** (STG02-BE-06). A grant bound to the exact intent digest is per selection, not standing. It is invalidated by any HEB epoch change, and it is never consumed: one grant admitted the same intent under every new key. Revoked and forged are one code.
-2. **The session** (STG02-BE-07). Not used for A04, which is refused `ORIGIN_NOT_ESTABLISHED`. For reads, the bearer has no issuer. The driver at `75d30cf` sends the config's synthetic bearer (`--driver-bearer`); the slice's tokens are synthetic, and the labelled tokenless fixture recipient is left to the response recorder.
+2. **The session** (STG02-BE-07). Not used for A04, which is held `ORIGIN_NOT_ESTABLISHED`. For reads, the bearer has no issuer. The driver at `75d30cf` sends the config's synthetic bearer (`--driver-bearer`); the slice's tokens are synthetic, and the labelled tokenless fixture recipient is left to the response recorder.
 3. **Compare-and-fence across processes** (STG02-BE-08). No problem in the slice: one SQLite file, one `BEGIN IMMEDIATE` per submission, proved with two real processes. It holds only while the carrier's ledger and HEB share a store. With a separate HEB it becomes two commits, and only HEB-side idempotency on the carrier-derived identity closes the gap. The fence was exercised on the key ledger only: the fixture HEB's state never moves while the server runs, so the slice does not demonstrate the bound the BE-06 ruling assumes.
 4. **Retention** (STG02-BE-09). Durations chosen: receipt 900 s, stored receipt 7 days after expiry, owner records 30 days. The finding is that CS-04 forbids ever forgetting a key, so the key ledger is unbounded.
 

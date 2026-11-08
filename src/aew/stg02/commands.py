@@ -10,9 +10,10 @@ set-level Problem map; the sealed oracle (``03-ORACLE/command_admission.py``) is
          read entitlement -> missing or corrupt -> changed -> expired -> the stored receipt, exactly as issued
     member level, in request order (CS-05):
       4. ORIGIN first, before any owner state: the current delegated grant (SW-04: issuer and status, then the
-         binding to the exact intent, then expiry). A protected G3 member has no G3 service in the slice and a
-         current-successor member no authenticated session: both ORIGIN_NOT_ESTABLISHED, nothing allocated
-      5. only CONTINUE_ELIGIBLE_WORK reaches an owner: HEB's own state (the fixture world's eligibility and its
+         binding to the exact intent, then expiry). A current-successor member has no authenticated session in the
+         slice: HELD, ORIGIN_NOT_ESTABLISHED, nothing allocated (addendum 5). A protected G3 member goes by the host's
+         standing, then the member's one consume (G3-08; addendum 7, ruling 2): see ``Carrier._protected``
+      5. CONTINUE_ELIGIBLE_WORK reaches an owner's state: HEB's own (the fixture world's eligibility and its
          attachment), then at most one effect. HEB's refusal is an allocated operation; a hold allocates nothing
     6. one receipt, one result per intent in request order, stored under the key whatever the outcomes (CS-08)
 
@@ -20,16 +21,24 @@ The continuation vector is never read here: admission checks the grant and HEB's
 
 **HEB's effect is a labelled record, not scheduling.** An admitted continuation is recorded by the fixture HEB as
 ``EFFECT_CONFIRMED`` with a ``fixture:`` evidence ref; nothing in AEW continues or launches anything (live model and
-tool calls are out of the slice's scope).
+tool calls are out of the slice's scope). **A protected member the service consumed** is admitted with its operation
+and no effect observed: no owner here performs a protected action, and the receipt says only what happened.
+
+**The sealed oracle disagrees here by ruling.** It answers REJECTED for a member with no origin, and this route answers
+HELD (addendum 5: the profile and the wire govern; the oracle is a regression aid, not a conformance claim). It stays
+this route's cross-check on everything else.
 """
 
 from __future__ import annotations
 
 import copy
 import hashlib
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
+from aew import g3client as G3
+from aew import g3standing as standing
 from aew.stg02 import adopted as A
 from aew.stg02 import wire as W
 from aew.stg02.ledger import Ledger
@@ -40,6 +49,7 @@ ORIGIN_CLASS = {"PROTECTED_G3": "OPERATOR_RESERVED", "CURRENT_DELEGATED_GRANT": 
                 "CURRENT_SUCCESSOR_GENERATION": "CURRENT_SUCCESSOR_GENERATION"}
 RESULT = {  # outcome -> (admission_state, effect_state, residual_remote_effect), A-24 SW-06
     "EFFECT_CONFIRMED": ("ADMITTED", "EFFECT_CONFIRMED", "NOT_ESTABLISHED"),
+    "ADMITTED": ("ADMITTED", "NOT_OBSERVED", "NOT_ESTABLISHED"),  # a consumed protected member: no effect is claimed
     "REFUSED_ALLOCATED": ("REJECTED", "FAILED_CONFIRMED_NO_EFFECT", "NONE_QUALIFIED"),
     "REFUSED": ("REJECTED", "NOT_OBSERVED", "NOT_ESTABLISHED"),
     "HELD": ("HELD", "NOT_OBSERVED", "NOT_ESTABLISHED")}
@@ -61,19 +71,27 @@ class Refused(Exception):
         self.code = A.set_problems()[cause]["code"]
 
 
-def refusal(action: str, cause: str, *, allocated: bool = False) -> dict[str, Any]:
+def refusal(action: str, cause: str, *, allocated: bool = False, held: bool = False) -> dict[str, Any]:
+    """``held``: no qualified origin route exists or answers, so the member is held under the same reason (addendum 5:
+    the reason code is one, and the origin condition decides the state). No other cause is ever held this way."""
+    if held and cause != "ORIGIN_NOT_ESTABLISHED":
+        raise AssertionError(f"{action} {cause} is never held for want of an origin")
     reason = A.refusals().get(action, {}).get(cause) or SLICE_OWNER_REASONS.get(action, {}).get(cause)
     if reason is None:  # fail closed: never a default code
         raise AssertionError(f"no reason code for {action} {cause}")
-    if reason == "SOURCE_UNAVAILABLE":
+    if held or reason == "SOURCE_UNAVAILABLE":
         return {"outcome": "HELD", "reason_code": reason, "owner_reason": cause}
     return {"outcome": "REFUSED_ALLOCATED" if allocated else "REFUSED", "reason_code": reason, "owner_reason": cause}
 
 
 class Carrier:
-    def __init__(self, fixture: Fixture, ledger: Ledger) -> None:
+    def __init__(self, fixture: Fixture, ledger: Ledger,
+                 policy: Callable[[], dict[str, Any] | None] | None = None) -> None:
+        """``policy`` reads the project's execution policy as a launch reads it, through its pin. A carrier started
+        with no project has none, so its G3 members are held (addendum 7)."""
         self.fx = fixture
         self.ledger = ledger
+        self.policy = policy
 
     @property
     def receipt_valid_s(self) -> int:
@@ -118,7 +136,7 @@ class Carrier:
             members = []
             for i in req["intents"]:
                 m = self._member(req, i, t, now)
-                if m["outcome"] in ("EFFECT_CONFIRMED", "REFUSED_ALLOCATED"):
+                if m["outcome"] in ("EFFECT_CONFIRMED", "ADMITTED", "REFUSED_ALLOCATED"):
                     m["operation_ref"] = self._allocate(req, i, m, t, now)
                 m.update(intent_ref=i["intent_ref"], action=i["action"])
                 members.append(m)
@@ -137,16 +155,47 @@ class Carrier:
         r = REGISTRY[action]
         if i["owner_hint"] != r["sole_admitting_owner"] or i["authority_class"] != ORIGIN_CLASS[r["origin"]]:
             raise AssertionError(f"{action}: the schema accepted an intent the registry disagrees with")
+        if r["origin"] == "PROTECTED_G3":
+            return self._protected(req, i, r["sole_admitting_owner"])
         if r["origin"] != "CURRENT_DELEGATED_GRANT":
-            # No G3 consent service and no authenticated successor session exist in the slice: no origin, so no
-            # owner state is read and nothing is allocated (REFUSE_OR_HOLD_NO_G3; HELD_UNLESS_QUALIFIED_SUCCESSOR...).
-            return refusal(action, "ORIGIN_NOT_ESTABLISHED")
+            # No authenticated successor session exists in the slice: no origin, so no owner state is read and nothing
+            # is allocated (HELD_UNLESS_QUALIFIED_SUCCESSOR...; addendum 5).
+            return refusal(action, "ORIGIN_NOT_ESTABLISHED", held=True)
         e = self._delegation(req, i, now)
         if e:
             return refusal(action, e)
         if action != "CONTINUE_ELIGIBLE_WORK":
             return refusal(action, "NOT_MODELLED")  # DELEGATED_CANCEL: its HEB effect is not in the slice
         return self._heb_continue(i, t)
+
+    def _protected(self, req: dict[str, Any], i: dict[str, Any], owner: str) -> dict[str, Any]:
+        """A G3-protected member (addendum 7, ruling 2; G3-08). The standing is computed per request, never cached, and
+        not checked again after CONSUMED: a re-check could only burn a one-use member approved while all was contained.
+        A failing standing and a service that does not answer are held; a service that answers and refuses the proof
+        presented is rejected (addendum 5). Nothing is allocated unless it is consumed."""
+        if self.policy is None or not standing.standing(self.policy()).counts:
+            return refusal(i["action"], "ORIGIN_NOT_ESTABLISHED", held=True)  # consume is not called
+        if i["origin_proof_ref"] is None:  # the schema allows it, and the wire does not: no proof to present
+            return refusal(i["action"], "ORIGIN_NOT_ESTABLISHED", held=True)
+        got = G3.consume(consent_set_ref=req["consent_set_ref"], set_digest=W.set_digest(req),
+                         recipient_ref=req["recipient_ref"], installation_ref=req["installation_ref"],
+                         intent_ref=i["intent_ref"], origin_proof_ref=i["origin_proof_ref"], owner=owner,
+                         operation_ref=self._operation_ref(req, i, owner))
+        if got.result is None:
+            return refusal(i["action"], "ORIGIN_NOT_ESTABLISHED", held=True)
+        if got.result == "CONSUMED":
+            return {"outcome": "ADMITTED", "reason_code": None, "owner_reason": None}
+        # Each ConsumeResult by name, through the carrier's own table (addendum 7), so the reading of this module sees
+        # every cause, and a result no one has named here is the client's to refuse.
+        if got.result == "CONSENT_ISSUER_UNVERIFIED":
+            return refusal(i["action"], "CONSENT_ISSUER_UNVERIFIED")
+        if got.result == "CONSENT_EXPIRED":
+            return refusal(i["action"], "CONSENT_EXPIRED")
+        if got.result == "CONSENT_SCOPE_MISMATCH":
+            return refusal(i["action"], "CONSENT_SCOPE_MISMATCH")
+        if got.result == "CONSENT_ALREADY_USED":
+            return refusal(i["action"], "CONSENT_ALREADY_USED")
+        return refusal(i["action"], "ORIGIN_NOT_ESTABLISHED")  # the service answered: it has no such record (G3-08)
 
     def _delegation(self, req: dict[str, Any], i: dict[str, Any], now: datetime) -> str | None:
         """A-24 SW-04, in the adopted order: a current proof from the trusted issuer; bound to this exact intent,
@@ -177,23 +226,29 @@ class Carrier:
             return refusal(i["action"], "WORK_NOT_CURRENTLY_ELIGIBLE", allocated=True)
         return {"outcome": "EFFECT_CONFIRMED", "reason_code": None, "owner_reason": None}
 
+    @staticmethod
+    def _operation_ref(req: dict[str, Any], i: dict[str, Any], owner: str) -> str:
+        """The owner issues the operation's identity: one per (key, set, member), so it is unique (CS-08). A protected
+        member's is computed before consume, which records the member against it (G3-08)."""
+        return "op:" + hashlib.sha256(W.canonical([owner, req["client_request_key"], W.set_digest(req),
+                                                   i["intent_ref"]])).hexdigest()[:32]
+
     def _allocate(self, req: dict[str, Any], i: dict[str, Any], m: dict[str, Any], t: Any, now: datetime) -> str:
-        """HEB issues the operation's identity: one per (key, set, member), so it is unique (CS-08)."""
         owner = REGISTRY[i["action"]]["sole_admitting_owner"]
-        h = hashlib.sha256(W.canonical([owner, req["client_request_key"], W.set_digest(req),
-                                        i["intent_ref"]])).hexdigest()[:32]
+        op = self._operation_ref(req, i, owner)
+        h = op.removeprefix("op:")
         a, e, res = RESULT[m["outcome"]]
-        op = "op:" + h
         record = {"owner": owner, "operation_ref": op, "action": i["action"], "intent_ref": i["intent_ref"],
                   "request_set_ref": req["request_set_ref"], "recipient_ref": req["recipient_ref"],
                   "installation_ref": req["installation_ref"], "consent_set_digest": W.set_digest(req),
-                  "intent_digest": W.intent_digest(i), "subject_ref": i["target"]["work_ref"],
+                  "intent_digest": W.intent_digest(i), "subject_ref": i["target"].get("work_ref") or i["intent_ref"],
                   "attachment_ref": i["subject"]["attachment_ref"],
                   "attachment_generation": i["subject"]["generation_ref"],
                   "issued_at": W.utc(now), "owner_reason": m["owner_reason"],
                   "result": {"intent_ref": i["intent_ref"], "owner": owner, "operation_ref": op, "admission_state": a,
                              "effect_state": e, "cancellation_state": "NONE", "residual_remote_effect": res,
-                             "owner_evidence_ref": "fixture:heb-evidence-" + h, "reason_code": m["reason_code"]}}
+                             "owner_evidence_ref": None if m["outcome"] == "ADMITTED" else "fixture:heb-evidence-" + h,
+                             "reason_code": m["reason_code"]}}
         t.add_owner_op(record, now)
         return op
 

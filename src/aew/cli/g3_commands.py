@@ -70,7 +70,7 @@ def _request(a: argparse.Namespace) -> Any:
     receipt = C.submit(C.approved_set(proved, record), a.o01, token)
     out = {"approval_ref": pending["approval_ref"], "consent_set_ref": record.get("consent_set_ref"),
            "set_digest": record.get("set_digest"), "receipt": receipt,
-           "note": C.note(receipt, S.standing(project=False))}
+           "note": C.note(receipt, S.standing(project=False), C.probe())}
     if a.json:
         return out
     # the ref names itself (`consent:g3:...`): no label before it (the operator's G3-D trial, 2026-10-28)

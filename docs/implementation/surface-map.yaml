@@ -173,7 +173,8 @@ commands:
     users: [operator]
     journeys: [V1, V2, V3, V4]
     mutates: "yes"
-    mutates_basis: "creates the project's manifest and control state (Engine.initialize); then downloads the tools
+    mutates_basis: "creates the project's manifest and control state (Engine.initialize); generates and selects the
+      first project map in the derived local/maps/ (maps.service.first_map); then downloads the tools
       AEW brings that the operator chooses, at the consent screen on a terminal or by --fetch-tool, into the host's
       capability register"
     refusals: [INTEGRITY_ERROR, NOT_FOUND, USAGE, VALIDATION_FAILED]

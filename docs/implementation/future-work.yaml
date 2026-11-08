@@ -413,8 +413,10 @@ sections:
     Work: 'Mutating concurrency above 1: integration queue, merge revalidation'
     Source (governing): 'Serves `HEB-06.c`; position A-06; the operator''s decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md`
       (design workspace `cffb1ee`). Design inputs as held, not authority: `m1-implementation-plan.md`; `implementation-status.md`'
-    Belongs to or gated by: '**Internal alpha.** Right after E151 merges, with the `gates.yaml` migration, after first use.
-      Restored from HOLD-06 by the hold match (operator, 2026-11-06); its matched scope is its note of that day'
+    Belongs to or gated by: '**Internal alpha.** E151 has merged. The reset of 2026-11-06 reversed "after first use", and
+      the operator confirmed that on 2026-11-07 (this row''s note of 2026-11-07). The offer to switch an existing project
+      replaces the `gates.yaml` migration. Restored from HOLD-06 by the hold match (operator, 2026-11-06); its matched scope
+      is its note of that day'
     Notes: 'Interacts with F3. Research (not governing): [`m4-integration-queue-research-2026-10-01.md`](../research/m4-integration-queue-research-2026-10-01.md),
       which compares serial, speculative and batched queues and recommends a serial integration tail over parallel implementation
       first. **Designer''s disposition (2026-10-01, research §7):** parallel Ticket execution with a single serial integration

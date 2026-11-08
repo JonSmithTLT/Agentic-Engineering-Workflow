@@ -101,6 +101,20 @@ class Move(NamedTuple):
     post_verify: bool = False  # only where a post-integration verifier is required
 
 
+# Filled in per project, since it reads the policy's cap (`_scope_rule`): `PATH` is a constant.
+SCOPE_RULE = "<scope rule>"
+
+
+def _scope_rule(cap: int) -> str:
+    """What a Ticket's scope decides. Above a cap of 1 it also decides what runs beside the Ticket (E151's launch
+    conflict check compares scopes), so a Lead that gives every Ticket the whole tree runs them one at a time."""
+    if cap <= 1:
+        return ("Its scope is fixed once the Ticket exists, so give every path the change may touch; one mutating "
+                "Ticket works at a time here.")
+    return (f"Its scope is fixed once the Ticket exists, and up to {cap} mutating Tickets work at once here when their "
+            "scopes cannot name the same file: name every path this change needs, and no more.")
+
+
 def _transition(to: str, note: str = "") -> Move:
     return Move("work.transition", to, f"{TRANSITION} to {to}", label=f"Move it to {to}", note=note)
 
@@ -108,9 +122,8 @@ def _transition(to: str, note: str = "") -> Move:
 # The path, in order.
 PATH = (
     Move("work.create", None, CREATE_TICKET, label="Create the Ticket",
-         note="Its scope is fixed once the Ticket exists, so give every path the change may touch; creation warns "
-              "about a scope glob that matches no file. A Class 0 Ticket's assertions and acceptance check take the "
-              "shell command."),
+         note=f"{SCOPE_RULE} Creation warns about a scope glob that matches no file. A Class 0 Ticket's assertions and "
+              "acceptance check take the shell command."),
     Move("plan.propose", None, f"`aew plan propose <T> --file - --assurance none {EXPECT_REV}` (the plan in a quoted "
                                "heredoc)", label="Propose the plan",
          note="Every plan declares its assurance: none, or the review and verification cards (in the shell "
@@ -172,7 +185,7 @@ def _joined(shells: list[str]) -> str:
     return out
 
 
-def _steps_text(stages: Sequence[Stage], post_verify: bool) -> list[str]:
+def _steps_text(stages: Sequence[Stage], post_verify: bool, cap: int) -> list[str]:
     """The path's numbered steps: consecutive moves one stage covers are one step, led by that tool with its shell
     commands as the fallback; consecutive moves no stage covers are a step of their own, led by the shell command."""
     groups: list[tuple[Stage | None, list[Move]]] = []
@@ -187,7 +200,7 @@ def _steps_text(stages: Sequence[Stage], post_verify: bool) -> list[str]:
             groups.append((stage, [move]))
     out = []
     for n, (stage, moves) in enumerate(groups, start=1):
-        notes = " ".join(m.note for m in moves if m.note)
+        notes = " ".join(m.note for m in moves if m.note).replace(SCOPE_RULE, _scope_rule(cap))
         shells = _joined([m.shell for m in moves])
         gap = "" if shells.startswith("\n") else " "  # a fenced command opens on its own line
         if stage is None:
@@ -292,6 +305,8 @@ def staffing_text() -> str:
 
 
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: Sequence[Stage]) -> str:
+    from aew.engine.workspace_ops import mutating_cap  # local: its imports reach the harness, which reaches this text
+
     paths = gates_policy.get("risk_paths") or {}
     local = gates_policy.get("local_checks") or []
     checks = ", ".join(f"`{c}`" for c in local) or "none configured"
@@ -407,7 +422,7 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         f"\"{TRANSITION}\" means {_command('transition')}, and \"{WITH_REASON}\" adds `--reason <reason>`.",
         "",
         *([staffing, ""] if (staffing := staffing_text()) else []),
-        *_steps_text(stages, post_verify),
+        *_steps_text(stages, post_verify, mutating_cap(gates_policy)),
         "",
         "Each state and the moves out of it (the engine refuses any other):",
         "",

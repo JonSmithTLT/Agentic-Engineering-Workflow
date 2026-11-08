@@ -124,8 +124,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--depends-on", action="append", default=[], metavar="ID[:mutating|evidence]")
     q.add_argument("--non-mutating", action="store_true", help="Ticket changes no source (evidence only)")
     q.add_argument("--scope", action="append", default=[], metavar="GLOB",
-                   help="an allowed change path glob; repeat --scope for each "
-                        "(e.g. --scope 'src/**' --scope 'tests/**')")
+                   help="an allowed change path glob, no wider than the change needs: Tickets run at once only "
+                        "when their scopes cannot name the same file; repeat --scope for each "
+                        "(e.g. --scope 'src/calc/**' --scope 'tests/test_calc.py')")
     q.add_argument("--goal", action="append", default=[], help="goal-backwards acceptance criterion")
     q.add_argument("--contract", action="append", default=[], help="contract/conformance criterion")
     q.add_argument("--mandatory-gate", action="append", default=[],

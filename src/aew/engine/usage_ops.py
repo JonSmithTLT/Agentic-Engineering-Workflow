@@ -571,7 +571,7 @@ class Reader:
         totals["invocations_without_runs"] = 0 if rows else 1
         for row in rows:
             _count_row(totals, row)
-        return {"invocation": inv_id, "work_unit": inv.get("work_unit"), "rows": [_public(r) for r in rows],
+        return {"invocation": inv_id, "work_unit": inv.get("work_unit"), "rows": [public_row(r) for r in rows],
                 "totals": totals}
 
 
@@ -633,7 +633,8 @@ def _count_models(by_model: dict[str, Any], row: Mapping[str, Any]) -> None:
         model["estimated_under_current_prices_usd"] += current_parts.get(key, Decimal(0))
 
 
-def _public(row: Mapping[str, Any]) -> dict[str, Any]:
+def public_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    """A run row without its private parts (the priced parts the model tally reads)."""
     return {k: v for k, v in row.items() if not k.startswith("_")}
 
 
@@ -703,3 +704,175 @@ def to_json(value: Any) -> Any:
     if isinstance(value, list | tuple):
         return [to_json(v) for v in value]
     return value
+
+
+# --------------------------------------------------------------------------- surfaces (R9): `aew usage show`, status
+
+# The status report's summary (R9: "one bounded `usage` summary for the hot state: runs counted, tokens summed,
+# unpriced count, nothing more"): these keys of the hot projection's totals, never a second count.
+SUMMARY_KEYS = ("runs", "recorded", "provisional", "missing", "invocations", "invocations_without_runs", "tokens",
+                "estimated_at_record", "estimated_under_current_prices")
+
+
+# IF10-14's typed financial states (A-21), as the read surfaces name them: a priced figure is a cooperative observation,
+# never a settlement or a reserved budget; an unpriced one is unknown exposure, never zero (the hold match of
+# 2026-11-06 on F25: "use IF10-14's states rather than 'estimated'").
+OBSERVED = "USAGE_OBSERVED_COOPERATIVE"
+UNKNOWN_EXPOSURE = "UNPRICED_OR_UNKNOWN_EXPOSURE"
+STATES = {"usd": OBSERVED, "unpriced": UNKNOWN_EXPOSURE}  # a figure's key names its state
+ALTERED_BY = ("each run's own harness reports its counters into its run record, which the run's user can write until "
+              "the Lead's next transaction copies it into control state")
+
+
+def basis(prices: Prices | None) -> dict[str, Any]:
+    """What every figure of a read rests on (IF10-11): who can alter the records, that no per-task cap is enforced
+    and no account bound is known, the estimate method and the table in force now. A run's own freshness is its
+    ``recorded_at`` (or ``provisional``), and its table at record is its ``pricing_sha256``."""
+    return {
+        "states": STATES,
+        "altered_by": ALTERED_BY,
+        "per_task_enforcement": "none: AEW enforces no cap on a run, Ticket or project (F25 R10)",
+        "external_account_bound": "unknown",
+        "method": "the price table's per-million-token rates over the run's harness-reported counters, bucketed by "
+                  "its declared token semantics; at record under the table in force when it was copied, and under "
+                  "the table in force now",
+        "current_table": None if prices is None else {"sha256": prices.sha256, "as_of": prices.table["as_of"],
+                                                      "source": prices.table.get("source")},
+    }
+
+
+def hot_summary(state: Mapping[str, Any], reader: Reader) -> dict[str, Any]:
+    """`aew status`'s usage summary: the hot state's projection (no archived unit is read), cut to ``SUMMARY_KEYS``.
+    Its scope says so, so it is never read as the project's total (R7)."""
+    totals = project_projection(state, reader)["totals"]
+    return {"scope": "hot", "archive_complete": False, **{k: totals[k] for k in SUMMARY_KEYS}}
+
+
+def money(usd: Decimal | float) -> str:
+    """Dollars exactly, as the derivation computed them, trailing zeros dropped: a small cost never prints as a
+    rounded zero. A JSON view's number (the status report's summary is JSON) is read back through its shortest text."""
+    return f"${Decimal(str(usd)).normalize():f}"
+
+
+def _reasons(reasons: Mapping[str, int]) -> str:
+    return ", ".join(f"{reason} x{n}" for reason, n in sorted(reasons.items()))
+
+
+def figure_text(figure: Mapping[str, Any]) -> str:
+    """A summed figure (``priced``, ``unpriced``, ``usd``, ``reasons``) as text. A dollar amount is printed only over
+    priced runs, and the unpriced runs are always counted beside it with their reasons (R4: unpriced is never zero)."""
+    if not figure["priced"] and not figure["unpriced"]:
+        return "no runs"
+    if not figure["priced"]:
+        return f"{UNKNOWN_EXPOSURE} ({_reasons(figure['reasons'])})"
+    text = f"{money(figure['usd'])} {OBSERVED} over {figure['priced']} priced run(s)"
+    if figure["unpriced"]:
+        text += f", and {figure['unpriced']} {UNKNOWN_EXPOSURE} ({_reasons(figure['reasons'])})"
+    return text
+
+
+def _row_figure(figure: Mapping[str, Any]) -> str:
+    return f"{money(figure['usd'])} {OBSERVED}" if "usd" in figure else f"{UNKNOWN_EXPOSURE} ({figure['unpriced']})"
+
+
+def tokens_text(tokens: Mapping[str, int]) -> str:
+    return ", ".join(f"{c} {int(tokens.get(c) or 0):,}" for c in U.CATEGORIES if c != "unknown" or tokens.get(c))
+
+
+def _runs_text(totals: Mapping[str, Any]) -> str:
+    text = f"{totals['runs']} run(s): {totals['recorded']} recorded, {totals['provisional']} provisional"
+    if totals["missing"]:  # R6: a total never skips a missing run without saying how many
+        text += f", {totals['missing']} MISSING (usage lost, not counted as zero)"
+    return text
+
+
+def summary_line(summary: Mapping[str, Any]) -> str:
+    """`aew status`'s one usage line."""
+    if not summary["runs"]:
+        return "Usage (hot work): no runs yet"
+    return (f"Usage (hot work): {_runs_text(summary)}; tokens {tokens_text(summary['tokens'])}; cost "
+            f"{figure_text(summary['estimated_at_record'])}"
+            + _current_suffix(summary["estimated_at_record"], summary["estimated_under_current_prices"]))
+
+
+def _current_suffix(at_record: Mapping[str, Any], current: Mapping[str, Any]) -> str:
+    """The figure under today's table, when it says something the recorded one does not."""
+    same = (at_record["priced"], at_record["unpriced"], at_record["usd"], at_record["reasons"]) == (
+        current["priced"], current["unpriced"], current["usd"], current["reasons"])
+    return "" if same else f"; under current prices {figure_text(current)}"
+
+
+def _totals_lines(totals: Mapping[str, Any], indent: str) -> list[str]:
+    lines = [f"{indent}{_runs_text(totals)}"]
+    if totals["invocations_without_runs"]:
+        lines.append(f"{indent}{totals['invocations_without_runs']} invocation(s) without runs")
+    if not totals["runs"]:
+        return lines
+    lines += [f"{indent}tokens: {tokens_text(totals['tokens'])}",
+              f"{indent}cost at record prices: {figure_text(totals['estimated_at_record'])}",
+              f"{indent}cost under current prices: {figure_text(totals['estimated_under_current_prices'])}"]
+    cost = totals["provider_cost"]
+    if cost["reported"]:
+        lines.append(f"{indent}provider cost as the harness reported it ({OBSERVED}): {money(cost['reported_usd'])} "
+                     f"over {cost['reported']} run(s)")
+    for key, model in sorted(totals["by_model"].items()):
+        lines.append(f"{indent}  {key}: {model['runs']} run(s), tokens {tokens_text(model['tokens'])}")
+    return lines
+
+
+def _row_lines(row: Mapping[str, Any], indent: str) -> list[str]:
+    record = row["usage"] or {}
+    tokens = tokens_text(record.get("tokens") or {}) if record else "none"
+    trust = record.get("tokens_trust", "absent") if record else "missing"
+    fresh = f"recorded {record['recorded_at']}" if row["state"] == "recorded" else row["state"]
+    return [f"{indent}{row['run']} [{fresh}, tokens {trust}]: {tokens}",
+            f"{indent}  cost at record prices {_row_figure(row['estimated_at_record'])}; under current prices "
+            f"{_row_figure(row['estimated_under_current_prices'])}"]
+
+
+def _invocation_lines(inv: Mapping[str, Any], indent: str) -> list[str]:
+    lines = [f"{indent}{inv['invocation']}" + (f" ({inv['work_unit']})" if inv.get("work_unit") else "")]
+    for row in inv["rows"]:
+        lines += _row_lines(row, indent + "  ")
+    return lines + _totals_lines(inv["totals"], indent + "  ")
+
+
+def _unit_lines(unit: Mapping[str, Any], indent: str) -> list[str]:
+    lines = [f"{indent}{unit['unit']}" + (f" ({unit['kind']})" if unit.get("kind") else ""),
+             f"{indent}  own:", *_totals_lines(unit["own"], indent + "    ")]
+    if unit["children"]:
+        lines += [f"{indent}  descendants:", *_totals_lines(unit["descendants"], indent + "    ")]
+    for inv in unit["invocations"]:
+        lines += _invocation_lines(inv, indent + "  ")
+    for child in unit["children"]:
+        lines += _unit_lines(child, indent + "  ")
+    return lines
+
+
+def basis_lines(about: Mapping[str, Any]) -> list[str]:
+    """IF10-11's disclosures, conspicuously, under every view."""
+    table = about["current_table"]
+    return ["", f"These are cooperative observations ({OBSERVED}), not a bill or a budget: {about['altered_by']}.",
+            f"Per-task enforcement: {about['per_task_enforcement']}. External account bound: "
+            f"{about['external_account_bound']}.",
+            f"Cost method: {about['method']}. Table in force now: "
+            + (f"as of {table['as_of']}, sha256 {table['sha256'][:12]}" if table else
+               f"none, so every figure under current prices is {UNKNOWN_EXPOSURE}") + "."]
+
+
+def render_show(view: Mapping[str, Any]) -> str:
+    """`aew usage show`'s text: the same projection the JSON is, a block per level (R9), and its basis (IF10-11)."""
+    kind = view["target"]["kind"]
+    if kind == "run":
+        lines = _row_lines(view["row"], "")
+    elif kind == "invocation":
+        lines = _invocation_lines(view, "")
+    elif kind == "unit":
+        lines = _unit_lines(view, "")
+    else:
+        scope = view["scope"] + (f" (since {view['since']}, until {view['until']})"
+                                 if view["scope"] == "window" else "")
+        complete = "complete" if view["archive_complete"] else "not a lifetime total"
+        lines = [f"Project usage, scope {scope}: {view['units']} unit(s); {complete}",
+                 *_totals_lines(view["totals"], "  ")]
+    return "\n".join([*lines, *basis_lines(view["basis"])])

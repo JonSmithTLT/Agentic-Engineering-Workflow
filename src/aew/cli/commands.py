@@ -141,6 +141,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
         map_commands,
         operator_commands,
         settings_commands,
+        usage_commands,
         work_commands,
     )
 
@@ -151,6 +152,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     operator_commands.register(sub)
     settings_commands.register(sub)
     capability_commands.register(sub)  # the capability register (STG-15, CAP-1)
+    usage_commands.register(sub)  # the cost and usage ledger's reads (F25 R9)
     g3_commands.register(sub)  # the G3 client (STG-03, G3-D)
     if coordination_reads:  # F9-A (plan D-31): only while messaging is on or a thread exists, never in a run
         from aew.cli import message_commands

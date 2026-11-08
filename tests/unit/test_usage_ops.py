@@ -544,3 +544,39 @@ def test_roll_ups_equal_the_sum_of_their_parts_and_the_counts_partition_the_runs
     assert priced > 0
     assert seen >= {O.UNPRICED_SEMANTICS_UNKNOWN, O.UNPRICED_INCONSISTENT, O.UNPRICED_CATEGORY, O.UNPRICED_MIX,
                     O.UNPRICED_MODEL, O.UNPRICED_NO_TABLE, O.UNPRICED_NOT_RECORDED, O.UNPRICED_USAGE_MISSING}, seen
+
+
+# --------------------------------------------------------------------------- the surfaces' text (R9)
+
+
+def _figure(usd: str, priced: int, unpriced: int, reasons: dict[str, int] | None = None) -> dict[str, Any]:
+    return {"usd": Decimal(usd), "priced": priced, "unpriced": unpriced, "reasons": reasons or {}}
+
+
+def test_a_figure_without_a_priced_run_never_prints_a_dollar_amount():
+    """R4, IF10-14: a total with no priced run is unknown exposure with its reasons, never `$0`; one with some priced
+    runs names the unpriced ones beside its amount, so a partial sum is never read as the whole."""
+    unpriced = O.figure_text(_figure("0", 0, 2, {O.UNPRICED_NO_TABLE: 2}))
+    assert unpriced == f"UNPRICED_OR_UNKNOWN_EXPOSURE ({O.UNPRICED_NO_TABLE} x2)" and "$" not in unpriced
+    mixed = O.figure_text(_figure("0.5", 1, 1, {O.UNPRICED_MODEL: 1}))
+    assert mixed == (f"$0.5 USAGE_OBSERVED_COOPERATIVE over 1 priced run(s), and 1 UNPRICED_OR_UNKNOWN_EXPOSURE "
+                     f"({O.UNPRICED_MODEL} x1)")
+    assert O.figure_text(_figure("0", 0, 0)) == "no runs"
+
+
+def test_a_tiny_cost_never_prints_as_a_rounded_zero():
+    """Prices are per million tokens: one token at a cheap rate is a fraction of a millionth, printed exactly."""
+    assert O.money(Decimal(1) * Decimal("0.075") / Decimal(1_000_000)) == "$0.000000075"
+    assert O.money(Decimal("0.0052000")) == "$0.0052"
+    assert O.money(5.2e-08) == "$0.000000052"  # the status summary's JSON number
+
+
+def test_the_status_summary_is_the_hot_projection_cut_to_its_keys(tmp_path):
+    """R9: `aew status`'s summary is the hot projection's own totals for ``SUMMARY_KEYS`` (no second count), says it
+    covers the hot state only, and reads no archived unit."""
+    state = {"work": {"T-1": {"kind": "ticket"}}, "invocations": {"INV-1": {"work_unit": "T-1", "runs": []}}}
+    reader = O.Reader(tmp_path, None)
+    summary = O.hot_summary(state, reader)
+    totals = O.project_projection(state, reader)["totals"]
+    assert summary == {"scope": "hot", "archive_complete": False, **{k: totals[k] for k in O.SUMMARY_KEYS}}
+    assert O.summary_line(summary) == "Usage (hot work): no runs yet"

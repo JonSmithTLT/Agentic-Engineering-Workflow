@@ -15,7 +15,7 @@ from fake_harness import HarnessLab
 from invariants import assert_control_invariants
 
 from aew.knowledge.manifest import DEFAULT_GATES
-from aew.util import load_yaml
+from aew.util import dump_yaml, load_yaml
 
 ONE = {"calc/one.py": "ONE = 1\n",
        "tests/test_one.py": "from calc.one import ONE\n\n\ndef test_one():\n    assert ONE == 1\n"}
@@ -70,25 +70,46 @@ def test_at_the_default_cap_a_disjoint_pair_runs_at_once_and_integrates_one_afte
     for wid in (first, second):
         runs.append(lab.lead("work", "assign", wid, "--launch")["launch"]["run"])
         p.lead("work", "transition", wid, "--to", "RUNNING")
-    # Each run waits for the other's announcement before it writes, so both ending with evidence proves both ran at
-    # once: at a cap of 1 the second assignment is refused and the first run waits out its timeout.
     for run in runs:
         assert lab.wait(run)["status"] == "ended_with_evidence", lab.record(run)
+    # Each run waited for the other's announcement before it wrote, so each having seen it proves both ran at once: a
+    # wait that times out only reports `found: false` and the script goes on, so ending with evidence proves nothing.
+    for run in runs:
+        assert lab.step(run, 1)["found"], lab.transcript(run)
     # The planted control: the cap is 2, not unlimited, so a third mutating Ticket meets it.
     third = create_planned_ticket(p, tmp_path, title="Add three", scope=("calc/three.py",))
     res = p.aew("work", "assign", third, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
     assert res.returncode == 5 and res.error["code"] == "CONCURRENCY_LIMIT", res.error
     assert "mutating concurrency is 2" in res.error["message"]
     assert res.error["details"]["holding"] == sorted([first, second])
+    assert "integrate or cancel one of them to free a place" in res.error["message"]  # what to do instead
 
     for wid in (first, second):
         to_commit_ready(p, wid)
     one = integrate(p, first)
-    two = integrate(p, second)  # built on the head the first moved, through the same lease
+    two = integrate(p, second)  # built on the head the first moved
     assert git("rev-parse", f"{two['integrated_commit']}~1", cwd=p.root) == one["integrated_commit"]
     tree = git("ls-tree", "-r", "--name-only", "main", cwd=p.root).splitlines()
     assert set(ONE) | set(TWO) <= set(tree)
     assert_control_invariants(p)
+
+
+def test_a_gates_file_without_the_key_reads_the_default_at_admission_and_in_doctor(tmp_path):
+    """ADR-0003's amendment of 2026-11-07: an absent key means `DEFAULT_GATES`'s value, not 1, wherever it is read."""
+    p = sample_project(tmp_path)
+    path = p.root / ".aew/policy/gates.yaml"
+    gates = load_yaml(path.read_text(encoding="utf-8"))
+    del gates["mutating_concurrency"]
+    path.write_text(dump_yaml(gates), encoding="utf-8", newline="\n")
+    p.pin_policy()
+    cap = DEFAULT_GATES["mutating_concurrency"]
+    [check] = [c for c in p.ok("doctor", "--json")["checks"] if c["check"] == "mutating-concurrency"]
+    assert check["detail"].startswith(f"{cap}: up to {cap} mutating Ticket(s)"), check
+    p.lead("work", "assign", create_planned_ticket(p, tmp_path, title="Add one", scope=tuple(ONE)))
+    p.lead("work", "assign", create_planned_ticket(p, tmp_path, title="Add two", scope=tuple(TWO)))
+    third = create_planned_ticket(p, tmp_path, title="Add three", scope=("calc/three.py",))
+    res = p.aew("work", "assign", third, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    assert res.error["code"] == "CONCURRENCY_LIMIT" and res.error["details"]["cap"] == cap, res.error
 
 
 def test_at_the_default_cap_an_overlapping_pair_is_held_by_the_launch_conflict_check(lab, tmp_path):

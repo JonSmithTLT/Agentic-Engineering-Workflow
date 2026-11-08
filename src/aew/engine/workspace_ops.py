@@ -295,7 +295,7 @@ class Assignment:
             return blocker_from(IllegalTransition("only Tickets are assigned"))
         if not unit["mutating"]:
             # Assignment allocates a mutation workspace and an implementer; an evidence-only Ticket must
-            # never receive either (it would bypass the serial mutation cap). It is dispatched instead:
+            # never receive either (it would bypass the mutating cap). It is dispatched instead:
             # investigator/researcher/planner card, read-only observation, no workspace (ADR-0008).
             return blocker_from(IllegalTransition(
                 f"{work_id} is a non-mutating (evidence-only) Ticket; it never receives a mutation workspace or an "
@@ -341,7 +341,7 @@ class Assignment:
         if len(busy) >= cap:
             return blocker_from(ConcurrencyLimit(
                 f"mutating concurrency is {cap} (gates policy `mutating_concurrency`); {busy} still hold "
-                "unintegrated workspaces", holding=busy, cap=cap))
+                "unintegrated workspaces; integrate or cancel one of them to free a place", holding=busy, cap=cap))
         return None
 
     def _g_card(self, state: dict[str, Any], work_id: str, facts: dict[str, Any]) -> Any:

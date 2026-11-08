@@ -128,3 +128,49 @@ def test_a_clean_run_with_its_dumps_inside_the_checkout_passes_the_isolation_gua
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "isolation guard" not in proc.stdout
     assert list(hangs.glob("hang-*.txt")) == []
+
+
+@pytest.mark.parametrize(("deadline_left", "test_timer_armed"), [(1000.0, True), (100.0, False)],
+                         ids=["the_test_timeout_comes_first", "the_deadline_comes_first"])
+def test_on_windows_the_one_timer_goes_to_whichever_comes_first_and_back_to_the_deadline_after_the_test(
+        tmp_path, monkeypatch, deadline_left, test_timer_armed):
+    """A process has one faulthandler timer. If the watchdog's cancel left the deadline's off, a later hang holding the
+    GIL would leave no stacks; if it re-armed over an earlier deadline, the stacks would come too late or never."""
+
+    class Stacks:
+        armed = 0
+
+        def left(self):
+            return deadline_left
+
+        def arm(self):
+            self.armed += 1
+
+    class Plugins:
+        stacks = Stacks()
+
+        def get_plugin(self, name):
+            return self if name == "aew-session-deadline" else None
+
+    class Config:
+        pluginmanager = Plugins()
+        workerinput = {"workerid": "gw0"}
+
+        def getoption(self, name, default=None):
+            return str(tmp_path) if name == "aew_hang_dir" else default
+
+    class Item:
+        nodeid = "tests/test_x.py::test_x"
+
+    timers = []
+    monkeypatch.setattr(watchdog, "USE_ALARM", False)
+    monkeypatch.setattr(watchdog.faulthandler, "dump_traceback_later", lambda seconds, file: timers.append(seconds))
+    monkeypatch.setattr(watchdog.faulthandler, "cancel_dump_traceback_later", lambda: None)
+    guard = watchdog.HangWatchdog(Config(), 600.0)
+    protocol = guard.pytest_runtest_protocol(Item(), None)
+    next(protocol)
+    assert timers == ([600.0] if test_timer_armed else [])
+    assert Plugins.stacks.armed == 0
+    with pytest.raises(StopIteration):
+        next(protocol)
+    assert Plugins.stacks.armed == 1

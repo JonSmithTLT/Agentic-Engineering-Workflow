@@ -21,8 +21,8 @@ the test finishes, so a file left after a run is a hang.
 
 When it fires, the session's autopsy plugin (``autopsy.py``, the hang-and-flake diagnosis plan's G3 H1) collects the
 rest: on POSIX inside the alarm handler, before it raises; on Windows from a plain thread armed just after this
-watchdog's deadline and cancelled with it. Nothing else in the test process arms faulthandler. Without that plugin the
-watchdog works as before.
+watchdog's deadline and cancelled with it. Only the session deadline's stacks (``session_deadline.Stacks``) share its
+faulthandler timer. Without those plugins the watchdog works as before.
 """
 
 from __future__ import annotations
@@ -107,6 +107,10 @@ class HangWatchdog:
         """The autopsy plugin (autopsy.py), when the session has one: the watchdog works without it."""
         return self.config.pluginmanager.get_plugin("aew-autopsy")
 
+    def _deadline_stacks(self) -> Any:
+        """The session deadline's GIL-free stacks (session_deadline.Stacks), when the session has a deadline."""
+        return getattr(self.config.pluginmanager.get_plugin("aew-session-deadline"), "stacks", None)
+
     def _header(self, item: pytest.Item) -> str:
         return f"{HEADER}{item.nodeid} was still running after {self.timeout:g}s; every thread's stack:\n"
 
@@ -120,7 +124,11 @@ class HangWatchdog:
             signal.setitimer(signal.ITIMER_REAL, self.timeout)
         else:  # pragma: windows-only
             previous = None
-            faulthandler.dump_traceback_later(self.timeout, file=f)
+            # One timer per process, shared with the session deadline's stacks: its earlier time stands, as it is
+            # armed already, and it writes the same stacks. This one, armed for the test, ends with the test.
+            deadline = self._deadline_stacks()
+            if deadline is None or deadline.left() > self.timeout:
+                faulthandler.dump_traceback_later(self.timeout, file=f)
             autopsy = self._autopsy()
             if autopsy is not None:  # G3 H1: a plain thread, just after the dump is due; cancelled below
                 autopsy.arm(self.timeout)
@@ -132,6 +140,9 @@ class HangWatchdog:
                 signal.signal(signal.SIGALRM, previous)
             else:  # pragma: windows-only
                 faulthandler.cancel_dump_traceback_later()
+                deadline = self._deadline_stacks()
+                if deadline is not None:
+                    deadline.arm()
                 autopsy = self._autopsy()
                 if autopsy is not None:
                     autopsy.disarm()

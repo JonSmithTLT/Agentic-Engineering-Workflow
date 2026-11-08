@@ -88,6 +88,7 @@ def test_a_session_starts_the_endpoint_outside_its_ancestry_and_the_endpoint_end
         ping = operator_client.ping(aew_root)
         assert ping["alive"] and ping["pid"] == pid and ping["guarantee"] == "dev"
         assert pid != session.pid
+        assert operator_client.session_holders_live(aew_root), "named, so it stays"
         if not IS_WINDOWS:  # what the endpoint's own check walks: no `aew opencode` above it, because none is
             assert operator_client._is_lead_session(_cmdline(session.pid)), "this test's session must read as one"
             above = _ancestors(pid)
@@ -276,7 +277,7 @@ def test_a_session_starting_while_the_endpoint_stops_ends_with_one_live_endpoint
 
     started: list[list[str]] = []
     monkeypatch.setattr(A, "_start", lambda argv, env, log: started.append(argv))
-    assert A._hold(engine.aew_root) is not None
+    assert operator_client.name_session(engine.aew_root) is not None
     assert A.ensure(engine, provider_env=[], base={}) is not None
     assert started, "it found no endpoint, so it started one"
     new = operator_endpoint.OperatorEndpoint(engine, console=print, dev=True, background=True)
@@ -367,7 +368,7 @@ def test_a_failed_start_never_fails_the_session_and_says_what_to_run(project, mo
 
 def test_a_session_that_cannot_be_named_starts_nothing_and_still_runs(project, monkeypatch):
     monkeypatch.delenv(A.OFF_ENV, raising=False)
-    monkeypatch.setattr(A, "_hold", lambda aew_root: None)
+    monkeypatch.setattr(operator_client, "name_session", lambda aew_root: None)
     monkeypatch.setattr(A, "_start", lambda *a: pytest.fail("it would stop at once, with nobody named"))
     ran = []
     with A.for_session(Engine.discover(project.root), provider_env=[]):

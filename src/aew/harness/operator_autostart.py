@@ -16,7 +16,6 @@ start one. ``AEW_OPERATOR_AUTOSTART=off`` turns it off.
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import subprocess
 import sys
@@ -24,9 +23,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from aew.errors import LockTimeout
 from aew.harness import operator_client, procs
-from aew.util import atomic_write
 
 OFF_ENV = "AEW_OPERATOR_AUTOSTART"
 LOG_NAME = "endpoint.log"  # the background endpoint's output: its start line and any failure, never a code
@@ -79,10 +76,9 @@ def ensure(engine: Any, *, provider_env: list[str], base: dict[str, str] | None 
     refused = _refused(env)
     if refused:
         return refused
-    aew_root = Path(engine.aew_root)
-    if operator_client.status(aew_root).get("running"):
+    if operator_client.status(Path(engine.aew_root)).get("running"):
         return None
-    directory = operator_client.locator_path(aew_root).parent
+    directory = operator_client.locator_path(Path(engine.aew_root)).parent
     try:
         directory.mkdir(parents=True, exist_ok=True)
         with open(directory / LOG_NAME, "wb") as log:
@@ -90,21 +86,6 @@ def ensure(engine: Any, *, provider_env: list[str], base: dict[str, str] | None 
     except OSError as exc:
         return START_FAILED.format(why=exc)
     return "aew opencode: the operator endpoint runs in the background until this session ends\n"
-
-
-def _hold(aew_root: Path) -> Path | None:
-    """Name this session as one a background endpoint serves, before the endpoint starts, and under the lock its last
-    look takes: from here on, a live locator is an endpoint that will see this file."""
-    pid = os.getpid()
-    path = Path(aew_root) / operator_client.SESSIONS_REL / f"{pid}.json"
-    try:
-        with operator_client.sessions_lock(aew_root):
-            path.parent.mkdir(parents=True, exist_ok=True)
-            atomic_write(path, json.dumps({"pid": pid, "start_id": procs.start_id(pid),
-                                           "process_started": procs.started_at(pid)}) + "\n")
-    except (LockTimeout, OSError):
-        return None
-    return path
 
 
 @contextlib.contextmanager
@@ -116,7 +97,7 @@ def for_session(engine: Any, *, provider_env: list[str]) -> Iterator[None]:
     held = None
     line = _refused(dict(os.environ))
     if not line:
-        held = _hold(Path(engine.aew_root))
+        held = operator_client.name_session(Path(engine.aew_root))
         line = ensure(engine, provider_env=provider_env) if held else NOT_HELD
     if line:
         sys.stderr.write(line)

@@ -77,9 +77,8 @@ from aew.harness.operator_client import (
     _request,
     lead_session_problem,
     locator_path,
+    no_session_left,
     read_locator,
-    session_holders_live,
-    sessions_lock,
 )
 
 Console = Callable[[str], None]
@@ -185,18 +184,8 @@ class OperatorEndpoint:
             self.close()
 
     def _no_session_left(self) -> bool:
-        """The look that decides to stop. Under the sessions lock, and the locator goes with the decision: a session
-        naming itself is either seen here or finds no endpoint and starts one. A challenge in hand finishes first."""
-        if self._authorizing.locked():
-            return False
-        try:
-            with sessions_lock(self.engine.aew_root):
-                if session_holders_live(self.engine.aew_root):
-                    return False
-                self._locator.unlink(missing_ok=True)
-                return True
-        except (LockTimeout, OSError):
-            return False  # the next look decides
+        """A challenge in hand finishes first."""
+        return not self._authorizing.locked() and no_session_left(self.engine.aew_root)
 
     def close(self) -> None:
         if self._closed.is_set():

@@ -19,8 +19,10 @@ from typing import Any
 
 from aew import errors, operator
 from aew.engine.lock import FileLock
+from aew.errors import LockTimeout
 from aew.harness import procs
 from aew.harness.bridge import rebuild_error
+from aew.util import atomic_write
 
 LOCATOR_REL = "local/operator/endpoint.json"
 LOCK_NAME = "endpoint.lock"  # beside the locator: held by the live endpoint for its whole life
@@ -109,6 +111,34 @@ def sessions_lock(aew_root: Path) -> FileLock:
     path = locator_path(aew_root).with_name(SESSIONS_LOCK)
     path.parent.mkdir(parents=True, exist_ok=True)
     return FileLock(path, timeout=SESSIONS_LOCK_TIMEOUT_S)
+
+
+def name_session(aew_root: Path) -> Path | None:
+    """Name this process as a session a background endpoint serves, before the endpoint starts: from here on, a live
+    locator is an endpoint that will see this file. ``None`` if it cannot be named."""
+    pid = os.getpid()
+    path = Path(aew_root) / SESSIONS_REL / f"{pid}.json"
+    try:
+        with sessions_lock(aew_root):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(path, json.dumps({"pid": pid, "start_id": procs.start_id(pid),
+                                           "process_started": procs.started_at(pid)}) + "\n")
+    except (LockTimeout, OSError):
+        return None
+    return path
+
+
+def no_session_left(aew_root: Path) -> bool:
+    """A background endpoint's look that decides to stop. The locator goes with the decision, under the lock: a session
+    naming itself is either seen here or finds no endpoint and starts one."""
+    try:
+        with sessions_lock(aew_root):
+            if session_holders_live(aew_root):
+                return False
+            locator_path(aew_root).unlink(missing_ok=True)
+            return True
+    except (LockTimeout, OSError):
+        return False  # the next look decides
 
 
 def session_holders_live(aew_root: Path) -> bool:

@@ -1458,10 +1458,8 @@ None.
 
 ### `aew.harness.operator_autostart`
 
-- `aew.errors`
 - `aew.harness.operator_client`
 - `aew.harness.procs`
-- `aew.util`
 
 ### `aew.harness.operator_client`
 
@@ -1470,6 +1468,7 @@ None.
 - `aew.harness.bridge`
 - `aew.harness.procs`
 - `aew.operator`
+- `aew.util`
 
 ### `aew.harness.operator_endpoint`
 

@@ -106,9 +106,10 @@ def test_this_actions_member_fits_the_wires_rendering_bound():
     assert limits[ACTION] <= 30, "R2-1: the wire's 243 lines allow 30 per member"
 
 
-def test_an_o01_set_naming_this_action_fails_at_the_carriers_set_check_and_burns_no_consent(tmp_path):
+def test_an_o01_set_naming_this_action_fails_at_the_carriers_set_check_and_burns_no_consent(tmp_path, monkeypatch):
     """With a counting G3: the carrier refuses the set before any consume. It has no owner for this action."""
-    calls: list[dict] = []
+    calls: list[tuple] = []
+    monkeypatch.setattr(g3client, "_g3", lambda *a, **k: calls.append(a) or (200, {}))
     approved = dict(g3client.with_proofs(raise_set()), consent_set_ref="consent:g3:" + "b" * 32)
 
     class Fixture:

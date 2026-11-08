@@ -1440,6 +1440,7 @@ None.
 ### `aew.harness.opencode.projection`
 
 - `aew.harness.contract`
+- `aew.harness.procs`
 - `aew.skills`
 - `aew.surface`
 - `aew.surface.context`

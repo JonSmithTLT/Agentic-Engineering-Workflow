@@ -23,7 +23,6 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 ## entry-points
 
 - `aew.dashboard.projections:Projector._search_hit`: an argv list that starts with the console script `aew`; whether it is run as a process is not decided here
-- `aew.harness.opencode.projection:LEAD_MCP_COMMAND`: an argv list that starts with the console script `aew`; whether it is run as a process is not decided here
 
 ## layout
 

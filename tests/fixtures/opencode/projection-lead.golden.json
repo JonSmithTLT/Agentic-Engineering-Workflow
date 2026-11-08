@@ -291,10 +291,18 @@
    "aew-lead": {
     "codemode": false,
     "command": [
+     "<this interpreter>",
+     "-P",
+     "-s",
+     "-m",
      "aew",
      "lead",
      "mcp"
     ],
+    "environment": {
+     "PYTHONPATH": "<this aew's import root>",
+     "PYTHONSAFEPATH": "1"
+    },
     "pool": false,
     "type": "local"
    }

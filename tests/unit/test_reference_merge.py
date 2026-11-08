@@ -1,6 +1,7 @@
 """The generated reference pages merge: two pull requests that change different modules touch different lines, and a
 collision on one module is settled by ``tools/reference.py resolve``, never by hand. Those pages conflicted on 47 of 61
-merges of main into a branch in one week (2026-11-01 to 2026-11-08), each costing a push and a CI run."""
+merges of main into a branch in one week (2026-11-01 to 2026-11-08), 43 of them on ``modules.md``, each costing a push
+and a CI run."""
 
 from __future__ import annotations
 
@@ -213,6 +214,48 @@ def test_resolve_renders_and_stages_a_collision_on_a_module_and_the_merge_finish
     assert (repo.path / "docs/reference/modules.md").read_text(encoding="utf-8") == "# Modules\n\nImports: a, b, c.\n"
     repo.git("commit", "-q", "--no-edit")
     assert "git commit" in capsys.readouterr().out
+
+
+def test_resolve_stages_only_the_generators_pages_never_a_stray_file_beside_them(tmp_path, rendering):
+    repo = stopped_merge(tmp_path)
+    (repo.path / "docs/reference/stray.md").write_text("mine\n", encoding="utf-8")
+    assert reference.resolve(repo.path) == 0
+    assert "docs/reference/modules.md" in repo.git("diff", "--cached", "--name-only").stdout
+    assert repo.git("status", "--porcelain", "--", "docs/reference/stray.md").stdout == "?? docs/reference/stray.md\n"
+
+
+def test_resolve_settles_a_conflicted_page_the_render_did_not_change_and_a_removal_git_never_tracked(
+        tmp_path, monkeypatch):
+    """The two names that "stage what render returned" alone would get wrong: a page in conflict that already reads as
+    rendered stays unmerged, and a stray file render deleted is unknown to git, which would stop `git add`."""
+    repo = stopped_merge(tmp_path)
+
+    def render(root: Path, out: Path) -> list[str]:
+        (out / "modules.md").write_text("# Modules\n\nImports: a, b, c.\n", encoding="utf-8", newline="\n")
+        return ["gone-stray.md"]  # it was removed, and modules.md counts as unchanged
+
+    monkeypatch.setattr(reference, "render", render)
+    assert reference.resolve(repo.path) == 0
+    assert repo.git("diff", "--name-only", "--diff-filter=U").stdout == ""
+    repo.git("commit", "-q", "--no-edit")
+
+
+def test_two_first_edges_to_adjacent_groups_are_a_known_collision_that_resolve_settles(tmp_path):
+    """A known residual: two pull requests in one group that each add a first edge to two alphabetically adjacent
+    groups both insert at one place in the group's "Imports from the groups" list. Git stops there, as it should, and
+    `resolve` settles it. If the page's form stops colliding here, this test says the residual has gone."""
+    def package(name: str) -> M.Module:
+        return M.Module(name, f"src/{name.replace('.', '/')}/__init__.py", True, (), ())
+
+    mods = [package(f"aew.{group}") for group in ("a", "b", "c", "z")]
+    mods += [new_module([], f"aew.a.{name}", "aew.z")[0] for name in ("first", "second", "third", "fourth")]
+    repo = Repo(tmp_path / "repo")
+    base = repo.commit({PAGE: M.page(mods)})
+    ours = repo.commit({PAGE: M.page(with_import(mods, "aew.a.first", "aew.b"))}, base)
+    theirs = repo.commit({PAGE: M.page(with_import(mods, "aew.a.fourth", "aew.c"))}, base)
+    clean, merged = repo.merged_page(ours, theirs)
+    assert not clean, "these two now merge: drop this residual"
+    assert "<<<<<<<" in merged
 
 
 def test_resolve_refuses_while_the_code_is_in_conflict_and_touches_nothing(tmp_path, rendering, capsys):

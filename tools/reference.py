@@ -260,9 +260,15 @@ def resolve(root: Path = ROOT) -> int:
         print("settle these and `git add` them first, then run `resolve` again: the pages are drawn from the merged "
               "code:\n  " + "\n  ".join(others), file=sys.stderr)
         return 2
+    conflicted = {name.removeprefix(prefix) for name in unmerged if name}
     changed = render(root, root / prefix)
-    added = _git(root, "add", "-A", "--", prefix)
-    if added.returncode != 0:
+    # Only what is the generator's to settle, never another file there. A name render removed that git never tracked
+    # (or a directory's own name) is nothing to stage, and naming it would stop `git add`.
+    tracked = set(_git(root, "ls-files", "--", prefix).stdout.splitlines())
+    pages = [prefix + name for name in sorted(conflicted | set(changed))
+             if (root / prefix / name).is_file() or prefix + name in tracked]
+    added = _git(root, "add", "-A", "--", *pages) if pages else None
+    if added is not None and added.returncode != 0:
         print(f"could not stage {prefix}: {added.stderr.strip()}", file=sys.stderr)
         return 2
     print(f"rendered and staged {prefix} ({len(changed)} file(s) changed): finish the merge with `git commit`")

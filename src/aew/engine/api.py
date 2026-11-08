@@ -15,6 +15,7 @@ import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
+from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -554,6 +555,7 @@ class Engine:
             "policy/guardrails.yaml": dump_yaml(DEFAULT_GUARDRAILS),
             "policy/checks.yaml": dump_yaml(DEFAULT_CHECKS),
             "policy/gates.yaml": dump_yaml(DEFAULT_GATES),
+            "policy/pricing.yaml": (resources.files("aew.policy") / "default_pricing.yaml").read_text(encoding="utf-8"),
             X.REL_PATH: X.TEMPLATE,
             "roles/README.md": roles_readme(),
         }

@@ -366,7 +366,8 @@ def test_a_lead_command_template_names_only_real_tools_and_takes_no_stage_step_f
     for name, command in projection.LEAD_COMMANDS.items():
         template = command["template"]
         assert set(stage_named(template)) <= names, name
-        assert "!`" not in template, name
+        # a fixed read is the only inline shell a template may run (ADR-0009): no stage step comes from the shell
+        assert re.findall(r"!`([^`]*)`", template) == (["aew usage show"] if name == "usage" else []), name
         for shell in covered_shell:
             assert shell not in template, (name, shell)
     assert "`ticket_draft`" in projection.LEAD_COMMANDS["aew-ticket"]["template"]

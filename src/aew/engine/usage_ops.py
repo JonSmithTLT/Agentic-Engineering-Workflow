@@ -90,6 +90,11 @@ class Prices:
             return None
         return self.table["prices"].get(f"{provider}/{model}")
 
+    def floor_above(self, key: str) -> int | None:
+        """The context size above which ``key`` costs more than its row says, when its row is only the base tier."""
+        entry = (self.table.get("base_tier_only") or {}).get(key)
+        return entry["above_context_tokens"] if entry else None
+
 
 def read_price_table(path: Path) -> Prices | None:
     """The table at ``path``, or None when there is none (no derived cost: every surface says unpriced). A malformed
@@ -309,6 +314,7 @@ def derive(record: Mapping[str, Any], prices: Prices | None) -> tuple[dict[str, 
     if isinstance(pieces, str):
         return {"unpriced": pieces}, []
     parts: list[tuple[str, Decimal]] = []
+    floors: dict[str, int] = {}
     for provider, model, tokens in pieces:
         buckets = billable_buckets(tokens, semantics)
         if isinstance(buckets, str):
@@ -321,7 +327,13 @@ def derive(record: Mapping[str, Any], prices: Prices | None) -> tuple[dict[str, 
         if isinstance(usd, str):
             return {"unpriced": usd}, []
         parts.append((key, usd))
-    return {"usd": sum((usd for _, usd in parts), Decimal(0))}, parts
+        above = prices.floor_above(key)
+        if above is not None:
+            floors[key] = above
+    total: dict[str, Any] = {"usd": sum((usd for _, usd in parts), Decimal(0))}
+    if floors:  # a figure resting on a base-tier row is a floor, and says so everywhere it is read
+        total.update(floor=True, floor_above=min(floors.values()), floor_models=floors)
+    return total, parts
 
 
 # --------------------------------------------------------------------------- the copy (R5; called from slice 2)
@@ -480,7 +492,7 @@ def _plus(total: Decimal | None, part: Decimal | None) -> Decimal | None:
 
 
 def _empty_figure() -> dict[str, Any]:
-    return {"usd": None, "priced": 0, "unpriced": 0, "reasons": {}}
+    return {"usd": None, "priced": 0, "unpriced": 0, "reasons": {}, "floor_runs": 0, "floor_above": None}
 
 
 def empty_totals() -> dict[str, Any]:
@@ -491,10 +503,17 @@ def empty_totals() -> dict[str, Any]:
             "by_model": {}}
 
 
+def _add_floor(into: dict[str, Any], runs: int, above: int | None) -> None:
+    into["floor_runs"] += runs
+    if above is not None:
+        into["floor_above"] = above if into["floor_above"] is None else min(into["floor_above"], above)
+
+
 def _add_figure(into: dict[str, Any], figure: Mapping[str, Any]) -> None:
     into["usd"] = _plus(into["usd"], figure["usd"])
     into["priced"] += figure["priced"]
     into["unpriced"] += figure["unpriced"]
+    _add_floor(into, figure["floor_runs"], figure["floor_above"])
     for reason, n in figure["reasons"].items():
         into["reasons"][reason] = into["reasons"].get(reason, 0) + n
 
@@ -516,14 +535,25 @@ def add_totals(into: dict[str, Any], other: Mapping[str, Any]) -> dict[str, Any]
         mine["runs"] += model["runs"]
         for name in ("estimated_at_record_usd", "estimated_under_current_prices_usd"):
             mine[name] = _plus(mine[name], model[name])
+        for name in _MODEL_COUNTS:
+            mine[name] += model[name]
+        floors = [v for v in (mine["under_current_prices_floor_above"], model["under_current_prices_floor_above"])
+                  if v is not None]
+        mine["under_current_prices_floor_above"] = min(floors) if floors else None
         for cat in U.CATEGORIES:
             mine["tokens"][cat] += model["tokens"][cat]
     return into
 
 
+# How many of a model's runs each of its sums covers: a sum over some of its runs is not a sum over all of them.
+_MODEL_COUNTS = ("estimated_at_record_priced", "estimated_at_record_unpriced",
+                 "estimated_under_current_prices_priced", "estimated_under_current_prices_unpriced")
+
+
 def _empty_model() -> dict[str, Any]:
     return {"runs": 0, "tokens": dict.fromkeys(U.CATEGORIES, 0), "estimated_at_record_usd": None,
-            "estimated_under_current_prices_usd": None}
+            "estimated_under_current_prices_usd": None, **dict.fromkeys(_MODEL_COUNTS, 0),
+            "under_current_prices_floor_above": None}
 
 
 class Reader:
@@ -603,6 +633,8 @@ def _count_row(totals: dict[str, Any], row: Mapping[str, Any]) -> None:
         if "usd" in figure:
             fig["usd"] = _plus(fig["usd"], figure["usd"])
             fig["priced"] += 1
+            if figure.get("floor"):
+                _add_floor(fig, 1, figure["floor_above"])
         else:
             fig["unpriced"] += 1
             fig["reasons"][figure["unpriced"]] = fig["reasons"].get(figure["unpriced"], 0) + 1
@@ -626,6 +658,8 @@ def _count_models(by_model: dict[str, Any], row: Mapping[str, Any]) -> None:
         key = UNPRICED_MIX if pieces == UNPRICED_MIX else "no_effective_model"
         model = by_model.setdefault(key, _empty_model())
         model["runs"] += 1
+        model["estimated_at_record_unpriced"] += 1
+        model["estimated_under_current_prices_unpriced"] += 1
         for cat in U.CATEGORIES:
             model["tokens"][cat] += int(record["tokens"].get(cat) or 0)
         return
@@ -647,6 +681,13 @@ def _count_models(by_model: dict[str, Any], row: Mapping[str, Any]) -> None:
         model["estimated_at_record_usd"] = _plus(model["estimated_at_record_usd"], at_parts.get(key))
         model["estimated_under_current_prices_usd"] = _plus(model["estimated_under_current_prices_usd"],
                                                             current_parts.get(key))
+        model["estimated_at_record_priced" if key in at_parts else "estimated_at_record_unpriced"] += 1
+        model["estimated_under_current_prices_priced" if key in current_parts
+              else "estimated_under_current_prices_unpriced"] += 1
+        above = (row["estimated_under_current_prices"].get("floor_models") or {}).get(key)
+        if above is not None:
+            held = model["under_current_prices_floor_above"]
+            model["under_current_prices_floor_above"] = above if held is None else min(held, above)
 
 
 def public_row(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -789,6 +830,13 @@ def _reasons(reasons: Mapping[str, int]) -> str:
     return ", ".join(f"{reason} x{n}" for reason, n in sorted(reasons.items()))
 
 
+def _amount(usd: Decimal, floor_above: int | None) -> str:
+    """Dollars, as a floor when a price behind them is only a base tier: a low number never reads as an exact one."""
+    if floor_above is None:
+        return money(usd)
+    return f"at least {money(usd)} (above {floor_above // 1000}k context costs more)"
+
+
 def figure_text(figure: Mapping[str, Any]) -> str:
     """A summed figure (``priced``, ``unpriced``, ``usd``, ``reasons``) as text. A dollar amount is printed only over
     priced runs, and the unpriced runs are always counted beside it with their reasons (R4: unpriced is never zero)."""
@@ -796,14 +844,16 @@ def figure_text(figure: Mapping[str, Any]) -> str:
         return "no runs"
     if not figure["priced"]:
         return f"{UNKNOWN_EXPOSURE} ({_reasons(figure['reasons'])})"
-    text = f"{money(figure['usd'])} {OBSERVED} over {figure['priced']} priced run(s)"
+    text = f"{_amount(figure['usd'], figure.get('floor_above'))} {OBSERVED} over {figure['priced']} priced run(s)"
     if figure["unpriced"]:
         text += f", and {figure['unpriced']} {UNKNOWN_EXPOSURE} ({_reasons(figure['reasons'])})"
     return text
 
 
 def _row_figure(figure: Mapping[str, Any]) -> str:
-    return f"{money(figure['usd'])} {OBSERVED}" if "usd" in figure else f"{UNKNOWN_EXPOSURE} ({figure['unpriced']})"
+    if "usd" not in figure:
+        return f"{UNKNOWN_EXPOSURE} ({figure['unpriced']})"
+    return f"{_amount(figure['usd'], figure.get('floor_above'))} {OBSERVED}"
 
 
 def tokens_text(tokens: Mapping[str, int]) -> str:
@@ -828,8 +878,9 @@ def summary_line(summary: Mapping[str, Any]) -> str:
 
 def _current_suffix(at_record: Mapping[str, Any], current: Mapping[str, Any]) -> str:
     """The figure under today's table, when it says something the recorded one does not."""
-    same = (at_record["priced"], at_record["unpriced"], at_record["usd"], at_record["reasons"]) == (
-        current["priced"], current["unpriced"], current["usd"], current["reasons"])
+    same = (at_record["priced"], at_record["unpriced"], at_record["usd"], at_record["reasons"],
+            at_record["floor_above"]) == (
+        current["priced"], current["unpriced"], current["usd"], current["reasons"], current["floor_above"])
     return "" if same else f"; under current prices {figure_text(current)}"
 
 
@@ -847,8 +898,17 @@ def _totals_lines(totals: Mapping[str, Any], indent: str) -> list[str]:
         lines.append(f"{indent}provider cost as the harness reported it ({OBSERVED}): {money(cost['reported_usd'])} "
                      f"over {cost['reported']} run(s)")
     for key, model in sorted(totals["by_model"].items()):
-        lines.append(f"{indent}  {key}: {model['runs']} run(s), tokens {tokens_text(model['tokens'])}")
+        lines.append(f"{indent}  {key}: {model['runs']} run(s), tokens {tokens_text(model['tokens'])}; "
+                     f"under current prices {_model_figure(model)}")
     return lines
+
+
+def _model_figure(model: Mapping[str, Any]) -> str:
+    """One model's current figure, saying how many of its runs the sum covers: a partial sum never reads as whole."""
+    priced, unpriced = model["estimated_under_current_prices_priced"], model["estimated_under_current_prices_unpriced"]
+    usd = model["estimated_under_current_prices_usd"]
+    return ((f"{_amount(usd, model['under_current_prices_floor_above'])} over {priced} run(s)" if priced else "no cost")
+            + (f", {unpriced} unpriced" if unpriced else ""))
 
 
 def _row_lines(row: Mapping[str, Any], indent: str) -> list[str]:

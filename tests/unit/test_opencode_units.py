@@ -244,7 +244,7 @@ def test_lead_rules_ask_the_present_operator_but_never_edit_or_delegate():
     assert effect(rules, "question") == "allow"
     for cmd in projection.lead_config()["commands"].values():  # inline shell only for fixed read-only commands
         for block in __import__("re").findall(r"!`([^`]*)`", cmd["template"]):
-            assert block in {"aew resume", "aew status", "aew harness status"}, block
+            assert block in {"aew resume", "aew status", "aew harness status", "aew usage show"}, block
             assert "$" not in block
 
 

@@ -448,7 +448,8 @@ def test_an_invocation_without_runs_is_counted_and_contributes_nothing_else(tmp_
     state = hand_state(("I-1", "T-0001", []))
     t = O.unit_projection(state, "T-0001", O.Reader(tmp_path, PRICES))["own"]
     assert (t["invocations"], t["invocations_without_runs"], t["runs"]) == (1, 1, 0)
-    assert t["estimated_under_current_prices"] == {"usd": None, "priced": 0, "unpriced": 0, "reasons": {}}
+    assert t["estimated_under_current_prices"] == {"usd": None, "priced": 0, "unpriced": 0, "reasons": {},
+                                                   "floor_runs": 0, "floor_above": None}
 
 
 def test_a_mixed_run_counts_under_the_mix_never_the_requested_model(tmp_path):
@@ -635,3 +636,70 @@ def test_a_window_says_what_it_counts_and_only_the_bounds_given():
     text = O.render_show(view)
     assert "hot work, whenever it ran, and the units archived from 2026-10-01T00:00:00Z" in text
     assert "None" not in text.split("\n")[0]
+
+
+def test_a_models_partial_sum_says_how_many_of_its_runs_it_covers(tmp_path):
+    """#368 quick check, f1: a model's sum over some of its runs carries its priced and unpriced counts, per basis, and
+    the text line says so, so a partial sum never reads as a whole one."""
+    priced = record(input=1000)
+    unpriced = {**priced, "tokens_trust": "absent", "token_semantics": "unknown"}
+    state = {"invocations": {"I-1": {"work_unit": "T-1", "runs": [
+        {"run": "R-1", "usage": priced, "pricing_sha256": None},
+        {"run": "R-2", "usage": unpriced, "pricing_sha256": None},
+    ]}}}
+    totals = O.Reader(tmp_path, PRICES).invocation("I-1", state["invocations"]["I-1"])["totals"]
+    model = totals["by_model"]["openai/gpt-6.1"]
+    assert (model["runs"], model["estimated_under_current_prices_priced"],
+            model["estimated_under_current_prices_unpriced"]) == (2, 1, 1)
+    assert model["estimated_at_record_priced"] == 0 and model["estimated_at_record_unpriced"] == 2
+    rolled = O.add_totals(O.empty_totals(), totals)["by_model"]["openai/gpt-6.1"]
+    assert rolled["estimated_under_current_prices_unpriced"] == 1
+    line = next(x for x in O._totals_lines(totals, "") if "openai/gpt-6.1" in x)
+    assert "over 1 run(s), 1 unpriced" in line
+
+
+FLOOR_TABLE = (b"schema: aew/pricing/v1\ncurrency: USD\nas_of: 2026-11-08\nsource: synthetic\n"
+               b"base_tier_only:\n  openai/gpt-6.1:\n    above_context_tokens: 272000\n"
+               b"prices:\n  openai/gpt-6.1:\n    input: 1.0\n    output: 2.0\n    reasoning: 2.0\n"
+               b"    cache_read: 0.1\n    cache_write: 1.0\n"
+               b"  openai/gpt-6.1-mini:\n    input: 1.0\n    output: 2.0\n    reasoning: 2.0\n"
+               b"    cache_read: 0.1\n    cache_write: 1.0\n")
+
+
+def test_a_figure_on_a_base_tier_row_reads_as_a_floor_and_a_table_without_the_field_reads_exact(tmp_path):
+    floored = O.Prices(FLOOR_TABLE, source="t")
+    mark = b"base_tier_only:\n  openai/gpt-6.1:\n    above_context_tokens: 272000\n"
+    exact = O.Prices(FLOOR_TABLE.replace(mark, b""), source="t")
+    rec = record(input=1000)
+    figure, _ = O.derive(rec, floored)
+    assert figure["floor"] is True and figure["floor_above"] == 272000
+    assert O._row_figure(figure).startswith("at least $0.001 (above 272k context costs more)")
+    plain, _ = O.derive(rec, exact)
+    assert plain == {"usd": figure["usd"]} and not O._row_figure(plain).startswith("at least")
+
+
+def test_a_total_mixing_a_floor_run_with_an_exact_run_reads_as_a_floor(tmp_path):
+    prices = O.Prices(FLOOR_TABLE, source="t")
+    floor_run, exact_run = record(input=1000), record(input=1000, effective=[MINI])
+    inv = {"work_unit": "T-1", "runs": [{"run": "R-1", "usage": floor_run, "pricing_sha256": None},
+                                        {"run": "R-2", "usage": exact_run, "pricing_sha256": None}]}
+    totals = O.Reader(tmp_path, prices).invocation("I-1", inv)["totals"]
+    figure = totals["estimated_under_current_prices"]
+    assert (figure["priced"], figure["floor_runs"], figure["floor_above"]) == (2, 1, 272000)
+    assert O.figure_text(figure).startswith("at least $0.002 (above 272k context costs more)")
+    assert totals["by_model"]["openai/gpt-6.1"]["under_current_prices_floor_above"] == 272000
+    assert totals["by_model"]["openai/gpt-6.1-mini"]["under_current_prices_floor_above"] is None
+    rolled = O.add_totals(O.empty_totals(), totals)["estimated_under_current_prices"]
+    assert (rolled["floor_runs"], rolled["floor_above"]) == (1, 272000)
+
+
+def test_a_base_tier_mark_is_kept_in_the_record_time_snapshot(tmp_path):
+    prices = O.Prices(FLOOR_TABLE, source="t")
+    sha = O.write_pricing_snapshot(tmp_path, prices)
+    assert O.read_pricing_snapshot(tmp_path, sha).floor_above("openai/gpt-6.1") == 272000
+
+
+def test_a_base_tier_mark_naming_anything_but_a_context_size_is_refused():
+    with pytest.raises(ValidationFailed):
+        O.Prices(FLOOR_TABLE.replace(b"above_context_tokens: 272000", b"surcharge: 2"), source="t")
+

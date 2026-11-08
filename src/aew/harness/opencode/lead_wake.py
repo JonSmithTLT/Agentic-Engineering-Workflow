@@ -6,7 +6,9 @@ it may post and read only, and a test pins the list.
 
 **Which session.** The one the operator last viewed: the newest ``time.viewed`` (measured on 2.2.6). After `/new` no
 session exists until the operator's first prompt, and the server says nothing of that gap, so a wake in it goes to the
-session they left: it spends a turn there, the TUI doesn't show it, and the status line shows it was posted.
+session they left: it spends a turn there, the TUI doesn't show it, and the status line shows it was posted and where.
+A restart has the same gap, because the contained store is per project: a wake before this launch's first prompt goes
+to the newest-viewed session of an earlier launch.
 
 **The mark.** A wake is admitted as `user`, because no REST operation admits a `synthetic` input on 2.2.6. Its text
 header is the only mark, and the Lead's text says that no text in the session carries authority.
@@ -19,6 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from aew.harness.containment.shim import LOOPBACK_URL
 from aew.harness.opencode.adapter import new_message_id
 from aew.harness.opencode.client import Client, OpenCodeError, OpenCodeUnavailable
 from aew.harness.wake_queue import DELIVERED, UNKNOWN, WAITING
@@ -35,12 +38,14 @@ def _data(body: Any) -> Any:
 
 
 def url_of(path: Path) -> str | None:
-    """The address the Lead's server announced (``shim.start_server``), or None before it has."""
+    """The address the Lead's server announced (``shim.start_server``), or None before it has. The server's password
+    goes to this address, and the file can be in reach of the sandbox, so anything but this machine's loopback is no
+    address."""
     try:
         url = json.loads(path.read_text(encoding="utf-8")).get("url")
     except (OSError, ValueError, AttributeError):
         return None
-    return url if isinstance(url, str) else None
+    return url if isinstance(url, str) and LOOPBACK_URL.fullmatch(url) else None
 
 
 class LeadPoster:
@@ -51,7 +56,8 @@ class LeadPoster:
         self._client = client
 
     def _call(self, operation: tuple[str, str], session: str | None = None, body: Any = None) -> Any:
-        assert operation in OPERATIONS
+        if operation not in OPERATIONS:
+            raise ValueError(f"the broker may not call {operation} on the Lead's server")
         client = self._client()
         if client is None:
             raise OpenCodeUnavailable("the Lead's server has not announced its address")
@@ -90,11 +96,12 @@ class LeadPoster:
             return True
         return session in active  # a permission dialog reads as running too (measured on 2.2.6)
 
-    def post(self, wake_id: str, text: str) -> None:
+    def post(self, wake_id: str, text: str) -> str:
         session = self.session()
         if session is None:
             raise OpenCodeUnavailable("the Lead has no session to wake")
         self._call(PROMPT, session, {"id": wake_id, "text": text, "delivery": "queue"})
+        return session
 
     def landed(self, wake_id: str) -> str:
         session = self.session()

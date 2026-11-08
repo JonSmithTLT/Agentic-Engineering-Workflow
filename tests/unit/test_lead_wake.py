@@ -4,6 +4,7 @@ doesn't answer holds a wake, never loses or repeats it. The shapes are the ones 
 
 from __future__ import annotations
 
+import copy
 import json
 import sys
 from pathlib import Path
@@ -63,14 +64,14 @@ def test_a_call_outside_the_list_is_refused_by_the_poster_itself() -> None:
     poster = W.LeadPoster(lambda: FakeClient())
     try:
         poster._call(("POST", "/api/session/{id}/permission/{requestID}/reply"), "ses_new", {"reply": "always"})
-    except AssertionError:
+    except ValueError:
         return
     raise AssertionError("the poster let a permission answer through")
 
 
 def test_a_wake_goes_to_the_session_the_operator_last_viewed_with_queue_delivery() -> None:
     client = FakeClient()
-    W.LeadPoster(lambda: client).post("msg_1", "AEW wake (not the operator)")
+    assert W.LeadPoster(lambda: client).post("msg_1", "AEW wake (not the operator)") == "ses_new"
     assert client.posts == [("/api/session/ses_new/prompt",
                              {"id": "msg_1", "text": "AEW wake (not the operator)", "delivery": "queue"})]
 
@@ -116,6 +117,15 @@ def test_the_announced_address_is_read_and_a_bad_file_is_no_address(tmp_path: Pa
     assert W.url_of(path) == "http://127.0.0.1:4100"
 
 
+@pytest.mark.parametrize("url", ["http://example.invalid:4100", "http://127.0.0.1:4100@example.invalid",
+                                 "https://127.0.0.1:4100", "http://127.0.0.1:x"])
+def test_an_address_off_this_machines_loopback_is_no_address_so_no_password_goes_there(
+        tmp_path: Path, url: str) -> None:
+    path = tmp_path / "url.json"
+    path.write_text(json.dumps({"url": url}), encoding="utf-8")
+    assert W.url_of(path) is None
+
+
 @pytest.mark.parametrize("policy", [None, {}, {"lead": {}}, {"lead": {"push_wake": "off"}},
                                     {"lead": {"push_wake": "x"}}])
 def test_push_wakes_are_off_unless_the_policy_says_on(policy: dict[str, Any] | None) -> None:
@@ -123,6 +133,15 @@ def test_push_wakes_are_off_unless_the_policy_says_on(policy: dict[str, Any] | N
     switch."""
     assert X.push_wake(policy) == X.PUSH_WAKE_OFF
     assert X.push_wake({"lead": {"push_wake": "on"}}) == X.PUSH_WAKE_ON
+
+
+def test_the_switchs_default_is_the_schemas_and_has_no_second_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    real = X.schema("execution")
+    flipped = copy.deepcopy(real)
+    flipped["properties"]["lead"]["properties"]["push_wake"]["default"] = X.PUSH_WAKE_ON
+    monkeypatch.setattr(X, "schema", lambda name: flipped)
+    assert X.push_wake({}) == X.PUSH_WAKE_ON
+    assert X.push_wake({"lead": {"push_wake": "off"}}) == X.PUSH_WAKE_OFF
 
 
 @pytest.mark.parametrize(("platform", "reaches"), [("linux", True), ("win32", False)])

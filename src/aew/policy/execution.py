@@ -180,8 +180,11 @@ def messaging(policy: dict[str, Any] | None) -> str:
 
 def push_wake(policy: dict[str, Any] | None) -> str:
     """Whether the Lead broker posts wakes into the Lead's session (``lead.push_wake``, steering design §1): ``off``
-    unless the policy says ``on``. Off, the Lead waits with `harness_wait`, and no wake is posted."""
-    return PUSH_WAKE_ON if ((policy or {}).get("lead") or {}).get("push_wake") == PUSH_WAKE_ON else PUSH_WAKE_OFF
+    unless the policy says ``on``. Off, the Lead waits with `harness_wait`, and no wake is posted. Absent policy and
+    absent key are the schema's default, as for :func:`quiet_wake_s`."""
+    spec = schema("execution")["properties"]["lead"]["properties"]["push_wake"]
+    value = ((policy or {}).get("lead") or {}).get("push_wake")
+    return str(value) if value in spec["enum"] else str(spec["default"])
 
 
 def quiet_wake_s(policy: dict[str, Any] | None) -> int:

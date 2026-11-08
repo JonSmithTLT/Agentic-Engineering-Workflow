@@ -3,10 +3,13 @@ gives it to the TUI, and ends the server with the TUI. A server that doesn't ser
 
 from __future__ import annotations
 
+import _thread
 import json
 import signal
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any, cast
 
@@ -15,6 +18,7 @@ import pytest
 from aew.harness.containment import netns, shim
 from aew.harness.opencode import adapter, lead
 
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 SERVER = """import json, pathlib, sys
 pathlib.Path(sys.argv[1]).write_text("started")
 print("anything before its address")
@@ -28,16 +32,17 @@ sys.exit(int(sys.argv[3]))
 """
 
 
-def _run(tmp_path: Path, url: str = "http://127.0.0.1:4100", server: str = SERVER, code: int = 3) -> tuple[
-        subprocess.CompletedProcess[str], Path]:
+def _run(tmp_path: Path, url: str = "http://127.0.0.1:4100", server: str = SERVER, code: int = 3,
+         tui_text: str = TUI) -> tuple[subprocess.CompletedProcess[str], Path]:
     served, tui = tmp_path / "server.py", tmp_path / "tui.py"
     served.write_text(server, encoding="utf-8")
-    tui.write_text(TUI, encoding="utf-8")
+    tui.write_text(tui_text, encoding="utf-8")
     spec = {"in": [], "out": [], "serve": {"argv": [sys.executable, str(served), str(tmp_path / "state"), url],
                                            "log": str(tmp_path / "server.log"),
                                            "url_file": str(tmp_path / "url.json")}}
     argv = netns.shim_argv(spec, [sys.executable, str(tui), str(tmp_path / "got"), shim.SERVER_URL, str(code)])
-    return subprocess.run(argv, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL), tmp_path
+    return subprocess.run(argv, capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL,
+                          creationflags=NO_WINDOW), tmp_path
 
 
 def test_the_tui_gets_the_address_the_server_announced_and_the_server_ends_with_it(tmp_path: Path) -> None:
@@ -46,10 +51,12 @@ def test_the_tui_gets_the_address_the_server_announced_and_the_server_ends_with_
     assert (tmp_path / "got").read_text() == "http://127.0.0.1:4100"
     assert json.loads((tmp_path / "url.json").read_text()) == {"url": "http://127.0.0.1:4100"}
     assert (tmp_path / "state").read_text() == "lease ended"
+    assert "server ended" not in done.stderr  # its lease ended with the TUI: no one lost it
 
 
-def test_a_server_announcing_anywhere_but_loopback_gets_no_tui(tmp_path: Path) -> None:
-    done, _ = _run(tmp_path, url="http://example.invalid:4100")
+@pytest.mark.parametrize("url", ["http://example.invalid:4100", "http://127.0.0.1:4100@example.invalid"])
+def test_a_server_announcing_anywhere_but_loopback_gets_no_tui(tmp_path: Path, url: str) -> None:
+    done, _ = _run(tmp_path, url=url)
     assert done.returncode == shim.EXIT_SETUP and "not a http://127.0.0.1 address" in done.stderr
     assert not (tmp_path / "got").exists() and not (tmp_path / "url.json").exists()
 
@@ -106,4 +113,58 @@ def test_ctrl_c_is_forwarded_where_the_harness_has_no_terminal_of_its_own(monkey
 def test_a_server_that_exits_gets_no_tui(tmp_path: Path) -> None:
     done, _ = _run(tmp_path, server="import sys\nsys.exit(1)\n")
     assert done.returncode == shim.EXIT_SETUP and "no address" in done.stderr
+    assert "`aew doctor`" in done.stderr and str(tmp_path / "server.log") in done.stderr  # what to do about it
     assert not (tmp_path / "got").exists()
+
+
+def test_a_server_that_dies_mid_session_ends_the_session_and_says_so(tmp_path: Path) -> None:
+    """Nothing restarts it, and the TUI would go on reconnecting."""
+    server = "import json\nprint(json.dumps({'url': 'http://127.0.0.1:4100'}), flush=True)\n"
+    done, _ = _run(tmp_path, server=server, tui_text="import time\ntime.sleep(600)\n")
+    assert "the Lead's server ended" in done.stderr and "`aew opencode` again" in done.stderr
+
+
+def test_a_long_wait_for_the_server_says_so_once(capsys: pytest.CaptureFixture[str],
+                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shim, "SERVE_NOTICE_S", 0.0)
+    monkeypatch.setattr(shim, "SERVE_TIMEOUT_S", 1.0)
+    shim._wait_for(threading.Event())
+    assert capsys.readouterr().err.count("waiting for the Lead's server") == 1
+
+
+def test_ctrl_c_before_the_announcement_ends_the_server_and_gives_no_traceback(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A server that never announces and survives the Ctrl+C: the shim's wait still sees it, on Windows too, whose plain
+    wait can't be interrupted. `shim.main` runs here because a Windows test can't send a child a Ctrl+C with no
+    window."""
+    served = tmp_path / "server.py"
+    served.write_text("import pathlib, sys, time\npathlib.Path(sys.argv[1]).write_text('started')\ntime.sleep(600)\n",
+                      encoding="utf-8")
+    started = tmp_path / "started"
+    spec = {"in": [], "out": [], "serve": {"argv": [sys.executable, str(served), str(started)],
+                                           "log": str(tmp_path / "server.log"), "url_file": str(tmp_path / "url.json")}}
+    real, made = subprocess.Popen, []
+
+    def popen(*args: Any, **kwargs: Any) -> Any:
+        made.append(real(*args, **{**kwargs, "creationflags": NO_WINDOW}))
+        return made[-1]
+
+    monkeypatch.setattr(subprocess, "Popen", popen)
+
+    def press() -> None:
+        while not started.exists():
+            time.sleep(0.05)
+        _thread.interrupt_main()
+
+    threading.Thread(target=press, daemon=True).start()
+    began = time.monotonic()
+    assert shim.main([json.dumps(spec), "--", sys.executable, "-c", "raise SystemExit(9)"]) == 130
+    assert time.monotonic() - began < 30, "the wait did not see it"
+    assert made[0].wait(30) is not None and len(made) == 1  # the server is gone, and no TUI started
+
+
+def test_a_launch_that_never_started_the_tui_is_no_success() -> None:
+    failed = lead._outcome({"ok": True, "exit": shim.EXIT_SETUP}, "2.2.6")
+    assert failed["ok"] is False and "aew doctor" in failed["not_started"]
+    ran = lead._outcome({"ok": True, "exit": 3}, "2.2.6")  # the TUI's own status
+    assert ran == {"ok": True, "exit": 3, "opencode": "2.2.6"}

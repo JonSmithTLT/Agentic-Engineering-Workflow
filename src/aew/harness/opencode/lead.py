@@ -297,7 +297,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                       env=tui_env(os.environ, provider_env=[], guide=guide,
                                                   push_wake=pushes_wakes(engine)), contained=lead)
-        return {**out, "opencode": version}
+        return _outcome(out, version)
     # Off Linux the TUI runs as it is, labelled so, with its label.json and its register entry (G3 addendum 7, ruling
     # 1); under an explicit `required` that refuses before any credential is read.
     weaker = WeakerOpenCode(engine, argv, kind="lead_opencode", who="aew opencode")
@@ -314,7 +314,18 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         sys.stderr.write(line)
     out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                   env=env, contained=weaker)
-    return {**out, "opencode": version}
+    return _outcome(out, version)
+
+
+def _outcome(out: dict[str, Any], version: Any) -> dict[str, Any]:
+    """The session's result. A launch that never started the TUI is no success: `aew opencode` exits non-zero, and the
+    result says what to do, since the shim's own line is above it."""
+    from aew.harness.containment.shim import EXIT_SETUP
+
+    if out["exit"] != EXIT_SETUP:
+        return {**out, "opencode": version}
+    return {**out, "ok": False, "opencode": version,
+            "not_started": "the Lead's TUI was not started; run `aew doctor`, and read the line above this result"}
 
 
 def _readiness(engine: Any) -> None:

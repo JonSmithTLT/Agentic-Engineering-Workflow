@@ -36,20 +36,26 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import socket
 import subprocess
 import sys
 import threading
+import time
 from typing import Any
 
 LOOPBACK = "127.0.0.1"
+LOOPBACK_URL = re.compile(rf"http://{re.escape(LOOPBACK)}:[0-9]{{1,5}}/?")  # the only address a password goes to
 CHUNK = 64 * 1024
 BACKLOG = 64
 EXIT_SETUP = 70  # EX_SOFTWARE: a leg could not be set up, so the harness was not started
+EXIT_INTERRUPTED = 130  # Ctrl+C before the harness started
 SERVER_URL = "{aew_server_url}"  # in the harness argv: the address ``serve``'s server announced
 SERVE_TIMEOUT_S = 60.0           # the server's announcement, as the worker adapter's start allows
 SERVE_END_S = 5.0                # the lease ended: the server's moment to exit on its own
+SERVE_NOTICE_S = 5.0             # a blank screen for this long gets a line (about 2 s to announce, measured 2026-11-08)
+SERVE_SLICE_S = 0.2              # a Windows wait can't be interrupted: Ctrl+C is seen between slices
 
 
 def parse(argv: list[str]) -> tuple[dict[str, Any], list[str]]:
@@ -187,17 +193,32 @@ def start_server(serve: dict[str, Any]) -> tuple[subprocess.Popen[bytes], str]:
         announced.set()
 
     threading.Thread(target=read, daemon=True).start()
-    announced.wait(SERVE_TIMEOUT_S)
-    if not found or not found[0].startswith(f"http://{LOOPBACK}:"):
+    try:
+        _wait_for(announced)
+    except KeyboardInterrupt:
+        proc.kill()
+        raise
+    if not found or not LOOPBACK_URL.fullmatch(found[0]):
         proc.kill()
         raise OSError(f"the Lead's server announced {found[0][:80] if found else 'no address'}, not a "
-                      f"http://{LOOPBACK} address (see {serve['log']})")
+                      f"http://{LOOPBACK} address. Run `aew doctor`, and read the server's log: {serve['log']}")
     temporary = f"{serve['url_file']}.tmp"
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as out:
         json.dump({"url": found[0]}, out)
     os.replace(temporary, str(serve["url_file"]))
     return proc, found[0]
+
+
+def _wait_for(announced: threading.Event) -> None:
+    """Until the server has announced, or its time is up, saying so once if the wait is long."""
+    deadline = time.monotonic() + SERVE_TIMEOUT_S
+    notice = time.monotonic() + SERVE_NOTICE_S
+    while not announced.wait(SERVE_SLICE_S) and time.monotonic() < deadline:
+        if notice is not None and time.monotonic() >= notice:
+            notice = None
+            sys.stderr.write(f"aew network shim: waiting for the Lead's server, for up to {SERVE_TIMEOUT_S:g} s\n")
+            sys.stderr.flush()
 
 
 def end_server(proc: subprocess.Popen[bytes]) -> None:
@@ -231,6 +252,21 @@ def pass_signals(proc: subprocess.Popen[bytes], *, on_its_terminal: bool) -> Non
                 signal.signal(getattr(signal, name), lambda _s, _f: None)
 
 
+def watch_server(server: subprocess.Popen[bytes], proc: subprocess.Popen[bytes]) -> threading.Event:
+    """End the harness if its server dies: nothing restarts the server, and the TUI would go on reconnecting. The event
+    says that happened, and :func:`end_server` ending the lease after the harness doesn't count."""
+    lost = threading.Event()
+
+    def watch() -> None:
+        server.wait()
+        if proc.poll() is None:
+            lost.set()
+            proc.terminate()
+
+    threading.Thread(target=watch, daemon=True).start()
+    return lost
+
+
 def main(argv: list[str]) -> int:
     try:
         spec, child = parse(argv)
@@ -249,6 +285,8 @@ def main(argv: list[str]) -> int:
     if spec.get("serve"):
         try:
             server, url = start_server(spec["serve"])
+        except KeyboardInterrupt:
+            return EXIT_INTERRUPTED
         except (OSError, KeyError, TypeError) as exc:
             sys.stderr.write(f"aew network shim: the Lead's server did not start, so the harness was not started: "
                              f"{exc}\n")
@@ -256,7 +294,11 @@ def main(argv: list[str]) -> int:
         child = [url if a == SERVER_URL else a for a in child]
     proc = subprocess.Popen(child)  # noqa: S603  # the harness argv the supervisor's adapter gave
     pass_signals(proc, on_its_terminal=terminal_signals_reach_it(spec))
+    lost = None if server is None else watch_server(server, proc)
     code = proc.wait()
     if server is not None:
         end_server(server)
+    if lost is not None and lost.is_set():  # after the harness: a TUI's screen would hide it
+        sys.stderr.write("aew network shim: the Lead's server ended, and nothing restarts it, so the session ended. "
+                         f"Start `aew opencode` again; the server's log is {spec['serve']['log']}\n")
     return 128 - code if code < 0 else code

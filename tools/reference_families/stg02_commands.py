@@ -88,7 +88,7 @@ OCCURRENCES: tuple[tuple[str, str], ...] = (
 _TESTS = "tests/integration/test_reference_stg02.py"
 COMMAND_TESTS = (
     f"{_TESTS}::test_the_command_records_are_the_registry_both_ways",
-    f"{_TESTS}::test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_request",
+    f"{_TESTS}::test_the_continue_action_and_the_protected_ones_reach_an_owner_by_the_reading_and_by_a_request",
 )
 REFUSAL_TESTS = (
     f"{_TESTS}::test_the_refusal_records_are_the_two_tables_both_ways",

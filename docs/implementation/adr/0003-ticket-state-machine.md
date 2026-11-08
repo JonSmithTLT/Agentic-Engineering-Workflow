@@ -190,7 +190,8 @@ active workspace, whatever its state):
 ## Amendment 2026-11-07 — the default cap is 2 (register F10)
 
 The default `mutating_concurrency` is 2, replacing the 1 of the 2026-10-04 amendment and the "default is unchanged"
-line of the 2026-11-06 amendment (the operator's reset of 2026-11-06, slot 3; HEB-06.c). `init` writes 2 into a new
+line of the 2026-11-06 amendment (the operator's reset of 2026-11-06, slot 3; HEB-06.c; the operator's decision of
+2026-11-07, which lifted the register's "after first use" on F10). `init` writes 2 into a new
 project's `gates.yaml`, and a `gates.yaml` without the key reads the same default (`DEFAULT_GATES`, read by
 `mutating_cap`, which admission and `doctor` share). Two mutating Tickets whose scopes cannot meet work at once, each in
 its own worktree, and integrate one after the other through the integration queue and its lease (ADR-0004); a pair

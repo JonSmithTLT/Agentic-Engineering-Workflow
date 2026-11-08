@@ -340,7 +340,7 @@ Stages refuse with `STALE_POLICY` on policy drift. A replacement Lead explicitly
 - **One declared, non-additive oracle change.** Rule 1 ("at most one live mutating workspace") becomes "live mutating workspaces ≤ the policy cap, and every live one is bound to an active invocation". *(As built in M4-C, revised: the cap is an admission rule enforced by the guard, and the rule is path uniqueness; the second clause does not hold. See "M4-C as built".)* The four tests that assert the serial cap change, with the reason recorded in each. With the default policy (cap 1) every M1 to M3 behaviour is unchanged, and the full suite proves it.
 - **Everything else is additive:** new oracle rules for the queue and lease (§6), new guards inside `DispatchDecision`, new commands.
 - **Existing refusals keep their codes** (`CONCURRENCY_LIMIT`, `STALE_CANDIDATE`, `STALE_REVISION`, …). New ones are added to the registry.
-- **The default policy keeps today's behaviour.** `mutating_concurrency: 1`, `post_integration.validation: verifier`. Concurrency is opt-in per project.
+- **The default policy keeps today's behaviour.** `mutating_concurrency: 1`, `post_integration.validation: verifier`. Concurrency is opt-in per project. *(The default is 2 since 2026-11-07: ADR-0003's amendment of that day.)*
 - ADR-0004 gets an amendment for the queue and lease, ADR-0003 for the new-attempt-on-conflict rule, and ADR-0009 for the containment mode and the guarantee label. These are amendments in the ADRs, not new semantics.
 
 ## R. Register triage (milestone-start rule)

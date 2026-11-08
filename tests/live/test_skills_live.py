@@ -15,8 +15,8 @@ with a control write beside it; the record says how the copy was protected.
 provider's key) are set. A paid model needs the operator's approval for each run (the operator, 2026-11-06), and never
 one of OpenCode's free models: a ``-free`` id, or one the served catalog prices at zero (``live_models``), whatever its
 provider; a paid OpenCode Zen model is allowed. Three runs, each capped at ``AEW_LIVE_SKILLS_STEPS`` steps and each
-in a project of its own (a run that ends without integrating holds its Ticket's workspace, which the gates'
-``mutating_concurrency`` of 1 lets no second Ticket of that project past). ``AEW_LIVE_SKILLS_REHEARSE=1``, with no
+in a project of its own (a run that ends without integrating holds its Ticket's workspace, and a second Ticket of that
+project, with the same scope, is held by the launch conflict check). ``AEW_LIVE_SKILLS_REHEARSE=1``, with no
 model set, runs the same three through the scripted adapter, no model and no key, to prove the test's own path before
 a paid run is asked for:
 
@@ -280,8 +280,9 @@ def test_live_a_model_lists_loads_and_is_refused_what_it_was_not_given(tmp_path)
     choice = model_choice(tmp_path)
     model = choice[0] if choice else "rehearsal"
     # Each run has a project of its own. A listing run may end without integrating (out of steps, or no evidence),
-    # and its Ticket then holds its workspace, so the gates' `mutating_concurrency` (1) refuses the next Ticket of the
-    # same project (the operator's run of 2026-11-06). This measures the listing and the probe, not the queue.
+    # and its Ticket then holds its workspace, which refuses the next Ticket of the same project (the cap, in the
+    # operator's run of 2026-11-06; now the launch conflict check). This measures the listing and the probe, not the
+    # queue.
     listing = {}
     for card in ("engineer", "plain_engineer"):
         lab = model_lab(tmp_path / card, choice)

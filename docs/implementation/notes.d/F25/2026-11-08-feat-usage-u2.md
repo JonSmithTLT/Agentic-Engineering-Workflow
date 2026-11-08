@@ -7,4 +7,14 @@ higher above a context size holds its base tier and is named in `base_tier_only`
 least $X; above Nk context costs more". An exact figure needs per-request context sizes in the run-usage record and
 tiered rows in the table.
 
-**Follow-on: existing projects.** They get the table through an offer with one confirmation, the shared switch offer, so what is built is on by default for them too. It waits for concurrency PR B, which builds that offer.
+**Follow-on: existing projects.** They get the table through an offer with one confirmation, the shared switch offer, so what is built is on by default for them too. It waits for concurrency PR B, which builds that offer. Until then the report's "none" line names no next step, and the
+only route is copying the bundled file by hand; the offer fixes that too.
+
+**Follow-ons from the independent review.**
+- **The report reaches the model unfenced.** Inline shell output arrives as the operator's own text, and part of it comes
+  from records a run's harness wrote. The size limits it (a model id: 48 bytes, no whitespace). Fence it when the next
+  step, the Lead's own usage, touches the template: say that what follows is built from those records, and is data.
+- **Typed arguments are appended before the inline scan.** So inline shell the operator types or pastes after a command
+  runs outside the permission flow; `/aew-ticket` and `/aew-next` behave the same. Only the operator can type them. State
+  the limit in ADR-0009 and the guide, with that `/aew-usage` takes no argument.
+- **The report doesn't say the Lead's own usage isn't in it.** The next step records the Lead's usage, which fixes this.

@@ -363,6 +363,17 @@ def test_every_lead_command_is_named_aew_so_no_name_collides_with_a_harnesss_own
     assert [name for name in projection.LEAD_COMMANDS if not name.startswith("aew-")] == []
 
 
+def test_every_document_listing_the_lead_commands_lists_them_all():
+    """A second place a list went stale in one pull request: any document naming the handoff command names them all."""
+    docs = Path(__file__).resolve().parents[2] / "docs"
+    found = [p for p in docs.rglob("*.md") if not {"archive", "contracts"} & set(p.relative_to(docs).parts)
+             and "`/aew-handoff`" in p.read_text(encoding="utf-8")]
+    assert found
+    for path in found:
+        text = path.read_text(encoding="utf-8")
+        assert [n for n in projection.LEAD_COMMANDS if f"`/{n}" not in text] == [], path
+
+
 def test_a_lead_command_template_names_only_real_tools_and_takes_no_stage_step_from_the_shell():
     names = {t.name for t in contract.exposed(NORMAL)}
     # the command each covered move's shell form opens with, e.g. `aew work create`

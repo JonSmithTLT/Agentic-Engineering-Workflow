@@ -440,7 +440,7 @@ LEAD_SYSTEM = "\n".join([
 ])
 
 LEAD_COMMANDS: dict[str, dict[str, str]] = {
-    # An inline shell read (ADR-0009): the report reaches the model verbatim, so the figures are AEW's and not retold.
+    # An inline shell read (ADR-0009): the report reaches the model unchanged, so the figures it shows are AEW's.
     "aew-usage": {
         "description": "AEW: usage and cost, the workers' runs",
         "template": "Here is AEW's usage report. Show it to me as it stands, then say in one line what is unpriced or "

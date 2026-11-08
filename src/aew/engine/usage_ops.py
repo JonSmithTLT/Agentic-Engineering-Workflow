@@ -492,7 +492,8 @@ def _plus(total: Decimal | None, part: Decimal | None) -> Decimal | None:
 
 
 def _empty_figure() -> dict[str, Any]:
-    return {"usd": None, "priced": 0, "unpriced": 0, "reasons": {}, "floor_runs": 0, "floor_above": None}
+    return {"usd": None, "priced": 0, "unpriced": 0, "reasons": {}, "floor_runs": 0, "floor_above": None,
+            "prices_as_of": None}
 
 
 def empty_totals() -> dict[str, Any]:
@@ -509,11 +510,18 @@ def _add_floor(into: dict[str, Any], runs: int, above: int | None) -> None:
         into["floor_above"] = above if into["floor_above"] is None else min(into["floor_above"], above)
 
 
+def _add_as_of(into: dict[str, Any], as_of: str | None) -> None:
+    """The oldest table date behind a sum: a figure says how old its prices may be."""
+    if as_of is not None:
+        into["prices_as_of"] = as_of if into["prices_as_of"] is None else min(into["prices_as_of"], as_of)
+
+
 def _add_figure(into: dict[str, Any], figure: Mapping[str, Any]) -> None:
     into["usd"] = _plus(into["usd"], figure["usd"])
     into["priced"] += figure["priced"]
     into["unpriced"] += figure["unpriced"]
     _add_floor(into, figure["floor_runs"], figure["floor_above"])
+    _add_as_of(into, figure["prices_as_of"])
     for reason, n in figure["reasons"].items():
         into["reasons"][reason] = into["reasons"].get(reason, 0) + n
 
@@ -537,9 +545,9 @@ def add_totals(into: dict[str, Any], other: Mapping[str, Any]) -> dict[str, Any]
             mine[name] = _plus(mine[name], model[name])
         for name in _MODEL_COUNTS:
             mine[name] += model[name]
-        floors = [v for v in (mine["under_current_prices_floor_above"], model["under_current_prices_floor_above"])
-                  if v is not None]
-        mine["under_current_prices_floor_above"] = min(floors) if floors else None
+        for name in ("at_record_floor_above", "under_current_prices_floor_above"):
+            floors = [v for v in (mine[name], model[name]) if v is not None]
+            mine[name] = min(floors) if floors else None
         for cat in U.CATEGORIES:
             mine["tokens"][cat] += model["tokens"][cat]
     return into
@@ -553,7 +561,7 @@ _MODEL_COUNTS = ("estimated_at_record_priced", "estimated_at_record_unpriced",
 def _empty_model() -> dict[str, Any]:
     return {"runs": 0, "tokens": dict.fromkeys(U.CATEGORIES, 0), "estimated_at_record_usd": None,
             "estimated_under_current_prices_usd": None, **dict.fromkeys(_MODEL_COUNTS, 0),
-            "under_current_prices_floor_above": None}
+            "at_record_floor_above": None, "under_current_prices_floor_above": None}
 
 
 class Reader:
@@ -593,7 +601,7 @@ class Reader:
                 return {"run": entry["run"], "invocation": inv_id, "state": "missing", "usage": None,
                         "pricing_sha256": None, "estimated_at_record": {"unpriced": UNPRICED_USAGE_MISSING},
                         "estimated_under_current_prices": {"unpriced": UNPRICED_USAGE_MISSING},
-                        "provider_cost": {"usd": None, "trust": "absent"}, "_parts": ([], [])}
+                        "provider_cost": {"usd": None, "trust": "absent"}, "prices_as_of": {}, "_parts": ([], [])}
             result = run_record.get("result")
             record = _valid_record(result.get("usage_record") if isinstance(result, dict) else None) \
                 or U.absent_record(source=f"harness:{entry.get('harness') or U.UNKNOWN}")
@@ -601,10 +609,14 @@ class Reader:
             at_record, at_parts = {"unpriced": UNPRICED_NOT_RECORDED}, []
         current, current_parts = derive(record, self.current) if not self.unusable else (
             {"unpriced": UNPRICED_TABLE_UNUSABLE}, [])
+        recorded = self.snapshot(sha) if sha else None
+        as_of = {"estimated_at_record": recorded.table["as_of"] if recorded else None,
+                 "estimated_under_current_prices": self.current.table["as_of"]
+                 if self.current and not self.unusable else None}
         return {"run": entry["run"], "invocation": inv_id, "state": state, "usage": record, "pricing_sha256": sha,
                 "estimated_at_record": at_record, "estimated_under_current_prices": current,
                 "provider_cost": {"usd": record.get("provider_cost_usd"), "trust": record.get("provider_cost_trust")},
-                "_parts": (at_parts, current_parts)}
+                "prices_as_of": as_of, "_parts": (at_parts, current_parts)}
 
     def invocation(self, inv_id: str, inv: Mapping[str, Any]) -> dict[str, Any]:
         """One invocation: its rows and their sum. An invocation without runs (a custody invocation, or one not yet
@@ -635,6 +647,7 @@ def _count_row(totals: dict[str, Any], row: Mapping[str, Any]) -> None:
             fig["priced"] += 1
             if figure.get("floor"):
                 _add_floor(fig, 1, figure["floor_above"])
+            _add_as_of(fig, row["prices_as_of"].get(name))
         else:
             fig["unpriced"] += 1
             fig["reasons"][figure["unpriced"]] = fig["reasons"].get(figure["unpriced"], 0) + 1
@@ -684,10 +697,11 @@ def _count_models(by_model: dict[str, Any], row: Mapping[str, Any]) -> None:
         model["estimated_at_record_priced" if key in at_parts else "estimated_at_record_unpriced"] += 1
         model["estimated_under_current_prices_priced" if key in current_parts
               else "estimated_under_current_prices_unpriced"] += 1
-        above = (row["estimated_under_current_prices"].get("floor_models") or {}).get(key)
-        if above is not None:
-            held = model["under_current_prices_floor_above"]
-            model["under_current_prices_floor_above"] = above if held is None else min(held, above)
+        for name, figure in (("at_record_floor_above", row["estimated_at_record"]),
+                             ("under_current_prices_floor_above", row["estimated_under_current_prices"])):
+            above = (figure.get("floor_models") or {}).get(key)
+            if above is not None:
+                model[name] = above if model[name] is None else min(model[name], above)
 
 
 def public_row(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -834,7 +848,8 @@ def _amount(usd: Decimal, floor_above: int | None) -> str:
     """Dollars, as a floor when a price behind them is only a base tier: a low number never reads as an exact one."""
     if floor_above is None:
         return money(usd)
-    return f"at least {money(usd)} (above {floor_above // 1000}k context costs more)"
+    size = f"{floor_above // 1000}k" if floor_above % 1000 == 0 else f"{floor_above:,} tokens of"
+    return f"at least {money(usd)} (above {size} context costs more)"
 
 
 def figure_text(figure: Mapping[str, Any]) -> str:
@@ -845,15 +860,18 @@ def figure_text(figure: Mapping[str, Any]) -> str:
     if not figure["priced"]:
         return f"{UNKNOWN_EXPOSURE} ({_reasons(figure['reasons'])})"
     text = f"{_amount(figure['usd'], figure.get('floor_above'))} {OBSERVED} over {figure['priced']} priced run(s)"
+    if figure.get("prices_as_of"):
+        text += f", prices as of {figure['prices_as_of']}"
     if figure["unpriced"]:
         text += f", and {figure['unpriced']} {UNKNOWN_EXPOSURE} ({_reasons(figure['reasons'])})"
     return text
 
 
-def _row_figure(figure: Mapping[str, Any]) -> str:
+def _row_figure(figure: Mapping[str, Any], as_of: str | None = None) -> str:
     if "usd" not in figure:
         return f"{UNKNOWN_EXPOSURE} ({figure['unpriced']})"
-    return f"{_amount(figure['usd'], figure.get('floor_above'))} {OBSERVED}"
+    dated = f", prices as of {as_of}" if as_of else ""
+    return f"{_amount(figure['usd'], figure.get('floor_above'))} {OBSERVED}{dated}"
 
 
 def tokens_text(tokens: Mapping[str, int]) -> str:
@@ -907,8 +925,10 @@ def _model_figure(model: Mapping[str, Any]) -> str:
     """One model's current figure, saying how many of its runs the sum covers: a partial sum never reads as whole."""
     priced, unpriced = model["estimated_under_current_prices_priced"], model["estimated_under_current_prices_unpriced"]
     usd = model["estimated_under_current_prices_usd"]
-    return ((f"{_amount(usd, model['under_current_prices_floor_above'])} over {priced} run(s)" if priced else "no cost")
-            + (f", {unpriced} unpriced" if unpriced else ""))
+    if not priced:
+        return f"{UNKNOWN_EXPOSURE} over {unpriced} run(s)"
+    text = f"{_amount(usd, model['under_current_prices_floor_above'])} over {priced} run(s)"
+    return text + (f", and {unpriced} {UNKNOWN_EXPOSURE}" if unpriced else "")
 
 
 def _row_lines(row: Mapping[str, Any], indent: str) -> list[str]:
@@ -916,9 +936,11 @@ def _row_lines(row: Mapping[str, Any], indent: str) -> list[str]:
     tokens = tokens_text(record.get("tokens") or {}) if record else "none"
     trust = record.get("tokens_trust", "absent") if record else "missing"
     fresh = f"recorded {record['recorded_at']}" if row["state"] == "recorded" else row["state"]
+    as_of = row["prices_as_of"]
     return [f"{indent}{row['run']} [{fresh}, tokens {trust}]: {tokens}",
-            f"{indent}  cost at record prices {_row_figure(row['estimated_at_record'])}; under current prices "
-            f"{_row_figure(row['estimated_under_current_prices'])}"]
+            f"{indent}  cost at record prices "
+            f"{_row_figure(row['estimated_at_record'], as_of.get('estimated_at_record'))}; under current prices "
+            f"{_row_figure(row['estimated_under_current_prices'], as_of.get('estimated_under_current_prices'))}"]
 
 
 def _invocation_lines(inv: Mapping[str, Any], indent: str) -> list[str]:
@@ -947,7 +969,8 @@ def basis_lines(about: Mapping[str, Any]) -> list[str]:
             f"Per-task enforcement: {about['per_task_enforcement']}. External account bound: "
             f"{about['external_account_bound']}.",
             f"Cost method: {about['method']}. Table in force now: "
-            + (f"as of {table['as_of']}, sha256 {table['sha256'][:12]}" if table else
+            + (f"as of {table['as_of']}, sha256 {table['sha256'][:12]}, source: {table['source']}. These are list "
+               "prices unless that source says otherwise, not a contract's or a gateway's rate" if table else
                f"none, so every figure under current prices is {UNKNOWN_EXPOSURE}") + "."]
 
 

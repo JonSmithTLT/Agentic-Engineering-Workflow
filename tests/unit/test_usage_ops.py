@@ -449,7 +449,7 @@ def test_an_invocation_without_runs_is_counted_and_contributes_nothing_else(tmp_
     t = O.unit_projection(state, "T-0001", O.Reader(tmp_path, PRICES))["own"]
     assert (t["invocations"], t["invocations_without_runs"], t["runs"]) == (1, 1, 0)
     assert t["estimated_under_current_prices"] == {"usd": None, "priced": 0, "unpriced": 0, "reasons": {},
-                                                   "floor_runs": 0, "floor_above": None}
+                                                   "floor_runs": 0, "floor_above": None, "prices_as_of": None}
 
 
 def test_a_mixed_run_counts_under_the_mix_never_the_requested_model(tmp_path):
@@ -655,7 +655,16 @@ def test_a_models_partial_sum_says_how_many_of_its_runs_it_covers(tmp_path):
     rolled = O.add_totals(O.empty_totals(), totals)["by_model"]["openai/gpt-6.1"]
     assert rolled["estimated_under_current_prices_unpriced"] == 1
     line = next(x for x in O._totals_lines(totals, "") if "openai/gpt-6.1" in x)
-    assert "over 1 run(s), 1 unpriced" in line
+    assert f"over 1 run(s), and 1 {O.UNKNOWN_EXPOSURE}" in line
+
+
+def test_an_unpriced_models_line_never_reads_as_zero_or_free(tmp_path):
+    """R4: a missing price is unpriced, never zero, in the line `/aew-usage` shows the model too."""
+    inv = {"work_unit": "T-1", "runs": [{"run": "R-1", "usage": record(input=1000), "pricing_sha256": None}]}
+    totals = O.Reader(tmp_path, None).invocation("I-1", inv)["totals"]
+    line = next(x for x in O._totals_lines(totals, "") if "openai/gpt-6.1" in x)
+    assert f"{O.UNKNOWN_EXPOSURE} over 1 run(s)" in line
+    assert "no cost" not in line and "$" not in line
 
 
 FLOOR_TABLE = (b"schema: aew/pricing/v1\ncurrency: USD\nas_of: 2026-11-08\nsource: synthetic\n"
@@ -689,8 +698,39 @@ def test_a_total_mixing_a_floor_run_with_an_exact_run_reads_as_a_floor(tmp_path)
     assert O.figure_text(figure).startswith("at least $0.002 (above 272k context costs more)")
     assert totals["by_model"]["openai/gpt-6.1"]["under_current_prices_floor_above"] == 272000
     assert totals["by_model"]["openai/gpt-6.1-mini"]["under_current_prices_floor_above"] is None
+    lines = O._totals_lines(totals, "")
+    assert "at least $0.001 (above 272k context costs more)" in next(x for x in lines if "openai/gpt-6.1:" in x)
+    assert "at least" not in next(x for x in lines if "openai/gpt-6.1-mini:" in x)
     rolled = O.add_totals(O.empty_totals(), totals)["estimated_under_current_prices"]
     assert (rolled["floor_runs"], rolled["floor_above"]) == (1, 272000)
+
+
+def test_a_figure_at_record_keeps_its_floor_and_its_date_under_a_later_table(tmp_path):
+    """The at-record figure rests on the snapshot's table: its mark and date hold whatever the table in force says."""
+    run_record(runlog.run_dir(tmp_path, "R-1"), record(input=1000))
+    state = hand_state(("I-1", "T-0001", ["R-1"]))
+    O.copy_run_usage(state, "I-1", tmp_path, pricing=O.Prices(FLOOR_TABLE, source="t"))
+    later = FLOOR_TABLE.replace(b"as_of: 2026-11-08", b"as_of: 2026-12-01").replace(
+        b"base_tier_only:\n  openai/gpt-6.1:\n    above_context_tokens: 272000\n", b"")
+    inv = O.Reader(tmp_path, O.Prices(later, source="t")).invocation("I-1", state["invocations"]["I-1"])
+    totals = inv["totals"]
+    at_record, current = totals["estimated_at_record"], totals["estimated_under_current_prices"]
+    assert (at_record["floor_runs"], at_record["prices_as_of"]) == (1, "2026-11-08")
+    assert (current["floor_runs"], current["prices_as_of"]) == (0, "2026-12-01")
+    model = totals["by_model"]["openai/gpt-6.1"]
+    assert (model["at_record_floor_above"], model["under_current_prices_floor_above"]) == (272000, None)
+    assert "prices as of 2026-11-08" in O.figure_text(at_record) and "prices as of 2026-12-01" in O.figure_text(current)
+    assert "prices as of 2026-11-08" in O.summary_line(totals)  # `aew status`'s line
+    row = O._row_lines(inv["rows"][0], "")[1]
+    assert "at least $0.001" in row and "prices as of 2026-11-08" in row and "prices as of 2026-12-01" in row
+    rolled = O.add_totals(O.empty_totals(), totals)["by_model"]["openai/gpt-6.1"]
+    assert rolled["at_record_floor_above"] == 272000
+
+
+@pytest.mark.parametrize(("size", "text"), [(272000, "above 272k context"), (999, "above 999 tokens of context"),
+                                            (1500, "above 1,500 tokens of context")])
+def test_a_floor_names_its_size_as_it_is(size, text):
+    assert text in O._amount(Decimal("1"), size)
 
 
 def test_a_base_tier_mark_is_kept_in_the_record_time_snapshot(tmp_path):

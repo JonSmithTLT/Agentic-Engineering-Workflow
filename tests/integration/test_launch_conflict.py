@@ -13,22 +13,16 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from aewflow import create_planned_ticket, integrate, sample_project, to_commit_ready
+from aewflow import create_planned_ticket, integrate, sample_project, set_mutating_concurrency, to_commit_ready
 from conftest import git
 from fake_harness import HarnessLab
 from invariants import assert_control_invariants
-
-from aew.util import dump_yaml, load_yaml
 
 ONE = ("calc/one.py", "tests/test_one.py")
 TWO = ("calc/two.py", "tests/test_two.py")
 
 
-def concurrency(p, cap: int) -> None:
-    gates = p.root / ".aew/policy/gates.yaml"
-    gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "mutating_concurrency": cap}),
-                     encoding="utf-8", newline="\n")
-    p.pin_policy()
+concurrency = set_mutating_concurrency
 
 
 def refused(p, *args, env: dict[str, str] | None = None) -> dict:
@@ -141,9 +135,10 @@ def test_a_case_insensitive_repository_holds_two_spellings_of_one_file(calc, tmp
 
 
 def test_at_concurrency_one_the_cap_answers_first(tmp_path):
-    """The default (``mutating_concurrency: 1``) is unchanged: a second mutating Ticket meets the cap, whatever its
-    scope."""
+    """At ``mutating_concurrency: 1`` (set by name: the default is 2, register F10), a second mutating Ticket meets
+    the cap, whatever its scope."""
     p = sample_project(tmp_path)
+    concurrency(p, 1)
     first = create_planned_ticket(p, tmp_path, title="Add one", scope=ONE)
     second = create_planned_ticket(p, tmp_path, title="Add two", scope=("calc/**",))
     p.lead("work", "assign", first)

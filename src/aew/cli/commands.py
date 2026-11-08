@@ -349,6 +349,8 @@ def _init(args: argparse.Namespace) -> Any:
         _cwd(args), project_id=args.project_id, name=args.name, branch=args.branch,
         workspaces_root=args.workspaces_root, first_configuration=configuration,
     )
+    from aew.maps import service as maps
+
     state = engine.store.current()
     out = {
         "ok": True,
@@ -360,6 +362,7 @@ def _init(args: argparse.Namespace) -> Any:
         "next": configuration.next_step() if configuration is not None
         else "acquire Lead authority: aew lead acquire --expect-rev 0",
         "provider_key": netns.FIRST_USE_LINE,
+        "map": maps.first_map(engine),  # register E184: the first structural map, generated and selected
     }
     return {**out, **consent.init_keys(out["next"], consent.at_init(args.fetch_tool))}
 

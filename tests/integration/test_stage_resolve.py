@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 import yaml
-from aewflow import create_planned_ticket, sample_project
+from aewflow import create_planned_ticket, sample_project, set_mutating_concurrency
 from fake_harness import contains_credential
 from invariants import assert_control_invariants, load_control
 from stage_equivalence import differences, end_state
@@ -212,12 +212,14 @@ def test_continue_is_refused_while_the_next_steps_guard_refuses_it(project, tmp_
     """The gates: the next step's dispatch decision is asked before anything commits. Another Ticket took the only
     mutating slot, so the stage's assignment is BLOCKED now: the continue refuses and the intent is unchanged."""
     p = project
+    set_mutating_concurrency(p, 1)  # the only slot, set by name: the default is 2 (register F10)
     wid = create_planned_ticket(p, tmp_path)
     other = create_planned_ticket(p, tmp_path, title="Add multiply()")
     sid = crashed_stage(p, monkeypatch, "probe_start", "work.assign", work_id=wid)
-    p.lead("work", "assign", other)  # mutating_concurrency 1: the slot is taken
+    p.lead("work", "assign", other)  # the slot is taken
     row = unfinished(p)[sid]
     assert row["checks"]["guard"]["status"] == "blocked" and not row["safe_to_continue"]
+    assert row["checks"]["guard"]["reason_codes"] == ["CONCURRENCY_LIMIT"]
     rev = p.rev()
     out = resolve(p, sid, "continue")
     assert not out["ok"] and out["stopped"]["error"]["details"]["reason"] == "next_step_blocked"
@@ -231,10 +233,11 @@ def test_a_continued_dispatch_step_still_meets_its_own_dispatch_decision(project
     pre-check out of the way (its guard read as not queryable), the assignment's own decision still refuses it: the
     stage stops at that step, nothing is assigned and no invocation is created."""
     p = project
+    set_mutating_concurrency(p, 1)  # the only slot, set by name: the default is 2 (register F10)
     wid = create_planned_ticket(p, tmp_path)
     other = create_planned_ticket(p, tmp_path, title="Add multiply()")
     sid = crashed_stage(p, monkeypatch, "probe_start", "work.assign", work_id=wid)
-    p.lead("work", "assign", other)  # mutating_concurrency 1: the slot is taken
+    p.lead("work", "assign", other)  # the slot is taken
     monkeypatch.setattr(stage, "guard_check", lambda engine, primitive, args: {
         "status": stage.UNKNOWN_STATUS, "reason_codes": ["GUARD_NOT_QUERYABLE"], "availability": "UNKNOWN",
         "message": "read as not queryable"})

@@ -331,19 +331,10 @@ A chain of resolved calls from the function where an entry point declares itself
 
 A `with` statement's implicit `__enter__` and `__exit__` calls are not followed either, so what a context manager writes is attributed only to the roles that call it by name: the dashboard server takes its own lock file by `with self._lock():` (`aew.dashboard.service:Service.start`), and `local/dashboard/endpoint.lock` and `local/dashboard/endpoint.lock.queue` are listed only under the roles that call `FileLock.__enter__` by name, and not under the dashboard server.
 
-A write is placed per function, not per call: where its destination is a parameter of a shared helper (`aew.engine.lock:FileLock` takes its lock file's path), every path any caller gives it is attributed to every role that reaches the helper. So `entry_points` can also name a role that never writes that path: the lock files list the supervisor, which takes only the capability register's lock, outside `.aew`. The counts of writer functions reached below are lower bounds.
+A write is placed per function, not per call: where its destination is a parameter of a shared helper (`aew.engine.lock:FileLock` takes its lock file's path), every path any caller gives it is attributed to every role that reaches the helper. So `entry_points` can also name a role that never writes that path: the lock files list the supervisor, which takes only the capability register's lock, outside `.aew`.
 
 The parser cut: 114 registrations of a command handler; handlers by role (`aew`: 112, `aew (contained Lead)`: 0, `aew dashboard serve`: 1, `aew lead mcp`: 1; `aew (worker run)`: none, by the environment). Registrations of a command this reading cannot read: none. Registrations whose handler is no function this reading can name: none.
 
-Writer functions with a store-transaction or direct write placed under `.aew`: 97; reached from at least one entry point: 69.
-
-- `aew` (store_writer): 58 writer functions (24 write the store, 34 only under `local/`)
-- `aew (contained Lead)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
-- `aew (worker run)` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
-- `aew dashboard serve` (non_writer): 2 writer functions (0 write the store, 2 only under `local/`)
-- `aew lead mcp` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
-- `aew.harness.supervisor` (store_writer): 21 writer functions (0 write the store, 21 only under `local/`)
-- `aew.stg02.server` (non_writer): 0 writer functions (0 write the store, 0 only under `local/`)
 
 **Checked:** a store write (a store-transaction writer, or a direct writer under a directory other than `local/`) reached from an entry point of kind `non_writer` (`aew (contained Lead)`, `aew (worker run)`, `aew dashboard serve`, `aew lead mcp`, `aew.stg02.server`): none.
 **Permitted:** writers under `local/` reached from those entry points. `local/` is rebuildable runtime data kept out of git (`AEW_GITIGNORE`), and the check is keyed on the path prefix and the mechanism: `aew.dashboard.service:Service._remove_endpoint`, `aew.dashboard.service:Service._write_endpoint`

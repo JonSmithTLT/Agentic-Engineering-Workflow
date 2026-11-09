@@ -118,6 +118,29 @@ def test_plain_git_fails_by_name_while_a_grandchild_holds_its_output_and_leaves_
     assert not procs.pid_alive(int((tmp_path / "held.pid").read_text())), "the holder outlived the bound"
 
 
+def test_plain_git_reaps_what_it_ended_before_closing_the_tree(tmp_path, monkeypatch):
+    """Review of #394, 1: on Linux a zombie still counts as its process group, and `ProcessTree.close` waits for the
+    group, so an unreaped git spent that wait on every expiry. Read off the order, so that no clock decides it."""
+    (tmp_path / "holder.py").write_text(HOLDER, encoding="utf-8")
+    plain_git("init", "-q", cwd=tmp_path)
+    plain_git("config", "alias.hold", f'!"{Path(sys.executable).as_posix()}" holder.py', cwd=tmp_path)
+    at_close = []
+
+    class Recording(procs.ProcessTree):
+        def spawn(self, *args, **kwargs):
+            self.spawned = super().spawn(*args, **kwargs)
+            return self.spawned
+
+        def close(self):
+            at_close.append(self.spawned.returncode)
+            super().close()
+
+    monkeypatch.setattr(bounded_git.procs, "ProcessTree", Recording)
+    with pytest.raises(bounds.BoundExpired):
+        bounded_git.plain_git("hold", cwd=tmp_path, env=os.environ, seconds=HOLDER_BOUND_S)
+    assert at_close and at_close[0] is not None, "git wasn't reaped when the tree closed"
+
+
 def test_plain_git_gives_its_programs_no_stdin_to_wait_on(tmp_path):
     """The script the hostile repository's drivers run ends in `cat`. Under a process whose stdin stays open, as an
     xdist worker's can, `cat` must still see an end of input."""

@@ -413,7 +413,7 @@ def test_cli_reads_a_report_tree_and_writes_the_summary(tmp_path):
 
 def test_the_repository_skip_manifest_is_well_formed():
     data = check_assurance.load_expectations(ROOT / "tests" / "platform-skips.yaml")
-    assert set(data["skipped"]) == {"win32", "linux"} and all(data["skipped"]["win32"].values())
+    assert check_assurance.manifest_problems(data) == []
 
 
 def test_durations_merge_updates_and_prunes():
@@ -1574,9 +1574,11 @@ def test_ci_runs_the_lanes_only_in_the_full_tier_and_assurance_recomputes_the_ti
     jobs = wf["jobs"]
     assert "merge_group" in wf[True] and "push" in wf[True]  # PyYAML reads the `on:` key as True
     changes_run = next(s["run"] for s in jobs["changes"]["steps"] if "tools/ci/tier.py" in str(s.get("run", "")))
-    assert jobs["lanes"]["needs"] == "changes" and jobs["lanes"]["if"] == "needs.changes.outputs.tier == 'full'"
-    # core and static run in every tier: core's shards come from the tier job, and it has no `if`
-    assert jobs["core"]["needs"] == "changes" and "if" not in jobs["core"] and "needs" not in jobs["static"]
+    assert jobs["lanes"]["needs"] == "changes"
+    assert jobs["lanes"]["if"] == "needs.changes.outputs.tier == 'full' && needs.changes.outputs.reuse_run == ''"
+    # core and static run in every tier, core's shards coming from the tier job, unless a pin-only head reuses the lanes
+    assert jobs["core"]["needs"] == "changes" and "needs" not in jobs["static"]
+    assert jobs["core"]["if"] == "needs.changes.outputs.reuse_run == ''"
     assert jobs["core"]["strategy"]["matrix"] == "${{ fromJSON(needs.changes.outputs.core_matrix) }}"
     gate = jobs["assurance"]
     assert set(gate["needs"]) == {"changes", "core", "lanes", "web", "static", "fastbase"}

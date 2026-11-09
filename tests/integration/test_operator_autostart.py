@@ -535,6 +535,26 @@ def test_a_hung_notifier_never_keeps_the_endpoint_up(project, tmp_path, monkeypa
         ep.close()
 
 
+def test_a_hand_over_ends_a_flush_so_the_command_it_names_can_start(project, tmp_path):
+    """The named command waits `STOPPING_S` for the lock, and a slow notifier's flush may be far longer than that."""
+    command = [sys.executable, "-I", script(tmp_path, "hang", "import time\ntime.sleep(300)\n")]
+    engine = adopt(project, command=command, timeout_s=30)
+    holder = _holder(engine.aew_root, os.getpid())
+    ep, out = _background(engine)
+    try:
+        assert ep.watcher is not None
+        ep.watcher._offer("test:one", {"event": "test", "source": "test"}, lane="urgent")
+        until(lambda: ep.watcher._busy, HANG_GUARD_S, "the delivery to begin")
+        holder.unlink()
+        time.sleep(1.0)  # its look has found nobody, and it is flushing
+        ep._retired.set()
+        out.join(operator_endpoint.STOPPING_S)
+        assert not out.is_alive(), "still flushing"
+    finally:
+        holder.unlink(missing_ok=True)
+        ep.close()
+
+
 # ----------------------------------------------------------------------- what the real command and its console do
 
 

@@ -137,7 +137,7 @@ def test_a_background_endpoint_with_no_terminal_raises_on_an_approval(steered):
     try:
         assert _raise(steered)["mode"] == MODE
         assert _no_code(lines) and any("G3 approval" in line for line in lines)
-        assert not ep._retiring, "it keeps serving"
+        assert ep._retiring_by is None and not ep._retired.is_set(), "it keeps serving"
     finally:
         ep.close()
 

@@ -46,6 +46,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -390,15 +391,15 @@ class Watcher:
                 t.join(timeout)
         self._save()
 
-    def flush(self) -> bool:
+    def flush(self, until: Callable[[], bool] | None = None) -> bool:
         """Before the endpoint stops for good (plan v3 §2.8): one more pass, then what it queued delivered or recorded,
-        bounded by :data:`FLUSH_DELIVERIES` of the notifier's own timeout. False if that ran out: what is left stays
-        outstanding, as at any close."""
+        bounded by :data:`FLUSH_DELIVERIES` of the notifier's own timeout, or until ``until`` says to stop waiting.
+        False if it ended that way: what is left stays outstanding, as at any close."""
         try:
             self.pass_once()
         except Exception:  # noqa: BLE001  a pass's own defect is logged, as the watch loop's is
             log.exception("the notifier's last pass failed")
-        return self.drain(FLUSH_DELIVERIES * self._delivery_timeout())
+        return self.drain(FLUSH_DELIVERIES * self._delivery_timeout(), until=until)
 
     def _delivery_timeout(self) -> float:
         try:
@@ -407,13 +408,13 @@ class Watcher:
         except Exception:  # noqa: BLE001  a drifted or unreadable policy is a failed delivery, never a crash
             return float(DEFAULT_TIMEOUT_S)
 
-    def drain(self, timeout: float = 30.0) -> bool:
+    def drain(self, timeout: float = 30.0, until: Callable[[], bool] | None = None) -> bool:
         """Wait until every queued event is delivered or recorded."""
         deadline = time.monotonic() + timeout
         with self._cv:
             while self._urgent or self._spool or self._busy:
                 left = deadline - time.monotonic()
-                if left <= 0:
+                if left <= 0 or (until is not None and until()):
                     return False
                 self._cv.wait(min(left, 0.1))
         return True

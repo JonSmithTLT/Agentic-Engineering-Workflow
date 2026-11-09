@@ -86,8 +86,8 @@ from aew.harness.operator_client import (
 
 Console = Callable[[str], None]
 CLAIM_TIMEOUT_S = 0.5  # long enough to ride out another starter's failed claim, never a wait for a live endpoint
-# A claim rides out an endpoint that is stopping: `close`'s three bounded waits, then the ordinary claim. A flush comes
-# before the decision to stop, with the locator in place, so it adds nothing here.
+# A claim rides out an endpoint that is stopping: `close`'s three bounded waits, then the ordinary claim. A flush adds
+# nothing here: it comes before the decision to stop, with the locator in place, and a hand-over ends it.
 STOPPING_S = 3 * WAKE_TIMEOUT_S + CLAIM_TIMEOUT_S
 NO_CONSOLE = ("this operator endpoint runs in the background and cannot show a confirmation code here ({why}), so it "
               "is stopping. Run `aew operator serve --dev` in another terminal, and ask again")
@@ -197,7 +197,7 @@ class OperatorEndpoint:
         if self._authorizing.locked() or not no_session_live(self.engine.aew_root):
             return False
         if self.watcher is not None:
-            self.watcher.flush()
+            self.watcher.flush(until=self._retired.is_set)
         return not self._authorizing.locked() and no_session_left(self.engine.aew_root)
 
     def close(self) -> None:

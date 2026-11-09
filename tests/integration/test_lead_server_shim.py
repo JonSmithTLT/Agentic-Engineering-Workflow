@@ -184,8 +184,6 @@ def test_a_server_lost_with_a_run_in_flight_says_a_step_that_works_and_following
     from harness_acceptance import WID, lead, operator_takeover, plan_ticket
     from harness_conformance import FakeOpenCodeDriver, sync_dir
 
-    from aew.engine.api import Engine
-
     driver = FakeOpenCodeDriver()
     lab = driver.create_lab(tmp_path, lead_session=True)
     try:
@@ -196,11 +194,10 @@ def test_a_server_lost_with_a_run_in_flight_says_a_step_that_works_and_following
             *plan_ticket(tmp_path), lead("work", "assign", WID, "--launch"),
             {"do": "wait_file", "path": str(sync_dir(tmp_path) / "never"), "timeout": 300}], acquire=True)
 
-        def active() -> list[str]:
-            state = Engine.discover(lab.root).store.current()
-            return [i for i, inv in state["invocations"].items() if inv["status"] == "active" and inv.get("runs")]
-
-        lab.until(active, what="the Lead's run to be in flight", timeout=120)
+        # The run's own record, read with no lock: the store, read here, takes the control lock at every poll, and
+        # the Lead's session waits behind it.
+        lab.until(lambda: lab.record("R-INV-0001-1").get("status") == "running",
+                  what="the Lead's run to be in flight", timeout=120)
         kill = Path(lab.env[SCRIPTS_ENV]) / fake_opencode.KILL_LEAD_SERVER
         kill.write_text("", encoding="utf-8")
         res, _steps = session.result(timeout=120)

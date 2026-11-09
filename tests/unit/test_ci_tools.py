@@ -413,7 +413,7 @@ def test_cli_reads_a_report_tree_and_writes_the_summary(tmp_path):
 
 def test_the_repository_skip_manifest_is_well_formed():
     data = check_assurance.load_expectations(ROOT / "tests" / "platform-skips.yaml")
-    assert set(data["skipped"]) == {"win32", "linux"} and all(data["skipped"]["win32"].values())
+    assert check_assurance.manifest_problems(data) == []
 
 
 def test_durations_merge_updates_and_prunes():

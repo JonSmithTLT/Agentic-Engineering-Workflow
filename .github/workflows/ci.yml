@@ -8,8 +8,9 @@ name: ci
 #                        the tier the paths give; `tier` the one the run takes (in shadow mode, full for fast). It
 #                        also sizes the lanes (tools/ci/shard_plan.py, register E44): each lane's shard count, and
 #                        the durations its shards balance on, from the rolling history of main's green push runs
-#   core (per OS)        fast lane (unit + frozen-spec pin, xdist) and serial lane (no xdist), every tier: one job per
-#                        shard of each, in as many shards as the tier job computed
+#   core (per OS)        fast lane (unit + frozen-spec pin, xdist) and serial lane (no xdist), every tier unless a
+#                        pin-only head reuses them (tools/ci/pin_shortcut.py): one job per shard of each, in as many
+#                        shards as the tier job computed
 #   lanes (per OS)       integration | acceptance | regression | adversarial, xdist inside each job (full tier only),
 #                        in as many shards as the tier job computed; never written by hand
 #   fastbase             the whole fast lane at the base tip under coverage, when the decision is fast (plan v7 §5)
@@ -108,10 +109,14 @@ jobs:
         run: python -m pip install "PyYAML>=6.0" "pytest>=8"
       # Only `tests/platform-skips.yaml` changed since a run where every test ran and passed: `assurance` judges that
       # run's reports against these pins, and no lane runs (tools/ci/pin_shortcut.py; strategy §3). Any doubt, or this
-      # step failing or timing out, leaves `reuse_run` empty, which is the normal tier.
+      # step failing or timing out, leaves `reuse_run` empty, which is the normal tier. `reusable` is false when the
+      # pull request touches CI's own code, whose tests are in `core`: read here, apart from the walk, so that a slip in
+      # the walk can't skip them.
       - id: reuse
         name: The pin-only shortcut, if this run qualifies
-        if: github.event_name == 'pull_request' && steps.tier.outputs.tier == 'full'
+        if: >-
+          github.event_name == 'pull_request' && steps.tier.outputs.tier == 'full'
+          && steps.tier.outputs.reusable == 'true'
         continue-on-error: true
         timeout-minutes: 3
         env:
@@ -140,7 +145,8 @@ jobs:
           path: ${{ runner.temp }}/shard-durations/
           retention-days: 30
 
-  # The fast and serial lanes, in every tier: one job per shard of each, so neither lane's session shares a deadline
+  # The fast and serial lanes, in every tier unless a pin-only head reuses them (the tier job's `reuse` step): one job
+  # per shard of each, so neither lane's session shares a deadline
   # with the other's. Sized for every run like the `lanes` job (tools/ci/shard_plan.py: the fewest shards that fit on
   # a runner twice as slow). Until 2026-11-07 this was one job per runner running both lanes one after the other under
   # one deadline, which nothing sized: the fast lane grew until a slow runner left the serial lane no time.

@@ -58,12 +58,14 @@ def test_it_catches_the_skip_a_new_contained_test_inherits_from_its_module():
      'reason="r"))])\ndef test_a(c): pass\n', {"win32"}),
     ('CASES = ["x", pytest.param("y", marks=pytest.mark.skipif(sys.platform == "win32", reason="r"))]\n'
      '@pytest.mark.parametrize("c", CASES)\ndef test_a(c): pass\n', {"win32"}),
+    ('@pytest.mark.parametrize("c", argvalues=["x", pytest.param("y", marks=pytest.mark.skipif('
+     'sys.platform == "win32", reason="r"))])\ndef test_a(c): pass\n', {"win32"}),
     ('def test_a():\n    if sys.platform == "win32":\n        pytest.skip("r")\n', {"win32"}),
     ('@pytest.mark.skipif(sys.platform == "win32", reason="r")\nclass TestK:\n    def test_a(self): pass\n', {"win32"}),
     ('class TestK:\n    pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="r")\n'
      '    def test_a(self): pass\n', {"win32"}),
 ], ids=["equal", "not_equal", "os_name", "dunder_import", "imported_constant", "module_constant", "named_mark",
-        "parametrize_case", "named_cases", "in_the_body", "class_decorator", "class_pytestmark"])
+        "parametrize_case", "named_cases", "argvalues", "in_the_body", "class_decorator", "class_pytestmark"])
 def test_every_way_the_tree_declares_a_platform_skip_is_seen(source, platforms):
     assert skips_on(source) == platforms
 
@@ -117,7 +119,7 @@ def test_the_command_says_its_problems_and_fails(tmp_path, capsys):
     skips.write_text("schema: aew/platform-skips/v1\n", encoding="utf-8")
     assert skip_pins.main(["--skips", str(skips), "--tests", str(tests)]) == 1
     assert "win32: tests/test_m.py::test_a skips there" in capsys.readouterr().out
-    skips.write_text("skipped:\n  win32:\n    tests/test_m.py::test_a: why\n", encoding="utf-8")
+    skips.write_text("skipped:\n  linux: {}\n  win32:\n    tests/test_m.py::test_a: why\n", encoding="utf-8")
     assert skip_pins.main(["--skips", str(skips), "--tests", str(tests)]) == 0
 
 
@@ -125,6 +127,7 @@ def test_its_usage_line_works_from_the_tree_root(tmp_path, monkeypatch):
     """Review of #394, 4: a relative `--tests tests`, as its docstring gives it."""
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "test_m.py").write_text("def test_a(): pass\n", encoding="utf-8")
-    (tmp_path / "skips.yaml").write_text("schema: aew/platform-skips/v1\n", encoding="utf-8")
+    (tmp_path / "skips.yaml").write_text("schema: aew/platform-skips/v1\nskipped: {win32: {}, linux: {}}\n",
+                                         encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     assert skip_pins.main(["--skips", "skips.yaml", "--tests", "tests"]) == 0

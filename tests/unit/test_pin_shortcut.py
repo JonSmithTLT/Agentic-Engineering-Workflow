@@ -59,11 +59,15 @@ def tree(tmp_path_factory):
     """A pull request: a head that went red for a skip, then a commit pinning it."""
     cwd = tmp_path_factory.mktemp("repo")
     _git(cwd, "init", "-q", "-b", "main")
-    _commit(cwd, "base", pins=_pins(), code="1\n")
+    base = _commit(cwd, "base", pins=_pins(), code="1\n")
     _git(cwd, "checkout", "-q", "-b", "pr")
     earlier = _commit(cwd, "the change", code="2\n")
     head = _commit(cwd, "pin the skip", pins=_pins(B))
-    return {"cwd": cwd, "earlier": earlier, "head": head, "merge": _merged(cwd)}
+    merge = _merged(cwd)
+    _git(cwd, "tag", "the-test-merge")  # only GitHub's test ref holds this: `main` itself stays at the base
+    _git(cwd, "checkout", "-q", "pr")
+    _git(cwd, "branch", "-q", "-f", "main", base)
+    return {"cwd": cwd, "base": base, "earlier": earlier, "head": head, "merge": merge}
 
 
 def report(platform="linux", b="skipped", *, exitstatus=0, shard=None, results=None):
@@ -76,23 +80,29 @@ def report(platform="linux", b="skipped", *, exitstatus=0, shard=None, results=N
 
 JOBS = [{"name": "tier", "conclusion": "success"}, {"name": "fast 1/1 (ubuntu-latest)", "conclusion": "success"},
         {"name": "lanes-skipped", "conclusion": "skipped"}, {"name": "assurance", "conclusion": "failure"}]
-ARTIFACTS = ["lane-report-core-fast-1-Linux", "coverage-core-fast-1-Linux"]
+ARTIFACTS = ["lane-report-core-fast-1-Linux", "coverage-core-fast-1-Linux", "tier-decision"]
+PR = 7
 
 
 class GitHub:
     """Stands in for the API: one finished run per head it's told of, its jobs, artifacts and reports."""
 
-    def __init__(self):
+    def __init__(self, base):
+        self.base = base
+        self.records = {}
+        self.expired = {}
         self.runs = {}
         self.jobs = {}
         self.artifacts = {}
         self.reports = {}
 
     def has_run(self, sha, run_id=RUN, *, status="completed", conclusion="failure", head_repo=REPO, jobs=None,
-                artifacts=None, reports=None):
+                artifacts=None, reports=None, pr=PR, record=None, expired=()):
         self.runs.setdefault(sha, []).append(
             {"id": run_id, "head_sha": sha, "status": status, "conclusion": conclusion, "html_url": f"u/{run_id}",
-             "head_repository": {"full_name": head_repo}})
+             "head_repository": {"full_name": head_repo}, "pull_requests": [{"number": pr}] if pr else []})
+        self.records[run_id] = {"base": self.base, "base_ref": "main", **(record or {})}
+        self.expired[run_id] = list(expired)
         self.jobs[run_id] = JOBS if jobs is None else jobs
         self.artifacts[run_id] = ARTIFACTS if artifacts is None else artifacts
         self.reports[run_id] = [report(), report("win32", "passed")] if reports is None else reports
@@ -103,8 +113,12 @@ class GitHub:
         if m := re.search(r"runs/(\d+)/jobs", path):
             return {"total_count": len(self.jobs[int(m[1])]), "jobs": self.jobs[int(m[1])]}
         if m := re.search(r"runs/(\d+)/artifacts", path):
-            return {"artifacts": [{"name": n, "expired": False} for n in self.artifacts[int(m[1])]]}
+            return {"artifacts": [{"name": n, "expired": False} for n in self.artifacts[int(m[1])]]
+                    + [{"name": n, "expired": True} for n in self.expired[int(m[1])]]}
         raise AssertionError(path)
+
+    def record(self, run_id, _repo, _dest):
+        return self.records[run_id]
 
     def download(self, run_id, _repo, dest):
         dest.mkdir(parents=True, exist_ok=True)
@@ -114,10 +128,11 @@ class GitHub:
 
 @pytest.fixture
 def github(monkeypatch, tree):
-    fake = GitHub()
+    fake = GitHub(tree["base"])
     monkeypatch.chdir(tree["cwd"])
     monkeypatch.setattr(pin_shortcut, "_gh_json", fake.api)
     monkeypatch.setattr(pin_shortcut, "download_reports", fake.download)
+    monkeypatch.setattr(pin_shortcut, "run_record", fake.record)
     monkeypatch.setattr(tiers, "live_labels", lambda _repo, _pr: [])
     return fake
 
@@ -125,9 +140,9 @@ def github(monkeypatch, tree):
 def reused(tmp_path, merge, *extra, event="pull_request", base="main", head_repo=REPO):
     """What the tier job would hand on: the run id, or ''."""
     out = tmp_path / "out.txt"
-    assert pin_shortcut.main(["--event", event, "--base-ref", base, "--merge-ref", merge, "--repo", REPO, "--pr", "7",
-                              "--head-repo", head_repo, "--reports-dir", str(tmp_path / "reports"), "--github-output",
-                              str(out), *extra]) == 0
+    assert pin_shortcut.main(["--event", event, "--base-ref", base, "--merge-ref", merge, "--repo", REPO, "--pr",
+                              str(PR), "--head-repo", head_repo, "--reports-dir", str(tmp_path / "reports"),
+                              "--github-output", str(out), *extra]) == 0
     return dict(line.split("=", 1) for line in out.read_text(encoding="utf-8").splitlines())["reuse_run"]
 
 
@@ -247,11 +262,166 @@ def test_a_run_with_no_gate_job_takes_the_normal_tier(github, tree, tmp_path):
     assert reused(tmp_path, tree["merge"]) == ""
 
 
-@pytest.mark.parametrize("artifacts", [[], ["lane-report-x"], ["coverage-x"]],
-                         ids=["none", "coverage_gone", "reports_gone"])
-def test_reports_or_coverage_past_their_days_take_the_normal_tier(github, tree, tmp_path, artifacts):
+@pytest.mark.parametrize("artifacts", [[], ["lane-report-x", "tier-decision"], ["coverage-x", "tier-decision"],
+                                       ["lane-report-x", "coverage-x"]],
+                         ids=["none", "coverage_gone", "reports_gone", "record_gone"])
+def test_reports_coverage_or_the_record_past_their_days_take_the_normal_tier(github, tree, tmp_path, artifacts):
     github.has_run(tree["earlier"], artifacts=artifacts)
     assert reused(tmp_path, tree["merge"]) == ""
+
+
+def test_an_artifact_the_api_lists_as_expired_isnt_there(github, tree, tmp_path):
+    """Coverage lives 7 days and reports 14, and the real API goes on listing what expired, under its name."""
+    github.has_run(tree["earlier"], artifacts=["lane-report-x", "tier-decision"], expired=["coverage-x"])
+    assert reused(tmp_path, tree["merge"]) == ""
+
+
+def test_another_pull_requests_run_at_that_head_isnt_used(github, tree, tmp_path):
+    github.has_run(tree["earlier"], pr=PR + 1)
+    assert reused(tmp_path, tree["merge"]) == ""
+
+
+def test_a_run_tied_to_no_pull_request_isnt_used(github, tree, tmp_path):
+    """The API's list is empty once a pull request has merged: a branch started from its head can't reuse its run."""
+    github.has_run(tree["earlier"], pr=None)
+    assert reused(tmp_path, tree["merge"]) == ""
+
+
+def test_a_run_that_merged_into_another_branch_isnt_used(github, tree, tmp_path):
+    github.has_run(tree["earlier"], record={"base_ref": "release"})
+    assert reused(tmp_path, tree["merge"]) == ""
+
+
+@pytest.mark.parametrize("record", [{"base": "0" * 40}, {"base": None}], ids=["unknown_commit", "no_base"])
+def test_a_base_that_cant_be_read_takes_the_normal_tier(github, tree, tmp_path, record):
+    github.has_run(tree["earlier"], record=record)
+    assert reused(tmp_path, tree["merge"]) == ""
+
+
+def test_a_record_with_no_base_at_all_takes_the_normal_tier(github, tree, tmp_path):
+    github.has_run(tree["earlier"])
+    del github.records[RUN]["base"]
+    assert reused(tmp_path, tree["merge"]) == ""
+
+
+def test_main_dropping_a_pin_since_the_run_takes_the_normal_tier(github, tree, tmp_path):
+    """The run started while `main` still pinned it. Else `assurance` says to pin what `main` just made run, the author
+    does, the pull request goes green, and `main`'s push run goes red."""
+    github.has_run(tree["earlier"], record={"base": tree["head"]})  # any commit whose pins say more than this base's
+    assert reused(tmp_path, tree["merge"]) == ""
+
+
+def _main_moved(tree, tmp_path, pins) -> Path:
+    """A copy where `main` changed the pin file after the pull request's run started, merged keeping `main`'s side."""
+    cwd = tmp_path / "copy"
+    _git(tmp_path, "clone", "-q", "--branch", "pr", str(tree["cwd"]), str(cwd))
+    _git(cwd, "fetch", "-q", "origin", "main:main")
+    _git(cwd, "checkout", "-q", "main")
+    _commit(cwd, "main moved", pins=pins)
+    _git(cwd, "merge", "-q", "--no-ff", "-X", "ours", "-m", "merge", "pr")
+    assert len(_git(cwd, "rev-list", "--parents", "-n", "1", "HEAD").split()) == 3, "the case needs a real merge"
+    return cwd
+
+
+def test_main_adding_a_pin_since_the_run_takes_the_normal_tier(github, tree, tmp_path, monkeypatch):
+    """Those reports don't hold `main`'s new test, so `assurance` could only say the pin no longer exists."""
+    github.has_run(tree["earlier"])
+    cwd = _main_moved(tree, tmp_path, _pins(A))
+    monkeypatch.chdir(cwd)
+    assert reused(tmp_path, _git(cwd, "rev-parse", "HEAD")) == ""
+
+
+def test_main_only_reformatting_the_pins_doesnt_refuse_a_shortcut_that_would_pass(github, tree, tmp_path, monkeypatch):
+    github.has_run(tree["earlier"])
+    cwd = _main_moved(tree, tmp_path, "# a comment\n" + _pins())
+    monkeypatch.chdir(cwd)
+    assert reused(tmp_path, _git(cwd, "rev-parse", "HEAD")) == str(RUN)
+
+
+def test_a_merge_of_more_than_two_parents_takes_the_normal_tier(github, tree, tmp_path, monkeypatch):
+    """GitHub's test merge has two, and the head is the second."""
+    github.has_run(tree["earlier"])
+    cwd = tmp_path / "copy"
+    _git(tmp_path, "clone", "-q", "--branch", "pr", str(tree["cwd"]), str(cwd))
+    _git(cwd, "fetch", "-q", "origin", "main:main")
+    _git(cwd, "checkout", "-q", "-b", "other", tree["base"])
+    _commit(cwd, "other", code="9\n")
+    tree_id = _git(cwd, "rev-parse", "pr^{tree}")
+    octopus = _git(cwd, "commit-tree", tree_id, "-p", tree["base"], "-p", "pr", "-p", "other", "-m", "octopus")
+    monkeypatch.chdir(cwd)
+    assert reused(tmp_path, octopus) == ""
+
+
+def test_nothing_else_reads_the_pins():
+    """A pin-only head runs no lane, so a test reading the pin file's content wouldn't run on the new pins. Each reader
+    below is covered at that head, or isn't one. A new one fails here: run its check in `static`, then list it. A reader
+    that builds the path indirectly is outside this."""
+    readers = {path.relative_to(ROOT).as_posix() for path in (ROOT / "tests").rglob("*.py")
+               if re.search(r"platform-skips|load_expectations\(|pins_of\(", path.read_text(encoding="utf-8"))}
+    assert readers == {
+        "tests/integration/test_egress_host_local.py",  # names it in a comment
+        "tests/integration/test_store_modes.py",  # names it in a comment
+        "tests/unit/test_ci_tools.py",  # calls `manifest_problems`, which `static` runs; a path in the tier table
+        "tests/unit/test_discovery_rules.py",  # its own synthetic file
+        "tests/unit/test_pin_shortcut.py",  # this file
+        "tests/unit/test_skip_pins.py",  # the same check `static` runs
+    }
+
+
+@pytest.mark.parametrize(("data", "says"), [
+    ({"skipped": {"win32": {A: "r"}, "linux": {B: "r"}}}, None),
+    ({"skipped": {"win32": {A: ""}, "linux": {}}}, "gives no reason"),
+    ({"skipped": {"win32": {}, "linux": {A: None}}}, "gives no reason"),
+    ({"skipped": {"win32": {A: "  "}, "linux": {}}}, "gives no reason"),
+    ({"skipped": {"win32": {}, "linux": {}, "darwin": {A: "r"}}}, "platforms"),
+    ({"skipped": {"win32": {}}}, "platforms"),
+    ({}, "platforms"),
+], ids=["good", "empty_reason", "bare_pin", "blank_reason", "extra_platform", "missing_platform", "nothing"])
+def test_the_pin_files_own_content_is_checked_where_a_reused_head_runs_it(data, says, tmp_path, capsys):
+    """`skip_pins.py` is in `static`, which runs at every head. Without this, a pin with no reason would pass `static`
+    and `assurance`, and `main`'s push run would go red in the fast lane."""
+    problems = check_assurance.manifest_problems(data)
+    assert (says is None) == (not problems) and (says is None or says in problems[0]), problems
+    skips = tmp_path / "skips.yaml"
+    skips.write_text(yaml.safe_dump(data), encoding="utf-8")
+    (tmp_path / "tests" / "unit").mkdir(parents=True)
+    (tmp_path / "tests" / "unit" / "test_a.py").write_text("def test_a(): pass\ndef test_b(): pass\n", encoding="utf-8")
+    code = pin_shortcut_guard().main(["--skips", str(skips), "--tests", str(tmp_path / "tests")])
+    assert code == (0 if says is None else 1)
+
+
+def pin_shortcut_guard():
+    """`tools/ci/skip_pins.py`, the module `static` runs."""
+    spec = importlib.util.spec_from_file_location("skip_pins_for_shortcut", ROOT / "tools" / "ci" / "skip_pins.py")
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("path", ["tools/ci/pin_shortcut.py", "tools/ci/check_assurance.py", "tools/ci/tier.py",
+                                  ".github/workflows/ci.yml", ".github/actions/x/action.yml", "tests/helpers/lanes.py"])
+def test_a_pull_request_touching_cis_own_code_never_takes_the_shortcut(path, tmp_path):
+    """Apart from the walk, so a slip in the walk can't skip the tests that would catch it."""
+    assert tiers.shortcut_barred(["src/x.py", path])
+    changed = tmp_path / "paths.txt"
+    changed.write_text(f"{path}\n", encoding="utf-8")
+    out = tmp_path / "out.txt"
+    assert tiers.main(["--event", "pull_request", "--paths-file", str(changed), "--labels", "", "--github-output",
+                       str(out)]) == 0
+    assert "reusable=false\n" in out.read_text(encoding="utf-8")
+
+
+def test_any_other_change_may_take_it_and_unknown_paths_may_not(tmp_path):
+    assert not tiers.shortcut_barred(["src/x.py", "tests/unit/test_a.py", PINS, "tests/helpers/other.py"])
+    assert tiers.shortcut_barred(None)
+    changed = tmp_path / "paths.txt"
+    changed.write_text("src/x.py\n", encoding="utf-8")
+    out = tmp_path / "out.txt"
+    assert tiers.main(["--event", "pull_request", "--paths-file", str(changed), "--labels", "", "--github-output",
+                       str(out)]) == 0
+    assert "reusable=true\n" in out.read_text(encoding="utf-8")
 
 
 NOT_ONLY_SKIPS = {
@@ -378,13 +548,22 @@ def test_a_pin_cant_forgive_a_failed_test_in_the_gate():
 
 def test_assurance_fails_if_the_recompute_doesnt_name_the_run_the_jobs_were_skipped_for(github, tree, tmp_path, capsys):
     """A label added while the run went, or a report gone: no lane ran, so green here would be proof of nothing."""
-    argv = ["--event", "pull_request", "--base-ref", "main", "--merge-ref", tree["merge"], "--repo", REPO, "--pr", "7",
-            "--head-repo", REPO, "--reports-dir", str(tmp_path / "reports")]
+    argv = ["--event", "pull_request", "--base-ref", "main", "--merge-ref", tree["merge"], "--repo", REPO, "--pr",
+            str(PR), "--head-repo", REPO, "--reports-dir", str(tmp_path / "reports")]
     assert pin_shortcut.main([*argv, "--expect", str(RUN)]) == 1
-    assert "full-ci" in capsys.readouterr().err
+    said = capsys.readouterr().err
+    assert "add `full-ci`, then Re-run all jobs" in said and "Re-run failed jobs" in said
     github.has_run(tree["earlier"], RUN + 1)
     assert pin_shortcut.main([*argv, "--expect", str(RUN)]) == 1
     assert pin_shortcut.main([*argv, "--expect", str(RUN + 1)]) == 0
+
+
+def test_the_way_out_it_prints_reaches_the_normal_tier(github, tree, tmp_path, monkeypatch):
+    """Following it: the label, then Re-run all jobs, which starts again at the tier job, which names no run."""
+    github.has_run(tree["earlier"])
+    assert reused(tmp_path, tree["merge"]) == str(RUN)
+    monkeypatch.setattr(tiers, "live_labels", lambda _repo, _pr: [tiers.FORCE_LABEL])
+    assert reused(tmp_path, tree["merge"]) == ""
 
 
 def test_under_a_reused_run_core_and_lanes_must_be_skipped_and_the_rest_still_pass():
@@ -423,6 +602,7 @@ def test_the_tier_jobs_step_cant_fail_the_run_or_outlast_the_job():
     assert step["continue-on-error"] is True
     assert step["timeout-minutes"] < job["timeout-minutes"]
     assert "steps.tier.outputs.tier == 'full'" in step["if"]
+    assert "steps.tier.outputs.reusable == 'true'" in step["if"], "apart from the walk"
     assert job["outputs"]["reuse_run"] == "${{ steps.reuse.outputs.reuse_run }}"
     assert job["permissions"]["actions"] == "read"
 

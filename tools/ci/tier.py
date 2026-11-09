@@ -48,6 +48,9 @@ REDUCED_BASES = frozenset({"main"})
 # The jobs assurance needs, each of which must have succeeded; `lanes` too, unless the tier is known and reduced;
 # `fastbase` only in the `fast` tier (any result elsewhere: it runs on every `fast` decision, shadow included; V6-1).
 JOBS = ("changes", "core", "lanes", "web", "static", "fastbase")
+# CI's own code. A pull request touching it never takes the pin-only shortcut: `core` holds the tests of this code, and
+# a shortcut in the merge gate mustn't judge its own change (review of the shortcut, F3).
+CI_CODE = ("tools/ci/", ".github/", "tests/helpers/lanes.py")
 # The two runtime checks a reduced tier with a changed fast-lane test module needs (plan v7 §4, V3-1).
 CHECKS = ("lanecheck", "premise")
 
@@ -303,6 +306,11 @@ def covers(ran: str, recomputed: str) -> bool:
     return ran in TIERS and (ran == recomputed or ran == "full")
 
 
+def shortcut_barred(paths: list[str] | None) -> bool:
+    """Whether these changed paths, or not knowing them, rule out the pin-only shortcut."""
+    return paths is None or any(p.startswith(CI_CODE) for p in paths)
+
+
 def job_problems(tier: str, results: dict[str, str], modules_changed: bool = True) -> list[str]:
     """Why the jobs ``assurance`` needs do not satisfy ``tier``: every one succeeded, except ``lanes``, which is
     skipped exactly when the tier is known and reduced, and ``fastbase``, which must succeed in the ``fast`` tier when
@@ -497,7 +505,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.github_output:
         with args.github_output.open("a", encoding="utf-8") as fh:
             fh.write(f"decision={decision}\ntier={tier}\nlanes={','.join(LANES[tier])}\n"
-                     f"modules={'true' if modules else 'false'}\nmode={MODE}\n")
+                     f"modules={'true' if modules else 'false'}\nmode={MODE}\n"
+                     f"reusable={'false' if shortcut_barred(paths) else 'true'}\n")
     if args.modules_out:
         args.modules_out.parent.mkdir(parents=True, exist_ok=True)
         args.modules_out.write_text("".join(f"{p}\n" for p in modules), encoding="utf-8")

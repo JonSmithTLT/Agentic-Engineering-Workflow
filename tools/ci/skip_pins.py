@@ -34,6 +34,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tests" / "helpers"))
+sys.path.insert(0, str(ROOT / "tools" / "ci"))
+import check_assurance  # noqa: E402  (tools/ci/check_assurance.py: what the pin file must hold)
 import lanes  # noqa: E402  (tests/helpers/lanes.py: which lane a test file is in)
 
 PLATFORMS = ("linux", "win32")  # the platforms the gate requires (ci.yml's --require)
@@ -99,7 +101,8 @@ def _skipif_conditions(node: ast.expr, names: Names, seen: frozenset[str] = froz
           and node.args):
         yield node.args[0]
     elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "parametrize":
-        for arg in node.args:  # the cases, in place or in a list the module names (review of #394, 3)
+        # The cases, in place or in a list the module names (review of #394, 3), by position or as `argvalues=`.
+        for arg in [*node.args, *(keyword.value for keyword in node.keywords)]:
             cases = names[arg.id] if isinstance(arg, ast.Name) and arg.id in names else arg
             for param in ast.walk(cases):  # a case's own marks: pytest.param("a_link", marks=pytest.mark.skipif(...))
                 if isinstance(param, ast.keyword) and param.arg == "marks":
@@ -194,7 +197,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tests", type=Path, default=ROOT / "tests")
     args = ap.parse_args(argv)
     tests_dir = args.tests.resolve()
-    out = problems(scan(tests_dir, tests_dir.parent), pins_of(args.skips))
+    manifest = yaml.safe_load(args.skips.read_text(encoding="utf-8")) or {}
+    out = check_assurance.manifest_problems(manifest) + problems(scan(tests_dir, tests_dir.parent), pins_of(args.skips))
     for line in out:
         print(line)
     print(f"skip pins: {len(out)} problem(s)")

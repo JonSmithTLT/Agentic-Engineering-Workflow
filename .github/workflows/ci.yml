@@ -331,6 +331,10 @@ jobs:
         # --select replaces the config's selection, so preview applies to these six rules only; the main config stays
         # non-preview, so no stable rule's detection, fix or code-named output changes (review of #222, W1).
         run: ruff check --preview --select E301,E302,E303,E304,E305,E306 --output-format github .
+      # The fast lane's test holds the same check; here it reports in the run's first minutes, whatever the tier.
+      - name: Platform skips and their pins, from the source (tools/ci/skip_pins.py)
+        if: success() || failure()
+        run: python tools/ci/skip_pins.py
       - name: Pyright as Linux
         if: success() || failure()
         run: pyright --pythonplatform Linux

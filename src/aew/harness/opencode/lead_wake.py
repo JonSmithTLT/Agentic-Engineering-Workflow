@@ -80,8 +80,8 @@ class LeadPoster:
             return None
 
         def when(s: dict[str, Any]) -> float:
-            time = s.get("time") if isinstance(s.get("time"), dict) else {}
-            stamp = time.get("viewed") or time.get("updated") or 0
+            time = s.get("time")
+            stamp = (time.get("viewed") or time.get("updated") or 0) if isinstance(time, dict) else 0
             return float(stamp) if isinstance(stamp, (int, float)) else 0.0
 
         return str(max(viewed, key=when)["id"])

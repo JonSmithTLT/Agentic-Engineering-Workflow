@@ -57,16 +57,20 @@ class Poster(Protocol):
 
     def busy(self) -> bool:
         """Whether a turn is running in the session: a wake is held until it is not."""
+        ...
 
     def post(self, wake_id: str, text: str) -> str:
         """Admit the wake as input that starts the session's next turn, and say which session it went to."""
+        ...
 
     def landed(self, wake_id: str) -> str:
         """``waiting`` (admitted, its turn has not started), ``delivered``, or ``unknown`` (this session does not know
         it: it was never admitted, or the Lead has resumed in a new session)."""
+        ...
 
     def new_id(self) -> str:
         """A wake's id, in the form the harness's input takes."""
+        ...
 
 
 class Watched(NamedTuple):

@@ -703,8 +703,8 @@ class ContainedLead:
                                      f"to the contained Lead ({type(exc).__name__}): the Lead cannot use "
                                      f"{'it' if len(network.login_sentinels) == 1 else 'them'} this session.\n")
                 self.stages.mark("lead_logins")
-            own_network = network is not None and network.dir
-            spec = network.spec() if own_network else {"in": [], "out": []}
+            own_network = network if network is not None and network.dir else None
+            spec = own_network.spec() if own_network else {"in": [], "out": []}
             # The server in the sandbox with the TUI, in the same environment, which is what every Lead shell gets: the
             # TUI sends a --server none of its own (ADR-0009, amendment 2026-11-08). In a network of its own the broker
             # reaches it by the shim's server leg, as a worker's supervisor does.
@@ -712,7 +712,7 @@ class ContainedLead:
             inside["OPENCODE_PASSWORD"] = password
             served = serve_spec(run_dir / "harness" / "xdg-runtime", port=netns.SERVER_PORT if own_network else 0)
             poster = lead_poster(policy, password, url_file=Path(served["url_file"]),
-                                 unix=network.server_socket if own_network else None)
+                                 unix=own_network.server_socket if own_network else None)
             argv = containment.bwrap_argv(layout, netns.shim_argv({**spec, "ctty": True, "serve": served}, self.argv),
                                           cwd=project, path=inside.get("PATH"))
             self._record(run_dir, label)

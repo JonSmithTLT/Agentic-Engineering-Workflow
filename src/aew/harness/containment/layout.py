@@ -142,7 +142,8 @@ RUN_PROTECTED = ("aew-*", "user", "dbus", "systemd")
 GSSPROXY = "/var/lib/gssproxy"
 # WSLg's directory on a WSL host: its display and audio sockets, whose servers run in WSL's system distro. Masked whole
 # where it exists, as /run is: nothing inside needs them, and the launching user owns them while /proc shows no holder,
-# so row 2 refuses every launch where they are reachable (a default WSL install with bubblewrap).
+# so row 2 refuses every launch where they are reachable (a default WSL install with bubblewrap). It holds more than
+# those sockets, which is why it stays masked whole: nothing in it is to be bound back.
 WSLG = "/mnt/wslg"
 RESOLV_CONF = "/etc/resolv.conf"
 RESOLV_WHY = "name resolution on the shared network (the operator, 2026-10-24); a private one resolves none"

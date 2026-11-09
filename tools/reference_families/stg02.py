@@ -51,7 +51,8 @@ def page(records: list[C.Record]) -> str:
                      f"{'yes' if f['test_only'] else 'no'} |")
     lines += ["", "## Commands", "",
               "One row per action of the registry: its origin, its sole admitting owner, and whether admission can "
-              "hand it to an owner (`reaches_owner`, read from `Carrier._member`).", "",
+              "go on to its owner side (`reaches_owner`, read from `Carrier._member`). A protected action goes on to "
+              "`_protected`, which consumes its consent and records it; no owner performs it.", "",
               "| Action | Origin | Owner | Reaches the owner |", "|---|---|---|---|"]
     for f in facts(stg02_commands.COMMANDS):
         reach = {True: "yes", False: "no", None: "unknown"}[f["reaches_owner"]]

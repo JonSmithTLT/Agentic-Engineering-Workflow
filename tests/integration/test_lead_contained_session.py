@@ -16,13 +16,15 @@ import sqlite3
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
 from fake_harness import contains_credential
 from lead_session import KEYS, RECENT_MODELS, SECRET, Upstream, at_the_terminal, guide_of, make_lab, synthetic_home
 
-from aew.harness import procs
+from aew.capability import ops as capability
+from aew.harness import procs, wake_queue
 from aew.harness.containment import netns
 from aew.harness.opencode import lead, projection
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
@@ -76,7 +78,8 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         assert all(isinstance(s, float) and s >= 0 for s in label["start_s"].values())
         assert json.loads((run_dir / "label.json").read_text())["start_s"] == label["start_s"]
         assert done["restored"]
-        assert json.loads((tui / "tui-argv.json").read_text()) == ["--standalone", str(lab.root)]
+        assert json.loads((tui / "tui-argv.json").read_text()) == ["--server", "http://127.0.0.1:4100", str(lab.root)]
+        assert json.loads((tui / "serve-argv.json").read_text())[:2] == ["serve", "--stdio"]
 
         env = json.loads((sync / "env").read_text())
         assert SECRET not in json.dumps(env) and not contains_credential(json.dumps(env))
@@ -92,8 +95,17 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         assert env["HTTPS_PROXY"] == env["HTTP_PROXY"] == egress and "127.0.0.1" in env["NO_PROXY"]
         config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
         relays = {p: v["settings"]["baseURL"] for p, v in (config.get("providers") or {}).items()}
-        assert config == projection.lead_config(guide_of(lab), contained=label, relays=relays)
+        # E180 came from a contained Lead: what its start hands over is this interpreter's server on this `aew`'s
+        # import path. Spelled here, as the comparison below would pass a contained branch of `lead_config` that
+        # went back to a bare command (review of #384, finding 3)
+        server = config["mcp"]["servers"][projection.LEAD_MCP_SERVER]
+        assert server["command"] == [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "lead", "mcp"]
+        assert server["environment"] == procs.engine_imports({})
+        # The tools the host gives: `rg` on a machine that has it (the Rocky VM), and none on one that doesn't.
+        assert config == projection.lead_config(guide_of(lab), contained=label, relays=relays,
+                                                tools=capability.placed(label, contained=True))
         assert config["experimental"]["policies"] == DENY  # OpenCode's own providers off (2026-11-06)
+        assert wake_queue.HEADER not in config["agents"][projection.LEAD_AGENT]["system"]  # the switch is off
         assert "your OpenCode configuration is not loaded in the contained Lead; its MCP servers are left out: docs" \
             in done["stderr"]
         # addendum 1: the operator's TUI preferences without their plugins; their recent models, never their prompts
@@ -109,6 +121,38 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         assert ((steps[3].get("stderr_json") or {}).get("error") or {}).get("code") == "USAGE"
         assert steps[4]["stdout_json"]["lead_note"] == "dispatch T-0001 with --launch"
         assert steps[5] == {"readable": False, "error": "FileNotFoundError"}  # the login store is masked
+    finally:
+        lab.cleanup()
+
+
+def test_a_relayed_file_argument_is_read_where_the_client_runs(tmp_path):
+    """The client reads a file argument and sends its text. A file it can read is taken; one it can't is refused by the
+    client, and the broker stores nothing of it."""
+    lab, tui = make_lab(tmp_path)
+    try:
+        home = synthetic_home(tmp_path, {"anthropic": KEYS["anthropic"]})
+        unreadable = tmp_path / "not-for-the-client.txt"
+        unreadable.write_text("text the client cannot read", encoding="utf-8")
+        client_side = "/tmp/client-side.txt"  # noqa: S108 - a private /tmp
+        assert not Path(client_side).exists()
+        (tui / "mode").write_text("agent")
+        (tui / "tui-script.json").write_text(json.dumps([
+            {"do": "touch", "path": client_side, "text": "written where the client runs"},
+            {"do": "lead", "args": ["checkpoint", "--next", "x", "--note-file", client_side]},
+            {"do": "read", "path": str(unreadable)},
+            {"do": "lead", "args": ["checkpoint", "--next", "y", "--note-file", str(unreadable)]},
+            {"do": "lead", "args": ["checkpoint", "--next", "z", "--note-file=-"], "stdin": "piped from the shell"}]))
+        done = at_the_terminal(lab, home)
+        assert done["code"] == 0, done["stderr"][-3000:]
+        steps = {e["i"]: e["result"] for e in map(json.loads, (tui / "tui.jsonl").read_text().splitlines())}
+        assert steps[1]["exit"] == 0, steps[1]
+        assert steps[2]["readable"] is False, steps[2]  # the check below needs a file the client cannot read
+        assert steps[3]["exit"] != 0, steps[3]
+        assert steps[3]["stderr_json"]["error"]["code"] == "USAGE" and "cannot read" in steps[3]["stderr"], steps[3]
+        assert steps[4]["exit"] == 0, steps[4]
+        stored = "\n".join(f.read_text(encoding="utf-8") for f in (lab.aew_root / "state" / "handoffs").glob("*.md"))
+        assert "written where the client runs" in stored and "piped from the shell" in stored
+        assert "text the client cannot read" not in stored
     finally:
         lab.cleanup()
 

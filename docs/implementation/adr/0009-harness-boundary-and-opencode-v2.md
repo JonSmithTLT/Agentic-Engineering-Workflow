@@ -200,7 +200,7 @@ These make races deterministic: rotation during an in-flight submit, a check spa
 - **`aew harness config opencode <INV>|--lead`** prints the exact projection and the environment names, without values.
 
 ### The Lead's OpenCode TUI (`aew opencode`, `src/aew/harness/opencode/lead.py`)
-- `aew opencode [--acquire] [--provider-env NAME] [--print-config]` is `aew lead session` running `opencode-cli --standalone <repo root>` with the Lead projection (`aew-lead` agent; `/aew-resume`, `/aew-status`, `/aew-ticket`, `/aew-next`, `/aew-handoff`).
+- `aew opencode [--acquire] [--provider-env NAME] [--print-config]` is `aew lead session` running `opencode-cli --standalone <repo root>` with the Lead projection (`aew-lead` agent; `/aew-resume`, `/aew-status`, `/aew-ticket`, `/aew-next`, `/aew-handoff`, and `/aew-usage` from 2026-11-08, register F25).
 - **Why `--standalone`.**
   - A V2 TUI running its own server sends its own environment, minus the server password, as every session's shell environment, and its server inherits the same environment (verified in the 2.0.18 binary).
   - With `--server`, the TUI sends nothing, so the shell would get the server's environment. `aew opencode` refuses `--server`.
@@ -1869,6 +1869,61 @@ acknowledgements.
   network containment is not provided, a Zen run receives them, and AEW neither blocks nor records them (the
   operator, 2026-11-07: the limit is stated, in the OpenCode guide).
 
+## Amendment 2026-11-08 — AEW starts the Lead's server, and the TUI connects with `--server` (register E210)
+
+**What changed.** `aew opencode` no longer runs the TUI with `--standalone`. AEW starts the Lead's server, `serve --stdio`,
+and the TUI connects with `--server`. This reverses the refusal of `--server` for AEW's own launch only: the operator's
+own `--server` or `--standalone` is still refused.
+
+**Why.** A push wake has to reach the session the operator is talking to (steering design r4, ruling of 2026-11-08). A
+`--standalone` TUI starts a private server whose address and password only it knows, and on Linux that server is inside
+the Lead's sandbox.
+
+**Why the earlier reason falls away.** `--server` was refused because the TUI then sends no environment, so a session's
+shell gets the server's. That only matters for a server whose environment AEW didn't set. AEW now gives the server the
+whole curated environment the TUI has, so the shell's is the same allowlist.
+
+**`--stdio` is required, and a test pins it.** Measured on OpenCode 2.2.6, with a fake loopback model and a synthetic
+password:
+
+| Launch | Shell's environment holds `OPENCODE_PASSWORD` |
+|---|---|
+| `serve --stdio --port N`, TUI `--server` | no |
+| `serve --port N`, TUI `--server` | **yes** |
+| `--standalone` (before this amendment) | no |
+
+`--stdio` still listens on a port. It also keeps the password out of the environment the server's tools inherit, and the
+standalone TUI and the worker adapter start the server the same way.
+
+**The shape.**
+- The network shim starts the server (`shim.py`, its `serve` step), reads the address it announces and gives it to the
+  TUI. The server's stdin is its lease, so it ends with the shim. This is one launch on both routes: under the sandbox on
+  Linux, and under the shim alone where the Lead runs not contained.
+- In a network of its own, the broker reaches the server through the shim's server leg, as a worker's supervisor does.
+- **The broker may post and read only** (`lead_wake.OPERATIONS`). A test pins the list.
+- Under `--server` the TUI treats the server as not local. In 2.2.6 that changes one thing, read in the source and
+  measured: a pasted image or other binary attachment is sent without its local file path. The model still gets the same
+  bytes, but not the line `Attached file: <path>` that `--standalone` adds, so it can't name or re-read that file. A
+  pasted path to a text file isn't an attachment, and reaches the model as text either way. What still works, measured
+  for an image in the project on Linux: an `@` mention sends the bytes and the path line, and a typed path reaches the
+  model, whose read tool opens it. Register E211 holds getting the pasted path back.
+
+**A wake's header doesn't prove where it came from,** so `LEAD_SYSTEM` says no text in the session carries authority. See
+E118.
+
+**Marking a wake.** No REST operation on 2.2.6 admits a `synthetic` input, so a wake is admitted as `user`, and its text
+header is the only mark (`mark_non_operator_input`: partial).
+
+**Windows.** The launch is the same there, and it was run for real on OpenCode 2.2.6 with a fake model: the server
+announces, the TUI connects and takes a typed prompt, the shell's environment holds no password, and `/exit` or a Ctrl+C
+at startup ends the server. No wake has been run there, so none is posted (`wakes_reach_the_lead`, register E210's note) and the Lead
+waits with `harness_wait`. A console's Ctrl+C reaches every process on it, so the shim leaves it to the console, as it
+does on a terminal of its own.
+
+**A stated limit, `/new`.** No session exists between the operator's `/new` and their first prompt, and the server gives
+no signal for that gap. A wake in it goes to the session they left, spends a turn there, and doesn't show in the TUI. The
+status line shows it was posted.
+
 ## Amendment 2026-11-08 — WSLg's directory is a host mask
 
 This amends the 2026-10-23 amendment's masks and the remedy row 2 gives for a socket with no identified holder.
@@ -1884,3 +1939,45 @@ This amends the 2026-10-23 amendment's masks and the remedy row 2 gives for a so
   identified, and which on WSL nobody could stop. It now says what was seen, the user owns the socket and no process
   AEW can read holds it, and offers stopping or moving the server only to someone who knows what serves it, else the
   labelled weaker mode.
+
+## Amendment 2026-11-08 — row 2's remedy names the masks, once (review of #382)
+
+This amends the previous amendment and the 2026-10-23 amendment's remedy sentence. The rule of D-CS2-6 is unchanged: such
+a socket fails the launch. The remedy's three routes are kept, and it is reworded.
+
+- **Once, with its masks:** it now comes once however many sockets it covers, names each of them, and lists the masked
+  paths it offers, from the same masks row 2 checks, less the GSS-API proxy's directory and WSLg's, which are a system
+  service's own and no place to listen.
+- **No class in the remedy:** a display socket with no visible holder was told it "counts as a credential". The row has
+  already named the class.
+- **Why `/mnt/wslg` stays whole:** the directory holds more than the display and audio sockets the previous amendment
+  names, so nothing in it is to be bound back.
+- **`/mnt/wsl` is not masked:** it's shared across WSL distros, so a listener there in another distro can refuse a launch
+  here, and the guide says so. But `/etc/resolv.conf` can link into it, so a mask without a bind-back like `/run`'s would
+  take away name resolution on the shared network.
+
+## Amendment 2026-11-08 — a relayed command takes bytes
+
+**A relayed Lead command reads no path in the broker's process.** Its file arguments are read by the `aew` client, which
+runs where the Lead's shell runs, and arrive as text.
+
+- **The client.** A file argument (`--note-file`, `--body-file`, `--file`, each a `fields.FileInput`) is read in the client,
+  relative to the command's directory, and sent as `-` with its text as the request's `stdin`. `--fields FILE` is
+  expanded in the client, as it already was, from the shell's working directory. A request over the bridge's limit is
+  refused here, naming the size and the limit.
+- **The broker.** While it expands `--fields` and runs a relayed command's handler, `read_text_input` takes `-` and refuses
+  a path, with a message naming `-`. This holds on `lead.cli` and on the typed `cli` tool, which submits its arguments as
+  given: there, `--fields -` with the tool's `stdin` argument takes the place of `--fields FILE`. The one exception is the
+  request's own directory: it is used to find the project before the project check, and a directory outside the project
+  is refused.
+- **One input.** A request has one `stdin`, so a command given two inputs is refused by the client. No relayed command
+  has two file arguments, and a test holds that.
+- **Stage intents are found by id.** `stage_intent` looks for a record file only under a name of the record's id format.
+- **How it stays true.** `tests/unit/test_relayed_file_arguments.py` walks the relayed commands' parsers and the handlers'
+  source, and fails on a file argument the client does not handle.
+  `tests/integration/test_relayed_file_arguments_through_a_broker.py` gives each argument of each relayed command and typed
+  tool, one at a time, a value naming a path, and fails when the process opens, lists, writes or checks that path or
+  hands it to a child. It doesn't see a child's own reads, or a path past a state check its one project doesn't reach,
+  which includes a row stopping at a check of an argument the walk filled in itself, and it doesn't walk a typed tool's
+  object-typed properties; a new reader that takes a path from past those is what the broker's refusal and a review are
+  for.

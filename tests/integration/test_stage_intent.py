@@ -175,6 +175,37 @@ def test_an_operational_policy_change_is_recorded_never_enforced(project):
     assert first["operational_digest"] != second["operational_digest"]
 
 
+def test_refreshing_removing_or_adding_the_price_table_never_stales_an_open_stage(project):
+    """A3 §2.1: an all-operational table can't alter whether an action is legal, so taking it mid-work stales nothing.
+    Each change still needs the operator's adoption; only the operational digest moves."""
+    p = project
+    pricing = p.root / ".aew/policy/pricing.yaml"
+    manifest = p.root / ".aew/project.yaml"
+
+    def policy_entry(change) -> None:
+        data = yaml.safe_load(manifest.read_text(encoding="utf-8"))
+        change(data["policy"])
+        manifest.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8", newline="\n")
+
+    si = open_stage(p, steps=4)
+    run_step(p, si, 1)
+    table = yaml.safe_load(pricing.read_text(encoding="utf-8"))
+    refreshed = yaml.safe_dump({**table, "source": "refreshed"}, sort_keys=False)
+    pricing.write_text(refreshed, encoding="utf-8", newline="\n")
+    p.adopt_policy()
+    run_step(p, si, 2)
+    policy_entry(lambda policy: policy.pop("pricing"))
+    p.adopt_policy()
+    run_step(p, si, 3)
+    policy_entry(lambda policy: policy.update(pricing="policy/pricing.yaml"))
+    p.adopt_policy()
+    run_step(p, si, 4, final=True)
+    steps = engine(p).stage_intent(si)["steps"]
+    assert len(steps) == 4 and len({s["legality_digest"] for s in steps}) == 1
+    operational = [s["operational_digest"] for s in steps]
+    assert len(set(operational[:3])) == 3 and operational[3] != operational[2]
+
+
 def test_a_superseded_generations_stage_is_never_continued_implicitly(project):
     """F18 §14: after a takeover, the new Lead cannot run the old generation's next step; it resolves the stage."""
     import aew.operator

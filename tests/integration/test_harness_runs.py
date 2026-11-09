@@ -4,6 +4,7 @@ moves AEW state."""
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -566,3 +567,36 @@ def test_a_weaker_run_is_live_in_the_register_while_its_harness_runs_and_its_age
         lab.wait(run)
     finally:
         lab.cleanup()
+
+
+def test_a_real_run_that_ended_stays_its_active_invocations_run_and_wakes_the_lead_once(lab, tmp_path):
+    """The state the wake queue's own test sets by hand, from the real engine: a run ends, and its invocation stays
+    active until the Lead accepts or cancels it. Each idle pass of the Lead's would be a paid turn."""
+    from aew.engine.api import Engine
+    from aew.harness import wake_queue as Q
+
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [{"do": "exit", "code": 0}])
+    run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
+    assert lab.wait(run)["status"] == "ended_without_evidence"
+    engine = Engine.discover(lab.root)
+    assert run in [w.run for w in Q.live_runs(engine.store.current())]
+
+    class Poster:
+        posts: list[str] = []
+
+        def busy(self) -> bool:
+            return False
+
+        def post(self, wake_id: str, text: str) -> str:
+            self.posts.append(wake_id)
+            return "ses_1"
+
+        def landed(self, wake_id: str) -> str:
+            return Q.DELIVERED
+
+    queue = Q.WakeQueue(lab.aew_root, poster=Poster(), state=engine.store.current, quiet_s=lambda: 1200,
+                        clock=time.time)
+    for _ in range(4):
+        queue.tick()
+    assert len(Poster.posts) == 1 and Q.status(lab.aew_root)["watching"] == []

@@ -8,7 +8,9 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import bounds
 import childdiag
@@ -16,6 +18,7 @@ import flight_recorder
 import harness_diagnostics as hd
 import proctree
 import pytest
+import session_deadline
 from conftest import IS_WINDOWS
 
 TOKEN = "aew1.tk_" + "0" * 16 + "." + "A" * 43  # built here: no credential-shaped string sits in any file
@@ -184,8 +187,66 @@ def test_childdiag_does_nothing_without_a_directory(monkeypatch):
 
 def lane(test_timeout: float | None = 600, deadline: float | None = 900, job_min: float = 20, **kw) -> bounds.Lane:
     return bounds.Lane(workflow="w.yml", job="j", step="s", command="pytest", job_timeout_s=job_min * 60,
-                       test_timeout_s=test_timeout, deadline_s=deadline, margin_s=bounds.DEADLINE_MARGIN_S,
+                       test_timeout_s=test_timeout, deadline_s=deadline,
+                       margin_s=kw.get("margin", bounds.DEADLINE_MARGIN_S),
                        lane=kw.get("lane"), xdist=False, max_worker_restart=None, hang_dir=None, lane_report=None)
+
+
+@pytest.mark.parametrize(("workers", "margins"), [(None, 1.0), (2, 1.5)], ids=["one_process", "xdist"])
+def test_each_timer_sits_half_way_past_its_own_process_acting(tmp_path, workers, margins):
+    """The timer's C thread racing a deadline thread that has just woken is an access violation (seen on Windows before
+    that thread dropped the timer first). Now the session tests no longer catch a timer at the moment of acting (it
+    passed them in five runs of five), so the times are pinned here."""
+    config = SimpleNamespace(option=SimpleNamespace(numprocesses=workers),
+                             getoption=lambda name, default=None: str(tmp_path) if name == "aew_hang_dir" else default)
+    controller = session_deadline.Controller(config, 60.0, 4.0)
+    assert controller.stacks.at_mono == controller.mono + margins * 4.0
+    worker = session_deadline.Worker(SimpleNamespace(workerinput={"workerid": "gw0"}), time.time() + 60.0,
+                                     str(tmp_path), 4.0)
+    assert worker.stacks.at_mono == pytest.approx(worker.mono + 2.0)
+
+
+def test_the_holders_check_reads_this_sessions_files_before_any_earlier_sessions(tmp_path, monkeypatch):
+    """Review of #387's quick check, f1. It reads a capped number of files, and a local hang directory keeps growing."""
+    own = tmp_path / "autopsy" / "session-9-b"
+    older = tmp_path / "autopsy" / "session-1-a"
+    own.mkdir(parents=True)
+    older.mkdir()
+    (own / "mine.txt").write_text("x", encoding="utf-8")
+    for name in "abc":
+        (older / f"{name}.txt").write_text("x", encoding="utf-8")
+    asked: list[str] = []
+    monkeypatch.setattr(session_deadline, "HOLDER_FILES", 2)
+    monkeypatch.setattr(proctree, "holders", lambda paths: asked.extend(paths) or {})
+    session_deadline._holders_text(own, [])
+    assert asked == [str(own / "mine.txt"), str(older / "a.txt")]
+
+
+def test_two_sessions_with_one_pid_have_two_directories(tmp_path):
+    """Review of #387, M1: pids are reused, so the session's directory is not named by its pid alone."""
+    config = SimpleNamespace(option=SimpleNamespace(numprocesses=None),
+                             getoption=lambda name, default=None: str(tmp_path) if name == "aew_hang_dir" else default)
+    assert session_deadline.Controller(config, 60.0, 1.0).dir != session_deadline.Controller(config, 60.0, 1.0).dir
+
+
+def test_stacks_dropped_stay_dropped_so_a_test_that_ends_cannot_put_them_back(tmp_path):
+    """Review of #387, m1. The watchdog re-arms them after each test; a deadline's thread has dropped them for good."""
+    path = tmp_path / "stacks.txt"
+    stacks = session_deadline.Stacks(path, time.monotonic() + 600)
+    stacks.arm()
+    assert path.exists()
+    stacks.drop()
+    assert stacks.left() <= 0 and not path.exists()  # empty, so removed
+    stacks.arm()
+    assert not path.exists()
+
+
+def test_the_sentinels_longest_path_is_held_inside_the_job_at_five_margins():
+    """Review of #387, m2. Two margins pass the older rule here, and five leave no time to upload: 900 + 5 x 70 = 1250,
+    so a 21 minute job (1260 s) has 10 s left. It needs the margin at 60 s for the same deadline to pass."""
+    found = bounds.nesting_problems(lane(job_min=21, margin=70.0), [])
+    assert [p for p in found if "longest path ends the set at 1250s" in p] == found and len(found) == 1, found
+    assert bounds.nesting_problems(lane(job_min=21, margin=60.0), []) == []
 
 
 def test_the_nesting_rule_names_each_broken_link():
@@ -433,3 +494,58 @@ def test_a_job_whose_timeout_does_not_carry_the_clearance_is_named(tmp_path):
                                                                    "gone": 30, "no_deadline": 5}})
     assert [p.split(":")[0] for p in stale] == ["w.yml short", "w.yml gone", "w.yml no_deadline"], stale
     assert "no such job" in stale[1] and "sets no AEW_JOB_DEADLINE" in stale[2]
+
+
+# ------------------------------------------------------------------------- what the sentinel says, whatever the load
+# The end-to-end tests (tests/integration/test_hang_autopsy.py) hold that a session is ended, by real processes under
+# 1 s margins. What the sentinel writes as it ends one is here, with nothing to race and no process to end: a margin
+# nothing reaches, an empty snapshot and no job.
+
+
+def _sentinel(tmp_path: Path, *, margin: float = 600.0) -> session_deadline.Sentinel:
+    me = proctree.identity(os.getpid())
+    assert me is not None
+    session = tmp_path / "hangs" / "autopsy" / "session-1-ab"
+    session.mkdir(parents=True)
+    return session_deadline.Sentinel({"deadline_wall": time.time() + 3600, "margin": margin, "controller": list(me),
+                                      "dir": str(session), "job": None,
+                                      "after_finish_file": str(tmp_path / "outside.txt")})
+
+
+def test_the_backstop_says_what_it_did(tmp_path, monkeypatch):
+    sentinel = _sentinel(tmp_path)
+    exits = []
+    monkeypatch.setattr(session_deadline.os, "_exit", exits.append)
+    sentinel.backstop_at = time.monotonic() - 1
+    sentinel._backstop()
+    assert exits == [0]
+    said = (sentinel.dir / "sentinel-backstop.txt").read_text(encoding="utf-8")
+    assert "had not ended the session by its time" in said and "ended 0 of 0 matching members" in said
+
+
+def test_a_sentinel_acting_at_the_deadline_says_so_and_records_the_set_it_ended(tmp_path, monkeypatch):
+    sentinel = _sentinel(tmp_path)
+    monkeypatch.setattr(session_deadline.Sentinel, "_backstop", lambda self: None)
+    # The set stays empty: the "controller" is this test's own process, which must not be ended.
+    monkeypatch.setattr(session_deadline.Sentinel, "refresh", lambda self: None)
+    sentinel.act_mono = time.monotonic() - 1
+    assert sentinel.run() == 0
+    assert "written by the sentinel" in (sentinel.dir / "session-deadline.txt").read_text(encoding="utf-8")
+    assert (sentinel.dir / "sentinel-processes-deadline.txt").exists()
+    assert "(deadline)" in (sentinel.dir / "sentinel-log.txt").read_text(encoding="utf-8")
+
+
+def test_a_stuck_controllers_stacks_are_in_the_folder_before_the_set_is_ended(tmp_path, monkeypatch):
+    """Review of #392, m3: the ending may hang, or end what's holding the file, so they come first."""
+    sentinel = _sentinel(tmp_path, margin=0.01)  # the "controller" is this process, so it never exits in time
+    sentinel.after_finish_file.write_text("the stack of what held it\n", encoding="utf-8")
+    monkeypatch.setattr(session_deadline.Sentinel, "refresh", lambda self: None)
+    seen = []
+
+    def end_set(self: session_deadline.Sentinel, why: str) -> None:
+        seen.append((why, (self.dir / session_deadline.AFTER_FINISH_STACKS).read_text(encoding="utf-8")))
+
+    monkeypatch.setattr(session_deadline.Sentinel, "end_set", end_set)
+    assert sentinel.after_finish() == 0
+    assert seen == [("after-finish", "the stack of what held it\n")]
+    assert "the session finished, but" in (sentinel.dir / "stuck-after-finish.txt").read_text(encoding="utf-8")

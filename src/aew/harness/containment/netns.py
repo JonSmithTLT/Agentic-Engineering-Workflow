@@ -269,7 +269,8 @@ class RunNetwork:
         self._values = dict(values or {})       # provider variable -> its value, for the leak check only
         self.relays: dict[str, tuple[int, relay.ProviderRelay]] = {}  # the Lead's: provider -> (port inside, relay)
         self.login_sentinels: dict[str, str] = {}  # the Lead's refreshing logins: provider -> its sentinel inside
-        self.server_leg = True    # a worker's harness server is reached through the shim; the Lead's TUI uses stdio
+        self.server_leg = True    # the harness server is reached through the shim: a worker's, and the Lead's (E210)
+        self.lead = False         # the Lead's network: its relays are per provider
         self.http_proxy = False   # the Lead's HTTP_PROXY names the egress proxy too, for its refusal's https form
         self.provider: str | None = None  # a worker's provider, and whether its key reached its relay: kept from the
         self.key_relayed = False          # start for the record's note (:meth:`refused`), as close() clears the values
@@ -329,7 +330,7 @@ class RunNetwork:
         :meth:`start` does."""
         names = [str(n) for n in provider_env]
         net = cls(layout)
-        net.server_leg, net.http_proxy = False, True
+        net.lead, net.http_proxy = True, True
         if layout.network != PROXY_ONLY or not layout.net_dir:
             return net
         resolvers = dict(refreshing or {})
@@ -423,7 +424,7 @@ class RunNetwork:
     def describe(self) -> dict[str, Any]:
         """The label's ``network`` (F28 §3.1): the mode, the relay, the egress allowlist, and the stated limit."""
         out: dict[str, Any] = {"mode": self.mode}
-        if self.server_leg:
+        if not self.lead:
             out.update(relay.describe(self.relay))
         else:  # the Lead's: each relayed provider's fixed upstream
             out["provider_relay"] = "configured" if self.relays else "none"

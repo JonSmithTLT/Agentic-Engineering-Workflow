@@ -3,9 +3,10 @@
 The TUI runs through ``aew lead session`` (:mod:`aew.harness.lead_broker`), so the Lead's model never
 holds the Lead credential: Lead-authenticated ``aew`` commands reach this session's broker.
 
-**The Lead model's shell environment is curated.** A V2 TUI that runs its own server (``--standalone``)
-sends its own environment, minus the server password, as every session's shell environment, and its
-private server inherits the same environment. So the environment given to the TUI is exactly what the
+**The Lead model's shell environment is curated.** AEW starts the Lead's server (``serve --stdio``, which removes its
+password from its own environment), and the TUI connects with ``--server``, so the broker can reach the session to wake
+the Lead (ADR-0009, amendment 2026-11-08). A TUI on ``--server`` sends no environment, so a session's shell gets the
+server's, and AEW gives the server the TUI's. So the environment given to both is exactly what the
 Lead's model and its shell commands can see: an allowlist (operating-system basics, ``XDG_*``), ``PATH``
 with ``aew`` first, the broker's coordinates, and the Lead projection. It holds no AEW credential and no
 provider key. AEW writes nothing into the operator's OpenCode state: the Lead projection is
@@ -35,6 +36,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shutil
 import sqlite3
 import subprocess
@@ -54,6 +56,7 @@ log = logging.getLogger(__name__)
 
 PASSED_THROUGH = ("OPENCODE_CONFIG", "SHELL")  # the operator's own config file and shell choice
 LEAD_DIR = "local/harness/lead"  # under the AEW root: the contained Lead's OpenCode state, per project (addendum 1)
+SERVER_LOG, SERVER_URL_FILE = "lead-server.log", "lead-server.json"  # the Lead's server: its log and announced address
 # Set inside the contained Lead's sandbox: AEW's CLI there is a non-writer (``process_kind``, its owner), and a write
 # that meets the read-only store says why (``cli.main``). Never authority.
 CONTAINED_ENV = process_kind.LEAD_CONTAINED_ENV
@@ -108,7 +111,8 @@ def refuse_unusable(provider_env: list[str], base: Mapping[str, str]) -> None:
         raise UsageError(f"--provider-env {name}: {why}", variable=name)
 
 
-def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = "") -> dict[str, str]:
+def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = "",
+            push_wake: bool = False) -> dict[str, str]:
     keep = agentenv.WINDOWS_KEEP if sys.platform == "win32" else agentenv.POSIX_KEEP
     env = {k: v for k, v in base.items() if k.upper() in keep or k.upper().startswith("XDG_")
            or (sys.platform != "win32" and k.startswith("LC_")) or k.upper() in PASSED_THROUGH}
@@ -124,18 +128,87 @@ def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = ""
 
     # A Lead that runs here is not contained (the contained Lead's start replaces this configuration): it is told no
     # tool of AEW's is placed, as an uncontained worker is (review of #353, n3)
-    config = projection.lead_config(guide, tools=capability.placed(None, contained=False))
+    config = projection.lead_config(guide, tools=capability.placed(None, contained=False), push_wake=push_wake)
     env.update({"OPENCODE_CONFIG_CONTENT": json.dumps(config, sort_keys=True),
                 "OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_DISABLE_AUTOUPDATE": "1"})
     return env
 
 
 def command(engine: Any, extra_args: list[str]) -> list[str]:
+    """The TUI, connected to the server AEW starts (:func:`serve_spec`), whose address the shim fills in. ``--server``
+    is AEW's own: the operator's would be a server whose environment AEW did not set (ADR-0009, amendment 2026-11-08).
+    """
+    from aew.harness.containment import shim
+
     args = [a for a in extra_args if a != "--"]
-    if "--server" in args or any(a.startswith("--server=") for a in args):
-        raise UsageError("`aew opencode` runs the TUI with its own private server (--standalone): with --server the "
-                         "TUI would not give sessions its curated environment")
-    return [*binary_command(), "--standalone", *args, str(engine.repo_root)]
+    for flag in ("--server", "--standalone"):
+        if flag in args or any(a.startswith(f"{flag}=") for a in args):
+            raise UsageError(f"`aew opencode` runs the TUI on the server it starts, in the Lead's curated environment, "
+                             f"so it takes no {flag}")
+    return [*binary_command(), "--server", shim.SERVER_URL, *args, str(engine.repo_root)]
+
+
+def serve_spec(directory: Path, *, port: int = 0) -> dict[str, Any]:
+    """The shim's ``serve``: the Lead's server. ``--stdio`` is required: it is the form that keeps the password out of
+    the environment the server's shells inherit; a plain ``serve`` passes it on (measured on 2.2.6, 2026-11-08)."""
+    directory.mkdir(parents=True, exist_ok=True)
+    url_file = directory / SERVER_URL_FILE
+    url_file.unlink(missing_ok=True)  # an earlier session's address is no address
+    return {"argv": [*binary_command(), "serve", "--stdio", "--hostname", "127.0.0.1", "--port", str(port)],
+            "log": str(directory / SERVER_LOG), "url_file": str(url_file)}
+
+
+def wakes_reach_the_lead(policy: Any) -> bool:
+    """Whether AEW posts wakes here: ``lead.push_wake`` is on, and the platform isn't Windows. Windows is a declared gap
+    (register E210's note of 2026-11-08): its launch was run for real, a wake never has been, so the Lead there waits
+    with `harness_wait`, whatever the policy says."""
+    from aew.policy.execution import PUSH_WAKE_ON, push_wake
+
+    return push_wake(policy) == PUSH_WAKE_ON and sys.platform != "win32"
+
+
+def pushes_wakes(engine: Any) -> bool:
+    """Whether the Lead is told of wakes (:func:`wakes_reach_the_lead`). A policy that can't be read: off, and the Lead
+    waits with `harness_wait`."""
+    try:
+        return wakes_reach_the_lead(engine.execution_policy()[0])
+    except AEWError:
+        return False
+
+
+def lead_poster(policy: Any, password: str, *, url_file: Path | None = None, unix: str | None = None) -> Any:
+    """The broker's way into the Lead's session, or None where wakes don't reach it. Through the network shim's
+    leg in a network of its own (``unix``), else at the address the server announced (``url_file``)."""
+    from aew.harness.containment.netns import SERVER_PORT
+    from aew.harness.opencode.client import Client
+    from aew.harness.opencode.lead_wake import LeadPoster, url_of
+
+    if not wakes_reach_the_lead(policy):
+        return None
+
+    def client() -> Client | None:
+        if unix is not None:
+            return Client(f"http://127.0.0.1:{SERVER_PORT}", password, unix=unix)
+        url = url_of(url_file) if url_file is not None else None
+        return Client(url, password) if url else None
+
+    return LeadPoster(client)
+
+
+class WeakerOpenCode(lead_broker.WeakerLead):
+    """The Lead's TUI where it runs not contained: on the server AEW starts, under the shim for that alone."""
+
+    def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> lead_broker.Harness:
+        from aew.harness.containment import netns
+
+        harness = super().__call__(bridge_dir, child_env)
+        directory = self.engine.aew_root / LEAD_DIR / "server"
+        password = secrets.token_urlsafe(32)
+        spec = serve_spec(directory)
+        harness.argv = netns.shim_argv({"in": [], "out": [], "serve": spec}, harness.argv)
+        harness.env = {**harness.env, "OPENCODE_PASSWORD": password}
+        harness.poster = lead_poster(self.engine.execution_policy()[0], password, url_file=Path(spec["url_file"]))
+        return harness
 
 
 def check_version() -> str:
@@ -157,15 +230,18 @@ def contained_here() -> bool:
 
 
 def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | None = None) -> dict[str, Any]:
-    """What `aew opencode` would run, without starting anything (no values of environment variables)."""
+    """What `aew opencode` would run, without starting anything. It holds no environment variable's value, but for the
+    import path in its `config` that the Lead's MCP server is given (no credential)."""
     guide = guide_of(engine)
     refuse_unusable(provider_env, os.environ)  # contained, the variables feed relays and stay out of the TUI's env
-    env = tui_env(os.environ, provider_env=[] if contained_here() else provider_env, guide=guide)
+    wakes = pushes_wakes(engine)
+    env = tui_env(os.environ, provider_env=[] if contained_here() else provider_env, guide=guide, push_wake=wakes)
     try:
         argv: list[str] | str = command(engine, extra_args or [])
     except HarnessIncompatible as exc:
         argv = f"unavailable: {exc.message}"
-    notes = ["The TUI's own environment becomes every Lead session's shell environment (V2 --standalone)."]
+    notes = ["AEW starts the Lead's server with the TUI's environment, and that becomes every Lead session's shell "
+             "environment."]
     if contained_here():
         notes += ["On Linux the TUI runs contained (STG-05 CS-4): in a self-tested sandbox, on its own network, on a "
                   "relayed terminal; the configuration shown gains the session's relayed providers and its "
@@ -177,7 +253,8 @@ def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | No
     notes.append(f"A session starts this project's operator endpoint in the background unless one is live; "
                  f"{operator_autostart.OFF_ENV}=off turns that off.")
     # what the TUI is given where it runs as it is: an uncontained Lead's line included (review of #356, n1)
-    config = projection.lead_config(guide) if contained_here() else json.loads(env["OPENCODE_CONFIG_CONTENT"])
+    config = (projection.lead_config(guide, push_wake=wakes) if contained_here()
+              else json.loads(env["OPENCODE_CONFIG_CONTENT"]))
     return {"command": argv, "config": config,
             "env_names": sorted([*env, *lead_broker.ENV_NAMES]), "provider_env": provider_env, "notes": notes}
 
@@ -221,14 +298,15 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         stages.mark("logins")
         with operator_autostart.for_session(engine, provider_env=provider_env):
             out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label,
-                                          keep_seat=keep_seat, env=tui_env(os.environ, provider_env=[], guide=guide),
-                                          contained=lead)
-        return {**out, "opencode": version}
+                                          keep_seat=keep_seat,
+                                          env=tui_env(os.environ, provider_env=[], guide=guide,
+                                                      push_wake=pushes_wakes(engine)), contained=lead)
+        return _outcome(out, version)
     # Off Linux the TUI runs as it is, labelled so, with its label.json and its register entry (G3 addendum 7, ruling
     # 1); under an explicit `required` that refuses before any credential is read.
-    weaker = lead_broker.WeakerLead(engine, argv, kind="lead_opencode", who="aew opencode")
+    weaker = WeakerOpenCode(engine, argv, kind="lead_opencode", who="aew opencode")
     weaker.precheck()
-    env = tui_env(os.environ, provider_env=provider_env, guide=guide)
+    env = tui_env(os.environ, provider_env=provider_env, guide=guide, push_wake=pushes_wakes(engine))
     if provider_env:
         sys.stderr.write(f"aew opencode: {', '.join(provider_env)} passed to the Lead's OpenCode; the Lead model's "
                          "shell commands can read it.\n")
@@ -241,7 +319,19 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     with operator_autostart.for_session(engine, provider_env=provider_env):
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
                                       env=env, contained=weaker)
-    return {**out, "opencode": version}
+    return _outcome(out, version)
+
+
+def _outcome(out: dict[str, Any], version: Any) -> dict[str, Any]:
+    """The session's result. A launch that never started the TUI is no success: `aew opencode` exits non-zero, and the
+    result says what to do, since the shim's own line is above it."""
+    from aew.harness.containment.shim import EXIT_SETUP
+
+    if out.get("exit") != EXIT_SETUP:  # the shim's own code, which a TUI that ran doesn't exit with
+        return {**out, "opencode": version}
+    return {**out, "ok": False, "opencode": version,
+            "not_started": "the Lead's TUI was not started; run `aew doctor`, and read the server's log, "
+                           f"{SERVER_LOG}, under `.aew/local/`"}
 
 
 def _readiness(engine: Any) -> None:
@@ -574,8 +664,12 @@ class ContainedLead:
             self._record(run_dir, label)
             entry = weaker_register.enter(label=label, **where)
             env = entry.mark({**child_env, **{n: str(agentenv.lookup(self.base, n)) for n in self.provider_env}})
-            return lead_broker.Harness(argv=self.argv, env=env, relay=False, label=label, close=lambda: None,
-                                       entry=entry)
+            password = secrets.token_urlsafe(32)
+            spec = serve_spec(state / "server")
+            return lead_broker.Harness(argv=netns.shim_argv({"in": [], "out": [], "serve": spec}, self.argv),
+                                       env={**env, "OPENCODE_PASSWORD": password}, relay=False, label=label,
+                                       close=lambda: None, entry=entry,
+                                       poster=lead_poster(policy, password, url_file=Path(spec["url_file"])))
         line = containment.tree_masks_line(layout)
         if line:
             sys.stderr.write(f"aew opencode: {line}.\n")
@@ -600,7 +694,8 @@ class ContainedLead:
             # The tools its sandbox's self-test settled, by the names the Lead calls them, as a worker is told
             config = projection.lead_config(self.guide, contained=label,
                                             relays=network.lead_bases() if network else None,
-                                            tools=capability.placed(label, contained=True))
+                                            tools=capability.placed(label, contained=True),
+                                            push_wake=pushes_wakes(engine))
             inside = self._inside(child_env, layout, run_dir, state, config, network)
             leaked = network.leaks(json.dumps(inside), json.dumps(config)) if network else []
             if leaked:  # F28 §3.6, row 6: names only
@@ -614,9 +709,18 @@ class ContainedLead:
                                      f"to the contained Lead ({type(exc).__name__}): the Lead cannot use "
                                      f"{'it' if len(network.login_sentinels) == 1 else 'them'} this session.\n")
                 self.stages.mark("lead_logins")
-            spec = network.spec() if network is not None and network.dir else {"in": [], "out": []}
-            argv = containment.bwrap_argv(layout, netns.shim_argv({**spec, "ctty": True}, self.argv), cwd=project,
-                                          path=inside.get("PATH"))
+            own_network = network if network is not None and network.dir else None
+            spec = own_network.spec() if own_network else {"in": [], "out": []}
+            # The server in the sandbox with the TUI, in the same environment, which is what every Lead shell gets: the
+            # TUI sends a --server none of its own (ADR-0009, amendment 2026-11-08). In a network of its own the broker
+            # reaches it by the shim's server leg, as a worker's supervisor does.
+            password = secrets.token_urlsafe(32)
+            inside["OPENCODE_PASSWORD"] = password
+            served = serve_spec(run_dir / "harness" / "xdg-runtime", port=netns.SERVER_PORT if own_network else 0)
+            poster = lead_poster(policy, password, url_file=Path(served["url_file"]),
+                                 unix=own_network.server_socket if own_network else None)
+            argv = containment.bwrap_argv(layout, netns.shim_argv({**spec, "ctty": True, "serve": served}, self.argv),
+                                          cwd=project, path=inside.get("PATH"))
             self._record(run_dir, label)
             # A sandbox on the host's network (containment.network.mode: shared) is weaker, and enters the register
             entry = weaker_register.enter_if_weaker(label, **where)
@@ -625,7 +729,7 @@ class ContainedLead:
             raise
         inside[weaker_register.MARKER] = str(where["marker"])
         return lead_broker.Harness(argv=argv, env=inside, relay=True, label=label,
-                                   close=lambda: self._retire(run_dir, layout, network), entry=entry)
+                                   close=lambda: self._retire(run_dir, layout, network), entry=entry, poster=poster)
 
     def _inside(self, child_env: Mapping[str, str], layout: Any, run_dir: Path, state: Path,
                 config: dict[str, Any], network: Any) -> dict[str, str]:

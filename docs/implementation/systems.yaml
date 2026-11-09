@@ -1445,8 +1445,9 @@ systems:
   - SYS-38
   switch:
     key: policy.pricing (project manifest)
-    default: 'absent: no price table, so every derived cost is unpriced'
-    default_evidence: src/aew/knowledge/manifest.py:113-118
+    default: 'on for a new project: aew init writes the bundled table; a project made before it has none, so every
+      derived cost is unpriced'
+    default_evidence: src/aew/engine/api.py (Engine.initialize)
     owner: operator
     turning_on_changes: Usage copied at commit carries a price-table cost instead of 'unpriced', and doctor's policy:pricing
       reports the table in force (engine/usage_ops.py:157-169).

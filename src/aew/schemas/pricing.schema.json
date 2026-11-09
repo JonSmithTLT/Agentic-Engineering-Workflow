@@ -35,6 +35,27 @@
       "minLength": 1,
       "maxLength": 500
     },
+    "base_tier_only": {
+      "x-aew-class": "operational",
+      "description": "Models whose flat row holds only the base tier of a price that rises with context size. Every figure using one reads as a floor, naming the size (the rows stay flat and hold billable buckets only).",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[^/\\s]+/\\S+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "above_context_tokens"
+        ],
+        "properties": {
+          "above_context_tokens": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
     "prices": {
       "x-aew-class": "operational",
       "type": "object",

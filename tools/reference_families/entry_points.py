@@ -18,7 +18,9 @@ coverage in the record's ``fact_coverage``, beside ``coverage`` (lower-bound, wi
 designer's addendum 3). ``starts``
 is one list of every place the product starts the entry point, each item with its ``form`` and ``attribution``:
 
-* ``-m``: a ``python -m aew...`` spawn, attributed by the module it names;
+* ``-m``: a ``python -m aew...`` spawn, attributed by the module it names, and for the CLI by the owner's own
+  ``cli_entry_point`` applied to the string constants after it, so a start whose deciding words aren't constants stays
+  on the ``aew`` row;
 * ``console-script-argv``: an argv list that starts with ``aew``, attributed by the owner's own ``cli_entry_point``
   applied to its words; whether it is run is not decided here, so it is also an unresolved item of the list;
 * ``console-script-on-PATH``: the interpreter's directory put on a child's ``PATH``, which makes the CLI startable and
@@ -34,7 +36,8 @@ interpreter named without ``sys.executable``) is pinned by probes, one each, in
 from __future__ import annotations
 
 import ast
-from typing import Any, NamedTuple
+from itertools import takewhile
+from typing import Any, NamedTuple, cast
 
 from reference_families import common as C
 
@@ -63,6 +66,7 @@ class SpawnSite(NamedTuple):
     module: str
     symbol: str | None
     target: str | None  # the `-m` module; None when it is not a plain string in an argv that runs this interpreter
+    words: tuple[str, ...] = ()  # the string constants right after the module, up to the first thing that is not one
 
 
 def declare_sites_from(index: C.Index, module: str) -> list[DeclareSite]:
@@ -104,12 +108,13 @@ def _argv_sites(index: C.Index, module: str, symbol: str | None, elts: list[ast.
     (``argv.append(name)``), so it is reported too."""
     runs_this_python = any(index.aliases.resolve(e) == "sys.executable" for e in elts)
     found = []
-    for a, b in zip(elts, elts[1:], strict=False):
+    for i, (a, b) in enumerate(zip(elts, elts[1:], strict=False)):
         if not _is_dash_m(a):
             continue
         if isinstance(b, ast.Constant) and isinstance(b.value, str):
             if b.value == C.PACKAGE or b.value.startswith(C.PACKAGE + "."):
-                found.append(SpawnSite(module, symbol, b.value))
+                words = takewhile(lambda e: isinstance(e, ast.Constant) and isinstance(e.value, str), elts[i + 2:])
+                found.append(SpawnSite(module, symbol, b.value, tuple(cast(ast.Constant, e).value for e in words)))
         elif literal or runs_this_python:
             found.append(SpawnSite(module, symbol, None))
     if literal and elts and _is_dash_m(elts[-1]):
@@ -193,9 +198,15 @@ def cli_roles(ctx: C.Context, table: dict[str, tuple[str, str]]) -> set[str]:
     raise C.ReferenceError("aew.process_kind.cli_entry_point is not defined")
 
 
-def entry_for(target: str) -> str:
-    """The row a ``-m`` module starts: the CLI for ``aew`` itself, else the module's own dotted name."""
-    return CLI_ENTRY if target in CLI_MODULES else target
+def entry_for(target: str, words: tuple[str, ...] = ()) -> str:
+    """The row a ``-m`` module starts: the module's own dotted name, or for ``aew`` itself the CLI's row that the
+    owner's ``cli_entry_point`` gives its words, as for a console-script argv: ``-m aew lead mcp`` declares ``aew lead
+    mcp`` (review of #384, finding 2). With no words that decide, the row is ``aew``."""
+    if target not in CLI_MODULES:
+        return target
+    from aew import process_kind  # the owner, at run time, as in build
+
+    return process_kind.cli_entry_point(list(words), {})
 
 
 def start_item(module: str, symbol: str | None, form: str, attribution: str) -> dict[str, Any]:
@@ -233,11 +244,11 @@ def build(ctx: C.Context) -> C.Built:
         if s.target is None:
             anywhere_started.append(C.unresolved_item(s.module, s.symbol, "a `-m` whose module name is not a plain "
                                                       "string"))
-        elif entry_for(s.target) not in table:
+        elif entry_for(s.target, s.words) not in table:
             anywhere_started.append(C.unresolved_item(s.module, s.symbol, f"a `-m {s.target}` that names no listed "
                                                       "entry point"))
         else:
-            starts[entry_for(s.target)].append(start_item(s.module, s.symbol, DASH_M, "derived"))
+            starts[entry_for(s.target, s.words)].append(start_item(s.module, s.symbol, DASH_M, "derived"))
     for module, c in consoles:
         if c.form == PATH_FORM:
             for role in roles:
@@ -286,7 +297,8 @@ def page(records: list[C.Record]) -> str:
              "table is the registry, and the tests named in each record's `coverage` (in the machine index that "
              "`render` writes) stop code bypassing it. Each list of a record (`declared_at`, `starts`) is "
              "lower-bound, and its `fact_coverage` says what it could not resolve (also "
-             "in [gaps.md](gaps.md)). A start has a form: `-m` (a `python -m` spawn), `console-script-argv` (an argv "
+             "in [gaps.md](gaps.md)). A start has a form: `-m` (a `python -m` spawn; one of the CLI is on the row its "
+             "constant words give, and on `aew` when they give none), `console-script-argv` (an argv "
              "constant that starts with `aew`; whether it is run is not decided here) or `console-script-on-PATH` "
              "(makes the CLI startable and starts none, so it is listed for every role of the CLI).", ""]
 

@@ -50,7 +50,6 @@ None.
 ### `aew.g3client`
 
 - `aew.errors`
-- `aew.g3standing`
 - `aew.stg02.g3_overlay`
 - `aew.stg02.wire`
 
@@ -205,6 +204,7 @@ None.
 - `aew.capability.consent`
 - `aew.cli.capability_commands`
 - `aew.cli.dashboard_commands`
+- `aew.cli.fields`
 - `aew.cli.g3_commands`
 - `aew.cli.history_commands`
 - `aew.cli.map_commands`
@@ -321,6 +321,7 @@ None.
 ### `aew.cli.work_commands`
 
 - `aew.cli.commands`
+- `aew.cli.fields`
 - `aew.engine.custody_ops`
 - `aew.errors`
 - `aew.harness.bridge`
@@ -815,6 +816,7 @@ None.
 - `aew.harness.procs`
 - `aew.harness.progress`
 - `aew.harness.runlog`
+- `aew.harness.wake_queue`
 - `aew.knowledge.context`
 - `aew.knowledge.evidence`
 - `aew.policy.execution`
@@ -1025,6 +1027,7 @@ None.
 - `aew.engine.validation_ops`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.harness.wake_queue`
 - `aew.knowledge.evidence`
 - `aew.knowledge.manifest`
 - `aew.knowledge.render`
@@ -1069,6 +1072,7 @@ None.
 - `aew.engine.base`
 - `aew.engine.hierarchy`
 - `aew.harness.notify`
+- `aew.harness.wake_queue`
 - `aew.util`
 
 ### `aew.engine.steering`
@@ -1350,8 +1354,10 @@ None.
 - `aew.harness.runlog`
 - `aew.harness.steering_loop`
 - `aew.harness.tool_calls`
+- `aew.harness.wake_queue`
 - `aew.harness.weaker_register`
 - `aew.lead_credential`
+- `aew.policy.execution`
 - `aew.process_kind`
 - `aew.surface.context`
 - `aew.surface.run`
@@ -1420,6 +1426,7 @@ None.
 ### `aew.harness.opencode.client`
 
 - `aew.errors`
+- `aew.harness.containment.shim`
 
 ### `aew.harness.opencode.lead`
 
@@ -1432,15 +1439,26 @@ None.
 - `aew.harness.containment.egress`
 - `aew.harness.containment.netns`
 - `aew.harness.containment.relay`
+- `aew.harness.containment.shim`
 - `aew.harness.lead_broker`
 - `aew.harness.opencode.adapter`
 - `aew.harness.opencode.capabilities`
+- `aew.harness.opencode.client`
+- `aew.harness.opencode.lead_wake`
 - `aew.harness.opencode.login`
 - `aew.harness.opencode.projection`
 - `aew.harness.operator_autostart`
 - `aew.harness.weaker_register`
+- `aew.policy.execution`
 - `aew.process_kind`
 - `aew.surface.lead_text`
+
+### `aew.harness.opencode.lead_wake`
+
+- `aew.harness.containment.shim`
+- `aew.harness.opencode.adapter`
+- `aew.harness.opencode.client`
+- `aew.harness.wake_queue`
 
 ### `aew.harness.opencode.login`
 
@@ -1451,6 +1469,7 @@ None.
 
 - `aew.harness.contract`
 - `aew.harness.procs`
+- `aew.harness.wake_queue`
 - `aew.skills`
 - `aew.surface`
 - `aew.surface.context`
@@ -1575,6 +1594,15 @@ None.
 - `aew.harness.progress`
 - `aew.harness.runlog`
 - `aew.harness.usage`
+- `aew.util`
+
+### `aew.harness.wake_queue`
+
+- `aew.harness.broker_liveness`
+- `aew.harness.contract`
+- `aew.harness.lead_broker`
+- `aew.harness.progress`
+- `aew.harness.runlog`
 - `aew.util`
 
 ### `aew.harness.weaker_register`
@@ -1766,6 +1794,7 @@ None.
 - `aew.harness.agentenv`
 - `aew.harness.containment`
 - `aew.harness.containment.layout`
+- `aew.harness.contract`
 - `aew.harness.procs`
 
 ### `aew.policy.classes`
@@ -1868,6 +1897,8 @@ None.
 
 ### `aew.stg02.commands`
 
+- `aew.g3client`
+- `aew.g3standing`
 - `aew.stg02.adopted`
 - `aew.stg02.ledger`
 - `aew.stg02.wire`

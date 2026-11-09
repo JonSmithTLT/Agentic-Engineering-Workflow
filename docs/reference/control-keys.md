@@ -107,6 +107,7 @@ The keys a unit in `work` carries: the properties of the schema's unit definitio
 ## Constants named `*_KEY` that are not state keys
 
 - `aew.engine.disposition_ops:POLICY_KEY` = `requires_disposition`
+- `aew.g3client:_NEW_KEY` = `with a new client_request_key in the set file`
 - `aew.harness.bridge:ENV_KEY` = `AEW_AGENT_KEY`
 - `aew.harness.lead_broker:ENV_KEY` = `AEW_LEAD_BROKER_KEY`
 - `aew.surface.client:ENV_KEY` = `AEW_LEAD_BROKER_KEY`

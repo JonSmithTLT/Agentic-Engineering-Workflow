@@ -22,6 +22,7 @@
 | [STG02-BE-13](#stg02-be-13) | wire defect | A deployment serving a subset of the 20 reads has no defined answer for the rest |
 | [STG02-BE-14](#stg02-be-14) | new feature or scope request | The provisional dashboard API, the browser origin, and where the adopted wire runs |
 | [STG02-BE-15](#stg02-be-15) | wire defect | Read entitlement is defined for lookups; what a withdrawn entitlement does to a D-01 read is not |
+| [STG02-BE-17](#stg02-be-17) | wire defect | An owner-operations item for `RESOURCE_POLICY_ISSUER` cannot carry its own owner's stamp |
 | [STG02-BE-16](#stg02-be-16) | host or profile qualification deficit | AEW's engine has no per-recipient visibility, so its real records can be disclosed to one recipient only |
 
 ---
@@ -166,7 +167,7 @@ What the website gets is all-unknown. The directives `no_unknown_owners`, `list_
 - `02-WIRE/openapi-d01-v0.3.4-REVIEW-CANDIDATE.yaml` line 13 (`security: readSession`) and line 2391: an opaque bearer.
 - The driver's `http()` sent no credentials, and its config had no auth field except on setup and teardown steps (the driver up to `006f45b`; `75d30cf` sends the config's `headers` on every request and adds the A1 check).
 
-**What happened.** AEW has no read-session issuer. The A04 session is not used in the slice: `REAFFIRM_ELIGIBLE_CHILD_GRANTS` is refused `ORIGIN_NOT_ESTABLISHED` and nothing is allocated.
+**What happened.** AEW has no read-session issuer. The A04 session is not used in the slice: `REAFFIRM_ELIGIBLE_CHILD_GRANTS` is held `ORIGIN_NOT_ESTABLISHED` and nothing is allocated.
 
 **Interim choice.**
 - `--tokens` takes a file of synthetic opaque tokens, each mapped to a recipient. An unknown or malformed `Authorization` is `401 authentication_unqualified` (recorded).
@@ -255,7 +256,7 @@ Under CS-04, a key can never be forgotten. If a dropped key came back as unused,
 
 **Interim choice.**
 - `G3_unqualified` is included in the limitations of `continuation-state` (where the operator decides what to do next) and `owner-operations`.
-- A protected set without G3 is refused per intent with `ORIGIN_NOT_ESTABLISHED`, nothing allocated, no owner operation.
+- A protected set without G3 is held per intent with `ORIGIN_NOT_ESTABLISHED`, nothing allocated, no owner operation (hand-off addendum 5).
 - A protected set without a `consent_set_ref` is `400`.
 
 ## STG02-BE-12
@@ -311,6 +312,22 @@ Under CS-04, a key can never be forgotten. If a dropped key came back as unused,
 **Interim choice.** (a). While the entitlement is withdrawn, every D-01 read, the owner GET and every lookup answer `404 not_found_or_not_disclosable`. A submission under an unused key is still decided by its origin (the profile's accepted residual LEAD-F21). Test: `test_a_lookup_after_read_entitlement_is_withdrawn_is_one_nondisclosing_404`.
 
 **Entitlement is stated, never presumed.** CS-04 step 1 refuses a lookup when the recipient lacks current read entitlement "or the world does not state it". The fixture world states it (`read_entitled`: the operator and the other recipient), and the server records it at start; a withdrawal is recorded and kept across restarts, and a grant the world no longer states is dropped at the next start. A recipient the world does not name, even with a valid token, is not entitled: every read is the nondisclosing `404`, and the test-only route cannot grant it. Tests: `test_a_recipient_whose_read_entitlement_the_world_does_not_state_is_never_entitled` and `test_a_grant_the_world_no_longer_states_ends_at_restart_and_a_withdrawal_survives_it`.
+
+## STG02-BE-17
+
+**Class:** wire defect.
+
+**Clause.**
+- OP-01 and the owner-pin table: an `owner_operation_index` item's `source.owner` is its `data.owner`, and CNI covers the aggregation only. The selection profile's U05/U09/L03 discovery row lists the resource policy issuer among the owners that issue operations.
+- The D-01 schema: `OperationIndexEntry.owner` allows `RESOURCE_POLICY_ISSUER`, and `SourceStamp.owner` does not. That type is the cause.
+
+**What happened.** Once G3 counts, an admitted `ISSUE_STANDING_POLICY` lists an operation whose owner has no stamp the schema allows, and copying the owner into the stamp makes the list fail the adopted schema.
+
+**The designer's ruling, 2026-11-08.** A bridge, with no overlay, since `SourceStamp` goes out on every D-01 route. That one item's `source.owner` is CNI, through `wire.stamp` unchanged and so unqualified, with `fact_ref` naming the operation record, and `data.owner` stays the real owner. It departs from OP-01 and from the selection profile's row, and qualifies nothing. That item's `data.owner_epoch` and `data.source_version` stay the real owner's, since the ruling moves only the stamp. `HEB`, `ADC` and `IF13` items keep their own owner, as the pin says, each with its own fixture epoch, and its own issuer where the fixture world has one (`IF13` has none, so a generic fixture issuer, never HEB's). No sealed file changes.
+
+**When it ends.** At D-01's next revision, which adds the owner to `SourceStamp.owner` as a non-governing namespace (OP-02's second bullet), and before anything real issues standing policy: register E214.
+
+---
 
 ## STG02-BE-16
 

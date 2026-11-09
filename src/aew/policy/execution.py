@@ -137,6 +137,7 @@ PACK_SLICES_OFF, PACK_SLICES_STRUCTURAL = "off", "structural"
 
 MESSAGING_DISABLED, MESSAGING_ENABLED = "disabled", "enabled"
 PRESENTATION_STANDARD, PRESENTATION_COMPACT = "standard", "compact"
+PUSH_WAKE_OFF, PUSH_WAKE_ON = "off", "on"
 
 
 # The execution policy's string-valued switches, by path, with their values (the first is the default). YAML 1.1 reads
@@ -148,6 +149,7 @@ STRING_SWITCHES: dict[tuple[str, str], tuple[str, ...]] = {
     ("recall", "raw_history_search"): ("off", "explicit"),  # register F21, Arm B (plan v6 §1)
     ("coordination", "messaging"): (MESSAGING_DISABLED, MESSAGING_ENABLED),  # register F9, F9-A (plan v4 D-15)
     ("surface", "presentation"): (PRESENTATION_STANDARD, PRESENTATION_COMPACT),  # register F9, F9-A (plan v4 D-33)
+    ("lead", "push_wake"): (PUSH_WAKE_OFF, PUSH_WAKE_ON),  # steering PR 2; PR 3 switches the default on
 }
 
 
@@ -174,6 +176,15 @@ def messaging(policy: dict[str, Any] | None) -> str:
     is read from adopted bytes, ``aew.engine.coordination_ops.messaging_switch``)."""
     value = ((policy or {}).get("coordination") or {}).get("messaging")
     return MESSAGING_ENABLED if value == MESSAGING_ENABLED else MESSAGING_DISABLED
+
+
+def push_wake(policy: dict[str, Any] | None) -> str:
+    """Whether the Lead broker posts wakes into the Lead's session (``lead.push_wake``, steering design §1): ``off``
+    unless the policy says ``on``. Off, the Lead waits with `harness_wait`, and no wake is posted. Absent policy and
+    absent key are the schema's default, as for :func:`quiet_wake_s`."""
+    spec = schema("execution")["properties"]["lead"]["properties"]["push_wake"]
+    value = ((policy or {}).get("lead") or {}).get("push_wake")
+    return str(value) if value in spec["enum"] else str(spec["default"])
 
 
 def quiet_wake_s(policy: dict[str, Any] | None) -> int:

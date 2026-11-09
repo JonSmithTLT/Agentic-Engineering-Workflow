@@ -2303,18 +2303,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E179/`, oldest first (`python tools/register.py show E179`).*
 
-### E180
-
-**Work:** The Lead's MCP server starts as a bare `aew lead mcp` (`projection.py`'s `LEAD_MCP_COMMAND`), so it runs whichever `aew` is first on the path, not the interpreter and code the Lead runs. In a mixed setup (a development copy, an upgrade mid-session, two virtual environments) the Lead's typed tools fail with only "connection closed". Start the server with the Lead's own interpreter (`sys.executable -m aew lead mcp`, or its equivalent resolved at start), keep the sandbox's binds covering that interpreter, and test that the configured command names the running interpreter
-
-**Source:** The operator's live check of 2026-11-06: a contained Lead started from a branch copy, whose sandbox's `aew` was another tree's editable install
-
-**When:** **Unscheduled**, small, any time. It helps every test that runs a Lead from a copy
-
-**Notes:** Filed by the Lead, at the operator's request
-
-*Later notes: `notes.d/E180/`, oldest first (`python tools/register.py show E180`).*
-
 ### E182
 
 **Work:** The systems generator, in three slices. **PR 1:** `docs/implementation/systems.yaml` and `tools/systems.py check` in the fast lane. Ownership is checked both ways: every live register row is owned by a system or listed as unowned, and no system claims a held work (a hold group or its members). A lint refuses Now-item numbers, pull-request numbers and register line citations in hand-kept fields, and nothing derived is stored (no `serves`, no counts). **PR 2:** `render` writes `systems.md`, with the views "finish and switch on soon", "finish, with more to build", "the operator's decisions" and "done", and their counts, with priority read from the Now list; `check` compares the committed copy. **PR 3:** state from the code: `switch.default` from the policy defaults, `wired` against the as-built reference and the Lead's tool catalog, and the N = 12 check (§1). **Later:** `serves`, once the requirements trace is in the repository, and lanes. Done when CI fails on an unowned row, a line citation or a count above N
@@ -2638,6 +2626,66 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the bump's builder
 
 *Later notes: `notes.d/E209/`, oldest first (`python tools/register.py show E209`).*
+
+### E210
+
+**Work:** Reach the Lead's OpenCode session from the Lead broker, so a push wake can be posted (`attach_to_operator_session`). The `--standalone` TUI starts its own private server, whose address and password AEW never learns, and on Linux that server is inside the Lead's sandbox. Built by steering PR 2: AEW starts that server, and the broker reaches it. What is left is Windows, where no wake has been run, and steering PR 3's switch
+
+**Source:** Found while building steering PR 2 (2026-11-08); the steering design r4 §5 and §7 assumed the broker serves the Lead's server, and `adapter.py` declared so
+
+**When:** **Unscheduled** for Windows; steering PR 3 switches the wake on (the designer's ruling of 2026-11-08: AEW starts the Lead's server)
+
+**Notes:** Filed by the push wake's builder. It corrects a false capability declaration
+
+*Later notes: `notes.d/E210/`, oldest first (`python tools/register.py show E210`).*
+
+### E211
+
+**Work:** Get a pasted attachment's local path back for the Lead. Under `--server`, OpenCode 2.2.6 sends a pasted image or other binary attachment with its bytes but without its path (`promptFilesForServer`), so the Lead's model can't name it, read it again or hand it to a worker. The ways: an upstream report, or a patch in AEW's own OpenCode build. Also measure whether Codex's `--remote` has the same loss: unmeasured
+
+**Source:** Steering PR 2's measurement (ADR-0009's amendment of 2026-11-08); the designer's check of 2026-11-08, ruling 11. The operator accepted the cost for PR 2 on 2026-11-08
+
+**When:** **Unscheduled**
+
+**Notes:** Filed by the push wake's builder. Until then, an `@` mention or a typed path keeps the path, as the OpenCode guide says
+
+*Later notes: `notes.d/E211/`, oldest first (`python tools/register.py show E211`).*
+
+### E212
+
+**Work:** Find out when the Lead's TUI runs on a model other than the one configured or chosen. OpenCode 2.2.6's `fallbackModel` (`packages/tui/src/context/local.tsx`) takes `--model`, the config's model, the recents, then the catalogue's first, each only if the server's current list has it. A `--prompt` submitted at start can go on a model chosen before that list and the config have loaded. Read in the source, not reproduced. Measure it, including a person typing at once, `aew opencode -- --model X`, and which model a wake runs on after a `/model` selection no prompt has committed yet. Then AEW names the Lead's model: the project's pinned model when there is one, otherwise the operator's recents, and the start says which model it's using (the operator's decision of 2026-11-08; serves HSD-02)
+
+**Source:** Steering PR 2's measurements (2026-11-08): a scripted start sometimes ran on a model other than its configured default, under `--standalone` and `--server` alike
+
+**When:** **Unscheduled**
+
+**Notes:** Filed by the push wake's builder. `lead_config` sets no `model`, so a real Lead's is its recents or the catalogue's first
+
+*Later notes: `notes.d/E212/`, oldest first (`python tools/register.py show E212`).*
+
+### E213
+
+**Work:** A probe helper for measurements with a real harness binary, which guarantees that no request can reach a provider. On Linux it runs the whole tree (TUI, relay, fake model) in a network namespace with loopback only (`unshare -rn`), and first proves that a real provider's address fails, relay or not. It always denies OpenCode's `opencode` provider, whose models carry their own address, so a `baseURL` can't redirect them, and every other keyless provider. On Windows, which has no such namespace, a run that sends a prompt needs its own approval. A pointed `baseURL` and a default model are settings, not a block, so the guarantee rests on neither. In scope: `tools/harness_qualify`'s `server_config`, which denies no keyless provider and leaves the network open
+
+**Source:** Steering PR 2's measurements (2026-11-08)
+
+**When:** **Unscheduled**, before the next measurement with a real binary and a provider route
+
+**Notes:** Filed by the push wake's builder
+
+*Later notes: `notes.d/E213/`, oldest first (`python tools/register.py show E213`).*
+
+### E214
+
+**Work:** D-01's next revision adds `RESOURCE_POLICY_ISSUER` to `SourceStamp.owner` as a non-governing namespace (OP-02's second bullet: `governing_owner` null, as for `IF10` and `R01`). An `owner_operation_index` item for that owner is then stamped with its `data.owner`, as OP-01 says, in place of the bridge in `Reads._index_item`, and `test_the_cni_stamp_is_for_the_one_owner_the_wire_cannot_name_and_no_other` goes
+
+**Source:** [Gap entry STG02-BE-17](../stg02/GAP-ENTRIES.md#stg02-be-17); the designer's ruling, 2026-11-08
+
+**When:** **Unscheduled**, a step of the O-01 convergence. The bridge ends before anything real issues standing policy: whoever places that owner's first real act depends on this row
+
+**Notes:** Filed by G3-C's owner side
+
+*Later notes: `notes.d/E214/`, oldest first (`python tools/register.py show E214`).*
 
 ### E47
 
@@ -3454,6 +3502,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #340 (`e945b3ca`), with ADR-0009's amendment of 2026-11-06. Owed after it: the VM live check, on a keyed, paid model the operator approves for that event; its readiness line, which joins E125 when E125 is built; and the missing reason in `base.LAUNCH_REFUSALS`, E189. `eval/aew_eval/raw.py`'s two "free model" texts were reworded in the change that closed this row
 
 *Later notes: `notes.d/E156/`, oldest first (`python tools/register.py show E156`).*
+
+### E180
+
+**Was:** The Lead's MCP server started as a bare `aew lead mcp`, so it ran whichever `aew` was first on the path and the Lead's typed tools failed with only "connection closed"; start it with the Lead's own interpreter and import path
+
+**Closed:** 2026-11-08
+
+**By:** #384 (`039a281e`), with its review's follow-ons on #391. What it does not reach is in this row's note
+
+*Later notes: `notes.d/E180/`, oldest first (`python tools/register.py show E180`).*
 
 ### F1
 

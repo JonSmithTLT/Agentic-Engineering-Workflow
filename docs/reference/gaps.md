@@ -114,6 +114,9 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.containment.probe:_self_test`: Path.unlink of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.containment.probe:_self_test`: Path.write_text of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.containment.probe:new_sentinel`: Path.write_bytes of a path this reading cannot place: `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
+- `aew.harness.containment.shim:start_server`: open of a path this reading cannot place: `serve['log']`, from a value that is not a dict literal
+- `aew.harness.containment.shim:start_server`: os.open of a path this reading cannot place: a relative path, `{}.tmp`, with no root this reading can name
+- `aew.harness.containment.shim:start_server`: os.replace of a path this reading cannot place: `serve['url_file']`, from a value that is not a dict literal
 - `aew.harness.event_spool:Reader.retire`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.lead_broker:lead_run_dir`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.lead_broker:record_label`: no static call chain from any entry point's declaring function reaches this writer
@@ -128,6 +131,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.opencode.lead:ContainedLead._retire`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.opencode.lead:ContainedLead._seed_logins`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:ContainedLead._seed_models`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.opencode.lead:serve_spec`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:clear_saved_permissions`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:stored`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.operator_client:session_holders_live`: Path.unlink of a path this reading cannot place: a loop variable over `files`, a list this reading cannot read
@@ -141,6 +145,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.tool_calls:_rotate`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.tool_calls:append`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.usage_live:Meter._persist`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
+- `aew.harness.wake_queue:WakeQueue._save`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.weaker_register:Entry.end`: atomic_write of a path this reading cannot place: a relative path, `aew/weaker-contexts/{}-{}-{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.weaker_register:_checked_root`: Path.mkdir of a path this reading cannot place: a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.weaker_register:_ensure_created`: create_exclusive of a path this reading cannot place: a relative path, `aew/weaker-contexts/created.json`, with no root this reading can name; a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name

@@ -1,10 +1,10 @@
 """`aew opencode`: the Lead's OpenCode TUI as a Lead session (ADR-0009; M3 plan §2.6).
 
-A V2 TUI running its own server (`--standalone`) gives every session its own environment as the shell
-environment, so the environment `aew opencode` gives the TUI is exactly what the Lead's model and its shell
-commands can see. A fake TUI (the fake agent behind an `opencode` launcher) records it and acts as the Lead's
-model would: through `aew`, reaching the Lead broker. The session's own path here is the one where the Lead runs not
-contained (Windows); on Linux it runs contained (tests/integration/test_lead_contained_session.py, STG-05 CS-4).
+AEW starts the Lead's server with the environment it gives the TUI, and a session's shell gets the server's, so that is
+exactly what the Lead's model and its shell commands can see (ADR-0009, amendment 2026-11-08). A fake TUI (the fake
+agent behind an `opencode` launcher) records it and acts as the Lead's model would: through `aew`, reaching the Lead
+broker. The session's own path here is the one where the Lead runs not contained (Windows); on Linux it runs contained
+(tests/integration/test_lead_contained_session.py, STG-05 CS-4).
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from notifier import until
 from racing_read import read_text_or_none
 
 from aew.harness import procs
+from aew.harness.containment import shim
 from aew.harness.opencode import lead, projection
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
 
@@ -31,6 +32,14 @@ here = pathlib.Path(__file__).resolve().parent
 if sys.argv[1:2] == ["--version"]:
     print("opencode v{version}")
     sys.exit(0)
+if sys.argv[1:2] == ["serve"]:  # the Lead's server: it announces an address, and its lease is its stdin
+    (here / "serve-argv.json").write_text(json.dumps(sys.argv[1:]))
+    print(json.dumps({{"url": "http://127.0.0.1:4100"}}), flush=True)
+    sys.stdin.buffer.read()
+    sys.exit(0)
+import os
+for name in ("OPENCODE_PASSWORD", "OPENCODE_SERVER_PASSWORD"):  # the real server removes them (--stdio, measured)
+    os.environ.pop(name, None)
 (here / "tui-argv.json").write_text(json.dumps(sys.argv[1:]))
 sys.argv = ["fake_agent", "--script", str(here / "tui-script.json"), "--transcript", str(here / "tui.jsonl")]
 sys.path.insert(0, {helpers!r})
@@ -100,7 +109,9 @@ def test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker(lab
     out = res.json
     assert (out["exit"], out["seat"], out["opencode"]) == (0, "held by your AEW_LEAD_TOKEN", TESTED_VERSIONS[0])
     assert out["containment"]["filesystem"] == "workdir_separation_only"  # labelled not contained (STG-05 CS-4)
-    assert argv == ["--standalone", str(lab.root)]
+    assert argv == ["--server", "http://127.0.0.1:4100", str(lab.root)]  # the address the server announced
+    served = json.loads((Path(lab.env["AEW_OPENCODE_BIN"]).parent / "serve-argv.json").read_text())
+    assert served[:2] == ["serve", "--stdio"]  # the form that keeps the password out of the shell's environment
     env = json.loads((sync / "env").read_text())
     for blob in (json.dumps(env), (sync / "child").read_text(), (sync / "shell").read_text()):
         assert SECRET not in blob and not contains_credential(blob)
@@ -142,7 +153,7 @@ def test_print_config_starts_nothing_and_shows_no_values(lab):
     placed = None if lead.contained_here() else {"placed": False, "tools": []}
     assert shown["config"] == projection.lead_config(guide_of(lab), tools=placed)
     assert shown["config"]["experimental"]["policies"] == DENY  # --print-config shows the provider deny
-    assert shown["command"][-2:] == ["--standalone", str(lab.root)]
+    assert shown["command"][-3:] == ["--server", shim.SERVER_URL, str(lab.root)]
     system = shown["config"]["agents"][projection.LEAD_AGENT]["system"]
     assert system.startswith(projection.LEAD_SYSTEM) and "# How work gets done in AEW: the Lead's guide" in system
     assert "OPENAI_API_KEY" not in shown["env_names"] and "AEW_LEAD_BROKER" in shown["env_names"]
@@ -150,8 +161,9 @@ def test_print_config_starts_nothing_and_shows_no_values(lab):
     assert not (Path(lab.env["AEW_OPENCODE_BIN"]).parent / "tui-argv.json").exists()
 
 
-@pytest.mark.parametrize("args", [["--", "--server", "http://127.0.0.1:4096"], ["--provider-env", "AEW_LEAD_TOKEN"]],
-                         ids=["another-server", "aew-variable"])
+@pytest.mark.parametrize("args", [["--", "--server", "http://127.0.0.1:4096"], ["--", "--standalone"],
+                                  ["--provider-env", "AEW_LEAD_TOKEN"]],
+                         ids=["another-server", "own-server", "aew-variable"])
 def test_refused_tui_arguments(lab, args):
     res = run_aew("-C", str(lab.root), "opencode", *args, env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token})
     assert res.returncode != 0 and res.error["code"] == "USAGE", res.stderr
@@ -168,7 +180,7 @@ def test_a_v1_opencode_is_refused_before_anything_starts(lab, tmp_path):
 
 def test_the_lead_commands_are_what_the_tui_is_given():
     commands = projection.lead_config()["commands"]
-    assert sorted(commands) == ["aew-handoff", "aew-next", "aew-resume", "aew-status", "aew-ticket"]
+    assert sorted(commands) == ["aew-handoff", "aew-next", "aew-resume", "aew-status", "aew-ticket", "aew-usage"]
     assert all(c["agent"] == projection.LEAD_AGENT for c in commands.values())
 
 

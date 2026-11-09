@@ -56,7 +56,7 @@ from aew import errors, lead_credential
 from aew.engine import dispatch, faults
 from aew.engine.authority import require_held_lead, require_lead
 from aew.harness import agentenv, bridge, broker_liveness, steering_loop, tool_calls
-from aew.util import read_text_input
+from aew.util import read_text_input, stdin_only
 
 ENV_ENDPOINT = "AEW_LEAD_BROKER"
 ENV_KEY = "AEW_LEAD_BROKER_KEY"
@@ -264,6 +264,7 @@ class LeadBroker:
         self.server = bridge.BridgeServer(self.handle, OPERATIONS, COOPERATIVE)
         self.superseded: str | None = None
         self._stop = idle()
+        self._wakes: threading.Thread | None = None  # the wake queue's thread (:meth:`start_wakes`)
         self._reads: set[subprocess.Popen[str]] = set()  # the relayed reads in flight (RELAYED_READS)
         self._reads_lock = threading.Lock()
         self._watch = threading.Thread(target=self._watchdog, name="aew-lead-broker-watch", daemon=True)
@@ -291,10 +292,45 @@ class LeadBroker:
         if self.loop is not None:
             self.loop.start()
 
+    def start_wakes(self, poster: Any) -> None:
+        """Post the Lead's wakes through ``poster`` (steering design r4 §1), on a thread of its own and its own engine:
+        a tick reads the control state and files, and takes no credential. A failed tick is the next tick's: a wake is
+        held, never lost, and the Lead's fallback is `harness_wait`."""
+        from aew.harness.wake_queue import WakeQueue, mark_serving
+        from aew.policy.execution import quiet_wake_s
+
+        own = _own_engine(self.engine)
+
+        def quiet() -> int:
+            policy, _ = own.execution_policy()
+            return quiet_wake_s(policy)
+
+        queue = WakeQueue(own.aew_root, poster=poster, state=own.store.current, quiet_s=quiet, clock=time.time,
+                          new_id=poster.new_id)
+
+        def run() -> None:
+            while not self._stop.wait(POLL_S):
+                try:
+                    if self.superseded or self._authority_lost():  # no more wakes into a session that lost the seat
+                        return
+                    queue.tick()
+                except Exception as exc:  # noqa: BLE001 - a wake must never take the session down
+                    queue.failed(f"{type(exc).__name__}: {str(exc)[:200]}")  # the status line, not the TUI's terminal
+
+        mark_serving(own.aew_root, self.generation)
+        self._wakes_root = own.aew_root
+        self._wakes = threading.Thread(target=run, name="aew-lead-broker-wakes", daemon=True)
+        self._wakes.start()
+
     def close(self) -> None:
         if self.loop is not None:  # no new auto-run action once the session starts closing (review of PR #199, F4)
             self.loop.request_stop()
         self._stop.set()
+        if self._wakes is not None:
+            from aew.harness.wake_queue import clear_serving
+
+            self._wakes.join(10)
+            clear_serving(self._wakes_root, self.generation)
         self.server.close()
         self._end_reads()  # a relayed read in flight (a long `harness wait`) ends with the session, never holds it
         self.server.drain(60)
@@ -497,7 +533,7 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     parser = build_parser(recall_search=recall_search_for(argv, aew_root=project),
                           coordination_reads=coordination_reads_for(argv, aew_root=project))
     stdin_stream = io.StringIO(stdin)  # one input, read once: by --fields - or by the command, as in the direct CLI
-    argv = _expand_fields(argv, parser, stdin_stream, cwd)
+    argv = _expand_fields(argv, parser, stdin_stream)
     noise = io.StringIO()
     try:
         with contextlib.redirect_stderr(noise), contextlib.redirect_stdout(noise):
@@ -546,7 +582,7 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
     try:  # requests are serialized, so the process-wide cwd/stdin swap is safe here
         os.chdir(target)
         sys.stdin = stdin_stream
-        with dispatch.channel(channel):  # its dispatches record which transport carried them (M4-A)
+        with dispatch.channel(channel), stdin_only():  # its dispatches record which transport carried them (M4-A)
             result = ns.handler(ns)
     finally:
         sys.stdin = stdin_before
@@ -653,33 +689,56 @@ def relay_read(argv: list[str]) -> dict[str, Any]:
     return bridge.call("lead.read", {"argv": list(argv), "cwd": str(Path.cwd().resolve())}, env_names=ENV_NAMES)
 
 
-def _expand_fields(argv: list[str], parser: argparse.ArgumentParser, stdin: io.StringIO, cwd: str) -> list[str]:
-    """``--fields FILE|-`` expanded as the ``aew`` client does, with this call's stdin and a FILE read from its
-    directory, before anything is parsed or checked. A shell command relayed through ``lead.cli`` arrives already
-    expanded (its client did it), so for it this changes nothing; the typed ``cli`` escape submits its argv as given
-    (PR #93 review). Expanded values are checked like any other argument afterwards."""
+def _expand_fields(argv: list[str], parser: argparse.ArgumentParser, stdin: io.StringIO) -> list[str]:
+    """``--fields -`` expanded as the ``aew`` client does, with this call's stdin, before anything is parsed or checked.
+    A shell command relayed through ``lead.cli`` arrives already expanded (its client did it), so for it this changes
+    nothing; the typed ``cli`` escape submits its argv as given (PR #93 review). A relayed command takes bytes, so
+    ``--fields FILE`` is refused here. Expanded values are checked like any other argument afterwards."""
     from aew.cli import fields
 
     if not any(a == fields.OPTION or a.startswith(fields.OPTION + "=") for a in argv):
         return argv
-    previous, stdin_before = os.getcwd(), sys.stdin
+    stdin_before = sys.stdin
     try:  # requests are serialized, so the process-wide swap is safe here
-        try:
-            os.chdir(Path(cwd).resolve())
-        except OSError as exc:
-            raise errors.UsageError(f"cannot use {cwd} as the command's directory: {exc.strerror or exc}") from None
         sys.stdin = stdin
-        return fields.expand(argv, parser)
+        with stdin_only():
+            return fields.expand(argv, parser)
     finally:
         sys.stdin = stdin_before
-        os.chdir(previous)
+
+
+def _as_bytes(argv: list[str], args: argparse.Namespace, cwd: Path) -> tuple[list[str], str]:
+    """The arguments to send, and the text that goes with them. A file argument is read here, in the client, relative
+    to the command's directory, and sent as ``-``: the last value of an option is the one it takes, whatever form the
+    command line spelled it in. The one stdin carries one input, so a command given two is refused."""
+    from aew.cli import fields
+
+    given = {option: value for option, dest in getattr(args, fields.GIVEN, {}).items()
+             if (value := getattr(args, dest))}
+    paths = {option: value for option, value in given.items() if value != "-"}
+    piped = "-" in argv or "-" in given.values()
+    if len(paths) + piped > 1:
+        raise errors.UsageError(f"only one file argument or - can go with a relayed command; this one gives "
+                                f"{', '.join(sorted(paths))}{' and -' if piped else ''}")
+    if not paths:
+        return list(argv), read_text_input("-") if piped else ""  # decoded here; parsed by the broker
+    (option, path), = paths.items()
+    at = argv.index("--") if "--" in argv else len(argv)
+    return [*argv[:at], f"{option}=-", *argv[at:]], read_text_input(str(cwd / path))
 
 
 def forward(argv: list[str], args: argparse.Namespace) -> dict[str, Any]:
-    """Client side: send a Lead-authenticated command to this Lead session's broker."""
-    stdin = read_text_input("-") if "-" in argv else ""  # decoded here like any text input; parsed by the broker
-    cwd = str(Path(args.cwd or os.getcwd()).resolve())
-    return bridge.call("lead.cli", {"argv": list(argv), "cwd": cwd, "stdin": stdin}, env_names=ENV_NAMES)
+    """Client side: send a Lead-authenticated command to this Lead session's broker, with its file arguments as text."""
+    cwd = Path(args.cwd or os.getcwd()).resolve()
+    sent, stdin = _as_bytes(argv, args, cwd)
+    request = {"argv": sent, "cwd": str(cwd), "stdin": stdin}
+    size = len(json.dumps({"op": "lead.cli", "args": request}).encode("utf-8"))  # as bridge.call sends it, escapes too
+    if size > bridge.MAX_REQUEST:
+        raise errors.UsageError(f"this command and its text make a {size}-byte request, and a Lead session's broker "
+                                f"takes at most {bridge.MAX_REQUEST}: nothing was sent, so split the text or shorten "
+                                "it",
+                                size=size, limit=bridge.MAX_REQUEST, reason="relayed_too_large")
+    return bridge.call("lead.cli", request, env_names=ENV_NAMES)
 
 
 def session_authority() -> dict[str, Any] | None:
@@ -714,6 +773,7 @@ class Harness:
     label: dict[str, Any]
     close: Callable[[], None]
     entry: Any = None  # its entry in the register of weaker contexts, when its label is weaker (G3 addendum 7)
+    poster: Any = None  # the way into its session for a push wake (``wake_queue.Poster``), where it has one
 
 
 # `aew lead session` under `required` (G3 addendum 7, ruling 1): what it closes, and the ways on.
@@ -848,6 +908,8 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
             raise
         survivors: list[tuple[int, str | None]] = []
         ownership = None
+        if harness.poster is not None:
+            broker.start_wakes(harness.poster)
         try:
             if harness.entry is not None:
                 harness.entry.started()

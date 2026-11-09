@@ -73,7 +73,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `decision` | `decision.schema.json` | 17 | 10 |
 | `disposition` | `disposition.schema.json` | 36 | 15 |
 | `evidence` | `evidence.schema.json` | 128 | 46 |
-| `execution` | `execution.schema.json` | 60 | 7 |
+| `execution` | `execution.schema.json` | 61 | 7 |
 | `gate-correction` | `gate-correction.schema.json` | 20 | 17 |
 | `gates` | `gates.schema.json` | 72 | 21 |
 | `guardrails` | `guardrails.schema.json` | 16 | 3 |
@@ -81,7 +81,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `map-registry` | `map-registry.schema.json` | 15 | 13 |
 | `notify-event` | `notify-event.schema.json` | 11 | 10 |
 | `plan` | `plan.schema.json` | 20 | 12 |
-| `pricing` | `pricing.schema.json` | 11 | 5 |
+| `pricing` | `pricing.schema.json` | 14 | 6 |
 | `project` | `project.schema.json` | 42 | 28 |
 | `role-archetype` | `role-archetype.schema.json` | 28 | 13 |
 | `role` | `role.schema.json` | 31 | 5 |

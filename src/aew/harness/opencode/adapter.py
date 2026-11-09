@@ -372,8 +372,10 @@ class OpenCodeAdapter(HarnessAdapter):
         "interrupt_turn": Support(CAP_YES, "`session.interrupt`"),
         "read_progress": Support(CAP_YES, "polled: tool parts of `session.message.list` (the meter's poll)"),
         "read_usage": Support(CAP_YES, "polled: the meter (`session.list`, `session.message.list`)"),
-        "attach_to_operator_session": Support(CAP_YES, "the Lead runs on AEW's OpenCode server, which the broker "
-                                                       "serves"),
+        "attach_to_operator_session": Support(CAP_YES, "AEW starts the Lead's server (`serve --stdio`) and the TUI "
+                                                       "connects with `--server`; the broker posts and reads only. On "
+                                                       "Windows the launch is the same and no wake is posted: the Lead "
+                                                       "waits with `harness_wait`", "E210"),
         "mark_non_operator_input": Support(CAP_PARTIAL, "text only: the wake's fixed header, which the model reads "
                                                         "as text; `session.prompt` metadata is not shown to it, and "
                                                         "there is no role of its own"),

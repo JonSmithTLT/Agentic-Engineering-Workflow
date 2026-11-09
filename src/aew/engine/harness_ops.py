@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -167,7 +168,23 @@ class Harness:
         del credential
         return self._with_readiness({"ok": True, "invocation": invocation, **launched,
                                      "superseded": previous["run"] if previous else None, "revision": revision,
-                                     "next_action": K.wait_step([run])})
+                                     "next_action": self._wait_on([run])})
+
+    def _wakes_reach_lead(self) -> bool:
+        """Whether a wake would reach the Lead now: the policy has push wakes on, and this generation's broker is live
+        and posts them (steering design r4 §1). Otherwise the Lead waits with `harness_wait`, which is its fallback."""
+        from aew.harness import wake_queue
+
+        try:
+            if X.push_wake(self.k.execution_policy()[0]) != X.PUSH_WAKE_ON:
+                return False
+        except AEWError:
+            return False
+        return wake_queue.broker_posts(self.k.aew_root, int(self.k.store.current()["lead"]["generation"]))
+
+    def _wait_on(self, runs: list[str]) -> str:
+        """The next step while ``runs`` work: the turn's end where AEW wakes the Lead, else the wait."""
+        return K.wake_step(runs) if self._wakes_reach_lead() else K.wait_step(runs)
 
     def launch_dispatched(self, result: dict[str, Any]) -> dict[str, Any]:
         """Finish ``--launch`` on a dispatch: the dispatch-issued credential goes to the run's supervisor and
@@ -177,7 +194,7 @@ class Harness:
         run = self.k.store.current()["invocations"][inv_id]["runs"][-1]["run"]
         result["launch"] = self._spawn_run(inv_id, run, credential)
         del credential
-        result["next_action"] = K.wait_step([run])  # after a dispatch, the wait (E122)
+        result["next_action"] = self._wait_on([run])  # after a dispatch, the wait (E122), or the turn's end
         return self._with_readiness(result)
 
     def _with_readiness(self, result: dict[str, Any]) -> dict[str, Any]:
@@ -416,6 +433,7 @@ class Harness:
                             "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
                             "results": self.run_results(inv["work_unit"], r["run"], cache),
                             "missing_tools": _missing_tools(record),
+                            "missing_skills": _missing_skills(record),
                             "model_check": _field(record, "model_check").get("status"),
                             "foreign_sessions": _list(_field(record, "result").get("foreign_sessions")),
                             "run_dir": str(directory)})
@@ -561,6 +579,9 @@ class Harness:
         missing = _missing_tools(record)
         if missing:  # beside what its evidence found: what it went without (#330's owed lines)
             out["missing_tools"] = missing
+        missing_skills = _missing_skills(record)
+        if missing_skills:  # attention only, just like tools: no change to the run's outcome or next action
+            out["missing_skills"] = missing_skills
         if control is not None:
             # `reason`, not `why`: a wait result's `why` is the wake enum (E122 review, n3)
             out["ended_by"] = {"lane": "control", "reason": control}  # the run record may still show it running
@@ -580,7 +601,7 @@ class Harness:
         if action is None:  # `aew status` no longer lists the run: say why (E122 review, m1)
             action = self._unlisted_run(current, run, targets[run][0])
         if out.get("still_running"):  # the others still work: after this one, the wait goes on (E122)
-            action = f"{action}; then {K.wait_step(out['still_running'])}"
+            action = f"{action}; then {self._wait_on(out['still_running'])}"
         out["next_action"] = K.run_ended_step(action)
         return out
 
@@ -752,7 +773,7 @@ class Harness:
                         if e["producer"].get("run") == run]
             evidence = sorted(e["id"] for e in produced)
             if status in (K.STARTING, K.RUNNING):
-                action = f"{run} is running for {inv_id}: {K.wait_step([run])}"
+                action = f"{run} is running for {inv_id}: {self._wait_on([run])}"
             elif status == K.ENDED_WITH_EVIDENCE:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
                           f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")
@@ -964,6 +985,26 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
             "`--when turn-end` needs coordination messaging, which this project has not enabled; nothing was sent. "
             "Use `--when next-step`, or ask the operator to enable messaging", when=when)
     return "request"
+
+
+_SKILL_NAME = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")  # a skill id, at most 64 ASCII characters
+
+
+def _missing_skills(record: dict[str, Any] | None) -> list[dict[str, str]]:
+    """Requested skills the run did not receive, with reasons from its delivered contract, never today's install.
+
+    Old runs without a recorded plan have no facts to project. Optional offers are not requests (ADR-0006).
+    """
+    from aew.skills import REASONS
+
+    plan = _field(_field(_field(record, "contract"), "extra"), "skills")
+    reasons = _field(plan, "reasons")
+    out = []
+    for name in _list(plan.get("unavailable")):
+        reason = reasons.get(name) if isinstance(name, str) else None
+        shown = name if isinstance(name, str) and _SKILL_NAME.fullmatch(name) else "not shown"
+        out.append({"name": shown, "reason": reason if reason in REASONS else "not_known"})
+    return out
 
 
 def _missing_tools(record: dict[str, Any] | None) -> list[dict[str, Any]]:

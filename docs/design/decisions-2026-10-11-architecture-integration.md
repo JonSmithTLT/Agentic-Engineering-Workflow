@@ -173,7 +173,8 @@ order (register F43, slices S1 to S3):
 3. **S3 (AX-03):** Lead-actionable facts reach the existing `wait --any` control lane, which needs a **run-less** form:
    today the lane wakes only when an invocation leaves `active`, so a Lead with no live run has nothing to wait on. It is
    **one decision-keyed Lead-attention lane**: v0.5 §11.1's "D5/F9 coordination lane" and the F9 coordination lane of
-   the designer's D5 of 2026-10-10 (MIC-09) are this lane, not separate mechanisms.
+   the designer's D5 of 2026-10-10 (MIC-09) are this lane, not separate mechanisms. (Amended by A-58, [the conversational Lead](decisions-2026-11-conversational-lead.md):
+   the lane is the Lead's one list of reasons, delivered by a wake and by the wait.)
 
 The larger rule: consequential control state is not introduced without declaring how the canonical action projection,
 the outbox, the Lead's attention surface and the relevant packs consume it (enforced by §3.6).

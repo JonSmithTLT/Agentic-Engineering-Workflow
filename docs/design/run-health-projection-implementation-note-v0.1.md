@@ -155,6 +155,8 @@ Required behavior:
 
 This reduces premature model intervention on long thinking.
 
+Amended by A-58 ([the conversational Lead](decisions-2026-11-conversational-lead.md)): the wake is a reason on the Lead's one list, delivered by a wake and by the wait; the edge trigger and the confidence rule stand.
+
 ## 7. Tool vs step stall confidence
 
 Tool-level stall detection may produce `stalled` when the configured tool threshold is crossed.

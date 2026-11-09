@@ -170,7 +170,7 @@ def test_an_unquoted_off_is_told_to_quote_off_and_not_the_default() -> None:
 def test_the_off_switch_is_named_in_the_operators_guide_with_how_to_set_it() -> None:
     guide = (Path(__file__).resolve().parents[2] / "docs" / "guides" / "opencode.md").read_text(encoding="utf-8")
     assert 'set `lead.push_wake: "off"`, quoted, in `.aew/policy/execution.yaml`' in guide
-    assert "`aew manifest adopt --expect-rev <revision from aew status> --reason" in guide  # as the command requires
+    assert "`aew manifest adopt --reason ... --expect-rev N`, with the revision from `aew status`" in guide
     assert "A session started with `--acquire` holds the only credential, so end that session first" in guide
 
 

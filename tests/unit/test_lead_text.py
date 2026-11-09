@@ -45,6 +45,7 @@ NOT_TOOLS = {
     "checks": "a policy file's key", "max_publish_paths": "a policy key", "mutating_concurrency": "a policy key",
     "replace_gate": "a policy key", "coordination_store": "a policy key", "launch": "a policy key",
     "integration_attempt": "a record's field", "projection": "a result's field", "revision": "a result's field",
+    "seat": "a field of `aew opencode`'s result: how the Lead seat stands, and the step that goes with it",
     "metadata": "a filesystem term", "chmod": "an operating-system command", "chown": "an operating-system command",
     "diff": "a git command", "log": "a git command", "show": "a git command",
     "read": "OpenCode's own tool, not AEW's", "skill": "OpenCode's own tool, not AEW's",

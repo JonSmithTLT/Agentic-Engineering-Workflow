@@ -372,12 +372,29 @@ def test_an_end_a_wait_returned_is_no_wake_until_the_run_goes_on(tmp_path: Path)
     runlog.write_end_returned(directory)
     q.tick()
     assert lab.poster.posts == [] and Q.status(lab.root)["watching"] == []
+    assert q.doc["dropped"] == 0  # never gathered: no wake was ever on its way
     runlog.beat(directory)
     q.tick()
     assert not runlog.end_returned(directory) and Q.status(lab.root)["watching"] == [RUN]
     (directory / runlog.RECORD).write_text(json.dumps({"status": sorted(K.TERMINAL)[0]}), encoding="utf-8")
     q.tick()
     assert lab.shape()["why"] == [K.RUN_ENDED]
+
+
+def test_an_end_held_for_the_turn_that_a_wait_then_returned_is_never_posted(lab: Lab) -> None:
+    """Review, m6: the wake was gathered first, so only the check immediately before the post can see the wait."""
+    lab.live()
+    lab.digest()
+    q = lab.queue()
+    q.tick()
+    lab.poster.is_busy = True
+    lab.ended.add(RUN)  # type: ignore[attr-defined]
+    q.tick()
+    assert list(q.doc["wake"]["runs"]) == [RUN]
+    runlog.write_end_returned(runlog.run_dir(lab.root, RUN))
+    lab.poster.is_busy = False
+    q.tick()
+    assert lab.poster.posts == [] and q.doc["wake"] is None and Q.status(lab.root)["watching"] == []
 
 
 def test_a_broker_killed_before_the_post_posts_it_once_on_restart(lab: Lab) -> None:

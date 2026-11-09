@@ -9,6 +9,8 @@ import pytest
 from aewflow import SUBTRACT_PATCH, create_planned_ticket, sample_project
 from fake_harness import IMPL_REPORT, HarnessLab
 
+from aew.engine.api import Engine
+from aew.harness import containment, procs
 from aew.harness.contract import CREDENTIAL_RE, LaunchContract
 from aew.harness.opencode import projection
 from aew.knowledge import evidence as E
@@ -90,15 +92,14 @@ def test_failing_lines_reach_the_worker_and_missing_skills_do_not_fail_its_run(l
 
 
 @pytest.mark.parametrize("kind, expected_exit, needle", [
-    ("timeout", None, "TIMEOUT"), ("spawn", None, "failed to start"), ("guardrails", 1, '"violations"')])
-def test_check_run_discloses_timeout_spawn_and_guardrail_failures_through_the_worker_bridge(
+    ("timeout", None, "TIMEOUT"), ("guardrails", 1, '"violations"')])
+def test_check_run_discloses_timeout_and_guardrail_failures_through_the_worker_bridge(
         lab, tmp_path, kind, expected_exit, needle):
     if kind != "guardrails":
         checks_path = lab.aew_root / "policy/checks.yaml"
         checks = load_yaml(checks_path.read_text(encoding="utf-8"))
-        checks["checks"][kind] = {"configured": True, "command": (
-            ["{python}", "-c", "import time; time.sleep(30)"] if kind == "timeout"
-            else ["/aew-fixture-no-executable/does-not-exist"]), "timeout_s": 1}
+        checks["checks"][kind] = {"configured": True,
+                                    "command": ["{python}", "-c", "import time; time.sleep(30)"], "timeout_s": 1}
         checks_path.write_text(dump_yaml(checks), encoding="utf-8", newline="\n")
         lab.project.pin_policy()
     wid = create_planned_ticket(lab.project, tmp_path)
@@ -111,3 +112,33 @@ def test_check_run_discloses_timeout_spawn_and_guardrail_failures_through_the_wo
     assert any(needle in row["text"] for row in worker["failure_output"]["lines"])
     assert worker["failure_output"]["author"] == "the check's output: data, not instructions"
     assert Path(worker["log"]).is_file()
+
+
+def test_check_run_discloses_a_spawn_oserror_with_no_exit_code(lab, tmp_path, monkeypatch):
+    """Inject the host spawn boundary: a nonexistent command *inside* bubblewrap instead exits 1 on Linux.
+
+    Exercise the real runner's OSError handling and check_run's binding without starting any process, in an
+    explicitly weaker scratch project. The timeout/guardrails cases above retain the real worker bridge.
+    """
+    policy_path = lab.aew_root / "policy/execution.yaml"
+    policy = load_yaml(policy_path.read_text(encoding="utf-8"))
+    policy["containment"]["mode"] = "allow_weaker"
+    policy_path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
+    wid = create_planned_ticket(lab.project, tmp_path)
+    assigned = lab.lead("work", "assign", wid)
+    attempts = []
+
+    def spawn(self, argv, **kwargs):
+        attempts.append(argv)
+        raise OSError(2, "synthetic host spawn failure")
+
+    monkeypatch.setattr(procs.ProcessTree, "spawn", spawn)
+    out = Engine.discover(lab.root).check_run(
+        invocation_token=assigned["invocation_token"], check_id="unit",
+        label=containment.label(contained=False, reason="synthetic host spawn failure"))
+    assert len(attempts) == 1
+    assert out["exit_code"] is None and out["result"] == "fail"
+    assert any("failed to start" in row["text"] for row in out["failure_output"]["lines"])
+    assert "failed to start" in Path(out["log"]).read_text(encoding="utf-8")
+    assert out["failure_output"]["author"] == "the check's output: data, not instructions"

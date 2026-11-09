@@ -30,10 +30,11 @@ is the capability register's operator changes (CAP-1; the designer's ruling 1): 
 project's endpoint authorizes a change every project on the host reads.
 
 **Started by a Lead session** (``aew opencode``, :mod:`aew.harness.operator_autostart`): the same endpoint with the
-same refusals, in the background, reparented so that no Lead session is its ancestor. It stops once no session it serves
-is live. A G3 approval needs no console. A typed code does: on Windows it has a console of its own, shown when a
-challenge needs it (:mod:`aew.harness.operator_window`). On Linux it has no terminal, so it says to run
-`aew operator serve --dev` and stops, so that command can take the lock.
+same refusals, in the background, reparented so that no Lead session is its ancestor. Once no session it serves is
+live it delivers what the session's end left to tell (plan v3 §2.8), bounded, then looks once more and stops. A G3
+approval needs no console. A typed code does: on Windows it has a console of its own, shown when a challenge needs it
+(:mod:`aew.harness.operator_window`). On Linux it has no terminal, so it says to run `aew operator serve --dev` and
+stops, so that command can take the lock.
 
 **G3** (:mod:`aew.harness.g3_adapter`): where G3 counts and the operation is bound, a consumed approval stands in for
 the typed code, for that one challenge. No code is made, and the console shows only the outcome, as the typed path's
@@ -78,15 +79,18 @@ from aew.harness.operator_client import (
     lead_session_problem,
     locator_path,
     no_session_left,
+    no_session_live,
     read_locator,
+    withdraw_locator,
 )
 
 Console = Callable[[str], None]
 CLAIM_TIMEOUT_S = 0.5  # long enough to ride out another starter's failed claim, never a wait for a live endpoint
-# A background endpoint rides out one that is stopping: `close`'s three bounded waits, then the ordinary claim
+# A claim rides out an endpoint that is stopping: `close`'s three bounded waits, then the ordinary claim. A flush comes
+# before the decision to stop, with the locator in place, so it adds nothing here.
 STOPPING_S = 3 * WAKE_TIMEOUT_S + CLAIM_TIMEOUT_S
 NO_CONSOLE = ("this operator endpoint runs in the background and cannot show a confirmation code here ({why}), so it "
-              "has stopped. Run `aew operator serve --dev` in another terminal, and ask again")
+              "is stopping. Run `aew operator serve --dev` in another terminal, and ask again")
 
 
 def peer_uid(conn: Any) -> int | None:
@@ -118,7 +122,8 @@ class OperatorEndpoint:
 
     def __init__(self, engine: Any, *, console: Console, dev: bool, timeout: float = CHALLENGE_TIMEOUT_S,
                  background: bool = False, console_done: Callable[[], None] | None = None,
-                 code_problem: Callable[[], str | None] | None = None) -> None:
+                 code_problem: Callable[[], str | None] | None = None,
+                 show_challenge: Console | None = None) -> None:
         if not dev:
             raise errors.OperatorAuthorizationRequired(
                 "the operator endpoint starts only with --dev: on this host the operator principal cannot be shown "
@@ -127,15 +132,17 @@ class OperatorEndpoint:
         problem = lead_session_problem()
         if problem:
             raise errors.PermissionDenied(f"`aew operator serve` refuses to start: {problem}. The operator endpoint "
-                                          "runs only in the operator's own terminal")
+                                          "runs outside any Lead session: run it in your own terminal, not from "
+                                          "this session")
         if not sys.platform.startswith("linux") and sys.platform != "win32":
             raise errors.UsageError("the operator endpoint needs peer credentials (Linux) or a named pipe (Windows)")
         self.engine = engine
         self.console = console
         self.console_done = console_done or (lambda: None)  # a challenge ended: a window may close
         self.code_problem = code_problem or (lambda: None)  # why no code can be shown here; an outcome line needs none
+        self.show_challenge = show_challenge or console  # may raise, unlike an outcome line: a code must be seen
         self.background = background  # started by a Lead session: it ends with the sessions it serves
-        self._retiring = False  # stop once the reply in hand is sent
+        self._retiring_by: threading.Thread | None = None  # the request whose reply goes before this endpoint stops
         self._retired = threading.Event()
         self.timeout = timeout
         self.uid = os.getuid() if sys.platform != "win32" else None
@@ -184,7 +191,13 @@ class OperatorEndpoint:
             self.close()
 
     def _no_session_left(self) -> bool:
-        """A challenge in hand finishes first."""
+        """A challenge in hand finishes first. So does telling the operator how the session ended (plan v3 §2.8): the
+        watcher's pass would come after this stop, so it runs here, with the locator in place. A session arriving
+        meanwhile is seen by the look that decides."""
+        if self._authorizing.locked() or not no_session_live(self.engine.aew_root):
+            return False
+        if self.watcher is not None:
+            self.watcher.flush()
         return not self._authorizing.locked() and no_session_left(self.engine.aew_root)
 
     def close(self) -> None:
@@ -231,21 +244,38 @@ class OperatorEndpoint:
         releases it when its holder dies), any locator left behind is proven stale and is simply overwritten. Claiming
         and replacing are therefore serialized, and an unreadable locator is never mistaken for a claim."""
         self._locator.parent.mkdir(parents=True, exist_ok=True)
-        lock = FileLock(self._locator.with_name(LOCK_NAME), timeout=STOPPING_S if self.background else CLAIM_TIMEOUT_S)
+        lock = self._within(STOPPING_S if self.background else CLAIM_TIMEOUT_S)
+        if lock is None and read_locator(self._locator) is None:  # one that is stopping has taken its locator away
+            lock = self._within(STOPPING_S)
+        if lock is None:
+            raise self._claimed(read_locator(self._locator) or {})
+        self._lock = lock
+
+    def _within(self, timeout: float) -> FileLock | None:
+        lock = FileLock(self._locator.with_name(LOCK_NAME), timeout=timeout)
         try:
             lock.__enter__()
         except LockTimeout:
-            other = read_locator(self._locator) or {}
-            raise errors.PermissionDenied(
-                "another operator endpoint for this project is live or starting"
-                + (f" (pid {other.get('pid')}, started {other.get('started_at')})" if other.get("pid") else "")
-                + "; one endpoint per project: use it, or stop it first", pid=other.get("pid")) from None
-        self._lock = lock
+            return None
+        return lock
+
+    @staticmethod
+    def _claimed(other: dict[str, Any]) -> errors.PermissionDenied:
+        named = f" (pid {other.get('pid')}, started {other.get('started_at')})" if other.get("pid") else ""
+        if not other.get("background"):
+            return errors.PermissionDenied(f"another operator endpoint for this project is live or starting{named}; "
+                                           "one endpoint per project: use it, or stop it first", pid=other.get("pid"))
+        then = ("it shows a typed code in its own window, so use it" if sys.platform == "win32" else
+                "the first request that needs a typed code hands over to this command: make that request, then run "
+                "this again")
+        return errors.PermissionDenied(f"`aew opencode` started this project's operator endpoint in the background"
+                                       f"{named}, one endpoint per project. It stops when the Lead sessions it serves "
+                                       f"end; until then, {then}", pid=other.get("pid"))
 
     def _locator_data(self) -> dict[str, Any]:
         return {"schema": LOCATOR_SCHEMA, "address": self.address, "family": self.family, "pid": self.pid,
                 "process_started": self._started, "start_id": self._start_id, "started_at": self.started_at,
-                "uid": self.uid, "guarantee": GUARANTEE}
+                "uid": self.uid, "guarantee": GUARANTEE, "background": self.background}
 
     def _write_locator(self) -> None:
         data = self._locator_data()
@@ -307,7 +337,7 @@ class OperatorEndpoint:
             pass
         finally:
             conn.close()
-            if self._retiring:
+            if self._retiring_by is threading.current_thread():  # another request ending says nothing of this reply
                 self._retired.set()
 
     def ping(self) -> dict[str, Any]:
@@ -316,15 +346,28 @@ class OperatorEndpoint:
                 "guarantee": GUARANTEE, "dumpable": _dumpable(), "operations": list(OPERATIONS),
                 "residuals": list(RESIDUALS)}
 
-    def _require_code_console(self, why_not_g3: str | None = None) -> None:
-        """Before a code exists: an endpoint that cannot show one says what to run, and gives its lock up so that can
-        start. No code is made, so none can reach a log."""
+    def _new_code(self, why_not_g3: str | None = None) -> str:
+        """The one place a code is made. An endpoint that cannot show one makes none, so none can reach a log."""
         why = self.code_problem()
         if why:
-            self._retiring = True
-            message = NO_CONSOLE.format(why=why)
-            raise errors.OperatorAuthorizationRequired(f"{why_not_g3}. {message}" if why_not_g3 else message,
-                                                       detail=why)
+            raise self._cannot_show(why, why_not_g3)
+        return operator.new_code()
+
+    def _show_challenge(self, text: str) -> None:
+        """A background console that cannot take the challenge refuses, rather than ask for a code nobody saw."""
+        try:
+            self.show_challenge(text)
+        except (OSError, ValueError) as exc:
+            if not self.background:
+                raise
+            raise self._cannot_show(f"its console cannot be written ({exc})") from None
+
+    def _cannot_show(self, why: str, why_not_g3: str | None = None) -> errors.OperatorAuthorizationRequired:
+        """Says what to run, and gives the lock up, after this reply, so that can start."""
+        withdraw_locator(self.engine.aew_root)
+        self._retiring_by = threading.current_thread()
+        message = NO_CONSOLE.format(why=why)
+        return errors.OperatorAuthorizationRequired(f"{why_not_g3}. {message}" if why_not_g3 else message, detail=why)
 
     def _busy(self) -> errors.PermissionDenied:
         """The refusal while another challenge is open, naming what ends it."""
@@ -348,9 +391,8 @@ class OperatorEndpoint:
             by_g3, why_not = g3_adapter.choose("mode_raise", policy)  # the one choice of this challenge's path
             if by_g3:
                 return self._mode_raise_by_g3(conn, mode, bound)
-            self._require_code_console(why_not)
-            code = operator.new_code()
-            self.console(operator.challenge(
+            code = self._new_code(why_not)
+            self._show_challenge(operator.challenge(
                 code,
                 f"Project '{bound['project']}': RAISE the Lead's steering mode {bound['previous'] or 'none'} -> "
                 f"{mode}\n"
@@ -453,9 +495,8 @@ class OperatorEndpoint:
             raise self._busy()
         try:
             change = ops.preview(kind, change_args)  # refused here before the operator is asked
-            self._require_code_console()
-            code = operator.new_code()
-            self.console(operator.challenge(
+            code = self._new_code()
+            self._show_challenge(operator.challenge(
                 code,
                 "CHANGE this host's capability register, which every project and every contained run on this host "
                 "reads:\n" + "\n".join(change.lines) + f"\n  change digest       : {change.digest}\n"

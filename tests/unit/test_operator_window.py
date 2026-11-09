@@ -3,6 +3,8 @@ are fakes."""
 
 from __future__ import annotations
 
+import pytest
+
 from aew.harness import operator_autostart as A
 from aew.harness import operator_window as W
 
@@ -25,6 +27,25 @@ def test_an_outcome_line_that_cannot_be_written_changes_nothing(monkeypatch):
     monkeypatch.setattr(W, "WINDOWS", True)
     monkeypatch.setattr(W.BackgroundConsole, "_write_windows", fails)
     W.BackgroundConsole()("raised\n")
+
+
+def test_a_challenge_that_cannot_be_written_raises(monkeypatch):
+    def fails(self, text):
+        raise OSError("gone")
+
+    monkeypatch.setattr(W, "WINDOWS", True)
+    monkeypatch.setattr(W.BackgroundConsole, "_write_windows", fails)
+    with pytest.raises(OSError):
+        W.BackgroundConsole().challenge("code\n")
+
+
+def test_a_challenge_says_first_what_the_window_is_and_what_closing_it_does(monkeypatch):
+    written = []
+    monkeypatch.setattr(W, "WINDOWS", True)
+    monkeypatch.setattr(W.BackgroundConsole, "_write_windows", lambda self, text: written.append(text))
+    W.BackgroundConsole().challenge("code\n")
+    assert written[0].startswith(W.WINDOW_NOTE) and written[0].endswith("code\n")
+    assert "Closing it stops the endpoint" in W.WINDOW_NOTE
 
 
 def test_on_windows_a_process_with_no_console_cannot_show_a_code(monkeypatch):
@@ -52,7 +73,8 @@ def test_a_new_challenge_keeps_the_window_the_last_one_was_closing(monkeypatch):
 
 def test_the_endpoint_gets_neither_the_lead_credential_nor_a_fed_provider_variable():
     env = A.endpoint_env({"AEW_LEAD_TOKEN": "synthetic", "AEW_INVOCATION_TOKEN": "synthetic",
-                          "SOME_API_KEY": "synthetic", "AEW_LEAD_BROKER": "kept", "OTHER": "kept"}, ["SOME_API_KEY"])
-    assert not {"AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "SOME_API_KEY"} & set(env)
+                          "AEW_AGENT_KEY": "synthetic", "SOME_API_KEY": "synthetic", "AEW_LEAD_BROKER": "kept",
+                          "OTHER": "kept"}, ["SOME_API_KEY"])
+    assert not {"AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN", "AEW_AGENT_KEY", "SOME_API_KEY"} & set(env)
     assert env["AEW_LEAD_BROKER"] == "kept", "the endpoint refuses on it"
     assert env["OTHER"] == "kept"

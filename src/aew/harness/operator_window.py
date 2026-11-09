@@ -3,11 +3,13 @@
 - **Windows:** the endpoint has a hidden console of its own (:mod:`aew.harness.operator_autostart`), shown when a
   challenge needs it and hidden again once it has ended. The operator allowed this on 2026-10-11, "aew CAN open
   terminals intentionally if needed just keep it reasonable not in testing". The code stays in the endpoint's own
-  memory, and on no command line and in no file.
+  memory, and on no command line and in no file. Closing the window ends the endpoint, as closing any console does,
+  and the challenge says so. No test shows the window: its first real use is the operator's check.
 - **Linux:** there is nothing to show a code on, so :meth:`BackgroundConsole.problem` says so and the endpoint makes
   none. Only outcome lines arrive here, and they go to the endpoint's log.
 
-A line that cannot be written is dropped: an outcome line reports what already happened and never changes it.
+An outcome line that cannot be written is dropped: it reports what already happened and never changes it. A challenge
+that cannot be written raises: a code nobody saw must not be asked for.
 """
 
 from __future__ import annotations
@@ -18,6 +20,8 @@ import threading
 WINDOWS = sys.platform == "win32"
 LINGER_S = 8.0  # how long the window stays once the challenge has ended, for its result line to be read
 NO_TERMINAL = "it has no terminal"
+WINDOW_NOTE = ("This window is AEW's operator endpoint, started by `aew opencode`. It hides itself after each request. "
+               "Closing it stops the endpoint, and with it the raises and notifications it serves.\n")
 
 
 class BackgroundConsole:
@@ -45,13 +49,22 @@ class BackgroundConsole:
         with self._lock:
             self._cancel_timer()
             try:
-                if WINDOWS:
-                    self._write_windows(text)
-                else:
-                    sys.stdout.write(text)
-                    sys.stdout.flush()
+                self._write(text)
             except (OSError, ValueError):
                 pass
+
+    def challenge(self, text: str) -> None:
+        """A challenge, which raises if it cannot be written."""
+        with self._lock:
+            self._cancel_timer()
+            self._write(WINDOW_NOTE + text if WINDOWS else text)
+
+    def _write(self, text: str) -> None:
+        if WINDOWS:
+            self._write_windows(text)
+        else:
+            sys.stdout.write(text)
+            sys.stdout.flush()
 
     def done(self) -> None:
         """The challenge has ended: the window goes after :data:`LINGER_S`, unless another one starts."""

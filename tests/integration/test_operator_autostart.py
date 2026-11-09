@@ -16,11 +16,12 @@ from pathlib import Path
 
 import pytest
 from conftest import IS_WINDOWS, clean_env
+from notifier import adopt, hidden, raise_to, received, recorder, script, until
 
 from aew import errors
 from aew.engine.api import Engine
+from aew.harness import broker_liveness, notify, operator_client, operator_endpoint, procs
 from aew.harness import operator_autostart as A
-from aew.harness import operator_client, operator_endpoint, procs
 
 SRC = Path(__file__).resolve().parents[2] / "src"
 # A process whose command line reads as `python -m aew opencode`, as the endpoint's ancestor check sees it
@@ -100,8 +101,9 @@ def test_a_session_starts_the_endpoint_outside_its_ancestry_and_the_endpoint_end
             above = _ancestors(pid)
             assert session.pid not in above, "not reparented"
             assert not any(operator_client._is_lead_session(_cmdline(a)) for a in above if a > 1)
-        session.communicate("\n", timeout=HANG_GUARD_S)
+        _, told = session.communicate("\n", timeout=HANG_GUARD_S)
         assert session.returncode == 0
+        assert "no Lead session is left" in told and f"{A.OFF_ENV}=off" in told, "what it did, and how to turn it off"
         _until("the endpoint outlived its session", lambda: not operator_client.status(aew_root)["running"])
         assert not list((aew_root / operator_client.SESSIONS_REL).glob("*.json"))
     finally:
@@ -197,6 +199,8 @@ def test_a_background_endpoint_with_no_terminal_says_run_serve_and_gives_up_its_
             operator_client.request_raise(engine.aew_root, "walk", ask=lambda p: asked.append(p) or "x",
                                           requester="test")
         assert "aew operator serve --dev" in refused.value.message and "no terminal" in refused.value.message
+        assert "is stopping" in refused.value.message
+        assert operator_client.read_locator(operator_client.locator_path(engine.aew_root)) is None, "not to be reused"
         assert asked == [] and lines == [], "no code was made, shown or asked for"
         out.join(HANG_GUARD_S)
         assert not out.is_alive()
@@ -264,9 +268,10 @@ def test_a_challenge_in_hand_finishes_before_the_endpoint_stops(project):
         ep.close()
 
 
-def test_a_session_starting_while_the_endpoint_stops_ends_with_one_live_endpoint(project, monkeypatch):
+@pytest.mark.parametrize("background", [True, False], ids=["a_session", "the_operator_at_a_terminal"])
+def test_a_session_starting_while_the_endpoint_stops_ends_with_one_live_endpoint(project, monkeypatch, background):
     """The endpoint has decided to stop and still holds the lock. The session finds no locator and starts another, which
-    waits the old one out instead of failing its claim."""
+    waits the old one out instead of failing its claim. So does the command a refusal has just named."""
     engine = Engine.discover(project.root)
     holder = _holder(engine.aew_root, os.getpid())
     old, out = _background(engine)
@@ -283,7 +288,7 @@ def test_a_session_starting_while_the_endpoint_stops_ends_with_one_live_endpoint
     assert operator_client.name_session(engine.aew_root) is not None
     assert A.ensure(engine, provider_env=[], base={}) is not None
     assert started, "it found no endpoint, so it started one"
-    new = operator_endpoint.OperatorEndpoint(engine, console=print, dev=True, background=True)
+    new = operator_endpoint.OperatorEndpoint(engine, console=print, dev=True, background=background)
     failed: list[BaseException] = []
 
     def start() -> None:
@@ -338,7 +343,7 @@ def test_a_lead_session_starts_no_endpoint(project, monkeypatch):
     engine = Engine.discover(project.root)
     monkeypatch.setattr(A, "_start", lambda *a: pytest.fail("started"))
     line = A.ensure(engine, provider_env=[], base={"AEW_LEAD_BROKER": "somewhere"})
-    assert line is not None and "Lead session" in line
+    assert line is not None and "Lead session" in line and "aew operator serve --dev" in line, "and what to do instead"
 
 
 @pytest.mark.skipif(IS_WINDOWS, reason="the check's walk of the process chain reads /proc")
@@ -383,3 +388,349 @@ def test_the_off_switch_starts_nothing_and_holds_nothing(project, monkeypatch):
     engine = Engine.discover(project.root)
     with A.for_session(engine, provider_env=[]):
         assert not (engine.aew_root / operator_client.SESSIONS_REL).exists()
+
+
+# ------------------------------------------------------------- a session's end reaches the operator (plan v3 §2.8)
+
+BROKER = """\
+import sys, time
+from pathlib import Path
+from aew.engine.api import Engine
+from aew.harness.lead_broker import LeadBroker
+token = sys.stdin.readline().strip()
+broker = LeadBroker(Engine.discover(Path(sys.argv[1])), token)
+broker.start()
+open(sys.argv[2], "w").close()
+if sys.argv[3] == "close":
+    sys.stdin.readline()
+    broker.close()
+else:
+    time.sleep(300)
+"""
+# As `aew opencode`: the session holds the endpoint, and its broker runs in the session's own process
+BROKER_SESSION = """\
+import sys
+from pathlib import Path
+from aew.engine.api import Engine
+from aew.harness import operator_autostart
+from aew.harness.lead_broker import LeadBroker
+token = sys.stdin.readline().strip()
+engine = Engine.discover(Path(sys.argv[1]))
+with operator_autostart.for_session(engine, provider_env=[]):
+    broker = LeadBroker(engine, token)
+    broker.start()
+    print("session", flush=True)
+    sys.stdin.readline()
+    broker.close()
+"""
+
+
+def _broker_gone(out: Path) -> list[dict]:
+    return [e for e in received(out) if e["event"] == "broker_gone"]
+
+
+@pytest.mark.parametrize("background", [False, True], ids=["terminal_endpoint", "background_endpoint"])
+@pytest.mark.parametrize("ending", ["crash", "close"])
+def test_a_session_ending_in_run_is_told_to_the_operator(project, tmp_path, background, ending):
+    """The event that exists for an away operator, from either endpoint. A background one stops within a look of the
+    session's end, and its watcher's next pass would come after that."""
+    command, out = recorder(tmp_path)
+    engine = adopt(project, command=command)
+    raise_to(engine, "run")
+    root = project.root / ".aew"
+    ready = tmp_path / "broker-ready"
+    child = subprocess.Popen([sys.executable, script(tmp_path, "broker", BROKER), str(project.root), str(ready),
+                              ending],
+                             stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **hidden())
+    assert child.stdin is not None
+    child.stdin.write((project.token + "\n").encode("utf-8"))
+    child.stdin.flush()
+    until(ready.exists, HANG_GUARD_S, "the broker to start")
+    record = until(lambda: broker_liveness.read(root), what="the broker's liveness record")
+    _holder(root, record["pid"])
+    ep = operator_endpoint.OperatorEndpoint(Engine.discover(project.root), console=lambda s: None, dev=True,
+                                            background=background)
+    ep.start()
+    until(lambda: notify.summary(root) is not None, what="the watcher's first pass")
+    loop = threading.Thread(target=ep.serve_forever, daemon=True)
+    loop.start()
+    try:
+        _still_serving(root, loop, "it is serving, over more than one look")
+        if ending == "crash":
+            procs.kill_pid(record["pid"])
+            if child.pid != record["pid"]:  # a venv's launcher on Windows
+                procs.kill_pid(child.pid)
+        else:
+            child.stdin.write(b"\n")
+            child.stdin.flush()
+        child.wait(HANG_GUARD_S)
+        until(lambda: _broker_gone(out), HANG_GUARD_S, "broker_gone",
+              describe=lambda: f"stopped: {not loop.is_alive()}")
+        if background:
+            loop.join(HANG_GUARD_S)
+            assert not loop.is_alive(), "and then it stops"
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(HANG_GUARD_S)
+        ep.close()
+
+
+@pytest.mark.parametrize("ending", ["crash", "close"])
+def test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops(project, tmp_path, ending):
+    """Nothing in-process: the session names itself and starts the real endpoint, whose real notifier gets the event."""
+    command, out = recorder(tmp_path)
+    engine = adopt(project, command=command)
+    raise_to(engine, "run")
+    root = project.root / ".aew"
+    env = clean_env({"PYTHONPATH": str(SRC)})
+    env.pop(A.OFF_ENV, None)
+    session = subprocess.Popen([sys.executable, script(tmp_path, "session", BROKER_SESSION), str(project.root)],
+                               env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                               text=True, **hidden())
+    pid = None
+    try:
+        assert session.stdin is not None and session.stdout is not None
+        session.stdin.write(project.token + "\n")
+        session.stdin.flush()
+        assert session.stdout.readline().strip() == "session"
+        found = operator_client.wait_for_locator(root, timeout=HANG_GUARD_S)
+        assert found
+        pid = found["pid"]
+        record = until(lambda: broker_liveness.read(root), what="the broker's liveness record")
+        until(lambda: notify.summary(root) is not None, HANG_GUARD_S, "the watcher's first pass")
+        if ending == "crash":
+            procs.kill_pid(record["pid"])
+            if session.pid != record["pid"]:  # a venv's launcher on Windows
+                procs.kill_pid(session.pid)
+        else:
+            session.stdin.write("\n")
+            session.stdin.flush()
+        session.wait(HANG_GUARD_S)
+        until(lambda: _broker_gone(out), HANG_GUARD_S, "broker_gone",
+              describe=lambda: f"endpoint alive: {procs.pid_alive(pid)}; {received(out)}")
+        until(lambda: not procs.pid_alive(pid), HANG_GUARD_S, "the endpoint to stop")
+    finally:
+        if session.poll() is None:
+            session.kill()
+            session.wait(HANG_GUARD_S)
+        if pid is not None and procs.pid_alive(pid):
+            procs.kill_pid(pid)
+
+
+def test_a_hung_notifier_never_keeps_the_endpoint_up(project, tmp_path, monkeypatch):
+    """The flush is bounded by the notifier's own timeout, and what is left stays outstanding."""
+    command = [sys.executable, "-I", script(tmp_path, "hang", "import time\ntime.sleep(300)\n")]
+    engine = adopt(project, command=command, timeout_s=1)
+    ep = operator_endpoint.OperatorEndpoint(engine, console=print, dev=True, background=True)
+    ep.start()
+    try:
+        assert ep.watcher is not None
+        monkeypatch.setattr(notify, "FLUSH_DELIVERIES", 0)
+        ep.watcher._offer("test:one", {"event": "test", "source": "test"}, lane="urgent")
+        started = time.monotonic()
+        assert ep.watcher.flush() is False, "nothing waits past the bound"
+        assert time.monotonic() - started < HANG_GUARD_S
+    finally:
+        ep.close()
+
+
+# ----------------------------------------------------------------------- what the real command and its console do
+
+
+@pytest.mark.skipif(IS_WINDOWS, reason="a real challenge on Windows would show the window, and no test shows one")
+def test_the_real_background_command_makes_no_code_and_the_command_it_names_starts_at_once(project, tmp_path):
+    """Through the real command line, with nothing injected: the raise is refused, no code reaches the log, and the
+    command the reply names, run at once, rides out the stopping endpoint."""
+    engine = _steered(project)
+    root = engine.aew_root
+    holder = _holder(root, os.getpid())
+    log = tmp_path / "endpoint.log"
+    env = clean_env({"PYTHONPATH": str(SRC)})
+    with open(log, "wb") as fh:
+        proc = subprocess.Popen([sys.executable, "-m", "aew", "-C", str(project.root), "operator", "serve", "--dev",
+                                 "--background"], env=env, stdin=subprocess.DEVNULL, stdout=fh, stderr=fh)
+    try:
+        assert operator_client.wait_for_locator(root, timeout=HANG_GUARD_S), log.read_text()
+        with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
+            operator_client.request_raise(root, "walk", ask=lambda p: pytest.fail("asked"), requester="test")
+        assert "aew operator serve --dev" in refused.value.message
+        again = operator_endpoint.OperatorEndpoint(engine, console=print, dev=True)
+        again.start()
+        again.close()
+        proc.wait(HANG_GUARD_S)
+        text = log.read_text()
+        assert not re.search(r"confirmation code", text, re.I) and "RAISE" not in text
+        assert "Ctrl-C" not in text and "Lead sessions it serves" in text
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(HANG_GUARD_S)
+        holder.unlink(missing_ok=True)
+
+
+@pytest.mark.skipif(IS_WINDOWS, reason="a hardened session is Linux's")
+def test_a_hardened_session_keeps_its_background_endpoint(project):
+    """The real session hardens itself after naming itself. The endpoint's look must still see it live."""
+    body = SESSION.replace('    print("session"', '    procs.harden_current_process()\n    print("session"').replace(
+        "from aew.harness import operator_autostart", "from aew.harness import operator_autostart, procs")
+    env = clean_env({"PYTHONPATH": str(SRC)})
+    env.pop(A.OFF_ENV, None)
+    root = project.root / ".aew"
+    session = subprocess.Popen([sys.executable, "-c", body, str(project.root)], env=env, stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        assert session.stdout is not None and session.stdout.readline().strip() == "session"
+        found = operator_client.wait_for_locator(root, timeout=HANG_GUARD_S)
+        assert found
+        time.sleep(2.0)  # several looks
+        assert operator_client.status(root)["running"], "the endpoint stopped under a live, hardened session"
+        session.communicate("\n", timeout=HANG_GUARD_S)
+        _until("the endpoint to stop", lambda: not procs.pid_alive(found["pid"]))
+    finally:
+        if session.poll() is None:
+            session.kill()
+            session.communicate()
+
+
+def test_the_background_command_wires_its_console_to_the_endpoint(monkeypatch):
+    """Every platform, showing nothing: what `--background` gives the endpoint, which the tests above inject."""
+    import argparse
+
+    from aew.cli import operator_commands
+
+    class Stop(Exception):
+        pass
+
+    seen = {}
+
+    def built(engine, **kw):
+        seen.update(kw)
+        raise Stop
+
+    monkeypatch.setattr(operator_endpoint, "OperatorEndpoint", built)
+    monkeypatch.setattr(operator_commands, "_engine", lambda a: object())
+    with pytest.raises(Stop):
+        operator_commands._serve(argparse.Namespace(background=True, dev=True))
+    window = seen["console"]
+    assert seen["background"] is True and seen["console_done"] == window.done
+    assert seen["code_problem"] == window.problem and seen["show_challenge"] == window.challenge
+
+
+def test_a_code_is_made_in_one_place_which_holds_the_check():
+    source = Path(operator_endpoint.__file__).read_text(encoding="utf-8")
+    assert source.count("operator.new_code(") == 1
+    assert source.index("self.code_problem()") < source.index("operator.new_code(")
+
+
+def test_a_challenge_that_cannot_be_written_refuses_and_hands_over(project):
+    """Never "shown": the requester would wait out the timeout for a code nobody saw."""
+    engine = _steered(project)
+    holder = _holder(engine.aew_root, os.getpid())
+
+    def fails(text: str) -> None:
+        raise OSError("gone")
+
+    ep, out = _background(engine, show_challenge=fails, code_problem=lambda: None)
+    try:
+        with pytest.raises(errors.OperatorAuthorizationRequired) as refused:
+            operator_client.request_raise(engine.aew_root, "walk", ask=lambda p: pytest.fail("asked"), requester="test")
+        assert "cannot be written" in refused.value.message and "aew operator serve --dev" in refused.value.message
+        out.join(HANG_GUARD_S)
+        assert not out.is_alive()
+    finally:
+        holder.unlink(missing_ok=True)
+        ep.close()
+
+
+def test_a_terminal_endpoints_console_failure_stays_its_own(project):
+    """Only a background endpoint hands over: the operator's own endpoint keeps serving."""
+    def fails(text: str) -> None:
+        raise OSError("gone")
+
+    ep = operator_endpoint.OperatorEndpoint(Engine.discover(project.root), console=fails, dev=True)
+    with pytest.raises(OSError):
+        ep._show_challenge("text")
+    assert ep._retiring_by is None
+
+
+class _Conn:
+    """One request, and what the endpoint's state was as its reply went."""
+
+    def __init__(self, op: str, args: dict, on_reply) -> None:
+        self.request, self.on_reply = json.dumps({"op": op, "args": args}).encode("utf-8"), on_reply
+
+    def recv_bytes(self, _limit: int) -> bytes:
+        return self.request
+
+    def send_bytes(self, _data: bytes) -> None:
+        self.on_reply()
+
+    def close(self) -> None:
+        pass
+
+
+def test_the_reply_goes_before_the_endpoint_retires_and_only_its_own_handler_retires_it(project):
+    engine = _steered(project)
+    ep = operator_endpoint.OperatorEndpoint(engine, console=print, dev=True, background=True,
+                                            code_problem=lambda: "it has no terminal")
+    at_reply: list[bool] = []
+    ep._handle(_Conn("mode_raise", {"mode": "walk"}, lambda: at_reply.append(ep._retired.is_set())))
+    assert at_reply == [False], "the reply goes first"
+    assert ep._retired.is_set(), "then it retires"
+    other = operator_endpoint.OperatorEndpoint(engine, console=print, dev=True, background=True)
+    other._retiring_by = threading.Thread()  # another handler's reply is on its way
+    other._handle(_Conn("ping", {}, lambda: None))
+    assert not other._retired.is_set(), "a ping ending says nothing of that reply"
+
+
+def test_a_terminal_serve_beside_a_background_endpoint_says_what_it_is_and_what_to_do(project):
+    engine = Engine.discover(project.root)
+    holder = _holder(engine.aew_root, os.getpid())
+    ep, out = _background(engine)
+    try:
+        assert operator_client.read_locator(operator_client.locator_path(engine.aew_root))["background"] is True
+        with pytest.raises(errors.PermissionDenied) as refused:
+            operator_endpoint.OperatorEndpoint(engine, console=print, dev=True).start()
+        told = refused.value.message
+        assert "aew opencode" in told and "stops when the Lead sessions" in told and "stop it first" not in told
+        assert ("own window" if IS_WINDOWS else "hands over") in told
+    finally:
+        holder.unlink(missing_ok=True)
+        ep.close()
+
+
+def test_two_starts_keep_both_lines_in_the_log(project, monkeypatch):
+    engine = Engine.discover(project.root)
+    written = iter([b"the winner\n", b"the loser\n"])
+    monkeypatch.setattr(A, "_start", lambda argv, env, log: log.write(next(written)))
+    A.ensure(engine, provider_env=[], base={})
+    A.ensure(engine, provider_env=[], base={})
+    log = operator_client.locator_path(engine.aew_root).with_name(A.LOG_NAME)
+    assert log.read_bytes() == b"the winner\nthe loser\n"
+
+
+def test_a_session_file_that_cannot_be_removed_costs_the_session_nothing(project, monkeypatch):
+    class Held:
+        def unlink(self, missing_ok: bool = False) -> None:
+            raise PermissionError("in use by the endpoint's look")
+
+    monkeypatch.delenv(A.OFF_ENV, raising=False)
+    monkeypatch.setattr(operator_client, "name_session", lambda aew_root: Held())
+    monkeypatch.setattr(A, "ensure", lambda engine, provider_env: None)
+    ran = []
+    with A.for_session(Engine.discover(project.root), provider_env=[]):
+        ran.append(True)
+    assert ran == [True]
+
+
+@pytest.mark.skipif(IS_WINDOWS, reason="the walk reads /proc")
+def test_aew_dash_c_opencode_above_it_is_a_lead_session_too(project):
+    """The same chain as `aew opencode` above, spelled as a script spells it, with no broker in any environment."""
+    env = clean_env({"PYTHONPATH": str(SRC)})
+    env.pop(A.OFF_ENV, None)
+    env.pop("AEW_LEAD_BROKER", None)
+    done = subprocess.run([sys.executable, "-c", UNDER_A_SESSION, SESSION, str(project.root), "-m", "aew", "-C", "/p",
+                           "opencode"], env=env, input="\n", capture_output=True, text=True, timeout=HANG_GUARD_S)
+    assert done.returncode == 0, done.stderr
+    assert "the operator endpoint was not started" in done.stderr

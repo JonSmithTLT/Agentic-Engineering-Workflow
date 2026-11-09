@@ -174,6 +174,8 @@ def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | No
                   "host, and the sandbox holds a placeholder."]
     else:
         notes.append("No AEW credential and no provider key is in it unless passed with --provider-env.")
+    notes.append(f"A session starts this project's operator endpoint in the background unless one is live; "
+                 f"{operator_autostart.OFF_ENV}=off turns that off.")
     # what the TUI is given where it runs as it is: an uncontained Lead's line included (review of #356, n1)
     config = projection.lead_config(guide) if contained_here() else json.loads(env["OPENCODE_CONFIG_CONTENT"])
     return {"command": argv, "config": config,

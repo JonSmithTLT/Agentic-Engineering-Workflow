@@ -158,7 +158,8 @@ starts:
   call: run
   classes: [not_agent_context]
   reason: the launcher of the operator endpoint on Linux, started before the Lead's sandbox is built and refused under
-    a Lead session (operator_autostart.ensure); the endpoint it leaves refuses too (OperatorEndpoint.__init__)
+    a Lead session (operator_autostart.ensure); the endpoint it leaves still refuses on the broker's environment, but
+    its walk no longer sees that session (OperatorEndpoint.__init__)
 - site: src/aew/harness/procs.py::ProcessTree._spawn
   call: Popen
   classes: [not_agent_context, not_agent_context, not_agent_context, not_agent_context]

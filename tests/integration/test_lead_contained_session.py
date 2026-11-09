@@ -10,6 +10,7 @@ tests/integration/test_opencode_lead.py has the session's Windows path, which ru
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sqlite3
 import sys
@@ -270,5 +271,29 @@ def test_a_lead_whose_containment_fails_is_refused_under_required_and_runs_label
         assert "not an existing directory" in label["weaker_because"]
         assert "the Lead runs NOT contained" in done["stderr"]
         assert (tui / "tui-argv.json").exists()
+    finally:
+        lab.cleanup()
+
+
+def test_a_contained_session_starts_the_operator_endpoint_outside_its_sandbox_and_it_ends_with_the_session(tmp_path):
+    """Through the command itself: `conftest` turns the start off for every other session test."""
+    lab, tui = make_lab(tmp_path)
+    try:
+        home = synthetic_home(tmp_path, {"anthropic": KEYS["anthropic"]})
+        (tui / "mode").write_text("agent")
+        (tui / "tui-script.json").write_text("[]")
+        done = at_the_terminal(lab, home, extra={"AEW_OPERATOR_AUTOSTART": "on"})
+        assert done["code"] == 0, done["stderr"][-3000:]
+        assert "starting the operator endpoint" in done["stderr"]
+        log = lab.aew_root / "local" / "operator" / "endpoint.log"
+        deadline = time.monotonic() + 60
+        pid = None
+        while pid is None and time.monotonic() < deadline:
+            pid = re.search(r'"pid": (\d+)', log.read_text(errors="replace")) if log.exists() else None
+            time.sleep(0.05)
+        assert pid, log.read_text(errors="replace") if log.exists() else "no log"
+        while procs.pid_alive(int(pid.group(1))) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not procs.pid_alive(int(pid.group(1))), "the endpoint outlived its session"
     finally:
         lab.cleanup()

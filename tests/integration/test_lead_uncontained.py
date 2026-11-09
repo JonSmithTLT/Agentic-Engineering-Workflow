@@ -5,6 +5,7 @@ while it runs. ``run_session``'s ``contained`` is every caller's to give."""
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import shlex
@@ -138,3 +139,29 @@ def test_off_linux_aew_opencode_runs_through_the_same_weaker_route_with_its_reas
         lead.run(explicit, acquire=False, session_label=None, keep_seat=False, provider_env=[], extra_args=[],
                  print_config=False)
     assert containment.label(contained=False, reason=containment.uncontained_reason())["weaker_because"]
+
+
+def test_a_session_labelled_not_contained_holds_the_operator_endpoint_for_its_length(monkeypatch, tmp_path):
+    """The wiring itself: `conftest` turns the start off for every other session test."""
+    from aew.harness.opencode import lead
+
+    events = []
+
+    @contextlib.contextmanager
+    def held(engine, *, provider_env):
+        events.append("held")
+        yield
+        events.append("let go")
+
+    monkeypatch.setenv("AEW_LEAD_TOKEN", "synthetic-not-a-token")
+    monkeypatch.setenv("OPENCODE_DB", str(tmp_path / "no-login.db"))
+    monkeypatch.setattr(lead, "contained_here", lambda: False)
+    monkeypatch.setattr(lead, "check_version", lambda: "2.0.18")
+    monkeypatch.setattr(lead, "guide_of", lambda engine: "")
+    monkeypatch.setattr(lead, "command", lambda engine, extra: ["opencode"])
+    monkeypatch.setattr(lead.operator_autostart, "for_session", held)
+    monkeypatch.setattr(lead_broker, "run_session", lambda engine, argv, **k: events.append("session") or {"ok": True})
+    engine = type("E", (), {"execution_policy": lambda self: ({"containment": {"mode": "allow_weaker"}}, None)})()
+    lead.run(engine, acquire=False, session_label=None, keep_seat=False, provider_env=[], extra_args=[],
+             print_config=False)
+    assert events == ["held", "session", "let go"]

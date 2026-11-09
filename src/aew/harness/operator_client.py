@@ -97,10 +97,16 @@ def lead_session_problem(env: dict[str, str] | None = None) -> str | None:
 
 
 def _is_lead_session(argv: list[str]) -> bool:
-    """``aew lead session ...``, ``aew opencode ...`` (and ``python -m aew`` forms)."""
+    """``aew lead session ...``, ``aew opencode ...`` (and ``python -m aew`` forms). ``-C`` is the one global option
+    that takes a value, so its value is not a word of the command."""
     for i, word in enumerate(argv):
         if os.path.basename(word) in ("aew", "aew.exe") or (word == "aew" and i and argv[i - 1] == "-m"):
-            rest = [w for w in argv[i + 1:] if not w.startswith("-")]
+            rest, words = [], iter(argv[i + 1:])
+            for w in words:
+                if w == "-C":
+                    next(words, None)
+                elif not w.startswith("-"):
+                    rest.append(w)
             return rest[:2] == ["lead", "session"] or rest[:1] == ["opencode"]
     return False
 
@@ -126,6 +132,25 @@ def name_session(aew_root: Path) -> Path | None:
     except (LockTimeout, OSError):
         return None
     return path
+
+
+def no_session_live(aew_root: Path) -> bool:
+    """A look that decides nothing: whether a background endpoint has anything to do before its deciding look."""
+    try:
+        with sessions_lock(aew_root):
+            return not session_holders_live(aew_root)
+    except (LockTimeout, OSError):
+        return False
+
+
+def withdraw_locator(aew_root: Path) -> None:
+    """An endpoint about to retire stops being found, as :func:`no_session_left` does, so a session starts another
+    rather than reusing one that is going away. If the lock is busy, its close removes the locator anyway."""
+    try:
+        with sessions_lock(aew_root):
+            locator_path(aew_root).unlink(missing_ok=True)
+    except (LockTimeout, OSError):
+        pass
 
 
 def no_session_left(aew_root: Path) -> bool:

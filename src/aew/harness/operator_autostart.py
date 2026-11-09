@@ -10,7 +10,7 @@ refusal stays. So this process applies the same check first, for what started it
 reparented through a launcher that exits. The Lead's sandbox is built later, and the endpoint is outside it.
 
 A start that fails never fails the session: without an endpoint the session runs as it did, and a request says how to
-start one. ``AEW_OPERATOR_AUTOSTART=off`` turns it off.
+start one. ``AEW_OPERATOR_AUTOSTART=off`` turns it off, and the line a start prints says so.
 """
 
 from __future__ import annotations
@@ -23,11 +23,12 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from aew.harness import operator_client, procs
+from aew.harness import contract, lead_broker, operator_client, procs
 
 OFF_ENV = "AEW_OPERATOR_AUTOSTART"
 LOG_NAME = "endpoint.log"  # the background endpoint's output: its start line and any failure, never a code
-SECRET_ENV = ("AEW_LEAD_TOKEN", "AEW_INVOCATION_TOKEN")  # the operator's credentials: the endpoint uses none
+# The credentials: the endpoint uses none. The broker's coordinates stay, because the endpoint refuses on them.
+SECRET_ENV = tuple(name for name in contract.CREDENTIAL_ENV if name not in lead_broker.ENV_NAMES)
 # The launcher on Linux: a new session, then a fork whose parent exits, so the endpoint's parent is no Lead session.
 REPARENT = "import os,sys;os.setsid();os._exit(0) if os.fork() else os.execv(sys.argv[1],sys.argv[1:])"
 SW_HIDE, STARTF_USESHOWWINDOW, CREATE_NEW_CONSOLE = 0, 0x1, 0x10
@@ -65,7 +66,8 @@ def _start(argv: list[str], env: dict[str, str], log: Any) -> None:
 def _refused(env: dict[str, str]) -> str | None:
     """The line for a session under a Lead session: it starts nothing and holds nothing."""
     problem = operator_client.lead_session_problem(env)
-    return f"aew opencode: the operator endpoint was not started: {problem}\n" if problem else None
+    return (f"aew opencode: the operator endpoint was not started: {problem}. To raise the steering mode, run `aew "
+            "operator serve --dev` in your own terminal, outside this session\n") if problem else None
 
 
 def ensure(engine: Any, *, provider_env: list[str], base: dict[str, str] | None = None) -> str | None:
@@ -81,11 +83,13 @@ def ensure(engine: Any, *, provider_env: list[str], base: dict[str, str] | None 
     directory = operator_client.locator_path(Path(engine.aew_root)).parent
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        with open(directory / LOG_NAME, "wb") as log:
+        with open(directory / LOG_NAME, "ab") as log:  # two starts at once: the winner's line stays
             _start(endpoint_argv(Path(engine.repo_root)), endpoint_env(env, provider_env), log)
     except OSError as exc:
         return START_FAILED.format(why=exc)
-    return "aew opencode: the operator endpoint runs in the background until this session ends\n"
+    return (f"aew opencode: starting the operator endpoint in the background; it stops when no Lead session is left "
+            f"(log: {Path(operator_client.LOCATOR_REL).with_name(LOG_NAME).as_posix()} under .aew; {OFF_ENV}=off turns "
+            "this off)\n")
 
 
 @contextlib.contextmanager
@@ -105,4 +109,5 @@ def for_session(engine: Any, *, provider_env: list[str]) -> Iterator[None]:
         yield
     finally:
         if held is not None:
-            held.unlink(missing_ok=True)
+            with contextlib.suppress(OSError):  # the endpoint's look removes a dead session's file anyway
+                held.unlink(missing_ok=True)

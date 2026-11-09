@@ -1458,6 +1458,8 @@ None.
 
 ### `aew.harness.operator_autostart`
 
+- `aew.harness.contract`
+- `aew.harness.lead_broker`
 - `aew.harness.operator_client`
 - `aew.harness.procs`
 

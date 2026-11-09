@@ -52,7 +52,6 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from multiprocessing.connection import Client, Listener
-from pathlib import Path
 from typing import Any
 
 from aew import errors, operator
@@ -70,51 +69,13 @@ from aew.harness.operator_client import (
     RESIDUALS,
     WAKE_TIMEOUT_S,
     _request,
+    lead_session_problem,
     locator_path,
     read_locator,
 )
 
 Console = Callable[[str], None]
 CLAIM_TIMEOUT_S = 0.5  # long enough to ride out another starter's failed claim, never a wait for a live endpoint
-
-
-def lead_session_problem(env: dict[str, str] | None = None) -> str | None:
-    """Why this process is inside a Lead session, or ``None`` (plan v3 §2.1, P1). Dev-grade: it reads the broker's
-    environment and the process chain; a same-uid process that hides both is one of :data:`RESIDUALS`."""
-    env = dict(os.environ) if env is None else env
-    if env.get("AEW_LEAD_BROKER") or env.get("AEW_LEAD_BROKER_KEY"):
-        return "this process runs in a Lead session (its environment carries the Lead broker's coordinates)"
-    if not sys.platform.startswith("linux"):  # pragma: windows-only
-        return None
-    pid, seen = os.getppid(), 0  # pragma: posix-only
-    while pid > 1 and seen < 64:
-        seen += 1
-        proc = Path(f"/proc/{pid}")
-        try:
-            argv = [a.decode("utf-8", "replace") for a in (proc / "cmdline").read_bytes().split(b"\0") if a]
-        except OSError:
-            break
-        if _is_lead_session(argv):
-            return f"an ancestor process ({pid}: {' '.join(argv)[:120]}) is a Lead session"
-        try:
-            if b"\0AEW_LEAD_BROKER=" in b"\0" + (proc / "environ").read_bytes():
-                return f"an ancestor process ({pid}) runs in a Lead session"
-        except OSError:
-            pass  # another uid's, or a hardened broker's: its command line was checked above
-        try:
-            pid = int((proc / "stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()[1])
-        except (OSError, ValueError, IndexError):
-            break
-    return None
-
-
-def _is_lead_session(argv: list[str]) -> bool:
-    """``aew lead session ...``, ``aew opencode ...`` (and ``python -m aew`` forms)."""
-    for i, word in enumerate(argv):
-        if os.path.basename(word) in ("aew", "aew.exe") or (word == "aew" and i and argv[i - 1] == "-m"):
-            rest = [w for w in argv[i + 1:] if not w.startswith("-")]
-            return rest[:2] == ["lead", "session"] or rest[:1] == ["opencode"]
-    return False
 
 
 def peer_uid(conn: Any) -> int | None:

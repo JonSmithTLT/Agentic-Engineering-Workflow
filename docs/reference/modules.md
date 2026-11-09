@@ -99,7 +99,7 @@ None.
 - `aew.engine.usage_ops`
 - `aew.engine.workspace_ops`
 - `aew.errors`
-- `aew.harness.operator_endpoint`
+- `aew.harness.operator_client`
 - `aew.knowledge.manifest`
 - `aew.operator`
 - `aew.process_kind`

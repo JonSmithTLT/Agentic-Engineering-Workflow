@@ -34,7 +34,7 @@ from typing import Any, NamedTuple
 from aew import operator, process_kind
 from aew.errors import AEWError
 from aew.knowledge.manifest import DEFAULT_GATES, MANIFEST, default_manifest
-from aew.util import atomic_write, load_yaml, utc_now
+from aew.util import atomic_write, load_yaml, safe_dump_yaml, utc_now
 
 REMEMBERED = "local/switch-offers.json"  # gitignored and never pinned: an answer is not policy
 ABSENT: Any = object()  # a key the file doesn't hold, as `effective` is told
@@ -89,9 +89,7 @@ def _dig(data: dict[str, Any], key_path: tuple[str, ...]) -> Any:
 
 
 def _scalar(value: Any) -> str:
-    import yaml
-
-    return yaml.safe_dump(value, default_flow_style=True).splitlines()[0]
+    return safe_dump_yaml(value).splitlines()[0]
 
 
 def _indent(line: str) -> int:
@@ -189,7 +187,7 @@ def key_offer(switch: str, *, file: str, key_path: tuple[str, ...], old_values: 
     name = ".".join(key_path)
     return SwitchOffer(switch=switch, legality=legality, opening=opening, edits=edits, text=text,
                        changes=f"{file} {name}", done=done, after_adopt=after_adopt,
-                       by_hand=f"set {name} in {file} and run `aew manifest adopt`")
+                       by_hand=f"the operator sets {name} in {file} and runs `aew manifest adopt`")
 
 
 def _table_rel() -> str:
@@ -247,14 +245,15 @@ OFFERS: tuple[SwitchOffer, ...] = (
               text=lambda o: (f"AEW's default for mutating concurrency has moved from {o.held} to {o.to}: that many "
                               "mutating Tickets may run at once, each in its own workspace, and integration stays "
                               f"serialized. This project holds {o.held}."),
-              done=lambda o: (f"mutating concurrency is now {o.to}, adopted as your decision. To change it, edit "
-                              "policy/gates.yaml and run `aew manifest adopt`.")),
+              done=lambda o: (f"mutating concurrency is now {o.to}, adopted as your decision. To change it, the "
+                              "operator edits policy/gates.yaml and runs `aew manifest adopt`.")),
     SwitchOffer(switch="price_table", legality=False, opening=_table_opening, edits=_table_edits, text=_table_text,
                 changes="project.yaml policy.pricing, and a new policy/pricing.yaml",
                 done=lambda o: ("the price table is now in force at policy/pricing.yaml, adopted as your decision. To "
-                                "change it, edit that file and run `aew manifest adopt`."),
-                by_hand=("copy `default_pricing.yaml` from AEW's package to policy/pricing.yaml, add `pricing: "
-                         "policy/pricing.yaml` under `policy:` in project.yaml, and run `aew manifest adopt`")),
+                                "change it, the operator edits that file and runs `aew manifest adopt`."),
+                by_hand=("the operator copies `default_pricing.yaml` from AEW's package to policy/pricing.yaml, adds "
+                         "`pricing: policy/pricing.yaml` under `policy:` in project.yaml, and runs `aew manifest "
+                         "adopt`")),
 )
 
 
@@ -319,8 +318,8 @@ def standings(engine: Any) -> list[Standing]:
 
 def _blocked_line(standing: Standing) -> str:
     return (f"AEW's default for {standing.offer.switch} has moved ({standing.opening.held} -> {standing.opening.to}), "
-            f"but {', '.join(standing.blocked or [])} would be adopted with it: review that and run `aew manifest "
-            "adopt`, and the offer returns.")
+            f"but {', '.join(standing.blocked or [])} would be adopted with it: once the operator reviews that and "
+            "runs `aew manifest adopt`, the offer returns.")
 
 
 def doctor_rows(engine: Any) -> list[tuple[str, str, str]]:
@@ -351,7 +350,7 @@ def _may_ask() -> bool:
     """`lead_session_problem`, not `consent._never_here`: that refuses ``AEW_LEAD_TOKEN``, which is how an operator
     legitimately starts `aew opencode`. It reads the broker's variables and, on Linux, the process chain from the parent
     up, so `aew opencode` doesn't refuse itself and a Lead's own shell is refused."""
-    from aew.harness.operator_endpoint import lead_session_problem
+    from aew.harness.operator_client import lead_session_problem
 
     return lead_session_problem() is None and process_kind.kind() != process_kind.NON_WRITER and terminal()
 

@@ -337,9 +337,9 @@ def test_the_endpoint_starts_only_with_dev_and_never_in_a_lead_session(project, 
     with pytest.raises(errors.PermissionDenied) as refused:
         operator_endpoint.OperatorEndpoint(engine, console=print, dev=True)
     assert "Lead session" in refused.value.message
-    assert operator_endpoint._is_lead_session(["/usr/bin/python3", "-m", "aew", "lead", "session", "--acquire"])
-    assert operator_endpoint._is_lead_session(["/venv/bin/aew", "opencode", "--acquire"])
-    assert not operator_endpoint._is_lead_session(["/venv/bin/aew", "lead", "mode", "raise", "walk"])
+    assert operator_client._is_lead_session(["/usr/bin/python3", "-m", "aew", "lead", "session", "--acquire"])
+    assert operator_client._is_lead_session(["/venv/bin/aew", "opencode", "--acquire"])
+    assert not operator_client._is_lead_session(["/venv/bin/aew", "lead", "mode", "raise", "walk"])
 
 
 def test_same_uid_residuals_are_recorded(project, endpoint):

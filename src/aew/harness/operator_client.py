@@ -9,6 +9,7 @@ for a raise where G3 counts, their approval in G3's confirmer.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from collections.abc import Callable
@@ -36,6 +37,47 @@ RESIDUALS = (
     "kill this endpoint and start another once the stale-locator check passes",
     "write control state or .aew/ files directly (the protected set is not owned by another principal until F18.6)",
 )
+
+
+def lead_session_problem(env: dict[str, str] | None = None) -> str | None:
+    """Why this process is inside a Lead session, or ``None`` (plan v3 §2.1, P1). Dev-grade: it reads the broker's
+    environment and the process chain; a same-uid process that hides both is one of :data:`RESIDUALS`. It's here, not
+    in the endpoint, because it grants nothing and other operator-only steps ask it too: the endpoint stays imported by
+    `aew operator serve` alone."""
+    env = dict(os.environ) if env is None else env
+    if env.get("AEW_LEAD_BROKER") or env.get("AEW_LEAD_BROKER_KEY"):
+        return "this process runs in a Lead session (its environment carries the Lead broker's coordinates)"
+    if not sys.platform.startswith("linux"):  # pragma: windows-only
+        return None
+    pid, seen = os.getppid(), 0  # pragma: posix-only
+    while pid > 1 and seen < 64:
+        seen += 1
+        proc = Path(f"/proc/{pid}")
+        try:
+            argv = [a.decode("utf-8", "replace") for a in (proc / "cmdline").read_bytes().split(b"\0") if a]
+        except OSError:
+            break
+        if _is_lead_session(argv):
+            return f"an ancestor process ({pid}: {' '.join(argv)[:120]}) is a Lead session"
+        try:
+            if b"\0AEW_LEAD_BROKER=" in b"\0" + (proc / "environ").read_bytes():
+                return f"an ancestor process ({pid}) runs in a Lead session"
+        except OSError:
+            pass  # another uid's, or a hardened broker's: its command line was checked above
+        try:
+            pid = int((proc / "stat").read_bytes().decode("latin-1").rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+    return None
+
+
+def _is_lead_session(argv: list[str]) -> bool:
+    """``aew lead session ...``, ``aew opencode ...`` (and ``python -m aew`` forms)."""
+    for i, word in enumerate(argv):
+        if os.path.basename(word) in ("aew", "aew.exe") or (word == "aew" and i and argv[i - 1] == "-m"):
+            rest = [w for w in argv[i + 1:] if not w.startswith("-")]
+            return rest[:2] == ["lead", "session"] or rest[:1] == ["opencode"]
+    return False
 
 
 def locator_path(aew_root: Path) -> Path:

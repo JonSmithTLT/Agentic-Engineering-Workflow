@@ -164,6 +164,9 @@ def test_a_wait_that_timed_out_says_so_through_the_adapter(lab_project, monkeypa
     woken = lead.call("harness_wait", runs=runs, timeout_s=1)
     assert woken["result"]["timed_out"] is True and woken["result"]["next_action"] == K.wake_step(runs)
     assert K.NOT_POLLING not in lead.head[1] and lead.head[1].startswith("next: end your turn")
+    # And a status: the wait stays on offer, marked, so its readable next step is the turn's end too.
+    [wait] = [a for a in lead.status(wid)["projection"]["actions"] if a["action"] == "harness_wait"]
+    assert wait["woken"] is True
 
 
 def _named_tool(line: str) -> str:

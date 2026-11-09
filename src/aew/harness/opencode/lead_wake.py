@@ -81,8 +81,8 @@ class LeadPoster:
             return None
 
         def stamp(s: dict[str, Any], *names: str) -> float:
-            time = s.get("time") if isinstance(s.get("time"), dict) else {}
-            found = next((time[n] for n in names if time.get(n)), 0)
+            time = s.get("time")
+            found = next((time[n] for n in names if time.get(n)), 0) if isinstance(time, dict) else 0
             return float(found) if isinstance(found, (int, float)) else 0.0
 
         viewed = [s for s in listed if isinstance(s, dict) and s.get("id")

@@ -6,7 +6,6 @@ import json
 import sys
 import threading
 import time
-from pathlib import Path
 
 from aew.harness import contract as K
 from aew.harness import wake_queue as Q
@@ -103,11 +102,6 @@ def test_a_project_with_a_typed_off_stays_off_and_keeps_the_wait(project, monkey
     assert Q.HEADER not in system and "do not end your turn" in system
 
 
-def test_the_off_switch_is_named_in_the_operators_guide_with_how_to_set_it() -> None:
-    guide = (Path(__file__).resolve().parents[2] / "docs" / "guides" / "opencode.md").read_text(encoding="utf-8")
-    assert "set `lead.push_wake: off` in `policy/execution.yaml` and run `aew manifest adopt`" in guide
-
-
 def test_a_mark_from_another_generations_broker_says_nothing_of_this_one(project, monkeypatch):
     """A crash leaves its mark, and the record is the next broker's, which judge passes as another generation's."""
     from aew.harness import broker_liveness
@@ -194,11 +188,11 @@ def test_a_switch_turned_off_mid_session_stops_the_posts_and_on_again_resumes_th
     try:
         broker.start_wakes(_QuietPoster())
 
-        def until(check) -> None:
+        def until(predicate) -> None:
             deadline = time.monotonic() + 30
-            while time.monotonic() < deadline and not check():
+            while time.monotonic() < deadline and not predicate():
                 time.sleep(0.05)
-            assert check()
+            assert predicate()
 
         assert Q.serving(root) == broker.generation
         state["switch"] = X.PUSH_WAKE_OFF

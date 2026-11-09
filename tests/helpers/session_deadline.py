@@ -64,7 +64,11 @@ open. Windows' job has no such gap.
 code holding the GIL stops them too, and that process would be ended with nothing to say. ``faulthandler``'s timer runs
 on a C thread and writes every thread's stack regardless: each process arms one (``worker-<id>-deadline-stacks``,
 ``controller-deadline-stacks``), and the controller another as it finishes (``controller-after-finish-stacks``), for an
-exit that hangs. An empty one is removed, unless its process was killed from outside with the file open. Windows'
+exit that hangs. An empty one is removed, unless its process was killed from outside with the file open. The
+after-finish one can only be judged once the controller has gone, when the step may be over and the folder being
+uploaded, and a file that vanishes between an upload's listing and its read fails the job (`ENOENT`, main's run
+42537250768). So its timer writes outside that folder, and the sentinel copies in what it wrote, if anything: nothing in
+the folder disappears after the controller exits. Windows'
 watchdog uses the same one timer per process for its test timeout, so it arms the earlier of the two and puts this one
 back after each test.
 
@@ -91,6 +95,7 @@ import os
 import secrets
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import weakref
@@ -346,6 +351,8 @@ class Controller:
         self.seconds = round(self.wall - time.time(), 1)
         self.mono = time.monotonic() + (self.wall - time.time())
         self.dir = watchdog.hang_dir(config) / "autopsy" / f"session-{os.getpid()}-{secrets.token_hex(4)}"
+        # Outside every uploaded folder (module docstring); the folder's name makes it this session's alone
+        self.after_finish_file = Path(tempfile.gettempdir()) / f"aew-{self.dir.name}-{AFTER_FINISH_STACKS}"
         self.distributed = _xdist_requested(config)
         self.me = proctree.identity(os.getpid())
         self.job: Any = None
@@ -405,7 +412,7 @@ class Controller:
 
     def _spawn_sentinel(self, job_name: str | None) -> subprocess.Popen[bytes]:
         args = {"deadline_wall": self.wall, "margin": self.margin, "controller": list(self.me or (os.getpid(), 0)),
-                "dir": str(self.dir), "job": job_name}
+                "dir": str(self.dir), "job": job_name, "after_finish_file": str(self.after_finish_file)}
         kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
                                   "stderr": subprocess.DEVNULL, "close_fds": True}
         if proctree.IS_WINDOWS:  # pragma: windows-only
@@ -495,8 +502,8 @@ class Controller:
         if self.reaper is not None:
             self.reaper.stop.set()
         self.stacks.drop()
-        # For an exit that hangs from here on: half way to the sentinel's ending it. Removed by the sentinel if empty.
-        Stacks(self.dir / AFTER_FINISH_STACKS, time.monotonic() + self.margin / 2).arm()
+        # For an exit that hangs from here on: half way to the sentinel's ending it, which brings it in (docstring)
+        Stacks(self.after_finish_file, time.monotonic() + self.margin / 2).arm()
         atexit.register(faulthandler.cancel_dump_traceback_later)  # off before finalization (review of #387, m6)
         _write(self.dir, FINISHED, _stamp(f"the session finished (exit {self.exit_status}); {self.since_deadline()}"))
 
@@ -680,6 +687,7 @@ def configure(config: Any) -> None:
 class Sentinel:
     def __init__(self, args: dict[str, Any]) -> None:
         self.dir = Path(args["dir"])
+        self.after_finish_file = Path(args["after_finish_file"])
         self.margin = float(args["margin"])
         self.act_mono = time.monotonic() + (float(args["deadline_wall"]) + 2 * self.margin - time.time())
         self.controller = (int(args["controller"][0]), int(args["controller"][1]))
@@ -745,21 +753,32 @@ class Sentinel:
             time.sleep(SENTINEL_POLL_S)  # bounded: until
         return True
 
+    def _bring_in_stacks(self) -> None:
+        """The after-finish timer's stacks into the session's folder, if it wrote any. Under its own name from the first
+        byte, with no temporary file that could vanish from an upload's listing."""
+        with contextlib.suppress(OSError):
+            if text := self.after_finish_file.read_text(encoding="utf-8", errors="replace"):
+                _write(self.dir, AFTER_FINISH_STACKS, text)
+
+    def _drop_stacks_file(self) -> None:
+        with contextlib.suppress(OSError):  # still held on Windows just after an ending: one small file in the temp dir
+            self.after_finish_file.unlink()
+
     def after_finish(self) -> int:
         """``session-finished`` is written. The step isn't over until the controller has exited and nothing holds its
         output, so neither is assumed: this is the module docstring's first case."""
         self.backstop_at = time.monotonic() + 3 * self.margin  # the two waits below, and what ending them collects
         self.refresh()  # the last snapshot can be seconds old: a child just started is what this has to see (m3)
         if not self._wait(lambda: proctree.same(self.controller)):
+            self._bring_in_stacks()  # a margin on, past the timer's half: first, in case the ending is what hangs
             _write(self.dir, STUCK, _stamp("the session finished, but its controller had not exited a margin later: "
                                            f"ending the session's process set; its stacks: {AFTER_FINISH_STACKS}"))
             self.refresh()
             self.end_set("after-finish")
+            self._drop_stacks_file()
             return 0
-        with contextlib.suppress(OSError):  # it exited, so nothing hung and nothing holds the file
-            stacks = self.dir / AFTER_FINISH_STACKS
-            if stacks.stat().st_size == 0:
-                stacks.unlink()
+        self._bring_in_stacks()  # it exited, so usually nothing was written, and nothing holds the file
+        self._drop_stacks_file()
         if not self._wait(lambda: bool(self.left())):
             _write(self.dir, LEFT_RUNNING, proctree.describe(
                 self.left(), title="still running a margin after the session finished and its controller exited, "

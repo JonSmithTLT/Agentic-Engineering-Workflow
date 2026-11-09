@@ -32,6 +32,8 @@ from test_stages_ticket import DRAFT, HANG
 from aew.engine import custody_ops as CO
 from aew.engine.api import Engine
 from aew.harness import contract as K
+from aew.harness import wake_queue
+from aew.policy import execution as X
 from aew.surface import mcp, readable
 from aew.surface import run as R
 from aew.surface.context import SurfaceContext
@@ -139,7 +141,7 @@ def test_a_wait_whose_run_crashed_says_so_through_the_adapter(lab_project):
     assert lines[1].startswith("next: ") and "has no live run" in lines[1] and lines[-2:] == lines[:2]
 
 
-def test_a_wait_that_timed_out_says_so_through_the_adapter(lab_project):
+def test_a_wait_that_timed_out_says_so_through_the_adapter(lab_project, monkeypatch):
     p, _lab = lab_project
     lead = TextLead(p)
     drafted = lead.call("ticket_draft", **{**DRAFT, "expect_rev": lead.call("status")["revision"]})
@@ -157,6 +159,11 @@ def test_a_wait_that_timed_out_says_so_through_the_adapter(lab_project):
     assert timed_out["result"]["next_action"] == K.wait_step(runs, again=True)
     assert lead.head[1] == readable._one_line(f"next: {K.wait_step(runs, again=True)}")
     assert lead.head[1].startswith(f"next: {runs[0]} is still working ({K.TIMED_OUT}): {K.NOT_POLLING}.")
+    # Where a broker posts wakes, the same timeout ends the turn (the review's m10), and "do not end it" is gone.
+    monkeypatch.setattr(wake_queue, "some_broker_posts", lambda root: True)
+    woken = lead.call("harness_wait", runs=runs, timeout_s=1)
+    assert woken["result"]["timed_out"] is True and woken["result"]["next_action"] == K.wake_step(runs)
+    assert K.NOT_POLLING not in lead.head[1] and lead.head[1].startswith("next: end your turn")
 
 
 def _named_tool(line: str) -> str:
@@ -186,11 +193,12 @@ def test_a_lead_reading_only_the_text_waits_through_a_long_run_without_stopping_
     runs = [r["run"] for r in started["projection"]["runs"]]
     assert lead.head[1] == f'next: harness_wait runs={json.dumps(runs)} ({K.WAIT_RULE})'  # after a dispatch: wait
     [launched] = [s for s in started["result"]["steps"] if "launch" in s]  # the dispatch's own step says so too
-    assert launched["next_action"] == K.wait_step(runs)
+    waiting = K.no_broker_step if X.wakes_post_here({}) else K.wait_step  # wakes on, and no broker posts them here
+    assert launched["next_action"] == waiting(runs)
     lab.until(ready.exists, what=f"{runs[0]} to be working")
     e = Engine.discover(p.root)  # and what `status` and `resume` say of the running run
     [running] = e.harness_resume(e.store.current())
-    assert running["action"] == f"{runs[0]} is running for {running['invocation']}: {K.wait_step(runs)}"
+    assert running["action"] == f"{runs[0]} is running for {running['invocation']}: {waiting(runs)}"
 
     followed = []
     for _ in range(3):  # a long run: the Lead's waits time out while it works

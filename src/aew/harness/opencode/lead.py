@@ -159,12 +159,10 @@ def serve_spec(directory: Path, *, port: int = 0) -> dict[str, Any]:
 
 
 def wakes_reach_the_lead(policy: Any) -> bool:
-    """Whether AEW posts wakes here: ``lead.push_wake`` is on, and the platform isn't Windows. Windows is a declared gap
-    (register E210's note of 2026-11-08): its launch was run for real, a wake never has been, so the Lead there waits
-    with `harness_wait`, whatever the policy says."""
-    from aew.policy.execution import PUSH_WAKE_ON, push_wake
+    """Whether AEW posts wakes here (:func:`aew.policy.execution.wakes_post_here`)."""
+    from aew.policy.execution import wakes_post_here
 
-    return push_wake(policy) == PUSH_WAKE_ON and sys.platform != "win32"
+    return wakes_post_here(policy)
 
 
 def pushes_wakes(engine: Any) -> bool:
@@ -192,7 +190,7 @@ def lead_poster(policy: Any, password: str, *, url_file: Path | None = None, uni
         url = url_of(url_file) if url_file is not None else None
         return Client(url, password) if url else None
 
-    return LeadPoster(client)
+    return LeadPoster(client, since_ms=time.time() * 1000)
 
 
 class WeakerOpenCode(lead_broker.WeakerLead):

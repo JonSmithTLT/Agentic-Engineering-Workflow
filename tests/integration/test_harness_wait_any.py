@@ -24,9 +24,11 @@ from invariants import assert_control_invariants
 from aew.engine import outbox
 from aew.engine.api import Engine
 from aew.harness import contract as K
+from aew.policy import execution as X
 from aew.util import dump_yaml, load_yaml
 
 RA, RB = "R-INV-0001-1", "R-INV-0002-1"
+_waiting = K.no_broker_step if X.wakes_post_here({}) else K.wait_step  # wakes on, and no broker posts them here
 
 
 @pytest.fixture
@@ -86,7 +88,7 @@ def test_wait_any_returns_the_first_run_to_end_with_its_next_action(lab, tmp_pat
     out = finish(waiter)
     assert out["run"] == RB and not out["timed_out"] and out["still_running"] == [RA]
     assert out["status"].startswith("ended") and "next_action" in out
-    assert f"; then {K.wait_step([RA])}. Tell the operator" in out["next_action"]  # the wait goes on for RA (E122)
+    assert f"; then {_waiting([RA])}. Tell the operator" in out["next_action"]  # the wait goes on for RA (E122)
     release[RA].write_text("go", encoding="utf-8")
     assert lab.wait(RA)["run"] == RA  # the single-run form is unchanged
     assert_control_invariants(lab.project)
@@ -317,7 +319,7 @@ def test_a_wait_any_ended_by_a_cancelled_invocation_still_says_to_wait_on_the_re
     try:
         assert out["run"] == RA and out["still_running"] == [RB] and out["why"] == [K.RUN_ENDED], out
         assert "INV-0001 is cancelled" in out["next_action"], out
-        assert f"; then {K.wait_step([RB])}. Tell the operator" in out["next_action"], out
+        assert f"; then {_waiting([RB])}. Tell the operator" in out["next_action"], out
     finally:
         release[RB].write_text("go", encoding="utf-8")
         lab.wait(RB)

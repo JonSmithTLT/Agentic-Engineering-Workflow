@@ -790,6 +790,9 @@ class Engine:
     def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False) -> dict[str, Any]:
         return self._harness.harness_launch(token=token, expect_rev=expect_rev, invocation=invocation, replace=replace)
 
+    def wakes_reach_lead(self) -> bool:
+        return self._harness.wakes_reach_lead()
+
     def harness_resume(self, state: dict[str, Any]) -> list[dict[str, Any]]:
         return self._harness.harness_resume(state)
 

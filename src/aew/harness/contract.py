@@ -358,6 +358,7 @@ def continuation_text(c: LaunchContract) -> str | None:
 NOT_POLLING = "do not poll, and do not end your turn while a run works"
 WAIT_RULE = (f"it blocks until a run ends or needs you (a test that broke, a file outside its scope, a worker that "
              f"stopped); {NOT_POLLING}")
+NO_BROKER = "no broker is posting"  # what the status line and the fallback's next step both say
 RUN_ENDED = "run_ended"
 TEST_FAILED = "test_failed"
 OUT_OF_SCOPE = "out_of_scope"
@@ -449,16 +450,22 @@ def run_ended_step(action: str) -> str:
     return f"{action}. Tell the operator in a line {WAKE_GUIDE[RUN_ENDED].tell}"
 
 
+def no_broker_step(runs: list[str]) -> str:
+    """The next step where the project has wakes on and no broker is posting them (steering design r4 §1): the fallback,
+    saying why it isn't the turn's end."""
+    return f"{NO_BROKER} wakes here, so nothing would wake you: {wait_step(runs)}"
+
+
 def wake_step(runs: list[str]) -> str:
     """The next step while ``runs`` work and AEW wakes the Lead (steering design r4 §1): the turn's end."""
     return (f"end your turn: AEW wakes you when {', '.join(runs)} ends or needs you, and the operator can talk to you "
             "meanwhile. Tell the operator in a line what you started and which runs you are waiting on")
 
 
-def trigger_step(whys: list[str], run: str, others: list[str]) -> str:
-    """A trigger as a next step: each ``why``'s action in the enum's order, then the wait on the run (and the others
-    still working), then the line for the operator."""
+def trigger_step(whys: list[str], run: str, others: list[str], *, then: str | None = None) -> str:
+    """A trigger as a next step: each ``why``'s action in the enum's order, then how to follow the run (and the others
+    still working), which is ``then`` or else the wait, then the line for the operator."""
     acts = "; then ".join(f"{WAKE_GUIDE[w].act} ({w})" for w in WHY if w in whys)
     tells = "; and ".join(WAKE_GUIDE[w].tell for w in WHY if w in whys)
-    return (f"{run} needs you: {acts[0].upper()}{acts[1:]}. Then {wait_step([run, *others])}. Tell the operator in a "
-            f"line {tells}")
+    follow = then or wait_step([run, *others])
+    return f"{run} needs you: {acts[0].upper()}{acts[1:]}. Then {follow}. Tell the operator in a line {tells}"

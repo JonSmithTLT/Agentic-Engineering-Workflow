@@ -50,6 +50,7 @@ PENDING, POSTING, POSTED = "pending", "posting", "posted"
 # What a harness says of a wake it was given.
 WAITING, DELIVERED, UNKNOWN = "waiting", "delivered", "unknown"
 COUNT_KEYS = ("steps", "files", "commands", "tests")
+OFF_SWITCH = "`lead.push_wake: off` in the execution policy"
 
 
 class Poster(Protocol):
@@ -117,8 +118,15 @@ def broker_posts(aew_root: Path, generation: int) -> bool:
     from aew.harness.lead_broker import POLL_S
 
     record = broker_liveness.read(aew_root)
-    return (serving(aew_root) == generation and record is not None
+    return (serving(aew_root) == generation and record is not None and record.get("generation") == generation
             and broker_liveness.judge(record, generation=generation, poll_s=POLL_S) is None)
+
+
+def some_broker_posts(aew_root: Path) -> bool:
+    """Whether the generation that marked itself is live and posts wakes, from files alone: a wait's own results read no
+    state, since the broker's wait calls that code on every observation."""
+    generation = serving(aew_root)
+    return generation is not None and broker_posts(aew_root, generation)
 
 
 def _empty() -> dict[str, Any]:
@@ -162,7 +170,8 @@ def render(status_: Mapping[str, Any]) -> list[str]:
         said = (f"last {'delivered' if status_.get('last_delivered') else 'posted'} {last['id']} at {_when(last['at'])}"
                 + (f" to session {last['session']}" if last.get("session") else ""))
     watching = status_.get("watching") or []
-    posting = "the broker posts them" if status_.get("broker_posting") else "no broker is posting them"
+    posting = f"the broker posts them ({OFF_SWITCH} stops them)" if status_.get("broker_posting") else (
+        f"{K.NO_BROKER} them")
     lines = [f"Lead wakes: watching {', '.join(watching) or 'no run'}; {said}; {posting}"]
     wake = status_.get("outstanding")
     if wake:

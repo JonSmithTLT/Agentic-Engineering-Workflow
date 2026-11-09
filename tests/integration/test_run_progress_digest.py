@@ -14,7 +14,7 @@ from harness_conformance import FakeOpenCodeDriver
 from aew.engine.api import Engine
 from aew.harness import contract as K
 from aew.harness import progress as P
-from aew.harness import runlog
+from aew.harness import runlog, wake_queue
 
 
 @pytest.fixture
@@ -39,6 +39,24 @@ def test_a_workers_writes_reach_its_progress_digest_and_its_end_is_a_trigger(lab
     assert digest["files_touched"] == {"paths": ["calc/extra.py", "src/b/x.py"], "count": 2}
     assert digest["state"] == P.ENDED and digest["steps"] >= 2
     assert [t["why"] for t in digest["triggers"]][-1] == P.RUN_ENDED
+
+
+def test_a_trigger_tells_a_lead_that_is_woken_to_end_its_turn_and_not_to_wait(
+        lab: HarnessLab, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """The review's m10: where a broker posts wakes, a wait's trigger doesn't send the Lead back to `harness_wait`."""
+    lab.script("default", {"steps": [{"do": "write", "files": {"src/b/x.py": "Y = 2\n"}}, {"do": "hang"}],
+                           "server": {"tool_parts": True, "live_usage": {}}})
+    wid = create_planned_ticket(lab.project, tmp_path, scope=("src/a/**",))
+    launch = lab.lead("work", "assign", wid, "--launch")["launch"]
+    run = launch["run"]
+    monkeypatch.setattr(wake_queue, "some_broker_posts", lambda root: True)
+    try:
+        out = Engine.discover(lab.root).harness_wait(run, timeout=120, triggers=True)
+        assert out["next_action"] == K.trigger_step([K.OUT_OF_SCOPE], run, [], then=K.wake_step([run])), out
+        assert "harness_wait" not in out["next_action"], out
+    finally:
+        lab.lead("invoke", "cancel", launch["invocation"], "--reason", "the test is over")
+        lab.wait(run)
 
 
 def test_the_lead_catches_a_drift_and_steers_it(lab: HarnessLab, tmp_path: Path):

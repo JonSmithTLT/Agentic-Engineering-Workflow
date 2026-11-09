@@ -21,6 +21,7 @@ from invariants import assert_control_invariants
 
 from aew.harness import contract as K
 from aew.harness import procs, runlog
+from aew.policy import execution as X
 
 
 @pytest.fixture
@@ -85,7 +86,9 @@ def test_launching_a_dispatched_invocation_rotates_the_printed_credential(lab, t
     lab.script("default", IMPLEMENT)
     launched = lab.lead("harness", "launch", out["invocation"])
     assert (launched["run"], launched["superseded"]) == (f"R-{out['invocation']}-1", None)
-    assert launched["next_action"] == K.wait_step([launched["run"]])  # a launch says to wait on its run (E122)
+    # a launch says to wait on its run (E122), and why, where a project with wakes on has no broker posting them
+    waiting = K.no_broker_step if X.wakes_post_here({}) else K.wait_step
+    assert launched["next_action"] == waiting([launched["run"]])
     assert not contains_credential(str(launched))
     assert lab.aew("whoami", "--invocation-token", printed).error["code"] == "STALE_AUTHORITY"
     assert lab.wait(launched["run"])["status"] == "ended_with_evidence"

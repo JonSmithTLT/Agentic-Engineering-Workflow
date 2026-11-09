@@ -116,7 +116,13 @@ def answer(text: str, *, timeout: float = DEFAULT_TIMEOUT_S, instruction: str | 
     """The approval where Enter alone means no, rather than a refusal (the switch offer). ``instruction`` may name the
     code as ``{code}``. Raises ``PermissionDenied`` on anything else typed, a timeout or a closed terminal, and
     ``OperatorAuthorizationRequired`` with no terminal: none of those is an answer. The one approval site, so G3's
-    later in-process adapter finds it here."""
+    later in-process adapter finds it here. Input already queued isn't an answer to a prompt nobody has seen: Enter is
+    a remembered no here, so it is discarded first (review of the switch offer, point 6)."""
+    discard_typed_ahead()
+    return _answered(text, timeout=timeout, instruction=instruction, purpose=purpose)
+
+
+def _answered(text: str, *, timeout: float, instruction: str | None = None, purpose: str | None = None) -> Answer:
     code = _code()
     typed = instruction.replace("{code}", code) if instruction is not None else None
     reply = ask(challenge(code, text, instruction=typed, purpose=purpose) + "> ", timeout=timeout).strip()
@@ -129,10 +135,44 @@ def answer(text: str, *, timeout: float = DEFAULT_TIMEOUT_S, instruction: str | 
 
 def authorize(text: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, str]:
     """Block until the operator confirms at the controlling terminal, or raise. An empty answer refuses here."""
-    got = answer(text, timeout=timeout)
+    got = _answered(text, timeout=timeout)
     if got.authorization is None:
         raise PermissionDenied("operator refused or mistyped the confirmation code")
     return got.authorization
+
+
+def discard_typed_ahead() -> None:
+    """Drop what is queued at the controlling terminal. With no terminal there is nothing to drop."""
+    if IS_WINDOWS:
+        _discard_windows()
+    else:
+        _discard_posix()
+
+
+def _discard_posix() -> None:  # pragma: posix-only
+    import termios
+
+    assert sys.platform != "win32"  # narrows the os module for the type checker
+
+    try:
+        fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+    except OSError:
+        return
+    try:
+        termios.tcflush(fd, termios.TCIFLUSH)
+    except termios.error:
+        pass
+    finally:
+        os.close(fd)
+
+
+def _discard_windows() -> None:  # pragma: windows-only
+    import msvcrt
+
+    assert sys.platform == "win32"  # narrows msvcrt for the type checker
+
+    while msvcrt.kbhit():
+        msvcrt.getwch()
 
 
 def _no_terminal(detail: str) -> OperatorAuthorizationRequired:

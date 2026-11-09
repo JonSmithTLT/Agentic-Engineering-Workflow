@@ -400,6 +400,9 @@ skipped:
       list stands in and every record is labelled guarantee dev (M4-E plan v3 §2.1). Covered on Linux.
     tests/unit/test_operator_endpoint.py::test_the_endpoint_socket_lives_in_a_private_directory: >-
       the socket directory's 0700 mode is a POSIX property; Windows uses a named pipe. Covered on Linux.
+    tests/integration/test_switch_offer.py::test_enter_typed_before_the_prompt_shows_isnt_an_answer_and_one_typed_at_it_is: >-
+      A pseudo-terminal is POSIX's. That `answer` discards before it asks runs on Windows in
+      test_the_offers_answer_discards_what_was_typed_before_it_asks_and_authorize_doesnt. Covered on Linux.
     tests/integration/test_operator_endpoint_pty.py::test_pty_and_stripped_env_reach_only_the_endpoint: >-
       POSIX pty operator path (util-linux `script`) for the operator endpoint against a real same-uid Lead session; a
       Windows console would appear on the desktop. Covered on Linux; the endpoint's protocol, refusals and the Lead

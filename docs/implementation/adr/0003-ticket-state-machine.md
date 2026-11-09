@@ -201,5 +201,9 @@ until the operator changes it; AEW never changes it unasked.
 
 **Follow-on, 2026-11-08 (register F10's note):** `aew opencode` now asks. A project holding the old 1 is offered 2 at the
 operator's own terminal (`aew/switch_offer.py`); the code typed back adopts it as the operator's decision, Enter alone is
-a remembered no, and any other value is never offered. So "never unasked" stands. Because the cap is legality, the screen
-says that a stage open at that moment stops as `STALE_POLICY`.
+a remembered no, and any other value is never offered. So "never unasked" stands for every project holding a value.
+Because the cap is legality, the screen says that a stage open at that moment stops as `STALE_POLICY`.
+
+**The limit:** a project with no key isn't covered. The key isn't required, and an absent key reads as the default, so
+such a project moved from 1 to 2 when the default did, with no line and no digest move. It isn't offered, since there's
+nothing to switch to. Init has always written the key, so only a key deleted by hand gets here.

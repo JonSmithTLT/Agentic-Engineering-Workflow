@@ -105,9 +105,9 @@ The Lead's permissions: reading and searching, `aew`, and `git status|diff|log|s
 An existing project keeps what its files hold, so at `aew opencode`'s start your terminal may ask about a default AEW has
 since changed: the mutating concurrency, or a price table if the project has none. Each prompt says what changes and
 whether a stage open now would stop. Type the code it shows to take it, as your decision. Enter alone keeps what you have
-and AEW won't ask again; anything else changes nothing and asks again next start. A value you set yourself is never
-offered. `aew doctor` shows what is pending or declined, and how to take a declined one by hand. A Lead session is never
-asked.
+and AEW won't ask again; anything else changes nothing and asks again next start. A value other than AEW's old default
+is never offered. `aew doctor` shows what is pending or declined, and how to take a declined one by hand. A Lead session
+is never asked.
 
 ## 4. Runs
 

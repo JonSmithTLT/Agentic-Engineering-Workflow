@@ -117,7 +117,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 
 ## `policy`
 
-- `policy` (kept in git); written by `aew.engine.store`: `ControlStore.create`, `store_dirs`; read by `aew.dashboard.reader`: `_identity`; `aew.engine.recall`: `search_enabled`; `aew.engine.store`: `store_dirs`; `aew.policy.execution`: `load`; `aew.surface.projection`: `control_key`; `aew.switch_offer`: `_mapping`, `key_offer.edits`
+- `policy` (kept in git); written by `aew.engine.store`: `ControlStore.create`, `store_dirs`; read by `aew.dashboard.reader`: `_identity`; `aew.engine.recall`: `search_enabled`; `aew.engine.store`: `store_dirs`; `aew.policy.execution`: `load`; `aew.surface.projection`: `control_key`
 
 ## `pricing`
 
@@ -235,7 +235,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.stg02.server`: `_main` (Path.read_text)
 - `aew.stg02.world`: `Fixture.load` (Path.read_text)
 - `aew.surface.projection`: `_stat` (Path.stat)
-- `aew.switch_offer`: `_restore` (Path.exists), `_restore` (Path.read_bytes), `_table_edits` (Path.exists), `_table_opening` (Path.exists), `_take` (Path.exists), `_take` (Path.read_bytes)
+- `aew.switch_offer`: `_mapping` (Path.read_bytes), `_restore` (Path.exists), `_restore` (Path.read_bytes), `_table_edits` (Path.exists), `_table_opening` (Path.exists), `_take` (Path.exists), `_take` (Path.read_bytes), `key_offer.edits` (Path.read_bytes)
 - `aew.workspace.git`: `_signature` (os.stat), `git` (Path.is_dir), `untrusted_filters` (Path.is_file), `untrusted_filters` (Path.read_text)
 - `aew.workspace.worktrees`: `inspect` (Path.exists), `remove` (Path.exists)
 

@@ -1,0 +1,83 @@
+schema: aew/gates/v1
+mutating_concurrency: 1
+local_checks:
+- unit
+risk_paths:
+  '0':
+  - local_checks
+  '1':
+  - accepted_plan
+  - local_checks
+  - self_review
+  - review_r1
+  - verification_goal_backwards
+  - verification_contract
+  '2':
+  - accepted_plan
+  - local_checks
+  - self_review
+  - review_r1
+  - verification_goal_backwards
+  - verification_contract
+  '3':
+  - accepted_plan
+  - local_checks
+  - self_review
+  - review_r1
+  - verification_goal_backwards
+  - verification_contract
+  '4':
+  - accepted_plan
+  - local_checks
+  - self_review
+  - review_r1
+  - verification_goal_backwards
+  - verification_contract
+post_integration:
+  verification: true
+  checks:
+  - unit
+waivable_gates: []
+non_mutating_paths:
+  '0':
+  - execute_record
+  '1':
+  - accepted_plan
+  - execute_record
+  '2':
+  - accepted_plan
+  - execute_record
+  '3':
+  - accepted_plan
+  - execute_record
+  '4':
+  - accepted_plan
+  - execute_record
+parent_paths:
+  '0':
+  - children_complete
+  '1':
+  - accepted_plan
+  - children_complete
+  - review_r1
+  - verification_goal_backwards
+  - verification_contract
+  '2':
+  - accepted_plan
+  - children_complete
+  - review_r1
+  - verification_goal_backwards
+  - verification_contract
+  '3':
+  - accepted_plan
+  - children_complete
+  - review_r1
+  - verification_goal_backwards
+  - verification_contract
+  '4':
+  - accepted_plan
+  - children_complete
+  - review_r1
+  - verification_goal_backwards
+  - verification_contract
+non_mutating_concurrency: null

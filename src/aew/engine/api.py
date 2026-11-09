@@ -174,7 +174,9 @@ class ProjectAdmin:
                                         f"{'no file was ever pinned' if drift is None else ', '.join(changed)} differ; "
                                         "nothing is adopted", reason="other_files_changed", changed=changed)
             what = ", ".join(changed) + (" (policy files pinned for the first time)" if drift is None else "")
-            decision = self.k.new_decision(ctx, "manifest_adoption", f"Adopted a reviewed manual edit of {what}",
+            title = f"Adopted {what} at the switch offer" if only is not None \
+                else f"Adopted a reviewed manual edit of {what}"
+            decision = self.k.new_decision(ctx, "manifest_adoption", title,
                                          reason=reason, decided_by=dict(ctx.actor, kind="operator",
                                                                         recorded_by_lead=True, **(authorization or {})))
             ctx.state["manifest_sha256"] = sha256_bytes(raw)

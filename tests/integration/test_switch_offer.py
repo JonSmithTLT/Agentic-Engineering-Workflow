@@ -8,20 +8,28 @@ from __future__ import annotations
 
 import dataclasses
 import io
+import json
+import os
 import re
+import shlex
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 from aewflow import NOT_THE_DEFAULT_CAP, sample_project
+from conftest import run_aew
 from invariants import load_control
 
 from aew import operator, process_kind, switch_offer
+from aew.cli import main as cli
 from aew.engine import stage_intents as SI
 from aew.engine import usage_ops as O
 from aew.engine.api import Engine
-from aew.errors import PermissionDenied, StalePolicy
+from aew.errors import AEWError, PermissionDenied, StalePolicy
+from aew.harness import contract as K
 from aew.harness import lead_broker, procs
 from aew.harness.opencode import lead
 from aew.knowledge.manifest import DEFAULT_GATES
@@ -31,6 +39,7 @@ ZERO = "0" * 64
 MUTATING, TABLE = (o.switch for o in switch_offer.OFFERS)
 GATES, PRICES, MANIFEST = "policy/gates.yaml", "policy/pricing.yaml", "project.yaml"
 BOTH = [MUTATING, TABLE]
+FROZEN = Path(__file__).resolve().parents[1] / "fixtures" / "switch-offer-old-project"
 
 
 class Terminal:
@@ -132,21 +141,22 @@ def test_a_switch_offer_is_asked_only_at_the_operators_terminal_in_aew_opencode(
     assert snapshot(old, PRICES)[PRICES] is None  # asking writes nothing: it is applied with the credential
 
 
-def test_aew_lead_session_never_offers():
-    """`aew lead session` passes no ``with_token``, so nothing can be applied there."""
-    import inspect
+def test_aew_lead_session_never_offers(old, at_terminal, monkeypatch):
+    """The real command, at a terminal, on a project with both pending: nothing asks and nothing can be applied."""
+    term = at_terminal("CODE", "CODE")
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(lead_broker, "run_session", lambda engine, command, **k: seen.update(k) or {"ok": True})
+    cli.main(["-C", str(old.root), "lead", "session"])
+    assert "contained" in seen, "the command never reached the session"
+    assert term.prompts == [] and seen.get("with_token") is None
 
-    from aew.cli import commands
 
-    assert "switch_offer" not in inspect.getsource(commands) and "with_token" not in inspect.getsource(commands)
-    assert inspect.signature(lead_broker.run_session).parameters["with_token"].default is None
-
-
+@pytest.mark.parametrize("variable", ["AEW_LEAD_BROKER", "AEW_LEAD_BROKER_KEY"])
 @pytest.mark.parametrize("row", BOTH)
-def test_a_lead_session_is_never_asked_a_switch_offer(old, at_terminal, monkeypatch, row):
+def test_a_lead_session_is_never_asked_a_switch_offer(old, at_terminal, monkeypatch, row, variable):
     only_row(monkeypatch, row)
     term = at_terminal("CODE")
-    monkeypatch.setenv("AEW_LEAD_BROKER", "/synthetic/broker")
+    monkeypatch.setenv(variable, "/synthetic/broker")
     decision, out = start(old)
     assert term.prompts == [] and decision.taken == [] and out.getvalue() == ""
 
@@ -179,6 +189,21 @@ def test_a_hand_set_value_is_never_offered(old):
     assert f"switch-offer:{MUTATING}" not in doctor(old)
 
 
+def test_the_cap_is_not_offered_on_a_file_the_manifest_doesnt_put_in_force(old, at_terminal, monkeypatch):
+    """The manifest names another gates file, holding the operator's value: the old file holds nothing to switch."""
+    only_row(monkeypatch, MUTATING)
+    ours = "policy/our-gates.yaml"
+    gates = old.root / ".aew" / GATES
+    theirs = f"mutating_concurrency: {NOT_THE_DEFAULT_CAP}".encode()
+    (old.root / ".aew" / ours).write_bytes(gates.read_bytes().replace(b"mutating_concurrency: 1", theirs))
+    _manifest(old, lambda policy: policy.update(gates=ours))
+    old.adopt_policy()
+    assert b"mutating_concurrency: 1" in gates.read_bytes()
+    term = at_terminal("CODE")
+    decision, _ = start(old)
+    assert term.prompts == [] and decision.taken == [] and doctor(old) == {}
+
+
 def test_a_project_already_at_the_default_is_not_offered(tmp_path):
     p = sample_project(tmp_path)
     assert doctor(p) == {}
@@ -194,7 +219,8 @@ def test_an_absent_key_whose_default_already_holds_is_not_offered(old):
 
 def _operational_row(**kw: Any) -> switch_offer.SwitchOffer:
     """A test row on an operational key that init doesn't write, as maps' and messaging's later rows are."""
-    return switch_offer.key_offer("test_row", file=GATES, key_path=("history_audit", "test_absent"), old_values=(),
+    return switch_offer.key_offer("test_row", label="a test row", file=GATES, policy_key="gates",
+                                  key_path=("history_audit", "test_absent"), old_values=(),
                                   to_value=lambda: 9, effective=lambda v: 5 if v is switch_offer.ABSENT else v,
                                   legality=False, schema="unchecked", text=lambda o: "a test row",
                                   done=lambda o: "test row done", **kw)
@@ -206,9 +232,10 @@ def test_an_absent_key_at_an_older_effective_value_is_offered(old):
 
 
 def test_an_absent_file_is_not_offered(old):
-    row = switch_offer.key_offer("test_row", file="policy/not-there.yaml", key_path=("a",), old_values=(1,),
-                                 to_value=lambda: 2, effective=lambda v: 1, legality=False, schema="gates",
-                                 text=lambda o: "", done=lambda o: "")
+    row = switch_offer.key_offer("test_row", label="a test row", file="policy/not-there.yaml", policy_key="not_there",
+                                 key_path=("a",), old_values=(1,), to_value=lambda: 2, effective=lambda v: 1,
+                                 legality=False, schema="gates", text=lambda o: "", done=lambda o: "")
+    _manifest(old, lambda policy: policy.update(not_there="policy/not-there.yaml"))
     assert row.opening(old.root / ".aew") is None
 
 
@@ -269,7 +296,7 @@ def test_taking_the_table_adds_one_line_to_a_hand_edited_manifest_and_keeps_the_
     assert engine(old).manifest["policy"]["pricing"] == PRICES
 
 
-def test_a_manifest_it_cant_edit_as_text_is_refused_and_says_how_by_hand(old, at_terminal, monkeypatch):
+def test_an_edit_it_cant_make_is_never_asked_and_says_how_by_hand(old, at_terminal, monkeypatch):
     only_row(monkeypatch, TABLE)
     path = old.root / ".aew" / MANIFEST
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -277,9 +304,10 @@ def test_a_manifest_it_cant_edit_as_text_is_refused_and_says_how_by_hand(old, at
     old.adopt_policy()
     before = snapshot(old, PRICES, MANIFEST)
     rev = old.rev()
-    _, said = take(old, "CODE", at_terminal=at_terminal)
-    assert snapshot(old, PRICES, MANIFEST) == before and old.rev() == rev
-    assert "is unchanged" in said and "default_pricing.yaml" in said
+    term, said = take(old, "CODE", at_terminal=at_terminal)
+    assert term.prompts == [] and snapshot(old, PRICES, MANIFEST) == before and old.rev() == rev
+    assert "can't make that edit" in said and "default_pricing.yaml" in said
+    assert "default_pricing.yaml" in doctor(old)[f"switch-offer:{TABLE}"]
 
 
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
@@ -295,6 +323,14 @@ def test_an_edit_that_would_change_anything_else_is_refused():
         switch_offer.edit_key(b"policy: {gates: g}\n", ("policy", "pricing"), "p.yaml")
 
 
+@pytest.mark.parametrize("raw,key_path", [(b'"mutating_concurrency": 1\nother: 3\n', ("mutating_concurrency",)),
+                                           (b"'policy':\n  gates: g\n", ("policy", "pricing"))],
+                         ids=["leaf", "parent"])
+def test_a_quoted_key_is_refused_rather_than_given_a_second_key(raw, key_path):
+    with pytest.raises(switch_offer.HandChange, match="can't be edited as text"):
+        switch_offer.edit_key(raw, key_path, 2)
+
+
 @pytest.mark.parametrize("row", BOTH)
 def test_taking_it_adopts_as_the_operators_with_manifest_adopts_record(old, at_terminal, monkeypatch, row):
     only_row(monkeypatch, row)
@@ -305,11 +341,135 @@ def test_taking_it_adopts_as_the_operators_with_manifest_adopts_record(old, at_t
     assert len(decisions(old)) == before + 1 and record["type"] == "manifest_adoption"
     assert record["decided_by"]["kind"] == "operator" and record["decided_by"]["authorized_by"] == "operator-tty"
     assert record["reason"].startswith(f"switch offer: {row} ")
+    assert "at the switch offer" in record["summary"] and "manual edit" not in record["summary"]
     drift = engine(old).policy_pin_drift(load_control(old.root))
     assert drift == [] and engine(old).manifest_pin_ok(load_control(old.root))
 
 
+def _follow_the_hand_route(p, line: str, monkeypatch) -> None:
+    """Do what the printed line says, from the project's root, and run its command as printed."""
+    root = p.root
+    set_key = re.search(r"set (\S+) to (\S+) in (\S+);", line)
+    if set_key:
+        key, value, rel = set_key.groups()
+        path = root / rel
+        path.write_bytes(re.sub(rf"(?m)^{key}: .*$", f"{key}: {value}", path.read_bytes().decode()).encode())
+    else:
+        steps = r"copy `(.+?)` to (\S+), add `(.+?)` under `policy:` in (\S+);"
+        source, rel, entry, manifest = re.search(steps, line).groups()
+        (root / rel).write_bytes(Path(source).read_bytes())
+        path = root / manifest
+        path.write_bytes(path.read_bytes().replace(b"policy:\n", f"policy:\n  {entry}\n".encode(), 1))
+    printed = re.search(r"`(aew manifest adopt [^`]+)`", line)[1]
+    command = shlex.split(printed.replace(K.REVISION, str(p.rev())).replace("<reason>", "'by hand'"))
+    argv = command[1:]
+    monkeypatch.setenv("AEW_LEAD_TOKEN", p.token)
+    monkeypatch.setattr(operator, "ask", lambda prompt, timeout=0: re.search(r"code ([0-9A-F]{6})", prompt)[1])
+    assert cli.main(["-C", str(root), *argv]) in (0, None)
+
+
+@pytest.mark.parametrize("row", BOTH)
+def test_the_hand_route_runs_as_printed_and_takes_the_declined_switch(old, at_terminal, monkeypatch, row):
+    """The only way back from a remembered no, followed as the screen and doctor print it."""
+    only_row(monkeypatch, row)
+    _, said = take(old, "", at_terminal=at_terminal)
+    line = doctor(old)[f"switch-offer:{row}"]
+    assert line.split("To take it: ")[1].rstrip(".") in said
+    _follow_the_hand_route(old, line, monkeypatch)
+    assert doctor(old) == {}
+    state = load_control(old.root)
+    assert engine(old).policy_pin_drift(state) == [] and engine(old).manifest_pin_ok(state)
+    if row == MUTATING:
+        assert engine(old)._k.policy("gates")["mutating_concurrency"] == DEFAULT_GATES["mutating_concurrency"]
+    else:
+        assert engine(old).manifest["policy"]["pricing"] == PRICES
+        assert (old.root / ".aew" / PRICES).read_bytes() == O.bundled_table()
+
+
+@pytest.mark.parametrize("row", BOTH)
+def test_every_line_naming_the_adopt_gives_the_paths_and_flags_it_needs(old, at_terminal, monkeypatch, row):
+    only_row(monkeypatch, row)
+    adopt = f"`aew manifest adopt --reason <reason> {K.EXPECT_REV}`"
+    guard = old.root / ".aew/policy/guardrails.yaml"
+    guard.write_text(guard.read_text(encoding="utf-8") + "# an edit\n", encoding="utf-8", newline="\n")
+    assert adopt in doctor(old)[f"switch-offer:{row}"]  # the blocked line
+    old.adopt_policy()
+    _, said = take(old, "CODE", at_terminal=at_terminal)  # the line that says how to change it later
+    assert adopt in said and ".aew/" in said
+
+
 # ------------------------------------------------------------------------------- adopting only its own (rule 3)
+
+def _second_call(row: switch_offer.SwitchOffer, then: Any) -> switch_offer.SwitchOffer:
+    """The row with ``then`` run at its second ``edits``: past the start's trial and `_take`'s re-check, so what it does
+    reaches only what comes after them."""
+    calls: list[int] = []
+
+    def edits(root: Path) -> dict[str, bytes]:
+        calls.append(1)
+        if len(calls) == 2:
+            then(root)
+        return row.edits(root)
+
+    return dataclasses.replace(row, edits=edits)
+
+
+@pytest.mark.parametrize("row,own,edit", [
+    (MUTATING, GATES, lambda data: data.update(non_mutating_concurrency=7)),
+    (TABLE, MANIFEST, lambda data: data.setdefault("workspaces", {}).update(root="../somewhere-else"))])
+def test_another_edit_of_the_rows_own_file_while_the_prompt_waits_is_not_adopted_with_it(old, at_terminal, monkeypatch,
+                                                                                         row, own, edit):
+    """`only=` compares names, so the row's own file has to be seen as drifted before the row writes it."""
+    only_row(monkeypatch, row)
+    at_terminal("CODE")
+    rev = old.rev()
+    decision, out = start(old)
+    path = old.root / ".aew" / own
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    edit(data)
+    theirs = yaml.safe_dump(data, sort_keys=False).encode()
+    path.write_bytes(theirs)
+    decision.apply(old.token)
+    assert "is unchanged" in out.getvalue() and own in out.getvalue() and "changed while you answered" in out.getvalue()
+    assert path.read_bytes() == theirs and old.rev() == rev
+    assert not decisions(old)[-1]["reason"].startswith("switch offer")
+
+
+@pytest.mark.parametrize("row,theirs", [(MUTATING, GATES), (TABLE, PRICES)])
+def test_a_switch_the_operator_changed_after_answering_is_left_as_it_is(old, at_terminal, monkeypatch, row, theirs):
+    only_row(monkeypatch, row)
+    at_terminal("CODE")
+    decision, out = start(old)
+    rev = old.rev()
+    path = old.root / ".aew" / theirs
+    if row == MUTATING:
+        path.write_bytes(path.read_bytes().replace(b"mutating_concurrency: 1", b"mutating_concurrency: 7"))
+    else:
+        path.write_bytes(b"theirs\n")
+    held = path.read_bytes()
+    decision.apply(old.token)
+    assert "left as it is" in out.getvalue() and path.read_bytes() == held and old.rev() == rev
+
+
+@pytest.mark.parametrize("row", BOTH)
+def test_an_unadopted_manifest_refuses_and_is_named(old, at_terminal, monkeypatch, row):
+    only_row(monkeypatch, row)
+    path = old.root / ".aew" / MANIFEST
+    path.write_bytes(path.read_bytes() + b"# an edit nobody adopted\n")
+    term = at_terminal("CODE")
+    decision, out = start(old)
+    assert term.prompts == [] and decision.taken == [] and MANIFEST in out.getvalue()
+    assert MANIFEST in doctor(old)[f"switch-offer:{row}"]
+
+
+def test_a_row_whose_own_file_has_an_unadopted_edit_is_not_asked(old, at_terminal, monkeypatch):
+    only_row(monkeypatch, MUTATING)
+    gates = old.root / ".aew" / GATES
+    gates.write_bytes(gates.read_bytes() + b"# a note\n")
+    term = at_terminal("CODE")
+    _, out = start(old)
+    assert term.prompts == [] and GATES in out.getvalue()
+
 
 @pytest.mark.parametrize("row", BOTH)
 def test_any_other_drift_refuses_and_lists_it(old, at_terminal, monkeypatch, row):
@@ -327,15 +487,16 @@ def test_any_other_drift_refuses_and_lists_it(old, at_terminal, monkeypatch, row
 def test_a_drift_after_the_check_is_refused_inside_the_adopt_and_leaves_neither_file(old, at_terminal, monkeypatch, row,
                                                                                      files):
     """A real refusal, by `only=` inside the real adoption's transaction."""
-    only_row(monkeypatch, row)
+    guard = old.root / ".aew/policy/guardrails.yaml"
+    edited = guard.read_text(encoding="utf-8") + "# arrived after the check\n"
+    monkeypatch.setattr(switch_offer, "OFFERS", (_second_call(_rows(row)[0],
+                                                              lambda _: guard.write_text(edited, encoding="utf-8",
+                                                                                         newline="\n")),))
     before = snapshot(old, *files)
     rev = old.rev()
     term = at_terminal("CODE")
     decision, out = start(old)
     assert term.prompts
-    guard = old.root / ".aew/policy/guardrails.yaml"
-    edited = guard.read_text(encoding="utf-8") + "# arrived after the check\n"
-    guard.write_text(edited, encoding="utf-8", newline="\n")
     decision.apply(old.token)
     assert "is unchanged" in out.getvalue() and "policy/guardrails.yaml" in out.getvalue()
     assert snapshot(old, *files) == before and old.rev() == rev
@@ -383,6 +544,21 @@ def test_a_failed_adopt_leaves_a_file_someone_else_changed(old, at_terminal, mon
     assert PRICES in out.getvalue() and "left as it is" in out.getvalue()
 
 
+def test_a_file_it_could_not_put_back_is_named_as_that(old, at_terminal, monkeypatch):
+    only_row(monkeypatch, TABLE)
+    at_terminal("CODE")
+    decision, out = start(old)
+
+    def refused(self: Path, **_: Any) -> None:
+        raise PermissionError("the file is locked")
+
+    monkeypatch.setattr(Path, "unlink", refused)
+    decision.apply("synthetic-not-the-lead")
+    monkeypatch.undo()
+    assert PRICES in out.getvalue() and "could not be put back" in out.getvalue()
+    assert "changed since" not in out.getvalue()
+
+
 def test_only_refuses_a_never_pinned_project_where_an_adopt_would_pin_everything(old):
     from aew.engine.store import serialize_control
     from aew.errors import IllegalTransition
@@ -415,6 +591,61 @@ def test_authorize_still_refuses_an_empty_answer(monkeypatch):
         operator.authorize("adopt this")
 
 
+def test_the_offers_answer_discards_what_was_typed_before_it_asks_and_authorize_doesnt(monkeypatch):
+    seen: list[str] = []
+    monkeypatch.setattr(operator, "discard_typed_ahead", lambda: seen.append("discard"))
+
+    def reply(prompt: str, timeout: float = 0) -> str:
+        seen.append("ask")
+        return re.search(r"code ([0-9A-F]{6})", prompt)[1]
+
+    monkeypatch.setattr(operator, "ask", reply)
+    operator.answer("switch")
+    assert seen == ["discard", "ask"]
+    seen.clear()
+    operator.authorize("adopt this")  # its behaviour is unchanged: an empty answer only refuses there
+    assert seen == ["ask"]
+
+
+TYPED_AHEAD = """
+import os, select, sys, time
+pid, fd = os.forkpty()
+if pid == 0:
+    time.sleep(1.0)  # the start's earlier steps
+    from aew import operator
+    got = operator.answer("a switch", instruction="Type {code} and Enter", purpose="x", timeout=20)
+    os.write(1, f"RESULT declined={got.declined}".encode())
+    os._exit(0)
+os.write(fd, b"\\n")  # typed before any prompt
+buf, sent, end = b"", 0.0, time.time() + 25
+while time.time() < end and b"RESULT" not in buf:
+    if select.select([fd], [], [], 0.2)[0]:
+        try:
+            buf += os.read(fd, 4096)
+        except OSError:
+            break
+    if b"Type " in buf and not sent:
+        sent = time.time() + 1.5
+    if sent and time.time() > sent:  # nothing came of the first Enter: now one typed at the prompt
+        sys.stdout.write("NOTHING READ BEFORE THE PROMPT\\n" if b"RESULT" not in buf else "")
+        os.write(fd, b"\\n")
+        sent = end
+    time.sleep(0.05)
+os.waitpid(pid, 0)
+sys.stdout.write(buf.decode("utf-8", "replace"))
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a pseudo-terminal is POSIX's")
+def test_enter_typed_before_the_prompt_shows_isnt_an_answer_and_one_typed_at_it_is():
+    """A real pty: the second prompt of a start can meet an Enter meant for the first."""
+    env = {**{k: v for k, v in os.environ.items() if not k.startswith("GIT_")}}
+    done = subprocess.run([sys.executable, "-c", TYPED_AHEAD], capture_output=True, text=True, env=env, timeout=60,
+                          stdin=subprocess.DEVNULL)
+    assert "NOTHING READ BEFORE THE PROMPT" in done.stdout, done.stdout + done.stderr
+    assert "RESULT declined=True" in done.stdout, done.stdout + done.stderr
+
+
 def test_enter_alone_never_authorizes_and_only_the_code_does(monkeypatch):
     monkeypatch.setattr(operator, "ask", lambda prompt, timeout=0: "  ")
     assert operator.answer("switch") == operator.Answer(None, True)
@@ -428,15 +659,16 @@ def test_enter_alone_never_authorizes_and_only_the_code_does(monkeypatch):
 def test_the_switch_prompt_names_what_changes_and_no_credential_destination(old, at_terminal):
     term = at_terminal("", "")
     start(old)
-    named = (f"{GATES} mutating_concurrency", "project.yaml policy.pricing")
+    named = (f".aew/{GATES} mutating_concurrency", f".aew/{MANIFEST} policy.pricing")
     for prompt, changes in zip(term.prompts, named, strict=True):
         assert "credential to" not in prompt and changes in prompt
         assert "Enter alone keeps" in prompt and "won't ask again" in prompt
     assert "Enter alone keeps 1" in term.prompts[0] and "Enter alone keeps no table" in term.prompts[1]
 
 
-def test_a_declined_offer_is_not_asked_again_and_doctor_keeps_showing_it(old, at_terminal, monkeypatch):
-    only_row(monkeypatch, MUTATING)
+@pytest.mark.parametrize("row", BOTH)
+def test_a_declined_offer_is_not_asked_again_and_doctor_keeps_showing_it(old, at_terminal, monkeypatch, row):
+    only_row(monkeypatch, row)
     term = at_terminal("")
     decision, out = start(old)
     assert decision.taken == [] and "won't ask again" in out.getvalue()
@@ -444,8 +676,24 @@ def test_a_declined_offer_is_not_asked_again_and_doctor_keeps_showing_it(old, at
     again = at_terminal("CODE")
     start(old)
     assert again.prompts == []
-    assert "Declined switch" in doctor(old)[f"switch-offer:{MUTATING}"]
+    assert "Declined switch" in doctor(old)[f"switch-offer:{row}"]
     assert (old.root / ".aew/local/switch-offers.json").is_file()
+    label = _rows(row)[0].label
+    assert f"{label} keeps" in out.getvalue() and f"{row} keeps" not in out.getvalue()
+
+
+@pytest.mark.parametrize("row", BOTH)
+def test_a_process_that_cant_read_the_answers_says_so_rather_than_pending(old, at_terminal, monkeypatch, row):
+    """A contained Lead's `aew doctor` runs in its sandbox, where `.aew/local` is masked: stood in for by moving it."""
+    only_row(monkeypatch, row)
+    at_terminal("")
+    start(old)
+    memory = old.root / ".aew/local/switch-offers.json"
+    memory.rename(memory.with_suffix(".away"))
+    assert "Answered at" in doctor(old)[f"switch-offer:{row}"]
+    with process_kind.declared_as("aew (contained Lead)"):
+        line = doctor(old)[f"switch-offer:{row}"]
+    assert "already answered" in line and "Answered at" not in line
 
 
 @pytest.mark.parametrize("answers,taken,left_pending", [
@@ -460,8 +708,9 @@ def test_each_answer_stands_alone(old, at_terminal, answers, taken, left_pending
 
 @pytest.mark.parametrize("reply", ["wrong", PermissionDenied("operator authorization timed out")],
                          ids=["wrong_code", "timeout"])
-def test_a_wrong_code_or_a_timeout_is_not_remembered(old, at_terminal, monkeypatch, reply):
-    only_row(monkeypatch, MUTATING)
+@pytest.mark.parametrize("row", BOTH)
+def test_a_wrong_code_or_a_timeout_is_not_remembered(old, at_terminal, monkeypatch, reply, row):
+    only_row(monkeypatch, row)
     at_terminal(reply)
     decision, out = start(old)
     assert decision.taken == [] and "asked again next start" in out.getvalue()
@@ -471,8 +720,9 @@ def test_a_wrong_code_or_a_timeout_is_not_remembered(old, at_terminal, monkeypat
     assert len(term.prompts) == 1
 
 
-def test_a_damaged_memory_reads_as_no_answers(old, at_terminal, monkeypatch):
-    only_row(monkeypatch, MUTATING)
+@pytest.mark.parametrize("row", BOTH)
+def test_a_damaged_memory_reads_as_no_answers(old, at_terminal, monkeypatch, row):
+    only_row(monkeypatch, row)
     path = old.root / ".aew/local/switch-offers.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"{not json")
@@ -562,7 +812,8 @@ def test_after_adopt_runs_after_the_commit_and_cannot_undo_it(old, at_terminal, 
 
     rev = old.rev()
     row = switch_offer.key_offer(
-        "test_row", file=GATES, key_path=("history_audit", "max_unverified_entries"), old_values=(5,),
+        "test_row", label="a test row", file=GATES, policy_key="gates",
+        key_path=("history_audit", "max_unverified_entries"), old_values=(5,),
         to_value=lambda: 9, effective=lambda v: v, legality=False, schema="gates", text=lambda o: "a test row",
         done=lambda o: "done", after_adopt=after)
     gates = old.root / ".aew" / GATES
@@ -619,55 +870,140 @@ def test_the_offer_reaches_the_adopt_with_a_token_on_both_acquire_paths(old, at_
     assert decisions(old)[-1]["reason"].startswith(f"switch offer: {TABLE} ")
 
 
-def test_aew_opencode_wires_the_offer_into_the_session_on_the_start_path_it_takes(monkeypatch, tmp_path):
-    """Asked at `aew opencode`'s start, and what was taken is what the session is given."""
+@pytest.mark.parametrize("contained,steps", [(True, ["readiness", "provider", "tools", "offer", "session"]),
+                                              (False, ["readiness", "tools", "offer", "session"])],
+                         ids=["contained", "uncontained"])
+def test_aew_opencode_wires_the_offer_into_the_session_on_the_start_path_it_takes(monkeypatch, tmp_path, contained,
+                                                                                  steps):
+    """Asked at `aew opencode`'s start on both paths, after everything else that can refuse and before the seat, and
+    what was taken is what the session is given. Linux's only start is the contained one."""
     seen: dict[str, Any] = {}
+    order: list[str] = []
     made = switch_offer.Decision()
+
+    class Lead:
+        def __init__(self, *_: Any, **__: Any) -> None:
+            pass
+
+        def announce(self, _out: Any) -> None:
+            pass
+
+        def require_provider(self) -> None:
+            order.append("provider")
+
+    def offers(engine: Any, out: Any) -> switch_offer.Decision:
+        order.append("offer")
+        return made
+
+    def session(engine: Any, argv: Any, **k: Any) -> dict[str, Any]:
+        order.append("session")
+        seen.update(k)
+        return {"ok": True}
+
     monkeypatch.setenv("AEW_LEAD_TOKEN", "synthetic-not-a-token")
     monkeypatch.setenv("OPENCODE_DB", str(tmp_path / "no-login.db"))
-    monkeypatch.setattr(lead, "contained_here", lambda: False)
+    monkeypatch.setattr(lead, "contained_here", lambda: contained)
+    monkeypatch.setattr(lead, "ContainedLead", Lead)
     monkeypatch.setattr(lead, "check_version", lambda: "2.2.6")
     monkeypatch.setattr(lead, "guide_of", lambda engine: "")
     monkeypatch.setattr(lead, "command", lambda engine, extra: ["opencode"])
-    monkeypatch.setattr(switch_offer, "at_lead_start", lambda engine, out: made)
-    monkeypatch.setattr(lead_broker, "run_session", lambda engine, argv, **k: seen.update(k) or {"ok": True})
+    monkeypatch.setattr(lead, "_readiness", lambda engine: order.append("readiness"))
+    monkeypatch.setattr(lead, "_tools_before_the_tui", lambda **k: order.append("tools"))
+    monkeypatch.setattr(switch_offer, "at_lead_start", offers)
+    monkeypatch.setattr(lead_broker, "run_session", session)
     engine_ = type("E", (), {"execution_policy": lambda self: ({"containment": {"mode": "allow_weaker"}}, None)})()
     lead.run(engine_, acquire=False, session_label=None, keep_seat=False, provider_env=[], extra_args=[],
              print_config=False)
     assert seen["with_token"] == made.apply
+    assert order == steps
 
 
-def test_a_start_refused_after_the_answer_writes_nothing(old, at_terminal, monkeypatch):
-    only_row(monkeypatch, TABLE)
-    before = snapshot(old, PRICES, MANIFEST)
+def test_aew_doctor_shows_the_offer_through_the_real_command(old):
+    res = run_aew("-C", str(old.root), "doctor", "--json")
+    rows = {r["check"]: r for r in json.loads(res.stdout)["checks"]}
+    assert rows[f"switch-offer:{MUTATING}"]["status"] == "PASS"
+    assert "Switch offer: mutating concurrency, 1 -> " in rows[f"switch-offer:{MUTATING}"]["detail"]
+    assert "Switch offer: the price table, no table -> " in rows[f"switch-offer:{TABLE}"]["detail"]
+
+
+@pytest.mark.parametrize("row", BOTH)
+def test_a_start_refused_after_the_answer_writes_nothing(old, at_terminal, monkeypatch, row):
+    """A real refusal: the real session, asked to acquire a seat that is really held."""
+    only_row(monkeypatch, row)
+    _fake_session(monkeypatch)
+    before = snapshot(old, GATES, PRICES, MANIFEST)
     rev = old.rev()
     at_terminal("CODE")
     decision, _ = start(old)
-    assert decision.taken  # and `apply` never runs: the start was refused here
-    assert snapshot(old, PRICES, MANIFEST) == before and old.rev() == rev
+    assert decision.taken
+    monkeypatch.delenv("AEW_LEAD_TOKEN", raising=False)
+    with pytest.raises(AEWError):
+        lead_broker.run_session(decision.engine, ["harness"], acquire=True, session_label=None, keep_seat=True, env={},
+                                contained=_contained, with_token=decision.apply)
+    assert snapshot(old, GATES, PRICES, MANIFEST) == before and old.rev() == rev
     term = at_terminal("")
     start(old)
     assert len(term.prompts) == 1  # asked again
+
+
+def test_a_project_init_really_wrote_before_the_defaults_moved_takes_both_and_ends_clean(old, at_terminal):
+    """The files `aew init` wrote at the commit before either default moved, frozen: what an existing project really
+    holds, where `old` builds its files from today's. Only these two: no row reads the rest."""
+    for name, rel in (("gates.yaml", GATES), (MANIFEST, MANIFEST)):
+        (old.root / ".aew" / rel).write_bytes((FROZEN / name).read_bytes())
+    old.adopt_policy()
+    assert [s.offer.switch for s in switch_offer.standings(engine(old))] == BOTH
+    term, said = take(old, "CODE", "CODE", at_terminal=at_terminal)
+    assert len(term.prompts) == 2 and doctor(old) == {}, said
+    state = load_control(old.root)
+    assert engine(old).policy_pin_drift(state) == [] and engine(old).manifest_pin_ok(state)
+    assert engine(old)._k.policy("gates")["mutating_concurrency"] == DEFAULT_GATES["mutating_concurrency"]
+    assert engine(old).manifest["policy"]["pricing"] == PRICES
 
 
 def test_nothing_about_the_offer_stops_the_start(old, at_terminal, monkeypatch):
     def boom(_root: Path) -> None:
         raise RuntimeError("a broken row")
 
-    row = switch_offer.SwitchOffer(switch="broken", legality=False, opening=boom, edits=boom, text=lambda o: "",
-                                   changes="", done=lambda o: "", by_hand="")
+    row = switch_offer.SwitchOffer(switch="broken", label="broken", legality=False, opening=boom, edits=boom,
+                                   text=lambda o: "", changes="", done=lambda o: "", by_hand=lambda o: "")
     monkeypatch.setattr(switch_offer, "OFFERS", (row,))
     at_terminal("CODE")
     decision, out = start(old)
     assert decision.taken == [] and "could not be read" in out.getvalue()
 
-    good = dataclasses.replace(row, opening=lambda _r: switch_offer.Opening("a", "b"), text=lambda o: "t")
-    monkeypatch.setattr(switch_offer, "OFFERS", (good,))
+    fine = dataclasses.replace(row, opening=lambda _r: switch_offer.Opening("a", "b"), edits=lambda _r: {},
+                               text=lambda o: "t")
+    monkeypatch.setattr(switch_offer, "OFFERS", (_second_call(fine, boom),))
     at_terminal("CODE")
     decision, out = start(old)
     assert len(decision.taken) == 1
-    decision.apply(old.token)  # edits raises RuntimeError: said, never raised
-    assert "the broken offer failed" in out.getvalue()
+    decision.apply(old.token)  # the second edits raises RuntimeError: said, never raised
+    assert "the offer for broken failed" in out.getvalue()
+
+
+def test_a_row_that_breaks_ends_that_row_and_not_the_next(old, at_terminal, monkeypatch):
+    first, second = switch_offer.OFFERS
+
+    def boom(_opening: Any) -> str:
+        raise RuntimeError("a row's text")
+
+    monkeypatch.setattr(switch_offer, "OFFERS", (dataclasses.replace(first, text=boom), second))
+    term = at_terminal("")
+    _, out = start(old)
+    assert "could not be read" in out.getvalue() and len(term.prompts) == 1
+
+
+def test_an_edit_that_stops_being_possible_after_the_answer_says_how_by_hand(old, at_terminal, monkeypatch):
+    row = _rows(TABLE)[0]
+
+    def hand(_root: Path) -> None:
+        raise switch_offer.HandChange("it can't be edited now")
+
+    monkeypatch.setattr(switch_offer, "OFFERS", (_second_call(row, hand),))
+    rev = old.rev()
+    _, said = take(old, "CODE", at_terminal=at_terminal)
+    assert "is unchanged: it can't be edited now" in said and "default_pricing.yaml" in said and old.rev() == rev
 
 
 def test_to_value_is_the_owners_default(old, monkeypatch):

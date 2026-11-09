@@ -7,4 +7,6 @@ Only the operator's own terminal is asked; a Lead session and an agent's own `ae
 needs typing back, and Enter alone is a remembered no, shown by `aew doctor`. It adopts only its own files (`manifest_adopt`'s
 `only=`), and a failed adoption leaves none of them behind. Nothing about it can stop the start.
 
-**Limit.** A 1 typed by hand can't be told from init's 1. The screen shows the value held, and a no is remembered.
+**Limits.** A 1 typed by hand can't be told from init's 1. The screen shows the value held, and a no is remembered. A
+project with no key moved to 2 when the default did, unasked: an absent key reads as the default, so there's nothing to
+offer. Init has always written the key, so only a key deleted by hand gets here.

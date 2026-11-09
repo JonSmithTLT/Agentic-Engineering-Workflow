@@ -156,10 +156,22 @@ def test_the_cli_escape_expands_fields_from_its_own_stdin(held):
                        "stdin": "next: 'from fields: $1 `x`'\n"}, profile="recovery")
     assert out["ok"], out["stopped"]
     assert _rev(engine) == rev + 1 and engine.store.read()["next_action"] == "from fields: $1 `x`"
-    (p.root / "fields.yaml").write_text("next: from a file\n", encoding="utf-8")  # a FILE is read from the project
-    out = call("cli", {"argv": ["checkpoint", "--expect-rev", str(rev + 1), "--fields", "fields.yaml"]},
-               profile="recovery")
-    assert out["ok"] and engine.store.read()["next_action"] == "from a file"
+
+
+def test_the_cli_escape_takes_text_and_says_so_when_given_a_path(held):
+    p, wid, engine, broker = held
+    rev = _rev(engine)
+    (p.root / "fields.yaml").write_text("next: from a file\n", encoding="utf-8")
+    for argv in (["checkpoint", "--expect-rev", str(rev), "--fields", "fields.yaml"],
+                 ["checkpoint", "--expect-rev", str(rev), "--next", "x", "--note-file", "fields.yaml"]):
+        out = call("cli", {"argv": argv}, profile="recovery")
+        assert not out["ok"] and out["stopped"]["error"]["code"] == "USAGE", out["stopped"]
+        assert "give - as the file" in out["stopped"]["error"]["message"], out["stopped"]
+        assert _rev(engine) == rev
+    out = call("cli", {"argv": ["checkpoint", "--expect-rev", str(rev), "--next", "x", "--note-file", "-"],
+                       "stdin": "the note"}, profile="recovery")
+    assert out["ok"], out["stopped"]
+    assert "the note" in (engine.aew_root / "state" / "HANDOFF.md").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(("argv", "stdin", "code", "because"), [

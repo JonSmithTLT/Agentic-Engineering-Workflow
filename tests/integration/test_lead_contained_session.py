@@ -15,6 +15,7 @@ import sqlite3
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -108,6 +109,38 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         assert ((steps[3].get("stderr_json") or {}).get("error") or {}).get("code") == "USAGE"
         assert steps[4]["stdout_json"]["lead_note"] == "dispatch T-0001 with --launch"
         assert steps[5] == {"readable": False, "error": "FileNotFoundError"}  # the login store is masked
+    finally:
+        lab.cleanup()
+
+
+def test_a_relayed_file_argument_is_read_where_the_client_runs(tmp_path):
+    """The client reads a file argument and sends its text. A file it can read is taken; one it can't is refused by the
+    client, and the broker stores nothing of it."""
+    lab, tui = make_lab(tmp_path)
+    try:
+        home = synthetic_home(tmp_path, {"anthropic": KEYS["anthropic"]})
+        unreadable = tmp_path / "not-for-the-client.txt"
+        unreadable.write_text("text the client cannot read", encoding="utf-8")
+        client_side = "/tmp/client-side.txt"  # noqa: S108 - a private /tmp
+        assert not Path(client_side).exists()
+        (tui / "mode").write_text("agent")
+        (tui / "tui-script.json").write_text(json.dumps([
+            {"do": "touch", "path": client_side, "text": "written where the client runs"},
+            {"do": "lead", "args": ["checkpoint", "--next", "x", "--note-file", client_side]},
+            {"do": "read", "path": str(unreadable)},
+            {"do": "lead", "args": ["checkpoint", "--next", "y", "--note-file", str(unreadable)]},
+            {"do": "lead", "args": ["checkpoint", "--next", "z", "--note-file=-"], "stdin": "piped from the shell"}]))
+        done = at_the_terminal(lab, home)
+        assert done["code"] == 0, done["stderr"][-3000:]
+        steps = {e["i"]: e["result"] for e in map(json.loads, (tui / "tui.jsonl").read_text().splitlines())}
+        assert steps[1]["exit"] == 0, steps[1]
+        assert steps[2]["readable"] is False, steps[2]  # the check below needs a file the client cannot read
+        assert steps[3]["exit"] != 0, steps[3]
+        assert steps[3]["stderr_json"]["error"]["code"] == "USAGE" and "cannot read" in steps[3]["stderr"], steps[3]
+        assert steps[4]["exit"] == 0, steps[4]
+        stored = "\n".join(f.read_text(encoding="utf-8") for f in (lab.aew_root / "state" / "handoffs").glob("*.md"))
+        assert "written where the client runs" in stored and "piped from the shell" in stored
+        assert "text the client cannot read" not in stored
     finally:
         lab.cleanup()
 

@@ -338,15 +338,26 @@ LEAD_MCP_SERVER = SERVER_NAME
 
 def lead_mcp_command() -> list[str]:
     """The Lead's MCP server's argv: this process's own interpreter and `aew` (E180). A bare `aew lead mcp` ran
-    whichever `aew` was first on the path (a development copy, another virtual environment, an upgrade mid-session),
-    and the Lead's typed tools then failed with only "connection closed". The import path is pinned with
-    :func:`lead_mcp_environment`, as the engine pins its own Python children's (``procs.engine_imports``)."""
+    whichever `aew` was first on the path (a development copy, another virtual environment), and the Lead's typed tools
+    then failed with only "connection closed". The import path is pinned with :func:`lead_mcp_environment`, as the
+    engine pins its own Python children's (``procs.engine_imports``).
+
+    This pins the server and nothing else. An upgrade in place keeps the interpreter and the import root, so a server
+    started after it runs the new code beside this process's old code. The Lead's shell `aew` is still the console
+    script beside the interpreter (``lead.tui_env``), with no pinned import path, so with another tree's editable
+    install its commands run that tree while its typed tools run this one (review of #384, finding 5)."""
     return [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "lead", "mcp"]
 
 
 def lead_mcp_environment() -> dict[str, str]:
     """The MCP server's own variables, over the session's environment that OpenCode passes it: the import path of the
-    `aew` this process runs, and nothing else (it holds no credential)."""
+    `aew` this process runs, and nothing else (it holds no credential).
+
+    Inside the contained Lead's sandbox this path is only there if the sandbox shows it: the interpreter's prefix has a
+    bind of its own (``layout.for_run``) and this path has none, so a copy of `aew` under a directory the sandbox makes
+    fresh (`/tmp`, `/run`) is absent, and `-m aew` takes the environment's own `aew` or the server fails with
+    "connection closed". The limit is stated and not bound away: such a bind would show the sandbox a host path chosen
+    by where the code happens to be (review of #384, finding 4)."""
     return procs.engine_imports({})
 
 

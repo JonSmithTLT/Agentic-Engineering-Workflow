@@ -206,6 +206,22 @@ def test_each_timer_sits_half_way_past_its_own_process_acting(tmp_path, workers,
     assert worker.stacks.at_mono == pytest.approx(worker.mono + 2.0)
 
 
+def test_the_holders_check_reads_this_sessions_files_before_any_earlier_sessions(tmp_path, monkeypatch):
+    """Review of #387's quick check, f1. It reads a capped number of files, and a local hang directory keeps growing."""
+    own = tmp_path / "autopsy" / "session-9-b"
+    older = tmp_path / "autopsy" / "session-1-a"
+    own.mkdir(parents=True)
+    older.mkdir()
+    (own / "mine.txt").write_text("x", encoding="utf-8")
+    for name in "abc":
+        (older / f"{name}.txt").write_text("x", encoding="utf-8")
+    asked: list[str] = []
+    monkeypatch.setattr(session_deadline, "HOLDER_FILES", 2)
+    monkeypatch.setattr(proctree, "holders", lambda paths: asked.extend(paths) or {})
+    session_deadline._holders_text(own, [])
+    assert asked == [str(own / "mine.txt"), str(older / "a.txt")]
+
+
 def test_two_sessions_with_one_pid_have_two_directories(tmp_path):
     """Review of #387, M1: pids are reused, so the session's directory is not named by its pid alone."""
     config = SimpleNamespace(option=SimpleNamespace(numprocesses=None),
@@ -478,3 +494,58 @@ def test_a_job_whose_timeout_does_not_carry_the_clearance_is_named(tmp_path):
                                                                    "gone": 30, "no_deadline": 5}})
     assert [p.split(":")[0] for p in stale] == ["w.yml short", "w.yml gone", "w.yml no_deadline"], stale
     assert "no such job" in stale[1] and "sets no AEW_JOB_DEADLINE" in stale[2]
+
+
+# ------------------------------------------------------------------------- what the sentinel says, whatever the load
+# The end-to-end tests (tests/integration/test_hang_autopsy.py) hold that a session is ended, by real processes under
+# 1 s margins. What the sentinel writes as it ends one is here, with nothing to race and no process to end: a margin
+# nothing reaches, an empty snapshot and no job.
+
+
+def _sentinel(tmp_path: Path, *, margin: float = 600.0) -> session_deadline.Sentinel:
+    me = proctree.identity(os.getpid())
+    assert me is not None
+    session = tmp_path / "hangs" / "autopsy" / "session-1-ab"
+    session.mkdir(parents=True)
+    return session_deadline.Sentinel({"deadline_wall": time.time() + 3600, "margin": margin, "controller": list(me),
+                                      "dir": str(session), "job": None,
+                                      "after_finish_file": str(tmp_path / "outside.txt")})
+
+
+def test_the_backstop_says_what_it_did(tmp_path, monkeypatch):
+    sentinel = _sentinel(tmp_path)
+    exits = []
+    monkeypatch.setattr(session_deadline.os, "_exit", exits.append)
+    sentinel.backstop_at = time.monotonic() - 1
+    sentinel._backstop()
+    assert exits == [0]
+    said = (sentinel.dir / "sentinel-backstop.txt").read_text(encoding="utf-8")
+    assert "had not ended the session by its time" in said and "ended 0 of 0 matching members" in said
+
+
+def test_a_sentinel_acting_at_the_deadline_says_so_and_records_the_set_it_ended(tmp_path, monkeypatch):
+    sentinel = _sentinel(tmp_path)
+    monkeypatch.setattr(session_deadline.Sentinel, "_backstop", lambda self: None)
+    # The set stays empty: the "controller" is this test's own process, which must not be ended.
+    monkeypatch.setattr(session_deadline.Sentinel, "refresh", lambda self: None)
+    sentinel.act_mono = time.monotonic() - 1
+    assert sentinel.run() == 0
+    assert "written by the sentinel" in (sentinel.dir / "session-deadline.txt").read_text(encoding="utf-8")
+    assert (sentinel.dir / "sentinel-processes-deadline.txt").exists()
+    assert "(deadline)" in (sentinel.dir / "sentinel-log.txt").read_text(encoding="utf-8")
+
+
+def test_a_stuck_controllers_stacks_are_in_the_folder_before_the_set_is_ended(tmp_path, monkeypatch):
+    """Review of #392, m3: the ending may hang, or end what's holding the file, so they come first."""
+    sentinel = _sentinel(tmp_path, margin=0.01)  # the "controller" is this process, so it never exits in time
+    sentinel.after_finish_file.write_text("the stack of what held it\n", encoding="utf-8")
+    monkeypatch.setattr(session_deadline.Sentinel, "refresh", lambda self: None)
+    seen = []
+
+    def end_set(self: session_deadline.Sentinel, why: str) -> None:
+        seen.append((why, (self.dir / session_deadline.AFTER_FINISH_STACKS).read_text(encoding="utf-8")))
+
+    monkeypatch.setattr(session_deadline.Sentinel, "end_set", end_set)
+    assert sentinel.after_finish() == 0
+    assert seen == [("after-finish", "the stack of what held it\n")]
+    assert "the session finished, but" in (sentinel.dir / "stuck-after-finish.txt").read_text(encoding="utf-8")

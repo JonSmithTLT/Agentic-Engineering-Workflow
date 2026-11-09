@@ -223,7 +223,8 @@ def test_a_reachable_socket_whose_holder_cannot_be_identified_fails_row_2_naming
     identify is a credential; the row fails, naming the socket and the remedy, and records the unreadable process."""
     row = probe._row2(LAYOUT, REACHED)
     assert row["ok"] is False
-    assert row["reason"] == ("a credential socket is reachable: /home/u/tools/svc.sock" + probe.UNIDENTIFIED_REMEDY)
+    assert row["reason"] == ("a credential socket is reachable: /home/u/tools/svc.sock"
+                             + probe._unidentified_remedy([UNKNOWN_HOLDER["path"]], probe._host_masks(LAYOUT)))
     assert row["sockets"] == [{"path": UNKNOWN_HOLDER["path"], "class": sockets.CREDENTIAL,
                                "inside": [UNKNOWN_HOLDER["path"]], "holder": sockets.UNIDENTIFIED}]
     assert row["unreadable_processes"] == [{"pid": 11, "name": "svc"}]
@@ -238,9 +239,54 @@ def test_doctor_names_a_socket_whose_holder_cannot_be_identified_and_the_remedy(
     status, detail = C.doctor({"containment": {"mode": "required"}}, "unsupported")
     assert status == "FAIL" and "/home/u/tools/svc.sock" in detail
     # The remedy claims nothing the launcher couldn't see: the holder may not be a process it can name, or stop.
-    assert ("if you know what serves it, stop that or have it listen under a masked path; otherwise set "
+    assert ("if you know what serves it, stop that or have it listen under a masked path (/run); otherwise set "
             "containment.mode: allow_weaker") in detail
     assert "stop that process" not in detail
+
+
+def test_the_remedy_comes_once_names_every_such_socket_and_says_nothing_of_a_class_the_row_has_named():
+    """Review of #382, m1 to m3: a display socket with no visible holder isn't told it counts as a credential, the
+    remedy isn't repeated per socket, and the masked paths it offers are named."""
+    display = {**UNKNOWN_HOLDER, "path": "/s/.X11-unix/X0", "listed": "/s/.X11-unix/X0", "class": sockets.DISPLAY,
+               "ino": 51}
+    inventory, inside = REACHED["inventory"], REACHED["inside"]
+    seen = {**REACHED, "inventory": {**inventory, "candidates": [*inventory["candidates"], display]},
+            "inside": {**inside, "reachable": [*inside["reachable"],
+                                               {"path": display["path"], "inside": [display["path"]]}]}}
+    reason = probe._row2(LAYOUT, seen)["reason"]
+    assert reason.count("no process AEW can read") == 1, reason
+    assert reason.startswith(f"a credential socket is reachable: {UNKNOWN_HOLDER['path']}; "
+                             f"a display socket is reachable: {display['path']} (the launching user owns "
+                             f"{UNKNOWN_HOLDER['path']}, {display['path']} and"), reason
+    assert "under a masked path (/run)" in reason, reason
+    assert "credential:" not in reason and "counts as" not in reason, reason
+
+
+@pytest.mark.parametrize("known_first", [True, False], ids=["unidentified_last", "unidentified_first"])
+def test_the_remedy_names_the_socket_it_is_about_whichever_comes_last(known_first):
+    """Review of the follow-ons, m1: with a second failing socket whose holder is known, the remedy lands on whichever
+    is last, so a bare "it" could mean the wrong one."""
+    known = {**UNKNOWN_HOLDER, "path": "/s/tools/agent.sock", "listed": "/s/tools/agent.sock", "ino": 51}
+    del known["holder"]
+    inventory, inside = REACHED["inventory"], REACHED["inside"]
+    both = {"path": known["path"], "inside": [known["path"]]}
+    seen = {**REACHED, "inventory": {**inventory, "candidates": [*inventory["candidates"], known]},
+            "inside": {**inside, "reachable": [both, *inside["reachable"]] if known_first
+                       else [*inside["reachable"], both]}}
+    reason = probe._row2(LAYOUT, seen)["reason"]
+    assert f"the launching user owns {UNKNOWN_HOLDER['path']} and no process" in reason, reason
+    assert f"owns {known['path']}" not in reason, reason
+
+
+def test_the_remedy_offers_every_mask_row_2_checks_but_a_system_services_own_directory(monkeypatch):
+    """Review of the follow-ons, m2 and m4. It speaks of the layout's masks as well as the host's, the ones row 2 finds
+    masked, and offers neither the GSS-API proxy's directory nor WSLg's as a place to listen. Row 2 still checks both.
+    """
+    monkeypatch.setattr(probe, "host_masks", lambda: (L.RUN, L.GSSPROXY, L.WSLG))
+    layout = dataclasses.replace(LAYOUT, hide_host=(L.RUN, "/layout/own"))
+    reason = probe._row2(layout, REACHED)["reason"]
+    assert "have it listen under a masked path (/run, /layout/own);" in reason, reason
+    assert f"{L.GSSPROXY} is not a read-only tmpfs" in reason and f"{L.WSLG} is not a read-only tmpfs" in reason, reason
 
 
 def test_establish_makes_the_self_tests_sentinel_before_the_layout_lists_its_directory(tmp_path, monkeypatch):

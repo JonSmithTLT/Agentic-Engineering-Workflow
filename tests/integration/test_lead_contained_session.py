@@ -94,6 +94,12 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         assert env["HTTPS_PROXY"] == env["HTTP_PROXY"] == egress and "127.0.0.1" in env["NO_PROXY"]
         config = json.loads(env["OPENCODE_CONFIG_CONTENT"])
         relays = {p: v["settings"]["baseURL"] for p, v in (config.get("providers") or {}).items()}
+        # E180 came from a contained Lead: what its start hands over is this interpreter's server on this `aew`'s
+        # import path. Spelled here, as the comparison below would pass a contained branch of `lead_config` that
+        # went back to a bare command (review of #384, finding 3)
+        server = config["mcp"]["servers"][projection.LEAD_MCP_SERVER]
+        assert server["command"] == [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "lead", "mcp"]
+        assert server["environment"] == procs.engine_imports({})
         # The tools the host gives: `rg` on a machine that has it (the Rocky VM), and none on one that doesn't.
         assert config == projection.lead_config(guide_of(lab), contained=label, relays=relays,
                                                 tools=capability.placed(label, contained=True))

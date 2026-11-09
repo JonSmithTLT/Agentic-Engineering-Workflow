@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from aew.errors import ValidationFailed
 from aew.harness import wake_queue as Q
 from aew.harness.opencode import lead as L
 from aew.harness.opencode import lead_wake as W
@@ -98,7 +99,7 @@ def test_a_wake_before_this_launchs_first_prompt_is_held_and_never_goes_to_an_ea
 
 
 def test_a_real_poster_counts_this_launch_from_when_it_was_made(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(X, "sys", SimpleNamespace(platform="linux"))  # this module's reading only, not the engine's
     monkeypatch.setattr(L.time, "time", lambda: 5.0)
     poster = L.lead_poster({"lead": {"push_wake": "on"}}, "password", unix="socket")
     assert poster._since_ms == 5000.0  # OpenCode's stamps are milliseconds
@@ -153,6 +154,17 @@ def test_push_wakes_are_on_unless_the_policy_says_off(policy: dict[str, Any] | N
     """Steering PR 3: an absent key is what every existing project holds, so the default is the migration."""
     assert X.push_wake(policy) == X.PUSH_WAKE_ON
     assert X.push_wake({"lead": {"push_wake": "off"}}) == X.PUSH_WAKE_OFF
+
+
+def test_the_table_and_the_schema_agree_that_on_is_the_default() -> None:
+    """The table's first value is what the configuration publishes as the default (`Configuration.controls`)."""
+    spec = X.schema("execution")["properties"]["lead"]["properties"]["push_wake"]
+    assert X.STRING_SWITCHES[("lead", "push_wake")][0] == spec["default"] == spec["enum"][0] == X.PUSH_WAKE_ON
+
+
+def test_an_unquoted_off_is_told_to_quote_off_and_not_the_default() -> None:
+    with pytest.raises(ValidationFailed, match=r'Quote the value: push_wake: "off" \(or on\)'):
+        X.refuse_yaml_boolean({"lead": {"push_wake": False}}, source="policy/execution.yaml")
 
 
 def test_the_off_switch_is_named_in_the_operators_guide_with_how_to_set_it() -> None:

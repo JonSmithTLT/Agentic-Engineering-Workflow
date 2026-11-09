@@ -150,7 +150,7 @@ STRING_SWITCHES: dict[tuple[str, str], tuple[str, ...]] = {
     ("recall", "raw_history_search"): ("off", "explicit"),  # register F21, Arm B (plan v6 §1)
     ("coordination", "messaging"): (MESSAGING_DISABLED, MESSAGING_ENABLED),  # register F9, F9-A (plan v4 D-15)
     ("surface", "presentation"): (PRESENTATION_STANDARD, PRESENTATION_COMPACT),  # register F9, F9-A (plan v4 D-33)
-    ("lead", "push_wake"): (PUSH_WAKE_OFF, PUSH_WAKE_ON),  # steering PR 2; on by default from PR 3
+    ("lead", "push_wake"): (PUSH_WAKE_ON, PUSH_WAKE_OFF),  # steering PR 2; on by default from PR 3
 }
 
 
@@ -165,10 +165,12 @@ def refuse_yaml_boolean(policy: Any, *, source: str) -> None:
         value = section.get(key) if isinstance(section, dict) else None
         if isinstance(value, bool):
             field = f"{block}.{key}"
+            # An unquoted off reads as false: the fix names what was typed first, whichever value is the default.
+            named = sorted(allowed, key=lambda a: a != "off") if value is False else list(allowed)
             raise ValidationFailed(
                 f"{source}: {field} was read as the YAML boolean {str(value).lower()}: YAML reads an unquoted off (or "
-                f"no, false, on, yes, true) as a boolean. Quote the value: {key}: \"{allowed[0]}\" (or "
-                f"{', '.join(allowed[1:])})", reason="yaml_boolean", field=field, allowed=list(allowed))
+                f"no, false, on, yes, true) as a boolean. Quote the value: {key}: \"{named[0]}\" (or "
+                f"{', '.join(named[1:])})", reason="yaml_boolean", field=field, allowed=list(allowed))
 
 
 def messaging(policy: dict[str, Any] | None) -> str:

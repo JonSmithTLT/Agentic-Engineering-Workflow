@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-import sys
 import threading
 import time
+from types import SimpleNamespace
 
 from aew.harness import contract as K
 from aew.harness import wake_queue as Q
@@ -26,6 +26,14 @@ def test_status_shows_an_outstanding_wake_and_says_nothing_before_any(project):
     assert "! outstanding wake wake-1: pending (out_of_scope)" in text
 
 
+def _wakes_are_posted_on_this_platform(monkeypatch) -> None:
+    """Windows is a declared gap (test_lead_wake). Only the switch's own reading of the platform: patching
+    `sys.platform` itself sends the whole engine down its POSIX paths on Windows."""
+    from aew.policy import execution as X
+
+    monkeypatch.setattr(X, "sys", SimpleNamespace(platform="linux"))
+
+
 def _next_after_launch(project) -> str:
     from aew.engine.api import Engine
 
@@ -39,7 +47,7 @@ def test_a_lead_is_told_to_end_its_turn_only_while_a_wake_would_reach_it(project
     from aew.harness import broker_liveness
     from aew.policy import execution as X
 
-    monkeypatch.setattr(sys, "platform", "linux")  # the fallback's line is the same read everywhere wakes are posted
+    _wakes_are_posted_on_this_platform(monkeypatch)
     assert _next_after_launch(project) == K.no_broker_step(["run-1"])  # on by default, and no broker posts
     assert "no broker is posting wakes here" in _next_after_launch(project)
     monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_OFF)
@@ -75,10 +83,13 @@ def test_a_project_that_names_no_lead_key_has_wakes_on_after_an_upgrade(project,
     from aew.harness.opencode import projection as P
     from aew.policy import execution as X
 
-    monkeypatch.setattr(sys, "platform", "linux")
+    _wakes_are_posted_on_this_platform(monkeypatch)
     engine = _engine_of(project)
     policy = engine.execution_policy()[0]
     assert "lead" not in (policy or {})
+    switches = engine.configuration("execution")["controls"]["switches"]
+    [published] = [s for s in switches if s["path"] == "/lead/push_wake"]
+    assert published["default"] == X.PUSH_WAKE_ON  # what the operator's view reports for a switch that's on
     assert X.push_wake(policy) == X.PUSH_WAKE_ON and L.pushes_wakes(engine) is True
     assert L.lead_poster(policy, "password", unix="socket") is not None
     assert Q.HEADER in P.lead_config(push_wake=L.pushes_wakes(engine))["agents"][P.LEAD_AGENT]["system"]
@@ -89,7 +100,7 @@ def test_a_project_with_a_typed_off_stays_off_and_keeps_the_wait(project, monkey
     from aew.harness.opencode import projection as P
     from aew.policy import execution as X
 
-    monkeypatch.setattr(sys, "platform", "linux")
+    _wakes_are_posted_on_this_platform(monkeypatch)
     path = project.root / ".aew" / X.REL_PATH
     path.write_bytes(path.read_bytes().rstrip(b"\n") + b'\nlead:\n  push_wake: "off"\n')
     project.adopt_policy()

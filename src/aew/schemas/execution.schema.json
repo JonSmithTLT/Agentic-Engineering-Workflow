@@ -90,7 +90,7 @@
       "additionalProperties": false,
       "properties": {
         "quiet_wake_s": {"x-aew-class": "operational", "type": "integer", "minimum": 600, "maximum": 3600, "default": 1200},
-        "push_wake": {"x-aew-class": "operational", "type": "string", "enum": ["off", "on"], "default": "on"}
+        "push_wake": {"x-aew-class": "operational", "type": "string", "enum": ["on", "off"], "default": "on"}
       }
     },
     "notify": {

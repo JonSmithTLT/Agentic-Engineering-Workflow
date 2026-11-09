@@ -313,7 +313,12 @@ class LeadBroker:
                 try:
                     if self.superseded or self._authority_lost():  # no more wakes into a session that lost the seat
                         return
-                    if push_wake(own.execution_policy()[0]) != PUSH_WAKE_ON:  # turned off mid-session: posts stop now
+                    try:
+                        off = push_wake(own.execution_policy()[0]) != PUSH_WAKE_ON
+                    except Exception:  # an edit not yet adopted: no pass can run, so nothing says wakes reach the Lead
+                        clear_serving(own.aew_root, self.generation)
+                        raise
+                    if off:  # turned off mid-session: posts stop now
                         clear_serving(own.aew_root, self.generation)
                         continue
                     if serving(own.aew_root) != self.generation:  # turned on again; a later generation's stops this one

@@ -194,6 +194,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/{}/harness/skills/{}`: written or removed by `aew.skills:_remove` (direct: Path.unlink, shutil.rmtree); `aew.skills:deliver` (direct: Path.mkdir)
 - `local/harness/runs/{}/harness/skills/{}/{}`: written or removed by `aew.skills:deliver` (direct: Path.write_bytes)
 - `local/harness/runs/{}/heartbeat`: written or removed by `aew.harness.runlog:beat` (direct: Path.touch, atomic_write, os.open)
+- `local/harness/runs/{}/progress.end-returned`: written or removed by `aew.harness.runlog:forget_end_returned` (direct: Path.unlink); `aew.harness.runlog:write_end_returned` (direct: atomic_write)
 - `local/harness/runs/{}/progress.returned.json`: written or removed by `aew.harness.runlog:write_returned` (direct: atomic_write)
 - `local/harness/runs/{}/prompt.md`: written or removed by `aew.harness.supervisor:Supervisor.start` (direct: Path.write_text)
 - `local/harness/runs/{}/requests`: written or removed by `aew.harness.runlog:deliver_request` (direct: Path.mkdir)

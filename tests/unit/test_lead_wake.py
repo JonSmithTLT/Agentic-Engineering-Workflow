@@ -169,7 +169,29 @@ def test_an_unquoted_off_is_told_to_quote_off_and_not_the_default() -> None:
 
 def test_the_off_switch_is_named_in_the_operators_guide_with_how_to_set_it() -> None:
     guide = (Path(__file__).resolve().parents[2] / "docs" / "guides" / "opencode.md").read_text(encoding="utf-8")
-    assert 'set `lead.push_wake: "off"`, quoted, in `policy/execution.yaml` and run `aew manifest adopt`' in guide
+    assert 'set `lead.push_wake: "off"`, quoted, in `.aew/policy/execution.yaml`' in guide
+    assert "`aew manifest adopt --expect-rev <revision from aew status> --reason" in guide  # as the command requires
+    assert "A session started with `--acquire` holds the only credential, so end that session first" in guide
+
+
+def test_what_every_linux_lead_gets_is_the_lead_text_with_the_wait_taken_out_and_the_wake_text_added() -> None:
+    """The on variant, derived from the pinned off one (review, n4)."""
+    from aew.harness.opencode import projection as P
+
+    off, on = P.lead_config(push_wake=False), P.lead_config(push_wake=True)
+    expected = off["agents"][P.LEAD_AGENT]["system"].replace(f" {P.WAIT_SENTENCE}", "") + f"\n{P.lead_wake_text()}"
+    assert on["agents"][P.LEAD_AGENT]["system"] == expected
+    on["agents"][P.LEAD_AGENT]["system"] = off["agents"][P.LEAD_AGENT]["system"]
+    assert on == off
+
+
+def test_a_lead_on_wakes_is_told_a_timed_out_wait_ends_its_turn_and_a_trigger_tells_the_operator_once() -> None:
+    from aew.harness import contract as K
+    from aew.harness.opencode import projection as P
+
+    assert "a wait that times out here ends your turn too" in " ".join(P.lead_wake_text().split())
+    step = K.trigger_step([K.OUT_OF_SCOPE], "R-1", [], then=K.wake_step(["R-1"], after_a_start=False))
+    assert step.count("Tell the operator") == 1 and "what you started" not in step
 
 
 def test_the_switchs_default_is_the_schemas_and_has_no_second_owner(monkeypatch: pytest.MonkeyPatch) -> None:

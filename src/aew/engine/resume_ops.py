@@ -643,8 +643,13 @@ class Resume:
         if work_id is None:
             out["role_catalog_problems"] = self.roles.role_catalog().problems
             from aew.harness import wake_queue  # local, as the notifier's summary is
+            from aew.policy import execution as X
 
-            wakes = wake_queue.status(self.k.aew_root, generation=out["lead"]["generation"])
+            try:
+                off = X.push_wake(self.k.execution_policy()[0]) == X.PUSH_WAKE_OFF
+            except AEWError:  # an edit not yet adopted: the status line's own failure says so
+                off = False
+            wakes = wake_queue.status(self.k.aew_root, generation=out["lead"]["generation"], off=off)
             if wakes is not None:  # the operator always sees what the Lead is waiting on (steering design §1)
                 out["lead_wakes"] = wakes
         return out

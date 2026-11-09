@@ -157,7 +157,7 @@ STRING_SWITCHES: dict[tuple[str, str], tuple[str, ...]] = {
 def refuse_yaml_boolean(policy: Any, *, source: str) -> None:
     """Refuse a string switch that YAML read as a boolean, before the schema, at parse and at adoption: a
     ``VALIDATION_FAILED`` with ``reason: yaml_boolean``, the ``field`` and a message naming the cause and the fix (the
-    quoted ``"off"``). A refused policy is not adopted, and a switch it held stays off (every reader fails closed)."""
+    quoted value). A refused policy is not adopted, and the switch keeps its adopted value."""
     if not isinstance(policy, dict):
         return
     for (block, key), allowed in STRING_SWITCHES.items():
@@ -182,8 +182,8 @@ def messaging(policy: dict[str, Any] | None) -> str:
 
 
 def push_wake(policy: dict[str, Any] | None) -> str:
-    """Whether the Lead broker posts wakes into the Lead's session (``lead.push_wake``, steering design §1): ``off``
-    unless the policy says ``on``. Off, the Lead waits with `harness_wait`, and no wake is posted. Absent policy and
+    """Whether the Lead broker posts wakes into the Lead's session (``lead.push_wake``, steering design §1): ``on``
+    unless the policy says ``off``. Off, the Lead waits with `harness_wait`, and no wake is posted. Absent policy and
     absent key are the schema's default, as for :func:`quiet_wake_s`."""
     spec = schema("execution")["properties"]["lead"]["properties"]["push_wake"]
     value = ((policy or {}).get("lead") or {}).get("push_wake")

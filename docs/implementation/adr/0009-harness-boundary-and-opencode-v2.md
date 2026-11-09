@@ -1937,7 +1937,9 @@ digest moves, since digests read the policy files in force and no file changes. 
 - **A wake waits for this launch's first prompt.** The contained store is per project, so the newest-viewed session can
   be an earlier launch's, unseen. The poster counts only sessions seen since this launch began.
 - **Whether a wake reaches the Lead is read from files,** the broker's mark and its liveness record, with the policy and
-  no control state: each run `aew status` reports asks, and so does the end of a wait (OBX-38).
+  no second parse of the control state: each run `aew status` reports asks, and so does the end of a wait (OBX-38).
+  Right after a takeover the old mark can count until the old broker's watchdog closes its record, within a poll
+  (measured under a second), and longer only if that watchdog is stuck on the control lock.
 - **Windows stays a declared gap,** with no wake posted and no "no broker" line in its next steps.
 
 ## Amendment 2026-11-08 — WSLg's directory is a host mask

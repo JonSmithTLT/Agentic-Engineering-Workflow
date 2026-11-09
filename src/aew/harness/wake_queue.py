@@ -15,6 +15,8 @@ module owns everything about that except the post itself, which is a harness's (
   the same Ticket and role. What fails is dropped, and named in the next wake's ``since_last_wake``.
 - **An ended run is told once.** Its invocation stays active until the Lead accepts or cancels it, so its mark stays
   too, recording that the end was told (``ended_told``), and goes once the run is no longer its invocation's live one.
+  An end the Lead already has is no wake: a wait returned it (``runlog.end_returned``), or the Lead itself closed the
+  invocation.
   A run that reads as ended and then goes on, as a stalled heartbeat does, is watched again.
 - **The broker's own mark.** Each run's mark is the newest trigger the Lead has been shown by a wake or by a wait
   (``runlog.read_returned``: a post moves that mark too, so neither repeats the other), with the absolute counts
@@ -150,13 +152,16 @@ def read(aew_root: Path) -> dict[str, Any] | None:
     return {**_empty(), **doc}
 
 
-def status(aew_root: Path, *, generation: int | None = None) -> dict[str, Any] | None:
+def status(aew_root: Path, *, generation: int | None = None, off: bool = False) -> dict[str, Any] | None:
     """What the operator's status line shows (steering design §1), or None when no wake was ever recorded: the
     outstanding wake, the last posted and the last delivered, the runs being watched, and whether the broker posts
-    wakes now (for ``generation``, the current Lead's)."""
+    wakes now (for ``generation``, the current Lead's). With wakes ``off`` nothing runs this queue, so what it last held
+    is stale: only that they are off."""
     doc = read(aew_root)
     if doc is None:
         return None
+    if off:
+        return {"off": True}
     wake = doc["wake"]
     return {"outstanding": None if wake is None else {k: wake.get(k) for k in ("id", "phase", "why")},
             "last_posted": doc["last_posted"], "last_delivered": doc["last_delivered"],
@@ -168,6 +173,8 @@ def status(aew_root: Path, *, generation: int | None = None) -> dict[str, Any] |
 def render(status_: Mapping[str, Any]) -> list[str]:
     """The status line, as text: one for the session, and one more for a wake still outstanding, so a wake that never
     lands is visible."""
+    if status_.get("off"):
+        return [f"Lead wakes: off, by {OFF_SWITCH}"]
     last = status_.get("last_delivered") or status_.get("last_posted")
     said = "none posted yet"
     if last:
@@ -221,7 +228,7 @@ class WakeQueue:
         live = live_runs(self.state()) if settled else []
         if settled:
             self._watch(live)
-            self._gather()
+            self._gather({w.run for w in live})
         if json.dumps(self.doc, sort_keys=True) != before:
             self._save()
         if settled and self.doc["wake"] is not None and not self.poster.busy():
@@ -278,13 +285,19 @@ class WakeQueue:
         status_, _record = runlog.observed_status(self._dir(run))
         return not runlog.possibly_live(status_, mark.get("launched_at"))
 
-    def _gather(self) -> None:
-        for run, mark in self.doc["marks"].items():
+    def _gather(self, live: set[str]) -> None:
+        for run, mark in list(self.doc["marks"].items()):
             ended = self._ended(run, mark)
+            if ended and run not in live:  # the Lead accepted, cancelled or replaced it: its end is no news to it
+                del self.doc["marks"][run]
+                continue
+            if ended and runlog.end_returned(self._dir(run)):  # a wait already told the Lead
+                mark["ended_told"] = True
             if mark.get("ended_told"):
                 if ended:
                     continue
                 del mark["ended_told"]  # its heartbeat came back: it never ended, so it is watched again
+                runlog.forget_end_returned(self._dir(run))
             found: list[dict[str, Any]] = []
             newest = self._shown(run, mark)
             digest = runlog.read_progress(self._dir(run))
@@ -356,9 +369,11 @@ class WakeQueue:
                 else:
                     self.doc["dropped"] = int(self.doc["dropped"]) + 1
                     self.doc["folded"].setdefault(run, []).append(trigger["why"])
-                    if trigger.get("why") == K.RUN_ENDED and run in self.doc["marks"]:
-                        # A later attempt has superseded it, so it is never said: later, it would be a stale wake.
-                        self.doc["marks"][run]["ended_told"] = True
+                    if trigger.get("why") == K.RUN_ENDED:
+                        # The Lead has it, or a later attempt superseded it, so it is never said: later, it would be
+                        # a stale wake.
+                        if run in self.doc["marks"]:
+                            self.doc["marks"][run]["ended_told"] = True
                         self.doc["folded"].pop(run, None)
             entry["triggers"] = kept
             if not kept:
@@ -368,9 +383,9 @@ class WakeQueue:
     def _current(self, trigger: Mapping[str, Any], entry: Mapping[str, Any], digest: Mapping[str, Any] | None,
                  run: str, mark: Mapping[str, Any], live: list[Watched]) -> bool:
         why = trigger.get("why")
-        if why == K.RUN_ENDED:  # always current, but a later attempt of the same Ticket and role supersedes it
-            return not any(w.run != run and (w.work_unit, w.role) == (mark.get("work_unit"), mark.get("role"))
-                           for w in live)
+        if why == K.RUN_ENDED:  # current, unless the Lead has it (a wait, its own close) or a later attempt replaced it
+            return (any(w.run == run for w in live) and not runlog.end_returned(self._dir(run)) and not any(
+                w.run != run and (w.work_unit, w.role) == (mark.get("work_unit"), mark.get("role")) for w in live))
         if why == K.QUIET:  # still no other wake for this run
             return len(entry["triggers"]) == 1 and not self._ended(run, mark)
         return digest is not None and P.holds(digest, trigger)

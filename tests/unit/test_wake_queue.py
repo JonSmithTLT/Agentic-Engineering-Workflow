@@ -321,6 +321,7 @@ def test_a_superseded_end_is_let_go_and_is_never_posted_when_the_later_attempt_e
     q = lab.queue()
     q.tick()
     lab.ended.add(RUN)  # type: ignore[attr-defined]
+    q.tick()  # gathered, and held by the Lead's turn
     lab.state["invocations"]["inv-" + RUN]["status"] = "interrupted"
     q.tick()
     lab.live(OTHER, inv="inv-new")
@@ -332,6 +333,51 @@ def test_a_superseded_end_is_let_go_and_is_never_posted_when_the_later_attempt_e
     lab.ended.add(OTHER)  # type: ignore[attr-defined]
     q.tick()
     assert list(lab.shape()["runs"]) == [OTHER]
+
+
+def test_an_invocation_the_lead_closed_wakes_it_with_nothing(lab: Lab) -> None:
+    """Review, m6: its own accept or cancel is no news, whether the end was seen before the close or after."""
+    lab.live()
+    lab.digest()
+    q = lab.queue()
+    q.tick()
+    lab.ended.add(RUN)  # type: ignore[attr-defined]
+    lab.state["invocations"]["inv-" + RUN]["status"] = "cancelled"
+    q.tick()
+    assert lab.poster.posts == [] and RUN not in q.doc["marks"] and q.doc["wake"] is None
+
+    lab.live(OTHER, inv="inv-new")
+    lab.digest(OTHER)
+    lab.poster.is_busy = True
+    q.tick()
+    lab.ended.add(OTHER)  # type: ignore[attr-defined]
+    q.tick()  # gathered, and held by the Lead's turn, in which it cancels the run
+    lab.state["invocations"]["inv-new"]["status"] = "cancelled"
+    lab.poster.is_busy = False
+    q.tick()
+    assert lab.poster.posts == [] and q.doc["wake"] is None
+
+
+def test_an_end_a_wait_returned_is_no_wake_until_the_run_goes_on(tmp_path: Path) -> None:
+    """Review, m6, on the real `runlog`. A heartbeat that comes back makes the real end news again."""
+    lab = Lab(tmp_path)
+    lab.live()
+    directory = runlog.run_dir(lab.root, RUN)
+    (directory / runlog.RECORD).write_text(json.dumps({"status": K.RUNNING}), encoding="utf-8")
+    runlog.beat(directory)
+    q = lab.queue()
+    q.tick()
+    stalled = time.time() - runlog.STALE_AFTER_S - 5
+    os.utime(directory / "heartbeat", (stalled, stalled))
+    runlog.write_end_returned(directory)
+    q.tick()
+    assert lab.poster.posts == [] and Q.status(lab.root)["watching"] == []
+    runlog.beat(directory)
+    q.tick()
+    assert not runlog.end_returned(directory) and Q.status(lab.root)["watching"] == [RUN]
+    (directory / runlog.RECORD).write_text(json.dumps({"status": sorted(K.TERMINAL)[0]}), encoding="utf-8")
+    q.tick()
+    assert lab.shape()["why"] == [K.RUN_ENDED]
 
 
 def test_a_broker_killed_before_the_post_posts_it_once_on_restart(lab: Lab) -> None:

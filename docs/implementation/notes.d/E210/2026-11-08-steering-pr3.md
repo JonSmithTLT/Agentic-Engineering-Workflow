@@ -2,4 +2,4 @@
 
 **Closed from steering PR 2's list:** the Lead's text and next steps no longer say wait beside "end your turn"; a next step says when no broker is posting; a wake waits for this launch's first prompt; and a switch turned off mid-session stops the posts within a poll.
 
-**Still open:** Windows stays a declared gap, closed by one real wake run there. An offer for a project with a typed `off` isn't built, since nothing wrote that value before this default moved.
+**Still open:** Windows stays a declared gap, closed by one real wake run there, which also closes a second one: a server lost under a real TUI on Windows hasn't been run, only a fake TUI, and `TerminateProcess` restores nothing of the console. The typed `harness_interrupt` the steering brief lists isn't built; `aew harness send` and `aew harness interrupt` work from the shell. An offer for a project with a typed `off` isn't built, since nothing wrote that value before this default moved.

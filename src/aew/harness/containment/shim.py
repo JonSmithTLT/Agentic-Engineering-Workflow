@@ -302,6 +302,6 @@ def main(argv: list[str]) -> int:
         end_server(server)
     if lost is not None and lost.is_set():  # after the harness: a TUI's screen would hide it
         sys.stderr.write("aew network shim: the Lead's server ended, and nothing restarts it, so the session ended. "
-                         f"Start `aew opencode` again; the server's log is {spec['serve']['log']}\n")
+                         f"The result that follows says how to go on; the server's log is {spec['serve']['log']}\n")
         return EXIT_SERVER_LOST
     return 128 - code if code < 0 else code

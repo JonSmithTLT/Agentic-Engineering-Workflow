@@ -8,6 +8,8 @@ import time
 from types import SimpleNamespace
 
 from aew.harness import contract as K
+from aew.harness import progress as P
+from aew.harness import runlog
 from aew.harness import wake_queue as Q
 
 
@@ -171,23 +173,42 @@ def test_the_brokers_wake_thread_survives_a_failing_pass_and_clears_its_mark_on_
     assert Q.serving(root) is None and not broker._wakes.is_alive()
 
 
-class _QuietPoster(_Poster):
-    """A poster that takes every wake: nothing is ever busy, and each call says it was asked."""
+class _CountingPoster(_Poster):
+    """A poster that takes every wake and counts it: nothing is ever busy, and each wake lands."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.posts: list[str] = []
 
     def busy(self) -> bool:
-        self.asked.set()
         return False
 
     def landed(self, wake_id: str) -> str:
-        return Q.WAITING
+        return Q.DELIVERED
 
     def post(self, wake_id: str, text: str) -> str:
+        self.posts.append(text)
         return "ses_1"
+
+
+def _a_run_with_news(root, monkeypatch) -> None:
+    """A live run the queue watches, with a trigger waiting to be told."""
+    run = "run-seed"
+    monkeypatch.setattr(Q, "live_runs", lambda state: [Q.Watched(run, "T-seed", "implementer", "now")])
+    directory = runlog.run_dir(root, run)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / runlog.RECORD).write_text(json.dumps({"status": K.RUNNING}), encoding="utf-8")
+    runlog.beat(directory)
+    (directory / runlog.PROGRESS_FILE).write_text(json.dumps({
+        "schema": P.SCHEMA, "run": run, "state": P.WORKING, "steps": 3, "out_of_scope": ["src/b/x.py"],
+        "red_commands": [], "counts": {"steps": 3, "files": 1, "commands": 1, "tests": 0, "triggers": 1},
+        "since_last_wake": {"suppressed": {}},
+        "triggers": [{"seq": 1, "why": K.OUT_OF_SCOPE, "path": "src/b/x.py"}]}), encoding="utf-8")
 
 
 def test_a_switch_turned_off_mid_session_stops_the_posts_and_on_again_resumes_them(project, monkeypatch):
     """Read each pass (the review's note for PR 3): the mark goes, so `aew status` and the Lead's next step agree."""
-    from aew.harness.lead_broker import LeadBroker
+    from aew.harness.lead_broker import POLL_S, LeadBroker
     from aew.policy import execution as X
 
     root = project.root / ".aew"
@@ -197,7 +218,8 @@ def test_a_switch_turned_off_mid_session_stops_the_posts_and_on_again_resumes_th
     monkeypatch.setattr(X, "push_wake", lambda policy: state["switch"])
     broker.start()
     try:
-        broker.start_wakes(_QuietPoster())
+        poster = _CountingPoster()
+        broker.start_wakes(poster)
 
         def until(predicate) -> None:
             deadline = time.monotonic() + 30
@@ -208,10 +230,53 @@ def test_a_switch_turned_off_mid_session_stops_the_posts_and_on_again_resumes_th
         assert Q.serving(root) == broker.generation
         state["switch"] = X.PUSH_WAKE_OFF
         until(lambda: Q.serving(root) is None)
+        _a_run_with_news(root, monkeypatch)
+        time.sleep(3 * POLL_S)  # passes that would have posted it
+        assert poster.posts == []
         state["switch"] = X.PUSH_WAKE_ON
         until(lambda: Q.serving(root) == broker.generation)
+        until(lambda: len(poster.posts) == 1)  # what was held
     finally:
         broker.close()
+
+
+def test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_your_turn(project):
+    """Every pass fails on a policy that doesn't match its pin, so nothing may say a wake will come (review, m7)."""
+    from aew.harness.lead_broker import LeadBroker
+    from aew.policy import execution as X
+
+    root = project.root / ".aew"
+    broker = LeadBroker(_engine_of(project), project.token)
+    broker.start()
+    try:
+        broker.start_wakes(_CountingPoster())
+        assert Q.some_broker_posts(root)
+        path = root / X.REL_PATH
+        path.write_bytes(path.read_bytes().rstrip(b"\n") + b'\nlead:\n  push_wake: "off"\n')
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and Q.serving(root) is not None:
+            time.sleep(0.05)
+        assert Q.serving(root) is None and Q.some_broker_posts(root) is False
+    finally:
+        broker.close()
+
+
+def test_a_project_with_wakes_off_shows_only_that_and_no_stale_wake(project):
+    """Nothing runs the queue with the switch off, so what it last held isn't an alarm (review, m8)."""
+    from aew.policy import execution as X
+
+    root = project.root / ".aew"
+    queue = root / Q.WAKES_REL
+    queue.parent.mkdir(parents=True, exist_ok=True)
+    queue.write_text(json.dumps({"schema": Q.SCHEMA, "marks": {"run-1": {}},
+                                 "wake": {"id": "wake-1", "phase": Q.POSTED, "why": ["quiet"]}}),
+                     encoding="utf-8", newline="\n")
+    assert "! outstanding wake" in project.aew("status").stdout
+    path = root / X.REL_PATH
+    path.write_bytes(path.read_bytes().rstrip(b"\n") + b'\nlead:\n  push_wake: "off"\n')
+    project.adopt_policy()
+    text = project.aew("status").stdout
+    assert 'Lead wakes: off, by `lead.push_wake: "off"`' in text and "outstanding wake" not in text
 
 
 def test_a_real_takeover_ends_the_old_brokers_wake_thread_and_its_close_leaves_the_new_mark(project, monkeypatch):

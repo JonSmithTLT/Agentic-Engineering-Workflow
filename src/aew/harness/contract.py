@@ -456,10 +456,13 @@ def no_broker_step(runs: list[str]) -> str:
     return f"{NO_BROKER} wakes here, so nothing would wake you: {wait_step(runs)}"
 
 
-def wake_step(runs: list[str]) -> str:
-    """The next step while ``runs`` work and AEW wakes the Lead (steering design r4 §1): the turn's end."""
-    return (f"end your turn: AEW wakes you when {', '.join(runs)} ends or needs you, and the operator can talk to you "
-            "meanwhile. Tell the operator in a line what you started and which runs you are waiting on")
+def wake_step(runs: list[str], *, after_a_start: bool = True) -> str:
+    """The next step while ``runs`` work and AEW wakes the Lead (steering design r4 §1): the turn's end. After anything
+    but a start the caller's own line tells the operator what happened."""
+    step = (f"end your turn: AEW wakes you when {', '.join(runs)} ends or needs you, and the operator can talk to you "
+            "meanwhile")
+    return f"{step}. Tell the operator in a line what you started and which runs you are waiting on" \
+        if after_a_start else step
 
 
 def trigger_step(whys: list[str], run: str, others: list[str], *, then: str | None = None) -> str:

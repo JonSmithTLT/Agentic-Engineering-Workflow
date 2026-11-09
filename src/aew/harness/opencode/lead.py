@@ -323,9 +323,11 @@ def _outcome(out: dict[str, Any], version: Any) -> dict[str, Any]:
     from aew.harness.containment.shim import EXIT_SERVER_LOST, EXIT_SETUP
 
     if out.get("exit") == EXIT_SERVER_LOST:  # the shim's own codes, which a TUI that ran doesn't exit with
+        held = str(out.get("seat") or "").startswith("held;")  # a run in flight: `aew opencode` alone is refused
+        follow = "continue as `seat` says" if held else "start `aew opencode` again"
         return {**out, "ok": False, "opencode": version,
-                "server_lost": "the Lead's server ended, and nothing restarts it, so the session ended; start `aew "
-                               f"opencode` again, and read the server's log, {SERVER_LOG}, under `.aew/local/`"}
+                "server_lost": f"the Lead's server ended, and nothing restarts it, so the session ended; {follow}, and "
+                               f"read the server's log, {SERVER_LOG}, under `.aew/local/`"}
     if out.get("exit") != EXIT_SETUP:
         return {**out, "opencode": version}
     return {**out, "ok": False, "opencode": version,

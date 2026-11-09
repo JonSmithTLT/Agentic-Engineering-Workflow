@@ -171,8 +171,10 @@ class Harness:
 
     def wakes_reach_lead(self) -> bool:
         """Whether a wake would reach the Lead now: the policy has push wakes on, and a live broker posts them (steering
-        design r4 §1). Otherwise the Lead waits with `harness_wait`, which is its fallback. It parses no control state:
-        each run `aew status` reports asks, and so does a wait's end (OBX-38)."""
+        design r4 §1). Otherwise the Lead waits with `harness_wait`, which is its fallback. It costs no second parse of
+        the control state: each run `aew status` reports asks, and so does a wait's end (OBX-38). **Limit:** right after
+        a takeover the old mark can count until the old broker's watchdog closes its record, within a poll (0.83 s and
+        0.88 s, measured), and longer only if that watchdog is stuck on the control lock."""
         try:
             if X.push_wake(self.k.execution_policy()[0]) != X.PUSH_WAKE_ON:
                 return False
@@ -568,7 +570,8 @@ class Harness:
             runlog.write_returned(runlog.run_dir(self.k.aew_root, run), woke["newest"])
             return {"run": run, "status": status, "timed_out": False, **shape, "triggers": woke["triggers"],
                     "next_action": K.trigger_step(shape["why"], run, others, then=(
-                        K.wake_step([run, *others]) if wake_queue.some_broker_posts(self.k.aew_root) else None))}
+                        K.wake_step([run, *others], after_a_start=False)
+                        if wake_queue.some_broker_posts(self.k.aew_root) else None))}
         inv = targets[run][1]
         out: dict[str, Any] = {}
         headline = _headline(run, status, record)
@@ -578,6 +581,7 @@ class Harness:
                     "evidence": self.run_evidence(inv["work_unit"], run),
                     "results": self.run_results(inv["work_unit"], run), "timed_out": False,
                     **P.wake([K.RUN_ENDED], digests())})
+        runlog.write_end_returned(runlog.run_dir(self.k.aew_root, run))  # no wake repeats what this result says
         ended_digest = out["runs"].get(run)
         if ended_digest:  # the run is over: what it was shown is no longer news
             runlog.write_returned(runlog.run_dir(self.k.aew_root, run), int(ended_digest.get("trigger_seq") or 0))

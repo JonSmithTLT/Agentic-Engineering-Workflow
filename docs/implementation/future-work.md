@@ -632,7 +632,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### F43
 
-**Work:** The attention spine, three ordered slices; S1 and S2 together absorb every duplicate derivation of next actions, as consumers or producers where appropriate. **S1 (AX-05):** `ActionProjection` is the single derivation of next actions: `resume`'s next actions and the dashboard's attention and health derivation converge on it. **S2 (AX-04):** typed outbox kinds for every consequential control fact (anomalies, stage intents, steering, dispositions, unseen coordination), and the consumers read them instead of re-deriving: the operator notifier's condition derivation, the steering loop's consumption of decisions and the wake interpretation of invocation status (the notifier stays the operator's delivery channel with no semantic "what changed" of its own). **S3 (AX-03):** Lead-actionable facts reach the existing `wait --any` control lane through a run-less form; one decision-keyed Lead-attention lane
+**Work:** The attention spine, three ordered slices; S1 and S2 together absorb every duplicate derivation of next actions, as consumers or producers where appropriate. **S1 (AX-05):** `ActionProjection` is the single derivation of next actions: `resume`'s next actions and the dashboard's attention and health derivation converge on it. **S2 (AX-04):** typed outbox kinds for every consequential control fact (anomalies, stage intents, steering, dispositions, unseen coordination), and the consumers read them instead of re-deriving: the operator notifier's condition derivation, the steering loop's consumption of decisions and the wake interpretation of invocation status (the notifier stays the operator's delivery channel with no semantic "what changed" of its own). **S3 (AX-03):** Lead-actionable facts reach the Lead's one wake list (A-58, CLA-02) as reasons with no run, delivered by a wake and by the wait; one decision-keyed list
 
 **Source (governing):** contributes to `PC-FR-02` (owned by other rows); position A-10; the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`). Design inputs as held, not authority: [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.3, §3.13 (ledger AIR-16 to AIR-20, AIR-61); the architecture audit of 2026-10-11, AX-03 to AX-05; ADR-0012 D2, D5
 
@@ -1573,7 +1573,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E109
 
-**Work:** Blocked-on-you's slice S7 (A-44): a probe of OpenCode 2.0.18, with no product code, of what AEW can observe of the Lead's TUI: whether AEW can attach to the TUI's own server, whether the TUI attaches to a server that requires AEW's per-launch credential, whether a session reads as active while a permission ask is pending, and whether forms persist. Its data is what A-44's Q9 and Q10 are asked with
+**Work:** A probe of what AEW can observe of a pending dialog in the Lead's TUI: whether a session reads as active while a permission ask is pending, and whether forms persist. Its data goes to the pending-dialog row, and Q10 is asked with it. Whether AEW attaches and whether the TUI takes AEW's credential are closed: AEW hosts the server (A-58 `CL-R02`, #393).
 
 **Source:** A-44 (design workspace `f2a561d`), its slice S7, for the chat-only and pending-ask cases, which the fallback (S6, E107) shows only as "your turn" until S7 and S8 (`BOY-R08`; the position's Risks)
 
@@ -1585,11 +1585,11 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E110
 
-**Work:** Blocked-on-you's slice S8 (A-44): the Lead's harness waits shown as items, for the chat-only and pending-ask cases
+**Work:** What the Lead is waiting on, shown on the site (A-58 `CL-R04`, replacing A-44's S8): the live runs, the outstanding wake and the broker's state where wakes post; where they don't, the live runs from control state, the wait in flight, and that no wakes post. A block in S2's `/waiting`, or a second C0 renewal if S2 ships first.
 
-**Source:** A-44 (design workspace `f2a561d`), its slice S8, after S7 (E109) and the operator's answer to Q9 or Q10 (`BOY-R08`)
+**Source:** A-58 `CL-R04`. It no longer waits on S7, Q9 or Q10.
 
-**When:** **Unscheduled**: A-44's slices table leaves its milestone to the operator, who places it once S7's data and the answer to Q9 or Q10 are in. Its decisions-due item names what the operator owes
+**When:** **Unscheduled**, and the operator places it.
 
 **Notes:** Filed by the Lead. A new row with no milestone, because the adopted position leaves its placement to the operator
 
@@ -2041,7 +2041,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E158
 
-**Work:** The consult: one typed tool, `consult`, spawns a non-mutating card (investigator, researcher, planner, and `branch_reviewer` once built) on a question in one call. AEW creates a non-mutating Ticket with `mode: consult` at class 0, writes and accepts its plan, dispatches, and returns the Ticket and run ids at once. Its own gate path in the gates policy holds no assurance gate (no plan assessment, review or verification); the engine gate `execute_record`, which every non-mutating class carries, stays. The Lead's next credentialed call ingests every ended consult's record and completes it; the wake carries only fields the engine sets, and the body comes through `consult_show`, framed as data. A consult's record is refused by `consumes`, proves no other unit's obligation, stays out of packs and derived knowledge, and is cited by any plan that draws on it. Steps and deadline are always bounded, from the profile or the consult policy, with measured defaults whose source is stated in the code; the Lead may ask for less, never more. Two PRs: the mode, gate path, tool, ingest and wake; then the bounds and allow-list, the isolation tests, `consult_show`, `resume`'s list of unread records and the Lead's text
+**Work:** The consult: one typed tool, `consult`, spawns a non-mutating card (investigator, researcher, planner, and `branch_reviewer` once built) on a question in one call. AEW creates a non-mutating Ticket with `mode: consult` at class 0, writes and accepts its plan, dispatches, and returns the Ticket and run ids at once. Its own gate path in the gates policy holds no assurance gate (no plan assessment, review or verification); the engine gate `execute_record`, which every non-mutating class carries, stays. The Lead's explicit read, `consult_show`, returns the body framed as data, does the ingest, and completes the consult in that call where the guard allows (A-58 `CL-R03`); the wake carries only fields the engine sets, in both deliveries. A consult's record is refused by `consumes`, proves no other unit's obligation, stays out of packs and derived knowledge, and is cited by any plan that draws on it. Steps and deadline are always bounded, from the profile or the consult policy, with measured defaults whose source is stated in the code; the Lead may ask for less, never more. Two PRs: the mode, gate path, tool, `consult_show` with the ingest, and the wake; then the bounds and allow-list, the isolation tests, `resume`'s list of unread records and the Lead's text
 
 **Source:** The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), its further direction and its pointer answering the consult's two questions (`f0fa7e5`); the designer's decision of 2026-11-06, the Lead's consult (v2)
 
@@ -2771,6 +2771,90 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E181/`, oldest first (`python tools/register.py show E181`).*
 
+### E215
+
+**Work:** The pending dialog: a TUI permission ask or form in the Lead's terminal, named as an item. The floor until then is `BOY-09.a`'s idle source, which needs no run active.
+
+**Source:** A-58 (design workspace tag `STG-33-cl-r1`), `CL-R04`, keeping A-44's pending-ask case. E109's data and Q10.
+
+**When:** **Unscheduled.** Its decisions-due item names what the operator owes
+
+**Notes:** Filed by the register PR for A-58
+
+*Later notes: `notes.d/E215/`, oldest first (`python tools/register.py show E215`).*
+
+### E216
+
+**Work:** The wake's follow-on: `CL-B2`'s list, and the gates `CL-Q02` to `CL-Q07`, `CL-Q13`, `CL-Q15` and `CL-Q16`.
+
+**Source:** A-58 (design workspace tag `STG-33-cl-r1`), `CL-B2`
+
+**When:** **Unscheduled**, placed right after steering PR 3, in the small-fixes lane
+
+**Notes:** Filed by the register PR for A-58
+
+*Later notes: `notes.d/E216/`, oldest first (`python tools/register.py show E216`).*
+
+### E217
+
+**Work:** A wake's turn that fails: the Lead is told again once, then attention (`CL-B4`).
+
+**Source:** A-58 (design workspace tag `STG-33-cl-r1`), `CL-B4`
+
+**When:** **Unscheduled**
+
+**Notes:** Filed by the register PR for A-58
+
+*Later notes: `notes.d/E217/`, oldest first (`python tools/register.py show E217`).*
+
+### E218
+
+**Work:** Quiet at rest: `CL-B1`'s three states.
+
+**Source:** A-58 (design workspace tag `STG-33-cl-r1`), `CL-B1`
+
+**When:** **Unscheduled**, for whichever slice next touches attention
+
+**Notes:** Filed by the register PR for A-58
+
+*Later notes: `notes.d/E218/`, oldest first (`python tools/register.py show E218`).*
+
+### E219
+
+**Work:** The turn-end measurement: `CL-R05`'s five questions, and the texts `CL-R05` names change with it.
+
+**Source:** A-58 (design workspace tag `STG-33-cl-r1`), `CL-R05`
+
+**When:** **Unscheduled**, owed by M2 or E206, whichever comes first
+
+**Notes:** Filed by the register PR for A-58
+
+*Later notes: `notes.d/E219/`, oldest first (`python tools/register.py show E219`).*
+
+### E220
+
+**Work:** Provider shapes in what the Lead is shown: whether results and wakes scrub `CREDENTIAL_PATTERNS` as well as AEW's form, now that text is pushed to a model. A whole-channel change.
+
+**Source:** E120's review (2026-11-09); A-58 (design workspace tag `STG-33-cl-r1`)
+
+**When:** **Unscheduled**
+
+**Notes:** Filed by the register PR for A-58: the row E120's review owes
+
+*Later notes: `notes.d/E220/`, oldest first (`python tools/register.py show E220`).*
+
+### E221
+
+**Work:** A background shell reads as a pass: `_SEGMENT` in `progress.py` has no bare `&`, so `pytest tests > out.log 2>&1 &` with exit 0 gives `last_test` a pass and enters `green`. It reads as unknown instead. On `main` too.
+
+**Source:** A reviewer printed it, and the designer read the regex; A-58 (design workspace tag `STG-33-cl-r1`)
+
+**When:** **Unscheduled**, in the small-fixes lane
+
+**Notes:** Filed by the register PR for A-58
+
+*Later notes: `notes.d/E221/`, oldest first (`python tools/register.py show E221`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.
@@ -2781,7 +2865,7 @@ Fixed before the M3 freeze (operator P0), with regressions in `tests/regression/
 
 ### U1
 
-**Work:** Stall detection in `aew harness wait`: return `stalled`, naming the tool and how long, when a tool call has run N minutes with no events. Built as the run health projection: a field of `harness_status` (and `resume` and the dashboard run), never a store or authority, with H1's rules: terminal statuses pass through, robust p95 calibration, an incremental cache, `since` from telemetry, an edge-triggered wake. Slices filed by the hold match: F41.8
+**Work:** Stall detection: `stalled`, a reason on the Lead's one wake list (A-58), delivered by a wake and returned by `aew harness wait`, naming the tool and how long, when a tool call has run N minutes with no events. Built as the run health projection: a field of `harness_status` (and `resume` and the dashboard run), never a store or authority, with H1's rules: terminal statuses pass through, robust p95 calibration, an incremental cache, `since` from telemetry, an edge-triggered wake. Slices filed by the hold match: F41.8
 
 **Source:** Serves `AEW-FR-24.a`, `R01-15`, `R01-13`, `R01-14`, `MSN-B3`; position A-15; the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`). Design inputs as held, not authority: review finding 2; run R-INV-0006-1 hung 20 minutes on a truncated PowerShell here-string; [run health projection design v0.1](../design/run-health-projection-design-v0.1.md) (approved 2026-10-05; ledger RHP-01 to RHP-11), as amended by [H1, run health projection implementation note](../design/run-health-projection-implementation-note-v0.1.md) (approved 2026-10-05; ledger RHN-01 to RHN-10); [pre-F15.2 amendment set v0.1](../design/pre-f15-2-amendment-set-v0.1.md) §1, §4 (PFS-01, PFS-03)
 

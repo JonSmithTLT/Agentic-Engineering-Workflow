@@ -464,17 +464,17 @@ def _restore(root: Path, edits: dict[str, bytes], kept: dict[str, bytes | None])
     """Each file back as it was, but only if it still holds what this wrote; the names of those that don't."""
     left = []
     for rel, wrote in edits.items():
-        path = root / rel
+        path, before = root / rel, kept[rel]
         try:
             current = path.read_bytes() if path.exists() else None
-            if current == kept[rel]:
+            if current == before:
                 continue
             if current != wrote:
                 left.append(rel)
-            elif kept[rel] is None:
+            elif before is None:
                 path.unlink(missing_ok=True)
             else:
-                atomic_write(path, kept[rel])
+                atomic_write(path, before)
         except OSError:
             left.append(rel)
     return left

@@ -206,6 +206,22 @@ def test_each_timer_sits_half_way_past_its_own_process_acting(tmp_path, workers,
     assert worker.stacks.at_mono == pytest.approx(worker.mono + 2.0)
 
 
+def test_the_holders_check_reads_this_sessions_files_before_any_earlier_sessions(tmp_path, monkeypatch):
+    """Review of #387's quick check, f1. It reads a capped number of files, and a local hang directory keeps growing."""
+    own = tmp_path / "autopsy" / "session-9-b"
+    older = tmp_path / "autopsy" / "session-1-a"
+    own.mkdir(parents=True)
+    older.mkdir()
+    (own / "mine.txt").write_text("x", encoding="utf-8")
+    for name in "abc":
+        (older / f"{name}.txt").write_text("x", encoding="utf-8")
+    asked: list[str] = []
+    monkeypatch.setattr(session_deadline, "HOLDER_FILES", 2)
+    monkeypatch.setattr(proctree, "holders", lambda paths: asked.extend(paths) or {})
+    session_deadline._holders_text(own, [])
+    assert asked == [str(own / "mine.txt"), str(older / "a.txt")]
+
+
 def test_two_sessions_with_one_pid_have_two_directories(tmp_path):
     """Review of #387, M1: pids are reused, so the session's directory is not named by its pid alone."""
     config = SimpleNamespace(option=SimpleNamespace(numprocesses=None),

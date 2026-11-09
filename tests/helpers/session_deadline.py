@@ -147,7 +147,9 @@ def _stamp(what: str) -> str:
 def _holders_text(directory: Path, extra: list[str]) -> str:
     """Who holds the session's evidence files (what the upload must read) and the recorder's failed paths."""
     time.sleep(min(float(os.environ.get(HANG_EVIDENCE_ENV) or 0), 600.0))  # a test of the backstop only; bounded
-    paths = [str(p) for p in sorted(directory.parent.parent.rglob("*")) if p.is_file()][:HOLDER_FILES]
+    # This session's first: a hang directory can hold many sessions', which would otherwise crowd them out
+    files = [p for p in sorted(directory.parent.parent.rglob("*")) if p.is_file()]
+    paths = [str(p) for p in sorted(files, key=lambda p: directory not in p.parents)][:HOLDER_FILES]
     found = {k: v for k, v in proctree.holders(paths + extra).items() if v}
     return proctree.describe_holders(found) if found else "no process holds any of the session's files\n"
 

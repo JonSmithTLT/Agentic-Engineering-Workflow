@@ -1,6 +1,7 @@
 """A scripted MCP client standing in for the Lead's harness (F15.1): run as the harness command of `aew lead session`,
-it spawns `aew lead mcp` the way OpenCode does (inherited environment, no `environment` of its own, no console window),
-completes the handshake and runs scripted steps, writing one JSON line per step to a transcript.
+it spawns `aew lead mcp` with this interpreter, in its inherited environment and with no console window, completes the
+handshake and runs scripted steps, writing one JSON line per step to a transcript. It stands in for OpenCode's protocol,
+not its start: OpenCode starts the projected command with the projected `environment` over the session's.
 
 Steps:
   {"rpc": METHOD, "params": {...}}          a request; the reply is recorded

@@ -66,10 +66,12 @@ from typing import Any
 from aew.harness.containment import ALLOW_WEAKER_REMEDY, egress, sockets
 from aew.harness.containment.layout import (
     DISPLAY_ENV,
+    GSSPROXY,
     NET_SHIM,
     PROXY_ONLY,
     SANDBOX_TMP,
     VAR_RUN,
+    WSLG,
     Layout,
     _within,
     bwrap_argv,
@@ -86,11 +88,21 @@ CANARY = "aew-self-test"  # the value of each DISPLAY_ENV variable the probe is 
 # The kernel's limit on user namespaces (user_namespaces(7)). bubblewrap that is not setuid (0.4.0 on Rocky 8) needs
 # one, and with the limit at 0 it says only "Creating new namespace failed" (STG-05 CS-4, ST-27 fact 5).
 USERNS_LIMIT = "/proc/sys/user/max_user_namespaces"
-# Row 2's words for a reachable socket of the launching user's whose holder cannot be identified (D-CS2-6), which
-# `aew doctor` shows with the row's reason
-UNIDENTIFIED_REMEDY = (" (the launching user owns it and no process AEW can read holds it, so it counts as a "
-                       "credential: if you know what serves it, stop that or have it listen under a masked path; "
-                       f"otherwise {ALLOW_WEAKER_REMEDY})")
+
+
+def _unidentified_remedy(paths: list[str], masks: tuple[str, ...]) -> str:
+    """Row 2's words for reachable sockets of the launching user's whose holders cannot be identified (D-CS2-6), once
+    however many there are, which `aew doctor` shows with the row's reason. It names the sockets, since it can follow
+    one it isn't about (review of the follow-ons, m1), and the masks it offers, leaving out those that are a system
+    service's own directory, where nothing else should listen (m2). It says nothing of the class, which the row has
+    named: such a socket can be a display's as well as a credential."""
+    held, are = ("it", "it is") if len(paths) == 1 else ("them", "they are")
+    offered = ", ".join(m for m in masks if m not in (GSSPROXY, WSLG))
+    return (f" (the launching user owns {', '.join(paths)} and no process AEW can read holds {held}, so {are} refused: "
+            f"if you know what serves {held}, stop that or have it listen under a masked path ({offered}); otherwise "
+            f"{ALLOW_WEAKER_REMEDY})")
+
+
 # Row 1: addresses that are never routed anywhere real, TEST-NET-1 (RFC 5737) and IPv6's documentation prefix
 # (RFC 3849), which a connection out of a namespace with only its loopback cannot reach at all (F28 §1, P1: at once,
 # ENETUNREACH); a name on no allowlist, and never resolvable (.invalid, RFC 6761); and how long the probe waits for the
@@ -897,8 +909,11 @@ def _row2(layout: Layout, seen: dict[str, Any], net: dict[str, Any] | None = Non
              for r in inside.get("reachable") or [] if r["path"] in classes]
     problems += [f"a {s['class']} socket is reachable: {s['path']}"
                  + (f" (inside at {', '.join(s['inside'])})" if s["inside"] != [s["path"]] else "")
-                 + (UNIDENTIFIED_REMEDY if s.get("holder") == sockets.UNIDENTIFIED else "")
                  for s in found if s["class"] in sockets.FAILING]
+    unidentified = [s["path"] for s in found
+                    if s["class"] in sockets.FAILING and s.get("holder") == sockets.UNIDENTIFIED]
+    if unidentified:
+        problems[-1] += _unidentified_remedy(unidentified, _host_masks(layout))
     # checked at their own paths only: no mount of their filesystem above them on the host (review of #244)
     untranslated = [{"path": c["path"], "class": c["class"]} for c in classes.values()
                     if c.get("fspath") is None and (c.get("real") or {}).get("fspath") is None]

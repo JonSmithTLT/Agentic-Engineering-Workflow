@@ -1750,6 +1750,7 @@ None.
 - `aew.harness.agentenv`
 - `aew.harness.containment`
 - `aew.harness.containment.layout`
+- `aew.harness.contract`
 - `aew.harness.procs`
 
 ### `aew.policy.classes`

@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -21,6 +22,45 @@ from aew.errors import ContainmentUnavailable, GateUnsatisfied, NotFound
 
 BUILTIN = {"guardrails"}
 DEFAULT_TIMEOUT_S = 900
+
+# Display budgets, not execution/evidence limits: at most 80 lines of 1,000 characters each. The full log and its
+# evidence seal are untouched. Keep the source names in the result so callers can explain the cut without guessing.
+FAILURE_OUTPUT_MAX_LINES = 80
+FAILURE_OUTPUT_MAX_LINE_CHARS = 1000
+_FAILURE_LINE = re.compile(
+    r"\b(?:fail(?:ed|ure|ures)?|errors?|traceback|\w*exception|assert(?:ion\w*)?|timeout|violations)\b|^E\s+", re.I)
+
+
+def failure_output(log: str) -> dict[str, Any]:
+    """A bounded, credential-scrubbed diagnostic view, with original 1-based line numbers and exact omitted counts.
+
+    Prefer diagnostic anchors anywhere in the log, then their two-line context, then the tail. This is a heuristic,
+    not a parser for every test runner: without recognisable anchors it is a tail, explicitly only an excerpt. If
+    anchors themselves exceed the budget, earlier anchors win. Scrub whole lines before truncating, never a prefix
+    of a credential. The saved log and sealed evidence never pass through this display helper.
+    """
+    from aew.harness.contract import redact
+
+    lines = log.splitlines()
+    anchors = [i for i, line in enumerate(lines) if _FAILURE_LINE.search(line)]
+    selected: set[int] = set()
+    for indices in (anchors, [j for i in anchors for j in range(max(0, i - 2), min(len(lines), i + 3))],
+                    range(len(lines) - 1, -1, -1)):
+        for i in indices:
+            if len(selected) == FAILURE_OUTPUT_MAX_LINES:
+                break
+            selected.add(i)
+    out = []
+    truncated = 0
+    for i in sorted(selected):
+        text = redact(lines[i])
+        cut = len(text) > FAILURE_OUTPUT_MAX_LINE_CHARS
+        truncated += int(cut)
+        out.append({"line": i + 1, "text": text[:FAILURE_OUTPUT_MAX_LINE_CHARS], "truncated": cut})
+    return {"lines": out, "total_lines": len(lines), "omitted_lines": len(lines) - len(out),
+            "truncated_lines": truncated,
+            "limits": {"lines": FAILURE_OUTPUT_MAX_LINES, "characters_per_line": FAILURE_OUTPUT_MAX_LINE_CHARS,
+                       "source": "aew.policy.checks.FAILURE_OUTPUT_MAX_LINES / FAILURE_OUTPUT_MAX_LINE_CHARS"}}
 
 
 def definition_digest(cfg: dict[str, Any], *, guardrails: dict[str, Any] | None = None) -> str:

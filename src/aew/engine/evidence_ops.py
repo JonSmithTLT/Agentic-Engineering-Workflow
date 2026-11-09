@@ -976,7 +976,9 @@ class EvidenceCommands:
                 meta["coordination_inputs"] = inputs
             create_exclusive(self.k.aew_root / f"evidence/{work_id}/{eid}.md", E.seal(meta, ""))
         return {"ok": True, "evidence": eid, "result": result, "exit_code": run["exit_code"],
-                "mutated_inputs": mutated, "evaluated_snapshot": before, "log": log_rel}
+                "mutated_inputs": mutated, "evaluated_snapshot": before, "log": str(self.k.aew_root / log_rel),
+                "log_access": "Full log for the shell, not the harness read tool.",
+                **({"failure_output": C.failure_output(run["log"])} if run["exit_code"] != 0 else {})}
 
     def submit(self, *, invocation_token: str, kind: str, text: str) -> dict[str, Any]:
         submitted, body = parse_frontmatter(text, source="submission")

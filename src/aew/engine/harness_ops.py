@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -432,6 +433,7 @@ class Harness:
                             "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
                             "results": self.run_results(inv["work_unit"], r["run"], cache),
                             "missing_tools": _missing_tools(record),
+                            "missing_skills": _missing_skills(record),
                             "model_check": _field(record, "model_check").get("status"),
                             "foreign_sessions": _list(_field(record, "result").get("foreign_sessions")),
                             "run_dir": str(directory)})
@@ -577,6 +579,9 @@ class Harness:
         missing = _missing_tools(record)
         if missing:  # beside what its evidence found: what it went without (#330's owed lines)
             out["missing_tools"] = missing
+        missing_skills = _missing_skills(record)
+        if missing_skills:  # attention only, just like tools: no change to the run's outcome or next action
+            out["missing_skills"] = missing_skills
         if control is not None:
             # `reason`, not `why`: a wait result's `why` is the wake enum (E122 review, n3)
             out["ended_by"] = {"lane": "control", "reason": control}  # the run record may still show it running
@@ -980,6 +985,26 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
             "`--when turn-end` needs coordination messaging, which this project has not enabled; nothing was sent. "
             "Use `--when next-step`, or ask the operator to enable messaging", when=when)
     return "request"
+
+
+_SKILL_NAME = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")  # a skill id, at most 64 ASCII characters
+
+
+def _missing_skills(record: dict[str, Any] | None) -> list[dict[str, str]]:
+    """Requested skills the run did not receive, with reasons from its delivered contract, never today's install.
+
+    Old runs without a recorded plan have no facts to project. Optional offers are not requests (ADR-0006).
+    """
+    from aew.skills import REASONS
+
+    plan = _field(_field(_field(record, "contract"), "extra"), "skills")
+    reasons = _field(plan, "reasons")
+    out = []
+    for name in _list(plan.get("unavailable")):
+        reason = reasons.get(name) if isinstance(name, str) else None
+        shown = name if isinstance(name, str) and _SKILL_NAME.fullmatch(name) else "not shown"
+        out.append({"name": shown, "reason": reason if reason in REASONS else "not_known"})
+    return out
 
 
 def _missing_tools(record: dict[str, Any] | None) -> list[dict[str, Any]]:

@@ -235,7 +235,7 @@ def test_every_read_of_a_proc_file_in_src_that_can_hold_a_comm_is_a_bytes_read()
     # The scan is not blind: it sees each known read of a comm's file, as bytes, by every form it follows.
     assert {("src/aew/harness/procs.py", "/proc/{}/stat", "bytes"),  # _start_ticks, describe, the reaper's script
             ("src/aew/harness/procs.py", "/proc/{}/status", "bytes"),  # _status_lines: Path(...) with parts
-            ("src/aew/harness/operator_endpoint.py", "/proc/{}/stat", "bytes"),  # through a name: proc / "stat"
+            ("src/aew/harness/operator_client.py", "/proc/{}/stat", "bytes"),  # through a name: proc / "stat"
             ("src/aew/harness/procs.py", "/proc/stat", "text")} <= seen, sorted(seen)
 
 

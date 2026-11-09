@@ -3,8 +3,8 @@
 * `request` asks the operator to approve a protected command set in the G3 confirmer, waits for the decision, and
   submits the approved set to the O-01 route (:mod:`aew.g3client`). It is the operator's, at their own terminal:
   it refuses in a Lead session (:func:`aew.engine.custody_ops.refuse_kept_out`) before it reads anything, and
-  once CS-4 contains the Lead, ``request.sock`` is out of its reach besides. A Lead asking for an operator approval
-  is not built: that is the designer's question. Nothing here asks for the PIN, which is typed only in the confirmer.
+  once CS-4 contains the Lead, ``request.sock`` is out of its reach besides. A Lead asks through steering's
+  ``request_confirmation`` (addendum 6). Nothing here asks for the PIN, which is typed only in the confirmer.
 """
 
 from __future__ import annotations
@@ -70,13 +70,13 @@ def _request(a: argparse.Namespace) -> Any:
     receipt = C.submit(C.approved_set(proved, record), a.o01, token)
     out = {"approval_ref": pending["approval_ref"], "consent_set_ref": record.get("consent_set_ref"),
            "set_digest": record.get("set_digest"), "receipt": receipt,
-           "note": C.note(receipt, S.standing(project=False))}
+           "note": C.note(receipt, S.standing(project=False), C.probe())}
     if a.json:
         return out
     # the ref names itself (`consent:g3:...`): no label before it (the operator's G3-D trial, 2026-10-28)
     lines = [f"approved: {out['approval_ref']}; consent set {out['consent_set_ref']}", "submitted; the receipt:"]
-    lines += [f"  {r.get('intent_ref')}: {r.get('admission_state')} {r.get('reason_code') or ''}".rstrip()
-              for r in receipt["results"]]
+    lines += [f"  {r.get('intent_ref')}: {r.get('admission_state')} "
+              f"{r.get('reason_code') or 'effect ' + str(r.get('effect_state'))}" for r in receipt["results"]]
     if out["note"]:
         lines.append(out["note"])
     return "\n".join(lines)

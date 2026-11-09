@@ -50,7 +50,6 @@ None.
 ### `aew.g3client`
 
 - `aew.errors`
-- `aew.g3standing`
 - `aew.stg02.g3_overlay`
 - `aew.stg02.wire`
 
@@ -205,6 +204,7 @@ None.
 - `aew.capability.consent`
 - `aew.cli.capability_commands`
 - `aew.cli.dashboard_commands`
+- `aew.cli.fields`
 - `aew.cli.g3_commands`
 - `aew.cli.history_commands`
 - `aew.cli.map_commands`
@@ -320,6 +320,7 @@ None.
 ### `aew.cli.work_commands`
 
 - `aew.cli.commands`
+- `aew.cli.fields`
 - `aew.engine.custody_ops`
 - `aew.errors`
 - `aew.harness.bridge`
@@ -1853,6 +1854,8 @@ None.
 
 ### `aew.stg02.commands`
 
+- `aew.g3client`
+- `aew.g3standing`
 - `aew.stg02.adopted`
 - `aew.stg02.ledger`
 - `aew.stg02.wire`

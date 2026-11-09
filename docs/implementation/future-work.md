@@ -2627,6 +2627,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E209/`, oldest first (`python tools/register.py show E209`).*
 
+### E214
+
+**Work:** D-01's next revision adds `RESOURCE_POLICY_ISSUER` to `SourceStamp.owner` as a non-governing namespace (OP-02's second bullet: `governing_owner` null, as for `IF10` and `R01`). An `owner_operation_index` item for that owner is then stamped with its `data.owner`, as OP-01 says, in place of the bridge in `Reads._index_item`, and `test_the_cni_stamp_is_for_the_one_owner_the_wire_cannot_name_and_no_other` goes
+
+**Source:** [Gap entry STG02-BE-17](../stg02/GAP-ENTRIES.md#stg02-be-17); the designer's ruling, 2026-11-08
+
+**When:** **Unscheduled**, a step of the O-01 convergence. The bridge ends before anything real issues standing policy: whoever places that owner's first real act depends on this row
+
+**Notes:** Filed by G3-C's owner side
+
+*Later notes: `notes.d/E214/`, oldest first (`python tools/register.py show E214`).*
+
 ### E47
 
 **Work:** Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do), a superseded run does not; a red full run after a reduced-tier merge is a tier-classification defect, fixed in the classifier with a test pinning the case; repeated wall-clock violations on `main` open or update a CI-health issue

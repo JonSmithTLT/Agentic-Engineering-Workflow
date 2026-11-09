@@ -300,6 +300,8 @@ def test_a_consume_that_gets_no_result_is_held_and_never_the_code(steered, endpo
     assert held.value.details["reason"] == G.HELD, held.value.details
     assert "new approval" in held.value.message, "the client's way on reaches the operator"
     assert G.EVERY_REQUEST in held.value.message
+    for route_only in ("client_request_key", "O-01", "set file"):  # the raise has no such things to change
+        assert route_only not in held.value.message
     assert _mode(steered) != MODE and _no_code(endpoint.lines), "nothing raised, and no code shown"
 
 

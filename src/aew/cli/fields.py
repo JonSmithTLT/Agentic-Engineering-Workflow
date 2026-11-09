@@ -37,6 +37,18 @@ HELP = ("option values as data: a YAML/JSON mapping (option name: value, or a li
         "(|-); YAML forms that would change the text are refused")
 REFUSED = {"fields": "--fields cannot nest", "token": "a credential never goes through --fields"}
 FLAG_VALUES = {"true": True, "false": False}
+GIVEN = "file_inputs"  # on the namespace: {option: dest} of each file argument the command line gave
+
+
+class FileInput(argparse._StoreAction):
+    """An option whose value is a file the command reads, or ``-`` for stdin. Inside a Lead session the ``aew`` client
+    reads it and sends the text, so a relayed command takes bytes (``lead_broker.forward``). A test walks the relayed
+    commands' parsers for an option like this that is not one."""
+
+    def __call__(self, parser: argparse.ArgumentParser, namespace: argparse.Namespace, values: Any,
+                 option_string: str | None = None) -> None:
+        super().__call__(parser, namespace, values, option_string)
+        setattr(namespace, GIVEN, {**getattr(namespace, GIVEN, {}), self.option_strings[0]: self.dest})
 
 
 def _not_expanded(_: str) -> str:

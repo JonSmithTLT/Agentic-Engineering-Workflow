@@ -7,6 +7,7 @@ import os
 import sys
 from typing import Any
 
+from aew.cli import fields
 from aew.cli.commands import (
     _add_json,
     _add_lead,
@@ -133,7 +134,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--min-descendant-class", type=int, choices=range(0, 5))
     q.add_argument("--rationale")
     q.add_argument("--external-ref", action="append", default=[])
-    q.add_argument("--body-file", help="Markdown objective/body (file or - for stdin)")
+    q.add_argument("--body-file", action=fields.FileInput, help="Markdown objective/body (file or - for stdin)")
     q.add_argument("--card", help="role card that executes this Ticket (recorded in its role plan)")
     q.add_argument("--acceptance-check", action="append", default=[], metavar="CHECK",
                    help="a project check (policy/checks.yaml, or guardrails) that decides this Ticket's acceptance; "
@@ -343,7 +344,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     psub = p.add_subparsers(dest="plan_cmd", required=True)
     q = psub.add_parser("propose")
     q.add_argument("work_id")
-    q.add_argument("--file", required=True, help="plan body (Markdown; file or - for stdin)")
+    q.add_argument("--file", required=True, action=fields.FileInput, help="plan body (Markdown; file or - for stdin)")
     q.add_argument("--reason")
     q.add_argument("--affected", action="append", default=[], metavar="PATH")
     _add_assurance(q)
@@ -486,7 +487,7 @@ def _register_later_steps(sub: argparse._SubParsersAction) -> Any:
     q.add_argument("run")
     src = q.add_mutually_exclusive_group(required=True)
     src.add_argument("--text")
-    src.add_argument("--file", help="message file, or - for stdin")
+    src.add_argument("--file", action=fields.FileInput, help="message file, or - for stdin")
     q.add_argument("--when", choices=list(WHEN_DELIVERY), default=DEFAULT_WHEN,
                    help="when the agent receives it: next-step (the default) or turn-end")
     add_token(q)

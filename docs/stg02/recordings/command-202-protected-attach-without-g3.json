@@ -57,7 +57,7 @@
    "request_set_ref": "fixture:request-attach-lead-no-g3.rec20261020T023237.attach",
    "results": [
     {
-     "admission_state": "REJECTED",
+     "admission_state": "HELD",
      "cancellation_state": "NONE",
      "effect_state": "NOT_OBSERVED",
      "intent_ref": "fixture:intent-attach-lead",

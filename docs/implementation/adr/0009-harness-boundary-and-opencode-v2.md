@@ -1900,3 +1900,29 @@ a socket fails the launch. The remedy's three routes are kept, and it is reworde
 - **`/mnt/wsl` is not masked:** it's shared across WSL distros, so a listener there in another distro can refuse a launch
   here, and the guide says so. But `/etc/resolv.conf` can link into it, so a mask without a bind-back like `/run`'s would
   take away name resolution on the shared network.
+
+## Amendment 2026-11-08 — a relayed command takes bytes
+
+**A relayed Lead command reads no path in the broker's process.** Its file arguments are read by the `aew` client, which
+runs where the Lead's shell runs, and arrive as text.
+
+- **The client.** A file argument (`--note-file`, `--body-file`, `--file`, each a `fields.FileInput`) is read in the client,
+  relative to the command's directory, and sent as `-` with its text as the request's `stdin`. `--fields FILE` is
+  expanded in the client, as it already was, from the shell's working directory. A request over the bridge's limit is
+  refused here, naming the size and the limit.
+- **The broker.** While it expands `--fields` and runs a relayed command's handler, `read_text_input` takes `-` and refuses
+  a path, with a message naming `-`. This holds on `lead.cli` and on the typed `cli` tool, which submits its arguments as
+  given: there, `--fields -` with the tool's `stdin` argument takes the place of `--fields FILE`. The one exception is the
+  request's own directory: it is used to find the project before the project check, and a directory outside the project
+  is refused.
+- **One input.** A request has one `stdin`, so a command given two inputs is refused by the client. No relayed command
+  has two file arguments, and a test holds that.
+- **Stage intents are found by id.** `stage_intent` looks for a record file only under a name of the record's id format.
+- **How it stays true.** `tests/unit/test_relayed_file_arguments.py` walks the relayed commands' parsers and the handlers'
+  source, and fails on a file argument the client does not handle.
+  `tests/integration/test_relayed_file_arguments_through_a_broker.py` gives each argument of each relayed command and typed
+  tool, one at a time, a value naming a path, and fails when the process opens, lists, writes or checks that path or
+  hands it to a child. It doesn't see a child's own reads, or a path past a state check its one project doesn't reach,
+  which includes a row stopping at a check of an argument the walk filled in itself, and it doesn't walk a typed tool's
+  object-typed properties; a new reader that takes a path from past those is what the broker's refusal and a review are
+  for.

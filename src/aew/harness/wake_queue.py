@@ -200,9 +200,11 @@ def _when(at: Any) -> str:
 
 def wake_text(wake_id: str, shape: Mapping[str, Any]) -> str:
     """The wake as the Lead's session receives it: the fixed header, the JSON, and one line per run of AEW's own
-    values (steering design §2)."""
-    lines = [HEADER, json.dumps({"id": wake_id, **shape}, sort_keys=True, ensure_ascii=False)]
-    for run, digest in sorted((shape.get("runs") or {}).items()):
+    values (steering design §2). What it quotes is scrubbed as a wait's result is, here, the one way out of this
+    module."""
+    clean = K.scrub({"id": wake_id, **shape})
+    lines = [HEADER, json.dumps(clean, sort_keys=True, ensure_ascii=False)]
+    for run, digest in sorted((clean.get("runs") or {}).items()):
         digest = digest or {}
         lines.append(f"- {run}: {digest.get('state', P.UNKNOWN)}, {digest.get('steps', P.UNKNOWN)} steps")
     return "\n".join(lines)

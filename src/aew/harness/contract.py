@@ -110,6 +110,21 @@ def redact(text: str) -> str:
     return CREDENTIAL_RE.sub("aew1.<redacted>", text)
 
 
+SECRET_KEYS = frozenset({"token", "invocation_token", "offer", "secret", "credential"})
+
+
+def scrub(value: Any) -> Any:
+    """``value`` without credential-bearing keys, and with credential strings redacted: what the Lead may be shown, by
+    a tool's result (:mod:`aew.surface.run`) or by a wake (:func:`aew.harness.wake_queue.wake_text`)."""
+    if isinstance(value, dict):
+        return {k: scrub(v) for k, v in value.items() if str(k).lower() not in SECRET_KEYS}
+    if isinstance(value, list | tuple):
+        return [scrub(v) for v in value]
+    if isinstance(value, str):
+        return redact(value)
+    return value
+
+
 # Provider-key shapes (F46.1 proposal §7 rule 8, p1 and Q4): each a regex with its body, matched case-sensitively and
 # only at a token boundary, as secret scanners match. A configuration projection withholds a whole string containing a
 # match (`credential_shaped`). A bare prefix in prose, a profile named like one, a hyphenated name with no digit in its

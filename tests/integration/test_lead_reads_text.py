@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +33,8 @@ from test_stages_ticket import DRAFT, HANG
 from aew.engine import custody_ops as CO
 from aew.engine.api import Engine
 from aew.harness import contract as K
-from aew.harness import wake_queue
+from aew.harness import progress as P
+from aew.harness import runlog, wake_queue
 from aew.policy import execution as X
 from aew.surface import mcp, readable
 from aew.surface import run as R
@@ -167,6 +169,53 @@ def test_a_wait_that_timed_out_says_so_through_the_adapter(lab_project, monkeypa
     # And a status: the wait stays on offer, marked, so its readable next step is the turn's end too.
     [wait] = [a for a in lead.status(wid)["projection"]["actions"] if a["action"] == "harness_wait"]
     assert wait["woken"] is True
+
+
+def test_what_a_wake_quotes_is_scrubbed_as_a_waits_result_is(lab_project, monkeypatch):
+    """One digest, read by both deliveries: the wait through the surface, and the wake through its queue."""
+    p, _lab = lab_project
+    planted = "aew1.tk_0123456789abcdef.SYNTHETICsyntheticSYNTHETIC"
+    lead = TextLead(p)
+    drafted = lead.call("ticket_draft", **{**DRAFT, "expect_rev": lead.call("status")["revision"]})
+    wid = drafted["projection"]["subject"]
+    p.lead("plan", "accept", wid, "--revision", "1")
+    assert lead.offered(wid, "ticket_start")["ok"]
+    [run] = [r["run"] for r in lead.status(wid)["projection"]["runs"]]
+    digest = {"schema": P.SCHEMA, "run": run, "state": P.WORKING, "steps": 3, "last_command": f"curl -H {planted} x",
+              "token": planted, "out_of_scope": ["src/b/x.py"], "red_commands": [], "trigger_seq": 1,
+              "counts": {"steps": 3, "files": 1, "commands": 1, "tests": 0, "triggers": 1},
+              "since_last_wake": {"suppressed": {}},
+              "triggers": [{"seq": 1, "why": K.OUT_OF_SCOPE, "path": "src/b/x.py"}]}
+    monkeypatch.setattr(runlog, "read_progress", lambda directory: digest)
+
+    waited = lead.call("harness_wait", runs=[run], timeout_s=1)
+    shown = json.dumps(waited["result"])
+
+    class Poster:
+        posts: list[str] = []
+
+        def busy(self) -> bool:
+            return False
+
+        def post(self, wake_id: str, text: str) -> str:
+            self.posts.append(text)
+            return "ses_1"
+
+        def landed(self, wake_id: str) -> str:
+            return wake_queue.WAITING
+
+        def new_id(self) -> str:
+            return "msg_1"
+
+    engine = Engine.discover(p.root)
+    queue = wake_queue.WakeQueue(engine.aew_root, poster=Poster(), state=engine.store.current, quiet_s=lambda: 1200,
+                                 clock=time.time)
+    runlog.write_returned(runlog.run_dir(engine.aew_root, run), 0)  # the wait's mark: the wake is told it as well
+    queue.tick()
+    [wake] = Poster.posts
+    for delivery in (shown, lead.text, wake):
+        assert planted not in delivery
+    assert "aew1.<redacted>" in shown and "aew1.<redacted>" in wake and '"token"' not in wake
 
 
 def _named_tool(line: str) -> str:

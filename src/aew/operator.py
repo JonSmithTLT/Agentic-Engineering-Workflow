@@ -142,7 +142,9 @@ def authorize(text: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, str
 
 
 def discard_typed_ahead() -> None:
-    """Drop what is queued at the controlling terminal. With no terminal there is nothing to drop."""
+    """Drop what is queued at the controlling terminal. With no terminal there is nothing to drop, and nothing is taken
+    from a terminal this process is in the background of: what is queued there isn't for it, and the flush would stop
+    the process (SIGTTOU), which no timeout wakes."""
     if IS_WINDOWS:
         _discard_windows()
     else:
@@ -159,8 +161,9 @@ def _discard_posix() -> None:  # pragma: posix-only
     except OSError:
         return
     try:
-        termios.tcflush(fd, termios.TCIFLUSH)
-    except termios.error:
+        if os.tcgetpgrp(fd) == os.getpgrp():
+            termios.tcflush(fd, termios.TCIFLUSH)
+    except (OSError, termios.error):
         pass
     finally:
         os.close(fd)

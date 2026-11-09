@@ -87,6 +87,13 @@ def _rows(*names: str) -> tuple[Any, ...]:
     return tuple(o for o in switch_offer.OFFERS if o.switch in names)
 
 
+@pytest.fixture(autouse=True)
+def leave_the_real_terminal_alone(monkeypatch):
+    """The terminal here is scripted, so a run's own terminal is never read or flushed. The tests of the discard itself
+    run it in a process with a pty of its own."""
+    monkeypatch.setattr(operator, "discard_typed_ahead", lambda: None)
+
+
 @pytest.fixture
 def at_terminal(monkeypatch):
     """The operator's terminal, with the replies given; replaces the suite's stub."""
@@ -644,6 +651,47 @@ def test_enter_typed_before_the_prompt_shows_isnt_an_answer_and_one_typed_at_it_
                           stdin=subprocess.DEVNULL)
     assert "NOTHING READ BEFORE THE PROMPT" in done.stdout, done.stdout + done.stderr
     assert "RESULT declined=True" in done.stdout, done.stdout + done.stderr
+
+
+IN_THE_BACKGROUND = """
+import os, signal, sys, time
+pid, fd = os.forkpty()
+if pid == 0:
+    inner = os.fork()
+    if inner == 0:
+        os.setpgid(0, 0)  # a background group of this terminal
+        from aew import operator
+        operator.discard_typed_ahead()
+        os._exit(7)
+    end = time.time() + 15
+    while time.time() < end:
+        got, status = os.waitpid(inner, os.WUNTRACED | os.WNOHANG)
+        if got:
+            if os.WIFSTOPPED(status):
+                os.kill(inner, signal.SIGKILL)
+            os.write(1, f"RESULT stopped={os.WIFSTOPPED(status)}\\n".encode())
+            os._exit(0)
+        time.sleep(0.05)
+    os.write(1, b"RESULT nothing\\n")
+    os._exit(0)
+buf = b""
+try:
+    while b"RESULT" not in buf or b"\\n" not in buf.split(b"RESULT", 1)[1]:
+        buf += os.read(fd, 4096)
+except OSError:
+    pass
+os.waitpid(pid, 0)
+sys.stdout.write(buf.decode("utf-8", "replace"))
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a pseudo-terminal is POSIX's")
+def test_discarding_never_stops_a_process_in_the_background_of_its_terminal():
+    """The flush from a background group is SIGTTOU: the process stops, and no timeout wakes it. It held a test run for
+    41 minutes until the first version asked whether it was in the foreground."""
+    done = subprocess.run([sys.executable, "-c", IN_THE_BACKGROUND], capture_output=True, text=True, timeout=60,
+                          stdin=subprocess.DEVNULL)
+    assert "RESULT stopped=False" in done.stdout, done.stdout + done.stderr
 
 
 def test_enter_alone_never_authorizes_and_only_the_code_does(monkeypatch):

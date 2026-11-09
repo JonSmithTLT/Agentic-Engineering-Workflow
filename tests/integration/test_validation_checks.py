@@ -977,7 +977,7 @@ def _gates(p, **post) -> None:
     pol = p.root / ".aew/policy/gates.yaml"
     g = load_yaml(pol.read_text(encoding="utf-8"))
     kept = {k: v for k, v in (g.get("post_integration") or {}).items() if k == "custody_register_s"}
-    g["post_integration"] = {**post, **kept}  # as `policy` does: without it, S2 ends a custodian held past the default
+    g["post_integration"] = {**kept, **post}  # kept, as `policy` does, or S2 ends a custodian held past the default
     pol.write_text(dump_yaml(g), encoding="utf-8", newline="\n")
     p.pin_policy()
 

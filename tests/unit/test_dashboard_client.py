@@ -85,8 +85,9 @@ def test_the_probes_token_fails_naming_its_mismatch_and_what_held_the_port():
         assert any(f"127.0.0.1:{local} " in line and f"pid={os.getpid()}," in line for line in text.splitlines()), text
         assert "socket inodes: fd " in text and D.NO_OWNER in text
     elif sys.platform == "win32":  # netstat's rows for the port: the listening one with this pid, or saying it has none
-        assert (any(f"127.0.0.1:{port} " in line and "LISTENING" in line and line.split()[-1] == str(os.getpid())
-                    for line in text.splitlines()) or D.NO_LISTENING_ROW in text), text
+        row = any(f"127.0.0.1:{port} " in line and "LISTENING" in line and line.split()[-1] == str(os.getpid())
+                  for line in text.splitlines())
+        assert row != (D.NO_LISTENING_ROW in text), text  # never both: always saying so would pass an `or`
         assert D.SHARED in text
 
 

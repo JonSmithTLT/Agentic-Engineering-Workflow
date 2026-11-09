@@ -1956,6 +1956,22 @@ This amends the 2026-10-23 amendment's masks and the remedy row 2 gives for a so
   AEW can read holds it, and offers stopping or moving the server only to someone who knows what serves it, else the
   labelled weaker mode.
 
+## Amendment 2026-11-08 — row 2's remedy names the masks, once (review of #382)
+
+This amends the previous amendment and the 2026-10-23 amendment's remedy sentence. The rule of D-CS2-6 is unchanged: such
+a socket fails the launch. The remedy's three routes are kept, and it is reworded.
+
+- **Once, with its masks:** it now comes once however many sockets it covers, names each of them, and lists the masked
+  paths it offers, from the same masks row 2 checks, less the GSS-API proxy's directory and WSLg's, which are a system
+  service's own and no place to listen.
+- **No class in the remedy:** a display socket with no visible holder was told it "counts as a credential". The row has
+  already named the class.
+- **Why `/mnt/wslg` stays whole:** the directory holds more than the display and audio sockets the previous amendment
+  names, so nothing in it is to be bound back.
+- **`/mnt/wsl` is not masked:** it's shared across WSL distros, so a listener there in another distro can refuse a launch
+  here, and the guide says so. But `/etc/resolv.conf` can link into it, so a mask without a bind-back like `/run`'s would
+  take away name resolution on the shared network.
+
 ## Amendment 2026-11-08 — a relayed command takes bytes
 
 **A relayed Lead command reads no path in the broker's process.** Its file arguments are read by the `aew` client, which

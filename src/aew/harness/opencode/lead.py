@@ -228,7 +228,8 @@ def contained_here() -> bool:
 
 
 def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | None = None) -> dict[str, Any]:
-    """What `aew opencode` would run, without starting anything (no values of environment variables)."""
+    """What `aew opencode` would run, without starting anything. It holds no environment variable's value, but for the
+    import path in its `config` that the Lead's MCP server is given (no credential)."""
     guide = guide_of(engine)
     refuse_unusable(provider_env, os.environ)  # contained, the variables feed relays and stay out of the TUI's env
     wakes = pushes_wakes(engine)

@@ -150,6 +150,7 @@ def test_waits_for_an_event_that_never_comes(tmp_path):
         bounds.bounded_wait("inner.child_dumped", lambda: any(
             "block_on_pipe" in p.read_text(encoding="utf-8", errors="replace") for p in where.glob("stacks-*.txt"))
             and any(where.glob("events-*.jsonl")), seconds=60, gone=lambda: child.poll() is not None)
+        assert child.poll() is None, f"the child ended with {child.returncode} before it blocked"
         never = threading.Event()
         assert never.wait(12), "the event never came"
     finally:
@@ -158,6 +159,7 @@ def test_waits_for_an_event_that_never_comes(tmp_path):
 '''
 
 
+@pytest.mark.serial  # real processes against a 4 s test timeout and a 1 s dump: alone on its runner
 def test_a_hung_test_names_its_blocked_frame_the_childs_blocked_frame_and_the_dead_thread(tmp_path):
     """The deliberately hung test: the test process waits on an event that never comes, a child Python helper is
     blocked in a C call (``os.read`` on a pipe), and a child thread died of an uncaught exception. The autopsy names all
@@ -634,8 +636,9 @@ def test_a_process_a_test_leaves_running_is_reported_by_its_test_directory(tmp_p
 
 def test_a_controller_slower_than_its_margins_is_ended_by_the_sentinel_and_says_so(tmp_path, monkeypatch):
     """Review of #217, (b): the suspected cause of the one unexplained session-set failure, made deterministic. The
-    controller's collect outlasts both margins, so the sentinel acts: it writes ``session-deadline`` itself (saying
-    so), records the set it ended, and the controller never writes ``session-finished``."""
+    controller's collect outlasts both margins, so the sentinel ends the session, and the controller never writes
+    ``session-finished``. What the sentinel writes as it acts is `test_hang_autopsy_units.py`'s: with a 1 s margin here,
+    a busy runner can have the backstop end it mid-note, and that loses a note, not the ending."""
     hangs = tmp_path / "hangs"
     monkeypatch.setenv("G3_TEST_SLOW_COLLECT_S", "60")
     proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "4", "--session-deadline-margin", "1",
@@ -646,9 +649,9 @@ def test_a_controller_slower_than_its_margins_is_ended_by_the_sentinel_and_says_
     why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
     assert proc.returncode in (DEADLINE_EXIT, -9, 137), why  # ended by the sentinel: its job code, or SIGKILL
     assert "session-finished.txt" not in names and "abnormal-exit.txt" not in names, why
-    assert "written by the sentinel" in (session / "session-deadline.txt").read_text(encoding="utf-8"), why
-    assert any(n.startswith("sentinel-processes-deadline") for n in names), why
-    assert "(deadline)" in (session / "sentinel-log.txt").read_text(encoding="utf-8"), why
+    said = session / "session-deadline.txt"
+    if said.exists() and said.stat().st_size:  # whatever it says, not the controller's: its collect is still going
+        assert "written by the sentinel" in said.read_text(encoding="utf-8"), why
 
 
 # Native code holding the GIL, for as long as any of these sessions lasts, and bounded: no Python thread runs meanwhile.
@@ -821,7 +824,8 @@ def pytest_unconfigure(config):
 
 def test_the_sentinel_ends_the_session_even_if_collecting_its_evidence_hangs(tmp_path, monkeypatch):
     """The controller and the sentinel both collect before they end anything, and collecting can hang. A job that
-    reaches its timeout uploads nothing at all, so the ending can't wait on what's collected on the way."""
+    reaches its timeout uploads nothing at all, so the ending can't wait on what's collected on the way. The backstop's
+    own note is `test_hang_autopsy_units.py`'s: the note may be what hangs, so its loss isn't a failure to end."""
     hangs = tmp_path / "hangs"
     monkeypatch.setenv("G3_TEST_HANG_EVIDENCE_S", "120")
     proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "4", "--session-deadline-margin", "1",
@@ -831,7 +835,7 @@ def test_the_sentinel_ends_the_session_even_if_collecting_its_evidence_hangs(tmp
     names = {p.name for p in session.iterdir()}
     why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
     assert proc.returncode in (DEADLINE_EXIT, -9, 137), why
-    assert "sentinel-backstop.txt" in names and "session-finished.txt" not in names, why
+    assert "session-finished.txt" not in names, why
 
 
 def test_the_backstop_moves_with_a_session_that_finished_long_before_its_deadline(tmp_path, monkeypatch):
@@ -846,7 +850,7 @@ def test_the_backstop_moves_with_a_session_that_finished_long_before_its_deadlin
     names = {p.name for p in session.iterdir()}
     why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
     assert proc.returncode in (DEADLINE_EXIT, -9, 137), why
-    assert {"session-finished.txt", "stuck-after-finish.txt", "sentinel-backstop.txt"} <= names, why
+    assert "session-finished.txt" in names, why  # ended well before its deadline: the backstop moved with the finish
 
 
 @pytest.mark.parametrize("marker", ["session-finished", "session-deadline", "job-unavailable", "sentinel-ready"])

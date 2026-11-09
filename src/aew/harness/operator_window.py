@@ -75,6 +75,8 @@ class BackgroundConsole:
 
     @staticmethod
     def _show(visible: bool) -> bool:  # pragma: windows-only
+        if sys.platform != "win32":  # the type checker's narrowing: `windll` exists only there
+            return False
         import ctypes
 
         window = ctypes.windll.kernel32.GetConsoleWindow()

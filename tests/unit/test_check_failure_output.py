@@ -54,6 +54,30 @@ def test_an_empty_failure_log_has_no_invented_diagnostic_lines():
     assert out["notice"] is None
 
 
+@pytest.mark.parametrize("failure", [
+    "AssertionError: expected " + "x" * 400 + " but was <the part that differs>",
+    "AssertionError: " + "期待値" * 25 + " <the part that differs>",
+    "ERROR: C:\\" + "dir\\" * 60 + "file.py: <the part that differs>"])
+def test_short_rows_leave_their_unused_byte_share_for_a_whole_long_diagnostic(failure):
+    lines = [f"step {i} ok" for i in range(200)] + [failure] + [f"summary {i}" for i in range(19)]
+    out = C.failure_output("\n".join(lines))
+    assert len(out["lines"]) == 80
+    diagnostic = next(row for row in out["lines"] if row["line"] == 201)
+    assert diagnostic["text"] == failure and diagnostic["truncated"] is False
+    assert out["truncated_lines"] == 0
+    assert [row["line"] for row in out["lines"]] == sorted(row["line"] for row in out["lines"])
+    assert len(json.dumps({"failure_output": out}, indent=2).encode("utf-8")) <= C.FAILURE_OUTPUT_MAX_BYTES
+
+
+def test_a_single_long_line_is_cut_at_the_character_cap_even_when_the_byte_budget_has_room():
+    log = "ERROR " + "x" * 5000
+    out = C.failure_output(log)
+    assert out["limits"]["characters_per_line"] == C.FAILURE_OUTPUT_MAX_LINE_CHARS == 1000
+    assert out["lines"] == [{"line": 1, "text": log[:1000], "truncated": True}]
+    assert out["truncated_lines"] == 1 and out["omitted_lines"] == 0 and out["notice"]
+    assert len(json.dumps({"failure_output": out}, indent=2).encode("utf-8")) < C.FAILURE_OUTPUT_MAX_BYTES
+
+
 @pytest.mark.parametrize("runner", ["maven", "make", "javascript"])
 def test_a_reserved_tail_keeps_runner_failures_when_success_lines_saturate_the_anchors(runner):
     if runner == "maven":

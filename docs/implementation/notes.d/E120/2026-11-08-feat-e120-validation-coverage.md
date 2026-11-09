@@ -1,6 +1,8 @@
 First slice: a failing worker check returns a diagnostic-first excerpt with a reserved 20-line tail, bounded to
 80 lines and 25 KiB of serialized JSON including its envelope. The byte budget is half of OpenCode's 50 KiB output
-cut, leaving room for other response fields; it counts ASCII escaping, including non-ASCII text. Line numbers count
+cut, leaving room for other response fields; it counts ASCII escaping, including non-ASCII text. Short rows are served
+first so unused byte shares reach longer diagnostics, up to the 1,000-character cap and remaining byte share; displayed
+rows remain in file order. Line numbers count
 file newlines. Omitted-line, omitted-anchor and truncated-line counts and a runtime notice disclose the selection's
 limits. Recognised error-class lines are anchors; a middle failure behind too many false anchors and a long summary
 can still be missed. The excerpt is labelled as check-output data, not instructions, and uses the result channel's

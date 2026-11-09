@@ -64,6 +64,7 @@ def test_failing_lines_reach_the_worker_and_missing_skills_do_not_fail_its_run(l
     assert lab.step(run, 2)["readable"] is True, "the full log is available to the worker's shell on this platform"
     assert lab.step(run, 3)["readable"] is False, "the old .aew-relative path did not work from the workspace"
     assert "failure_output" not in lab.step(run, 4)["stdout_json"], "a passing check needs no failure excerpt"
+    assert "excerpt" not in lab.step(run, 4)["stdout_json"]["log_access"]
     assert done["status"] == "ended_with_evidence", lab.record(run)
     missing = [{"name": "fixture-style", "reason": "not_shipped"}]
     assert done["missing_skills"] == missing
@@ -78,7 +79,7 @@ def test_failing_lines_reach_the_worker_and_missing_skills_do_not_fail_its_run(l
         return matches[-1] if matches else "ask"
 
     assert effect("external_directory", str(log)) == "deny", "the response must not promise the harness read tool"
-    assert all(effect(action, str(log)) == "allow" for action in projection.SHELL_ACTIONS)
+    assert all(effect(action, f'cat "{log}"') == "allow" for action in projection.SHELL_ACTIONS)
     assert record["contract"]["extra"]["skills"]["unavailable"] == ["fixture-style"]
     evidence, problems = E.scan(lab.aew_root, wid)
     assert not problems

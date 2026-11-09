@@ -45,8 +45,8 @@ def failure_output(log: str) -> dict[str, Any]:
 
     Keep a reserved tail, then anchors anywhere, their two-line context, then tail fill. This is a heuristic, not a
     parser for every runner: a middle failure behind too many false anchors and a long summary can still be missed.
-    Omitted anchors and the notice disclose that limit. Share the serialized-byte budget among selected rows so long
-    early lines cannot evict the reserved tail. Scrub whole lines before cuts; saved logs and seals are untouched.
+    Omitted anchors and the notice disclose that limit. Serve short rows first so their unused serialized-byte share
+    reaches longer diagnostics, without evicting reserved tail rows. Scrub before cuts; saved logs/seals are untouched.
     """
     from aew.harness.contract import redact
 
@@ -68,21 +68,30 @@ def failure_output(log: str) -> dict[str, Any]:
         "truncated_lines": len(rows), "notice": _FAILURE_NOTICE,
         "limits": {"lines": FAILURE_OUTPUT_MAX_LINES, "reserved_tail_lines": FAILURE_OUTPUT_TAIL_LINES,
                    "characters_per_line": FAILURE_OUTPUT_MAX_LINE_CHARS, "serialized_bytes": FAILURE_OUTPUT_MAX_BYTES,
+                   "text_allocation": "up to the character cap and remaining byte share; shortest rows first",
                    "source": FAILURE_OUTPUT_SOURCE,
                    "budget": "half of OpenCode's 50 KiB cut, including ASCII-escaped JSON with indent=2"}}
     # The skeleton reserves the longest booleans and count, and the notice, before allocating escaped text bytes.
     overhead = len(json.dumps({"failure_output": out}, indent=2, ensure_ascii=True).encode("utf-8"))
-    per_line = max(0, (FAILURE_OUTPUT_MAX_BYTES - overhead) // max(1, len(rows)))
+    budget = max(0, FAILURE_OUTPUT_MAX_BYTES - overhead)
     truncated = 0
-    for row in rows:
-        text = redact(lines[row["line"] - 1])
+
+    def cost(text: str) -> int:
+        return len(json.dumps(text, ensure_ascii=True).encode("utf-8")) - 2
+
+    texts = {row["line"]: redact(lines[row["line"] - 1]) for row in rows}
+    order = sorted(rows, key=lambda row: cost(texts[row["line"]][:FAILURE_OUTPUT_MAX_LINE_CHARS]))
+    for seen, row in enumerate(order):
+        per_line = budget // (len(order) - seen)
+        text = texts[row["line"]]
         low, high = 0, min(len(text), FAILURE_OUTPUT_MAX_LINE_CHARS)
         while low < high:  # JSON escaping, not codepoints, decides the byte budget; never split a codepoint
             mid = (low + high + 1) // 2
-            if len(json.dumps(text[:mid], ensure_ascii=True).encode("utf-8")) - 2 <= per_line:
+            if cost(text[:mid]) <= per_line:
                 low = mid
             else:
                 high = mid - 1
+        budget -= cost(text[:low])
         row.update(text=text[:low], truncated=low < len(text))
         truncated += int(row["truncated"])
     out["truncated_lines"] = truncated

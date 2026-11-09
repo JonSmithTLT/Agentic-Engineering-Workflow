@@ -19,6 +19,7 @@ from aewflow import sample_project
 from conftest import run_aew
 from fake_harness import AGENT, HarnessLab, contains_credential, credential_hits
 from notifier import until
+from racing_read import read_text_or_none
 
 from aew.harness import procs
 from aew.harness.opencode import lead, projection
@@ -184,7 +185,7 @@ def test_aew_opencode_starts_the_operator_endpoint_and_it_ends_with_the_session(
     assert res.returncode == 0, res.stderr
     assert "starting the operator endpoint" in res.stderr and "AEW_OPERATOR_AUTOSTART=off" in res.stderr
     log = lab.root / ".aew" / "local" / "operator" / "endpoint.log"
-    pid = until(lambda: re.search(r'"pid": (\d+)', log.read_text(encoding="utf-8", errors="replace")), 60, "its start")
+    pid = until(lambda: re.search(r'"pid": (\d+)', read_text_or_none(log) or ""), 60, "its start")
     until(lambda: not procs.pid_alive(int(pid.group(1))), 60, "the endpoint to stop with the session")
 
 

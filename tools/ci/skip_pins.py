@@ -4,16 +4,19 @@
 ``assurance`` fails on both (``tools/ci/check_assurance.py``), but only after every shard of the run has finished. This
 says the same in the fast lane and in the ``static`` job, from the source.
 
-It reads each test module's ``skipif`` marks: on the test, its class, a case of its ``parametrize``, its module's
-``pytestmark``, and those a module names (``POSIX_ONLY = pytest.mark.skipif(...)``); and a test's own
+It reads each test module's ``skipif`` marks: on the test, its class, a case of its ``parametrize``, in place or in a
+list the module names, its module's ``pytestmark``, and those a module names (``POSIX_ONLY = pytest.mark.skipif(...)``);
+and a test's own
 ``if <platform>: pytest.skip(...)``. Each condition is worked out for each platform in three values, since
 ``not linux or which("bwrap") is None`` skips on Windows whatever ``which`` says, and ``linux and geteuid() == 0`` skips
 nowhere for certain. So a test that certainly skips on a platform must be pinned under that platform.
 
 What it can't see, which stays ``assurance``'s to catch: a skip in a fixture or a helper the test calls, or nested
 deeper in the test; a condition on anything but the platform, such as a tool missing on one runner or
-``lead.contained_here()``; a platform constant imported under any name but ``IS_WINDOWS``; and a parametrized test's
-single cases (a pin of any case counts for the test, and a case's pin needs only the test to exist, not that case).
+``lead.contained_here()``; a platform constant imported under any name but ``IS_WINDOWS``; a parametrized test's
+single cases (a pin of any case counts for the test, and a case's pin needs only the test to exist, not that case); a
+test file named ``*_test.py``; and it takes a fixture named ``test_*`` for a test, and ``.skip`` on any object for
+``pytest.skip``. The tree has none of those three.
 
     python tools/ci/skip_pins.py [--skips tests/platform-skips.yaml] [--tests tests]
 """
@@ -30,9 +33,13 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tests" / "helpers"))
+import lanes  # noqa: E402  (tests/helpers/lanes.py: which lane a test file is in)
+
 PLATFORMS = ("linux", "win32")  # the platforms the gate requires (ci.yml's --require)
 IMPORTED_WINDOWS = "IS_WINDOWS"  # the one platform constant modules import (from conftest, or aew.util)
-NOT_GATED = ("live",)  # tests/live: outside every lane assurance reads, so its skips are nobody's pins
+# Lanes no required job collects, so `assurance` refuses a pin of theirs as "no longer exists" (review of #394, 2).
+NOT_GATED = ("live", "vertical", "discovery")
 Names = dict[str, ast.expr]
 
 
@@ -92,9 +99,11 @@ def _skipif_conditions(node: ast.expr, names: Names, seen: frozenset[str] = froz
           and node.args):
         yield node.args[0]
     elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "parametrize":
-        for param in ast.walk(node):  # a case's own marks: pytest.param("a_link", marks=pytest.mark.skipif(...))
-            if isinstance(param, ast.keyword) and param.arg == "marks":
-                yield from _skipif_conditions(param.value, names, seen)
+        for arg in node.args:  # the cases, in place or in a list the module names (review of #394, 3)
+            cases = names[arg.id] if isinstance(arg, ast.Name) and arg.id in names else arg
+            for param in ast.walk(cases):  # a case's own marks: pytest.param("a_link", marks=pytest.mark.skipif(...))
+                if isinstance(param, ast.keyword) and param.arg == "marks":
+                    yield from _skipif_conditions(param.value, names, seen)
 
 
 def _body_skip_conditions(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.expr]:
@@ -143,9 +152,16 @@ def scan_module(source: str, path: str) -> list[Found]:
     return list(tests(tree.body, path, inherited))
 
 
+def _gated(path: str) -> bool:
+    """Whether a required job can collect this file. A file with no lane by its path gets one from its tests' marks."""
+    try:
+        return lanes.lane_of(path, ()) not in NOT_GATED
+    except lanes.Unclassified:
+        return True
+
+
 def scan(tests_dir: Path, root: Path) -> list[Found]:
-    return [found for path in sorted(tests_dir.rglob("test_*.py"))
-            if path.relative_to(tests_dir).parts[0] not in NOT_GATED
+    return [found for path in sorted(tests_dir.rglob("test_*.py")) if _gated(path.relative_to(root).as_posix())
             for found in scan_module(path.read_text(encoding="utf-8"), path.relative_to(root).as_posix())]
 
 
@@ -177,7 +193,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--skips", type=Path, default=ROOT / "tests" / "platform-skips.yaml")
     ap.add_argument("--tests", type=Path, default=ROOT / "tests")
     args = ap.parse_args(argv)
-    out = problems(scan(args.tests, args.tests.resolve().parent), pins_of(args.skips))
+    tests_dir = args.tests.resolve()
+    out = problems(scan(tests_dir, tests_dir.parent), pins_of(args.skips))
     for line in out:
         print(line)
     print(f"skip pins: {len(out)} problem(s)")

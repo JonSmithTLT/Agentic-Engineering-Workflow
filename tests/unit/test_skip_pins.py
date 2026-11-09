@@ -56,12 +56,14 @@ def test_it_catches_the_skip_a_new_contained_test_inherits_from_its_module():
     ('POSIX = pytest.mark.skipif(sys.platform == "win32", reason="r")\n@POSIX\ndef test_a(): pass\n', {"win32"}),
     ('@pytest.mark.parametrize("c", ["x", pytest.param("y", marks=pytest.mark.skipif(sys.platform == "win32", '
      'reason="r"))])\ndef test_a(c): pass\n', {"win32"}),
+    ('CASES = ["x", pytest.param("y", marks=pytest.mark.skipif(sys.platform == "win32", reason="r"))]\n'
+     '@pytest.mark.parametrize("c", CASES)\ndef test_a(c): pass\n', {"win32"}),
     ('def test_a():\n    if sys.platform == "win32":\n        pytest.skip("r")\n', {"win32"}),
     ('@pytest.mark.skipif(sys.platform == "win32", reason="r")\nclass TestK:\n    def test_a(self): pass\n', {"win32"}),
     ('class TestK:\n    pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="r")\n'
      '    def test_a(self): pass\n', {"win32"}),
 ], ids=["equal", "not_equal", "os_name", "dunder_import", "imported_constant", "module_constant", "named_mark",
-        "parametrize_case", "in_the_body", "class_decorator", "class_pytestmark"])
+        "parametrize_case", "named_cases", "in_the_body", "class_decorator", "class_pytestmark"])
 def test_every_way_the_tree_declares_a_platform_skip_is_seen(source, platforms):
     assert skips_on(source) == platforms
 
@@ -94,13 +96,16 @@ def test_a_pin_of_a_test_that_no_longer_exists_fails(pin):
         f"win32: the pin {pin} names a test that no longer exists: remove it"]
 
 
-def test_a_live_test_needs_no_pin_since_no_lane_assurance_reads_runs_it(tmp_path):
+def test_a_test_no_required_job_collects_needs_no_pin_since_assurance_would_refuse_one(tmp_path):
+    """Review of #394, 2: a guard asking for a pin `assurance` calls stale would leave no state of the file green."""
     tests = tmp_path / "tests"
-    for lane in ("live", "unit"):
-        (tests / lane).mkdir(parents=True)
-        (tests / lane / "test_m.py").write_text(
-            '@pytest.mark.skipif(sys.platform == "win32", reason="r")\ndef test_a(): pass\n', encoding="utf-8")
-    assert [f.nid for f in skip_pins.scan(tests, tmp_path)] == ["tests/unit/test_m.py::test_a"]
+    source = '@pytest.mark.skipif(sys.platform == "win32", reason="r")\ndef test_a(): pass\n'
+    for rel in ("live/test_m.py", "discovery/test_m.py", "acceptance/test_vertical_path.py", "unit/test_m.py",
+                "acceptance/test_m.py"):
+        (tests / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tests / rel).write_text(source, encoding="utf-8")
+    assert sorted(f.nid for f in skip_pins.scan(tests, tmp_path)) == ["tests/acceptance/test_m.py::test_a",
+                                                                       "tests/unit/test_m.py::test_a"]
 
 
 def test_the_command_says_its_problems_and_fails(tmp_path, capsys):
@@ -114,3 +119,12 @@ def test_the_command_says_its_problems_and_fails(tmp_path, capsys):
     assert "win32: tests/test_m.py::test_a skips there" in capsys.readouterr().out
     skips.write_text("skipped:\n  win32:\n    tests/test_m.py::test_a: why\n", encoding="utf-8")
     assert skip_pins.main(["--skips", str(skips), "--tests", str(tests)]) == 0
+
+
+def test_its_usage_line_works_from_the_tree_root(tmp_path, monkeypatch):
+    """Review of #394, 4: a relative `--tests tests`, as its docstring gives it."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_m.py").write_text("def test_a(): pass\n", encoding="utf-8")
+    (tmp_path / "skips.yaml").write_text("schema: aew/platform-skips/v1\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert skip_pins.main(["--skips", "skips.yaml", "--tests", "tests"]) == 0

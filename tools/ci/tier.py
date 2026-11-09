@@ -38,6 +38,9 @@ TIERS = ("docs", "fast", "web", "full")
 LANES = {"docs": ("fast", "serial"), "fast": ("fast", "serial"), "web": ("fast", "serial"),
          "full": ("fast", "serial", "integration", "acceptance", "regression", "adversarial")}
 REDUCED = ("docs", "fast", "web")
+# Not a tier of the paths: a `full` run whose lanes are an earlier run's (tools/ci/pin_shortcut.py). `assurance` judges
+# those reports in full, so its job check is the one place this differs: no lane job of its own may have run.
+REUSED = "reused"
 REDUCED_EVENTS = frozenset({"pull_request"})  # every other event is always full
 # A reduced tier only for a pull request into main: a pull request into another branch can be retargeted to main
 # without a new run, so its run must already be the full one (review of PR #99, finding 6).
@@ -304,8 +307,9 @@ def job_problems(tier: str, results: dict[str, str], modules_changed: bool = Tru
     """Why the jobs ``assurance`` needs do not satisfy ``tier``: every one succeeded, except ``lanes``, which is
     skipped exactly when the tier is known and reduced, and ``fastbase``, which must succeed in the ``fast`` tier when
     a fast-lane test module changed (the premise needs it; with only docs and durations it does not run: PR #163
-    review, V7-2) and may have any result otherwise (V6-1). An unknown tier requires everything else. Python, not a
-    shell ``&&`` chain, whose middle failures ``bash -e`` ignores (review of PR #99, finding 1)."""
+    review, V7-2) and may have any result otherwise (V6-1). An unknown tier requires everything else. Under
+    :data:`REUSED`, ``core`` and ``lanes`` are skipped. Python, not a shell ``&&`` chain, whose middle failures
+    ``bash -e`` ignores (review of PR #99, finding 1)."""
     problems = []
     for job in JOBS:
         got = results.get(job, "missing")
@@ -313,7 +317,8 @@ def job_problems(tier: str, results: dict[str, str], modules_changed: bool = Tru
             if tier == "fast" and modules_changed and got != "success":
                 problems.append(f"base footprint unknown (`fastbase`: {got}): add `full-ci`, then Re-run all jobs.")
             continue
-        want = "skipped" if job == "lanes" and tier in REDUCED else "success"
+        skipped = (job == "lanes" and tier in REDUCED) or (job in ("core", "lanes") and tier == REUSED)
+        want = "skipped" if skipped else "success"
         if got != want:
             problems.append(f"{job}: {got}, {want} required in the {tier or 'unknown'} tier")
     return problems
@@ -322,7 +327,7 @@ def job_problems(tier: str, results: dict[str, str], modules_changed: bool = Tru
 def check_problems(tier: str, modules_changed: bool, checks: Mapping[str, str]) -> list[str]:
     """Keyed on the changed paths, not the tier's name (V3-1): whenever a fast-lane test module changed and the tier
     is not ``full``, the runtime lane check and the premise check must both have run and passed."""
-    if tier == "full" or not modules_changed:
+    if tier in ("full", REUSED) or not modules_changed:
         return []
     return [f"{name}: {checks.get(name) or 'did not run'}, success required: a fast-lane test module changed in the "
             f"{tier or 'unknown'} tier" for name in CHECKS if checks.get(name) != "success"]

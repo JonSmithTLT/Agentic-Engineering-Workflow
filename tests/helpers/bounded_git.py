@@ -21,7 +21,9 @@ from aew.harness import procs
 
 PLAIN_GIT_S = bounds.declare("plain_git", 120, why="one git command in a test's repository, whose programs may hold "
                                                    "on; under every lane's --test-timeout, so a hang names its command")
-POLL_S = 0.01  # a helper called dozens of times per test; each call waits at most this past git's exit
+# A helper called dozens of times per test; each call polls this often for git's exit. On Linux each call also waits for
+# the process tree's sentinel when it closes, about 16 ms.
+POLL_S = 0.01
 
 
 def _text(output: Any) -> str:
@@ -32,7 +34,7 @@ def _text(output: Any) -> str:
 def plain_git(*args: str, cwd: Path, env: Mapping[str, str], seconds: float | None = None
               ) -> subprocess.CompletedProcess[str]:
     """Run git and return what ``subprocess.run`` would. :class:`bounds.BoundExpired` names the command and what it had
-    said, with nothing it started still running."""
+    said, with its process tree ended: a process group on Linux, so a program that calls ``setsid`` would leave it."""
     argv = ["git", *args]
     tree = procs.ProcessTree()
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
@@ -41,6 +43,8 @@ def plain_git(*args: str, cwd: Path, env: Mapping[str, str], seconds: float | No
             try:
                 bounds.bounded_wait("plain_git", lambda: proc.poll() is not None, seconds=seconds, poll_s=POLL_S)
             except bounds.BoundExpired as expired:
+                tree.kill()
+                proc.wait(PLAIN_GIT_S)  # on Linux a zombie still counts as the group, and `close` would wait on it
                 raise bounds.BoundExpired(f"{expired}: {argv} in {cwd}; stdout {_text(out)[-2000:]!r}, "
                                           f"stderr {_text(err)[-2000:]!r}") from None
         finally:

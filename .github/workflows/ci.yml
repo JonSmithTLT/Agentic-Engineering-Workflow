@@ -57,10 +57,12 @@ jobs:
     permissions:
       contents: read
       pull-requests: read  # the `full-ci` label, read live
+      actions: read  # an earlier run's jobs and reports, for the pin-only shortcut
     outputs:
       decision: ${{ steps.tier.outputs.decision }}
       tier: ${{ steps.tier.outputs.tier }}
       modules: ${{ steps.tier.outputs.modules }}
+      reuse_run: ${{ steps.reuse.outputs.reuse_run }}
       core_matrix: ${{ steps.shards.outputs.core_matrix }}
       lanes_matrix: ${{ steps.shards.outputs.lanes_matrix }}
     steps:
@@ -104,6 +106,23 @@ jobs:
           restore-keys: shard-durations-
       - name: PyYAML, for the lanes job's deadline as ci.yml sets it (tests/helpers/bounds.py)
         run: python -m pip install "PyYAML>=6.0" "pytest>=8"
+      # Only `tests/platform-skips.yaml` changed since a run where every test ran and passed: `assurance` judges that
+      # run's reports against these pins, and no lane runs (tools/ci/pin_shortcut.py; strategy §3). Any doubt, or this
+      # step failing or timing out, leaves `reuse_run` empty, which is the normal tier.
+      - id: reuse
+        name: The pin-only shortcut, if this run qualifies
+        if: github.event_name == 'pull_request' && steps.tier.outputs.tier == 'full'
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: >-
+          python tools/ci/pin_shortcut.py --event "$GITHUB_EVENT_NAME" --base-ref "$BASE_REF" --merge-ref "$GITHUB_SHA"
+          --repo "$GITHUB_REPOSITORY" --pr "$PR" --head-repo "$HEAD_REPO" --reports-dir "$RUNNER_TEMP/reuse-check"
+          --github-output "$GITHUB_OUTPUT"
       # The gate's runners, each on the one Python its platform is tested on: Linux on 3.11 (the Rocky Linux 8
       # AppStream and SPT wheelhouse target), Windows on 3.13 (the developer workstation).
       - id: shards
@@ -128,6 +147,7 @@ jobs:
   core:
     name: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
     needs: changes
+    if: needs.changes.outputs.reuse_run == ''
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.core_matrix) }}
@@ -199,7 +219,7 @@ jobs:
   lanes:
     name: ${{ matrix.lane }} ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.tier == 'full'
+    if: needs.changes.outputs.tier == 'full' && needs.changes.outputs.reuse_run == ''
     strategy:
       fail-fast: false
       # Computed for this run by the tier job (tools/ci/shard_plan.py; strategy doc, "Runtime budgets"): per runner
@@ -376,7 +396,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      actions: read  # the run's jobs, for the cost record's queue and runner times
+      actions: read  # the run's jobs, for the cost record's queue and runner times; an earlier run's reports
       pull-requests: read  # the recompute reads the `full-ci` label live
     steps:
       - uses: actions/checkout@v7
@@ -401,14 +421,46 @@ jobs:
           python tools/ci/tier.py --event "$EVENT" --base-ref "$BASE_REF" --merge-ref "$GITHUB_SHA" \
             --repo "$REPO" --pr "$PR" --ran "$RAN" --modules-out "$RUNNER_TEMP/changed-modules.txt" \
             --github-output "$GITHUB_OUTPUT"
+      # The jobs were skipped on the tier job's word, so that's worked out again here, from this commit, as the tier is:
+      # a label added meanwhile, or a run that can't be read now, fails with what to do. `assure` below then judges the
+      # reused reports against this tree's pins, and `static` read those pins against this tree's source.
+      - name: "The pin-only shortcut: still the run the jobs were skipped for"
+        if: needs.changes.outputs.reuse_run != ''
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REUSE_RUN: ${{ needs.changes.outputs.reuse_run }}
+        run: |
+          python tools/ci/pin_shortcut.py --event "$GITHUB_EVENT_NAME" --base-ref "$BASE_REF" --merge-ref "$GITHUB_SHA" \
+            --repo "$GITHUB_REPOSITORY" --pr "$PR" --head-repo "$HEAD_REPO" --reports-dir "$RUNNER_TEMP/reuse-check" \
+            --expect "$REUSE_RUN" --summary "$GITHUB_STEP_SUMMARY"
       - uses: actions/download-artifact@v8
+        if: needs.changes.outputs.reuse_run == ''
         with:
           pattern: lane-report-*
           path: lane-reports
       - uses: actions/download-artifact@v8
+        if: needs.changes.outputs.reuse_run != ''
+        with:
+          pattern: lane-report-*
+          path: lane-reports
+          run-id: ${{ needs.changes.outputs.reuse_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v8
+        if: needs.changes.outputs.reuse_run == ''
         with:
           pattern: coverage-*
           path: coverage-data
+      - uses: actions/download-artifact@v8
+        if: needs.changes.outputs.reuse_run != ''
+        with:
+          pattern: coverage-*
+          path: coverage-data
+          run-id: ${{ needs.changes.outputs.reuse_run }}
+          github-token: ${{ github.token }}
       - uses: actions/download-artifact@v8
         with:
           pattern: fastbase-coverage
@@ -577,7 +629,7 @@ jobs:
       - name: Every test job the tier requires succeeded (lanes are required unless the tier is known and reduced)
         if: always()
         env:
-          TIER: ${{ steps.tier.outputs.tier }}
+          TIER: ${{ needs.changes.outputs.reuse_run != '' && 'reused' || steps.tier.outputs.tier }}
           CHANGES: ${{ needs.changes.result }}
           CORE: ${{ needs.core.result }}
           LANES: ${{ needs.lanes.result }}

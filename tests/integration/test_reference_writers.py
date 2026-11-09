@@ -118,6 +118,7 @@ AEW_ROOT_FORMS = {
     ("aew.harness.runlog", "aew_root", "directory.parents[len(Path(RUNS_REL).parts)]"),
     ("aew.harness.steering_loop", "self.aew_root", "Path(engine.aew_root)"),
     ("aew.harness.supervisor", "aew_root", "run_dir.parents[depth]"),
+    ("aew.harness.wake_queue", "self.aew_root", "Path(aew_root)"),
 }
 
 

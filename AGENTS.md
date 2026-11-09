@@ -37,12 +37,14 @@ dropped (operator, 2026-10-24):
 A follow-up pull request is otherwise only for genuinely new scope. An author who disagrees with a finding answers it
 on the pull request, and the reviewer either withdraws it or the operator decides.
 
-## 3. Work while waiting, but never on top of unmerged work
+## 3. Work while waiting, but never on a moving target
 
 - **Waiting is not blocked.** While a pull request waits for review or CI, its author may work on anything that does
   not depend on it, such as an unrelated Ticket. There is no limit on how many pull requests may be open.
-- **Nothing builds on unmerged work.** Work that depends on an open pull request starts only after that pull request
-  merges. Do not branch from it or stack another pull request on it.
+- **Nothing builds on a moving target.** Work that depends on an open pull request starts only once that pull request
+  is up with a clear review, or with only minors and nits left (operator, 2026-11-08). Before that, do not branch from
+  it or stack another pull request on it. A stacked pull request says what it carries, the lower one merges first, and
+  if the lower one's head changes the stacked one takes the new head.
 - **Feedback comes first.** When one of an author's pull requests gets review findings, a red required check or a
   merge conflict, the author brings its current step to a safe stopping point, then fixes those before continuing
   other work.

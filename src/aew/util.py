@@ -9,6 +9,9 @@ import re
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -38,6 +41,20 @@ def decode_text(raw: bytes, *, source: str) -> str:
                          "AEW reads text as UTF-8", source=source) from None
 
 
+_STDIN_ONLY: ContextVar[bool] = ContextVar("aew_stdin_only", default=False)
+
+
+@contextmanager
+def stdin_only() -> Iterator[None]:
+    """While a broker runs a relayed command: :func:`read_text_input` takes ``-`` and refuses a path, because a relayed
+    command's file arguments reach it as bytes from the client."""
+    previous = _STDIN_ONLY.set(True)
+    try:
+        yield
+    finally:
+        _STDIN_ONLY.reset(previous)
+
+
 def read_text_input(value: str | None) -> str:
     """A ``--file``-style argument: a path, or ``-`` for stdin. Read once, as bytes (:func:`decode_text`)."""
     if not value:
@@ -45,6 +62,9 @@ def read_text_input(value: str | None) -> str:
     if value == "-":
         stream = getattr(sys.stdin, "buffer", None)
         return decode_text(stream.read(), source="stdin") if stream is not None else sys.stdin.read()
+    if _STDIN_ONLY.get():
+        raise UsageError(f"a relayed command takes text, not a path ({value}): give - as the file, and send the text "
+                         "on stdin (in the typed cli tool, its stdin argument)", path=value, reason="relayed_path")
     try:
         raw = Path(value).read_bytes()
     except OSError as exc:

@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -415,8 +416,8 @@ class Harness:
                             "heartbeat_age_s": runlog.heartbeat_age(directory),
                             "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
                             "results": self.run_results(inv["work_unit"], r["run"], cache),
-                             "missing_tools": _missing_tools(record),
-                             "missing_skills": _missing_skills(record),
+                            "missing_tools": _missing_tools(record),
+                            "missing_skills": _missing_skills(record),
                             "model_check": _field(record, "model_check").get("status"),
                             "foreign_sessions": _list(_field(record, "result").get("foreign_sessions")),
                             "run_dir": str(directory)})
@@ -970,6 +971,9 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
     return "request"
 
 
+_SKILL_NAME = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")  # a skill id, at most 64 ASCII characters
+
+
 def _missing_skills(record: dict[str, Any] | None) -> list[dict[str, str]]:
     """Requested skills the run did not receive, with reasons from its delivered contract, never today's install.
 
@@ -979,8 +983,12 @@ def _missing_skills(record: dict[str, Any] | None) -> list[dict[str, str]]:
 
     plan = _field(_field(_field(record, "contract"), "extra"), "skills")
     reasons = _field(plan, "reasons")
-    return [{"name": name, "reason": reasons[name] if reasons.get(name) in REASONS else "not_known"}
-            for name in _list(plan.get("unavailable")) if isinstance(name, str)]
+    out = []
+    for name in _list(plan.get("unavailable")):
+        reason = reasons.get(name) if isinstance(name, str) else None
+        shown = name if isinstance(name, str) and _SKILL_NAME.fullmatch(name) else "not shown"
+        out.append({"name": shown, "reason": reason if reason in REASONS else "not_known"})
+    return out
 
 
 def _missing_tools(record: dict[str, Any] | None) -> list[dict[str, Any]]:

@@ -79,7 +79,14 @@ def test_reviewer_and_researcher_projection_golden():
 
 
 def test_lead_projection_golden():
-    golden("projection-lead", projection.lead_config())
+    """The machine's own interpreter and `aew` location (E180) are placeholders here; their values are pinned by
+    ``test_the_lead_projection_matches_the_pinned_opencode_configuration_schema``."""
+    config = projection.lead_config()
+    server = config["mcp"]["servers"][projection.LEAD_MCP_SERVER]
+    assert server["command"][0] == sys.executable
+    server["command"][0] = "<this interpreter>"
+    server["environment"]["PYTHONPATH"] = "<this aew's import root>"
+    golden("projection-lead", config)
 
 
 def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str:
@@ -242,9 +249,9 @@ def test_lead_rules_ask_the_present_operator_but_never_edit_or_delegate():
     assert effect(rules, "edit") == "deny" and effect(rules, "subagent") == "deny"
     assert effect(rules, "shell") == "ask" and effect(rules, "shell", "aew *") == "allow"
     assert effect(rules, "question") == "allow"
-    for cmd in projection.lead_config()["commands"].values():  # inline shell only for fixed read-only commands
+    # which command may run inline is test_lead_text's rule; here, none takes an argument
+    for cmd in projection.lead_config()["commands"].values():
         for block in __import__("re").findall(r"!`([^`]*)`", cmd["template"]):
-            assert block in {"aew resume", "aew status", "aew harness status"}, block
             assert "$" not in block
 
 

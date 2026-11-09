@@ -39,7 +39,7 @@ from aewflow import (
 from conftest import Project, git, run_aew
 from invariants import assert_control_invariants, load_control
 from stage_equivalence import differences, end_state, recorded_decisions
-from test_stage_runner import call, intent, launching
+from test_stage_runner import CTX, call, intent, launching
 from test_stages_ticket import _declared, _effects, _observe, _twins
 from test_validation_checks import CONTAINED, SMOKE, policy
 
@@ -48,11 +48,14 @@ from aew import hoststate
 from aew.engine import api as engine_api
 from aew.engine import authority as A
 from aew.engine import custody_ops as CO
+from aew.engine import integration_ops as IO
 from aew.engine import stage_intents as SI
 from aew.engine import validation_ops as VO
 from aew.engine.api import Engine
 from aew.errors import AEWError, IllegalTransition, PermissionDenied, StaleAuthority
 from aew.harness import containment, procs
+from aew.surface import run as R
+from aew.surface.projection import project
 
 CRED = A.TOKEN_RE
 
@@ -640,7 +643,8 @@ def test_lead_shell_custody_run_commits_nothing(tmp_path, custody):
 
 def test_custody_worker_never_races_the_leads_publish(tmp_path, contained, custody, monkeypatch):
     """T3: on a lease granted to publish a VALIDATED candidate, the worker registers and waits: between the publish's
-    intent commit and its finish it commits nothing, and after DONE its custody has ended."""
+    intent commit and its finish it commits nothing but its registration, which the finish follows (E137), and after
+    DONE its custody has ended."""
     p = sample_project(tmp_path)
     checks_mode(p)
     wid, _first = validated(p, tmp_path, custody)
@@ -656,13 +660,82 @@ def test_custody_worker_never_races_the_leads_publish(tmp_path, contained, custo
         rev = p.rev()
         seen["between"] = e.custody_step(custodian, custody[custodian])
         seen["committed"] = p.rev() != rev
-        return real(token, p.rev(), work_id, **kw)
+        monkeypatch.setattr(e._integration, "_finish_publish", real)  # the registration lands once
+        return real(token, expect_rev, work_id, **kw)  # the revision the intent's commit returned, now stale
 
     monkeypatch.setattr(e._integration, "_finish_publish", finish)
     out = e.integrate_publish(token=p.token, expect_rev=p.rev(), work_id=wid, candidate=candidate)
     assert out["state"] == "DONE"
     assert seen["between"] == (CO.WAITING, None) and not seen["committed"]
     assert e.custody_step(seen["custodian"], custody[seen["custodian"]]) == (CO.ENDED, None)
+    assert_control_invariants(p)
+
+
+def _commits_before_finishes(p: Project, e: Engine, monkeypatch, times: int) -> list[int]:
+    """Another commit lands before the publish's next ``times`` finishes, each then run on the revision it was given."""
+    real, seen = e._integration._finish_publish, []
+
+    def finish(token: str, expect_rev: int, work_id: str, **kw: Any) -> dict[str, Any]:
+        seen.append(expect_rev)
+        if len(seen) <= times:
+            e.checkpoint(token=p.token, expect_rev=p.rev(), note="another commit", next_action=None)
+        return real(token, expect_rev, work_id, **kw)
+
+    monkeypatch.setattr(e._integration, "_finish_publish", finish)
+    return seen
+
+
+def _publish(p: Project, e: Engine, wid: str, candidate: str) -> dict[str, Any]:
+    return R.run_tool(e, CTX, "integration_publish", {"expect_rev": p.rev(), "work_id": wid,
+                                                      "prepared_candidate": candidate}, token=p.token)
+
+
+def test_a_commit_landing_after_the_publish_intent_never_strands_the_stage(tmp_path, contained, custody, monkeypatch):
+    """E137, through the stage a Lead calls (the real tool-call log: 3 of 9 publishes stopped stale): the stage
+    completes and the Ticket is DONE, the intent's own commit being the publication decision."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid, _first = validated(p, tmp_path, custody)
+    candidate = entry(p, wid)["validated"]["candidate"]
+    e = engine(p)
+    seen = _commits_before_finishes(p, e, monkeypatch, 1)
+    out = _publish(p, e, wid, candidate)
+    assert out["ok"], out["stopped"]
+    assert intent(p, out)["status"] == SI.COMPLETED and done(p, wid)
+    assert seen == [seen[0], seen[0] + 1]  # refused on the revision it was given, then finished on the next
+    assert_control_invariants(p)
+
+
+def test_a_publish_that_cannot_finish_says_where_it_stands_and_what_finishes_it(tmp_path, contained, custody,
+                                                                                 monkeypatch):
+    """E137: past its attempts the stage stops with the Ticket `publishing` and the ref unmoved, and its result, a
+    second publish and the projection all name the one call that finishes it, which does."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid, _first = validated(p, tmp_path, custody)
+    candidate = entry(p, wid)["validated"]["candidate"]
+    head = git("rev-parse", "HEAD", cwd=p.root)
+    e = engine(p)
+    seen = _commits_before_finishes(p, e, monkeypatch, IO.FINISH_ATTEMPTS)
+    out = _publish(p, e, wid, candidate)
+    assert len(seen) == IO.FINISH_ATTEMPTS
+    assert not out["ok"], out
+    stopped = out["stopped"]["error"]
+    reconcile = f"aew integrate reconcile {wid}"
+    assert stopped["details"]["reason"] == IO.PUBLISH_UNFINISHED
+    assert reconcile in stopped["message"] and "nothing was published" in stopped["message"]
+    assert control(p)["work"][wid]["integration"]["status"] == "publishing"
+    assert git("rev-parse", "HEAD", cwd=p.root) == head
+
+    again = call(p, "integration_publish", work_id=wid, prepared_candidate=candidate)
+    assert not again["ok"]
+    refused = again["stopped"]["error"]
+    assert refused["details"]["reason"] == IO.PUBLISH_UNFINISHED and reconcile in refused["message"]
+
+    decisions = project(engine(p), CTX, wid)["decisions_required"]
+    [offered] = [d for d in decisions if d["decision"] == "FINISH_PUBLISH"]
+    assert offered["tool"] is None and offered["cli_fallback"][:3] == ["integrate", "reconcile", wid]
+    assert engine(p).integrate_reconcile(token=p.token, expect_rev=p.rev(), work_id=wid)["state"] == "DONE"
     assert_control_invariants(p)
 
 

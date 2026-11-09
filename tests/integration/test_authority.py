@@ -199,7 +199,9 @@ def test_an_invalid_policy_file_is_never_pinned(project):
 def test_a_project_from_before_the_pin_has_its_policy_files_pinned_by_adopt(project):
     from invariants import load_control
 
+    from aew.engine.base import policy_files
     from aew.engine.store import serialize_control
+    from aew.knowledge.manifest import load_manifest
 
     state = load_control(project.root)
     del state["policy_sha256"]
@@ -208,8 +210,8 @@ def test_a_project_from_before_the_pin_has_its_policy_files_pinned_by_adopt(proj
     project.lead("checkpoint", "--next", "x")  # unpinned is not drift: nothing is refused
     adopted = project.adopt_policy("pin the reviewed policy")
     assert adopted["adopted"] == []
-    assert set(load_control(project.root)["policy_sha256"]) == {
-        "policy/checks.yaml", "policy/execution.yaml", "policy/gates.yaml", "policy/guardrails.yaml"}
+    assert set(load_control(project.root)["policy_sha256"]) == set(policy_files(load_manifest(project.root / ".aew")))
+    assert "policy/gates.yaml" in load_control(project.root)["policy_sha256"]
     assert _doctor(project, "policy-pin")["status"] == "PASS"
 
 

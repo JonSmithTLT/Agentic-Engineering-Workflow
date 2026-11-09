@@ -357,6 +357,23 @@ def test_a_recovery_or_designed_row_never_reaches_the_normal_text(monkeypatch):
     assert "zz_recovery" in {s.tool for s in lead_text.stages(RECOVERY)}
 
 
+def test_every_lead_command_is_named_aew_so_no_name_collides_with_a_harnesss_own():
+    """The operator, 2026-11-08: a bare name can collide with a harness's own command, and the name would then differ
+    per harness."""
+    assert [name for name in projection.LEAD_COMMANDS if not name.startswith("aew-")] == []
+
+
+def test_every_document_listing_the_lead_commands_lists_them_all():
+    """A second place a list went stale in one pull request: any document naming the handoff command names them all."""
+    docs = Path(__file__).resolve().parents[2] / "docs"
+    found = [p for p in docs.rglob("*.md") if not {"archive", "contracts"} & set(p.relative_to(docs).parts)
+             and "`/aew-handoff`" in p.read_text(encoding="utf-8")]
+    assert found
+    for path in found:
+        text = path.read_text(encoding="utf-8")
+        assert [n for n in projection.LEAD_COMMANDS if f"`/{n}" not in text] == [], path
+
+
 def test_a_lead_command_template_names_only_real_tools_and_takes_no_stage_step_from_the_shell():
     names = {t.name for t in contract.exposed(NORMAL)}
     # the command each covered move's shell form opens with, e.g. `aew work create`
@@ -366,7 +383,8 @@ def test_a_lead_command_template_names_only_real_tools_and_takes_no_stage_step_f
     for name, command in projection.LEAD_COMMANDS.items():
         template = command["template"]
         assert set(stage_named(template)) <= names, name
-        assert "!`" not in template, name
+        # a fixed read is the only inline shell a template may run (ADR-0009): no stage step comes from the shell
+        assert re.findall(r"!`([^`]*)`", template) == (["aew usage show"] if name == "aew-usage" else []), name
         for shell in covered_shell:
             assert shell not in template, (name, shell)
     assert "`ticket_draft`" in projection.LEAD_COMMANDS["aew-ticket"]["template"]

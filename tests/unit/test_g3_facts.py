@@ -256,10 +256,11 @@ def test_the_covered_leaves_the_rendering_shows_agree_both_ways_with_the_o01_sch
 
 
 # ------------------------------------------------------------------------------------------------ apartness
-ALLOWED_AEW = {"aew.errors", "aew.stg02.adopted", "aew.stg02.wire"}
+ALLOWED_AEW = {"aew.errors", "aew.stg02.g3_overlay", "aew.stg02.wire"}
+THROUGH_OVERLAY = {"aew.stg02.adopted"}  # what the overlay reads: the sealed files
 
 
-def test_the_service_imports_from_aew_only_the_sealed_o01_files_sw02_and_the_error_types() -> None:
+def test_the_service_imports_from_aew_only_the_sealed_o01_files_the_overlay_sw02_and_the_error_types() -> None:
     """The service stays small and apart: it derives O-01 and SW-02 from their one owner and takes AEW's typed
     errors, and nothing else of AEW (no engine, no harness, no store)."""
     modules: dict[str, set[str]] = {}
@@ -374,7 +375,7 @@ def test_at_run_time_the_service_loads_from_aew_only_the_allowed_modules_and_the
                          text=True, timeout=120, check=True,
                          creationflags=0x08000000 if sys.platform == "win32" else 0)  # CREATE_NO_WINDOW
     loaded = set(json.loads(out.stdout))
-    assert loaded == ALLOWED_AEW | {"aew", "aew.stg02"}, loaded
+    assert loaded == ALLOWED_AEW | THROUGH_OVERLAY | {"aew", "aew.stg02"}, loaded
 
 
 # ------------------------------------------------------------------------------------------------ refusal reasons

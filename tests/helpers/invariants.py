@@ -27,6 +27,7 @@ from aew.engine import outbox
 from aew.engine import ticket_fields as TF
 from aew.engine.archive_ops import add_leaf, child_leaf
 from aew.engine.store import deserialize_control, retry_lock_free
+from aew.engine.workspace_ops import mutating_cap
 from aew.history.store import History
 from aew.knowledge import evidence as E
 from aew.util import load_yaml, parse_frontmatter, sha256_file
@@ -887,9 +888,9 @@ def cap_violations(root: Path, state: dict[str, Any] | None = None) -> list[str]
     live = sorted(wid for wid, u in state["work"].items()
                   if u["kind"] == "ticket" and u.get("mutating")
                   and (u.get("workspace") or {}).get("status") == "active")
-    mutating_cap = max(1, int(gates.get("mutating_concurrency") or 1))
-    if len(live) > mutating_cap:
-        problems.append(f"mutating cap {mutating_cap} exceeded: live mutating workspaces {live}")
+    cap_now = mutating_cap(gates)  # admission's own reading, default included: never restated here
+    if len(live) > cap_now:
+        problems.append(f"mutating cap {cap_now} exceeded: live mutating workspaces {live}")
     cap = gates.get("non_mutating_concurrency")
     if cap:
         # An engine custody invocation (M4-D's `integration_attempt` custodian) has a `kind` and no `role`.

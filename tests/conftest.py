@@ -19,6 +19,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "helpers"))
 # worker only reduces authority: the S2 check ends a custodian whose worker never registered (`custody_register_s`).
 os.environ.setdefault("AEW_CUSTODY_WORKER", "off")
 
+import git_isolation  # noqa: E402  (no test writes to the enclosing repository, or to the user's git configuration)
+
+# First, and here: before xdist starts a worker, before any test or import starts git, and again in each worker.
+git_isolation.isolate(Path(__file__).resolve().parents[1])
+
 import autopsy  # noqa: E402  (a hang, a deadline or a marked failure leaves an autopsy: G3 H1)
 import harness_diagnostics  # noqa: E402  (a failed harness test reports and keeps its runs' files)
 import lanes  # noqa: E402  (CI lanes, shards, lane reports; docs/implementation/testing-and-ci-strategy.md)
@@ -43,6 +48,7 @@ def pytest_configure(config: pytest.Config) -> None:
     # tryfirst: the session deadline's job object must exist, and the controller be in it, before xdist starts any
     # worker (only processes created after the join are members). Without --session-deadline it creates nothing.
     session_deadline.configure(config)
+    git_isolation.configure(config)
     lanes.configure(config)
     watchdog.configure(config)
     autopsy.configure(config)

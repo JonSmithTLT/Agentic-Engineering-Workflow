@@ -88,6 +88,10 @@ class Fixture:
     def recipient(self) -> str:
         return self.doc["recipient_ref"]
 
+    def owner_epoch(self, owner: str) -> str:
+        """An owner's labelled epoch in the fixture world: HEB's own, or one named for the owner, never HEB's."""
+        return str(self.doc["heb"]["epoch"]) if owner == "HEB" else f"fixture:{owner.lower()}-epoch-1"
+
     @property
     def heb(self) -> dict[str, Any]:
         return self.doc["heb"]
@@ -131,6 +135,17 @@ class EngineSource:
         self.reader = StateReader(self.engine)
         self.outage = False  # the test-only outage switch (server --test-routes); never set otherwise
         self._lock = threading.Lock()
+
+    def execution_policy(self) -> dict[str, Any] | None:
+        """The project's execution policy as a launch reads it, through its pin. None when it has none, or when it
+        cannot be read: nothing then says its launches run contained, so its G3 members are held (addendum 7)."""
+        from aew.errors import AEWError
+
+        try:
+            with self._lock:
+                return self.engine.execution_policy()[0]
+        except (AEWError, OSError, ValueError, KeyError):
+            return None
 
     def snapshot(self) -> Any:
         from aew.errors import AEWError

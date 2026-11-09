@@ -542,6 +542,11 @@ class Engine:
         workspaces_root = workspaces_root or f"../.aew-workspaces/{project_id}"
 
         manifest = default_manifest(project_id, name, branch, workspaces_root)
+        from aew.engine.usage_ops import bundled_table  # local: usage_ops is the ledger's, read only here at init
+
+        table = bundled_table()
+        if table is None:  # the design's §11: a project may have no table, and nothing optional fails init
+            del manifest["policy"]["pricing"]
         candidates = discovery.discover_candidates(repo_root)
         manifest["authority"]["candidates"] = candidates
         validate("project", manifest, source="new manifest")
@@ -554,9 +559,12 @@ class Engine:
             "policy/guardrails.yaml": dump_yaml(DEFAULT_GUARDRAILS),
             "policy/checks.yaml": dump_yaml(DEFAULT_CHECKS),
             "policy/gates.yaml": dump_yaml(DEFAULT_GATES),
+            "policy/pricing.yaml": (table or b"").decode("utf-8"),
             X.REL_PATH: X.TEMPLATE,
             "roles/README.md": roles_readme(),
         }
+        if table is None:
+            del files["policy/pricing.yaml"]
         if first_configuration is not None:  # written before the pin, so checked before the pin (register E119)
             files.update(first_configuration.files())
             names = {rel: name for name, rel in manifest["policy"].items()}

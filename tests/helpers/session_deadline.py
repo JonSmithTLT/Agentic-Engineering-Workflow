@@ -32,7 +32,11 @@ supervisors break away or call ``setsid``; Windows reuses pids):
 the controller joins its job, so outside it. It knows the deadline, the controller's (pid, start time) and the session
 directory; on Windows it opens the job by its name. It acts when:
 
-- the controller is gone with ``session-finished`` written: it exits;
+- ``session-finished`` is written: the session is over, but the step isn't until the controller has exited and nothing
+  holds the step's output, and neither is a given. It waits up to one margin for the controller: one still there
+  (a non-daemon thread, an exit that hangs) gets ``stuck-after-finish`` and the set is ended. Then, up to one margin
+  more, for what is left of the set: anything still running gets ``left-running`` and is ended. A CI runner's step
+  lasts until its output closes, and a child that inherited it holds it after pytest has exited 0;
 - the controller is gone **without** it (an ``os._exit`` from the watchdog's second alarm, an xdist internal error, a
   kill): it writes ``abnormal-exit``, the set and the file holders, ends the set (``TerminateJobObject``; on Linux the
   members of its last snapshot, refreshed every few seconds while the controller lived, whose (pid, start time) still
@@ -40,12 +44,48 @@ directory; on Windows it opens the job by its name. It acts when:
 - the deadline plus two margins passes with the controller still there (wedged, for example holding the GIL): it
   writes ``session-deadline`` itself, the set and the holders, ends the set (the controller with it), and exits.
 
-Its lifetime is bounded by the deadline plus the two margins. Everything it writes goes through
-``harness_diagnostics`` (redacted, capped, never ``.json``), under ``<hang-dir>/autopsy/session-<pid>/``.
+**Its own backstop.** Evidence is collected before the set is ended, and collecting can hang too (a file, a process
+table, the Restart Manager). A thread of its own ends the set one margin past the time it should have, whatever the
+main thread is stuck on, and writes ``sentinel-backstop``. A job that reaches its timeout never runs its upload steps
+(two Windows runs, 2026-11-08), so ending in time matters more than anything collected on the way.
+
+The set is ended by the deadline plus five margins at the most (``session-finished`` as late as two margins, then three
+for ``after_finish``), and the sentinel can live one margin more writing its note. ``bounds.nesting_problems`` holds
+that inside the job's timeout, with time left for its uploads. Everything it writes goes through ``harness_diagnostics``
+(redacted, capped, never ``.json``), under ``<hang-dir>/autopsy/session-<pid>-<random>/``. The directory is the
+session's own, so every marker the sentinel reads was written by this session: pids are reused, and an earlier session's
+``session-finished`` would otherwise end a healthy one (review of #387, M1).
+
+On Linux the set is a snapshot. ``after_finish`` refreshes it first, but a child started after that, or just before a
+controller that has gone by the sentinel's next poll, isn't in it, so it isn't ended or named and can keep the step
+open. Windows' job has no such gap.
+
+**Stacks that need no GIL.** The worker's and controller's deadline threads are Python threads, so a hang in native
+code holding the GIL stops them too, and that process would be ended with nothing to say. ``faulthandler``'s timer runs
+on a C thread and writes every thread's stack regardless: each process arms one (``worker-<id>-deadline-stacks``,
+``controller-deadline-stacks``), and the controller another as it finishes (``controller-after-finish-stacks``), for an
+exit that hangs. An empty one is removed, unless its process was killed from outside with the file open. Windows'
+watchdog uses the same one timer per process for its test timeout, so it arms the earlier of the two and puts this one
+back after each test.
+
+Each fires half way between when that process's Python path should have ended it and when something else will. That C
+thread reads thread state without the GIL, so firing while threads start and end crashes the process (an access
+violation, seen on Windows). So the first thing a deadline's own thread does is drop the timer: if that thread runs,
+the GIL is free and the timer has no job left. The cost is that a collector that hangs leaves no stacks from the timer;
+the sentinel still ends it. In a process holding the GIL that thread can't run, and nothing else is running to race
+with. As the after-finish timer has to stop before finalization does, ``finish`` cancels it at exit, after the
+interpreter has joined its non-daemon threads; an ``atexit`` callback registered earlier that hangs then leaves no
+stacks, and is ended all the same.
+
+The timer also runs in Linux test processes. A forked child that reaches finalization would wait forever on
+``faulthandler``'s lock (inferred, not run). Every fork in the tests today either ``exec``s or calls ``os._exit``.
 """
 
 from __future__ import annotations
 
+import atexit
+import contextlib
+import faulthandler
 import json
 import os
 import secrets
@@ -68,9 +108,13 @@ PLUGIN_NAME = "aew-session-deadline"
 DEADLINE_EXIT = 70  # distinct from pytest's own exit codes (0-5)
 JOB_DEADLINE_ENV = "AEW_JOB_DEADLINE"  # the CI job's absolute deadline for its sessions (its first step sets it)
 SLOW_COLLECT_ENV = "G3_TEST_SLOW_COLLECT_S"  # tests only: the controller's collect takes this long (the sentinel path)
+HANG_EVIDENCE_ENV = "G3_TEST_HANG_EVIDENCE_S"  # tests only: collecting the file holders takes this long, anywhere
 WORKER_KEY = "aew_session_deadline"
 DIR_KEY = "aew_session_dir"
+MARGIN_KEY = "aew_session_margin"
 STARTED, DEADLINE, FINISHED, ABNORMAL = "session-started", "session-deadline", "session-finished", "abnormal-exit"
+STUCK, LEFT_RUNNING, BACKSTOP = "stuck-after-finish", "left-running", "sentinel-backstop"
+AFTER_FINISH_STACKS = "controller-after-finish-stacks.txt"
 READY = "sentinel-ready"
 JOB_UNAVAILABLE = "job-unavailable"
 SENTINEL_POLL_S = 0.25
@@ -97,9 +141,46 @@ def _stamp(what: str) -> str:
 
 def _holders_text(directory: Path, extra: list[str]) -> str:
     """Who holds the session's evidence files (what the upload must read) and the recorder's failed paths."""
+    time.sleep(min(float(os.environ.get(HANG_EVIDENCE_ENV) or 0), 600.0))  # a test of the backstop only; bounded
     paths = [str(p) for p in sorted(directory.parent.parent.rglob("*")) if p.is_file()][:HOLDER_FILES]
     found = {k: v for k, v in proctree.holders(paths + extra).items() if v}
     return proctree.describe_holders(found) if found else "no process holds any of the session's files\n"
+
+
+class Stacks:
+    """Every thread's stack at a given moment, written by ``faulthandler``'s C thread, so even with the GIL held. A
+    process has one such timer, so arming this replaces whatever was armed (see ``watchdog``)."""
+
+    def __init__(self, path: Path, at_mono: float) -> None:
+        self.path = path
+        self.at_mono = at_mono
+        self.file: Any = None
+        self.lock = threading.Lock()  # a deadline's thread drops it while the watchdog may be arming it after a test
+
+    def left(self) -> float:
+        return self.at_mono - time.monotonic()
+
+    def arm(self) -> None:
+        with self.lock:
+            left = self.left()
+            if left <= 0:
+                return
+            if self.file is None:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                self.file = open(self.path, "w", encoding="utf-8")  # noqa: SIM115  (held until the timer can't fire)
+            faulthandler.dump_traceback_later(left, file=self.file)
+
+    def drop(self) -> None:
+        """For good, so a test ending now can't put it back: the timer off, and an empty file removed."""
+        with self.lock:
+            self.at_mono = 0.0  # always past, so `left` says it's over and `arm` does nothing
+            faulthandler.cancel_dump_traceback_later()
+            if self.file is not None:
+                self.file.close()
+                self.file = None
+                with contextlib.suppress(OSError):
+                    if self.path.stat().st_size == 0:
+                        self.path.unlink()
 
 
 class OwnChildren:
@@ -264,7 +345,7 @@ class Controller:
                       if job_wall is not None and job_wall < own_wall else f"its --session-deadline ({seconds:g}s)")
         self.seconds = round(self.wall - time.time(), 1)
         self.mono = time.monotonic() + (self.wall - time.time())
-        self.dir = watchdog.hang_dir(config) / "autopsy" / f"session-{os.getpid()}"
+        self.dir = watchdog.hang_dir(config) / "autopsy" / f"session-{os.getpid()}-{secrets.token_hex(4)}"
         self.distributed = _xdist_requested(config)
         self.me = proctree.identity(os.getpid())
         self.job: Any = None
@@ -276,6 +357,9 @@ class Controller:
         self._finished = threading.Event()
         self.exit_status: int | None = None
         self.reaper: Reaper | None = None
+        # Half way from its own acting (a margin later under xdist) to the sentinel's (two margins): the docstring's end
+        self.stacks = Stacks(marker(self.dir, "controller-deadline-stacks"),
+                             self.mono + (1.5 if self.distributed else 1.0) * margin)
 
     # ------------------------------------------------------------------ start (pytest_configure, tryfirst)
 
@@ -316,6 +400,7 @@ class Controller:
                                          f"{self.margin:g}s, {'xdist' if self.distributed else 'one process'}; "
                                          f"sentinel pid "
                                          f"{self.sentinel.pid if self.sentinel else None}"))
+        self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
 
     def _spawn_sentinel(self, job_name: str | None) -> subprocess.Popen[bytes]:
@@ -363,6 +448,7 @@ class Controller:
             if self._expired or self._finished.is_set():
                 return
             self._expired = True
+            self.stacks.drop()  # this thread is running, so nothing is holding the GIL: the module docstring's end
             notes = []
             if not self.distributed:  # the one process runs the tests: the running test's autopsy
                 import autopsy
@@ -408,6 +494,10 @@ class Controller:
         self._finished.set()
         if self.reaper is not None:
             self.reaper.stop.set()
+        self.stacks.drop()
+        # For an exit that hangs from here on: half way to the sentinel's ending it. Removed by the sentinel if empty.
+        Stacks(self.dir / AFTER_FINISH_STACKS, time.monotonic() + self.margin / 2).arm()
+        atexit.register(faulthandler.cancel_dump_traceback_later)  # off before finalization (review of #387, m6)
         _write(self.dir, FINISHED, _stamp(f"the session finished (exit {self.exit_status}); {self.since_deadline()}"))
 
     def since_deadline(self) -> str:
@@ -425,6 +515,7 @@ class Controller:
     def pytest_configure_node(self, node: Any) -> None:
         node.workerinput[WORKER_KEY] = self.wall
         node.workerinput[DIR_KEY] = str(self.dir)
+        node.workerinput[MARGIN_KEY] = self.margin
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_testnodeready(self, node: Any) -> None:
@@ -468,15 +559,19 @@ class Controller:
 class Worker:
     """An xdist worker: at the absolute deadline, the running test's autopsy, then exit."""
 
-    def __init__(self, config: Any, wall: float, directory: str) -> None:
+    def __init__(self, config: Any, wall: float, directory: str, margin: float) -> None:
         self.config = config
         self.mono = time.monotonic() + (wall - time.time())
         self.dir = Path(directory)
         self._done = threading.Event()
+        worker = config.workerinput.get("workerid", "?")
+        # Half way from its own exit, at the deadline, to the controller's ending it, a margin on (the docstring's end)
+        self.stacks = Stacks(marker(self.dir, f"worker-{worker}-deadline-stacks"), self.mono + margin / 2)
 
     def start(self) -> None:
         worker = self.config.workerinput.get("workerid", "?")
         _write(self.dir, f"worker-{worker}-pid", f"{os.getpid()}\n")
+        self.stacks.arm()
         threading.Thread(target=self._watch, name="aew-session-deadline", daemon=True).start()
 
     def _watch(self) -> None:
@@ -488,6 +583,7 @@ class Worker:
     def expire(self) -> None:
         import autopsy
 
+        self.stacks.drop()  # this thread is running, so nothing is holding the GIL: the module docstring's end
         worker = self.config.workerinput.get("workerid", "?")
         plugin = autopsy.current()
         where = plugin.collect_current("the session deadline passed") if plugin is not None else None
@@ -523,6 +619,7 @@ class Worker:
 
     def pytest_unconfigure(self, config: Any) -> None:
         self._done.set()
+        self.stacks.drop()
 
 
 def say(config: Any, line: str) -> None:
@@ -565,7 +662,8 @@ def configure(config: Any) -> None:
     worker_input = getattr(config, "workerinput", None)
     if worker_input is not None:
         if worker_input.get(WORKER_KEY):
-            plugin: Any = Worker(config, float(worker_input[WORKER_KEY]), worker_input[DIR_KEY])
+            plugin: Any = Worker(config, float(worker_input[WORKER_KEY]), worker_input[DIR_KEY],
+                                 float(worker_input[MARGIN_KEY]))
             config.pluginmanager.register(plugin, PLUGIN_NAME)
             plugin.start()
         return
@@ -588,6 +686,7 @@ class Sentinel:
         self.me = proctree.identity(os.getpid())
         self.job: Any = None
         self.snapshot: list[proctree.Proc] = []
+        self.backstop_at = self.act_mono + self.margin  # moved only by after_finish, which has its own time to keep
         if args.get("job"):  # pragma: windows-only
             self.job = proctree.Job.open(args["job"])
             _write(self.dir, READY, _stamp("the sentinel holds the session job"))
@@ -631,12 +730,67 @@ class Sentinel:
         ended = [p.pid for p in proctree.children_first(alive) if proctree.end(p.identity)]
         self.log(f"ended {len(ended)} of {len(alive)} matching members ({why}): {ended}")
 
+    def left(self) -> list[proctree.Proc]:
+        """What is still running of the set, once the controller is gone."""
+        if self.joined():  # pragma: windows-only
+            return self.job.members()
+        return [p for p in self.snapshot if p.identity != self.controller and proctree.same(p.identity)]
+
+    def _wait(self, still: Any) -> bool:
+        """Up to one margin for ``still()`` to turn false: whether it did."""
+        until = time.monotonic() + self.margin
+        while still():
+            if time.monotonic() >= until:
+                return False
+            time.sleep(SENTINEL_POLL_S)  # bounded: until
+        return True
+
+    def after_finish(self) -> int:
+        """``session-finished`` is written. The step isn't over until the controller has exited and nothing holds its
+        output, so neither is assumed: this is the module docstring's first case."""
+        self.backstop_at = time.monotonic() + 3 * self.margin  # the two waits below, and what ending them collects
+        self.refresh()  # the last snapshot can be seconds old: a child just started is what this has to see (m3)
+        if not self._wait(lambda: proctree.same(self.controller)):
+            _write(self.dir, STUCK, _stamp("the session finished, but its controller had not exited a margin later: "
+                                           f"ending the session's process set; its stacks: {AFTER_FINISH_STACKS}"))
+            self.refresh()
+            self.end_set("after-finish")
+            return 0
+        with contextlib.suppress(OSError):  # it exited, so nothing hung and nothing holds the file
+            stacks = self.dir / AFTER_FINISH_STACKS
+            if stacks.stat().st_size == 0:
+                stacks.unlink()
+        if not self._wait(lambda: bool(self.left())):
+            _write(self.dir, LEFT_RUNNING, proctree.describe(
+                self.left(), title="still running a margin after the session finished and its controller exited, "
+                                   "able to hold the step's output open: ending them"))
+            self.end_set("left-running")
+        return 0
+
+    def _backstop(self) -> None:
+        """Ends the set at :attr:`backstop_at` whatever the main thread is stuck on. On a normal end the process exits
+        first. No evidence comes before the ending here: that is what it is for."""
+        while (left := self.backstop_at - time.monotonic()) > 0:
+            time.sleep(min(left, 1.0))  # bounded: backstop_at
+        if self.joined():  # pragma: windows-only
+            done = f"TerminateJobObject: {'done' if self.job.terminate(DEADLINE_EXIT) else 'failed'}"
+        else:
+            alive = [p for p in self.snapshot if proctree.same(p.identity)]
+            ended = [p.pid for p in proctree.children_first(alive) if proctree.end(p.identity)]
+            done = f"ended {len(ended)} of {len(alive)} matching members"
+        note = threading.Thread(target=_write, args=(self.dir, BACKSTOP, _stamp(
+            f"the sentinel's main thread had not ended the session by its time ({done})")), daemon=True)
+        note.start()
+        note.join(self.margin)  # the writing may be what hangs
+        os._exit(0)
+
     def run(self) -> int:
+        threading.Thread(target=self._backstop, name="sentinel-backstop", daemon=True).start()
         last_snapshot = 0.0
-        hard_stop = self.act_mono + 120.0  # its own lifetime is bounded, whatever happens
+        hard_stop = self.act_mono + 120.0  # past the backstop unless a margin is over 120 s, which no lane's is
         while time.monotonic() < hard_stop:
-            if marker(self.dir, FINISHED).exists():  # the controller's last act on a normal exit
-                return 0
+            if marker(self.dir, FINISHED).exists():  # the controller's last act before its exit
+                return self.after_finish()
             if not proctree.same(self.controller):
                 _write(self.dir, ABNORMAL, _stamp("the controller is gone (by pid and start time) without "
                                                   "session-finished: ending the session's process set"))

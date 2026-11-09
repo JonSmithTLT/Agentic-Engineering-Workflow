@@ -413,8 +413,10 @@ sections:
     Work: 'Mutating concurrency above 1: integration queue, merge revalidation'
     Source (governing): 'Serves `HEB-06.c`; position A-06; the operator''s decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md`
       (design workspace `cffb1ee`). Design inputs as held, not authority: `m1-implementation-plan.md`; `implementation-status.md`'
-    Belongs to or gated by: '**Internal alpha.** Right after E151 merges, with the `gates.yaml` migration, after first use.
-      Restored from HOLD-06 by the hold match (operator, 2026-11-06); its matched scope is its note of that day'
+    Belongs to or gated by: '**Internal alpha.** E151 has merged. The reset of 2026-11-06 reversed "after first use", and
+      the operator confirmed that on 2026-11-07 (this row''s note of 2026-11-07). The offer to switch an existing project
+      replaces the `gates.yaml` migration. Restored from HOLD-06 by the hold match (operator, 2026-11-06); its matched scope
+      is its note of that day'
     Notes: 'Interacts with F3. Research (not governing): [`m4-integration-queue-research-2026-10-01.md`](../research/m4-integration-queue-research-2026-10-01.md),
       which compares serial, speculative and batched queues and recommends a serial integration tail over parallel implementation
       first. **Designer''s disposition (2026-10-01, research §7):** parallel Ticket execution with a single serial integration
@@ -3338,6 +3340,16 @@ sections:
     Source: Steering PR 2's measurements (2026-11-08)
     When: '**Unscheduled**, before the next measurement with a real binary and a provider route'
     Notes: Filed by the push wake's builder
+
+  - '#': E214
+    Work: 'D-01''s next revision adds `RESOURCE_POLICY_ISSUER` to `SourceStamp.owner` as a non-governing namespace (OP-02''s
+      second bullet: `governing_owner` null, as for `IF10` and `R01`). An `owner_operation_index` item for that owner is
+      then stamped with its `data.owner`, as OP-01 says, in place of the bridge in `Reads._index_item`, and `test_the_cni_stamp_is_for_the_one_owner_the_wire_cannot_name_and_no_other`
+      goes'
+    Source: '[Gap entry STG02-BE-17](../stg02/GAP-ENTRIES.md#stg02-be-17); the designer''s ruling, 2026-11-08'
+    When: '**Unscheduled**, a step of the O-01 convergence. The bridge ends before anything real issues standing policy:
+      whoever places that owner''s first real act depends on this row'
+    Notes: Filed by G3-C's owner side
 
   - '#': E47
     Work: 'Triage every failed `main` run by cause: a job that timed out raises attention (as #92 made the nightly do),

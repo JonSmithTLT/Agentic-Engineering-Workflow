@@ -241,7 +241,8 @@ def test_config_digest_is_one_function(engine, monkeypatch):
     monkeypatch.setattr(C, "config_digest", lambda *a: calls.append(a) or f"sha256:{len(calls):064d}")
     out = index(e)
     assert [d["digest"] for d in out["documents"]] == [f"sha256:{i:064d}" for i in range(1, len(calls) + 1)]
-    assert calls[0][1] == "project" and {c[1] for c in calls[1:]} == {"guardrails", "checks", "gates", "execution"}
+    assert calls[0][1] == "project" and {c[1] for c in calls[1:]} == {
+        "guardrails", "checks", "gates", "execution", "pricing"}
 
 
 def test_digest_ignores_unrelated_commits(engine):

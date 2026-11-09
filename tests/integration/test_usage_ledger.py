@@ -89,9 +89,21 @@ def test_accepting_a_report_copies_the_run_usage_once(lab, tmp_path):
     assert_control_invariants(lab.project)
 
 
+def no_prices(lab: HarnessLab) -> None:
+    """The operator takes the table init wrote out of force: the project is back to no derived cost."""
+    import yaml
+
+    manifest = lab.aew_root / "project.yaml"
+    data = yaml.safe_load(manifest.read_text(encoding="utf-8"))
+    del data["policy"]["pricing"]
+    manifest.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8", newline="\n")
+    lab.project.adopt_policy()
+
+
 def test_a_relaunch_copies_the_ended_run_and_leaves_the_new_one_provisional(lab, tmp_path):
     """R5: `harness launch` adds a run and copies the earlier run's usage in the same commit. A run that reported no
     usage is copied as absent, never omitted."""
+    no_prices(lab)
     wid, inv, run1 = launched(lab, tmp_path, [], {"tokens": TOKENS})
     lab.wait(run1)  # ended without evidence
     script(lab, "default", [{"do": "wait_file", "path": str(tmp_path / "never"), "timeout": 300}])  # no usage
@@ -380,7 +392,8 @@ def test_usage_show_derives_every_level_from_one_projection_and_status_carries_i
     for totals in figures:
         assert (totals["runs"], totals["recorded"], totals["tokens"]["output"]) == (1, 1, 400)
         assert totals["estimated_at_record"] == {"usd": pytest.approx(PRICED_USD), "priced": 1, "unpriced": 0,
-                                                 "reasons": {}}
+                                                 "reasons": {}, "floor_runs": 0, "floor_above": None,
+                                                 "prices_as_of": "2026-10-01", "other_sources": []}
     project = lab.ok("usage", "show", "--json")
     assert (project["scope"], project["archive_complete"]) == ("recent", False)  # never read as a lifetime total
     usage = lab.ok("status", "--json")["usage"]
@@ -398,13 +411,16 @@ def test_usage_show_derives_every_level_from_one_projection_and_status_carries_i
 def test_an_unpriced_run_is_never_shown_as_a_dollar_figure(lab, tmp_path):
     """R4: without a price table every figure is `unpriced` with its reason, in the text and the JSON; no surface
     prints a zero or any dollar amount for it."""
+    no_prices(lab)
     wid, inv, run = accepted(lab, tmp_path)
     for argv in (["usage", "show", wid], ["usage", "show"], ["usage", "show", run], ["status"]):
         text = lab.aew(*argv).stdout
-        assert "$" not in text and "unpriced" in text, (argv, text)
+        assert "$" not in text and "unpriced" in text and "no cost" not in text, (argv, text)
     totals = lab.ok("usage", "show", "--json")["totals"]
     assert totals["estimated_at_record"] == {"usd": None, "priced": 0, "unpriced": 1,  # never a 0 (#368, M1)
-                                             "reasons": {O.UNPRICED_NO_TABLE: 1}}
+                                             "reasons": {O.UNPRICED_NO_TABLE: 1},
+                                             "floor_runs": 0, "floor_above": None, "prices_as_of": None,
+                                             "other_sources": []}
     assert lab.ok("status", "--json")["usage"]["estimated_at_record"]["usd"] is None
 
 

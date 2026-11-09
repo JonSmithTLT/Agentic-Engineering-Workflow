@@ -81,7 +81,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `map-registry` | `map-registry.schema.json` | 15 | 13 |
 | `notify-event` | `notify-event.schema.json` | 11 | 10 |
 | `plan` | `plan.schema.json` | 20 | 12 |
-| `pricing` | `pricing.schema.json` | 11 | 5 |
+| `pricing` | `pricing.schema.json` | 14 | 6 |
 | `project` | `project.schema.json` | 42 | 28 |
 | `role-archetype` | `role-archetype.schema.json` | 28 | 13 |
 | `role` | `role.schema.json` | 31 | 5 |
@@ -115,6 +115,6 @@ Created from the DDL the product holds, executed in memory and read back. `trans
 
 ## CLI commands
 
-118 commands, each linked to its entry in the `commands` section of `docs/implementation/surface-map.yaml`, which owns what each is for. Nothing of the entry is copied here.
+Each command is linked to its entry in the `commands` section of `docs/implementation/surface-map.yaml`, which owns what each is for. Nothing of the entry is copied here.
 
 `authority accept`, `authority list`, `authority reject`, `capability add`, `capability check`, `capability fetch`, `capability host-copies`, `capability import`, `capability list`, `capability remove`, `check run`, `checkpoint`, `context pack`, `context show`, `dashboard open`, `dashboard serve`, `dashboard status`, `dispatch explain`, `doctor`, `evidence ingest`, `g3 request`, `gate show`, `gate waive`, `guide`, `harness config`, `harness interrupt`, `harness launch`, `harness send`, `harness status`, `harness stop`, `harness wait`, `history audit`, `history compact`, `history links`, `history list`, `history load`, `history log`, `history reindex`, `history search`, `history show`, `init`, `integrate breaker reset`, `integrate breaker status`, `integrate custody`, `integrate defer`, `integrate prepare`, `integrate publish`, `integrate reconcile`, `integrate reorder`, `integrate requeue`, `integrate validate`, `invoke cancel`, `invoke create`, `invoke show`, `lead acquire`, `lead handoff accept`, `lead handoff cancel`, `lead handoff offer`, `lead mcp`, `lead mode lower`, `lead mode raise`, `lead release`, `lead session`, `lead show`, `lead takeover`, `lead tool`, `manifest adopt`, `map diff`, `map generate`, `map select-architecture`, `map show`, `message list`, `message thread`, `message unseen`, `migrate`, `opencode`, `operator ping`, `operator serve`, `plan accept`, `plan adopt`, `plan lint`, `plan propose`, `plan reconfirm`, `resume`, `review ingest`, `role list`, `role show`, `role validate`, `settings show`, `stage abandon`, `stage continue`, `status`, `submit`, `usage show`, `verify classify`, `verify ingest`, `whoami`, `work accept`, `work acknowledge-input`, `work assign`, `work cancel`, `work close`, `work create`, `work depend`, `work dispatch`, `work dispose`, `work list`, `work move`, `work promote`, `work ready`, `work reclassify`, `work reconcile`, `work redispatch`, `work roles`, `work show`, `work staff`, `work transition`, `work tree`

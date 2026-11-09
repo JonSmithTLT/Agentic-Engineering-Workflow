@@ -17,6 +17,7 @@ from aewflow import (
     redispatch_implementer,
     review,
     sample_project,
+    set_mutating_concurrency,
     to_commit_ready,
     to_verified,
     verify,
@@ -48,6 +49,10 @@ def pending_publish(tmp_path):
 
 def replan(p, wid, tmp_path):
     p.lead('work', 'transition', wid, '--to', 'REPLAN_REQUIRED', '--reason', 'revise approach')
+    accept_revised_plan(p, wid, tmp_path)
+
+
+def accept_revised_plan(p, wid, tmp_path):
     plan = tmp_path / 'revised-plan.md'
     plan.write_text('Use the revised approach and validate it.\n')
     p.lead('plan', 'propose', '--assurance', 'none', wid, '--file', str(plan), '--reason', 'new requirement')
@@ -122,17 +127,22 @@ def test_sync_handles_executable_bit_only_change(tmp_path):
     assert (repo / 'run.sh').stat().st_mode & 0o111
 
 
-def test_replanned_active_workspace_still_counts_against_serial_cap(tmp_path):
+def test_a_workspace_counts_against_the_serial_cap_until_its_replan_is_accepted(tmp_path):
+    """The cap counts live workspaces, not states: a Ticket waiting on its replan still holds the only place. Accepting
+    the plan releases the workspace and ends its implementer, so two mutating invocations are never active at cap 1."""
     p = sample_project(tmp_path)
+    set_mutating_concurrency(p, 1)  # the serial cap, set by name: the default is 2 (register F10)
     first = create_planned_ticket(p, tmp_path)
     assign(p, first)
-    replan(p, first, tmp_path)
+    p.lead('work', 'transition', first, '--to', 'REPLAN_REQUIRED', '--reason', 'revise approach')
     second = create_planned_ticket(p, tmp_path, title='Second mutating ticket')
     result = p.aew('work', 'assign', second, '--expect-rev', str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    assert result.returncode == 5 and result.error['code'] == 'CONCURRENCY_LIMIT', result.stderr
+    assert result.error['details']['holding'] == [first]
+    accept_revised_plan(p, first, tmp_path)
     first_u = unit(p, first)
-    old_active = p.ok('invoke', 'show', first_u['implementer_invocation'])['status'] == 'active'
-    assert result.returncode != 0 or not old_active, (
-        'Both mutating invocations are active even though the configured cap is one', first_u['state'])
+    assert p.ok('invoke', 'show', first_u['implementer_invocation'])['status'] != 'active', first_u['state']
+    p.lead('work', 'assign', second)
 
 
 def test_reassignment_does_not_retarget_old_invocation_credential(tmp_path):

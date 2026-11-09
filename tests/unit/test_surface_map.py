@@ -2075,7 +2075,7 @@ DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
     ("home", lambda r: _entry(r, "lead mcp").update(launcher={"code": "aew.harness.lead_broker:NOT_RELAYED"}),
      "its launcher 'aew.harness.lead_broker:NOT_RELAYED' produces no argv"),
     ("home", lambda r: _entry(r, "integrate custody").update(launcher={"code": "aew.harness.opencode.projection:"
-                                                                                 "LEAD_MCP_COMMAND"}),
+                                                                                 "lead_mcp_command"}),
      "starts `aew lead mcp`, not `aew integrate custody`"),
     ("home", lambda r: _new(r, "work list"), "new `aew work list` is homed diagnostic: give `diagnostic_just"),
     ("home", lambda r: _new(r, "work list", diagnostic_justification="handy"), "new `aew work list` is homed diag"),

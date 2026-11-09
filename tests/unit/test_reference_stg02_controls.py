@@ -503,6 +503,39 @@ def test_both_readings_find_the_steps_of_the_member_and_every_refusal_call():
                           (MEMBER, "action", "NOT_MODELLED"), (MEMBER, "action", "ORIGIN_NOT_ESTABLISHED")]
 
 
+ORIGIN_HAND_ON = COMMANDS.replace('''        if r["origin"] != "CURRENT_DELEGATED_GRANT":
+''', '''        if r["origin"] == "PROTECTED_G3":
+            return self._protected(req, i, r)
+        if r["origin"] != "CURRENT_DELEGATED_GRANT":
+''').replace('''    def _delegation(self, req, i, now):
+''', '''    def _protected(self, req, i, r):
+        if r is None:
+            return refusal(i["action"], "ORIGIN_NOT_ESTABLISHED", held=True)
+        if i is None:
+            return refusal(i["action"], "CONSENT_EXPIRED")
+        return {"outcome": "ADMITTED", "reason_code": None, "owner_reason": None}
+
+    def _delegation(self, req, i, now):
+''')
+
+
+def test_both_readings_find_an_origin_handed_on_to_its_own_method_and_replay_its_refusals_over_that_origin_alone():
+    """The carrier's protected origin. Its actions go on to ``_protected``, which alone returns their causes: the origin
+    test after it refuses what is left, and the delegated actions never reach ``_protected``. ``reaches_owner`` follows
+    the step."""
+    ours, theirs = both_commands(ORIGIN_HAND_ON)
+    assert ours == theirs
+    assert (MEMBER, "origin-hand-on", "_protected", "PROTECTED_G3") in ours.steps
+    registry = {**REGISTRY, "SESSION": {"origin": "CURRENT_SUCCESSOR_GENERATION"}}
+    pairs, problems = K.emitted(ours, registry, {*NAMED, ("PROTECTED", "CONSENT_EXPIRED"),
+                                                 ("SESSION", "ORIGIN_NOT_ESTABLISHED")})
+    assert problems == []
+    assert pairs[("PROTECTED", "ORIGIN_NOT_ESTABLISHED")] == ["Carrier._protected"]
+    assert pairs[("PROTECTED", "CONSENT_EXPIRED")] == ["Carrier._protected"]
+    assert pairs[("SESSION", "ORIGIN_NOT_ESTABLISHED")] == [MEMBER]
+    assert ("DELEGATED", "CONSENT_EXPIRED") not in pairs
+
+
 def test_the_steps_are_replayed_over_the_actions_each_step_taking_what_it_refuses():
     """The right case: each pair is returned by the site whose action and cause are both possible there, and a cause in
     a table that no step returns (``NEVER_RETURNED``) is in no pair."""

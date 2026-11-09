@@ -45,10 +45,11 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "aew.schemas" = ["*.json"]
-"aew.stg02" = ["adopted/*.json", "adopted/*.yaml", "worlds/*.json"]
+"aew.stg02" = ["adopted/*.json", "adopted/*.yaml", "overlay/*.json", "worlds/*.json"]
 "aew.roles" = ["archetypes/*.yaml", "cards/*.yaml"]
 "aew.templates" = ["*.md", "*.yaml"]
 "aew.maps" = ["rules.yaml"]
+"aew.policy" = ["default_pricing.yaml"]
 "aew.skills" = ["manifest.json", "shipped/*/SKILL.md", "shipped/*/references/*.md", "shipped/*/examples/*/*.md"]
 "aew.dashboard" = ["static/*.html", "static/*.svg", "static/BUILD.json", "static/assets/*"]
 

@@ -21,7 +21,7 @@ outputs:
   - review with independence level, disposition, findings, resolved_findings
 context:
   knowledge: [requirement, accepted_plan, guardrails, accepted_authority, change_diff, check_results,
-              implementation_structured_summary, open_review_findings, review_scope]
+              implementation_structured_summary, open_review_findings, review_scope, codebase_map]
   excluded: [implementer reasoning transcript, implementation report prose]
 independence:
   level: R1

@@ -200,7 +200,7 @@ These make races deterministic: rotation during an in-flight submit, a check spa
 - **`aew harness config opencode <INV>|--lead`** prints the exact projection and the environment names, without values.
 
 ### The Lead's OpenCode TUI (`aew opencode`, `src/aew/harness/opencode/lead.py`)
-- `aew opencode [--acquire] [--provider-env NAME] [--print-config]` is `aew lead session` running `opencode-cli --standalone <repo root>` with the Lead projection (`aew-lead` agent; `/aew-resume`, `/aew-status`, `/aew-ticket`, `/aew-next`, `/aew-handoff`).
+- `aew opencode [--acquire] [--provider-env NAME] [--print-config]` is `aew lead session` running `opencode-cli --standalone <repo root>` with the Lead projection (`aew-lead` agent; `/aew-resume`, `/aew-status`, `/aew-ticket`, `/aew-next`, `/aew-handoff`, and `/aew-usage` from 2026-11-08, register F25).
 - **Why `--standalone`.**
   - A V2 TUI running its own server sends its own environment, minus the server password, as every session's shell environment, and its server inherits the same environment (verified in the 2.0.18 binary).
   - With `--server`, the TUI sends nothing, so the shell would get the server's environment. `aew opencode` refuses `--server`.
@@ -1923,3 +1923,19 @@ does on a terminal of its own.
 **A stated limit, `/new`.** No session exists between the operator's `/new` and their first prompt, and the server gives
 no signal for that gap. A wake in it goes to the session they left, spends a turn there, and doesn't show in the TUI. The
 status line shows it was posted.
+
+## Amendment 2026-11-08 — WSLg's directory is a host mask
+
+This amends the 2026-10-23 amendment's masks and the remedy row 2 gives for a socket with no identified holder.
+
+- **The refusal:** on a default WSL install with bubblewrap, every contained launch failed row 2. WSLg's Weston and
+  PulseAudio run in WSL's system distro, so `/proc` shows no holder for sockets the launching user owns, and D-CS2-6
+  makes such a socket a credential. Its Wayland and X11 sockets are in the display class as well. They were reachable
+  through `/mnt/wslg`.
+- **The mask:** `/mnt/wslg` is masked whole where it is a directory (`layout.WSLG`), as `/run` is. Row 2 checks it with
+  the other host masks. This only tightens: nothing inside needs a display or audio server. D-CS2-6 and the classes
+  are unchanged.
+- **The remedy:** it told the operator to stop "a process of the launching user's", which is what could not be
+  identified, and which on WSL nobody could stop. It now says what was seen, the user owns the socket and no process
+  AEW can read holds it, and offers stopping or moving the server only to someone who knows what serves it, else the
+  labelled weaker mode.

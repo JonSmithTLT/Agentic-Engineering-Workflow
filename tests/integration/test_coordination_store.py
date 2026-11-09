@@ -850,10 +850,13 @@ def test_with_messaging_off_the_engine_records_nothing(tmp_path, setting):
 # no separate provider). The parsed policy is unchanged, so the two digests below are too, and the test keeps proving
 # what D-32 needs: init writes no `coordination` and nothing F9-A added (the template's previous digest was
 # 2d36d67ee0185d77ebb1c9fc57c31c78d62edc3a578b6700e972138fa6c59fd3).
+# The price table init also writes is not golden here: it is regenerated from its catalog, and has nothing to do with
+# messaging. The operational digest below is therefore a project's with no table.
 INIT_POLICY_SHA256 = {
     "policy/checks.yaml": "f06632f61b021fe69f372d08cb2385c96b3b6954454cea72fa31e37c57e7bbe2",
     "policy/execution.yaml": "a13a8659844ae4c9f03a76ef3b0b24219697be052845105f01193111fd8cdffb",
-    "policy/gates.yaml": "b676e7da71583adf2815f95b9728f4e1230348daa72ed4bc95d9050ef9e791f3",
+    # mutating_concurrency: 2, the default since register F10 (ADR-0003's amendment of 2026-11-07)
+    "policy/gates.yaml": "1ebcc3ae1a30b879d7ec4b8d920db7a9f6e82c6f1b3feec245afddcb5e7111c7",
     "policy/guardrails.yaml": "7d48716add96baf7d0e509c0eca70701c2ea0332a839dd7435c1d773b1f8bcf0",
 }
 # What the execution template configures, parsed: unchanged since before F9-A (only its comments have changed).
@@ -861,15 +864,16 @@ INIT_EXECUTION_PARSED = {"schema": "aew/execution/v1", "configured": False, "har
                          "routing": {"default": None, "archetypes": {}, "classes": {}, "cards": {}},
                          "provider_env": []}
 INIT_POLICY_DIGESTS = {
-    "legality_digest": "sha256:e35bc2c2a63baada8a49a817af6632246baff9f325f5716adb6a4d6887b11bb6",
+    "legality_digest": "sha256:d0554ccb6c8e61c54461935032f93b1c6f3da4895be316baea0cb9652b81943f",  # gates.yaml's cap
     "operational_digest": "sha256:656c7e5fe5947690a7b5287e9b0309b24bb451ed41c84dd39b2dd0473396d06c",
 }
 
 
-def test_with_messaging_off_init_policy_bytes_and_digests_match_the_goldens(tmp_path):
+def test_with_messaging_off_init_policy_bytes_and_digests_match_the_goldens(tmp_path, monkeypatch):
     """D-32 (F8): `aew init`, the shipped default execution policy and `aew migrate` never write `coordination`: the
     policy bytes and both digests of a new project are the ones from before F9-A, and a migration leaves the policy
-    as it found it."""
+    as it found it. The price table is the shipped one, and moves only the operational digest (F25 §11, A3 §2.1)."""
+    from aew.engine import usage_ops as O
     from aew.engine.base import policy_files
     from aew.knowledge.manifest import load_manifest
     from aew.policy import execution as X
@@ -878,8 +882,17 @@ def test_with_messaging_off_init_policy_bytes_and_digests_match_the_goldens(tmp_
     root = make_git_repo(tmp_path / "fresh", CP.FILES)
     e = Engine.initialize(root, project_id="golden", name="golden", branch="main")
     aew = root / ".aew"
-    assert {rel: sha256_file(aew / rel) for rel in policy_files(load_manifest(aew))} == INIT_POLICY_SHA256
-    assert e.policy_digests() == INIT_POLICY_DIGESTS
+    table = "policy/pricing.yaml"
+    written = [rel for rel in policy_files(load_manifest(aew)) if rel != table]
+    assert {rel: sha256_file(aew / rel) for rel in written} == INIT_POLICY_SHA256
+    assert (aew / table).read_bytes() == O.bundled_table() and b"coordination" not in O.bundled_table()
+    assert e.policy_digests()["legality_digest"] == INIT_POLICY_DIGESTS["legality_digest"]
+    with monkeypatch.context() as no_table:
+        no_table.setattr(O, "bundled_table", lambda: None)
+        bare = Engine.initialize(make_git_repo(tmp_path / "no-table", CP.FILES), project_id="golden", name="golden",
+                                 branch="main")
+        assert bare.policy_digests() == INIT_POLICY_DIGESTS
+    assert e.policy_digests()["operational_digest"] != INIT_POLICY_DIGESTS["operational_digest"]
     assert "coordination" not in X.TEMPLATE and "coordination" not in util.load_yaml(X.TEMPLATE)
     assert util.load_yaml(X.TEMPLATE) == INIT_EXECUTION_PARSED  # comments may change; what init configures may not
     assert X.messaging(util.load_yaml(X.TEMPLATE)) == "disabled" and X.messaging(None) == "disabled"

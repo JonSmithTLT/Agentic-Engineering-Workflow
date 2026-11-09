@@ -24,7 +24,9 @@ KNOWLEDGE_NAMES = ("project_overview", "open_questions", "architecture_map", "co
 
 DEFAULT_GATES: dict[str, Any] = {
     "schema": "aew/gates/v1",
-    "mutating_concurrency": 1,
+    # Two mutating Tickets at once by default (register F10; HEB-06.c): each works in its own worktree and integrates
+    # through the serialized queue, and the launch conflict check (E151) holds a pair whose scopes overlap.
+    "mutating_concurrency": 2,
     "local_checks": ["unit"],
     "risk_paths": {
         "0": ["local_checks"],
@@ -115,6 +117,7 @@ def default_manifest(project_id: str, name: str, branch: str, workspaces_root: s
             "checks": "policy/checks.yaml",
             "gates": "policy/gates.yaml",
             "execution": "policy/execution.yaml",
+            "pricing": "policy/pricing.yaml",
         },
         "fingerprint": {"include_ignored": [], "exclude": []},
         "roles": {"catalog": "roles/"},

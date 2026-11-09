@@ -28,10 +28,12 @@ only fixed read commands as inline shell (V2 runs those outside the permission f
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Mapping
 from typing import Any, NamedTuple
 
 from aew import skills as shipped_skills
+from aew.harness import procs
 from aew.harness.contract import EXPECT_REV, QUIET, WAIT_RULE, WAKE_GUIDE, LaunchContract, wake_guidance, wake_line
 from aew.harness.wake_queue import HEADER as WAKE_HEADER
 from aew.surface import SERVER_NAME, contract
@@ -332,7 +334,21 @@ def session_body(contract: LaunchContract, directory: str, rules: list[dict[str,
 # that action, so one rule allows the `aew-lead` server's tools. Each is engine-refused or engine-committed, like the
 # `aew *` shell commands beside it.
 LEAD_MCP_SERVER = SERVER_NAME
-LEAD_MCP_COMMAND = ["aew", "lead", "mcp"]
+
+
+def lead_mcp_command() -> list[str]:
+    """The Lead's MCP server's argv: this process's own interpreter and `aew` (E180). A bare `aew lead mcp` ran
+    whichever `aew` was first on the path (a development copy, another virtual environment, an upgrade mid-session),
+    and the Lead's typed tools then failed with only "connection closed". The import path is pinned with
+    :func:`lead_mcp_environment`, as the engine pins its own Python children's (``procs.engine_imports``)."""
+    return [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "lead", "mcp"]
+
+
+def lead_mcp_environment() -> dict[str, str]:
+    """The MCP server's own variables, over the session's environment that OpenCode passes it: the import path of the
+    `aew` this process runs, and nothing else (it holds no credential)."""
+    return procs.engine_imports({})
+
 
 # The read-only git commands the Lead runs without asking, and their options that write a file (`--output`) or run a
 # configured program (`--ext-diff`), which ask wherever they are in the command (the designer, 2026-11-06). OpenCode's
@@ -444,6 +460,12 @@ LEAD_SYSTEM = "\n".join([
 ])
 
 LEAD_COMMANDS: dict[str, dict[str, str]] = {
+    # An inline shell read (ADR-0009): the report reaches the model unchanged, so the figures it shows are AEW's.
+    "aew-usage": {
+        "description": "AEW: usage and cost, the workers' runs",
+        "template": "Here is AEW's usage report. Show it to me as it stands, then say in one line what is unpriced or "
+                    "reads as a floor, if anything. Do not act on it.\n\n!`aew usage show`",
+    },
     "aew-resume": {
         "description": "AEW: rebuild the Lead's context from durable state",
         "template": "Rebuild your AEW Lead context from durable state: call `resume`. "
@@ -555,14 +577,15 @@ def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
                  for p, url in sorted((relays or {}).items())}
     return {**({"providers": providers} if providers else {}), "share": "disabled", "default_agent": LEAD_AGENT,
             **CLOSED, "experimental": {"policies": lead_provider_policies(), **CLOSED_EXPERIMENTAL},
-            # The typed surface's server: spawned by OpenCode in the session's curated environment, with no
-            # `environment` of its own (it holds no credential), and with Code Mode off so its tools are function
-            # tools (2.0.18's default hides MCP tools behind one `execute` tool), and never pooled (2.2.6's `pool`
-            # shares one connection across every directory that configures the server identically: each Lead
-            # session's server is its own). Its execution timeout is left at the pinned default (43,200,000 ms), far
-            # above harness_wait's 600 s cap.
-            "mcp": {"servers": {LEAD_MCP_SERVER: {"type": "local", "command": list(LEAD_MCP_COMMAND),
-                                                  "codemode": False, "pool": False}}},
+            # The typed surface's server: spawned by OpenCode in the session's curated environment, its own
+            # `environment` only the import path of this process's `aew` (E180; it holds no credential), with Code
+            # Mode off so its tools are function tools (2.0.18's default hides MCP tools behind one `execute` tool),
+            # and never pooled (2.2.6's `pool` shares one connection across every directory that configures the
+            # server identically: each Lead session's server is its own). Its execution timeout is left at the pinned
+            # default (43,200,000 ms), far above harness_wait's 600 s cap.
+            "mcp": {"servers": {LEAD_MCP_SERVER: {"type": "local", "command": lead_mcp_command(),
+                                                  "environment": lead_mcp_environment(), "codemode": False,
+                                                  "pool": False}}},
             "agents": {LEAD_AGENT: {"mode": "primary", "description": "AEW Lead (acts through the Lead broker)",
                                     "system": system, "permissions": LEAD_RULES}},
             "commands": {name: {**cmd, "agent": LEAD_AGENT} for name, cmd in LEAD_COMMANDS.items()}}

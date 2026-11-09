@@ -8,7 +8,9 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import bounds
 import childdiag
@@ -16,6 +18,7 @@ import flight_recorder
 import harness_diagnostics as hd
 import proctree
 import pytest
+import session_deadline
 from conftest import IS_WINDOWS
 
 TOKEN = "aew1.tk_" + "0" * 16 + "." + "A" * 43  # built here: no credential-shaped string sits in any file
@@ -184,8 +187,50 @@ def test_childdiag_does_nothing_without_a_directory(monkeypatch):
 
 def lane(test_timeout: float | None = 600, deadline: float | None = 900, job_min: float = 20, **kw) -> bounds.Lane:
     return bounds.Lane(workflow="w.yml", job="j", step="s", command="pytest", job_timeout_s=job_min * 60,
-                       test_timeout_s=test_timeout, deadline_s=deadline, margin_s=bounds.DEADLINE_MARGIN_S,
+                       test_timeout_s=test_timeout, deadline_s=deadline,
+                       margin_s=kw.get("margin", bounds.DEADLINE_MARGIN_S),
                        lane=kw.get("lane"), xdist=False, max_worker_restart=None, hang_dir=None, lane_report=None)
+
+
+@pytest.mark.parametrize(("workers", "margins"), [(None, 1.0), (2, 1.5)], ids=["one_process", "xdist"])
+def test_each_timer_sits_half_way_past_its_own_process_acting(tmp_path, workers, margins):
+    """The timer's C thread racing a deadline thread that has just woken is an access violation (seen on Windows before
+    that thread dropped the timer first). Now the session tests no longer catch a timer at the moment of acting (it
+    passed them in five runs of five), so the times are pinned here."""
+    config = SimpleNamespace(option=SimpleNamespace(numprocesses=workers),
+                             getoption=lambda name, default=None: str(tmp_path) if name == "aew_hang_dir" else default)
+    controller = session_deadline.Controller(config, 60.0, 4.0)
+    assert controller.stacks.at_mono == controller.mono + margins * 4.0
+    worker = session_deadline.Worker(SimpleNamespace(workerinput={"workerid": "gw0"}), time.time() + 60.0,
+                                     str(tmp_path), 4.0)
+    assert worker.stacks.at_mono == pytest.approx(worker.mono + 2.0)
+
+
+def test_two_sessions_with_one_pid_have_two_directories(tmp_path):
+    """Review of #387, M1: pids are reused, so the session's directory is not named by its pid alone."""
+    config = SimpleNamespace(option=SimpleNamespace(numprocesses=None),
+                             getoption=lambda name, default=None: str(tmp_path) if name == "aew_hang_dir" else default)
+    assert session_deadline.Controller(config, 60.0, 1.0).dir != session_deadline.Controller(config, 60.0, 1.0).dir
+
+
+def test_stacks_dropped_stay_dropped_so_a_test_that_ends_cannot_put_them_back(tmp_path):
+    """Review of #387, m1. The watchdog re-arms them after each test; a deadline's thread has dropped them for good."""
+    path = tmp_path / "stacks.txt"
+    stacks = session_deadline.Stacks(path, time.monotonic() + 600)
+    stacks.arm()
+    assert path.exists()
+    stacks.drop()
+    assert stacks.left() <= 0 and not path.exists()  # empty, so removed
+    stacks.arm()
+    assert not path.exists()
+
+
+def test_the_sentinels_longest_path_is_held_inside_the_job_at_five_margins():
+    """Review of #387, m2. Two margins pass the older rule here, and five leave no time to upload: 900 + 5 x 70 = 1250,
+    so a 21 minute job (1260 s) has 10 s left. It needs the margin at 60 s for the same deadline to pass."""
+    found = bounds.nesting_problems(lane(job_min=21, margin=70.0), [])
+    assert [p for p in found if "longest path ends the set at 1250s" in p] == found and len(found) == 1, found
+    assert bounds.nesting_problems(lane(job_min=21, margin=60.0), []) == []
 
 
 def test_the_nesting_rule_names_each_broken_link():

@@ -113,6 +113,8 @@ def test_harness_send_defaults_to_next_step_and_posts_steer(lab, tmp_path):
     assert out["requested"] == "send" and out["file"]
     lab.until(lambda: lead_posts(lab, run), what="the message posted")
     assert lead_posts(lab, run) == ["steer"]
+    # The adapter posts, then emits: the post being there says nothing about the event yet.
+    lab.until(lambda: prompt_events(lab, run)[1:], what="the message's event")
     assert [e["delivery"] for e in prompt_events(lab, run)][1:] == ["steer"]
     release(tmp_path)
     assert lab.wait(run)["status"] == "ended_without_evidence"
@@ -181,7 +183,8 @@ def test_with_messaging_off_no_lead_path_posts_queue(lab, tmp_path, monkeypatch)
     release(tmp_path)
     assert stop_and_requests(lab, run).count("send") == sends
     assert lead_posts(lab, run) == ["steer"] * sends
-    assert all(e["delivery"] != "queue" for e in prompt_events(lab, run))
+    # By the list, not `all`: with no events at all, `all` would pass. The run has ended, so every event is written.
+    assert [e["delivery"] for e in prompt_events(lab, run)][1:] == ["steer"] * sends
 
 
 # ---------------------------------------------------------------------------------------------- messaging on

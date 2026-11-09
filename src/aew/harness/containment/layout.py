@@ -140,6 +140,10 @@ RUN_PROTECTED = ("aew-*", "user", "dbus", "systemd")
 # /run is. A site configuration that serves users makes its socket a Kerberos credential route, and nothing inside
 # needs it (GSS_USE_PROXY is off by default; the kernel's NFS client does not use the sandbox's view).
 GSSPROXY = "/var/lib/gssproxy"
+# WSLg's directory on a WSL host: its display and audio sockets, whose servers run in WSL's system distro. Masked whole
+# where it exists, as /run is: nothing inside needs them, and the launching user owns them while /proc shows no holder,
+# so row 2 refuses every launch where they are reachable (a default WSL install with bubblewrap).
+WSLG = "/mnt/wslg"
 RESOLV_CONF = "/etc/resolv.conf"
 RESOLV_WHY = "name resolution on the shared network (the operator, 2026-10-24); a private one resolves none"
 MAXSYMLINKS = 40  # the links the kernel follows in one lookup before ELOOP (Linux include/linux/namei.h)
@@ -163,13 +167,12 @@ SANDBOX_OWN = ("/dev", "/proc")  # the sandbox's own (bubblewrap's --dev and --p
 
 def host_masks() -> tuple[str, ...]:
     """The host's trees masked whole (CB-03): ``/run``; ``/var/run`` where it is a directory of its own rather than
-    the usual link to ``/run``; and the GSS-API proxy's directory where there is one (:data:`GSSPROXY`). Host facts,
-    read when the layout is made."""
+    the usual link to ``/run``; and, where there is one, the GSS-API proxy's directory (:data:`GSSPROXY`) and WSLg's
+    (:data:`WSLG`). Host facts, read when the layout is made."""
     out = [RUN]
-    if os.path.isdir(VAR_RUN) and not os.path.islink(VAR_RUN):
-        out.append(VAR_RUN)
-    if os.path.isdir(GSSPROXY) and not os.path.islink(GSSPROXY):
-        out.append(GSSPROXY)
+    for tree in (VAR_RUN, GSSPROXY, WSLG):
+        if os.path.isdir(tree) and not os.path.islink(tree):
+            out.append(tree)
     return tuple(out)
 
 

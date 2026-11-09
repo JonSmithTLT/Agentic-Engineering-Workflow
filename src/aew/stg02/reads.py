@@ -34,6 +34,10 @@ class ReadProblem(Exception):
         self.code = code
 
 
+# The one owner an index item may list and its stamp may not name: gap entry STG02-BE-17, register E214.
+STAMPED_AS_CNI = "RESOURCE_POLICY_ISSUER"
+
+
 class Reads:
     def __init__(self, fx: Fixture, engine: EngineSource | None, ledger: Ledger, *, real_recipient: str) -> None:
         self.fx = fx
@@ -379,15 +383,21 @@ class Reads:
                             basis)
 
     def _index_item(self, o: dict[str, Any], recipient: str) -> dict[str, Any]:
-        heb = self.fx.heb
-        s = W.stamp(o["owner"], "op-record:" + o["operation_ref"], heb["epoch"], heb["version"], o["issued_at"],
-                    coverage_ref=self.fx.doc["scope_ref"], issuer_ref=self.fx.doc["issuers"]["HEB"])
+        # The item's source is its own owner (OP-01), with that owner's fixture epoch, and its issuer where the fixture
+        # world has one, never HEB's. SourceStamp cannot name one owner the entry can, so that item's stamp alone is
+        # CNI's unqualified report of the record, until D-01's next revision (the designer's bridge, register E214). It
+        # qualifies nothing: wire.stamp sets unqualified. The item's own data stays its real owner's.
+        stamped = "CNI" if o["owner"] == STAMPED_AS_CNI else o["owner"]
+        s = W.stamp(stamped, "op-record:" + o["operation_ref"], self.fx.owner_epoch(stamped),
+                    f"fixture:{stamped.lower()}-v1", o["issued_at"], coverage_ref=self.fx.doc["scope_ref"],
+                    issuer_ref=self.fx.doc["issuers"].get(stamped, "fixture:issuer"))
         return {"resource_type": "owner_operation_index",
                 "ref": W.subject("owner_operation_index", f"ownerop:{o['owner']}:{o['operation_ref']}"),
                 "source": s, "disclosure": self._disclosure(recipient),
                 "data": {"owner": o["owner"], "operation_ref": o["operation_ref"], "action": o["action"],
                          "subject_ref": o["subject_ref"], "attachment_generation": o["attachment_generation"],
-                         "issued_at": o["issued_at"], "owner_epoch": heb["epoch"], "source_version": heb["version"],
+                         "issued_at": o["issued_at"], "owner_epoch": self.fx.owner_epoch(o["owner"]),
+                         "source_version": f"fixture:{o['owner'].lower()}-v1",
                          "detail_path": f"/o01/v0/owner-operations/{o['owner']}/{o['operation_ref']}"},
                 "links": [], "field_sources": []}
 

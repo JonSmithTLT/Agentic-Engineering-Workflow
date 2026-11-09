@@ -28,6 +28,7 @@ from typing import Any
 
 import pytest
 
+from aew import g3client as G3
 from aew.stg02 import adopted as A
 from aew.stg02 import commands as COMMANDS
 from aew.stg02 import server as SV
@@ -231,11 +232,14 @@ def owner_reached(s: SV.Slice, req: dict[str, Any]) -> tuple[list[str], list[dic
     return reached, receipt["results"]
 
 
-def test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_request(tmp_path):
-    """The reading says one action goes on to an owner. A request for a protected action, for a delegated action that
-    is not that one (with a current, bound delegation, so its origin is established) and for that one agrees."""
+def test_the_continue_action_and_the_protected_ones_reach_an_owner_by_the_reading_and_by_a_request(tmp_path):
+    """The reading says which actions go on to an owner: the one delegated action, and each protected one, whose owner
+    consumes its member. A request for a protected action where G3 does not count, which goes on and is held, for a
+    delegated action that is not that one (with a current, bound delegation, so its origin is established) and for that
+    one agrees."""
     reaches = {action: r["fact"]["reaches_owner"] for action, r in records("commands").items()}
-    assert [a for a, yes in reaches.items() if yes] == ["CONTINUE_ELIGIBLE_WORK"]
+    protected = {action for action, row in A.registry().items() if row["origin"] == "PROTECTED_G3"}
+    assert {a for a, yes in reaches.items() if yes} == {"CONTINUE_ELIGIBLE_WORK"} | protected
 
     s = make_slice(tmp_path / "continue")
     cfg = SV.driver_config(s)
@@ -243,8 +247,17 @@ def test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_reque
     assert reached == ["CONTINUE_ELIGIBLE_WORK"] and len(results) == 1
 
     s = make_slice(tmp_path / "protected")
+    went_on: list[str] = []
+    real = s.carrier._protected
+
+    def spy(req: dict[str, Any], i: dict[str, Any], owner: str, counts: bool) -> dict[str, Any]:
+        went_on.append(i["action"])
+        return real(req, i, owner, counts)
+
+    s.carrier._protected = spy  # type: ignore[method-assign]
     reached, results = owner_reached(s, copy.deepcopy(SV.driver_config(s)["command"]["protected_without_g3"]))
-    assert reached == [] and results[0]["reason_code"] == "ORIGIN_NOT_ESTABLISHED"
+    assert reached == [] and went_on == ["ATTACH_LEAD"]
+    assert (results[0]["admission_state"], results[0]["reason_code"]) == ("HELD", "ORIGIN_NOT_ESTABLISHED")
 
     s = make_slice(tmp_path / "cancel")
     cancel = copy.deepcopy(s.fx.intents["continue"])
@@ -260,7 +273,7 @@ def test_only_the_continue_action_reaches_an_owner_by_the_reading_and_by_a_reque
     req = dict(copy.deepcopy(SV.driver_config(s)["command"]["continue_eligible_work"]), intents=[cancel])
     reached, results = owner_reached(s, req)
     assert reached == [] and results[0]["reason_code"] == "SOURCE_UNAVAILABLE"  # its effect is not modelled: a hold
-    assert reaches["DELEGATED_CANCEL"] is False and reaches["ATTACH_LEAD"] is False
+    assert reaches["DELEGATED_CANCEL"] is False and reaches["ATTACH_LEAD"] is True
 
 
 # ---------------------------------------------------------------------------------------------------- the refusals
@@ -305,6 +318,13 @@ def test_every_refusal_result_comes_through_the_one_lookup():
             result = COMMANDS.refusal(action, cause)
             assert result["reason_code"] == reason and result["owner_reason"] == cause
             assert result["outcome"] == ("HELD" if reason == "SOURCE_UNAVAILABLE" else "REFUSED")
+            # the one other way to a hold: the origin conditions addendum 5 rules on, under that one reason
+            if cause == "ORIGIN_NOT_ESTABLISHED":
+                held = COMMANDS.refusal(action, cause, held=True)
+                assert held["outcome"] == "HELD" and held["reason_code"] == reason
+            else:
+                with pytest.raises(AssertionError, match="never held"):
+                    COMMANDS.refusal(action, cause, held=True)
         with pytest.raises(AssertionError, match="no reason code"):
             COMMANDS.refusal(action, "A_CAUSE_NO_TABLE_NAMES")
     with pytest.raises(AssertionError, match="no reason code"):
@@ -333,10 +353,10 @@ def test_every_refusal_call_of_the_module_is_placed_by_the_reading():
     assert problems == [] and pairs
 
 
-def battery() -> set[tuple[str, str]]:
+def battery(monkeypatch: pytest.MonkeyPatch) -> set[tuple[str, str]]:
     """The (action, cause) pairs ``Carrier._member`` returns, over every action and, for a delegated one, over the
-    states of its delegation and of the owner's work (synthetic fixtures only; ``_member`` reads the fixture world and
-    nothing else, so no ledger is opened)."""
+    states of its delegation and of the owner's work, and for a protected one, over the consume's answers (synthetic
+    fixtures only; ``_member`` reads the fixture world and nothing else, so no ledger is opened)."""
     from aew.stg02.world import Fixture
 
     registry = A.registry()
@@ -381,20 +401,36 @@ def battery() -> set[tuple[str, str]]:
             result = carrier._member(req, intent, None, T0)
             if result["owner_reason"] is not None:
                 seen.add((action, result["owner_reason"]))
+        if row["origin"] != "PROTECTED_G3":
+            continue
+        # Where G3 counts, each answer the owner's consume can give (the planted client is the only way out of here)
+        for answer in (*G3.CONSUME_RESULTS, None):
+            monkeypatch.setattr(G3, "consume", lambda answered=answer, **_: G3.Consumed(answered))
+            fx = Fixture.load(T0)
+            carrier = COMMANDS.Carrier(fx, None, lambda: {})  # type: ignore[arg-type]
+            intent = copy.deepcopy(fx.intents["continue"])
+            intent.update(action=action, owner_hint=row["sole_admitting_owner"], origin_proof_ref="proof:battery",
+                          authority_class=COMMANDS.ORIGIN_CLASS[row["origin"]])
+            req = {"installation_ref": fx.installation, "recipient_ref": fx.recipient,
+                   "consent_set_ref": "consent:battery", "client_request_key": "fixture:key-battery",
+                   "request_set_ref": "fixture:request-battery", "wire_version": W.O01_VERSION, "intents": [intent]}
+            result = carrier._member(req, intent, None, T0, True)
+            if result["owner_reason"] is not None:
+                seen.add((action, result["owner_reason"]))
     return seen
 
 
-def test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states():
+def test_the_emitted_pairs_are_the_ones_the_carrier_returns_over_a_battery_of_states(monkeypatch):
     """The observation behind ``emitted_by``: the pairs the reading says the admission path returns are exactly the
     pairs ``Carrier._member`` returns over the battery. A pair read and not observed would be a site that returns
     nothing; one observed and not read would be a return the reading missed. Each pair is also a record."""
     read = {(r["fact"]["action"], r["fact"]["cause"]) for r in records("command-refusals").values()
             if r["fact"]["emitted_by"]}
-    observed = battery()
+    observed = battery(monkeypatch)
     assert observed == read, (sorted(observed - read), sorted(read - observed))
     assert observed <= named_pairs()
     sites = {tuple(s["symbol"] for s in r["fact"]["emitted_by"]) for r in records("command-refusals").values()
              if r["fact"]["emitted_by"]}
-    assert sites == {("Carrier._member",), ("Carrier._heb_continue",)}
+    assert sites == {("Carrier._member",), ("Carrier._heb_continue",), ("Carrier._protected",)}
     for r in records("command-refusals").values():
         assert r["fact_coverage"]["emitted_by"]["label"] == "complete-by-construction"

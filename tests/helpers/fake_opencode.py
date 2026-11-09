@@ -174,7 +174,9 @@ class FakeOpenCode:
         self.catalog_asked: float | None = None
         self.agents_asked: float | None = None
         self.plugins_asked: float | None = None
-        self.data_home = Path(os.environ["XDG_DATA_HOME"])
+        # A worker's run sets it, and so does the contained Lead. The Lead that isn't contained keeps the operator's, which
+        # may name none, and the real server then uses its own default: the fake's is in the lab, as `<run>/harness` is.
+        self.data_home = Path(os.environ.get("XDG_DATA_HOME") or scripts / "lead-server" / "harness" / "xdg-data")
         self.state = self.data_home.parent            # <run>/harness
         self.run = self.state.parent.name             # R-<INV>-<n>
         inv = self.run.rsplit("-", 1)[0][2:]

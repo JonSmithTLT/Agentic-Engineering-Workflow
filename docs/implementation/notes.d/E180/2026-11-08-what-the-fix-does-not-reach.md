@@ -4,3 +4,6 @@ its commands run that tree while its typed tools run this one. An upgrade in pla
 root, so a server started after it runs the new code beside the old broker. In the contained Lead, a copy of `aew` under
 a directory the sandbox makes fresh (`/tmp`, `/run`) loses its import path. Each is stated in `projection.py`'s
 docstrings. No row owes them: none has been asked for, and a new one needs a case that hits it.
+
+**Still open from #384's review:** real OpenCode hasn't run on Windows, so a spaced `python.exe` path through OpenCode's
+own spawn is proven on Linux only. The first real Windows `aew opencode` is that check.

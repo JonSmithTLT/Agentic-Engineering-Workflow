@@ -66,10 +66,12 @@ from typing import Any
 from aew.harness.containment import ALLOW_WEAKER_REMEDY, egress, sockets
 from aew.harness.containment.layout import (
     DISPLAY_ENV,
+    GSSPROXY,
     NET_SHIM,
     PROXY_ONLY,
     SANDBOX_TMP,
     VAR_RUN,
+    WSLG,
     Layout,
     _within,
     bwrap_argv,
@@ -90,12 +92,14 @@ USERNS_LIMIT = "/proc/sys/user/max_user_namespaces"
 
 def _unidentified_remedy(paths: list[str], masks: tuple[str, ...]) -> str:
     """Row 2's words for reachable sockets of the launching user's whose holders cannot be identified (D-CS2-6), once
-    however many there are, which `aew doctor` shows with the row's reason. It names the masks it speaks of, and says
-    nothing of the class, which the row has named: such a socket can be a display's as well as a credential."""
-    one = len(paths) == 1
-    owned, held, are = ("it", "it", "it is") if one else (", ".join(paths), "them", "they are")
-    return (f" (the launching user owns {owned} and no process AEW can read holds {held}, so {are} refused: if you "
-            f"know what serves {held}, stop that or have it listen under a masked path ({', '.join(masks)}); otherwise "
+    however many there are, which `aew doctor` shows with the row's reason. It names the sockets, since it can follow
+    one it isn't about (review of the follow-ons, m1), and the masks it offers, leaving out those that are a system
+    service's own directory, where nothing else should listen (m2). It says nothing of the class, which the row has
+    named: such a socket can be a display's as well as a credential."""
+    held, are = ("it", "it is") if len(paths) == 1 else ("them", "they are")
+    offered = ", ".join(m for m in masks if m not in (GSSPROXY, WSLG))
+    return (f" (the launching user owns {', '.join(paths)} and no process AEW can read holds {held}, so {are} refused: "
+            f"if you know what serves {held}, stop that or have it listen under a masked path ({offered}); otherwise "
             f"{ALLOW_WEAKER_REMEDY})")
 
 

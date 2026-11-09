@@ -256,6 +256,8 @@ def test_resolve_finishes_a_real_merge_when_render_also_writes_a_page_git_ignore
     assert reference.resolve(repo.path) == 0, capsys.readouterr().err
     assert repo.git("diff", "--name-only", "--diff-filter=U").stdout == ""
     assert "docs/reference/index.json" not in repo.git("diff", "--cached", "--name-only").stdout
+    # Said, so a new page that a broad rule catches isn't silent (review of the follow-ons, m3)
+    assert "left out, as git ignores them: docs/reference/index.json" in capsys.readouterr().out
     repo.git("commit", "-q", "--no-edit")
     assert (repo.path / "docs/reference/index.json").is_file()
 

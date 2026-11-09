@@ -262,6 +262,33 @@ def test_the_remedy_comes_once_names_every_such_socket_and_says_nothing_of_a_cla
     assert "credential:" not in reason and "counts as" not in reason, reason
 
 
+@pytest.mark.parametrize("known_first", [True, False], ids=["unidentified_last", "unidentified_first"])
+def test_the_remedy_names_the_socket_it_is_about_whichever_comes_last(known_first):
+    """Review of the follow-ons, m1: with a second failing socket whose holder is known, the remedy lands on whichever
+    is last, so a bare "it" could mean the wrong one."""
+    known = {**UNKNOWN_HOLDER, "path": "/s/tools/agent.sock", "listed": "/s/tools/agent.sock", "ino": 51}
+    del known["holder"]
+    inventory, inside = REACHED["inventory"], REACHED["inside"]
+    both = {"path": known["path"], "inside": [known["path"]]}
+    seen = {**REACHED, "inventory": {**inventory, "candidates": [*inventory["candidates"], known]},
+            "inside": {**inside, "reachable": [both, *inside["reachable"]] if known_first
+                       else [*inside["reachable"], both]}}
+    reason = probe._row2(LAYOUT, seen)["reason"]
+    assert f"the launching user owns {UNKNOWN_HOLDER['path']} and no process" in reason, reason
+    assert f"owns {known['path']}" not in reason, reason
+
+
+def test_the_remedy_offers_every_mask_row_2_checks_but_a_system_services_own_directory(monkeypatch):
+    """Review of the follow-ons, m2 and m4. It speaks of the layout's masks as well as the host's, the ones row 2 finds
+    masked, and offers neither the GSS-API proxy's directory nor WSLg's as a place to listen. Row 2 still checks both.
+    """
+    monkeypatch.setattr(probe, "host_masks", lambda: (L.RUN, L.GSSPROXY, L.WSLG))
+    layout = dataclasses.replace(LAYOUT, hide_host=(L.RUN, "/layout/own"))
+    reason = probe._row2(layout, REACHED)["reason"]
+    assert "have it listen under a masked path (/run, /layout/own);" in reason, reason
+    assert f"{L.GSSPROXY} is not a read-only tmpfs" in reason and f"{L.WSLG} is not a read-only tmpfs" in reason, reason
+
+
 def test_establish_makes_the_self_tests_sentinel_before_the_layout_lists_its_directory(tmp_path, monkeypatch):
     """Quick check 4 of #283, m12: a workspace directly under the home has the home for its parent, a directory a
     secret is left out of. The sentinel next to the workspace is made before the layout lists that directory, so the

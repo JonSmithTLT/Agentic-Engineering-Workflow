@@ -3449,7 +3449,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-08
 
-**By:** #384 (`039a281e`), with its review's follow-ons on the pull request after it. What it does not reach is in this row's note
+**By:** #384 (`039a281e`), with its review's follow-ons on #390. What it does not reach is in this row's note
 
 *Later notes: `notes.d/E180/`, oldest first (`python tools/register.py show E180`).*
 

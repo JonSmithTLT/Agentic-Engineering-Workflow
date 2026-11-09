@@ -270,11 +270,14 @@ def resolve(root: Path = ROOT) -> int:
              if (root / prefix / name).is_file() or prefix + name in tracked]
     # A page render writes and git ignores (`index.json`, the machine index, not committed) would stop `git add` too
     ignored = _git(root, "check-ignore", "-z", "--stdin", stdin="\0".join(pages)).stdout.split("\0")
+    left_out = [page for page in pages if page in ignored]
     pages = [page for page in pages if page not in ignored]
     added = _git(root, "add", "-A", "--", *pages) if pages else None
     if added is not None and added.returncode != 0:
         print(f"could not stage {prefix}: {added.stderr.strip()}", file=sys.stderr)
         return 2
+    if left_out:  # said, so a new page that a broad rule catches isn't first noticed by `check` in CI
+        print(f"left out, as git ignores them: {', '.join(left_out)}")
     print(f"rendered and staged {prefix} ({len(changed)} file(s) changed): finish the merge with `git commit`")
     return 0
 

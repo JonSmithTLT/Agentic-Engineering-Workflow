@@ -62,7 +62,7 @@ def spawn_problems(sites) -> list[str]:
     """The D-CS1-12 check: every ``python -m aew...`` site names a listed entry point, and its name is readable."""
     return [f"{s.module}:{s.symbol} " + ("starts a module whose name is not a plain string" if s.target is None
                                          else f"starts {s.target}, which is not a listed entry point")
-            for s in sites if s.target is None or E.entry_for(s.target) not in TABLE]
+            for s in sites if s.target is None or E.entry_for(s.target, s.words) not in TABLE]
 
 
 def declaration_problems(declares, roles) -> list[str]:
@@ -318,8 +318,8 @@ def test_one_list_holds_every_start_of_an_entry_point_with_its_form_and_says_how
     ('[sys.executable, "-m", "aew", word, "lead", "mcp"]', "aew"),
 ])
 def test_a_dash_m_start_of_the_cli_is_on_the_row_its_constant_words_give(argv, row):
-    """The owner's ``cli_entry_point`` decides, as for a console-script argv. Words not all constants don't decide, and
-    the start stays on ``aew``: the page's lists are lower-bound, and a run-time role is not read from here."""
+    """The owner's ``cli_entry_point`` decides, as for a console-script argv. A start whose deciding words aren't
+    constants stays on ``aew``: the page's lists are lower-bound, and a run-time role is not read from here."""
     site = planted(f"import sys\nargv = {argv}\n")[0][0]
     assert E.entry_for(site.target, site.words) == row
 

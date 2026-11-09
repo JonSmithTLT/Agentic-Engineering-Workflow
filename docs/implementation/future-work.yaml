@@ -3990,8 +3990,7 @@ sections:
     Was: The Lead's MCP server started as a bare `aew lead mcp`, so it ran whichever `aew` was first on the path and the
       Lead's typed tools failed with only "connection closed"; start it with the Lead's own interpreter and import path
     Closed: '2026-11-08'
-    By: '#384 (`039a281e`), with its review''s follow-ons on the pull request after it. What it does not reach is in this
-      row''s note'
+    By: '#384 (`039a281e`), with its review''s follow-ons on #390. What it does not reach is in this row''s note'
 
   - '#': F1
     Was: Hot and cold control state (archival of terminal records)

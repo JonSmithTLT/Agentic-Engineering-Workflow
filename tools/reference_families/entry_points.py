@@ -19,7 +19,8 @@ designer's addendum 3). ``starts``
 is one list of every place the product starts the entry point, each item with its ``form`` and ``attribution``:
 
 * ``-m``: a ``python -m aew...`` spawn, attributed by the module it names, and for the CLI by the owner's own
-  ``cli_entry_point`` applied to the string constants after it, so words only known at run time stay on the ``aew`` row;
+  ``cli_entry_point`` applied to the string constants after it, so a start whose deciding words aren't constants stays
+  on the ``aew`` row;
 * ``console-script-argv``: an argv list that starts with ``aew``, attributed by the owner's own ``cli_entry_point``
   applied to its words; whether it is run is not decided here, so it is also an unresolved item of the list;
 * ``console-script-on-PATH``: the interpreter's directory put on a child's ``PATH``, which makes the CLI startable and

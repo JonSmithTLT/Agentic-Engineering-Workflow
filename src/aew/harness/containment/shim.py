@@ -51,6 +51,7 @@ LOOPBACK_URL = re.compile(rf"http://{re.escape(LOOPBACK)}:[0-9]{{1,5}}/?")  # th
 CHUNK = 64 * 1024
 BACKLOG = 64
 EXIT_SETUP = 70  # EX_SOFTWARE: a leg could not be set up, so the harness was not started
+EXIT_SERVER_LOST = 69  # EX_UNAVAILABLE: the Lead's server died, so the session ended; `aew opencode`'s result says so
 EXIT_INTERRUPTED = 130  # Ctrl+C before the harness started
 SERVER_URL = "{aew_server_url}"  # in the harness argv: the address ``serve``'s server announced
 SERVE_TIMEOUT_S = 60.0           # the server's announcement, as the worker adapter's start allows
@@ -302,4 +303,5 @@ def main(argv: list[str]) -> int:
     if lost is not None and lost.is_set():  # after the harness: a TUI's screen would hide it
         sys.stderr.write("aew network shim: the Lead's server ended, and nothing restarts it, so the session ended. "
                          f"Start `aew opencode` again; the server's log is {spec['serve']['log']}\n")
+        return EXIT_SERVER_LOST
     return 128 - code if code < 0 else code

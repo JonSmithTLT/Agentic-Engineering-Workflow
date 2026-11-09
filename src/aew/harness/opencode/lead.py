@@ -315,11 +315,17 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
 
 
 def _outcome(out: dict[str, Any], version: Any) -> dict[str, Any]:
-    """The session's result. A launch that never started the TUI is no success: `aew opencode` exits non-zero, and the
-    result says what to do, since the shim's own line is above it."""
-    from aew.harness.containment.shim import EXIT_SETUP
+    """The session's result. A launch that never started the TUI is no success, and neither is a session whose server
+    died: `aew opencode` exits non-zero, and the result says what to do. It is the last thing on the screen: on a real
+    TUI the terminal's reset comes after the shim's own line (measured), and its `?1049l` can put the cursor back over
+    it."""
+    from aew.harness.containment.shim import EXIT_SERVER_LOST, EXIT_SETUP
 
-    if out.get("exit") != EXIT_SETUP:  # the shim's own code, which a TUI that ran doesn't exit with
+    if out.get("exit") == EXIT_SERVER_LOST:  # the shim's own codes, which a TUI that ran doesn't exit with
+        return {**out, "ok": False, "opencode": version,
+                "server_lost": "the Lead's server ended, and nothing restarts it, so the session ended; start `aew "
+                               f"opencode` again, and read the server's log, {SERVER_LOG}, under `.aew/local/`"}
+    if out.get("exit") != EXIT_SETUP:
         return {**out, "opencode": version}
     return {**out, "ok": False, "opencode": version,
             "not_started": "the Lead's TUI was not started; run `aew doctor`, and read the server's log, "

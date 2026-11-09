@@ -123,6 +123,7 @@ def test_a_server_that_dies_mid_session_ends_the_session_and_says_so(tmp_path: P
     # The TUI's own end is inside _run's limit: on Windows a timed-out `run` still waits for whoever holds its pipes.
     done, _ = _run(tmp_path, server=server, tui_text="import time\ntime.sleep(90)\n")
     assert "the Lead's server ended" in done.stderr and "`aew opencode` again" in done.stderr
+    assert done.returncode == shim.EXIT_SERVER_LOST  # whatever the TUI exits with when it is ended
 
 
 def test_a_long_wait_for_the_server_says_so_once(capsys: pytest.CaptureFixture[str],
@@ -167,5 +168,7 @@ def test_ctrl_c_before_the_announcement_ends_the_server_and_gives_no_traceback(
 def test_a_launch_that_never_started_the_tui_is_no_success() -> None:
     failed = lead._outcome({"ok": True, "exit": shim.EXIT_SETUP}, "2.2.6")
     assert failed["ok"] is False and "aew doctor" in failed["not_started"]
+    lost = lead._outcome({"ok": True, "exit": shim.EXIT_SERVER_LOST}, "2.2.6")
+    assert lost["ok"] is False and "`aew opencode` again" in lost["server_lost"] and "not_started" not in lost
     ran = lead._outcome({"ok": True, "exit": 3}, "2.2.6")  # the TUI's own status
     assert ran == {"ok": True, "exit": 3, "opencode": "2.2.6"}

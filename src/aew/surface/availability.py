@@ -95,6 +95,10 @@ STARTS_AT: dict[str, dict[str, int]] = {"ticket_request_verification": {"REVIEW_
 # The argument naming the report a stage's first step accepts.
 REPORT_ARGUMENT = {"ticket_request_verification": "review_evidence", "ticket_prepare": "verification_evidence"}
 REPORT_NEEDED, REPORT_ALREADY_ACCEPTED = "report_needed", "report_already_accepted"
+NOT_FROM_THIS_STATE = "not_from_this_state"
+# Where a stage's first step accepts its report.
+REPORT_ACCEPTED_AT = {"ticket_request_verification": "REVIEW_PENDING", "ticket_prepare": "VERIFY_PENDING"}
+HAS_CANDIDATE = frozenset({"prepared", "validated", "publishing"})  # no stage's later start answers these
 
 
 def _starts_by(stage: str, n: int) -> Callable[[Any, dict[str, Any], dict[str, Any]], bool]:
@@ -117,7 +121,14 @@ def report_problem(engine: Any, stage: str, a: dict[str, Any],
     accepts = planned_shape(engine, stage, a, state=current).get(1, True)
     wid = a.get("work_id")
     if accepts and a.get(argument) is None:
-        return {"code": REPORT_NEEDED, "message": f"{stage} accepts a report for {wid} now: name it as `{argument}`"}
+        found = ((current.get("work") or {}).get(wid or "") or {}).get("state")
+        if found == REPORT_ACCEPTED_AT[stage]:
+            return {"code": REPORT_NEEDED,
+                    "message": f"{stage} accepts a report for {wid} now: name it as `{argument}`"}
+        where = f"{wid} is {found}" if found else f"{wid} is no work unit here"
+        return {"code": NOT_FROM_THIS_STATE,
+                "message": f"{stage} starts at {REPORT_ACCEPTED_AT[stage]} with a report, or from "
+                           f"{', '.join(sorted(STARTS_AT[stage]))} without one, and {where}"}
     if not accepts and a.get(argument) is not None:
         return {"code": REPORT_ALREADY_ACCEPTED,
                 "message": f"{wid} is already past accepting a report: call {stage} without `{argument}`"}
@@ -221,6 +232,28 @@ def stage_cards(engine: Any, stage: str, arguments: dict[str, Any], *,
     _n, slot = CARDS[stage]
     found = engine.stage_cards(arguments.get("work_id"), slot, state=state)
     return {"cards": list(found["cards"]) or [None], "unresolved": list(found["unresolved"])}
+
+
+def way_on(stage: str, arguments: dict[str, Any], unit: dict[str, Any], *, committed: bool) -> dict[str, Any] | None:
+    """The call that takes a Ticket on after ``stage`` stopped stale (E133's review, M2), as what a refusal may name:
+    the tool and what to say about it. None where no call does: only a state a stage starts from, or a stop that
+    committed nothing, or a prepared candidate's relaunch by `integration_publish`, is known to go on."""
+    argument = REPORT_ARGUMENT.get(stage)
+    state, integration = unit.get("state"), unit.get("integration") or {}
+    if not committed:
+        named = argument is not None and arguments.get(argument) is not None
+        return {"tool": stage, "say": f"Nothing of this call was committed. Call {stage} again on the current revision"
+                                      + (f", naming `{argument}` again" if named else "")}
+    if stage == "ticket_prepare" and state == "COMMIT_READY" and integration.get("status") == "prepared":
+        return {"tool": "integration_publish",
+                "say": f"The steps committed stand, and the candidate is prepared. Call integration_publish with "
+                       f"{integration.get('candidate')} as `prepared_candidate` on the current revision, which "
+                       "launches its verifier"}
+    has_candidate = state == "COMMIT_READY" and integration.get("status") in HAS_CANDIDATE
+    if state not in STARTS_AT.get(stage, {}) or has_candidate:
+        return None
+    return {"tool": stage, "say": f"The steps committed stand. Call {stage} again on the current revision, without "
+                                  f"`{argument}`, and it goes on from where this one stopped"}
 
 
 # ---------------------------------------------------------------------------------------------- produced inputs

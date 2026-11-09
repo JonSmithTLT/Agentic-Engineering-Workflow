@@ -159,6 +159,17 @@ def test_a_report_that_does_not_fit_where_the_ticket_stands_blocks_the_stage_and
     assert any(b["code"] == code for b in out["blockers"])
 
 
+@pytest.mark.parametrize(("work_id", "where"), [("T-0001", "T-0001 is RUNNING"),
+                                                ("T-0999", "T-0999 is no work unit here")])
+def test_a_missing_report_away_from_that_step_is_told_where_the_stage_starts_and_not_to_name_one(work_id, where):
+    """E133's review, m6: naming a report would not help a Ticket the stage does not start from."""
+    out = SA.stage_availability(FakeEngine(_state("RUNNING")), "ticket_prepare", {"work_id": work_id})
+    assert out["availability"] == BLOCKED and SA.NOT_FROM_THIS_STATE in out["reason_codes"]
+    assert SA.REPORT_NEEDED not in out["reason_codes"]
+    [said] = [b["message"] for b in out["blockers"] if b["code"] == SA.NOT_FROM_THIS_STATE]
+    assert said.endswith(f"and {where}") and "starts at VERIFY_PENDING with a report" in said
+
+
 @pytest.mark.parametrize(("stage", "state", "planned"), [
     ("ticket_request_verification", "REVIEW_PENDING", {1: True}),
     ("ticket_request_verification", "REVIEW_PASSED", {1: False}),

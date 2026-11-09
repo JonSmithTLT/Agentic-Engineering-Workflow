@@ -50,8 +50,9 @@ class Spy:
 # Decision 7's whole-surface pin: 11,694 at E6a, unchanged in A1 until the designer answers G3; 11,741 with ITEMS 55's
 # `replace_gate` choice and its `replacement` field (designer, addendum 4: measured against §2.6's stop line, +47 B);
 # 11,727 with steering PR 1's `harness_wait` description, which says it also returns when a run needs the Lead (-14 B);
-# 11,685 with E133's stages that start past their report, so the report is not required (-42 B).
-NORMAL_BYTES_PIN = 11_685
+# 11,704 with E133's stages that start past their report: the report is not required, and their descriptions say so
+# (-23 B).
+NORMAL_BYTES_PIN = 11_704
 RESOLVE_BYTES_PIN = 818
 
 

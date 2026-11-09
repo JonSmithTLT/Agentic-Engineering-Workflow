@@ -477,6 +477,7 @@ def test_a_verifier_mode_decision_names_the_publish_with_its_report_and_candidat
     monkeypatch.setattr(surface.SA, "stage_availability", lambda *a, **kw: {"availability": "AVAILABLE"})
     engine = SimpleNamespace(stage_fit=lambda state, wid: FULL, store=SimpleNamespace(current=dict))
     [decision] = surface._decisions(engine, part, "T-0007", [], [])
+    assert decision["decision"] == "PUBLISH", "named for what its tool does"
     assert decision["tool"] == "integration_publish" and decision["availability"] == "AVAILABLE"
     assert decision["arguments"] == {"expect_rev": 3, "work_id": "T-0007", "verification_evidence": "EV-9",
                                      "prepared_candidate": "C-1"}

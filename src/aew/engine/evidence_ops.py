@@ -374,7 +374,7 @@ class Gates:
                 GuardRegistration("review_current", self._guard_review_current, query=self._query_review_current,
                                   role=GATE),
                 GuardRegistration("commit_ready_without_verification", self._guard_commit_ready_without_verification,
-                                  role=GATE),
+                                  query=self._query_commit_ready_without_verification, role=GATE),
                 GuardRegistration("all_gates_current", self._guard_all_gates_current,
                                   query=self._query_all_gates_current, role=GATE),
                 GuardRegistration("returning_from_escalation", self._guard_returning_from_escalation,
@@ -527,11 +527,24 @@ class Gates:
         elif facts.get("entry_guard"):  # the return relied on the gates it rechecked: pin them (R1 plan v3 §4.2 H2)
             self.record_relied_on(ctx, unit, facts["gate_context"], facts["relied_on"])
 
+    def _query_commit_ready_without_verification(self, state: dict[str, Any], work_id: str,
+                                                 args: dict[str, Any]) -> Any:
+        """REVIEW_PASSED -> COMMIT_READY (its query form, E133's review, m5): no verification gate applies, and every
+        effective gate is current. It records the gate context, as ``_query_all_gates_current`` does."""
+        def check() -> None:
+            gc = self.gate_context(state, work_id)
+            if self.verification_gates(gc):
+                raise GateUnsatisfied("verification gates apply to this Ticket: `ticket_request_verification` takes it "
+                                      "to VERIFY_PENDING", required=self.verification_gates(gc))
+            self._require_commit_ready(gc)
+            args.setdefault("found", {})["gate_context"] = gc
+
+        return guard_checked(check)
+
     def _guard_commit_ready_without_verification(self, ctx, work_id, unit, to) -> None:
-        gc = self.gate_context(ctx.state, work_id)
-        if self.verification_gates(gc):
-            raise GateUnsatisfied("verification gates apply to this Ticket", required=self.verification_gates(gc))
-        self._commit_ready(ctx, work_id, unit, gc)
+        args: dict[str, Any] = {"to": to}
+        require(self._query_commit_ready_without_verification(ctx.state, work_id, args))
+        self._accept_commit_ready(ctx, work_id, unit, args["found"]["gate_context"])
 
     def _query_all_gates_current(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
         """VERIFIED -> COMMIT_READY (M4-E E4b: its query form): every effective gate is current for the workspace's

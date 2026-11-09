@@ -38,8 +38,9 @@ finishes; they are the only place AEW knowledge appears here:
     (``vertical.hints``: the revision, the subject, a reason), and ``--launch`` added once a refusal asks for it (each a
     counted shell call). A hint with any other placeholder is ``hint_not_followable`` and nothing runs; a usage error
     from what ran is ``hint_usage_error``, an observation, since a mangled command otherwise stalls silently (E116);
-  - ``publish_not_offered``: a prepared candidate whose post-integration verification reported, with no decision
-    offered: the Lead asks the operator, then calls ``integration_publish`` (not offered) with the candidate and the
+  - ``publish_not_offered``: a prepared candidate with no decision offered, which since the publish decision reads the
+    routed report leaves a report that was not clean or none at all: the Lead asks the operator, then calls
+    ``integration_publish`` (not offered) with the candidate and the
     report it read in its own wait's result;
 - ``redispatch``: after a takeover and a reconcile the interrupted implementer is gone, nothing is offered and the
   hint's ``work transition --to RUNNING`` is refused ("no active implementer invocation"): the Lead dispatches a new

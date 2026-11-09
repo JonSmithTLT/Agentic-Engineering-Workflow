@@ -432,7 +432,8 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
                 if drift is not None:  # rule 6 before rule 4: the stage never runs on under a policy it did not bind
                     return _stop(c, intent, n, step["primitive"], drift, outputs)
                 if not retry:
-                    return _stop(c, intent, n, step["primitive"], _call_again(intent, c, refusal), outputs)
+                    named = _call_again(intent, c, refusal, bool(outputs))
+                    return _stop(c, intent, n, step["primitive"], named, outputs)
                 retried, rev = True, _revision(c)
             except errors.HarnessLaunchFailed as failed:
                 # Rule 7: the dispatch committed (its run is recorded); the stage stops, the run identity stands.
@@ -451,15 +452,18 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
     return _payload(c, intent, outputs)
 
 
-def _call_again(intent: str, c: Call, refusal: errors.StaleRevision) -> errors.StaleRevision:
-    """A stale step of a stage that may not retry it (rule 5), naming the way out where the stage starts from where it
-    stopped (E133): the Lead calls it again on the current revision, and what is committed stands."""
-    tool = c.engine.stage_intent(intent)["tool"]
-    if tool not in SA.STARTS_AT:
+def _call_again(intent: str, c: Call, refusal: errors.StaleRevision, committed: bool) -> errors.StaleRevision:
+    """A stale step of a stage that may not retry it (rule 5), naming the way out where a call is known to go on from
+    where it stopped (E133), and otherwise only the refusal: what is committed stands either way."""
+    si = c.engine.stage_intent(intent)
+    if si["tool"] not in SA.STARTS_AT:
         return refusal
-    return errors.StaleRevision(f"{refusal.message}: the steps committed stand. Call {tool} again on the current "
-                                "revision, and it goes on from where this one stopped",
-                                **{**refusal.details, "reason": "call_again", "call_again": tool})
+    unit = c.engine.store.current()["work"].get(si["subject"]["id"]) or {}
+    way = SA.way_on(si["tool"], si["arguments"], unit, committed=committed)
+    if way is None:
+        return refusal
+    return errors.StaleRevision(f"{refusal.message}: {way['say']}",
+                                **{**refusal.details, "reason": "call_again", "call_again": way["tool"]})
 
 
 def _resolve(c: Call, intent: str, args: dict[str, Any]) -> dict[str, Any]:

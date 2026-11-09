@@ -69,14 +69,14 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
         if not hasattr(adapter_cls, "read_model_list"):  # a harness without the capability (harness_capabilities)
             continue
         source = (str(pin["harness"]), str(pin["provider"]))
-        if source in waited and not _cached(engine, policy, pin, adapter_cls, refresh=refresh):
-            problems.append(f"profile {name}: the same harness and provider as profile {waited[source]}, "
-                            "not waited for again")
-            continue
         shared = read.get(source)
         if shared is not None and any(m["providerID"] == pin["provider"] and m["id"] == pin["model"]
                                       for m in shared[0].get("models") or []):
             listing, when = shared  # a read that stopped at another pin is reused only where it lists this one
+        elif source in waited and not _cached(engine, policy, pin, adapter_cls, refresh=refresh):
+            problems.append(f"profile {name}: the same harness and provider as profile {waited[source]}, "
+                            "not waited for again")
+            continue
         else:
             try:
                 listing, when = _listing(engine, policy, pin, adapter_cls, refresh=refresh)

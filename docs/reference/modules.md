@@ -1949,6 +1949,7 @@ None.
 
 - `aew.engine.guards`
 - `aew.engine.primitives`
+- `aew.engine.queue_ops`
 - `aew.engine.transitions`
 - `aew.errors`
 - `aew.harness.contract`

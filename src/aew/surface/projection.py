@@ -30,6 +30,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
+from aew.engine import queue_ops as Q
 from aew.engine import transitions as T
 from aew.engine.guards import GUARD_NOT_QUERYABLE
 from aew.engine.primitives import spec_for
@@ -119,8 +120,10 @@ def _control_part(engine: Any, subject: str) -> dict[str, Any]:
         return part
     unit = engine.status(subject)["work_unit"]  # hot, or archived as it stands now
     part["state"] = unit.get("state")
+    entry = Q.entry_of(state, subject)[1] or {}
     part["unit"] = {"kind": unit.get("kind"), "mutating": bool(unit.get("mutating")),
-                    "integration": dict(unit.get("integration") or {})}
+                    "integration": dict(unit.get("integration") or {}),
+                    "validated_report": (entry.get("validated") or {}).get("report")}
     for b in unit.get("blocked_by") or []:
         kind = str(b.get("kind") or "blocked")
         part["blockers"].append(_blocker(kind.upper(), kind.replace("_", " "),
@@ -233,14 +236,22 @@ def _ticket_actions(part: dict[str, Any], wid: str, rev: int) -> None:
                                           "<why>", "--expect-rev", r]})
     elif st == "COMMIT_READY" and integration.get("status") == "prepared":
         # A prepared candidate is validated after integration before it may be published (the engine's own guidance):
-        # by an integration verifier, whose report is the decision offered here, or, in checks mode, by the engine's
-        # own validation (D5), which needs no Lead decision. Publication is offered only once it is validated.
-        candidate = integration.get("candidate")
-        part["decisions"].append({"decision": "ACCEPT_VERIFICATION", "role": "verifier", "kind": "verification",
-                                  "scope": "integration", "tool": "integration_publish",
-                                  "argument": "verification_evidence",
-                                  "with": {"prepared_candidate": str(candidate)} if candidate else {},
-                                  "cli": ["verify", "ingest", wid, "--evidence", "{evidence}", "--expect-rev", r]})
+        # by an integration verifier, or, in checks mode, by the engine's own validation (D5), which needs no Lead
+        # decision. Publication is offered once the verifier has reported: its tool accepts the report and publishes.
+        # The report is read from the run until the custodian routes it, and from the entry after (E133's review, M1).
+        # The shell takes this in two: its command accepts the report, and the validated candidate's PUBLISH follows.
+        candidate = {"prepared_candidate": str(integration["candidate"])} if integration.get("candidate") else {}
+        routed = part["unit"].get("validated_report")
+        if routed:
+            part["decisions"].append({"decision": "PUBLISH", "tool": "integration_publish", "evidence": [routed],
+                                      "arguments": {"expect_rev": rev, "work_id": wid, **candidate,
+                                                    "verification_evidence": routed},
+                                      "cli": ["verify", "ingest", wid, "--evidence", routed, "--expect-rev", r]})
+        else:
+            part["decisions"].append({"decision": "PUBLISH", "role": "verifier", "kind": "verification",
+                                      "scope": "integration", "tool": "integration_publish",
+                                      "argument": "verification_evidence", "with": candidate,
+                                      "cli": ["verify", "ingest", wid, "--evidence", "{evidence}", "--expect-rev", r]})
     elif st == "COMMIT_READY" and integration.get("status") == "validated":
         candidate = integration.get("candidate")
         part["decisions"].append({"decision": "PUBLISH", "tool": "integration_publish",
@@ -289,7 +300,6 @@ def _guidance(engine: Any, subject: str) -> tuple[list[str], list[dict[str, Any]
 
 
 _LATER_START = frozenset(state for starts in SA.STARTS_AT.values() for state in starts)
-_HAS_CANDIDATE = frozenset({"prepared", "validated", "publishing"})  # other offers answer these (`_ticket_actions`)
 
 
 def _stage_actions(engine: Any, part: dict[str, Any], wid: str) -> tuple[list[dict[str, Any]],
@@ -310,7 +320,7 @@ def _stage_actions(engine: Any, part: dict[str, Any], wid: str) -> tuple[list[di
     elif not unit["mutating"] and st in ("READY", "BLOCKED"):
         return _nm_dispatch(engine, part, wid)
     elif unit["mutating"] and st in _LATER_START and not (
-            st == "COMMIT_READY" and unit["integration"].get("status") in _HAS_CANDIDATE):
+            st == "COMMIT_READY" and unit["integration"].get("status") in SA.HAS_CANDIDATE):
         # A Ticket past a stage's first steps (E133): which stage takes it on depends on what its class requires.
         fit = engine.stage_fit(engine.store.current(), wid)
         to = "VERIFY_PENDING" if st == "REVIEW_PASSED" and (fit is None or fit.verification) else "COMMIT_READY"
@@ -383,7 +393,7 @@ def _reports(engine: Any, subject: str, runs: list[dict[str, Any]], d: dict[str,
 # The edge each Ticket decision's stage takes, by decision and report scope.
 _DECISION_EDGE = {("ACCEPT_REVIEW_EVIDENCE", None): ("REVIEW_PENDING", "REVIEW_PASSED"),
                   ("ACCEPT_VERIFICATION", "ticket"): ("VERIFY_PENDING", "VERIFIED"),
-                  ("ACCEPT_VERIFICATION", "integration"): ("COMMIT_READY", "DONE"),
+                  ("PUBLISH", "integration"): ("COMMIT_READY", "DONE"),
                   ("PUBLISH", None): ("COMMIT_READY", "DONE")}
 
 

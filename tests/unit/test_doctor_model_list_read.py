@@ -92,6 +92,41 @@ def test_a_server_that_fails_to_start_is_waited_for_once_across_profiles(tmp_pat
     assert "profile two: the same harness and provider as profile one, not waited for again" in row["detail"], row
 
 
+def test_a_profile_a_list_already_read_names_is_answered_by_it_after_a_sibling_waited(tmp_path, monkeypatch):
+    """E133's review, m9: the list that names it is in hand, so there is nothing to wait for."""
+    tries: list[str] = []
+
+    class Adapter(A.OpenCodeAdapter):
+        def __init__(self, *_: Any) -> None:
+            pass
+
+        def read_model_list(self, contract: Any, agent_env: dict[str, str], *, until: float) -> dict[str, Any]:
+            tries.append(contract.execution_profile["model"])
+            raise HarnessLaunchFailed("the stand-in server did not start")
+
+    def resolve(policy: dict[str, Any], sha: str, *, request: dict[str, str], **_: Any) -> dict[str, Any]:
+        return {"harness": "opencode", "provider": "fakeprov", "model": policy["profiles"][request["profile"]]}
+
+    monkeypatch.setattr(containment, "establish", lambda **kw: (None, containment.label(contained=False, reason="x")))
+    monkeypatch.setattr(W, "ownership_of", lambda label: "subreaper")
+    monkeypatch.setattr(netns, "provider_key_missing", lambda *a, **kw: None)
+    monkeypatch.setattr(procs, "ProcessTree", _Tree)
+    monkeypatch.setattr(model_list.X, "resolve", resolve)
+    monkeypatch.setattr(model_list.registry, "load", lambda harness: Adapter)
+    monkeypatch.setattr(model_list, "cache_key", lambda cls, policy, pin: pin["model"])
+    root = tmp_path / ".aew"
+    cache = root / model_list.CACHE_REL
+    cache.parent.mkdir(parents=True)
+    listed = [{"providerID": "fakeprov", "id": m, "variants": [], "enabled": True} for m in ("model-a", "model-c")]
+    cache.write_text(json.dumps({"model-a": {"read_at": "2026-11-08T00:00:00Z", "version": "1", "complete": True,
+                                             "models": listed}}), encoding="utf-8")
+    policy = {"profiles": {"a": "model-a", "b": "model-b", "c": "model-c"}}
+    engine = SimpleNamespace(aew_root=root, repo_root=tmp_path, execution_policy=lambda: (policy, "sha"))
+    [row] = model_list.doctor_rows(engine)
+    assert tries == ["model-b"], tries
+    assert "profile b: the harness did not start" in row["detail"] and "profile c" not in row["detail"], row
+
+
 class _Catalog:
     def __init__(self, models: list[dict[str, Any]]) -> None:
         self.models = models

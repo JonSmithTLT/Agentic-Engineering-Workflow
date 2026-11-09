@@ -2,8 +2,12 @@
 
 The check walks real Tickets through the workflow and reads what the projection says on each, so a new state in
 ``transitions.STATES`` fails it until it is seeded here. A hint does not count: it is prose nothing parses, so a Lead
-cannot rely on it as an exit. What has no exit today is pinned in ``DEAD_ENDS`` with its reason and the hint it does
-have; that list may only shrink. A row, "the Lead's exits", owns it."""
+cannot rely on it as an exit, and neither can an action or decision whose guard answers BLOCKED. An UNKNOWN answer does
+count: the guard could not say, and the call itself still answers. What has no exit today is pinned in ``DEAD_ENDS``
+with its reason and the hint it does have; that list may only shrink. Register row E133's note owns it.
+
+COMMIT_READY is walked by integration status and by queue entry state where those differ in what is offered. The walk
+does not enumerate every sub-case of every other state."""
 
 from __future__ import annotations
 
@@ -12,17 +16,31 @@ from typing import Any
 
 from aewflow import Role, assign, create_planned_ticket, implement, review, sample_project, verify
 from conftest import Project
+from test_integration_stages import custody, lease, verifier_script, verifying  # noqa: F401 (custody is a fixture)
+from test_stage_runner import intent, launching
 
+from aew.engine import custody_ops as CO
 from aew.engine import transitions as T
 from aew.engine.api import Engine
 from aew.engine.store import Transition
-from aew.surface import contract, projection
+from aew.surface import contract, projection, run
 from aew.surface.context import SurfaceContext
 
 CTX = SurfaceContext.outside_session()
 
+
+def call(p: Project, name: str, **arguments: Any) -> dict[str, Any]:
+    return run.run_tool(Engine.discover(p.root), CTX, name, {"expect_rev": p.rev(), **arguments}, token=p.token)
+
+
 # Where a Ticket has no offered exit: why, and what its hint says today, for whoever closes it.
 DEAD_ENDS = {
+    "BLOCKED, no plan": {
+        "why": "`ticket_start` answers BLOCKED until a plan is accepted, and nothing offers the plan itself",
+        "hint": "propose and accept a plan"},
+    "RUNNING, no report": {
+        "why": "the review request answers BLOCKED until the implementer reports; there is nothing to do but wait",
+        "hint": "in progress; when its report and checks are in"},
     "ASSIGNED": {
         "why": "assigned but not moved on: `ticket_start` passes through here, and no stage starts from it",
         "hint": "launch the implementer from its pack (INV-0001), then move to RUNNING"},
@@ -41,6 +59,9 @@ DEAD_ENDS = {
     "COMMIT_READY, prepared with no report": {
         "why": "a prepared candidate's verifier is launched by a stage that already ran; nothing offers it again",
         "hint": "dispatch post-integration verification (`aew invoke create"},
+    "COMMIT_READY, prepared, entry awaits the Lead on a report that is not clean": {
+        "why": "a requeue or a return to RUNNING is the Lead's judgment on the report; nothing offers either",
+        "hint": "awaits the Lead"},
     "ESCALATED": {
         "why": "the return is the Lead's decision after the escalation's outcome; nothing offers it",
         "hint": "record the escalation outcome and return the Ticket"},
@@ -49,13 +70,15 @@ DEAD_ENDS = {
         "hint": "propose and accept a new plan revision"},
 }
 # Only ever lowered: an entry leaves when its exit lands, and this number goes down with it.
-MOST_DEAD_ENDS = 8
+MOST_DEAD_ENDS = 11
 
 
 def offers(found: dict[str, Any]) -> list[str]:
     """What a Lead can rely on as an exit: an action other than waiting, or a decision naming a tool or a command."""
-    return [*(a["action"] for a in found["actions"] if a["kind"] != contract.WAIT),
-            *(d["decision"] for d in found["decisions_required"] if d["tool"] or d["cli_fallback"])]
+    return [*(a["action"] for a in found["actions"]
+              if a["kind"] != contract.WAIT and a.get("availability") != "BLOCKED"),
+            *(d["decision"] for d in found["decisions_required"]
+              if (d["tool"] or d["cli_fallback"]) and d.get("availability") != "BLOCKED")]
 
 
 def differences(seen: dict[str, dict[str, Any]], pinned: dict[str, Any], most: int) -> list[str]:
@@ -75,7 +98,7 @@ def _project(tmp_path: Path, name: str) -> Project:
     return sample_project(tmp_path / name)
 
 
-def walk(tmp_path: Path) -> dict[str, dict[str, Any]]:
+def walk(tmp_path: Path, monkeypatch: Any, held: dict[str, str]) -> dict[str, dict[str, Any]]:
     seen: dict[str, dict[str, Any]] = {}
 
     def look(p: Project, wid: str, label: str | None = None) -> None:
@@ -136,17 +159,45 @@ def walk(tmp_path: Path) -> dict[str, dict[str, Any]]:
     look(p, wid)
     p.lead("work", "transition", wid, "--to", "REPLAN_REQUIRED", "--reason", "the plan is wrong")
     look(p, wid)
-    # A takeover is what interrupts a Ticket: the state is what the check needs, so it is seeded with one plain commit.
+    # A takeover is what interrupts a Ticket, run for real by tests/acceptance/test_at8_at13_hierarchy.py's
+    # test_fresh_session_reconstructs_an_active_hierarchy_and_takeover_interrupts_read_only_work. The state is what this
+    # check needs, so it is seeded with one plain commit.
     engine = Engine.discover(p.root)
     with engine.store.session() as s:
         s.state["work"][wid].update(state="INTERRUPTED", interrupted_from="RUNNING")
         s.commit(Transition(op="test.seed", actor={"kind": "test"}, summary="seeded for the exits check"))
     look(p, wid)
+
+    # What a real verifier and the real custody step leave: an entry the custodian routed either way.
+    def routed(name: str, result: str, label: str) -> None:
+        (tmp_path / name).mkdir()
+        p = sample_project(tmp_path / name)
+        lab = launching(p, tmp_path / name, monkeypatch)
+        sync = tmp_path / name / "sync"
+        sync.mkdir(exist_ok=True)
+        try:
+            wid, report = verifying(p, tmp_path / name)
+            lab.script("default", verifier_script(sync, result))
+            out = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
+            assert out["ok"], out["stopped"]
+            custodian = lease(p)["custodian"]
+            [run] = intent(p, out)["steps"][4]["outputs"]["runs"]
+            lab.until(lambda: (sync / "ready").exists(), what="the verifier to report")
+            (sync / "release").touch()
+            lab.wait(run)
+            assert Engine.discover(p.root).custody_step(custodian, held[custodian])[0] == CO.ACTED
+            look(p, wid, label)
+        finally:
+            lab.cleanup()
+
+    routed("routed-clean", "pass", "COMMIT_READY, prepared, entry VALIDATED")
+    routed("routed-failing", "fail", "COMMIT_READY, prepared, entry awaits the Lead on a report that is not clean")
     return seen
 
 
-def test_every_non_terminal_state_offers_an_exit_or_is_pinned_with_its_reason(tmp_path):
-    seen = walk(tmp_path)
+def test_every_non_terminal_state_offers_an_exit_or_is_pinned_with_its_reason(tmp_path, monkeypatch, custody):  # noqa: F811
+    seen = walk(tmp_path, monkeypatch, custody)
+    assert "PUBLISH" in offers(seen["COMMIT_READY, prepared, entry VALIDATED"])
     assert differences(seen, DEAD_ENDS, MOST_DEAD_ENDS) == []
     for label, pinned in DEAD_ENDS.items():  # what each hint says today, read from the projection and not remembered
         assert any(pinned["hint"] in hint for hint in seen[label]["hints"]), (label, seen[label]["hints"])
@@ -169,3 +220,7 @@ def test_the_check_fails_on_a_new_dead_end_a_closed_one_a_missing_state_and_a_lo
     assert offers(waiting) == [], "waiting is not an exit"
     hinted = {**open_exit, "actions": [], "hints": ["do the next thing"]}
     assert offers(hinted) == [], "a hint is not an exit"
+    blocked = {**open_exit, "actions": [{"action": "ticket_start", "kind": contract.STAGE, "availability": "BLOCKED"}],
+               "decisions_required": [{"decision": "PUBLISH", "tool": "integration_publish", "cli_fallback": ["x"],
+                                       "availability": "BLOCKED"}]}
+    assert offers(blocked) == [], "what its guard refuses is not an exit"

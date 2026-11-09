@@ -53,7 +53,7 @@ def test_a_lead_is_told_to_end_its_turn_only_while_a_wake_would_reach_it(project
     monkeypatch.setattr(broker_liveness, "judge", lambda record, **kw: None)
     assert _next_after_launch(project).startswith("end your turn: AEW wakes you when run-1")
     text = "\n".join(Q.render({"broker_posting": True}))
-    assert "the broker posts them" in text and "`lead.push_wake: off`" in text  # the off switch, where it's looked for
+    assert "the broker posts them" in text and '`lead.push_wake: "off"`' in text  # the off switch, where it's read
     monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_OFF)
     assert _next_after_launch(project).startswith("wait on run-1")  # a broker posts, and the switch says off
     monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_ON)
@@ -91,7 +91,7 @@ def test_a_project_with_a_typed_off_stays_off_and_keeps_the_wait(project, monkey
 
     monkeypatch.setattr(sys, "platform", "linux")
     path = project.root / ".aew" / X.REL_PATH
-    path.write_bytes(path.read_bytes().rstrip(b"\n") + b"\nlead:\n  push_wake: off\n")
+    path.write_bytes(path.read_bytes().rstrip(b"\n") + b'\nlead:\n  push_wake: "off"\n')
     project.adopt_policy()
     engine = _engine_of(project)
     policy = engine.execution_policy()[0]

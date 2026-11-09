@@ -50,7 +50,7 @@ PENDING, POSTING, POSTED = "pending", "posting", "posted"
 # What a harness says of a wake it was given.
 WAITING, DELIVERED, UNKNOWN = "waiting", "delivered", "unknown"
 COUNT_KEYS = ("steps", "files", "commands", "tests")
-OFF_SWITCH = "`lead.push_wake: off` in the execution policy"
+OFF_SWITCH = '`lead.push_wake: "off"` in the execution policy'
 
 
 class Poster(Protocol):

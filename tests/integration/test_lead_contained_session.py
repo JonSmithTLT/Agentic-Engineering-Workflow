@@ -96,7 +96,7 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         relays = {p: v["settings"]["baseURL"] for p, v in (config.get("providers") or {}).items()}
         # The tools the host gives: `rg` on a machine that has it (the Rocky VM), and none on one that doesn't.
         assert config == projection.lead_config(guide_of(lab), contained=label, relays=relays,
-                                                tools=capability.placed(label, contained=True))
+                                                tools=capability.placed(label, contained=True), push_wake=True)
         assert config["experimental"]["policies"] == DENY  # OpenCode's own providers off (2026-11-06)
         assert wake_queue.HEADER not in config["agents"][projection.LEAD_AGENT]["system"]  # the switch is off
         assert "your OpenCode configuration is not loaded in the contained Lead; its MCP servers are left out: docs" \

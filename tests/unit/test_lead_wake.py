@@ -157,7 +157,7 @@ def test_push_wakes_are_on_unless_the_policy_says_off(policy: dict[str, Any] | N
 
 def test_the_off_switch_is_named_in_the_operators_guide_with_how_to_set_it() -> None:
     guide = (Path(__file__).resolve().parents[2] / "docs" / "guides" / "opencode.md").read_text(encoding="utf-8")
-    assert "set `lead.push_wake: off` in `policy/execution.yaml` and run `aew manifest adopt`" in guide
+    assert 'set `lead.push_wake: "off"`, quoted, in `policy/execution.yaml` and run `aew manifest adopt`' in guide
 
 
 def test_the_switchs_default_is_the_schemas_and_has_no_second_owner(monkeypatch: pytest.MonkeyPatch) -> None:

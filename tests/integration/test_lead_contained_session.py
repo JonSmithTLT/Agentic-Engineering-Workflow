@@ -22,7 +22,8 @@ import pytest
 from fake_harness import contains_credential
 from lead_session import KEYS, RECENT_MODELS, SECRET, Upstream, at_the_terminal, guide_of, make_lab, synthetic_home
 
-from aew.harness import procs
+from aew.capability import ops as capability
+from aew.harness import procs, wake_queue
 from aew.harness.containment import netns
 from aew.harness.opencode import lead, projection
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
@@ -76,7 +77,8 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         assert all(isinstance(s, float) and s >= 0 for s in label["start_s"].values())
         assert json.loads((run_dir / "label.json").read_text())["start_s"] == label["start_s"]
         assert done["restored"]
-        assert json.loads((tui / "tui-argv.json").read_text()) == ["--standalone", str(lab.root)]
+        assert json.loads((tui / "tui-argv.json").read_text()) == ["--server", "http://127.0.0.1:4100", str(lab.root)]
+        assert json.loads((tui / "serve-argv.json").read_text())[:2] == ["serve", "--stdio"]
 
         env = json.loads((sync / "env").read_text())
         assert SECRET not in json.dumps(env) and not contains_credential(json.dumps(env))
@@ -98,8 +100,11 @@ def test_the_contained_lead_acts_through_its_broker_from_its_sandbox_on_its_rela
         server = config["mcp"]["servers"][projection.LEAD_MCP_SERVER]
         assert server["command"] == [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "lead", "mcp"]
         assert server["environment"] == procs.engine_imports({})
-        assert config == projection.lead_config(guide_of(lab), contained=label, relays=relays)
+        # The tools the host gives: `rg` on a machine that has it (the Rocky VM), and none on one that doesn't.
+        assert config == projection.lead_config(guide_of(lab), contained=label, relays=relays,
+                                                tools=capability.placed(label, contained=True))
         assert config["experimental"]["policies"] == DENY  # OpenCode's own providers off (2026-11-06)
+        assert wake_queue.HEADER not in config["agents"][projection.LEAD_AGENT]["system"]  # the switch is off
         assert "your OpenCode configuration is not loaded in the contained Lead; its MCP servers are left out: docs" \
             in done["stderr"]
         # addendum 1: the operator's TUI preferences without their plugins; their recent models, never their prompts

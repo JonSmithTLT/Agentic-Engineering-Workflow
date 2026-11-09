@@ -83,7 +83,13 @@ aew opencode --acquire
   - Windows PowerShell 5.1: `$s = Read-Host "Lead token" -AsSecureString; $env:AEW_LEAD_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)); Remove-Variable s`
 
   Never a persistent variable or a startup file: a persistent variable reaches every process you start, and a startup file is a plain file in your home directory, like history. Once the session is running, AEW never asks for the Lead credential inside the Lead's own window: a prompt there is not AEW's.
-- Extra OpenCode TUI arguments go after `--`. `--server` is refused, because the Lead's shell would then get the server's environment.
+- Extra OpenCode TUI arguments go after `--`. `--server` and `--standalone` are refused: AEW starts the Lead's server itself, in the Lead's curated environment, and connects the TUI to it.
+- A pasted image reaches the Lead's model without its path or file name, so the Lead can't name it, read it again or hand it to a worker (OpenCode sends no local path to a server it doesn't treat as local; register E211). To keep the path for a file in the project, attach it with an `@` mention, or type its path and ask the Lead to read it.
+- If the Lead's server dies, nothing restarts it: the session ends with a line saying so, and `aew opencode` starts a new one. If it never starts, `aew opencode` exits non-zero and names its log; `aew doctor` checks the rest.
+- With `lead.push_wake` on, AEW wakes the Lead when a run needs it, by posting to the session you last viewed; `aew status` shows each wake under "Lead wakes". Three limits:
+  - **`/new`:** no session exists between `/new` and your first prompt, and the server gives no signal for that gap. A wake in it goes to the session you left and spends a turn there, and it doesn't show in the TUI. `aew status` shows it was posted, and to which session.
+  - **A restart:** the same gap. A wake before your first prompt goes to the session you last viewed in an earlier launch.
+  - **Windows:** no wake is posted, whatever the switch says, so the Lead waits with `harness_wait` (register E210).
 
 In the TUI, the agent is `aew-lead`, with these commands:
 

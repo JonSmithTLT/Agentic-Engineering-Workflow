@@ -124,6 +124,11 @@ class StatusViews:
                 lines.append(f"  ! the latest delivery failed ({last.get('event')} at {last.get('at')}: "
                              f"{last.get('reason')}{'; ' + last['detail'] if last.get('detail') else ''}); check the "
                              "execution policy's `notify.command` and `.aew/local/notify/deliveries.jsonl`")
+        wakes = report.get("lead_wakes")
+        if wakes:  # steering design §1: a wake that never lands is visible
+            from aew.harness import wake_queue
+
+            lines += ["", *wake_queue.render(wakes)]
         usage = report.get("usage")
         if usage:  # F25 R9: one line for the hot state, rendered with the summary; `aew usage show` has the rest
             lines += ["", usage["line"]]

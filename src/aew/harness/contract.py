@@ -449,6 +449,12 @@ def run_ended_step(action: str) -> str:
     return f"{action}. Tell the operator in a line {WAKE_GUIDE[RUN_ENDED].tell}"
 
 
+def wake_step(runs: list[str]) -> str:
+    """The next step while ``runs`` work and AEW wakes the Lead (steering design r4 §1): the turn's end."""
+    return (f"end your turn: AEW wakes you when {', '.join(runs)} ends or needs you, and the operator can talk to you "
+            "meanwhile. Tell the operator in a line what you started and which runs you are waiting on")
+
+
 def trigger_step(whys: list[str], run: str, others: list[str]) -> str:
     """A trigger as a next step: each ``why``'s action in the enum's order, then the wait on the run (and the others
     still working), then the line for the operator."""

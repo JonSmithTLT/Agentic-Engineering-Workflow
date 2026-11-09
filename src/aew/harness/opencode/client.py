@@ -21,7 +21,6 @@ import base64
 import http.client
 import json
 import queue
-import re
 import socket
 import subprocess
 import threading
@@ -34,9 +33,9 @@ from pathlib import Path
 from typing import Any, cast
 
 from aew.errors import HarnessLaunchFailed
+from aew.harness.containment.shim import LOOPBACK_URL
 
 START_TIMEOUT_S = 60.0
-LOOPBACK_URL = re.compile(r"http://127\.0\.0\.1:[0-9]{1,5}/?")
 REQUEST_TIMEOUT_S = 30.0
 # The run's own server is on loopback, so its calls never go through a proxy. ``urlopen``'s default opener honours
 # HTTP_PROXY/http_proxy (and, on Windows, the system proxy) unless NO_PROXY names 127.0.0.1, and behind such a proxy

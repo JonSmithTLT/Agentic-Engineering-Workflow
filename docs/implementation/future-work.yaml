@@ -3282,6 +3282,54 @@ sections:
     When: '**Unscheduled**, each run the operator''s to approve'
     Notes: Filed by the bump's builder
 
+  - '#': E210
+    Work: 'Reach the Lead''s OpenCode session from the Lead broker, so a push wake can be posted (`attach_to_operator_session`).
+      The `--standalone` TUI starts its own private server, whose address and password AEW never learns, and on Linux that
+      server is inside the Lead''s sandbox. Built by steering PR 2: AEW starts that server, and the broker reaches it. What
+      is left is Windows, where no wake has been run, and steering PR 3''s switch'
+    Source: Found while building steering PR 2 (2026-11-08); the steering design r4 §5 and §7 assumed the broker serves
+      the Lead's server, and `adapter.py` declared so
+    When: '**Unscheduled** for Windows; steering PR 3 switches the wake on (the designer''s ruling of 2026-11-08: AEW starts
+      the Lead''s server)'
+    Notes: Filed by the push wake's builder. It corrects a false capability declaration
+
+  - '#': E211
+    Work: 'Get a pasted attachment''s local path back for the Lead. Under `--server`, OpenCode 2.2.6 sends a pasted image
+      or other binary attachment with its bytes but without its path (`promptFilesForServer`), so the Lead''s model can''t
+      name it, read it again or hand it to a worker. The ways: an upstream report, or a patch in AEW''s own OpenCode build.
+      Also measure whether Codex''s `--remote` has the same loss: unmeasured'
+    Source: Steering PR 2's measurement (ADR-0009's amendment of 2026-11-08); the designer's check of 2026-11-08, ruling
+      11. The operator accepted the cost for PR 2 on 2026-11-08
+    When: '**Unscheduled**'
+    Notes: Filed by the push wake's builder. Until then, an `@` mention or a typed path keeps the path, as the OpenCode
+      guide says
+
+  - '#': E212
+    Work: 'Find out when the Lead''s TUI runs on a model other than the one configured or chosen. OpenCode 2.2.6''s `fallbackModel`
+      (`packages/tui/src/context/local.tsx`) takes `--model`, the config''s model, the recents, then the catalogue''s first,
+      each only if the server''s current list has it. A `--prompt` submitted at start can go on a model chosen before that
+      list and the config have loaded. Read in the source, not reproduced. Measure it, including a person typing at once,
+      `aew opencode -- --model X`, and which model a wake runs on after a `/model` selection no prompt has committed yet.
+      Then AEW names the Lead''s model: the project''s pinned model when there is one, otherwise the operator''s recents,
+      and the start says which model it''s using (the operator''s decision of 2026-11-08; serves HSD-02)'
+    Source: 'Steering PR 2''s measurements (2026-11-08): a scripted start sometimes ran on a model other than its configured
+      default, under `--standalone` and `--server` alike'
+    When: '**Unscheduled**'
+    Notes: Filed by the push wake's builder. `lead_config` sets no `model`, so a real Lead's is its recents or the catalogue's
+      first
+
+  - '#': E213
+    Work: 'A probe helper for measurements with a real harness binary, which guarantees that no request can reach a provider.
+      On Linux it runs the whole tree (TUI, relay, fake model) in a network namespace with loopback only (`unshare -rn`),
+      and first proves that a real provider''s address fails, relay or not. It always denies OpenCode''s `opencode` provider,
+      whose models carry their own address, so a `baseURL` can''t redirect them, and every other keyless provider. On Windows,
+      which has no such namespace, a run that sends a prompt needs its own approval. A pointed `baseURL` and a default model
+      are settings, not a block, so the guarantee rests on neither. In scope: `tools/harness_qualify`''s `server_config`,
+      which denies no keyless provider and leaves the network open'
+    Source: Steering PR 2's measurements (2026-11-08)
+    When: '**Unscheduled**, before the next measurement with a real binary and a provider route'
+    Notes: Filed by the push wake's builder
+
   - '#': E214
     Work: 'D-01''s next revision adds `RESOURCE_POLICY_ISSUER` to `SourceStamp.owner` as a non-governing namespace (OP-02''s
       second bullet: `governing_owner` null, as for `IF10` and `R01`). An `owner_operation_index` item for that owner is

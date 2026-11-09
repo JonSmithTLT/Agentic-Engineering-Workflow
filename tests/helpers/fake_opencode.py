@@ -41,9 +41,9 @@ process, :func:`local_app` and :class:`LocalClient` serve the same routes withou
 ``start_call``, ``end_call``, ``record_usage``, ``fork``, ``revert`` and ``remove`` script the usage facts probe P1
 pinned (``tests/fixtures/opencode/live-usage-2.0.18.json``).
 
-Run as ``opencode --standalone <dir>`` (what ``aew opencode`` starts) it is the Lead's TUI: its "model" runs
-``<scripts>/lead-tui.json`` with the TUI's own environment, which a V2 ``--standalone`` TUI sends as every
-session's shell environment, and records the steps in ``<scripts>/lead-tui.jsonl``. A ``lead-tui.json`` of the form
+Run as ``opencode --server <url> <dir>`` (what ``aew opencode`` starts) it is the Lead's TUI: its "model" runs
+``<scripts>/lead-tui.json`` with the environment AEW gave the server and the TUI alike, and records the
+steps in ``<scripts>/lead-tui.jsonl``. A ``lead-tui.json`` of the form
 ``{"driver": "vertical", ...}`` runs the vertical UAT's scripted Lead instead (``vertical/lead.py``): a policy that
 reads the projection and asks the operator, not a fixed list of steps.
 """
@@ -174,7 +174,9 @@ class FakeOpenCode:
         self.catalog_asked: float | None = None
         self.agents_asked: float | None = None
         self.plugins_asked: float | None = None
-        self.data_home = Path(os.environ["XDG_DATA_HOME"])
+        # A worker's run sets it, and so does the contained Lead. The Lead that isn't contained keeps the operator's,
+        # which may name none, and the real server then uses its own default: the fake's is in the lab.
+        self.data_home = Path(os.environ.get("XDG_DATA_HOME") or scripts / "lead-server" / "harness" / "xdg-data")
         self.state = self.data_home.parent            # <run>/harness
         self.run = self.state.parent.name             # R-<INV>-<n>
         inv = self.run.rsplit("-", 1)[0][2:]
@@ -911,8 +913,11 @@ TUI_SCRIPT, TUI_TRANSCRIPT, TUI_ARGV = "lead-tui.json", "lead-tui.jsonl", "lead-
 
 
 def tui(argv: list[str], scripts: Path) -> int:
-    """The Lead's TUI (``--standalone``): the Lead's model acts in the TUI's own environment."""
+    """The Lead's TUI (``--server``): the Lead's model acts in the server's environment, which AEW sets to the TUI's,
+    without the password the real server removes from it (``--stdio``, measured on 2.2.6)."""
     (scripts / TUI_ARGV).write_text(json.dumps(argv), encoding="utf-8")
+    for name in ("OPENCODE_PASSWORD", "OPENCODE_SERVER_PASSWORD"):
+        os.environ.pop(name, None)
     spec = json.loads((scripts / TUI_SCRIPT).read_text(encoding="utf-8"))
     if isinstance(spec, dict) and spec.get("driver") == "vertical":  # the vertical UAT's scripted Lead (a policy)
         from vertical import lead
@@ -995,7 +1000,7 @@ def main(argv: list[str], scripts: Path) -> int:
     if argv[:1] == ["--version"]:
         print(f"opencode v{PINNED}")
         return 0
-    if argv[:1] == ["--standalone"]:
+    if argv[:1] == ["--server"]:
         return tui(argv, scripts)
     if argv[:1] != ["serve"] or "--stdio" not in argv:
         print(f"fake opencode: unsupported arguments {argv}", file=sys.stderr)

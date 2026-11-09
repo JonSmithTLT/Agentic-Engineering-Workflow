@@ -94,6 +94,11 @@ starts:
   classes: [not_agent_context]
   reason: the network shim inside the sandbox, starting the harness argv its run's supervisor gave; that run's
     containment is the supervisor's (Supervisor._contain)
+- site: src/aew/harness/containment/shim.py::start_server
+  call: Popen
+  classes: [not_agent_context]
+  reason: the network shim starting the Lead's server from the serve step its launch gave, beside the TUI and in the
+    same place; that launch's containment or its weaker entry is its own (ContainedLead.__call__, WeakerLead.__call__)
 - site: src/aew/harness/lead_broker.py::run_read
   call: Popen
   classes: [not_agent_context]

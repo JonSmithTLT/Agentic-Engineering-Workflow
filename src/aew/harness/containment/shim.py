@@ -17,6 +17,13 @@ For the Lead's TUI (STG-05 CS-4) its spec also says ``ctty``: standard input is 
 and the shim makes it its controlling terminal before it starts the TUI (:func:`take_terminal`). A Lead on the host's
 network runs under the shim too, with no legs, for that step alone.
 
+It also says ``serve``: the Lead's OpenCode server, which AEW starts so the Lead broker can reach the session (the
+steering design's ruling of 2026-11-08). The shim starts it with its own environment, reads the address it announces,
+records that in ``url_file`` and gives it to the TUI in place of :data:`SERVER_URL`; it holds the server's lease on its
+stdin, so the server ends with the shim. The environment holds the server's password, which the TUI connects with and
+which the server removes from its own (``--stdio``, what keeps it out of the environment the Lead's shell inherits); the
+shim never reads it.
+
 It runs as the harness's parent inside the one sandbox, so the two share its network namespace: ``python -I -c
 <this file's text> <spec> -- <harness argv>`` (``netns.shim_argv``). Its listeners are bound before the harness
 starts, it passes its standard streams to the harness, and it exits with the harness's status. It never execs away:
@@ -30,17 +37,26 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import socket
 import subprocess
 import sys
 import threading
+import time
 from typing import Any
 
 LOOPBACK = "127.0.0.1"
+LOOPBACK_URL = re.compile(rf"http://{re.escape(LOOPBACK)}:[0-9]{{1,5}}/?")  # the only address a password goes to
 CHUNK = 64 * 1024
 BACKLOG = 64
 EXIT_SETUP = 70  # EX_SOFTWARE: a leg could not be set up, so the harness was not started
+EXIT_INTERRUPTED = 130  # Ctrl+C before the harness started
+SERVER_URL = "{aew_server_url}"  # in the harness argv: the address ``serve``'s server announced
+SERVE_TIMEOUT_S = 60.0           # the server's announcement, as the worker adapter's start allows
+SERVE_END_S = 5.0                # the lease ended: the server's moment to exit on its own
+SERVE_NOTICE_S = 5.0             # a blank screen for this long gets a line (about 2 s to announce, measured 2026-11-08)
+SERVE_SLICE_S = 0.2              # a Windows wait can't be interrupted: Ctrl+C is seen between slices
 
 
 def parse(argv: list[str]) -> tuple[dict[str, Any], list[str]]:
@@ -157,6 +173,101 @@ def take_terminal() -> None:
         raise OSError(f"the controlling terminal ({nr}) is not standard input's ({major},{minor})")
 
 
+def start_server(serve: dict[str, Any]) -> tuple[subprocess.Popen[bytes], str]:
+    """Start ``serve``'s server and read the address it announces. Raises ``OSError`` when it announces none: it exited,
+    or said nothing in time, or named anything but this machine's loopback, where its password would go."""
+    with open(str(serve["log"]), "ab") as log:
+        proc = subprocess.Popen([str(a) for a in serve["argv"]],  # noqa: S603  # the argv AEW's Lead gave
+                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
+    found: list[str] = []
+    announced = threading.Event()
+
+    def read() -> None:
+        assert proc.stdout is not None
+        for raw in iter(proc.stdout.readline, b""):  # keeps draining afterwards, so the pipe never blocks the server
+            if not found:
+                try:
+                    found.append(str(json.loads(raw.decode("utf-8", "replace"))["url"]))
+                    announced.set()
+                except (ValueError, KeyError, TypeError):
+                    continue
+        announced.set()
+
+    threading.Thread(target=read, daemon=True).start()
+    try:
+        _wait_for(announced)
+    except KeyboardInterrupt:
+        proc.kill()
+        raise
+    if not found or not LOOPBACK_URL.fullmatch(found[0]):
+        proc.kill()
+        raise OSError(f"the Lead's server announced {found[0][:80] if found else 'no address'}, not a "
+                      f"http://{LOOPBACK} address. Run `aew doctor`, and read the server's log: {serve['log']}")
+    temporary = f"{serve['url_file']}.tmp"
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as out:
+        json.dump({"url": found[0]}, out)
+    os.replace(temporary, str(serve["url_file"]))
+    return proc, found[0]
+
+
+def _wait_for(announced: threading.Event) -> None:
+    """Until the server has announced, or its time is up, saying so once if the wait is long."""
+    deadline = time.monotonic() + SERVE_TIMEOUT_S
+    notice = time.monotonic() + SERVE_NOTICE_S
+    while not announced.wait(SERVE_SLICE_S) and time.monotonic() < deadline:
+        if notice is not None and time.monotonic() >= notice:
+            notice = None
+            sys.stderr.write(f"aew network shim: waiting for the Lead's server, for up to {SERVE_TIMEOUT_S:g} s\n")
+            sys.stderr.flush()
+
+
+def end_server(proc: subprocess.Popen[bytes]) -> None:
+    """End the lease (stdin EOF), and give the server a moment to exit on its own."""
+    try:
+        if proc.stdin is not None:
+            proc.stdin.close()
+        proc.wait(SERVE_END_S)
+    except (OSError, subprocess.TimeoutExpired):
+        proc.kill()
+
+
+def terminal_signals_reach_it(spec: dict[str, Any]) -> bool:
+    """Whether the terminal's own signals reach the harness without this process: on a terminal of its own, or on a
+    Windows console (:func:`pass_signals`)."""
+    return bool(spec.get("ctty")) or sys.platform == "win32"
+
+
+def pass_signals(proc: subprocess.Popen[bytes], *, on_its_terminal: bool) -> None:
+    """Pass what this process is sent on to the harness. On a terminal of its own the harness is in this process's
+    foreground group, so the terminal's own signals reach it directly: forwarding them as well would double them. So
+    does a Windows console's Ctrl+C reach every process on it, and ``Popen.send_signal`` can't carry one there: it
+    raises, which would end this process with the harness still running. Ignored by a handler, not SIG_IGN, which the
+    harness would inherit. Windows has no SIGHUP or SIGQUIT: the shim runs there for ``serve`` alone."""
+    for name in ("SIGTERM", "SIGHUP") if on_its_terminal else ("SIGTERM", "SIGINT", "SIGHUP"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), lambda s, _f: proc.send_signal(s))
+    if on_its_terminal:
+        for name in ("SIGINT", "SIGQUIT"):
+            if hasattr(signal, name):
+                signal.signal(getattr(signal, name), lambda _s, _f: None)
+
+
+def watch_server(server: subprocess.Popen[bytes], proc: subprocess.Popen[bytes]) -> threading.Event:
+    """End the harness if its server dies: nothing restarts the server, and the TUI would go on reconnecting. The event
+    says that happened, and :func:`end_server` ending the lease after the harness doesn't count."""
+    lost = threading.Event()
+
+    def watch() -> None:
+        server.wait()
+        if proc.poll() is None:
+            lost.set()
+            proc.terminate()
+
+    threading.Thread(target=watch, daemon=True).start()
+    return lost
+
+
 def main(argv: list[str]) -> int:
     try:
         spec, child = parse(argv)
@@ -171,15 +282,24 @@ def main(argv: list[str]) -> int:
             sys.stderr.write("aew network shim: standard input could not be made the controlling terminal, so the "
                              f"harness was not started: {exc}\n")
             return EXIT_SETUP
+    server = None
+    if spec.get("serve"):
+        try:
+            server, url = start_server(spec["serve"])
+        except KeyboardInterrupt:
+            return EXIT_INTERRUPTED
+        except (OSError, KeyError, TypeError) as exc:
+            sys.stderr.write(f"aew network shim: the Lead's server did not start, so the harness was not started: "
+                             f"{exc}\n")
+            return EXIT_SETUP
+        child = [url if a == SERVER_URL else a for a in child]
     proc = subprocess.Popen(child)  # noqa: S603  # the harness argv the supervisor's adapter gave
-    # On a terminal of its own the harness is in this process's foreground group, so the terminal's own signals reach
-    # it directly: forwarding them as well would double them (a handler, not SIG_IGN, which the harness would inherit).
-    forwarded = ((signal.SIGTERM, signal.SIGHUP) if spec.get("ctty")  # pyright: ignore[reportAttributeAccessIssue]
-                 else (signal.SIGTERM, signal.SIGINT, signal.SIGHUP))  # pyright: ignore[reportAttributeAccessIssue]
-    for sig in forwarded:  # pyright: ignore[reportAttributeAccessIssue]
-        signal.signal(sig, lambda s, _f: proc.send_signal(s))
-    if spec.get("ctty"):
-        for sig in (signal.SIGINT, signal.SIGQUIT):  # pyright: ignore[reportAttributeAccessIssue]
-            signal.signal(sig, lambda _s, _f: None)
+    pass_signals(proc, on_its_terminal=terminal_signals_reach_it(spec))
+    lost = None if server is None else watch_server(server, proc)
     code = proc.wait()
+    if server is not None:
+        end_server(server)
+    if lost is not None and lost.is_set():  # after the harness: a TUI's screen would hide it
+        sys.stderr.write("aew network shim: the Lead's server ended, and nothing restarts it, so the session ended. "
+                         f"Start `aew opencode` again; the server's log is {spec['serve']['log']}\n")
     return 128 - code if code < 0 else code

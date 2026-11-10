@@ -111,7 +111,8 @@ Three rules for what follows a verdict:
     (operator, 2026-10-24).
     So no conflict outside the generated files was resolved, by hand or by taking a side.
   - The generated files are what `python tools/reference.py render` writes (all of `docs/reference/`) and what
-    `python tools/register.py render` writes (`future-work.md` and `decisions-due.md`), and both generators' `check`
+    `python tools/register.py render` writes (`future-work.md`, `decisions-due.md` and
+    `docs/implementation/systems.md`), and both generators' `check`
     pass at H. `register.py render` also rewrites the register's YAML, which is a source: a render that changes it,
     or the register's YAML (`future-work.yaml`, `decisions-due.yaml`) changed on both sides, is not a re-render. The
     list is closed; another generator joins it only by a change to this guide.

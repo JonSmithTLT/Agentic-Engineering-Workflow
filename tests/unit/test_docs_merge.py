@@ -602,6 +602,24 @@ def test_resolve_merges_but_does_not_render_over_text_a_render_would_lose(repo, 
     assert "merged, but not rendered" in capsys.readouterr().out
 
 
+def test_resolve_reports_bad_board_and_renders_after_it_is_fixed(repo, capsys):
+    systems = register._systems(ROOT)
+    a, b = same_gap(DATA)
+    stopped_merge(repo, register_files(), register_files(closed_into(DATA, a)), register_files(closed_into(DATA, b)))
+    path = repo.path / systems.SYSTEMS
+    path.write_text("<<<<<<< ours\nx\n=======\ny\n>>>>>>> theirs\n", encoding="utf-8", newline="\n")
+    pages = {rel: (repo.path / rel).read_bytes() for rel in (REG_MD, DUE_MD)}
+    assert register.resolve(repo.path) == 1
+    out = capsys.readouterr().out
+    assert "merged, but not rendered" in out and systems.SYSTEMS in out and "fix it" in out
+    assert all((repo.path / rel).read_bytes() == text for rel, text in pages.items())
+    assert load((repo.path / REG_YAML).read_text(encoding="utf-8")) == closed_into(DATA, a, b)
+    path.write_text("schema: aew/systems/v1\nwip_limit: 12\nunowned: {}\nsystems: []\n", encoding="utf-8", newline="\n")
+    assert register.resolve(repo.path) == 0
+    assert "resolved:" in capsys.readouterr().out
+    assert (repo.path / systems.MARKDOWN).exists()
+
+
 # ------------------------------------------------------------------------------------------------ implementation status
 
 CAPABILITY = re.compile(r"^### (.+)$", re.M)
@@ -737,3 +755,80 @@ def test_the_slice_rule_refuses_a_paragraph_about_several_slices_and_a_status_th
                  "register E55", "§7", "what each slice built is in its paragraph",
                  "the row named under **Later slices**"):
         assert not SLICE_TOKEN.search(text), text
+
+
+# The board uses the same blank-separated blocks, with counts bound to their members.
+def systems_files(data):
+    systems = register._systems(ROOT)
+    # Separate YAML entries too: a last-field / next-entry change has an unchanged separator.
+    text = "schema: aew/systems/v1\nwip_limit: 12\nunowned: {}\nsystems:\n" + "\n".join(
+        yaml.safe_dump([e], sort_keys=False) for e in data["systems"])
+    return {systems.SYSTEMS: text, systems.MARKDOWN: systems.render_markdown(data, {})}
+
+
+def merge_board():
+    return {"schema": "aew/systems/v1", "wip_limit": 12, "unowned": {}, "systems": [
+        {"id": f"SYS-{n:02}", "name": f"System {n}", "register": [], "remaining": [], "decision": "none",
+         "recommendation": "finish", "state": {"board_state": "partly_built"}, "who": "Lead"}
+        for n in range(1, 9)]}
+
+
+def test_neighbouring_system_blocks_merge_into_the_render_of_merged_yaml(repo):
+    systems = register._systems(ROOT)
+    data = merge_board()
+    base = repo.commit(systems_files(data))
+    ours, theirs = copy.deepcopy(data), copy.deepcopy(data)
+    ours["systems"][0]["who"] = "builder"  # last field on the first block
+    theirs["systems"][1]["name"] += " changed"  # next heading
+    conflicts, files = repo.merge(repo.commit(systems_files(ours), base), repo.commit(systems_files(theirs), base))
+    assert conflicts == []
+    merged = load(files[systems.SYSTEMS])
+    assert merged["systems"][0] == ours["systems"][0] and merged["systems"][1] == theirs["systems"][1]
+    assert files[systems.MARKDOWN] == systems.render_markdown(merged, {})
+
+
+def test_two_branches_changing_a_view_count_conflict_even_when_the_number_is_equal(repo):
+    systems = register._systems(ROOT)
+    data = merge_board()
+    base = repo.commit(systems_files(data))
+    ours, theirs = copy.deepcopy(data), copy.deepcopy(data)
+    ours["systems"][2]["recommendation"] = "done"
+    theirs["systems"][5]["recommendation"] = "done"
+    conflicts, _ = repo.merge(repo.commit(systems_files(ours), base), repo.commit(systems_files(theirs), base))
+    assert systems.MARKDOWN in conflicts, "equal new counts must still conflict through their different members"
+    assert systems.SYSTEMS not in conflicts
+    # Isolate the summary as well: moving two entries into an empty view can itself conflict and must not
+    # accidentally provide the proof that the count and its members are inseparable.
+
+    def summary(board):
+        text = systems.render_markdown(board, {})
+        soon = text.split("## Finish and switch on soon\n\n", 1)[1].split("\n\n###", 1)[0]
+        return {"summary.md": soon + "\n"}
+
+    base = repo.commit(summary(data))
+    conflicts, _ = repo.merge(repo.commit(summary(ours), base), repo.commit(summary(theirs), base))
+    assert "summary.md" in conflicts, "a count on its own line would merge the identical new number silently"
+
+
+@pytest.mark.parametrize("count", [4, 6])
+def test_finishing_different_slices_conflicts_even_when_the_next_and_rows_are_the_same(repo, count):
+    systems = register._systems(ROOT)
+    data = merge_board()
+    data["systems"] = data["systems"][:1]
+    data["systems"][0]["remaining"] = [
+        {"slice": f"slice {n}", "row": "row owed", "estimate": "1 PR"} for n in range(1, count + 1)]
+    base = repo.commit(systems_files(data))
+    ours, theirs = copy.deepcopy(data), copy.deepcopy(data)
+    del ours["systems"][0]["remaining"][1]
+    del theirs["systems"][0]["remaining"][-1]
+    conflicts, files = repo.merge(repo.commit(systems_files(ours), base), repo.commit(systems_files(theirs), base))
+    assert conflicts == [systems.MARKDOWN], "the slice texts must distinguish equal counts and identical row ids"
+    merged = load(files[systems.SYSTEMS])
+    assert [s["slice"] for s in merged["systems"][0]["remaining"]] == [
+        f"slice {n}" for n in range(1, count) if n != 2]
+    expected_view = "soon" if count == 4 else "more"
+    assert systems.views(merged, {})[expected_view] == merged["systems"]
+    line = next(line for line in systems.render_markdown(merged, {}).splitlines()
+                if line.startswith("**Own slices left:**"))
+    assert line.startswith(f"**Own slices left:** {count - 2} — ")
+    assert all(s["slice"] in line for s in merged["systems"][0]["remaining"])

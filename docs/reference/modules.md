@@ -451,6 +451,7 @@ None.
 - `aew.engine.api`
 - `aew.engine.base`
 - `aew.engine.recall`
+- `aew.engine.store`
 - `aew.errors`
 - `aew.knowledge.manifest`
 - `aew.maps.store`

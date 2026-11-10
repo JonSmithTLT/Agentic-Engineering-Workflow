@@ -18,13 +18,13 @@ import json
 import os
 import re
 import threading
-import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
 from aew.engine import recall
+from aew.engine import store as committed
 from aew.engine.api import Engine
 from aew.engine.base import POLICY_PINS
 from aew.errors import AEWError, MapArtifactCorrupt, NotFound, ValidationFailed
@@ -172,7 +172,7 @@ class LRU(Generic[K, V]):
 
 
 REGISTRY_MAX = 64 << 10  # a registry holds two selections: far below this
-REGISTRY_ATTEMPTS = 3  # a read that meets the writer's atomic replace (Windows: a sharing violation) tries again
+REGISTRY_ATTEMPTS = 3  # retry a changed identity between lstat and open; sharing violations use the store's owner
 ARTIFACT_NAME = re.compile(r"^([0-9a-f]{64})\.json$")
 NONE, PRESENT, INVALID = "NONE", "PRESENT", "INVALID"
 
@@ -224,7 +224,15 @@ class MapsReader:
     def registry(self) -> Registry:
         """The registry as it stands. Its condition is a state, never an error (missing: ``NONE``; oversized, not a
         regular file or malformed: ``INVALID``); only a read that failed raises its ``OSError`` (the server's
-        ``500``, which the frontend shows as stale)."""
+        ``500``, which the frontend shows as stale). The store owns the replace retries, including missing files on
+        Windows, as for ``read_lock_free``; the read itself stays bounded and regular-file-only."""
+        try:
+            return committed.retry_lock_free(self._registry_read, also=committed.MISSING_MID_REPLACE)
+        except FileNotFoundError:
+            return Registry(NONE)
+
+    def _registry_read(self) -> Registry:
+        """One bounded attempt, retaining the cache and the lstat/open identity-race check."""
         path = self.aew_root / MS.REGISTRY_REL
         for attempt in range(REGISTRY_ATTEMPTS):
             try:
@@ -233,17 +241,10 @@ class MapsReader:
                 if self._registry is not None and self._registry[0] == identity:
                     return self._registry[1]
                 raw, identity = MS.read_bounded(path, REGISTRY_MAX, st)
-            except FileNotFoundError:
-                return Registry(NONE)
             except MS.NotARegularFile as exc:
                 if exc.reason == "not_a_file" and attempt + 1 < REGISTRY_ATTEMPTS and _regular(path):
                     continue  # replaced by the writer between the lstat and the open: read the new one
                 return Registry(INVALID, problem=exc.reason)
-            except PermissionError:
-                if os.name == "nt" and attempt + 1 < REGISTRY_ATTEMPTS:
-                    time.sleep(0.02)  # the writer's replace holds the name for a moment (a sharing violation)
-                    continue
-                raise
             parsed = _parse_registry(raw)
             self._registry = (identity, parsed)
             return parsed

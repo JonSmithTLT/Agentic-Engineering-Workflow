@@ -513,6 +513,7 @@ commands:
         lands: A2
         uses:
           - "transition ASSIGNED -> REPLAN_REQUIRED"
+          - "transition ASSIGNED -> RUNNING"
           - "transition BLOCKED -> REPLAN_REQUIRED"
           - "transition COMMIT_READY -> REPLAN_REQUIRED"
           - "transition COMMIT_READY -> RUNNING"
@@ -520,7 +521,6 @@ commands:
           - "transition INTERRUPTED -> REPLAN_REQUIRED"
           - "transition READY -> REPLAN_REQUIRED"
           - "transition REVIEW_FAILED -> REPLAN_REQUIRED"
-          - "transition REVIEW_PASSED -> COMMIT_READY"
           - "transition REVIEW_PASSED -> REPLAN_REQUIRED"
           - "transition REVIEW_PASSED -> RUNNING"
           - "transition REVIEW_PENDING -> REPLAN_REQUIRED"

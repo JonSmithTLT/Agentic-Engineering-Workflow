@@ -77,8 +77,8 @@ def test_the_lead_drives_aew_through_mcp_and_nothing_in_it_holds_the_credential(
         {"call": "checkpoint", "arguments": {"expect_rev": "$revision", "note": "paused", "next": "start T-0001"}},
         {"call": "explain", "arguments": {"work_id": wid}},
         {"call": "nope", "arguments": {}},
-        # every catalog row is built since E6a: a stage call missing its required report instead
-        {"call": "ticket_prepare", "arguments": {"expect_rev": "$revision", "work_id": wid}},
+        # every catalog row is built since E6a: a stage call naming no Ticket instead
+        {"call": "ticket_prepare", "arguments": {"expect_rev": "$revision"}},
         {"call": "cli", "arguments": {"argv": ["status"]}},
         {"call": "checkpoint", "arguments": {"expect_rev": "$revision", "bogus": True}},
         {"server_env": str(env_file)},

@@ -129,7 +129,7 @@ The Ticket machine from `aew.engine.transitions` (`RULES`, `STATES`, `TERMINAL`,
 |---|---|
 | `all_gates_current` | mutating: `Gates._guard_all_gates_current` (query); non_mutating: `NonMutating._guard_all_gates_current`; parent: `Gates._guard_all_gates_current` (query) |
 | `commit_ready_without_review_or_verification` | mutating: `Gates._guard_commit_ready_without_review_or_verification`; non_mutating: `NonMutating._guard_commit_ready_without_review_or_verification`; parent: `Gates._guard_commit_ready_without_review_or_verification` |
-| `commit_ready_without_verification` | mutating: `Gates._guard_commit_ready_without_verification`; non_mutating: `NonMutating._guard_commit_ready_without_verification`; parent: `Gates._guard_commit_ready_without_verification` |
+| `commit_ready_without_verification` | mutating: `Gates._guard_commit_ready_without_verification` (query); non_mutating: `NonMutating._guard_commit_ready_without_verification`; parent: `Gates._guard_commit_ready_without_verification` (query) |
 | `evidence_only_complete` | mutating: `NonMutating._guard_evidence_only_complete`; non_mutating: `NonMutating._guard_evidence_only_complete`; parent: `NonMutating._guard_evidence_only_complete` |
 | `findings_recorded` | mutating: `WorkUnits._guard_findings_recorded` (query); non_mutating: `WorkUnits._guard_findings_recorded` (query); parent: `WorkUnits._guard_findings_recorded` (query) |
 | `implementer_active` | mutating: `WorkUnits._guard_implementer_active` (query); non_mutating: `NonMutating._guard_implementer_active`; parent: `WorkUnits._guard_implementer_active` (query) |

@@ -1023,6 +1023,7 @@ None.
 - `aew.engine.hierarchy`
 - `aew.engine.nonmutating_ops`
 - `aew.engine.ports`
+- `aew.engine.queue_ops`
 - `aew.engine.seams`
 - `aew.engine.validation_ops`
 - `aew.errors`
@@ -2008,6 +2009,7 @@ None.
 
 - `aew.engine.guards`
 - `aew.engine.primitives`
+- `aew.engine.queue_ops`
 - `aew.engine.transitions`
 - `aew.errors`
 - `aew.harness.contract`

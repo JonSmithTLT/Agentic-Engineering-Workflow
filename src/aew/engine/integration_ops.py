@@ -52,8 +52,9 @@ if TYPE_CHECKING:
 
 
 # A publish's finish follows the revision across others' commits this many times (E137). A custody worker's
-# registration is one such commit, once per lease; more than this in that window is a busy project, and the refusal
-# then says what finishes the publish. As `surface.stage.STOP_ATTEMPTS` is for a stage's bookkeeping.
+# registration is one such commit, once per lease, and the one the tool-call log shows in that window both times a
+# publish stopped there; more than this in that window is a busy project, and the refusal then says what finishes the
+# publish. As `surface.stage.STOP_ATTEMPTS` is for a stage's bookkeeping.
 FINISH_ATTEMPTS = 3
 PUBLISH_UNFINISHED = "publish_unfinished"  # the reason a refusal carries when the Ticket is left `publishing`
 
@@ -795,10 +796,10 @@ class Integration:
 
     def _finish_following(self, token: str, rev: int, work_id: str) -> dict[str, Any]:
         """The publish's finish, from the revision its intent commit returned and on past any commit that lands after it
-        (E137): the custody worker's registration takes no expected revision, and a refusal here stranded the Ticket in
-        `publishing`, with the ref unmoved. The Lead's revision was checked when the intent committed, and that commit
-        is its publication decision; following replays no judgment, since the finish re-verifies the authority, the
-        intent, the lease and the binding under the lock on every attempt."""
+        (E137): the custody worker's registration takes no expected revision, the log shows it landing here, and a
+        refusal here stranded the Ticket in `publishing`, with the ref unmoved. The Lead's revision was checked when the
+        intent committed, and that commit is its publication decision; following replays no judgment, since the finish
+        re-verifies the authority, the intent, the lease and the binding under the lock on every attempt."""
         for attempt in range(1, FINISH_ATTEMPTS + 1):
             try:
                 return self._finish_publish(token, rev, work_id)

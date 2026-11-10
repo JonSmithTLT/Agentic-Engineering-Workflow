@@ -255,7 +255,7 @@ def test_a_decision_never_carries_a_default():
 @pytest.mark.parametrize(("name", "arguments", "profile", "code"), [
     ("no_such_tool", {}, NORMAL, "UNKNOWN_TOOL"),
     (7, {}, NORMAL, "UNKNOWN_TOOL"),
-    ("ticket_prepare", {"expect_rev": 1, "work_id": "T-0001"}, NORMAL, "INVALID_ARGUMENTS"),  # names no report
+    ("ticket_prepare", {"expect_rev": 1}, NORMAL, "INVALID_ARGUMENTS"),  # names no Ticket
     ("ticket_start", {"expect_rev": 1, "work_id": "T-0001", "bogus": 1}, NORMAL, "INVALID_ARGUMENTS"),
     ("ticket_draft", {"expect_rev": 1, "title": "t"}, NORMAL, "INVALID_ARGUMENTS"),  # no class
     ("integration_publish", {"expect_rev": 1, "work_id": "T-0001"}, RECOVERY, "INVALID_ARGUMENTS"),  # no candidate

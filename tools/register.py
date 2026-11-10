@@ -826,8 +826,8 @@ def source_problems(root: Path = ROOT) -> list[str]:
 
 
 def render(root: Path = ROOT) -> list[str]:
-    """Normalize both YAML files and write both pages from them. Refuses, writing nothing, while either YAML holds text
-    a render would lose; returns those problems."""
+    """Normalize the register's YAML and write its pages, and systems.md when the board exists. Refuses, writing
+    nothing, while either register YAML holds text a render would lose or the board cannot render; returns problems."""
     yaml_path, md, due_yaml, due_md = _paths(root)
     refused = source_problems(root)
     if refused:
@@ -835,7 +835,12 @@ def render(root: Path = ROOT) -> list[str]:
     data = normalize(_load(yaml_path.read_text(encoding="utf-8")))
     due = normalize_due(_load(due_yaml.read_text(encoding="utf-8")))
     board = _systems(root)
-    board_text = None if board is None else board.render_markdown(board.read_board(root), board.now_order(root))
+    board_text = None
+    if board is not None:
+        try:
+            board_text = board.render_markdown(board.read_board(root), board.now_order(root))
+        except board.SystemsError as exc:
+            return [f"{board.SYSTEMS}: {exc}; fix it, then run `python tools/register.py render`"]
     for path, text in ((due_yaml, dump(due)), (yaml_path, dump(data))):
         if text != path.read_text(encoding="utf-8"):
             path.write_text(text, encoding="utf-8", newline="\n")
@@ -850,6 +855,7 @@ def render(root: Path = ROOT) -> list[str]:
 
 def _systems(root: Path) -> Any:
     """Lazy: four-file register copies and resolve need no board or reference renderer."""
+    # Repeat systems.SYSTEMS only for this existence probe: importing its owner first defeats laziness.
     if not (root / "docs/implementation/systems.yaml").exists():
         return None
     import importlib.util
@@ -1057,7 +1063,8 @@ def resolve(root: Path = ROOT) -> int:
     """Finish a merge that stopped on the register. Each YAML file still in conflict is merged again from its three
     sides (the merge base, ours and theirs) by key (``_merge3``): rows and items added, changed or closed on one side
     apply, cell by cell, wherever they land, so the conflicts git reports for two insertions at one place (two rows
-    closed into the same gap of §Closed, say) and for layout or order go away. Then both pages are rendered. Only a
+    closed into the same gap of §Closed, say) and for layout or order go away. Then the register's pages, and systems.md
+    when the board exists, are rendered. Only a
     real conflict stays (the same cell or field changed differently on both sides, a row changed on one side and closed
     on the other, a section reordered differently on both, like-named rows changed on both sides that cannot be told
     apart): marked in the YAML, with nothing else marked, to fix by hand before ``render``. The pages are never merged:
@@ -1151,7 +1158,7 @@ def main(argv: list[str] | None = None) -> int:
         for problem in refused:
             print("problem:", problem)
         if refused:
-            print("nothing written: quote each cell named above, then render again")
+            print("nothing written: fix each problem named above, then render again")
         return 1 if refused else 0
     if args.command == "resolve":
         return resolve()

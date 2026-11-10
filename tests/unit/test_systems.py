@@ -138,14 +138,14 @@ def own(tree: Path) -> Any:
 
 
 def found(own: Any, change: Callable[[dict[str, Any]], Any] | None = None, *, text: Callable[[str], str] | None = None,
-          header: str = "") -> list[Any]:
+          header: str = "", stale_page: bool = False) -> list[Any]:
     data = copy.deepcopy(board())
     page = own.root / systems.MARKDOWN
     page.parent.mkdir(parents=True, exist_ok=True)
     page.write_text(systems.render_markdown(data, own.now_order), encoding="utf-8", newline="\n")
     if change is not None:
         change(data)
-    if not systems.schema_problems(data) and sys_(data, "SYS-01")["name"] != "Changed name":
+    if not stale_page and not systems.schema_problems(data):
         page.write_text(systems.render_markdown(data, own.now_order), encoding="utf-8", newline="\n")
     body = header + yaml.safe_dump(data, sort_keys=False, allow_unicode=True, width=118)
     return systems.problems(text(body) if text else body, own)
@@ -249,7 +249,7 @@ def test_every_rule_has_a_planted_case():
 @pytest.mark.parametrize("case", sorted(PLANTED))
 def test_a_planted_case_is_reported_by_the_rule_it_breaks(own, case):
     rule, change = PLANTED[case]
-    problems = found(own, change)
+    problems = found(own, change, stale_page=rule == "rendered")
     assert rule in {p.check for p in problems}, (case, [str(p) for p in problems])
 
 
@@ -309,19 +309,22 @@ def test_the_check_is_deterministic(own):
 def test_views_partition_and_questions_cross_the_partition():
     data = board()
     data["systems"] = [entry(f"SYS-{n:02}", recommendation=rec) for n, rec in enumerate(
-        ("finish", "finish", "switch_on", "done", "freeze", "cut", "keep"), 1)]
-    data["systems"][1]["remaining"] = [{"slice": str(n), "row": "row owed", "estimate": "1 PR"}
-                                        for n in range(3)]
-    data["systems"][0]["decision"] = "operator: choose"
-    data["systems"][2]["decision"] = "decided: yes"
+        systems.ENUMS[("recommendation",)], 1)]
+    by_rec = {e["recommendation"]: e for e in data["systems"]}
+    more = entry(f"SYS-{len(data['systems']) + 1:02}", remaining=[
+        {"slice": str(n), "row": "row owed", "estimate": "1 PR"} for n in range(3)])
+    data["systems"].append(more)
+    by_rec["finish"]["decision"] = "operator: choose"
+    by_rec["switch_on"]["decision"] = "decided: yes"
     chosen = systems.views(data, {})
     assert {k: [e["id"] for e in v] for k, v in chosen.items()} == {
-        "soon": ["SYS-01", "SYS-03"], "more": ["SYS-02"], "questions": ["SYS-01"],
-        "done": ["SYS-04"], "not_counted": ["SYS-05", "SYS-06", "SYS-07"]}
+        "soon": sorted(by_rec[r]["id"] for r in ("finish", "switch_on")), "more": [more["id"]],
+        "questions": [by_rec["finish"]["id"]], "done": [by_rec["done"]["id"]],
+        "not_counted": sorted(by_rec[r]["id"] for r in ("freeze", "cut", "keep"))}
     partition = [e["id"] for k in ("soon", "more", "done", "not_counted") for e in chosen[k]]
     assert sorted(partition) == sorted(e["id"] for e in data["systems"])
     text = systems.render_markdown(data, {})
-    assert "**Decided:** 1 — SYS-03" in text
+    assert f"**Decided:** 1 — {by_rec['switch_on']['id']}" in text
     data["systems"] = []
     assert all(not v for v in systems.views(data, {}).values())
     assert "**Decided:** 0 — none" in systems.render_markdown(data, {})
@@ -354,7 +357,7 @@ def test_priority_and_slices_ignore_riders_and_sort_ties_by_id(own):
     data["systems"].reverse()
     assert [e["id"] for e in systems.views(data, {"E1": 1, "E2": 1})["soon"]] == ["SYS-01", "SYS-02"]
     rendered = systems.render_markdown(data, supplied.now_order)
-    assert "**Own slices left:** 1 — **Next:** own — E1 — 2 PRs" in rendered
+    assert "**Own slices left:** 1 — own (E1) — **Next:** own — E1 — 2 PRs" in rendered
     assert "**Switch:** a.b" in rendered and "**Who:** Lead" in rendered
     assert "**Now:** not on the Now list" in systems.render_markdown(data, {})
 
@@ -419,6 +422,16 @@ def test_render_command_uses_the_existing_renderer(tmp_path, monkeypatch, capsys
     assert systems.main(["render"]) == 0
     assert systems.MARKDOWN in capsys.readouterr().out
     assert (tmp_path / systems.MARKDOWN).exists()
+
+
+@pytest.mark.parametrize("command", ["check", "render", "show"])
+def test_command_errors_name_the_requested_verb(command, monkeypatch, capsys):
+    def unreadable(*args):
+        raise systems.SystemsError("invalid board")
+
+    monkeypatch.setattr(systems, command, unreadable)
+    assert systems.main([command, *(["SYS-01"] if command == "show" else [])]) == 2
+    assert capsys.readouterr().err == f"cannot {command} {systems.SYSTEMS}: invalid board\n"
 
 
 def test_register_render_refreshes_board_and_check_reports_staleness(tmp_path, monkeypatch, capsys):

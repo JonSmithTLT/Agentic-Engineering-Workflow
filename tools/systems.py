@@ -580,7 +580,8 @@ def render_markdown(data: dict[str, Any], order: dict[str, int]) -> str:
                 slices = own_slices(e, data)
                 next_slice = (f"{_line(slices[0]['slice'])} — {slices[0]['row']} — {_line(slices[0]['estimate'])}"
                               if slices else "none")
-                out.append(f"**Own slices left:** {len(slices)} — **Next:** {next_slice}")
+                slice_members = "; ".join(f"{_line(s['slice'])} ({s['row']})" for s in slices) or "none"
+                out.append(f"**Own slices left:** {len(slices)} — {slice_members} — **Next:** {next_slice}")
                 if e.get("switch"):
                     out.append(f"**Switch:** {e['switch']['key']}")
             elif key == "questions":
@@ -667,7 +668,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         found = check()
     except SystemsError as exc:
-        print(f"cannot check {SYSTEMS}: {exc}", file=sys.stderr)
+        print(f"cannot {args.command} {SYSTEMS}: {exc}", file=sys.stderr)
         return 2
     if found:
         print("\n".join(map(str, found)), file=sys.stderr)

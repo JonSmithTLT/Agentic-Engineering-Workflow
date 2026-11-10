@@ -602,6 +602,24 @@ def test_resolve_merges_but_does_not_render_over_text_a_render_would_lose(repo, 
     assert "merged, but not rendered" in capsys.readouterr().out
 
 
+def test_resolve_reports_bad_board_and_renders_after_it_is_fixed(repo, capsys):
+    systems = register._systems(ROOT)
+    a, b = same_gap(DATA)
+    stopped_merge(repo, register_files(), register_files(closed_into(DATA, a)), register_files(closed_into(DATA, b)))
+    path = repo.path / systems.SYSTEMS
+    path.write_text("<<<<<<< ours\nx\n=======\ny\n>>>>>>> theirs\n", encoding="utf-8", newline="\n")
+    pages = {rel: (repo.path / rel).read_bytes() for rel in (REG_MD, DUE_MD)}
+    assert register.resolve(repo.path) == 1
+    out = capsys.readouterr().out
+    assert "merged, but not rendered" in out and systems.SYSTEMS in out and "fix it" in out
+    assert all((repo.path / rel).read_bytes() == text for rel, text in pages.items())
+    assert load((repo.path / REG_YAML).read_text(encoding="utf-8")) == closed_into(DATA, a, b)
+    path.write_text("schema: aew/systems/v1\nwip_limit: 12\nunowned: {}\nsystems: []\n", encoding="utf-8", newline="\n")
+    assert register.resolve(repo.path) == 0
+    assert "resolved:" in capsys.readouterr().out
+    assert (repo.path / systems.MARKDOWN).exists()
+
+
 # ------------------------------------------------------------------------------------------------ implementation status
 
 CAPABILITY = re.compile(r"^### (.+)$", re.M)
@@ -790,3 +808,27 @@ def test_two_branches_changing_a_view_count_conflict_even_when_the_number_is_equ
     base = repo.commit(summary(data))
     conflicts, _ = repo.merge(repo.commit(summary(ours), base), repo.commit(summary(theirs), base))
     assert "summary.md" in conflicts, "a count on its own line would merge the identical new number silently"
+
+
+@pytest.mark.parametrize("count", [4, 6])
+def test_finishing_different_slices_conflicts_even_when_the_next_and_rows_are_the_same(repo, count):
+    systems = register._systems(ROOT)
+    data = merge_board()
+    data["systems"] = data["systems"][:1]
+    data["systems"][0]["remaining"] = [
+        {"slice": f"slice {n}", "row": "row owed", "estimate": "1 PR"} for n in range(1, count + 1)]
+    base = repo.commit(systems_files(data))
+    ours, theirs = copy.deepcopy(data), copy.deepcopy(data)
+    del ours["systems"][0]["remaining"][1]
+    del theirs["systems"][0]["remaining"][-1]
+    conflicts, files = repo.merge(repo.commit(systems_files(ours), base), repo.commit(systems_files(theirs), base))
+    assert conflicts == [systems.MARKDOWN], "the slice texts must distinguish equal counts and identical row ids"
+    merged = load(files[systems.SYSTEMS])
+    assert [s["slice"] for s in merged["systems"][0]["remaining"]] == [
+        f"slice {n}" for n in range(1, count) if n != 2]
+    expected_view = "soon" if count == 4 else "more"
+    assert systems.views(merged, {})[expected_view] == merged["systems"]
+    line = next(line for line in systems.render_markdown(merged, {}).splitlines()
+                if line.startswith("**Own slices left:**"))
+    assert line.startswith(f"**Own slices left:** {count - 2} — ")
+    assert all(s["slice"] in line for s in merged["systems"][0]["remaining"])

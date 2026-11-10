@@ -8,4 +8,11 @@ The register's §1 wording of the count is for the Lead to reconcile with FORMAT
 that section. State read from code, wired checks, limit enforcement and stale slices remain PR 3. Serves, lanes and
 requirements served are later work; a dashboard view is not placed.
 
+Review fixes: the own-slice count now shares a line with every counted slice's text and row, not just its next
+slice; concurrent completion of different slices conflicts and forces a re-render. Invalid board data refuses
+register rendering without writes or a traceback, including through resolve. Systems command errors name the verb.
+
+The operator approved adding docs/implementation/systems.md to review-guide.md §7's closed generated-page list
+beside future-work.md and decisions-due.md in this PR. The guide now includes it; the operator merges this change.
+
 Adopted lines this reverses: none.

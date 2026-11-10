@@ -11,15 +11,19 @@ operator's, and AEW never copies, stores or prints the key:
   next launch.
 * **No fallback:** a certificate that is configured and cannot be used refuses the launch, with one plain line per
   problem, each naming its file (:func:`inspect`): unreadable, expired or not yet valid, not matching its key, a key
-  OpenSSL cannot read, a CA file that holds no certificate. ``aew doctor`` shows the same lines before any launch
-  (``engine.readiness``). A run with no relay (a ``shared`` or ``isolated`` network, or Windows) refuses the provider
-  (:func:`no_relay`): it would reach it without the certificate.
+  OpenSSL cannot read, a CA file that holds no certificate, an upstream that is not ``https://``. ``aew doctor`` shows
+  the same lines before any launch (``engine.readiness``). A run with no relay refuses the provider (:func:`no_relay`):
+  a ``shared`` or ``isolated`` network, Windows, or a sandbox that could not be established under ``allow_weaker``,
+  which is known only after ``establish`` (``supervisor.contain_launch``). A Lead with no relay is told at its start
+  (:func:`unrelayed_lines`), and goes on with its other providers.
 * **Kept from every sandbox:** the certificate and key paths are masked in every contained run (:func:`mask_entries`,
   read by ``layout.establish``), so the launch's self-test proves from inside that they cannot be read. The CA file is
   not: it may be the system's bundle, which the sandbox's own TLS needs.
-* **The key's path is printed nowhere:** a launch's refusal and a readiness line reach the Lead too, so they name the
-  key by its policy field, and the certificate and CA file by path and field. The relay's own answers on a failed
-  handshake (``relay._tls_refused``), which reach the sandbox, name the policy field and the CA file only.
+* **The key's path in AEW's own lines:** a launch's refusal, a readiness line and the relay's label name the key by its
+  policy field, and the certificate and CA file by path and field; the relay's answers on a failed handshake
+  (``relay._tls_refused``), which reach the sandbox, name the policy field and the CA file only. The run's layout record
+  lists the key's path among its masked paths (``layout.describe``'s ``hidden``), as it lists every mask, and the
+  self-test's check of them can name it: the policy that names it is readable by the Lead in any case.
 
 The trust is the CA file's alone, not the system's as well: the provider's certificate is checked against the CA the
 operator swaps when a change is announced. A provider AEW knows a key variable for (``netns.PROVIDER_KEY_ENV``) still
@@ -57,6 +61,7 @@ class ClientCert:
     cert: str
     key: str
     ca: str
+    upstream: str | None = None  # containment.network.upstreams.<provider>, when the policy names one
 
     def field(self, name: str) -> str:
         return f"{FIELD}.{self.provider}.{name}"
@@ -69,8 +74,15 @@ def entries(network: Mapping[str, Any] | None) -> dict[str, ClientCert]:
     out: dict[str, ClientCert] = {}
     for provider, files in (found.items() if isinstance(found, Mapping) else ()):
         if isinstance(files, Mapping) and all(isinstance(files.get(f), str) and files.get(f) for f in FILES):
-            out[str(provider)] = ClientCert(str(provider), *(os.path.expanduser(str(files[f])) for f in FILES))
+            out[str(provider)] = ClientCert(str(provider), *(os.path.expanduser(str(files[f])) for f in FILES),
+                                            upstream=_upstream(network, str(provider)))
     return out
+
+
+def _upstream(network: Mapping[str, Any], provider: str) -> str | None:
+    upstreams = network.get("upstreams")
+    url = upstreams.get(provider) if isinstance(upstreams, Mapping) else None
+    return str(url) if isinstance(url, str) else None
 
 
 def configured(policy: Mapping[str, Any] | None) -> dict[str, ClientCert]:
@@ -96,9 +108,19 @@ def no_relay(provider: str | None, policy: Mapping[str, Any] | None, *, on_relay
     if found is None or on_relay_route:
         return None
     return (f"the run's provider {provider} needs the client certificate named in {found.field('cert')}, and only "
-            "AEW's provider relay presents it: this run would reach the provider without it (a contained run's network "
-            "mode is not proxy_only, or the run is not contained, as on Windows). Run it on Linux with "
-            "containment.network.mode: proxy_only (the default), or pin a profile whose provider needs no certificate")
+            "AEW's provider relay presents it: this run would reach the provider without it (its network mode is not "
+            "proxy_only; it is not contained, as on Windows; or its sandbox could not be established here and the "
+            "policy allows weaker runs). Run it on Linux with containment.network.mode: proxy_only (the default) and "
+            "containment that works (`aew doctor` names what is missing), or pin a profile whose provider needs no "
+            "certificate")
+
+
+def unrelayed_lines(policy: Mapping[str, Any] | None, who: str) -> list[str]:
+    """One start line for each provider the policy names a client certificate for, for a Lead that runs with no relay
+    (E123 review, m3): that provider won't work this session. The Lead isn't refused: it may use other providers."""
+    return [f"{who}: the {c.provider} provider needs the client certificate named in {c.field('cert')}, which only "
+            "AEW's provider relay presents, and this Lead runs with no relay: it can't use that provider this session "
+            "(a contained Lead on Linux can)\n" for c in configured(policy).values()]
 
 
 def inspect(found: ClientCert, *, now: dt.datetime | None = None) -> tuple[list[str], dt.datetime | None]:
@@ -117,7 +139,7 @@ def inspect(found: ClientCert, *, now: dt.datetime | None = None) -> tuple[list[
         if name == "cert":
             problems += _validity(found, text, now or dt.datetime.now(dt.UTC))
     if problems:
-        return problems, None
+        return problems + _scheme(found), None
     context = _context()
     try:
         context.load_cert_chain(found.cert, found.key, password=_no_passphrase)
@@ -132,7 +154,16 @@ def inspect(found: ClientCert, *, now: dt.datetime | None = None) -> tuple[list[
         context.load_verify_locations(cafile=found.ca)
     except (ssl.SSLError, OSError):
         problems.append(f"the CA file {_named(found, 'ca')} holds no certificate OpenSSL can read")
-    return problems, _not_after(found)
+    return problems + _scheme(found), _not_after(found)
+
+
+def _scheme(found: ClientCert) -> list[str]:
+    """An upstream the relay reaches in plain http, where the certificate would never be presented (E123 review, m1).
+    The schema can't refuse it: ``upstreams`` is a map of its own."""
+    if found.upstream is None or found.upstream.lower().startswith("https://"):
+        return []
+    return [f"the provider's upstream {found.upstream} (containment.network.upstreams.{found.provider}) is not "
+            "https://: the relay presents a client certificate only over TLS, so it would never be used"]
 
 
 def _named(found: ClientCert, name: str) -> str:
@@ -160,7 +191,10 @@ def context(found: ClientCert, *, now: dt.datetime | None = None) -> ssl.SSLCont
 
 
 def _context() -> ssl.SSLContext:
-    """A verifying client context with no trust of its own yet: the CA file is the only one it gets."""
+    """A verifying client context with no trust of its own yet: the CA file is the only one it gets. Built by hand,
+    not with ``ssl.create_default_context``, whose Python 3.13 flags (``VERIFY_X509_STRICT``,
+    ``VERIFY_X509_PARTIAL_CHAIN``) this leaves unset: strict mode rejects internal CAs that lack an Authority Key
+    Identifier, and an internal CA is what this route is for (E123 review, n1)."""
     out = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)  # check_hostname and CERT_REQUIRED are this protocol's defaults
     out.minimum_version = TLS_MINIMUM
     return out

@@ -113,6 +113,13 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
         layout, label = containment.establish(
             role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch, bridge_dir=bridge_dir,
             policy=policy, project=str(project), bridge=bridge, egress_policy=allow, skills_dir=skills_dir)
+        # The relay's absence is known only now: under allow_weaker a sandbox that could not be established runs the
+        # harness on the host's network with no relay, whatever the policy's network mode (E123 review, M1)
+        unrelayed = layout is None or not layout.private_network
+        no_relay = client_cert.no_relay(provider, policy, on_relay_route=not unrelayed) \
+            if adapter_cls.PROVIDER_RELAY else None
+        if no_relay is not None:
+            raise errors.ContainmentUnavailable(no_relay, provider=provider, reason=client_cert.NO_RELAY)
         # A weaker launch (allowed by the policy, or a sandbox on the host's network) enters the register of weaker
         # contexts before its harness starts; on Linux one that cannot be entered is refused (G3 addendum 7).
         weaker = weaker_register.enter_if_weaker(label, kind=kind, ownership=weaker_register.ownership_of(label),

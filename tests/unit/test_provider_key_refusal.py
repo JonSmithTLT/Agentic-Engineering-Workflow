@@ -203,6 +203,42 @@ def test_a_launch_whose_provider_needs_a_client_certificate_is_refused_off_the_r
         contain_with(CERT_POLICY, "mtls")
 
 
+def test_an_allow_weaker_launch_that_falls_back_with_no_relay_refuses_a_certificate_provider(tmp_path, monkeypatch):
+    """E123 review, M1: the policy's network mode says proxy_only, so the checks before the sandbox pass; then the
+    real allow_weaker fallback (no bubblewrap here, or no containment on this platform) gives no layout and no relay.
+    The refusal is decided there, after ``establish``, before any register entry or harness."""
+    from aew.harness.containment import client_cert
+    from aew.harness.containment import layout as L
+
+    monkeypatch.setattr(netns, "mode", lambda policy: netns.PROXY_ONLY)
+    monkeypatch.setattr(L, "find_bwrap", lambda: None)
+    established: list[Any] = []
+    real = supervisor.containment.establish
+    monkeypatch.setattr(supervisor.containment, "establish", lambda **kw: established.append(real(**kw)) or
+                        established[-1])
+    entered: list[Any] = []
+    monkeypatch.setattr(supervisor.weaker_register, "enter_if_weaker", lambda *a, **kw: entered.append(a))
+    policy = {"containment": {"mode": "allow_weaker", **CERT_POLICY["containment"]}}
+    run_dir = tmp_path / "project" / ".aew" / "local" / "harness" / "runs" / "INV-0001-r1"
+    run_dir.mkdir(parents=True)
+    (tmp_path / "ws").mkdir()
+
+    def launch(provider: str) -> Any:
+        return supervisor.contain_launch(
+            policy, SimpleNamespace(PROVIDER_RELAY=True, EGRESS=()), provider=provider, provider_env=[],
+            role="implementer", scope="ticket", workspace=str(tmp_path / "ws"), run_dir=run_dir,
+            scratch=str(run_dir / "scratch"), bridge_dir=None, bridge=None, project=tmp_path / "project",
+            aew_root=tmp_path / "project" / ".aew", kind="worker_run")
+
+    with pytest.raises(errors.ContainmentUnavailable) as caught:
+        launch("mtls")
+    assert caught.value.details["reason"] == client_cert.NO_RELAY, caught.value.message
+    assert "could not be established" in caught.value.message
+    assert established and established[0][0] is None and entered == []  # the real fallback, refused before entry
+    found = launch("fakeprov")  # a provider with no certificate runs weaker, labelled so, as before
+    assert found[0] is None and found[2] is None and len(entered) == 1
+
+
 # ----------------------------------------------------------------------------------------- the refused-target record
 
 def refuse(proxy: EgressProxy, target: str) -> bytes:

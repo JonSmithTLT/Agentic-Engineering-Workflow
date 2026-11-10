@@ -1447,6 +1447,7 @@ None.
 - `aew.errors`
 - `aew.harness.agentenv`
 - `aew.harness.containment`
+- `aew.harness.containment.client_cert`
 - `aew.harness.containment.egress`
 - `aew.harness.containment.netns`
 - `aew.harness.containment.relay`

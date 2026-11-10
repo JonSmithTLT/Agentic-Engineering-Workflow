@@ -490,6 +490,13 @@ def _tls_refused(exc: ssl.SSLError, upstream: Upstream, client: ClientCert | Non
         return _Refused(502, "client_cert_refused", f"{upstream.url} refused the client certificate named in "
                         f"{client.field('cert')} ({exc.reason}): `aew doctor` checks it, and the provider may not "
                         "accept it")
+    if client is None and exc.reason == "SSLV3_ALERT_HANDSHAKE_FAILURE":
+        # TLS 1.2's answer to a missing certificate (E123 review, m2). It also means a cipher or version mismatch, so
+        # it is not in _CERT_ALERTS, and is worded as a likelihood. A server that ends the handshake and then answers
+        # HTTP 400 for the missing certificate (nginx's `ssl_verify_client on`) is relayed as it answered.
+        return _Refused(502, "client_cert_required", f"the TLS connection to {upstream.url} failed ({exc.reason}): "
+                        "the provider may require a client certificate, and the policy names none: name one in "
+                        "containment.network.client_certs.<provider>")
     return _Refused(502, "tls_failed", f"the TLS connection to {upstream.url} failed ({exc.reason or exc})")
 
 

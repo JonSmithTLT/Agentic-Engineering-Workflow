@@ -159,4 +159,8 @@ def _client_cert_doctor(policy: dict[str, Any]) -> tuple[str, str] | None:
     if problems:
         return "FAIL", ("a harness launch whose provider needs a client certificate is refused: "
                         + " | ".join(problems))
-    return "PASS", "; ".join(ready) + " (read at each launch: a renewal or a swapped CA file is picked up by the next)"
+    ready_line = "; ".join(ready) + " (read at each launch: a renewal or a swapped CA file is picked up by the next)"
+    if (((policy.get("containment") or {}).get("mode")) or "") == "allow_weaker":  # E123 review, M1
+        return "WARN", (ready_line + "; containment.mode is allow_weaker: a launch whose sandbox can't be established "
+                        "here runs with no relay, and is refused for these providers (client_cert_no_relay)")
+    return "PASS", ready_line

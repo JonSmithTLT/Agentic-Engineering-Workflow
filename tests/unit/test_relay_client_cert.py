@@ -138,10 +138,12 @@ class Seen:
 
 
 @contextmanager
-def provider(pki: Pki, *, trusts: Issued | None = None) -> Iterator[tuple[int, Seen]]:
+def provider(pki: Pki, *, trusts: Issued | None = None, tls12: bool = False) -> Iterator[tuple[int, Seen]]:
     """A local TLS server that requires a client certificate signed by ``trusts`` (default: the test CA), and answers
-    one request 200."""
+    one request 200; with ``tls12``, one that speaks TLS 1.2 at most."""
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    if tls12:
+        context.maximum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(pki.write("server.pem", cert_pem(pki.server)), pki.write("server-key.pem",
                                                                                      key_pem(pki.server)))
     context.verify_mode = ssl.CERT_REQUIRED
@@ -180,12 +182,20 @@ def provider(pki: Pki, *, trusts: Issued | None = None) -> Iterator[tuple[int, S
     assert not thread.is_alive(), "the provider's thread did not end"
 
 
+def to_local(port: int) -> relay.Connector:
+    """The relay's connect, to the provider on ``port`` at 127.0.0.1 whatever the upstream's name."""
+    return lambda _h, _p, t: socket.create_connection(("127.0.0.1", port), timeout=t)
+
+
 def ask(port: int, *, tls: ssl.SSLContext | None, client: client_cert.ClientCert | None) -> tuple[bytes, ProviderRelay]:
     """One request through a relay to the provider on ``port``: what the client got, and the relay."""
-    service = ProviderRelay(Upstream(f"https://{HOST}:{port}/v1"), {},
-                            connect=lambda _h, _p, t: socket.create_connection(("127.0.0.1", port), timeout=t),
-                            tls=tls, client=client, head_timeout=TIMEOUT, connect_timeout=TIMEOUT,
-                            body_timeout=TIMEOUT)
+    service = ProviderRelay(Upstream(f"https://{HOST}:{port}/v1"), {}, connect=to_local(port), tls=tls,
+                            client=client, head_timeout=TIMEOUT, connect_timeout=TIMEOUT, body_timeout=TIMEOUT)
+    return through(service), service
+
+
+def through(service: ProviderRelay) -> bytes:
+    """One request served by ``service``, as the harness would send it: what it got back."""
     near, served = socket.socketpair()
     near.settimeout(TIMEOUT)
     thread = threading.Thread(target=service.handle, args=(served,), daemon=True)
@@ -200,7 +210,7 @@ def ask(port: int, *, tls: ssl.SSLContext | None, client: client_cert.ClientCert
         thread.join(TIMEOUT)
         service.close()
     assert not thread.is_alive(), "the relay's handler did not end"
-    return answer, service
+    return answer
 
 
 def trusting(pki: Pki) -> ssl.SSLContext:
@@ -226,6 +236,94 @@ def test_the_relay_presents_the_policys_certificate_and_the_provider_takes_it(pk
 
 def test_a_provider_with_no_certificate_configured_gets_none(pki):
     assert netns.relay_tls(PROVIDER, {}) == (None, None)
+
+
+def test_a_certificate_with_an_http_upstream_refuses_the_start_and_doctor_says_so(pki, monkeypatch):
+    """E123 review, m1: over plain http the relay would never present it, so it's refused, never silently unused."""
+    found = pki.files()
+    policy = policy_of(found)
+    policy["containment"]["network"]["upstreams"] = {PROVIDER: f"http://{HOST}:8080/v1"}
+    with pytest.raises(ContainmentUnavailable) as raised:
+        netns.relay_tls(PROVIDER, policy)
+    assert raised.value.details["reason"] == client_cert.UNUSABLE
+    message = raised.value.message
+    assert f"containment.network.upstreams.{PROVIDER}" in message and "not https://" in message, message
+    monkeypatch.setattr(netns, "relay_route", lambda policy, provider_relay: True)
+    row = next(r for r in readiness.readiness_checks(policy) if r["check"] == "client-cert")
+    assert row["status"] == "FAIL" and "not https://" in row["detail"], row
+    policy["containment"]["network"]["upstreams"] = {PROVIDER: f"https://{HOST}:8443/v1"}
+    assert netns.relay_tls(PROVIDER, policy)[1] == client_cert.ClientCert(PROVIDER, found.cert, found.key, found.ca,
+                                                                         upstream=f"https://{HOST}:8443/v1")
+
+
+def test_a_tls12_provider_asking_for_a_certificate_the_policy_does_not_name_says_so(pki):
+    """E123 review, m2: under TLS 1.2 the server's answer to no certificate is handshake_failure, not 1.3's
+    certificate_required."""
+    with provider(pki, tls12=True) as (port, seen):
+        answer, _ = ask(port, tls=trusting(pki), client=None)
+    assert b"X-AEW-Refusal: client_cert_required" in answer, answer
+    assert b"may require a client certificate" in answer and b"containment.network.client_certs" in answer
+    assert seen.error is not None
+    with provider(pki, tls12=True) as (port, _):  # and with the certificate, TLS 1.2 serves as 1.3 does
+        answer, _ = ask(port, tls=client_cert.context(pki.files()), client=pki.files())
+    assert answer.startswith(b"HTTP/1.1 200"), answer
+
+
+def test_the_contained_leads_keyless_provider_of_its_own_id_gets_a_relay_that_presents_the_certificate(pki, tmp_path,
+                                                                                                      monkeypatch):
+    """E123 review, m4: a provider with no API key, named in client_certs and upstreams, is relayed to the contained
+    Lead as a worker's is, with no sentinel. The relays' socket files are loopback TCP here, so this runs everywhere."""
+    from dataclasses import replace
+
+    def listen(path: str) -> socket.socket:
+        return socket.create_server(("127.0.0.1", 0))
+
+    monkeypatch.setattr(netns, "listen", listen)
+    found = pki.files()
+    with provider(pki) as (port, seen):
+        policy = policy_of(found)
+        policy["containment"]["network"]["upstreams"] = {PROVIDER: f"https://{HOST}:{port}/v1"}
+        base = layout.Layout(role="lead", access="write", bwrap="/usr/bin/bwrap", writable=("/w",), readonly=())
+        net = netns.RunNetwork.start_lead(replace(base, network=layout.PROXY_ONLY, net_dir=str(tmp_path)), keys={},
+                                          provider_env=[], policy=policy, env={}, keyless=[PROVIDER])
+        try:
+            _, served = net.relays[PROVIDER]
+            assert served.client is not None and served.client.cert == found.cert and served.client.key == found.key
+            assert net.sentinels == {} and net.login_sentinels == {}
+            assert net.lead_bases()[PROVIDER].endswith("/v1")
+            served._connect = to_local(port)
+            answer = through(served)
+        finally:
+            net.close()
+    assert answer.startswith(b"HTTP/1.1 200"), answer
+    assert seen.peer is not None and ((("commonName", "aew-relay"),),) == seen.peer["subject"]
+
+
+def test_a_contained_lead_whose_only_provider_takes_a_certificate_is_not_refused_for_having_no_key(pki):
+    """The Lead's own refusal for no relayed provider (``require_provider``) counts a certificate provider."""
+    from types import SimpleNamespace
+
+    from aew import errors
+    from aew.harness.opencode import lead
+
+    lead.ContainedLead.require_provider(SimpleNamespace(keys={}, refreshing={}, certified={PROVIDER: pki.files()}))
+    with pytest.raises(errors.HarnessIncompatible):
+        lead.ContainedLead.require_provider(SimpleNamespace(keys={}, refreshing={}, certified={}))
+
+
+def test_a_lead_with_no_relay_is_told_which_certificate_providers_it_cannot_use(pki, capsys):
+    """E123 review, m3: one start line per such provider, and the Lead goes on: it may use others."""
+    from types import SimpleNamespace
+
+    from aew.harness.opencode import lead
+
+    found = pki.files()
+    lead._unrelayed(SimpleNamespace(execution_policy=lambda: (policy_of(found), None)))
+    said = capsys.readouterr().err
+    assert said.count("\n") == 1 and f"the {PROVIDER} provider" in said and found.field("cert") in said, said
+    assert "can't use that provider this session" in said and found.key not in said
+    lead._unrelayed(SimpleNamespace(execution_policy=lambda: ({}, None)))
+    assert capsys.readouterr().err == ""
 
 
 def test_without_a_certificate_the_provider_refuses_and_the_answer_says_what_to_name(pki):
@@ -368,7 +466,9 @@ def _details(policy: dict[str, Any]) -> bytes:
     return " | ".join(r["detail"] for r in readiness.readiness_checks(policy)).encode()
 
 
-def test_the_keys_bytes_and_path_appear_in_no_answer_refusal_label_or_readiness_line(pki, monkeypatch):
+def test_the_keys_bytes_and_path_appear_in_no_relay_answer_refusal_relay_label_or_readiness_line(pki, monkeypatch):
+    """AEW's own lines name the key by its policy field (E123 review, m5: the run's layout record lists its path among
+    the masked paths, as it lists every mask, and that is not these lines)."""
     monkeypatch.setattr(netns, "relay_route", lambda policy, provider_relay: True)
     found = pki.files()
     said: list[tuple[client_cert.ClientCert, bytes]] = []

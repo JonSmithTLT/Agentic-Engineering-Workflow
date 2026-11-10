@@ -328,7 +328,8 @@ class RunNetwork:
     @classmethod
     def start_lead(cls, layout: Layout, *, keys: Mapping[str, str], provider_env: Iterable[str],
                    policy: Mapping[str, Any] | None, env: Mapping[str, str],
-                   refreshing: Mapping[str, Callable[[], tuple[str, Mapping[str, str]]]] | None = None) -> RunNetwork:
+                   refreshing: Mapping[str, Callable[[], tuple[str, Mapping[str, str]]]] | None = None,
+                   keyless: Iterable[str] = ()) -> RunNetwork:
         """The contained Lead's network (STG-05 CS-4, outcome 3). Under ``proxy_only``: a relay for each provider in
         ``keys`` (provider id -> its key, from the operator's stored login or a ``--provider-env`` variable), on its
         own loopback port inside from :data:`LEAD_RELAY_PORT`, with its sentinel in the provider's variable
@@ -337,8 +338,9 @@ class RunNetwork:
         :data:`REFRESHING_UPSTREAMS`, whose sentinel the session puts in the Lead's own login store
         (:attr:`login_sentinels`); and the egress proxy under the any-public policy (the operator's decision 3 of
         2026-10-21), which ``HTTPS_PROXY`` and ``HTTP_PROXY`` both name inside. ``provider_env``'s proxy variables are
-        the relays' own route to their upstreams, as a worker's are. Raises ``ContainmentUnavailable`` as
-        :meth:`start` does."""
+        the relays' own route to their upstreams, as a worker's are. ``keyless`` names providers of their own id whose
+        relay presents a client certificate and carries no key (register E123): their upstream is the policy's
+        ``containment.network.upstreams``. Raises ``ContainmentUnavailable`` as :meth:`start` does."""
         names = [str(n) for n in provider_env]
         net = cls(layout)
         net.lead, net.http_proxy = True, True
@@ -346,7 +348,7 @@ class RunNetwork:
             return net
         resolvers = dict(refreshing or {})
         try:
-            for i, provider in enumerate(sorted({*keys, *resolvers})):
+            for i, provider in enumerate(sorted({*keys, *resolvers, *keyless})):
                 resolve = resolvers.get(provider)
                 target = upstream(provider, policy, REFRESHING_UPSTREAMS if resolve else UPSTREAMS)
                 try:
@@ -356,7 +358,9 @@ class RunNetwork:
                 token = relay.sentinel()
                 tls, client = relay_tls(provider, policy)
                 listener = listen(os.path.join(layout.net_dir, _relay_sock(provider)))
-                if resolve is None:
+                if resolve is None and provider not in keys:  # a client certificate alone: nothing to swap in
+                    served = relay.ProviderRelay(target, {}, proxy=proxy, listener=listener, tls=tls, client=client)
+                elif resolve is None:
                     net.sentinels[PROVIDER_KEY_ENV[provider]] = token
                     net._values[PROVIDER_KEY_ENV[provider]] = keys[provider]
                     served = relay.ProviderRelay(target, {token: keys[provider]}, proxy=proxy, listener=listener,

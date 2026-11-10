@@ -127,6 +127,9 @@ systems:
   - E118
   - F48
   - E143
+  - E222
+  - E247
+  - E250
   as_built:
   - modules:aew.harness.containment
   - modules:aew.harness.containment.egress
@@ -221,6 +224,15 @@ systems:
       merged'
     row: E143
     estimate: remaining per its notes (estimate)
+  - slice: 'Windows network containment, with the Lead''s usage on Windows'
+    row: E222
+    estimate: not sized (estimate)
+  - slice: 'ProcessTree.active() with a group holding only a zombie, for checking'
+    row: E247
+    estimate: 1 small PR (estimate)
+  - slice: 'run_session_tree''s std handles on Windows'
+    row: E250
+    estimate: 1 small PR (estimate)
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
@@ -277,6 +289,7 @@ systems:
   - E73
   - E94
   - E148
+  - E236
   as_built:
   - modules:aew.dashboard
   - modules:aew.dashboard.contract
@@ -363,6 +376,9 @@ systems:
       (E143''s follow-on) but nothing in src/aew/dashboard reads it. The web developer''s to place'
     row: E148
     estimate: 1 PR (estimate)
+  - slice: 'the probe''s diagnostic on a host with no LISTENING row for its own listener'
+    row: E236
+    estimate: 1 small PR (estimate)
   decision: 'decided: kept, not frozen (the operator: "Keep the dashboard"); next after slot 1 (the reset of 2026-11-06
     (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md))'
   recommendation: finish
@@ -421,6 +437,13 @@ systems:
   - docs/contracts/A-37/G3-PROFILE.md
   register:
   - F18.6
+  - E227
+  - E228
+  - E229
+  - E230
+  - E232
+  - E240
+  - E249
   as_built:
   - modules:aew.engine.steering
   - modules:aew.harness.steering_loop
@@ -504,6 +527,27 @@ systems:
   - slice: 'F18.6, the principal proof, so operator records can carry more than guarantee: dev'
     row: F18.6
     estimate: 1-2 PRs (estimate), held
+  - slice: 'Scheduler priority: a Ticket field, three levels, the derived unblock count'
+    row: E227
+    estimate: not sized (estimate)
+  - slice: 'The scheduler on: the switch-on chain after E123'
+    row: E228
+    estimate: several PRs (estimate)
+  - slice: 'A priority floor, the operator''s setting'
+    row: E229
+    estimate: not sized (estimate)
+  - slice: 'A steering raise that persists for the project (SMP, A-56)'
+    row: E230
+    estimate: not sized (estimate)
+  - slice: 'A console window for a Linux background endpoint'
+    row: E232
+    estimate: 1 small PR (estimate)
+  - slice: 'Push wake measured on Windows'
+    row: E240
+    estimate: a measurement, no PR (estimate)
+  - slice: 'The conversational Lead''s docs follow-ons'
+    row: E249
+    estimate: 1 docs PR (estimate)
   decision: 'decided: hide request_raise and request_confirmation from the Lead''s normal catalog, keep lower; they return
     with a real grant path (operator, 2026-11-06 (design workspace decision record: board decisions))'
   recommendation: finish
@@ -568,6 +612,7 @@ systems:
   - E152
   - E156
   - F24
+  - E235
   as_built:
   - modules:aew.harness.registry
   - modules:aew.harness.base
@@ -653,6 +698,9 @@ systems:
       after it); held in HOLD-06'
     row: F24
     estimate: 1-2 PRs once released; an adapter not sized (estimate)
+  - slice: 'default_binary finds OpenCode Desktop 2.2.6''s copy'
+    row: E235
+    estimate: 1 small PR (estimate)
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
@@ -719,6 +767,9 @@ systems:
   - E162
   - E163
   - E121
+  - E231
+  - E233
+  - E241
   as_built:
   - modules:aew.surface
   - modules:aew.surface.contract
@@ -808,6 +859,15 @@ systems:
       Lead text fixes, and a typed `plan accept`'
     row: E162
     estimate: 1-2 PRs (estimate)
+  - slice: 'The Lead''s tool budget, decided before E158'
+    row: E231
+    estimate: a decision, then 0-1 PR (estimate)
+  - slice: 'The Lead''s exits: the eight dead ends, and the lands guard'
+    row: E233
+    estimate: not sized (estimate)
+  - slice: 'The worker route''s size check'
+    row: E241
+    estimate: 1 small PR (estimate)
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
@@ -1413,6 +1473,7 @@ systems:
   - docs/design/q7-m4h-value-gate-experiment-v0.3.1.md
   register:
   - F25
+  - E239
   as_built:
   - modules:aew.harness.usage
   - modules:aew.engine.usage_ops
@@ -1477,6 +1538,9 @@ systems:
   - slice: Token semantics qualified for more providers than OpenCode 2.0.18 with openai, with the harness's next qualification
     row: row owed
     estimate: not sized
+  - slice: 'U2''s real-TUI proof as a live-lane test'
+    row: E239
+    estimate: 1 PR (estimate)
   decision: 'decided: frozen whole by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
     item 6'
   recommendation: freeze
@@ -1612,6 +1676,7 @@ systems:
   - docs/contracts/A-09/A-09__AEW-coordination-native-integration-boundary-contract-candidate-v0.2.2.md
   register:
   - E131
+  - E248
   as_built:
   - modules:aew.engine.coordination_ops
   - modules:aew.coordination
@@ -1694,6 +1759,9 @@ systems:
   - slice: 'surface.presentation, which does nothing: wire it or remove it (BOARD v2 §4 loose end)'
     row: row owed
     estimate: 1 small PR (estimate, BOARD v2 §4)
+  - slice: 'A typed harness_interrupt'
+    row: E248
+    estimate: 1 PR (estimate)
   decision: 'decided: finished and switched on in slot 3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: finish
   who: operator (the BOARD v2 §3 decision and HOLD-09's release), then Lead
@@ -1750,6 +1818,12 @@ systems:
   register:
   - F21
   - F35
+  - E253
+  - E254
+  - E255
+  - E256
+  - E257
+  - E258
   as_built:
   - modules:aew.engine.recall
   - cli-commands:history search
@@ -1806,6 +1880,24 @@ systems:
   - slice: implementation-status.md:149-151 still calls the web UI S3 'next'; it is on main (BOARD v2 §6's docs PR)
     row: row owed
     estimate: part of 1 small docs PR (estimate)
+  - slice: 'Lessons (A-57, L), in six parts'
+    row: E253
+    estimate: 13-16 PRs (the designer's estimate)
+  - slice: 'Cases and capture'
+    row: E254
+    estimate: not sized (estimate)
+  - slice: 'The rule in shadow'
+    row: E255
+    estimate: not sized (estimate)
+  - slice: 'The rest of F35, sharing groups and the host settings layer'
+    row: E256
+    estimate: not sized (estimate)
+  - slice: 'Accepted-premise impact'
+    row: E257
+    estimate: not sized (estimate)
+  - slice: 'Two text fixes (KP-B6)'
+    row: E258
+    estimate: 1 small PR (estimate)
   decision: 'decided: frozen whole by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
     item 6'
   recommendation: freeze
@@ -1848,6 +1940,7 @@ systems:
   - docs/design/decisions-2026-10-11-architecture-integration.md
   register:
   - E119
+  - E259
   as_built:
   - modules:aew.engine.configuration
   - modules:aew.cli.settings_commands
@@ -2172,6 +2265,7 @@ systems:
   - E120
   - E125
   - E153
+  - E243
   as_built:
   - modules:aew.snapshot.fingerprint
   - modules:aew.engine.validation_ops
@@ -2214,6 +2308,9 @@ systems:
       working_diff, never called: keep or remove (BOARD v2 §4 loose end)'
     row: row owed
     estimate: 1 small PR (estimate, BOARD v2 §4)
+  - slice: 'A project-owned source for E120''s two lists'
+    row: E243
+    estimate: not sized (estimate)
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
@@ -2250,6 +2347,7 @@ systems:
   register:
   - STG-03
   - E82
+  - E223
   as_built:
   - modules:aew.g3client
   - modules:aew.cli.g3_commands
@@ -2289,6 +2387,9 @@ systems:
   - slice: 'The G3 install on a Linux host: root runs g3/install.sh and sets the PIN'
     row: STG-03
     estimate: an operator root step, no PR (estimate)
+  - slice: 'G3 on Windows'
+    row: E223
+    estimate: not sized (estimate)
   decision: 'decided: finished and switched on in slot 1 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: finish
   who: Lead (STG-03); operator for the root install on a host
@@ -3652,6 +3753,7 @@ systems:
   - docs/contracts/A-09/A-09__AEW-coordination-native-integration-boundary-contract-candidate-v0.2.2.md
   register:
   - E151
+  - E225
   as_built:
   - modules:aew.engine.queue_ops
   - modules:aew.engine.custody_ops
@@ -3721,6 +3823,9 @@ systems:
   - slice: The offer that switches an existing project's gates.yaml to the default, at the operator's terminal, which replaces
       the migration
     row: F10
+    estimate: 1 PR (estimate)
+  - slice: 'AEW''s git wrapper never acts on the wrong repository from inside a git operation'
+    row: E225
     estimate: 1 PR (estimate)
   decision: 'decided: finished and switched on in slot 3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: switch_on

@@ -645,7 +645,12 @@ def test_a_stopped_loop_wakes_the_lead_once_in_the_wakes_own_slot_with_no_run(la
     assert shape["loop"] == {"code": "BLOCKED", "subject": "T-1", "message": "FILES_CONFLICT: held"}
     assert lab.text().splitlines()[-1] == "- steering loop: stopped, BLOCKED on T-1"
     lab.poster.deliver()
-    lab.now += 60
+    lab.now += 30
+    lab.loop("BLOCKED")  # recorded again, and the Lead hasn't called since: still told, once
+    q.tick()
+    q.tick()
+    assert len(lab.poster.posts) == 1
+    lab.now += 30
     lab.last_call = lab.now  # the Lead reads, and ends its turn
     lab.loop("BLOCKED")  # the loop ticks on the read's commit, and records the same stop again
     q.tick()
@@ -680,6 +685,20 @@ def test_the_loop_moving_past_a_stop_and_stopping_there_again_is_a_new_occurrenc
     lab.loop("BLOCKED")
     q.tick()
     assert [lab.shape(i)["why"] for i in range(len(lab.poster.posts))] == [[K.LOOP_WAITING], [K.LOOP_WAITING]]
+
+
+def test_a_different_stop_after_a_told_one_is_a_new_occurrence_whatever_the_loop_did_between(lab):
+    """The key is the stop's condition: the loop going straight from one stop to another, with no idle tick the queue
+    saw, is news."""
+    lab.loop("BLOCKED")
+    q = lab.queue()
+    q.tick()
+    lab.poster.deliver()
+    lab.now += 10
+    lab.loop("BLOCKED", subject="T-2")  # another Ticket now holds it up
+    q.tick()
+    q.tick()
+    assert [lab.shape(i)["loop"]["subject"] for i in range(len(lab.poster.posts))] == ["T-1", "T-2"]
 
 
 @pytest.mark.parametrize("record", ["idle", "another_generation", "none"])

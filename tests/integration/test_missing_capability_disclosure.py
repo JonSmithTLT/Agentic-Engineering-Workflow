@@ -40,7 +40,8 @@ def test_status_timeout_trigger_and_wait_any_keep_each_runs_recorded_capability_
         "required_capabilities": ["source_mutation", "targeted_test_execution"]}), encoding="utf-8")
     releases, runs = [], []
     for i in range(2):
-        started, release = tmp_path / f"started-{i}", tmp_path / f"release-{i}"
+        # HarnessLab shares only `sync` for handshakes; Linux gives the worker a private /tmp elsewhere.
+        started, release = tmp_path / "sync" / f"started-{i}", tmp_path / "sync" / f"release-{i}"
         run = f"R-INV-000{i + 1}-1"
         lab.script(run, [{"do": "touch", "path": str(started)},
                          {"do": "wait_file", "path": str(release), "timeout": 300}])

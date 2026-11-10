@@ -200,7 +200,7 @@ def loop_state(aew_root: Any, generation: int | None = None) -> dict[str, Any] |
     stop = data.get("stop")
     if isinstance(stop, dict):
         out["stop"] = {k: str(stop.get(k))[:500] if stop.get(k) is not None else None
-                       for k in ("code", "message", "subject", "revision", "at")}
+                       for k in ("code", "message", "subject", "revision", "at", "condition")}
     return out
 
 

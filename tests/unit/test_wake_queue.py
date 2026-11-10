@@ -51,8 +51,9 @@ class Lab:
         self.root = root
         self.now = 1000.0
         self.poster = FakePoster()
-        self.state: dict[str, Any] = {"invocations": {}}
+        self.state: dict[str, Any] = {"invocations": {}, "lead": {"generation": 1}}
         self.ids = 0
+        self.last_call: float | None = None  # when the Lead last called its broker (A-58 CL-R07)
 
     def new_id(self) -> str:
         self.ids += 1
@@ -60,7 +61,22 @@ class Lab:
 
     def queue(self) -> Q.WakeQueue:
         return Q.WakeQueue(self.root, poster=self.poster, state=lambda: self.state, quiet_s=lambda: QUIET_S,
-                           clock=lambda: self.now, new_id=self.new_id)
+                           clock=lambda: self.now, new_id=self.new_id, last_call=lambda: self.last_call)
+
+    def loop(self, code: str | None = "BLOCKED", *, subject: str = "T-1", message: str = "FILES_CONFLICT: held",
+             generation: int = 1) -> None:
+        """``loop.json`` as the steering loop records it (``SteeringLoop._record``): a stop, or idle with None."""
+        from aew.engine import steering as S
+        from aew.harness import steering_loop as L
+
+        stop = L.Stop(code or L.IDLE, message, subject)
+        data = {"schema": S.LOOP_SCHEMA, "generation": generation, "status": "stopped" if code else "idle",
+                "mode": "run", "activation": None, "actions": 0,
+                "stop": {"code": stop.code, "message": stop.message, "subject": stop.subject, "revision": 7,
+                         "at": f"t{self.now}", "condition": L.condition_key(stop)}, "updated_at": f"t{self.now}"}
+        path = self.root / S.LOOP_REL
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data), encoding="utf-8")
 
     def live(self, run: str = RUN, *, work: str = "T-1", role: str = "implementer", inv: str | None = None) -> None:
         self.state["invocations"][inv or f"inv-{run}"] = {
@@ -612,3 +628,127 @@ def test_a_superseded_broker_leaves_the_new_generations_serving_mark(lab: Lab) -
     Q.mark_serving(lab.root, 8)
     Q.clear_serving(lab.root, 7)
     assert Q.serving(lab.root) == 8
+
+
+# ---------------------------------------------------------------------------------------------- loop_waiting (CL-R07)
+
+
+def test_a_stopped_loop_wakes_the_lead_once_in_the_wakes_own_slot_with_no_run(lab):
+    """A-58 CL-R07: a stop only the Lead can judge is a reason of its own, `loop_waiting`, and belongs to no run: it
+    rides in the wake's `loop` slot. A Lead that is woken, reads and ends its turn isn't woken again for the same stop,
+    even when the loop records it again."""
+    lab.loop("BLOCKED")
+    q = lab.queue()
+    q.tick()
+    shape = lab.shape()
+    assert shape["why"] == [K.LOOP_WAITING] and shape["runs"] == {} and shape["next"] == [K.LOOP_WAITING]
+    assert shape["loop"] == {"code": "BLOCKED", "subject": "T-1", "message": "FILES_CONFLICT: held"}
+    assert lab.text().splitlines()[-1] == "- steering loop: stopped, BLOCKED on T-1"
+    lab.poster.deliver()
+    lab.now += 60
+    lab.last_call = lab.now  # the Lead reads, and ends its turn
+    lab.loop("BLOCKED")  # the loop ticks on the read's commit, and records the same stop again
+    q.tick()
+    q.tick()
+    assert len(lab.poster.posts) == 1
+
+
+def test_a_lead_call_since_the_stop_was_seen_means_it_has_seen_it_so_no_wake(lab):
+    """BOY-09.b's clear: the Lead's next call shows it the stop. Checked when gathered and again just before the
+    post."""
+    lab.loop("DECISION_REQUIRED", message="plan_acceptance is the Lead's")
+    lab.poster.is_busy = True  # a turn is running: gathered, held
+    q = lab.queue()
+    q.tick()
+    assert q.doc["wake"]["why"] == [K.LOOP_WAITING]
+    lab.now += 5
+    lab.last_call = lab.now  # that turn called a tool after the stop appeared
+    lab.poster.is_busy = False
+    q.tick()
+    assert lab.poster.posts == [] and q.doc["wake"] is None and q.doc["dropped"] == 1
+
+
+def test_the_loop_moving_past_a_stop_and_stopping_there_again_is_a_new_occurrence(lab):
+    lab.loop("BLOCKED")
+    q = lab.queue()
+    q.tick()
+    lab.poster.deliver()
+    lab.now += 10
+    lab.loop(None)  # it went on: idle
+    q.tick()
+    lab.now += 10
+    lab.loop("BLOCKED")
+    q.tick()
+    assert [lab.shape(i)["why"] for i in range(len(lab.poster.posts))] == [[K.LOOP_WAITING], [K.LOOP_WAITING]]
+
+
+@pytest.mark.parametrize("record", ["idle", "another_generation", "none"])
+def test_an_idle_loop_another_generations_record_or_none_never_wakes(lab, record):
+    if record == "idle":
+        lab.loop(None)
+    elif record == "another_generation":
+        lab.loop("BLOCKED", generation=2)  # a record the current Lead's loop didn't write
+    q = lab.queue()
+    q.tick()
+    assert lab.poster.posts == [] and q.doc["wake"] is None
+
+
+def test_a_loop_stop_and_a_runs_news_go_in_one_wake_in_the_guides_order(lab):
+    lab.live()
+    lab.digest(triggers=[{"seq": 1, "why": K.TEST_FAILED, "command": "pytest", "kind": "broke"}],
+               last_test={"command": "pytest", "outcome": "fail"}, red_commands=["pytest"])
+    lab.loop("UNKNOWN", message="T-1: ticket_start is UNKNOWN (GUARD_NOT_QUERYABLE): never runnable")
+    q = lab.queue()
+    q.tick()
+    assert len(lab.poster.posts) == 1
+    shape = lab.shape()
+    assert shape["why"] == [K.TEST_FAILED, K.LOOP_WAITING] and RUN in shape["runs"]
+    assert shape["loop"]["code"] == "UNKNOWN"
+
+
+def test_a_wake_held_while_the_loop_changes_its_stop_tells_the_stop_it_has_now(lab):
+    lab.loop("BLOCKED")
+    lab.poster.is_busy = True
+    q = lab.queue()
+    q.tick()
+    lab.loop("ANOMALY_HIGH", subject="project", message="open high anomaly A-1")
+    lab.poster.is_busy = False
+    q.tick()
+    assert len(lab.poster.posts) == 1 and lab.shape()["loop"]["code"] == "ANOMALY_HIGH"
+
+
+def test_the_lead_is_told_of_loop_waiting_where_it_is_told_of_its_other_push_only_reason():
+    from aew.harness.opencode.projection import lead_wake_text
+
+    text = lead_wake_text()
+    for why in K.PUSHED_ONLY:
+        assert f"    - `{why}`: {K.WAKE_GUIDE[why].means}." in text
+    assert "`loop`" in text
+
+
+def test_no_step_the_loop_auto_runs_ingests_a_run_so_no_run_end_is_the_loops_to_take():
+    """CL-R07's last bullet: `run_ended` for a run the loop will ingest isn't current. The loop auto-runs only actions
+    that aren't judgment-bearing (``surface.classify``), and none of those ingests a run today, so every run's end is
+    the Lead's news. The first auto-run step that ingests fails here, and must make `_current` drop such a run's end."""
+    from aew.surface import contract as C
+
+    auto = [t for t in C.TOOLS.values() if t.progression and t.base_class != C.JUDGMENT_BEARING]
+    assert auto, "the loop auto-runs something"
+    assert not [(t.name, p) for t in auto for p in t.expands_to if p.endswith(".ingest") or "ingest" in p.split(".")]
+
+
+def test_the_loop_records_each_stops_condition_so_one_occurrence_has_one_key(tmp_path):
+    """The told-once key is the loop's own notion of an occurrence (``Stop.condition``), written to ``loop.json`` and
+    read back by ``status``'s reader, which the queue uses."""
+    import inspect
+
+    from aew.engine import steering as S
+    from aew.harness import steering_loop as L
+
+    same = L.Stop(L.BLOCKED, "FILES_CONFLICT: held", "T-1")
+    assert L.condition_key(same) == L.condition_key(L.Stop(L.BLOCKED, "FILES_CONFLICT: held", "T-1"))
+    assert L.condition_key(same) != L.condition_key(L.Stop(L.BLOCKED, "FILES_CONFLICT: held", "T-2"))
+    assert '"condition": condition_key(stop)' in inspect.getsource(L.SteeringLoop._record)
+    lab = Lab(tmp_path)
+    lab.loop("BLOCKED")
+    assert S.loop_state(tmp_path, generation=1)["stop"]["condition"] == L.condition_key(same)

@@ -380,6 +380,7 @@ OUT_OF_SCOPE = "out_of_scope"
 WORKER_MESSAGE = "worker_message"
 WORKER_IDLE = "worker_idle"
 QUIET = "quiet"
+LOOP_WAITING = "loop_waiting"  # A-58 CL-R07: a steering loop stop only the Lead can judge; no run (the wake's `loop`)
 TIMED_OUT = "timed_out"  # the wait result's own field, not a ``why``
 
 
@@ -422,9 +423,18 @@ WAKE_GUIDE: dict[str, Wake] = {
         act="read its digest: while its steps and files still move, let it run; when they do not, steer or interrupt "
             "it",
         tell="whether the run is still making progress"),
+    LOOP_WAITING: Wake(
+        means="the steering loop stopped on something only you can judge (a decision, a blocker, or a stop it can't "
+              "act past), and starts nothing until you act",
+        act="read `loop` in the wake (the stop's code, subject and message); settle what it names with the tools "
+            "that exist, or lower the steering mode (`steering`) if you won't",
+        tell="why the loop stopped and what you did about it"),
 }
 WHY: tuple[str, ...] = tuple(WAKE_GUIDE)
 WAITED_ON: tuple[str, ...] = (RUN_ENDED, TEST_FAILED, OUT_OF_SCOPE, WORKER_IDLE)
+# The reasons only a push wake gives: a wait is about runs, and these are not a run's news. `worker_message` is in
+# neither list until messaging is on.
+PUSHED_ONLY: tuple[str, ...] = (QUIET, LOOP_WAITING)
 # The timed-out action in two parts, so the wait command sits right after the default one (E122 review, m2).
 WAIT_AGAIN = "wait again with `harness_wait`"
 WAIT_OR_ELSE = ("steer a run (`aew harness send`) or interrupt it (`aew harness interrupt`), or ask the operator, "

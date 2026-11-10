@@ -114,6 +114,12 @@ class Stop:
                 self.episode)
 
 
+def condition_key(stop: Stop) -> str:
+    """``stop.condition`` as one stable string, in ``loop.json``: what makes a recorded stop the same occurrence as an
+    earlier one (the Lead's ``loop_waiting`` wake is told once per occurrence; A-58 ``CL-R07``)."""
+    return sha256_bytes(json.dumps(list(stop.condition), separators=(",", ":")).encode())
+
+
 @dataclass(frozen=True)
 class Choice:
     action: dict[str, Any]
@@ -596,7 +602,7 @@ class SteeringLoop:
                 "status": "idle" if stop.code == IDLE else "stopped", "mode": mode,
                 "activation": act.id if act else None, "actions": act.actions if act else 0,
                 "stop": {"code": stop.code, "message": stop.message[:2000], "subject": stop.subject,
-                         "revision": revision, "at": utc_now()},
+                         "revision": revision, "at": utc_now(), "condition": condition_key(stop)},
                 "updated_at": utc_now()}
         _write(self.aew_root / S.LOOP_REL, data)
         if not stop.attention:

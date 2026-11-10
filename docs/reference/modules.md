@@ -1631,6 +1631,7 @@ None.
 
 ### `aew.harness.wake_queue`
 
+- `aew.engine.steering`
 - `aew.harness.broker_liveness`
 - `aew.harness.contract`
 - `aew.harness.lead_broker`

@@ -1,0 +1,1 @@
+**Split by A-57's `KP-B1` (2026-11-09):** the Lessons increment is E253, and Cases and capture are E254. E255 to E258 are A-57's other rows (`KP-B2`, `KP-B3`, `KP-B5`, `KP-B6`). E185 is rewritten to the Lead's relayed read.

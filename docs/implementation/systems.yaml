@@ -127,6 +127,9 @@ systems:
   - E118
   - F48
   - E143
+  - E222
+  - E247
+  - E250
   as_built:
   - modules:aew.harness.containment
   - modules:aew.harness.containment.egress
@@ -221,6 +224,15 @@ systems:
       merged'
     row: E143
     estimate: remaining per its notes (estimate)
+  - slice: 'Windows network containment, with the Lead''s usage on Windows'
+    row: E222
+    estimate: not sized (estimate)
+  - slice: 'ProcessTree.active() with a group holding only a zombie, for checking'
+    row: E247
+    estimate: 1 small PR (estimate)
+  - slice: 'run_session_tree''s std handles on Windows'
+    row: E250
+    estimate: 1 small PR (estimate)
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
@@ -277,6 +289,7 @@ systems:
   - E73
   - E94
   - E148
+  - E236
   as_built:
   - modules:aew.dashboard
   - modules:aew.dashboard.contract
@@ -363,6 +376,9 @@ systems:
       (E143''s follow-on) but nothing in src/aew/dashboard reads it. The web developer''s to place'
     row: E148
     estimate: 1 PR (estimate)
+  - slice: 'the probe''s diagnostic on a host with no LISTENING row for its own listener'
+    row: E236
+    estimate: 1 small PR (estimate)
   decision: 'decided: kept, not frozen (the operator: "Keep the dashboard"); next after slot 1 (the reset of 2026-11-06
     (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md))'
   recommendation: finish
@@ -421,6 +437,13 @@ systems:
   - docs/contracts/A-37/G3-PROFILE.md
   register:
   - F18.6
+  - E227
+  - E228
+  - E229
+  - E230
+  - E232
+  - E240
+  - E249
   as_built:
   - modules:aew.engine.steering
   - modules:aew.harness.steering_loop
@@ -504,12 +527,35 @@ systems:
   - slice: 'F18.6, the principal proof, so operator records can carry more than guarantee: dev'
     row: F18.6
     estimate: 1-2 PRs (estimate), held
+  - slice: 'Scheduler priority: a Ticket field, three levels, the derived unblock count'
+    row: E227
+    estimate: not sized (estimate)
+  - slice: 'The scheduler on: the switch-on chain after E123'
+    row: E228
+    estimate: several PRs (estimate)
+  - slice: 'A priority floor, the operator''s setting'
+    row: E229
+    estimate: not sized (estimate)
+  - slice: 'A steering raise that persists for the project (SMP, A-56)'
+    row: E230
+    estimate: not sized (estimate)
+  - slice: 'A console window for a Linux background endpoint'
+    row: E232
+    estimate: 1 small PR (estimate)
+  - slice: 'Push wake measured on Windows'
+    row: E240
+    estimate: a measurement, no PR (estimate)
+  - slice: 'The conversational Lead''s docs follow-ons'
+    row: E249
+    estimate: 1 docs PR (estimate)
   decision: 'decided: hide request_raise and request_confirmation from the Lead''s normal catalog, keep lower; they return
     with a real grant path (operator, 2026-11-06 (design workspace decision record: board decisions))'
-  recommendation: freeze
-  who: designer; operator for hiding request_raise and request_confirmation (BOARD v2 §3)
-  reason: 'Everything left is held in HOLD-19 and HOLD-17, and A-37 moves confirmation to G3, so E7c as planned may be superseded
-    (BOARD v2 §4). This entry''s reading of the code at c11a61ea (not BOARD''s) narrows BOARD v2 §1''s ''lower works at
+  recommendation: finish
+  who: Lead
+  reason: 'Steering''s push wake has merged whole: the server, endpoint auto-start and push wake PR 3. The live work is
+    outside HOLD-19 and HOLD-17: the scheduler''s chain (E228), which follows E123 in the builder order (the operator ranked
+    it above stall detection, 2026-11-09). Confirmation and the publication grants stay held in HOLD-19; A-37 still moves
+    confirmation to G3, so E7c as planned may be superseded (BOARD v2 §4). This entry''s reading of the code at c11a61ea (not BOARD''s) narrows BOARD v2 §1''s ''lower works at
     any time''. lower takes no approval, but it needs an effective mode above its target, and walk or run becomes effective
     only by the operator''s raise at the --dev endpoint: an adopted walk or run default waits there as a pending raise,
     and an adopted crawl leaves nothing lower. In a project with no steering.mode, which is the template''s default, every
@@ -567,6 +613,7 @@ systems:
   - E152
   - E156
   - F24
+  - E235
   as_built:
   - modules:aew.harness.registry
   - modules:aew.harness.base
@@ -627,7 +674,7 @@ systems:
     row: E35
     estimate: 1 PR (estimate)
   - slice: 'H-1: qualify OpenCode 2.1.4, with the C1 compaction re-probe, a TESTED_VERSIONS entry and a token_semantics
-      row (on the Now list, after CAP-1 PR 3)'
+      row (on the Now list; CAP-1 PR 3 has merged)'
     row: E35
     estimate: 1-2 PRs (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
@@ -652,6 +699,9 @@ systems:
       after it); held in HOLD-06'
     row: F24
     estimate: 1-2 PRs once released; an adapter not sized (estimate)
+  - slice: 'default_binary finds OpenCode Desktop 2.2.6''s copy'
+    row: E235
+    estimate: 1 small PR (estimate)
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
@@ -718,6 +768,9 @@ systems:
   - E162
   - E163
   - E121
+  - E231
+  - E233
+  - E241
   as_built:
   - modules:aew.surface
   - modules:aew.surface.contract
@@ -807,6 +860,15 @@ systems:
       Lead text fixes, and a typed `plan accept`'
     row: E162
     estimate: 1-2 PRs (estimate)
+  - slice: 'The Lead''s tool budget, decided before E158'
+    row: E231
+    estimate: a decision, then 0-1 PR (estimate)
+  - slice: 'The Lead''s exits: the eight dead ends, and the lands guard'
+    row: E233
+    estimate: not sized (estimate)
+  - slice: 'The worker route''s size check'
+    row: E241
+    estimate: 1 small PR (estimate)
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
@@ -1065,8 +1127,8 @@ systems:
     exercised in a real Lead run. Dispositions and the custody publish (E6b, PIC) stay out of the finish line until the
     designer''s D4 and the operator''s placement out of HOLD-10.'
   remaining:
-  - slice: 'E137: integration_publish stranded after STALE_REVISION following its first commit, and the stages stranded
-      like it'
+  - slice: 'E137: the other judgment stages stranded at their last committed step, and the custody worker''s registration
+      (suspected); the publish case is fixed'
     row: E137
     estimate: 1 PR (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
@@ -1192,9 +1254,6 @@ systems:
     capabilities resolve against the register instead of printing 'workbench resolution pending'; exercised in a real contained
     run.
   remaining:
-  - slice: 'CAP-1 PR 3: fd, jq, yq, ast-grep and Universal Ctags as records (on the Now list)'
-    row: STG-15
-    estimate: 1 PR (estimate)
   - slice: 'The owed lines from CAP-1 PR 2''s review: the agent system-text line naming a missing tool, the Lead''s results
       line, the consent prompt, `aew capability fetch` and the setup fetch'
     row: STG-15
@@ -1416,6 +1475,7 @@ systems:
   - docs/design/q7-m4h-value-gate-experiment-v0.3.1.md
   register:
   - F25
+  - E239
   as_built:
   - modules:aew.harness.usage
   - modules:aew.engine.usage_ops
@@ -1480,6 +1540,9 @@ systems:
   - slice: Token semantics qualified for more providers than OpenCode 2.0.18 with openai, with the harness's next qualification
     row: row owed
     estimate: not sized
+  - slice: 'U2''s real-TUI proof as a live-lane test'
+    row: E239
+    estimate: 1 PR (estimate)
   decision: 'decided: frozen whole by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
     item 6'
   recommendation: freeze
@@ -1615,6 +1678,7 @@ systems:
   - docs/contracts/A-09/A-09__AEW-coordination-native-integration-boundary-contract-candidate-v0.2.2.md
   register:
   - E131
+  - E248
   as_built:
   - modules:aew.engine.coordination_ops
   - modules:aew.coordination
@@ -1697,6 +1761,9 @@ systems:
   - slice: 'surface.presentation, which does nothing: wire it or remove it (BOARD v2 §4 loose end)'
     row: row owed
     estimate: 1 small PR (estimate, BOARD v2 §4)
+  - slice: 'A typed harness_interrupt'
+    row: E248
+    estimate: 1 PR (estimate)
   decision: 'decided: finished and switched on in slot 3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: finish
   who: operator (the BOARD v2 §3 decision and HOLD-09's release), then Lead
@@ -1753,6 +1820,13 @@ systems:
   register:
   - F21
   - F35
+  - E185
+  - E253
+  - E254
+  - E255
+  - E256
+  - E257
+  - E258
   as_built:
   - modules:aew.engine.recall
   - cli-commands:history search
@@ -1790,13 +1864,13 @@ systems:
     - dashboard:/history/search
     on_by_default: false
     used_in_default_flow: 'no'
-  finish_line: 'For V-01: K-01''s H profile as built (the explicit raw-history search), with the operator''s answer recorded
-    on whether the Lead gets a typed read of it or H stays operator-only. After V-01: K-01''s L profile (Lessons nominated,
+  finish_line: 'For V-01: K-01''s H profile as built (the explicit raw-history search), with the Lead''s relayed read of
+    it on by default (E185, A-57 KP-B1). After V-01: K-01''s L profile (Lessons nominated,
     admitted and served) and F35''s pack serving, built, on and exercised in a real run.'
   remaining:
-  - slice: 'The operator''s answer (BOARD v2 §3): a typed read of Arm B for the Lead, or H recorded as operator-only'
-    row: row owed
-    estimate: 1 PR if a typed read; 0 if recorded operator-only (estimate)
+  - slice: 'The Lead''s read of Arm B, on by default: a relayed `aew` command, not a typed tool (A-57, KP-B1)'
+    row: E185
+    estimate: 1 PR (estimate)
   - slice: 'After V-01: K-01''s L profile and F35''s pack serving'
     row: F35
     estimate: 4-8 PRs (estimate)
@@ -1809,13 +1883,33 @@ systems:
   - slice: implementation-status.md:149-151 still calls the web UI S3 'next'; it is on main (BOARD v2 §6's docs PR)
     row: row owed
     estimate: part of 1 small docs PR (estimate)
-  decision: 'decided: frozen whole by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
-    item 6'
+  - slice: 'Lessons (A-57, L), in six parts'
+    row: E253
+    estimate: 13-16 PRs (the designer's estimate)
+  - slice: 'Cases and capture'
+    row: E254
+    estimate: not sized (estimate)
+  - slice: 'The rule in shadow'
+    row: E255
+    estimate: not sized (estimate)
+  - slice: 'The rest of F35, sharing groups and the host settings layer'
+    row: E256
+    estimate: not sized (estimate)
+  - slice: 'Accepted-premise impact'
+    row: E257
+    estimate: not sized (estimate)
+  - slice: 'Two text fixes (KP-B6)'
+    row: E258
+    estimate: 1 small PR (estimate)
+  decision: 'decided: unfrozen for planning, not placed (the operator, 2026-11-08: "yes unfreeze for planning and let
+    the lead read history search"); it was frozen whole by the reset of 2026-11-06 (design workspace record
+    2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: freeze
-  who: Lead (the Lead's typed read after first use); workers with F15.3 (HOLD-06, the match places it)
+  who: Lead (the Lead's relayed read, E185); workers with F15.3 (HOLD-06, the match places it)
   reason: Arm B is what the register's V-01 milestone selects for knowledge (history and source lookup only, K-01's H profile,
-    future-work.yaml (§1 text, at c11a61ea)), off by default and absent while off; the rest is after V-01, and whether agents
-    reach H is the operator's open question.
+    future-work.yaml (§1 text, at c11a61ea)), off by default and absent while off. The operator has answered whether agents
+    reach H. The Lead reads it through a relayed command, on by default (E185, A-57 KP-B1), and workers' search is part of
+    E253. The rest is after V-01.
   evidence:
   - src/aew/engine/recall.py:1-8 off by default and absent while off; refused inside an invocation
   - src/aew/engine/recall.py:97-108,140-151 the switch read from adopted bytes only, failing closed
@@ -1851,6 +1945,7 @@ systems:
   - docs/design/decisions-2026-10-11-architecture-integration.md
   register:
   - E119
+  - E259
   as_built:
   - modules:aew.engine.configuration
   - modules:aew.cli.settings_commands
@@ -1883,22 +1978,18 @@ systems:
     flags (E119) are the fresh-project path. No further F46 slice is built. The register says whether F46.2 is held or retired
     into I-6, and the unread project.profile field is dropped.'
   remaining:
-  - slice: The register records F46.2's fate (held, or retired into I-6's owner actions) after the operator's answer in
-      BOARD v2 §3, and with it F46.3, F46.4 and the unbuilt /configuration route
-    row: HOLD-19
-    estimate: 1 register edit (estimate)
   - slice: Drop the unread project.profile field, batched with BOARD v2 §4's loose ends
-    row: row owed
+    row: E259
     estimate: part of 1 small batched PR (estimate)
-  decision: 'BOARD v2 §3 (BOARD.md:136), put to the operator: "Settings write path (F46.2): held, or retired into I-6".
-    It is the operator''s because "the records disagree". The designer''s recommendation: "Retire into I-6".'
+  decision: 'decided: the settings write path (F46.2) retires into I-6 (SYS-29); `settings show` and `aew init`''s flags
+    stay (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done", on the Lead''s three recommendations)'
   recommendation: cut
-  who: operator (BOARD v2 §3), then Lead
+  who: Lead
   reason: The F46.2 settings write path retires into I-6 (SYS-29), the designer's recommendation in BOARD v2 §3; `settings
     show` stays as I-6's configuration read. The read projection is built and serves as the configuration read; E119 now
     covers first settings at init. Only F46's write, catalog and web slices are left. The records disagree on whether F46.2
-    is held (HOLD-19) or retired into I-6's owner actions, and the designer recommends retiring it (BOARD v2 §3), which
-    leaves this system frozen at its read until the operator answers.
+    is held (HOLD-19) or retired into I-6's owner actions; the operator decided it retires into I-6 (2026-11-09), so this
+    system stays frozen at its read, and HOLD-19's disagreement ends.
   evidence:
   - src/aew/engine/configuration.py:1-7 the read-only configuration projection (F46.1); :60-67 the AWAITS_F46_2, AWAITS_F46_3
     and AWAITS_LATER_F46 reasons, with workflow and project UNSUPPORTED; :141 config_digest for a later Save
@@ -2136,9 +2227,10 @@ systems:
   - slice: 'F4 S2a onward: enablement, format raise, records, binding, confirmation, holds'
     row: F4
     estimate: about 15 PRs if released (estimate, census)
-  decision: none
+  decision: 'decided: frozen until I-5''s revision commands land (BOARD v2 §4), the designer agreeing; E126, E88 and E87
+    stay on their own rows (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done", with E123 its condition)'
   recommendation: freeze
-  who: designer (the freeze); Lead for E126 (on the Now list)
+  who: Lead for E126 (the freeze is decided)
   reason: 'BOARD v2 §4: freeze; held in HOLD-08, S1 is dormant and safe, and E126 and E88 proceed on their own rows. No
     src path calls S1''s pure functions, and the coordination placeholders refuse revisions safely; RecipientIndependent
     stays unreachable until a ''revision'' scope enters the control schema.'
@@ -2178,6 +2270,7 @@ systems:
   - E120
   - E125
   - E153
+  - E243
   as_built:
   - modules:aew.snapshot.fingerprint
   - modules:aew.engine.validation_ops
@@ -2208,17 +2301,10 @@ systems:
     V3's two missing detectors exist (E153); artifact_digests is populated or dropped and working_diff kept or removed;
     all exercised by the vertical driver and a real run. The remote validation provider stays Designed until it has acceptance.
   remaining:
-  - slice: 'E120: coverage on the record, failing lines back to the worker, skills asked for and not given (on the Now list)'
+  - slice: 'E120: what its first PR left owed: the record''s section 2 (what a run went without), and E243''s project-owned
+      source for the two lists its record now says are not known'
     row: E120
-    estimate: 1-2 PRs (estimate, census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E125: the local readiness surface, with the driver asserting the diagnosis (on the Now list; E119 has merged)'
-    row: E125
-    estimate: 1 PR (estimate, census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E153: detectors for V3''s check-changes-snapshot and model-not-listed, after a ruling on what may run'
-    row: E153
-    estimate: 1 PR after the ruling (estimate, census)
+    estimate: 1-2 PRs (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
       artifact_digests, always empty: populate or drop (BOARD v2 §4 loose end)'
     row: row owed
@@ -2227,6 +2313,9 @@ systems:
       working_diff, never called: keep or remove (BOARD v2 §4 loose end)'
     row: row owed
     estimate: 1 small PR (estimate, BOARD v2 §4)
+  - slice: 'A project-owned source for E120''s two lists'
+    row: E243
+    estimate: not sized (estimate)
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
@@ -2263,6 +2352,7 @@ systems:
   register:
   - STG-03
   - E82
+  - E223
   as_built:
   - modules:aew.g3client
   - modules:aew.cli.g3_commands
@@ -2302,6 +2392,9 @@ systems:
   - slice: 'The G3 install on a Linux host: root runs g3/install.sh and sets the PIN'
     row: STG-03
     estimate: an operator root step, no PR (estimate)
+  - slice: 'G3 on Windows'
+    row: E223
+    estimate: not sized (estimate)
   decision: 'decided: finished and switched on in slot 1 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: finish
   who: Lead (STG-03); operator for the root install on a host
@@ -2356,6 +2449,7 @@ systems:
   - F42.3
   - F44
   - F15.9
+  - E215
   as_built:
   - modules:aew.engine.resume_ops
   - modules:aew.engine.status_ops
@@ -2427,17 +2521,21 @@ systems:
   - slice: 'S6: the fallback item when the Lead goes quiet (V-01)'
     row: E107
     estimate: 1 PR (estimate)
-  - slice: 'S7: a probe of what AEW can observe of the Lead''s TUI, no product code (Evaluation)'
+  - slice: 'S7: a probe of what AEW can observe of a pending dialog in the Lead''s TUI, no product code (Evaluation);
+      attach and credential are closed, AEW hosts the server (A-58)'
     row: E109
     estimate: 1 probe (estimate)
-  - slice: 'S8: the Lead''s harness waits as items, after S7; unscheduled, the register leaves its placement to the operator
-      once S7''s data and the answer to Q9 or Q10 are in'
+  - slice: 'What the Lead is waiting on, shown on the site (A-58 CL-R04, replacing A-44''s S8); it rests on nothing but
+      its placement, the operator''s'
     row: E110
     estimate: not sized
   - slice: 'HOLD-10''s members as the hold match (main 5308bd8c) placed them: F43 (S2 and S3), F44 and F15.9 restored as
       rows; E12 merged into E170 and E69 into F44; F42, E20, E28 and E70 dropped'
     row: F43
     estimate: not sized
+  - slice: 'The pending dialog: a TUI permission ask or form named as an item (A-58 CL-R04); Q10 is asked with E109''s data'
+    row: E215
+    estimate: not sized (estimate)
   decision: 'decided: frozen whole by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
     item 6'
   recommendation: freeze
@@ -2752,9 +2850,11 @@ systems:
   - slice: 'E124: an optional key-holding service on G3''s pattern; nothing designed yet, after first use'
     row: E124
     estimate: 'not sized: undesigned'
-  decision: none
+  decision: 'decided: frozen in HOLD-20 (gateway, usage convergence, routing policy, reference profiles), the designer
+    agreeing, with E123 its own entry, SYS-47 (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done": E123 is the
+    condition)'
   recommendation: freeze
-  who: designer (the HOLD-20 match); E123 moved to SYS-47
+  who: Lead (E123, in SYS-47); the freeze is decided
   reason: 'Held in HOLD-20 (BOARD v2 §4: ''only E123 is live work''); E123 is its own entry, SYS-47, so the freeze leaves
     it running. Only E123 is live work, the gate before a provider that requires a client certificate; BOARD v2 §4 freezes
     the rest (gateway, usage convergence, routing policy, reference profiles) in HOLD-20.'
@@ -2817,7 +2917,8 @@ systems:
     stall recovery; the bounded handoff note; and a scheduler designed against today''s steering loop: each exercised in
     a real run.'
   remaining:
-  - slice: 'U1 + F41.8: the run-health fields and a `stalled` wait result (the slice to pull forward if first use repeats
+  - slice: 'U1 + F41.8: the run-health fields and `stalled`, a reason on the Lead''s one wake list (A-58), by a wake
+      and the wait (the slice to pull forward if first use repeats
       the 20-minute hang)'
     row: U1
     estimate: 1-2 PRs (estimate)
@@ -3354,7 +3455,6 @@ systems:
   - src/aew/engine/brief_check.py
   - tests/unit/test_brief_check.py
   depends_on:
-  - SYS-18
   - SYS-33
   state:
     board_state: designed_only
@@ -3381,8 +3481,9 @@ systems:
     decisions))'
   recommendation: finish
   who: operator places E154 (BOARD v2 §3); then Lead
-  reason: Adopted (A-47) with nothing built; E154 is unscheduled and the operator's to place, recommended after first use;
-    its release step needs U-01's migration path, also unbuilt.
+  reason: Adopted (A-47) with nothing built; F4 (SYS-18) is an ordering note, not a dependency, since LB01-R10 covers F4
+    unbuilt; E154 is unscheduled and the operator's to place, recommended after first use; its release step needs U-01's
+    migration path, also unbuilt.
   evidence:
   - grep of src/aew for '"brief"', code_facts, cited_text and launch_brief finds nothing; tests/helpers/vertical/oracle.py:175
     code_facts() is the vertical oracle's, unrelated
@@ -3663,6 +3764,7 @@ systems:
   - docs/contracts/A-09/A-09__AEW-coordination-native-integration-boundary-contract-candidate-v0.2.2.md
   register:
   - E151
+  - E225
   as_built:
   - modules:aew.engine.queue_ops
   - modules:aew.engine.custody_ops
@@ -3732,6 +3834,9 @@ systems:
   - slice: The offer that switches an existing project's gates.yaml to the default, at the operator's terminal, which replaces
       the migration
     row: F10
+    estimate: 1 PR (estimate)
+  - slice: 'AEW''s git wrapper never acts on the wrong repository from inside a git operation'
+    row: E225
     estimate: 1 PR (estimate)
   decision: 'decided: finished and switched on in slot 3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: switch_on
@@ -3869,11 +3974,12 @@ systems:
     and a profile add as operator-decided commands; an operator-requested review is dispatched and attached; exercised in
     a real Lead run.'
   remaining:
-  - slice: consult mode, its gate path, the tool, the Lead-call ingest and the wake (consult design, Placement, PR 1)
+  - slice: consult mode, its gate path, the tool, `consult_show` with the ingest, and the wake (consult design, Placement, PR 1;
+      A-58 CL-R03)
     row: E158
     estimate: '1 PR (estimate; the designer''s reading, consult design Placement: 2 PRs in all)'
-  - slice: the bounds and the allow-list, the isolation tests, `consult_show`, the resume lists and the Lead's text (consult
-      design, Placement, PR 2)
+  - slice: the bounds and the allow-list, the isolation tests, the resume lists and the Lead's text (consult design, Placement,
+      PR 2)
     row: E158
     estimate: 1 PR (estimate; same source)
   - slice: '`aew policy model allow <provider/model>` and a profile add, operator-decided, with their surface-map entries
@@ -4327,7 +4433,6 @@ systems:
   - tests/unit/test_provider_relay.py
   depends_on:
   - SYS-02
-  - SYS-25
   - SYS-33
   state:
     board_state: designed_only
@@ -4350,7 +4455,8 @@ systems:
     estimate: a live run, no PR (estimate)
   decision: none
   recommendation: finish
-  who: Lead, after the designer's E99 design (BOARD v2 §1); operator for the live AIR-85 qualification
+  who: Lead (E99 is adopted as A-55, which names E123 as the provider-access owner); operator for the live AIR-85
+    qualification
   reason: Half of E123's Now item (BOARD v2 §1), split from the frozen gateway (SYS-25) so the freeze does not stop it.
   evidence:
   - 'src/aew/harness/containment/relay.py:449-454 (_tls_context: ssl.create_default_context() with a TLS 1.2 floor and no

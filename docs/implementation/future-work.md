@@ -44,7 +44,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 10 | closed: E121 | A readable result: a headline per result in chat, closed by #328 |
 | 11 | E122 | The next step while the Lead waits |
 | 12 | STG-03 | **After first use, or earlier if a builder slot is free:** G3-C with `ATTACH_LEAD`, E82 and the G3 install. G3-A, G3-B and G3-D are merged (#269, #282, #286). It never holds first use |
-| 13 | E123 | **Before the work step:** the relay presenting a client certificate, and the bundle (E99, whose design is owed) |
+| 13 | E123 | **Before the work step:** the relay presenting a client certificate, and the bundle (E99, adopted as A-55) |
 | 14 | STG-15, E35 | CAP-1 PR 3, right after PR 2 and beside first use, which it doesn't hold. **After those:** H-1, H-2 and H-3 |
 | 15 | STG-14 | I-6, the resource, model and host policy (A-39), the first of the wire increments V-01 needs. Its protected rows stay held until G3 is established, and G3 is established on no host yet |
 | 16 | closed: E125 | The local readiness surface, with the driver asserting the diagnosis. With E119, it's what V3's four non-stale cases need to pass, closed by #360 |
@@ -2309,7 +2309,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The operator, 2026-11-08: "yes unfreeze for planning and let the lead read history search", and to the designer the same day: "yeas i think knolwedge and the systems we are building once done should become on by default. Otherwise...why are we building them"; A-57's `KP-B1` and `KP-R32`; the operator's decision of 2026-11-06 on the build board's open decisions (design workspace `e8fde77`), item 5
 
-**When:** **Unscheduled**, the first part of E253, after the shared switch offer ships
+**When:** **Unscheduled**, the first part of E253, the shared switch offer it waited on has merged
 
 **Notes:** Filed by the Lead. Today `aew history search` is behind `recall.raw_history_search`, off by default, and refused inside an invocation, and no MCP tool serves it
 
@@ -2749,7 +2749,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E223
 
-**Work:** G3 on Windows: a Windows approval channel (a named pipe with the caller's identity) and Windows containment (E222; AppContainer a candidate), so G3's approvals work for a Windows Lead. The vertical goes green on Linux first
+**Work:** G3 on Windows: a Windows approval channel (a named pipe with the caller's identity) and Windows containment (E222; AppContainer a candidate), so G3's approvals work for a Windows Lead. The Lead reads the vertical as going green on Linux first (to confirm with the operator)
 
 **Source:** The operator, 2026-11-07 (with the row before it); the Lead's reading of what it needs, 2026-11-08
 
@@ -2821,7 +2821,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E229
 
-**Work:** A priority floor for the scheduler: the lowest level it may start (`critical`, `normal` or `low`), for unattended runs and for "no lows until I say". Raising it only restricts, so it takes effect at once; lowering it spends more, so it's the operator's setting, beside the mission's spend cap. Not part of E227
+**Work:** A priority floor for the scheduler: the lowest level it may start (`critical`, `normal` or `low`), for unattended runs and for "no lows until I say". Raising it only restricts, so it takes effect at once; lowering it spends more, so it's the operator's setting, beside the mission's spend cap. Not part of E227. It narrows auto-run eligibility, which A-42 `MSN-R04` keeps as backlog (`MSN-B1`) and A-39 `I6-06.c` governs: the designer rules the amendment before it is built
 
 **Source:** The operator, 2026-11-08
 
@@ -2845,7 +2845,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E231
 
-**Work:** The Lead's tool budget, decided before E158 is placed: measure the per-request cost of the typed surface against what a shell fallback costs the Lead, then keep, raise, compact (ADR-0017's presentation) or consolidate. Today TLS-21 holds the normal surface under 12,000 bytes and 16 tools, with the stop line at 11,900; the pin is 11,727 with 15 names. The free name is `message_send`'s; if E158 needs one, `explain` folds into `work_show`; E174, E177 and E173 look first at `resolve` choices or a `status` field
+**Work:** The Lead's tool budget, decided before E158 is placed: measure the per-request cost of the typed surface against what a shell fallback costs the Lead, then keep, raise, compact (ADR-0017's presentation) or consolidate. Today TLS-21 holds the normal surface under 12,000 bytes and 16 tools, with the stop line at 11,900; the pin is `NORMAL_BYTES_PIN` in `tests/unit/test_surface_mcp.py`, with 15 names. The free name is `message_send`'s; if E158 needs one, `explain` folds into `work_show`; E174, E177 and E173 look first at `resolve` choices or a `status` field
 
 **Source:** The Lead's reading of 2026-11-08, for the operator and the designer; the designer's ruling of 2026-11-08
 
@@ -2955,9 +2955,9 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Work:** Measure push wake on Windows on a 2.2.6 Windows binary: the idle wake, `/model`, the `--stdio` password and the rest of steering PR 2's list. Until then wakes on Windows are a declared gap, with the `harness_wait` fallback
 
-**Source:** The operator, 2026-11-08: "yeah it can be skipped for now as lonmg as its tracked"; PR 2's declaration names this row; the operator, 2026-11-09, gave the Windows wake measurement a slot
+**Source:** The operator, 2026-11-08: "yeah it can be skipped for now as lonmg as its tracked"; PR 2's declaration names this row; the week's decision record of 2026-11-09 lists the Windows wake measurement among the rows owed
 
-**When:** **Unscheduled**, with a slot (the operator, 2026-11-09)
+**When:** **Unscheduled**; the measurement is owed before wakes on Windows are claimed
 
 **Notes:** Filed by the week's register PR
 
@@ -3013,7 +3013,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E245
 
-**Work:** Whether the notifier's `LIVENESS_S` (30 s) should be raised. Not in the flake plan's cut, and a slower test is a regression to find, not a timeout to raise: the operator can turn this row into an exception request if the queue shows the need
+**Work:** Whether the test helper's wait, `until()`'s 30 s default in `tests/helpers/notifier.py` (not the product's notifier), should be raised. Not in the flake plan's cut, and a slower test is a regression to find, not a timeout to raise: the operator can turn this row into an exception request if the queue shows the need
 
 **Source:** The flake plan's decision D4 (the operator, 2026-11-09: "as recommended")
 
@@ -3085,7 +3085,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E251
 
-**Work:** A printed `aew manifest adopt` runs as printed: 21 printed mentions in 8 files of `src/aew` name it with no `--expect-rev` or `--reason`, some with a path missing `.aew/`. Each gets them, and a test follows each printed line to its outcome. The switch offer fixed its own
+**Work:** A printed `aew manifest adopt` runs as printed: the switch offer's review counted 21 printed mentions in 8 files of `src/aew` that name it with no `--expect-rev` or `--reason`, some with a path missing `.aew/`. Each gets them, and a test follows each printed line to its outcome. The switch offer fixed its own
 
 **Source:** The switch offer's review, M1's class, 2026-11-09
 
@@ -3097,7 +3097,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E253
 
-**Work:** Lessons (A-57, `L`), the knowledge system's first increment, in six parts (the designer's estimates, 13 to 16 PRs, not counting the switch offer or auto-start): the Lead's search on by default, a relayed read, after the shared switch offer ships (1); workers' search with the independence filter (1-2); Lessons findable: store, kinds, door, ceilings, import, list, show, hold, strike (3-4); Lessons delivered: approve, reject, release, challenge, pack section, selection, pin, pointers, counts (3-4); the dashboard's Lessons page with the pasted command (2); click plus PIN, with a renewed security review of the POST (3-4), which depends on endpoint auto-start
+**Work:** Lessons (A-57, `L`), the knowledge system's first increment, in six parts (the designer's estimates, 13 to 16 PRs, not counting the switch offer or auto-start): the Lead's search on by default, a relayed read (1, E185); workers' search with the independence filter (1-2); Lessons findable: store, kinds, door, ceilings, import, list, show, hold, strike (3-4); Lessons delivered: approve, reject, release, challenge, pack section, selection, pin, pointers, counts (3); the dashboard's Lessons page with the pasted command (2); click plus PIN, with a renewed security review of the POST (3-4), which depends on endpoint auto-start
 
 **Source:** A-57, KP revision 1 (design workspace tag `STG-32-kp-r1`), adopted 2026-11-09; `F21` split by its `KP-B1`
 

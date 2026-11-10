@@ -1,4 +1,4 @@
-**Sightings of 2026-11-08 and 2026-11-09, for the flake mechanism.** Each is on Windows, none in its pull request's diff, and none skipped or removed:
+**Sightings of 2026-11-08 and 2026-11-09, for the flake mechanism.** Each is on Windows, none in a diff that touches it, and none skipped or removed:
 
 - `tests/integration/test_hang_autopsy.py::test_a_hung_test_names_its_blocked_frame_the_childs_blocked_frame_and_the_dead_thread`, integration 8/12 (windows-latest), `main` at `039a281e`, 2026-11-08: `test_hang_autopsy.py:172`, `AssertionError: childdiag: pid 8244, every thread's stack every 1s`. The two later `main` runs passed.
 - `tests/integration/test_hang_autopsy.py::test_a_controller_slower_than_its_margins_is_ended_by_the_sentinel_and_says_so`, integration 4/13 (windows-latest), #394 at `997299e7`, 2026-11-09: `test_hang_autopsy.py:647`, `assert 'written by the sentinel' in ''`, with margin 1 s. It passed on re-run.

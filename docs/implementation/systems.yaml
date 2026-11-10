@@ -552,9 +552,10 @@ systems:
     with a real grant path (operator, 2026-11-06 (design workspace decision record: board decisions))'
   recommendation: finish
   who: Lead
-  reason: 'Live work: steering''s push wake server has merged, endpoint auto-start is next and push wake PR 3 follows it, and
-    RUN mode, the scheduler''s chain (E228), is placed after E123 (operator, 2026-11-09). HOLD-19 and HOLD-17 no longer
-    describe it; A-37 still moves confirmation to G3, so E7c as planned may be superseded (BOARD v2 §4). This entry''s reading of the code at c11a61ea (not BOARD''s) narrows BOARD v2 §1''s ''lower works at
+  reason: 'Steering''s push wake has merged whole: the server, endpoint auto-start and push wake PR 3. The live work is
+    outside HOLD-19 and HOLD-17: the scheduler''s chain (E228), which follows E123 in the builder order (the operator ranked
+    it above stall detection, 2026-11-09). Confirmation and the publication grants stay held in HOLD-19; A-37 still moves
+    confirmation to G3, so E7c as planned may be superseded (BOARD v2 §4). This entry''s reading of the code at c11a61ea (not BOARD''s) narrows BOARD v2 §1''s ''lower works at
     any time''. lower takes no approval, but it needs an effective mode above its target, and walk or run becomes effective
     only by the operator''s raise at the --dev endpoint: an adopted walk or run default waits there as a pending raise,
     and an adopted crawl leaves nothing lower. In a project with no steering.mode, which is the template''s default, every
@@ -1818,6 +1819,7 @@ systems:
   register:
   - F21
   - F35
+  - E185
   - E253
   - E254
   - E255
@@ -1861,8 +1863,8 @@ systems:
     - dashboard:/history/search
     on_by_default: false
     used_in_default_flow: 'no'
-  finish_line: 'For V-01: K-01''s H profile as built (the explicit raw-history search), with the operator''s answer recorded
-    on whether the Lead gets a typed read of it or H stays operator-only. After V-01: K-01''s L profile (Lessons nominated,
+  finish_line: 'For V-01: K-01''s H profile as built (the explicit raw-history search), with the Lead''s relayed read of
+    it on by default (E185, A-57 KP-B1). After V-01: K-01''s L profile (Lessons nominated,
     admitted and served) and F35''s pack serving, built, on and exercised in a real run.'
   remaining:
   - slice: 'The Lead''s read of Arm B, on by default: a relayed `aew` command, not a typed tool (A-57, KP-B1)'
@@ -1898,13 +1900,15 @@ systems:
   - slice: 'Two text fixes (KP-B6)'
     row: E258
     estimate: 1 small PR (estimate)
-  decision: 'decided: frozen whole by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
-    item 6'
+  decision: 'decided: unfrozen for planning, not placed (the operator, 2026-11-08: "yes unfreeze for planning and let
+    the lead read history search"); it was frozen whole by the reset of 2026-11-06 (design workspace record
+    2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: freeze
   who: Lead (the Lead's relayed read, E185); workers with F15.3 (HOLD-06, the match places it)
   reason: Arm B is what the register's V-01 milestone selects for knowledge (history and source lookup only, K-01's H profile,
-    future-work.yaml (§1 text, at c11a61ea)), off by default and absent while off; the rest is after V-01, and whether agents
-    reach H is the operator's open question.
+    future-work.yaml (§1 text, at c11a61ea)), off by default and absent while off. The operator has answered whether agents
+    reach H. The Lead reads it through a relayed command, on by default (E185, A-57 KP-B1), and workers' search is part of
+    E253. The rest is after V-01.
   evidence:
   - src/aew/engine/recall.py:1-8 off by default and absent while off; refused inside an invocation
   - src/aew/engine/recall.py:97-108,140-151 the switch read from adopted bytes only, failing closed

@@ -276,6 +276,25 @@ def test_a_secret_directory_is_masked_whole_and_any_other_secret_is_left_out_of_
     assert not any(real(p) in flags for p in gone)
 
 
+def test_a_providers_client_certificate_and_key_are_left_out_of_every_run_and_its_ca_file_is_not(tmp_path, fake_bwrap,
+                                                                                                tmp_unmasked):
+    """Register E123: the relay presents the certificate, so neither it nor its key is in any sandbox. The policy
+    names them (``containment.network.client_certs``), and the layout leaves them out of their directory as any named
+    secret, through the policy a launch gives ``establish``; the CA file stays, as the sandbox's own TLS may need it."""
+    certs = tmp_path / "certs"
+    certs.mkdir()
+    for name in ("client.pem", "client.key", "ca.pem", "other.txt"):
+        (certs / name).write_text("synthetic\n")
+    files = {"cert": str(certs / "client.pem"), "key": str(certs / "client.key"), "ca": str(certs / "ca.pem")}
+    layout = run_layout(tmp_path, "reviewer", home=str(tmp_path / "home"),
+                        policy={"network": {"client_certs": {"mtls": files}}})
+    real = os.path.realpath
+    assert {real(files["cert"]), real(files["key"])} <= set(layout.left_out), layout.left_out
+    assert real(files["ca"]) not in layout.left_out and real(certs / "ca.pem") in layout.put_back
+    assert real(certs) in layout.left_out_of
+    assert not {real(files["cert"]), real(files["key"])} & set(C.bwrap_argv(layout, ["true"]))
+
+
 def pairs(flags: list[str], flag: str) -> list[str]:
     """The argument after each ``flag`` on a bubblewrap argv."""
     return [flags[i + 1] for i, f in enumerate(flags) if f == flag]

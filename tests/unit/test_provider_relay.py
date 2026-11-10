@@ -379,6 +379,20 @@ def test_a_request_chunk_size_that_is_not_hex_digits_is_refused_as_a_bad_chunk(s
     assert service.counts() == {"bad_chunk": 1}
 
 
+def test_a_429_reaches_the_harness_as_the_upstream_sent_it_with_its_retry_after():
+    """Register E123's 429 ladder, its first rung, measured here: the relay neither retries nor rewrites a rate
+    limit. Whether the harness then backs off, and how parallel workers share one limit, needs a real harness run."""
+    limited = (b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 7\r\nContent-Type: application/json\r\n"
+               b"Content-Length: 27\r\n\r\n{\"error\":\"rate_limit_hit\"}\n")
+    seam = Seam()
+    got, answer, service = exchange(seam, b"POST /v1/chat/completions HTTP/1.1\r\nContent-Length: 0\r\n\r\n",
+                                    response=limited)
+    head, _, body = answer.partition(b"\r\n\r\n")
+    assert head.split(b"\r\n")[0] == b"HTTP/1.1 429 Too Many Requests"
+    assert ("retry-after", "7") in headers(head) and body == b"{\"error\":\"rate_limit_hit\"}\n"
+    assert len(seam.calls) == 1 and service.counts() == {"allowed": 1}  # one request upstream: no retry
+
+
 def test_an_unreachable_upstream_is_a_502_that_names_the_fixed_upstream():
     seam = Seam(error=ConnectionRefusedError(111, "synthetic: refused"))
     with relayed(seam) as (service, client, _):

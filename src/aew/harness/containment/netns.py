@@ -28,6 +28,7 @@ import json
 import os
 import shutil
 import socket
+import ssl
 import sys
 import tempfile
 from collections.abc import Callable, Iterable, Mapping
@@ -35,7 +36,7 @@ from typing import Any
 
 from aew.errors import AEWError, ContainmentUnavailable
 from aew.harness import agentenv
-from aew.harness.containment import egress, relay
+from aew.harness.containment import client_cert, egress, relay
 from aew.harness.containment.layout import ISOLATED, NET_SHIM, NETWORK_MODES, PROXY_ONLY, SHARED, Layout
 
 NOT_PROVIDED = "not_provided"  # AEW cannot characterize a run's network on this platform
@@ -192,6 +193,15 @@ def upstream(provider: str | None, policy: Mapping[str, Any] | None,
                                      reason="bad_upstream") from None
 
 
+def relay_tls(provider: str | None,
+              policy: Mapping[str, Any] | None) -> tuple[ssl.SSLContext | None, client_cert.ClientCert | None]:
+    """The relay's upstream TLS context for ``provider``: its client certificate's, read now, at the relay's start
+    (register E123), and the files it was read from; (None, None) when the policy names none, and the relay uses the
+    system's verifying context. Raises ``ContainmentUnavailable`` on a certificate that cannot be used: no fallback."""
+    found = client_cert.for_provider(provider, policy)
+    return (client_cert.context(found), found) if found is not None else (None, None)
+
+
 def shim_spec(directory: str, *, server: str | None = SERVER, relay_sock: str | None = None,
               egress_sock: str | None = None, server_port: int = SERVER_PORT) -> dict[str, Any]:
     """The shim's legs for a run whose network sockets are in ``directory``: the server in, and the relay and the
@@ -300,8 +310,9 @@ class RunNetwork:
                     proxy = operator_proxy(target, names, env)
                 except AEWError as exc:
                     raise ContainmentUnavailable(exc.message, reason="bad_proxy") from None
+                tls, client = relay_tls(provider, policy)
                 net.relay = relay.ProviderRelay(
-                    target, {sentinels[n]: v for n, v in values.items() if v}, proxy=proxy,
+                    target, {sentinels[n]: v for n, v in values.items() if v}, proxy=proxy, tls=tls, client=client,
                     listener=listen(os.path.join(layout.net_dir, RELAY))).start()
                 net.key_relayed = bool(values.get(PROVIDER_KEY_ENV.get(provider or "", "")))
             if allow is not None:
@@ -317,7 +328,8 @@ class RunNetwork:
     @classmethod
     def start_lead(cls, layout: Layout, *, keys: Mapping[str, str], provider_env: Iterable[str],
                    policy: Mapping[str, Any] | None, env: Mapping[str, str],
-                   refreshing: Mapping[str, Callable[[], tuple[str, Mapping[str, str]]]] | None = None) -> RunNetwork:
+                   refreshing: Mapping[str, Callable[[], tuple[str, Mapping[str, str]]]] | None = None,
+                   keyless: Iterable[str] = ()) -> RunNetwork:
         """The contained Lead's network (STG-05 CS-4, outcome 3). Under ``proxy_only``: a relay for each provider in
         ``keys`` (provider id -> its key, from the operator's stored login or a ``--provider-env`` variable), on its
         own loopback port inside from :data:`LEAD_RELAY_PORT`, with its sentinel in the provider's variable
@@ -326,8 +338,9 @@ class RunNetwork:
         :data:`REFRESHING_UPSTREAMS`, whose sentinel the session puts in the Lead's own login store
         (:attr:`login_sentinels`); and the egress proxy under the any-public policy (the operator's decision 3 of
         2026-10-21), which ``HTTPS_PROXY`` and ``HTTP_PROXY`` both name inside. ``provider_env``'s proxy variables are
-        the relays' own route to their upstreams, as a worker's are. Raises ``ContainmentUnavailable`` as
-        :meth:`start` does."""
+        the relays' own route to their upstreams, as a worker's are. ``keyless`` names providers of their own id whose
+        relay presents a client certificate and carries no key (register E123): their upstream is the policy's
+        ``containment.network.upstreams``. Raises ``ContainmentUnavailable`` as :meth:`start` does."""
         names = [str(n) for n in provider_env]
         net = cls(layout)
         net.lead, net.http_proxy = True, True
@@ -335,7 +348,7 @@ class RunNetwork:
             return net
         resolvers = dict(refreshing or {})
         try:
-            for i, provider in enumerate(sorted({*keys, *resolvers})):
+            for i, provider in enumerate(sorted({*keys, *resolvers, *keyless})):
                 resolve = resolvers.get(provider)
                 target = upstream(provider, policy, REFRESHING_UPSTREAMS if resolve else UPSTREAMS)
                 try:
@@ -343,18 +356,22 @@ class RunNetwork:
                 except AEWError as exc:
                     raise ContainmentUnavailable(exc.message, reason="bad_proxy") from None
                 token = relay.sentinel()
+                tls, client = relay_tls(provider, policy)
                 listener = listen(os.path.join(layout.net_dir, _relay_sock(provider)))
-                if resolve is None:
+                if resolve is None and provider not in keys:  # a client certificate alone: nothing to swap in
+                    served = relay.ProviderRelay(target, {}, proxy=proxy, listener=listener, tls=tls, client=client)
+                elif resolve is None:
                     net.sentinels[PROVIDER_KEY_ENV[provider]] = token
                     net._values[PROVIDER_KEY_ENV[provider]] = keys[provider]
-                    served = relay.ProviderRelay(target, {token: keys[provider]}, proxy=proxy, listener=listener)
+                    served = relay.ProviderRelay(target, {token: keys[provider]}, proxy=proxy, listener=listener,
+                                                 tls=tls, client=client)
                 else:
                     net.login_sentinels[provider] = token
                     try:  # what the login holds now, for the leak check; one already expired has nothing to leak
                         net._values[f"{provider} login"] = resolve()[0]
                     except relay.Unavailable:
                         pass
-                    served = relay.ProviderRelay(target, {}, proxy=proxy, listener=listener,
+                    served = relay.ProviderRelay(target, {}, proxy=proxy, listener=listener, tls=tls, client=client,
                                                  resolve=functools.partial(_grant, token, resolve))
                 net.relays[provider] = (LEAD_RELAY_PORT + i, served.start())
             net.egress = egress.EgressProxy(egress.AnyPublic(),

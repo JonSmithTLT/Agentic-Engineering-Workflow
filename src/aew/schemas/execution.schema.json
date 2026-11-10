@@ -61,7 +61,8 @@
           "properties": {
             "mode": {"x-aew-class": "legality_affecting", "enum": ["proxy_only", "isolated", "shared"]},
             "egress_allow": {"x-aew-class": "legality_affecting", "type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
-            "upstreams": {"x-aew-class": "legality_affecting", "type": "object", "propertyNames": {"type": "string", "minLength": 1}, "additionalProperties": {"type": "string", "pattern": "^https?://"}}
+            "upstreams": {"x-aew-class": "legality_affecting", "type": "object", "propertyNames": {"type": "string", "minLength": 1}, "additionalProperties": {"type": "string", "pattern": "^https?://"}},
+            "client_certs": {"x-aew-class": "legality_affecting", "type": "object", "description": "A provider that requires a client certificate (mTLS), by the profile's provider: its relay presents cert (the client certificate, PEM) with key (its private key, PEM, no passphrase), and checks the provider's certificate against ca (the CA file) alone. The paths are the operator's: read at each launch, so a renewal or a swapped CA file at the same path is picked up by the next one, and never copied. The certificate and key are masked from every sandbox. A certificate that cannot be used refuses the launch, naming the file (aew doctor shows the same), and a run with no relay (a shared or isolated network, Windows, or a sandbox that could not be established under containment.mode: allow_weaker) refuses the provider. The contained Lead relays such a provider of the policy's own id with no key, with the models the profiles pin for it.", "propertyNames": {"type": "string", "minLength": 1}, "additionalProperties": {"type": "object", "additionalProperties": false, "required": ["cert", "key", "ca"], "properties": {"cert": {"type": "string", "minLength": 1}, "key": {"type": "string", "minLength": 1}, "ca": {"type": "string", "minLength": 1}}}}
           }
         }
       }

@@ -571,7 +571,7 @@ def lead_wake_text() -> str:
 
 def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
                 relays: Mapping[str, str] | None = None, tools: Mapping[str, Any] | None = None,
-                push_wake: bool = False) -> dict[str, Any]:
+                push_wake: bool = False, models: Mapping[str, list[str]] | None = None) -> dict[str, Any]:
     """``OPENCODE_CONFIG_CONTENT`` for the Lead's TUI. It is merged over the operator's own configuration, which the
     contained Lead does not load (STG-05 CS-4). ``tools``: the tools AEW placed in the Lead's sandbox, named in its
     system text as a worker's are (:func:`tools_text`).
@@ -581,13 +581,19 @@ def lead_config(guide: str = "", *, contained: Mapping[str, Any] | None = None,
     contained session's label, whose line the system text carries (:func:`lead_contained_text`), and ``relays`` its
     relayed providers' ``baseURL`` (provider id -> the relay's loopback address inside): provider-level only, which
     every request of those providers' models follows (measured, 2026-10-25), so no model is made up in the list.
+    ``models`` names the models of a relayed provider OpenCode's catalog doesn't know (a provider of the policy's own
+    id, relayed with a client certificate: register E123), from the policy's profiles: each gets the relay's
+    ``baseURL``, and the provider plain HTTP requests, as a worker's pinned provider does (:func:`relayed`).
     Every Lead's configuration (contained, not contained, and ``--print-config``'s) denies
     :data:`LEAD_DENIED_PROVIDERS`."""
     system = LEAD_SYSTEM.replace(f" {WAIT_SENTENCE}", "") + f"\n{lead_wake_text()}" if push_wake else LEAD_SYSTEM
     system += f"\n{lead_contained_text(contained)}" if contained is not None else ""
     system += "".join(f"\n{line}" for line in tools_text(tools, note=LEAD_TOOLS_NOTE))
     system = f"{system}\n\n{guide}" if guide else system
-    providers = {p: {"settings": {"baseURL": url, **({"transport": "http"} if p in WEBSOCKET_FIRST else {})}}
+    named = models or {}
+    providers = {p: {"settings": {"baseURL": url,
+                                  **({"transport": "http"} if p in WEBSOCKET_FIRST or named.get(p) else {})},
+                     **({"models": {m: {"settings": {"baseURL": url}} for m in named[p]}} if named.get(p) else {})}
                  for p, url in sorted((relays or {}).items())}
     return {**({"providers": providers} if providers else {}), "share": "disabled", "default_agent": LEAD_AGENT,
             **CLOSED, "experimental": {"policies": lead_provider_policies(), **CLOSED_EXPERIMENTAL},

@@ -41,10 +41,13 @@ import ssl
 import time
 import urllib.parse
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aew.errors import ValidationFailed
 from aew.harness.containment.egress import CHUNK, Service
+
+if TYPE_CHECKING:
+    from aew.harness.containment.client_cert import ClientCert
 
 # Implementation bounds, not policy. A provider request's head from OpenCode 2.0.18 is about 1 KiB (measured on the
 # Rocky VM, 2026-10-24); 32 KiB is nginx's default for a request head (large_client_header_buffers 4 8k).
@@ -52,6 +55,7 @@ MAX_HEAD = 32 * 1024
 HEAD_TIMEOUT = 30.0     # the whole request head, from when the relay starts reading it
 CONNECT_TIMEOUT = 10.0  # a SYN nobody answers, and the TLS handshake
 BODY_TIMEOUT = 60.0     # a pause inside the request body; the response stream itself has no idle bound (see above)
+TLS_MINIMUM = ssl.TLSVersion.TLSv1_2  # every upstream context's floor, a client certificate's included
 SENTINEL_PREFIX = "aew-relay-"
 # The headers a provider SDK carries its key in: OpenAI's and most others' bearer token, Anthropic's, Azure OpenAI's
 # and Google's. The relay puts a credential nowhere else.
@@ -146,20 +150,24 @@ class _Refused(Exception):
 class ProviderRelay(Service):
     """Serves ``listener`` for one run's provider. ``credentials`` maps each sentinel to the value it stands for, or
     ``resolve`` gives that map and the headers to set for each request (raising :class:`Unavailable` when it has
-    none to give); ``proxy`` is the operator's HTTP proxy, if any. ``connect`` and ``tls`` are seams for tests (a
-    plain connect to the upstream's name, and the system's default verifying context)."""
+    none to give); ``proxy`` is the operator's HTTP proxy, if any. ``tls`` is the upstream's context: a provider's
+    client certificate's (``client_cert.context``, with ``client`` the files it was read from, for the answers on a
+    failed handshake), else the system's default verifying context; tests give their own. ``connect`` is a seam for
+    tests (a plain connect to the upstream's name)."""
 
     name = "aew-relay"
 
     def __init__(self, upstream: Upstream, credentials: Mapping[str, str], *, listener: socket.socket | None = None,
                  proxy: Proxy | None = None, connect: Connector = _connect, tls: ssl.SSLContext | None = None,
                  head_timeout: float = HEAD_TIMEOUT, connect_timeout: float = CONNECT_TIMEOUT,
-                 body_timeout: float = BODY_TIMEOUT, resolve: Callable[[], Grant] | None = None) -> None:
+                 body_timeout: float = BODY_TIMEOUT, resolve: Callable[[], Grant] | None = None,
+                 client: ClientCert | None = None) -> None:
         super().__init__(listener=listener)
         self.upstream, self.proxy = upstream, proxy
         self._credentials = dict(credentials)
         self._resolve = resolve
         self._connect, self._tls = connect, tls
+        self.client = client
         self.head_timeout, self.connect_timeout, self.body_timeout = head_timeout, connect_timeout, body_timeout
 
     def start(self) -> ProviderRelay:
@@ -206,6 +214,9 @@ class ProviderRelay(Service):
         except _Refused as refused:
             if not answered:
                 self._answer(conn, refused)
+        except ssl.SSLError as exc:  # the upstream's TLS: in the handshake, or (TLS 1.3) an alert on the first read
+            if not answered:
+                self._answer(conn, _tls_refused(exc, self.upstream, self.client))
         except OSError:
             if not answered:
                 self._answer(conn, _Refused(502, "upstream_unreachable", "the provider relay could not reach "
@@ -451,8 +462,42 @@ def _tls_context() -> ssl.SSLContext:
     """The system's default verifying context, with its floor stated: TLS 1.2 is already the default's minimum on every
     interpreter AEW supports, set here so that a reader, or a scanner, need not know that (#257's quick check, Q2)."""
     context = ssl.create_default_context()
-    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.minimum_version = TLS_MINIMUM
     return context
+
+
+# What the provider says, in its TLS alert, when it does not take the client certificate (or got none): OpenSSL's
+# reason names for those alerts. With TLS 1.3 the alert comes after the handshake, on the first read.
+_CERT_ALERTS = frozenset({"TLSV13_ALERT_CERTIFICATE_REQUIRED", "SSLV3_ALERT_BAD_CERTIFICATE",
+                          "SSLV3_ALERT_CERTIFICATE_EXPIRED", "SSLV3_ALERT_CERTIFICATE_REVOKED",
+                          "SSLV3_ALERT_CERTIFICATE_UNKNOWN", "SSLV3_ALERT_UNSUPPORTED_CERTIFICATE",
+                          "TLSV1_ALERT_UNKNOWN_CA", "TLSV1_ALERT_ACCESS_DENIED"})
+
+
+def _tls_refused(exc: ssl.SSLError, upstream: Upstream, client: ClientCert | None) -> _Refused:
+    """A failed TLS connection to the upstream as a plain answer, never a bare handshake error (register E123). It
+    reaches the sandbox, so it names the policy field and the CA file, never the certificate's or the key's path."""
+    if isinstance(exc, ssl.SSLCertVerificationError):
+        trust = (f"the CA file {client.ca} ({client.field('ca')}): if the provider's CA changed, put the new one there "
+                 "and start the run again") if client else "the system's trusted CAs"
+        return _Refused(502, "upstream_untrusted", f"the provider relay does not trust {upstream.url}'s certificate "
+                        f"({exc.verify_message}): it checks it against {trust}")
+    if exc.reason in _CERT_ALERTS:
+        if client is None:
+            return _Refused(502, "client_cert_required", f"{upstream.url} refused the connection over its client "
+                            f"certificate ({exc.reason}), and the policy names none: name one in "
+                            "containment.network.client_certs.<provider>")
+        return _Refused(502, "client_cert_refused", f"{upstream.url} refused the client certificate named in "
+                        f"{client.field('cert')} ({exc.reason}): `aew doctor` checks it, and the provider may not "
+                        "accept it")
+    if client is None and exc.reason == "SSLV3_ALERT_HANDSHAKE_FAILURE":
+        # TLS 1.2's answer to a missing certificate (E123 review, m2). It also means a cipher or version mismatch, so
+        # it is not in _CERT_ALERTS, and is worded as a likelihood. A server that ends the handshake and then answers
+        # HTTP 400 for the missing certificate (nginx's `ssl_verify_client on`) is relayed as it answered.
+        return _Refused(502, "client_cert_required", f"the TLS connection to {upstream.url} failed ({exc.reason}): "
+                        "the provider may require a client certificate, and the policy names none: name one in "
+                        "containment.network.client_certs.<provider>")
+    return _Refused(502, "tls_failed", f"the TLS connection to {upstream.url} failed ({exc.reason or exc})")
 
 
 class _Reader:
@@ -569,8 +614,10 @@ def _close_head(head: bytes) -> bytes:
 
 
 def describe(relay: ProviderRelay | None) -> dict[str, Any]:
-    """For the run's label: ``network.provider_relay`` (F28 §3.1) and its fixed upstream."""
+    """For the run's label: ``network.provider_relay`` (F28 §3.1) and its fixed upstream, and whether it presents a
+    client certificate (by its policy field: the label reaches the sandbox, so never a path)."""
     if relay is None:
         return {"provider_relay": "none"}
     return {"provider_relay": "configured", "provider_upstream": relay.upstream.url,
-            **({"provider_upstream_proxy": f"{relay.proxy.host}:{relay.proxy.port}"} if relay.proxy else {})}
+            **({"provider_upstream_proxy": f"{relay.proxy.host}:{relay.proxy.port}"} if relay.proxy else {}),
+            **({"provider_client_cert": relay.client.field("cert")} if relay.client else {})}

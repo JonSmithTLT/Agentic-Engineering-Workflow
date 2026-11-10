@@ -111,7 +111,8 @@ and, once M4-E's E7 lands, "the broker's notifier". M4-E's plan never had a noti
 is the operator's, run by the operator endpoint (SAE-13). The question was whether F9 owns a Lead-facing wake, or the
 projections are enough. The brief recommended that F9 own it, as a coordination lane in the existing `aew harness wait
 --any`: no new notifier, and consistent with "no polling" meaning no model-driven polling (LWA-11). D5 approves: F9's
-coordination lane joins `wait --any`, and there is no second notifier.
+coordination lane joins `wait --any`, and there is no second notifier. (Amended by A-58, [the conversational Lead](decisions-2026-11-conversational-lead.md): the
+lane is a reason on the Lead's one list, delivered by a wake and by the wait; MIC-10 stands.)
 
 ### D6. Bare or non-bare Claude Code runs (F24.2)
 

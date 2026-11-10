@@ -242,7 +242,8 @@ A wake is a nudge and never authority; losing one cannot make stale work valid (
 that changes a digest a direct consumer names is an authoritative wake trigger (v0.5 §11, trigger 1), coalesced per
 `(dependent, subject)` and delivered through the one decision-keyed Lead-attention lane of `wait --any`, whether or not
 F9 messaging is on (v0.5 §11.1; AIR §3.3: that lane is F43's S3). This amendment adds no wake mechanism; the wake's owner
-stays F9 and F43.
+stays F9 and F43. (For its adoption: A-58, [the conversational Lead](decisions-2026-11-conversational-lead.md), makes that lane the Lead's one list of reasons,
+delivered by a wake and by the wait.)
 
 ## 9. Invariants
 

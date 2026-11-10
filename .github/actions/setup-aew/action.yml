@@ -15,14 +15,81 @@ runs:
         # Only downloaded wheels are cached; resolution runs every time (the dependency ranges are unpinned).
         cache: pip
         cache-dependency-path: pyproject.toml
-    - name: Bubblewrap for contained harness runs (Linux; M4-B, strategy "Containment lane")
+    # Bubblewrap for contained harness runs (Linux; M4-B, strategy "Containment lane"). One pinned version, from a
+    # cache keyed on it, so a warm job never touches the Ubuntu mirror (it stalled setup for 12 to 34 minutes on
+    # several jobs on 2026-11-10, before any test ran). A cold job downloads exactly that version, bounded so a stalled
+    # mirror fails in minutes. Strategy §3, "Setup cache".
+    - name: Bubblewrap's pinned version and its cache key (Linux)
+      id: bwrap
       if: runner.os == 'Linux'
       shell: bash
+      env:
+        # The one bubblewrap CI runs, on the pinned ubuntu-24.04 image: what `apt-get install bubblewrap` gave there
+        # on 2026-11-10. The key carries it, the release and the architecture, and the install checks the .deb is it,
+        # so a cached package is always the one a cold job would download. When the archive drops this version the
+        # cold path fails naming this line: bump it (with the release, as the strategy's runner-image pin says).
+        BUBBLEWRAP_VERSION: "0.9.0-1ubuntu0.3"
+      run: |
+        release=$(. /etc/os-release && echo "$VERSION_CODENAME")
+        arch=$(dpkg --print-architecture)
+        echo "version=$BUBBLEWRAP_VERSION" >> "$GITHUB_OUTPUT"
+        echo "dir=$RUNNER_TEMP/aew-bubblewrap" >> "$GITHUB_OUTPUT"
+        echo "key=aew-bubblewrap-$release-$arch-$BUBBLEWRAP_VERSION" >> "$GITHUB_OUTPUT"
+    - name: Bubblewrap's package from the cache (Linux)
+      id: bwrap-cache
+      if: runner.os == 'Linux'
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.bwrap.outputs.dir }}
+        key: ${{ steps.bwrap.outputs.key }}
+    - name: "Cache miss: bubblewrap's pinned package from the archive, bounded (Linux)"
+      if: runner.os == 'Linux' && steps.bwrap-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        VERSION: ${{ steps.bwrap.outputs.version }}
+        DIR: ${{ steps.bwrap.outputs.dir }}
+      # A healthy update and download take about 5 s here (strategy §3), so 180 s and 120 s fail a stalled mirror in
+      # minutes instead of letting it eat the job. Nothing is retried: the job fails visibly, and a re-run starts over.
+      run: |
+        mkdir -p "$DIR"
+        echo "bubblewrap cache miss: downloading $VERSION"
+        if ! timeout 180 sudo apt-get update -q; then
+          echo "::error::apt-get update did not finish in 180 s: the Ubuntu mirror stalled or failed. Re-run the job."
+          exit 1
+        fi
+        if ! (cd "$DIR" && timeout 120 apt-get download "bubblewrap=$VERSION"); then
+          echo "::error::could not download bubblewrap $VERSION in 120 s. If the archive no longer has it, update"
+          echo "::error::BUBBLEWRAP_VERSION in .github/actions/setup-aew/action.yml (the cache key follows it)."
+          exit 1
+        fi
+    - name: "Cache miss: keep the package for the next jobs (Linux)"
+      if: runner.os == 'Linux' && steps.bwrap-cache.outputs.cache-hit != 'true'
+      # Another job of the same run may save the same key first; that is no failure of this one.
+      continue-on-error: true
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.bwrap.outputs.dir }}
+        key: ${{ steps.bwrap.outputs.key }}
+    - name: Bubblewrap installed and a sandbox started (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        VERSION: ${{ steps.bwrap.outputs.version }}
+        DIR: ${{ steps.bwrap.outputs.dir }}
       # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor; bubblewrap needs them (as on RHEL 8,
       # where they are allowed by default). Lifting the restriction affects only this throwaway runner.
       run: |
-        sudo apt-get update -q
-        sudo apt-get install -y -q --no-install-recommends bubblewrap
+        debs=("$DIR"/bubblewrap_*.deb)
+        if [ "${#debs[@]}" -ne 1 ] || [ ! -f "${debs[0]}" ]; then
+          echo "::error::expected exactly one bubblewrap package in $DIR, found: ${debs[*]}"
+          exit 1
+        fi
+        got="$(dpkg-deb -f "${debs[0]}" Package) $(dpkg-deb -f "${debs[0]}" Version)"
+        if [ "$got" != "bubblewrap $VERSION" ]; then
+          echo "::error::the package is '$got', not 'bubblewrap $VERSION': refusing to install it"
+          exit 1
+        fi
+        sudo dpkg -i "${debs[0]}"
         sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
         bwrap --ro-bind / / --unshare-pid --dev /dev --proc /proc -- true
     - name: Git identity for fixture repositories

@@ -535,6 +535,41 @@ def test_a_sentinel_acting_at_the_deadline_says_so_and_records_the_set_it_ended(
     assert "(deadline)" in (sentinel.dir / "sentinel-log.txt").read_text(encoding="utf-8")
 
 
+def test_a_child_reparented_as_the_controller_exits_mid_refresh_is_still_ended(tmp_path, monkeypatch):
+    """Main's runs 42720386402 and 42726170238: the controller exits right after writing `session-finished`, between
+    the last refresh's look at it and its read of the table. The read then has the controller (a zombie its launcher
+    has not reaped) and the child re-parented away from it, and a refresh that replaced the set dropped the child, so
+    nothing ended it and it held the step's output. Forced here with a fake table: no real process is read or ended."""
+    sentinel = _sentinel(tmp_path, margin=0.05)
+    controller = proctree.Proc(4_000_001, 10, 500, cmdline="python -m pytest")
+    child = proctree.Proc(4_000_002, controller.pid, 600, cmdline="python -c import time; time.sleep(120)")
+    sentinel.controller = controller.identity
+    live = {controller.identity, child.identity}
+    tables = iter([[controller, child], [controller, child],  # a refresh while the session runs
+                   # `after_finish`'s refresh: alive at its check, then gone (unreaped) and its child re-parented
+                   [controller, proctree.Proc(child.pid, 1, child.start, cmdline=child.cmdline)]])
+    last: list[list[proctree.Proc]] = []
+
+    def table() -> list[proctree.Proc]:
+        last[:] = [next(tables, last[0] if last else [])]
+        return last[0]
+
+    def same(ident: tuple[int, int]) -> bool:
+        if ident == controller.identity and last and last[0][1].ppid == 1:
+            live.discard(controller.identity)  # by the read of the third table, the controller has exited
+        return ident in live
+
+    ended = []
+    monkeypatch.setattr(proctree, "table", table)
+    monkeypatch.setattr(proctree, "same", same)
+    monkeypatch.setattr(proctree, "end", lambda ident: ended.append(ident) or live.discard(ident) or True)
+    sentinel.refresh()
+    assert child.identity in {p.identity for p in sentinel.snapshot}, "the set while the session ran"
+    assert sentinel.after_finish() == 0
+    assert ended == [child.identity], "the child holding the step's output is ended"
+    assert str(child.pid) in (sentinel.dir / f"{session_deadline.LEFT_RUNNING}.txt").read_text(encoding="utf-8")
+
+
 def test_a_stuck_controllers_stacks_are_in_the_folder_before_the_set_is_ended(tmp_path, monkeypatch):
     """Review of #392, m3: the ending may hang, or end what's holding the file, so they come first."""
     sentinel = _sentinel(tmp_path, margin=0.01)  # the "controller" is this process, so it never exits in time

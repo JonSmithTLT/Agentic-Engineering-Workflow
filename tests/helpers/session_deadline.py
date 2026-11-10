@@ -56,9 +56,11 @@ that inside the job's timeout, with time left for its uploads. Everything it wri
 session's own, so every marker the sentinel reads was written by this session: pids are reused, and an earlier session's
 ``session-finished`` would otherwise end a healthy one (review of #387, M1).
 
-On Linux the set is a snapshot. ``after_finish`` refreshes it first, but a child started after that, or just before a
-controller that has gone by the sentinel's next poll, isn't in it, so it isn't ended or named and can keep the step
-open. Windows' job has no such gap.
+On Linux the set is a snapshot. A refresh adds to it and never drops a member that is still running: the controller
+can exit during the read, and what it leaves is re-parented away from it. ``after_finish`` refreshes it first, but a
+child started after the last refresh that saw the controller alive, or just before a controller that has gone by the
+sentinel's next poll, isn't in it, so it isn't ended or named and can keep the step open. Windows' job has no such
+gap.
 
 **Stacks that need no GIL.** The worker's and controller's deadline threads are Python threads, so a hang in native
 code holding the GIL stops them too, and that process would be ended with nothing to say. ``faulthandler``'s timer runs
@@ -718,6 +720,12 @@ class Sentinel:
             members = self.members()
             controller = next((p for p in proctree.table() if p.identity == self.controller), None)
             snapshot = ([controller] if controller else []) + members
+            # Added to, never replaced: a member seen before stays while its (pid, start time) matches. The controller
+            # can exit between the check above and the table's read, as it does right after `session-finished`, and its
+            # children are then re-parented away from it: a replacing read would hold the controller alone and drop
+            # the child holding the step's output (main's runs 42720386402 and 42726170238).
+            now = {p.identity for p in snapshot}
+            snapshot += [p for p in self.snapshot if p.identity not in now and proctree.same(p.identity)]
             if {p.identity for p in snapshot} != {p.identity for p in self.snapshot}:
                 # kept whenever it changes: the set the sentinel would end if the controller died now
                 _write(self.dir, "sentinel-snapshot", proctree.describe(

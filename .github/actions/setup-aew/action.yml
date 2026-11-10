@@ -18,7 +18,7 @@ runs:
     # Bubblewrap for contained harness runs (Linux; M4-B, strategy "Containment lane"). One pinned version, from a
     # cache keyed on it, so a warm job never touches the Ubuntu mirror (it stalled setup for 12 to 34 minutes on
     # several jobs on 2026-11-10, before any test ran). A cold job downloads exactly that version, bounded so a stalled
-    # mirror fails in minutes. Strategy §3, "Setup cache".
+    # mirror fails in minutes. Strategy §7, "Bubblewrap is a pinned package, cached".
     - name: Bubblewrap's pinned version and its cache key (Linux)
       id: bwrap
       if: runner.os == 'Linux'
@@ -48,7 +48,7 @@ runs:
       env:
         VERSION: ${{ steps.bwrap.outputs.version }}
         DIR: ${{ steps.bwrap.outputs.dir }}
-      # A healthy update and download take about 5 s here (strategy §3), so 180 s and 120 s fail a stalled mirror in
+      # A healthy update and download take about 5 s here (strategy §7), so 180 s and 120 s fail a stalled mirror in
       # minutes instead of letting it eat the job. Nothing is retried: the job fails visibly, and a re-run starts over.
       run: |
         mkdir -p "$DIR"

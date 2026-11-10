@@ -839,6 +839,34 @@ def _cache_family(step: dict) -> str:
     return (step["with"].get("restore-keys") or step["with"]["key"]).split("${{")[0]
 
 
+def test_setup_caches_only_the_pinned_bubblewrap_and_bounds_a_cold_download():
+    """setup-aew's bubblewrap cache (strategy §7): the key names the pinned version, the release and the architecture,
+    and nothing else restores it, so a cached package is always the one a cold job would download; the install
+    refuses any other package; and a cold job's apt steps run under `timeout`, never retried, so a stalled mirror
+    fails the job in minutes (2026-11-10: it stalled setup for 12 to 34 minutes)."""
+    action = yaml.safe_load((ROOT / ".github" / "actions" / "setup-aew" / "action.yml").read_text(encoding="utf-8"))
+    steps = action["runs"]["steps"]
+    key_step = next(s for s in steps if s.get("id") == "bwrap")
+    version = key_step["env"]["BUBBLEWRAP_VERSION"]
+    assert re.fullmatch(r"[0-9][0-9A-Za-z.+~-]*", version), version
+    key_line = next(line for line in key_step["run"].splitlines() if line.lstrip().startswith('echo "key='))
+    assert all(part in key_line for part in ("$release", "$arch", "$BUBBLEWRAP_VERSION")), key_line
+    caches = [s for s in steps if s.get("uses", "").startswith("actions/cache")]
+    assert {s["uses"].split("@")[0] for s in caches} == {"actions/cache/restore", "actions/cache/save"}
+    for step in caches:  # one key, and no prefix match that could restore another version's package
+        assert step["with"]["key"] == "${{ steps.bwrap.outputs.key }}" and "restore-keys" not in step["with"]
+        assert step["with"]["path"] == "${{ steps.bwrap.outputs.dir }}"
+    cold = next(s for s in steps if "apt-get download" in s.get("run", ""))
+    assert "cache-hit != 'true'" in cold["if"]
+    apt = [line.strip() for line in cold["run"].splitlines() if "apt-get " in line and "echo " not in line]
+    assert len(apt) == 2 and all(re.search(r"\btimeout [0-9]+ ", line) for line in apt), apt
+    assert 'bubblewrap=$VERSION' in cold["run"]
+    install = next(s for s in steps if "dpkg -i" in s.get("run", ""))
+    assert '!= "bubblewrap $VERSION"' in install["run"], "the install refuses any other package or version"
+    text = "\n".join(str(s.get("run", "")) for s in steps).lower()
+    assert "retry" not in text and "retries" not in text and "until " not in text and "for i in" not in text
+
+
 def test_every_cache_the_nightly_uses_is_at_the_path_its_family_is_saved_at():
     """actions/cache keys an entry by its path as well as its key, so a restore at another path than the save's never
     finds it: ci.yml's tier job restores the gate's history at another path than the assurance job saves it at, and

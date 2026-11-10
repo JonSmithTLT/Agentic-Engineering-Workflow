@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -207,14 +206,23 @@ def loop_state(aew_root: Any, generation: int | None = None) -> dict[str, Any] |
 def notifier_problem(policy: dict[str, Any] | None) -> str | None:
     """Why the adopted notifier cannot deliver, or ``None``: unattended Run needs a configured notifier whose
     ``command[0]`` resolves to an executable file (operator decision 1; plan v3 E2). The operator endpoint delivers
-    through it (``aew.harness.notify``, M4-E E7a), and checks it again before each delivery."""
+    through it (``aew.harness.notify``, M4-E E7a), and checks it again before each delivery. The shipped default,
+    ``aew notify desktop``, must also find a desktop session in the environment the endpoint gives it (register E104,
+    BOY-12.d); a command the operator wrote keeps the executable check alone."""
+    from aew.harness import desktop_notifier
+
     command = ((policy or {}).get("notify") or {}).get("command") or []
     if not command:
         return "no notifier is configured (execution policy `notify.command`)"
-    program = command[0]
-    found = shutil.which(program) if os.sep not in program and "/" not in program else program
+    found = desktop_notifier.resolve(command)
     if not found or not os.path.isfile(found) or not os.access(found, os.X_OK):
-        return f"the notifier `{program}` does not resolve to an executable file"
+        return f"the notifier `{command[0]}` does not resolve to an executable file"
+    if desktop_notifier.is_default(command):  # the shipped default refuses while it cannot deliver (BOY-12.d)
+        # Every variable the check reads is one the endpoint passes its notifier (`notify.sanitized_env` keeps PATH
+        # and `desktop_notifier.SESSION_VARS`), so the environment here answers as the notifier's would.
+        missing = desktop_notifier.problem(os.environ)
+        if missing:
+            return f"the default desktop notifier is unavailable: {missing}. Fix: {desktop_notifier.FIX}"
     return None
 
 

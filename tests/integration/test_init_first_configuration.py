@@ -17,6 +17,7 @@ from vertical import scripted_operator as S
 from vertical.chat import Mailbox
 
 from aew.cli.main import build_parser
+from aew.engine import first_configuration as FC
 from aew.engine.api import Engine
 from aew.errors import ValidationFailed
 from aew.harness import contract as K
@@ -110,7 +111,7 @@ def test_a_fresh_init_with_an_opencode_model_names_its_key_and_a_launch_passes_o
     assert variable == "OPENCODE_API_KEY" and res.json["first_configuration"]["provider_env"] == [variable]
     policy = yaml.safe_load((root / ".aew" / "policy" / "execution.yaml").read_text(encoding="utf-8"))
     assert policy["provider_env"] == [variable]
-    assert policy["profiles"]["default"] == {"model": "opencode/x"}
+    assert policy["profiles"]["default"] == {"model": "opencode/x", "deadline_s": FC.DEADLINE_S}
     for env, want in (({variable: "synthetic-not-a-key"}, None), ({}, variable), ({variable: ""}, variable)):
         assert netns.provider_key_missing("opencode", policy["provider_env"], env, on_relay_route=True) == want, env
 
@@ -273,7 +274,8 @@ def test_each_fixture_is_recorded_not_counted_and_pinned_by_the_real_path(tmp_pa
     execution = op.root / ".aew/policy/execution.yaml"
     doc = yaml.safe_load(execution.read_text(encoding="utf-8"))
     assert doc["harness"] == "fake" and doc["steering"] == {"mode": "crawl"}
-    assert doc["profiles"] == {"default": {"model": S.OFFLINE_MODEL}}  # what the operator typed is left as typed
+    # what the operator typed is left as typed, with the profile's deadline (register E228)
+    assert doc["profiles"] == {"default": {"model": S.OFFLINE_MODEL, "deadline_s": FC.DEADLINE_S}}
     assert Engine.discover(op.root).store.current()["policy_sha256"]["policy/execution.yaml"] == sha256_file(execution)
 
 

@@ -50,7 +50,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from aew.harness import broker_liveness, event_spool, procs, runlog
+from aew.harness import broker_liveness, desktop_notifier, event_spool, procs, runlog
 from aew.harness import contract as K
 from aew.harness.agentenv import POSIX_KEEP, WINDOWS_KEEP
 from aew.util import replace_with_retry, utc_now
@@ -110,10 +110,14 @@ def payload(*, event: str, project_id: str, subject: str | None, reason: str | N
 
 def sanitized_env(base: dict[str, str] | None = None) -> dict[str, str]:
     """The notifier's environment: the run bridge's curated keep-list (``agentenv``: the operating system's basics,
-    ``LC_*`` on POSIX, ``PATH``), minus every ``AEW_*`` variable, every provider-key or secret name, and any variable
-    whose value holds an AEW credential (plan v3 E7). Nothing else the endpoint's shell held reaches it."""
+    ``LC_*`` on POSIX, ``PATH``), plus on POSIX the desktop session's own variables, which the shipped desktop notifier
+    needs to reach the session (``desktop_notifier.SESSION_VARS``, register E104), minus every ``AEW_*`` variable,
+    every provider-key or secret name, and any variable whose value holds an AEW credential (plan v3 E7). Nothing else
+    the endpoint's shell held reaches it."""
+    from aew.harness.desktop_notifier import SESSION_VARS
+
     source = dict(os.environ) if base is None else dict(base)
-    keep = WINDOWS_KEEP if sys.platform == "win32" else POSIX_KEEP
+    keep = WINDOWS_KEEP if sys.platform == "win32" else POSIX_KEEP | frozenset(SESSION_VARS)
     env = {k: v for k, v in source.items()
            if k.upper() in keep or k.upper() == "PATH" or (sys.platform != "win32" and k.startswith("LC_"))}
     env = {k: v for k, v in env.items() if not k.upper().startswith("AEW_") and not SECRET_NAME.search(k)}
@@ -693,8 +697,10 @@ class Watcher:
             config = (policy or {}).get("notify") or {}
             problem = notifier_problem(policy)
             if problem:
-                outcome = {"outcome": "failed", "reason": "not_configured" if not config.get("command")
-                           else "not_executable", "detail": problem}
+                reason = ("not_configured" if not config.get("command") else "unavailable"
+                          if desktop_notifier.is_default(config["command"]) and os.path.isfile(
+                              desktop_notifier.resolve(config["command"]) or "") else "not_executable")
+                outcome = {"outcome": "failed", "reason": reason, "detail": problem}
             else:
                 self._tree = procs.ProcessTree()
                 try:

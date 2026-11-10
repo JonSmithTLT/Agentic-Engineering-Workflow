@@ -226,6 +226,7 @@ None.
 - `aew.cli.history_commands`
 - `aew.cli.map_commands`
 - `aew.cli.message_commands`
+- `aew.cli.notify_commands`
 - `aew.cli.operator_commands`
 - `aew.cli.settings_commands`
 - `aew.cli.usage_commands`
@@ -313,6 +314,10 @@ None.
 
 - `aew.cli.commands`
 - `aew.lead_credential`
+
+### `aew.cli.notify_commands`
+
+- `aew.harness.desktop_notifier`
 
 ### `aew.cli.operator_commands`
 
@@ -763,6 +768,7 @@ None.
 
 ### `aew.engine.first_configuration`
 
+- `aew.engine.steering`
 - `aew.errors`
 - `aew.harness.containment.netns`
 - `aew.harness.contract`
@@ -1101,6 +1107,7 @@ None.
 - `aew.engine.primitives`
 - `aew.engine.store`
 - `aew.errors`
+- `aew.harness.desktop_notifier`
 - `aew.knowledge.records`
 - `aew.util`
 
@@ -1346,6 +1353,11 @@ None.
 
 None.
 
+### `aew.harness.desktop_notifier`
+
+- `aew.errors`
+- `aew.harness.procs`
+
 ### `aew.harness.event_spool`
 
 - `aew.errors`
@@ -1419,6 +1431,7 @@ None.
 - `aew.harness.agentenv`
 - `aew.harness.broker_liveness`
 - `aew.harness.contract`
+- `aew.harness.desktop_notifier`
 - `aew.harness.event_spool`
 - `aew.harness.lead_broker`
 - `aew.harness.procs`

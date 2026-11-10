@@ -465,6 +465,28 @@ def test_loop_refuses_run_without_a_live_endpoint(p):
     assert ran.code == L.REPETITION
 
 
+def test_an_endpoint_lost_mid_activation_stops_run_before_its_next_action(p, endpoint, monkeypatch):
+    """Register E228: in Run the endpoint is asked before every auto-run action, not once per activation, so an
+    endpoint that goes away after the first action stops the loop (NOTIFIER_UNAVAILABLE) before the second runs."""
+    from aew import errors
+    from aew.harness import operator_client
+
+    mode(p, "run")
+    real, asked = operator_client.ping, []
+
+    def ping(aew_root: Path) -> dict[str, Any]:
+        asked.append(1)
+        if len(asked) > 1:
+            raise errors.NotFound("no operator endpoint answers (it went away)")
+        return real(aew_root)
+
+    monkeypatch.setattr(operator_client, "ping", ping)
+    lp = loop(p, Scripted(notes))
+    stop = lp.activate()
+    assert stop.code == L.NOTIFIER_UNAVAILABLE and "it went away" in stop.message, stop
+    assert [x["action"] for x in lp.executed] == ["probe_notes"] and len(asked) == 2
+
+
 def test_run_never_auto_starts_a_run_without_a_hard_deadline(p, endpoint):
     """A1 §3.2 / plan v3 E7: in Run, a dispatching action is refused (NO_HARD_DEADLINE) unless every execution
     profile policy routing can pick sets deadline_s; nothing is executed."""

@@ -26,10 +26,10 @@ to a stop; the envelope is counted per activation.
    primitive is in ``{control_state}`` (A1 §2, fail closed), Run never. **E7b has no confirmation (amendment 1, m3):**
    such an action is never executed, and the loop stops with ``CONFIRMATION_UNAVAILABLE``. E7c replaces that stop.
 5. The envelope (A1 §3): the activation's deadline, its action count, and the repetition key ``(action, arguments,
-   subject, subject state)``, counted from the last commit not made by the loop. In Run, at each activation, the
-   notifier must be executable and the operator endpoint must answer (``NOTIFIER_UNAVAILABLE``; plan v3 §2.8, m4),
-   and a dispatching action needs every profile routing can pick to set ``deadline_s`` (``NO_HARD_DEADLINE``, A1
-   §3.2).
+   subject, subject state)``, counted from the last commit not made by the loop. In Run, at each activation the
+   notifier must be able to deliver, and before each action the operator endpoint must answer
+   (``NOTIFIER_UNAVAILABLE``; plan v3 §2.8, m4; register E228), and a dispatching action needs every profile routing
+   can pick to set ``deadline_s`` (``NO_HARD_DEADLINE``, A1 §3.2).
 6. Execute it as a normal stage call (``run_tool``), with the projection's ``expect_rev``, a StageIntent, and the
    loop's attribution on that intent (``auto_run``: activation, mode and its record and generation, digests,
    projection) and on its dispatches (channel ``steering_loop``). It is the same call a Lead makes, checked the same
@@ -446,20 +446,22 @@ class SteeringLoop:
         return self._do(act, picked, mode, now, digests, key)
 
     def _run_checks(self, act: Activation, policy: dict[str, Any] | None, t: Any) -> tuple[str, str] | None:
-        """Run's own conditions: at each activation the notifier is executable and the endpoint answers (plan v3
-        §2.8, m4); a dispatching action needs a hard deadline on every profile routing can pick (A1 §3.2)."""
+        """Run's own conditions: at each activation the notifier can deliver (plan v3 §2.8, m4); before each action the
+        endpoint answers, so an endpoint lost mid-activation stops the loop before its next step rather than at the
+        next activation (register E228); a dispatching action needs a hard deadline on every profile routing can pick
+        (A1 §3.2)."""
         if not act.run_checked:
             problem = S.notifier_problem(policy)
             if problem:
                 return NOTIFIER_UNAVAILABLE, f"unattended Run needs an executable notifier: {problem}"
-            from aew.harness import operator_client
-
-            try:
-                operator_client.ping(self.aew_root)
-            except errors.AEWError as exc:
-                return NOTIFIER_UNAVAILABLE, ("unattended Run needs the operator endpoint, which delivers its "
-                                              f"notifications, to be live: {exc.message}")
             act.run_checked = True
+        from aew.harness import operator_client
+
+        try:
+            operator_client.ping(self.aew_root)
+        except errors.AEWError as exc:
+            return NOTIFIER_UNAVAILABLE, ("unattended Run needs the operator endpoint, which delivers its "
+                                          f"notifications, to be live: {exc.message}")
         if t.dispatches:
             missing = S.profiles_without_deadline(policy)
             if missing:

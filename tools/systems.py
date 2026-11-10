@@ -40,7 +40,8 @@ and holds the file to:
 records, stale remaining slices and FORMAT.md rule 1's count. A count above wip_limit requires the operator's covering
 wip_allowance; the allowance is stale once the count recovers. The operator's words and their extra conditions are
 reviewed, not authenticated or interpreted by the tool. Defaults outside the tables and lead_text/pack wiring remain
-hand-kept and are labelled. Render reads only the lightweight policy tables, not the as-built reference.
+hand-kept and are labelled. Render labels the evidence citations; check validates their table ownership. Render
+imports neither the policy tables nor the as-built reference.
 Not here yet: deriving board_state or built, serves, lanes or a dashboard view.
 """
 
@@ -192,8 +193,8 @@ def reference_records(root: Path) -> frozenset[str]:
 
 
 def code_tables(root: Path = ROOT) -> tuple[dict[str, Any], dict[tuple[str, str], tuple[str, ...]]]:
-    """The code's tables, never defaults copied into this tool. Render reads these lightweight owners too, only to
-    label provenance; it never calls owners/check or renders the reference. Check reads them after the reference."""
+    """The code's tables, never defaults copied into this tool. Check reads them after the reference. Rendering uses
+    the evidence citations instead; switch_problems validates those citations against these tables."""
     try:
         manifest = __import__("aew.knowledge.manifest", fromlist=["DEFAULT_GATES"])
         execution = __import__("aew.policy.execution", fromlist=["STRING_SWITCHES"])
@@ -584,7 +585,13 @@ def switch_problems(data: dict[str, Any], own: Owners) -> list[Problem]:
     out = []
     for e in data["systems"]:
         switch = e.get("switch")
-        if not switch or not (source := switch_source(switch, own.string_switches)):
+        if not switch:
+            continue
+        source = switch_source(switch, own.string_switches)
+        if source is None:
+            if switch.get("default_evidence") in (GATE_SOURCE, SWITCH_SOURCE):
+                out.append(Problem("default", e["id"], f"switch.key {switch['key']} is hand-kept, not owned by "
+                                   "the cited code table; replace default_evidence with its hand-kept source"))
             continue
         key = switch["key"].split(" ", 1)[0]
         block, _, name = key.partition(".")
@@ -649,8 +656,11 @@ def limit_problems(data: dict[str, Any]) -> list[Problem]:
                 if allowance is not None else [])
     if allowance is not None and len(ids) <= allowance["count"]:
         return []
-    return [Problem("wip", "file", f"limit's count {len(ids)} exceeds wip_limit {limit}: {', '.join(ids)}; "
-                    "finish or freeze work, or obtain the operator's covering wip_allowance, then render")]
+    ceiling = (f"the operator's allowance of {allowance['count']} (wip_limit {limit})" if allowance is not None
+               else f"wip_limit {limit}")
+    remedy = "a revised" if allowance is not None else "a covering"
+    return [Problem("wip", "file", f"limit's count {len(ids)} exceeds {ceiling}: {', '.join(ids)}; "
+                    f"finish or freeze work, or obtain {remedy} operator wip_allowance, then render")]
 
 
 # Keys, titles, and membership rules live together. View 3 deliberately overlaps the partition.
@@ -666,7 +676,7 @@ VIEWS = (
 
 
 def counted_systems(data: dict[str, Any]) -> list[str]:
-    """FORMAT.md rule 1, computed once; PR 3 reuses this, but PR 2 does not enforce the limit."""
+    """FORMAT.md rule 1's count, computed once and enforced by limit_problems."""
     return sorted(e["id"] for e in data["systems"]
                   if e["state"]["board_state"] in ("partly_built", "built_off", "built_not_wired", "staged")
                   and e["recommendation"] in ("finish", "switch_on"))
@@ -695,6 +705,13 @@ def _line(text: str) -> str:
     return " ".join(text.splitlines())
 
 
+def declared_switch_source(switch: dict[str, Any]) -> str | None:
+    """Render the evidence's declared provenance without importing any checkout's policy tables. switch_problems
+    checks that the cited table really owns the key, including in planted trees with their own Owners tables."""
+    evidence = switch.get("default_evidence")
+    return evidence if evidence in (GATE_SOURCE, SWITCH_SOURCE) else None
+
+
 def render_markdown(data: dict[str, Any], order: dict[str, int]) -> str:
     """Each field is one line, separated by blanks. A number shares its members' line so git cannot merge it stale."""
     out = ["# The systems build board", "Generated from [systems.yaml](systems.yaml). Do not edit; run "
@@ -711,16 +728,18 @@ def render_markdown(data: dict[str, Any], order: dict[str, int]) -> str:
                f"{', '.join(counted_systems(data)) or 'none'}")
     allowance = data.get("wip_allowance")
     if allowance is not None:
-        out.append(f"**Operator allowance:** up to {allowance['count']} — {', '.join(counted_systems(data)) or 'none'} "
-                   f"— {_line(allowance['operator'])} — {allowance['date']}")
-    _, switches = code_tables()
-    hand_switches = [e for e in data["systems"] if e.get("switch") and not switch_source(e["switch"], switches)]
-    out.append(f"**Switch defaults not read from the code:** {_members([e['id'] for e in hand_switches])} — "
-               + "; ".join(f"{e['id']}: {_line(e['switch']['key'])}" for e in hand_switches))
+        out.append(f"**Operator allowance:** up to {allowance['count']} — {_line(allowance['operator'])} — "
+                   f"{allowance['date']} (only the cap and staleness are checked; "
+                   "the words' conditions are not checked)")
+    hand_switches = [e for e in data["systems"] if e.get("switch") and not declared_switch_source(e["switch"])]
+    details = "; ".join(f"{e['id']}: {_line(e['switch']['key'])}" for e in hand_switches)
+    out.append(f"**Switch defaults not read from the code:** {_members([e['id'] for e in hand_switches])}"
+               + (f" — {details}" if details else ""))
     hand_wired = [e for e in data["systems"] if set(e["state"]["wired"]) & set(HAND_WIRED)]
-    out.append(f"**Hand-kept wiring (no reference record):** {_members([e['id'] for e in hand_wired])} — "
-               + "; ".join(f"{e['id']}: {', '.join(w for w in e['state']['wired'] if w in HAND_WIRED)}"
-                           for e in hand_wired))
+    details = "; ".join(f"{e['id']}: {', '.join(w for w in e['state']['wired'] if w in HAND_WIRED)}"
+                        for e in hand_wired)
+    out.append(f"**Hand-kept wiring (no reference record):** {_members([e['id'] for e in hand_wired])}"
+               + (f" — {details}" if details else ""))
     selected = views(data, order)
     for key, title, _ in VIEWS:
         entries = selected[key]
@@ -744,7 +763,7 @@ def render_markdown(data: dict[str, Any], order: dict[str, int]) -> str:
                 slice_members = "; ".join(f"{_line(s['slice'])} ({s['row']})" for s in slices) or "none"
                 out.append(f"**Own slices left:** {len(slices)} — {slice_members} — **Next:** {next_slice}")
                 if e.get("switch"):
-                    source = switch_source(e["switch"], switches)
+                    source = declared_switch_source(e["switch"])
                     provenance = f"checked against {source}" if source else "not read from the code"
                     out.append(f"**Switch:** {_line(e['switch']['key'])} — default: "
                                f"{_line(e['switch'].get('default', 'not stated'))} — {provenance}")

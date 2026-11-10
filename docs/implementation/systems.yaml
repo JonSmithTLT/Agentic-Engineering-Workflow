@@ -850,7 +850,7 @@ systems:
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
       The Lead''s request-economy text remains owed after E139''s worker-pack fixes (designer-decisions-2026-11-06-rate-limit-unit.md,
       ruling 3)'
-    row: row owed
+    row: E162
     estimate: 1-2 PRs (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
       Lead text fixes, and a typed `plan accept`'
@@ -2618,8 +2618,8 @@ systems:
     (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md))'
   recommendation: finish
   who: Lead
-  reason: The request-and-report seam is built and nothing provides a skill; E127, E142 and E136 are on the Now list, and
-    E127 is unblocked since CAP-1 PR 2 merged, so finishing is the Lead's by the register's order (BOARD v2 §0, §1).
+  reason: E127 provides four skills. The system remains staged for the remaining rollout; E142's two skills, E136's
+    eleven optional skills (frozen pending E120), and E135's qualification are still owed.
   evidence:
   - src/aew/roles/cards/code_reviewer.yaml:11, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
     verifier.yaml:11 cards request skills

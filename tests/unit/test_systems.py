@@ -255,6 +255,7 @@ PLANTED: dict[str, tuple[str, Callable[[dict[str, Any]], Any]]] = {
     "a count above the limit": ("wip", lambda d: d.update(wip_limit=1)),
     "a stale allowance": ("allowance", lambda d: d.update(wip_allowance={
         "count": 14, "operator": "I allow 14 systems", "date": "2026-11-10"})),
+    "table evidence on a hand-kept key": ("default", _set("SYS-01", "switch.default_evidence", systems.SWITCH_SOURCE)),
 }
 
 
@@ -579,6 +580,29 @@ def test_every_table_namespace_is_checked_and_other_namespaces_remain_hand_kept(
             assert e["switch"]["default_evidence"] == checked
 
 
+@pytest.mark.parametrize("evidence", [systems.GATE_SOURCE, systems.SWITCH_SOURCE])
+def test_hand_kept_switch_cannot_claim_either_code_table(own, evidence):
+    data = board()
+    data["systems"][0]["switch"] = {"key": "steering.mode", "default": "absent", "default_evidence": evidence}
+    [problem] = systems.switch_problems(data, own)
+    assert problem.check == "default" and "hand-kept" in problem.text and "replace default_evidence" in problem.text
+    data["systems"][0]["switch"]["default_evidence"] = "src/pkg/a.py:1"
+    assert systems.switch_problems(data, own) == []
+
+
+def test_renderer_labels_planted_evidence_without_importing_policy_tables(own, monkeypatch):
+    data = board()
+    data["systems"][0]["switch"] = checked_switch(key="planted.feature")
+    own = replace(own, string_switches={("planted", "feature"): ("off", "on")})
+    assert systems.switch_problems(data, own) == []
+    monkeypatch.setattr(systems, "code_tables", lambda *args: pytest.fail("render must not import policy tables"))
+    text = systems.render_markdown(data, {})
+    assert f"**Switch:** planted.feature — default: off — checked against {systems.SWITCH_SOURCE}" in text
+    assert "**Switch defaults not read from the code:** 0 — none\n" in text
+    assert "**Hand-kept wiring (no reference record):** 0 — none\n" in text
+    assert not any(line.endswith(" — ") for line in text.splitlines())
+
+
 @pytest.mark.parametrize("claim, record", [("cli:command", "cli-commands:command"),
                                          ("dashboard:/route/{id}", "dashboard-routes:/route/{id}"),
                                          ("tool:explain", "tools:explain")])
@@ -606,6 +630,8 @@ def test_stale_slices_keep_the_hold_rule_as_the_single_reporter(own):
     data["systems"][0]["remaining"] = [{"slice": "done", "row": "F1", "estimate": "e"}]
     [problem] = systems.stale_slice_problems(data, own)
     assert problem.check == "stale_slice" and "F1" in problem.text and "row owed" in problem.text
+    data["systems"][0]["remaining"][0]["row"] = "E1"
+    assert systems.stale_slice_problems(data, own) == []
     problems = found(own, _set("SYS-02", "remaining", [{"slice": "held", "row": "HOLD-02", "estimate": "e"}]))
     assert [p.check for p in problems] == ["hold"]
 
@@ -623,6 +649,11 @@ def test_wip_limit_and_allowance_boundaries(count, cap, rule):
     assert [p.check for p in problems] == ([rule] if rule else [])
     if rule == "wip":
         assert all(e["id"] in problems[0].text for e in data["systems"])
+        if cap is not None:
+            assert f"exceeds the operator's allowance of {cap} (wip_limit 2)" in problems[0].text
+            assert "revised" in problems[0].text
+        data["wip_allowance"] = {"count": count, "operator": "I approve the revised cap", "date": "2026-11-10"}
+        assert systems.limit_problems(data) == []
 
 
 @pytest.mark.parametrize("changes", [{"count": 12}, {"count": 11}, {"count": True}, {"count": "14"},
@@ -669,10 +700,37 @@ def test_render_labels_hand_kept_facts_and_prints_allowance_words_and_date():
     assert "a.b" in text and "**Hand-kept wiring (no reference record):** 1 — SYS-01" in text
     assert "SYS-01: lead_text, pack" in text
     allowance = next(line for line in text.splitlines() if line.startswith("**Operator allowance:**"))
-    assert all(word in allowance for word in ("14", "SYS-01", "SYS-02", "2026-11-10",
-                                            data["wip_allowance"]["operator"]))
+    assert all(word in allowance for word in ("14", "2026-11-10", data["wip_allowance"]["operator"]))
+    assert "SYS-01" not in allowance and "SYS-02" not in allowance
+    assert "only the cap and staleness are checked; the words' conditions are not checked" in allowance
     assert "re-runs `python tools/systems.py check` against current main" in text
     assert systems.public_problems(text) == []
+
+
+def test_allowance_conditions_are_labelled_not_interpreted():
+    data = board()
+    data["wip_limit"] = 2
+    data["systems"] = [entry(f"SYS-{n:02}") for n in range(1, 5)]
+    data["wip_allowance"] = {"count": 4, "operator": "No new starts; lapses when SYS-01 and SYS-02 close",
+                             "date": "2026-11-10"}
+    for closed in (1, 2):  # swap at cap, or a start after the named lapse, both remain numerically covered
+        changed = copy.deepcopy(data)
+        for e in changed["systems"][:closed]:
+            e["recommendation"] = "done"
+        changed["systems"].append(entry("SYS-05"))
+        assert systems.limit_problems(changed) == []
+        text = systems.render_markdown(changed, {})
+        allowance = next(line for line in text.splitlines() if line.startswith("**Operator allowance:**"))
+        assert "the words' conditions are not checked" in allowance
+        assert "SYS-03" not in allowance and "SYS-04" not in allowance and "SYS-05" not in allowance
+
+
+def test_request_economy_tracks_the_leads_existing_open_row():
+    data, own = systems.read_board(ROOT), owners_at_head()
+    e = sys_(data, "SYS-06")
+    slices = [s for s in e["remaining"] if "request-economy" in s["slice"]]
+    assert len(slices) == 1 and slices[0]["row"] == "E162" and "E162" in own.open_rows
+    assert all(s["row"] != "E139" for s in e["remaining"])
 
 
 def test_unreadable_code_or_reference_is_exit_two_not_no_problem(monkeypatch, tmp_path, capsys):

@@ -82,7 +82,10 @@ def tool_entry(t: contract.Tool) -> dict[str, Any]:
 
 
 def tools_list(profile: str, switches: frozenset[str] = frozenset()) -> dict[str, Any]:
-    return {"tools": [tool_entry(t) for t in contract.exposed(profile, switches)]}
+    from aew.surface.presentation import compact
+
+    return {"tools": [tool_entry(compact(t) if contract.MESSAGING in switches else t)
+                      for t in contract.exposed(profile, switches)]}
 
 
 class Server:

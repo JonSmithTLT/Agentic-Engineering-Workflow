@@ -93,7 +93,7 @@ class Dash:
 
     def bootstrap(self) -> str:
         """Issue a session and exchange its URL as a browser would; the credential the cookie now holds."""
-        status, headers, _ = self.exchange(self.svc.issue())
+        status, headers, _ = self.exchange(self.svc.issue(authorized_by=S.OPERATOR_TTY))
         assert status == 303 and headers["location"] == "/", (status, headers)
         return cookie_of(headers)
 
@@ -140,7 +140,7 @@ def dash(project: Project) -> Dash:
 
 
 def test_bootstrap_sets_the_cookie_and_the_cookie_reads_the_api(dash: Dash):
-    url = dash.svc.issue()
+    url = dash.svc.issue(authorized_by=S.OPERATOR_TTY)
     assert re.fullmatch(re.escape(dash.svc.url) + r"/session/[A-Za-z0-9_-]{43}", url)
     status, headers, body = dash.exchange(url)
     assert status == 303 and headers["location"] == "/" and body == b""
@@ -174,7 +174,8 @@ def test_the_endpoint_files_locate_the_server_and_never_hold_a_secret(dash: Dash
     assert status["running"] is True and status["port"] == dash.svc.port and status["sessions"] == []
     dash.bootstrap()
     sessions = control.request_status(found["endpoint"], found["key"])["sessions"]
-    assert len(sessions) == 1 and set(sessions[0]) == {"token_id", "issued_at", "expires_at"}
+    assert len(sessions) == 1 and set(sessions[0]) == {"token_id", "issued_at", "expires_at", "authorized_by"}
+    assert sessions[0]["authorized_by"] == S.OPERATOR_TTY
 
 
 # ---------------------------------------------------------------------------------------------- refusals (401)
@@ -196,7 +197,7 @@ def test_forged_truncated_wrong_id_and_wrong_secret_cookies_are_401_and_expired_
     credential = dash.bootstrap()
     tid, secret = credential.split(".")[1:]
     other = S.SessionTable(dash.svc.project_id)
-    foreign, _ = other.exchange(other.mint())  # a well-formed credential of a table this server never saw
+    foreign, _ = other.exchange(other.mint(authorized_by=S.OPERATOR_TTY))  # a credential of a different table
     cases = {"forged": foreign, "truncated": credential[:-2], "wrong id": f"aew1.tk_0123456789abcdef.{secret}",
              "wrong secret": f"aew1.{tid}." + ("A" if secret[0] != "A" else "B") + secret[1:],
              "garbage": "not-a-credential", "empty": "", "lead-shaped": "aew1.tk_0123456789abcdef." + "A" * 43}
@@ -216,11 +217,11 @@ def test_an_expired_session_is_401_session_expired_by_the_injected_clock(dash: D
     status, headers, body = dash.api("/project", credential)
     assert status == 401 and body["code"] == "SESSION_EXPIRED", body
     assert headers["set-cookie"] == S.expired_cookie()
-    dash.svc.issue()  # a later minting keeps the expired record (the grace period), so the answer stays "expired"
+    dash.svc.issue(authorized_by=S.OPERATOR_TTY)  # a later mint keeps the expired record, so the answer stays "expired"
     status, _, body = dash.api("/project", credential)
     assert status == 401 and body["code"] == "SESSION_EXPIRED", body
     dash.clock.offset = timedelta(hours=2, seconds=1) + S.EXPIRED_GRACE + timedelta(seconds=1)
-    dash.svc.issue()  # beyond the grace the record is purged: now the cookie is unknown
+    dash.svc.issue(authorized_by=S.OPERATOR_TTY)  # beyond the grace the record is purged: now the cookie is unknown
     status, _, body = dash.api("/project", credential)
     assert status == 401 and body["code"] == "SESSION_REQUIRED", body
 
@@ -228,7 +229,7 @@ def test_an_expired_session_is_401_session_expired_by_the_injected_clock(dash: D
 def test_a_displaced_session_is_401_session_expired(dash: Dash):
     first = dash.bootstrap()
     for _ in range(S.MAX_SESSIONS):
-        dash.svc.issue()
+        dash.svc.issue(authorized_by=S.OPERATOR_TTY)
     status, _, body = dash.api("/project", first)
     assert status == 401 and body["code"] == "SESSION_EXPIRED"
     assert len(dash.svc.table.live()) == S.MAX_SESSIONS
@@ -238,7 +239,7 @@ def test_a_displaced_session_is_401_session_expired(dash: Dash):
 
 
 def test_the_one_time_url_used_twice_is_410_and_the_first_cookie_still_works(dash: Dash):
-    url = dash.svc.issue()
+    url = dash.svc.issue(authorized_by=S.OPERATOR_TTY)
     status, headers, _ = dash.exchange(url)
     credential = cookie_of(headers)
     status, headers, body = dash.exchange(url)
@@ -253,12 +254,12 @@ def test_unknown_expired_and_head_requests_never_yield_a_cookie(dash: Dash):
     assert status == 410 and "set-cookie" not in headers
     status, headers, _ = dash.request("/session/")
     assert status == 410 and "set-cookie" not in headers
-    url = dash.svc.issue()
+    url = dash.svc.issue(authorized_by=S.OPERATOR_TTY)
     status, headers, body = dash.exchange(url, method="HEAD")
     assert status == 410 and "set-cookie" not in headers and body == b""  # a HEAD never spends a code
     assert dash.exchange(url)[0] == 303  # still unspent
     ticks = dash.svc.table.monotonic
-    url = dash.svc.issue()
+    url = dash.svc.issue(authorized_by=S.OPERATOR_TTY)
     dash.svc.table.monotonic = lambda: ticks() + S.CODE_TTL_S + 1
     try:
         status, headers, _ = dash.exchange(url)
@@ -268,7 +269,7 @@ def test_unknown_expired_and_head_requests_never_yield_a_cookie(dash: Dash):
 
 
 def test_a_cross_site_navigation_is_refused_without_consuming_the_code(dash: Dash):
-    url = dash.svc.issue()
+    url = dash.svc.issue(authorized_by=S.OPERATOR_TTY)
     for hdrs in ({"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"},
                  {"Sec-Fetch-Site": "same-site"},
                  {"Sec-Fetch-Site": "none", "Sec-Fetch-Mode": "cors"},
@@ -625,7 +626,7 @@ def test_a_lead_session_refuses_both_commands(project: Project):
 
 def test_the_secret_appears_in_no_file_log_or_response(dash: Dash, caplog):
     caplog.set_level(logging.INFO, logger="aew.dashboard")
-    url = dash.svc.issue()
+    url = dash.svc.issue(authorized_by=S.OPERATOR_TTY)
     code = url.rsplit("/", 1)[1]
     status, headers, _ = dash.exchange(url)
     credential = cookie_of(headers)

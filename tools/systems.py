@@ -34,8 +34,10 @@ and holds the file to:
   ``$HOME``), nor a private folder's sub-folder named alone (``build-board-2026-11-06/FORMAT.md``); a reviewer reads
   the file for those, and for names.
 
-Not here yet: ``render`` and ``systems.md`` (with priority read from the Now list), state read from the code
-(``switch.default``, ``wired``) and the limit's count, and the derived ``serves``.
+``render`` writes ``systems.md`` with priority read from the Now list; ``check`` also refuses a stale page.
+``show SYS-NN`` prints an entry as stored and its derived priority, without writing anything.
+Not here yet: state read from the code (``switch.default``, ``wired``), enforcement of the limit,
+and derived ``serves``.
 """
 
 from __future__ import annotations
@@ -47,7 +49,7 @@ import json
 import re
 import sys
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -56,6 +58,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 SYSTEMS = "docs/implementation/systems.yaml"
+MARKDOWN = "docs/implementation/systems.md"
 REGISTER = "docs/implementation/future-work.yaml"
 SCHEMA = "aew/systems/v1"
 
@@ -131,6 +134,7 @@ class Owners:
     open_rows: frozenset[str]
     now_rows: frozenset[str]  # the open rows the Now list names
     records: frozenset[str]  # the as-built reference's record ids
+    now_order: dict[str, int] = field(default_factory=dict)  # row -> lowest open Now item number
 
 
 def _tool(name: str) -> ModuleType:
@@ -177,7 +181,21 @@ def owners(root: Path = ROOT) -> Owners:
         rows, open_rows, now_rows = register_owners((root / REGISTER).read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
         raise SystemsError(f"{REGISTER} cannot be read: {exc}") from exc
-    return Owners(root, rows, open_rows, now_rows, reference_records(root))
+    return Owners(root, rows, open_rows, now_rows, reference_records(root), now_order(root))
+
+
+def now_order(root: Path) -> dict[str, int]:
+    """Read only the register, through its Now reader; never render the as-built reference."""
+    register = _tool("register")
+    try:
+        data = register._load((root / REGISTER).read_text(encoding="utf-8"))
+        order: dict[str, int] = {}
+        for number, ids in register.now_list(data):
+            for rid in ids:
+                order[rid] = min(number, order.get(rid, number))
+        return order
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        raise SystemsError(f"{REGISTER} cannot be read: {exc}") from exc
 
 
 def load(text: str) -> Any:
@@ -471,10 +489,10 @@ def lint_problems(data: Any) -> list[Problem]:
         places.append(("unowned", _strings({str(k): v for k, v in unowned.items()}, "")))
     out = []
     for where, strings in places:
-        for field, text in strings:
+        for field_name, text in strings:
             for pattern, why in LINT.items():
                 for m in re.finditer(pattern, text):
-                    out.append(Problem("lint", where, f"{field} says {m.group(0)!r}: {why}"))
+                    out.append(Problem("lint", where, f"{field_name} says {m.group(0)!r}: {why}"))
     return out
 
 
@@ -488,12 +506,132 @@ def public_problems(text: str) -> list[Problem]:
     return out
 
 
+# Keys, titles, and membership rules live together. View 3 deliberately overlaps the partition.
+VIEWS = (
+    ("soon", "Finish and switch on soon", lambda e, n: e["recommendation"] == "switch_on"
+     or (e["recommendation"] == "finish" and n <= 2)),
+    ("more", "Finish, with more to build", lambda e, n: e["recommendation"] == "finish" and n > 2),
+    ("questions", "The operator's open questions", lambda e, n: e["decision"] != "none"
+     and not e["decision"].startswith("decided:")),
+    ("done", "Done", lambda e, n: e["recommendation"] == "done"),
+    ("not_counted", "Not counted", lambda e, n: e["recommendation"] in ("freeze", "cut", "keep")),
+)
+
+
+def counted_systems(data: dict[str, Any]) -> list[str]:
+    """FORMAT.md rule 1, computed once; PR 3 reuses this, but PR 2 does not enforce the limit."""
+    return sorted(e["id"] for e in data["systems"]
+                  if e["state"]["board_state"] in ("partly_built", "built_off", "built_not_wired", "staged")
+                  and e["recommendation"] in ("finish", "switch_on"))
+
+
+def priority(entry: dict[str, Any], order: dict[str, int]) -> int | None:
+    return min((order[r] for r in entry["register"] if r in order), default=None)
+
+
+def own_slices(entry: dict[str, Any], data: dict[str, Any]) -> list[dict[str, Any]]:
+    """A slice riding on another system's row is its owner's work, not this system's."""
+    others = {r for e in data["systems"] if e["id"] != entry["id"] for r in e["register"]}
+    return [s for s in entry["remaining"] if s["row"] not in others]
+
+
+def views(data: dict[str, Any], order: dict[str, int]) -> dict[str, list[dict[str, Any]]]:
+    ordered = sorted(data["systems"], key=lambda e: (priority(e, order) is None, priority(e, order), e["id"]))
+    return {key: [e for e in ordered if rule(e, len(own_slices(e, data)))] for key, _, rule in VIEWS}
+
+
+def _members(ids: list[str]) -> str:
+    return f"{len(ids)} — {', '.join(ids) or 'none'}"
+
+
+def _line(text: str) -> str:
+    return " ".join(text.splitlines())
+
+
+def render_markdown(data: dict[str, Any], order: dict[str, int]) -> str:
+    """Each field is one line, separated by blanks. A number shares its members' line so git cannot merge it stale."""
+    out = ["# The systems build board", "Generated from [systems.yaml](systems.yaml). Do not edit; run "
+           "`python tools/register.py render` (or `python tools/systems.py render`). Priority comes from "
+           "[the register's Now list](future-work.md#1-now-the-milestones-and-the-gates-in-order). "
+           "Count definition: FORMAT.md rule 1.",
+           "## Totals"]
+    for state in ENUMS[("state", "board_state")]:
+        ids = sorted(e["id"] for e in data["systems"] if e["state"]["board_state"] == state)
+        out.append(f"**{state}:** {_members(ids)}")
+    out.append(f"**Limit's count / wip_limit:** {len(counted_systems(data))} / {data['wip_limit']} — "
+               f"{', '.join(counted_systems(data)) or 'none'} (reported, not enforced)")
+    selected = views(data, order)
+    for key, title, _ in VIEWS:
+        entries = selected[key]
+        out += [f"## {title}", f"**Members:** {_members([e['id'] for e in entries])}"]
+        if key == "questions":
+            decided = sorted(e["id"] for e in data["systems"] if e["decision"].startswith("decided:"))
+            out.append(f"**Decided:** {_members(decided)}")
+        for e in entries:
+            sid, name = e["id"], _line(e["name"])
+            if key == "not_counted":
+                out.append(f"**{sid} — {name}:** {e['recommendation']}")
+                continue
+            out.append(f"### {sid} — {name}")
+            if key in ("soon", "more"):
+                number = priority(e, order)
+                out += [f"**Board state:** {e['state']['board_state']}", f"**Who:** {_line(e['who'])}",
+                        f"**Now:** {number if number is not None else 'not on the Now list'}"]
+                slices = own_slices(e, data)
+                next_slice = (f"{_line(slices[0]['slice'])} — {slices[0]['row']} — {_line(slices[0]['estimate'])}"
+                              if slices else "none")
+                slice_members = "; ".join(f"{_line(s['slice'])} ({s['row']})" for s in slices) or "none"
+                out.append(f"**Own slices left:** {len(slices)} — {slice_members} — **Next:** {next_slice}")
+                if e.get("switch"):
+                    out.append(f"**Switch:** {e['switch']['key']}")
+            elif key == "questions":
+                out.append(f"**Decision:** {_line(e['decision'])}")
+    return "\n\n".join(out) + "\n"
+
+
+def read_board(root: Path) -> dict[str, Any]:
+    try:
+        data = load((root / SYSTEMS).read_bytes().decode("utf-8"))
+    except (OSError, UnicodeDecodeError) as exc:
+        raise SystemsError(f"{SYSTEMS} cannot be read: {exc}") from exc
+    invalid = schema_problems(data)
+    if invalid:
+        raise SystemsError("; ".join(map(str, invalid)))
+    return data
+
+
+def render(root: Path = ROOT) -> None:
+    text = render_markdown(read_board(root), now_order(root))
+    (root / MARKDOWN).write_text(text, encoding="utf-8", newline="\n")
+
+
+def rendered_problems(root: Path, data: dict[str, Any], order: dict[str, int]) -> list[Problem]:
+    try:
+        actual = (root / MARKDOWN).read_bytes()
+    except FileNotFoundError:
+        actual = None
+    if actual != render_markdown(data, order).encode("utf-8"):
+        return [Problem("rendered", MARKDOWN, "missing or stale: run `python tools/systems.py render`")]
+    return []
+
+
+def show(sid: str, root: Path = ROOT) -> str | None:
+    data = read_board(root)
+    entry = next((e for e in data["systems"] if e["id"] == sid), None)
+    if entry is None:
+        return None
+    return yaml.safe_dump({**entry, "priority": priority(entry, now_order(root))}, sort_keys=False,
+                          allow_unicode=True)
+
+
 def problems(text: str, own: Owners) -> list[Problem]:
     """Every problem of the file's text against its owners, in a stable order."""
     data = load(text)
     found = (schema_problems(data) + generated_problems(data) + existence_problems(data, own)
              + dependency_problems(data) + owner_problems(data) + reverse_problems(data, own) + hold_problems(data, own)
-             + lint_problems(data) + public_problems(text))
+              + lint_problems(data) + public_problems(text))
+    if not schema_problems(data):
+        found += rendered_problems(own.root, data, own.now_order)
     return sorted(set(found), key=lambda p: (p.check, p.where, p.text))
 
 
@@ -511,12 +649,26 @@ def main(argv: list[str] | None = None) -> int:
         if reconfigure is not None:
             reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(prog="python tools/systems.py", description=(__doc__ or "").split("\n\n")[0])
-    ap.add_argument("command", choices=("check",))
-    ap.parse_args(argv)
+    ap.add_argument("command", choices=("check", "render", "show"))
+    ap.add_argument("id", nargs="?", help="show: the system's id (SYS-NN)")
+    args = ap.parse_args(argv)
+    if (args.command == "show") != (args.id is not None):
+        ap.error("only show takes one system id")
     try:
+        if args.command == "render":
+            render()
+            print(f"rendered {MARKDOWN}")
+            return 0
+        if args.command == "show":
+            shown = show(args.id)
+            if shown is None:
+                print(f"unknown system id: {args.id}", file=sys.stderr)
+                return 1
+            print(shown, end="")
+            return 0
         found = check()
     except SystemsError as exc:
-        print(f"cannot check {SYSTEMS}: {exc}", file=sys.stderr)
+        print(f"cannot {args.command} {SYSTEMS}: {exc}", file=sys.stderr)
         return 2
     if found:
         print("\n".join(map(str, found)), file=sys.stderr)

@@ -129,10 +129,11 @@ proposal's own content; it governs the project only once the proposal is adopted
 | [`quickstart.md`](guides/quickstart.md) | Install, initialize, run one Ticket end to end |
 | [`lead-guide.md`](guides/lead-guide.md) | How work flows, for a Lead: risk classes and their gates, the Ticket lifecycle, the command for each step (`aew guide`) |
 | [`opencode.md`](guides/opencode.md) | Running AEW with OpenCode: configuration, the Lead's TUI, harness runs, containment |
+| [`dashboard.md`](guides/dashboard.md) | Session-bound dashboard auto-start and the standalone server |
 | [`acceptance.md`](guides/acceptance.md) | The acceptance scenarios and how to run them |
 
-The guides cover M1 to M3. What M4 built (the typed Lead tools, steering, the integration queue, validation, the
-dashboard and more) has no guide yet: the operator guide is register E71, which follows what V-01 delivers, not M4 (register rebaseline, 2026-10-24).
+The guides cover M1 to M3 and opening the dashboard. The rest of what M4 built (the typed Lead tools, steering, the
+integration queue, validation and more) has no guide yet: the operator guide is register E71, which follows what V-01 delivers, not M4 (register rebaseline, 2026-10-24).
 
 ## Living implementation documents ([`implementation/`](implementation/))
 
@@ -143,7 +144,8 @@ dashboard and more) has no guide yet: the operator guide is register E71, which 
 | [`future-work.yaml`](implementation/future-work.yaml) | The register's source (E30): the same preamble, sections and rows as structured data. `future-work.md` is rendered from it by `tools/register.py`; `tests/unit/test_register.py` keeps the two identical |
 | [`notes.d/`](implementation/notes.d/README.md) | **Later notes on register rows**, one file per note (`notes.d/<row id>/<YYYY-MM-DD>-<branch slug>.md`, created by `python tools/register.py note <id>`), so branches noting the same row do not conflict; `python tools/register.py show <id>` prints a row with its notes, and `check` validates them |
 | [`register-rebaseline-dispositions.yaml`](implementation/register-rebaseline-dispositions.yaml) | **The register rebaseline's dispositions** (operator, 2026-10-24; the designer's record, design workspace `b598fdc`): one disposition (close, absorb, hold or keep) for each of the 193 rows open at `b879f6bd` and one fate for each of its 24 decisions-due items, the sixteen hold groups and the Now list of 2026-10-24; `tests/unit/test_register.py` pins it to the register in both directions, except that Now list, which is frozen history checked only to name rows (the live list is §1's, which `tools/register.py check` holds to the rows) |
-| [`systems.yaml`](implementation/systems.yaml) | **The build board's data:** one entry per AEW system, saying what is built, wired, switched on and used, what is left to finish it, and the operator's limit on partly built systems. Only hand-kept fields and ids are stored. `python tools/systems.py check` holds it to the register, the as-built reference and the tree, both ways, and `tests/unit/test_systems.py` runs that check in CI. Sessions read one entry by its id |
+| [`systems.yaml`](implementation/systems.yaml) | **The build board's data:** hand-kept fields and ids, checked against their owners by `python tools/systems.py check`. Read the [rendered views](implementation/systems.md), or one entry with `python tools/systems.py show SYS-NN` |
+| [`systems.md`](implementation/systems.md) | **The rendered build board:** finish soon, more to build, open questions, done and not counted; Now-list priority and the limit's count with its members. Run `python tools/register.py render` to refresh it |
 | [`decisions-due.md`](implementation/decisions-due.md) | **What the operator and designer owe, soonest first**, and the work blocked until then; rendered from [`decisions-due.yaml`](implementation/decisions-due.yaml) by `tools/register.py`, which fails CI when an item goes stale |
 | [`m4-ambiguity-report.md`](implementation/m4-ambiguity-report.md) | The M4 plan, its decisions, its register triage and each phase "as built" |
 | [`m4-e-plan-v3.md`](implementation/m4-e-plan-v3.md) | The M4-E plan: governed stages on the typed Lead surface, its cross-cutting designs, the operator's decisions of 2026-10-07 and slices E1 to E9 |

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import sys
+from dataclasses import replace
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -84,6 +85,13 @@ def test_the_tool_records_are_the_catalog_both_ways():
             "aew.surface.contract", "TOOLS", "enumerated")
         assert r["coverage"]["label"] == "complete-by-construction"
         assert set(r["fact_coverage"]) == {k for k, v in want.items() if isinstance(v, list)}
+
+
+def test_the_tools_page_displays_switch_conditions_from_record_facts():
+    tool = next(r for r in IFACE.tool_records() if r.key == "message_send")
+    assert "| built | `coordination.messaging` |" in IFACE.page([tool])
+    assert "| built | `other.switch` |" in IFACE.page([replace(tool, fact={**tool.fact, "switch": "other.switch"})])
+    assert "| built | - |" in IFACE.page([replace(tool, fact={k: v for k, v in tool.fact.items() if k != "switch"})])
 
 
 def contract_tree() -> ast.Module:

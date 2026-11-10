@@ -18,3 +18,7 @@ entry. The worker_message guide owner is `src/aew/harness/contract.py`.
 
 **Surface-map limit:** MS3 does not implement the whole `harness send` timing surface or interrupt a turn. Those shell
 commands stay reachable and their uncovered uses remain explicit; a proposed typed home is not proof of either effect.
+
+**MS3 text limit:** messaging-on MCP tools/list names message_send, but the import-time Lead system summary and the
+Ticket-path guide do not name it yet. Snapshot-aware system/guide derivation and the two-configuration naming test
+belong to the reply/attention slice. Guide stages keep standard descriptions; only MCP's on-catalog uses compact text.

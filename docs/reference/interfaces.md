@@ -36,27 +36,33 @@ Outside the API:
 - `/session/{rest}`: handled by `_exchange`, under `/session/`; answered only while the server has `sessions`.
 - `/{file}`: handled by `_static`, outside `/api/`, `/session/`; answered only while the server has `static_root`.
 
+## Dashboard sessions
+
+`SessionTable.mint` and `Service.issue` require keyword-only `authorized_by`, with no default; mint accepts only `operator-tty`, `operator-start` (read from `aew.dashboard.session.AUTHORIZED_BY`). `operator-tty` records the typed-back code used by `aew dashboard serve` and `open`; `operator-start` records the first no-code session opened by `aew opencode`. The existing session listing reports this provenance unchanged. A browser session grants only `dashboard.read`, never an engine operator confirmation.
+
 ## Tools
 
-| Tool | Kind | Class | Status | Mutates | Dispatches | Expands to |
-|---|---|---|---|---|---|---|
-| `checkpoint` | stage | MECHANICAL | built | yes | no | `checkpoint` |
-| `cli` | primitive | JUDGMENT_BEARING | built | yes | no | - |
-| `explain` | query | MECHANICAL | built | no | no | - |
-| `harness_status` | query | MECHANICAL | built | no | no | - |
-| `harness_wait` | wait | MECHANICAL | built | no | no | - |
-| `integration_publish` | decision | JUDGMENT_BEARING | built | yes | yes | `verify.ingest.integration`, `integrate.publish`, `invoke.create.mutating`, `dispatch.launch` |
-| `message_send` | stage | MECHANICAL | built | yes | no | `message.send` |
-| `resolve` | stage | JUDGMENT_BEARING | built | yes | no | `stage.resolve`, `work.dispose`, `work.gate_replace` |
-| `resume` | query | MECHANICAL | built | no | no | - |
-| `status` | query | MECHANICAL | built | no | no | - |
-| `steering` | stage | MECHANICAL | built | yes | no | `steering` |
-| `ticket_draft` | stage | JUDGMENT_BEARING | built | yes | no | `work.create`, `plan.propose` |
-| `ticket_prepare` | stage | JUDGMENT_BEARING | built | yes | yes | `verify.ingest`, `work.transition`, `integrate.prepare`, `invoke.create.mutating`, `dispatch.launch` |
-| `ticket_request_review` | stage | POLICY_RESOLVED | built | yes | yes | `work.transition`, `invoke.create.mutating`, `dispatch.launch` |
-| `ticket_request_verification` | stage | JUDGMENT_BEARING | built | yes | yes | `review.ingest`, `work.transition`, `invoke.create.mutating`, `dispatch.launch` |
-| `ticket_start` | stage | POLICY_RESOLVED | built | yes | yes | `work.assign`, `dispatch.launch`, `work.transition` |
-| `work_show` | query | MECHANICAL | built | no | no | - |
+A named switch must be enabled in adopted policy when the row is registered; sessions retain their launch snapshot.
+
+| Tool | Kind | Class | Status | Switch | Mutates | Dispatches | Expands to |
+|---|---|---|---|---|---|---|---|
+| `checkpoint` | stage | MECHANICAL | built | - | yes | no | `checkpoint` |
+| `cli` | primitive | JUDGMENT_BEARING | built | - | yes | no | - |
+| `explain` | query | MECHANICAL | built | - | no | no | - |
+| `harness_status` | query | MECHANICAL | built | - | no | no | - |
+| `harness_wait` | wait | MECHANICAL | built | - | no | no | - |
+| `integration_publish` | decision | JUDGMENT_BEARING | built | - | yes | yes | `verify.ingest.integration`, `integrate.publish`, `invoke.create.mutating`, `dispatch.launch` |
+| `message_send` | stage | MECHANICAL | built | `coordination.messaging` | yes | no | `message.send` |
+| `resolve` | stage | JUDGMENT_BEARING | built | - | yes | no | `stage.resolve`, `work.dispose`, `work.gate_replace` |
+| `resume` | query | MECHANICAL | built | - | no | no | - |
+| `status` | query | MECHANICAL | built | - | no | no | - |
+| `steering` | stage | MECHANICAL | built | - | yes | no | `steering` |
+| `ticket_draft` | stage | JUDGMENT_BEARING | built | - | yes | no | `work.create`, `plan.propose` |
+| `ticket_prepare` | stage | JUDGMENT_BEARING | built | - | yes | yes | `verify.ingest`, `work.transition`, `integrate.prepare`, `invoke.create.mutating`, `dispatch.launch` |
+| `ticket_request_review` | stage | POLICY_RESOLVED | built | - | yes | yes | `work.transition`, `invoke.create.mutating`, `dispatch.launch` |
+| `ticket_request_verification` | stage | JUDGMENT_BEARING | built | - | yes | yes | `review.ingest`, `work.transition`, `invoke.create.mutating`, `dispatch.launch` |
+| `ticket_start` | stage | POLICY_RESOLVED | built | - | yes | yes | `work.assign`, `dispatch.launch`, `work.transition` |
+| `work_show` | query | MECHANICAL | built | - | no | no | - |
 
 ## Schemas
 

@@ -13,7 +13,7 @@ from aew.cli import credentials
 from aew.dashboard import control
 from aew.dashboard import session as S
 from aew.engine import authority
-from aew.errors import PermissionDenied, StaleAuthority, UsageError
+from aew.errors import OperatorAuthorizationRequired, PermissionDenied, StaleAuthority, UsageError
 from aew.harness import lead_broker
 
 T0 = "2026-10-05T12:00:00Z"
@@ -49,7 +49,7 @@ def headers(**kw) -> dict[str, str]:
 
 def test_mint_returns_a_code_not_the_credential_and_the_table_holds_only_a_verifier():
     t, _, _ = table()
-    code = t.mint()
+    code = t.mint(authorized_by=S.OPERATOR_TTY)
     assert re.fullmatch(r"[A-Za-z0-9_-]{43}", code)  # 256 bits, URL-safe
     (record,) = t.tokens.values()
     assert record["kind"] == authority.OPERATOR_SESSION
@@ -60,9 +60,41 @@ def test_mint_returns_a_code_not_the_credential_and_the_table_holds_only_a_verif
     assert code not in str(record)
 
 
+@pytest.mark.parametrize("authorized_by", S.AUTHORIZED_BY)
+def test_both_provenances_are_reported_unchanged(authorized_by):
+    t, _, _ = table()
+    t.mint(authorized_by=authorized_by)
+    assert t.newest()["scope"]["authorized_by"] == authorized_by
+    assert t.live()[0]["authorized_by"] == authorized_by
+
+
+def test_an_operator_start_record_is_not_an_operator_confirmation():
+    with pytest.raises(OperatorAuthorizationRequired, match="operator's confirmation"):
+        operator.require_operator_attribution(True, {"authorized_by": S.OPERATOR_START}, "a dashboard record")
+
+
+@pytest.mark.parametrize("value", ["unknown", "", "operator", "OPERATOR-TTY", None, True, [], {}])
+def test_mint_refuses_an_unknown_provenance(value):
+    t, _, _ = table()
+    with pytest.raises(ValueError, match="dashboard provenance"):
+        t.mint(authorized_by=value)
+    assert t.tokens == {} and t.pending_codes == 0
+
+
+def test_mint_requires_an_explicit_keyword_provenance():
+    import inspect
+
+    from aew.dashboard.service import Service
+
+    for issuer in (S.SessionTable.mint, Service.issue):
+        parameter = inspect.signature(issuer).parameters["authorized_by"]
+        assert parameter.kind == inspect.Parameter.KEYWORD_ONLY and parameter.default is inspect.Parameter.empty
+    assert S.AUTHORIZED_BY == ("operator-tty", "operator-start")
+
+
 def test_exchange_is_single_use_and_unknown_codes_fail():
     t, _, _ = table()
-    code = t.mint()
+    code = t.mint(authorized_by=S.OPERATOR_TTY)
     got = t.exchange(code)
     assert got is not None
     credential, record = got
@@ -74,7 +106,7 @@ def test_exchange_is_single_use_and_unknown_codes_fail():
 
 def test_a_code_expires_after_ten_minutes_but_the_session_it_names_does_not():
     t, _, ticks = table()
-    code = t.mint()
+    code = t.mint(authorized_by=S.OPERATOR_TTY)
     ticks.t += S.CODE_TTL_S + 1
     assert t.exchange(code) is None
     assert len(t.live()) == 1  # the session exists; nobody holds its credential, so it just ages out
@@ -82,7 +114,7 @@ def test_a_code_expires_after_ten_minutes_but_the_session_it_names_does_not():
 
 def test_the_cookie_is_the_credential_with_the_contracts_attributes():
     t, clock, _ = table(hours=2)
-    credential, record = t.exchange(t.mint())  # type: ignore[misc]
+    credential, record = t.exchange(t.mint(authorized_by=S.OPERATOR_TTY))  # type: ignore[misc]
     cookie = t.cookie(credential, record)
     assert cookie == f"aew_session={credential}; Path=/; HttpOnly; SameSite=Strict; Max-Age=7200"
     assert "Secure" not in cookie  # a plain-http loopback origin (R10)
@@ -100,7 +132,7 @@ def test_the_cookie_is_the_credential_with_the_contracts_attributes():
 
 def test_verify_is_the_engines_lookup_and_the_server_maps_its_two_refusals():
     t, clock, _ = table()
-    credential, _ = t.exchange(t.mint())  # type: ignore[misc]
+    credential, _ = t.exchange(t.mint(authorized_by=S.OPERATOR_TTY))  # type: ignore[misc]
     assert t.verify(credential)["kind"] == authority.OPERATOR_SESSION
     assert t.authenticate(headers(Cookie=f"aew_session={credential}")) is None
     tid, secret = credential.split(".")[1], credential.split(".")[2]
@@ -119,7 +151,7 @@ def test_verify_is_the_engines_lookup_and_the_server_maps_its_two_refusals():
 def test_a_session_of_another_project_or_kind_is_refused():
     t, _, _ = table()
     other = S.SessionTable("other-project")
-    credential, _ = other.exchange(other.mint())  # type: ignore[misc]
+    credential, _ = other.exchange(other.mint(authorized_by=S.OPERATOR_TTY))  # type: ignore[misc]
     t.tokens.update(other.tokens)  # the same table (it cannot happen; the check is still there)
     with pytest.raises(PermissionDenied, match="not a session of this dashboard"):
         t.verify(credential)
@@ -133,10 +165,10 @@ def test_displacement_revokes_the_oldest_live_session_at_the_bound():
     creds = []
     for i in range(S.MAX_SESSIONS):
         clock.now = f"2026-10-05T12:{i:02d}:00Z"
-        creds.append(t.exchange(t.mint())[0])  # type: ignore[index]
+        creds.append(t.exchange(t.mint(authorized_by=S.OPERATOR_TTY))[0])  # type: ignore[index]
     assert len(t.live()) == S.MAX_SESSIONS
     clock.now = "2026-10-05T13:00:00Z"
-    newest = t.exchange(t.mint())[0]  # type: ignore[index]
+    newest = t.exchange(t.mint(authorized_by=S.OPERATOR_TTY))[0]  # type: ignore[index]
     assert len(t.live()) == S.MAX_SESSIONS
     oldest = t.tokens[authority.token_id_of(creds[0])]
     assert oldest["revoked_at"] == clock.now and oldest["revoke_reason"] == S.SUPERSEDED
@@ -149,8 +181,8 @@ def test_displacement_revokes_the_oldest_live_session_at_the_bound():
 
 def test_clear_ends_every_session_and_pending_code():
     t, _, _ = table()
-    code = t.mint()
-    credential, _ = t.exchange(t.mint())  # type: ignore[misc]
+    code = t.mint(authorized_by=S.OPERATOR_TTY)
+    credential, _ = t.exchange(t.mint(authorized_by=S.OPERATOR_TTY))  # type: ignore[misc]
     t.clear()
     assert t.tokens == {} and t.pending_codes == 0 and t.exchange(code) is None
     with pytest.raises(PermissionDenied):
@@ -159,14 +191,14 @@ def test_clear_ends_every_session_and_pending_code():
 
 def test_expired_records_stay_through_the_grace_then_are_purged_and_the_lifetime_is_bounded():
     t, clock, _ = table(hours=1)
-    credential, _ = t.exchange(t.mint())  # type: ignore[misc]
+    credential, _ = t.exchange(t.mint(authorized_by=S.OPERATOR_TTY))  # type: ignore[misc]
     clock.now = "2026-10-05T13:00:01Z"  # expired a second ago
-    t.mint()
+    t.mint(authorized_by=S.OPERATOR_TTY)
     assert len(t.tokens) == 2  # kept: an expired cookie is answered "expired", not "unknown"
     with pytest.raises(StaleAuthority, match="expired"):
         t.verify(credential)
     clock.now = "2026-10-12T13:00:02Z"  # a second past the grace
-    t.mint()
+    t.mint(authorized_by=S.OPERATOR_TTY)
     assert len(t.tokens) == 2  # the first record is gone; the second mint of 10-05 is kept (expired, within grace)
     with pytest.raises(PermissionDenied, match="unknown"):
         t.verify(credential)

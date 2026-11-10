@@ -392,13 +392,15 @@ LEAD_RULES = [
 
 
 def _named(kinds: tuple[str, ...]) -> str:
+    # MS3 limit: this import-time summary is the off catalog, so it omits message_send even when MCP offers it.
+    # The session-snapshot derivation belongs to the reply/attention slice; do not infer authority from this text.
     return ", ".join(f"`{t.name}`" for t in contract.exposed(NORMAL) if t.kind in kinds)
 
 
 def lead_tools_text() -> str:
     """The system text's line of tools. The tools are the catalog's for the normal profile, never a list here (E130; the
     operator, 2026-11-04: derive, don't restate): reads, the wait, and every other kind as what acts, so a new kind of
-    tool cannot go unnamed."""
+    tool cannot go unnamed in the off catalog. Switch-registered tools are not summarized here yet (see _named)."""
     reads, waits = (contract.QUERY,), (contract.WAIT,)
     acts = tuple(k for k in contract.KINDS if k not in reads + waits)
     return (f"- Your `{SERVER_NAME}` tools are how you work. Read with {_named(reads)}. Wait with {_named(waits)} "

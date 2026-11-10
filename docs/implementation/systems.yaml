@@ -9,7 +9,7 @@
 #
 # Who keeps what: purpose, finish_line, remaining, recommendation, who and reason by the Lead, from the designer's
 # rulings; used_in_default_flow with its evidence by the Lead, after a real run; decision by the Lead, quoting the
-# operator. wip_limit is the operator's N: no new system starts while more than N are partly built and not frozen.
+# operator. wip_limit is the operator's N; tools/systems.py counted_systems defines the count (FORMAT.md rule 1).
 # unowned lists the open Now rows that belong to no one system, each with its reason.
 #
 # First imported 2026-11-06 from the lead designer's board, draft 3 (47 entries).
@@ -4480,25 +4480,20 @@ systems:
   - E182
   as_built: []
   touches:
-  - docs/implementation/future-work.yaml
+  - tools/systems.py
+  - tests/unit/test_systems.py
+  - docs/implementation/systems.yaml
+  - docs/implementation/systems.md
   depends_on: []
   state:
-    board_state: designed_only
-    built: 'no'
+    board_state: partly_built
+    built: partly
     wired: []
     on_by_default: false
     used_in_default_flow: 'no'
   finish_line: CI fails on an unowned register row, a line citation in a hand-kept field, or a count above N; systems.md
     is rendered and compared; switch and wired state are read from the code (E182's done line).
   remaining:
-  - slice: 'E182 PR 1: docs/implementation/systems.yaml and tools/systems.py check in the fast lane, ownership both ways,
-      the hand-kept-field lint, nothing derived stored'
-    row: E182
-    estimate: 1 PR (estimate)
-  - slice: 'E182 PR 2: render systems.md with its views and counts, priority from the Now list; check compares the committed
-      copy'
-    row: E182
-    estimate: 1 PR (estimate)
   - slice: 'E182 PR 3: state from the code (switch defaults, wired against the as-built reference and the Lead''s catalog)
       and the N = 12 check'
     row: E182
@@ -4506,8 +4501,7 @@ systems:
   decision: 'decided: placed now, PR 1 first (operator, 2026-11-06, design workspace record 2026-11-06-operator-board-generator-placement.md)'
   recommendation: finish
   who: Lead
-  reason: The operator placed the generator now, PR 1 first; the Lead filed it as E182 and builds PR 1 under it. No census
-    system held it, so it gets its own entry, which owns E182.
+  reason: The data check and rendered views are built; state from the code and enforcement of the count remain under E182.
   evidence:
   - design workspace 00-governance/decisions/2026-11-06-operator-board-generator-placement.md
   - E182's row (on the Now list)

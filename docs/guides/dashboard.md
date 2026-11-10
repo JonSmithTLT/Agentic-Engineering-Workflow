@@ -1,0 +1,11 @@
+# Opening the dashboard
+
+At your own terminal, after holding and validating the Lead seat, `aew opencode` starts the project's read-only dashboard on **127.0.0.1:4280** and opens its first browser session without a typed-back code. It stops when that Lead session ends. `AEW_DASHBOARD_AUTOSTART=off` disables this start. No display (SSH) means no auto-start; an occupied port or a failed opener never fails the Lead session. For an occupied port, the start line offers `aew dashboard serve --port 0` in its own terminal to request an ephemeral port, or you can pass a free port you choose; auto-start never moves the port itself. A running dashboard is reused, without minting or opening another session. Auto-start refuses a Lead session by the same dev-grade check as endpoint auto-start (environment and, on Linux, ancestry), not an OS authority boundary.
+
+For a dashboard independent of that session, run `aew dashboard serve` in a terminal of its own. It asks for a typed-back code and writes the first one-time URL to your terminal. `aew dashboard open` asks that server for another session, with its code shown on the serving terminal and typed at the requesting terminal. A Lead session refuses both commands.
+
+**An auto-started dashboard refuses later `open` requests on both Windows and Linux.** End the `aew opencode` session first, then run `aew dashboard serve` in a terminal of its own. No hidden console or G3 approval path is built for these requests yet. `aew dashboard status` reports whether a server is running.
+
+AEW never prints, logs or saves the auto-start URL. Its bootstrap code is single-use and expires after ten minutes; the browser exchanges it for an `HttpOnly` cookie. On both platforms the browser may receive the URL on its command line, readable by another local process until the bootstrap is consumed or expires. Windows ShellExecute avoids only AEW's own child command line; it does not avoid the browser's. Unix desktop launchers are detached with their input and output disconnected from the TUI. The dashboard grants viewing access only: this start adds no write path.
+
+The existing session listing reports `authorized_by`: `operator-start` for the no-code first session, `operator-tty` for `serve` and `open` after their typed-back code. `operator-start` is provenance, not an operator confirmation.

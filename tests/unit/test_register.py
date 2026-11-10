@@ -527,6 +527,29 @@ def _register_copy(root: Path) -> None:
         target.write_bytes(path.read_bytes())
 
 
+@pytest.mark.parametrize("broken", ["stray: true\n", "<<<<<<< ours\nx\n=======\ny\n>>>>>>> theirs\n"],
+                         ids=["schema", "conflict-markers"])
+def test_bad_board_refuses_render_without_writes_and_can_be_fixed(tmp_path, monkeypatch, capsys, broken):
+    _register_copy(tmp_path)
+    systems = register._systems(ROOT)
+    path = tmp_path / systems.SYSTEMS
+    valid = "schema: aew/systems/v1\nwip_limit: 12\nunowned: {}\nsystems: []\n"
+    path.write_text(valid + broken, encoding="utf-8", newline="\n")
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    refused = register.render(tmp_path)
+    assert len(refused) == 1 and systems.SYSTEMS in refused[0] and "fix it" in refused[0]
+    assert before == {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    real_render = register.render
+    monkeypatch.setattr(register, "render", lambda: real_render(tmp_path))
+    assert register.main(["render"]) == 1
+    assert "nothing written" in capsys.readouterr().out
+    assert before == {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    path.write_text(valid, encoding="utf-8", newline="\n")
+    assert register.main(["render"]) == 0
+    assert (tmp_path / systems.MARKDOWN).read_bytes() == systems.render_markdown(systems.read_board(tmp_path),
+                                                                             systems.now_order(tmp_path)).encode()
+
+
 def test_adding_a_note_leaves_every_rendered_and_source_file_byte_identical(tmp_path):
     """The whole point: a note touches no shared file, so two changes noting the same row cannot conflict on one."""
     _register_copy(tmp_path)

@@ -40,7 +40,11 @@ def _steps(t: contract.Tool) -> tuple[guide.StageStep, ...]:
 
 
 def stages(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> tuple[guide.Stage, ...]:
-    """The tools on ``profile`` that commit a step of the workflow, in catalog order, as the guide reads them."""
+    """The tools on ``profile`` with standard descriptions, independent of MCP's budgeted presentation.
+
+    MS3 limit: message_send has no Ticket-path move, so the rendered guide does not name it even when selected here.
+    Switch-aware guide/system guidance belongs to the reply/attention slice.
+    """
     return tuple(guide.Stage(t.name, t.description, _steps(t), SA.STARTS_AT.get(t.name, {}))
                  for t in contract.exposed(profile, switches) if t.expands_to)
 

@@ -339,7 +339,8 @@ TOOLS: dict[str, Tool] = _catalog(
          produced_by=((), ((VALIDATION, 1),), ((CANDIDATE, 2),), ((DISPATCH, 3),))),
     Tool(
         "message_send", STAGE, MECHANICAL,
-        "Send coordination to a worker, not a scope change. Next-step overtakes turn-end; recording is not delivery.",
+        "Record a coordination message for an active worker, not a scope change. "
+        "Delivery is not built yet; turn-end is refused.",
         _obj({"expect_rev": EXPECT_REV,
               "to": {"type": "string", "pattern": "^INV-[0-9]+$"},
               "body": {"type": "string", "minLength": 1, "maxLength": L.MAX_BODY_CHARS},
@@ -369,13 +370,13 @@ def switches_from_env() -> frozenset[str]:
 
 
 def catalog(switches: frozenset[str] = frozenset(), *, presentation: str = "standard") -> dict[str, Tool]:
-    """The off catalog is unchanged. Messaging adds its row and selects description-only compact text.
+    """Select rows independently of their descriptions; standard always means uncompacted text.
 
     The explicit presentation argument is for catalog conformance; no standalone compact policy mode is wired yet.
     """
     rows = dict(TOOLS)
     rows.update({name: t for name, t in _SWITCH_TOOLS.items() if t.switch in switches})
-    if MESSAGING in switches or presentation == "compact":
+    if presentation == "compact":
         from aew.surface.presentation import compact
 
         return {name: compact(t) for name, t in rows.items()}

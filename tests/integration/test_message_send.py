@@ -14,7 +14,7 @@ import pytest
 from test_coordination_store import OPERATOR, set_messaging, world
 
 from aew.harness import bridge, lead_broker
-from aew.surface import client, contract, mcp, run
+from aew.surface import client, contract, lead_text, mcp, run
 from aew.surface.context import SurfaceContext, switches_for
 from aew.surface.validate import AdapterInputError
 
@@ -180,8 +180,18 @@ def test_turn_end_is_refused_before_recording_and_names_the_available_timing(tmp
     w = world(tmp_path)
     out = call(w, when="turn-end")
     assert not out["ok"] and out["stopped"]["error"]["details"]["reason"] == "turn_end_not_built"
+    assert "use next-step" in out["stopped"]["error"]["message"]
+    assert "MS5b" not in out["stopped"]["error"]["message"]
     assert not w.coordination_files()
     assert call(w, when="next-step")["ok"]  # follow the refusal's printed next step
+
+
+def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
+    w = world(tmp_path)
+    assert lead_text.guide_for(w.e) == str(w.e.lead_guide(lead_text.stages()))
+    standard = contract.catalog(contract.ALL_SWITCHES, presentation="standard")
+    assert all(s.description == standard[s.tool].description
+               for s in lead_text.stages(switches=contract.ALL_SWITCHES))
 
 
 def test_forged_switch_lists_the_row_but_the_brokers_off_snapshot_refuses_it(tmp_path, monkeypatch):
@@ -228,4 +238,5 @@ def test_a_forged_runner_snapshot_never_bypasses_the_engine_switch(tmp_path):
     w = world(tmp_path, messaging=None)
     out = call(w, ctx=SurfaceContext.outside_session(switches=contract.ALL_SWITCHES))
     assert not out["ok"] and out["stopped"]["error"]["code"] == "MESSAGING_DISABLED"
+    assert out["stopped"]["error"]["details"]["reason"] == "switched_off"
     assert not w.coordination_files()

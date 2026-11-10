@@ -751,8 +751,8 @@ def planned_problems(reg: dict[str, Any]) -> list[str]:
             out.append(f"{it} has exactly {list(PLANNED_KEYS)}, in that order, and may add {list(PLANNED_OPTIONAL)}; "
                        f"not {list(plan)}")
         d, homes, p = plan.get("disposition"), plan.get("homes"), plan.get("primitive")
-        if d not in (TYPED, *LEAVES_LEAD_DOORS):
-            out.append(f"{it}: disposition {d!r} is not one of {[TYPED, *LEAVES_LEAD_DOORS]}")
+        if d not in (TYPED, UNDECIDED, *LEAVES_LEAD_DOORS):
+            out.append(f"{it}: disposition {d!r} is not one of {[TYPED, UNDECIDED, *LEAVES_LEAD_DOORS]}")
         if plan.get("lands") not in lands:
             out.append(f"{it}: lands {plan.get('lands')!r} is not in the vocabulary's `lands`")
         if not plan.get("reason"):
@@ -767,6 +767,8 @@ def planned_problems(reg: dict[str, Any]) -> list[str]:
             out.append(f"{it}: a typed plan names the primitive its homes run")
         elif d != TYPED and homes:
             out.append(f"{it}: only a typed plan has homes ({d} is reached through neither Lead door)")
+        if d == UNDECIDED and p not in (None, "none"):
+            out.append(f"{it}: an undecided plan names no primitive until its design decides it")
         if p not in (None, "none") and not primitive_names(name, str(p)):
             out.append(f"{it}: primitive {p!r} is not this command's step")
     for section, home in (("proposed_tools", "{}"), ("proposed_choices", "R({})")):
@@ -2054,6 +2056,10 @@ def _new(reg: dict[str, Any], name: str, **fields: Any) -> None:
 
 
 DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
+    ("fields", lambda r: _entry(r, "harness interrupt")["planned"].update(homes=["message_send"]),
+     "`aew harness interrupt`'s plan: only a typed plan has homes"),
+    ("fields", lambda r: _entry(r, "harness interrupt")["planned"].update(primitive="message.send"),
+     "`aew harness interrupt`'s plan: an undecided plan names no primitive"),
     ("registered", _drop("cli", "work move"), "`aew work move` exists but is not registered"),
     ("registered", _drop("tool", "ticket_start"), "tool `ticket_start` exists but is not registered"),
     ("registered", _drop("tool", "message_send"), "tool `message_send` exists but is not registered"),

@@ -191,7 +191,9 @@ The A1 slice plan (reviewed CLEAR, §2) decides where each still-`undecided` com
 registry records the plan, not the decision:
 
 - **`planned`**, on every `undecided` command and only there: `{disposition, homes, primitive, lands, reason}`.
-  - `disposition`: `typed`, `engine-owned` or `forbidden-to-lead`.
+  - `disposition`: `typed`, `engine-owned` or `forbidden-to-lead`; an existing command whose typed home is still
+    undesigned may keep `undecided`, with empty `homes` and `primitive: none`. This does not exempt new commands from
+    the decided-disposition rule.
   - `homes`: for a typed plan, the typed tools (built, or under `proposed_tools`) and `resolve` choices, written
     `R(<choice>)` (built in `RESOLVE_CHOICE_PRIMITIVE`, or under `proposed_choices`), that will reach it. An empty list
     means no home is designed yet (`work dispatch` and `work redispatch`, an A2 design item). Other plans have none.

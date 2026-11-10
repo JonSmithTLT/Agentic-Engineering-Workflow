@@ -48,11 +48,12 @@ def test_a_transient_replace_error_retries_the_bounded_read(tmp_path, monkeypatc
     monkeypatch.setattr(MS, boundary, colliding)
     result = R.MapsReader(tmp_path).registry()
     assert result.state == R.PRESENT and result.data == data
-    assert len(calls) == 2 and sleeps == [0.01]
+    assert len(calls) == 2 and len(sleeps) == 1
 
 
 @pytest.mark.parametrize("windows", [False, True])
 def test_true_absence_uses_the_store_missing_file_policy(tmp_path, monkeypatch, windows):
+    (tmp_path / MS.REGISTRY_REL).parent.mkdir(parents=True)  # maps exist, but none has been selected
     monkeypatch.setattr(S, "MISSING_MID_REPLACE", (FileNotFoundError,) if windows else ())
     sleeps = patch_sleep(monkeypatch, S)
     result = R.MapsReader(tmp_path).registry()
@@ -127,7 +128,7 @@ def test_the_registry_cache_tracks_identity_and_retries_before_reusing_it(tmp_pa
     monkeypatch.setattr(MS, "lstat_regular", colliding)
     second = reader.registry()
     assert second.state == R.PRESENT and second.data == data and second is not first
-    assert len(reads) == 1 and sleeps == [0.01]
+    assert len(reads) == 1 and len(sleeps) == 1
     assert reader.registry() is second and len(reads) == 1
 
 
@@ -144,3 +145,61 @@ def test_invalid_files_remain_invalid_without_replace_backoff(tmp_path, monkeypa
     result = R.MapsReader(tmp_path).registry()
     assert result.state == R.INVALID and result.problem == problem
     assert sleeps == []
+
+
+@pytest.mark.parametrize("windows", [False, True])
+def test_an_absent_maps_directory_returns_none_without_backoff_and_is_not_cached(tmp_path, monkeypatch, windows):
+    monkeypatch.setattr(S, "MISSING_MID_REPLACE", (FileNotFoundError,) if windows else ())
+    sleeps = patch_sleep(monkeypatch, S)
+    reader = R.MapsReader(tmp_path)
+    assert reader.registry().state == R.NONE
+    assert sleeps == [] and not (tmp_path / MS.REGISTRY_REL).parent.exists()
+    _, data = registry_file(tmp_path)  # the first selection creates the directory; no cached absence hides it
+    result = reader.registry()
+    assert result.state == R.PRESENT and result.data == data and sleeps == []
+
+
+@pytest.mark.parametrize("error", [FileNotFoundError, PermissionError])
+def test_a_replace_during_the_identity_recheck_never_reads_invalid(tmp_path, monkeypatch, error):
+    """Review M2 repro: a second replace collides with the identity-change branch's own lstat."""
+    _, data = registry_file(tmp_path)
+    monkeypatch.setattr(S, "MISSING_MID_REPLACE", (FileNotFoundError,))
+    sleeps = patch_sleep(monkeypatch, S)
+    real_lstat, real_read = MS.lstat_regular, MS.read_bounded
+    lstats, reads = [], []
+
+    def lstat(*args, **kwargs):
+        lstats.append(args)
+        if len(lstats) == 2:  # _regular's re-check, during the next replace
+            raise error("synthetic mid-replace")
+        return real_lstat(*args, **kwargs)
+
+    def read(*args, **kwargs):
+        reads.append(args)
+        if len(reads) == 1:  # replaced between lstat and open: fstat sees a new identity
+            raise MS.NotARegularFile("not_a_file")
+        return real_read(*args, **kwargs)
+
+    monkeypatch.setattr(MS, "lstat_regular", lstat)
+    monkeypatch.setattr(MS, "read_bounded", read)
+    result = R.MapsReader(tmp_path).registry()
+    assert (result.state, result.problem, result.data) == (R.PRESENT, None, data)
+    assert len(reads) == 2 and len(sleeps) == 1
+
+
+def test_a_changed_identity_between_lstat_and_open_retries_a_regular_registry(tmp_path, monkeypatch):
+    _, data = registry_file(tmp_path)
+    sleeps = patch_sleep(monkeypatch, S)
+    real_read = MS.read_bounded
+    reads = []
+
+    def read(*args, **kwargs):
+        reads.append(args)
+        if len(reads) == 1:
+            raise MS.NotARegularFile("not_a_file")
+        return real_read(*args, **kwargs)
+
+    monkeypatch.setattr(MS, "read_bounded", read)
+    result = R.MapsReader(tmp_path).registry()
+    assert result.state == R.PRESENT and result.data == data
+    assert len(reads) == 2 and sleeps == []

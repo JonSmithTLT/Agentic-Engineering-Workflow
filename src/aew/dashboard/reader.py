@@ -225,7 +225,10 @@ class MapsReader:
         """The registry as it stands. Its condition is a state, never an error (missing: ``NONE``; oversized, not a
         regular file or malformed: ``INVALID``); only a read that failed raises its ``OSError`` (the server's
         ``500``, which the frontend shows as stale). The store owns the replace retries, including missing files on
-        Windows, as for ``read_lock_free``; the read itself stays bounded and regular-file-only."""
+        Windows, as for ``read_lock_free``; the read itself stays bounded and regular-file-only. An absent maps
+        directory returns ``NONE`` at once. If the directory exists but no registry is selected, Windows spends about
+        0.28 s retrying absence; POSIX returns at once. A persistent ``PermissionError`` is retried for about 0.28 s
+        on every platform, including POSIX, before it propagates (the store's policy)."""
         try:
             return committed.retry_lock_free(self._registry_read, also=committed.MISSING_MID_REPLACE)
         except FileNotFoundError:
@@ -234,6 +237,10 @@ class MapsReader:
     def _registry_read(self) -> Registry:
         """One bounded attempt, retaining the cache and the lstat/open identity-race check."""
         path = self.aew_root / MS.REGISTRY_REL
+        try:
+            path.parent.stat()
+        except FileNotFoundError:
+            return Registry(NONE)  # no replace can be in flight inside a directory that does not exist
         for attempt in range(REGISTRY_ATTEMPTS):
             try:
                 st = MS.lstat_regular(path, REGISTRY_MAX)
@@ -283,7 +290,7 @@ class MapsReader:
 def _regular(path: Path) -> bool:
     try:
         MS.lstat_regular(path, REGISTRY_MAX)
-    except OSError:
+    except MS.NotARegularFile:
         return False
     return True
 

@@ -15,8 +15,8 @@ module owns everything about that except the post itself, which is a harness's (
   the same Ticket and role. What fails is dropped, and named in the next wake's ``since_last_wake``.
 - **An ended run is told once.** Its invocation stays active until the Lead accepts or cancels it, so its mark stays
   too, recording that the end was told (``ended_told``), and goes once the run is no longer its invocation's live one.
-  An end the Lead already has is no wake: a wait returned it (``runlog.end_returned``), or the Lead itself closed the
-  invocation.
+  An end the Lead already has is no wake: a store writer's wait returned it (``runlog.end_returned``; a relayed read,
+  a non-writer, records nothing), or the Lead itself closed the invocation.
   A run that reads as ended and then goes on, as a stalled heartbeat does, is watched again.
 - **The broker's own mark.** Each run's mark is the newest trigger the Lead has been shown by a wake or by a wait
   (``runlog.read_returned``: a post moves that mark too, so neither repeats the other), with the absolute counts

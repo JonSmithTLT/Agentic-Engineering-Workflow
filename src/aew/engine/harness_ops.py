@@ -28,6 +28,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from aew import process_kind
 from aew.engine import faults, outbox
 from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_lead, rotate_invocation_token
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
@@ -581,7 +582,8 @@ class Harness:
                     "evidence": self.run_evidence(inv["work_unit"], run),
                     "results": self.run_results(inv["work_unit"], run), "timed_out": False,
                     **P.wake([K.RUN_ENDED], digests())})
-        runlog.write_end_returned(runlog.run_dir(self.k.aew_root, run))  # no wake repeats what this result says
+        if process_kind.kind() == process_kind.STORE_WRITER:  # a non-writer (a relayed read) writes nothing in .aew
+            runlog.write_end_returned(runlog.run_dir(self.k.aew_root, run))  # no wake repeats what this result says
         ended_digest = out["runs"].get(run)
         if ended_digest:  # the run is over: what it was shown is no longer news
             runlog.write_returned(runlog.run_dir(self.k.aew_root, run), int(ended_digest.get("trigger_seq") or 0))

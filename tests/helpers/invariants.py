@@ -316,7 +316,7 @@ def ticket_field_violations(root: Path, state: dict[str, Any]) -> list[str]:
     record is classified by the Ticket field registry (F4 plan §3.3 and §9.2, the S1 meta-test over the walks).
 
     An unclassified input still fails closed into the acceptance group at run time; this rule makes the slice that
-    adds a key classify it (one line in the current ``src/aew/schemas/ticket-field-registry.v<N>.json``, a new version)."""
+    adds a key classify it (one line in a new version of ``src/aew/schemas/ticket-field-registry.v<N>.json``)."""
     problems: list[str] = []
     archived = set(state.get("_archived") or [])
     for wid, unit in sorted(state["work"].items()):

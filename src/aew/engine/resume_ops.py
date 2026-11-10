@@ -56,7 +56,6 @@ VACANT_SEAT = (f"`aew opencode --acquire` takes it for a Lead session, with no c
                f"{EXPECT_REV}` shows one for the edit-and-adopt route. {HELD_SEAT}")
 
 
-
 def _priority(unit: dict[str, Any]) -> dict[str, Any]:
     """A Ticket's priority in the status report when it isn't the default (register E227), with a `low` one's age:
     absent means normal, so every status read stays as small as it was for the usual Ticket (E231's one pool)."""
@@ -68,6 +67,7 @@ def _priority(unit: dict[str, Any]) -> dict[str, Any]:
     if found["level"] == "low":
         found["age"] = PRIORITY.age(unit, dt.datetime.now(dt.UTC))
     return {"priority": found}
+
 
 class Resume:
     """`aew resume`, `aew status`, deterministic next actions and checkpoints."""

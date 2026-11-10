@@ -157,6 +157,7 @@ def select(project: dict[str, Any], units: list[dict[str, Any]],
         return Stop(DECISION_REQUIRED, f"{loose[0]['decision']} ({', '.join(loose[0].get('evidence') or [])}) is "
                                        "the Lead's")
     first: Stop | None = None
+
     def place(u: dict[str, Any]) -> tuple[int, int, str]:
         subject = str(u.get("subject"))
         return (rank or {}).get(subject) or (PRIORITY.LEVELS.index(PRIORITY.DEFAULT), 0, subject)

@@ -2444,6 +2444,7 @@ systems:
   - F42.3
   - F44
   - F15.9
+  - E215
   as_built:
   - modules:aew.engine.resume_ops
   - modules:aew.engine.status_ops
@@ -2515,17 +2516,21 @@ systems:
   - slice: 'S6: the fallback item when the Lead goes quiet (V-01)'
     row: E107
     estimate: 1 PR (estimate)
-  - slice: 'S7: a probe of what AEW can observe of the Lead''s TUI, no product code (Evaluation)'
+  - slice: 'S7: a probe of what AEW can observe of a pending dialog in the Lead''s TUI, no product code (Evaluation);
+      attach and credential are closed, AEW hosts the server (A-58)'
     row: E109
     estimate: 1 probe (estimate)
-  - slice: 'S8: the Lead''s harness waits as items, after S7; unscheduled, the register leaves its placement to the operator
-      once S7''s data and the answer to Q9 or Q10 are in'
+  - slice: 'What the Lead is waiting on, shown on the site (A-58 CL-R04, replacing A-44''s S8); it rests on nothing but
+      its placement, the operator''s'
     row: E110
     estimate: not sized
   - slice: 'HOLD-10''s members as the hold match (main 5308bd8c) placed them: F43 (S2 and S3), F44 and F15.9 restored as
       rows; E12 merged into E170 and E69 into F44; F42, E20, E28 and E70 dropped'
     row: F43
     estimate: not sized
+  - slice: 'The pending dialog: a TUI permission ask or form named as an item (A-58 CL-R04); Q10 is asked with E109''s data'
+    row: E215
+    estimate: not sized (estimate)
   decision: 'decided: frozen whole by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
     item 6'
   recommendation: freeze
@@ -2907,7 +2912,8 @@ systems:
     stall recovery; the bounded handoff note; and a scheduler designed against today''s steering loop: each exercised in
     a real run.'
   remaining:
-  - slice: 'U1 + F41.8: the run-health fields and a `stalled` wait result (the slice to pull forward if first use repeats
+  - slice: 'U1 + F41.8: the run-health fields and `stalled`, a reason on the Lead''s one wake list (A-58), by a wake
+      and the wait (the slice to pull forward if first use repeats
       the 20-minute hang)'
     row: U1
     estimate: 1-2 PRs (estimate)
@@ -3963,11 +3969,12 @@ systems:
     and a profile add as operator-decided commands; an operator-requested review is dispatched and attached; exercised in
     a real Lead run.'
   remaining:
-  - slice: consult mode, its gate path, the tool, the Lead-call ingest and the wake (consult design, Placement, PR 1)
+  - slice: consult mode, its gate path, the tool, `consult_show` with the ingest, and the wake (consult design, Placement, PR 1;
+      A-58 CL-R03)
     row: E158
     estimate: '1 PR (estimate; the designer''s reading, consult design Placement: 2 PRs in all)'
-  - slice: the bounds and the allow-list, the isolation tests, `consult_show`, the resume lists and the Lead's text (consult
-      design, Placement, PR 2)
+  - slice: the bounds and the allow-list, the isolation tests, the resume lists and the Lead's text (consult design, Placement,
+      PR 2)
     row: E158
     estimate: 1 PR (estimate; same source)
   - slice: '`aew policy model allow <provider/model>` and a profile add, operator-decided, with their surface-map entries

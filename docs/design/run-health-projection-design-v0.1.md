@@ -123,7 +123,7 @@ The same health object is rendered through:
 | Observation | Automatic behavior | Judgment owner |
 |---|---|---|
 | lost / crash / launch failure | existing credential revocation and reconciliation only | Lead decides relaunch/redispatch |
-| blocked permission | wake wait + attention (amended by A-58: see its record) | Lead/operator replies or sends |
+| blocked permission | wake wait + attention (amended by A-58, RHP-08: no row today, since a rejected request ends the turn and reaches the Lead as `run_ended`) | Lead/operator replies or sends |
 | STALLED | wake wait + attention only (amended by A-58: a wake and the wait) | Lead may stop, nudge, or continue waiting |
 | UNRESPONSIVE | attention only, plus existing supervisor deadlines | Lead may stop |
 | long think below threshold | render only | none |

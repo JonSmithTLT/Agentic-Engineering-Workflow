@@ -335,19 +335,25 @@ jobs:
     # lanes (`--shard k/N` over every collected test; the serial tests are deselected here and run once per OS, in
     # `matrix-extra-serial`, with no xdist). `matrix-extra-assurance` proves the shards and the serial lane together ran
     # every collected test exactly once. One job per OS ran out its 60 minute timeout from 2026-10-06 (strategy §8). Grow
-    # `of` when a shard nears 30 minutes; the timeout is never raised for slowness (only G3a's clearance).
+    # `of` when a shard nears 30 minutes; the timeout is never raised for slowness (only G3a's clearance). Linux 4 and
+    # Windows 8 since 2026-11-10, when every Windows shard took 47 to 57 minutes and Linux 34 to 40 (strategy §11).
     name: full suite ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }}, py${{ matrix.python }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - {os: ubuntu-latest, python: "3.13", shard: 1, of: 3}
-          - {os: ubuntu-latest, python: "3.13", shard: 2, of: 3}
-          - {os: ubuntu-latest, python: "3.13", shard: 3, of: 3}
-          - {os: windows-latest, python: "3.11", shard: 1, of: 4}
-          - {os: windows-latest, python: "3.11", shard: 2, of: 4}
-          - {os: windows-latest, python: "3.11", shard: 3, of: 4}
-          - {os: windows-latest, python: "3.11", shard: 4, of: 4}
+          - {os: ubuntu-latest, python: "3.13", shard: 1, of: 4}
+          - {os: ubuntu-latest, python: "3.13", shard: 2, of: 4}
+          - {os: ubuntu-latest, python: "3.13", shard: 3, of: 4}
+          - {os: ubuntu-latest, python: "3.13", shard: 4, of: 4}
+          - {os: windows-latest, python: "3.11", shard: 1, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 2, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 3, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 4, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 5, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 6, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 7, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 8, of: 8}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 64

@@ -63,6 +63,7 @@ from typing import Any
 
 from aew import hoststate
 from aew.errors import ContainmentUnavailable
+from aew.harness.containment import client_cert
 
 # What each archetype may do to the workspace (or observation) it was dispatched for. Exhaustive by design: an
 # archetype without an entry (a new archetype nobody classified) cannot be contained, so it is refused. The Lead's
@@ -494,10 +495,13 @@ POLICY_HIDE = "containment.hide"
 
 
 def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None, needed: list[tuple[str, str]],
-               written: tuple[str, ...] | list[str] = ()) -> MaskPlan:
+               written: tuple[str, ...] | list[str] = (), *,
+               named_extra: list[tuple[str, str, str]] | tuple[tuple[str, str, str], ...] = ()) -> MaskPlan:
     """Every secret path, masked by its type (STG-05 CS-4, addenda 6 and 7), for every role: the secrets and the
     display's credentials in ``home``, those the launching environment ``env`` names (default: this process's), the
-    policy's ``extra`` (:func:`_named`), and what the links in the directories masked whole point at (:func:`_linked`).
+    policy's ``extra`` (:func:`_named`), each ``named_extra`` (path, what names it, what it is: a provider's client
+    certificate and key, ``client_cert.mask_entries``), and what the links in the directories masked whole point at
+    (:func:`_linked`).
 
     * A directory is masked whole, at its real path; one that is or holds something in ``needed`` refuses the launch.
     * Anything else is left out of its directory (:func:`_left_out`), whether or not it exists now: that directory is
@@ -540,7 +544,7 @@ def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None
             what.setdefault(entry, secret if i == 0 else f"what {entries[i - 1]} links to")
         leave.extend(entries)
 
-    for raw, source, secret in _named(home, extra, launching):
+    for raw, source, secret in _named(home, extra, launching, named_extra):
         named(raw, source, secret)
     dirs = list(dict.fromkeys(dirs))
     opencode: dict[str, list[str]] = {}  # the operator's OpenCode directories, real, with what puts each there
@@ -616,15 +620,20 @@ def _mask_plan(home: str | None, extra: list[str], env: Mapping[str, str] | None
                     refused=tuple(refused), what=tuple((p, what[p]) for p in (*dirs, *files, *listed_out)))
 
 
-def _named(home: str | None, extra: list[str], env: Mapping[str, str]) -> list[tuple[str, str, str]]:
+Named = tuple[str, str, str]  # a secret path, what names it, and what it is
+
+
+def _named(home: str | None, extra: list[str], env: Mapping[str, str],
+           named_extra: list[Named] | tuple[Named, ...] = ()) -> list[Named]:
     """Every named secret path, absolute and as named, with what names it and what it is: :data:`SECRET_DIRS`,
     :data:`SECRET_FILES`, :data:`DISPLAY_FILES` and :data:`HISTORY_FILES` in ``home`` (:data:`SECRET_WHAT`) and the
     copies beside a secret file there (:func:`_prefixed_files`), the paths the launching environment ``env`` names
-    (:func:`_env_masks`), and the policy's ``extra``."""
+    (:func:`_env_masks`), the policy's ``extra``, and ``named_extra`` as given."""
     out = [(os.path.join(home, p), HOME_LIST, SECRET_WHAT[p])
            for p in (*SECRET_DIRS, *SECRET_FILES, *DISPLAY_FILES, *HISTORY_FILES)] if home else []
     out += [(p, HOME_LIST, f"a copy of {SECRET_WHAT['.claude.json']}") for p in _prefixed_files(home)]
     out += [*_env_masks(env), *((os.path.expanduser(p), POLICY_HIDE, "a containment.hide entry") for p in extra)]
+    out += list(named_extra)
     seen: dict[str, tuple[str, str]] = {}
     for path, source, secret in out:
         seen.setdefault(os.path.abspath(path), (source, secret))
@@ -1206,7 +1215,8 @@ def for_run(*, role: str, scope: str, workspace: str | os.PathLike[str], run_dir
         roots.append((raw, path))
     # the run's own tree, where a secret cannot be left out of its directory (a policy root that holds a mask is
     # refused below: CS-4 addendum 7, ruling 2)
-    plan = _mask_plan(home, list(cfg.get("hide") or []), env, needed, tuple(writable))
+    plan = _mask_plan(home, list(cfg.get("hide") or []), env, needed, tuple(writable),
+                      named_extra=client_cert.mask_entries(cfg.get("network")))
     _refuse_masks(plan.refused, home)
     hide_host = host_masks()
     secret = dict(plan.what)

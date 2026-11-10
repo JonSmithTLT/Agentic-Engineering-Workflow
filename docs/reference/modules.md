@@ -989,6 +989,7 @@ None.
 
 - `aew.errors`
 - `aew.harness.agentenv`
+- `aew.harness.containment.client_cert`
 - `aew.harness.containment.netns`
 - `aew.harness.registry`
 - `aew.policy.execution`
@@ -1180,6 +1181,7 @@ None.
 - `aew.errors`
 - `aew.harness.agentenv`
 - `aew.harness.base`
+- `aew.harness.containment.client_cert`
 - `aew.harness.containment.netns`
 - `aew.harness.contract`
 - `aew.harness.registry`
@@ -1260,6 +1262,11 @@ None.
 - `aew.harness.containment.sockets`
 - `aew.workspace.git`
 
+### `aew.harness.containment.client_cert`
+
+- `aew.errors`
+- `aew.harness.containment.relay`
+
 ### `aew.harness.containment.egress`
 
 - `aew.errors`
@@ -1271,6 +1278,7 @@ None.
 - `aew.capability.status`
 - `aew.capability.store`
 - `aew.errors`
+- `aew.harness.containment.client_cert`
 - `aew.harness.opencode.login`
 - `aew.hoststate`
 - `aew.workspace.git`
@@ -1279,6 +1287,7 @@ None.
 
 - `aew.errors`
 - `aew.harness.agentenv`
+- `aew.harness.containment.client_cert`
 - `aew.harness.containment.egress`
 - `aew.harness.containment.layout`
 - `aew.harness.containment.relay`
@@ -1300,6 +1309,7 @@ None.
 ### `aew.harness.containment.relay`
 
 - `aew.errors`
+- `aew.harness.containment.client_cert`
 - `aew.harness.containment.egress`
 
 ### `aew.harness.containment.shim`
@@ -1565,6 +1575,7 @@ None.
 - `aew.harness.base`
 - `aew.harness.bridge`
 - `aew.harness.containment`
+- `aew.harness.containment.client_cert`
 - `aew.harness.containment.netns`
 - `aew.harness.containment.probe`
 - `aew.harness.contract`

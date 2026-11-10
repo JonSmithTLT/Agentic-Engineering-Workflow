@@ -1,0 +1,260 @@
+"""A provider's client certificate, presented by its relay (register E123; the designer's ruling of 2026-11-02, the
+relay presents the certificate).
+
+A provider that requires a client certificate (mTLS) is reached the way any other is: through the run's provider relay
+(``relay.py``), outside the sandbox. The execution policy names three files for it, under
+``containment.network.client_certs.<provider>``: ``cert`` (the client certificate, PEM), ``key`` (its private key, PEM,
+with no passphrase) and ``ca`` (the CA file the provider's own certificate is checked against). Their paths are the
+operator's, and AEW never copies, stores or prints the key:
+
+* **Read at the relay's start** (:func:`context`): a renewal, or a CA file swapped at the same path, is picked up by the
+  next launch.
+* **No fallback:** a certificate that is configured and cannot be used refuses the launch, with one plain line per
+  problem, each naming its file (:func:`inspect`): unreadable, expired or not yet valid, not matching its key, a key
+  OpenSSL cannot read, a CA file that holds no certificate. ``aew doctor`` shows the same lines before any launch
+  (``engine.readiness``). A run with no relay (a ``shared`` or ``isolated`` network, or Windows) refuses the provider
+  (:func:`no_relay`): it would reach it without the certificate.
+* **Kept from every sandbox:** the certificate and key paths are masked in every contained run (:func:`mask_entries`,
+  read by ``layout.establish``), so the launch's self-test proves from inside that they cannot be read. The CA file is
+  not: it may be the system's bundle, which the sandbox's own TLS needs.
+* **The key's path is printed nowhere:** a launch's refusal and a readiness line reach the Lead too, so they name the
+  key by its policy field, and the certificate and CA file by path and field. The relay's own answers on a failed
+  handshake (``relay._tls_refused``), which reach the sandbox, name the policy field and the CA file only.
+
+The trust is the CA file's alone, not the system's as well: the provider's certificate is checked against the CA the
+operator swaps when a change is announced. A provider AEW knows a key variable for (``netns.PROVIDER_KEY_ENV``) still
+needs that variable on the relay route; a provider of its own id, with its upstream in
+``containment.network.upstreams``, needs none.
+"""
+
+from __future__ import annotations
+
+import base64
+import binascii
+import datetime as dt
+import os
+import ssl
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
+
+from aew.errors import ContainmentUnavailable
+from aew.harness.containment.relay import TLS_MINIMUM
+
+FIELD = "containment.network.client_certs"
+FILES = ("cert", "key", "ca")
+WHAT = {"cert": "client certificate", "key": "client key", "ca": "CA"}
+# The closed reasons of a refusal over a client certificate: one that cannot be used, and a run with no relay.
+UNUSABLE, NO_RELAY = "client_cert_unusable", "client_cert_no_relay"
+
+
+@dataclass(frozen=True)
+class ClientCert:
+    """One provider's three files, as the policy names them (``~`` expanded)."""
+
+    provider: str
+    cert: str
+    key: str
+    ca: str
+
+    def field(self, name: str) -> str:
+        return f"{FIELD}.{self.provider}.{name}"
+
+
+def entries(network: Mapping[str, Any] | None) -> dict[str, ClientCert]:
+    """The client certificates a policy's ``containment.network`` names, by provider id. The schema requires all three
+    files of each; one that is not a string here (a policy the schema did not check) is left out."""
+    found = (network or {}).get("client_certs") if isinstance(network, Mapping) else None
+    out: dict[str, ClientCert] = {}
+    for provider, files in (found.items() if isinstance(found, Mapping) else ()):
+        if isinstance(files, Mapping) and all(isinstance(files.get(f), str) and files.get(f) for f in FILES):
+            out[str(provider)] = ClientCert(str(provider), *(os.path.expanduser(str(files[f])) for f in FILES))
+    return out
+
+
+def configured(policy: Mapping[str, Any] | None) -> dict[str, ClientCert]:
+    """:func:`entries` of a whole execution policy."""
+    containment = (policy or {}).get("containment") or {}
+    return entries(containment.get("network") if isinstance(containment, Mapping) else None)
+
+
+def for_provider(provider: str | None, policy: Mapping[str, Any] | None) -> ClientCert | None:
+    return configured(policy).get(provider or "")
+
+
+def mask_entries(network: Mapping[str, Any] | None) -> list[tuple[str, str, str]]:
+    """Each certificate and key path to mask, with what names it and what it is, as ``layout._named`` lists a secret."""
+    return [(getattr(c, f), c.field(f), f"the {WHAT[f]} the relay presents for {c.provider}")
+            for c in entries(network).values() for f in ("cert", "key")]
+
+
+def no_relay(provider: str | None, policy: Mapping[str, Any] | None, *, on_relay_route: bool) -> str | None:
+    """The refusal of a run whose provider needs a client certificate when the run would reach it without AEW's relay,
+    which alone presents it; None when the provider needs none, or the run is on the relay route."""
+    found = for_provider(provider, policy)
+    if found is None or on_relay_route:
+        return None
+    return (f"the run's provider {provider} needs the client certificate named in {found.field('cert')}, and only "
+            "AEW's provider relay presents it: this run would reach the provider without it (a contained run's network "
+            "mode is not proxy_only, or the run is not contained, as on Windows). Run it on Linux with "
+            "containment.network.mode: proxy_only (the default), or pin a profile whose provider needs no certificate")
+
+
+def inspect(found: ClientCert, *, now: dt.datetime | None = None) -> tuple[list[str], dt.datetime | None]:
+    """What stands in the way of presenting ``found``'s certificate, one plain line per problem, each naming its file
+    and never its contents; and the certificate's expiry, when it could be read."""
+    problems: list[str] = []
+    for name in FILES:
+        path = getattr(found, name)
+        try:
+            with open(path, "rb") as f:
+                text = f.read(1) if name == "key" else f.read()  # never more of the key than whether it can be read
+        except OSError as exc:
+            problems.append(f"the {WHAT[name]} file {_named(found, name)} cannot be read: "
+                            f"{exc.strerror or type(exc).__name__}")
+            continue
+        if name == "cert":
+            problems += _validity(found, text, now or dt.datetime.now(dt.UTC))
+    if problems:
+        return problems, None
+    context = _context()
+    try:
+        context.load_cert_chain(found.cert, found.key, password=_no_passphrase)
+    except ssl.SSLError as exc:
+        if exc.reason == "KEY_VALUES_MISMATCH":
+            problems.append(f"the client certificate {_named(found, 'cert')} does not match the key named in "
+                            f"{found.field('key')}: name the key that goes with it there")
+        else:
+            problems.append(f"the client key file named in {found.field('key')} is not a PEM private key OpenSSL can "
+                            "read without a passphrase (AEW does not take one)")
+    try:
+        context.load_verify_locations(cafile=found.ca)
+    except (ssl.SSLError, OSError):
+        problems.append(f"the CA file {_named(found, 'ca')} holds no certificate OpenSSL can read")
+    return problems, _not_after(found)
+
+
+def _named(found: ClientCert, name: str) -> str:
+    """How a line names one of the files: the certificate and the CA file by path and field; the key by its field
+    alone. Every refusal and readiness line reaches the Lead, whose model needs no pointer to the key, masked or not."""
+    if name == "key":
+        return f"named in {found.field('key')}"
+    return f"{getattr(found, name)} ({found.field(name)})"
+
+
+def context(found: ClientCert, *, now: dt.datetime | None = None) -> ssl.SSLContext:
+    """The relay's TLS context for ``found``: the certificate presented, the provider's checked against the CA file
+    alone, TLS 1.2 at least. Read now, at the relay's start. Raises ``ContainmentUnavailable`` (:data:`UNUSABLE`) on
+    any problem :func:`inspect` finds: the launch is refused, never served without the certificate."""
+    problems, _ = inspect(found, now=now)
+    if problems:
+        raise ContainmentUnavailable(
+            f"the provider {found.provider}'s client certificate cannot be used, so the run is refused (the relay "
+            "never connects without it): " + "; ".join(problems) + ". `aew doctor` shows the same",
+            provider=found.provider, reason=UNUSABLE)
+    out = _context()
+    out.load_cert_chain(found.cert, found.key, password=_no_passphrase)
+    out.load_verify_locations(cafile=found.ca)
+    return out
+
+
+def _context() -> ssl.SSLContext:
+    """A verifying client context with no trust of its own yet: the CA file is the only one it gets."""
+    out = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)  # check_hostname and CERT_REQUIRED are this protocol's defaults
+    out.minimum_version = TLS_MINIMUM
+    return out
+
+
+def _no_passphrase() -> bytes:
+    """Given to OpenSSL for a key with a passphrase, so it fails rather than asks on the terminal."""
+    return b""
+
+
+def _not_after(found: ClientCert) -> dt.datetime | None:
+    try:
+        with open(found.cert, "rb") as f:
+            window = validity(f.read())
+    except OSError:
+        return None
+    return window[1] if window else None
+
+
+def _validity(found: ClientCert, text: bytes, now: dt.datetime) -> list[str]:
+    window = validity(text)
+    if window is None:
+        return [f"the client certificate file {_named(found, 'cert')} holds no PEM certificate AEW can read"]
+    not_before, not_after = window
+    if now > not_after:
+        return [f"the client certificate {_named(found, 'cert')} expired on {not_after:%Y-%m-%d %H:%M} UTC: put the "
+                "renewed one at that path, or name it there, and start the run again"]
+    if now < not_before:
+        return [f"the client certificate {_named(found, 'cert')} is not valid until {not_before:%Y-%m-%d %H:%M} UTC"]
+    return []
+
+
+# ---------------------------------------------------------------------------------------- a certificate's validity
+# The standard library reads no certificate's dates, and the runtime takes no new dependency for two fields. So the
+# first PEM certificate's DER is walked as far as TBSCertificate's validity (RFC 5280 §4.1): [0] version, serial,
+# signature, issuer, then validity.
+
+_BEGIN, _END = b"-----BEGIN CERTIFICATE-----", b"-----END CERTIFICATE-----"
+
+
+def validity(text: bytes) -> tuple[dt.datetime, dt.datetime] | None:
+    """(notBefore, notAfter) of the first PEM certificate in ``text``, in UTC; None when there is none to read."""
+    start = text.find(_BEGIN)
+    end = text.find(_END, start + len(_BEGIN)) if start >= 0 else -1
+    if start < 0 or end < 0:
+        return None
+    try:
+        der = base64.b64decode(b"".join(text[start + len(_BEGIN):end].split()), validate=True)
+        cert, _ = _tlv(der, 0, 0x30)
+        tbs, _ = _tlv(der, cert, 0x30)
+        at = tbs
+        if der[at] == 0xA0:  # [0] EXPLICIT version
+            at = _skip(der, at)
+        for _ in range(3):  # serialNumber, signature, issuer
+            at = _skip(der, at)
+        validity_at, _ = _tlv(der, at, 0x30)
+        not_before, after_at = _time(der, validity_at)
+        not_after, _ = _time(der, after_at)
+        return not_before, not_after
+    except (binascii.Error, ValueError, IndexError):
+        return None
+
+
+def _header(der: bytes, at: int) -> tuple[int, int, int]:
+    """(tag, content start, content length) of the TLV at ``at``."""
+    tag, first = der[at], der[at + 1]
+    if first < 0x80:
+        return tag, at + 2, first
+    count = first & 0x7F
+    if count == 0 or count > 4:
+        raise ValueError("unsupported DER length")
+    return tag, at + 2 + count, int.from_bytes(der[at + 2:at + 2 + count], "big")
+
+
+def _tlv(der: bytes, at: int, tag: int) -> tuple[int, int]:
+    """The content start and the end of the TLV at ``at``, which must have ``tag``."""
+    found, start, length = _header(der, at)
+    if found != tag or start + length > len(der):
+        raise ValueError("unexpected DER")
+    return start, start + length
+
+
+def _skip(der: bytes, at: int) -> int:
+    _, start, length = _header(der, at)
+    return start + length
+
+
+def _time(der: bytes, at: int) -> tuple[dt.datetime, int]:
+    """A UTCTime or GeneralizedTime (RFC 5280 §4.1.2.5: always UTC, with seconds), and where the next TLV starts."""
+    tag, start, length = _header(der, at)
+    raw = der[start:start + length].decode("ascii")
+    if tag == 0x17:  # UTCTime: YYMMDDHHMMSSZ, 50-99 meaning 19xx
+        year = int(raw[:2])
+        raw = f"{1900 + year if year >= 50 else 2000 + year}{raw[2:]}"
+    elif tag != 0x18:  # GeneralizedTime: YYYYMMDDHHMMSSZ
+        raise ValueError("not a time")
+    when = dt.datetime.strptime(raw, "%Y%m%d%H%M%SZ").replace(tzinfo=dt.UTC)
+    return when, start + length

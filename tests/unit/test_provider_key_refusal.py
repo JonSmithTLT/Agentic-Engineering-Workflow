@@ -153,6 +153,56 @@ def test_the_supervisor_refuses_again_before_any_sandbox_or_network_exists(relay
         contain(monkeypatch, [], provider="fakeprov")
 
 
+# ------------------------------------------------------------------------- a client certificate needs the relay (E123)
+
+CERT_POLICY = {"containment": {"network": {"client_certs": {"work": {"cert": "/synthetic/c.pem",
+                                                                     "key": "/synthetic/k.pem",
+                                                                     "ca": "/synthetic/ca.pem"}}}}}
+
+
+def test_a_launch_whose_provider_needs_a_client_certificate_is_refused_off_the_relay_route(monkeypatch):
+    """Only the relay presents a client certificate (register E123): off the relay route the engine refuses the launch
+    before anything is committed, and the supervisor again before any sandbox exists; on it, both go on. A provider
+    with no certificate named is not judged. No file is read: the refusal is the policy's."""
+    from aew.harness.containment import client_cert
+
+    events: list[tuple[str, dict[str, Any]]] = []
+    record: dict[str, Any] = {}
+
+    def contain_with(policy: dict[str, Any], provider: str) -> None:
+        monkeypatch.setattr(supervisor.containment, "establish", lambda **kw: (_ for _ in ()).throw(Reached()))
+        record.clear()
+        record["execution_profile"] = {"provider": provider}
+        stand_in = SimpleNamespace(engine=SimpleNamespace(execution_policy=lambda: (policy, None), repo_root="/p",
+                                                          aew_root="/p/.aew"),
+                                   bridge=SimpleNamespace(private_dir=None, address=None), record=record,
+                                   run_dir=None, _event=lambda kind, **fields: events.append((kind, fields)))
+        contract = SimpleNamespace(extra={"provider_env": []}, role="implementer", scope="ticket", workspace="/w",
+                                   scratch="/s")
+        supervisor.Supervisor._contain(stand_in, contract,  # type: ignore[arg-type]
+                                       SimpleNamespace(PROVIDER_RELAY=True, EGRESS=()))
+
+    monkeypatch.setattr(netns, "mode", lambda policy: netns.SHARED)
+    with pytest.raises(errors.ContainmentUnavailable) as caught:
+        engine_invocations(CERT_POLICY).require_launchable(launchable_state("work"), "INV-0001", relaunch=False)
+    assert caught.value.details["reason"] == client_cert.NO_RELAY
+    assert "containment.network.client_certs.work.cert" in caught.value.message
+    assert "/synthetic/k.pem" not in caught.value.message
+    with pytest.raises(errors.ContainmentUnavailable) as caught:
+        contain_with(CERT_POLICY, "work")
+    assert caught.value.details["reason"] == client_cert.NO_RELAY
+    assert events[-1] == ("containment_refused", {"reason": caught.value.message})
+    assert caught.value.message in repr(record["containment"])  # the run's label says why
+    assert engine_invocations(CERT_POLICY).require_launchable(launchable_state("fakeprov"), "INV-0001",
+                                                              relaunch=False)
+    with pytest.raises(Reached):
+        contain_with(CERT_POLICY, "fakeprov")
+    monkeypatch.setattr(netns, "mode", lambda policy: netns.PROXY_ONLY)
+    assert engine_invocations(CERT_POLICY).require_launchable(launchable_state("work"), "INV-0001", relaunch=False)
+    with pytest.raises(Reached):
+        contain_with(CERT_POLICY, "work")
+
+
 # ----------------------------------------------------------------------------------------- the refused-target record
 
 def refuse(proxy: EgressProxy, target: str) -> bytes:

@@ -90,16 +90,19 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
     doctor``'s read of the harness's model list (register E153), so that read meets exactly what a launch meets.
     Raises ``ContainmentUnavailable`` (after removing what it made) where the policy refuses a launch, and
     ``HarnessIncompatible`` for a provider key a launch would not get."""
-    from aew.harness.containment import netns
+    from aew.harness.containment import client_cert, netns
 
     # The engine refused this before anything was committed (``require_launchable``); checked again here, on the names
     # this launch carries, before any sandbox or network exists (the operator's decision of 2026-11-06: AEW does not
     # rely on OpenCode's free models).
-    missing = netns.provider_key_missing(provider, provider_env, os.environ,
-                                         on_relay_route=netns.relay_route(policy, adapter_cls.PROVIDER_RELAY))
+    on_route = netns.relay_route(policy, adapter_cls.PROVIDER_RELAY)
+    missing = netns.provider_key_missing(provider, provider_env, os.environ, on_relay_route=on_route)
     if missing is not None:
         raise errors.HarnessIncompatible(netns.provider_key_message(str(provider), missing),
                                          reason=netns.PROVIDER_KEY_MISSING, variable=missing)
+    no_relay = client_cert.no_relay(provider, policy, on_relay_route=on_route)
+    if no_relay is not None:  # only the relay presents a client certificate (register E123)
+        raise errors.ContainmentUnavailable(no_relay, provider=provider, reason=client_cert.NO_RELAY)
     layout = None
     try:
         try:  # built once: the self-test checks the same allowlist the run's egress proxy gets (register E143)

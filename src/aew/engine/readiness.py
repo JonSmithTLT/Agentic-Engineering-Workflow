@@ -38,6 +38,9 @@ def readiness_checks(execution: dict[str, Any] | None, site: str = DOCTOR) -> li
         found = _provider_key_doctor(execution)
         if found is not None:
             rows.append(_row("provider-key", *found))
+    found = _client_cert_doctor(execution)
+    if found is not None:
+        rows.append(_row("client-cert", *found))
     return rows
 
 
@@ -130,3 +133,30 @@ def _provider_key_doctor(policy: dict[str, Any]) -> tuple[str, str] | None:
     if judged:
         return "PASS", f"a provider key reaches the run for profile(s) {', '.join(judged)} (names only)"
     return None
+
+
+def _client_cert_doctor(policy: dict[str, Any]) -> tuple[str, str] | None:
+    """Each client certificate the policy names, as the relay will read it at a launch (``client_cert.inspect``, the
+    check the relay's start makes, and ``client_cert.no_relay``, a launch's): FAIL with the same lines a launch is
+    refused with, each naming its file; PASS with each certificate's expiry; None when the policy names none. Paths
+    only, never a file's contents (register E123)."""
+    from aew.harness.containment import client_cert, netns
+
+    certs = client_cert.configured(policy)
+    if not certs:
+        return None
+    problems, ready = [], []
+    for provider, found in sorted(certs.items()):
+        lines, not_after = client_cert.inspect(found)
+        no_relay = client_cert.no_relay(provider, policy, on_relay_route=netns.relay_route(policy, True))
+        lines += [no_relay] if no_relay else []
+        if lines:
+            problems.append(f"{provider}: " + "; ".join(lines))
+        else:
+            until = f", valid until {not_after:%Y-%m-%d %H:%M} UTC" if not_after else ""
+            ready.append(f"{provider}: the relay presents {found.cert}{until}, with the key named in "
+                         f"{found.field('key')}, and trusts {found.ca} alone")
+    if problems:
+        return "FAIL", ("a harness launch whose provider needs a client certificate is refused: "
+                        + " | ".join(problems))
+    return "PASS", "; ".join(ready) + " (read at each launch: a renewal or a swapped CA file is picked up by the next)"

@@ -610,12 +610,12 @@ def run_read(engine: Any, argv: list[str], cwd: str,
     ends it when it closes.
 
     That process writes nothing. A ``harness wait`` it ran told the Lead what it printed, so the broker, a store
-    writer, records that from the printed result (``harness_ops.record_told``), as the Lead's typed wait records it:
-    the triggers it returned are returned once, and an end it returned is no wake."""
+    writer, records that (:func:`record_delivery`), as the Lead's typed wait records it: the triggers it returned are
+    returned once, and an end it returned is no wake."""
     from aew import process_kind
     from aew.cli.main import build_parser, coordination_reads_for, recall_search_for
     from aew.engine.api import Engine
-    from aew.engine.harness_ops import record_told, scrubbed_env
+    from aew.engine.harness_ops import scrubbed_env
     from aew.harness import procs
 
     project = getattr(engine, "aew_root", None) or Path(cwd)  # as run_cli builds it
@@ -683,19 +683,23 @@ def run_read(engine: Any, argv: list[str], cwd: str,
             if track is not None:
                 track(proc, False)
     if wait:
-        told = _printed(out)
-        if told is not None and told.get("run") in ns.run:  # what the Lead was told of the runs it named
-            record_told(project, told, lead=True)
+        record_delivery(project, list(ns.run), out)
     return {"stdout": out, "stderr": err, "exit": proc.returncode}
 
 
-def _printed(stdout: str) -> dict[str, Any] | None:
-    """A relayed wait's result, as its process printed it (JSON), or None."""
+def record_delivery(project: Path, runs: list[str], stdout: str) -> None:
+    """The broker's delivery records for a relayed ``harness wait`` (STG-05 CS-4 addendum 15): what the read printed
+    told the Lead, so the broker records it (``harness_ops.record_told``), never the read's process. Only from the
+    parsed result: the one value in it the Lead chose is the run, and only a run the wait named, which the broker
+    checked, is recorded. Output that isn't a result records nothing."""
+    from aew.engine.harness_ops import record_told
+
     try:
-        value = json.loads(stdout)
+        told = json.loads(stdout)
     except ValueError:
-        return None
-    return value if isinstance(value, dict) else None
+        return
+    if isinstance(told, dict) and isinstance(told.get("run"), str) and told["run"] in runs:
+        record_told(project, told, lead=True)
 
 
 def _relayed_value_ok(kind: str, text: str) -> bool:

@@ -402,6 +402,29 @@ def test_what_a_wait_returned_is_recorded_and_only_the_leads_own_wait_tells_it_a
     assert runlog.read_returned(directory) == 5 and not runlog.end_returned(directory)
     record_told(tmp_path, ended, lead=True)
     assert runlog.end_returned(directory)
+    # A record only moves forward: an older result never takes the mark back.
+    record_told(tmp_path, {"run": RUN, "timed_out": False, "triggers": [{"seq": 1}]}, lead=True)
+    record_told(tmp_path, {**ended, "runs": {RUN: {"trigger_seq": 2}}}, lead=True)
+    assert runlog.read_returned(directory) == 5 and runlog.end_returned(directory)
+
+
+def test_the_brokers_delivery_records_come_from_the_parsed_result_for_a_run_the_wait_named(tmp_path: Path) -> None:
+    """STG-05 CS-4 addendum 15: the broker records a relayed wait's delivery only from the result the read printed,
+    and the one value in it the Lead chose, the run, only when it is a run the wait named."""
+    from aew.harness.lead_broker import record_delivery
+
+    for run in (RUN, OTHER):
+        runlog.run_dir(tmp_path, run).mkdir(parents=True)
+    ended = {"run": OTHER, "timed_out": False, "why": [K.RUN_ENDED], "runs": {OTHER: {"trigger_seq": 3}}}
+    record_delivery(tmp_path, [RUN], json.dumps(ended))  # a run the wait didn't name
+    record_delivery(tmp_path, [OTHER], "not a result\n" + json.dumps(ended))
+    record_delivery(tmp_path, [OTHER], json.dumps([ended]))
+    for run in (RUN, OTHER):
+        assert runlog.read_returned(runlog.run_dir(tmp_path, run)) == 0
+        assert not runlog.end_returned(runlog.run_dir(tmp_path, run))
+    record_delivery(tmp_path, [RUN, OTHER], json.dumps(ended, indent=2) + "\n")
+    directory = runlog.run_dir(tmp_path, OTHER)
+    assert runlog.read_returned(directory) == 3 and runlog.end_returned(directory)
 
 
 def test_the_per_run_line_reads_the_scrubbed_shape(lab: Lab) -> None:

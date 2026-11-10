@@ -37,9 +37,16 @@ IMPLEMENT = [
 # What the session's own broker writes under `.aew/local` while it serves (its liveness, the steering loop's state):
 # never a relayed read's.
 SESSION_OWN = ("local/lead", "local/steering")
-# What the broker records after a relayed `harness wait`, in the run's directory, of what it told the Lead
-# (`harness_ops.record_told`): the read's own process writes nothing.
+# The broker's delivery records (STG-05 CS-4 addendum 15): after a relayed `harness wait`, in the directory of the run
+# it returned, what it told the Lead (`lead_broker.record_delivery`). Named by exact path; the read's process writes
+# nothing.
 TOLD = (runlog.END_RETURNED_FILE, runlog.RETURNED_FILE)
+
+
+def delivery_records(run: str) -> set[str]:
+    return {f"{runlog.RUNS_REL}/{run}/{name}" for name in TOLD}
+
+
 # The one field read from the clock when the command runs: a run's heartbeat age (`harness status`).
 CLOCK = re.compile(r'(?<="heartbeat_age_s": )[0-9.]+')
 
@@ -113,8 +120,8 @@ def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, 
     """Conditions 2 and 7: through the broker, each read prints what the Lead's shell printed before CS-4, byte for
     byte (apart from a heartbeat's age, read from the clock as it runs), with its exit status, and leaves the store
     and `.aew/local` as they were (the derived history index's catch-up apart, which ``worker_surface.changes``
-    names). One write follows a read, and it is the broker's: a wait told the Lead the run's end, which it records
-    (``TOLD``; what it records is the next test's)."""
+    names). One write follows a read, and it is the broker's: a wait told the Lead the run's end, which it records in
+    its delivery records, each named by its exact path (``delivery_records``; what it records is the next tests')."""
     run, invocation = worked(lab, tmp_path)
     served: list[list[str]] = []
     run_read = lead_broker.run_read
@@ -129,7 +136,7 @@ def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, 
         via = relayed(lab, broker, *argv)
         assert served[-1:] == [argv], argv  # through the broker, never run by the client itself
         changed = changes(before, worker_surface.snapshot(lab.aew_root))
-        told = [c for c in changed if argv[:2] == ["harness", "wait"] and c.endswith(TOLD)]
+        told = [c for c in changed if argv[:2] == ["harness", "wait"] and c[1:] in delivery_records(run)]
         assert [c for c in changed if c not in told] == [], argv
         here = direct(lab, *argv)
         assert (via.returncode, CLOCK.sub("AGE", via.stdout), via.stderr) == (
@@ -186,9 +193,12 @@ def test_a_relayed_wait_tells_the_lead_through_its_broker_and_its_own_process_wr
             assert changes(before, worker_surface.snapshot(lab.aew_root)) == []
             via = relayed(lab, broker, "harness", "wait", run, "--timeout", "30")
             assert json.loads(via.stdout)["why"] == [K.RUN_ENDED], via.stdout + via.stderr
-            told = [f"+{runlog.RUNS_REL}/{run}/{name}" for name in sorted(TOLD)]
-            assert changes(before, worker_surface.snapshot(lab.aew_root)) == told
+            records = [f"+{p}" for p in sorted(delivery_records(run))]
+            assert changes(before, worker_surface.snapshot(lab.aew_root)) == records
             assert runlog.read_returned(directory) == seq and runlog.end_returned(directory)
+            # What they hold: a trigger's number and a flag, which move no approval, owner fact, credential or scope
+            assert json.loads((directory / runlog.RETURNED_FILE).read_text(encoding="utf-8")) == {"trigger_seq": seq}
+            assert (directory / runlog.END_RETURNED_FILE).read_bytes() == b""
             time.sleep(3 * lead_broker.POLL_S)  # a wake gathered meanwhile waits for the turn's end
             poster.turn = False
             time.sleep(3 * lead_broker.POLL_S)
@@ -220,7 +230,7 @@ def test_a_relayed_wait_that_returns_a_trigger_is_recorded_by_its_broker_alone(t
 
                 def written(before: dict[str, object]) -> list[str]:  # the live run's supervisor writes its own files
                     return [c for c in changes(before, worker_surface.snapshot(lab.aew_root))
-                            if not c[1:].startswith(own) or c.endswith(TOLD)]
+                            if not c[1:].startswith(own) or c[1:] in delivery_records(run)]
 
                 before = worker_surface.snapshot(lab.aew_root)
                 alone = run_aew("harness", "wait", run, "--timeout", "30", cwd=lab.root,

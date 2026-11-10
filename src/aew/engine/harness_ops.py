@@ -487,9 +487,9 @@ class Harness:
         order: a run's record, then (with `--any`) the control state, then the triggers, so a run whose invocation
         ended is returned as ended, never as one to steer.
 
-        Every return carries the named runs' digests (`runs`) and recorded delivery (`run_capabilities`; a timeout's
-        statuses are `statuses`), and a run's end
-        always carries a `next_action`, even when `aew status` no longer lists the run (E122 review, m1)."""
+        Every return carries the named runs' digests (`runs`; a timeout's statuses are `statuses`) and their recorded
+        delivery (`run_capabilities`). A run's end always carries a `next_action`, even when `aew status` no longer
+        lists the run (E122 review, m1)."""
         names = [runs] if isinstance(runs, str) else list(runs)
         if not names:
             raise UsageError("name the run(s) to wait on")

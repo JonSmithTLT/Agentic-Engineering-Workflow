@@ -149,3 +149,16 @@ def test_a_process_tree_that_requires_a_layout_starts_nothing_without_one():
     with pytest.raises(ContainmentUnavailable):
         tree.spawn(["true"])
     tree.close()
+
+
+def test_the_runner_returns_the_cwd_it_passed_to_spawn_even_when_spawn_fails(tmp_path, monkeypatch):
+    spawned = []
+
+    def spawn(self, argv, **kwargs):
+        spawned.append(kwargs["cwd"])
+        raise OSError(2, "synthetic spawn failure")
+
+    monkeypatch.setattr(procs.ProcessTree, "spawn", spawn)
+    out = C.run({"command": ["missing"], "cwd": "child/.."}, tmp_path,
+                policy={"containment": {"mode": "allow_weaker"}})
+    assert out["cwd"] == str(spawned[0]) == str(tmp_path.resolve())

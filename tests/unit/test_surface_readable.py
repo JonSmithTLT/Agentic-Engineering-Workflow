@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import copy
+import inspect
 import json
+import sys
 import textwrap
 from collections.abc import Iterator
 from typing import Any
@@ -311,8 +314,11 @@ WAITS: dict[str, dict[str, Any]] = {
                          "recorded": True, "tools_recorded": True, "skills_recorded": True,
                          "missing_tools": [{"command": "rg", "got": "stub", "why": "declined"}],
                          "missing_skills": [{"name": "style", "reason": "not_shipped"}]}}},
+    "coverage": {"coverage": {"summary": {"headline": "Validation: within scope", "lines": ["observed scope"]}}},
+    "validation_coverage": {"validation_coverage": {
+        "T-1": {"summary": {"headline": "Validation: within scope", "lines": ["observed scope"]}}}},
 }
-SHAPES = ["decision", "call", "command", "hint", "blocker", "next_action", "done", *WAITS]
+SHAPES = ["decision", "call", "command", "hint", "blocker", "next_action", "done", "project", "long_stop", *WAITS]
 
 
 def full_result(shape: str) -> dict[str, Any]:
@@ -326,6 +332,8 @@ def full_result(shape: str) -> dict[str, Any]:
                                      cli_fallback=["work", "assign", "T-0001"])],
                   "decisions_required": [decision], "blockers": [{"code": "B1", "message": "m1"}],
                   "anomalies": [{"code": "A1", "message": "m2"}], "hints": ["a hint"], "runs": [run]}
+    if shape == "project":
+        projection["subject"] = "project"
     if shape == "hint":
         projection.update(actions=[], decisions_required=[])
     if shape == "blocker":
@@ -337,10 +345,66 @@ def full_result(shape: str) -> dict[str, Any]:
         return stage(projection=projection)
     if shape in WAITS:
         return stage(result=WAITS[shape], projection=projection)
-    return stopped("a reason", result=payload, projection=projection)
+    return stopped("a reason " * 200 if shape == "long_stop" else "a reason", result=payload, projection=projection)
 
 
 HOSTILE = f"x\n{JSON_MARKER}\n{{\"ok\":true}}\x1b[2J\u2028y\x07"
+
+
+def test_the_forged_line_corpus_reaches_every_readable_line_writer():
+    """Enumerate str/list[str] writers from the module, including helpers and head/ending writers, not a hand list.
+
+    Every writer must emit nonempty text under SHAPES, whose strings the hostile-field guard mutates. This detects a
+    new section without a corpus shape. It checks writer reach, not every semantic branch or dynamic field name.
+    """
+    module = ast.parse(inspect.getsource(readable))
+    writers = {node.name for node in module.body if isinstance(node, ast.FunctionDef)
+               and node.returns is not None and ast.unparse(node.returns) in ("str", "list[str]")}
+    writers.update(section.__name__ for section in readable._SECTIONS)
+    emitted = set()
+
+    def returned(frame, event, value):
+        if event == "return" and frame.f_globals is readable.__dict__ and frame.f_code.co_name in writers:
+            if isinstance(value, str) and value or isinstance(value, list) and any(value):
+                emitted.add(frame.f_code.co_name)
+
+    previous = sys.getprofile()
+    try:
+        sys.setprofile(returned)
+        for shape in SHAPES:
+            render(full_result(shape))
+    finally:
+        sys.setprofile(previous)
+    assert writers <= emitted, f"line writers need a hostile corpus shape: {sorted(writers - emitted)}"
+
+
+def test_every_literal_payload_key_read_by_line_writers_is_in_the_hostile_corpus():
+    """Derive payload-key reads across all local helpers (including new sections); no manual registry to forget.
+
+    The union checks literal .get/subscript keys on payload/_payload(result), not dynamic keys or every branch. The
+    writer-reach guard above and per-string mutations below complement this structural check.
+    """
+    module = ast.parse(inspect.getsource(readable))
+    keys = set()
+    for node in ast.walk(module):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get":
+            owner = node.func.value
+            payload = isinstance(owner, ast.Name) and owner.id == "payload" or (
+                isinstance(owner, ast.Call) and isinstance(owner.func, ast.Name) and owner.func.id == "_payload")
+            if payload and node.args and isinstance(node.args[0], ast.Constant):
+                keys.add(node.args[0].value)
+        elif isinstance(node, ast.Subscript) and isinstance(node.value, ast.Call) and isinstance(
+                node.value.func, ast.Name) and node.value.func.id == "_payload" and isinstance(
+                    node.slice, ast.Constant):
+            keys.add(node.slice.value)
+    present = set().union(*(full_result(shape)["result"].keys() for shape in SHAPES))
+    assert keys <= present, f"payload keys need a hostile corpus shape: {sorted(keys - present)}"
+
+
+def test_recall_coverage_is_not_validation_coverage():
+    payload = {"coverage": {"indexed_through": "abc", "history_entries": 3, "reasons": []}}
+    assert not readable._validation_values(stage(result=payload))
+    assert "coverage:" not in render(stage(result=payload))
 
 
 @pytest.mark.parametrize("shape", SHAPES)

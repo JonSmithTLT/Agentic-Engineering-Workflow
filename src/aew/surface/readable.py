@@ -7,9 +7,8 @@ nothing else (``core/src/session/runner/to-llm-message.ts:125-139``). The operat
 to take in what happened at the speed the Lead works. So the text is, in order:
 
 * the head: the outcome, the next step, recorded coverage and advisory capability summaries, what happened, and what
-  holds the work up.
-  An outcome says what the call
-  got: a wait says how its run ended, or that it timed out, and ``done`` is said only of a call with no run status;
+  holds the work up. An outcome says what the call got: a wait says how its run ended, or that it timed out, and
+  ``done`` is said only of a call with no run status;
 * the marked line and the result as JSON for the Lead, on one line, without what no Lead call takes
   (:func:`for_the_lead`);
 * the summaries, outcome and next step again, where the view lands.
@@ -294,12 +293,17 @@ def _capabilities(result: dict[str, Any]) -> list[str]:
 
 
 def _validation_values(result: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    def summary(value: Any) -> dict[str, Any] | None:
+        item = value.get("summary") if isinstance(value, dict) else None
+        return item if isinstance(item, dict) and isinstance(item.get("headline"), str) else None
+
     payload = _payload(result)
     coverage = payload.get("coverage")
-    if isinstance(coverage, dict):
-        return [("", coverage.get("summary") or {})]
+    if (item := summary(coverage)) is not None:
+        return [("", item)]
     collection = payload.get("validation_coverage") or {}
-    return [(str(wid), c.get("summary") or {}) for wid, c in collection.items()] if isinstance(collection, dict) else []
+    return [(str(wid), item) for wid, c in collection.items() if (item := summary(c)) is not None] \
+        if isinstance(collection, dict) else []
 
 
 def _validation_summary(result: dict[str, Any]) -> list[str]:

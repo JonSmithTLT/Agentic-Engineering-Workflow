@@ -349,10 +349,11 @@ class Integration:
             raise
         record = {"attempt": attempt, "base": base, "ticket_commit": ticket_commit,
                   "workspace": int_ws["path"], "workspace_id": int_ws["workspace_id"], "prepared_at": utc_now(),
-                   "binding": self.gates.integration_binding(unit)}
+                  "binding": self.gates.integration_binding(unit)}
         record["coverage"] = CV.build(
             subject={"work_id": work_id, "scope": "integration", "base": base}, configured=[], checks=[],
-            changed_files=CV.files(None, source="candidate_not_prepared"), capabilities={}, result="not validated",
+            changed_files=CV.files(None, source="candidate_diff", reason="candidate_not_prepared"),
+            capabilities={}, result="not validated",
             complete=False)
         if admission is not None:  # a rebuild's own decision; a granted build's is on its custodian
             record["admission"] = admission

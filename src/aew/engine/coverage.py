@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import copy
 import json
+import re
+import sys
 import unicodedata
 from pathlib import Path
 from typing import Any
@@ -19,9 +21,16 @@ from aew.knowledge import evidence as E
 from aew.policy import checks as C
 from aew.util import load_yaml, sha256_file
 
+# Display choices for E120's bounded hot-state projection, not execution limits: 50 paths give a small diff sample;
+# ten entries per category give a useful scan; 500 characters bound one authored field. Full facts stay in records.
 MAX_PATHS = 50
 SUMMARY_ITEMS = 10
-SUMMARY_CHARS = 500  # display only: exact argv/cwd and all observations stay in the immutable record
+SUMMARY_CHARS = 500
+# An 8 KiB serialized summary leaves room for the other head sections below readable's 50 KiB whole-line cut.
+# This is a per-record storage/display budget, not a promise about a project view containing many records.
+SUMMARY_BYTES = 8 * 1024
+# A 600-byte line lets ten observed checks plus the inventory unknowns fit that budget even with wide characters.
+SUMMARY_LINE_BYTES = 600
 
 
 def inventory(checks: dict[str, Any], guardrails: dict[str, Any]) -> list[dict[str, Any]]:
@@ -30,9 +39,9 @@ def inventory(checks: dict[str, Any], guardrails: dict[str, Any]) -> list[dict[s
             for cid, digest in sorted(C.current_definitions(checks, guardrails).items())]
 
 
-def files(paths: list[str] | None, *, source: str) -> dict[str, Any]:
+def files(paths: list[str] | None, *, source: str, reason: str = "source_diff_not_recorded") -> dict[str, Any]:
     if paths is None:
-        return {"known": False, "reason": source}
+        return {"known": False, "reason": reason}
     ordered = sorted(set(paths))
     return {"known": True, "source": source, "count": len(ordered), "paths": ordered[:MAX_PATHS],
             "omitted": max(0, len(ordered) - MAX_PATHS)}
@@ -85,14 +94,60 @@ def _listed(lines: list[str]) -> list[str]:
                                      if len(lines) > SUMMARY_ITEMS else [])]
 
 
+def _execution_data(command: Any) -> str:
+    """Host-local argv stays in the structured record, not in a git-kept completion body. Never infer test scope."""
+    if not isinstance(command, list):
+        return "not recorded"
+    shown = []
+    for index, part in enumerate(command):
+        if index == 0 and part == sys.executable:
+            shown.append(f"Python {sys.version.split()[0]}")
+        elif re.search(r"(?:^|[\s=\"'])(?:/|[A-Za-z]:[\\/]|\\\\)", str(part)):
+            shown.append("<host-local argument; see coverage record>")
+        else:
+            shown.append(part)
+    return _text(json.dumps(shown, ensure_ascii=False))
+
+
+def _bounded_summary(summary: dict[str, Any], known: list[str], unknown: list[str]) -> dict[str, Any]:
+    """Reserve unknown lines first, then fit known detail; truncation is explicit and full facts stay immutable."""
+    note = "(summary detail omitted to fit byte budget; see coverage record)"
+    summary["lines"] = []
+    # JSON's default separators match durable records' consumers; UTF-8 bytes, not Unicode character counts.
+    remaining = SUMMARY_BYTES - len(json.dumps(summary, ensure_ascii=False).encode("utf-8"))
+    remaining -= len(json.dumps(note).encode("utf-8")) + 2
+
+    def fit(lines: list[str]) -> list[str]:
+        nonlocal remaining
+        kept = []
+        for line in lines:
+            if len(line.encode("utf-8")) > SUMMARY_LINE_BYTES:
+                suffix = "… (line shortened; see coverage record)"
+                line = line.encode("utf-8")[:SUMMARY_LINE_BYTES - len(suffix.encode("utf-8"))].decode(
+                    "utf-8", errors="ignore") + suffix
+            size = len(json.dumps(line, ensure_ascii=False).encode("utf-8")) + 2
+            if size <= remaining:
+                kept.append(line)
+                remaining -= size
+        return kept
+
+    unknown_kept = fit(unknown)
+    known_kept = fit(known)
+    omitted = len(known_kept) + len(unknown_kept) < len(known) + len(unknown)
+    summary["lines"] = [*known_kept, *([note] if omitted else []), *unknown_kept]
+    return summary
+
+
 def summarize(value: dict[str, Any]) -> dict[str, Any]:
     """The same four-case rule everywhere. Future known inventories exercise this rule without a new adapter."""
     checks = value.get("checks") or []
     not_run = value.get("configured_not_run") or []
     caps = value.get("run_capabilities") or {}
-    counts = {"configured_checks_not_run": len(not_run),
-              "missing_run_tools": sum(len(r.get("missing_tools") or []) for r in caps.values()),
-              "missing_run_skills": sum(len(r.get("missing_skills") or []) for r in caps.values())}
+    counts = {"configured_checks_not_run": len(not_run)}
+    for kind in ("tools", "skills"):
+        recorded = [r for r in caps.values() if r.get(f"{kind}_recorded")]
+        if recorded:
+            counts[f"missing_run_{kind}"] = sum(len(r.get(f"missing_{kind}") or []) for r in recorded)
     unknown, inventory_gaps = [], []
     for field, label in (("affected_tests", "Affected tests"), ("ci_tools", "Project CI tools")):
         item = value.get(field) or {"known": False, "reason": "coverage_not_recorded"}
@@ -118,7 +173,7 @@ def summarize(value: dict[str, Any]) -> dict[str, Any]:
     verdict = ("validated within its scope" if unknown or any(counts.values()) else "validated") if result == "pass" \
         else "advisory (not validation)" if result == "advisory" else str(result or "not validated")
     observed = [f"Check {_text(c.get('check_id'))}: {_text(c.get('result'))}; execution data: "
-                f"{_text(json.dumps(c.get('command'), ensure_ascii=False))}; cwd {_text(c.get('cwd'))}; "
+                f"{_execution_data(c.get('command'))}; cwd: see coverage record; "
                 f"snapshot {_text((c.get('evaluated_snapshot') or {}).get('relevant_inputs_fingerprint'))}"
                 for c in checks]
     gaps = [f"Configured check {_text(c['check_id'])}: not run ({_text(c['reason'])})" for c in not_run]
@@ -126,14 +181,23 @@ def summarize(value: dict[str, Any]) -> dict[str, Any]:
     for run, entry in caps.items():
         tools.extend(f"Run {_text(run)} missing pinned tool: {_text(t['command'])}; "
                      f"{_text(t['got'])}; {_text(t['why'])}"
-                     for t in entry.get("missing_tools") or [])
+                     for t in entry.get("missing_tools") or [] if entry.get("tools_recorded"))
         skills.extend(f"Run {_text(run)} missing skill: {_text(s['name'])}; {_text(s['reason'])}"
-                      for s in entry.get("missing_skills") or [])
-    counts_text = "; ".join(f"{k.replace('_', ' ')}: {v}" for k, v in counts.items())
-    return {"verdict": verdict, "known_gaps": counts,
-            "headline": f"Validation: {verdict}; {counts_text}",
-            "lines": [*_listed(observed), *_listed(gaps), *_listed(inventory_gaps), *_listed(tools), *_listed(skills),
-                      *_listed(unknown)]}
+                      for s in entry.get("missing_skills") or [] if entry.get("skills_recorded"))
+    counts_text = "; ".join(f"{k.replace('_', ' ')}: {v}" for k, v in counts.items()
+                            if not k.startswith("missing_run_"))
+    for kind in ("tools", "skills"):
+        count = counts.get(f"missing_run_{kind}")
+        known = bool(caps) and all(r.get(f"{kind}_recorded") for r in caps.values())
+        detail = str(count) if known else "not known" + (f" (recorded gaps: {count})" if count else "")
+        counts_text += f"; missing run {kind}: {detail}"
+    single = (value.get("subject") or {}).get("scope") == "check"
+    if single and result == "pass":
+        verdict = "pass within its recorded scope"
+    return _bounded_summary({"verdict": verdict, "known_gaps": counts,
+                             "headline": f"{'Check' if single else 'Validation'}: {verdict}; {counts_text}"},
+                            [*_listed(observed), *_listed(gaps), *_listed(inventory_gaps), *_listed(tools),
+                             *_listed(skills)], _listed(unknown))
 
 
 def legacy() -> dict[str, Any]:
@@ -141,6 +205,11 @@ def legacy() -> dict[str, Any]:
                         "headline": "Validation: coverage not recorded (legacy record)",
                         "known_gaps": {}, "lines": ["Affected tests: not known (no recorded coverage)",
                                                    "Project CI tools: not known (no recorded coverage)"]}}
+
+
+def not_validated(*, result: str = "not yet validated") -> dict[str, Any]:
+    """No validation record exists; this is not a historical record missing its coverage field."""
+    return {"summary": {"verdict": result, "headline": f"Validation: {result}", "known_gaps": {}, "lines": []}}
 
 
 def pin(path: str, digest: str, value: dict[str, Any] | None) -> dict[str, Any]:
@@ -163,5 +232,6 @@ def for_unit(aew_root: Path, unit: dict[str, Any], *, full: bool = False) -> dic
     integ = unit.get("integration") or {}
     current = integ.get("current_validation_run") or {}
     ref = (current.get("coverage") if current.get("state") == "running" else None) \
-        or integ.get("coverage") or (unit.get("last_verification") or {}).get("coverage") or legacy()
+        or integ.get("coverage") or (unit.get("last_verification") or {}).get("coverage") \
+        or (legacy() if unit.get("last_verification") or current else not_validated())
     return load(aew_root, ref) if full else {"summary": copy.deepcopy(ref["summary"])}

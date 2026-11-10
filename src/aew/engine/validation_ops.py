@@ -444,7 +444,8 @@ class Validation:
                                             "snapshot": integ["candidate_snapshot"]},
                                "configured": CV.inventory(self.k.policy("checks"), self.k.policy("guardrails")),
                                "changed_files": CV.files(integ.get("changed_paths"),
-                                                         source=f"candidate_diff_from:{integ['base']}")}
+                                                         source=f"candidate_diff_from:{integ['base']}",
+                                                         reason="candidate_diff_not_recorded")}
             inputs_path = f"work/{work_id}/{RUNS_DIR}/{run_id}-coverage-inputs.yaml"
             text = dump_yaml(coverage_inputs)
             ctx.session.write(inputs_path, text)
@@ -566,7 +567,8 @@ class Validation:
             verdict = GR.evaluate(I.changed_between(self.k.repo_root, integ["base"], integ["candidate"]),
                                   pinned["guardrails"], scope[0], scope[1])
             out = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0, "outcome": "ran",
-                   "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"], "spawn_errno": None}
+                   "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"], "spawn_errno": None,
+                   "cwd": str(workspace.resolve())}
         else:
             try:
                 out = C.run(cfg, workspace, policy=self.k.policy("execution"), env=env, layout=layout, trees=trees)
@@ -582,7 +584,7 @@ class Validation:
             result, reason = ("pass" if out["exit_code"] == 0 else "fail"), None
         record = {"check_id": check_id, "definition_sha256": entry["definition_sha256"], "result": result,
                   "reason": reason, "exit_code": out["exit_code"], "duration_s": out["duration_s"],
-                  "command": out["command"], "cwd": str((workspace / cfg.get("cwd", ".")).resolve()), "log": out["log"],
+                  "command": out["command"], "cwd": out.get("cwd"), "log": out["log"],
                   **({"network": out["network"]} if out.get("network") else {})}
         name = f"{check_id}.json"
         atomic_write(directory / name, json.dumps(record, indent=2, sort_keys=True))
@@ -668,7 +670,7 @@ class Validation:
             self.units.before_commit(ctx)
         out: dict[str, Any] = {"ok": abandoned is None, "work_id": work_id, "run": run["id"],
                                "coverage": CV.load(self.k.aew_root, current.get("coverage") or CV.legacy())
-                               if current.get("id") == run["id"] else CV.legacy(),
+                               if current.get("id") == run["id"] else CV.not_validated(result="abandoned"),
                                "revision": ctx.session.committed_revision}
         if abandoned:
             flag = " --diagnostic" if run.get("diagnostic") else ""
@@ -842,7 +844,8 @@ class Validation:
         path = self.k.aew_root / pin["path"]
         if sha256_file(path) != pin["sha256"]:
             return CV.build(subject={"run": run["id"], "scope": "integration"}, configured=[], checks=[],
-                            changed_files=CV.files(None, source="coverage_inputs_unavailable"), capabilities={},
+                            changed_files=CV.files(None, source="coverage_inputs",
+                                                   reason="coverage_inputs_unavailable"), capabilities={},
                             result=result or "not validated", complete=False, limits=["coverage_inputs_unavailable"])
         inputs = load_yaml(path.read_text(encoding="utf-8"))
         label = self._recorded_label(run["id"])
@@ -952,7 +955,8 @@ class Validation:
             ctx.summary = f"{work_id} validation unavailable ({why}): the entry waits for the Lead"
             self.units.before_commit(ctx)
         return {"ok": False, "work_id": work_id, "unavailable": True, **detail,
-                "coverage": CV.load(self.k.aew_root, (run or {}).get("coverage") or CV.legacy()),
+                "coverage": CV.load(self.k.aew_root, run.get("coverage") or CV.legacy()) if run
+                else CV.not_validated(result="unavailable (validation did not start)"),
                 "queue": Q.entry_of(ctx.state, work_id)[1], "revision": ctx.session.committed_revision,
                 "next": f"fix the environment, then `aew integrate requeue {work_id}`; or defer it. Independent "
                         "entries behind it integrate meanwhile"}

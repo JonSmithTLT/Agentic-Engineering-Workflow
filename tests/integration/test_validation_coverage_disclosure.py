@@ -28,12 +28,13 @@ def test_verifier_coverage_is_engine_owned_bound_to_its_checks_and_preserved_in_
     meta = {"claim": "scripted verification", "verification": {"scope": "integration", "claims": [
         {"type": "goal_backwards", "claim": "unit observed", "result": "pass", "checks": [checked["evidence"]]}]}}
     forged = role.submit("verification", {**meta, "coverage": {"summary": {"verdict": "validated"}}}, expect_ok=False)
-    assert forged.returncode != 0
+    assert forged.returncode != 0 and "coverage" in forged.stdout + forged.stderr
     submitted = role.submit("verification", meta)
     value = submitted["coverage"]
     assert value["checks"][0]["evidence"] == checked["evidence"] and value["checks"][0]["cited"]
     assert value["checks"][0]["command"] == checked["coverage"]["checks"][0]["command"]
     assert value["checks"][0]["cwd"] == checked["coverage"]["checks"][0]["cwd"]
+    assert checked["coverage"]["summary"]["headline"].startswith("Check: pass within its recorded scope;")
     ingested = p.lead("verify", "ingest", wid, "--evidence", submitted["evidence"])
     assert ingested["coverage"] == value and engine(p).status(wid)["coverage"] == value
     assert p.lead("integrate", "publish", wid)["coverage"] == value
@@ -66,13 +67,51 @@ def test_the_same_record_reaches_every_verdict_surface_and_disclosure_does_not_c
     for eid in out["evidence"]:
         meta = next(e for e in E.scan(p.root / ".aew", wid)[0] if e["id"] == eid)
         assert meta["coverage"] == coverage
+    workspace = integ(p, wid)["workspace"]
     accepted = p.lead("integrate", "publish", wid)
     assert accepted["state"] == "DONE" and accepted["coverage"] == coverage
     completion = p.root / ".aew/work" / wid / "completion.md"
     meta, body = parse_frontmatter(completion.read_text(encoding="utf-8"))
     assert meta["coverage"] == coverage and coverage["summary"]["headline"] in body
+    assert workspace not in body
+    assert all(c["command"][0] not in body for c in coverage["checks"] if Path(c["command"][0]).is_absolute())
     assert engine(p).status(wid)["coverage"] == coverage  # archived, after workspace cleanup
     assert_control_invariants(p)
+
+
+def test_a_new_ticket_is_not_a_legacy_validation_record(tmp_path):
+    from aewflow import create_planned_ticket
+
+    p = sample_project(tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    eng = engine(p)
+    value = eng.status(wid)["coverage"]["summary"]
+    assert value["headline"] == "Validation: not yet validated" and value["lines"] == []
+    assert eng.status()["validation_coverage"][wid]["summary"] == value
+
+
+def test_coverage_consumers_use_the_runners_cwd_not_a_second_calculation(tmp_path, contained, monkeypatch):
+    from aew.policy import checks as C
+
+    p = sample_project(tmp_path)
+    wid = prepared(p, tmp_path)
+    inv = p.lead("invoke", "create", wid, "--role", "verifier", "--scope", "integration")
+    role = Role(p, inv["invocation_token"], Path(integ(p, wid)["workspace"]))
+    original = C.run
+    marker = "synthetic-runner-cwd-provenance"
+
+    def run(*args, **kwargs):
+        # Real execution, but plant distinct returned provenance to catch either consumer recalculating cfg.cwd.
+        return {**original(*args, **kwargs), "cwd": marker}
+
+    monkeypatch.setattr(C, "run", run)
+    # Engine calls in-process so the planted runner boundary, not a child interpreter, is exercised.
+    checked = engine(p).check_run(invocation_token=role.token, check_id="unit")
+    assert checked["coverage"]["checks"][0]["cwd"] == marker
+    p.lead("invoke", "cancel", inv["invocation"], "--reason", "exercise checks-mode runner provenance next")
+    policy(p, checks=SMOKE)
+    out = engine(p).integrate_validate(token=p.token, expect_rev=p.rev(), work_id=wid)
+    assert out["coverage"]["checks"][0]["cwd"] == marker
 
 
 def test_coverage_uses_the_pinned_inventory_when_unrelated_policy_changes_during_execution(

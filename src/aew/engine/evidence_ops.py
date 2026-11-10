@@ -941,7 +941,8 @@ class EvidenceCommands:
             verdict = GR.evaluate(changed_paths(workspace, base), self.k.policy("guardrails"), scope_paths,
                                   acceptance_inputs)
             run = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0,
-                   "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"]}
+                   "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"],
+                   "cwd": str(workspace.resolve())}
         else:
             verdict = None
             if label is None:  # the operator's own `aew check run`: contained here, or refused (DV-4)
@@ -970,7 +971,7 @@ class EvidenceCommands:
                 "evaluated_snapshot": before,
                 "method": {"capability": "targeted_test_execution" if not cfg.get("builtin") else "guardrail_check",
                            "provider": "aew-check-runner", "command": run["command"],
-                           "cwd": str((workspace / cfg.get("cwd", ".")).resolve()),
+                           "cwd": run.get("cwd"),
                            "containment": (run.get("containment") or {}).get("filesystem")
                            or ("os_readonly_roots" if layout is not None else "workdir_separation_only"),
                            # the check's effective network (F28 §3.8), where it ran in a sandbox
@@ -992,7 +993,8 @@ class EvidenceCommands:
             if inputs:
                 meta["coordination_inputs"] = inputs
             meta["coverage"] = CV.build(
-                subject={"work_id": work_id, "scope": inv.get("scope") or "ticket", "snapshot": before},
+                subject={"work_id": work_id, "scope": "check", "verification_scope": inv.get("scope") or "ticket",
+                         "snapshot": before},
                 configured=coverage_inventory, checks=[CV.observation(meta)], changed_files=coverage_files,
                 capabilities=CV.run_capabilities(self.k.aew_root, [meta["producer"]["run"]]
                                                  if meta["producer"].get("run") else []), result=result)
@@ -1097,11 +1099,11 @@ class EvidenceCommands:
     @staticmethod
     def _coverage_files(workspace: Path, base: str | None, scope: str) -> dict[str, Any]:
         if not base or scope not in {"ticket", "integration"}:
-            return CV.files(None, source="no_source_diff_for_this_subject")
+            return CV.files(None, source="workspace_diff", reason="no_source_diff_for_this_subject")
         try:
             return CV.files(changed_paths(workspace, base), source=f"workspace_diff_from:{base}")
         except (AEWError, OSError):
-            return CV.files(None, source="evaluated_source_diff_unavailable")
+            return CV.files(None, source="workspace_diff", reason="evaluated_source_diff_unavailable")
 
     def _verification_binding(self, state: dict[str, Any], inv_id: str, inv: dict[str, Any],
                               submitted: dict[str, Any]) -> dict[str, Any]:

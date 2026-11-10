@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import json
+import sys
 
 import pytest
 
@@ -102,4 +104,59 @@ def test_record_pins_survive_workspace_removal_and_project_summaries_do_not_read
     assert CV.for_unit(tmp_path, unit) == summary
     with pytest.raises(IntegrityError):
         CV.for_unit(tmp_path, unit, full=True)
-    assert "legacy record" in CV.for_unit(tmp_path, {}, full=True)["summary"]["headline"]
+    assert CV.for_unit(tmp_path, {}, full=True)["summary"]["headline"] == "Validation: not yet validated"
+    assert "legacy record" in CV.for_unit(tmp_path, {"last_verification": {"result": "pass"}}, full=True)["summary"][
+        "headline"]
+
+
+@pytest.mark.parametrize("kind", ["tools", "skills"])
+def test_unknown_delivery_never_prints_a_known_zero_or_counts_unrecorded_lists(kind):
+    value = observed()
+    value["run_capabilities"]["IV-1"][f"{kind}_recorded"] = False
+    value["run_capabilities"]["IV-1"][f"missing_{kind}"] = [{"untrusted": "not a recorded fact"}]
+    summary = CV.summarize(value)
+    assert f"missing_run_{kind}" not in summary["known_gaps"]
+    assert f"missing run {kind}: not known" in summary["headline"]
+    value["run_capabilities"] = {}
+    summary = CV.summarize(value)
+    assert "missing_run_tools" not in summary["known_gaps"]
+    assert "missing_run_skills" not in summary["known_gaps"]
+    assert "missing run tools: not known; missing run skills: not known" in summary["headline"]
+
+
+def test_partial_delivery_keeps_recorded_gaps_without_claiming_a_complete_count():
+    value = observed()
+    value["run_capabilities"]["IV-1"]["missing_tools"] = [{"command": "rg", "got": "stub", "why": "declined"}]
+    value["run_capabilities"]["IV-2"] = {"tools_recorded": False, "skills_recorded": False}
+    summary = CV.summarize(value)
+    assert summary["known_gaps"]["missing_run_tools"] == 1
+    assert "missing run tools: not known (recorded gaps: 1)" in summary["headline"]
+
+
+def test_total_summary_utf8_budget_preserves_the_inventory_unknowns():
+    value = observed()
+    long = "界" * 2000
+    value["checks"] = [{"check_id": long, "result": long, "command": [long], "cwd": long,
+                        "evaluated_snapshot": {"relevant_inputs_fingerprint": long}}] * 100
+    value["configured_not_run"] = [{"check_id": long, "reason": long}] * 100
+    summary = CV.summarize(value)
+    assert len(json.dumps(summary, ensure_ascii=False).encode("utf-8")) <= CV.SUMMARY_BYTES
+    assert any("byte budget" in line for line in summary["lines"])
+    assert any("Affected tests: not known" in line for line in summary["lines"])
+    assert any("Project CI tools: not known" in line for line in summary["lines"])
+
+
+def test_summary_uses_no_host_local_argv_or_cwd_and_single_checks_are_not_ticket_validation(tmp_path):
+    value = observed()
+    value["subject"]["scope"] = "check"
+    value["checks"] = [{"check_id": "unit", "result": "pass", "command": [sys.executable, str(tmp_path / "test.py")],
+                        "cwd": str(tmp_path), "evaluated_snapshot": {}}]
+    summary = CV.summarize(value)
+    assert summary["headline"].startswith("Check: pass within its recorded scope;")
+    assert sys.executable not in str(summary) and str(tmp_path) not in str(summary)
+    assert f"Python {sys.version.split()[0]}" in str(summary)
+
+
+def test_missing_changed_paths_have_a_reason_not_the_source_label():
+    assert CV.files(None, source="candidate_diff_from:abc", reason="candidate_diff_not_recorded") == {
+        "known": False, "reason": "candidate_diff_not_recorded"}

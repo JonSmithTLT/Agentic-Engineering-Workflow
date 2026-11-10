@@ -1460,6 +1460,7 @@ None.
 - `aew.harness.opencode.login`
 - `aew.harness.opencode.projection`
 - `aew.harness.operator_autostart`
+- `aew.harness.registry`
 - `aew.harness.weaker_register`
 - `aew.policy.execution`
 - `aew.process_kind`

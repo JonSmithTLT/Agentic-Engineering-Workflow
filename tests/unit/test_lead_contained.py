@@ -1248,3 +1248,60 @@ def test_a_contained_lead_on_the_hosts_network_is_live_in_the_register_while_it_
     harness.entry.started()
     assert harness.relay and [x["why"] for x in _live_lead(harness)] == ["running"]
     assert harness.env["AEW_CONTEXT"] == harness.entry.data["marker"], "the sandboxed TUI carries its marker"
+
+
+# ------------------------------------------------------------------- a provider that takes a client certificate (E123)
+
+CERT_FIELD = "containment.network.client_certs.mtls.cert"
+
+
+def cert_policy(mode: str | None = None, **extra: Any) -> dict[str, Any]:
+    """A policy whose only provider is one of its own id that takes a client certificate and has no key (the work
+    provider's case). The files are named, never read: nothing here opens a connection."""
+    network: dict[str, Any] = {
+        "client_certs": {"mtls": {"cert": "/synthetic/c.pem", "key": "/synthetic/k.pem", "ca": "/synthetic/ca.pem"}},
+        "upstreams": {"mtls": "https://models.example/v1"}, **({"mode": mode} if mode else {})}
+    return {"containment": {"network": network}, **extra}
+
+
+@pytest.mark.parametrize("mode", [netns.SHARED, netns.ISOLATED])
+def test_a_contained_lead_with_no_relay_is_told_it_cannot_use_its_certificate_provider_and_is_refused(
+        tmp_path, at_a_terminal, monkeypatch, mode):
+    """E123 quick check, Q1: under a shared or isolated network `start_lead` relays nothing, so the Lead never says the
+    provider is relayed. It says it can't use it, and a Lead with no other provider is refused, naming the mode."""
+    monkeypatch.setattr(netns, "mode", lambda policy: str((policy or {})["containment"]["network"]["mode"]))
+    built = contained(tmp_path, policy=cert_policy(mode))
+    assert built.certified == {}
+    out = io.StringIO()
+    built.announce(out)
+    said = out.getvalue()
+    assert "is relayed on the host" not in said and "can't use that provider this session" in said, said
+    assert CERT_FIELD in said and "/synthetic/k.pem" not in said
+    with pytest.raises(errors.HarnessIncompatible) as caught:
+        built.require_provider()
+    assert "proxy_only" in caught.value.message
+
+
+def test_a_contained_lead_on_the_relay_route_relays_its_certificate_provider_with_the_policys_models(
+        tmp_path, at_a_terminal, monkeypatch):
+    """E123 quick check, Q3: the contained Lead doesn't load the operator's OpenCode configuration, and OpenCode's
+    catalog doesn't know a provider of the policy's own id, so its models come from the profiles that pin it: each with
+    the relay's address, and the provider over plain HTTP requests, as a worker's pinned provider is."""
+    monkeypatch.setattr(netns, "mode", lambda policy: netns.PROXY_ONLY)
+    policy = cert_policy(harness="opencode", profiles={
+        "work": {"provider": "mtls", "model": "big-1"}, "light": {"provider": "mtls", "model": "mtls/small-2"},
+        "again": {"provider": "mtls", "model": "big-1"}, "other": {"provider": "openai", "model": "gpt-x"}})
+    built = contained(tmp_path, policy=policy)
+    assert list(built.certified) == ["mtls"] and built.models == {"mtls": ["big-1", "small-2"]}
+    out = io.StringIO()
+    built.announce(out)
+    assert f"mtls is relayed on the host with the client certificate named in {CERT_FIELD}, and no key" in \
+        out.getvalue()
+    built.require_provider()  # its only provider, and it takes no key
+    url = "http://127.0.0.1:4111/v1"
+    config = projection.lead_config(relays={"mtls": url, "anthropic": "http://127.0.0.1:4112/v1"},
+                                    models=built.models)
+    assert config["providers"]["mtls"] == {"settings": {"baseURL": url, "transport": "http"},
+                                           "models": {"big-1": {"settings": {"baseURL": url}},
+                                                      "small-2": {"settings": {"baseURL": url}}}}
+    assert config["providers"]["anthropic"] == {"settings": {"baseURL": "http://127.0.0.1:4112/v1"}}  # as before

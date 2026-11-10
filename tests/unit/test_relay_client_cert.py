@@ -299,12 +299,13 @@ def test_the_contained_leads_keyless_provider_of_its_own_id_gets_a_relay_that_pr
     assert seen.peer is not None and ((("commonName", "aew-relay"),),) == seen.peer["subject"]
 
 
-def test_the_lead_relays_keyless_only_an_own_id_provider_with_an_upstream_and_a_certificate(pki):
+def test_the_lead_relays_keyless_only_an_own_id_provider_with_an_upstream_and_a_certificate(pki, monkeypatch):
     """The work provider has no API key, only its certificate (the operator), so its own id is relayed to the Lead with
     no credential. Never one the Lead denies, one AEW knows a key variable for, one already relayed, one with no
     upstream; and an own-id provider with an upstream but no certificate gets no relay."""
     from aew.harness.opencode import lead, projection
 
+    monkeypatch.setattr(netns, "mode", lambda policy: netns.PROXY_ONLY)  # the relay route; off it, none is chosen
     found = pki.files()
     files = {"cert": found.cert, "key": found.key, "ca": found.ca}
     url = f"https://{HOST}/v1"

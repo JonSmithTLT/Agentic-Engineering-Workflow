@@ -3,7 +3,7 @@
 - **The key's path:** AEW's own lines name the key by its policy field. These are the refusals, doctor's line, the relay's label and its answers. The run's layout record lists the key's path among its masked paths, as it lists every mask.
 - **Masks:** the certificate and key are masked from every contained run, so the launch's self-test proves them unreadable from inside.
 - **No relay:** a run with no relay refuses the provider. The engine's launch check and the supervisor's both refuse it, and the supervisor checks again after `establish`, where a sandbox that couldn't be established under `allow_weaker` leaves no relay.
-- **The Lead:** the contained Lead relays such a provider of its own id with no key, which the provider requires (it has no API key, only the certificate: the operator). The provider must have `containment.network.upstreams.<id>`, and never be one the Lead denies. A Lead with no relay says at its start which providers it can't use.
+- **The Lead:** the contained Lead relays such a provider of its own id with no key, which the provider requires (it takes the certificate alone: the operator). The provider must have `containment.network.upstreams.<id>`, and never be one the Lead denies; its models are the ones the policy's profiles pin for it. Only under `proxy_only`: a Lead with no relay (a shared or isolated network, Windows, or an `allow_weaker` fallback) says at its start which providers it can't use. The same assumption in the Lead's key and login start lines predates this PR, and gets a row of its own.
 - **Handshake failures** reach the harness as a 502 naming the policy field or the CA file:
   - `client_cert_refused`;
   - `client_cert_required`: under TLS 1.3 from the certificate_required alert, under TLS 1.2 from handshake_failure, worded as a likelihood;
@@ -17,7 +17,9 @@
 - what the provider's own 429s look like. Only a live run against that provider can show this.
 
 **The first real run's checks, not yet run:** these need a real OpenCode run in a network namespace, like the 429 measurement.
-- whether OpenCode 2.0.18 resolves a provider of its own id (such as `mtls`) at all, from only the `baseURL` and `transport` AEW projects for it, with no SDK package named. This applies to a worker's and the contained Lead's alike;
+- whether OpenCode 2.0.18 resolves a provider of its own id (such as `mtls`) at all, with no SDK package named. The two projections differ, so each is checked:
+  - a worker's names the provider's `baseURL` and `transport` and its one pinned model;
+  - the contained Lead's names the provider's `baseURL` and `transport` and every model the policy's profiles pin for that provider (the Lead doesn't load the operator's OpenCode configuration, and the catalog doesn't know the id). If the Lead lists no model of it, this is where to look;
 - whether it needs a placeholder key for one. AEW requires none.
 
 **A gap this build leaves, for a row:** Codex has no adapter yet (`harness/registry.py` names OpenCode only). One on the relay route gets this through `RunNetwork.start`, as any harness does.

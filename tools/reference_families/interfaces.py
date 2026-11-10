@@ -107,6 +107,8 @@ def build(ctx: C.Context) -> C.Built:
 
 
 def page(records: list[C.Record]) -> str:
+    from aew.dashboard import session
+
     by: dict[str, list[C.Record]] = {}
     for r in records:
         by.setdefault(r.family, []).append(r)
@@ -153,7 +155,15 @@ def page(records: list[C.Record]) -> str:
         where = f"under `{f['under']}`" if "under" in f else "outside " + words(f["outside"])
         needs = f"; answered only while the server has `{f['needs']}`" if f.get("needs") else ""
         lines.append(f"- `{f['route']}`: handled by `{f['handler']}`, {where}{needs}.")
-    lines += ["", "## Tools", "",
+    lines += ["", "## Dashboard sessions", "",
+              "`SessionTable.mint` and `Service.issue` require keyword-only `authorized_by`, with no default; "
+              "mint accepts only "
+              f"{words(session.AUTHORIZED_BY)} (read from `aew.dashboard.session.AUTHORIZED_BY`). "
+              f"`{session.OPERATOR_TTY}` records the typed-back code used by `aew dashboard serve` and `open`; "
+              f"`{session.OPERATOR_START}` records the first no-code session opened by `aew opencode`. "
+              "The existing session listing reports this provenance unchanged. A browser session grants only "
+              f"{words(session.SCOPE_OPERATIONS)}, never an engine operator confirmation.", ""]
+    lines += ["## Tools", "",
               "| Tool | Kind | Class | Status | Mutates | Dispatches | Expands to |", "|---|---|---|---|---|---|---|"]
     for r in by.get(TOOLS, []):
         f = r.fact or {}

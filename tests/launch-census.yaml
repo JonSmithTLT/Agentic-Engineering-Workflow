@@ -99,6 +99,16 @@ starts:
   classes: [not_agent_context]
   reason: the network shim starting the Lead's server from the serve step its launch gave, beside the TUI and in the
     same place; that launch's containment or its weaker entry is its own (ContainedLead.__call__, WeakerLead.__call__)
+- site: src/aew/harness/dashboard_autostart.py::open_browser
+  call: startfile
+  classes: [not_agent_context]
+  reason: Windows desktop shell opening a fixed loopback bootstrap URL minted by the in-process dashboard; no model
+    acts and no agent-written program runs
+- site: src/aew/harness/dashboard_autostart.py::open_browser
+  call: Popen
+  classes: [not_agent_context]
+  reason: Unix desktop launcher opening a fixed loopback bootstrap URL minted by the in-process dashboard; no model
+    acts and no agent-written program runs
 - site: src/aew/harness/lead_broker.py::run_read
   call: Popen
   classes: [not_agent_context]

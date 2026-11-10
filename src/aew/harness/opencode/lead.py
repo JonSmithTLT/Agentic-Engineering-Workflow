@@ -32,6 +32,7 @@ can then read; the command says so.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -42,13 +43,13 @@ import sqlite3
 import subprocess
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
 from aew import process_kind
 from aew.errors import AEWError, ContainmentUnavailable, HarnessIncompatible, UsageError
-from aew.harness import agentenv, lead_broker, operator_autostart
+from aew.harness import agentenv, dashboard_autostart, lead_broker, operator_autostart
 from aew.harness.opencode import capabilities, login, projection
 from aew.harness.opencode.adapter import binary_command
 
@@ -250,6 +251,9 @@ def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | No
         notes.append("No AEW credential and no provider key is in it unless passed with --provider-env.")
     notes.append(f"A session starts this project's operator endpoint in the background unless one is live; "
                  f"{operator_autostart.OFF_ENV}=off turns that off.")
+    notes.append(f"At your terminal with a display, the dashboard starts for this session and opens its first browser "
+                 f"session without a typed-back code; {dashboard_autostart.OFF_ENV}=off turns that off. A running "
+                 "dashboard is reused without issuing; later opens against an auto-started server refuse.")
     # what the TUI is given where it runs as it is: an uncontained Lead's line included (review of #356, n1)
     config = (projection.lead_config(guide, push_wake=wakes) if contained_here()
               else json.loads(env["OPENCODE_CONFIG_CONTENT"]))
@@ -354,12 +358,12 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         _tools_before_the_tui()
         offer = _switch_offers(engine)
         stages.mark("logins")
-        with operator_autostart.for_session(engine, provider_env=provider_env):
+        with session_services(engine, provider_env=provider_env) as on_ready:
             out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label,
                                           keep_seat=keep_seat,
                                           env=tui_env(os.environ, provider_env=[], guide=guide,
                                                       push_wake=pushes_wakes(engine)), contained=lead,
-                                          with_token=offer.apply)
+                                          with_token=offer.apply, on_ready=on_ready)
         return _outcome(out, version)
     # Off Linux the TUI runs as it is, labelled so, with its label.json and its register entry (G3 addendum 7, ruling
     # 1); under an explicit `required` that refuses before any credential is read.
@@ -377,10 +381,22 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         sys.stderr.write(line)
     _unrelayed(engine)
     offer = _switch_offers(engine)
-    with operator_autostart.for_session(engine, provider_env=provider_env):
+    with session_services(engine, provider_env=provider_env) as on_ready:
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
-                                      env=env, contained=weaker, with_token=offer.apply)
+                                      env=env, contained=weaker, with_token=offer.apply, on_ready=on_ready)
     return _outcome(out, version)
+
+
+@contextlib.contextmanager
+def session_services(engine: Any, *, provider_env: list[str]) -> Iterator[Callable[[], None]]:
+    """One stack for both starts; the dashboard begins only once the broker has validated the held seat (m4)."""
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(operator_autostart.for_session(engine, provider_env=provider_env))
+
+        def on_ready() -> None:
+            stack.enter_context(dashboard_autostart.for_session(engine))
+
+        yield on_ready
 
 
 def _outcome(out: dict[str, Any], version: Any) -> dict[str, Any]:

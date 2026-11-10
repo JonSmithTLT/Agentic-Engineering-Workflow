@@ -29,7 +29,7 @@ from aewflow import create_planned_ticket, sample_project  # noqa: E402
 from aew.dashboard import contract as CT  # noqa: E402
 from aew.dashboard import server as SV  # noqa: E402
 from aew.dashboard.server import DashboardServer  # noqa: E402
-from aew.dashboard.session import SessionTable  # noqa: E402
+from aew.dashboard.session import OPERATOR_TTY, SessionTable  # noqa: E402
 from aew.engine.api import Engine  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -99,7 +99,7 @@ def live(tmp_path_factory):
     server = DashboardServer(engine, authenticator=table, sessions=table, validate_with=CONTRACT)
     server.start()
     conn = http.client.HTTPConnection("127.0.0.1", server.port, timeout=30)
-    conn.request("GET", f"/session/{table.mint()}")
+    conn.request("GET", f"/session/{table.mint(authorized_by=OPERATOR_TTY)}")
     resp = conn.getresponse()
     resp.read()
     conn.close()
@@ -127,7 +127,7 @@ def error_code(raw: bytes) -> str:
 
 def test_every_kind_of_response_carries_the_full_header_set(live):
     js = next(n for n in (ROOT / "src/aew/dashboard/static/assets").iterdir() if n.suffix == ".js").name
-    code = live.table.mint()
+    code = live.table.mint(authorized_by=OPERATOR_TTY)
     cases: list[tuple[str, str, dict[str, str], bool, int, str]] = [
         ("GET", "/", {}, True, 200, "no-store"),
         ("GET", "/index.html", {}, True, 200, "no-store"),
@@ -367,7 +367,7 @@ def test_keep_alive_serves_several_requests_on_one_connection(live):
 # ------------------------------------------------------------------------------------------- the request log (R23)
 
 def test_the_request_log_redacts_session_codes_and_never_records_queries_headers_or_cookies(live, caplog):
-    code = live.table.mint()
+    code = live.table.mint(authorized_by=OPERATOR_TTY)
     with caplog.at_level(logging.INFO, logger="aew.dashboard"):
         live.request("GET", f"/session/{code}", cookie=False)
         live.request("GET", "/api/v1/work?state=SECRET_QUERY_VALUE", {"X-Secret-Header": "SECRET_HEADER_VALUE"})
@@ -387,7 +387,7 @@ def test_the_request_log_redacts_session_codes_and_never_records_queries_headers
 def test_a_non_path_target_is_refused_before_routing_and_never_logged(live, caplog, form):
     """An absolute-form (or network-path) target names a one-time code where routing would find it but the log
     redaction did not: it is refused before any route, the code stays unspent, and the log never shows it."""
-    code = live.table.mint()
+    code = live.table.mint(authorized_by=OPERATOR_TTY)
     target = form.format(host=live.host, code=code)
     with caplog.at_level(logging.INFO, logger="aew.dashboard"):
         status, _, raw = live.raw(f"GET {target} HTTP/1.1\r\nHost: {live.host}\r\nSec-Fetch-Site: cross-site\r\n\r\n"

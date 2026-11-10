@@ -1,0 +1,1 @@
+**Row spec RS-33** of the hold match (design workspace `20-register/hold-match-2026-11-06/ROW-SPECS.yaml`) is this row, filed before the other row specs. They are E260 to E314, each Source naming its `RS-` id.

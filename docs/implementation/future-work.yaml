@@ -3418,6 +3418,1624 @@ sections:
     Notes: Filed by the hold match as the one new row HOLD-12's match owes; the match's other new-row routes are the designer's
       row specs to write
 
+  - '#': E260
+    Work: Make it ascertainable, for AEW's API and website consumers, what each declared consumer covers and what it deliberately
+      leaves unexposed (A-02's OI-FR-05). The record is built on the declared reads of the D-01 0.3.4 production read wire
+      and on E108's `unsupported` answers, which say where a fact is read instead, and it is not a second authoritative
+      registry. With it, a missing projection, an incompatible value, an unhandled consequential event or action, or an
+      unusable link on the API or the site can be identified. It is known done when an actionable event kind the engine
+      emits that its declared API or website consumer cannot project or navigate is identifiable as a gap, instead of the
+      omission staying invisible
+    Source: Row spec RS-01 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-02), routing A-02's requirement OI-FR-05, for API and website consumers only; A-02's
+      adopted text, docs/contracts/A-02/A-02__AEW-foundational-amendment-product-cohesion-operator-experience-v0.3.md, line
+      48
+    When: '**Unscheduled.** It waits on the D-01 0.3.4 production read wire (W1 to W5), a V-01 row after I-6 (STG-14), whose
+      declared reads it records coverage of, and on E108''s outage reader (V-01), whose `unsupported` answers it builds
+      on. Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'Neighbours: the D-01 0.3.4 production read wire, E181; E108 (open, V-01); E102''s `GET /api/v1/waiting` (Contained),
+      the first API-backed journey. It covers the wire''s declared reads only: A-22''s capabilities-and-runs extension stays
+      unselected until the operator chooses it. What it is not: the CLI and Lead surfaces, where F47.6 (which the hold match
+      restores from HOLD-02, Unscheduled) owns OI-FR-05, making unhandled actions, incompatible values and unusable links
+      there findable, with E140 and E141 carrying its built static scan''s enforcement and coverage; and the control facts,
+      where F44 (which the hold match restores from HOLD-10, Internal alpha) contributes only the detectable missing projection
+      of a control fact, A-02''s scenario OI-X03, in which the domain owner retains the semantics. It is not a second registry:
+      OI-FR-05 excludes one. Filed from its row spec by the row-specs register PR'
+
+  - '#': E261
+    Work: Integration evidence where it is required. Before AEW accepts a parent integration claim, or a composed Story,
+      Epic, integration package or operator journey, as verified or technically complete, it obtains applicable integration
+      evidence for the required interactions among the delivered components, and never infers it from their separate local
+      PASS results. Wherever an affected boundary's requirements demand consumer or integration evidence, AEW obtains it,
+      including for a single change to a required consumer boundary. Coordination identifies the composed work's actual
+      integrated subject and ensures the assigned assurance owner has qualified the required consumer behaviours, not merely
+      collecting the children's PASS statuses. Done when a parent integration claim whose children all passed, but whose
+      required interaction (a shared lifecycle, a client and server handshake) has no applicable integration evidence, is
+      not accepted as verified or complete, and unit-only results are never reported as validating an affected required
+      consumer boundary
+    Source: Row spec RS-02 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-04, HOLD-05, HOLD-08, HOLD-09), routing A-04's requirement EW-U07.b, with A-01's
+      AEW-FR-12.d and A-09's CNI-06.a; accepted by the operator's decision of 2026-11-06 on the hold match's batches (`2026-11-06-operator-hold-match-batches.md`,
+      design workspace `cffb1ee`, item 1). The adopted position A-04 (`docs/contracts/A-04/A-04__AEW-engineering-workflow-umbrella-contract-candidate-v0.4.md`),
+      with A-01 (`docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md`) and A-09 (`docs/contracts/A-09/A-09__AEW-coordination-native-integration-boundary-contract-candidate-v0.2.2.md`)
+    When: '**Unscheduled.** The hold match files it with no recommended milestone, and no adopted text or decision places
+      it; the next triage it fits may pull it in. Where the evidence is required is set beside it by A-05''s classification
+      row, E267 (RS-08), from HOLD-05 (ADC-05.b). Placed, not started: under N = 12 it starts only when the limit''s count
+      is under 12.'
+    Notes: 'Routed from HOLD-04 to this spec (EW-U07.b, AEW-FR-12.d), and HOLD-05''s and HOLD-08''s routes for AEW-FR-12.d
+      and HOLD-09''s for CNI-06.a point here, so each requirement is served once. Beside it, and separate rows: A-05''s
+      classification row, E267 (RS-08), from HOLD-05 (ADC-05.b), the per-dimension control floor that requires this evidence
+      where the affected boundary demands it; and A-07''s AEV-08 and AEV-02 rows, E284 (RS-25) and E278 (RS-19), from HOLD-07,
+      which carry EW-U07.g and .h. Not this row: AEW-FR-12.g (constituent PASSes are no proof of required composed behaviour
+      without composition evidence), which EW-U07.b refines and which the wire track''s I-4 commands (A-31) and I-5 commands
+      (A-29) close; and EW-U07.a, through I-4''s commands. CNI-06.a''s route adds that I-4''s commands go beyond the parent
+      review and verification gate already built (`src/aew/engine/hierarchy_ops.py:269-290`); this row is the evidence that
+      gate and those commands must obtain, not a second gate. Filed from its row spec by the row-specs register PR'
+
+  - '#': E262
+    Work: Enforcement that does not wait on an agent's context. AEW applies its active safety and authority enforcement,
+      the mandatory refusal of an unauthorized protected effect and the revocation of an actor's authority among it, even
+      when preserving an agent's context would otherwise be preferable, and never delays a refusal or revocation solely
+      to keep an agent's transient reasoning context. Done when a due refusal is not relaxed and a due revocation is not
+      postponed to preserve an agent's context, and a revoked worker performs no protected mutation for the sake of keeping
+      its ongoing conversation
+    Source: Row spec RS-03 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-04, HOLD-06), routing A-04's requirement EW-U09.e, with A-01's AEW-FR-31.f; accepted
+      by the operator's decision of 2026-11-06 on the hold match's batches (`2026-11-06-operator-hold-match-batches.md`,
+      design workspace `cffb1ee`, item 1). The adopted position A-04 (`docs/contracts/A-04/A-04__AEW-engineering-workflow-umbrella-contract-candidate-v0.4.md`),
+      with A-01 (`docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md`)
+    When: '**Unscheduled.** The hold match files it with no recommended milestone, and no adopted text or decision places
+      it; the next triage it fits may pull it in. For refusal it waits on nothing; for revocation it waits on the operator''s
+      means to revoke that STG-05 and STG-03 provide. Placed, not started: under N = 12 it starts only when the limit''s
+      count is under 12.'
+    Notes: 'Routed from HOLD-04 to this spec (EW-U09.e, AEW-FR-31.f), and HOLD-06''s route for AEW-FR-31.f points here,
+      so each requirement is served once. Neighbours that close their own parts: the operator''s means to revoke AEW-controlled
+      execution authority (AEW-FR-31.d) is CS-4''s (STG-05) and the G3 service''s (STG-03), with I-3''s commands (A-30);
+      keeping revoked, suspended or superseded actors from new protected effects (AEW-FR-31.e) is the wire track''s (A-34''s
+      increments, I-1''s and I-3''s commands). This row is the rule that neither waits to preserve an agent''s context.
+      Not this row: a discretionary intervention that may destroy active context (AEW-FR-25.d), which needs permitted authority
+      and qualified recovery or loss handling: that is HOLD-15''s intervention-safeguards row, E300 (RS-42) (AEW-FR-25.b,
+      .d, R01-19, R01-20). The route adds that active enforcement, refusal and revocation all take effect without waiting
+      to preserve an agent''s context. Containment-adjacent, so `aew-reviewer` reviews it. Filed from its row spec by the
+      row-specs register PR'
+
+  - '#': E263
+    Work: 'Decision-origin rules, as A-05''s ADC-01 sets them in .c to .e. AEW keeps the attributable originating instruction
+      apart from agent-produced interpretations and recommendations, so a summary never replaces it (ADC-01.c). When execution
+      rights are granted, an authorized decision is told apart from a proposed plan, research conclusion, assessment or
+      conversational suggestion (.d): agents may research, analyse requirements and plan, and what they produce stays a
+      proposal, never an adopted decision, until the responsible authority adopts it (AEW-FR-02.a). Where consequential
+      behaviour is inherited from an existing system, a proposed change to it is shown to the responsible authority before
+      the departure counts as accepted (.e). Done when tests show the originating instruction retrievable beside every interpretation
+      of it, an unadopted plan or research conclusion unable to authorize execution, and a departure from inherited behaviour
+      put to the authority before it is treated as accepted'
+    Source: Row spec RS-04 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-04 and HOLD-05), routing A-05's requirements ADC-01 (ADC-01.c to .e), with A-01's
+      AEW-FR-02.a; the adopted position A-05, docs/contracts/A-05/A-05__AEW-authority-delegation-classification-contract-candidate-v0.3.1.md:81
+    When: '**Unscheduled.** No decision or adopted text places it. It sits beside V-01''s work-proposal decision (DECIDE_WORK_PROPOSAL)
+      and research''s minimum slice (A-40, STG-16). Placed, not started: under N = 12 it starts only when the limit''s count
+      is under 12.'
+    Notes: 'Routed from HOLD-05 to this spec; HOLD-04 routes AEW-FR-02.a here too. AEW-FR-02.a''s heads name A-05''s decision-origin
+      and Lead-discretion rows (ADC-01.d, ADC-03.a, ADC-03.m); it is placed here, as ADC-01.d''s, and the Lead-discretion
+      row (A-05''s ADC-03, another batch) builds ADC-03.a and .m and may cite it too, as HOLD-04''s note asks. Under V-01''s
+      DECIDE_WORK_PROPOSAL a plan stays a proposal until decided; this row is the general rule, not that command. The route
+      takes ADC-01.c to .e; .a and .b (binding decisions to the boundary''s authority, external requirements not amended
+      by agents) are not this row''s. A-05''s parts of AEW-FR-02.c (ADC-01.c, .d) and AEW-FR-03 (ADC-01.c, .e) are in this
+      row. Neighbours: held member F8 (HOLD-02), restored by the match, serves AEW-FR-03.a (investigating existing behaviour)
+      beside .e; E160 counts a planner''s proposal as the plan assessment only when the plan_assessor card has reviewed
+      it and it is adopted unchanged. Filed from its row spec by the row-specs register PR'
+
+  - '#': E264
+    Work: Grant continuity. When the Lead's context is compacted, or its conversation continued, and the effective Lead
+      authority identity does not change, AEW keeps the current authorized Lead generation and its eligible derived grants.
+      Ordinary prompt compaction does not produce a new grant generation and does not interrupt active workers. It is done
+      when a test compacts and then continues a Lead that has workers running, and finds the same generation and its eligible
+      derived grants in force and the workers not interrupted
+    Source: Row spec RS-05 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-05), routing A-05's requirement ADC-02.m; the adopted position A-05, `docs/contracts/A-05/A-05__AEW-authority-delegation-classification-contract-candidate-v0.3.1.md`,
+      section "Explicit delegation and authority boundaries" (line 83; ADC-02.m at line 99)
+    When: '**Unscheduled.** No adopted text places it, so the operator places it. When the Lead authority identity changes
+      is the attachment lifecycle''s question: E129, to be designed and built after first use (the operator''s board decision
+      of 2026-11-06, item 9), and F31 (restored from HOLD-17 at V-01). Placed, not started: under N = 12 it starts only
+      when the limit''s count is under 12.'
+    Notes: 'The adopted text cites AEW-FR-18.b, AEW-FR-31.b and EW-U09.d for it, and the hold match lists it as A-05''s
+      part of AEW-FR-31 and AEW-FR-31.b. This row is not a new attachment: F31''s fresh Lead generation for each attachment
+      is a change of identity, and stales the older generation. Neighbours: E129 (the Lead attachment lifecycle); E50 (HOLD-06),
+      the inactivity expiry; the wire track A-34 building I-3''s DELEGATE_NEW_WORKER (A-30), whose grant record names the
+      Lead generation (ADC-02.g) and whose rows are owed (SYS-46). E150''s turn-ending continuation is for workers only
+      and is not this row. Filed from its row spec by the row-specs register PR'
+
+  - '#': E265
+    Work: The Lead's discretion, held to what its delegation covers. The Lead can undertake proportionate fact-finding into
+      a suspected defect or another engineering approach within its existing investigative authority, without first getting
+      approval for a redesign it has not proposed. It can reassign or split necessary in-scope work once the impact, ownership,
+      dependency and assurance checks are met. Finding that work is needed does not make the finder its owner. AEW tells
+      an explicitly imposed constraint apart from a stated operator preference. Where a preference's strictness stays consequentially
+      ambiguous, AEW asks for targeted clarification before executing a departure that cannot be justified within existing
+      delegated discretion. Where a change alters an ambiguous decision-bearing commitment, AEW seeks the responsible authority's
+      interpretation before executing the affected new effects. An evidence-supported improvement inside the approved objective
+      and existing delegation goes ahead when it leaves the binding approach and the scope the approver reserved unchanged.
+      A consequential in-scope approach change is reported to the responsible operator without becoming an unnecessary approval
+      gate. A change beyond delegation is first put as an evidence-qualified direction decision brief, not a full revised
+      plan. Approving a direction is not an execution grant until the plan, scope, assessment and dispatch prerequisites
+      are met. Before a work-revision policy is adopted, the commitments marked decision-bearing and visible to the approver
+      in the accepted decision summary are binding, and nothing is relabelled after the fact. Descriptive details and stated
+      preferences alone stay nonbinding. A revision that changes a binding element is requalified and authorized before
+      dependent effects use it. Unrequested incidental maintenance is limited to localized changes established as nonbehavioral
+      under an operator-authorized allowance, and none is admitted when there is no allowance. An unrelated improvement
+      that may change behaviour goes for disposition and, absent separate authority, is not folded into the active implementation.
+      It is done when a test holds each rule against what AEW records, refuses and reports
+    Source: Row spec RS-06 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-05), routing A-05's requirements ADC-03.a to .o; the adopted position A-05, `docs/contracts/A-05/A-05__AEW-authority-delegation-classification-contract-candidate-v0.3.1.md`,
+      section "Lead discretion, research, scope and approach changes" (line 101)
+    When: '**Unscheduled.** No adopted text places it, so the operator places it. ADC-03.m''s assessment prerequisite is
+      E160''s plan assessment gate, and the command parts of AEW-FR-02 and AEW-FR-05 are the wire track''s (I-3, A-30; I-5,
+      A-29), whose rows are owed (SYS-46). Placed, not started: under N = 12 it starts only when the limit''s count is under
+      12.'
+    Notes: 'This row is separate from A-05''s decision-origin row (ADC-01), which is owed from the same group. AEW-FR-02.a''s
+      route names both rows (ADC-01.d, ADC-03.a, ADC-03.m) and is listed with the decision-origin row''s spec. HOLD-04''s
+      match asks that this row also be sourced to that part when the Lead files it. Neighbours: E160 (the plan assessment
+      gate); E126 and F4 (HOLD-08) for scope adds and Ticket revisions, beside ADC-03.l; F8 (HOLD-02) for elicitation, beside
+      ADC-03.e; E158 (the consult) as a fact-finding route, beside ADC-03.a; F49 (HOLD-07), which serves AEW-FR-05.c for
+      fix attempts only, while ADC-03.i to .k cover incidental maintenance in general. A-05''s role-boundaries (ADC-04)
+      and discovery and continuation (ADC-09) rows are owed beside it. It gives the Lead no new authority: it states what
+      is already within delegation and what is not. It describes the product''s Lead, not the development of AEW. Filed
+      from its row spec by the row-specs register PR'
+
+  - '#': E266
+    Work: Worker and specialist role boundaries, as A-05's ADC-04 sets them. A worker may ask for task-relevant research
+      or advisory help, and the request is never a delegation grant; a helper performs controlled effects only once the
+      established coordination authority has authorized it independently (ADC-04.c, .d). Investigators, advisors, implementation
+      reviewers and verifiers never change governed implementation merely because they found a defect or a fix (.e). A properly
+      authorized specialist may make diagnostic artifacts inside an expressly bounded diagnostic scope; they never become
+      admitted product changes and never satisfy a required verification check unless admitted and independently qualified
+      (.f, .k). A specialist's finding may carry a proposed patch, which stays advisory to the authorized implementer (.g).
+      A consequential finding, including one found outside the specialist's assigned question, is recorded through the current
+      work and evidence system and routed to the responsible work authority rather than acted on (.h, AEW-FR-18.a, EW-U09.a).
+      Agent-produced changes are accepted only through an accountable submitter holding an effective grant for the submitted
+      work, and the delivered bytes themselves are assessed against the applicable obligations (.i). An observable unauthorized
+      helper contribution is classified as untrusted, without claiming to detect concealed origin from a parent-submitted
+      diff alone (.j); observable unauthorized or unattributed changes and their evidence are kept in an access-restricted,
+      non-admitted investigation record (.l); and a workspace or build result with an unreconciled unauthorized write is
+      never released or consumed as trusted downstream input (.o). Done when tests show a help request creating no grant,
+      a helper refused effects until it is authorized, a diagnostic artifact unable to pass a required check, a proposed
+      patch never applied by its proposer, an out-of-scope finding recorded and reaching the responsible authority, a change
+      refused from a submitter with no effective grant, and a quarantined write blocking downstream use
+    Source: Row spec RS-07 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-04 and HOLD-05), routing A-05's requirements ADC-04 (ADC-04.c to .l and .o), with
+      A-01's AEW-FR-18.a and A-04's EW-U09.a; the adopted position A-05, docs/contracts/A-05/A-05__AEW-authority-delegation-classification-contract-candidate-v0.3.1.md:129
+    When: '**Unscheduled.** No decision or adopted text places it. Its grant checks build on the wire track''s I-3 commands
+      (A-30), whose rows are owed (SYS-46), and its finding links on CNI''s link vocabulary (A-41, STG-17). Placed, not
+      started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'Routed from HOLD-05 to this spec; HOLD-04 routes AEW-FR-18.a and EW-U09.a here too, and its note asks the Lead
+      to source the row to them. The route takes ADC-04.c to .l and .o; .a, .b, .m and .n (effects restricted to the assignment,
+      no worker-originated grants, the launch capability profile and the isolation refusal) are not this row''s, and .b
+      is the wire track''s (I-3''s PARENT_NOT_LEAD_GRANT, A-30, as F7''s match records). EW-U09.a also refines AEW-FR-18.c
+      to .e, which the ADC-09 row (this batch) takes; its tracing to affected work rides CNI''s link vocabulary (A-41, STG-17),
+      and AEW-FR-18.b''s links are I-3''s commands with the ADC-09 row. Neighbours: E158, the consult, is the Lead''s own
+      non-mutating help on a question, not a worker''s request; held member F49 (HOLD-07), restored by the match, serves
+      AEW-FR-05.c for fix attempts (the fix brief''s ceiling). Not plan-invalidating discovery propagation, which is its
+      own owed row. Filed from its row spec by the row-specs register PR'
+
+  - '#': E267
+    Work: 'Classification rules beyond F6''s fail-closed classifier. AEW names the delegated authority responsible for classifying
+      the materiality or risk of a consequential engineering decision. It assesses implementation, integration, verification
+      and protected-effect consequences as separate dimensions, and any dimension that applies can impose its own mandatory
+      control floor, so a small code change does not hide a cross-component verification obligation. When qualified discoveries
+      change the properties used to admit active work, AEW reassesses the affected minimum controls. Work that triggers
+      no higher control, and whose scope is understood well enough, stays eligible for the lightweight path. A routine correction
+      to a classification input needs no downgrade review when recomputing under the same adopted rules leaves every applicable
+      mandatory control unchanged. A correction keeps the original classification basis, the new evidence, the authorized
+      resolution and its effect on prior work. Adopting a revised classification rule never silently relaxes the controls
+      on already-authorized active work: that takes the required requalification and a current authority decision. It is
+      done when a test holds each rule against the controls AEW computes and the record it keeps'
+    Source: Row spec RS-08 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-04 and HOLD-05), routing A-05's requirements ADC-05.b, .e, .f and ADC-06.b, .e,
+      .i, and A-01's AEW-FR-39.a; the adopted position A-05, `docs/contracts/A-05/A-05__AEW-authority-delegation-classification-contract-candidate-v0.3.1.md`,
+      sections "Risk/control-class determination" (line 141) and "Classification correction, raising and reduction" (line
+      154); A-01, `docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md`, section "Govern
+      consequential judgment and uncertainty classifications" (line 464)
+    When: '**Unscheduled.** No adopted text places it, so the operator places it. It builds beside F6 (restored from HOLD-05
+      at Internal alpha, whose held row first needs the designer''s Workflow Contract amendment), and beside the wire track''s
+      I-3 commands (A-30), whose rows are owed (SYS-46). Placed, not started: under N = 12 it starts only when the limit''s
+      count is under 12.'
+    Notes: 'It is sourced to ADC-05.b, .e, .f and ADC-06.b, .e, .i only, not to the whole of ADC-05 or ADC-06. ADC-05.d
+      is F6''s, and so are ADC-02.e and AEW-FR-39.d to .g (for the classifier). Q4 (F6''s open question) closed as answered
+      by F6''s and the wire track''s requirements, not this row''s. I-3''s OVERRIDE_RISK_FLOOR on the wire track serves
+      ADC-05.a, .g, .h and ADC-06.c, .d: the computed floor, its lowering and its independent assessment. ADC-05.c and ADC-06.f,
+      .g, .h, .j go to the wire track as I-3''s commands (A-30). ADC-06.a is served. F6 builds no correction record, which
+      is why ADC-06.e is here. HOLD-04 routes AEW-FR-39.a here, and F6 covers only the fail-closed classifier. Neighbours:
+      A-04''s integration evidence row (E261 (RS-02), from HOLD-04, AEW-FR-12.d), the separate row ADC-05.b''s control floor
+      sits beside; E158 (the consult) and E159 (the Lead change), the low-overhead routes beside ADC-05.f''s lightweight
+      path (AEW-FR-06.a); V3 (HOLD-04), closed as answered by AEW-FR-06.b; F14 (HOLD-04) and A-05''s discovery and continuation
+      row (ADC-09, E270 (RS-11)), beside ADC-05.e''s reassessment. Filed from its row spec by the row-specs register PR'
+
+  - '#': E268
+    Work: 'Review disagreement and independent adjudication, as A-05''s ADC-07 sets them. The Lead decides discretionary
+      review recommendations within its delegated engineering authority, and a rejection keeps an attributable rationale
+      the reviewer can see (ADC-07.a, .b). A disputed finding alleging violation of an identifiable mandatory governing
+      criterion never becomes a PASS on the Lead''s disagreement alone (.c): the Lead may submit counterevidence and ask
+      for reassessment (.d), both the existence and the applicability of a cited criterion are evaluated (.g), and an unresolved
+      factual, mandatory-assurance or applicability dispute goes to an appropriately qualified independent adjudication
+      path (.e, .g). The adjudicator is chosen by a preauthorized impartial selection function or authority that excludes
+      the disputing parties and any actor whose grant derives from a disputing party''s authority (.h); it sees the original
+      finding, the governing criterion and both parties'' attributable primary evidence, not a Lead-authored summary (.i);
+      it resolves only the disputed claim under the governing criteria, with no authority to change requirements or waive
+      protected obligations (.f) and no unilateral authority to alter governing verification checks or criteria (.j); and
+      it is scoped to the disputed criterion and evidence, blocking no unrelated work (.n). An evidenced potential requirements
+      or acceptance-criteria gap is recorded for the appropriate authority without counting as failure of a criterion that
+      did not govern the work (.k), and while unresolved it is disclosed in the completion and acceptance presentation (.l);
+      a new or amended requirement applies to work before acceptance only after its responsible authority''s attributable
+      decision, never on a reviewer''s suggestion (.m). Done when tests show a rejected recommendation''s rationale reaching
+      the reviewer, the Lead''s disagreement unable to turn a mandatory finding into a PASS, an adjudicator from either
+      party''s lineage refused, the adjudicator given both parties'' primary evidence, an adjudication confined to its disputed
+      criterion, and an open criteria gap shown at acceptance'
+    Source: Row spec RS-09 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-05), routing A-05's requirements ADC-07 (ADC-07.a to .n); the adopted position A-05,
+      docs/contracts/A-05/A-05__AEW-authority-delegation-classification-contract-candidate-v0.3.1.md:177
+    When: '**Unscheduled.** No decision or adopted text places it. Placed, not started: under N = 12 it starts only when
+      the limit''s count is under 12.'
+    Notes: 'Routed from HOLD-05 to this spec. EW-U09.g''s head names this row first, with the ADC-08 and ADC-09 rows; it
+      is placed in the ADC-08 row (this batch) by its D1 text (refusing affected effects though the worker is unreachable,
+      ADC-08.h), and this row builds its adjudication-scope part (.n). A-05''s parts of AEW-FR-01 (ADC-07.f, .m) and AEW-FR-02.b
+      (ADC-07.m), AEW-FR-12 (.d, .e, .i) and AEW-FR-14 (.d, .i, .k, .l) are in this row. Neighbours: E160, the plan assessment
+      gate, whose plan assessor must be a distinct invocation from the planner; held member F6 (HOLD-05), restored by the
+      match, whose classifier downgrade needs confirmation by an assessor other than the Lead; the ADC-09 row''s lineage-excluded
+      premise adjudication (ADC-09.j); the ADC-08 row''s equivalent substitute assessors (ADC-08.l). Not risk-class reassessment,
+      which is A-05''s classification row and I-3''s OVERRIDE_RISK_FLOOR on the wire track. Filed from its row spec by the
+      row-specs register PR'
+
+  - '#': E269
+    Work: Protected-effect holds and mediation disclosure, as A-05's ADC-08 sets them in .e and .g to .l. AEW discloses
+      the mediation status and residual authority risks of every consequential effect path open to admitted agents, including
+      paths a deployment does not support or mediate, without claiming control over them (ADC-08.e), and names the minimum
+      effect channels a deployment must actually mediate before protected execution is admitted; disclosing an unmediated
+      channel is never treated as enforcing it (.j). An unqualified report or untrusted retrieved text never by itself grants
+      stop-work or revocation authority (.g). A protective hold on a disputed discovery has an attributable basis and a
+      designated decision path for qualification, correction or rejection (EW-U09.j), and a credible imminent-hazard report
+      meeting the adopted provisional-protection rules, whose provisional refusal is E270's (RS-11) (ADC-09.g, EW-U09.l),
+      is routed promptly to the existing responsible protection owner, with no new right to hold indefinitely on an untrusted
+      assertion (CNI-05.d). Where AEW mediates the effect channel, a qualified invalidation or authorized emergency hold
+      refuses further affected effects until an authorized resolution permits them, whether or not the worker receives the
+      advisory (.h, EW-U09.g). Under hard resource limits AEW withholds only the protected effect or assurance completion
+      that cannot meet a mandatory control, never waiving the control or exceeding the limits (.i); affected work resumes
+      under its existing valid authorization once the assurance or resources are available and prerequisite checks pass,
+      with no needless new operator decision (.k); and a lower-cost substitute for a mandatory assessment meets the same
+      qualification and independence criteria unless an authorized policy change permits otherwise (.l). Done when tests
+      show every effect path's mediation status disclosed, the minimum mediated channels named, and a disclosed but unmediated
+      channel never counted as mediated, retrieved text unable to stop work, a held effect refused while its worker is unreachable,
+      a protected effect or assurance completion withheld, not its control waived, when a hard resource limit is reached,
+      and resumption under the existing authorization with no new operator decision once the resources are available, and
+      an unqualified substitute assessor refused
+    Source: Row spec RS-10 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-04, HOLD-05 and HOLD-09), routing A-05's requirements ADC-08 (ADC-08.e and .g to
+      .l), with A-04's EW-U09.g and EW-U09.j and A-09's CNI-05.d; the adopted position A-05, docs/contracts/A-05/A-05__AEW-authority-delegation-classification-contract-candidate-v0.3.1.md:196
+    When: '**Unscheduled.** No decision or adopted text places it. Its per-path mediation status builds on A-34''s command
+      increments (AEW-FR-31.h''s route). Placed, not started: under N = 12 it starts only when the limit''s count is under
+      12.'
+    Notes: 'Routed from HOLD-05 to this spec as owed; HOLD-09 routes CNI-05.d here and HOLD-04 routes EW-U09.g and .j. The
+      route takes ADC-08.e and .g to .l; .a to .d (current grants, minimum mediation and revocation coverage, revoked generations,
+      revocation without the agent''s agreement) and .f (hard limits on running work, which F7''s match names A-52 for)
+      are not this row''s. EW-U09.g''s head names A-05''s ADC-07, ADC-08 and ADC-09 rows; it is placed here by its D1 text,
+      which is ADC-08.h''s, while the ADC-07 row (this batch) builds its adjudication-scope part (ADC-07.n) and the ADC-09
+      row its dependent-work protection (ADC-09.e). EW-U09.k''s and .l''s ADC-08 parts (.k, .g) are built here but sourced
+      in the ADC-09 row; HOLD-04''s premise-protection deadlines (EW-U09.m) close through this row''s hazard routing, with
+      the provisional refusal of EW-U09.l owned by E270 (RS-11), the deadlines themselves being the ADC-09 row''s. Served
+      in part: held members F9 (HOLD-09) for CNI-01.b and CNI-04.e under EW-U09.g, and E58 (HOLD-09) for CNI-01.c under
+      EW-U09.j, both restored by the match; F9 is switched on after the consult (E158) lands. AEW-FR-31.h (mediation status
+      per effect path) is A-34''s command increments with this row. Filed from its row spec by the row-specs register PR'
+
+  - '#': E270
+    Work: Consequential discovery and coordinated continuation, as A-05's ADC-09 sets them. Each active delegated assignment
+      keeps an attributable link to its accepted scope, governing constraints and relevant declared premises (ADC-09.a).
+      A consequential finding or discovered conflict, including a credible contradiction to a load-bearing premise, reaches
+      the Lead or the governing decision authority for a disposition recommendation and protective disposition, and reporting
+      it never authorizes the reporter to change the affected work (.b, AEW-FR-18.d, EW-U09.b); a recorded finding never
+      by itself authorizes out-of-scope corrective work (AEW-FR-18.e), and uncertain or disputed defect causality is kept
+      as such, never asserted as the origin (AEW-FR-18.c). When the Lead redistributes or consolidates assignments, original
+      work and qualified evidence are kept, and neither reassignment nor decomposition silently changes the governing objective
+      or inherited mandatory obligations (.c, .d). During an unresolved qualified authority or premise dispute, affected
+      dependent work stays protected without needlessly blocking unrelated authorized work (.e); held dependent execution
+      resumes only with current authorization and a qualified disposition of the invalidated premise, its reason kept linked
+      to the original finding (.f, EW-U09.k). Until a governing credible-hazard qualification rule takes effect, an authenticated
+      participant's report naming an imminent mediated protected effect, alleging a concrete safety or authorization hazard
+      with an initial factual basis, on an effect classified irreversible or conservatively protected, triggers provisional
+      refusal of that effect pending authorized triage; authored source text alone never does, and reversible or unrelated
+      work is not held by the report (.g, EW-U09.l). Each provisional refusal goes to an authorized decision owner with
+      an attributable adjudication deadline and escalation route or, with no deadline defined, stays protected and is escalated
+      promptly; reaching a deadline never silently releases mandatory protection nor leaves a hold unreviewed indefinitely
+      (.h, .i, EW-U09.m). Independent adjudication of a contested premise excludes its author and every actor whose grant
+      descends from the author's (.j), and the reporter's authenticated identity, stated hazard, initial basis and accountable
+      disposition are kept for later qualification or misuse review (.k). Done when tests show a finding reaching the Lead
+      without granting its reporter any change, redistribution keeping the original evidence, a held effect refused until
+      a qualified resolution and current authorization release it, a hazard report holding only the named effect, a deadline
+      that escalates rather than releases, and the author's lineage refused as adjudicator
+    Source: Row spec RS-11 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-04 and HOLD-05), routing A-05's requirements ADC-09 (ADC-09.a to .k), with A-01's
+      AEW-FR-18.c to .e and A-04's EW-U09.b and EW-U09.k to .m; the adopted position A-05, docs/contracts/A-05/A-05__AEW-authority-delegation-classification-contract-candidate-v0.3.1.md:213
+    When: '**Unscheduled.** No decision or adopted text places it. Its continuation decisions and hazard routing build on
+      I-3''s and I-4''s commands (A-30, A-31; ADC-02.f, .j and CNI-05.b, .e), whose rows are owed (SYS-46). Placed, not
+      started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'Routed from HOLD-05 to this spec, which routes ADC-09 with AEW-FR-18.c and .e; HOLD-04 routes AEW-FR-18.d and
+      EW-U09.b, .k, .l and .m here too. EW-U09.k''s and .l''s heads name both A-05''s ADC-08 and ADC-09 rows: they are placed
+      here by their D1 text (release of a premise hold is ADC-09.f; provisional hazard protection is ADC-09.g and .k), and
+      the ADC-08 row (this batch) builds their ADC-08 parts (.k, resumption without a needless decision; .g, no stop authority
+      from untrusted text) and CNI-05.d''s routing to the protection owner. Served in part: held member F41.4 (HOLD-09),
+      restored by the match, for CNI-05.c, bounded, under EW-U09.b. AEW-FR-18.b (links between a finding and affected work)
+      is I-3''s commands with this row. Neighbours: E160, the plan assessment gate, serves EW-U09.n (a challenged premise
+      not cleared by its author alone) beside this row''s lineage exclusion (.j); held member F9 (HOLD-09), live coordination
+      and assumption propagation, is switched on after the consult (E158) lands. Not plan-invalidating discovery propagation,
+      which is its own owed row, and not the recording of a finding, which is the role-boundaries row''s (ADC-04.h). Filed
+      from its row spec by the row-specs register PR'
+
+  - '#': E271
+    Work: Operator-governed requirement development. AEW supports developing a project's operator-governed requirements
+      without presuming that a proposed requirement is adopted. A proposed requirement takes effect only when it is adopted,
+      and until then AEW does not treat it as in force. It is done when a test shows that a proposed requirement has no
+      effect before its adoption and takes effect after it
+    Source: Row spec RS-12 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-05), routing A-01's requirement AEW-FR-01.d; the adopted position A-01, `docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md`,
+      section "Respect project-specific normative authority" (line 101; AEW-FR-01.d at line 108)
+    When: '**Unscheduled.** No adopted text places it, so the operator places it. Placed, not started: under N = 12 it starts
+      only when the limit''s count is under 12.'
+    Notes: 'It is specified from HOLD-05''s position (A-05, authority) because A-01 has no hold group or row of its own.
+      It is not F50: the match dropped F50''s operator-rule record kind because no requirement asks for it, and read AEW-FR-01.d
+      as requirement adoption. It is not E176 (the Lead''s own memory and rules). Neighbours: A-05''s decision-origin row
+      (ADC-01, E263 (RS-04)), under which proposals stay proposals until adopted; A-05''s review-disagreement row (ADC-07,
+      E268 (RS-09)), under which new requirements apply only on an authority''s decision (ADC-07.m); E157, under which a
+      plan in a report is a proposal. AEW-FR-01.b''s enforcement of governing requirements independently of agent summaries
+      is on the wire track (I-3, A-30), whose rows are owed (SYS-46). It concerns the requirements of a project developed
+      under AEW, not how AEW''s own requirements are adopted. Filed from its row spec by the row-specs register PR'
+
+  - '#': E272
+    Work: Tell agents, in the text AEW gives them, that before running a project command whose purpose is uncertain, or
+      whose effects on valued local work, authorized shared resources or external systems may be material, they establish
+      a proportionate understanding of what it is for, what it does and which resources it affects; and that qualified unchanged
+      commands and contained disposable experiments need no redundant inspection or approval. A guard on the pack text keeps
+      both halves there. It is done when the packs carry both halves and the guard holds them, so that a worker does not
+      guess that an undocumented setup script repairs its environment when it destroys unfinished Ticket files or resets
+      a valuable shared database
+    Source: Row spec RS-13 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-06), routing A-06's requirement HEB-04.c; the adopted position A-06, docs/contracts/A-06/A-06__AEW-hosting-execution-boundary-contract-candidate-v0.3.1.md,
+      line 121
+    When: '**Unscheduled.** No cited decision or adopted text binds a milestone; the next triage it fits may pull it in.
+      Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'What agents are told, not an enforcement: the route licenses guidance with a guard on the pack text, and adds
+      no command classifier or approval step; the requirement itself forbids redundant inspection or approval of qualified
+      unchanged commands and contained disposable experiments. Its neighbour E139 (worker packs made true, pack audit findings
+      P1 to P5 and P7) covers different findings. Protected effects are CS-4''s (STG-05), and shared resources are the HEB-05.d
+      row''s (HEB-04.d''s route). Filed from its row spec by the row-specs register PR'
+
+  - '#': E273
+    Work: 'Hosting settles no other authority''s decision: execution authorization, work scheduling, assurance admission
+      and research quality decisions stay with the authorities already responsible for them, and hosting metadata alone,
+      such as a run''s exit-zero receipt, never settles one of them. It is done when none of those decisions is taken from
+      hosting metadata alone, so that a host run''s exit-zero receipt neither overrides a required independent finding nor
+      promotes a prototype into production'
+    Source: Row spec RS-14 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-06), routing A-06's requirement HEB-10.f; the adopted position A-06, docs/contracts/A-06/A-06__AEW-hosting-execution-boundary-contract-candidate-v0.3.1.md,
+      line 198
+    When: '**Unscheduled.** No cited decision or adopted text binds a milestone; the next triage it fits may pull it in.
+      Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'A conformance requirement of A-06''s subordinate contract interfaces (HEB-10). It adds no authority and moves
+      none: the decisions stay where they are owned today. It is not CS-4''s launch self-test and labels (STG-05), which
+      serve HEB-10.a, .c, .d and .g, nor harness currency (HEB-10.e: E35 and H-1 to H-3). Filed from its row spec by the
+      row-specs register PR'
+
+  - '#': E274
+    Work: 'Coordinate effects on shared mutable development services, the resource kinds beyond workers'' files: where assignments
+      share a mutable development service, such as a test database or a remote host, AEW enforces the authorized resource-specific
+      effects on it and coordinates them, so that one assignment does not silently disrupt another legitimate assignment.
+      Which mutations of a shared resource are allowed is decided by the resources and the other consumers actually affected,
+      never by a label such as test, development, local or operator-owned. A genuinely dedicated or expressly coordinated
+      test resource stays in ordinary use, its authorized resets included, with no approval asked only because it is a database
+      or a remote host. It is done when each holds on its adopted case: a reset of a shared test database while another
+      assignment''s long integration run is active is coordinated, not silent; authoritative records are not erased because
+      a database is labelled test and owned by the operator; and a worker with an exclusive disposable test database resets
+      it with no approval asked'
+    Source: Row spec RS-15 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-06), routing A-06's requirements HEB-05.d to HEB-05.f; the adopted position A-06,
+      docs/contracts/A-06/A-06__AEW-hosting-execution-boundary-contract-candidate-v0.3.1.md, lines 134 to 136
+    When: '**Unscheduled.** No cited decision or adopted text binds a milestone; the next triage it fits may pull it in.
+      Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'One row, as the match says (HEB-05.d to .f are one row; .e and .f route to "the row of HEB-05.d"). The match
+      calls it A-09''s other resource kinds, but its requirements are A-06''s: E151''s line "Other resource kinds stay in
+      HOLD-09" points here, and they land under A-06 in this row. It is not E151, the launch conflict check (CNI-03.a, .g),
+      which covers workers'' files only; and it is not CS-4''s protected effects (STG-05). The match also names this row
+      as other work for HEB-04.d (its shared-resource half, beside CS-4), AEW-FR-37.a (beside E151, CS-4 and the built serial
+      integration lease) and AEW-FR-37.c (beside E151 and CS-4): served there, not owned here. HEB-05.e''s half is a usability
+      requirement: a dedicated test resource must not acquire an approval step. Filed from its row spec by the row-specs
+      register PR'
+
+  - '#': E275
+    Work: AEW gives an authorized assignment a read-only view of relevant project source and other assignments' unfinished
+      work, and that view grants it no write to what it reads, nor turns anything it observes there, being mutable, into
+      an accepted integration commitment. It is done when an authorized assignment can read another assignment's unfinished
+      work, and that read grants no write to it and makes nothing it observes an accepted commitment, so that a UI worker
+      reading an API worker's provisional implementation never becomes entitled to freeze that API
+    Source: Row spec RS-16 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-06), routing A-06's requirement HEB-05.a; the adopted position A-06, docs/contracts/A-06/A-06__AEW-hosting-execution-boundary-contract-candidate-v0.3.1.md,
+      line 131
+    When: '**Unscheduled.** No cited decision or adopted text binds a milestone; the next triage it fits may pull it in.
+      Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'A single A-06 requirement. It is not messaging (HEB-05.b: E175 and F9 in HOLD-09) nor CNI''s link vocabulary
+      (HEB-05.c: A-41, STG-17); accepted interface commitments and dependency satisfaction are A-09''s (CNI-03). The consult
+      (E158) and report_write (E157) are its neighbours for non-mutating work, beside the contained Lead''s own read-only
+      inspection (HEB-02.h''s route). Filed from its row spec by the row-specs register PR'
+
+  - '#': E276
+    Work: 'Safe reuse or reconditioning of a qualified worktree or execution facility: AEW reuses or reconditions one for
+      new work only after incompatible process, permission, secret and mutable-state residue from earlier work has been
+      cleared or separated, and otherwise does not reuse it. It is done when a reused or reconditioned worktree or facility
+      is shown to have had incompatible process, permission, secret and mutable-state residue cleared or separated first,
+      so that a reused worktree never keeps a background process or a database credential from the previous Ticket'
+    Source: Row spec RS-17 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-06), routing A-06's requirement HEB-02.e; the adopted position A-06, docs/contracts/A-06/A-06__AEW-hosting-execution-boundary-contract-candidate-v0.3.1.md,
+      line 84
+    When: '**Unscheduled.** It waits on reuse being wanted: today every Ticket gets a fresh worktree, so no worktree is
+      reused. Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'System SYS-39 (the route). This row conditions any future reuse. It is not F3 (the workspace strategy abstraction
+      and repository-scale benchmarks, On measured need) nor F10 (mutating_concurrency''s default raised to 2 after E151),
+      both SYS-39 and both HOLD-06 members restored by the hold match. Its built neighbour is HEB-02.f: a separate worktree
+      or directory is never treated as proof of isolation, and a run without OS-enforced containment is labelled workdir_separation_only.
+      Filed from its row spec by the row-specs register PR'
+
+  - '#': E277
+    Work: 'The assurance basis, set at admission and kept in proportion. When an assignment is admitted, AEW derives and
+      records its mandatory governing assurance basis from the authority-confirmed acceptance criteria, the governing checks
+      that apply and the rule-computed ADC control and classification floor, naming any parameter still unresolved; an implementer
+      may add to that basis but cannot select, reduce or omit it, and completion compares the evidence with the recorded
+      basis and its later authorized changes, never with checks chosen afterwards. Mandatory checks stay apart from discretionary
+      investigation of residual risk: an optional recommendation becomes a required gate only by the responsible authority''s
+      decision. Further assurance is chosen in proportion to the behaviour materially affected, uncertainty, dependencies,
+      risk and claimed capability, never below a mandatory floor, and a consequential optional proposal states its expected
+      benefit, cost or effort, risk reduced and uncertainty for the authority that decides. A mandatory rule that current
+      policy cannot resolve never lets the affected obligation be claimed satisfied. Outside the post-CLEAR fast path (F41.11''s),
+      a reduced-impact claim (comment-only, behaviourally inert) lowers reverification only with qualified, source-bound
+      corroboration and an authorized interpretation not solely the implementer''s, its comparator, configuration and evidence
+      provenance not implementer-controlled in ways that could hide a difference; an ambiguous or tooling-sensitive change
+      is not presumed inert. It is done when a completion missing a check from the recorded basis cannot pass, an optional
+      test cannot become a gate without the authority''s decision, a three-line change to shared behaviour still gets assurance
+      in proportion to that behaviour, and an unresolved rule leaves its obligation unsatisfied.'
+    Source: Row spec RS-18 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-07 and HOLD-04), routing A-07's requirements AEV-01.a, .b, .d to .f and .g outside
+      the post-CLEAR fast path, with A-01's AEW-FR-15 (.a to .c, which AEV-01.b, .d and .e refine), routed here by both
+      groups; the adopted A-07, docs/contracts/A-07/A-07__AEW-assurance-evidence-boundary-contract-candidate-v0.3.1.md (AEV-01,
+      lines 47 to 57), with A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md in the same folder (AEW-FR-15,
+      lines 233 to 240)
+    When: '**Unscheduled.** The operator''s to place. Its basis reads the rule-computed ADC control and classification floor
+      (A-05), whose classification row HOLD-05''s match owes. Placed, not started: under N = 12 it starts only when the
+      limit''s count is under 12.'
+    Notes: 'Routed from HOLD-04 and HOLD-07 to this spec, from the hold match''s owed rows; the match asks that it also
+      be sourced to AEW-FR-15 (HOLD-04). AEW-FR-15''s .d part goes to the scoped-assurance row (AEV-08, the same batch),
+      not here. AEV-01.c''s economical path is not this row''s: its small-change case rides with E159, the Lead change (SYS-42
+      lists AEV-01.c), and F41.11 (HOLD-07) serves the post-CLEAR case of .c and .g. F14 (HOLD-04, Unscheduled, SYS-16)
+      holds plan assurance''s proportional tiers A to E with hard triggers, a neighbour; E160''s plan assessment gate assesses
+      the accepted plan before dispatch, not the assurance basis. Not a new gate kind or tier scheme: it records the basis
+      and judges completion against it. Filed from its row spec by the row-specs register PR'
+
+  - '#': E278
+    Work: 'Role separation in assurance. A verifier may inspect, run authorized checks and prepare isolated diagnostic probes
+      or proposed fixes, and none of them becomes an authoritative implementation change by being made. When verifier-authored
+      content is adopted into the implementation or the governing tests, AEW attributes its authorship and re-checks assessor
+      eligibility for the affected work, so an assessor who changed an assessed implementation never satisfies the independent-review
+      obligation for those changes through its own assessment. Independent review of the implementation stays distinct from
+      execution-based verification of behaviour: a reviewer''s approval does not stand in for a required behaviour test.
+      Where independence is not required, an authorized actor''s self-check is labelled a self-check and never shown as
+      independent assurance. Assurance may be supplemented with further diagnostic checks, and newly established mandatory
+      obligations taken in, without leave to weaken anything; removing, weakening or excluding a check, or changing governing
+      criteria, goes through the responsible change authority, with independent requalification where adopted rules require
+      it, and a verifier''s optional preference does not thereby become a governing requirement. It is done when a sandboxed
+      probe cannot reach the implementation as a trusted change, an adopted verifier patch shows its author and that author
+      no longer counts as independent for it, and a routine local check reads as a self-check, never as an independent PASS.'
+    Source: Row spec RS-19 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-07 and HOLD-04), routing A-07's requirements AEV-02.c to .f, with A-01's AEW-FR-12.c
+      and A-04's EW-U07.h, which HOLD-04 routes here; the adopted A-07, docs/contracts/A-07/A-07__AEW-assurance-evidence-boundary-contract-candidate-v0.3.1.md
+      (AEV-02, lines 59 to 68), with A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md and A-04__AEW-engineering-workflow-umbrella-contract-candidate-v0.4.md
+      in the same folder
+    When: '**Unscheduled.** The operator''s to place. Its eligibility re-check applies the ADC authority rules (A-05) as
+      they stand, beside the A-05 rows HOLD-05''s match owes. Placed, not started: under N = 12 it starts only when the
+      limit''s count is under 12.'
+    Notes: 'Routed from HOLD-04 and HOLD-07 to this spec, from the hold match''s owed rows; the match asks that it also
+      be sourced to AEW-FR-12.c and EW-U07.h (HOLD-04). E159, the Lead change (SYS-42 lists AEV-02.e), labels the Lead''s
+      own checks and light review; this row carries the general self-check label. I-4''s commands (A-31) carry execution-based
+      verification; I-3''s and I-4''s (A-30, A-31) close AEW-FR-12.f, which EW-U07.h refines. O3 (HOLD-04, Internal alpha)
+      serves EW-U07.f, .i and .j and AEW-FR-13.a, which AEV-02.f cites: a changed check or criterion is independently assessed
+      before it proves an unchanged obligation; this row adds supplementation without leave to weaken. F41.9 (HOLD-07) keeps
+      operator-validation evidence apart from independent verification. Not this row: AEV-02.a and .b, which its route does
+      not name. Filed from its row spec by the row-specs register PR'
+
+  - '#': E279
+    Work: Defect demonstrations. For a consequential defect finding, the reviewer gives a bounded, safe reproduction or
+      equivalent diagnostic where one is practical and would materially strengthen the assessment, or records why independently
+      assessable evidence already establishes the finding, or why a reproduction would be disproportionate or unsafe; an
+      executable reproducer is never universally mandatory when justified source, trace, controlled experiment or other
+      qualified evidence establishes the finding. A reproduced defect names its inputs, subject, expected and observed outcomes,
+      execution conditions and, as far as the observation supports, its causal mechanism. A synthetic demonstration of possible
+      failure is kept apart from a defect demonstrated reachable in the assessed implementation, and AEW never promotes
+      one into the other silently. Material reproduction artifacts, observed outputs, mechanism descriptions and diagnostic
+      limitations stay with the finding, under the existing confidentiality and evidence-integrity controls. It is done
+      when a finding with a practical probe carries the probe or its recorded reason, a reproduced defect states what ran,
+      under which conditions and why it failed, a toy reproducer is shown as synthetic until reachability is shown, and
+      the probe and trace remain with the finding after the fix.
+    Source: Row spec RS-20 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-07), routing A-07's requirements AEV-03.b to .f; the adopted A-07, docs/contracts/A-07/A-07__AEW-assurance-evidence-boundary-contract-candidate-v0.3.1.md
+      (AEV-03, lines 70 to 79)
+    When: '**Unscheduled.** The operator''s to place; it waits on no other row. Placed, not started: under N = 12 it starts
+      only when the limit''s count is under 12.'
+    Notes: Routed from HOLD-07 to this spec, from the hold match's owed rows. F17 (HOLD-07, Unscheduled until F19 is unfrozen)
+      owns AEV-03.a, a blocking finding's evidence or reasoning, with F49 (HOLD-07) contributing its governing-obligation
+      half; the match notes F17's levels are depth, not reachability, so AEV-03.e is this row's. AEV-03.f refines AEW-FR-17.b,
+      whose other closers are the wire track's I-1, I-3, I-4 and I-5 commands (A-28, A-30, A-31, A-29); it also cites AEW-FR-17.a,
+      which F4 (HOLD-08) serves. Not a requirement that every finding carry an executable reproducer. Filed from its row
+      spec by the row-specs register PR
+
+  - '#': E280
+    Work: 'Test capability and suite stewardship. When a deliverable claims to detect, prevent or verify a specified failure
+      class, AEW requires evidence of that capability against representative relevant failures or a justified equivalent
+      challenge, and the challenges do not rest solely on cases the test author chose unchecked: they have independent origin
+      or independently grounded adequacy criteria, without an extra agent required where independent assessment is not mandatory.
+      A challenge corpus that qualifies a test or verification facility discloses which failures came from outside its author''s
+      uncontrolled selection and which relevant failure classes stay unchallenged, and a successful run is not taken as
+      shown detection capability. Before a regression check is added, relevant existing tests are weighed and may be extended
+      where they meaningfully detect the regression; a material finding gets a regression disposition (routine automation,
+      targeted or extended execution, equivalent existing coverage, or a preserved on-demand diagnostic) justified by detection
+      value and cost. A new or modified check claimed to detect a corrected defect keeps attributable evidence, where safe
+      and practical, that it detects the original failure and passes the corrected subject, or records an alternate detection
+      demonstration or the claim''s limitation. Changes to suite membership, selection, frequency or consolidation keep
+      the coverage governing assurance requires, or take its authorized change and requalification path, and finding a suite''s
+      cost, redundancy, flakiness or CI failure does not license an agent to change unrelated suites, protected settings
+      or governing assurance outside its scope and delegation. It is done when a detection claim shows its challenge set
+      and what it leaves unchallenged, a new regression check shows it caught the original failure or says why not, and
+      a required check cannot leave the mandatory gate to save time without the authorized change.'
+    Source: Row spec RS-21 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-07), routing A-07's requirements AEV-04.a to .h; the adopted A-07, docs/contracts/A-07/A-07__AEW-assurance-evidence-boundary-contract-candidate-v0.3.1.md
+      (AEV-04, lines 81 to 92)
+    When: '**Unscheduled.** The operator''s to place; it waits on no other row. Placed, not started: under N = 12 it starts
+      only when the limit''s count is under 12.'
+    Notes: 'Routed from HOLD-07 to this spec, from the hold match''s owed rows. F49 (HOLD-07) serves AEV-04.g for fix attempts
+      only, through its fix brief''s ceiling; this row carries .g for every other discovery. O3 (HOLD-04, Internal alpha)
+      serves EW-U07.f, .i and .j and AEW-FR-13.a, which AEV-04.f cites: a changed check or input is independently assessed
+      before it proves an unchanged obligation. One row, not split: its route names one row, and capability evidence and
+      suite stewardship share the same assurance basis. Not AEW''s own CI selection or test-suite repairs (such as E75 and
+      E76): this is the product''s handling of the projects it works on. Filed from its row spec by the row-specs register
+      PR'
+
+  - '#': E281
+    Work: 'The record of why evidence counts, and of what it may show. When material evidence is accepted, excluded or superseded,
+      AEW keeps the attributable rationale and the authority that decided it, and the excluded observation''s occurrence
+      stays in the history: a red observation cannot leave a package without a recorded disposition. Disclosure of assurance
+      evidence applies the adopted secret-protection and access controls. Redaction asserted as part of protected evidence
+      capture is done by a trusted boundary or an equivalently qualified independent process, not only by an agent-authored
+      sanitizer inside the process under test, and material redaction, withholding or transformation is attributable and
+      leaves authorized assessors able to see what the remaining evidence does and does not show. Sensitive information
+      legitimately present in retained evidence and history keeps its applicable access and retention policy wherever it
+      is linked from, so a restricted artifact does not become public through a work-history entry. Done when each of these
+      holds on the evidence and history AEW keeps'
+    Source: Row spec RS-22 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-07), routing A-07's requirements AEV-05.f and AEV-05.h (its trusted-boundary redaction
+      and attributable withholding), with A-01's AEW-FR-36.c; A-07 at `docs/contracts/A-07/A-07__AEW-assurance-evidence-boundary-contract-candidate-v0.3.1.md`
+      (AEV-05, lines 94 to 106), A-01 at `docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md`
+      (line 454)
+    When: '**Unscheduled.** It waits on no other row. Placed, not started: under N = 12 it starts only when the limit''s
+      count is under 12.'
+    Notes: 'Routed from HOLD-07 to this spec, from the designer''s row spec. The hold-match routes for AEV-05.h and AEW-FR-36.c
+      name each other''s row, so they are one row. Not F41.9 (HOLD-07, restored as a row by the hold match): that row serves
+      .h''s capture part and AEW-FR-36.a and .b (secret-input channels, nothing persisted beyond the capture schema), and
+      F37 (HOLD-02) contributes one canonical source of redaction patterns. Not AEV-05.e: F41.10 (HOLD-07, restored by the
+      hold match) keeps claims from being promoted in the review packet, and E120 (Now) carries validation''s scope and
+      limitations, which `2026-10-30-operator-validation-discloses-what-it-did-not-check.md` (design workspace `ea6e253`)
+      places there. Not AEV-05.d, which STG-05, agent containment (SYS-02), closes. AEV-10.l, routed to E120, also cites
+      AEW-FR-36.c for what operator surfaces may expose; this row owns the policy itself. Filed from its row spec by the
+      row-specs register PR'
+
+  - '#': E282
+    Work: 'Reverification chosen by impact. After a change, AEW evaluates the material assurance dependencies of the claimed
+      package or integration state, without requiring an exhaustive list of dependencies unrelated to that claim, and bases
+      the reverification on the change''s material behavioural, dependency, environmental and governing-criterion impact:
+      build-only, targeted-test or broad-test, each as appropriately justified. A change to a shared authorization library
+      a claim relies on gets its dependent assurance assessed rather than reused unassessed, while an unrelated README edit
+      invalidates no Ticket and a comment edit does not trigger the full suite. Done when the path chosen for a change,
+      with its justification, follows from the claim''s assessed dependencies'
+    Source: Row spec RS-23 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-07), routing A-07's requirements AEV-06.d (its choice among build-only, targeted-test
+      and broad-test paths) and AEV-06.f; A-07 at `docs/contracts/A-07/A-07__AEW-assurance-evidence-boundary-contract-candidate-v0.3.1.md`
+      (AEV-06, lines 108 to 118)
+    When: '**Unscheduled.** It waits on no other row; F30''s output is an input it may use when built, not a prerequisite.
+      Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: Routed from HOLD-07 to this spec, from the designer's row spec. Not F30 (HOLD-14), requirement impact analysis,
+      which serves only P01-31's advisory impact and P01-18; this row may use its output as input. Not .d's focused-inspection
+      review side, which F41.10, the delta-review packet (HOLD-07, restored by the hold match), serves. AEV-06.b and .c
+      are served by Q14 (HOLD-09), as the route records. The independent verifier's sufficiency call on post-change evidence
+      (AEV-06.e) is not routed here. Filed from its row spec by the row-specs register PR
+
+  - '#': E283
+    Work: Contradictions, flakiness and blocked checks. AEW keeps material contradictory observations, and retry counts,
+      pass percentages or later green runs alone never dismiss a credible negative result. It tells apart an established
+      product or requirement violation, a demonstrated invalid test, an unavailable or failed execution environment, and
+      unresolved evidentiary uncertainty, and never infers an invalid test or benign flakiness from intermittent outcomes
+      alone. A material discrepancy is investigated for a proportionate explanation of the competing observations and their
+      comparability, not rerun until it passes. A credible unresolved contradiction withholds only the claims it materially
+      undermines, with the claims that depend on them, and leaves independently satisfied claims and unrelated authorized
+      work alone. An unreliable check is quarantined, repaired or replaced only with authority, with a recorded basis for
+      isolation, its observations kept, the obligations it affects, who investigates and the conditions for re-entry; the
+      root cause may stay explicitly unknown, and quarantine resolves no contradiction. An unexplained credible failure
+      in a security-relevant or other mandatory check stays an unresolved contradiction against the claims it affects until
+      evidence establishes its cause or resolves its applicability. Done when one failure followed by many green retries
+      still stands as an unresolved contradiction, a CI timeout is recorded as a failed environment rather than a defect
+      or a PASS, and one fixture flake leaves an unrelated change's claims untouched
+    Source: Row spec RS-24 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-07), routing A-07's requirements AEV-07.a to .e and AEV-07.g; A-07 at `docs/contracts/A-07/A-07__AEW-assurance-evidence-boundary-contract-candidate-v0.3.1.md`
+      (AEV-07, lines 120 to 130)
+    When: '**Unscheduled.** It waits on no other row. Placed, not started: under N = 12 it starts only when the limit''s
+      count is under 12.'
+    Notes: 'Routed from HOLD-07 to this spec, from the designer''s row spec. Not AEV-07.f''s part where an external CI check
+      is required: E78 (HOLD-09), merged into E174 (the typed read of CI status at a head), binds that a missing, pending,
+      cancelled or timed-out run is never counted as passing and that a stale run never qualifies a newer head. The hold
+      match names no owner for .f''s quarantined-check half, and this row does not take it. AEW-FR-13.c''s route runs through
+      AEV-07.e here. AEV-05.b (the original outcome and negative evidence preserved across retries and corrections) is A-07''s
+      sibling and is not routed here. Filed from its row spec by the row-specs register PR'
+
+  - '#': E284
+    Work: Scoped assurance outcomes. AEW records assurance outcomes separately for identifiable obligations and scopes,
+      never as a probability or a percentage of overall correctness, and neither a share of tested functionality nor a pass
+      under only the observed conditions is taken as proof that the remaining, untested obligations are acceptable or met.
+      An unresolved or defective obligation constrains downstream assurance only where the downstream claim materially relies
+      on the affected behaviour, guarantee or environment. Releasing or accepting a verified subset that changes the authorized
+      deliverable goes through the existing scope and revision change process and its responsible authority, never an assurance
+      actor's own partial acceptance. While assurance is unresolved, independently authorized work on affected or downstream
+      units may go on when it does not rely on the missing claim for protected effects, verification or publication. It
+      is done when no view or record states correctness as a percentage, a pass on one configuration is shown for that configuration
+      only, unrelated work is not held by another obligation's defect while work that relies on it is, and publishing the
+      green part of a Ticket needs an authorized scope change.
+    Source: Row spec RS-25 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-07 and HOLD-04), routing A-07's requirements AEV-08.a, .b, .d and .e, with A-01's
+      AEW-FR-15.d and A-04's EW-U07.g, which HOLD-04 routes here; the adopted A-07, docs/contracts/A-07/A-07__AEW-assurance-evidence-boundary-contract-candidate-v0.3.1.md
+      (AEV-08, lines 132 to 140), with A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md and A-04__AEW-engineering-workflow-umbrella-contract-candidate-v0.4.md
+      in the same folder
+    When: '**Unscheduled.** The operator''s to place. It uses the scope and revision change path as it stands and waits
+      on no other row. Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'Routed from HOLD-04 and HOLD-07 to this spec, from the hold match''s owed rows; the match asks that it also
+      be sourced to AEW-FR-15.d and EW-U07.g (HOLD-04). AEW-FR-15''s .d part lands here; its .a to .c are the assurance-basis
+      row''s (AEV-01, the same batch). I-3''s and I-4''s commands (A-30, A-31) carry AEW-FR-14.d, which EW-U07.g refines.
+      F41.10 (HOLD-07) owns AEV-09.c, a re-review renewing assurance only for the affected obligations. AEV-08.b and .e
+      cite AEW-FR-16.d, which the match routes to the unattended mission (A-42, STG-18), to A-05''s part in HOLD-05''s ADC-09
+      row, E270 (RS-11), and to the held-unit slot row from HOLD-15, E299 (RS-41) (with CNI-03.d, EW-U08.j and R01-12):
+      unaffected authorized work goes on while a held scope''s dependent effects and completion claims stay withheld. Both
+      parts also cite ADC-09.e, protecting dependent work during an unresolved authority or premise dispute without blocking
+      unrelated authorized work, which HOLD-05''s ADC-09 row, E270 (RS-11) carries. Those two are this row''s nearest neighbours:
+      this row owns only the assurance side of AEV-08.b and .e (a downstream claim is constrained only where it relies on
+      the unresolved obligation, and work that does not rely on it is not held for assurance), and the held-unit slot row
+      builds the continue-while-held rule, so the two rows do not both build it. F14 (HOLD-04) serves AEW-FR-16.c. Not this
+      row: AEV-08.c, which its route does not name. Filed from its row spec by the row-specs register PR'
+
+  - '#': E285
+    Work: Defects go back to the implementer, and blocked assurance is held, not weakened. A material implementation defect
+      found in assurance returns to an authorized implementer for correction, with the verifier's independence and the original
+      finding kept, so a verifier never makes a fix and then approves its own resulting package. When required assurance
+      cannot be completed, AEW supports authorized diagnosis and in-scope repair; when no legitimate recovery path remains,
+      it preserves the work, holds the affected assurance and notifies the responsible authority, rather than letting the
+      Lead silently weaken a check after a timeout. Corrected work resubmits, relying on F41.10, for already-authorized
+      proportionate reverification with no new operator intervention, unless an applicable scope, assurance or authority
+      boundary requires it. Done when those three hold, and correcting a two-line defect does not make the operator reapprove
+      the unchanged objective
+    Source: Row spec RS-26 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-07), routing A-07's requirements AEV-09.a, AEV-09.e and AEV-09.f; A-07 at `docs/contracts/A-07/A-07__AEW-assurance-evidence-boundary-contract-candidate-v0.3.1.md`
+      (AEV-09, lines 142 to 151)
+    When: '**Unscheduled.** It waits on no other row. Placed, not started: under N = 12 it starts only when the limit''s
+      count is under 12.'
+    Notes: 'Routed from HOLD-07 to this spec, from the designer''s row spec. Not AEV-09.c, renewed assurance only for the
+      affected obligations: F41.10, the delta-review packet (HOLD-07, restored by the hold match), owns it, with F41.11''s
+      post-CLEAR fast path and F49''s fix-brief bound contributing. F49 also serves AEW-FR-05.c for fix attempts, a neighbour
+      of .e''s in-scope repair. AEV-09.b and .d are not routed here. Filed from its row spec by the row-specs register PR'
+
+  - '#': E286
+    Work: Verifier dispositions and assurance outcomes for the functions that rely on them. A verifier's disposition distinguishes
+      a demonstrated requirement violation, insufficient evidence, blocked execution and a non-blocking engineering recommendation,
+      so missing evidence is not labelled a proven defect and a style preference does not block. Verification may PASS with
+      explicitly non-blocking findings when every applicable mandatory obligation is satisfied, as review already may. Consequential
+      assurance disagreements are reconciled on evidence, and neither the Lead nor the verifier can impose an unsupported
+      mandatory criterion or waive an existing one. Unresolved non-blocking findings and their Lead dispositions are disclosed
+      in the operator-facing completion report. Qualified per-obligation and package-level outcomes, unresolved holds, applicable
+      findings and their provenance reach the coordination and integration functions that rely on them through specified
+      consumer obligations, and those consumers do not redecide the result. Each determination stays tied to its exact obligation,
+      basis, package and conditions and to an individually identified resolution. Done when coordination holds a dependent
+      step on a held claim rather than a generic green flag, a new PASS on a different obligation or an unlinked later PASS
+      does not clear an unresolved HOLD, and a replayed historical resolved HOLD does not bring the block back
+    Source: Row spec RS-27 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-07 and HOLD-10), routing A-07's requirements AEV-10.a, .b, .e and .k and AEV-10.d's
+      disclosure in the completion report, with A-10's AOI-05.d; A-07 at `docs/contracts/A-07/A-07__AEW-assurance-evidence-boundary-contract-candidate-v0.3.1.md`
+      (AEV-10, lines 153 to 168), A-10 at `docs/contracts/A-10/A-10__AEW-api-operator-interface-semantic-boundary-contract-candidate-v0.2.2.md`
+      (line 128)
+    When: '**Unscheduled.** It waits on no other row; AEV-10.j''s link to later contradictory evidence closes beside it,
+      in the wire track''s I-4 commands for V-01. Placed, not started: under N = 12 it starts only when the limit''s count
+      is under 12.'
+    Notes: 'Routed from HOLD-07 and HOLD-10 to this spec, from the designer''s row spec. HOLD-10''s match routes AOI-05.d
+      to the assurance-outcome consumer row HOLD-07''s match files for AEV-10.k, so this is that row, not a second one.
+      Review already refuses a pass with required findings and allows one with non-blocking findings (`src/aew/engine/evidence_ops.py:1029-1032`,
+      as the route cites); .b gives verification the same. Not AEV-10.d''s retention and Lead-disposition part, nor the
+      elevation of residual concerns: F17 (HOLD-07, restored by the hold match) owns them, with E56 (HOLD-09) contributing
+      a follow-up''s visibility. Not AEV-10.j: the wire track''s I-4 commands (A-31), built for V-01. Not AEV-10.l, which
+      the hold match routes to E120 (Now), validation''s coverage on the record. Not the D-01 0.3.4 production read wire
+      (V-01, after I-6), which serves AOI-05.a and .c. Filed from its row spec by the row-specs register PR'
+
+  - '#': E287
+    Work: 'A-08''s identity rules for packages, assurance determinations and the consumers that read them. Work, an accepted
+      work revision, a deliverable package or experimental artifact, a research claim, an observation and an assurance determination
+      stay distinguishable subjects wherever the difference changes authority, applicability, history or a consumer''s conclusion,
+      with no one-to-one storage mapping required. A package offered for assurance or acceptance names an exact immutable
+      subject and its material inputs, dependencies, generated outputs and conditions, never a branch or workspace label;
+      its closure is corroborated from the actual build, assembly or assessed integration by a protected or independently
+      qualified observation the producer does not solely control, and a material input that cannot be observed stays a stated
+      limitation. The assessed package or integration subject names its integrated inputs and their acceptance or availability
+      status, so a rejected, provisional, stale or unintegrated output is never consumed as an accepted dependency; identity
+      and closure detect consequential differences while keeping observation to material scope, with no whole-repository
+      snapshot or global retest for irrelevant content, and AEV''s applicability assessment, not the identity alone, decides
+      whether earlier evidence carries forward. A determination names the work revision, package or research subject, the
+      obligation or claim assessed, its governing basis, its applicability conditions and its supporting observations; determinations
+      are individually identifiable and ordered in that context, and one supersedes another only through an explicit, attributable
+      resolution link from an eligible assurance producer, so unlinked determinations coexist and an overlap or contradiction
+      stays visible rather than being settled by timestamp or arrival order. Revisions, packages, claims and determinations
+      keep their lineage and consumed-as-premise links for reverse impact assessment, and history is never rewritten as
+      proof about another subject. A consumer that cannot establish the current accepted revision, the package and the applicable
+      determinations infers no completion, mutation, integration or publication authority from a stable id or the latest
+      timestamp; Coordination and Integration can tell these apart before their own progression decisions, and Work Identity
+      decides none of those transitions; the API and the operator''s interfaces carry the same distinctions (including stale
+      or unavailable states) and never independently choose authoritative assurance or work status. The producer-consumer
+      identities are allocated from accepted work and release obligations before the cross-domain work that needs them,
+      with no duplicate registry and no substitute API contract. It is known done when A-08''s falsification witnesses for
+      these requirements are tests that fail to reproduce: an old PASS treated as a new package''s, a producer manifest''s
+      omitted input letting an old PASS be reused, an integration built against an unaccepted package, a README change that
+      triggers whole-repository testing or a shared library left out only because the implementer declared it irrelevant,
+      a passing documentation determination for one package presented as global security verification for that package,
+      a later documentation PASS clearing a security HOLD for the same package, a dependent integration decision that cannot
+      be found when the research finding it consumed is contradicted, and a domain that exports only mutable strings so
+      that the work or package identity has to be reverse-engineered from source'
+    Source: Row spec RS-28 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-08), routing A-08's requirements WIS-01.e, WIS-04.a, WIS-04.c, WIS-04.e, WIS-06
+      (for .a to .c and .e), WIS-06.a to WIS-06.c, WIS-06.e, WIS-07.c, WIS-07.e and WIS-07.f, the ids as D1 indexes them;
+      the adopted position A-08 (docs/contracts/A-08/A-08__AEW-work-identity-scope-boundary-contract-candidate-v0.2.1.md,
+      sections WIS-01, WIS-04, WIS-06 and WIS-07); filing approved with the batches accepted as recommended (the operator's
+      decision of 2026-11-06, item 1)
+    When: '**Unscheduled.** No decision places it. It waits on the revisions it identifies: F4''s Ticket revisions (HOLD-08,
+      restored Unscheduled by the Lead''s hold-match register PR) and the wire track''s I-5 commands (A-29). The D-01 0.3.4
+      production read wire (V-01, after I-6) reads the package and determination identities this row defines (AOI-02.a,
+      .c, .d), so any placement ahead of that wire is the operator''s to choose. Placed, not started: under N = 12 it starts
+      only when the limit''s count is under 12.'
+    Notes: 'The hold match routes these eleven requirements, with WIS-06 as their parent, to one new row because neither
+      HOLD-08 member designs them: F4 serves WIS-04.b and WIS-06.d (with I-5''s commands, A-29), and F5 serves WIS-02.a,
+      WIS-02.f and WIS-03.c. The D-01 0.3.4 production read wire, E181, takes its package and determination identities from
+      this row (AOI-02.a, .c, .d); they are separate rows, and this one does not build the wire. A-07''s assurance rows
+      from HOLD-07, E277 (RS-18) to E286 (RS-27), own qualification: per WIS-06.b, AEV owns qualification and Coordination
+      owns progression, not Work Identity. The rest of A-08 closes elsewhere: WIS-01.a, .b and .f and WIS-07.a and .b through
+      I-5''s commands (A-29); WIS-01.c and .d and WIS-04.f through research''s minimum slice (A-40, STG-16); WIS-04.d through
+      TB01''s closing work; WIS-07.d with K-01''s own increment after V-01. What it is not: a decision of PASS, completion
+      or progression; a new registry, service or API contract; one record, one hash or one hand-authored form per subject
+      (A-08 1.2 says identity is no such mandate). Filed from its row spec by the row-specs register PR'
+
+  - '#': E288
+    Work: 'Keep a work scope''s necessary producer-consumer relationships and accepted composition commitments attached
+      to the scope they govern, through every authorized revision and restructuring: a revision, a restructuring or an implementation
+      that omits one does not narrow it. It is known done when A-08''s falsification witness for WIS-03.f is a test that
+      fails to reproduce (review evidence is produced, but the planner never consumes it because no child claimed ownership),
+      and when A-08''s scenario WIS-X02 holds: three implementing Tickets each pass while the Story''s promised workflow
+      fails in integration, and the Ticket evidence is kept while the Story''s outcome stays unverified and its governing
+      checks remain'
+    Source: Row spec RS-29 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-08), routing A-08's requirement WIS-03.f, the id as D1 indexes it; the adopted position
+      A-08 (docs/contracts/A-08/A-08__AEW-work-identity-scope-boundary-contract-candidate-v0.2.1.md, section WIS-03); filing
+      approved with the batches accepted as recommended (the operator's decision of 2026-11-06, item 1)
+    When: '**Unscheduled.** No decision places it. It rides the authorized revision and restructuring paths it must survive:
+      F4''s Ticket revisions and F5''s Story and Epic revisions (HOLD-08, restored Unscheduled by the Lead''s hold-match
+      register PR, F5 after F4) and the wire track''s I-5 revision and replacement commands (A-29). Placed, not started:
+      under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'No hold member serves WIS-03.f: F4''s plan assigns structured composition commitments to F5, but F5''s own design
+      leaves them out. The closest open neighbour is E87 (Internal alpha): a promotion carries a dropped parent''s obligations
+      onto the promoted unit (`carried_obligations`, EW-U05.g, F4''s plan v8 sections 3.3, 3.12 and 3.12a), the restructuring
+      case of "stays attached". This row is not E87: E87 carries proof obligations across a promotion, while this row keeps
+      producer-consumer relationships and composition commitments attached through every authorized revision and restructuring.
+      F14.1 (HOLD-04) and F41.4 (HOLD-09) are neighbours that serve EW-U05.c, EW-U05.d, CNI-05.c and WIS-03.c (F5 owns WIS-03.c,
+      the proportionate impact classification of descendants), not this requirement. WIS-03''s other parts close elsewhere:
+      .a, .b and .d through I-5''s commands (A-29), .b in part by F4, .c by F5, and .e by the built parent closeout. What
+      it is not: progression or dependency decisions, which stay Coordination''s under A-08 1.1, the parallelism and interference
+      assessment F14.1 owns, or E87''s carrying of obligations across a promotion. Filed from its row spec by the row-specs
+      register PR'
+
+  - '#': E289
+    Work: 'Channel-specific conformance for the CLI and digests and notifications, each where it is a committed channel:
+      each channel is tested on its own against the one shared semantic fixture inventory and the versioned schemas that
+      apply to it, never presumed conformant because another channel passes. The tests include the applicable cases of IF-01
+      to IF-34, the proposed IF-35 to IF-47 falsification cases once they are adopted, and the composed three-Ticket pilot,
+      each with its exact expected projection or refusal and its safe text and disclosure; each channel''s tests run against
+      its declared supported-capability and qualification profile, and no channel is presumed to carry every journey or
+      to use the same transport. Done when each of these channels that is committed passes its applicable fixtures from
+      that inventory in its own suite'
+    Source: 'Row spec RS-30 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-10), routing A-10''s requirement AOI-12.b; the adopted text: A-10, docs/contracts/A-10/A-10__AEW-api-operator-interface-semantic-boundary-contract-candidate-v0.2.2.md'
+    When: '**Unscheduled.** No decision places it: the operator accepted HOLD-10''s batch as recommended, and the match
+      asked the operator whether to file it now or after the first receipt, with no recommendation, and accepting HOLD-10''s
+      batch as recommended does not choose. It shares the one fixture inventory with the D-01 0.3.4 production read wire
+      (E181, V-01, after I-6) and with E108''s gate (`O02-Q03`). Placed, not started: under N = 12 it starts only when the
+      limit''s count is under 12.'
+    Notes: 'A new row from the hold match; it draws no member out of a hold group. AOI-12.b names five channels; this row
+      is two of them. The backend API and website channels, with D01-EXT-11''s substitution, are in the D-01 0.3.4 production
+      read wire, E181; the qualified outage reader''s conformance is E108''s gate, `O02-Q03`, which validates every result
+      against D-01 0.3.4''s schemas on the shared fixture inventory. It defines no inventory of its own: one inventory serves
+      every channel. The notifications include E104''s desktop notifier''s. IF-35 to IF-47 enter its suite only once adopted.
+      Filed from its row spec by the row-specs register PR'
+
+  - '#': E290
+    Work: 'Every consumer that holds present-current conclusions (the CLI, the Lead''s surface and the notifier) downgrades
+      them when their footing goes. When a consumer''s source-qualified update continuity or renewal expires, even with
+      no missed event it can detect, or when it detects missed, incomparable or disputed updates, it marks the affected
+      present-current conclusions not current and re-queries the authorized owner-backed read where one is supported. Transport
+      health, a fresh provider-local timestamp or a silent queue never extends a source''s validity, and sorting arrivals,
+      promoting the newest narrative or issuing a command never repairs missing authority. Status reporting tells observed
+      state and qualified engineering progress apart from inferred activity or prediction: a consequential status with no
+      current qualified observation stays unknown or stale, and a missing progress message neither manufactures success
+      nor proves a process stopped. Done when each consumer''s tests show the downgrade, and the re-query where an owner-backed
+      read is supported, on a lapsed renewal and on missed, incomparable and disputed updates, and show that high CPU alone
+      never reads as verified progress and a stopped heartbeat never reads as a stopped process'
+    Source: 'Row spec RS-31 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-10 and HOLD-09), routing A-10''s requirement AOI-08.c, with A-01''s AEW-FR-29.c
+      and A-09''s CNI-08.e from HOLD-09; the adopted text: A-10, docs/contracts/A-10/A-10__AEW-api-operator-interface-semantic-boundary-contract-candidate-v0.2.2.md;
+      A-01, docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md; A-09, docs/contracts/A-09/A-09__AEW-coordination-native-integration-boundary-contract-candidate-v0.2.2.md'
+    When: '**Unscheduled.** No decision places it: the operator accepted HOLD-10''s batch as recommended, and the match
+      asked the operator whether to file it now or after the first receipt, with no recommendation, and accepting HOLD-10''s
+      batch as recommended does not choose. The site''s reads take the same rule in the D-01 0.3.4 production read wire
+      (E181, V-01, after I-6), not here. Placed, not started: under N = 12 it starts only when the limit''s count is under
+      12.'
+    Notes: 'A new row from the hold match; it draws no member out of a hold group. HOLD-09''s match files no separate row
+      for AEW-FR-29.c and CNI-08.e: they ride this one, as the observed-versus-inferred half. The site''s reads carry the
+      downgrade in the D-01 0.3.4 production read wire, E181; this row is the other consumers'' (the CLI, the Lead''s surface,
+      the notifier). Neighbours, not this row: E108''s outage reader, which stamps nothing `present_current` or `qualified`
+      (`O02-05`) and covers the outage path; E107''s fallback, which raises one "your turn" item for a silent Lead; E104''s
+      desktop notifier, one of the consumers it applies to. It adds no heartbeat, threshold or liveness vocabulary; it governs
+      what a consumer may still claim when its source goes quiet. Filed from its row spec by the row-specs register PR'
+
+  - '#': E291
+    Work: 'AEV''s G1 producer: a qualified assessment of whether the material changes in an offered package belong to the
+      accepted work revision, its obligations or a separately authorized change, with an identified AEV assurance owner.
+      It may be built within an existing eligible assurance path; no separate service is required. It can be resolved at
+      every consequential package acceptance or progression CNI-04.d covers, including a qualified no-material-change result.
+      Ordinary in-grant edits and provisional work need no assessment one by one and no new operator approval. It compares
+      the offered package against the owner-resolved last protected accepted state, never an ancestor the submitter picks.
+      Where that state predates G1, a competent operator decision may accept an exact, dated, bounded initial scope baseline,
+      which accepts scope and is never a historical PASS. Where no accepted state exists, the same authority must explicitly
+      establish the protected initial base. Neither may waive a security or containment obligation already in effect. The
+      assessor, not the submitter, judges what is material, by the governing obligations and the observed bytes and behaviour.
+      A reduction of a protection needs authority that names it. The producer issues three distinguishable dispositions:
+      CONFORMING, NONCONFORMING and NOT_ESTABLISHED. Anything missing reads NOT_ESTABLISHED with a closed reason, never
+      a PASS, a breach or a HOLD. A result applies only to the exact basis it was made on: when a material input changes
+      it needs requalification or explicit qualified applicability, with no copy-forward green label, though evidence-supported
+      bounded carry-forward stays possible. An implementer''s self-check is evidence, never the sole positive. A positive
+      needs a protected mechanical basis the implementing lineage cannot shape, or an eligible assessor outside that lineage
+      where judgment is needed. AEV exposes its qualified determinations, outstanding or unknown obligations and each claim''s
+      exact extent (post-baseline change against inherited material, covered or excluded obligations, any inherited protection
+      still unsupported) to authorized Coordination consumers. Verifier drafts and restricted evidence stay protected, and
+      only authorized final or scoped conclusions are projected, under the existing AOI/AEV release constraints. The full
+      obligations are A-11''s table (lines 36 to 52). It is done when CNI compares the provided qualified extent for the
+      exact package at its existing effect-time gate, a bounded post-baseline CONFORMING clears no uncovered inherited or
+      composition obligation, and no read-time hint, omitted member or missing producer supplies a fallback PASS. Each result
+      can be identified by its exact package, revision, applicability and provenance, with its qualified, unqualified or
+      missing outcome (IM-G01)'
+    Source: Row spec RS-32 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-07 and HOLD-10), routing A-11's requirements AEV-G1-01 to -17 (HOLD-07) and A-10's
+      IM-G01 (HOLD-10, the consumer obligation on its result); A-11 at docs/contracts/A-11/A-11__AEW-AEV-G1-material-package-scope-conformance-producer-amendment-candidate-v0.2.1.md
+      (lines 44 to 60), and IM-G01 at docs/contracts/A-10/A-10__AEW-api-operator-interface-semantic-boundary-contract-candidate-v0.2.2.md:222
+    When: '**Unscheduled.** No cited decision or adopted text places it. It uses the assurance basis that the owed A-07
+      AEV-01 row derives (AEV-G1-03 cites AEV-01.a), and it sits beside the owed AEV-06 and AEV-08 rows. Any projection
+      of its determinations to the API or website waits on the D-01 0.3.4 production read wire (V-01, after I-6). Placed,
+      not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'The route says no held member carries it. The match asked whether the Lead may file the A-07 rows and the A-11
+      producer row for the operator''s placement (HOLD-MATCH.md line 629). The decision record''s ''How it is applied''
+      (the designer''s reading) owes row specs for every route the match marks new row owed, and this is that spec; only
+      its placement remains. It is the producer half of CNI-04.d. F9.2 (HOLD-09, restored at Internal alpha) binds the assessment-input
+      half: review and verification packs carry each admitted Lead instruction, so an assessor can tell routed text from
+      accepted scope. Neighbours: the D-01 0.3.4 production read wire (E181), whose routes cite this row (AOI-03.c for AEV-G1-16,
+      AOI-04.b for AEV-G1-03 and -09); F41.10 and F41.11 (HOLD-07), restored for the delta review and the post-CLEAR fast
+      path; A-07''s owed AEV-01, AEV-06 and AEV-08 rows; F44 (HOLD-10), the consequential-fact owner registry, where a conformance
+      result as a control fact would have its owner row. It is not E160, which assesses an accepted plan before dispatch.
+      E159''s small-change route is matched to AEV-01.c and AEW-FR-06.a; whether CNI-04.d applies to it is not decided here.
+      It is not a grant, a promotion action or operator consent; CNI does not recreate the assessment, and HEB and ADC keep
+      protected admissions and grants. It adds no new database, work owner, approval registry, scheduler, test runner or
+      promotion service (A-11''s scope). Filing it is a design allocation, not proof of a live G1 capability: G1 stays open
+      until an independently observed implementation demonstrates it (A-11 section 4.4), and IM-G01 allows no claimed qualified
+      scope PASS and no unattended consequential promotion that needs one until then. G2 to G4 stay separate. G1 here is
+      A-10''s activation gate (IM-G01), not the G1 gates of F25 or F19 named elsewhere in the register. Filed from its row
+      spec by the row-specs register PR'
+
+  - '#': E292
+    Work: Task orientation shows the restrictions that matter to the current task, without loading full history. A card's
+      assignment and decision context carries the material accepted dependencies, interface commitments, unresolved HOLDs
+      and other current owner-qualified work restrictions, through WIS, CNI or AEV or a source-qualified reference, in the
+      form the recipient may see. A known blocker on a required dependency is never left out of orientation, and no restriction
+      is taken as absent because a cache is silent or a snapshot is stale. Protected details never reach a recipient not
+      allowed them, and an orientation that cannot disclose a restriction never reports that there is none. Each authoritative
+      reference it returns resolves, for that recipient, to its source owner, its exact subject or revision (or a qualified
+      historical basis) and the condition under which it applies; a reference that does not resolve is shown as unresolved,
+      never replaced by a model summary, and an external authority may stay external with no forced copy into the repository.
+      Done when orientation for a task with a known blocker on a required dependency shows that blocker, a limited view
+      never reads as no restriction, and an unresolvable reference reads as unresolved
+    Source: Row spec RS-34 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-14), routing A-14's requirements P01-03 and P01-05 and A-01's AEW-FR-19.c; A-14
+      adopted at `docs/contracts/A-14/A-14__AEW-P01-Project-Understanding-and-Maps-Contract-candidate-v0.2.1.md`, A-01 at
+      `docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md`
+    When: '**Unscheduled.** Beside F35, after V-01, once I-7 (SYS-46) has built CNI''s link vocabulary (A-41); the hold
+      match recommends Unscheduled until then, and the operator accepted the batches as recommended (2026-11-06). Placed,
+      not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'Its neighbour is F35, context-pack serving (restored by the hold match at Internal alpha, straight after V-01),
+      which serves AEW-FR-19.a and .d, P01-01 and P01-26: the brief orientation with bounded expansion and the per-role
+      budget. This row is not a part of F35. Nor is it P01-39''s owner-qualified restriction-roster check or P01-30''s context-delivery
+      identity: those two, with P01-42, are P-DEC-04''s route half, which the selection before I-7 leaves as I-7''s own
+      wire detail (SYS-46; HOLD-14''s routes in HOLD-MATCH.md), and they stay I-7''s, though P01-39 sits directly beside
+      this row''s restriction exposure (P01-05). It follows CNI''s link vocabulary (A-41), which I-7 builds in V-01''s wire
+      track. AEW-FR-19''s other child, AEW-FR-19.b, is served by E12 (HOLD-10), merged into E170 as a note. The route adds
+      the order (after V-01, once A-41 is built) and the recipient-safe form; P01-05 names WIS, CNI and AEV as the carriers.
+      Filed from its row spec by the row-specs register PR'
+
+  - '#': E293
+    Work: 'V-01''s profile for the built structural maps (`src/aew/maps/`): it says which capabilities V-01 supports, holds
+      the built code against A-14''s obligations, and fixes any divergence. The structural record claims only repository
+      shape, tracked paths, language and build descriptors and declared candidates drawn from the exact source it read,
+      never runtime behaviour, call relationships, project intent or owner approval. Each map names its exact source revision,
+      its generator and ruleset version, every input it actually read and what it left out, and its own digest or producer
+      name counts as a claim, not proof. The Git-objects reader treats repository content, Git configuration, hooks, symlinks
+      and LFS or submodule references as untrusted, never silently runs repository-controlled code, and runs any such code
+      only under ADC/HEB authority. The at-use freshness check compares the recorded inputs and tracked paths with the work''s
+      source basis, and says unknown or partial, never current, when it cannot compare; a pinned historical slice stays
+      usable for labelled navigation without being called current. The pack slices keep to their scope cut and row bounds,
+      never the whole map, graph or history in every prompt, declare their bounds and omission counts, never let an omission
+      caused by a cap be read as an absent project element, and name the explicit path for wider investigation, with its
+      cost bound, its sources and how it fails made visible. The profile names, in P01-34''s terms, the capabilities V-01
+      supports (structure, with orientation through the pack slices, per P-DEC-01) and the source and deployment limits
+      it supports them at, and says that an absent map degrades to direct source reads and usable work, not to false success
+      or a refusal. For the rest it states how far V-01''s maps go, and builds what V-01 needs: each orientation names its
+      work revision, source basis and recipient, and a map selected for one checkout never passes as current for another;
+      a role sees only what it is authorized for, and an empty answer covers only what was searched and what that role may
+      see; a map never calls a mutable governing fact current on its own timer, and consumers reconcile changed inputs before
+      relying on them; making, selecting or reading a map authorizes nothing, and repository text inside a map stays inert
+      data. Every map is labelled `AGENT_REACHABLE_DERIVED`, with no protected producer and no deterministic-class upgrade,
+      and the Lead''s selection is stated as no shared qualified selection, with local maps and at-use recomputation kept
+      available. Done when the profile is written down and names V-01''s supported capabilities with the source and deployment
+      limits it supports them at, each qualified obligation has a test that holds on the built code (or the fix that makes
+      it hold), each piece the row builds for the stated obligations (the orientation naming its work revision, source basis
+      and recipient; scoped empty answers; no map calling a mutable fact current on its own timer; maps authorizing nothing)
+      has a test that holds on the built code, and each stated obligation says how far V-01 meets it'
+    Source: Row spec RS-35 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-14), routing A-14's requirements P01-04, P01-06 to P01-11, P01-24, P01-29, P01-32,
+      P01-34, P01-37 and P01-38; A-14 adopted at `docs/contracts/A-14/A-14__AEW-P01-Project-Understanding-and-Maps-Contract-candidate-v0.2.1.md`;
+      P-DEC-02 (maps stay derived and agent-reachable, with no protected map writer and no custody service) in the operator's
+      first selections of 2026-10-24
+    When: '**V-01.** The hold match recommends the row at V-01 and the operator accepted the batches as recommended (2026-11-06);
+      V-01 serves the built structural map to agents for orientation and structure (the operator''s first selections of
+      2026-10-24). It works on the built maps (F22.1) and waits on no other row. Placed, not started: under N = 12 it starts
+      only when the limit''s count is under 12.'
+    Notes: 'Its neighbour is E62, maps on for every card (restored by the hold match at V-01): E62 turns the pack slices
+      on, and this row qualifies what they serve. P01-12''s served line and HOLD-14''s ''For the operator'' bullet in the
+      hold match (HOLD-MATCH.md) add that this row also qualifies the pack slices'' own bounds and omission counts, the
+      slices'' share of P01-12, which F15.8 (HOLD-06, the typed map reads'' envelope) owns; P01-12 stays F15.8''s. It is
+      not F22 (the architecture map and composed view, P01-20 and P01-22, Unscheduled), F22.2 (the semantic layer, On measured
+      need behind CAPR-B2 under P-DEC-03), F22.3 (test and constraint indexes) or F30 (impact analysis). It is not a site
+      map view: V-01 shows maps on the agents'' route only, and the shared read wire carries no map read for V-01 (P-DEC-04,
+      the selection before I-7). Maps are never evidence. E62''s regenerate-on-publish half leaves E62 and is not this row''s.
+      A neighbour filed since this spec: E184, `maps.pack_slices` on for every card. Filed from its row spec by the row-specs
+      register PR'
+
+  - '#': E294
+    Work: 'Advisor capacity admission. An ordinary request for advisor capacity is evaluated against the operator-approved
+      policy and aggregate budgets, the lineage''s quotas and the priority reserves, without the Lead mediating each request
+      (R01-22, AEW-FR-26.c). Admission follows the operator''s priorities, protects mandatory independent assurance and
+      reserved high-capability capacity, keeps starvation bounds with their exceptions visible, and admits only permitted
+      eligible work, so routine consultations cannot indefinitely displace a required review or verification and no first-come
+      rule silently overrides the policy (R01-11, AEW-FR-26.b). Available capacity permits queuing or a reservation, not
+      an advisor launch or a read by the recipient: before a protected invocation, a separately qualified authorization
+      binds the advisor''s identity and root lineage, its generation, the allowed subject, the diagnostic or read profile,
+      what is disclosed to whom, the advisor-seat lease, the aggregate budget and the permitted recursion or attempt count,
+      and effect admission checks those facts again on its own. A substitute serving mandatory assurance meets ADC-08.l''s
+      eligibility and independence, not only model compatibility (R01-22). Done when a required review is not indefinitely
+      displaced by routine consultations under a policy that reserves capacity for it, a routine request within policy is
+      queued or reserved with no Lead step, and available capacity alone never launches an advisor'
+    Source: Row spec RS-36 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15's requirements R01-11, R01-22 and A-01's AEW-FR-26.b, AEW-FR-26.c;
+      A-15 is adopted at `docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md`
+      and A-01 at `docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md`
+    When: '**Unscheduled.** It reserves through R-01''s resource-control writer and admission path (E304 (RS-46), from HOLD-15:
+      aggregate atomic allocation, reservation and release), since A-15 gives reservations to that writer. Placed, not started:
+      under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'It is R-01''s advisor share of AEW-INV-RESOURCE-001, which F7 (HOLD-05, restored by the hold match at Internal
+      alpha) owns. Not this row: the advisor spend bounds row (AEW-FR-26.e), a separate row for cost; F7''s non-spend fan-out
+      counts (R01-23); F9.1 (HOLD-09), the typed worker consultation that serves AEW-FR-26.a and .d; E158, the Lead-started
+      consult, which carries R01-21 and R01-24. ADC-08.l''s substitute eligibility is held by the A-05 protected-effect
+      holds row, E269 (RS-10) (ADC-08.e, .g to .l). R-01''s conformance suite row, E302 (RS-44) (R01-41) lands with the
+      writer and admission row and this one. A neighbour filed since this spec: E187, the context-aware Lead hand-off, which
+      also cites AEW-FR-26.b and .c. Filed from its row spec by the row-specs register PR'
+
+  - '#': E295
+    Work: Advisor spend bounds for a root lineage. Recurring advisor escalation stays within the authorized resource budgets
+      (AEW-FR-26.e). The requesting root lineage's aggregate reserved and unsettled advisor cost, across its children, concurrent
+      helpers, restarts, models, generations and nested or duplicate questions, is capped under each applicable parent budget;
+      unknown or unpriced usage consumes a conservative encumbrance the policy qualifies, and a missing bound holds the
+      affected paid admission (R01-23's cost part). The advisor spend ceiling is keyed to the stable work identity and the
+      original operation intent, so a reissued key, a reworded request or a changed tag does not reset it; only an attributable
+      competent authorization grants more headroom, and exhaustion leads to a held or waiting decision (R01-31's advisor
+      part, which E303 (RS-45) owns). Done when repeated inconclusive consultations in one lineage are held at the lineage's
+      authorized budget rather than admitted, an unpriced consultation counts against that budget rather than as zero, and
+      a reissued request does not reset it
+    Source: Row spec RS-37 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-01's requirement AEW-FR-26.e, with A-15's R01-23 (cost part) and
+      R01-31 (advisor spend ceiling, owned by E303 (RS-45)); A-01 is adopted at `docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md`
+      and A-15 at `docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md`
+    When: '**Unscheduled.** Its consumption comes from the provider relay''s meter (E97) as qualified by R-01''s paid class
+      (E98), both V-01, and its reservations and encumbrances from R-01''s resource-control writer and admission path (E304
+      (RS-46), from HOLD-15). Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'This is the advisor spend row R-01''s recovery contract refers to. R01-23 is served by F7 (HOLD-05, restored
+      at Internal alpha) for its fan-out counts (simultaneous consultations, attempts, depth, duplicate questions); this
+      row carries only its cost and encumbrance part. R01-31 belongs to R-01''s recovery contract row, E303 (RS-45), from
+      HOLD-15 (R01-29 to R01-33); this row builds beside E303 (RS-45), which owns R01-31 and its advisor spend ceiling.
+      Neighbours: E97 and E98 (V-01); A-52''s resource hard ceilings (STG-27), a MANDATORY_HARD spend ceiling per metered
+      unit (R01-03); F25 (HOLD-21, restored at V-01), the usage read side, where an unpriced figure is never shown as zero.
+      Not the advisor capacity admission row, which schedules and reserves capacity. Filed from its row spec by the row-specs
+      register PR'
+
+  - '#': E296
+    Work: Supervision under detach and custodian drain. The end of an attachment or a Lead generation, a custodian drain,
+      a result a verifier holds, a run's custody and a reservation's status are recorded and shown as distinct states, never
+      folded into one. A Lead or an autonomous supervisor cannot renew revoked authority by waking, yielding or retrying;
+      a custodian continues only within protected scope admitted before, and a held result keeps its own publication limits.
+      It is done when each of the five can be told apart after a detach and a drain, a wake, yield or retry after revocation
+      gains no authority, and a custodian's continuation stays within its previously admitted scope
+    Source: 'Row spec RS-38 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15''s requirement R01-34; A-15''s adopted text: docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md'
+    When: '**Unscheduled.** After first use, with E129 (item 9 of the operator''s board decision of 2026-11-06), and over
+      F31''s attachment lifecycle. Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'Routed from HOLD-15 to this spec. It sits over F31''s attachment lifecycle (a HOLD-17 member the match restores
+      at V-01, with F18.5, F18.7 and F18.9 filed as its slices: attachment states, bootstrap, and detached child handling
+      with drain) and comes after first use with E129 (the Lead attachment lifecycle, Unscheduled), which item 9 places
+      after first use. It is neither of those. E50 (Lead inactivity expiry, restored Unscheduled, building on E129) is a
+      neighbour. Reservation status comes from R-01''s resource-control writer and admission row, E304 (RS-46), beside it.
+      The recovery contract row, E303 (RS-45), owns R01-31''s attempts and bills kept across detach and custodian drain,
+      which this row builds beside, and R01-32''s rule that custodian-held verifier results and old-generation communications
+      confer no new authority. R-01''s conformance suite tests late custodian bills and results. Filed from its row spec
+      by the row-specs register PR'
+
+  - '#': E297
+    Work: 'Disclosure-safe supervision and accounting projections. The resource and progress views the operator, agents
+      and the website read attribute each source separately: qualified resource-control admission and accounting, HEB''s
+      run observations, CNI''s waiting, ADC''s delegated policy, WIS''s work and AEV''s assurance. Effective-recipient noninterference
+      covers a private review''s resource usage, tokens, duration, cost, reserved capacity, the existence of a hidden pool,
+      counts, ranking and ordering, as well as its result content. A stale, withheld, unsupported or unqualified source
+      is never flattened into a positive status, and no view issues a grant. It is done when each projection names the source
+      of what it shows, a recipient''s view does not change with private review activity it is not entitled to see, and
+      an unqualified source never reads as a positive status'
+    Source: 'Row spec RS-39 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15''s requirement R01-36; A-15''s adopted text: docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md'
+    When: '**Unscheduled.** It waits on the sources it projects, the relay''s meter (E97) and R-01''s resource-control writer
+      and admission row among them. Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'Routed from HOLD-15 to this spec. The D-01 0.3.4 production read wire, E181 (V-01, after I-6; AOI-03.a, effective-recipient
+      disclosure on every read), is the wire the site reads through; this row is what the supervision and accounting projections
+      carry, not the wire. A-22''s capabilities-and-runs extension stays unselected until the operator chooses it (item
+      4 of the hold-match decision) and is not this row. Neighbours: E97 (the relay''s meter) and R-01''s writer and admission
+      row for accounting, and U1''s run health projection (restored On measured need) for run observations. R-01''s conformance
+      suite tests resource-accounting disclosure. Filed from its row spec by the row-specs register PR'
+
+  - '#': E298
+    Work: 'Engineering nonconvergence as diagnostic evidence: AEW recognizes engineering nonconvergence apart from mechanical
+      inactivity (AEW-FR-24.c) and reports it as attributable diagnostic evidence about the accepted objective, its revisions,
+      repeated unsuccessful approaches, contradictions or unresolved decisions (R01-17). It is never equated with no tool
+      activity, elapsed time or an engineering verification FAIL. The Lead or the competent owner decides redirection and
+      the governing failure classification; the report decides neither (R01-17). Done when repeated design reversals with
+      preserved evidence can be flagged to the Lead or an advisor as attributed evidence, and a run is not reported as nonconvergent
+      because it is idle or slow'
+    Source: Row spec RS-40 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15's requirement R01-17 with A-01's AEW-FR-24.c; A-15, docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md;
+      A-01, docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md
+    When: '**Unscheduled.** It waits on no other row. Placed, not started: under N = 12 it starts only when the limit''s
+      count is under 12.'
+    Notes: 'It is separate from the intervention-safeguards row, E300 (RS-42), from the same match (AEW-FR-25.b, AEW-FR-25.d,
+      R01-19, R01-20): this row reports evidence, and no cancel, terminate, reassign or skipped assurance may rest on it
+      alone. U1 (restored On measured need) is stall detection and claims nothing of AEW-FR-24.c. Repeat-operation usefulness
+      (R01-16) is its own row. A-01''s scenario AS-11 cites AEW-FR-24.c and checks this row with the repeat-operation usefulness
+      row, U1 and the intervention rows. It is not a verification verdict. Filed from its row spec by the row-specs register
+      PR'
+
+  - '#': E299
+    Work: 'The held-unit slot: when one unit of work is held, escalated, blocked by a resource or dependency condition,
+      or waiting on an acceptance, discretionary verification or authority decision, authorized, safe work that it does
+      not affect keeps going (AEW-FR-16.d, EW-U08.j, CNI-03.d). The held unit''s dependent effects and completion claims
+      stay withheld until their actual governing conditions are met (CNI-03.d). R-01 keeps and shows CNI''s existing authorization
+      of independently eligible work and a source-qualified, scoped wait for the held unit; it imposes no universal stop
+      and asks for no synthetic progress to keep a queue position, and it gains no authority to change CNI state (R01-12).
+      Independence is affirmative: a missing impact relationship is not independence (R01-12). Done when a held or escalated
+      unit leaves unrelated authorized work running while its own dependent effects and completion claims stay held, one
+      optional investigation or one unrelated flaky test no longer freezes independent work, and work with no recorded impact
+      relationship to the held unit is not run as independent on that ground'
+    Source: Row spec RS-41 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15's requirement R01-12 with A-09's CNI-03.d, A-04's EW-U08.j and
+      A-01's AEW-FR-16.d; A-15, docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md;
+      A-09, docs/contracts/A-09/A-09__AEW-coordination-native-integration-boundary-contract-candidate-v0.2.2.md; A-04, docs/contracts/A-04/A-04__AEW-engineering-workflow-umbrella-contract-candidate-v0.4.md;
+      A-01, docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md
+    When: '**Unscheduled.** It waits on no other row. It matters more once F10 raises mutating_concurrency''s default to
+      2 after E151 merges, which the operator placed after first use (item 1 of the board decisions of 2026-11-06). Placed,
+      not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'Neighbours: E151, the launch conflict check (CNI-03.a, .g), and F10 (HOLD-06, restored by the match at Internal
+      alpha, HEB-06.c), the raise of mutating_concurrency to 2 after E151. It replaces F11, which the match dropped: F11''s
+      scheduler parts are built or are R-DEC-04''s RUN auto-run, and this obligation is not a scheduler for ready work.
+      The match lands it with the unattended mission (A-42, STG-18): A-42''s checks MSN-Q13 and MSN-X02 expect independent
+      Tickets to continue under RUN while a question is held, so the match ties this row to the mission; no decision places
+      it in V-01 or any milestone, and that placement is the operator''s. Other positions'' requirements that cite AEW-FR-16.d
+      (ADC-07.n, ADC-08.k, ADC-09.e, AEV-07.d, AEV-08.b, AEV-08.e, HEB-06.c) stay with their own rows, and A-01''s scenario
+      AS-27 cites it too. It is not the launch conflict check and not a concurrency raise. Filed from its row spec by the
+      row-specs register PR'
+
+  - '#': E300
+    Work: 'Intervention safeguards for in-flight work. A destructive response (cancelling, terminating, changing privilege,
+      reassigning scope or skipping assurance) never has a stall, nonconvergence or health heuristic as its only recorded
+      basis, whoever acts: the Lead, another agent or a service. The decision that applies to that specific effect, the
+      negative evidence, the current authorization and the loss and recovery policy must support it (R01-20, AEW-FR-25.b).
+      A discretionary intervention that may destroy active context needs permitted authority and qualified recovery or loss
+      handling (AEW-FR-25.d). For degradation that is not an emergency, the response starts with observation and proportionate
+      non-destructive options (a diagnostic query, advice, waiting, a safe yield, a qualified relaunch), and every intervention,
+      by the Lead or automatic, is recorded with its actor and that actor''s authority, the exact subject, what was observed
+      kept apart from what was inferred, the non-destructive steps tried or why none applied, the proposed benefit, the
+      risk of lost context or unknown effect, and the expected outcome (R01-19). Qualified safety-critical protection and
+      a separately authorized emergency act under their own adopted rules. Done when a conformance test shows that a destructive
+      response whose only recorded basis is a heuristic is not taken, and that each intervention carries its record'
+    Source: Row spec RS-42 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15's requirements R01-19, R01-20 and A-01's AEW-FR-25.b, AEW-FR-25.d;
+      A-15 is adopted at `docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md`
+      and A-01 at `docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md`
+    When: '**Unscheduled.** Its conformance test against a heuristic basis is held when U1 (the run health projection, which
+      the hold match restores from HOLD-15 at On measured need) lands, and U7''s automatic interrupt waits on this row.
+      Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'Neighbours, both restored by the hold match: U1 produces the advisory `stalled` result this row keeps from being
+      a destructive basis; it has no lifecycle authority, so it does not itself serve R01-20. U7''s interrupt keeps the
+      session but cancels the in-flight tool call (AEW-FR-25.a), so it waits on this row (accepted with the batches, item
+      1), and this row''s R01-20 governs whether it may fire on U1''s advisory STALLED alone. F36 (HOLD-15) serves AEW-FR-25.c,
+      the context-preserving handoff. Not this row: the nonconvergence evidence and repeat-operation rows, E298 (RS-40)
+      and E305 (RS-47), from HOLD-15 (AEW-FR-24.b, .c, .e, R01-16, R01-17), whose diagnoses this row keeps from being the
+      sole basis; R-01''s recovery contract row, E303 (RS-45) (R01-29 to R01-33); R-01''s conformance suite row, E302 (RS-44)
+      (R01-41), which collects this row''s test. An operator''s Stop now is HEB-07.c''s operator disposition, not a response
+      to degradation, so R01-19''s ladder does not gate it (A-34''s I2 profile restates R01-19 so, `docs/contracts/A-34/I2-PROFILE.md:124`).
+      Filed from its row spec by the row-specs register PR'
+
+  - '#': E301
+    Work: 'Plan-invalidating discovery propagation: a credible, material finding by a worker that invalidates the plan reaches
+      the responsible coordination authority, CNI/ADC (AEW-FR-24.d), with qualified scope and basis identity and its source''s
+      qualification, including the consumers it affects and what is still unknown (R01-18). A health heuristic cannot itself
+      revise accepted objectives, clear holds or announce a source contradiction as governing truth (R01-18). Done when
+      a worker''s discovery that an Epic dependency is invalid reaches the coordination authority with that identity instead
+      of staying local to the worker'
+    Source: Row spec RS-43 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15's requirement R01-18 with A-01's AEW-FR-24.d; A-15, docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md;
+      A-01, docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md
+    When: '**Unscheduled.** After F41.12, which it builds on. Placed, not started: under N = 12 it starts only when the
+      limit''s count is under 12.'
+    Notes: 'It builds on F41.12 (HOLD-04, restored by the match, Unscheduled), whose worker design_decision_required raises
+      an unplanned consequential choice. It is separate from A-05''s ADC-09 row, E270 (RS-11), from HOLD-05: this row carries
+      the finding to CNI/ADC, and the impact scope and protective disposition are decided there, never by this row. The
+      other requirements that cite AEW-FR-24.d go elsewhere: A-04''s EW-U03.d to E158 (the consult); EW-U09.b to A-05''s
+      ADC-09 row; EW-U09.i to CNI''s link vocabulary (A-41, STG-17) and I-5''s commands (A-29). A-01''s scenario AS-37 is
+      not a row: it checks this row together with A-05''s ADC-09 row. Filed from its row spec by the row-specs register
+      PR'
+
+  - '#': E302
+    Work: 'R-01''s conformance suite. Independent producer, consumer, VM, advisor and operator tests cover shared-parent
+      admission across generations and pools, meter and attribution forgery, protected settlement and gateway or credential
+      bypass, owner-derived intent equivalence across client-key changes, unsettled provider charges, worst-case paid requests,
+      effects during dispatch, refusal of an unqualified writer, healthy idle against a destructive heuristic, root-lineage
+      advisor fan-out and unauthorized spawn, scoped HOLD and recovery, a missed wake and the maximum reconciliation interval,
+      late custodian bills and results, resource-accounting disclosure, and safe unsupported modes. Each report states its
+      subject, the exact policy or source witness, the profile, the supported limits, false-positive rates and residual
+      unknowns. Tabletop JSON alone is not live conformance: it is done when the suite runs live against the built R-01
+      rows and reports those fields'
+    Source: 'Row spec RS-44 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15''s requirement R01-41; A-15''s adopted text: docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md'
+    When: '**Unscheduled.** It lands with R-01''s resource-control writer and admission row, E304 (RS-46), and the other
+      R-01 rows the match routes beside it, whose behaviour it tests. Placed, not started: under N = 12 it starts only when
+      the limit''s count is under 12.'
+    Notes: 'Routed from HOLD-15 to this spec. It is a separate row from R-01''s resource-control writer and admission row,
+      E304 (RS-46) (R01-02, R01-05 to R01-07, R01-10, R01-39, R01-40), with which it lands; that row builds on E97 (the
+      relay''s meter) and E98 (the paid-class qualification). Its cases exercise the rows beside it: the recovery contract,
+      E303 (RS-45) (scoped HOLD and recovery), advisor capacity admission, E294 (RS-36), advisor spend bounds, E295 (RS-37),
+      and F7''s fan-out caps (HOLD-05, Internal alpha) for root-lineage fan-out and unauthorized spawn, wakes, E307 (RS-49)
+      (missed wake and the maximum reconciliation interval), supervision under detach and custodian drain (late custodian
+      bills and results), intervention safeguards, E300 (RS-42) (healthy idle against a destructive heuristic) and the disclosure-safe
+      projections (resource-accounting disclosure). It is not a tabletop exercise: tabletop JSON alone is not live conformance.
+      Filed from its row spec by the row-specs register PR'
+
+  - '#': E303
+    Work: 'R-01''s recovery contract. A crash, a refusal, a local tool error, an incomplete check, a design defect and inconclusive
+      evidence stay distinct, each classified by its owner: HEB the observable process and effect outcomes, AEV the check
+      evidence, and the Lead or an eligible adjudicator a judgment-bearing failure under ADC; a mechanically detected failure
+      never becomes permission to repair scope or to override an assurance HOLD. Automatic repetition happens only for a
+      recovery class that competent policy or profile declares idempotent or non-effecting, under the exact original operation
+      intent, its attempt identity, unchanged qualified accepted input and a current resource and authority basis, and only
+      when the competent owners qualify adverse evidence and unconfirmed effects as absent or resolved for that exact repeat;
+      an unresolved HOLD on proven-independent work neither blocks it nor disappears, and missing impact closure is not
+      proof of independence. Attempt, total cost, elapsed time and advisor spend ceilings are keyed to the stable work identity
+      and the owner-qualified original intent with its ancestor policy scopes, so a reissued key, a reworded request or
+      a changed client tag never resets one, and independent per-work and ancestor ceilings apply even when intent equivalence
+      is unresolved; prior attempts, bills, encumbrances, adverse findings and the work basis carry across detach, handover,
+      model or provider restart and custodian drain, only an attributable competent authorization grants extra headroom,
+      and exhaustion leads to a held or waiting decision, not a new identity. An uncertain remote or non-idempotent effect
+      stays UNKNOWN_EFFECT under its original intent and is reconciled through the protected effect and owner-specific result
+      path, never retried as a second effect on timeout. A custodian-held verifier result or an old-generation communication
+      confers no new authority. Recovery, retry, advisor intervention and model change keep the applicable findings and
+      HOLDs, work versions, accepted closure and evidence lineage, and no retry success supersedes a separate adverse determination
+      without explicit competent resolution. It is done when tests show each failure kind recorded apart under its owner,
+      a repeat refused outside a declared class or while an effect is unknown, a ceiling holding across a reissued key,
+      a custodian-held result or an old-generation message granting nothing, and a finding surviving a successful retry'
+    Source: 'Row spec RS-45 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15''s requirements R01-29 to R01-33; A-15''s adopted text: docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md'
+    When: '**Unscheduled.** It builds on F15.6, its launch-failure part, which the match places at V-01; R01-31''s advisor
+      spend ceiling waits for the advisor spend bounds row. Placed, not started: under N = 12 it starts only when the limit''s
+      count is under 12.'
+    Notes: 'Routed from HOLD-15 to this spec. F15.6 (a HOLD-06 member the match restores at V-01: R5-3, the fail-closed
+      relaunch of a launch_failed run with its termination, credential and no-side-effect proofs) is the launch-failure
+      part of R01-30 and the no-side-effect basis R01-32 builds on; it is not rebuilt here. F15.7 (restored On measured
+      need) is a neighbour, and E149, the 429 re-drive (after first use, item 6 of the board decision of 2026-11-06), is
+      a neighbouring automatic repetition. R01-31 sits in this row; it owns R01-31''s advisor spend ceiling, and the advisor
+      spend bounds row (E295 (RS-37)) builds beside it owed beside it (with AEW-FR-26.e and R01-23''s cost part). It is
+      not O-01''s separately planned operator command profile, which R01-32 says is not an adopted clause or a bypass: protected
+      operator commands stay governed by the adopted AOI, ADC and HEB text. R01-32''s rule that custodian-held verifier
+      results and old-generation communications confer no new authority is part of this row, beside the detach and drain
+      row (R01-34). R-01''s conformance suite tests scoped HOLD and recovery. Filed from its row spec by the row-specs register
+      PR'
+
+  - '#': E304
+    Work: R-01's resource-control writer and admission path. Positive available capacity comes only from a protected resource-control
+      writer naming the resource, its policy and ancestor scopes, the epoch, a qualified complete account of live leases,
+      reservations and observed and unsettled provider consumption, a comparable price version and the policy witness; an
+      agent report, an unprotected compare-and-swap on agent-writable storage, a stale usage read or a local UI estimate
+      is not that proof (R01-06). Every consequential resource assertion names its competent producer, subject, exact work
+      and run, root grant and generation as applicable, policy scope and ancestor scopes, policy and price version and original
+      operation intent; the intent is assigned by the competent coordination or effect-admission owner, and a requester-supplied
+      intent or idempotency key is only an attributed alias (R01-02). Resource decisions keep concurrency and scarce model,
+      advisor and fixture capacity, and rate and quota limits, apart from monetary spend and wall duration, and no one dimension
+      silently substitutes for another (R01-04 in part, (c) and (d)). Limits, prices, priorities and time windows keep a
+      persistent policy-scope identity apart from any attachment, Lead generation, grant, run or call; every child allocation
+      charges each enclosing shared limit, and a generation change, handover, nested advisor or alternate pool mints no
+      new budget. Headroom is counted against settled consumption, active reservations, still-chargeable in-flight work
+      and unpriced or late-billing exposure without omission or double deduction, and only the operator or ADC policy owner
+      adds headroom (R01-05). Competing admissions for an exclusive seat or a shared parent cap are serialized against the
+      same parent scope by a protected decision using conditional commit, fencing or an equivalent, and parallel child pools
+      or a generation handover never reuse shared headroom (R01-07). A reservation keeps its original scopes through crash,
+      handover, lost response or lease expiry until the competent owner proves release, settlement or an expressly bounded
+      expiry that safely accounts for residual work and charges; a stopped heartbeat, an old generation's release or a duplicated
+      receipt erases nothing (R01-10). A change in policy, price, entitlement, parent roster or shared capacity between
+      observation and effect forces a new comparison and admission as relevant, and no local reservation token can be double-spent
+      or renewed by a stale generation (R01-39). An unknown provider or quota state reads apart from confirmed exhaustion,
+      permission denial and free capacity, and a missing bounded maximum stops a hard-limit claim for that paid class without
+      stopping proven independent non-billable work (R01-40). Missing, contradictory or non-comparable identity reads NOT_ESTABLISHED,
+      never positive availability. Done when the admission path gives these answers in each case the requirements name,
+      and R-01's conformance suite checks them
+    Source: Row spec RS-46 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15's requirements R01-02, R01-05 to R01-07, R01-10, R01-39 and R01-40,
+      and R01-04 in part, (c) and (d); A-15, docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md
+    When: '**Unscheduled.** After E97 (the provider relay''s meter) and E98 (R-01''s qualification of the paid class), V-01''s
+      build items after I-6, which it builds on. Placed, not started: under N = 12 it starts only when the limit''s count
+      is under 12.'
+    Notes: 'It builds on E97 and E98, which stay their own rows: the meter takes usage from outside the metered lineage
+      and the qualification decides where a mission''s cap is MANDATORY_HARD; this row is the writer and admission decision
+      over them, not a second meter. On the accounting path: F25 (HOLD-21, restored by the match at V-01, the usage read
+      side) and E97, which carries HOLD-20''s F18.15 as a merge note. R01-04''s parts (c), concurrency and scarce capacity,
+      and (d), rate and quota limits, stay with this row; F25 serves (a) and (b). Neighbouring owed rows from the same match,
+      each its own row: R-01''s conformance suite (R01-41), which lands with this one; R-01''s recovery contract (R01-29
+      to R01-33, beside F15.6); advisor capacity admission and advisor spend bounds. F7 (restored at Internal alpha) keeps
+      the non-spend fanout budgets. Policy change for effects already in flight follows ADC-08.f, and a provider substitution
+      serving mandatory assurance meets ADC-08.l. It is not the usage view and not the mission''s cap issuance. Filed from
+      its row spec by the row-specs register PR'
+
+  - '#': E305
+    Work: 'Repeat-operation usefulness: AEW detects credible repeated unproductive operations from the attempt outcomes
+      and relevant work changes it has (AEW-FR-24.b). A suspected loop is judged against comparable attempts, material changes
+      to input or configuration, new diagnostic evidence and meaningful outcomes, never against repeated command text or
+      a similar activity pattern alone (R01-16, AEW-FR-24.e). Work that repeats on purpose, such as fuzzing, randomized
+      validation or polling that is legitimately waiting on an external effect, stays eligible within declared comparability
+      bounds (R01-16). Done when three materially unchanged timeout attempts with no new diagnostic information are recognized,
+      and a valid, evidence-producing randomized regression run is not classed as unproductive because its invocation command
+      is unchanged'
+    Source: Row spec RS-47 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15's requirement R01-16 with A-01's AEW-FR-24.b and AEW-FR-24.e;
+      A-15, docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md; A-01, docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md
+    When: '**Unscheduled.** It waits on no other row. Placed, not started: under N = 12 it starts only when the limit''s
+      count is under 12.'
+    Notes: 'Neighbour: U1 (restored by the match On measured need, with F41.8 as its slice), which owns stall detection
+      (AEW-FR-24.a) and claims nothing of AEW-FR-24.b or .c. With F19 frozen, U1 no longer carries D10''s repetition field;
+      this row may take it up as an input. What AEW does about a detected loop is not this row: no destructive response
+      may rest on such a heuristic alone, which is the intervention-safeguards row, E300 (RS-42), from the same match (AEW-FR-25.b,
+      AEW-FR-25.d, R01-19, R01-20). Nonconvergence is its own row (R01-17). A-01''s scenario AS-11 checks this row with
+      U1, the nonconvergence row (R01-17, AEW-FR-24.c) and the intervention rows. Filed from its row spec by the row-specs
+      register PR'
+
+  - '#': E306
+    Work: Wait and yield. Work that cannot productively advance gives up execution capacity it does not need, with no manufactured
+      busywork such as calling a model to hold its place in an advisor queue (AEW-FR-27.b). A blocked invocation may relinquish
+      compute or advisor capacity under a competent HEB execution and custody transition, while CNI keeps the blocked work's
+      identity, its outstanding dependency and its continuation intent. Yielding does not erase grants or imply they stay
+      current indefinitely, and any in-flight effect and lost context are represented explicitly (R01-25). Done when a blocked
+      invocation yields and its capacity is released while CNI still shows the work, what it waits on and that it is to
+      continue, with no model call made to hold its place, and its record states the in-flight effect and the context lost
+    Source: Row spec RS-48 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15's requirement R01-25 and A-01's AEW-FR-27.b; A-15 is adopted at
+      `docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md` and A-01 at `docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md`
+    When: '**Unscheduled.** The HEB transition it uses is HEB''s release of the capacity the child held (I2R1-8, A-34''s
+      I2 profile, `docs/contracts/A-34/I2-PROFILE.md:270`), A-34''s only adopted transition in R01-25''s sense; it rests
+      on that and on CNI''s waiting state (A-41''s link vocabulary, STG-17), both named in R01-25. Placed, not started:
+      under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'One of two rows: the wake reconciliation row, E307 (RS-49) (HOLD-15), makes a resolved blocker actionable again;
+      this row only yields and keeps the blocked work. Not this row: AEW-FR-27.a, independent work continuing, which is
+      the unattended mission''s (A-42, STG-18) through CNI-03; AEW-FR-27.d and R01-27''s work-content part, served by F36
+      (HOLD-15); requalifying before resuming (R01-28), the mission''s preflight; releasing a stale reservation (R01-10),
+      R-01''s resource-control writer and admission row, E304 (RS-46), from HOLD-15. A yield that keeps the process alive
+      (a quiesced execution) is not this row either: no adopted owner fact defines one (A-34''s I2 profile, `docs/contracts/A-34/I2-PROFILE.md:31`),
+      so it waits on I2-B1''s owner fact (backlog at `:347`), and a builder does not invent a quiesce. Filed from its row
+      spec by the row-specs register PR'
+
+  - '#': E307
+    Work: Wakes. A qualified resolution of a blocker becomes discoverable as bounded eligibility to continue or to be reassigned,
+      without the waiting worker polling a model (AEW-FR-27.c). A qualified deterministic reconciliation owner that uses
+      no model compares waiting items with CNI's current block-owner dependencies, at a maximum interval the selected profile
+      declares and verifiably supports and on attach or resume, so a lost notice cannot strand work without a diagnosis
+      anyone can see. If that bound passes after a qualified resolution with no delivery or reconciliation, it shows WAKE_OVERDUE
+      to eligible Lead or operator attention, with the exact subject, the source and basis, the last comparable check and
+      the uncertainty. Delayed, duplicated and reordered wakes recheck the current blockers, and a stale wake cannot clear
+      a newer one. Where no qualified scheduling or reconciliation facility can meet the declared bound, the wake service
+      reads NOT_ESTABLISHED rather than claiming supported liveness, and independent work is kept (R01-26). Done when a
+      resolved blocker reaches its waiting item within the declared interval with no worker model call, a dropped notice
+      is caught at the next reconciliation or shown as WAKE_OVERDUE, and a stale wake leaves a newer blocker in place
+    Source: Row spec RS-49 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-15), routing A-15's requirement R01-26 and A-01's AEW-FR-27.c; A-15 is adopted at
+      `docs/contracts/A-15/A-15__AEW-R01-Resource-and-Progress-Supervision-Contract-candidate-v0.2.1.md` and A-01 at `docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md`
+    When: '**Unscheduled.** After the wait/yield row, E306 (RS-48), whose waiting items it reconciles, over CNI''s block-owner
+      dependency membership (A-41''s link vocabulary, STG-17). Placed, not started: under N = 12 it starts only when the
+      limit''s count is under 12.'
+    Notes: 'One of two rows: the wait/yield row, E306 (RS-48) (HOLD-15), is the yield; this row is the wake. Messaging (F9
+      with F9.1, HOLD-09, and E175), switched on after the consult by item 2 of the hold-match batches record, may carry
+      a notice; this row is what catches one that is lost. E158''s wake is the Lead''s ingest of an ended consult at its
+      next credentialed call, not this reconciliation owner for waiting work. E66 (held in HOLD-06) is dropped by the match:
+      no requirement asks for wake parity between Linux and Windows, only honest per-profile qualification, which NOT_ESTABLISHED
+      gives here. Filed from its row spec by the row-specs register PR'
+
+  - '#': E308
+    Work: 'IF-13''s deployment-profile controller, beyond the first handlers I-6 builds (STG-14). It keeps the profile definition,
+      the observation, the per-capability assessment, the snapshot and the transition receipt as separate records, each
+      with its own owner, version and source (IF13-01). The profile, host installation, effective principal, harness, provider,
+      plugin, tool and route inventories, generation, release binding and configuration revision are each identifiable on
+      their own, and a user-supplied alias is never an owner-issued change or operation identity (IF13-02). The same canonical
+      identities, authority rules, effect intent, refusal semantics and recipient duties hold under the general and workplace
+      bindings, and OS, harness, network and provider stay typed deployment attributes, never substitutes for work, grant
+      or operation identity (S01-01). A selected deployment manifest binds the profile ID and version, release context,
+      host and principal, harness and effective config digest, reachable effects, provider route, credential boundary, protection
+      evidence and capability classes, with its selected, observed and qualified fields kept distinguishable (S01-02). A
+      versioned definition allocates each capability exactly once as a functional prerequisite, a protected-effect gate
+      or optional, and declares its declared, observed and qualified facts machine-readably (IF13-04, S01-19). Each assessment
+      names its capability class, scope, issuer basis, evidence, epoch and expiry, and one of QUALIFIED, NOT_ESTABLISHED,
+      UNAVAILABLE, STALE, FUNCTIONAL_ONLY or UNSUPPORTED, with no aggregate ready status (IF13-06, S01-25). A missing, changed
+      or incomparable basis downgrades only the affected claims (IF13-08); success on one host, route, account, OS or version
+      establishes no protected capability on another combination without demonstrated comparability, and a workplace binding
+      may add requirements but never relaxes the portable floors (S01-03); an identity change, replacement, expiry or revocation
+      invalidates only the affected assessments (IF13-14). A requested target stays apart from the effective configuration:
+      a transition carries a controller-issued identity bound to one request fingerprint, predecessor revision, target and
+      source generation (IF13-11), its states REQUESTED, CHECKING, HELD, APPLYING, EFFECTIVE, FAILED, UNKNOWN_EFFECT and
+      SUPERSEDED stay distinct per route, and a split between the stored revision and the actual route is UNKNOWN_EFFECT
+      for that route until reconciled (IF13-12). Switching context, harness, plugin, adapter, account, principal or endpoint
+      creates an attributable new effective basis and rechecks the applicable authority and qualifications; no stale credential
+      access, protected lease, release grant or currentness witness carries across a noncomparable transition, and a website
+      save or pending operation never reports activation before the protected transition or qualification succeeds (S01-22).
+      A binding that meets its functional prerequisites may become functionally EFFECTIVE with controller_qualification=NOT_ESTABLISHED
+      and its protected gates held, so General Local works with no organizational certificate, account or gateway (IF13-10,
+      IF13-19, S01-05, IF12-07). Nothing the controller records grants execution, clears a hold or promotes policy: each
+      consequential effect is still admitted at its own boundary with every required gate (IF13-09, S01-07, S01-23, S01-24),
+      and a profile switch clears no source, recipient, grant, provenance or credential restriction (IF13-17). The CLI and
+      the site show requested and effective apart, with the evidence class, freshness, transition state and a recipient-safe
+      blocked reason, and a profile read reveals nothing hidden (IF13-15, IF13-16). Done when common fixtures run under
+      the general and workplace bindings with the same allowed and denied outcomes for equivalent facts, differences in
+      protection evidence shown rather than normalized away, and no G1 to G4 or D-01 W1 to W5 qualification carried over
+      from functional parity (S01-27)'
+    Source: Row spec RS-50 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-17 and HOLD-20), routing A-17's requirements S01-01 to S01-03, S01-05, S01-07, S01-19,
+      S01-22 to S01-25 and S01-27, A-18's IF13-01, IF13-02, IF13-04, IF13-06, IF13-08 to IF13-12, IF13-14 to IF13-17 and
+      IF13-19, and A-20's IF12-07; the adopted positions docs/contracts/A-17/A-17__AEW-S01-Portable-Hosting-and-Deployment-Profile-Contract-candidate-v0.2.1.md,
+      A-18__AEW-IF13-Profile-State-and-Transition-Contract-candidate-v0.2.md and A-20__AEW-IF12-Model-Access-Delivery-and-Recipient-Boundary-Contract-candidate-v0.2.md
+    When: '**Unscheduled.** After I-6 (STG-14), whose first IF-13 handlers it extends. Whether its design row comes now
+      or after first use is the question the hold match put to the operator for HOLD-17; the batches record of 2026-11-06
+      does not answer it, so it stays the operator''s. New design stops until the first receipt, except what first use surfaces
+      (the operator''s decision of 2026-11-02). Placed, not started: under N = 12 it starts only when the limit''s count
+      is under 12.'
+    Notes: 'One row for both heads: HOLD-20''s route for IF12-07 names the same new row HOLD-17 owes for S01-05 and S01-27.
+      It is A-17''s row, with A-18. What it is not: the first handlers stay STG-14''s (I-6, A-39, Now item 15): IF-13 recording
+      a successor revision and requesting its transition (I6-04, with IF13-03), the LOWERS_ADOPTED_FLOOR refusal (I6-04.b),
+      EFFECT_CONFIRMED never meaning effective (I6-04.e) and the revocation (I6-08). Qualifying a host''s deployed profile
+      from outside the measured lineage (IF13-05, IF13-07, S01-09) is the host assessor''s build (A-51, STG-26), which has
+      no register row yet; this row records assessments and does not qualify a host. Likewise S01-02''s observed reachability
+      digest needs S01-09''s independent completeness basis, which is the host assessor''s (A-51, STG-26): this row records
+      that basis and does not produce it. IF13-13 is F31''s (HOLD-17, V-01); IF13-18 is E129''s, after first use; S01-12
+      to S01-14 and S01-28 are E97 with E98 (V-01); S01-29 is E123''s. IF13-17''s last sentence, data migration on its own
+      owner path, is the upgrade path''s (A-46, U-01, STG-22; U01-07, U01-R12), whose row the build board''s SYS-33 lists
+      as owed. Two further parts of this row from HOLD-17''s routes: the ''organization'' launch provider''s work binding,
+      which HOLD-17''s F18.4 merge sends to IF-13''s controller while the rest of F18.4 merges into E123 (its provider_access
+      profile) and E35''s H-2 (its pin qualification half); and S01-21''s profile statuses, which HOLD-17 routes to this
+      row as other work (so S01-21 is not among this row''s requirements), while STG-15 keeps the capability status and
+      the D-01 read wire (E181) keeps the site''s reads. From the routes and the match: the direct-provider route through
+      the relay already runs with no gateway or organizational certificate (relay.py:1-24), and S01-28''s honest meter class
+      is E97 with E98; F18.10''s ''existing-host attach only where the gateway path is proven'', dropped by the match, is
+      one instance of this row''s activation predicate (IF13-04, S01-24), with its gateway HOLD-20''s F18.8; F18.6, restored
+      Unscheduled, keeps a shared-principal host as a NOT_ESTABLISHED label (IF13-19) rather than a refusal; the match also
+      routes AEW-FR-34''s deployment-profile half here. Neighbours: profile reads exposed on the dashboard follow D-01''s
+      projection rules (IF13-16), whose production read wire is the V-01 row after I-6, E181, a neighbour, not this row;
+      the site shows requested and effective here, while a site write comes later on the typed command path after I-6''s
+      G3-consented change (the batches record, item 3); E125, the local readiness surface, names setup problems before any
+      Ticket. Filed from its row spec by the row-specs register PR'
+
+  - '#': E309
+    Work: 'The IF-12 call record at the provider relay (IF12-01, IF12-03, IF12-12 to IF12-14, IF12-17). For each model call
+      it keeps the original request and its effect, the exact recipient and the response, and issues no policy, budget,
+      grant, accepted evidence or qualification of its own: a model call is a potentially chargeable and externally disclosive
+      effect even with no write permission. The original call, each dispatch attempt, the provider''s request id where one
+      is supplied, the generation, the response or stream and the eventual billing item stay separate and mapped, so a reconnect,
+      a retry or an SDK substitution never recasts the same uncertain call as a fresh paid effect. The original call also
+      binds IF12-02''s remaining fields, the WIS work and revision, the attachment and generation, and the selected IF-13
+      snapshot, and a user-generated request id, idempotency key or lineage header is held as an alias, never a fresh intent
+      or spend reset. Each call is in one provider effect state: PREPARED, ADMISSION_HELD, DISPATCHING, SENT, STREAMING,
+      COMPLETED_OBSERVED, FAILED_BEFORE_SEND, OUTCOME_UNKNOWN, RECONCILING or SETTLED_OR_CLOSED; a local timeout is not
+      proof of no remote effect or charge. Where K-01 or P-01 context is delivered through it, the record names the ingress
+      that actually receives and qualifies that packet (the relay only where it genuinely hosts that ingress) and that ingress''s
+      own stage, PREPARED, ATTEMPTED, DELIVERY_ACKNOWLEDGED or NOT_ESTABLISHED, never reading a provider''s SENT or a streamed
+      reply as that acknowledgement. A SENT or unknown call is never redispatched automatically after a timeout, detach,
+      cancel or relay recovery without the provider''s evidence of no effect or a separately qualified idempotent mechanism
+      bound to the same original intent; it is reconciled by its original operation and provider references, and the uncertainty
+      stays open. Cancel requested, local stream disconnected, upstream cancellation observed and no additional charge proven
+      are four claims, never one; stop, drain or revoke fences new calls, keeps late results, and reports the provider effect
+      and charge uncertainty as they are. Its logs, traces, retries, errors and live status carry no secret, no private
+      work or reviewer existence and no restricted prompt derivative to a recipient or viewer not entitled to them, and
+      usage and call status are shown only within AOI and D-01 rights. So a call interrupted after it was sent reads as
+      unknown or reconciling, is not resent on its own, and no message says that no request was sent'
+    Source: Row spec RS-51 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-20), routing A-20's requirements IF12-01, IF12-03, IF12-12 to IF12-14 and IF12-17;
+      the adopted A-20 at docs/contracts/A-20/A-20__AEW-IF12-Model-Access-Delivery-and-Recipient-Boundary-Contract-candidate-v0.2.md
+    When: '**Unscheduled.** IF12-12''s context-ingress acknowledgement half follows the K-01 and P-01 increments, which
+      V-01''s wire track selects before I-7. The match recommended HOLD-20''s other gateway rows Unscheduled while the designer''s
+      build board holds that gateway work frozen, except E123. Placed, not started: under N = 12 it starts only when the
+      limit''s count is under 12.'
+    Notes: 'One row: every route names the same record. E97 (the relay''s meter, V-01) binds each paid call it observes
+      to the operation it was admitted under (IF12-02, routed to E97 as other work); IF12-02''s remainder (the WIS work
+      and revision, the attachment and generation, the selected IF-13 snapshot, alias handling) is served with this row
+      without being one of its requirements, as the source-release row does for S01-26. E149 (the 429 re-drive, placed after
+      first use by the board decision''s item 6) is the one redispatch so far admitted on the provider''s evidence: the
+      designer''s ruling 9 in the decision record of 2026-10-30 reads a 429 as the provider''s evidence of no effect (IF12-13),
+      each retry its own attempt (IF12-03) checked again at dispatch (IF12-10). E156 already keeps refused proxy targets
+      bounded and escaped in the run record. The relay already counts a stream cancelled only when the client left before
+      the response''s end (`relay.py`). Not F18.8, the dispatch-time route and model check, which at this register is still
+      a HOLD-20 member and which the match restores as a row at Unscheduled. No hold member serves R01-31, R01-32 or R01-34,
+      IF12-14''s basis. Filed from its row spec by the row-specs register PR'
+
+  - '#': E310
+    Work: 'The source-release check at each external model delivery (S01-17, IF12-08, IF12-09). Before AEW delivers a governed
+      payload or fragment to an external model, the actual provider, account and recipient, and the logging and retention
+      destinations, are qualified against the restrictions of each source and work owner whose content the request carries,
+      by one of two proofs: the owner-qualified lineage, versions, restrictions and allowed recipients of every material
+      original or derived fragment and tool result; or the complete readable and introducible context of that invocation,
+      later dynamic additions included, shown from outside the agent''s lineage to be bounded and unchanged through delivery
+      or competently invalidated, every member of which is owner-qualified for that recipient and those destinations. The
+      proof is current at each actual disclosure, and covers request bodies, prompt fragments, tool outputs, streamed material,
+      retries, diagnostics and logs. A request of mixed or unknown composition (summaries, paraphrase, embedded references,
+      tool errors, agent memory, context added in a continuing session) respects the intersection of its sources'' restrictions;
+      where any reachable or newly introduced content may carry a narrower entitlement, the whole-universe proof does not
+      apply, and only a per-fragment derivation qualified on its own will do. A mount list, an agent-authored index, a worker-set
+      public flag, a profile string or permission to read never counts as either proof, and on a same-UID host closed coverage
+      is never inferred from the workspace directory. The relay is not the source-policy authority: each source''s owner
+      decides who may receive it, and no semantic DLP is claimed without controls that provide it. So a delivery whose proof
+      is missing or not current, or whose route or recipient entitlement is unqualified, is withheld, and the permitted
+      work beside it goes on'
+    Source: Row spec RS-52 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-17 and HOLD-20), routing A-17's requirement S01-17 and A-20's requirements IF12-08
+      and IF12-09; the adopted A-20 at docs/contracts/A-20/A-20__AEW-IF12-Model-Access-Delivery-and-Recipient-Boundary-Contract-candidate-v0.2.md,
+      and the adopted A-17 at docs/contracts/A-17/A-17__AEW-S01-Portable-Hosting-and-Deployment-Profile-Contract-candidate-v0.2.1.md
+    When: '**Unscheduled.** It comes after the K-01 and P-01 increments it reads, which V-01''s wire track selects before
+      I-7; V-01''s knowledge is history and source lookup only. The match recommended HOLD-20''s other gateway rows Unscheduled
+      while the designer''s build board holds that gateway work frozen, except E123. Placed, not started: under N = 12 it
+      starts only when the limit''s count is under 12.'
+    Notes: 'One row for IF12-08 and IF12-09: IF12-09''s route is ''with IF12-08''s row'', and HOLD-17''s match routes S01-17
+      to the same row. Not F18.8, which at this register is still a HOLD-20 member and which the match restores as a row
+      at Unscheduled: F18.8 checks the route and model at each dispatch (IF12-10, that part), while this row checks what
+      the request discloses to that route. S01-17''s other claims (current source and status, the G1 material package, the
+      W4 protected read, the G4 outage reader, assurance, map and Knowledge claims) are grounded in each source owner''s
+      own qualification and are not this row''s work. HOLD-17''s match routes S01-26''s disclosure at the actual delivery
+      boundary here as other work (its record-content half is STG-15''s CAPR-10), so it is served with this row without
+      being one of its requirements. Not the relay''s meter (E97) or the paid class''s qualification (E98), and not the
+      relay''s honest same-UID status, which is its own row (IF12-06). The IF-12 call record is a separate row. Filed from
+      its row spec by the row-specs register PR'
+
+  - '#': E311
+    Work: The relay's honest status on a same-UID host (IF12-06). Where the relay and the active provider key run as the
+      same user as the worker, the relay claims what it does there, transport, routing and cooperative usage observation,
+      and reads credential custody, non-bypass, source-delivery enforcement and authoritative per-task metering as `NOT_ESTABLISHED`
+      until independent proof qualifies each one. Passphrase protection at rest and one unlock at start are shown as hygiene
+      and convenience, not as protection at run time. So on such a host no status, readiness line or report claims any of
+      the four
+    Source: Row spec RS-53 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-20), routing A-20's requirement IF12-06; the adopted A-20 at docs/contracts/A-20/A-20__AEW-IF12-Model-Access-Delivery-and-Recipient-Boundary-Contract-candidate-v0.2.md
+    When: '**Unscheduled.** No decision or adopted text places it. The match recommended HOLD-20''s other gateway rows Unscheduled
+      while the designer''s build board holds that gateway work frozen, except E123. Placed, not started: under N = 12 it
+      starts only when the limit''s count is under 12.'
+    Notes: 'Neither E98 nor E124 is this row: E98 (V-01) qualifies only the paid class''s meter on a host and provider,
+      so per-task metering reads as qualified only where E98 qualifies it; E124 (Unscheduled, after first use) keeps the
+      key from other code running as the operator and adds nothing against agents. E123 (Now) presents the provider''s client
+      certificate, and HOLD-17''s match merges F18.4 into it as a note only, which labels custody NOT_ESTABLISHED on a shared-principal
+      host under S01-11 and IF13-19: that note labels the client-certificate key''s custody on E123''s path, while this
+      row is the relay''s status across all four claims (custody, non-bypass, source-delivery enforcement, per-task metering).
+      The match''s F18.8 entry (still a HOLD-20 member at this register, restored as a row at Unscheduled) limits the relay''s
+      ''only custodian'' claim on a same-UID host to transport and cooperative observation, by IF12-06 and S01-11; this
+      row is where the status says so. The readiness surface (E125) is a neighbour, not this row. Filed from its row spec
+      by the row-specs register PR'
+
+  - '#': E312
+    Work: 'IF-10''s provider outage and uncertainty states (IF10-18): a provider call''s outcome is distinguished as one
+      of provider unreachable, quota exhausted, policy denied, ambiguous charge, attribution unresolved, cap source unavailable
+      or `UNKNOWN_EFFECT`, never folded together. A gateway restart or a failed stream is never read as costing nothing,
+      no second paid call is made silently and no provider is substituted silently, and independent source-only or mock
+      work continues where it is entitled to. It is known done when each of the seven states is distinguishable; a gateway
+      restart or a failed stream never yields a zero-cost record; no second paid call or provider substitution happens silently;
+      and entitled source-only or mock work continues through an outage'
+    Source: Row spec RS-54 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-21), routing A-21's requirement IF10-18; A-21 at docs/contracts/A-21/A-21__AEW-IF10-Resource-Policy-Admissibility-and-Accounting-Interface-Contract-candidate-v0.2.1.md:53
+    When: '**Unscheduled.** It waits on the provider relay''s meter (E97), the one accounting point on the provider path;
+      on R-01''s resource-control writer and admission path, E304 (RS-46) (A-15), which tells a provider outage from confirmed
+      exhaustion at admission (R01-40, R01-02), so the outage distinction is not built twice; and on A-52''s resource-ceilings
+      row (STG-27), whose typed gate at each dispatch (IF10-08) returns `UNKNOWN_EFFECT`. Neither of those two rows has
+      a register id yet. Placed, not started: under N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'The route: neither A-52 nor I-6 cites IF10-18, and O-02''s stage (STG-21, A-45) lists it as not an input. Closest
+      neighbour: R-01''s resource-control writer and admission path, E304 (RS-46) (A-15), to which the hold match routes
+      R01-40 (A-15''s provider and external quota outage: unknown availability, prices or chargeability kept apart from
+      confirmed exhaustion, permission denial and free capacity, with only separately authorized provider substitution)
+      and R01-02 (policy change, provider outage, after E97 and E98); IF10-18''s own Basis line cites R01-08/40/43. This
+      row is IF-10''s interface states, not R-01''s writer, which tells outage from exhaustion at admission. A-52''s adopted
+      rule (RHC-POSITION.md:40) that a broken connection, a timeout or a lost receipt never turns outstanding spend into
+      zero (IF10-15, R01-08, R01-10) is owed in A-52''s resource-ceilings row (STG-27) for encumbered spend through IF10-15;
+      this row adds only the restart and failed-stream cases and the distinct states. Not E97, which cites only IF10-13
+      (the meter outside the metered lineage); not E108, the independent outage reader for AEW''s own service (O-02), which
+      does not take IF10-18; not F25''s restored row (V-01), which shows an unpriced figure as unpriced rather than zero
+      (IF10-14) but does not distinguish these states on the call path; not I-6''s I6-07, which reconciles an operation''s
+      unknown or unpriced exposure afterwards. Neighbours: E98 (R-01''s qualification of the paid class), and A-52''s resource-ceilings
+      row (STG-27), still to be filed as a stage row. A neighbour filed since this spec: E208, a reason code for a provider''s
+      quota refusal, which closes into E201. Filed from its row spec by the row-specs register PR'
+
+  - '#': E313
+    Work: 'A decision-ready request for a premium-cost strategy (AEW-FR-10.e): when a consequential strategy would cost
+      more than the delegated discretion allows, AEW asks the responsible authority to decide, and the request states the
+      strategy''s cost and its benefit and how uncertain each is. Until that decision, the more expensive plan is not adopted.
+      It is known done when no materially more expensive plan is adopted unapproved or without its tradeoff explained (AEW-FR-10.e''s
+      violation witness). The request decides nothing itself: a grant is the authority''s, through I-6''s widening (I6-03)'
+    Source: Row spec RS-55 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-21), routing A-01's requirement AEW-FR-10.e; A-01 at docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md:198
+    When: '**Unscheduled.** It waits on I-6 (STG-14), whose widening (I6-03, a successor revision of the standing policy
+      decision issued under A-24''s rules) is the path that grants what the request asks for. Placed, not started: under
+      N = 12 it starts only when the limit''s count is under 12.'
+    Notes: 'An A-01 requirement routed through HOLD-21 (IF-10''s group). The route: I-6''s widening (I6-03) is the path
+      that grants such a strategy, not the proposal, so this row is the request and not I-6''s widening. A pending decision
+      of this kind would surface where blocked-on-you shows pending decisions (A-44, STG-20; E101, E102), as the hold match
+      routes AEW-FR-29.b; this row adds no grant power there or anywhere (IF10-01). Not F25''s restored row (V-01), which
+      only measures. No open register row cites AEW-FR-10. Filed from its row spec by the row-specs register PR'
+
+  - '#': E314
+    Work: 'Operator priorities for time versus cost, set per project or per environment in resource policy (AEW-FR-10.d):
+      the operator can give one project or environment a different time-versus-cost priority from another. It is known done
+      when the operator can set different time-versus-cost priorities for two projects or environments, and no project or
+      environment is forced onto one spending objective that cannot be configured (AEW-FR-10.d''s violation witness)'
+    Source: Row spec RS-56 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06
+      (design workspace `cffb1ee`, HOLD-21), routing A-01's requirement AEW-FR-10.d; A-01 at docs/contracts/A-01/A-01__AEW-foundational-requirements-candidate-baseline-v0.4.md:197
+    When: '**Unscheduled.** It waits on I-6 (STG-14), the resource policy issuer. Placed, not started: under N = 12 it starts
+      only when the limit''s count is under 12.'
+    Notes: 'An A-01 requirement routed through HOLD-21 (IF-10''s group); the route adds "in resource policy". No held member
+      or closing work carries it. Not the fair-admission row for R01-11, E294 (RS-36) (operator priorities among admitted
+      work); this row is the time-versus-cost objective per project or environment. Not F25''s restored row (V-01, the usage
+      read side), which only measures; not A-52''s resource-ceilings row (STG-27, no register row yet), which enforces limits
+      (AEW-FR-10.a, .f), not priorities. Its siblings close elsewhere: .a by F7 (HOLD-05), .b and .f by the wire track (A-34''s
+      increments, I-3''s commands), .c by the built ledger; .e is its own row. No open register row cites AEW-FR-10. Filed
+      from its row spec by the row-specs register PR'
+
   - '#': E215
     Work: 'The pending dialog: a TUI permission ask or form in the Lead''s terminal, named as an item. The floor until then
       is `BOY-09.a`''s idle source, which needs no run active.'

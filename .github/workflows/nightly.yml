@@ -332,22 +332,28 @@ jobs:
 
   matrix-extra:
     # The interpreter each OS does not use on pull requests: the whole suite, in duration-balanced shards like ci.yml's
-    # lanes (`--shard k/N` over every collected test; the serial tests are deselected here and run once per OS, in its
-    # shard 1, with no xdist). `matrix-extra-assurance` proves the shards and the serial lane together ran every
-    # collected test exactly once. One job per OS ran out its 60 minute timeout from 2026-10-06 (strategy §8). Grow
-    # `of` when a shard nears 30 minutes; the timeout is never raised for slowness (only G3a's clearance).
+    # lanes (`--shard k/N` over every collected test; the serial tests are deselected here and run once per OS, in
+    # `matrix-extra-serial`, with no xdist). `matrix-extra-assurance` proves the shards and the serial lane together ran
+    # every collected test exactly once. One job per OS ran out its 60 minute timeout from 2026-10-06 (strategy §8). Grow
+    # `of` when a shard nears 30 minutes; the timeout is never raised for slowness (only G3a's clearance). Linux 4 and
+    # Windows 8 since 2026-11-10, when every Windows shard took 47 to 57 minutes and Linux 34 to 40 (strategy §11).
     name: full suite ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }}, py${{ matrix.python }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - {os: ubuntu-latest, python: "3.13", shard: 1, of: 3}
-          - {os: ubuntu-latest, python: "3.13", shard: 2, of: 3}
-          - {os: ubuntu-latest, python: "3.13", shard: 3, of: 3}
-          - {os: windows-latest, python: "3.11", shard: 1, of: 4}
-          - {os: windows-latest, python: "3.11", shard: 2, of: 4}
-          - {os: windows-latest, python: "3.11", shard: 3, of: 4}
-          - {os: windows-latest, python: "3.11", shard: 4, of: 4}
+          - {os: ubuntu-latest, python: "3.13", shard: 1, of: 4}
+          - {os: ubuntu-latest, python: "3.13", shard: 2, of: 4}
+          - {os: ubuntu-latest, python: "3.13", shard: 3, of: 4}
+          - {os: ubuntu-latest, python: "3.13", shard: 4, of: 4}
+          - {os: windows-latest, python: "3.11", shard: 1, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 2, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 3, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 4, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 5, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 6, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 7, of: 8}
+          - {os: windows-latest, python: "3.11", shard: 8, of: 8}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 64
@@ -370,12 +376,6 @@ jobs:
           --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal --test-timeout 600
           --session-deadline 3600 --max-worker-restart 0
           "--lane-report=${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-${{ matrix.shard }}.json"
-      - name: serial lane (once per OS, never parallel)
-        if: matrix.shard == 1 && (success() || failure())
-        run: >-
-          python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600
-          --session-deadline 3600
-          "--lane-report=${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-serial.json"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -383,10 +383,50 @@ jobs:
           path: ${{ runner.temp }}/nightly-extra/
           retention-days: 30
 
+  matrix-extra-serial:
+    # matrix-extra's serial lane, once per OS and never parallel, in a job of its own: it ran after shard 1's sharded
+    # step under that job's one deadline, and on 2026-11-10 (run 42845505402) the Windows shard's sharded step took
+    # 3407 s of its 3600 s session deadline, leaving the serial lane 163 s of the 185 to 254 it takes (strategy §11).
+    # The same interpreters, flags and report as before; its artifact matches the aggregate's `nightly-extra-*`.
+    name: full suite serial lane (${{ matrix.os }}, py${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: "3.13"}
+          - {os: windows-latest, python: "3.11"}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
+    # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
+    timeout-minutes: 64
+    steps:
+      # Its start plus timeout-minutes, less bounds.JOB_MARGIN_S + 2 x DEADLINE_MARGIN_S: the number is checked
+      # against this job's timeout-minutes by bounds.job_deadline_problems (test_ci_tools), never set by hand.
+      - name: The job's deadline for its pytest sessions (G3 H3; tests/helpers/session_deadline.py)
+        shell: bash
+        run: echo "AEW_JOB_DEADLINE=$(( $(date +%s) + 3600 ))" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: git fetch --tags --force
+      - uses: ./.github/actions/setup-aew
+        with:
+          python-version: ${{ matrix.python }}
+      - name: serial lane (once per OS, never parallel)
+        run: >-
+          python -m pytest -q -p no:cacheprovider -p no:xdist --durations=20 --lane serial --test-timeout 600
+          --session-deadline 3600
+          "--lane-report=${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-serial.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: nightly-extra-${{ runner.os }}-serial
+          path: ${{ runner.temp }}/nightly-extra/
+          retention-days: 30
+
   matrix-extra-assurance:
     # As reference-assurance, for the extra interpreters: every shard and the serial lane reported, and every collected
     # test ran exactly once and passed (pinned platform skips excepted), so a dropped shard never reads as green.
-    needs: [matrix-extra]
+    needs: [matrix-extra, matrix-extra-serial]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -404,15 +444,16 @@ jobs:
         run: >-
           python tools/ci/check_assurance.py extra-reports --skips tests/platform-skips.yaml
           --require linux,win32 --summary "$GITHUB_STEP_SUMMARY"
-      - name: Every shard job succeeded
+      - name: Every shard job and the serial lane's jobs succeeded
         if: always()
         run: |
-          echo "matrix-extra=${{ needs.matrix-extra.result }}"
+          echo "matrix-extra=${{ needs.matrix-extra.result }} matrix-extra-serial=${{ needs.matrix-extra-serial.result }}"
           test "${{ needs.matrix-extra.result }}" = success
+          test "${{ needs.matrix-extra-serial.result }}" = success
 
   report:
     needs: [shard-history, vertical-series, reference-plan, reference, reference-assurance, walk-extended, race-repeat,
-            crash-extended, matrix-extra, matrix-extra-assurance]
+            crash-extended, matrix-extra, matrix-extra-serial, matrix-extra-assurance]
     # A scheduled job that hits its timeout-minutes ends `cancelled`, not `failed`: on a scheduled run either is a
     # failure of nightly assurance and opens (or updates) the issue. Nothing supersedes a scheduled run, so a
     # cancellation here is never a newer push; pull-request runs never reach this job.

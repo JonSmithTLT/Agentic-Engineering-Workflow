@@ -607,7 +607,11 @@ def run_read(engine: Any, argv: list[str], cwd: str,
     own parser, and runs as an argument list, never a shell string, on the Lead's project only, in a process of its
     own: a non-writer, reading lock-free as in the sandbox, with no credential and no broker in its environment, so a
     long read holds nothing of the session's. ``track`` is told when that process starts and ends, so the session
-    ends it when it closes."""
+    ends it when it closes.
+
+    That process writes nothing. A ``harness wait`` it ran told the Lead what it printed, so the broker, a store
+    writer, records that (:func:`record_delivery`), as the Lead's typed wait records it: the triggers it returned are
+    returned once, and an end it returned is no wake."""
     from aew import process_kind
     from aew.cli.main import build_parser, coordination_reads_for, recall_search_for
     from aew.engine.api import Engine
@@ -658,7 +662,7 @@ def run_read(engine: Any, argv: list[str], cwd: str,
     env = procs.engine_imports(scrubbed_env())  # the broker's own `aew`, and no credential
     for variable in ENV_NAMES:
         env.pop(variable, None)
-    env[process_kind.LEAD_CONTAINED_ENV] = "1"  # a non-writer (process_kind): lock-free reads, nothing written
+    env[process_kind.LEAD_CONTAINED_ENV] = "1"  # a non-writer (process_kind): lock-free reads, it writes nothing
     timeout = (float(ns.timeout) if wait else 0.0) + RELAYED_TIMEOUT_S
     detached: dict[str, Any] = ({"creationflags": procs.CREATE_NO_WINDOW} if procs.IS_WINDOWS
                                 else {"start_new_session": True})
@@ -678,7 +682,24 @@ def run_read(engine: Any, argv: list[str], cwd: str,
         finally:
             if track is not None:
                 track(proc, False)
+    if wait:
+        record_delivery(project, list(ns.run), out)
     return {"stdout": out, "stderr": err, "exit": proc.returncode}
+
+
+def record_delivery(project: Path, runs: list[str], stdout: str) -> None:
+    """The broker's delivery records for a relayed ``harness wait`` (STG-05 CS-4 addendum 15): what the read printed
+    told the Lead, so the broker records it (``harness_ops.record_told``), never the read's process. Only from the
+    parsed result: the one value in it the Lead chose is the run, and only a run the wait named, which the broker
+    checked, is recorded. Output that isn't a result records nothing."""
+    from aew.engine.harness_ops import record_told
+
+    try:
+        told = json.loads(stdout)
+    except ValueError:
+        return
+    if isinstance(told, dict) and isinstance(told.get("run"), str) and told["run"] in runs:
+        record_told(project, told, lead=True)
 
 
 def _relayed_value_ok(kind: str, text: str) -> bool:
@@ -872,7 +893,8 @@ def require_credential(acquire: bool) -> None:
 def run_session(engine: Any, command: list[str], *, acquire: bool, session_label: str | None,
                 keep_seat: bool, contained: Callable[[str | None, dict[str, str]], Harness],
                 env: dict[str, str] | None = None,
-                with_token: Callable[[str], None] | None = None) -> dict[str, Any]:
+                with_token: Callable[[str], None] | None = None,
+                on_ready: Callable[[], None] | None = None) -> dict[str, Any]:
     """``aew lead session``: broker the Lead credential for one Lead harness session.
 
     ``env`` is the harness's environment (default: the caller's, minus every credential variable). A harness
@@ -888,6 +910,10 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     ``with_token`` is called once with the Lead credential, before the broker starts: what `aew opencode`'s switch offer
     needs, since on ``acquire`` the credential doesn't exist any earlier. It must not raise. `aew lead session` passes
     none, so it never applies an offer.
+
+    ``on_ready`` starts session-bound companions only after the seat's credential has been validated and the harness
+    prepared, before the TUI runs. A refused acquisition or credential never calls it; the harness and broker are
+    closed even if the callback raises.
     """
     from aew.engine.harness_ops import scrubbed_env
     from aew.harness.procs import harden_current_process, run_session_tree
@@ -928,6 +954,8 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
         if harness.poster is not None:
             broker.start_wakes(harness.poster)
         try:
+            if on_ready is not None:
+                on_ready()
             if harness.entry is not None:
                 harness.entry.started()
             code, ownership = run_session_tree(harness.argv, env=harness.env, cwd=str(engine.repo_root),

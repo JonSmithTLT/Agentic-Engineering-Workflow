@@ -203,7 +203,7 @@ def test_the_product_end_to_end_through_one_session(world):
         browser = Browser(svc.url)
         status, _, _ = browser.api("/project")
         assert status == 401  # before the exchange there is no session
-        browser.open(svc.issue())
+        browser.open(svc.issue(authorized_by=S.OPERATOR_TTY))
         seen = walk(browser, world.ids)
         assert set(world.ids.values()) <= set(seen["work"]) | {world.ids["done"]}
         assert len(seen["api"]) == 21 and len(seen["pages"]) >= 13
@@ -215,7 +215,7 @@ def test_hostile_content_comes_back_as_data(world):
     svc = start(world.root)
     try:
         browser = Browser(svc.url)
-        browser.open(svc.issue())
+        browser.open(svc.issue(authorized_by=S.OPERATOR_TTY))
         status, headers, raw = browser.get(f"/api/v1/work/{world.ids['hostile']}", headers=FETCH)
         assert status == 200 and headers["content-type"] == "application/json; charset=utf-8"
         assert headers["x-content-type-options"] == "nosniff" and headers["content-security-policy"] == CSP
@@ -234,7 +234,7 @@ def test_a_session_expires_and_the_page_still_loads_to_say_so(world):
     svc = start(world.root, clock)
     try:
         browser = Browser(svc.url)
-        browser.open(svc.issue())
+        browser.open(svc.issue(authorized_by=S.OPERATOR_TTY))
         status, headers, _ = browser.api("/overview")
         tag = headers["etag"]  # a real validator, which matches while the session lives (PR #97 review, finding 2)
         assert status == 200
@@ -253,7 +253,7 @@ def test_a_session_expires_and_the_page_still_loads_to_say_so(world):
 def test_stopping_the_server_ends_every_session_and_a_new_server_honours_none(world):
     svc = start(world.root)
     browser = Browser(svc.url)
-    browser.open(svc.issue())
+    browser.open(svc.issue(authorized_by=S.OPERATOR_TTY))
     assert browser.api("/project")[0] == 200
     svc.stop()
     with pytest.raises(OSError):
@@ -276,8 +276,8 @@ def test_each_server_serves_one_project_and_its_scope_is_its_own(world, tmp_path
     mine, theirs = start(world.root), start(p.root)
     try:
         a, b = Browser(mine.url), Browser(theirs.url)
-        a.open(mine.issue())
-        b.open(theirs.issue())
+        a.open(mine.issue(authorized_by=S.OPERATOR_TTY))
+        b.open(theirs.issue(authorized_by=S.OPERATOR_TTY))
         a_titles = {u["title"] for u in a.api("/work")[2]["data"]["items"]}
         b_items = {u["id"]: u["title"] for u in b.api("/work")[2]["data"]["items"]}
         assert "Only in the other project" not in a_titles and b_items[theirs_only] == "Only in the other project"
@@ -487,7 +487,7 @@ def test_the_session_file_tool_writes_the_runners_private_file(world, tmp_path, 
     svc = start(world.root)
     try:
         out = tmp_path / "private" / "session.json"
-        monkeypatch.setattr(sys, "stdin", io.StringIO(svc.issue() + "\n"))
+        monkeypatch.setattr(sys, "stdin", io.StringIO(svc.issue(authorized_by=S.OPERATOR_TTY) + "\n"))
         assert tool.main([str(out)]) == 0
         record = json.loads(out.read_text(encoding="utf-8"))
         assert record["version"] == 1 and record["origin"] == svc.url

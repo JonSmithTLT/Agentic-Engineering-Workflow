@@ -5,6 +5,9 @@ note §4.2 and §5.2; ADR-0005, amendment of 2026-10-05).
 operator's terminal unless ``--print-credential`` puts it on standard output for a script, and a Lead session refuses
 both. Authorization is the operator's typed-back code: at this terminal for ``serve``, at the serving process's console
 for ``open``. No flag, environment variable, stdin input or file authorizes a session.
+
+The separate in-process ``aew opencode`` start issues only its first session without a code (operator decision,
+2026-11-07); it changes neither command's authorization here.
 """
 
 from __future__ import annotations
@@ -70,6 +73,7 @@ def _serve(a: argparse.Namespace) -> None:
     from aew import operator
     from aew.dashboard import service
     from aew.dashboard.server import RequestLog
+    from aew.dashboard.session import OPERATOR_TTY
 
     if not MIN_HOURS <= a.session_hours <= MAX_HOURS:
         raise UsageError(f"--session-hours is {MIN_HOURS} to {MAX_HOURS}")
@@ -91,7 +95,7 @@ def _serve(a: argparse.Namespace) -> None:
     logging.getLogger("aew.dashboard").addHandler(log)
     logging.getLogger("aew.dashboard").setLevel(logging.INFO)
     svc.start()
-    url = svc.issue()
+    url = svc.issue(authorized_by=OPERATOR_TTY)
     to_stdout = bool(getattr(a, "print_credential", False))
     if not to_stdout:
         credentials.write_to_terminal("session_url", url)

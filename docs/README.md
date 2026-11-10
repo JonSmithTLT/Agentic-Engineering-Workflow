@@ -129,10 +129,11 @@ proposal's own content; it governs the project only once the proposal is adopted
 | [`quickstart.md`](guides/quickstart.md) | Install, initialize, run one Ticket end to end |
 | [`lead-guide.md`](guides/lead-guide.md) | How work flows, for a Lead: risk classes and their gates, the Ticket lifecycle, the command for each step (`aew guide`) |
 | [`opencode.md`](guides/opencode.md) | Running AEW with OpenCode: configuration, the Lead's TUI, harness runs, containment |
+| [`dashboard.md`](guides/dashboard.md) | Session-bound dashboard auto-start and the standalone server |
 | [`acceptance.md`](guides/acceptance.md) | The acceptance scenarios and how to run them |
 
-The guides cover M1 to M3. What M4 built (the typed Lead tools, steering, the integration queue, validation, the
-dashboard and more) has no guide yet: the operator guide is register E71, which follows what V-01 delivers, not M4 (register rebaseline, 2026-10-24).
+The guides cover M1 to M3 and opening the dashboard. The rest of what M4 built (the typed Lead tools, steering, the
+integration queue, validation and more) has no guide yet: the operator guide is register E71, which follows what V-01 delivers, not M4 (register rebaseline, 2026-10-24).
 
 ## Living implementation documents ([`implementation/`](implementation/))
 

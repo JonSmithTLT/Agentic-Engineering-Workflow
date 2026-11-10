@@ -500,7 +500,7 @@ An environment variable changes only the process that reads it. An agent control
 | `AEW_LEAD_TOKEN` | any `aew` command; `aew lead session` (then removed) | the Lead credential | never in any harness or agent environment (`CREDENTIAL_ENV` is scrubbed everywhere); a forged value fails verification |
 | `AEW_INVOCATION_TOKEN` | role commands outside a run | an invocation credential | as above |
 | `AEW_SERVICE_TOKEN` (M6b) | the knowledge service's own process, outside any run | a `service` credential (ADR-0005, 2026-10-05): one closed transaction family, no Lead authority | never in any harness or agent environment (scrubbed with the other credential variables); refused by every operation outside its family and by the store at commit (`TRANSACTION_CLOSURE`); the broker refuses `service issue` |
-| *(no dashboard variable)* | — | the dashboard's `operator_session` credential (ADR-0005, 2026-10-05; F20.3) is never carried by a variable, a flag, stdin or a file: `aew dashboard serve` and `open` authorize at a console with a typed-back code and deliver a one-time URL to the terminal (or to stdout with `--print-credential`) | the broker refuses both commands as credential-emitting; `local/dashboard/control.key` locates the running server and authorizes nothing (the code is shown only on the serving console); the credential lives in the browser's `HttpOnly` cookie and the server's memory |
+| `AEW_DASHBOARD_AUTOSTART` (off-switch only; no credential variable) | `aew opencode` host | `off` disables dashboard auto-start; no variable, flag, stdin or file carries its `operator_session` credential. Under ADR-0005's 2026-11-10 amendment, the operator's terminal start authorizes only the first no-code session (`operator-start`), opened directly in the browser after the seat is held and validated. `serve` and `open` keep typed-back codes (`operator-tty`) and terminal URL delivery (stdout only with `--print-credential`) | the same dev-grade Lead-session check as endpoint auto-start refuses the new start; the broker still refuses `serve`/`open` as credential-emitting. An auto-started server refuses later opens on both platforms. `local/dashboard/control.key` locates and authorizes nothing; the credential stays in the browser's `HttpOnly` cookie and server memory. No write route or G3 approval path is added |
 | `AEW_AGENT_ENDPOINT`, `AEW_AGENT_KEY`, `AEW_INVOCATION`, `AEW_RUN`, `AEW_WORK_UNIT` | the `aew` CLI inside a run | which run bridge to call, and its key | the bridge authenticates by key and holds the credential itself; contained runs cannot see another run's bridge or state |
 | `AEW_LEAD_BROKER`, `AEW_LEAD_BROKER_KEY` | the `aew` CLI inside a Lead session | route Lead commands to the broker; refuse credential-issuing commands and `--print-credential` locally | unsetting them leaves a command with no credential (refused by the engine). Credentials still go only to the terminal, the takeover prompt names the requester, and the session's processes end before an acquired seat is released |
 | `AEW_SCRATCH` | the agent | where scratch files go | no authority |
@@ -1637,7 +1637,11 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   `CONTAINED_LOCAL`), the surface map
   marking exactly the relayed set, each a read, and a command outside it, an option outside its list or a value
   that is not a name, sha256 or revision refused before anything runs; `tests/integration/test_lead_relayed_reads.py`,
-  each relayed read printing what the host prints (a heartbeat's age apart) and changing nothing under `.aew`, one
+  each relayed read printing what the host prints (a heartbeat's age apart) and, as condition 2 reads since CS-4
+  addendum 15, "A test runs each relayed command against a project and finds the store and `.aew/local/` unchanged,
+  apart from any derived cache the read already rebuilds today and the broker's delivery records, each of which the
+  test names by its exact path" (the delivery records: `local/harness/runs/<run>/progress.returned.json` and
+  `local/harness/runs/<run>/progress.end-returned`, for the run a relayed `harness wait` returned), one
   answering while a write holds the control lock (a non-writer's lock-free read), no output carrying a planted
   server password, bridge key or token, a held relayed `harness wait` delaying no Lead
   write and returning when its run ends, the session's close ending one in flight at once, and no read reaching
@@ -1941,6 +1945,15 @@ digest moves, since digests read the policy files in force and no file changes. 
   Right after a takeover the old mark can count until the old broker's watchdog closes its record, within a poll
   (measured under a second), and longer only if that watchdog is stuck on the control lock.
 - **Windows stays a declared gap,** with no wake posted and no "no broker" line in its next steps.
+- **What a wake quotes is scrubbed as a wait's result is.** The wake's JSON passes through the same function as a
+  wait's result (`contract.scrub`), and the line under it reads the scrubbed copy. In the digest both read, a command
+  is redacted before it's shortened.
+- **An end the Lead already has is no wake.** It has the end when its own wait returned it: the typed wait, or a wait
+  from its shell that its broker relayed. The broker records that for the relayed wait, whose own process writes
+  nothing: the broker's delivery records, an exception to relayed reads' condition 2 (STG-05 CS-4 addendum 15). The
+  operator's wait at a terminal tells the Lead nothing. It also has the end of an invocation it closed. An
+  invocation AEW closed on its own, such as a queue lease's child ended with its custodian, still wakes it. A run that
+  reads as ended and then goes on is watched again, and its later end is news.
 
 ## Amendment 2026-11-08 — WSLg's directory is a host mask
 

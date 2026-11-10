@@ -8,7 +8,7 @@
 # and its `lead_disposition` (the end state A2's plan decides); and the refusal codes it can raise. Bump `version`
 # when an entry's meaning changes.
 schema: aew/surface-map/v1
-version: 1
+version: 3
 
 vocabulary:
   homes:
@@ -347,7 +347,16 @@ commands:
       is missing and not declined; on either platform, adopts a moved default the operator takes at the switch offer,
       typing the code at their own terminal (aew.switch_offer)"
     refusals: [CONTAINMENT_UNAVAILABLE, PROJECT_NOT_FOUND, USAGE]
-    note: "on Linux the Lead runs contained (STG-05 CS-4): at a terminal, refused when its sandbox is required and not
+    environment:
+      AEW_DASHBOARD_AUTOSTART:
+        "off": disable dashboard auto-start
+        default: start the dashboard at an operator terminal with a display; reuse a running dashboard without minting
+        authority: none; this switch can only disable the start, never authorize a session
+    note: "after validating the held Lead seat, starts the dashboard in-process on port 4280 for the session's
+      lifetime, opening only its first session in
+      the browser with no typed-back code; a Lead session refuses this start; later opens against this server refuse
+      on both platforms (use dashboard serve in its own terminal after ending the session). On Linux the Lead runs
+      contained (STG-05 CS-4): at a terminal, refused when its sandbox is required and not
       established; --provider-env NAME then feeds NAME's provider relay on the host, and the Lead's shell sees a
       placeholder"
   - name: stage continue

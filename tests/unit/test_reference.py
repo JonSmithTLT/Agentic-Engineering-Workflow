@@ -69,6 +69,14 @@ def test_the_committed_reference_is_what_the_code_gives():
     assert found == [], "\n".join(found)
 
 
+def test_the_generated_session_reference_names_the_live_provenances():
+    from aew.dashboard import session
+
+    page = (ROOT / "docs/reference/interfaces.md").read_text(encoding="utf-8")
+    section = page.split("## Dashboard sessions\n", 1)[1].split("## Tools", 1)[0]
+    assert all(f"`{value}`" in section for value in session.AUTHORIZED_BY)
+
+
 def test_a_planted_drift_fails_the_check_and_the_message_names_the_command(tmp_path):
     """The wrong case and the missing case of the check, in the committed pages: a changed byte, a deleted record, a
     stale total, a deleted file, a stray file, a stray subdirectory (a nested file included), a carriage return. Each

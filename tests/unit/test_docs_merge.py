@@ -737,3 +737,56 @@ def test_the_slice_rule_refuses_a_paragraph_about_several_slices_and_a_status_th
                  "register E55", "§7", "what each slice built is in its paragraph",
                  "the row named under **Later slices**"):
         assert not SLICE_TOKEN.search(text), text
+
+
+# The board uses the same blank-separated blocks, with counts bound to their members.
+def systems_files(data):
+    systems = register._systems(ROOT)
+    # Separate YAML entries too: a last-field / next-entry change has an unchanged separator.
+    text = "schema: aew/systems/v1\nwip_limit: 12\nunowned: {}\nsystems:\n" + "\n".join(
+        yaml.safe_dump([e], sort_keys=False) for e in data["systems"])
+    return {systems.SYSTEMS: text, systems.MARKDOWN: systems.render_markdown(data, {})}
+
+
+def merge_board():
+    return {"schema": "aew/systems/v1", "wip_limit": 12, "unowned": {}, "systems": [
+        {"id": f"SYS-{n:02}", "name": f"System {n}", "register": [], "remaining": [], "decision": "none",
+         "recommendation": "finish", "state": {"board_state": "partly_built"}, "who": "Lead"}
+        for n in range(1, 5)]}
+
+
+def test_neighbouring_system_blocks_merge_into_the_render_of_merged_yaml(repo):
+    systems = register._systems(ROOT)
+    data = merge_board()
+    base = repo.commit(systems_files(data))
+    ours, theirs = copy.deepcopy(data), copy.deepcopy(data)
+    ours["systems"][0]["who"] = "builder"  # last field on the first block
+    theirs["systems"][1]["name"] += " changed"  # next heading
+    conflicts, files = repo.merge(repo.commit(systems_files(ours), base), repo.commit(systems_files(theirs), base))
+    assert conflicts == []
+    merged = load(files[systems.SYSTEMS])
+    assert merged["systems"][0] == ours["systems"][0] and merged["systems"][1] == theirs["systems"][1]
+    assert files[systems.MARKDOWN] == systems.render_markdown(merged, {})
+
+
+def test_two_branches_changing_a_view_count_conflict_even_when_the_number_is_equal(repo):
+    systems = register._systems(ROOT)
+    data = merge_board()
+    base = repo.commit(systems_files(data))
+    ours, theirs = copy.deepcopy(data), copy.deepcopy(data)
+    ours["systems"][0]["recommendation"] = "done"
+    theirs["systems"][2]["recommendation"] = "done"
+    conflicts, _ = repo.merge(repo.commit(systems_files(ours), base), repo.commit(systems_files(theirs), base))
+    assert systems.MARKDOWN in conflicts, "equal new counts must still conflict through their different members"
+    assert systems.SYSTEMS not in conflicts
+    # Isolate the summary as well: moving two entries into an empty view can itself conflict and must not
+    # accidentally provide the proof that the count and its members are inseparable.
+
+    def summary(board):
+        text = systems.render_markdown(board, {})
+        soon = text.split("## Finish and switch on soon\n\n", 1)[1].split("\n\n###", 1)[0]
+        return {"summary.md": soon + "\n"}
+
+    base = repo.commit(summary(data))
+    conflicts, _ = repo.merge(repo.commit(summary(ours), base), repo.commit(summary(theirs), base))
+    assert "summary.md" in conflicts, "a count on its own line would merge the identical new number silently"

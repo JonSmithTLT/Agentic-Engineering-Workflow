@@ -13,6 +13,7 @@ import copy
 import importlib.util
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -139,8 +140,13 @@ def own(tree: Path) -> Any:
 def found(own: Any, change: Callable[[dict[str, Any]], Any] | None = None, *, text: Callable[[str], str] | None = None,
           header: str = "") -> list[Any]:
     data = copy.deepcopy(board())
+    page = own.root / systems.MARKDOWN
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(systems.render_markdown(data, own.now_order), encoding="utf-8", newline="\n")
     if change is not None:
         change(data)
+    if not systems.schema_problems(data) and sys_(data, "SYS-01")["name"] != "Changed name":
+        page.write_text(systems.render_markdown(data, own.now_order), encoding="utf-8", newline="\n")
     body = header + yaml.safe_dump(data, sort_keys=False, allow_unicode=True, width=118)
     return systems.problems(text(body) if text else body, own)
 
@@ -230,12 +236,13 @@ PLANTED: dict[str, tuple[str, Callable[[dict[str, Any]], Any]]] = {
     "the Lead's private list": ("public", _set("SYS-01", "reason", "ITEMS 55 gate items")),
     "a Windows absolute path": ("public", _set("SYS-01", "evidence", ["C:/work/aew/src/pkg/a.py:1"])),
     "a POSIX absolute path": ("public", _set("SYS-01", "evidence", ["/home/someone/aew/src/pkg/a.py:1"])),
+    "a stale rendered page": ("rendered", _set("SYS-01", "name", "Changed name")),
 }
 
 
 def test_every_rule_has_a_planted_case():
     rules = {"schema", "generated", "design", "register", "remaining", "as_built", "touches", "switch",
-             "depends_on", "owner", "unowned", "hold", "lint", "public"}
+             "depends_on", "owner", "unowned", "hold", "lint", "public", "rendered"}
     assert {rule for rule, _ in PLANTED.values()} == rules
 
 
@@ -297,3 +304,147 @@ def test_the_check_is_deterministic(own):
     first, second = found(own, everything), found(own, everything)
     assert first == second and len(first) > 20
     assert first == sorted(first, key=lambda p: (p.check, p.where, p.text))
+
+
+def test_views_partition_and_questions_cross_the_partition():
+    data = board()
+    data["systems"] = [entry(f"SYS-{n:02}", recommendation=rec) for n, rec in enumerate(
+        ("finish", "finish", "switch_on", "done", "freeze", "cut", "keep"), 1)]
+    data["systems"][1]["remaining"] = [{"slice": str(n), "row": "row owed", "estimate": "1 PR"}
+                                        for n in range(3)]
+    data["systems"][0]["decision"] = "operator: choose"
+    data["systems"][2]["decision"] = "decided: yes"
+    chosen = systems.views(data, {})
+    assert {k: [e["id"] for e in v] for k, v in chosen.items()} == {
+        "soon": ["SYS-01", "SYS-03"], "more": ["SYS-02"], "questions": ["SYS-01"],
+        "done": ["SYS-04"], "not_counted": ["SYS-05", "SYS-06", "SYS-07"]}
+    partition = [e["id"] for k in ("soon", "more", "done", "not_counted") for e in chosen[k]]
+    assert sorted(partition) == sorted(e["id"] for e in data["systems"])
+    text = systems.render_markdown(data, {})
+    assert "**Decided:** 1 — SYS-03" in text
+    data["systems"] = []
+    assert all(not v for v in systems.views(data, {}).values())
+    assert "**Decided:** 0 — none" in systems.render_markdown(data, {})
+    assert len({k for k, _, _ in systems.VIEWS}) == len(systems.VIEWS)
+
+
+@pytest.mark.parametrize("count", [0, 1, 2, 3, 4])
+@pytest.mark.parametrize("recommendation", ["finish", "switch_on"])
+def test_soon_slice_boundary(count, recommendation):
+    data = board()
+    e = data["systems"][0]
+    e["recommendation"] = recommendation
+    e["remaining"] = [{"slice": "s", "row": "E1", "estimate": "e"}] * count
+    chosen = systems.views(data, {})
+    assert (e in chosen["soon"]) == (recommendation == "switch_on" or count <= 2)
+    assert (e in chosen["more"]) == (recommendation == "finish" and count > 2)
+
+
+def test_priority_and_slices_ignore_riders_and_sort_ties_by_id(own):
+    data = board()
+    a, b = data["systems"]
+    a["remaining"] = [{"slice": "rides on SYS-02's E2", "row": "E2", "estimate": "not its estimate"},
+                      {"slice": "own", "row": "E1", "estimate": "2 PRs"}]
+    supplied = replace(own, now_order={"E2": 1, "E1": 4})
+    assert systems.priority(a, supplied.now_order) == 4
+    assert systems.own_slices(a, data) == [a["remaining"][1]]
+    assert [e["id"] for e in systems.views(data, supplied.now_order)["soon"]] == ["SYS-02", "SYS-01"]
+    assert systems.priority(a, {"E2": 1}) is None
+    assert [e["id"] for e in systems.views(data, {"E2": 1})["soon"]] == ["SYS-02", "SYS-01"]
+    data["systems"].reverse()
+    assert [e["id"] for e in systems.views(data, {"E1": 1, "E2": 1})["soon"]] == ["SYS-01", "SYS-02"]
+    rendered = systems.render_markdown(data, supplied.now_order)
+    assert "**Own slices left:** 1 — **Next:** own — E1 — 2 PRs" in rendered
+    assert "**Switch:** a.b" in rendered and "**Who:** Lead" in rendered
+    assert "**Now:** not on the Now list" in systems.render_markdown(data, {})
+
+
+@pytest.mark.parametrize("state", systems.ENUMS[("state", "board_state")])
+@pytest.mark.parametrize("rec", systems.ENUMS[("recommendation",)])
+def test_the_limit_count_is_format_rule_one(state, rec):
+    data = board()
+    data["systems"] = [entry("SYS-01", recommendation=rec)]
+    data["systems"][0]["state"]["board_state"] = state
+    expected = state in ("partly_built", "built_off", "built_not_wired", "staged") and rec in ("finish", "switch_on")
+    assert systems.counted_systems(data) == (["SYS-01"] if expected else [])
+
+
+def board_copy(root, data=None):
+    data = board() if data is None else data
+    path = root / systems.SYSTEMS
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8", newline="\n")
+    register = {"sections": [{"number": 1, "intro": "| 1 | closed: F1 | closed |\n| 2 | E2 | second |\n"
+                             "| 3 | E1 | first |\n| 4 | E1 | again |", "rows": []}]}
+    (root / systems.REGISTER).write_text(yaml.safe_dump(register), encoding="utf-8", newline="\n")
+    return data
+
+
+def test_render_is_deterministic_public_and_compared_byte_for_byte(tmp_path):
+    data = board_copy(tmp_path)
+    assert systems.now_order(tmp_path) == {"E2": 2, "E1": 3}
+    assert systems.priority(data["systems"][0], systems.now_order(tmp_path)) == 3  # closed F1 contributes nothing
+    assert systems.rendered_problems(tmp_path, data, systems.now_order(tmp_path))[0].check == "rendered"
+    systems.render(tmp_path)
+    first = (tmp_path / systems.MARKDOWN).read_bytes()
+    systems.render(tmp_path)
+    assert (tmp_path / systems.MARKDOWN).read_bytes() == first
+    assert b"\r" not in first and systems.public_problems(first.decode()) == []
+    assert systems.rendered_problems(tmp_path, data, systems.now_order(tmp_path)) == []
+    (tmp_path / systems.MARKDOWN).write_bytes(first.replace(b"\n", b"\r\n"))
+    assert "render`" in systems.rendered_problems(tmp_path, data, systems.now_order(tmp_path))[0].text
+    systems.render(tmp_path)
+    assert systems.rendered_problems(tmp_path, data, systems.now_order(tmp_path)) == []
+
+
+def test_show_known_unknown_and_cli_write_nothing(tmp_path, monkeypatch, capsys):
+    data = board_copy(tmp_path)
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    shown = yaml.safe_load(systems.show("SYS-01", tmp_path))
+    assert shown.pop("priority") == 3 and shown == data["systems"][0]
+    assert systems.show("SYS-99", tmp_path) is None
+    real_show = systems.show
+    monkeypatch.setattr(systems, "show", lambda sid: real_show(sid, tmp_path))
+    assert systems.main(["show", "SYS-01"]) == 0
+    assert yaml.safe_load(capsys.readouterr().out)["priority"] == 3
+    assert systems.main(["show", "SYS-99"]) == 1
+    assert "unknown system id" in capsys.readouterr().err
+    assert before == {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+
+def test_render_command_uses_the_existing_renderer(tmp_path, monkeypatch, capsys):
+    board_copy(tmp_path)
+    real_render = systems.render
+    monkeypatch.setattr(systems, "render", lambda: real_render(tmp_path))
+    assert systems.main(["render"]) == 0
+    assert systems.MARKDOWN in capsys.readouterr().out
+    assert (tmp_path / systems.MARKDOWN).exists()
+
+
+def test_register_render_refreshes_board_and_check_reports_staleness(tmp_path, monkeypatch, capsys):
+    import shutil
+
+    register = systems._tool("register")
+    for path in register._paths(ROOT):
+        dest = tmp_path / path.relative_to(ROOT)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, dest)
+    board_path = tmp_path / systems.SYSTEMS
+    board_path.write_text(yaml.safe_dump(board()), encoding="utf-8", newline="\n")
+    page = tmp_path / systems.MARKDOWN
+    page.write_text("stale\n", encoding="utf-8")
+    monkeypatch.setattr(systems, "owners", lambda *a: pytest.fail("render must not read reference owners"))
+    monkeypatch.setattr(systems, "check", lambda *a: pytest.fail("render must not call check"))
+    assert register.render(tmp_path) == []
+    expected = systems.render_markdown(board(), systems.now_order(tmp_path))
+    assert page.read_bytes() == expected.encode()
+    for name, value in zip(("YAML", "MD", "DUE_YAML", "DUE_MD"), register._paths(tmp_path), strict=True):
+        monkeypatch.setattr(register, name, value)
+    monkeypatch.setattr(register, "ROOT", tmp_path)
+    monkeypatch.setattr(register, "source_problems", lambda *a: [])
+    monkeypatch.setattr(register, "note_files", lambda: [])
+    page.write_text("stale\n", encoding="utf-8")
+    assert register.main(["check"]) == 1
+    assert systems.MARKDOWN in capsys.readouterr().out
+    assert register.render(tmp_path) == []
+    assert register.main(["check"]) == 0

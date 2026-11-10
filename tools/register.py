@@ -834,14 +834,34 @@ def render(root: Path = ROOT) -> list[str]:
         return refused
     data = normalize(_load(yaml_path.read_text(encoding="utf-8")))
     due = normalize_due(_load(due_yaml.read_text(encoding="utf-8")))
+    board = _systems(root)
+    board_text = None if board is None else board.render_markdown(board.read_board(root), board.now_order(root))
     for path, text in ((due_yaml, dump(due)), (yaml_path, dump(data))):
         if text != path.read_text(encoding="utf-8"):
             path.write_text(text, encoding="utf-8", newline="\n")
             print(f"normalized {path.relative_to(root)}")
     due_md.write_text(render_due(due), encoding="utf-8", newline="\n")
     md.write_text(render_markdown(data), encoding="utf-8", newline="\n")
+    if board is not None:
+        (root / board.MARKDOWN).write_text(board_text, encoding="utf-8", newline="\n")
     print(f"rendered {md.relative_to(root)}")
     return []
+
+
+def _systems(root: Path) -> Any:
+    """Lazy: four-file register copies and resolve need no board or reference renderer."""
+    if not (root / "docs/implementation/systems.yaml").exists():
+        return None
+    import importlib.util
+
+    key = "systems_tool"
+    if key not in sys.modules:
+        spec = importlib.util.spec_from_file_location(key, Path(__file__).with_name("systems.py"))
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[key] = module
+        spec.loader.exec_module(module)
+    return sys.modules[key]
 
 
 # ------------------------------------------------------------------------------------------------------- resolve
@@ -1176,6 +1196,15 @@ def main(argv: list[str] | None = None) -> int:
     if dump(data) != YAML.read_text(encoding="utf-8"):
         ok = False
         print(f"{YAML.relative_to(ROOT)} is not normalized (§Closed in id order, canonical layout)")
+    board = _systems(ROOT)
+    if board is not None:
+        try:
+            for problem in board.rendered_problems(ROOT, board.read_board(ROOT), board.now_order(ROOT)):
+                ok = False
+                print("problem:", problem)
+        except board.SystemsError as exc:
+            ok = False
+            print("problem:", exc)
     print("in sync" if ok else "run `python tools/register.py render`, and fix any problem it cannot")
     return 0 if ok else 1
 

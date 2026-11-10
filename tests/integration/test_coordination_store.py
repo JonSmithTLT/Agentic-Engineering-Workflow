@@ -872,7 +872,7 @@ INIT_POLICY_DIGESTS = {
 def test_with_messaging_off_init_policy_bytes_and_digests_match_the_goldens(tmp_path, monkeypatch):
     """D-32 (F8): `aew init`, the shipped default execution policy and `aew migrate` never write `coordination`: the
     policy bytes and both digests of a new project are the ones from before F9-A, and a migration leaves the policy
-    as it found it. The price table is the shipped one, and moves only the operational digest (F25 §11, A3 §2.1)."""
+    as it found it. The price table is the shipped one, and moves only the operational digest (A3 §2.1)."""
     from aew.engine import usage_ops as O
     from aew.engine.base import policy_files
     from aew.knowledge.manifest import load_manifest

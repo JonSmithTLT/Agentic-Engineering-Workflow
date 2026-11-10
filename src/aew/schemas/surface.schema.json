@@ -70,7 +70,8 @@
         "callable": {"type": "boolean"},
         "auto_runnable": {"type": "boolean"},
         "reason_codes": {"type": "array", "items": {"type": "string"}},
-        "cli_fallback": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/argv"}]}
+        "cli_fallback": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/argv"}]},
+        "woken": {"const": true, "description": "On a wait: a broker posts wakes, so the readable next step is the turn's end."}
       },
       "allOf": [
         {"if": {"properties": {"auto_runnable": {"const": true}}, "required": ["auto_runnable"]},

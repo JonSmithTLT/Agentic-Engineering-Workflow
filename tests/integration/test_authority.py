@@ -211,7 +211,8 @@ def test_a_project_from_before_the_pin_has_its_policy_files_pinned_by_adopt(proj
     adopted = project.adopt_policy("pin the reviewed policy")
     assert adopted["adopted"] == []
     assert set(load_control(project.root)["policy_sha256"]) == set(policy_files(load_manifest(project.root / ".aew")))
-    assert "policy/gates.yaml" in load_control(project.root)["policy_sha256"]
+    assert {"policy/checks.yaml", "policy/execution.yaml", "policy/gates.yaml", "policy/guardrails.yaml"} <= set(
+        load_control(project.root)["policy_sha256"])  # the standing files, which the derived set alone wouldn't notice
     assert _doctor(project, "policy-pin")["status"] == "PASS"
 
 

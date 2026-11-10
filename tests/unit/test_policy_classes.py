@@ -98,6 +98,27 @@ def test_a_price_table_with_a_key_the_schema_does_not_name_stays_legality():
     assert _digests(**other)["legality_digest"] != _digests(**unnamed)["legality_digest"]
 
 
+def test_a_later_legality_field_in_the_price_schema_binds_whichever_table_holds_it(monkeypatch):
+    """The entry goes only when it came out empty, so a value under a later legality field moves the digest, and a
+    change of its value moves it again."""
+    from aew import schemas
+
+    real = schemas.schema
+
+    def later(name: str) -> dict[str, Any]:
+        out = copy.deepcopy(real(name))
+        if name == "pricing":
+            out["properties"]["gate_on_cost"] = {"x-aew-class": "legality_affecting", "type": "boolean"}
+        return out
+
+    monkeypatch.setattr(schemas, "schema", later)
+    assert classes.unclassified(later("pricing")) == []
+    without = classes.digests({TABLE: ("pricing", PRICES)})["legality_digest"]
+    on = classes.digests({TABLE: ("pricing", {**PRICES, "gate_on_cost": True})})["legality_digest"]
+    off = classes.digests({TABLE: ("pricing", {**PRICES, "gate_on_cost": False})})["legality_digest"]
+    assert without == classes.digests({})["legality_digest"] and len({without, on, off}) == 3
+
+
 def test_a_manifest_naming_an_absent_price_table_stays_legality():
     assert _digests(**{TABLE: ("pricing", None)})["legality_digest"] != _digests()["legality_digest"]
 

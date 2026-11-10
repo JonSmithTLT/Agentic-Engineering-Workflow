@@ -155,6 +155,7 @@ def run(cwd: str | None = None, *, refresh: bool = False, run_checks: bool = Fal
         project_checks = engine.doctor_checks()
         project_checks += _guarded("model-list", lambda: _model_list(engine, refresh))
         project_checks += _guarded("check-changes", lambda: _check_changes(engine, run_checks))
+        project_checks += _guarded("switch-offer", lambda: _switch_offers(engine))
     except ImportError:
         project_checks = []
     except Exception as exc:  # doctor must report, never crash
@@ -199,6 +200,12 @@ def _check_changes(engine: Any, run_checks: bool) -> list[dict[str, str]]:
     from aew.harness import check_changes
 
     return check_changes.doctor_rows(engine, run=run_checks)
+
+
+def _switch_offers(engine: Any) -> list[dict[str, str]]:
+    from aew import switch_offer
+
+    return [_check(name, status, detail) for name, status, detail in switch_offer.doctor_rows(engine)]
 
 
 def readiness_findings(engine: Any) -> list[str]:

@@ -344,7 +344,8 @@ commands:
     mutates: "yes"
     mutates_basis: "runs the Lead session (lead_broker.run_session); with --acquire takes the seat; on Linux, before
       the TUI opens, downloads the tools AEW brings that the operator chooses at the consent screen, when a needed one
-      is missing and not declined"
+      is missing and not declined; on either platform, adopts a moved default the operator takes at the switch offer,
+      typing the code at their own terminal (aew.switch_offer)"
     refusals: [CONTAINMENT_UNAVAILABLE, PROJECT_NOT_FOUND, USAGE]
     note: "on Linux the Lead runs contained (STG-05 CS-4): at a terminal, refused when its sandbox is required and not
       established; --provider-env NAME then feeds NAME's provider relay on the host, and the Lead's shell sees a

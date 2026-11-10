@@ -45,30 +45,11 @@ RESIDUALS = (
 )
 
 
-def locator_path(aew_root: Path) -> Path:
-    return Path(aew_root) / LOCATOR_REL
-
-
-def _same_process(locator: dict[str, Any]) -> bool:
-    pid = locator.get("pid")
-    start, started = locator.get("start_id"), locator.get("process_started")
-    if not isinstance(pid, int) or not procs.pid_alive(pid):
-        return False
-    if start is not None or isinstance(started, int | float):
-        return procs.same_process(pid, procs.recorded(start, started))
-    return True  # alive and unprovable: never replaced
-
-
-def same_process(record: dict[str, Any]) -> bool:
-    """Whether the process a record names by ``pid`` and ``start_id`` (or, in a record from before start ids,
-    ``process_started``) is alive and is that process: the locator's own check, which the endpoint's watcher also
-    applies to the broker's liveness record (M4-E E7a)."""
-    return _same_process(record)
-
-
 def lead_session_problem(env: dict[str, str] | None = None) -> str | None:
     """Why this process is inside a Lead session, or ``None`` (plan v3 §2.1, P1). Dev-grade: it reads the broker's
-    environment and the process chain; a same-uid process that hides both is one of :data:`RESIDUALS`."""
+    environment and the process chain; a same-uid process that hides both is one of :data:`RESIDUALS`. It's here, not
+    in the endpoint, because it grants nothing and other operator-only steps ask it too: the endpoint stays imported by
+    `aew operator serve` alone."""
     env = dict(os.environ) if env is None else env
     if env.get("AEW_LEAD_BROKER") or env.get("AEW_LEAD_BROKER_KEY"):
         return "this process runs in a Lead session (its environment carries the Lead broker's coordinates)"
@@ -109,6 +90,27 @@ def _is_lead_session(argv: list[str]) -> bool:
                     rest.append(w)
             return rest[:2] == ["lead", "session"] or rest[:1] == ["opencode"]
     return False
+
+
+def locator_path(aew_root: Path) -> Path:
+    return Path(aew_root) / LOCATOR_REL
+
+
+def _same_process(locator: dict[str, Any]) -> bool:
+    pid = locator.get("pid")
+    start, started = locator.get("start_id"), locator.get("process_started")
+    if not isinstance(pid, int) or not procs.pid_alive(pid):
+        return False
+    if start is not None or isinstance(started, int | float):
+        return procs.same_process(pid, procs.recorded(start, started))
+    return True  # alive and unprovable: never replaced
+
+
+def same_process(record: dict[str, Any]) -> bool:
+    """Whether the process a record names by ``pid`` and ``start_id`` (or, in a record from before start ids,
+    ``process_started``) is alive and is that process: the locator's own check, which the endpoint's watcher also
+    applies to the broker's liveness record (M4-E E7a)."""
+    return _same_process(record)
 
 
 def sessions_lock(aew_root: Path) -> FileLock:

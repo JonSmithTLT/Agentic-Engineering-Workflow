@@ -159,12 +159,10 @@ def serve_spec(directory: Path, *, port: int = 0) -> dict[str, Any]:
 
 
 def wakes_reach_the_lead(policy: Any) -> bool:
-    """Whether AEW posts wakes here: ``lead.push_wake`` is on, and the platform isn't Windows. Windows is a declared gap
-    (register E210's note of 2026-11-08): its launch was run for real, a wake never has been, so the Lead there waits
-    with `harness_wait`, whatever the policy says."""
-    from aew.policy.execution import PUSH_WAKE_ON, push_wake
+    """Whether AEW posts wakes here (:func:`aew.policy.execution.wakes_post_here`)."""
+    from aew.policy.execution import wakes_post_here
 
-    return push_wake(policy) == PUSH_WAKE_ON and sys.platform != "win32"
+    return wakes_post_here(policy)
 
 
 def pushes_wakes(engine: Any) -> bool:
@@ -192,7 +190,7 @@ def lead_poster(policy: Any, password: str, *, url_file: Path | None = None, uni
         url = url_of(url_file) if url_file is not None else None
         return Client(url, password) if url else None
 
-    return LeadPoster(client)
+    return LeadPoster(client, since_ms=time.time() * 1000)
 
 
 class WeakerOpenCode(lead_broker.WeakerLead):
@@ -342,12 +340,14 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         lead.announce(sys.stderr)  # what it found, before the refusal names what is missing
         lead.require_provider()
         _tools_before_the_tui()
+        offer = _switch_offers(engine)
         stages.mark("logins")
         with operator_autostart.for_session(engine, provider_env=provider_env):
             out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label,
                                           keep_seat=keep_seat,
                                           env=tui_env(os.environ, provider_env=[], guide=guide,
-                                                      push_wake=pushes_wakes(engine)), contained=lead)
+                                                      push_wake=pushes_wakes(engine)), contained=lead,
+                                          with_token=offer.apply)
         return _outcome(out, version)
     # Off Linux the TUI runs as it is, labelled so, with its label.json and its register entry (G3 addendum 7, ruling
     # 1); under an explicit `required` that refuses before any credential is read.
@@ -364,18 +364,27 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     if line is not None:
         sys.stderr.write(line)
     _unrelayed(engine)
+    offer = _switch_offers(engine)
     with operator_autostart.for_session(engine, provider_env=provider_env):
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
-                                      env=env, contained=weaker)
+                                      env=env, contained=weaker, with_token=offer.apply)
     return _outcome(out, version)
 
 
 def _outcome(out: dict[str, Any], version: Any) -> dict[str, Any]:
-    """The session's result. A launch that never started the TUI is no success: `aew opencode` exits non-zero, and the
-    result says what to do, since the shim's own line is above it."""
-    from aew.harness.containment.shim import EXIT_SETUP
+    """The session's result. A launch that never started the TUI is no success, and neither is a session whose server
+    died: `aew opencode` exits non-zero, and the result says what to do. It is the last thing on the screen: on a real
+    TUI the terminal's reset comes after the shim's own line (measured), and its `?1049l` can put the cursor back over
+    it."""
+    from aew.harness.containment.shim import EXIT_SERVER_LOST, EXIT_SETUP
 
-    if out.get("exit") != EXIT_SETUP:  # the shim's own code, which a TUI that ran doesn't exit with
+    if out.get("exit") == EXIT_SERVER_LOST:  # the shim's own codes, which a TUI that ran doesn't exit with
+        held = str(out.get("seat") or "").startswith("held;")  # a run in flight: `aew opencode` alone is refused
+        follow = "continue as `seat` says" if held else "start `aew opencode` again"
+        return {**out, "ok": False, "opencode": version,
+                "server_lost": f"the Lead's server ended, and nothing restarts it, so the session ended; {follow}, and "
+                               f"read the server's log, {SERVER_LOG}, under `.aew/local/`"}
+    if out.get("exit") != EXIT_SETUP:
         return {**out, "opencode": version}
     return {**out, "ok": False, "opencode": version,
             "not_started": "the Lead's TUI was not started; run `aew doctor`, and read the server's log, "
@@ -401,6 +410,15 @@ def _tools_before_the_tui(*, asking: bool = True) -> None:
     from aew.capability import consent
 
     consent.at_lead_start(sys.stderr, asking=asking)
+
+
+def _switch_offers(engine: Any) -> Any:
+    """AEW's moved defaults, asked last before the seat for the same reason as the tools: a held seat can still refuse
+    the start, and the operator shouldn't answer and then be refused for something else. What it takes is applied once
+    the credential is in hand. A policy switch doesn't depend on AEW's tools being bound, so both start paths ask."""
+    from aew import switch_offer
+
+    return switch_offer.at_lead_start(engine, sys.stderr)
 
 
 # ---------------------------------------------------------------------------------------- the contained Lead (Linux)

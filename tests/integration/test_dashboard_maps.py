@@ -45,7 +45,7 @@ from aew.dashboard.reasons import REASONS, codes_in  # noqa: E402
 from aew.dashboard.server import DashboardServer, error_body, pending_routes  # noqa: E402
 from aew.engine.api import Engine  # noqa: E402
 from aew.engine.lock import FileLock  # noqa: E402
-from aew.engine.store import CONTROL_REL, LOCK_REL  # noqa: E402
+from aew.engine.store import CONTROL_REL, LOCK_REL, ControlStore  # noqa: E402
 from aew.errors import HistoryMoved, IntegrityError, LockTimeout  # noqa: E402
 from aew.harness.contract import CREDENTIAL_RE  # noqa: E402
 from aew.history import index as HI  # noqa: E402
@@ -806,12 +806,14 @@ def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on
         engine.store.lock_timeout = 30.0  # a lookup that took the lock would wait this long, then fail
         engine.archive._synced = None  # nothing synced: the lookup must sync the index itself
         real_sync, real_read = HI.HistoryIndex.sync, engine.store.read
-        real_lock, real_db = engine.store.control_lock, HI.HistoryIndex._db
+        real_lock, real_db = ControlStore.control_lock, HI.HistoryIndex._db
         calls: dict[str, Any] = {"sync": 0, "read": 0, "lock": [], "index_waits": []}
 
         def failing_once(self: Any, root: Any, **kwargs: Any) -> Any:
             calls["sync"] += 1
             if calls["sync"] == 1:
+                # The bound this index was given, as the real sync's connection would wait it (review of de2d875f, N1).
+                calls["index_waits"].append(self.timeout)
                 raise LockTimeout("simulated: the history index is busy")
             return real_sync(self, root, **kwargs)
 
@@ -819,9 +821,9 @@ def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on
             calls["read"] += 1
             return real_read(*args, **kwargs)
 
-        def counted_lock(operation: str) -> Any:
-            calls["lock"].append(operation)  # the one place AEW opens the control lock (`ControlStore.control_lock`)
-            return real_lock(operation)
+        def counted_lock(self: Any, operation: str) -> Any:
+            calls["lock"].append(operation)  # the one place AEW opens the control lock, counted on every store (N2)
+            return real_lock(self, operation)
 
         def counted_db(self: Any) -> Any:
             calls["index_waits"].append(self.timeout)  # how long this connection would wait on a busy index
@@ -830,7 +832,7 @@ def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on
         if failure == "index_busy":
             monkeypatch.setattr(HI.HistoryIndex, "sync", failing_once)
         monkeypatch.setattr(engine.store, "read", counted_read)
-        monkeypatch.setattr(engine.store, "control_lock", counted_lock)
+        monkeypatch.setattr(ControlStore, "control_lock", counted_lock)
         monkeypatch.setattr(HI.HistoryIndex, "_db", counted_db)
         with FileLock(p.root / ".aew" / LOCK_REL, timeout=5):
             status, _, raw = client.get("/maps", timeout=120)
@@ -840,7 +842,7 @@ def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on
             # the control lock is never opened, and no index connection waits longer than the lock-free bound.
             assert calls["lock"] == [], calls
             assert all(wait <= P.ARCHIVE_WAIT_S for wait in calls["index_waits"]), calls
-            assert calls["index_waits"] or failure == "index_busy", "the real sync met the moved history"
+            assert calls["index_waits"], "the lookup never reached the index"
             assert calls["read"] == 0  # no state re-read: it would take the control lock
             assert arch["evidence"]["id"] == discovery and arch["freshness"]["status"] == "UNKNOWN"
             assert arch["freshness"]["reasons"][0]["code"] == "ARCHITECTURE_UNKNOWN"

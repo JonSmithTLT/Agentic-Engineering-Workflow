@@ -20,6 +20,7 @@ and one that fired between two waits is not lost.
 from __future__ import annotations
 
 import calendar
+import contextlib
 import errno
 import json
 import os
@@ -42,6 +43,7 @@ LIVE_SCHEMA = "aew/usage-live/v1"
 PROGRESS_FILE = "progress.json"            # the run's progress digest (steering design §2)
 PROGRESS_SCHEMA = "aew/run-progress/v1"
 RETURNED_FILE = "progress.returned.json"   # the newest trigger a wait returned for the run (steering design §1)
+END_RETURNED_FILE = "progress.end-returned"  # a wait returned this run's end to the Lead
 HEARTBEAT_S = 1.0
 # A supervisor that has not beaten for this long has stopped supervising (tests shorten it).
 STALE_AFTER_S = float(os.environ.get("AEW_RUN_STALE_S", "10"))
@@ -178,6 +180,22 @@ def read_returned(directory: Path) -> int:
     except (OSError, ValueError, RecursionError, AttributeError):
         return 0
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def write_end_returned(directory: Path) -> None:
+    """A wait returned this run's end to the Lead. Its queue mustn't wake the Lead with the same news."""
+    with contextlib.suppress(OSError):
+        atomic_write(directory / END_RETURNED_FILE, "")
+
+
+def end_returned(directory: Path) -> bool:
+    return (directory / END_RETURNED_FILE).exists()
+
+
+def forget_end_returned(directory: Path) -> None:
+    """The run went on after all (a stalled heartbeat came back), so its real end is news again."""
+    with contextlib.suppress(OSError):
+        (directory / END_RETURNED_FILE).unlink(missing_ok=True)
 
 
 def write_returned(directory: Path, trigger_seq: int) -> None:

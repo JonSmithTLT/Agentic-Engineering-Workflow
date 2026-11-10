@@ -97,10 +97,12 @@ aew opencode --acquire
   Never a persistent variable or a startup file: a persistent variable reaches every process you start, and a startup file is a plain file in your home directory, like history. Once the session is running, AEW never asks for the Lead credential inside the Lead's own window: a prompt there is not AEW's.
 - Extra OpenCode TUI arguments go after `--`. `--server` and `--standalone` are refused: AEW starts the Lead's server itself, in the Lead's curated environment, and connects the TUI to it.
 - A pasted image reaches the Lead's model without its path or file name, so the Lead can't name it, read it again or hand it to a worker (OpenCode sends no local path to a server it doesn't treat as local; register E211). To keep the path for a file in the project, attach it with an `@` mention, or type its path and ask the Lead to read it.
-- If the Lead's server dies, nothing restarts it: the session ends with a line saying so, and `aew opencode` starts a new one. If it never starts, `aew opencode` exits non-zero and names its log; `aew doctor` checks the rest.
-- With `lead.push_wake` on, AEW wakes the Lead when a run needs it, by posting to the session you last viewed; `aew status` shows each wake under "Lead wakes". Three limits:
+- If the Lead's server dies, nothing restarts it: the session ends, `aew opencode` exits non-zero, and its result says how to go on, which depends on the seat. If it never starts, `aew opencode` exits non-zero and names its log; `aew doctor` checks the rest.
+- AEW wakes the Lead when a run needs it, by posting to the session you last viewed, so the Lead ends its turn after a dispatch and you can talk to it meanwhile; `aew status` shows each wake under "Lead wakes".
+- **To turn wakes off,** set `lead.push_wake: "off"`, quoted, in `.aew/policy/execution.yaml`, and adopt it at your own terminal: `aew manifest adopt --reason ... --expect-rev N`, with the revision from `aew status`. That needs the Lead credential: with it in your shell (`AEW_LEAD_TOKEN`) posts stop within seconds, in a running session too. A session started with `--acquire` holds the only credential, so end that session first. While an edit isn't adopted, no wake is posted, and `aew status` says the last pass failed. The Lead's next steps go back to waiting with `harness_wait`, and a Lead already idle stays idle until you talk to it. A project that doesn't name the key has wakes on. Turning them back on takes effect at once in a session that started with them on, and at the next launch otherwise.
+- Wakes have these limits:
   - **`/new`:** no session exists between `/new` and your first prompt, and the server gives no signal for that gap. A wake in it goes to the session you left and spends a turn there, and it doesn't show in the TUI. `aew status` shows it was posted, and to which session.
-  - **A restart:** the same gap. A wake before your first prompt goes to the session you last viewed in an earlier launch.
+  - **A restart:** a wake before your first prompt in this launch is held for it, and `aew status` shows it outstanding. Nothing shows in the TUI until you type.
   - **Windows:** no wake is posted, whatever the switch says, so the Lead waits with `harness_wait` (register E210).
 
 In the TUI, the agent is `aew-lead`, with these commands:
@@ -117,6 +119,15 @@ In the TUI, the agent is `aew-lead`, with these commands:
 **The Lead's guide.** The Lead's system text includes the project's guide to how AEW works (`aew guide`, rendered from this project's own gates policy when `aew opencode` starts): what each risk class requires and still guarantees, the Ticket lifecycle, and the typed tool for each step, with its shell command as the fallback. The default-policy version is [`lead-guide.md`](lead-guide.md).
 
 The Lead's permissions: reading and searching, `aew`, and `git status|diff|log|show` are allowed; editing files and subagents are denied; any other shell command or tool asks you.
+
+### When AEW's default for a switch has moved
+
+An existing project keeps what its files hold, so at `aew opencode`'s start your terminal may ask about a default AEW has
+since changed: the mutating concurrency, or a price table if the project has none. Each prompt says what changes and
+whether a stage open now would stop. Type the code it shows to take it, as your decision. Enter alone keeps what you have
+and AEW won't ask again; anything else changes nothing and asks again next start. A value other than AEW's old default
+is never offered. `aew doctor` shows what is pending or declined, and how to take a declined one by hand. A Lead session
+is never asked.
 
 ## 4. Runs
 

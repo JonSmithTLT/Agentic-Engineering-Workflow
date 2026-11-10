@@ -385,7 +385,7 @@ class Integration:
         elif not merged["conflict"]:
             snap = self.invocations.snapshot_of(int_ws["path"], int_ws["workspace_id"])
             unit["integration"] = {**record, "status": "prepared", "candidate": candidate,
-                                    "candidate_snapshot": snap, "changed_paths": changed}
+                                   "candidate_snapshot": snap, "changed_paths": changed}
             unit["integration"]["coverage"] = CV.build(
                 subject={"work_id": work_id, "scope": "integration", "base": base, "candidate": candidate,
                          "snapshot": snap}, configured=[], checks=[],

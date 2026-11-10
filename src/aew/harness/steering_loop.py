@@ -21,7 +21,8 @@ to a stop; the envelope is counted per activation.
    policy; an open high anomaly anywhere (§2.4); a project-level blocker or decision. A Ticket with a decision, a
    blocker or an action whose availability is UNKNOWN is never advanced; when no Ticket has an eligible action
    (AVAILABLE and ``auto_runnable``), the loop stops, naming the first reason it met.
-3. Select the first eligible action, Tickets in id order.
+3. Select the first eligible action, Tickets in the priority order (``priority.order``: the level, then how many
+   live Tickets each unblocks, then the id; register E227).
 4. ``confirm_before`` (``steering.confirmation_reason``): Crawl always, Walk unless every declared effect of every
    primitive is in ``{control_state}`` (A1 §2, fail closed), Run never. **E7b has no confirmation (amendment 1, m3):**
    such an action is never executed, and the loop stops with ``CONFIRMATION_UNAVAILABLE``. E7c replaces that stop.
@@ -140,9 +141,11 @@ def select(project: dict[str, Any], units: list[dict[str, Any]],
            rank: Mapping[str, tuple[int, int, str]] | None = None) -> Choice | Stop:
     """Steps 2 and 3 of a tick, the same in every mode: the first eligible action, or why there is none. ``project``
     is the project's projection, ``units`` each live Ticket's, taken in ``rank``'s order (``priority.order``: the
-    level, then how many live units each unblocks, then the id; register E227) and in id order without one. A `low`
+    level, then how many live Tickets each unblocks, then the id; register E227) and in id order without one. A `low`
     Ticket starts only when no `critical` or `normal` one has an eligible action, and nothing is pre-empted. When
-    none is eligible, the stop reported is the first in that order."""
+    none is eligible, the stop reported is the first in that order, whatever its kind. The limit: a higher Ticket's
+    stop that clears without the Lead (BLOCKED on a conflict) is reported in place of a lower Ticket's that only the
+    Lead can clear (DECISION_REQUIRED), which stays in that Ticket's projection."""
     high = [a for a in project.get("anomalies") or [] if (a.get("details") or {}).get("severity") == "high"]
     if high:
         a = high[0]["details"]

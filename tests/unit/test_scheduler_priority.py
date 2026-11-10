@@ -1,6 +1,6 @@
 """A Ticket's scheduling priority (register E227): the order the steering loop's ``select`` takes Tickets in, the
-levels' one owner, the Ticket field registry's step to v2, and how `status` shows it. The engine-backed draft, CLI and
-status paths are in ``tests/integration/test_ticket_priority_draft.py``."""
+levels' one owner, the Ticket field registry's non-material `scheduling` group, and how `status` shows it. The
+engine-backed draft, CLI and status paths are in ``tests/integration/test_ticket_priority_draft.py``."""
 
 from __future__ import annotations
 
@@ -10,7 +10,9 @@ from typing import Any
 import pytest
 from test_ticket_digests import record_text, world
 
+from aew import priority_levels
 from aew.engine import priority as PRIORITY
+from aew.engine import resume_ops
 from aew.engine import ticket_fields as TF
 from aew.harness import steering_loop as L
 from aew.harness.steering_loop import Choice, Stop
@@ -66,13 +68,29 @@ def test_at_the_same_level_the_ticket_that_unblocks_more_live_units_starts_first
     assert picked(units, state) == "T-0001"
 
 
-def test_a_dependency_inherited_from_a_story_counts_as_what_the_ticket_unblocks():
+def test_a_dependency_inherited_from_a_story_counts_its_ticket_not_the_story():
+    """E227 counts the Tickets each unblocks: a Story's edge is counted once, through each of its Tickets."""
     state = {"work": {"T-0001": ticket(), "T-0002": ticket(),
                       "S-0001": ticket("PLANNING", kind="story", depends_on=["T-0002"]),
                       "T-0003": ticket("BLOCKED", parent="S-0001")}}
-    # the Story's own edge and its Ticket's inherited one: two live units wait on T-0002
-    assert PRIORITY.unblocks(state)["T-0002"] == 2
+    assert PRIORITY.unblocks(state)["T-0002"] == 1  # T-0003, by the Story's edge; the Story itself is not counted
     assert picked([ready("T-0001"), ready("T-0002")], state) == "T-0002"
+
+
+def test_the_hierarchy_s_depth_never_changes_the_order():
+    """Review of the priority PR, M1: one Ticket waiting through a Story, against one waiting directly, is a tie that
+    the id decides; and an Epic over a Story over three Tickets counts three, not five."""
+    tie = {"work": {"T-0002": ticket(), "T-0003": ticket(), "T-0004": ticket("BLOCKED", depends_on=["T-0002"]),
+                    "S-0001": ticket("PLANNING", kind="story", depends_on=["T-0003"]),
+                    "T-0005": ticket("BLOCKED", parent="S-0001")}}
+    assert picked([ready("T-0003"), ready("T-0002")], tie) == "T-0002"
+    deep = {"work": {"T-0010": ticket(), "T-0011": ticket(),
+                     "E-0001": ticket("OPEN", kind="epic", depends_on=["T-0010"]),
+                     "S-0001": ticket("PLANNING", kind="story", parent="E-0001"),
+                     **{f"T-01{i}": ticket("BLOCKED", parent="S-0001") for i in range(3)},
+                     **{f"T-02{i}": ticket("BLOCKED", depends_on=["T-0011"]) for i in range(4)}}}
+    assert PRIORITY.unblocks(deep)["T-0010"] == 3 and PRIORITY.unblocks(deep)["T-0011"] == 4
+    assert picked([ready("T-0010"), ready("T-0011")], deep) == "T-0011"
 
 
 def test_a_low_ticket_starts_only_when_no_critical_or_normal_one_is_eligible():
@@ -100,8 +118,9 @@ def test_the_loop_ranks_by_the_committed_state_at_each_tick():
 
 def test_the_levels_have_one_owner_the_control_schema():
     owned = schema("control")["$defs"]["work_unit"]["properties"]["priority"]["properties"]["level"]["enum"]
-    assert list(PRIORITY.LEVELS) == owned == contract.PRIORITY_LEVELS
-    assert PRIORITY.DEFAULT in PRIORITY.LEVELS
+    assert list(priority_levels.LEVELS) == owned == contract.PRIORITY_LEVELS
+    assert PRIORITY.LEVELS is priority_levels.LEVELS and PRIORITY.DEFAULT is priority_levels.DEFAULT
+    assert PRIORITY.DEFAULT in PRIORITY.LEVELS and PRIORITY.LOWEST == owned[-1]
     draft = contract.tool("ticket_draft")
     assert draft is not None and draft.input_schema["properties"]["priority"] == {"enum": owned}
     assert "priority" not in draft.input_schema.get("required", [])
@@ -109,22 +128,22 @@ def test_the_levels_have_one_owner_the_control_schema():
     assert draft.base_class == contract.JUDGMENT_BEARING
 
 
-# ---------------------------------------------------------------------------------------------- the registry step
+# ---------------------------------------------------------------------------------------------- the registry
 
 
-def test_registry_v2_adds_only_a_group_that_is_not_material():
-    v1, v2 = TF.load_registry(1), TF.load_registry(2)
-    assert TF.load_registry() == v2 and v2.predecessor == v1.identity
-    assert TF._registry_delta(v1, v2) == {"scheduling"}
-    assert v2.groups["scheduling"] is False and TF.material({"scheduling"}, registry=v2) == frozenset()
+def test_the_priority_is_in_v1_s_own_scheduling_group_which_is_not_material():
+    """ADR-0016 §1.5 and A-47: before S3 binds evidence to a registry identity, a new group goes into version 1 in
+    place (the Lead's ruling on the review's m1)."""
+    reg = TF.load_registry()
+    assert reg.version == 1 and reg.predecessor is None
+    assert reg.groups["scheduling"] is False and TF.material({"scheduling"}, registry=reg) == frozenset()
+    assert reg.classifies_control("priority")
 
 
-def test_a_ticket_digested_under_v1_has_no_material_change_under_v2_and_its_priority_never_stales_it():
+def test_a_ticket_s_priority_moves_only_the_scheduling_group_and_never_stales_it():
     text = record_text()
     state = world(text)
-    before = TF.live_digests(state, "T-0001", text, registry=TF.load_registry(1))
     after = TF.live_digests(state, "T-0001", text)
-    assert TF.material(TF.changed_groups(before, after)) == frozenset()
     state["work"]["T-0001"]["priority"] = {"level": "critical", "reason": "a release blocker"}
     moved = TF.changed_groups(after, TF.live_digests(state, "T-0001", text))
     assert moved == {"scheduling"} and TF.material(moved) == frozenset()
@@ -149,6 +168,20 @@ def graph_state(level: str | None, *, reason: str | None = "nice to have") -> di
 ])
 def test_status_shows_a_priority_that_is_not_the_default_with_its_reason_and_a_lows_age(level, line):
     assert line in work_graph_lines(graph_state(level), now=NOW)
+
+
+@pytest.mark.parametrize(("state", "waiting"), [("READY", True), ("BLOCKED", True), ("ASSIGNED", False),
+                                                ("RUNNING", False), ("REVIEW_PENDING", False), ("DONE", False),
+                                                ("CANCELLED", False)])
+def test_only_a_low_ticket_that_has_not_started_is_shown_waiting(state, waiting):
+    """Review of the priority PR, m2: a `low` Ticket that started or finished is not waiting, and a finished one's
+    status entry carries no age, so the report never grows with history."""
+    unit = graph_state("low")["work"]["T-0001"]
+    unit["state"] = state
+    lines = "\n".join(work_graph_lines({"work": {"T-0001": unit}}, now=NOW))
+    assert ("[low, waiting 3d: nice to have]" in lines) is waiting
+    assert "[low: nice to have]" in lines or waiting
+    assert ("age" in resume_ops._priority(unit)["priority"]) is waiting
 
 
 def test_the_generated_current_page_shows_the_priority_but_no_age_so_it_stays_a_function_of_the_state():

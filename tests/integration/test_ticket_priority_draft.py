@@ -49,6 +49,21 @@ def test_a_ticket_drafted_without_a_priority_is_normal_and_status_adds_nothing_f
     assert not any("[" in line for line in report["work_graph"] if wid in line)
 
 
+def test_ticket_draft_refuses_a_low_or_critical_priority_with_no_reason_naming_its_field(tmp_path):
+    """Review of the priority PR, n3: the Lead's tool is refused in its own terms, naming `priority_reason`, and the
+    tool's schema says a reason is needed unless the level is normal."""
+    from aew.surface import contract
+
+    p = sample_project(tmp_path)
+    before = set(load_control(p.root)["work"])
+    out = call(p, "ticket_draft", **DRAFT, priority="low")
+    assert not out["ok"] and set(load_control(p.root)["work"]) == before, out  # no Ticket was drafted
+    assert "`priority_reason`" in str(out) and "every level but normal needs one" in str(out), out
+    draft = contract.tool("ticket_draft")
+    assert draft is not None and "needed unless normal" in draft.input_schema["properties"]["priority_reason"][
+        "description"]
+
+
 def test_the_cli_sets_a_priority_at_creation_and_refuses_one_with_no_reason_or_on_a_story(tmp_path):
     p = sample_project(tmp_path)
     base = ["work", "create", "ticket", "--title", "Add subtract()", "--class", "1", "--scope", "calc/**"]
@@ -56,7 +71,7 @@ def test_the_cli_sets_a_priority_at_creation_and_refuses_one_with_no_reason_or_o
     assert unit(p, made["id"])["priority"] == {"level": "critical", "reason": "the release waits on it"}
     env = {"AEW_LEAD_TOKEN": p.token}
     for refused, why in [
-        ([*base, "--priority", "low"], "give its reason (--priority-reason)"),
+        ([*base, "--priority", "low"], "give its reason (`priority_reason`, or --priority-reason)"),
         (["work", "create", "story", "--title", "Arithmetic", "--class", "1", "--priority", "low",
           "--priority-reason", "later"], "a priority belongs to a Ticket"),
         ([*base, "--priority", "low", "--priority-reason", "  "], "is not blank"),

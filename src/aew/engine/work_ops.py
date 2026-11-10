@@ -579,8 +579,9 @@ class WorkCommands:
             if reason is not None and (not isinstance(reason, str) or not reason.strip()):
                 raise UsageError("a priority reason, when given, is not blank")
             if level != PRIORITY.DEFAULT and reason is None:
-                raise UsageError(f"a {level} priority records why: give its reason (--priority-reason), the judgment "
-                                 "`status` shows beside it", priority=level)
+                raise UsageError(f"a {level} priority records why: give its reason (`priority_reason`, or "
+                                 f"--priority-reason), the judgment `status` shows beside it; every level but "
+                                 f"{PRIORITY.DEFAULT} needs one", priority=level)
         if a.get("class0_assertions") and risk_class != 0:
             raise UsageError("--class0-assert records the Lead's Class 0 eligibility assertions; it applies only "
                              "with --class 0")

@@ -3,11 +3,10 @@
 E19-B §2.3 and §2.4 (ledger TRA-04, TRA-05) as the F4 plan applies them (§3.3, §3.4; decisions 1 to 6;
 ``docs/implementation/f4-ticket-revisions-plan.md``), recorded in ADR-0016 §1.
 
-* **The registry** (``schemas/ticket-field-registry.v<version>.json``, the current one ``CURRENT_VERSION``) assigns
-  every revision-governed Ticket input to exactly one primary field group, names its canonicalization rule, and
-  lists every other work-unit key as provenance or engine bookkeeping. Its identity is
-  ``aew/ticket-field-registry/v<version>@<sha256 of its canonical JSON>``, so the identity does not depend on how the
-  file's bytes were checked out.
+* **The registry** (``schemas/ticket-field-registry.v1.json``) assigns every revision-governed Ticket input to exactly
+  one primary field group, names its canonicalization rule, and lists every other work-unit key as provenance or
+  engine bookkeeping. Its identity is ``aew/ticket-field-registry/v<version>@<sha256 of its canonical JSON>``, so the
+  identity does not depend on how the file's bytes were checked out.
 * **Canonicalization** is exactly E19-B's v1 text set for prose (CR and CRLF to LF, NFC, trailing spaces and tabs
   removed), exact values for everything else, and two declared set rules (``class0_assertions``; the effective edges).
 * **Digests are live** (M10): computed from the current record, the unit's control state and the obligations and edges
@@ -41,9 +40,6 @@ from aew.schemas import validate
 from aew.util import parse_frontmatter, sha256_text
 
 REGISTRY_FILE = "ticket-field-registry.v{version}.json"
-# The version digests are computed with. v2 adds the non-material `scheduling` group for a Ticket's priority
-# (register E227); every earlier version stays packaged, as the lineage `changed_groups` reads.
-CURRENT_VERSION = 2
 DIGEST_PREFIX = "aew/tfg/v1"
 STORES = ("record", "control", "derived")
 # The values the engine derives for the gate_set and dependencies groups. A registry must classify every one: one it
@@ -261,8 +257,8 @@ def registry_from_doc(doc: Mapping[str, Any], *, source: str = "ticket field reg
 
 
 @cache
-def load_registry(version: int = CURRENT_VERSION) -> Registry:
-    """A packaged registry version, by default the current one (``CURRENT_VERSION``)."""
+def load_registry(version: int = 1) -> Registry:
+    """A packaged registry version (the current one is 1)."""
     name = REGISTRY_FILE.format(version=version)
     try:
         text = resources.files("aew.schemas").joinpath(name).read_text(encoding="utf-8")

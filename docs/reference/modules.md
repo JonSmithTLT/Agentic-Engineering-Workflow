@@ -84,6 +84,10 @@ None.
 - `aew.harness.procs`
 - `aew.util`
 
+### `aew.priority_levels`
+
+- `aew.schemas`
+
 ### `aew.process_kind`
 
 - `aew.errors`
@@ -340,12 +344,12 @@ None.
 - `aew.cli.commands`
 - `aew.cli.fields`
 - `aew.engine.custody_ops`
-- `aew.engine.priority`
 - `aew.errors`
 - `aew.harness.bridge`
 - `aew.harness.contract`
 - `aew.harness.delivery`
 - `aew.operator`
+- `aew.priority_levels`
 - `aew.surface.context`
 - `aew.surface.errors`
 - `aew.surface.run`
@@ -993,7 +997,7 @@ None.
 ### `aew.engine.priority`
 
 - `aew.engine.hierarchy`
-- `aew.schemas`
+- `aew.priority_levels`
 
 ### `aew.engine.queue_ops`
 
@@ -2022,6 +2026,7 @@ None.
 
 ### `aew.surface.contract`
 
+- `aew.priority_levels`
 - `aew.schemas`
 - `aew.surface.context`
 

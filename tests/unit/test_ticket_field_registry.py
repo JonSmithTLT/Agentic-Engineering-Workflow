@@ -26,8 +26,7 @@ from aew.util import sha256_text
 
 
 def registry_doc() -> dict[str, Any]:
-    name = TF.REGISTRY_FILE.format(version=TF.CURRENT_VERSION)  # the current version, which digests use
-    text = resources.files("aew.schemas").joinpath(name).read_text(encoding="utf-8")
+    text = resources.files("aew.schemas").joinpath("ticket-field-registry.v1.json").read_text(encoding="utf-8")
     return json.loads(text)
 
 
@@ -67,8 +66,8 @@ def test_every_ticket_field_is_classified():
     unit_def = schema("control")["$defs"]["work_unit"]
     unclassified += [f"control:{k}" for k in unit_def["properties"] if not reg.classifies_control(k)]
     assert unclassified == [], (
-        "classify each in the current src/aew/schemas/ticket-field-registry.v<N>.json (plan §3.3, §9.2): an input "
-        "in its group, anything else as provenance or bookkeeping")
+        "classify each in src/aew/schemas/ticket-field-registry.v1.json (plan §3.3, §9.2): an input in its group, "
+        "anything else as provenance or bookkeeping")
     # Every unit of every walk: the oracle's rule 50 is part of control_violations, which every walk step checks.
     assert "ticket_field_violations(root, state)" in inspect.getsource(control_violations)
 
@@ -118,8 +117,7 @@ def test_the_registry_identity_is_its_canonical_json_whatever_the_file_bytes():
     doc = registry_doc()
     reg = TF.load_registry()
     assert reg.identity == TF.registry_from_doc(json.loads(json.dumps(doc, indent=4).replace("\n", "\r\n"))).identity
-    digest = hashlib.sha256(TF.canonical_json(doc)).hexdigest()
-    assert reg.identity == f"aew/ticket-field-registry/v{TF.CURRENT_VERSION}@{digest}"
+    assert reg.identity == f"aew/ticket-field-registry/v1@{hashlib.sha256(TF.canonical_json(doc)).hexdigest()}"
     changed = copy.deepcopy(doc)
     changed["groups"]["card"]["description"] += "."
     assert TF.registry_from_doc(changed).identity != reg.identity

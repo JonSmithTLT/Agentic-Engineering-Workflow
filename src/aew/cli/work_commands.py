@@ -7,6 +7,7 @@ import os
 import sys
 from typing import Any
 
+from aew import priority_levels as LEVELS
 from aew.cli import fields
 from aew.cli.commands import (
     _add_json,
@@ -17,7 +18,6 @@ from aew.cli.commands import (
     add_token,
     operator_attribution,
 )
-from aew.engine import priority as PRIORITY
 from aew.errors import UsageError
 from aew.harness import bridge
 from aew.harness.contract import ENDED_WITHOUT_EVIDENCE
@@ -146,10 +146,11 @@ def register(sub: argparse._SubParsersAction) -> None:
                    choices=["transformation_clear", "inputs_complete", "no_consequential_boundary"],
                    help="Class 0 only: a semantic assertion the engine cannot check (all three are needed for Class 0 "
                         "eligibility)")
-    q.add_argument("--priority", choices=PRIORITY.LEVELS,
-                   help="Ticket only: its place in the steering loop's order, set here and only here (default "
-                        f"{PRIORITY.DEFAULT}); a {' or '.join(lv for lv in PRIORITY.LEVELS if lv != PRIORITY.DEFAULT)} "
-                        "one needs --priority-reason")
+    q.add_argument("--priority", choices=LEVELS.LEVELS,
+                   help="Ticket only: its place in the steering loop's order, set at creation only (here or "
+                        f"`ticket_draft`; default {LEVELS.DEFAULT}); a "
+                        f"{' or '.join(lv for lv in LEVELS.LEVELS if lv != LEVELS.DEFAULT)} one needs "
+                        "--priority-reason")
     q.add_argument("--priority-reason", help="why this priority: `status` shows it beside the level")
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_create(

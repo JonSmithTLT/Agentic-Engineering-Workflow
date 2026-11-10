@@ -57,15 +57,17 @@ VACANT_SEAT = (f"`aew opencode --acquire` takes it for a Lead session, with no c
 
 
 def _priority(unit: dict[str, Any]) -> dict[str, Any]:
-    """A Ticket's priority in the status report when it isn't the default (register E227), with a `low` one's age:
-    absent means normal, so every status read stays as small as it was for the usual Ticket (E231's one pool)."""
+    """A Ticket's priority in the status report when it isn't the default (register E227), with the age of a `low` one
+    that has not started: absent means normal, so every status read stays as small as it was for the usual Ticket,
+    and a finished Ticket's entry never grows with history (E231's one pool)."""
     if unit.get("kind") != "ticket":
         return {}
     found = PRIORITY.of(unit)
     if found["level"] == PRIORITY.DEFAULT:
         return {}
-    if found["level"] == "low":
-        found["age"] = PRIORITY.age(unit, dt.datetime.now(dt.UTC))
+    waited = PRIORITY.waiting_age(unit, dt.datetime.now(dt.UTC))
+    if waited is not None:
+        found["age"] = waited
     return {"priority": found}
 
 

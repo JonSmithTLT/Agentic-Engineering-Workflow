@@ -220,8 +220,8 @@ VECTOR_DIGESTS = {
     "gate_set": "834116fdb82bfaf8a396a013b7ed02b08dc598170ab4a79104b40ac93d0509e7",
     "kind": "5b48c10c4491d4b413dec0e88c57dc53c97c20050c20e00d0aead6585c273f93",
     "parent": "ef044331ae4e60709a32b9323d3060a012366936738f04e565241304cc2461a0",
-    # registry v2 (register E227): the non-material group a Ticket's priority hashes into; every other vector is as
-    # v1 gave it, so the version step moved no other group's digest
+    # register E227: the non-material group a Ticket's priority hashes into, added to v1 in place before S3 binds
+    # evidence (ADR-0016 §1.5); every other vector is unchanged
     "scheduling": "f8d5eff18e1e8c8805e03fa43f2aef746f13419551ac6587e3eb843b2e8c67e9",
     "scope": "7f2b361a63a9543352dbb25321390b5dcde6a38b768687769ed13a3c2c529f5d",
     "staffing": "6592665325b0cfe477769e8065061312dddda4aacd4d9e2c65090b7dd26ab391",

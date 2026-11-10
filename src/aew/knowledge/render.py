@@ -38,13 +38,13 @@ def _blocker_text(unit: dict[str, Any]) -> str:
 
 
 def _priority_text(unit: dict[str, Any], now: dt.datetime | None) -> str:
-    """A Ticket's priority beside its line when it isn't the default (register E227): its level and reason, and a
-    `low` one's age when ``now`` is given (``status``; the generated CURRENT.md gives none, so it stays a function of
-    the state)."""
+    """A Ticket's priority beside its line when it isn't the default (register E227): its level and reason, and how
+    long a `low` one that has not started has waited, when ``now`` is given (``status``; the generated CURRENT.md
+    gives none, so it stays a function of the state)."""
     found = PRIORITY.of(unit)
     if found["level"] == PRIORITY.DEFAULT:
         return ""
-    age = PRIORITY.age(unit, now) if now is not None and found["level"] == "low" else None
+    age = PRIORITY.waiting_age(unit, now) if now is not None else None
     head = found["level"] + (f", waiting {age}" if age else "")
     return f"  [{head}: {found['reason']}]" if found["reason"] else f"  [{head}]"
 

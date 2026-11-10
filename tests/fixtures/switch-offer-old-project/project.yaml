@@ -1,0 +1,48 @@
+# AEW project manifest (KC §6). Resolver/index only: referencing a source here does not
+# make it authoritative. authority.accepted changes only through `aew authority accept`.
+# The engine pins this file's hash; the operator adopts manual edits with `aew manifest adopt`.
+schema: aew/project/v1
+project:
+  id: calc
+  name: repo
+  profile: base
+repository:
+  root: ..
+  vcs: git
+  authoritative_branch: main
+workspaces:
+  root: ../.aew-workspaces/calc
+knowledge:
+  project_overview: knowledge/PROJECT.md
+  open_questions: knowledge/OPEN-QUESTIONS.md
+  architecture_map: null
+  codebase_map: null
+  ownership_map: null
+  glossary: null
+control_state:
+  control: state/control.yaml
+  current: state/CURRENT.md
+  handoff: state/HANDOFF.md
+records:
+  work: work/
+  evidence: evidence/
+  decisions: decisions/
+policy:
+  guardrails: policy/guardrails.yaml
+  checks: policy/checks.yaml
+  gates: policy/gates.yaml
+  execution: policy/execution.yaml
+fingerprint:
+  include_ignored: []
+  exclude: []
+roles:
+  catalog: roles/
+authority:
+  accepted: []
+  candidates:
+  - id: C-001
+    path: README.md
+    suggested_class: orientation
+    confidence: low
+    reason: 'README: orientation, may be stale or non-normative'
+    status: proposed

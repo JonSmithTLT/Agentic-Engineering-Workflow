@@ -1,10 +1,10 @@
 """Policy field classes and the two policy digests (the pre-F15.2 amendment A3; M4-E plan §2.5).
 
-Every property of the policy schemas the policy pin covers (gates, guardrails, checks, execution) is classified, in
-the schema itself, as ``"x-aew-class": "legality_affecting"`` or ``"operational"``. A property that carries no class
-must be a container whose own properties are all classified, recursively (through ``properties``, or through
-``additionalProperties`` when the map's values are objects with properties). An unclassified leaf fails: a field never
-silently defaults to operational because its meaning is unknown (A3 §8).
+Every property of the policy schemas the policy pin covers (gates, guardrails, checks, execution, the price table) is
+classified, in the schema itself, as ``"x-aew-class": "legality_affecting"`` or ``"operational"``. A property that
+carries no class must be a container whose own properties are all classified, recursively (through ``properties``, or
+through ``additionalProperties`` when the map's values are objects with properties). An unclassified leaf fails: a field
+never silently defaults to operational because its meaning is unknown (A3 §8).
 
 ``legality_digest`` covers the legality-affecting values and ``operational_digest`` the operational ones, both read
 from the pinned policy bytes. Only a legality change makes a dispatch decision stale. An operational change takes
@@ -20,8 +20,8 @@ pointer (finding 3).
 A price table holding only operational values leaves no entry in ``legality_digest``, not even an empty one, so adding,
 removing or refreshing it stales no open work (A3 §2.1: the digest "Contains only inputs whose change may alter whether
 an action is legal"). That moves the digest only: each of those still needs the operator's adoption, as above. A table
-with a key the schema does not name, a manifest naming a table that is absent, and every other classified file keep
-their entries, so those still fail closed.
+with a top-level key the schema does not name, a manifest naming a table that is absent, and every other classified
+file keep their entries, so those still fail closed.
 """
 
 from __future__ import annotations

@@ -295,12 +295,14 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         lead.announce(sys.stderr)  # what it found, before the refusal names what is missing
         lead.require_provider()
         _tools_before_the_tui()
+        offer = _switch_offers(engine)
         stages.mark("logins")
         with operator_autostart.for_session(engine, provider_env=provider_env):
             out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label,
                                           keep_seat=keep_seat,
                                           env=tui_env(os.environ, provider_env=[], guide=guide,
-                                                      push_wake=pushes_wakes(engine)), contained=lead)
+                                                      push_wake=pushes_wakes(engine)), contained=lead,
+                                          with_token=offer.apply)
         return _outcome(out, version)
     # Off Linux the TUI runs as it is, labelled so, with its label.json and its register entry (G3 addendum 7, ruling
     # 1); under an explicit `required` that refuses before any credential is read.
@@ -316,9 +318,10 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     line = no_provider_line(provider_env, os.environ)
     if line is not None:
         sys.stderr.write(line)
+    offer = _switch_offers(engine)
     with operator_autostart.for_session(engine, provider_env=provider_env):
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
-                                      env=env, contained=weaker)
+                                      env=env, contained=weaker, with_token=offer.apply)
     return _outcome(out, version)
 
 
@@ -353,6 +356,15 @@ def _tools_before_the_tui(*, asking: bool = True) -> None:
     from aew.capability import consent
 
     consent.at_lead_start(sys.stderr, asking=asking)
+
+
+def _switch_offers(engine: Any) -> Any:
+    """AEW's moved defaults, asked last before the seat for the same reason as the tools: a held seat can still refuse
+    the start, and the operator shouldn't answer and then be refused for something else. What it takes is applied once
+    the credential is in hand. A policy switch doesn't depend on AEW's tools being bound, so both start paths ask."""
+    from aew import switch_offer
+
+    return switch_offer.at_lead_start(engine, sys.stderr)
 
 
 # ---------------------------------------------------------------------------------------- the contained Lead (Linux)

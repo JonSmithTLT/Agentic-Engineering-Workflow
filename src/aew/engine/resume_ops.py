@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
+from aew.engine import coverage as CV
 from aew.engine import gate_ops
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
@@ -655,7 +656,9 @@ class Resume:
         state = self.k.store.current()
         if work_id:
             unit = self.units.view(state, work_id)  # hot, or archived as it stands now (R7)
-            return {"revision": state["revision"], "work_unit": dict(unit, id=work_id)}
+            return {"revision": state["revision"], "work_unit": dict(unit, id=work_id),
+                    **({"coverage": CV.for_unit(self.k.aew_root, unit, full=True)}
+                       if unit["kind"] == "ticket" and unit.get("mutating") else {})}
         lead = state["lead"]
         return {
             "project": {"id": self.k.project_id, "name": self.k.manifest["project"]["name"]},
@@ -668,6 +671,8 @@ class Resume:
             "work": {wid: {"state": u["state"], "kind": u["kind"], "title": u["title"],
                            "blocked_by": u.get("blocked_by", [])}
                      for wid, u in sorted(state["work"].items())},
+            "validation_coverage": {wid: CV.for_unit(self.k.aew_root, u) for wid, u in sorted(state["work"].items())
+                                    if u["kind"] == "ticket" and u.get("mutating")},
             "active_invocations": sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active"),
             "next_actions": self.next_actions(state),
             "contradictions": self.views.contradictions(state),

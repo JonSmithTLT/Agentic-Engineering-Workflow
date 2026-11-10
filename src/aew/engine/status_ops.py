@@ -80,7 +80,9 @@ class StatusViews:
     def render_status(self, report: dict[str, Any]) -> str:
         if "work_unit" in report:
             unit = report["work_unit"]
-            return "\n".join(f"{k}: {v}" for k, v in unit.items())
+            summary = (report.get("coverage") or {}).get("summary") or {}
+            return "\n".join([*(f"{k}: {v}" for k, v in unit.items() if k != "coverage"),
+                              *summary.get("lines", []), *([summary["headline"]] if summary else [])])
         lead = report["lead"]
         lines = [
             f"Project: {report['project']['name']} ({report['project']['id']})",
@@ -90,6 +92,9 @@ class StatusViews:
             "",
             *report["work_graph"],
         ]
+        for wid, coverage in (report.get("validation_coverage") or {}).items():
+            summary = coverage["summary"]
+            lines += ["", f"{wid}: {summary['headline']}", *summary["lines"]]
         steering = report.get("steering")
         if steering:  # M4-E E2: the effective mode, a raise pending at the endpoint, and the endpoint's label
             endpoint = steering.get("operator_endpoint") or {}

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from aew import skills
-from aew.engine.harness_ops import _missing_skills
+from aew.engine.harness_ops import _missing_capabilities, _missing_skills
 from aew.harness.supervisor import Supervisor
 
 
@@ -49,6 +49,18 @@ def test_old_and_malformed_skill_records_do_not_break_results():
         assert _missing_skills(record) == []
     assert _missing_skills({"contract": {"extra": {"skills": {"unavailable": ["x"], "reasons": []}}}}) == [
         {"name": "x", "reason": "not_known"}]
+
+
+def test_unrecorded_and_recorded_empty_delivery_have_distinct_shapes():
+    absent = _missing_capabilities(None)
+    legacy = _missing_capabilities({"status": "ended_with_evidence"})
+    empty = _missing_capabilities({"containment": {"missing_tools": {}},
+                                   "contract": {"extra": {"skills": {"unavailable": [], "reasons": {}}}}})
+    assert absent["recorded"] is False
+    assert legacy["recorded"] is True and not legacy["tools_recorded"] and not legacy["skills_recorded"]
+    assert empty["recorded"] and empty["tools_recorded"] and empty["skills_recorded"]
+    assert absent["missing_tools"] == legacy["missing_tools"] == empty["missing_tools"] == []
+    assert absent["missing_skills"] == legacy["missing_skills"] == empty["missing_skills"] == []
 
 
 def test_forged_or_unbounded_missing_skill_names_are_not_shown_but_the_entries_are_kept():

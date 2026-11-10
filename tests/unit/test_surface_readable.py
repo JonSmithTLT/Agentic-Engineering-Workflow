@@ -301,6 +301,13 @@ WAITS: dict[str, dict[str, Any]] = {
                 "triggers": [{"seq": 1, "why": "worker_idle"}], "runs": {"R-1": None}},
     "run_ended": {"run": "R-1", "status": "crashed", "timed_out": False},
     "ended_by": {"run": "R-1", "status": "running", "timed_out": False, "ended_by": {"lane": "control", "reason": "w"}},
+    "capabilities": {"run": "R-1", "status": "crashed", "timed_out": False,
+                     "missing_tools": [{"command": "rg", "got": "stub", "why": "declined"}],
+                     "missing_skills": [{"name": "style", "reason": "not_shipped"}],
+                     "run_capabilities": {"R-1": {
+                         "recorded": True, "tools_recorded": True, "skills_recorded": True,
+                         "missing_tools": [{"command": "rg", "got": "stub", "why": "declined"}],
+                         "missing_skills": [{"name": "style", "reason": "not_shipped"}]}}},
 }
 SHAPES = ["decision", "call", "command", "hint", "blocker", "next_action", "done", *WAITS]
 
@@ -571,6 +578,26 @@ def test_missing_capability_values_cannot_forge_a_line_or_show_a_credential(path
 def test_no_recorded_missing_capabilities_adds_no_claim_of_complete_tooling(payload):
     text = render(wait(**payload))
     assert "Missing run capabilities" not in text and "missing tool:" not in text and "missing skill:" not in text
+
+
+def test_a_nested_capability_run_key_cannot_forge_a_line():
+    text = render(wait(run_capabilities={HOSTILE: missing()}))
+    head = text.split("\n\n" + JSON_MARKER)[0]
+    assert "\x1b" not in head and "\x07" not in head and "\u2028" not in head
+    assert text.split("\n").count(JSON_MARKER) == 1
+    assert len([line for line in head.split("\n") if line.startswith("missing tool:")]) == 1
+
+
+def test_a_coverage_summary_and_each_unknown_survive_a_large_json_cut():
+    from aew.engine import coverage as CV
+
+    coverage = CV.build(subject={}, configured=[], checks=[], changed_files=CV.files([], source="candidate diff"),
+                        capabilities={}, result="pass")
+    text = render(wait(coverage=coverage, long="界" * readable.CUT_BYTES))
+    head = opencode_cut(text)
+    assert "validated within its scope" in head
+    assert "Affected tests: not known" in head and "Project CI tools: not known" in head
+    assert "full output saved to" in head
 
 
 def test_a_long_refusal_s_text_still_holds_its_json():

@@ -6,11 +6,13 @@ all of it when the row is opened, with the view pinned to the bottom, so a tall 
 nothing else (``core/src/session/runner/to-llm-message.ts:125-139``). The operator's measure, 2026-11-04: a person has
 to take in what happened at the speed the Lead works. So the text is, in order:
 
-* the head: the outcome, the next step, what happened, and only what holds the work up. An outcome says what the call
+* the head: the outcome, the next step, recorded coverage and advisory capability summaries, what happened, and what
+  holds the work up.
+  An outcome says what the call
   got: a wait says how its run ended, or that it timed out, and ``done`` is said only of a call with no run status;
 * the marked line and the result as JSON for the Lead, on one line, without what no Lead call takes
   (:func:`for_the_lead`);
-* the outcome and the next step again, where the view lands.
+* the summaries, outcome and next step again, where the view lands.
 
 Every value is put on one line here, so a value can never forge a line of this text, and OpenCode's cut, which keeps
 whole lines up to 50 KiB and then says so (``core/src/tool-output.ts:13-14, 76-88``), takes the JSON and what follows it
@@ -18,7 +20,8 @@ and leaves the head. A result that was one line of JSON over 50 KiB reached pers
 (watched).
 
 :func:`render` derives everything from the result, with no wording of its own beyond the labels. To add what a later
-row needs a person to see, add a function to ``_SECTIONS``.
+row needs a person to see, add a function to ``_SECTIONS``. A summary needed on both sides of the JSON is placed by
+``render`` itself, so it survives a whole-line JSON cut and is repeated where the view lands.
 """
 
 from __future__ import annotations
@@ -71,11 +74,13 @@ def render(result: dict[str, Any]) -> str:
     shown = scrub(result)
     ending = [_outcome(shown), _next(shown)]
     capabilities = _capability_summary(shown)
+    validation = _validation_summary(shown)
     body = [line for section in _SECTIONS for line in section(shown)]
     lead = json.dumps(for_the_lead(shown), separators=(",", ":"))
 
     def text(marker: str) -> str:
-        return "\n".join([*ending, *capabilities, *_steps(shown), *body, "", marker, lead, "", *capabilities, *ending])
+        return "\n".join([*ending, *validation, *capabilities, *_steps(shown), *body, "", marker, lead, "",
+                          *validation, *capabilities, *ending])
 
     return text(JSON_MARKER) if len(text(JSON_MARKER).encode()) <= CUT_BYTES else text(JSON_OVER_THE_CUT)
 
@@ -286,4 +291,26 @@ def _capabilities(result: dict[str, Any]) -> list[str]:
     return [*_listed("missing tool", tools), *_listed("missing skill", skills)]
 
 
-_SECTIONS: tuple[Callable[[dict[str, Any]], list[str]], ...] = (_capabilities, _stopped, _waiting)
+def _validation_values(result: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    payload = _payload(result)
+    coverage = payload.get("coverage")
+    if isinstance(coverage, dict):
+        return [("", coverage.get("summary") or {})]
+    collection = payload.get("validation_coverage") or {}
+    return [(str(wid), c.get("summary") or {}) for wid, c in collection.items()] if isinstance(collection, dict) else []
+
+
+def _validation_summary(result: dict[str, Any]) -> list[str]:
+    return _listed("coverage", [f"{wid + ': ' if wid else ''}{summary.get('headline')}"
+                               for wid, summary in _validation_values(result)])
+
+
+def _validation(result: dict[str, Any]) -> list[str]:
+    values = _validation_values(result)
+    # Each record's lines are already bounded by their engine owner, with separate unknown lines after known facts.
+    # A project view bounds records too, never interpreting unknowns as empty inventories or as a failed gate.
+    return [f"coverage: {_one_line(wid + ': ') if wid else ''}{_one_line(line)}"
+            for wid, summary in values[:MAX_LISTED] for line in summary.get("lines") or []]
+
+
+_SECTIONS: tuple[Callable[[dict[str, Any]], list[str]], ...] = (_validation, _capabilities, _stopped, _waiting)

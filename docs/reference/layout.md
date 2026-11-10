@@ -158,7 +158,7 @@ Both lists are lower bounds. The writes the writers family could not place, and 
 - `work/{}/dispositions` (kept in git); written by `aew.engine.disposition_ops`: `Dispositions._write`; read by none
 - `work/{}/gate-corrections` (kept in git); written by `aew.engine.gate_ops`: `GateRepair._write`; read by none
 - `work/{}/stage-intents` (kept in git); written by `aew.engine.stage_intents`: `StageIntents._end`; read by none
-- `work/{}/validation-runs` (kept in git); written by `aew.engine.validation_ops`: `Validation._write_record`; read by none
+- `work/{}/validation-runs` (kept in git); written by `aew.engine.validation_ops`: `Validation._pin`, `Validation._write_record`; read by none
 
 ## Reads this reading could not place
 
@@ -185,6 +185,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.base`: `Kernel._pinned_bytes` (Path.is_file), `Kernel._pinned_bytes` (Path.read_bytes), `Kernel.locate` (Path.exists), `Kernel.locate` (read_yaml), `Kernel.policy_pins` (Path.is_file), `Kernel.policy_pins` (sha256_file)
 - `aew.engine.context_ops`: `ContextPacks._m2_pack_extras` (Path.read_text), `ContextPacks._m2_pack_inputs` (Path.read_text), `ContextPacks._pack_inputs` (Path.read_text)
 - `aew.engine.coordination_ops`: `Coordination._sealed` (Path.read_bytes), `messaging_switch` (Path.is_file), `messaging_switch` (Path.read_bytes)
+- `aew.engine.coverage`: `load` (Path.read_text), `load` (sha256_file)
 - `aew.engine.dispatch`: `Dispatch._policy_digests` (sha256_file)
 - `aew.engine.disposition_ops`: `Dispositions._load` (Path.read_bytes)
 - `aew.engine.evidence_ops`: `EvidenceCommands.check_run` (Path.exists), `Gates._gates_at` (sha256_file), `Gates.plan_gate_status` (sha256_file)
@@ -204,6 +205,7 @@ Read sites whose path is not followed to a path under `.aew` or to a place outsi
 - `aew.engine.store`: `ControlStore._apply` (sha256_file), `ControlStore._commit_unprofiled` (sha256_file), `ControlStore._load_txn` (Path.read_bytes), `ControlStore._load_txn` (sha256_file), `ControlStore._remove_temp_files` (Path.is_file), `ControlStore._store_modes` (os.lstat), `Session._unsealed_endings` (Path.is_file), `read_lock_free` (Path.is_dir)
 - `aew.engine.ticket_fields`: `load_registry` (Path.read_text), `packaged_registries` (Path.is_file)
 - `aew.engine.usage_ops`: `bundled_table` (Path.read_bytes), `read_price_table` (Path.read_bytes)
+- `aew.engine.validation_ops`: `Validation._coverage_record` (Path.read_text), `Validation._coverage_record` (sha256_file)
 - `aew.engine.work_ops`: `WorkCommands.work_show` (Path.exists), `WorkCommands.work_show` (Path.read_text), `WorkUnits.completion_sha` (sha256_file)
 - `aew.engine.workspace_ops`: `Invocations.current_snapshot` (Path.exists)
 - `aew.g3client`: `read_token` (Path.read_text)

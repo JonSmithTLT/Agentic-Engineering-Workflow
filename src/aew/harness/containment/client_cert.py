@@ -49,8 +49,9 @@ from aew.harness.containment.relay import TLS_MINIMUM
 FIELD = "containment.network.client_certs"
 FILES = ("cert", "key", "ca")
 WHAT = {"cert": "client certificate", "key": "client key", "ca": "CA"}
-# The closed reasons of a refusal over a client certificate: one that cannot be used, and a run with no relay.
-UNUSABLE, NO_RELAY = "client_cert_unusable", "client_cert_no_relay"
+# The closed reasons of a refusal over a client certificate: one that cannot be used, a run with no relay, and a
+# contained Lead whose only certificate provider no profile pins a model of (E123 quick check, N3).
+UNUSABLE, NO_RELAY, NO_MODEL = "client_cert_unusable", "client_cert_no_relay", "client_cert_no_model"
 
 
 @dataclass(frozen=True)

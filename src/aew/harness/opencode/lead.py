@@ -294,15 +294,19 @@ def keyless_certified(policy: Mapping[str, Any] | None, keys: Mapping[str, Any],
 def certified_models(policy: Mapping[str, Any] | None, providers: Mapping[str, Any]) -> dict[str, list[str]]:
     """Each keyless certificate provider's models, from the execution policy's profiles that pin it (E123 quick check,
     Q3): the contained Lead doesn't load the operator's OpenCode configuration, and OpenCode's catalog doesn't know a
-    provider of the policy's own id, so without these the Lead would have no model of it to choose. A profile whose
-    model maps to no pair is skipped: the policy's own check refuses it."""
+    provider of the policy's own id, so without these the Lead would have no model of it to choose. Only the profiles
+    of the Lead's own harness: another harness may name the same model differently (E123 quick check, N2). A profile
+    whose model maps to no pair is skipped: the policy's own check refuses it."""
     from aew.errors import AEWError
     from aew.harness import registry
+    from aew.harness.opencode.adapter import OpenCodeAdapter
     from aew.policy import execution as X
 
     out: dict[str, list[str]] = {}
     profiles = (policy or {}).get("profiles") or {}
     for name in sorted(profiles):
+        if X.profile_harness(dict(policy or {}), profiles[name]) != OpenCodeAdapter.name:
+            continue
         try:
             pair = X.model_pair(dict(policy or {}), name, registry.model_identity)
         except AEWError:
@@ -310,6 +314,14 @@ def certified_models(policy: Mapping[str, Any] | None, providers: Mapping[str, A
         if pair.provider in providers and pair.model not in out.setdefault(pair.provider, []):
             out[pair.provider].append(pair.model)
     return out
+
+
+def _unpinned(provider: str) -> str:
+    """A certificate provider no profile of the Lead's harness pins a model of (E123 quick check, N3): the Lead's
+    configuration names only the models the profiles pin for it, so it would offer none."""
+    return (f"the {provider} provider has a client certificate and an upstream, but no profile pins a model of it, so "
+            f"the Lead would have none to choose and it is not relayed: pin one in a profile "
+            f"(profiles.<name>.provider: {provider}, with its model), then start `aew opencode` again")
 
 
 def _unrelayed(engine: Any) -> None:
@@ -647,9 +659,13 @@ class ContainedLead:
                 self.lines.append(f"{entry.integration} ({entry.kind}): relayed")
         # Only where start_lead relays: under a shared or isolated network it relays nothing, and the Lead is told so
         # instead (E123 quick check, Q1).
-        self.certified = keyless_certified(policy, self.keys, self.refreshing)
+        # One no profile pins a model of is not relayed: the Lead would have nothing of it to choose (E123 quick check,
+        # N3). It is named at the start instead, with what to pin.
+        keyless = keyless_certified(policy, self.keys, self.refreshing)
         self.unrelayed = [] if netns.relay_route(policy, True) else client_cert.unrelayed_lines(policy, "aew opencode")
-        self.models = certified_models(policy, self.certified)
+        self.models = certified_models(policy, keyless)
+        self.certified = {p: c for p, c in keyless.items() if self.models.get(p)}
+        self.unpinned = {p: c for p, c in keyless.items() if p not in self.certified}
         # the provider variables AEW knows that are set in the operator's environment and not fed: names only
         unfed = sorted({v: p for p, v in netns.PROVIDER_KEY_ENV.items()
                         if v not in self.fed and agentenv.lookup(base, v)}.items())
@@ -668,6 +684,8 @@ class ContainedLead:
         for provider, found in self.certified.items():
             out.write(f"aew opencode: {provider} is relayed on the host with the client certificate named in "
                       f"{found.field('cert')}, and no key.\n")
+        for provider in getattr(self, "unpinned", {}):
+            out.write(f"aew opencode: {_unpinned(provider)}.\n")
         for line in self.unrelayed:
             out.write(line)
         if self.unfed:
@@ -701,11 +719,19 @@ class ContainedLead:
         """Refuse the session before its sandbox, and before a seat is taken, when no provider is relayed to the Lead
         (no key and no refreshing login): its configuration switches OpenCode's own providers off
         (``projection.LEAD_DENIED_PROVIDERS``), so it would have no model at all (the designer's ruling of
-        2026-11-06). The closed reason is a worker's (``netns.PROVIDER_KEY_MISSING``)."""
-        from aew.harness.containment import netns
+        2026-11-06). The closed reason is a worker's (``netns.PROVIDER_KEY_MISSING``). A certificate provider counts
+        only with a model a profile pins for it; a Lead whose only one has none is refused with what to pin (E123 quick
+        check, N3)."""
+        from aew.harness.containment import client_cert, netns
 
-        if self.keys or self.refreshing or self.certified:
+        models = getattr(self, "models", {})
+        if self.keys or self.refreshing or any(models.get(p) for p in self.certified):
             return
+        unpinned = sorted({*getattr(self, "unpinned", {}), *self.certified})
+        if unpinned:
+            raise HarnessIncompatible(
+                f"no provider the contained Lead could use: {'; '.join(_unpinned(p) for p in unpinned)}",
+                provider=unpinned[0], reason=client_cert.NO_MODEL)
         needs_relay = (" A provider with a client certificate is relayed only under containment.network.mode: "
                        "proxy_only (the default)." if getattr(self, "unrelayed", None) else "")
         variables = sorted(v for p, v in netns.PROVIDER_KEY_ENV.items() if p not in netns.CATALOG_ADDRESSED)
@@ -718,7 +744,7 @@ class ContainedLead:
 
     def __call__(self, bridge_dir: str | None, child_env: dict[str, str]) -> lead_broker.Harness:
         from aew.harness import containment, weaker_register
-        from aew.harness.containment import egress, netns
+        from aew.harness.containment import client_cert, egress, netns
 
         engine = self.engine
         self.stages.mark("seat")
@@ -738,9 +764,16 @@ class ContainedLead:
         label["session"] = run_dir.name
         label["start_s"] = self.stages.seconds  # the stages to come are added in place, before the label is recorded
         if layout is None:  # allowed weaker by the policy: the TUI runs as it does elsewhere, labelled so
+            # No relay runs, so a Lead whose only provider takes the certificate would have none: refused, as a
+            # worker is after `establish` (E123 quick check, N1).
+            if self.certified and not (self.keys or self.refreshing):
+                provider = sorted(self.certified)[0]
+                raise ContainmentUnavailable(str(client_cert.no_relay(provider, policy, on_relay_route=False)),
+                                             provider=provider, reason=client_cert.NO_RELAY)
             sys.stderr.write(f"aew opencode: the Lead runs NOT contained ({label['filesystem']}): "
                              f"{label.get('weaker_because')}\n")
-            _unrelayed(engine)
+            if not self.unrelayed:  # its start lines said them already under a shared or isolated network
+                _unrelayed(engine)
             self._record(run_dir, label)
             entry = weaker_register.enter(label=label, **where)
             env = entry.mark({**child_env, **{n: str(agentenv.lookup(self.base, n)) for n in self.provider_env}})

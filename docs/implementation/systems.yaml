@@ -1793,9 +1793,9 @@ systems:
     on whether the Lead gets a typed read of it or H stays operator-only. After V-01: K-01''s L profile (Lessons nominated,
     admitted and served) and F35''s pack serving, built, on and exercised in a real run.'
   remaining:
-  - slice: 'The operator''s answer (BOARD v2 §3): a typed read of Arm B for the Lead, or H recorded as operator-only'
-    row: row owed
-    estimate: 1 PR if a typed read; 0 if recorded operator-only (estimate)
+  - slice: 'The Lead''s read of Arm B, on by default: a relayed `aew` command, not a typed tool (A-57, KP-B1)'
+    row: E185
+    estimate: 1 PR (estimate)
   - slice: 'After V-01: K-01''s L profile and F35''s pack serving'
     row: F35
     estimate: 4-8 PRs (estimate)
@@ -1811,7 +1811,7 @@ systems:
   decision: 'decided: frozen whole by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
     item 6'
   recommendation: freeze
-  who: Lead (the Lead's typed read after first use); workers with F15.3 (HOLD-06, the match places it)
+  who: Lead (the Lead's relayed read, E185); workers with F15.3 (HOLD-06, the match places it)
   reason: Arm B is what the register's V-01 milestone selects for knowledge (history and source lookup only, K-01's H profile,
     future-work.yaml (§1 text, at c11a61ea)), off by default and absent while off; the rest is after V-01, and whether agents
     reach H is the operator's open question.
@@ -1882,22 +1882,18 @@ systems:
     flags (E119) are the fresh-project path. No further F46 slice is built. The register says whether F46.2 is held or retired
     into I-6, and the unread project.profile field is dropped.'
   remaining:
-  - slice: The register records F46.2's fate (held, or retired into I-6's owner actions) after the operator's answer in
-      BOARD v2 §3, and with it F46.3, F46.4 and the unbuilt /configuration route
-    row: HOLD-19
-    estimate: 1 register edit (estimate)
   - slice: Drop the unread project.profile field, batched with BOARD v2 §4's loose ends
-    row: row owed
+    row: E259
     estimate: part of 1 small batched PR (estimate)
-  decision: 'BOARD v2 §3 (BOARD.md:136), put to the operator: "Settings write path (F46.2): held, or retired into I-6".
-    It is the operator''s because "the records disagree". The designer''s recommendation: "Retire into I-6".'
+  decision: 'decided: the settings write path (F46.2) retires into I-6 (SYS-29); `settings show` and `aew init`''s flags
+    stay (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done", on the Lead''s three recommendations)'
   recommendation: cut
-  who: operator (BOARD v2 §3), then Lead
+  who: Lead
   reason: The F46.2 settings write path retires into I-6 (SYS-29), the designer's recommendation in BOARD v2 §3; `settings
     show` stays as I-6's configuration read. The read projection is built and serves as the configuration read; E119 now
     covers first settings at init. Only F46's write, catalog and web slices are left. The records disagree on whether F46.2
-    is held (HOLD-19) or retired into I-6's owner actions, and the designer recommends retiring it (BOARD v2 §3), which
-    leaves this system frozen at its read until the operator answers.
+    is held (HOLD-19) or retired into I-6's owner actions; the operator decided it retires into I-6 (2026-11-09), so this
+    system stays frozen at its read, and HOLD-19's disagreement ends.
   evidence:
   - src/aew/engine/configuration.py:1-7 the read-only configuration projection (F46.1); :60-67 the AWAITS_F46_2, AWAITS_F46_3
     and AWAITS_LATER_F46 reasons, with workflow and project UNSUPPORTED; :141 config_digest for a later Save
@@ -2135,9 +2131,10 @@ systems:
   - slice: 'F4 S2a onward: enablement, format raise, records, binding, confirmation, holds'
     row: F4
     estimate: about 15 PRs if released (estimate, census)
-  decision: none
+  decision: 'decided: frozen until I-5''s revision commands land (BOARD v2 §4), the designer agreeing; E126, E88 and E87
+    stay on their own rows (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done", with E123 its condition)'
   recommendation: freeze
-  who: designer (the freeze); Lead for E126 (on the Now list)
+  who: Lead for E126 (the freeze is decided)
   reason: 'BOARD v2 §4: freeze; held in HOLD-08, S1 is dormant and safe, and E126 and E88 proceed on their own rows. No
     src path calls S1''s pure functions, and the coordination placeholders refuse revisions safely; RecipientIndependent
     stays unreachable until a ''revision'' scope enters the control schema.'
@@ -2751,9 +2748,11 @@ systems:
   - slice: 'E124: an optional key-holding service on G3''s pattern; nothing designed yet, after first use'
     row: E124
     estimate: 'not sized: undesigned'
-  decision: none
+  decision: 'decided: frozen in HOLD-20 (gateway, usage convergence, routing policy, reference profiles), the designer
+    agreeing, with E123 its own entry, SYS-47 (operator, 2026-11-09: "i think thats mostly fine aas liong as teh client cert ahdnling is done": E123 is the
+    condition)'
   recommendation: freeze
-  who: designer (the HOLD-20 match); E123 moved to SYS-47
+  who: Lead (E123, in SYS-47); the freeze is decided
   reason: 'Held in HOLD-20 (BOARD v2 §4: ''only E123 is live work''); E123 is its own entry, SYS-47, so the freeze leaves
     it running. Only E123 is live work, the gate before a provider that requires a client certificate; BOARD v2 §4 freezes
     the rest (gateway, usage convergence, routing policy, reference profiles) in HOLD-20.'
@@ -3353,7 +3352,6 @@ systems:
   - src/aew/engine/brief_check.py
   - tests/unit/test_brief_check.py
   depends_on:
-  - SYS-18
   - SYS-33
   state:
     board_state: designed_only
@@ -3380,8 +3378,9 @@ systems:
     decisions))'
   recommendation: finish
   who: operator places E154 (BOARD v2 §3); then Lead
-  reason: Adopted (A-47) with nothing built; E154 is unscheduled and the operator's to place, recommended after first use;
-    its release step needs U-01's migration path, also unbuilt.
+  reason: Adopted (A-47) with nothing built; F4 (SYS-18) is an ordering note, not a dependency, since LB01-R10 covers F4
+    unbuilt; E154 is unscheduled and the operator's to place, recommended after first use; its release step needs U-01's
+    migration path, also unbuilt.
   evidence:
   - grep of src/aew for '"brief"', code_facts, cited_text and launch_brief finds nothing; tests/helpers/vertical/oracle.py:175
     code_facts() is the vertical oracle's, unrelated
@@ -4326,7 +4325,6 @@ systems:
   - tests/unit/test_provider_relay.py
   depends_on:
   - SYS-02
-  - SYS-25
   - SYS-33
   state:
     board_state: designed_only
@@ -4349,7 +4347,8 @@ systems:
     estimate: a live run, no PR (estimate)
   decision: none
   recommendation: finish
-  who: Lead, after the designer's E99 design (BOARD v2 §1); operator for the live AIR-85 qualification
+  who: Lead (E99 is adopted as A-55, which names E123 as the provider-access owner); operator for the live AIR-85
+    qualification
   reason: Half of E123's Now item (BOARD v2 §1), split from the frozen gateway (SYS-25) so the freeze does not stop it.
   evidence:
   - 'src/aew/harness/containment/relay.py:449-454 (_tls_context: ssl.create_default_context() with a TLS 1.2 floor and no

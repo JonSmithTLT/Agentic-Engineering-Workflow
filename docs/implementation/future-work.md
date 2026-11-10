@@ -41,7 +41,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 7 | STG-15 | CAP-1 PR 2: the read-only ripgrep bind, Q08's rows, the fetch at first launch and the contained health check, merged as #330 (`eb38cd5f`; PR 1 merged as #272, `af951c92`). PR 3 is item 14 |
 | 8 | closed: E119 | `aew init` takes the check, model and provider names, with the oracle's row and driver in one PR, closed by #329 |
 | 9 | E120 | Validation's coverage on the record, and failure lines back to the worker |
-| 10 | E121 | A readable result: a headline per result in chat |
+| 10 | closed: E121 | A readable result: a headline per result in chat, closed by #328 |
 | 11 | E122 | The next step while the Lead waits |
 | 12 | STG-03 | **After first use, or earlier if a builder slot is free:** G3-C with `ATTACH_LEAD`, E82 and the G3 install. G3-A, G3-B and G3-D are merged (#269, #282, #286). It never holds first use |
 | 13 | E123 | **Before the work step:** the relay presenting a client certificate, and the bundle (E99, whose design is owed) |
@@ -1655,18 +1655,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E120/`, oldest first (`python tools/register.py show E120`).*
 
-### E121
-
-**Work:** A readable result: a headline per result in the Lead's chat
-
-**Source:** the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`); dogfood finding of 2026-10-31
-
-**When:** **Now.**
-
-**Notes:** Filed by the Lead
-
-*Later notes: `notes.d/E121/`, oldest first (`python tools/register.py show E121`).*
-
 ### E122
 
 **Work:** The next step while the Lead waits on a run, so a mid-tier Lead does not stop or spin
@@ -3215,6 +3203,18 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E258/`, oldest first (`python tools/register.py show E258`).*
 
+### E259
+
+**Work:** Drop the unread `project.profile` field: `aew init` writes `base` (`src/aew/knowledge/manifest.py`) and `project.schema.json` declares it, but nothing reads it
+
+**Source:** The operator's decision of 2026-11-09 on SYS-15 (the settings write path retires into I-6), with the build board's loose ends
+
+**When:** **Unscheduled**, in the small-fixes lane, in one small batch
+
+**Notes:** Filed by the week's register PR
+
+*Later notes: `notes.d/E259/`, oldest first (`python tools/register.py show E259`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.
@@ -3896,6 +3896,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #329 (`5625b8e1`). E119 §1's seat wording is carried by E171, and first configuration's proposals of keyed, paid profiles and `review_triggers` levels are E166
 
 *Later notes: `notes.d/E119/`, oldest first (`python tools/register.py show E119`).*
+
+### E121
+
+**Was:** A readable result: a headline per result in the Lead's chat
+
+**Closed:** 2026-11-05
+
+**By:** #328 (`7e06f876`)
+
+*Later notes: `notes.d/E121/`, oldest first (`python tools/register.py show E121`).*
 
 ### E127
 

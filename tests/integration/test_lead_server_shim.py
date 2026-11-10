@@ -184,18 +184,24 @@ def test_a_server_lost_with_a_run_in_flight_says_a_step_that_works_and_following
     from harness_acceptance import WID, lead, operator_takeover, plan_ticket
     from harness_conformance import FakeOpenCodeDriver, sync_dir
 
+    from aew.capability import consent
+
     driver = FakeOpenCodeDriver()
     lab = driver.create_lab(tmp_path, lead_session=True)
     try:
         lab.lead("lead", "release")  # the operator's own seat is given up: the Lead's session acquires it
         lab.project.token = ""
         lab.script("default", {"steps": [{"do": "hang"}], "server": {"tool_parts": True, "live_usage": {}}})
+        # At a terminal the contained Lead's start asks for the tools AEW is missing, and no one here answers: the
+        # operator's "no", given ahead in the register `aew opencode` reads (the driver's own XDG_DATA_HOME)
+        register = lab.tmp / "lead-opencode" / "data" / "aew" / "capability"
+        register.mkdir(parents=True, exist_ok=True)
+        consent.decline(consent.offers(register), register)
         session = driver.start_lead(lab, "lead-lost", [
             *plan_ticket(tmp_path), lead("work", "assign", WID, "--launch"),
             {"do": "wait_file", "path": str(sync_dir(tmp_path) / "never"), "timeout": 300}], acquire=True)
 
-        # The run's own record, read with no lock: the store, read here, takes the control lock at every poll, and
-        # the Lead's session waits behind it.
+        # The run's own record: read with no lock, as nothing here needs the store's
         lab.until(lambda: lab.record("R-INV-0001-1").get("status") == "running",
                   what="the Lead's run to be in flight", timeout=120)
         kill = Path(lab.env[SCRIPTS_ENV]) / fake_opencode.KILL_LEAD_SERVER

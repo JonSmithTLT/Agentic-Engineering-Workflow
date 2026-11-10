@@ -581,7 +581,8 @@ def test_a_real_run_that_ended_stays_its_active_invocations_run_and_wakes_the_le
     wid = create_planned_ticket(lab.project, tmp_path)
     lab.script("default", [{"do": "exit", "code": 0}])
     run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
-    assert lab.wait(run)["status"] == "ended_without_evidence"
+    # Read from its record: a wait would tell the Lead the end itself, and then no wake repeats it (review, m6)
+    lab.until(lambda: lab.record(run).get("status") == "ended_without_evidence", what="the run to end", timeout=120)
     engine = Engine.discover(lab.root)
     assert run in [w.run for w in Q.live_runs(engine.store.current())]
 

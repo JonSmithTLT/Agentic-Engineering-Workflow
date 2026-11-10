@@ -20,6 +20,7 @@ import secrets
 import sys
 import time
 from contextvars import ContextVar
+from typing import NamedTuple
 
 from aew.errors import OperatorAuthorizationRequired, PermissionDenied
 from aew.util import IS_WINDOWS
@@ -41,20 +42,22 @@ def new_code() -> str:
 
 
 def challenge(code: str, text: str, *, requested_by: str | None = None, destination: str | None = None,
-              instruction: str | None = None) -> str:
+              instruction: str | None = None, purpose: str | None = None) -> str:
     """The operator authorization prompt: ``text`` says what is being authorized, ``code`` is what the operator types
     back. The dashboard server writes the same prompt to its own console when ``aew dashboard open`` asks for a session
-    (F20.3), naming the requester that process reported and where the code is to be typed."""
+    (F20.3), naming the requester that process reported and where the code is to be typed. ``purpose`` is for a prompt
+    that releases no credential: it names what changes, in place of the credential's destination."""
     from aew.harness.procs import process_chain
 
     who = requested_by if requested_by is not None else (" <- ".join(process_chain()) or "unknown")
     where = destination if destination is not None else credential_destination.get()
     typed = instruction or f"Type the confirmation code {code} and press Enter to authorize; anything else refuses."
+    target = f"  changes        : {purpose}\n" if purpose is not None else f"  credential to  : {where}\n"
     return (
         "\n==== AEW OPERATOR AUTHORIZATION REQUIRED ====\n"
         f"{text}\n"
         f"  requested by   : {who}\n"
-        f"  credential to  : {where}\n"
+        f"{target}"
         "If you did not start this command yourself (for example, it came from an agent's shell), refuse.\n"
         f"{typed}\n"
         f"{RELAY_WARNING}\n"
@@ -101,13 +104,78 @@ def ask_hidden(prompt: str, *, what: str, timeout: float = DEFAULT_TIMEOUT_S) ->
                                                                                   ends=ends)
 
 
-def authorize(text: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, str]:
-    """Block until the operator confirms at the controlling terminal, or raise."""
+class Answer(NamedTuple):
+    """What the operator answered, exactly one of: ``authorization``, the code typed back; ``declined``, Enter alone."""
+
+    authorization: dict[str, str] | None
+    declined: bool
+
+
+def answer(text: str, *, timeout: float = DEFAULT_TIMEOUT_S, instruction: str | None = None,
+           purpose: str | None = None) -> Answer:
+    """The approval where Enter alone means no, rather than a refusal (the switch offer). ``instruction`` may name the
+    code as ``{code}``. Raises ``PermissionDenied`` on anything else typed, a timeout or a closed terminal, and
+    ``OperatorAuthorizationRequired`` with no terminal: none of those is an answer. The one approval site, so G3's
+    later in-process adapter finds it here. Input already queued isn't an answer to a prompt nobody has seen: Enter is
+    a remembered no here, so it is discarded first (review of the switch offer, point 6)."""
+    discard_typed_ahead()
+    return _answered(text, timeout=timeout, instruction=instruction, purpose=purpose)
+
+
+def _answered(text: str, *, timeout: float, instruction: str | None = None, purpose: str | None = None) -> Answer:
     code = _code()
-    answer = ask(challenge(code, text) + "> ", timeout=timeout)
-    if answer.strip().upper() != code:
+    typed = instruction.replace("{code}", code) if instruction is not None else None
+    reply = ask(challenge(code, text, instruction=typed, purpose=purpose) + "> ", timeout=timeout).strip()
+    if not reply:
+        return Answer(None, True)
+    if reply.upper() != code:
         raise PermissionDenied("operator refused or mistyped the confirmation code")
-    return {"authorized_by": "operator-tty", "challenge_code": code}
+    return Answer({"authorized_by": "operator-tty", "challenge_code": code}, False)
+
+
+def authorize(text: str, *, timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, str]:
+    """Block until the operator confirms at the controlling terminal, or raise. An empty answer refuses here."""
+    got = _answered(text, timeout=timeout)
+    if got.authorization is None:
+        raise PermissionDenied("operator refused or mistyped the confirmation code")
+    return got.authorization
+
+
+def discard_typed_ahead() -> None:
+    """Drop what is queued at the controlling terminal. With no terminal there is nothing to drop, and nothing is taken
+    from a terminal this process is in the background of: what is queued there isn't for it, and the flush would stop
+    the process (SIGTTOU), which no timeout wakes."""
+    if IS_WINDOWS:
+        _discard_windows()
+    else:
+        _discard_posix()
+
+
+def _discard_posix() -> None:  # pragma: posix-only
+    import termios
+
+    assert sys.platform != "win32"  # narrows the os module for the type checker
+
+    try:
+        fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+    except OSError:
+        return
+    try:
+        if os.tcgetpgrp(fd) == os.getpgrp():
+            termios.tcflush(fd, termios.TCIFLUSH)
+    except (OSError, termios.error):
+        pass
+    finally:
+        os.close(fd)
+
+
+def _discard_windows() -> None:  # pragma: windows-only
+    import msvcrt
+
+    assert sys.platform == "win32"  # narrows msvcrt for the type checker
+
+    while msvcrt.kbhit():
+        msvcrt.getwch()
 
 
 def _no_terminal(detail: str) -> OperatorAuthorizationRequired:

@@ -17,6 +17,7 @@ A profile's model is written exactly as the harness lists it (``provider/model``
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -149,14 +150,14 @@ STRING_SWITCHES: dict[tuple[str, str], tuple[str, ...]] = {
     ("recall", "raw_history_search"): ("off", "explicit"),  # register F21, Arm B (plan v6 §1)
     ("coordination", "messaging"): (MESSAGING_DISABLED, MESSAGING_ENABLED),  # register F9, F9-A (plan v4 D-15)
     ("surface", "presentation"): (PRESENTATION_STANDARD, PRESENTATION_COMPACT),  # register F9, F9-A (plan v4 D-33)
-    ("lead", "push_wake"): (PUSH_WAKE_OFF, PUSH_WAKE_ON),  # steering PR 2; PR 3 switches the default on
+    ("lead", "push_wake"): (PUSH_WAKE_ON, PUSH_WAKE_OFF),  # steering PR 2; on by default from PR 3
 }
 
 
 def refuse_yaml_boolean(policy: Any, *, source: str) -> None:
     """Refuse a string switch that YAML read as a boolean, before the schema, at parse and at adoption: a
     ``VALIDATION_FAILED`` with ``reason: yaml_boolean``, the ``field`` and a message naming the cause and the fix (the
-    quoted ``"off"``). A refused policy is not adopted, and a switch it held stays off (every reader fails closed)."""
+    quoted value). A refused policy is not adopted, and the switch keeps its adopted value."""
     if not isinstance(policy, dict):
         return
     for (block, key), allowed in STRING_SWITCHES.items():
@@ -164,10 +165,12 @@ def refuse_yaml_boolean(policy: Any, *, source: str) -> None:
         value = section.get(key) if isinstance(section, dict) else None
         if isinstance(value, bool):
             field = f"{block}.{key}"
+            # An unquoted off reads as false: the fix names what was typed first, whichever value is the default.
+            named = sorted(allowed, key=lambda a: a != "off") if value is False else list(allowed)
             raise ValidationFailed(
                 f"{source}: {field} was read as the YAML boolean {str(value).lower()}: YAML reads an unquoted off (or "
-                f"no, false, on, yes, true) as a boolean. Quote the value: {key}: \"{allowed[0]}\" (or "
-                f"{', '.join(allowed[1:])})", reason="yaml_boolean", field=field, allowed=list(allowed))
+                f"no, false, on, yes, true) as a boolean. Quote the value: {key}: \"{named[0]}\" (or "
+                f"{', '.join(named[1:])})", reason="yaml_boolean", field=field, allowed=list(allowed))
 
 
 def messaging(policy: dict[str, Any] | None) -> str:
@@ -179,12 +182,19 @@ def messaging(policy: dict[str, Any] | None) -> str:
 
 
 def push_wake(policy: dict[str, Any] | None) -> str:
-    """Whether the Lead broker posts wakes into the Lead's session (``lead.push_wake``, steering design §1): ``off``
-    unless the policy says ``on``. Off, the Lead waits with `harness_wait`, and no wake is posted. Absent policy and
+    """Whether the Lead broker posts wakes into the Lead's session (``lead.push_wake``, steering design §1): ``on``
+    unless the policy says ``off``. Off, the Lead waits with `harness_wait`, and no wake is posted. Absent policy and
     absent key are the schema's default, as for :func:`quiet_wake_s`."""
     spec = schema("execution")["properties"]["lead"]["properties"]["push_wake"]
     value = ((policy or {}).get("lead") or {}).get("push_wake")
     return str(value) if value in spec["enum"] else str(spec["default"])
+
+
+def wakes_post_here(policy: dict[str, Any] | None) -> bool:
+    """Whether AEW posts wakes for this policy on this platform: ``lead.push_wake`` is on, and it isn't Windows.
+    Windows is a declared gap (register E210's note of 2026-11-08): its launch was run for real, a wake never has
+    been, so the Lead there waits with `harness_wait`, whatever the policy says."""
+    return push_wake(policy) == PUSH_WAKE_ON and sys.platform != "win32"
 
 
 def quiet_wake_s(policy: dict[str, Any] | None) -> int:

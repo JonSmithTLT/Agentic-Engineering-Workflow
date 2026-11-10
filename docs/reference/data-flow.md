@@ -149,6 +149,7 @@ The `writers` fact of the `writers` records.
 - `aew.harness.opencode.login:clear_saved_permissions`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.operator_client:withdraw_locator`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:_open_append`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.runlog:forget_end_returned`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.steering_loop:_write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.tool_calls:_rotate`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.tool_calls:append`: no static call chain from any entry point's declaring function reaches this writer

@@ -137,6 +137,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.operator_client:session_holders_live`: Path.unlink of a path this reading cannot place: a loop variable over `files`, a list this reading cannot read
 - `aew.harness.operator_client:withdraw_locator`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:_open_append`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.runlog:forget_end_returned`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:write_live`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.runlog:write_progress`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.steering_loop:_write`: no static call chain from any entry point's declaring function reaches this writer
@@ -159,6 +160,9 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.stg02.ledger:Ledger.__init__`: Path.mkdir of a path this reading cannot place: `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.ledger:Ledger._connect`: sqlite3.connect of a path this reading cannot place: `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.server:_main`: Path.write_text of a path this reading cannot place: `--write-driver-config` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
+- `aew.switch_offer:_restore`: Path.unlink of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
+- `aew.switch_offer:_restore`: atomic_write of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
+- `aew.switch_offer:_take`: atomic_write of a path this reading cannot place: under `.aew`, but its first directory or file name is computed
 - `aew.workspace.worktrees:allocate`: Path.write_text of a path this reading cannot place: the result of `git(*args, cwd=cwd, env=env).stdout.decode('utf-8', 'repl...(...)`, a callee this reading cannot name
 - `aew.workspace.worktrees:allocate_detached`: Path.write_text of a path this reading cannot place: the result of `git(*args, cwd=cwd, env=env).stdout.decode('utf-8', 'repl...(...)`, a callee this reading cannot name
 - `aew.workspace.worktrees:remove`: shutil.rmtree of a path this reading cannot place: `integ['workspace']`, from a value that is not a dict literal; `obs['path']`, from a value that is not a dict literal; `unit['workspace']['path']`, from a value that is not a dict literal; the name `p` is not bound to a value this reading can follow; the result of `record.get(...)`, a callee this reading cannot name

@@ -296,8 +296,8 @@ class LeadBroker:
         """Post the Lead's wakes through ``poster`` (steering design r4 §1), on a thread of its own and its own engine:
         a tick reads the control state and files, and takes no credential. A failed tick is the next tick's: a wake is
         held, never lost, and the Lead's fallback is `harness_wait`."""
-        from aew.harness.wake_queue import WakeQueue, mark_serving
-        from aew.policy.execution import quiet_wake_s
+        from aew.harness.wake_queue import WakeQueue, clear_serving, mark_serving, serving
+        from aew.policy.execution import PUSH_WAKE_ON, push_wake, quiet_wake_s
 
         own = _own_engine(self.engine)
 
@@ -313,6 +313,16 @@ class LeadBroker:
                 try:
                     if self.superseded or self._authority_lost():  # no more wakes into a session that lost the seat
                         return
+                    try:
+                        off = push_wake(own.execution_policy()[0]) != PUSH_WAKE_ON
+                    except Exception:  # an edit not yet adopted: no pass can run, so nothing says wakes reach the Lead
+                        clear_serving(own.aew_root, self.generation)
+                        raise
+                    if off:  # turned off mid-session: posts stop now
+                        clear_serving(own.aew_root, self.generation)
+                        continue
+                    if serving(own.aew_root) != self.generation:  # turned on again; a later generation's stops this one
+                        mark_serving(own.aew_root, self.generation)
                     queue.tick()
                 except Exception as exc:  # noqa: BLE001 - a wake must never take the session down
                     queue.failed(f"{type(exc).__name__}: {str(exc)[:200]}")  # the status line, not the TUI's terminal
@@ -861,7 +871,8 @@ def require_credential(acquire: bool) -> None:
 
 def run_session(engine: Any, command: list[str], *, acquire: bool, session_label: str | None,
                 keep_seat: bool, contained: Callable[[str | None, dict[str, str]], Harness],
-                env: dict[str, str] | None = None) -> dict[str, Any]:
+                env: dict[str, str] | None = None,
+                with_token: Callable[[str], None] | None = None) -> dict[str, Any]:
     """``aew lead session``: broker the Lead credential for one Lead harness session.
 
     ``env`` is the harness's environment (default: the caller's, minus every credential variable). A harness
@@ -873,6 +884,10 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     contained Lead, STG-05 CS-4), or, where the policy allows a weaker run, as it is, labelled so (:class:`WeakerLead`).
     When it refuses (containment required and not established), nothing runs, and a seat this session acquired is
     released again. Its ``precheck``, where it has one, runs first: a refusal there comes before any credential is read.
+
+    ``with_token`` is called once with the Lead credential, before the broker starts: what `aew opencode`'s switch offer
+    needs, since on ``acquire`` the credential doesn't exist any earlier. It must not raise. `aew lead session` passes
+    none, so it never applies an offer.
     """
     from aew.engine.harness_ops import scrubbed_env
     from aew.harness.procs import harden_current_process, run_session_tree
@@ -892,6 +907,8 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
         token = engine.lead_acquire(expect_rev=engine.store.current()["revision"], session_label=session_label)["token"]
     else:
         token = held
+    if with_token is not None:
+        with_token(token)
     broker = LeadBroker(engine, token)
     # Every launch this session's broker relays or its steering loop makes runs in this process and reads its
     # environment: a refusal for a missing provider variable says so (review of PR #214, F2).

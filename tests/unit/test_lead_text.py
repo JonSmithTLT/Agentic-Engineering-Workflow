@@ -68,7 +68,9 @@ def test_the_lead_quotes_recorded_coverage_and_the_generated_guide_matches():
     text = rendered()
     assert "quote AEW's recorded coverage" in text and "never compose coverage yourself or drop its unknowns" in text
     assert "coverage not recorded" in text.lower() and "validated within its scope" in text.lower()
-    assert (ROOT / "docs/guides/lead-guide.md").read_text(encoding="utf-8") == text
+    documented = (ROOT / "docs/guides/lead-guide.md").read_text(encoding="utf-8")
+    assert documented.startswith("<!-- Generated:")
+    assert documented.partition("-->\n\n")[2] == text
 
 
 def system_text() -> str:

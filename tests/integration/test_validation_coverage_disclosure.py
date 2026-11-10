@@ -142,3 +142,19 @@ def test_coverage_is_display_data_not_an_input_to_the_gate_result(tmp_path, cont
     assert out["coverage"]["summary"]["known_gaps"]["configured_checks_not_run"] >= 1
     assert p.lead("integrate", "publish", wid)["state"] == "DONE"
     assert_control_invariants(p)
+
+
+def test_the_finalizer_records_superseded_coverage_without_claiming_the_unobserved_checks_ran(tmp_path, contained):
+    p = sample_project(tmp_path)
+    policy(p, checks=SMOKE)
+    wid = prepared(p, tmp_path)
+    eng = engine(p)
+    eng._validation._pin(VO.Principal(VO.LEAD, p.token), p.rev(), wid, attempt=1, diagnostic=False)
+    p.lead("integrate", "defer", wid, "--reason", "retire the candidate before execution")
+    retired = control(p)["work"][wid]["integration_history"][-1][VO.CURRENT]
+    assert retired["state"] == "abandoned" and retired["reason"] == "SUPERSEDED"
+    value = record_of(p, retired)["coverage"]
+    assert value["checks"] == [] and value["configured_not_run"] == []
+    assert "execution_completion_not_recorded" in value["observation_limits"]
+    assert value["summary"]["verdict"] == "abandoned"
+    assert_control_invariants(p)

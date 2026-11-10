@@ -158,19 +158,21 @@ def provider(pki: Pki, *, trusts: Issued | None = None, tls12: bool = False) -> 
         except OSError:
             return
         raw.settimeout(TIMEOUT)
+        tls = context.wrap_socket(raw, server_side=True, do_handshake_on_connect=False)
         try:
-            with context.wrap_socket(raw, server_side=True) as tls:
-                seen.peer = tls.getpeercert()
-                while b"\r\n\r\n" not in seen.head:
-                    data = tls.recv(4096)
-                    if not data:
-                        break
-                    seen.head += data
-                tls.sendall(OK)
+            tls.do_handshake()
+            seen.peer = tls.getpeercert()
+            while b"\r\n\r\n" not in seen.head:
+                data = tls.recv(4096)
+                if not data:
+                    break
+                seen.head += data
+            tls.sendall(OK)
         except (ssl.SSLError, OSError) as exc:
             seen.error = exc
+            _linger(tls)
         finally:
-            raw.close()
+            tls.close()
 
     thread = threading.Thread(target=serve, daemon=True)
     thread.start()
@@ -180,6 +182,20 @@ def provider(pki: Pki, *, trusts: Issued | None = None, tls12: bool = False) -> 
         listener.close()
         thread.join(TIMEOUT)
     assert not thread.is_alive(), "the provider's thread did not end"
+
+
+def _linger(tls: ssl.SSLSocket) -> None:
+    """Close as a real server does after refusing a handshake: stop writing, then read what the client sent until it
+    closes. Under TLS 1.3 the relay has sent its request before the server checks its certificate; closing with that
+    request unread resets the connection, and on Windows the reset discards the server's alert before the relay reads
+    it, so the relay would see a reset instead of the refusal (CI, windows-latest). The raw socket's own calls, since
+    the TLS layer has failed."""
+    try:
+        socket.socket.shutdown(tls, socket.SHUT_WR)
+        while socket.socket.recv(tls, 4096):
+            pass
+    except OSError:
+        pass
 
 
 def to_local(port: int) -> relay.Connector:

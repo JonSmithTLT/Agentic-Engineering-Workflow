@@ -70,11 +70,12 @@ def render(result: dict[str, Any]) -> str:
     """The ``text`` block for one result."""
     shown = scrub(result)
     ending = [_outcome(shown), _next(shown)]
+    capabilities = _capability_summary(shown)
     body = [line for section in _SECTIONS for line in section(shown)]
     lead = json.dumps(for_the_lead(shown), separators=(",", ":"))
 
     def text(marker: str) -> str:
-        return "\n".join([*ending, *_steps(shown), *body, "", marker, lead, "", *ending])
+        return "\n".join([*ending, *capabilities, *_steps(shown), *body, "", marker, lead, "", *capabilities, *ending])
 
     return text(JSON_MARKER) if len(text(JSON_MARKER).encode()) <= CUT_BYTES else text(JSON_OVER_THE_CUT)
 
@@ -238,4 +239,53 @@ def _waiting(result: dict[str, Any]) -> list[str]:
             *_listed("anomaly", anomalies), *_listed("run", runs)]
 
 
-_SECTIONS: tuple[Callable[[dict[str, Any]], list[str]], ...] = (_stopped, _waiting)
+def _capability_runs(result: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Recorded lists only: status's run rows, wait's per-run collection, and the older single-run wait shape.
+
+    A wait repeats its ended run at the top level: project it once, without counting it twice. Never read progress
+    digests as capability facts, nor guess from the projection's liveness rows.
+    """
+    payload = _payload(result)
+    nested = payload.get("run_capabilities")
+    runs = {r: entry for r, entry in nested.items() if isinstance(entry, dict)} if isinstance(nested, dict) else {}
+    rows = payload.get("runs")
+    if isinstance(rows, list):
+        for row in rows:
+            if isinstance(row, dict) and isinstance(row.get("run"), str):
+                runs.setdefault(row["run"], row)
+    if isinstance(payload.get("run"), str):
+        runs.setdefault(payload["run"], payload)
+    return {r: entry for r, entry in runs.items() if any(_capability_items(entry, field)
+            for field in ("missing_tools", "missing_skills"))}
+
+
+def _capability_items(entry: dict[str, Any], field: str) -> list[dict[str, Any]]:
+    items = entry.get(field)
+    return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+
+
+def _capability_summary(result: dict[str, Any]) -> list[str]:
+    runs = _capability_runs(result)
+    if not runs:
+        return []
+    tools = sum(len(_capability_items(entry, "missing_tools")) for entry in runs.values())
+    skills = sum(len(_capability_items(entry, "missing_skills")) for entry in runs.values())
+    return [f"Missing run capabilities (advisory): tools: {tools}; skills: {skills}; runs: {len(runs)}."]
+
+
+def _capabilities(result: dict[str, Any]) -> list[str]:
+    """Reasons and attribution before the JSON cut. Bound each category across all runs, not once per run; the
+    summary counts the whole collection and is repeated where the view lands. Full lists stay in the JSON.
+    """
+    runs = _capability_runs(result)
+    tools, skills = [], []
+    for run, entry in runs.items():
+        who = _one_line(run, 1)
+        tools.extend(f"{who}: {_one_line(t.get('command'), 1)}; got {_one_line(t.get('got'), 1)}; "
+                     f"{_one_line(t.get('why'), 1)}" for t in _capability_items(entry, "missing_tools"))
+        skills.extend(f"{who}: {_one_line(s.get('name'), 1)}; {_one_line(s.get('reason'), 1)}"
+                      for s in _capability_items(entry, "missing_skills"))
+    return [*_listed("missing tool", tools), *_listed("missing skill", skills)]
+
+
+_SECTIONS: tuple[Callable[[dict[str, Any]], list[str]], ...] = (_capabilities, _stopped, _waiting)

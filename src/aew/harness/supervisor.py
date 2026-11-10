@@ -90,16 +90,19 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
     doctor``'s read of the harness's model list (register E153), so that read meets exactly what a launch meets.
     Raises ``ContainmentUnavailable`` (after removing what it made) where the policy refuses a launch, and
     ``HarnessIncompatible`` for a provider key a launch would not get."""
-    from aew.harness.containment import netns
+    from aew.harness.containment import client_cert, netns
 
     # The engine refused this before anything was committed (``require_launchable``); checked again here, on the names
     # this launch carries, before any sandbox or network exists (the operator's decision of 2026-11-06: AEW does not
     # rely on OpenCode's free models).
-    missing = netns.provider_key_missing(provider, provider_env, os.environ,
-                                         on_relay_route=netns.relay_route(policy, adapter_cls.PROVIDER_RELAY))
+    on_route = netns.relay_route(policy, adapter_cls.PROVIDER_RELAY)
+    missing = netns.provider_key_missing(provider, provider_env, os.environ, on_relay_route=on_route)
     if missing is not None:
         raise errors.HarnessIncompatible(netns.provider_key_message(str(provider), missing),
                                          reason=netns.PROVIDER_KEY_MISSING, variable=missing)
+    no_relay = client_cert.no_relay(provider, policy, on_relay_route=on_route)
+    if no_relay is not None:  # only the relay presents a client certificate (register E123)
+        raise errors.ContainmentUnavailable(no_relay, provider=provider, reason=client_cert.NO_RELAY)
     layout = None
     try:
         try:  # built once: the self-test checks the same allowlist the run's egress proxy gets (register E143)
@@ -110,6 +113,13 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
         layout, label = containment.establish(
             role=role, scope=scope, workspace=workspace, run_dir=run_dir, scratch=scratch, bridge_dir=bridge_dir,
             policy=policy, project=str(project), bridge=bridge, egress_policy=allow, skills_dir=skills_dir)
+        # The relay's absence is known only now: under allow_weaker a sandbox that could not be established runs the
+        # harness on the host's network with no relay, whatever the policy's network mode (E123 review, M1)
+        unrelayed = layout is None or not layout.private_network
+        no_relay = client_cert.no_relay(provider, policy, on_relay_route=not unrelayed) \
+            if adapter_cls.PROVIDER_RELAY else None
+        if no_relay is not None:
+            raise errors.ContainmentUnavailable(no_relay, provider=provider, reason=client_cert.NO_RELAY)
         # A weaker launch (allowed by the policy, or a sandbox on the host's network) enters the register of weaker
         # contexts before its harness starts; on Linux one that cannot be entered is refused (G3 addendum 7).
         weaker = weaker_register.enter_if_weaker(label, kind=kind, ownership=weaker_register.ownership_of(label),

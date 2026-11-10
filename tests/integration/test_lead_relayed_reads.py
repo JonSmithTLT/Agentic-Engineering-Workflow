@@ -20,12 +20,14 @@ import worker_surface
 from aewflow import SUBTRACT_PATCH, create_planned_ticket, sample_project
 from conftest import clean_env, run_aew
 from fake_harness import IMPL_REPORT, HarnessLab
-from harness_conformance import sync_dir
+from harness_conformance import FakeOpenCodeDriver, sync_dir
 
 from aew import process_kind
 from aew.engine.api import Engine
 from aew.engine.store import ControlStore
-from aew.harness import bridge, lead_broker, procs, runlog
+from aew.harness import bridge, lead_broker, procs, runlog, wake_queue
+from aew.harness import contract as K
+from aew.harness import progress as P
 
 IMPLEMENT = [
     {"do": "write", "files": SUBTRACT_PATCH},
@@ -35,6 +37,16 @@ IMPLEMENT = [
 # What the session's own broker writes under `.aew/local` while it serves (its liveness, the steering loop's state):
 # never a relayed read's.
 SESSION_OWN = ("local/lead", "local/steering")
+# The broker's delivery records (STG-05 CS-4 addendum 15): after a relayed `harness wait`, in the directory of the run
+# it returned, what it told the Lead (`lead_broker.record_delivery`). Named by exact path; the read's process writes
+# nothing.
+TOLD = (runlog.END_RETURNED_FILE, runlog.RETURNED_FILE)
+
+
+def delivery_records(run: str) -> set[str]:
+    return {f"{runlog.RUNS_REL}/{run}/{name}" for name in TOLD}
+
+
 # The one field read from the clock when the command runs: a run's heartbeat age (`harness status`).
 CLOCK = re.compile(r'(?<="heartbeat_age_s": )[0-9.]+')
 
@@ -108,7 +120,8 @@ def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, 
     """Conditions 2 and 7: through the broker, each read prints what the Lead's shell printed before CS-4, byte for
     byte (apart from a heartbeat's age, read from the clock as it runs), with its exit status, and leaves the store
     and `.aew/local` as they were (the derived history index's catch-up apart, which ``worker_surface.changes``
-    names)."""
+    names). One write follows a read, and it is the broker's: a wait told the Lead the run's end, which it records in
+    its delivery records, each named by its exact path (``delivery_records``; what it records is the next tests')."""
     run, invocation = worked(lab, tmp_path)
     served: list[list[str]] = []
     run_read = lead_broker.run_read
@@ -122,11 +135,123 @@ def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, 
         before = worker_surface.snapshot(lab.aew_root)
         via = relayed(lab, broker, *argv)
         assert served[-1:] == [argv], argv  # through the broker, never run by the client itself
-        assert changes(before, worker_surface.snapshot(lab.aew_root)) == [], argv
+        changed = changes(before, worker_surface.snapshot(lab.aew_root))
+        told = [c for c in changed if argv[:2] == ["harness", "wait"] and c[1:] in delivery_records(run)]
+        assert [c for c in changed if c not in told] == [], argv
         here = direct(lab, *argv)
         assert (via.returncode, CLOCK.sub("AGE", via.stdout), via.stderr) == (
             here.returncode, CLOCK.sub("AGE", here.stdout), here.stderr), argv
     assert run in relayed(lab, broker, "harness", "status").stdout  # it read the run's own record, on the host
+
+
+class _Poster:
+    """The Lead's session for the wake queue: in its turn until the test ends it."""
+
+    def __init__(self) -> None:
+        self.posts: list[str] = []
+        self.turn = True
+        self.made = 0
+
+    def new_id(self) -> str:
+        self.made += 1
+        return f"msg_{self.made}"
+
+    def busy(self) -> bool:
+        return self.turn
+
+    def post(self, wake_id: str, text: str) -> str:
+        self.posts.append(text)
+        return "ses_this"
+
+    def landed(self, wake_id: str) -> str:
+        return wake_queue.DELIVERED
+
+
+def test_a_relayed_wait_tells_the_lead_through_its_broker_and_its_own_process_writes_nothing(tmp_path, monkeypatch):
+    """Review m1 and m2, on a run with news no wait returned. The read's process, a non-writer, writes nothing under
+    `.aew`. Its broker, which served it, records what it told the Lead: every trigger the run had, and its end. So the
+    triggers aren't returned again, and when the Lead's turn ends no `run_ended` wake repeats the end."""
+    lab = FakeOpenCodeDriver().create_lab(tmp_path)
+    try:
+        broker = start_broker(lab, monkeypatch)
+        poster = _Poster()
+        try:
+            broker.start_wakes(poster)
+            lab.script("default", {"steps": [{"do": "write", "files": {"calc/extra.py": "X = 1\n"}}],
+                                   "server": {"tool_parts": True, "live_usage": {}}})
+            run = lab.lead("work", "assign", create_planned_ticket(lab.project, tmp_path), "--launch")["launch"]["run"]
+            directory = runlog.run_dir(lab.aew_root, run)
+            lab.until(lambda: not runlog.possibly_live(runlog.observed_status(directory)[0], None)
+                      and (runlog.read_progress(directory) or {}).get("state") == P.ENDED, what="the run to end",
+                      timeout=120)
+            seq = int(runlog.read_progress(directory)["trigger_seq"])
+            assert seq > 0 and runlog.read_returned(directory) == 0 and not runlog.end_returned(directory)
+            before = worker_surface.snapshot(lab.aew_root)
+            alone = run_aew("harness", "wait", run, "--timeout", "30", cwd=lab.root,
+                            env={**lab.env, process_kind.LEAD_CONTAINED_ENV: "1"})  # the process, with no broker
+            assert json.loads(alone.stdout)["why"] == [K.RUN_ENDED], alone.stdout + alone.stderr
+            assert changes(before, worker_surface.snapshot(lab.aew_root)) == []
+            via = relayed(lab, broker, "harness", "wait", run, "--timeout", "30")
+            assert json.loads(via.stdout)["why"] == [K.RUN_ENDED], via.stdout + via.stderr
+            records = [f"+{p}" for p in sorted(delivery_records(run))]
+            assert changes(before, worker_surface.snapshot(lab.aew_root)) == records
+            assert runlog.read_returned(directory) == seq and runlog.end_returned(directory)
+            # What they hold: a trigger's number and a flag, which move no approval, owner fact, credential or scope
+            assert json.loads((directory / runlog.RETURNED_FILE).read_text(encoding="utf-8")) == {"trigger_seq": seq}
+            assert (directory / runlog.END_RETURNED_FILE).read_bytes() == b""
+            time.sleep(3 * lead_broker.POLL_S)  # a wake gathered meanwhile waits for the turn's end
+            poster.turn = False
+            time.sleep(3 * lead_broker.POLL_S)
+            assert poster.posts == []
+        finally:
+            broker.close()
+    finally:
+        lab.cleanup()
+
+
+def test_a_relayed_wait_that_returns_a_trigger_is_recorded_by_its_broker_alone(tmp_path, monkeypatch):
+    """Review N1: the same for a trigger. A run still working wrote outside its scope. The read's process, with no
+    broker, returns the trigger and writes nothing; through the broker, the trigger's mark is all that is written, so
+    the next wait doesn't return it again."""
+    lab = FakeOpenCodeDriver().create_lab(tmp_path)
+    try:
+        broker = start_broker(lab, monkeypatch)
+        try:
+            lab.script("default", {"steps": [{"do": "write", "files": {"src/b/x.py": "Y = 2\n"}}, {"do": "hang"}],
+                                   "server": {"tool_parts": True, "live_usage": {}}})
+            wid = create_planned_ticket(lab.project, tmp_path, scope=("src/a/**",))
+            launch = lab.lead("work", "assign", wid, "--launch")["launch"]
+            run = launch["run"]
+            directory = runlog.run_dir(lab.aew_root, run)
+            try:
+                lab.until(lambda: (runlog.read_progress(directory) or {}).get("out_of_scope") == ["src/b/x.py"],
+                          what="the write outside the scope", timeout=120)
+                own = f"{runlog.RUNS_REL}/{run}/"
+
+                def written(before: dict[str, object]) -> list[str]:  # the live run's supervisor writes its own files
+                    return [c for c in changes(before, worker_surface.snapshot(lab.aew_root))
+                            if not c[1:].startswith(own) or c[1:] in delivery_records(run)]
+
+                before = worker_surface.snapshot(lab.aew_root)
+                alone = run_aew("harness", "wait", run, "--timeout", "30", cwd=lab.root,
+                                env={**lab.env, process_kind.LEAD_CONTAINED_ENV: "1"})
+                trigger = json.loads(alone.stdout)
+                assert trigger["why"] == [K.OUT_OF_SCOPE], alone.stdout + alone.stderr
+                assert written(before) == []
+                via = relayed(lab, broker, "harness", "wait", run, "--timeout", "30")
+                assert json.loads(via.stdout)["why"] == [K.OUT_OF_SCOPE], via.stdout + via.stderr
+                seq = max(t["seq"] for t in trigger["triggers"])
+                assert written(before) == [f"+{own}{runlog.RETURNED_FILE}"]
+                assert runlog.read_returned(directory) == seq and not runlog.end_returned(directory)
+                again = json.loads(relayed(lab, broker, "harness", "wait", run, "--timeout", "0").stdout)
+                assert again["timed_out"] is True, again  # returned once
+            finally:
+                lab.lead("invoke", "cancel", launch["invocation"], "--reason", "the test is over")
+                lab.wait(run)
+        finally:
+            broker.close()
+    finally:
+        lab.cleanup()
 
 
 def test_a_relayed_read_runs_lock_free_while_a_write_holds_the_control_lock(lab, broker):

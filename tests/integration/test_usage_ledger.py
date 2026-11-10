@@ -214,7 +214,7 @@ def archived_usage(lab: HarnessLab, wid: str, inv: str) -> list[dict[str, Any]]:
     ('{"status": "crashed", "result": ' + "[" * 200_000 + "]" * 200_000 + "}", False, K.UNCONFIRMED),  # too deep
     ({"status": K.CRASHED, "result": "NAN-USAGE"}, False, K.CRASHED),  # a usage with a NaN in it (#137 re-review)
 ], ids=["not-an-object", "wrong-shapes", "unknown-status", "status-not-a-string", "nested-too-deep", "nan"])
-def test_a_malformed_run_record_never_blocks_a_cancel_or_archival(lab, tmp_path, record, beat, status):
+def test_a_malformed_run_record_never_blocks_a_cancel_or_archival(lab, tmp_path, record, beat, status, monkeypatch):
     """#137 review, F1 and F2: the run record is written where the run's own user can write. Whatever it holds, a
     cancel and the unit's archival still commit, and the copy they archive is a valid run-usage record."""
     wid, inv, run = launched(lab, tmp_path, [], {"tokens": TOKENS})
@@ -225,6 +225,12 @@ def test_a_malformed_run_record_never_blocks_a_cancel_or_archival(lab, tmp_path,
         record = {**record, "result": {"usage_record": {**usage, "wall_s": float("nan")}}}
     text = record if isinstance(record, str) else json.dumps(record)
     (directory / "run.json").write_text(text, encoding="utf-8")
+    if status == K.STARTING:
+        # A case expecting `starting` tests a malformed status, not heartbeat expiry: the observed status is
+        # `starting` only while the heartbeat is fresh, and a loaded runner can let more than the 10 s default pass
+        # before the cancel and archival `aew` processes read it (#407's CI: `lost`). 3600 s is far above any
+        # runner's gap between the heartbeat and the archival read; both processes inherit it from os.environ.
+        monkeypatch.setenv("AEW_RUN_STALE_S", "3600")
     if beat:
         runlog.beat(directory)
     lab.project.lead("invoke", "cancel", inv, "--reason", "stop the test run")

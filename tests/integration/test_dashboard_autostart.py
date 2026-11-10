@@ -348,6 +348,7 @@ def test_both_start_paths_enter_both_services_before_the_tui_and_unwind_them(mon
     monkeypatch.setattr(lead, "tui_env", lambda *a, **k: {})
     monkeypatch.setattr(lead, "pushes_wakes", lambda e: False)
     monkeypatch.setattr(lead, "no_provider_line", lambda *a: None)
+    monkeypatch.setattr(lead, "_unrelayed", lambda e: None)
     monkeypatch.setattr(lead, "_readiness", lambda *a: None)
     monkeypatch.setattr(lead, "_tools_before_the_tui", lambda **k: None)
     monkeypatch.setattr(lead, "_switch_offers", lambda e: argparse.Namespace(apply=lambda t: None))

@@ -26,7 +26,8 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from aew import process_kind
@@ -74,6 +75,30 @@ if TYPE_CHECKING:
 # Never handed to a supervisor (and therefore never to a harness or an agent).
 SCRUBBED_ENV = K.CREDENTIAL_ENV
 ACK_WAIT_S = float(os.environ.get("AEW_LAUNCH_ACK_S", "90"))
+
+
+def record_told(aew_root: Path, result: Mapping[str, Any], *, lead: bool) -> None:
+    """What a wait's ``result`` returned, recorded in the run's directory so that neither a later wait nor a wake says
+    it again: the newest trigger it returned (``runlog.write_returned``), or, for a run's end, every trigger the run
+    had. With ``lead`` (the Lead's own wait: its typed tool, or a shell wait its broker relayed), the Lead has the end
+    too (``runlog.write_end_returned``), so no ``run_ended`` wake follows. Any other wait, such as the operator's at a
+    terminal, leaves the Lead to be woken. A store writer's call: a relayed read's process writes nothing, and the
+    broker that served it records what it printed."""
+    run = result.get("run")
+    if result.get("timed_out") is not False or not isinstance(run, str):
+        return
+    directory = runlog.run_dir(aew_root, run)
+    triggers = result.get("triggers")
+    if isinstance(triggers, list):  # a trigger: the run still works
+        seqs = [t["seq"] for t in triggers if isinstance(t, Mapping) and type(t.get("seq")) is int]
+        if seqs:
+            runlog.write_returned(directory, max(seqs))
+        return
+    if lead:
+        runlog.write_end_returned(directory)
+    digest = (result.get("runs") or {}).get(run)
+    if isinstance(digest, Mapping) and type(digest.get("trigger_seq")) is int:  # the run is over: none of it is news
+        runlog.write_returned(directory, digest["trigger_seq"])
 
 
 def scrubbed_env(base: dict[str, str] | None = None) -> dict[str, str]:
@@ -441,8 +466,7 @@ class Harness:
                             "heartbeat_age_s": runlog.heartbeat_age(directory),
                             "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
                             "results": self.run_results(inv["work_unit"], r["run"], cache),
-                            "missing_tools": _missing_tools(record),
-                            "missing_skills": _missing_skills(record),
+                             **_missing_capabilities(record),
                             "model_check": _field(record, "model_check").get("status"),
                             "foreign_sessions": _list(_field(record, "result").get("foreign_sessions")),
                             "run_dir": str(directory)})
@@ -461,7 +485,7 @@ class Harness:
         raise NotFound(f"no run {run}")
 
     def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False,
-                     triggers: bool = False) -> dict[str, Any]:
+                     triggers: bool = False, lead: bool = False) -> dict[str, Any]:
         """Wait until a run is no longer running (it ended, failed, was never confirmed, or was lost); with several runs
         and ``any_``, until the first of them is (register E1; ADR-0012 D4, D5 and D8; M4 report §2.9).
 
@@ -483,8 +507,10 @@ class Harness:
         named run's progress digest holds a trigger it has not returned yet and whose condition still holds
         (``progress.holds``: no stale wakes). The result has the wake's shape (``progress.wake``): `why`, `runs`
         (each named run's digest), `messages` (none while messaging is off), `next` (the wake guide's keys for its
-        `why`), and `next_action`. What a wait returned is recorded per run (`runlog.write_returned`), so a trigger
-        is returned once, and one that fired between two waits is returned by the next. The lanes are checked in
+        `why`), and `next_action`. What a wait returned is recorded per run (`record_told`), so a trigger is
+        returned once, and one that fired between two waits is returned by the next. ``lead``: the Lead's own wait
+        (its typed tool), whose returned end is then no wake. A non-writer (a read relayed for the contained Lead)
+        records nothing: its broker records what it returned. The lanes are checked in
         order: a run's record, then (with `--any`) the control state, then the triggers, so a run whose invocation
         ended is returned as ended, never as one to steer.
 
@@ -510,6 +536,12 @@ class Harness:
 
         def digests() -> dict[str, Any]:
             return {r: runlog.read_progress(runlog.run_dir(self.k.aew_root, r)) for r in names}
+
+        def capabilities() -> dict[str, Any]:
+            # Progress digests are not delivered contracts. Keep both lists per named run, including the others in
+            # wait-any, without changing `runs` or reading control state on a timeout/trigger return.
+            return {r: _missing_capabilities(runlog.observed_status(runlog.run_dir(self.k.aew_root, r))[1])
+                    for r in names}
 
         def control_end(fresh: dict[str, Any], run: str) -> str | None:
             inv_id = targets[run][0]
@@ -561,7 +593,7 @@ class Harness:
             # runs' own files only, no state read: the broker's wait calls this with a timeout of 0 on every
             # observation.
             woken = wake_queue.some_broker_posts(self.k.aew_root)
-            again = {"timed_out": True, "runs": digests(),
+            again = {"timed_out": True, "runs": digests(), "run_capabilities": capabilities(),
                      "next_action": K.wake_step(names) if woken else K.wait_step(names, again=True)}
             if len(names) == 1:
                 return {"run": names[0], "status": statuses[names[0]], **again}
@@ -570,11 +602,14 @@ class Harness:
         if woke:  # a trigger: the run still works, and the wake's shape says what it needs (steering PR 1)
             shape = P.wake([t["why"] for t in woke["triggers"]], digests())
             others = [r for r in names if r != run]
-            runlog.write_returned(runlog.run_dir(self.k.aew_root, run), woke["newest"])
-            return {"run": run, "status": status, "timed_out": False, **shape, "triggers": woke["triggers"],
-                    "next_action": K.trigger_step(shape["why"], run, others, then=(
-                        K.wake_step([run, *others], after_a_start=False)
-                        if wake_queue.some_broker_posts(self.k.aew_root) else None))}
+            result = {"run": run, "status": status, "timed_out": False, **shape, "triggers": woke["triggers"],
+                      "run_capabilities": capabilities(),
+                      "next_action": K.trigger_step(shape["why"], run, others, then=(
+                          K.wake_step([run, *others], after_a_start=False)
+                          if wake_queue.some_broker_posts(self.k.aew_root) else None))}
+            if process_kind.kind() == process_kind.STORE_WRITER:  # a relayed read's broker records it (record_told)
+                record_told(self.k.aew_root, result, lead=lead)
+            return result
         inv = targets[run][1]
         out: dict[str, Any] = {}
         headline = _headline(run, status, record)
@@ -583,20 +618,14 @@ class Harness:
         out.update({"run": run, "status": status, "reason": (record or {}).get("reason"),
                     "evidence": self.run_evidence(inv["work_unit"], run),
                     "results": self.run_results(inv["work_unit"], run), "timed_out": False,
-                    **P.wake([K.RUN_ENDED], digests())})
-        if process_kind.kind() == process_kind.STORE_WRITER:  # a non-writer (a relayed read) writes nothing in .aew
-            runlog.write_end_returned(runlog.run_dir(self.k.aew_root, run))  # no wake repeats what this result says
-        ended_digest = out["runs"].get(run)
-        if ended_digest:  # the run is over: what it was shown is no longer news
-            runlog.write_returned(runlog.run_dir(self.k.aew_root, run), int(ended_digest.get("trigger_seq") or 0))
+                    **P.wake([K.RUN_ENDED], digests()), "run_capabilities": capabilities()})
+        if process_kind.kind() == process_kind.STORE_WRITER:  # a relayed read's broker records it (record_told)
+            record_told(self.k.aew_root, out, lead=lead)
         if _reason_code(record):
             out["reason_code"] = _reason_code(record)
-        missing = _missing_tools(record)
-        if missing:  # beside what its evidence found: what it went without (#330's owed lines)
-            out["missing_tools"] = missing
-        missing_skills = _missing_skills(record)
-        if missing_skills:  # attention only, just like tools: no change to the run's outcome or next action
-            out["missing_skills"] = missing_skills
+        for field, missing in _missing_capabilities(record).items():
+            if missing:  # keep the single ended run's existing top-level lists, beside the per-run collection
+                out[field] = missing
         if control is not None:
             # `reason`, not `why`: a wait result's `why` is the wake enum (E122 review, n3)
             out["ended_by"] = {"lane": "control", "reason": control}  # the run record may still show it running
@@ -1003,6 +1032,11 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
 
 
 _SKILL_NAME = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")  # a skill id, at most 64 ASCII characters
+
+
+def _missing_capabilities(record: dict[str, Any] | None) -> dict[str, Any]:
+    """The same recorded-delivery projection on status and every wait return; advisory, never a run outcome."""
+    return {"missing_tools": _missing_tools(record), "missing_skills": _missing_skills(record)}
 
 
 def _missing_skills(record: dict[str, Any] | None) -> list[dict[str, str]]:

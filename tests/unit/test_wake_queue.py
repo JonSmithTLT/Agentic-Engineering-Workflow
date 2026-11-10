@@ -358,6 +358,83 @@ def test_an_invocation_the_lead_closed_wakes_it_with_nothing(lab: Lab) -> None:
     assert lab.poster.posts == [] and q.doc["wake"] is None
 
 
+def test_an_invocation_aew_closed_on_its_own_still_wakes_the_lead_with_its_end(lab: Lab) -> None:
+    """A queue lease's custodian whose worker is gone is ended by the engine, and its children with it
+    (``queue_ops.sync``): the Lead closed nothing, so its child's end is news. A child the Lead cancelled while its
+    custodian lived is not."""
+    lab.state["invocations"]["inv-custodian"] = {"status": "active", "work_unit": "T-1", "kind": "integration_attempt"}
+    for run, inv in ((RUN, "inv-child"), (OTHER, "inv-cancelled")):
+        lab.live(run, role="verifier", work=f"T-{run}", inv=inv)
+        lab.state["invocations"][inv]["custodian"] = "inv-custodian"
+        lab.digest(run)
+    q = lab.queue()
+    q.tick()
+    lab.ended.add(OTHER)  # type: ignore[attr-defined]
+    lab.state["invocations"]["inv-cancelled"]["status"] = "cancelled"  # the Lead's own cancel
+    q.tick()
+    assert lab.poster.posts == [] and OTHER not in q.doc["marks"]
+    lab.ended.add(RUN)  # type: ignore[attr-defined]
+    lab.state["invocations"]["inv-custodian"]["status"] = "interrupted"  # the engine's, for a lost worker
+    lab.state["invocations"]["inv-child"]["status"] = "cancelled"
+    q.tick()
+    assert lab.shape()["why"] == [K.RUN_ENDED] and list(lab.shape()["runs"]) == [RUN]
+    lab.poster.deliver()
+    for _ in range(3):
+        q.tick()
+    assert len(lab.poster.posts) == 1 and RUN not in q.doc["marks"]
+
+
+def test_what_a_wait_returned_is_recorded_and_only_the_leads_own_wait_tells_it_an_end(tmp_path: Path) -> None:
+    """``harness_ops.record_told``, which the engine's wait (a store writer's), the Lead's typed wait and the broker
+    serving a relayed wait share. A trigger moves the returned mark to the newest trigger returned; an end moves it
+    to the run's last, and only the Lead's wait records that it has the end. A timed-out wait records nothing."""
+    from aew.engine.harness_ops import record_told
+
+    directory = runlog.run_dir(tmp_path, RUN)
+    directory.mkdir(parents=True)
+    record_told(tmp_path, {"run": RUN, "timed_out": True, "runs": {RUN: {"trigger_seq": 4}}}, lead=True)
+    assert runlog.read_returned(directory) == 0 and not runlog.end_returned(directory)
+    record_told(tmp_path, {"run": RUN, "timed_out": False, "triggers": [{"seq": 2}, {"seq": 3}],
+                           "runs": {RUN: {"trigger_seq": 4}}}, lead=True)
+    assert runlog.read_returned(directory) == 3 and not runlog.end_returned(directory)
+    ended = {"run": RUN, "timed_out": False, "why": [K.RUN_ENDED], "runs": {RUN: {"trigger_seq": 5}}}
+    record_told(tmp_path, ended, lead=False)  # the operator's wait, at a terminal
+    assert runlog.read_returned(directory) == 5 and not runlog.end_returned(directory)
+    record_told(tmp_path, ended, lead=True)
+    assert runlog.end_returned(directory)
+    # A record only moves forward: an older result never takes the mark back.
+    record_told(tmp_path, {"run": RUN, "timed_out": False, "triggers": [{"seq": 1}]}, lead=True)
+    record_told(tmp_path, {**ended, "runs": {RUN: {"trigger_seq": 2}}}, lead=True)
+    assert runlog.read_returned(directory) == 5 and runlog.end_returned(directory)
+
+
+def test_the_brokers_delivery_records_come_from_the_parsed_result_for_a_run_the_wait_named(tmp_path: Path) -> None:
+    """STG-05 CS-4 addendum 15: the broker records a relayed wait's delivery only from the result the read printed,
+    and the one value in it the Lead chose, the run, only when it is a run the wait named."""
+    from aew.harness.lead_broker import record_delivery
+
+    for run in (RUN, OTHER):
+        runlog.run_dir(tmp_path, run).mkdir(parents=True)
+    ended = {"run": OTHER, "timed_out": False, "why": [K.RUN_ENDED], "runs": {OTHER: {"trigger_seq": 3}}}
+    record_delivery(tmp_path, [RUN], json.dumps(ended))  # a run the wait didn't name
+    record_delivery(tmp_path, [OTHER], "not a result\n" + json.dumps(ended))
+    record_delivery(tmp_path, [OTHER], json.dumps([ended]))
+    for run in (RUN, OTHER):
+        assert runlog.read_returned(runlog.run_dir(tmp_path, run)) == 0
+        assert not runlog.end_returned(runlog.run_dir(tmp_path, run))
+    record_delivery(tmp_path, [RUN, OTHER], json.dumps(ended, indent=2) + "\n")
+    directory = runlog.run_dir(tmp_path, OTHER)
+    assert runlog.read_returned(directory) == 3 and runlog.end_returned(directory)
+
+
+def test_the_per_run_line_reads_the_scrubbed_shape(lab: Lab) -> None:
+    """Review n2: the line under the JSON holds AEW's values, read from what was scrubbed, never from the shape."""
+    planted = "aew1.tk_0123456789abcdef.SYNTHETICsyntheticSYNTHETIC"
+    text = Q.wake_text("wake-1", {"why": [K.QUIET], "runs": {RUN: {"state": planted, "steps": planted}}})
+    assert planted not in text
+    assert text.splitlines()[2] == f"- {RUN}: aew1.<redacted>, aew1.<redacted> steps"
+
+
 def test_an_end_a_wait_returned_is_no_wake_until_the_run_goes_on(tmp_path: Path) -> None:
     """Review, m6, on the real `runlog`. A heartbeat that comes back makes the real end news again."""
     lab = Lab(tmp_path)

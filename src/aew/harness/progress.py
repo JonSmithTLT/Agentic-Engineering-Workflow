@@ -329,7 +329,7 @@ class Tracker:
         text = to_posix(text)
         if text:  # one spelling per file: `src/b/./x.py` is `src/b/x.py`, and `src/a/../b/x.py` is `src/b/x.py`
             text = posixpath.normpath(text)
-        return text if len(text) <= MAX_PATH else text[:MAX_PATH] + "..."
+        return _cut(text, MAX_PATH)  # redacted first, as every text the digest keeps
 
     def _outside_scope(self, rel: str) -> bool:
         """Outside the Ticket's scope, as its gate reads it (``policy.guardrails.outside_ticket_scope``: an empty scope
@@ -560,8 +560,9 @@ def wake(why: list[str], runs: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _same(command: Any) -> str:
-    """A test command as a trigger and ``red_commands`` hold it: whitespace folded, cut to :data:`MAX_COMMAND`."""
-    return " ".join(str(command).split())[:MAX_COMMAND] if isinstance(command, str) else ""
+    """A test command as a trigger and ``red_commands`` hold it: redacted, whitespace folded, cut to
+    :data:`MAX_COMMAND`."""
+    return " ".join(K.redact(command).split())[:MAX_COMMAND] if isinstance(command, str) else ""
 
 
 def is_test_command(command: str) -> bool:
@@ -642,6 +643,9 @@ def _clean(text: str) -> str:
 
 
 def _cut(text: str, limit: int) -> str:
+    """``text`` redacted (``contract.redact``, the scrub's own), then cut to ``limit``: a cut never leaves part of a
+    credential that the redaction would no longer recognise."""
+    text = K.redact(text)
     return text if len(text) <= limit else text[:limit] + "..."
 
 

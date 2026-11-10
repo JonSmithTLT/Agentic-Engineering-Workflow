@@ -900,7 +900,9 @@ def test_harness_config_prints_the_projection_without_secrets(lab, tmp_path):
 
     # where the Lead runs as it is, what its TUI gets: the line that no tool of AEW's is placed (review of #356, n1)
     placed = None if opencode_lead.contained_here() else {"placed": False, "tools": []}
-    assert lead["config"] == projection.lead_config(lead_text.guide_for(Engine.discover(lab.root)), tools=placed)
+    engine = Engine.discover(lab.root)  # wakes on, as a project that names no key has them, where they reach the Lead
+    assert lead["config"] == projection.lead_config(lead_text.guide_for(engine), tools=placed,
+                                                    push_wake=opencode_lead.pushes_wakes(engine))
     assert "OPENAI_API_KEY" not in lead["env_names"] and "AEW_LEAD_TOKEN" not in lead["env_names"]
 
 

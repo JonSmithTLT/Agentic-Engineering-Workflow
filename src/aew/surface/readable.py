@@ -34,7 +34,7 @@ import unicodedata
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from aew.harness.contract import WAIT_RULE, redact
+from aew.harness.contract import WAIT_RULE, redact, wake_step
 from aew.surface import contract
 from aew.surface.scrubbing import scrub
 
@@ -183,6 +183,8 @@ def _next(result: dict[str, Any]) -> str:
     offered = [a for a in projection.get("actions") or [] if a.get("availability") == "AVAILABLE"]
     for action in [a for a in offered if a.get("kind") not in _NOT_A_NEXT_STEP] or \
             [a for a in offered if a.get("kind") == "wait"]:
+        if action.get("woken"):
+            return _one_line(f"next: {wake_step(action['arguments']['runs'])}")
         label = "next" if action.get("kind") == "wait" else f"next{scope}"  # a wait's arguments name its own runs
         rule = f" ({WAIT_RULE})" if action.get("kind") == "wait" else ""  # how a wait is followed (E122)
         if action.get("callable"):

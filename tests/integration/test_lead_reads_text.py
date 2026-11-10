@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,9 @@ from test_stages_ticket import DRAFT, HANG
 from aew.engine import custody_ops as CO
 from aew.engine.api import Engine
 from aew.harness import contract as K
+from aew.harness import progress as P
+from aew.harness import runlog, wake_queue
+from aew.policy import execution as X
 from aew.surface import mcp, readable
 from aew.surface import run as R
 from aew.surface.context import SurfaceContext
@@ -139,7 +143,7 @@ def test_a_wait_whose_run_crashed_says_so_through_the_adapter(lab_project):
     assert lines[1].startswith("next: ") and "has no live run" in lines[1] and lines[-2:] == lines[:2]
 
 
-def test_a_wait_that_timed_out_says_so_through_the_adapter(lab_project):
+def test_a_wait_that_timed_out_says_so_through_the_adapter(lab_project, monkeypatch):
     p, _lab = lab_project
     lead = TextLead(p)
     drafted = lead.call("ticket_draft", **{**DRAFT, "expect_rev": lead.call("status")["revision"]})
@@ -157,6 +161,61 @@ def test_a_wait_that_timed_out_says_so_through_the_adapter(lab_project):
     assert timed_out["result"]["next_action"] == K.wait_step(runs, again=True)
     assert lead.head[1] == readable._one_line(f"next: {K.wait_step(runs, again=True)}")
     assert lead.head[1].startswith(f"next: {runs[0]} is still working ({K.TIMED_OUT}): {K.NOT_POLLING}.")
+    # Where a broker posts wakes, the same timeout ends the turn (the review's m10), and "do not end it" is gone.
+    monkeypatch.setattr(wake_queue, "some_broker_posts", lambda root: True)
+    woken = lead.call("harness_wait", runs=runs, timeout_s=1)
+    assert woken["result"]["timed_out"] is True and woken["result"]["next_action"] == K.wake_step(runs)
+    assert K.NOT_POLLING not in lead.head[1] and lead.head[1].startswith("next: end your turn")
+    # And a status: the wait stays on offer, marked, so its readable next step is the turn's end too.
+    [wait] = [a for a in lead.status(wid)["projection"]["actions"] if a["action"] == "harness_wait"]
+    assert wait["woken"] is True
+
+
+def test_what_a_wake_quotes_is_scrubbed_as_a_waits_result_is(lab_project, monkeypatch):
+    """One digest, read by both deliveries: the wait through the surface, and the wake through its queue."""
+    p, _lab = lab_project
+    planted = "aew1.tk_0123456789abcdef.SYNTHETICsyntheticSYNTHETIC"
+    lead = TextLead(p)
+    drafted = lead.call("ticket_draft", **{**DRAFT, "expect_rev": lead.call("status")["revision"]})
+    wid = drafted["projection"]["subject"]
+    p.lead("plan", "accept", wid, "--revision", "1")
+    assert lead.offered(wid, "ticket_start")["ok"]
+    [run] = [r["run"] for r in lead.status(wid)["projection"]["runs"]]
+    digest = {"schema": P.SCHEMA, "run": run, "state": P.WORKING, "steps": 3, "last_command": f"curl -H {planted} x",
+              "token": planted, "out_of_scope": ["src/b/x.py"], "red_commands": [], "trigger_seq": 1,
+              "counts": {"steps": 3, "files": 1, "commands": 1, "tests": 0, "triggers": 1},
+              "since_last_wake": {"suppressed": {}},
+              "triggers": [{"seq": 1, "why": K.OUT_OF_SCOPE, "path": "src/b/x.py"}]}
+    monkeypatch.setattr(runlog, "read_progress", lambda directory: digest)
+
+    waited = lead.call("harness_wait", runs=[run], timeout_s=1)
+    shown = json.dumps(waited["result"])
+
+    class Poster:
+        posts: list[str] = []
+
+        def busy(self) -> bool:
+            return False
+
+        def post(self, wake_id: str, text: str) -> str:
+            self.posts.append(text)
+            return "ses_1"
+
+        def landed(self, wake_id: str) -> str:
+            return wake_queue.WAITING
+
+        def new_id(self) -> str:
+            return "msg_1"
+
+    engine = Engine.discover(p.root)
+    queue = wake_queue.WakeQueue(engine.aew_root, poster=Poster(), state=engine.store.current, quiet_s=lambda: 1200,
+                                 clock=time.time)
+    runlog.write_returned(runlog.run_dir(engine.aew_root, run), 0)  # the wait's mark: the wake is told it as well
+    queue.tick()
+    [wake] = Poster.posts
+    for delivery in (shown, lead.text, wake):
+        assert planted not in delivery
+    assert "aew1.<redacted>" in shown and "aew1.<redacted>" in wake and '"token"' not in wake
 
 
 def _named_tool(line: str) -> str:
@@ -186,11 +245,12 @@ def test_a_lead_reading_only_the_text_waits_through_a_long_run_without_stopping_
     runs = [r["run"] for r in started["projection"]["runs"]]
     assert lead.head[1] == f'next: harness_wait runs={json.dumps(runs)} ({K.WAIT_RULE})'  # after a dispatch: wait
     [launched] = [s for s in started["result"]["steps"] if "launch" in s]  # the dispatch's own step says so too
-    assert launched["next_action"] == K.wait_step(runs)
+    waiting = K.no_broker_step if X.wakes_post_here({}) else K.wait_step  # wakes on, and no broker posts them here
+    assert launched["next_action"] == waiting(runs)
     lab.until(ready.exists, what=f"{runs[0]} to be working")
     e = Engine.discover(p.root)  # and what `status` and `resume` say of the running run
     [running] = e.harness_resume(e.store.current())
-    assert running["action"] == f"{runs[0]} is running for {running['invocation']}: {K.wait_step(runs)}"
+    assert running["action"] == f"{runs[0]} is running for {running['invocation']}: {waiting(runs)}"
 
     followed = []
     for _ in range(3):  # a long run: the Lead's waits time out while it works

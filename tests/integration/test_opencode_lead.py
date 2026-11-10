@@ -151,11 +151,13 @@ def test_print_config_starts_nothing_and_shows_no_values(lab):
     shown = res.json
     # where the Lead runs as it is, what its TUI gets: the line that no tool of AEW's is placed (review of #356, n1)
     placed = None if lead.contained_here() else {"placed": False, "tools": []}
-    assert shown["config"] == projection.lead_config(guide_of(lab), tools=placed)
+    assert shown["config"] == projection.lead_config(guide_of(lab), tools=placed,
+                                                     push_wake=lead.wakes_reach_the_lead({}))
     assert shown["config"]["experimental"]["policies"] == DENY  # --print-config shows the provider deny
     assert shown["command"][-3:] == ["--server", shim.SERVER_URL, str(lab.root)]
     system = shown["config"]["agents"][projection.LEAD_AGENT]["system"]
-    assert system.startswith(projection.LEAD_SYSTEM) and "# How work gets done in AEW: the Lead's guide" in system
+    assert system.startswith(projection.LEAD_SYSTEM.split(projection.WAIT_SENTENCE)[0].rstrip())
+    assert "# How work gets done in AEW: the Lead's guide" in system
     assert "OPENAI_API_KEY" not in shown["env_names"] and "AEW_LEAD_BROKER" in shown["env_names"]
     assert SECRET not in res.stdout and lab.project.token not in res.stdout
     assert not (Path(lab.env["AEW_OPENCODE_BIN"]).parent / "tui-argv.json").exists()

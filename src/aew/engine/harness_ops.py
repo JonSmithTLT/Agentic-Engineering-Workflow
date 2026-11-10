@@ -29,6 +29,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from aew import process_kind
 from aew.engine import faults, outbox
 from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_lead, rotate_invocation_token
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
@@ -46,7 +47,7 @@ from aew.errors import (
     TurnEndNeedsMessaging,
     UsageError,
 )
-from aew.harness import containment, procs, runlog
+from aew.harness import containment, procs, runlog, wake_queue
 from aew.harness import contract as K
 from aew.harness import delivery as L
 from aew.harness import progress as P
@@ -170,21 +171,29 @@ class Harness:
                                      "superseded": previous["run"] if previous else None, "revision": revision,
                                      "next_action": self._wait_on([run])})
 
-    def _wakes_reach_lead(self) -> bool:
-        """Whether a wake would reach the Lead now: the policy has push wakes on, and this generation's broker is live
-        and posts them (steering design r4 §1). Otherwise the Lead waits with `harness_wait`, which is its fallback."""
-        from aew.harness import wake_queue
-
+    def wakes_reach_lead(self) -> bool:
+        """Whether a wake would reach the Lead now: the policy has push wakes on, and a live broker posts them (steering
+        design r4 §1). Otherwise the Lead waits with `harness_wait`, which is its fallback. It costs no second parse of
+        the control state: each run `aew status` reports asks, and so does a wait's end (OBX-38). **Limit:** right after
+        a takeover the old mark can count until the old broker's watchdog closes its record, within a poll (0.83 s and
+        0.88 s, measured), and longer only if that watchdog is stuck on the control lock."""
         try:
             if X.push_wake(self.k.execution_policy()[0]) != X.PUSH_WAKE_ON:
                 return False
         except AEWError:
             return False
-        return wake_queue.broker_posts(self.k.aew_root, int(self.k.store.current()["lead"]["generation"]))
+        return wake_queue.some_broker_posts(self.k.aew_root)
 
     def _wait_on(self, runs: list[str]) -> str:
-        """The next step while ``runs`` work: the turn's end where AEW wakes the Lead, else the wait."""
-        return K.wake_step(runs) if self._wakes_reach_lead() else K.wait_step(runs)
+        """The next step while ``runs`` work: the turn's end where AEW wakes the Lead, else the wait, which says when it
+        is the fallback for a broker that isn't posting (steering design r4 §1)."""
+        if self.wakes_reach_lead():
+            return K.wake_step(runs)
+        try:
+            fallback = X.wakes_post_here(self.k.execution_policy()[0])
+        except AEWError:
+            fallback = False
+        return K.no_broker_step(runs) if fallback else K.wait_step(runs)
 
     def launch_dispatched(self, result: dict[str, Any]) -> dict[str, Any]:
         """Finish ``--launch`` on a dispatch: the dispatch-issued credential goes to the run's supervisor and
@@ -557,8 +566,9 @@ class Harness:
             # A timeout is not an end: the runs still work, and `WAIT_TIMED_OUT` says what to do (E122). Text and the
             # runs' own files only, no state read: the broker's wait calls this with a timeout of 0 on every
             # observation.
-            again = {"timed_out": True, "next_action": K.wait_step(names, again=True), "runs": digests(),
-                     "run_capabilities": capabilities()}
+            woken = wake_queue.some_broker_posts(self.k.aew_root)
+            again = {"timed_out": True, "runs": digests(), "run_capabilities": capabilities(),
+                     "next_action": K.wake_step(names) if woken else K.wait_step(names, again=True)}
             if len(names) == 1:
                 return {"run": names[0], "status": statuses[names[0]], **again}
             return {"statuses": statuses, **again}
@@ -569,7 +579,9 @@ class Harness:
             runlog.write_returned(runlog.run_dir(self.k.aew_root, run), woke["newest"])
             return {"run": run, "status": status, "timed_out": False, **shape, "triggers": woke["triggers"],
                     "run_capabilities": capabilities(),
-                    "next_action": K.trigger_step(shape["why"], run, others)}
+                    "next_action": K.trigger_step(shape["why"], run, others, then=(
+                        K.wake_step([run, *others], after_a_start=False)
+                        if wake_queue.some_broker_posts(self.k.aew_root) else None))}
         inv = targets[run][1]
         out: dict[str, Any] = {}
         headline = _headline(run, status, record)
@@ -579,6 +591,8 @@ class Harness:
                     "evidence": self.run_evidence(inv["work_unit"], run),
                     "results": self.run_results(inv["work_unit"], run), "timed_out": False,
                     **P.wake([K.RUN_ENDED], digests()), "run_capabilities": capabilities()})
+        if process_kind.kind() == process_kind.STORE_WRITER:  # a non-writer (a relayed read) writes nothing in .aew
+            runlog.write_end_returned(runlog.run_dir(self.k.aew_root, run))  # no wake repeats what this result says
         ended_digest = out["runs"].get(run)
         if ended_digest:  # the run is over: what it was shown is no longer news
             runlog.write_returned(runlog.run_dir(self.k.aew_root, run), int(ended_digest.get("trigger_seq") or 0))

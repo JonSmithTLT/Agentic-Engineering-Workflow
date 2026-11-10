@@ -122,7 +122,8 @@ def test_a_server_that_dies_mid_session_ends_the_session_and_says_so(tmp_path: P
     server = "import json\nprint(json.dumps({'url': 'http://127.0.0.1:4100'}), flush=True)\n"
     # The TUI's own end is inside _run's limit: on Windows a timed-out `run` still waits for whoever holds its pipes.
     done, _ = _run(tmp_path, server=server, tui_text="import time\ntime.sleep(90)\n")
-    assert "the Lead's server ended" in done.stderr and "`aew opencode` again" in done.stderr
+    assert "the Lead's server ended" in done.stderr and "says how to go on" in done.stderr
+    assert done.returncode == shim.EXIT_SERVER_LOST  # whatever the TUI exits with when it is ended
 
 
 def test_a_long_wait_for_the_server_says_so_once(capsys: pytest.CaptureFixture[str],
@@ -167,5 +168,53 @@ def test_ctrl_c_before_the_announcement_ends_the_server_and_gives_no_traceback(
 def test_a_launch_that_never_started_the_tui_is_no_success() -> None:
     failed = lead._outcome({"ok": True, "exit": shim.EXIT_SETUP}, "2.2.6")
     assert failed["ok"] is False and "aew doctor" in failed["not_started"]
+    lost = lead._outcome({"ok": True, "exit": shim.EXIT_SERVER_LOST}, "2.2.6")
+    assert lost["ok"] is False and "`aew opencode` again" in lost["server_lost"] and "not_started" not in lost
+    held = lead._outcome({"ok": True, "exit": shim.EXIT_SERVER_LOST, "seat": "held; `aew lead takeover`"}, "2.2.6")
+    assert "as `seat` says" in held["server_lost"] and "`aew opencode` again" not in held["server_lost"]
     ran = lead._outcome({"ok": True, "exit": 3}, "2.2.6")  # the TUI's own status
     assert ran == {"ok": True, "exit": 3, "opencode": "2.2.6"}
+
+
+def test_a_server_lost_with_a_run_in_flight_says_a_step_that_works_and_following_it_works(tmp_path: Path) -> None:
+    """Review, m2. On the `--acquire` route the credential died with the session and the seat stays held for the run, so
+    `aew opencode` alone would be refused. The result says to go as `seat` says, and that step is followed here."""
+    import fake_opencode
+    from fake_harness import SCRIPTS_ENV
+    from harness_acceptance import WID, lead, operator_takeover, plan_ticket
+    from harness_conformance import FakeOpenCodeDriver, sync_dir
+
+    from aew.capability import consent
+
+    driver = FakeOpenCodeDriver()
+    lab = driver.create_lab(tmp_path, lead_session=True)
+    try:
+        lab.lead("lead", "release")  # the operator's own seat is given up: the Lead's session acquires it
+        lab.project.token = ""
+        lab.script("default", {"steps": [{"do": "hang"}], "server": {"tool_parts": True, "live_usage": {}}})
+        # At a terminal the contained Lead's start asks for the tools AEW is missing, and no one here answers: the
+        # operator's "no", given ahead in the register `aew opencode` reads (the driver's own XDG_DATA_HOME)
+        register = lab.tmp / "lead-opencode" / "data" / "aew" / "capability"
+        register.mkdir(parents=True, exist_ok=True)
+        consent.decline(consent.offers(register), register)
+        session = driver.start_lead(lab, "lead-lost", [
+            *plan_ticket(tmp_path), lead("work", "assign", WID, "--launch"),
+            {"do": "wait_file", "path": str(sync_dir(tmp_path) / "never"), "timeout": 300}], acquire=True)
+
+        # The run's own record: read with no lock, as nothing here needs the store's
+        lab.until(lambda: lab.record("R-INV-0001-1").get("status") == "running",
+                  what="the Lead's run to be in flight", timeout=120)
+        kill = Path(lab.env[SCRIPTS_ENV]) / fake_opencode.KILL_LEAD_SERVER
+        kill.write_text("", encoding="utf-8")
+        res, _steps = session.result(timeout=120)
+        out = json.loads(res.stdout)
+        assert res.returncode == 1 and out["ok"] is False and out["exit"] == shim.EXIT_SERVER_LOST, res.stdout
+        assert out["seat"].startswith("held;") and "`aew lead takeover`" in out["seat"], out["seat"]
+        assert "continue as `seat` says" in out["server_lost"] and "again" not in out["server_lost"], out["server_lost"]
+
+        kill.unlink()
+        lab.project.token = operator_takeover(lab, "the Lead's server was lost")  # what `seat` says
+        again, _ = driver.lead(lab, "lead-after", [{"do": "aew", "args": ["status", "--json"]}])
+        assert again.returncode == 0, again.stderr
+    finally:
+        lab.cleanup()

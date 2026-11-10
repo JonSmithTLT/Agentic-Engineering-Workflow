@@ -1,0 +1,1 @@
+**A neighbour, filed since:** E294 (RS-36), advisor capacity admission, also serves `AEW-FR-26.b` and `.c`, which this row's Source cites. Neither is a duplicate: this row is the Lead's context hand-off, and E294 admits advisors by capacity.

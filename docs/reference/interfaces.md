@@ -46,6 +46,7 @@ Outside the API:
 | `harness_status` | query | MECHANICAL | built | no | no | - |
 | `harness_wait` | wait | MECHANICAL | built | no | no | - |
 | `integration_publish` | decision | JUDGMENT_BEARING | built | yes | yes | `verify.ingest.integration`, `integrate.publish`, `invoke.create.mutating`, `dispatch.launch` |
+| `message_send` | stage | MECHANICAL | built | yes | no | `message.send` |
 | `resolve` | stage | JUDGMENT_BEARING | built | yes | no | `stage.resolve`, `work.dispose`, `work.gate_replace` |
 | `resume` | query | MECHANICAL | built | no | no | - |
 | `status` | query | MECHANICAL | built | no | no | - |

@@ -84,7 +84,7 @@ def tool_records() -> list[C.Record]:
     from aew.surface import contract
 
     records = []
-    for name, tool in sorted(contract.TOOLS.items()):
+    for name, tool in sorted(contract.catalog(contract.ALL_SWITCHES).items()):
         properties = tool.input_schema.get("properties") or {}
         fact: dict[str, Any] = {"name": name, "kind": tool.kind, "class": tool.base_class, "status": tool.status,
                                 "mutates": tool.mutates, "dispatches": tool.dispatches, "progression": tool.progression,
@@ -94,6 +94,8 @@ def tool_records() -> list[C.Record]:
                     "promotes": list(tool.promotes),
                     "required_arguments": list(tool.input_schema.get("required") or [])}
         fact.update({k: v for k, v in optional.items() if v})
+        if tool.switch:
+            fact["switch"] = tool.switch
         cov = C.complete(TOOLS_REGISTRY, TOOL_TESTS)
         fact_coverage = {k: cov for k, v in fact.items() if isinstance(v, list)}
         records.append(C.Record(TOOLS, name, CONTRACT, "TOOLS", "enumerated", cov, fact, fact_coverage=fact_coverage))

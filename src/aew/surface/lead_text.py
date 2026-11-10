@@ -39,10 +39,10 @@ def _steps(t: contract.Tool) -> tuple[guide.StageStep, ...]:
                  for n, (p, build) in enumerate(zip(t.expands_to, builders, strict=True), start=1))
 
 
-def stages(profile: str = NORMAL) -> tuple[guide.Stage, ...]:
+def stages(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> tuple[guide.Stage, ...]:
     """The tools on ``profile`` that commit a step of the workflow, in catalog order, as the guide reads them."""
     return tuple(guide.Stage(t.name, t.description, _steps(t), SA.STARTS_AT.get(t.name, {}))
-                 for t in contract.exposed(profile) if t.expands_to)
+                 for t in contract.exposed(profile, switches) if t.expands_to)
 
 
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
@@ -52,4 +52,6 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
 
 def guide_for(engine: Any) -> str:
     """The guide for this project's own policy (`aew guide`, and the Lead's system text)."""
-    return str(engine.lead_guide(stages()))
+    from aew.surface.context import switches_for
+
+    return str(engine.lead_guide(stages(switches=switches_for(engine))))

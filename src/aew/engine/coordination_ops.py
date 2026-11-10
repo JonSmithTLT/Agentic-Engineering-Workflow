@@ -338,7 +338,7 @@ class _Draft:
 
 
 class Coordination:
-    """Recording and reading coordination messages (F9-A MS1). No surface calls it yet; while messaging is off every
+    """Recording and reading coordination messages (F9-A MS1, MS3's typed send); while messaging is off every
     record is refused before anything is read or written."""
 
     def __init__(self, k: Kernel, *, archive: ArchivePort) -> None:
@@ -372,7 +372,7 @@ class Coordination:
             sender = L.lead_party(actor["generation"])
             found = self._existing(thread, sender, draft)
             if found is not None:  # before the recipient check: a retry after the recipient ended returns the original
-                return found | {"revision": s.revision}
+                return found | {"revision": s.revision, "unseen_replies": self._unseen_replies(thread)}
             self._require_recipient(state, to)
             by_id = thread.by_id()
             if draft.in_reply_to is not None and draft.in_reply_to not in by_id:
@@ -390,7 +390,13 @@ class Coordination:
             record = self._record(thread, inv, draft, sender=sender, recipient=L.invocation_party(to),
                                   checked_rev=expect_rev)
             self._write(state, thread, record)
-            return self._result(thread, record, duplicate=False) | {"revision": s.revision}
+            return self._result(thread, record, duplicate=False) | {
+                "revision": s.revision, "unseen_replies": self._unseen_replies(thread)}
+
+    @staticmethod
+    def _unseen_replies(thread: Thread) -> int:
+        answered = _answered(thread)
+        return sum(not _is_lead(m) and m["id"] not in answered for m in thread.messages)
 
     def message_record_worker(self, *, invocation_token: str, in_reply_to: str | None, body: str,
                               kind: str | None = None, refs: list[str] | None = None,

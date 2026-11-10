@@ -14,6 +14,8 @@ Imports from the groups:
 - `aew.cli`
 - `aew.engine`
 - `aew.harness`
+- `aew.knowledge`
+- `aew.schemas`
 - `aew.stg02`
 
 ### `aew`
@@ -37,6 +39,7 @@ None.
 - `aew.harness.model_list`
 - `aew.harness.opencode.adapter`
 - `aew.harness.opencode.capabilities`
+- `aew.switch_offer`
 - `aew.util`
 
 ### `aew.errors`
@@ -88,6 +91,20 @@ None.
 ### `aew.profile`
 
 None.
+
+### `aew.switch_offer`
+
+- `aew.engine.base`
+- `aew.engine.usage_ops`
+- `aew.engine.workspace_ops`
+- `aew.errors`
+- `aew.harness.contract`
+- `aew.harness.operator_client`
+- `aew.knowledge.manifest`
+- `aew.operator`
+- `aew.process_kind`
+- `aew.schemas`
+- `aew.util`
 
 ### `aew.util`
 
@@ -820,6 +837,7 @@ None.
 - `aew.knowledge.context`
 - `aew.knowledge.evidence`
 - `aew.policy.execution`
+- `aew.process_kind`
 - `aew.roles`
 - `aew.skills`
 - `aew.snapshot.fingerprint`
@@ -1023,6 +1041,7 @@ None.
 - `aew.engine.hierarchy`
 - `aew.engine.nonmutating_ops`
 - `aew.engine.ports`
+- `aew.engine.queue_ops`
 - `aew.engine.seams`
 - `aew.engine.validation_ops`
 - `aew.errors`
@@ -1452,6 +1471,7 @@ None.
 - `aew.policy.execution`
 - `aew.process_kind`
 - `aew.surface.lead_text`
+- `aew.switch_offer`
 
 ### `aew.harness.opencode.lead_wake`
 
@@ -2008,6 +2028,7 @@ None.
 
 - `aew.engine.guards`
 - `aew.engine.primitives`
+- `aew.engine.queue_ops`
 - `aew.engine.transitions`
 - `aew.errors`
 - `aew.harness.contract`

@@ -16,11 +16,12 @@ that tool first, with the shell command as its fallback.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 from typing import Any, NamedTuple
 
 from aew.engine import transitions as T
-from aew.harness.contract import CREATE_TICKET, EXPECT_REV, HELD_SEAT_IN_A_GUIDE, WAIT_RULE
+from aew.harness.contract import CREATE_TICKET, EXPECT_REV, HELD_SEAT_IN_A_GUIDE
 
 CLASS_TEXT = {  # WC §7.4 definitions and §7.4 examples, verbatim in substance
     "0": ("eligible mechanical work", "work for which the Class 0 eligibility predicate holds (below)",
@@ -63,6 +64,7 @@ class Stage(NamedTuple):
     tool: str
     description: str
     steps: tuple[StageStep, ...]
+    starts: Mapping[str, int] = MappingProxyType({})  # a state past its first steps -> the step it starts at there
 
     def entries(self) -> tuple[StageStep, ...]:
         """The steps a call can start at: its first required step, and any optional step before it. Only these move a
@@ -133,7 +135,8 @@ PATH = (
     Move("plan.accept", None, _command("plan.accept"), label="Accept the plan",
          note="The Ticket becomes READY when its plan is accepted and its dependencies are satisfied."),
     Move("work.assign", None, _command("assign"), label="Start the implementer"),
-    _transition("RUNNING", note=f"Wait on runs with `harness_wait`: {WAIT_RULE}."),
+    _transition("RUNNING", note="Follow a run as its launch's next step says: the turn's end where AEW wakes you, "
+                                "or else `harness_wait`, which blocks until a run ends or needs you. Do not poll."),
     _transition("REVIEW_PENDING", note=(
         "Once the implementer's report and checks are in, this accepts the implementation. **Accept the implementation "
         f"by transition**, not by ingesting it: where the class requires no review, {TRANSITION} to VERIFY_PENDING if "
@@ -142,15 +145,15 @@ PATH = (
     Move("invoke.create.mutating", "reviewer", f"`aew invoke create <T> --role reviewer --launch {EXPECT_REV}`",
          label="Dispatch the reviewer"),
     Move("review.ingest", None, _command("review.ingest"), label="Accept the review",
-         note="Name the report `status` lists, not a run. Where the class requires no verification, take the shell "
-              "commands from here."),
+         note="Name the report `status` lists, not a run. Where the class requires no verification, `ticket_prepare` "
+              "takes it from here, with no report."),
     _transition("VERIFY_PENDING"),
     Move("invoke.create.mutating", "verifier", f"`aew invoke create <T> --role verifier --launch {EXPECT_REV}`",
          label="Dispatch the verifier"),
     Move("verify.ingest", None, _command("verify.ingest"), label="Accept the verification"),
     _transition("COMMIT_READY"),
     Move("integrate.prepare", None, f"`aew integrate prepare <T> {EXPECT_REV}`", label="Prepare the candidate",
-         note="On a class path with no verification, take this from the shell once the Ticket is COMMIT_READY."),
+         note="On a class path with no verification, `ticket_prepare` takes it from REVIEW_PASSED, with no report."),
     Move("invoke.create.mutating", "integration", f"`aew invoke create <T> --scope integration --launch {EXPECT_REV}`",
          label="Dispatch the integration verifier", post_verify=True),
     Move("verify.ingest.integration", None, _command("verify.ingest"), label="Accept the integration verification",
@@ -219,7 +222,8 @@ def _edge_stage(stages: Sequence[Stage], state: str, dst: str, via: str) -> Stag
         primitive = "verify.ingest.integration"
     qualifier = dst if via == "transition" else None
     for stage in stages:
-        if any((s.primitive, s.qualifier) == (primitive, qualifier) for s in stage.entries()):
+        entries = (stage.steps[stage.starts[state] - 1],) if state in stage.starts else stage.entries()
+        if any((s.primitive, s.qualifier) == (primitive, qualifier) for s in entries):
             return stage
     return None
 

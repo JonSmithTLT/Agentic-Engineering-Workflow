@@ -98,6 +98,9 @@ def test_a_project_level_next_step_never_reads_as_the_way_on_from_the_call():
     wait = action("harness_wait", kind="wait", arguments={"runs": ["R-1"]}, cli_fallback=None)
     assert lines_of(stage(projection={"subject": "project", "state": None, "actions": [wait]}))[1] == (
         f'next: harness_wait runs=["R-1"] ({K.WAIT_RULE})')  # its arguments say what it is about, and how to wait
+    woken = {**wait, "woken": True}  # where a wake would reach the Lead, the turn's end, and no "do not end your turn"
+    assert lines_of(stage(projection={"subject": "project", "state": None, "actions": [woken]}))[1].startswith(
+        "next: end your turn: AEW wakes you when R-1")
 
 
 def wait(tool: str = "harness_wait", **payload: Any) -> dict[str, Any]:

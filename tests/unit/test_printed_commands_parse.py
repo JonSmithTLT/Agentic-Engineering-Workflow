@@ -69,7 +69,7 @@ DEFERRED_FILES = frozenset(path for path, _ in DEFERRED)  # B3's: the one-owner 
 
 # Sites whose command the finder cannot judge from the source, each with why and the test that checks it instead.
 EXEMPT = {
-    "src/aew/harness/contract.py:204": "the frame's owner (fields_block): its command and keys are each caller's, "
+    "src/aew/harness/contract.py:219": "the frame's owner (fields_block): its command and keys are each caller's, "
                                        "checked at each call",
     "src/aew/engine/custody_ops.py:158": "the command word comes from a value: test_operator_terminal_refusals_parse",
     "src/aew/engine/custody_ops.py:159": "the command word comes from a value: test_operator_terminal_refusals_parse",

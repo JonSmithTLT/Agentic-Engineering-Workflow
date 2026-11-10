@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 import threading
 import time
+from types import SimpleNamespace
 
+from aew.harness import contract as K
+from aew.harness import progress as P
+from aew.harness import runlog
 from aew.harness import wake_queue as Q
 
 
@@ -24,6 +28,14 @@ def test_status_shows_an_outstanding_wake_and_says_nothing_before_any(project):
     assert "! outstanding wake wake-1: pending (out_of_scope)" in text
 
 
+def _wakes_are_posted_on_this_platform(monkeypatch) -> None:
+    """Windows is a declared gap (test_lead_wake). Only the switch's own reading of the platform: patching
+    `sys.platform` itself sends the whole engine down its POSIX paths on Windows."""
+    from aew.policy import execution as X
+
+    monkeypatch.setattr(X, "sys", SimpleNamespace(platform="linux"))
+
+
 def _next_after_launch(project) -> str:
     from aew.engine.api import Engine
 
@@ -37,9 +49,12 @@ def test_a_lead_is_told_to_end_its_turn_only_while_a_wake_would_reach_it(project
     from aew.harness import broker_liveness
     from aew.policy import execution as X
 
-    assert _next_after_launch(project).startswith("wait on run-1 with `harness_wait`")  # off by default
+    _wakes_are_posted_on_this_platform(monkeypatch)
+    assert _next_after_launch(project) == K.no_broker_step(["run-1"])  # on by default, and no broker posts
+    assert "no broker is posting wakes here" in _next_after_launch(project)
+    monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_OFF)
+    assert _next_after_launch(project).startswith("wait on run-1 with `harness_wait`")  # off: no fallback to explain
     monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_ON)
-    assert _next_after_launch(project).startswith("wait on run-1")  # on, and no broker posts
     from aew.engine.api import Engine
 
     generation = int(Engine.discover(project.root).store.current()["lead"]["generation"])
@@ -47,12 +62,68 @@ def test_a_lead_is_told_to_end_its_turn_only_while_a_wake_would_reach_it(project
     monkeypatch.setattr(broker_liveness, "read", lambda root: {"generation": generation})
     monkeypatch.setattr(broker_liveness, "judge", lambda record, **kw: None)
     assert _next_after_launch(project).startswith("end your turn: AEW wakes you when run-1")
+    text = "\n".join(Q.render({"broker_posting": True}))
+    assert "the broker posts them" in text and '`lead.push_wake: "off"`' in text  # the off switch, where it's read
     monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_OFF)
     assert _next_after_launch(project).startswith("wait on run-1")  # a broker posts, and the switch says off
     monkeypatch.setattr(X, "push_wake", lambda policy: X.PUSH_WAKE_ON)
     assert Q.status(project.root / ".aew", generation=generation) is None  # no wake was ever recorded
     monkeypatch.setattr(broker_liveness, "judge", lambda record, **kw: object())  # crashed, stale or closed
-    assert _next_after_launch(project).startswith("wait on run-1")
+    assert _next_after_launch(project) == K.no_broker_step(["run-1"])
+
+
+def _engine_of(project):
+    from aew.engine.api import Engine
+
+    return Engine.discover(project.root)
+
+
+def test_a_project_that_names_no_lead_key_has_wakes_on_after_an_upgrade(project, monkeypatch):
+    """The migration (steering PR 3): `aew init` never wrote the key, so this is every existing project. Its digests
+    are the goldens' (test_coordination_store), and its Lead is told of wakes and gets a poster."""
+    from aew.harness.opencode import lead as L
+    from aew.harness.opencode import projection as P
+    from aew.policy import execution as X
+
+    _wakes_are_posted_on_this_platform(monkeypatch)
+    engine = _engine_of(project)
+    policy = engine.execution_policy()[0]
+    assert "lead" not in (policy or {})
+    switches = engine.configuration("execution")["controls"]["switches"]
+    [published] = [s for s in switches if s["path"] == "/lead/push_wake"]
+    assert published["default"] == X.PUSH_WAKE_ON  # what the operator's view reports for a switch that's on
+    assert X.push_wake(policy) == X.PUSH_WAKE_ON and L.pushes_wakes(engine) is True
+    assert L.lead_poster(policy, "password", unix="socket") is not None
+    assert Q.HEADER in P.lead_config(push_wake=L.pushes_wakes(engine))["agents"][P.LEAD_AGENT]["system"]
+
+
+def test_a_project_with_a_typed_off_stays_off_and_keeps_the_wait(project, monkeypatch):
+    from aew.harness.opencode import lead as L
+    from aew.harness.opencode import projection as P
+    from aew.policy import execution as X
+
+    _wakes_are_posted_on_this_platform(monkeypatch)
+    path = project.root / ".aew" / X.REL_PATH
+    path.write_bytes(path.read_bytes().rstrip(b"\n") + b'\nlead:\n  push_wake: "off"\n')
+    project.adopt_policy()
+    engine = _engine_of(project)
+    policy = engine.execution_policy()[0]
+    assert X.push_wake(policy) == X.PUSH_WAKE_OFF and L.pushes_wakes(engine) is False
+    assert L.lead_poster(policy, "password", unix="socket") is None
+    assert engine._harness._wait_on(["run-1"]) == K.wait_step(["run-1"])
+    system = P.lead_config(push_wake=L.pushes_wakes(engine))["agents"][P.LEAD_AGENT]["system"]
+    assert Q.HEADER not in system and "do not end your turn" in system
+
+
+def test_a_mark_from_another_generations_broker_says_nothing_of_this_one(project, monkeypatch):
+    """A crash leaves its mark, and the record is the next broker's, which judge passes as another generation's."""
+    from aew.harness import broker_liveness
+
+    root = project.root / ".aew"
+    Q.mark_serving(root, 3)
+    monkeypatch.setattr(broker_liveness, "read", lambda r: {"generation": 4})
+    monkeypatch.setattr(broker_liveness, "judge", lambda record, **kw: None)
+    assert Q.some_broker_posts(root) is False
 
 
 class _Poster:
@@ -100,6 +171,112 @@ def test_the_brokers_wake_thread_survives_a_failing_pass_and_clears_its_mark_on_
     finally:
         broker.close()
     assert Q.serving(root) is None and not broker._wakes.is_alive()
+
+
+class _CountingPoster(_Poster):
+    """A poster that takes every wake and counts it: nothing is ever busy, and each wake lands."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.posts: list[str] = []
+
+    def busy(self) -> bool:
+        return False
+
+    def landed(self, wake_id: str) -> str:
+        return Q.DELIVERED
+
+    def post(self, wake_id: str, text: str) -> str:
+        self.posts.append(text)
+        return "ses_1"
+
+
+def _a_run_with_news(root, monkeypatch) -> None:
+    """A live run the queue watches, with a trigger waiting to be told."""
+    run = "run-seed"
+    monkeypatch.setattr(Q, "live_runs", lambda state: [Q.Watched(run, "T-seed", "implementer", "now")])
+    directory = runlog.run_dir(root, run)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / runlog.RECORD).write_text(json.dumps({"status": K.RUNNING}), encoding="utf-8")
+    runlog.beat(directory)
+    (directory / runlog.PROGRESS_FILE).write_text(json.dumps({
+        "schema": P.SCHEMA, "run": run, "state": P.WORKING, "steps": 3, "out_of_scope": ["src/b/x.py"],
+        "red_commands": [], "counts": {"steps": 3, "files": 1, "commands": 1, "tests": 0, "triggers": 1},
+        "since_last_wake": {"suppressed": {}},
+        "triggers": [{"seq": 1, "why": K.OUT_OF_SCOPE, "path": "src/b/x.py"}]}), encoding="utf-8")
+
+
+def test_a_switch_turned_off_mid_session_stops_the_posts_and_on_again_resumes_them(project, monkeypatch):
+    """Read each pass (the review's note for PR 3): the mark goes, so `aew status` and the Lead's next step agree."""
+    from aew.harness.lead_broker import POLL_S, LeadBroker
+    from aew.policy import execution as X
+
+    root = project.root / ".aew"
+    engine = _engine_of(project)
+    broker = LeadBroker(engine, project.token)
+    state = {"switch": X.PUSH_WAKE_ON}
+    monkeypatch.setattr(X, "push_wake", lambda policy: state["switch"])
+    broker.start()
+    try:
+        poster = _CountingPoster()
+        broker.start_wakes(poster)
+
+        def until(predicate) -> None:
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline and not predicate():
+                time.sleep(0.05)
+            assert predicate()
+
+        assert Q.serving(root) == broker.generation
+        state["switch"] = X.PUSH_WAKE_OFF
+        until(lambda: Q.serving(root) is None)
+        _a_run_with_news(root, monkeypatch)
+        time.sleep(3 * POLL_S)  # passes that would have posted it
+        assert poster.posts == []
+        state["switch"] = X.PUSH_WAKE_ON
+        until(lambda: Q.serving(root) == broker.generation)
+        until(lambda: len(poster.posts) == 1)  # what was held
+    finally:
+        broker.close()
+
+
+def test_an_edit_not_yet_adopted_is_no_broker_posting_and_a_wait_doesnt_say_end_your_turn(project):
+    """Every pass fails on a policy that doesn't match its pin, so nothing may say a wake will come (review, m7)."""
+    from aew.harness.lead_broker import LeadBroker
+    from aew.policy import execution as X
+
+    root = project.root / ".aew"
+    broker = LeadBroker(_engine_of(project), project.token)
+    broker.start()
+    try:
+        broker.start_wakes(_CountingPoster())
+        assert Q.some_broker_posts(root)
+        path = root / X.REL_PATH
+        path.write_bytes(path.read_bytes().rstrip(b"\n") + b'\nlead:\n  push_wake: "off"\n')
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and Q.serving(root) is not None:
+            time.sleep(0.05)
+        assert Q.serving(root) is None and Q.some_broker_posts(root) is False
+    finally:
+        broker.close()
+
+
+def test_a_project_with_wakes_off_shows_only_that_and_no_stale_wake(project):
+    """Nothing runs the queue with the switch off, so what it last held isn't an alarm (review, m8)."""
+    from aew.policy import execution as X
+
+    root = project.root / ".aew"
+    queue = root / Q.WAKES_REL
+    queue.parent.mkdir(parents=True, exist_ok=True)
+    queue.write_text(json.dumps({"schema": Q.SCHEMA, "marks": {"run-1": {}},
+                                 "wake": {"id": "wake-1", "phase": Q.POSTED, "why": ["quiet"]}}),
+                     encoding="utf-8", newline="\n")
+    assert "! outstanding wake" in project.aew("status").stdout
+    path = root / X.REL_PATH
+    path.write_bytes(path.read_bytes().rstrip(b"\n") + b'\nlead:\n  push_wake: "off"\n')
+    project.adopt_policy()
+    text = project.aew("status").stdout
+    assert 'Lead wakes: off, by `lead.push_wake: "off"`' in text and "outstanding wake" not in text
 
 
 def test_a_real_takeover_ends_the_old_brokers_wake_thread_and_its_close_leaves_the_new_mark(project, monkeypatch):

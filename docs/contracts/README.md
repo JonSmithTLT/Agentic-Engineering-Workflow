@@ -54,3 +54,8 @@ Generated; do not edit. These files are the design text the operator has adopted
 | A-51 | [`AP5-POSITION.md`](A-51/AP5-POSITION.md) | four of A-05 section 5's parameter rows, AP5, revision 4: the launch, mediation, helper-roles and handover rows |
 | A-52 | [`RHC-POSITION.md`](A-52/RHC-POSITION.md) | A-05 section 5's resource-ceilings row, RHC, revision 4 |
 | A-53 | [`CRD-POSITION.md`](A-53/CRD-POSITION.md) | I5-08a's content read, CRD, revision 3.1 |
+| A-54 | [`SPB-POSITION.md`](A-54/SPB-POSITION.md) | the AEW-SPT boundary, SPB, revision 6.1 |
+| A-55 | [`OIB-POSITION.md`](A-55/OIB-POSITION.md) | the offline install bundle, OIB, revision 1 |
+| A-56 | [`SMP-POSITION.md`](A-56/SMP-POSITION.md) | a steering raise that persists for the project, SMP, revision 4 |
+| A-57 | [`KP-POSITION.md`](A-57/KP-POSITION.md) | Lessons, the knowledge system's first increment, KP, revision 1 |
+| A-58 | [`CL-POSITION.md`](A-58/CL-POSITION.md) | the conversational Lead: how a Lead waits, CL, revision 1 |

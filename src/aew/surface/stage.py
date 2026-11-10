@@ -228,24 +228,28 @@ def _plan_request_review(a: dict[str, Any], cards: list[str | None] | None = Non
     return [{"primitive": "work.transition", "args": transition}, *_per_card(a, dispatch, launch, cards)]
 
 
-def _plan_request_verification(a: dict[str, Any], cards: list[str | None] | None = None) -> list[dict[str, Any]]:
+def _plan_request_verification(a: dict[str, Any], cards: list[str | None] | None = None,
+                               shape: dict[int, bool] | None = None) -> list[dict[str, Any]]:
     """``ticket_request_verification`` (M4-E E5b): accept the named review (its ingest's guard refuses past an
     undisposed marked finding, `DISPOSITION_REQUIRED`), REVIEW_PASSED -> VERIFY_PENDING, then a verifier per card the
-    effective gates require, each launched."""
+    effective gates require, each launched. From REVIEW_PASSED (``shape``, E133) the review is already accepted."""
     ingest, transition, dispatch, launch = (build(a) for build in SA.STAGES["ticket_request_verification"])
-    return [{"primitive": "review.ingest", "args": ingest}, {"primitive": "work.transition", "args": transition},
-            *_per_card(a, dispatch, launch, cards)]
+    accept = [{"primitive": "review.ingest", "args": ingest}] if (shape or {}).get(1, True) else []
+    return [*accept, {"primitive": "work.transition", "args": transition}, *_per_card(a, dispatch, launch, cards)]
 
 
 def _plan_prepare(a: dict[str, Any], shape: dict[int, bool] | None = None) -> list[dict[str, Any]]:
     """``ticket_prepare`` (M4-E E6a; plan v3 §2.3): accept the named Ticket-scope verification, VERIFIED ->
     COMMIT_READY, prepare the candidate under a lease (its custodian's worker validates in checks mode), and in verifier
-    mode (``shape``) the integration verifier, made with ``launch``, as the custodian's child."""
+    mode (``shape``) the integration verifier, made with ``launch``, as the custodian's child. A Ticket past the first
+    steps starts after them (``shape``, E133)."""
+    shape = shape or {}
     ingest, transition, prepare, dispatch, launch = (build(a) for build in SA.STAGES["ticket_prepare"])
-    plan: list[dict[str, Any]] = [{"primitive": "verify.ingest", "args": ingest},
-                                  {"primitive": "work.transition", "args": transition},
+    plan: list[dict[str, Any]] = [*([{"primitive": "verify.ingest", "args": ingest}] if shape.get(1, True) else []),
+                                  *([{"primitive": "work.transition", "args": transition}] if shape.get(2, True)
+                                    else []),
                                   {"primitive": "integrate.prepare", "args": prepare}]
-    if (shape or {}).get(4):
+    if shape.get(4):
         execution = {"execution": a["execution"]} if "execution" in a else {}
         plan += [{"primitive": "invoke.create.mutating", "args": {**(dispatch or {}), "launch": True, **execution}},
                  {"primitive": "dispatch.launch", "args": launch}]
@@ -286,18 +290,22 @@ def plan_for(engine: Any, name: str, a: dict[str, Any]) -> list[dict[str, Any]]:
     single card satisfies refuses the call before anything commits: choosing among cards is the Lead's (`aew work
     staff`), never the stage's."""
     planner = STAGES[name]
+    report = SA.report_problem(engine, name, a)
+    if report is not None:
+        raise errors.UsageError(report["message"], reason=report["code"])
+    keywords: dict[str, Any] = {}
     if name in SA.APPLIES:  # the state-dependent steps, as availability asks them now (M4-E E6a)
         shape = SA.planned_shape(engine, name, a)
         if not any(shape.values()) and not _always(name):
             raise errors.IllegalTransition(f"{name} has nothing to do for {a.get('work_id')} now: read its "
                                            "projection (`explain` with this stage)", reason="nothing_planned")
-        return planner(a, shape=shape)
-    if name not in SA.CARDS:
-        return planner(a)
-    found = SA.stage_cards(engine, name, a)
-    if found["unresolved"]:
-        raise SA.card_choice_refusal(name, found["unresolved"])
-    return planner(a, found["cards"])
+        keywords["shape"] = shape
+    if name in SA.CARDS:
+        found = SA.stage_cards(engine, name, a)
+        if found["unresolved"]:
+            raise SA.card_choice_refusal(name, found["unresolved"])
+        keywords["cards"] = found["cards"]
+    return planner(a, **keywords)
 
 
 def _always(name: str) -> bool:
@@ -349,7 +357,10 @@ def run_stage(c: Call, t: contract.Tool, plan: list[dict[str, Any]]) -> dict[str
         raise errors.UsageError(f"stage {t.name} plans {missing}, which have no step runner")
     a = c.a
     c.subject = a.get("work_id")
-    judgments = [*t.required_judgments, *(name for name in t.promotes if name in a)]
+    # An acceptance is bound only where a planned step makes it (E133: a stage started past its report accepts none).
+    judgments = [*(j for j in t.required_judgments
+                   if j not in SI.ACCEPTANCES or any(j in spec_for(p).required_judgments for p in planned)),
+                 *(name for name in t.promotes if name in a)]
     # A planned step that accepts a report carries that acceptance (M4-E E6a: `integration_publish` accepts the
     # integration verification only in verifier mode), so the intent binds the obligations it is judged against.
     judgments += sorted({j for p in planned for j in spec_for(p).required_judgments
@@ -374,12 +385,12 @@ def _contract_steps(t: contract.Tool, a: dict[str, Any], cards: int = 1,
     builders = SA.STAGES.get(t.name)
     if builders is None:
         return list(t.expands_to)
-    steps = [p for n, (p, build) in enumerate(zip(t.expands_to, builders, strict=True), start=1)
-             if build(a) is not None and (shape or {}).get(n, True)]
+    kept = [n for n, build in enumerate(builders, start=1) if build(a) is not None and (shape or {}).get(n, True)]
+    steps = [t.expands_to[n - 1] for n in kept]
     if t.name not in SA.CARDS:
         return steps
-    n = SA.CARDS[t.name][0]  # the dispatch step; its launch is the next
-    return [*steps[:n - 1], *(steps[n - 1:n + 1] * max(cards, 1)), *steps[n + 1:]]
+    at = kept.index(SA.CARDS[t.name][0])  # the dispatch step, where it stands among those kept; its launch is the next
+    return [*steps[:at], *(steps[at:at + 2] * max(cards, 1)), *steps[at + 2:]]
 
 
 def _covers(plan: list[dict[str, Any]], n: int, args: dict[str, Any]) -> bool:
@@ -421,7 +432,8 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
                 if drift is not None:  # rule 6 before rule 4: the stage never runs on under a policy it did not bind
                     return _stop(c, intent, n, step["primitive"], drift, outputs)
                 if not retry:
-                    return _stop(c, intent, n, step["primitive"], refusal, outputs)
+                    named = _call_again(intent, c, refusal, bool(outputs))
+                    return _stop(c, intent, n, step["primitive"], named, outputs)
                 retried, rev = True, _revision(c)
             except errors.HarnessLaunchFailed as failed:
                 # Rule 7: the dispatch committed (its run is recorded); the stage stops, the run identity stands.
@@ -438,6 +450,20 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
     if not final:  # the last step launched: its commit could not also complete the stage
         _end(c, lambda r: c.engine.stage_close(token=c.token(), expect_rev=r, intent=intent))
     return _payload(c, intent, outputs)
+
+
+def _call_again(intent: str, c: Call, refusal: errors.StaleRevision, committed: bool) -> errors.StaleRevision:
+    """A stale step of a stage that may not retry it (rule 5), naming the way out where a call is known to go on from
+    where it stopped (E133), and otherwise only the refusal: what is committed stands either way."""
+    si = c.engine.stage_intent(intent)
+    if si["tool"] not in SA.STARTS_AT:
+        return refusal
+    unit = c.engine.store.current()["work"].get(si["subject"]["id"]) or {}
+    way = SA.way_on(si["tool"], si["arguments"], unit, committed=committed)
+    if way is None:
+        return refusal
+    return errors.StaleRevision(f"{refusal.message}: {way['say']}",
+                                **{**refusal.details, "reason": "call_again", "call_again": way["tool"]})
 
 
 def _resolve(c: Call, intent: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -517,7 +543,7 @@ def _drift(c: Call, intent: str) -> errors.StalePolicy | None:
     current = c.engine.policy_digests()["legality_digest"]
     if current == bound:
         return None
-    return errors.StalePolicy(f"the legality policy changed since {intent} opened: its next step is not run. Read "
+    return errors.StalePolicy(f"{SI.LEGALITY_MOVED} since {intent} opened: its next step is not run. Read "
                               "the projection again and decide anew", intent=intent, bound=bound, current=current)
 
 
@@ -603,12 +629,12 @@ def _contract_now(si: dict[str, Any]) -> tuple[str | None, list[dict[str, Any]] 
         return None, None, []
     # A request stage re-resolves with the cards it planned: they were the policy's when it opened, bound by the intent
     # (each card's own commit is decided by its dispatch decision when it runs).
+    keywords: dict[str, Any] = {}
     if si["tool"] in SA.APPLIES:  # the shape it was planned with (M4-E E6a): a continue never re-plans its steps
-        planned = planner(dict(si["arguments"]), shape=_shape_of(t, [p["primitive"] for p in si["plan"]]))
-    elif si["tool"] not in SA.CARDS:
-        planned = planner(dict(si["arguments"]))
-    else:
-        planned = planner(dict(si["arguments"]), recorded_cards(si))
+        keywords["shape"] = _shape_of(t, [p["primitive"] for p in si["plan"]])
+    if si["tool"] in SA.CARDS:
+        keywords["cards"] = recorded_cards(si)
+    planned = planner(dict(si["arguments"]), **keywords)
     plan = [{"primitive": p["primitive"], "args": p.get("args") or {}} for p in planned]
     missing = sorted({p["primitive"] for p in plan[len(si["steps"]):] if p["primitive"] not in STEP_RUNNERS})
     return contract_digest(t), plan, missing

@@ -98,14 +98,22 @@ class Prices:
         return entry["above_context_tokens"] if entry else None
 
 
+BUNDLED_TABLE = "default_pricing.yaml"
+
+
 @lru_cache(maxsize=1)
 def bundled_table() -> bytes | None:
     """The price table AEW ships (the design's §11), or None in a package without it: init then makes no table and says
     so, since nothing optional fails AEW."""
     try:
-        return (resources.files("aew.policy") / "default_pricing.yaml").read_bytes()
+        return (resources.files("aew.policy") / BUNDLED_TABLE).read_bytes()
     except OSError:
         return None
+
+
+def bundled_table_path() -> str:
+    """Where that table is, for a line telling the operator to copy it."""
+    return str(resources.files("aew.policy") / BUNDLED_TABLE)
 
 
 def read_price_table(path: Path) -> Prices | None:

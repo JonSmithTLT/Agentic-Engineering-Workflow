@@ -352,6 +352,19 @@ def no_tool_prompt():
     consent.terminal = saved
 
 
+@pytest.fixture(autouse=True)
+def no_switch_offer_prompt():
+    """The switch offer (``aew.switch_offer``) asks only at a controlling terminal, as the tool consent does: no test
+    waits on a developer's terminal, and none depends on another feature's stub. A test of the offer replaces
+    ``switch_offer.terminal`` and ``operator.ask`` itself."""
+    from aew import switch_offer
+
+    saved = switch_offer.terminal
+    switch_offer.terminal = lambda: False
+    yield
+    switch_offer.terminal = saved
+
+
 @pytest.fixture
 def repo(tmp_path) -> Path:
     return make_git_repo(tmp_path / "repo", {

@@ -110,6 +110,21 @@ def redact(text: str) -> str:
     return CREDENTIAL_RE.sub("aew1.<redacted>", text)
 
 
+SECRET_KEYS = frozenset({"token", "invocation_token", "offer", "secret", "credential"})
+
+
+def scrub(value: Any) -> Any:
+    """``value`` without credential-bearing keys, and with credential strings redacted: what the Lead may be shown, by
+    a tool's result (:mod:`aew.surface.run`) or by a wake (:func:`aew.harness.wake_queue.wake_text`)."""
+    if isinstance(value, dict):
+        return {k: scrub(v) for k, v in value.items() if str(k).lower() not in SECRET_KEYS}
+    if isinstance(value, list | tuple):
+        return [scrub(v) for v in value]
+    if isinstance(value, str):
+        return redact(value)
+    return value
+
+
 # Provider-key shapes (F46.1 proposal §7 rule 8, p1 and Q4): each a regex with its body, matched case-sensitively and
 # only at a token boundary, as secret scanners match. A configuration projection withholds a whole string containing a
 # match (`credential_shaped`). A bare prefix in prose, a profile named like one, a hyphenated name with no digit in its
@@ -358,6 +373,7 @@ def continuation_text(c: LaunchContract) -> str | None:
 NOT_POLLING = "do not poll, and do not end your turn while a run works"
 WAIT_RULE = (f"it blocks until a run ends or needs you (a test that broke, a file outside its scope, a worker that "
              f"stopped); {NOT_POLLING}")
+NO_BROKER = "no broker is posting"  # what the status line and the fallback's next step both say
 RUN_ENDED = "run_ended"
 TEST_FAILED = "test_failed"
 OUT_OF_SCOPE = "out_of_scope"
@@ -449,16 +465,25 @@ def run_ended_step(action: str) -> str:
     return f"{action}. Tell the operator in a line {WAKE_GUIDE[RUN_ENDED].tell}"
 
 
-def wake_step(runs: list[str]) -> str:
-    """The next step while ``runs`` work and AEW wakes the Lead (steering design r4 §1): the turn's end."""
-    return (f"end your turn: AEW wakes you when {', '.join(runs)} ends or needs you, and the operator can talk to you "
-            "meanwhile. Tell the operator in a line what you started and which runs you are waiting on")
+def no_broker_step(runs: list[str]) -> str:
+    """The next step where the project has wakes on and no broker is posting them (steering design r4 §1): the fallback,
+    saying why it isn't the turn's end."""
+    return f"{NO_BROKER} wakes here, so nothing would wake you: {wait_step(runs)}"
 
 
-def trigger_step(whys: list[str], run: str, others: list[str]) -> str:
-    """A trigger as a next step: each ``why``'s action in the enum's order, then the wait on the run (and the others
-    still working), then the line for the operator."""
+def wake_step(runs: list[str], *, after_a_start: bool = True) -> str:
+    """The next step while ``runs`` work and AEW wakes the Lead (steering design r4 §1): the turn's end. After anything
+    but a start the caller's own line tells the operator what happened."""
+    step = (f"end your turn: AEW wakes you when {', '.join(runs)} ends or needs you, and the operator can talk to you "
+            "meanwhile")
+    return f"{step}. Tell the operator in a line what you started and which runs you are waiting on" \
+        if after_a_start else step
+
+
+def trigger_step(whys: list[str], run: str, others: list[str], *, then: str | None = None) -> str:
+    """A trigger as a next step: each ``why``'s action in the enum's order, then how to follow the run (and the others
+    still working), which is ``then`` or else the wait, then the line for the operator."""
     acts = "; then ".join(f"{WAKE_GUIDE[w].act} ({w})" for w in WHY if w in whys)
     tells = "; and ".join(WAKE_GUIDE[w].tell for w in WHY if w in whys)
-    return (f"{run} needs you: {acts[0].upper()}{acts[1:]}. Then {wait_step([run, *others])}. Tell the operator in a "
-            f"line {tells}")
+    follow = then or wait_step([run, *others])
+    return f"{run} needs you: {acts[0].upper()}{acts[1:]}. Then {follow}. Tell the operator in a line {tells}"

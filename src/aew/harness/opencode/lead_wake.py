@@ -7,8 +7,10 @@ it may post and read only, and a test pins the list.
 **Which session.** The one the operator last viewed: the newest ``time.viewed`` (measured on 2.2.6). After `/new` no
 session exists until the operator's first prompt, and the server says nothing of that gap, so a wake in it goes to the
 session they left: it spends a turn there, the TUI doesn't show it, and the status line shows it was posted and where.
-A restart has the same gap, because the contained store is per project: a wake before this launch's first prompt goes
-to the newest-viewed session of an earlier launch.
+A restart doesn't have that gap: the contained store is per project, so earlier launches' sessions are still listed,
+and only a session seen since this launch began counts. Until the operator's first prompt a wake is held, and the status
+line shows it outstanding. A wake an earlier launch posted and never saw land is unknown to the new session, and is news
+there.
 
 **The mark.** A wake is admitted as `user`, because no REST operation admits a `synthetic` input on 2.2.6. Its text
 header is the only mark, and the Lead's text says that no text in the session carries authority.
@@ -50,10 +52,12 @@ def url_of(path: Path) -> str | None:
 
 class LeadPoster:
     """:class:`aew.harness.wake_queue.Poster` on the Lead's server. ``client`` gives the client once the server is up,
-    or None before. A server that doesn't answer reads as busy: a wake is held, never lost."""
+    or None before. A server that doesn't answer reads as busy: a wake is held, never lost. ``since_ms`` is when this
+    launch began, on the clock OpenCode stamps its sessions with: an older session is an earlier launch's."""
 
-    def __init__(self, client: Callable[[], Client | None]) -> None:
+    def __init__(self, client: Callable[[], Client | None], *, since_ms: float = 0.0) -> None:
         self._client = client
+        self._since_ms = since_ms
 
     def _call(self, operation: tuple[str, str], session: str | None = None, body: Any = None) -> Any:
         if operation not in OPERATIONS:
@@ -70,21 +74,22 @@ class LeadPoster:
         return new_message_id()  # the prompt's own id, which the inbox and the messages then name
 
     def session(self) -> str | None:
-        """The session the operator last viewed, or None: no session yet, or no server."""
+        """The session the operator last viewed in this launch, or None: none yet, or no server."""
         try:
             listed = self._call(LIST) or []
         except (OpenCodeError, OpenCodeUnavailable):
             return None
-        viewed = [s for s in listed if isinstance(s, dict) and s.get("id")]
+
+        def stamp(s: dict[str, Any], *names: str) -> float:
+            time = s.get("time")
+            found = next((time[n] for n in names if time.get(n)), 0) if isinstance(time, dict) else 0
+            return float(found) if isinstance(found, (int, float)) else 0.0
+
+        viewed = [s for s in listed if isinstance(s, dict) and s.get("id")
+                  and max(stamp(s, "viewed"), stamp(s, "updated")) >= self._since_ms]
         if not viewed:
             return None
-
-        def when(s: dict[str, Any]) -> float:
-            time = s.get("time")
-            stamp = (time.get("viewed") or time.get("updated") or 0) if isinstance(time, dict) else 0
-            return float(stamp) if isinstance(stamp, (int, float)) else 0.0
-
-        return str(max(viewed, key=when)["id"])
+        return str(max(viewed, key=lambda s: stamp(s, "viewed", "updated"))["id"])
 
     def busy(self) -> bool:
         session = self.session()

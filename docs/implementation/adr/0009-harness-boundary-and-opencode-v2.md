@@ -1924,6 +1924,24 @@ does on a terminal of its own.
 no signal for that gap. A wake in it goes to the session they left, spends a turn there, and doesn't show in the TUI. The
 status line shows it was posted.
 
+## Amendment 2026-11-08 — push wakes are on by default (register E210, steering PR 3)
+
+`lead.push_wake`'s schema default moves to `on`. **The flip is the migration:** `aew init` never wrote the key, so an
+absent key is what every existing project holds, and it reads the default. A typed `off` stays off and needs no offer. No
+digest moves, since digests read the policy files in force and no file changes. The off switch is named in
+`docs/guides/opencode.md` and in the status line.
+
+- **A switch turned off mid-session stops the posts within a poll,** and the broker clears its serving mark. What is
+  queued is held. The switch is read each pass, as `quiet_wake_s` is. A session launched with it off has no poster, so
+  turning it on there waits for the next launch.
+- **A wake waits for this launch's first prompt.** The contained store is per project, so the newest-viewed session can
+  be an earlier launch's, unseen. The poster counts only sessions seen since this launch began.
+- **Whether a wake reaches the Lead is read from files,** the broker's mark and its liveness record, with the policy and
+  no second parse of the control state: each run `aew status` reports asks, and so does the end of a wait (OBX-38).
+  Right after a takeover the old mark can count until the old broker's watchdog closes its record, within a poll
+  (measured under a second), and longer only if that watchdog is stuck on the control lock.
+- **Windows stays a declared gap,** with no wake posted and no "no broker" line in its next steps.
+
 ## Amendment 2026-11-08 — WSLg's directory is a host mask
 
 This amends the 2026-10-23 amendment's masks and the remedy row 2 gives for a socket with no identified holder.

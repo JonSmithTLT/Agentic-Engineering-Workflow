@@ -114,7 +114,7 @@ The same health object is rendered through:
 5. dashboard `/runs` and `/overview.attention`;
 6. `ActionProjection.runs[]`.
 
-`harness wait` must wake non-terminally when a waited run first becomes STALLED and return the tool/duration reason. A caller may choose to continue waiting. A STALLED wake does not terminate or revoke the run.
+`harness wait` must wake non-terminally when a waited run first becomes STALLED and return the tool/duration reason. A caller may choose to continue waiting. A STALLED wake does not terminate or revoke the run. (Amended by A-58, [the conversational Lead](decisions-2026-11-conversational-lead.md): the wake is a reason on the Lead's one list, delivered by a wake and by the wait.)
 
 `resume` and dashboard attention include STALLED, UNRESPONSIVE, CRASHED, lost, and ended-without-evidence conditions using existing attention semantics.
 
@@ -123,8 +123,8 @@ The same health object is rendered through:
 | Observation | Automatic behavior | Judgment owner |
 |---|---|---|
 | lost / crash / launch failure | existing credential revocation and reconciliation only | Lead decides relaunch/redispatch |
-| blocked permission | wake wait + attention | Lead/operator replies or sends |
-| STALLED | wake wait + attention only | Lead may stop, nudge, or continue waiting |
+| blocked permission | wake wait + attention (amended by A-58, RHP-08: no row today; on the OpenCode worker path a rejected request ends the turn and reaches the Lead as `run_ended`, and a harness that can hold a worker on a permission takes a row) | Lead/operator replies or sends |
+| STALLED | wake wait + attention only (amended by A-58: a wake and the wait) | Lead may stop, nudge, or continue waiting |
 | UNRESPONSIVE | attention only, plus existing supervisor deadlines | Lead may stop |
 | long think below threshold | render only | none |
 

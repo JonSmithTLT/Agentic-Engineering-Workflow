@@ -17,6 +17,9 @@ from aew.util import load_yaml
 
 REPO = Path(__file__).resolve().parents[2]
 
+DOCTOR_READ = "src/aew/harness/model_list.py::read"
+DOCTOR_READ_OWNER = "src/aew/harness/supervisor.py::contain_launch"
+
 # Each owner that enters the register (the census's registered_by and weaker_registered_by), with the tests that see
 # its contexts' processes given the marker: one per context, where an owner has several.
 ROUTES = {
@@ -48,7 +51,7 @@ ROUTES = {
         "test_a_weaker_doctor_check_is_live_in_the_register_while_it_runs_and_carries_the_marker",
     # A run's supervisor and doctor's read of the model list share it (register E153). `model_list.read` is not an owner
     # of its own: it enters the register through this one, so the census names this one for it.
-    "src/aew/harness/supervisor.py::contain_launch": (
+    DOCTOR_READ_OWNER: (
         "tests/integration/test_harness_runs.py::"
         "test_a_weaker_run_is_live_in_the_register_while_its_harness_runs_and_its_agent_carries_the_marker",
         "tests/unit/test_doctor_model_list_read.py::"
@@ -60,13 +63,21 @@ def test_every_owner_the_census_names_has_a_test_that_sees_its_marker_and_the_te
     table = load_yaml((REPO / "tests/launch-census.yaml").read_text(encoding="utf-8"), source="launch-census.yaml")
     owners = {o for r in table["starts"] for f in ("registered_by", "weaker_registered_by") for o in r.get(f) or []}
     assert set(ROUTES) == owners
+    # The owner with two contexts keeps a test for each (review of E137, F6): doctor's read is its census row's own.
+    [read] = [r for r in table["starts"] if r["site"] == DOCTOR_READ]
+    assert read["weaker_registered_by"] == [DOCTOR_READ_OWNER]
+    assert sum("test_doctor_model_list_read.py::" in test for test in ROUTES[DOCTOR_READ_OWNER]) == 1
+    assert sum("test_harness_runs.py::" in test for test in ROUTES[DOCTOR_READ_OWNER]) == 1
     for owner, tests in ROUTES.items():
+        assert tests, f"{owner}: names no test"
         for test in (tests,) if isinstance(tests, str) else tests:
             path, _, name = test.partition("::")
             text = (REPO / path).read_text(encoding="utf-8")
             assert re.search(rf"^def {re.escape(name)}\(", text, re.M), f"{owner}: {test} does not exist"
+            # Past its signature: a test named for the marker would otherwise pass on its own name (of E137, N1).
             body = text[text.index(f"def {name}("):]
-            body = body[:m.start()] if (m := re.search(r"^def ", body[1:], re.M)) else body
+            body = body[body.index("):\n"):]
+            body = body[:m.start()] if (m := re.search(r"^def ", body, re.M)) else body
             assert "marker" in body.lower(), f"{owner}: {test} never looks at the marker"
 
 

@@ -46,8 +46,9 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
     launch would be refused for (a provider key missing, a catalog that offered nothing in time); WARN where the list
     could not be read and a launch would not be stopped by the same cause (no binary here, a sandbox not established
     here). None of it refuses anything. Profiles of one harness and provider share a read that lists their model, and
-    a catalog that offered nothing is waited for once in a run (review of #367, N2): the list does not depend on which
-    of its models is pinned."""
+    a read that waited for nothing is waited for once in a run, whatever ended the wait (review of #367, N2; of E137,
+    F3): the answer does not depend on which of its models is pinned. A profile with a cached list still gets its
+    answer from it, as that waits for nothing (of E137, F4)."""
     policy, sha = engine.execution_policy()
     if not policy or not policy.get("profiles"):
         return []
@@ -55,7 +56,7 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
     problems: list[str] = []
     unread: list[str] = []
     read: dict[tuple[str, str], tuple[dict[str, Any], str]] = {}
-    offered_nothing: dict[tuple[str, str], str] = {}  # the catalogs that offered nothing, by the profile that waited
+    waited: dict[tuple[str, str], str] = {}  # the sources a read waited on for nothing, by the profile that waited
     for name in sorted(policy["profiles"]):
         try:
             pin = X.resolve(policy, sha, archetype=ROLE, card_id=None, risk_class=None, request={"profile": name},
@@ -68,21 +69,21 @@ def doctor_rows(engine: Any, *, refresh: bool = False) -> list[dict[str, str]]:
         if not hasattr(adapter_cls, "read_model_list"):  # a harness without the capability (harness_capabilities)
             continue
         source = (str(pin["harness"]), str(pin["provider"]))
-        if source in offered_nothing:
-            problems.append(f"profile {name}: the same catalog as profile {offered_nothing[source]}, "
-                            "not waited for again")
-            continue
         shared = read.get(source)
         if shared is not None and any(m["providerID"] == pin["provider"] and m["id"] == pin["model"]
                                       for m in shared[0].get("models") or []):
             listing, when = shared  # a read that stopped at another pin is reused only where it lists this one
+        elif source in waited and not _cached(engine, policy, pin, adapter_cls, refresh=refresh):
+            problems.append(f"profile {name}: the same harness and provider as profile {waited[source]}, "
+                            "not waited for again")
+            continue
         else:
             try:
                 listing, when = _listing(engine, policy, pin, adapter_cls, refresh=refresh)
             except _Unread as exc:
                 (problems if exc.red else unread).append(f"profile {name}: {exc}")
-                if exc.empty:
-                    offered_nothing[source] = name
+                if exc.waited:
+                    waited[source] = name
                 continue
             read[source] = (listing, when)
         found.append(_judge(name, pin, listing, when, problems))
@@ -124,13 +125,14 @@ def _judge(name: str, pin: dict[str, Any], listing: dict[str, Any], when: str, p
 
 
 class _Unread(Exception):
-    """The list was not read. ``red``: a launch would fail the same way, so the row is a FAIL with its fix. ``empty``:
-    the catalog offered nothing, which another profile of its harness and provider would only wait for again."""
+    """The list was not read. ``red``: a launch would fail the same way, so the row is a FAIL with its fix. ``waited``:
+    the read waited for a server or a catalog that gave nothing, which another profile of its harness and provider would
+    only wait for again."""
 
-    def __init__(self, message: str, *, red: bool, empty: bool = False) -> None:
+    def __init__(self, message: str, *, red: bool, waited: bool = False) -> None:
         super().__init__(message)
         self.red = red
-        self.empty = empty
+        self.waited = waited
 
 
 def _contract(run_dir: Path, pin: dict[str, Any], policy: dict[str, Any]) -> Any:
@@ -159,6 +161,15 @@ def cache_key(adapter_cls: Any, policy: dict[str, Any], pin: dict[str, Any]) -> 
     rule = {k: policy.get(k) for k in ("containment", "provider_env")}  # the network rule is containment's
     config = hashlib.sha256(json.dumps([projected, rule], sort_keys=True, default=str).encode()).hexdigest()
     return f"{digest.hexdigest()}:{config}"
+
+
+def _cached(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: Any, *, refresh: bool) -> bool:
+    """Whether :func:`_listing` would answer ``pin`` from the cache, without starting anything."""
+    try:
+        key = cache_key(adapter_cls, policy, pin)
+    except AEWError:
+        return False
+    return not refresh and key is not None and key in _load(engine.aew_root / CACHE_REL)
 
 
 def _listing(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: Any, *,
@@ -258,21 +269,21 @@ def read(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: 
         except (HarnessLaunchFailed, AEWError) as exc:
             raise _Unread(f"the harness did not start as a launch starts it: {exc.message}; a launch from here fails "
                           "the same way (see `aew harness status` after one, or run `aew doctor --refresh` again)",
-                          red=True) from None
+                          red=True, waited=True) from None
         except OSError as exc:
             raise _Unread(f"the harness did not start as a launch starts it: {type(exc).__name__}: {exc}",
-                          red=True) from None
+                          red=True, waited=True) from None
         if listing.get("empty"):
             raise _Unread(f"{pin['harness']} offered no model at all within its catalog wait, as a launch waits for "
                           "it: a launch from here would be refused the same way, which is timing-dependent, never a "
                           "lasting answer about the pinned model. Check the network the execution policy allows for "
                           "the harness's model catalog and the provider variables it names, then run "
-                          "`aew doctor --refresh`", red=True, empty=True)
+                          "`aew doctor --refresh`", red=True, waited=True)
         if not listing.get("complete"):
             raise _Unread(f"the model list was not read within {bound:.0f}s, a launch's own start deadline "
                           f"({supervisor.START_ENV}), so a launch from here would be abandoned the same way; check "
                           "the network the execution policy allows for the harness's model catalog, or raise "
-                          f"{supervisor.START_ENV}, then run `aew doctor --refresh`", red=True)
+                          f"{supervisor.START_ENV}, then run `aew doctor --refresh`", red=True, waited=True)
         return listing
     finally:
         if tree is not None:

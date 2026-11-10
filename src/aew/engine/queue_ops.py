@@ -95,6 +95,16 @@ def lease_of(state: dict[str, Any], work_id: str) -> dict[str, Any] | None:
     return lease if lease and qid and lease["entry"] == qid else None
 
 
+def unfinished_publish(state: dict[str, Any], holder: str | None) -> str | None:
+    """What frees the lease when ``holder``, its holder, recorded a publish's intent and has not finished (review of
+    E137, F2): nothing else moves it, so waiting for it to publish would never end. None for any other holder."""
+    integ = ((state.get("work") or {}).get(holder) or {}).get("integration") or {}
+    if integ.get("status") != "publishing":
+        return None
+    return (f"its publish recorded its intent and did not finish: `aew integrate reconcile {holder} {EXPECT_REV}` "
+            "finishes it first")
+
+
 def validated_record(integ: dict[str, Any], *, mode: str, custodian: str, run: str | None = None,
                      report: str | None = None, check_set: str | None = None,
                      obligation_binding: str | None = None) -> dict[str, Any]:
@@ -299,9 +309,11 @@ class Queue:
                 f"run `aew integrate reconcile {holder.get('work')} {EXPECT_REV}` first", holder=holder.get("work"),
                 entry=lease["entry"]))
         if lease["entry"] != facts.get("queue_entry"):
+            unfinished = unfinished_publish(state, holder.get("work"))
             return blocker_from(LeaseHeld(
-                f"{holder.get('work')} holds the integration lease ({lease['entry']}): it publishes, or leaves "
-                "COMMIT_READY, first", holder=holder.get("work"), entry=lease["entry"]))
+                f"{holder.get('work')} holds the integration lease ({lease['entry']}): "
+                + (unfinished or "it publishes, or leaves COMMIT_READY, first"),
+                holder=holder.get("work"), entry=lease["entry"]))
         return None
 
     # ------------------------------------------------------------------ grant and release

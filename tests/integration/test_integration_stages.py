@@ -30,6 +30,8 @@ from aewflow import (
     assign,
     create_planned_ticket,
     implement,
+    integrate,
+    prepare_and_validate,
     review,
     sample_project,
     stand_in_containment,
@@ -39,7 +41,7 @@ from aewflow import (
 from conftest import Project, git, run_aew
 from invariants import assert_control_invariants, load_control
 from stage_equivalence import differences, end_state, recorded_decisions
-from test_stage_runner import CTX, call, intent, launching
+from test_stage_runner import CTX, call, intent, intervene, launching
 from test_stages_ticket import _declared, _effects, _observe, _twins
 from test_validation_checks import CONTAINED, SMOKE, policy
 
@@ -54,8 +56,11 @@ from aew.engine import validation_ops as VO
 from aew.engine.api import Engine
 from aew.errors import AEWError, IllegalTransition, PermissionDenied, StaleAuthority
 from aew.harness import containment, procs
+from aew.surface import availability as SA
+from aew.surface import projection
 from aew.surface import run as R
 from aew.surface.projection import project
+from aew.util import dump_yaml, load_yaml
 
 CRED = A.TOKEN_RE
 
@@ -572,7 +577,6 @@ def test_unregistered_custodian_marks_reconcile(tmp_path, contained, custody):
     commit's `sync` ends the custodian, which marks the lease for reconciliation."""
     p = sample_project(tmp_path)
     checks_mode(p)
-    from aew.util import dump_yaml, load_yaml
 
     gates = p.root / ".aew/policy/gates.yaml"
     data = load_yaml(gates.read_text(encoding="utf-8"))
@@ -656,7 +660,9 @@ def test_custody_worker_never_races_the_leads_publish(tmp_path, contained, custo
     def finish(token: str, expect_rev: int, work_id: str, **kw: Any) -> dict[str, Any]:
         held = lease(p)
         seen["custodian"] = custodian = held["custodian"]
+        rev = p.rev()
         e.custody_register(custody[custodian])
+        seen["registered"] = p.rev() != rev  # a commit: what the finish follows (review of E137, N2)
         rev = p.rev()
         seen["between"] = e.custody_step(custodian, custody[custodian])
         seen["committed"] = p.rev() != rev
@@ -666,9 +672,200 @@ def test_custody_worker_never_races_the_leads_publish(tmp_path, contained, custo
     monkeypatch.setattr(e._integration, "_finish_publish", finish)
     out = e.integrate_publish(token=p.token, expect_rev=p.rev(), work_id=wid, candidate=candidate)
     assert out["state"] == "DONE"
+    assert seen["registered"]
     assert seen["between"] == (CO.WAITING, None) and not seen["committed"]
     assert e.custody_step(seen["custodian"], custody[seen["custodian"]]) == (CO.ENDED, None)
     assert_control_invariants(p)
+
+
+# ---------------------------------------------------------------------------------------------- past the first steps
+
+
+def _to_verified(p: Project, tmp_path: Path) -> str:
+    wid, report = verifying(p, tmp_path)
+    p.lead("verify", "ingest", wid, "--evidence", report)
+    return wid
+
+
+def _offered(p: Project, wid: str) -> list[tuple[str, str]]:
+    projection.clear_cache()
+    return [(a["action"], a["availability"]) for a in projection.project(engine(p), CTX, wid)["actions"]]
+
+
+def test_ticket_prepare_goes_on_from_verified_accepting_nothing(tmp_path, contained, custody):
+    """E133: a Ticket whose verification was accepted in the shell, or by a stage that stopped: the projection offers
+    the stage, which plans no acceptance and binds no judgment about a report."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid = _to_verified(p, tmp_path)
+    assert _offered(p, wid) == [("ticket_prepare", "AVAILABLE")]
+    out = call(p, "ticket_prepare", work_id=wid)
+    assert out["ok"], out["stopped"]
+    si = intent(p, out)
+    assert [s["primitive"] for s in si["plan"]] == ["work.transition", "integrate.prepare"]
+    assert "accept_verification" not in si["judgment_inputs"] and si["binding"].get("obligations_digest") is None
+    assert si["status"] == SI.COMPLETED and control(p)["work"][wid]["integration"]["status"] == "prepared"
+    assert_control_invariants(p)
+
+
+def test_ticket_prepare_goes_on_from_commit_ready_with_no_candidate(tmp_path, contained, custody):
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid = _to_verified(p, tmp_path)
+    p.lead("work", "transition", wid, "--to", "COMMIT_READY")
+    assert _offered(p, wid) == [("ticket_prepare", "AVAILABLE")]
+    out = call(p, "ticket_prepare", work_id=wid)
+    assert out["ok"], out["stopped"]
+    assert [s["primitive"] for s in intent(p, out)["plan"]] == ["integrate.prepare"]
+    assert control(p)["work"][wid]["integration"]["status"] == "prepared"
+    assert _offered(p, wid) == [], "a prepared candidate is not prepared again"
+    assert_control_invariants(p)
+
+
+def _no_verification_required(p: Project) -> None:
+    gates = p.root / ".aew/policy/gates.yaml"
+    data = load_yaml(gates.read_text(encoding="utf-8"))
+    data["risk_paths"]["1"] = [g for g in data["risk_paths"]["1"] if not g.startswith("verification")]
+    gates.write_text(dump_yaml(data), encoding="utf-8", newline="\n")
+    p.pin_policy()
+
+
+def test_ticket_prepare_goes_on_from_review_passed_where_the_class_requires_no_verification(tmp_path, contained,
+                                                                                            custody):
+    """E133's review, m5: the row run for real, offered as AVAILABLE, so the Lead's next line and the loop follow it."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    _no_verification_required(p)
+    wid = create_planned_ticket(p, tmp_path)
+    implement(assign(p, wid))
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    assert _offered(p, wid) == [("ticket_prepare", "AVAILABLE")]
+    out = call(p, "ticket_prepare", work_id=wid)
+    assert out["ok"], out["stopped"]
+    assert [s["primitive"] for s in intent(p, out)["plan"]] == ["work.transition", "integrate.prepare"]
+    assert control(p)["work"][wid]["integration"]["status"] == "prepared"
+    assert_control_invariants(p)
+
+
+def test_ticket_prepare_from_review_passed_where_verification_is_required_names_the_stage_that_takes_it(
+        tmp_path, contained, custody):
+    """E133's review, m7: the refusal says what to do, the verification stays required, and nothing moves."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid = create_planned_ticket(p, tmp_path)
+    implement(assign(p, wid))
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    assert _offered(p, wid) == [("ticket_request_verification", "AVAILABLE")]
+    out = call(p, "ticket_prepare", work_id=wid)
+    assert not out["ok"] and control(p)["work"][wid]["state"] == "REVIEW_PASSED"
+    assert "`ticket_request_verification` takes it to VERIFY_PENDING" in out["stopped"]["error"]["message"]
+
+
+@pytest.mark.parametrize("routed", [False, True], ids=["before_the_custodian_routes", "after_the_custodian_routes"])
+def test_a_verifiers_clean_report_is_a_publish_decision_that_takes_the_ticket_to_done(tmp_path, monkeypatch, custody,
+                                                                                      routed):
+    """E133's review, M1 and M3, on the worker's real path: a real verifier run and the real custody step. The decision
+    stands on both sides of the routing, is named for what it does, and its offered arguments publish."""
+    p = sample_project(tmp_path)
+    lab = launching(p, tmp_path, monkeypatch)
+    sync = tmp_path / "sync"
+    sync.mkdir(exist_ok=True)
+    try:
+        wid, report = verifying(p, tmp_path)
+        lab.script("default", verifier_script(sync))
+        out = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
+        assert out["ok"], out["stopped"]
+        custodian = lease(p)["custodian"]
+        [run] = intent(p, out)["steps"][4]["outputs"]["runs"]
+        lab.until(lambda: (sync / "ready").exists(), what="the verifier to report")
+        (sync / "release").touch()
+        lab.wait(run)
+        if routed:
+            assert engine(p).custody_step(custodian, custody[custodian])[0] == CO.ACTED
+            assert entry(p, wid)["state"] == "VALIDATED"
+        projection.clear_cache()
+        [decision] = project(engine(p), CTX, wid)["decisions_required"]
+        assert decision["decision"] == "PUBLISH" and decision["tool"] == "integration_publish"
+        assert decision["availability"] == "AVAILABLE"
+        assert decision["arguments"]["verification_evidence"] == decision["evidence"][0]
+        assert decision["arguments"]["prepared_candidate"] == control(p)["work"][wid]["integration"]["candidate"]
+        arguments = {**decision["arguments"], "expect_rev": p.rev()}
+        done_ = R.run_tool(engine(p), CTX, decision["tool"], arguments, token=p.token)
+        assert done_["ok"], done_["stopped"]
+        assert done(p, wid)
+        assert_control_invariants(p)
+    finally:
+        lab.cleanup()
+
+
+def test_a_report_that_does_not_fit_is_refused_before_anything_commits(tmp_path, contained, custody):
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid, report = verifying(p, tmp_path)
+    rev = p.rev()
+    missing = call(p, "ticket_prepare", work_id=wid)
+    assert not missing["ok"] and missing["stopped"]["error"]["details"]["reason"] == SA.REPORT_NEEDED
+    assert "`verification_evidence`" in missing["stopped"]["error"]["message"] and p.rev() == rev
+    p.lead("verify", "ingest", wid, "--evidence", report)
+    rev = p.rev()
+    late = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
+    assert not late["ok"] and late["stopped"]["error"]["details"]["reason"] == SA.REPORT_ALREADY_ACCEPTED
+    assert p.rev() == rev and "stage_intents" not in {k for k, v in control(p).items() if v}
+    p.lead("work", "transition", wid, "--to", "RUNNING", "--reason", "back")
+    away = call(p, "ticket_prepare", work_id=wid)
+    assert not away["ok"] and away["stopped"]["error"]["details"]["reason"] == SA.NOT_FROM_THIS_STATE
+
+
+def test_a_stage_stopped_stale_says_to_call_it_again_and_that_call_goes_on(tmp_path, contained, custody, monkeypatch):
+    """E133, with rule 5 unchanged: a judgment-bearing stage never retries a stale step. Its refusal names the call that
+    takes the Ticket on from where it stopped, and the acceptance it committed stands."""
+    p = sample_project(tmp_path)
+    checks_mode(p)
+    wid, report = verifying(p, tmp_path)
+    intervene(monkeypatch, "work.transition")
+    stopped = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
+    assert not stopped["ok"] and control(p)["work"][wid]["state"] == "VERIFIED"
+    error = stopped["stopped"]["error"]
+    assert error["code"] == "STALE_REVISION" and error["details"]["call_again"] == "ticket_prepare"
+    assert "Call ticket_prepare again" in error["message"]
+    out = call(p, "ticket_prepare", work_id=wid)
+    assert out["ok"], out["stopped"]
+    assert control(p)["work"][wid]["integration"]["status"] == "prepared"
+    assert_control_invariants(p)
+
+
+@pytest.mark.parametrize(("step", "again", "takes_the_report"), [
+    ("verify.ingest", "ticket_prepare", True),
+    ("work.transition", "ticket_prepare", False),
+    ("integrate.prepare", "ticket_prepare", False),
+    ("invoke.create.mutating", "integration_publish", False)])  # a launch takes no revision, so nothing stops it stale
+def test_ticket_prepare_stale_at_each_step_names_only_a_call_that_goes_on(tmp_path, monkeypatch, custody, step, again,
+                                                                         takes_the_report):
+    """E133's review, M2: every step in verifier mode, following what the refusal names."""
+    p = sample_project(tmp_path)
+    lab = launching(p, tmp_path, monkeypatch)
+    sync = tmp_path / "sync"
+    sync.mkdir(exist_ok=True)
+    try:
+        wid, report = verifying(p, tmp_path)
+        lab.script("default", verifier_script(sync))
+        intervene(monkeypatch, step)
+        stopped = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
+        assert not stopped["ok"], step
+        details = stopped["stopped"]["error"]["details"]
+        assert details.get("call_again") == again, stopped["stopped"]
+        if again is None:
+            return
+        assert again in stopped["stopped"]["error"]["message"]
+        named = ({"prepared_candidate": control(p)["work"][wid]["integration"]["candidate"]}
+                 if again == "integration_publish" else {"verification_evidence": report} if takes_the_report else {})
+        followed = call(p, again, work_id=wid, **named)
+        assert followed["ok"], followed["stopped"]
+        assert_control_invariants(p)
+    finally:
+        lab.cleanup()
 
 
 def _commits_before_finishes(p: Project, e: Engine, monkeypatch, times: int) -> list[int]:
@@ -683,6 +880,46 @@ def _commits_before_finishes(p: Project, e: Engine, monkeypatch, times: int) -> 
 
     monkeypatch.setattr(e._integration, "_finish_publish", finish)
     return seen
+
+
+def test_a_ticket_held_up_by_an_unfinished_publish_is_told_the_call_that_finishes_it(tmp_path, monkeypatch):
+    """Review of E137, F2: with two Tickets in the queue, the second's refusal and its queue wait name the first's
+    reconcile, since waiting for the first to publish would never end. That call frees the second."""
+    p = sample_project(tmp_path)
+    gates = p.root / ".aew/policy/gates.yaml"
+    gates.write_text(dump_yaml({**load_yaml(gates.read_text(encoding="utf-8")), "mutating_concurrency": 2}),
+                     encoding="utf-8", newline="\n")
+    p.pin_policy()
+    first = create_planned_ticket(p, tmp_path, title="Add one", scope=("calc/one.py", "tests/test_one.py"))
+    second = create_planned_ticket(p, tmp_path, title="Add two", scope=("calc/two.py", "tests/test_two.py"))
+    roles = assign(p, first), assign(p, second)
+
+    def to_ready(wid: str, role: Any, files: dict[str, str]) -> None:
+        implement(role, files)
+        p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+        p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+        p.lead("work", "transition", wid, "--to", "VERIFY_PENDING")
+        p.lead("verify", "ingest", wid, "--evidence", verify(p, wid))
+        p.lead("work", "transition", wid, "--to", "COMMIT_READY")
+
+    to_ready(first, roles[0], {"calc/one.py": "ONE = 1\n"})
+    prepare_and_validate(p, first)
+    e = engine(p)
+    _commits_before_finishes(p, e, monkeypatch, IO.FINISH_ATTEMPTS)
+    with pytest.raises(AEWError):
+        e.integrate_publish(token=p.token, expect_rev=p.rev(), work_id=first)
+    to_ready(second, roles[1], {"calc/two.py": "TWO = 2\n"})
+    finishes = f"`aew integrate reconcile {first} --expect-rev <revision from aew status>` finishes it first"
+
+    refused = p.aew("integrate", "prepare", second, "--expect-rev", str(p.rev()), env={"AEW_LEAD_TOKEN": p.token})
+    assert refused.returncode != 0 and refused.error["code"] == "LEASE_HELD", refused.error
+    assert finishes in refused.error["message"], refused.error
+    projection.clear_cache()
+    assert finishes in " ".join(project(engine(p), CTX, second)["hints"]), "the queue's wait says the same"
+
+    p.lead("integrate", "reconcile", first)
+    assert integrate(p, second)["state"] == "DONE"
+    assert_control_invariants(p)
 
 
 def _publish(p: Project, e: Engine, wid: str, candidate: str) -> dict[str, Any]:

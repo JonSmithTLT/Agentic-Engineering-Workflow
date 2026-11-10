@@ -149,12 +149,13 @@ class ProjectAdmin:
             ctx.summary = f"authority candidate rejected: {candidate['path']}"
         return {"ok": True, "decision": decision, "revision": ctx.session.committed_revision}
 
-    def manifest_adopt(self, *, token: str, expect_rev: int, reason: str,
-                       authorization: dict[str, str] | None = None) -> dict[str, Any]:
+    def manifest_adopt(self, *, token: str, expect_rev: int, reason: str, authorization: dict[str, str] | None = None,
+                       only: list[str] | None = None) -> dict[str, Any]:
         """Accept a reviewed manual edit of project.yaml or of the policy files it names by re-pinning them (recorded
         decision). A project whose policy files were never pinned has them pinned here. The operator's decision, always
         confirmed at their own terminal: whoever can edit the policy must not also approve the edit, and a Lead holding
-        the raw credential is refused like a Lead session (PR #118 review, finding 1)."""
+        the raw credential is refused like a Lead session (PR #118 review, finding 1). ``only`` is the switch offer's:
+        the exact files it wrote, checked in this transaction, so nothing else that drifted is pinned unseen."""
         require_operator_attribution(True, authorization, "adopting an edit of project.yaml or the policy files")
         manifest_path = self.k.aew_root / MANIFEST
         # Credential and revision are checked by lead_txn before any state-dependent answer.
@@ -168,8 +169,14 @@ class ProjectAdmin:
             validate("project", manifest, source=str(manifest_path))
             pins = self._read_policy_pins(manifest)
             changed = ([MANIFEST] if manifest_changed else []) + (drift or [])
+            if only is not None and (drift is None or set(changed) != set(only)):
+                raise IllegalTransition(f"this adoption is of {', '.join(sorted(only))} only, and "
+                                        f"{'no file was ever pinned' if drift is None else ', '.join(changed)} differ; "
+                                        "nothing is adopted", reason="other_files_changed", changed=changed)
             what = ", ".join(changed) + (" (policy files pinned for the first time)" if drift is None else "")
-            decision = self.k.new_decision(ctx, "manifest_adoption", f"Adopted a reviewed manual edit of {what}",
+            title = f"Adopted {what} at the switch offer" if only is not None \
+                else f"Adopted a reviewed manual edit of {what}"
+            decision = self.k.new_decision(ctx, "manifest_adoption", title,
                                          reason=reason, decided_by=dict(ctx.actor, kind="operator",
                                                                         recorded_by_lead=True, **(authorization or {})))
             ctx.state["manifest_sha256"] = sha256_bytes(raw)
@@ -790,6 +797,9 @@ class Engine:
     def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False) -> dict[str, Any]:
         return self._harness.harness_launch(token=token, expect_rev=expect_rev, invocation=invocation, replace=replace)
 
+    def wakes_reach_lead(self) -> bool:
+        return self._harness.wakes_reach_lead()
+
     def harness_resume(self, state: dict[str, Any]) -> list[dict[str, Any]]:
         return self._harness.harness_resume(state)
 
@@ -925,10 +935,10 @@ class Engine:
     def manifest(self) -> Any:
         return self._k.manifest
 
-    def manifest_adopt(self, *, token: str, expect_rev: int, reason: str,
-                       authorization: dict[str, str] | None = None) -> dict[str, Any]:
+    def manifest_adopt(self, *, token: str, expect_rev: int, reason: str, authorization: dict[str, str] | None = None,
+                       only: list[str] | None = None) -> dict[str, Any]:
         return self._project.manifest_adopt(token=token, expect_rev=expect_rev, reason=reason,
-                                            authorization=authorization)
+                                            authorization=authorization, only=only)
 
     def manifest_pin_ok(self, state: dict[str, Any]) -> bool:
         return self._k.manifest_pin_ok(state)

@@ -3,7 +3,7 @@ generated: do not edit; regenerated from the adopted design text (see README.md)
 position: A-47
 source: 30-stages/STG-23-LB01-checked-launch-briefs/adopted/lb01-r3/LB01-POSITION.md
 source-sha256: 65e697b2c22324dc8aba8fcf11da0319d0eda6f39514685469c6321dd26a88ea
-edits-sha256: d94a29298765d93834077aa3b98969c98a6c0a5051d3467bfcd46f1cfbf647e1
+edits-sha256: dab73aa8bb24c8528b1a7623052e7c8d6c89062be9ec8e8284922b181a26427b
 -->
 
 # Checked launch briefs (PROPOSED, revision 3)
@@ -270,7 +270,7 @@ Such an entry is refused as `BRIEF_PATH_OUT_OF_BOUNDS`. The refusal names the pa
 
 **LB01-R09.** A broken checker stops only launches it would check (`LB01-02.b`): those with a fact, an unchecked claim or a citation. A brief that claims nothing is not affected, so nothing optional fails AEW. Its fix line sends the operator to doctor, and never tells the Lead to drop its facts.
 
-**LB01-R10.** The `brief` group is not material. A brief entry only refuses this launch, or quotes a source whose authority is that source's own (`LB01-04.b`). It adds no obligation to the Ticket, changes no gate the Ticket must pass, and no acceptance check reads it. Fixing a stale fact is therefore not a change to what the Ticket must achieve. Until F4's revisions are built, a Ticket's `brief` group is corrected by a recorded Lead mutator of the `work depend` kind, which changes that group only and which F4 absorbs (AEW-plans `designer-f4-v8-against-map-v1.20-2026-11-01.md` §2). After F4, it is a non-material revision.
+**LB01-R10.** The `brief` group is not material. A brief entry only refuses this launch, or quotes a source whose authority is that source's own (`LB01-04.b`). It adds no obligation to the Ticket, changes no gate the Ticket must pass, and no acceptance check reads it. Fixing a stale fact is therefore not a change to what the Ticket must achieve. Until F4's revisions are built, a Ticket's `brief` group is corrected by a recorded Lead mutator of the `work depend` kind, which changes that group only and which F4 absorbs (the designer's F4 reading against map v1.20, §2). After F4, it is a non-material revision.
 
 **LB01-R11.** A Ticket's entries are read at the base, and a launch's own at the tree. A Ticket's describe the work as assigned, so a reviewer gets the rules as they stood before the change and cannot be handed rules the change itself rewrote. A launch's own describe what its child reads, which for a reviewer is the change. Where the change rewrote the cited file or its resolver, the "changed in this workspace" label (`LB01-00.a`) tells the reviewer that a launch's own citation quotes the change, not the rule it was assigned under.
 

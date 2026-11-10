@@ -90,7 +90,7 @@ def test_ill_formed_calls_never_reach_the_engine(held):
     rev = _rev(engine)
     for name, args, profile, code in (("nope", {}, "normal", "UNKNOWN_TOOL"),
                                       # every catalog row is built since E6a: a malformed stage call instead
-                                      ("ticket_prepare", {"expect_rev": rev, "work_id": wid}, "normal",
+                                      ("ticket_prepare", {"expect_rev": rev}, "normal",
                                        "INVALID_ARGUMENTS"),
                                       ("cli", {"argv": ["status"]}, "normal", "TOOL_NOT_EXPOSED"),
                                       ("checkpoint", {"expect_rev": rev, "bogus": 1}, "normal", "INVALID_ARGUMENTS")):

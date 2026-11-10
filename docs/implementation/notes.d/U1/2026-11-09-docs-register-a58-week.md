@@ -1,0 +1,1 @@
+**The conversational Lead (A-58, [its record](../../../design/decisions-2026-11-conversational-lead.md)).** What its brief must settle is kept with the Lead for when it is placed. Unplaced (the operator, 2026-11-09).

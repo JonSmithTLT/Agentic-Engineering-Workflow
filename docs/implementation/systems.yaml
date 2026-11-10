@@ -506,10 +506,11 @@ systems:
     estimate: 1-2 PRs (estimate), held
   decision: 'decided: hide request_raise and request_confirmation from the Lead''s normal catalog, keep lower; they return
     with a real grant path (operator, 2026-11-06 (design workspace decision record: board decisions))'
-  recommendation: freeze
-  who: designer; operator for hiding request_raise and request_confirmation (BOARD v2 §3)
-  reason: 'Everything left is held in HOLD-19 and HOLD-17, and A-37 moves confirmation to G3, so E7c as planned may be superseded
-    (BOARD v2 §4). This entry''s reading of the code at c11a61ea (not BOARD''s) narrows BOARD v2 §1''s ''lower works at
+  recommendation: finish
+  who: Lead
+  reason: 'Live work: steering''s push wake server has merged, endpoint auto-start is next and push wake PR 3 follows it, and
+    RUN mode, the scheduler''s chain (E228), is placed after E123 (operator, 2026-11-09). HOLD-19 and HOLD-17 no longer
+    describe it; A-37 still moves confirmation to G3, so E7c as planned may be superseded (BOARD v2 §4). This entry''s reading of the code at c11a61ea (not BOARD''s) narrows BOARD v2 §1''s ''lower works at
     any time''. lower takes no approval, but it needs an effective mode above its target, and walk or run becomes effective
     only by the operator''s raise at the --dev endpoint: an adopted walk or run default waits there as a pending raise,
     and an adopted crawl leaves nothing lower. In a project with no steering.mode, which is the template''s default, every
@@ -627,7 +628,7 @@ systems:
     row: E35
     estimate: 1 PR (estimate)
   - slice: 'H-1: qualify OpenCode 2.1.4, with the C1 compaction re-probe, a TESTED_VERSIONS entry and a token_semantics
-      row (on the Now list, after CAP-1 PR 3)'
+      row (on the Now list; CAP-1 PR 3 has merged)'
     row: E35
     estimate: 1-2 PRs (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
@@ -1064,8 +1065,8 @@ systems:
     exercised in a real Lead run. Dispositions and the custody publish (E6b, PIC) stay out of the finish line until the
     designer''s D4 and the operator''s placement out of HOLD-10.'
   remaining:
-  - slice: 'E137: integration_publish stranded after STALE_REVISION following its first commit, and the stages stranded
-      like it'
+  - slice: 'E137: the other judgment stages stranded at their last committed step, and the custody worker''s registration
+      (suspected); the publish case is fixed'
     row: E137
     estimate: 1 PR (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
@@ -1191,9 +1192,6 @@ systems:
     capabilities resolve against the register instead of printing 'workbench resolution pending'; exercised in a real contained
     run.
   remaining:
-  - slice: 'CAP-1 PR 3: fd, jq, yq, ast-grep and Universal Ctags as records (on the Now list)'
-    row: STG-15
-    estimate: 1 PR (estimate)
   - slice: 'The owed lines from CAP-1 PR 2''s review: the agent system-text line naming a missing tool, the Lead''s results
       line, the consent prompt, `aew capability fetch` and the setup fetch'
     row: STG-15
@@ -2204,17 +2202,10 @@ systems:
     V3's two missing detectors exist (E153); artifact_digests is populated or dropped and working_diff kept or removed;
     all exercised by the vertical driver and a real run. The remote validation provider stays Designed until it has acceptance.
   remaining:
-  - slice: 'E120: coverage on the record, failing lines back to the worker, skills asked for and not given (on the Now list)'
+  - slice: 'E120: what its first PR left owed: the record''s section 2 (what a run went without), and E243''s project-owned
+      source for the two lists its record now says are not known'
     row: E120
-    estimate: 1-2 PRs (estimate, census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E125: the local readiness surface, with the driver asserting the diagnosis (on the Now list; E119 has merged)'
-    row: E125
-    estimate: 1 PR (estimate, census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E153: detectors for V3''s check-changes-snapshot and model-not-listed, after a ruling on what may run'
-    row: E153
-    estimate: 1 PR after the ruling (estimate, census)
+    estimate: 1-2 PRs (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
       artifact_digests, always empty: populate or drop (BOARD v2 §4 loose end)'
     row: row owed

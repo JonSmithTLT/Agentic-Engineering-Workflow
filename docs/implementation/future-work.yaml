@@ -125,7 +125,7 @@ sections:
     | 13 | E123 | **Before the work step:** the relay presenting a client certificate, and the bundle (E99, whose design is owed) |
     | 14 | STG-15, E35 | CAP-1 PR 3, right after PR 2 and beside first use, which it doesn't hold. **After those:** H-1, H-2 and H-3 |
     | 15 | STG-14 | I-6, the resource, model and host policy (A-39), the first of the wire increments V-01 needs. Its protected rows stay held until G3 is established, and G3 is established on no host yet |
-    | 16 | E125 | The local readiness surface, with the driver asserting the diagnosis. With E119, it's what V3's four non-stale cases need to pass |
+    | 16 | closed: E125 | The local readiness surface, with the driver asserting the diagnosis. With E119, it's what V3's four non-stale cases need to pass, closed by #360 |
     | 17 | E126 | A pre-F4 correction that F4 absorbs: the Lead adds one exact test path to a Ticket's scope |
     | 18 | closed: E127 | Delivering the first four skills, labelled unevaluated, and `optional_skills` on the card, closed by #342 |
     | 19 | closed: E130 | What the Lead is told points at its typed tools and cannot go stale, closed by #331 |
@@ -2475,17 +2475,6 @@ sections:
       at their first live use'
     Notes: Filed by the Lead
 
-  - '#': E125
-    Work: 'The local readiness surface, V-01''s row 11 as amended: before any Ticket, a setup problem is named with its
-      cause and fix, using the same checks, so V3 can pass with no wire. P03 stays owed. The driver asserts the diagnosis
-      in the same pull request, or the green is hollow. The surface and its command, with its surface-map entry, are chosen
-      when it is briefed. It takes the amendment to `vertical-uat.md`'
-    Source: The designer's position of 2026-11-02 and decisions of 2026-11-03, on setup and preflight; the operator's decision
-      of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`)
-    When: '**Now.** Item 16 of the Now list, after E119'
-    Notes: Filed by the Lead. With E119, it is what V3's four non-stale cases need, which the designer calls the first honest
-      oracle green. V3's seeded stale seat stays red and held, and its detector is tested outside V3
-
   - '#': E126
     Work: 'A pre-F4 correction that F4 absorbs, not F4''s first slice: the product''s Lead adds one exact test path to one
       Ticket''s scope, on the record with a reason, in place of cancel and replace. The Ticket''s record never changes:
@@ -2704,14 +2693,6 @@ sections:
     Source: The designer's harness ruling 11 of 2026-11-01, revision 2
     When: '**Unscheduled**, before any patch to the harness'
     Notes: Filed by the Lead. Results are not recorded here
-
-  - '#': E153
-    Work: Detectors for V3's `check-changes-snapshot` and `model-not-listed` cases. Naming the failing file means running
-      the check, while doctor is structural only and nothing runs at init, so no detector exists. V3's case fails today
-      with "fell back to today's workaround"
-    Source: The vertical sweep of 2026-11-02; the scoreboard run of 2026-11-04
-    When: '**Unscheduled**, with E125. It needs a ruling on what may run, which the Lead takes to the designer'
-    Notes: Filed by the Lead. E125 names no detector, and the personal alpha gate needs this case
 
   - '#': E154
     Work: 'Checked launch briefs (A-47, LB01): the brief checker''s build, which passes LB01-Q01 to Q22; the `brief` group''s
@@ -3668,14 +3649,6 @@ sections:
     When: '**Unscheduled**, in the small-fixes lane'
     Notes: Filed by the week's register PR
 
-  - '#': E252
-    Work: 'On Windows a lockless reader can hit a sharing violation while a segment is replaced: the nightly''s `tests/integration/test_log_sealing.py::test_a_lockless_reader_races_a_compaction_in_another_process_without_a_false_gap`
-      raised `PermissionError` (Errno 13) reading `seg-000001.yaml` while another process compacted, at `ebf48aca`. Decide
-      whether the reader retries or it''s a product defect'
-    Source: The nightly's red run at `ebf48aca`, 2026-11-09
-    When: '**Unscheduled**, for the flake plan or the product'
-    Notes: Filed by the week's register PR
-
   - '#': E253
     Work: 'Lessons (A-57, `L`), the knowledge system''s first increment, in six parts (the designer''s estimates, 13 to
       16 PRs, not counting the switch offer or auto-start): the Lead''s search on by default, a relayed read, after the
@@ -4322,6 +4295,15 @@ sections:
     Closed: '2026-11-05'
     By: '#328 (`7e06f876`)'
 
+  - '#': E125
+    Was: 'The local readiness surface, V-01''s row 11 as amended: before any Ticket, a setup problem is named with its cause
+      and fix, using the same checks, so V3 can pass with no wire. P03 stays owed. The driver asserts the diagnosis in the
+      same pull request, or the green is hollow. The surface and its command, with its surface-map entry, are chosen when
+      it is briefed. It takes the amendment to `vertical-uat.md`'
+    Closed: '2026-11-07'
+    By: '#360 (`6f918fa1`): `aew doctor` is the local readiness surface, a launch carries the rows it doesn''t refuse on,
+      and V3''s driver asserts the diagnosis. P03''s read stays owed, as the row said'
+
   - '#': E127
     Was: Deliver `python-development`, `c-development`, `adversarial-review` and `acceptance-verification` from AEW's own
       install, with a manifest of hashes, labelled unevaluated, and `optional_skills` on the card
@@ -4350,6 +4332,14 @@ sections:
     Closed: '2026-11-06'
     By: '#338 (`63cd1ed1`) and #339 (`c11a61ea`). Its first scope, a free-model carve-out, closed unmerged (#336) on the
       operator''s decision of 2026-11-06'
+
+  - '#': E153
+    Was: Detectors for V3's `check-changes-snapshot` and `model-not-listed` cases. Naming the failing file means running
+      the check, while doctor is structural only and nothing runs at init, so no detector exists. V3's case fails today
+      with "fell back to today's workaround"
+    Closed: '2026-11-08'
+    By: '#367 (`5f269544`): doctor reads the harness''s model list by default, and `aew doctor --run-checks` names what
+      a check writes; both V3 cases are detected'
 
   - '#': E156
     Was: Refuse a launch that can't work for want of a provider key (`provider_key_missing`), close the Lead's OpenCode

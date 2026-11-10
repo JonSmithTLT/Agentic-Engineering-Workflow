@@ -47,7 +47,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 13 | E123 | **Before the work step:** the relay presenting a client certificate, and the bundle (E99, whose design is owed) |
 | 14 | STG-15, E35 | CAP-1 PR 3, right after PR 2 and beside first use, which it doesn't hold. **After those:** H-1, H-2 and H-3 |
 | 15 | STG-14 | I-6, the resource, model and host policy (A-39), the first of the wire increments V-01 needs. Its protected rows stay held until G3 is established, and G3 is established on no host yet |
-| 16 | E125 | The local readiness surface, with the driver asserting the diagnosis. With E119, it's what V3's four non-stale cases need to pass |
+| 16 | closed: E125 | The local readiness surface, with the driver asserting the diagnosis. With E119, it's what V3's four non-stale cases need to pass, closed by #360 |
 | 17 | E126 | A pre-F4 correction that F4 absorbs: the Lead adds one exact test path to a Ticket's scope |
 | 18 | closed: E127 | Delivering the first four skills, labelled unevaluated, and `optional_skills` on the card, closed by #342 |
 | 19 | closed: E130 | What the Lead is told points at its typed tools and cannot go stale, closed by #331 |
@@ -1691,18 +1691,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E124/`, oldest first (`python tools/register.py show E124`).*
 
-### E125
-
-**Work:** The local readiness surface, V-01's row 11 as amended: before any Ticket, a setup problem is named with its cause and fix, using the same checks, so V3 can pass with no wire. P03 stays owed. The driver asserts the diagnosis in the same pull request, or the green is hollow. The surface and its command, with its surface-map entry, are chosen when it is briefed. It takes the amendment to `vertical-uat.md`
-
-**Source:** The designer's position of 2026-11-02 and decisions of 2026-11-03, on setup and preflight; the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`)
-
-**When:** **Now.** Item 16 of the Now list, after E119
-
-**Notes:** Filed by the Lead. With E119, it is what V3's four non-stale cases need, which the designer calls the first honest oracle green. V3's seeded stale seat stays red and held, and its detector is tested outside V3
-
-*Later notes: `notes.d/E125/`, oldest first (`python tools/register.py show E125`).*
-
 ### E126
 
 **Work:** A pre-F4 correction that F4 absorbs, not F4's first slice: the product's Lead adds one exact test path to one Ticket's scope, on the record with a reason, in place of cancel and replace. The Ticket's record never changes: an immutable correction record and one accessor for the effective scope. There is no size limit, and the review judges proportion from the lines shown. A removed test, fewer test definitions, a runner config or an existing shared file under a test directory stops for a sign-off, cited from a plan revision or quoted from the operator. Any other kind of path stays out of this slice, until use shows a test-only add is not enough
@@ -1978,18 +1966,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. Results are not recorded here
 
 *Later notes: `notes.d/E152/`, oldest first (`python tools/register.py show E152`).*
-
-### E153
-
-**Work:** Detectors for V3's `check-changes-snapshot` and `model-not-listed` cases. Naming the failing file means running the check, while doctor is structural only and nothing runs at init, so no detector exists. V3's case fails today with "fell back to today's workaround"
-
-**Source:** The vertical sweep of 2026-11-02; the scoreboard run of 2026-11-04
-
-**When:** **Unscheduled**, with E125. It needs a ruling on what may run, which the Lead takes to the designer
-
-**Notes:** Filed by the Lead. E125 names no detector, and the personal alpha gate needs this case
-
-*Later notes: `notes.d/E153/`, oldest first (`python tools/register.py show E153`).*
 
 ### E154
 
@@ -3119,18 +3095,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E251/`, oldest first (`python tools/register.py show E251`).*
 
-### E252
-
-**Work:** On Windows a lockless reader can hit a sharing violation while a segment is replaced: the nightly's `tests/integration/test_log_sealing.py::test_a_lockless_reader_races_a_compaction_in_another_process_without_a_false_gap` raised `PermissionError` (Errno 13) reading `seg-000001.yaml` while another process compacted, at `ebf48aca`. Decide whether the reader retries or it's a product defect
-
-**Source:** The nightly's red run at `ebf48aca`, 2026-11-09
-
-**When:** **Unscheduled**, for the flake plan or the product
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E252/`, oldest first (`python tools/register.py show E252`).*
-
 ### E253
 
 **Work:** Lessons (A-57, `L`), the knowledge system's first increment, in six parts (the designer's estimates, 13 to 16 PRs, not counting the switch offer or auto-start): the Lead's search on by default, a relayed read, after the shared switch offer ships (1); workers' search with the independence filter (1-2); Lessons findable: store, kinds, door, ceilings, import, list, show, hold, strike (3-4); Lessons delivered: approve, reject, release, challenge, pack section, selection, pin, pointers, counts (3-4); the dashboard's Lessons page with the pasted command (2); click plus PIN, with a renewed security review of the POST (3-4), which depends on endpoint auto-start
@@ -3907,6 +3871,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E121/`, oldest first (`python tools/register.py show E121`).*
 
+### E125
+
+**Was:** The local readiness surface, V-01's row 11 as amended: before any Ticket, a setup problem is named with its cause and fix, using the same checks, so V3 can pass with no wire. P03 stays owed. The driver asserts the diagnosis in the same pull request, or the green is hollow. The surface and its command, with its surface-map entry, are chosen when it is briefed. It takes the amendment to `vertical-uat.md`
+
+**Closed:** 2026-11-07
+
+**By:** #360 (`6f918fa1`): `aew doctor` is the local readiness surface, a launch carries the rows it doesn't refuse on, and V3's driver asserts the diagnosis. P03's read stays owed, as the row said
+
+*Later notes: `notes.d/E125/`, oldest first (`python tools/register.py show E125`).*
+
 ### E127
 
 **Was:** Deliver `python-development`, `c-development`, `adversarial-review` and `acceptance-verification` from AEW's own install, with a manifest of hashes, labelled unevaluated, and `optional_skills` on the card
@@ -3946,6 +3920,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #338 (`63cd1ed1`) and #339 (`c11a61ea`). Its first scope, a free-model carve-out, closed unmerged (#336) on the operator's decision of 2026-11-06
 
 *Later notes: `notes.d/E143/`, oldest first (`python tools/register.py show E143`).*
+
+### E153
+
+**Was:** Detectors for V3's `check-changes-snapshot` and `model-not-listed` cases. Naming the failing file means running the check, while doctor is structural only and nothing runs at init, so no detector exists. V3's case fails today with "fell back to today's workaround"
+
+**Closed:** 2026-11-08
+
+**By:** #367 (`5f269544`): doctor reads the harness's model list by default, and `aew doctor --run-checks` names what a check writes; both V3 cases are detected
+
+*Later notes: `notes.d/E153/`, oldest first (`python tools/register.py show E153`).*
 
 ### E156
 

@@ -23,8 +23,9 @@ operator's, and AEW never copies, stores or prints the key:
 
 The trust is the CA file's alone, not the system's as well: the provider's certificate is checked against the CA the
 operator swaps when a change is announced. A provider AEW knows a key variable for (``netns.PROVIDER_KEY_ENV``) still
-needs that variable on the relay route; a provider of its own id, with its upstream in
-``containment.network.upstreams``, needs none.
+needs that variable on the relay route; AEW requires none for a provider of its own id, with its upstream in
+``containment.network.upstreams`` (whether OpenCode needs a placeholder key for one is the designer's check, left to
+its first run).
 """
 
 from __future__ import annotations

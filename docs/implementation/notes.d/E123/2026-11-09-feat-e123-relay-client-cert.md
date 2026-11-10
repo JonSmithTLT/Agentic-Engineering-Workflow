@@ -3,7 +3,9 @@
 **The 429 ladder, measured at home.** The relay passes a 429 through as the upstream sent it, `Retry-After` included, with one request upstream and no retry (`test_a_429_reaches_the_harness_as_the_upstream_sent_it_with_its_retry_after`). Not measured yet:
 - whether OpenCode 2.0.18 backs off on it, and how it treats `Retry-After`. This needs a real OpenCode run against a local fake upstream on the VM, in a network namespace;
 - how parallel workers share one limit;
-- what the provider's own 429s look like. Only a live run at work can show this.
+- what the provider's own 429s look like. Only a live run against that provider can show this.
+
+**The designer's build check, not yet run:** whether OpenCode 2.0.18 needs a placeholder key for a provider of its own id with no key variable. AEW requires none. Like the 429 measurement, this needs a real OpenCode run in a network namespace.
 
 **Gaps this build leaves, for rows:**
 - **Codex:** there is no Codex adapter yet (`harness/registry.py` names OpenCode only). One on the relay route gets this through `RunNetwork.start` as any harness does.

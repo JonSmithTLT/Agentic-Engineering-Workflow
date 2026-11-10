@@ -17,13 +17,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
-from cryptography import x509
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.x509.oid import NameOID
 from host_env import GUARDED
 
 from aew.engine import readiness
@@ -31,11 +27,15 @@ from aew.errors import ContainmentUnavailable
 from aew.harness.containment import client_cert, layout, netns, relay
 from aew.harness.containment.relay import ProviderRelay, Upstream
 
+if TYPE_CHECKING:
+    from cryptography import x509
+    from cryptography.hazmat.primitives.asymmetric import ec
+
 pytestmark = GUARDED  # a mask plan is built here: none of it may read the host's home
 
 TIMEOUT = 10.0
 HOST = "provider.test"  # the server certificate's name; never resolved (the connect seam goes to 127.0.0.1)
-PROVIDER = "work"
+PROVIDER = "mtls"
 NOW = dt.datetime.now(dt.UTC)
 # No body: the provider reads the head alone, and a close with unread bytes would reset the connection
 REQUEST = b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n"
@@ -44,7 +44,13 @@ OK = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
 
 # ---------------------------------------------------------------------------------------------- a throwaway PKI
 
+# `cryptography` is imported where it is used, as in test_g3_facts.py: the lanes job collects changed test modules
+# with pytest alone installed, and the test lanes install it (the g3 extra).
+
 def _name(cn: str) -> x509.Name:
+    from cryptography import x509
+    from cryptography.x509.oid import NameOID
+
     return x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
 
 
@@ -56,6 +62,10 @@ class Issued:
 
 def issue(cn: str, issuer: Issued | None = None, *, ca: bool = False, server: bool = False,
           not_before: dt.datetime | None = None, not_after: dt.datetime | None = None) -> Issued:
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+
     key = ec.generate_private_key(ec.SECP256R1())
     builder = (x509.CertificateBuilder().subject_name(_name(cn))
                .issuer_name(issuer.cert.subject if issuer else _name(cn)).public_key(key.public_key())
@@ -70,10 +80,14 @@ def issue(cn: str, issuer: Issued | None = None, *, ca: bool = False, server: bo
 
 
 def cert_pem(issued: Issued) -> bytes:
+    from cryptography.hazmat.primitives import serialization
+
     return issued.cert.public_bytes(serialization.Encoding.PEM)
 
 
 def key_pem(issued: Issued, passphrase: bytes | None = None) -> bytes:
+    from cryptography.hazmat.primitives import serialization
+
     encryption: Any = (serialization.BestAvailableEncryption(passphrase) if passphrase
                        else serialization.NoEncryption())
     return issued.key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, encryption)

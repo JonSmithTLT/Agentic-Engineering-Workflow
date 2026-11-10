@@ -155,7 +155,7 @@ def test_the_supervisor_refuses_again_before_any_sandbox_or_network_exists(relay
 
 # ------------------------------------------------------------------------- a client certificate needs the relay (E123)
 
-CERT_POLICY = {"containment": {"network": {"client_certs": {"work": {"cert": "/synthetic/c.pem",
+CERT_POLICY = {"containment": {"network": {"client_certs": {"mtls": {"cert": "/synthetic/c.pem",
                                                                      "key": "/synthetic/k.pem",
                                                                      "ca": "/synthetic/ca.pem"}}}}}
 
@@ -184,12 +184,12 @@ def test_a_launch_whose_provider_needs_a_client_certificate_is_refused_off_the_r
 
     monkeypatch.setattr(netns, "mode", lambda policy: netns.SHARED)
     with pytest.raises(errors.ContainmentUnavailable) as caught:
-        engine_invocations(CERT_POLICY).require_launchable(launchable_state("work"), "INV-0001", relaunch=False)
+        engine_invocations(CERT_POLICY).require_launchable(launchable_state("mtls"), "INV-0001", relaunch=False)
     assert caught.value.details["reason"] == client_cert.NO_RELAY
-    assert "containment.network.client_certs.work.cert" in caught.value.message
+    assert "containment.network.client_certs.mtls.cert" in caught.value.message
     assert "/synthetic/k.pem" not in caught.value.message
     with pytest.raises(errors.ContainmentUnavailable) as caught:
-        contain_with(CERT_POLICY, "work")
+        contain_with(CERT_POLICY, "mtls")
     assert caught.value.details["reason"] == client_cert.NO_RELAY
     assert events[-1] == ("containment_refused", {"reason": caught.value.message})
     assert caught.value.message in repr(record["containment"])  # the run's label says why
@@ -198,9 +198,9 @@ def test_a_launch_whose_provider_needs_a_client_certificate_is_refused_off_the_r
     with pytest.raises(Reached):
         contain_with(CERT_POLICY, "fakeprov")
     monkeypatch.setattr(netns, "mode", lambda policy: netns.PROXY_ONLY)
-    assert engine_invocations(CERT_POLICY).require_launchable(launchable_state("work"), "INV-0001", relaunch=False)
+    assert engine_invocations(CERT_POLICY).require_launchable(launchable_state("mtls"), "INV-0001", relaunch=False)
     with pytest.raises(Reached):
-        contain_with(CERT_POLICY, "work")
+        contain_with(CERT_POLICY, "mtls")
 
 
 # ----------------------------------------------------------------------------------------- the refused-target record

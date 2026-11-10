@@ -71,6 +71,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
 | 38 | E171 | The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch` |
 | 39 | E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3) |
+| 40 | E131, E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3, MS4+MS6, MS5, then MS5b with default-on |
 
 **After items 1 to 11 and 16 to 18, first use:** the operator's SPT work, image work included. CI is SPT's first ticket: AEW's workers write it and the operator pushes. SPT stays as it is until then. Later fixes come from that use.
 
@@ -2849,7 +2850,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The Lead's reading of 2026-11-08, for the operator and the designer; the designer's ruling of 2026-11-08
 
-**When:** **Before E158's brief.** The operator chose lossless consolidation (2026-11-10); the combined measurement is owed
+**When:** **Gate: before E158's brief.** The operator chose lossless consolidation (2026-11-10); the combined measurement is owed
 
 **Notes:** Filed by the week's register PR
 

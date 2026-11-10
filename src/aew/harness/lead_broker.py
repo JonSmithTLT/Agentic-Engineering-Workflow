@@ -941,10 +941,11 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     # environment: a refusal for a missing provider variable says so (review of PR #214, F2).
     with agentenv.session_host("this Lead session (`aew opencode` or `aew lead session`)"):
         broker.start()
-        child_env = {**(scrubbed_env() if env is None else scrubbed_env(env)), **broker.env}
+        broker_env = broker.env
+        child_env = {**(scrubbed_env() if env is None else scrubbed_env(env)), **broker_env}
         from aew.surface.contract import ENV_SWITCHES
 
-        if not broker.surface_switches:
+        if ENV_SWITCHES not in broker_env:
             child_env.pop(ENV_SWITCHES, None)  # an ambient presentation hint never becomes this session's snapshot
         try:
             harness = contained(broker.server.private_dir, child_env)

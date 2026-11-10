@@ -64,8 +64,9 @@ def records(family: str) -> dict[str, dict[str, Any]]:
 
 def test_the_tool_records_are_the_catalog_both_ways():
     found = records("tools")
-    assert set(found) == set(contract.TOOLS) and len(found) == len(contract.TOOLS)
-    for name, tool in contract.TOOLS.items():
+    catalog = contract.catalog(contract.ALL_SWITCHES)
+    assert set(found) == set(catalog) and len(found) == len(catalog)
+    for name, tool in catalog.items():
         r = found[name]
         properties = tool.input_schema.get("properties") or {}
         want: dict[str, Any] = {"name": name, "kind": tool.kind, "class": tool.base_class, "status": tool.status,
@@ -76,6 +77,8 @@ def test_the_tool_records_are_the_catalog_both_ways():
                            ("required_arguments", list(tool.input_schema.get("required") or []))):
             if value:
                 want[key] = value
+        if tool.switch:
+            want["switch"] = tool.switch
         assert r["fact"] == want, name
         assert (r["anchor"]["module"], r["anchor"]["symbol"], r["basis"]) == (
             "aew.surface.contract", "TOOLS", "enumerated")
@@ -100,7 +103,7 @@ def test_the_catalog_is_built_only_by_its_one_constructor():
     assert IFACE.catalog_problems(contract_tree(), others) == []
     shape = IFACE.catalog_shape(contract_tree())
     assert (shape.assignments, shape.from_catalog) == (1, 1) and shape.outside == []
-    assert len(shape.inside) == len(contract.TOOLS)  # one construction for each tool the catalog holds
+    assert len(shape.inside) == len(contract.catalog(contract.ALL_SWITCHES))  # includes switch-registered tools
 
 
 def test_the_catalog_refuses_a_duplicate_and_an_unknown_kind():
@@ -112,6 +115,8 @@ def test_the_catalog_refuses_a_duplicate_and_an_unknown_kind():
         contract._catalog(one._replace(name="other", kind="nonsense"))  # wrong: an unknown kind
     with pytest.raises(ValueError, match="unknown profile"):
         contract._catalog(one._replace(profiles=("nowhere",)))
+    with pytest.raises(ValueError, match="unknown switch"):
+        contract._catalog(one._replace(switch="unknown"))
     assert list(contract._catalog()) == []  # missing: no tool is a catalog without one
 
 

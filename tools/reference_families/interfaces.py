@@ -9,10 +9,10 @@ reading is a recogniser has a second, independently written detector, and
 them to each other and to their registries; the planted controls of every recogniser are in
 ``tests/unit/test_reference_interface_controls.py``.
 
-**``tools``.** Owner: ``aew.surface.contract.TOOLS``, the Lead's typed tools, imported at run time (basis
-``enumerated``). Complete-by-construction because the catalog has one constructor: ``_catalog`` builds the table,
-refuses a duplicate name, an unknown kind, class, status or profile, and a ``produced_by`` that does not fit. The pin
-(:func:`catalog_shape`, :func:`catalog_problems`) holds that ``TOOLS`` is assigned once at the contract's top level from
+**``tools``.** Owner: ``aew.surface.contract.catalog(ALL_SWITCHES)``, the Lead's typed tools, imported at run time
+(basis ``enumerated``). Complete-by-construction because the catalog has one constructor: ``_catalog`` builds the table,
+refuses duplicates, unknown kinds, classes, statuses, profiles or switches, and a ``produced_by`` that does not fit.
+The pin (:func:`catalog_shape`, :func:`catalog_problems`) holds that ``TOOLS`` is assigned once at the top level from
 a ``_catalog(...)`` call, that every ``Tool(`` call of the contract is an argument of that call, and that no other
 module calls ``Tool`` (a call identified by where its callee was imported from). It does not see a ``Tool`` made by
 ``_replace`` or ``_make``, an alias of ``Tool``, a lookup through ``getattr``, a mutation of ``TOOLS`` from another

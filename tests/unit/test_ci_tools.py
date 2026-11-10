@@ -413,33 +413,7 @@ def test_cli_reads_a_report_tree_and_writes_the_summary(tmp_path):
 
 def test_the_repository_skip_manifest_is_well_formed():
     data = check_assurance.load_expectations(ROOT / "tests" / "platform-skips.yaml")
-    assert set(data["skipped"]) == {"win32", "linux"} and all(data["skipped"]["win32"].values())
-
-
-def test_every_pinned_platform_skip_names_a_test_that_exists():
-    """A renamed or removed test leaves its pin behind, and only `assurance` noticed, once both platforms had run (#231
-    at 53c47b3a: "pinned skip no longer exists"). Each pin names a file under tests/ and a test function defined in it
-    (a class's method for `Class::test`; a parametrized id names its function)."""
-    import ast
-
-    data = check_assurance.load_expectations(ROOT / "tests" / "platform-skips.yaml")
-    missing = []
-    for platform, pins in data["skipped"].items():
-        for nid in pins:
-            path, *names = nid.split("::")
-            file = ROOT / path
-            if not file.is_file():
-                missing.append(f"{platform}: {nid} (no file {path})")
-                continue
-            scope: list[ast.stmt] = ast.parse(file.read_text(encoding="utf-8")).body
-            for name in [n.split("[", 1)[0] for n in names]:
-                found = next((s for s in scope if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                              and s.name == name), None)
-                if found is None:
-                    missing.append(f"{platform}: {nid} (no {name} in {path})")
-                    break
-                scope = found.body if isinstance(found, ast.ClassDef) else []
-    assert missing == [], missing
+    assert check_assurance.manifest_problems(data) == []
 
 
 def test_durations_merge_updates_and_prunes():
@@ -1600,9 +1574,11 @@ def test_ci_runs_the_lanes_only_in_the_full_tier_and_assurance_recomputes_the_ti
     jobs = wf["jobs"]
     assert "merge_group" in wf[True] and "push" in wf[True]  # PyYAML reads the `on:` key as True
     changes_run = next(s["run"] for s in jobs["changes"]["steps"] if "tools/ci/tier.py" in str(s.get("run", "")))
-    assert jobs["lanes"]["needs"] == "changes" and jobs["lanes"]["if"] == "needs.changes.outputs.tier == 'full'"
-    # core and static run in every tier: core's shards come from the tier job, and it has no `if`
-    assert jobs["core"]["needs"] == "changes" and "if" not in jobs["core"] and "needs" not in jobs["static"]
+    assert jobs["lanes"]["needs"] == "changes"
+    assert jobs["lanes"]["if"] == "needs.changes.outputs.tier == 'full' && needs.changes.outputs.reuse_run == ''"
+    # core and static run in every tier, core's shards coming from the tier job, unless a pin-only head reuses the lanes
+    assert jobs["core"]["needs"] == "changes" and "needs" not in jobs["static"]
+    assert jobs["core"]["if"] == "needs.changes.outputs.reuse_run == ''"
     assert jobs["core"]["strategy"]["matrix"] == "${{ fromJSON(needs.changes.outputs.core_matrix) }}"
     gate = jobs["assurance"]
     assert set(gate["needs"]) == {"changes", "core", "lanes", "web", "static", "fastbase"}
@@ -3177,8 +3153,9 @@ def test_every_pytest_lane_has_a_session_deadline_and_every_bound_nests():
     < the job's timeout-minutes less bounds.JOB_MARGIN_S. A change to any one value that breaks the order fails
     here. The helpers declare their bounds when imported: the vertical UAT's are its chat, conversation and gate
     waits."""
+    import bounded_git  # noqa: F401  (each declares its bounds)
     import bounds
-    import vertical.lead  # noqa: F401  (each declares its bounds)
+    import vertical.lead  # noqa: F401
     import vertical.scripted_operator  # noqa: F401
     import vertical.workers  # noqa: F401
 

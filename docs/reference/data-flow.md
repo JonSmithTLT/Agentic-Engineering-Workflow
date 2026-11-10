@@ -145,11 +145,14 @@ The `writers` fact of the `writers` records.
 - `aew.harness.notify:Watcher._write_state`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:ContainedLead._seed_logins`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.lead:ContainedLead._seed_models`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.opencode.lead:serve_spec`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:clear_saved_permissions`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.operator_client:withdraw_locator`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:_open_append`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.steering_loop:_write`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.tool_calls:_rotate`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.tool_calls:append`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.wake_queue:WakeQueue._save`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.history.store:History.append`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.history.store:prewrite`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here

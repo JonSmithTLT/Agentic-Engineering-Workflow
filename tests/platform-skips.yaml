@@ -608,6 +608,10 @@ skipped:
       Linux bubblewrap containment of the Lead's session (STG-05 CS-4); the Windows Lead runs labelled not contained
       (tests/integration/test_opencode_lead.py). Covered on Linux (CI and the Rocky 8 lane); its host side runs on
       every platform in tests/unit/test_lead_contained.py.
+    tests/integration/test_lead_contained_session.py::test_a_relayed_file_argument_is_read_where_the_client_runs: >-
+      Linux bubblewrap containment of the Lead's session; the Windows Lead runs labelled not contained, and the same
+      client read runs on every platform through a real broker in
+      tests/integration/test_relayed_file_arguments_through_a_broker.py. Covered on Linux (CI and the Rocky 8 lane).
     tests/integration/test_network_shim.py::test_a_termination_reaches_the_harness_and_the_shim_ends_with_it: >-
       the shim forwards POSIX signals, and runs only in a Linux run's network of its own (STG-05 CS-3b); Windows has
       no network containment. Covered on Linux.
@@ -774,6 +778,20 @@ skipped:
       POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
       Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
       test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_operator_autostart.py::test_the_real_background_command_makes_no_code_and_the_command_it_names_starts_at_once: >-
+      a real challenge on Windows would show the endpoint's window, and no test shows one; what the command gives the
+      endpoint is covered there by test_the_background_command_wires_its_console_to_the_endpoint. Covered on Linux.
+    tests/integration/test_operator_autostart.py::test_a_hardened_session_keeps_its_background_endpoint: >-
+      PR_SET_DUMPABLE is Linux's: a Windows session is not hardened. Covered on Linux.
+    tests/integration/test_operator_autostart.py::test_aew_dash_c_opencode_above_it_is_a_lead_session_too: >-
+      the check's walk of the process chain reads /proc, on Linux only; the words it reads are covered there by
+      test_the_endpoint_starts_only_with_dev_and_never_in_a_lead_session.
+    tests/integration/test_lead_contained_session.py::test_a_contained_session_starts_the_operator_endpoint_outside_its_sandbox_and_it_ends_with_the_session: >-
+      the Lead is contained on Linux (bubblewrap); Windows' session is covered by
+      test_aew_opencode_starts_the_operator_endpoint_and_it_ends_with_the_session. Covered on Linux.
+    tests/integration/test_operator_autostart.py::test_aew_opencode_under_a_lead_session_starts_nothing_and_says_why: >-
+      the check's walk of the process chain reads /proc, on Linux only; on Windows it has only the environment half,
+      covered there by test_a_lead_session_starts_no_endpoint.
     tests/integration/test_g3_endpoint_wire.py::test_a_pin_approval_on_the_real_wire_raises_and_the_console_shows_it: &g3-endpoint-wire >-
       the G3 service is a Linux profile (A-37): Unix filesystem sockets and SO_PEERCRED; it never runs on Windows.
       Covered on Linux; the same rules at the endpoint run on both platforms in
@@ -910,6 +928,14 @@ skipped:
       the G3 confirmer's client talks to the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
       service never runs on Windows. Covered on Linux; the confirmer's core runs on both platforms in
       tests/unit/test_g3_confirm.py.
+    tests/integration/test_g3client_process.py::test_the_way_on_in_the_routes_log_for_a_held_consume_can_be_followed_to_an_admission: >-
+      the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
+      (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
+      submission run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_steering_raise_handwritten_for_the_real_route_is_sent_to_the_operator_endpoint: >-
+      the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
+      (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
+      submission run on both platforms in tests/unit/test_g3client.py.
     tests/integration/test_g3client_process.py::test_an_approved_set_is_submitted_unchanged_with_its_consent_and_not_admitted_for_want_of_g3: >-
       the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
       (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
@@ -958,6 +984,37 @@ skipped:
       the G3 client's consume reaches the service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
       service never runs on Windows. Covered on Linux; its reading of an answer runs on both platforms in
       tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_held_note_says_what_the_probe_found_after_the_submission: >-
+      the whole request path reaches the G3 service over its Unix filesystem socket, with SO_PEERCRED (A-37); the
+      service never runs on Windows. Covered on Linux; the note's wording runs on both platforms in
+      tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_an_approved_set_is_admitted_and_its_member_consumed_once_against_the_route_s_operation: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the carrier's admission runs on both platforms in tests/integration/test_stg02_slice.py.
+    tests/integration/test_g3client_process.py::test_a_member_whose_consent_names_no_record_is_rejected_on_the_real_service: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the carrier's mapping runs on both platforms in tests/integration/test_stg02_slice.py.
+    tests/integration/test_g3client_process.py::test_a_service_that_is_gone_holds_the_member_at_the_route: >-
+      the module's fixture runs the G3 service on its Unix filesystem socket, with SO_PEERCRED (A-37), which never runs
+      on Windows. Covered on Linux; the carrier's hold runs on both platforms in tests/integration/test_stg02_slice.py.
+    tests/integration/test_g3client_process.py::test_the_held_notes_way_on_can_be_followed_to_an_admission: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the note's wording runs on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_the_human_output_of_an_admitted_member_says_no_effect_and_nothing_else_happens: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the note's wording runs on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_stalled_service_reaches_the_operator_as_a_held_receipt_not_a_client_that_gave_up: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the client's wait against the route's runs on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_transaction_that_fails_after_consumed_stores_nothing_and_its_retry_is_refused: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the carrier's fence runs on both platforms in tests/integration/test_stg02_slice.py.
+    tests/integration/test_g3client_process.py::test_a_set_refused_as_it_stands_says_a_new_key_does_not_change_it_and_what_to_check_does: >-
+      the module's fixture runs the G3 service on its Unix filesystem socket, with SO_PEERCRED (A-37), which never runs
+      on Windows. Covered on Linux; the words run on both platforms in tests/unit/test_g3client.py.
+    tests/integration/test_g3client_process.py::test_a_held_note_after_a_refused_consume_sends_the_operator_to_the_routes_log_not_to_the_policy_alone: >-
+      the owner consumes on the G3 service's Unix filesystem socket, with SO_PEERCRED (A-37); the service never runs on
+      Windows. Covered on Linux; the route's log line runs on both platforms in tests/integration/test_stg02_slice.py.
     tests/integration/test_g3client_process.py::test_no_g3_service_is_unavailable_and_says_where_to_look: >-
       the G3 client (`aew g3 request`) reaches the service over its Unix filesystem socket, with SO_PEERCRED
       (A-37); the service never runs on Windows. Covered on Linux; the client's checks, its wait and its O-01
@@ -991,6 +1048,9 @@ skipped:
       the session job object is Windows'; Linux defines the session's set by the subreaper and start times
       (test_the_session_set_follows_parents_by_start_time_and_never_takes_in_a_reused_pid, and the deadline and
       abnormal-exit tests in tests/integration/test_hang_autopsy.py). Covered on Windows.
+    tests/integration/test_opencode_lead.py::test_aew_opencode_starts_the_operator_endpoint_and_it_ends_with_the_session: >-
+      the Lead runs contained on Linux: test_a_contained_session_starts_the_operator_endpoint_outside_its_sandbox_and_it_ends_with_the_session
+      covers this path there.
     tests/integration/test_opencode_lead.py::test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker: >-
       the Lead runs not contained only where there is no bubblewrap (Windows); on Linux it runs contained (STG-05
       CS-4), and tests/integration/test_lead_contained_session.py covers this guarantee there. Covered on Windows.

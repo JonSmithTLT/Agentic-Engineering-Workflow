@@ -664,6 +664,22 @@ def test_wslgs_directory_is_masked_whole_where_it_exists(monkeypatch):
     assert L.host_masks() == (L.RUN,)
 
 
+@pytest.mark.parametrize("tree", ["WSLG", "GSSPROXY"])
+def test_a_layout_made_for_a_real_run_masks_each_of_the_hosts_trees(tmp_path, monkeypatch, fake_bwrap, tmp_unmasked,
+                                                                    tree):
+    """Review of #382, m5: real runs get their layout from ``for_run``, which reads the masks itself, so holding the
+    dataclass's default wouldn't hold them. CI has neither directory, so the host's facts are patched."""
+    path = getattr(L, tree)
+    islink, isdir = os.path.islink, os.path.isdir
+    monkeypatch.setattr(L.os.path, "islink", lambda p: p != path and islink(p))
+    monkeypatch.setattr(L.os.path, "isdir", lambda p: p == path or isdir(p))
+    layout = run_layout(tmp_path, "implementer")
+    assert path in layout.hide_host, layout.hide_host
+    flags = C.bwrap_argv(layout, ["agent"])
+    assert flags[flags.index(path) - 1] == "--tmpfs"
+    assert mask_problems(flags, layout.hide_host) == []
+
+
 def test_each_run_exception_is_bound_back_read_only_after_the_mask_and_described_with_its_reason():
     layout = masked_layout()
     flags = C.bwrap_argv(layout, ["agent"])

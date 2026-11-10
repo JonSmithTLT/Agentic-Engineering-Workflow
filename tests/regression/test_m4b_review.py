@@ -11,11 +11,16 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
+import time
 from pathlib import Path
 
+import bounded_git
+import bounds
 import pytest
 from aewflow import sample_project
 
+from aew.harness import procs
 from aew.snapshot import fingerprint as F
 from aew.util import dump_yaml, load_yaml
 from aew.workspace import git
@@ -26,8 +31,8 @@ GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid", "GIT
 
 
 def plain_git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
-    """git as an operator runs it: no AEW overrides."""
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, env={**os.environ, **GIT_ENV})
+    """git as an operator runs it: no AEW overrides, under a bound (tests/helpers/bounded_git.py)."""
+    return bounded_git.plain_git(*args, cwd=cwd, env={**os.environ, **GIT_ENV})
 
 
 class Hostile:
@@ -84,6 +89,76 @@ def hostile(tmp_path):
     git.trust_drivers(())
     yield Hostile(tmp_path)
     git.trust_drivers(())
+
+
+# Long enough for a loaded runner to start Python, short enough to run in every regression lane.
+HOLDER_BOUND_S = 15.0
+HOLDER_LIVES_S = 60  # how long the holder would hold on: a wait for it shows as more than the bound, not as a hang
+HOLDER = f"""import os, time
+from pathlib import Path
+Path("held.pid").write_text(str(os.getpid()))
+print("holding", flush=True)
+time.sleep({HOLDER_LIVES_S})
+"""
+
+
+def test_plain_git_fails_by_name_while_a_grandchild_holds_its_output_and_leaves_nothing_running(tmp_path):
+    """A program git started keeps git's output open and doesn't end. The bound still fires and names the command with
+    what it had said, the wait isn't for the holder, and the holder is gone. On Windows `subprocess.run`'s `timeout=`
+    would wait for the holder here."""
+    (tmp_path / "holder.py").write_text(HOLDER, encoding="utf-8")
+    plain_git("init", "-q", cwd=tmp_path)
+    plain_git("config", "alias.hold", f'!"{Path(sys.executable).as_posix()}" holder.py', cwd=tmp_path)
+    started = time.monotonic()
+    with pytest.raises(bounds.BoundExpired) as expired:
+        bounded_git.plain_git("hold", cwd=tmp_path, env=os.environ, seconds=HOLDER_BOUND_S)
+    assert time.monotonic() - started < HOLDER_LIVES_S - 15, "the bound waited for the holder"
+    said = str(expired.value)
+    assert "bound plain_git" in said and "'hold'" in said and "holding" in said, said
+    assert not procs.pid_alive(int((tmp_path / "held.pid").read_text())), "the holder outlived the bound"
+
+
+def test_plain_git_reaps_what_it_ended_before_closing_the_tree(tmp_path, monkeypatch):
+    """Review of #394, 1: on Linux a zombie still counts as its process group, and `ProcessTree.close` waits for the
+    group, so an unreaped git spent that wait on every expiry. Read off the order, so that no clock decides it."""
+    (tmp_path / "holder.py").write_text(HOLDER, encoding="utf-8")
+    plain_git("init", "-q", cwd=tmp_path)
+    plain_git("config", "alias.hold", f'!"{Path(sys.executable).as_posix()}" holder.py', cwd=tmp_path)
+    at_close = []
+
+    class Recording(procs.ProcessTree):
+        def spawn(self, *args, **kwargs):
+            self.spawned = super().spawn(*args, **kwargs)
+            return self.spawned
+
+        def close(self):
+            at_close.append(self.spawned.returncode)
+            super().close()
+
+    monkeypatch.setattr(bounded_git.procs, "ProcessTree", Recording)
+    with pytest.raises(bounds.BoundExpired):
+        bounded_git.plain_git("hold", cwd=tmp_path, env=os.environ, seconds=HOLDER_BOUND_S)
+    assert at_close and at_close[0] is not None, "git wasn't reaped when the tree closed"
+
+
+def test_plain_git_gives_its_programs_no_stdin_to_wait_on(tmp_path):
+    """The script the hostile repository's drivers run ends in `cat`. Under a process whose stdin stays open, as an
+    xdist worker's can, `cat` must still see an end of input."""
+    plain_git("init", "-q", cwd=tmp_path)
+    plain_git("config", "alias.read", "!cat", cwd=tmp_path)
+    helpers = Path(bounded_git.__file__).parent
+    code = (f"import os, sys; sys.path.insert(0, {str(helpers)!r}); import bounded_git; "
+            f"bounded_git.plain_git('read', cwd={str(tmp_path)!r}, env=os.environ, seconds={HOLDER_BOUND_S})")
+    child = subprocess.Popen([sys.executable, "-c", code], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        code = child.wait(timeout=HOLDER_LIVES_S)  # stdin stays open: only `cat` reading elsewhere lets this end
+        assert code == 0, child.stderr.read().decode(errors="replace")[-2000:]
+    finally:
+        child.kill()
+        child.stdin.close()
+        child.stderr.close()
+        child.wait()
 
 
 def test_the_hostile_repository_runs_its_programs_under_plain_git(hostile):

@@ -53,6 +53,7 @@ data, and this module checks it against the engine's own primitive declarations.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -76,6 +77,7 @@ RECORDS_DIR = "records/stage-intents"
 # Why a bound legality digest no longer holds. Not always an edit: a new AEW can read the same bytes differently, as
 # when a price table left the digest (A3 §2.1), and the stage stops either way.
 LEGALITY_MOVED = "the legality policy, or how this version of AEW reads it, changed"
+INTENT_ID = re.compile(r"SI-[0-9]{4,}")  # the record's id, as its schema's `intent_id` has it: a name, never a path
 MAX_STEPS = 16
 MAX_REBINDS = 16  # explicit continues of one intent (the schema's bound); past it, abandon and decide anew
 LIVE_RUN = (K.STARTING, K.RUNNING)  # a launching step's run its supervisor still holds; anything else: launch_failed
@@ -574,7 +576,7 @@ class StageIntents:
             return self._load(rel, sha)
         # Last: a stage that never had a unit. Its record is immutable but pinned by no hash (register F15.2): read
         # after every pinned route, so a copy placed here never shadows a unit's (#140 review, finding 5).
-        if (self.k.aew_root / RECORDS_DIR / f"{intent}.yaml").is_file():
+        if INTENT_ID.fullmatch(intent) and (self.k.aew_root / RECORDS_DIR / f"{intent}.yaml").is_file():
             return self._load(f"{RECORDS_DIR}/{intent}.yaml", None)
         raise NotFound(f"no stage intent {intent}", intent=intent)
 

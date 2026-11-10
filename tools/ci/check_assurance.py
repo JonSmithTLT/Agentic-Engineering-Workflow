@@ -100,6 +100,19 @@ def load_expectations(path: Path) -> dict[str, Any]:
     return data
 
 
+def manifest_problems(data: dict[str, Any]) -> list[str]:
+    """What's wrong with the pin file's own content: the platforms are exactly the required ones, every pin says why.
+    ``static`` runs this on every head (``skip_pins.py``), since a pin-only head runs no lane that could."""
+    skipped = data.get("skipped") or {}
+    out = []
+    if set(skipped) != set(REQUIRED_PLATFORMS):
+        out.append(f"the pins' platforms are {sorted(map(str, skipped))}, not {sorted(REQUIRED_PLATFORMS)}")
+    for platform, pins in skipped.items():
+        out += [f"{platform}: the pin {nid} gives no reason" for nid, why in (pins or {}).items()
+                if not str(why or "").strip()]
+    return out
+
+
 def _label(r: dict[str, Any]) -> str:
     return f"{r['platform']}/{r.get('lane') or 'all'}" + (f" shard {r['shard']}" if r.get("shard") else "")
 

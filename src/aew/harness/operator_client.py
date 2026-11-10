@@ -18,15 +18,21 @@ from pathlib import Path
 from typing import Any
 
 from aew import errors, operator
+from aew.engine.lock import FileLock
+from aew.errors import LockTimeout
 from aew.harness import procs
 from aew.harness.bridge import rebuild_error
+from aew.util import atomic_write
 
 LOCATOR_REL = "local/operator/endpoint.json"
 LOCK_NAME = "endpoint.lock"  # beside the locator: held by the live endpoint for its whole life
+SESSIONS_REL = "local/operator/sessions"  # one file per Lead session a background endpoint serves
+SESSIONS_LOCK = "sessions.lock"  # beside the locator: a session naming itself, or an endpoint deciding to stop
 LOCATOR_SCHEMA = "aew/operator-endpoint/v1"
 MAX_MESSAGE = 16 * 1024
 CHALLENGE_TIMEOUT_S = 300.0
 WAKE_TIMEOUT_S = 5.0
+SESSIONS_LOCK_TIMEOUT_S = 5.0  # held for a few file operations; a session that misses it says what to run
 OPERATIONS = ("ping", "mode_raise", "capability_change")  # capability_change: CAP-1, the designer's ruling 1
 # What a Lead running as the operator's uid can still do (plan v3 §2.1, "the same-uid residuals, stated in full").
 # Reported by ping, status and doctor, and never claimed as closed: production authority needs F18.6.
@@ -72,10 +78,16 @@ def lead_session_problem(env: dict[str, str] | None = None) -> str | None:
 
 
 def _is_lead_session(argv: list[str]) -> bool:
-    """``aew lead session ...``, ``aew opencode ...`` (and ``python -m aew`` forms)."""
+    """``aew lead session ...``, ``aew opencode ...`` (and ``python -m aew`` forms). ``-C`` is the one global option
+    that takes a value, so its value is not a word of the command."""
     for i, word in enumerate(argv):
         if os.path.basename(word) in ("aew", "aew.exe") or (word == "aew" and i and argv[i - 1] == "-m"):
-            rest = [w for w in argv[i + 1:] if not w.startswith("-")]
+            rest, words = [], iter(argv[i + 1:])
+            for w in words:
+                if w == "-C":
+                    next(words, None)
+                elif not w.startswith("-"):
+                    rest.append(w)
             return rest[:2] == ["lead", "session"] or rest[:1] == ["opencode"]
     return False
 
@@ -99,6 +111,82 @@ def same_process(record: dict[str, Any]) -> bool:
     ``process_started``) is alive and is that process: the locator's own check, which the endpoint's watcher also
     applies to the broker's liveness record (M4-E E7a)."""
     return _same_process(record)
+
+
+def sessions_lock(aew_root: Path) -> FileLock:
+    """Taken to name a session and to decide to stop, so a session either is seen by the endpoint's last look or finds
+    that the endpoint has already taken its locator away, and starts another."""
+    path = locator_path(aew_root).with_name(SESSIONS_LOCK)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return FileLock(path, timeout=SESSIONS_LOCK_TIMEOUT_S)
+
+
+def name_session(aew_root: Path) -> Path | None:
+    """Name this process as a session a background endpoint serves, before the endpoint starts: from here on, a live
+    locator is an endpoint that will see this file. ``None`` if it cannot be named."""
+    pid = os.getpid()
+    path = Path(aew_root) / SESSIONS_REL / f"{pid}.json"
+    try:
+        with sessions_lock(aew_root):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(path, json.dumps({"pid": pid, "start_id": procs.start_id(pid),
+                                           "process_started": procs.started_at(pid)}) + "\n")
+    except (LockTimeout, OSError):
+        return None
+    return path
+
+
+def no_session_live(aew_root: Path) -> bool:
+    """A look that decides nothing: whether a background endpoint has anything to do before its deciding look."""
+    try:
+        with sessions_lock(aew_root):
+            return not session_holders_live(aew_root)
+    except (LockTimeout, OSError):
+        return False
+
+
+def withdraw_locator(aew_root: Path) -> None:
+    """An endpoint about to retire stops being found, as :func:`no_session_left` does, so a session starts another
+    rather than reusing one that is going away. If the lock is busy, its close removes the locator anyway."""
+    try:
+        with sessions_lock(aew_root):
+            locator_path(aew_root).unlink(missing_ok=True)
+    except (LockTimeout, OSError):
+        pass
+
+
+def no_session_left(aew_root: Path) -> bool:
+    """A background endpoint's look that decides to stop. The locator goes with the decision, under the lock: a session
+    naming itself is either seen here or finds no endpoint and starts one."""
+    try:
+        with sessions_lock(aew_root):
+            if session_holders_live(aew_root):
+                return False
+            locator_path(aew_root).unlink(missing_ok=True)
+            return True
+    except (LockTimeout, OSError):
+        return False  # the next look decides
+
+
+def session_holders_live(aew_root: Path) -> bool:
+    """Whether any Lead session a background endpoint serves is alive and is that process. A file whose process has
+    gone is removed: a session that died never keeps the endpoint up."""
+    live = False
+    try:
+        files = list((Path(aew_root) / SESSIONS_REL).glob("*.json"))
+    except OSError:
+        return False
+    for path in files:
+        data = None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        if isinstance(data, dict) and _same_process(data):
+            live = True
+        else:
+            path.unlink(missing_ok=True)
+    return live
 
 
 def read_locator(path: Path) -> dict[str, Any] | None:
@@ -174,12 +262,17 @@ def status(aew_root: Path) -> dict[str, Any]:
             "guarantee": data.get("guarantee")}
 
 
+# Where the code is shown: `aew operator serve`'s terminal, or on Windows the window of `aew opencode`'s endpoint
+SHOWN_THERE = ("The operator endpoint's console (the terminal running `aew operator serve`, or on Windows the window "
+               "`aew opencode`'s endpoint opens) now shows a one-time confirmation code. Type it here and press Enter; "
+               "anything else refuses.")
+
+
 def raise_prompt(bound: dict[str, Any], requester: str) -> str:
     return operator.challenge(
         "", f"RAISE the Lead's steering mode to {bound['mode']} for Lead generation {bound['generation']}",
         requested_by=requester, destination="a steering mode record (no credential is issued)",
-        instruction="The terminal running `aew operator serve` now shows a one-time confirmation code. Type it here "
-                    "and press Enter; anything else refuses.") + "> "
+        instruction=SHOWN_THERE) + "> "
 
 
 def request_raise(aew_root: Path, mode: str, *, ask: Callable[[str], str] | None = None,
@@ -231,8 +324,7 @@ def capability_prompt(shown: dict[str, Any], requester: str) -> str:
     return operator.challenge(
         "", "CHANGE this host's capability register:\n" + "\n".join(shown["change"]), requested_by=requester,
         destination="the capability register (no credential is issued)",
-        instruction="The terminal running `aew operator serve` now shows a one-time confirmation code. Type it here "
-                    "and press Enter; anything else refuses.") + "> "
+        instruction=SHOWN_THERE) + "> "
 
 
 def request_capability_change(aew_root: Path, change: str, args: dict[str, Any], *,

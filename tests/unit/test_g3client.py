@@ -312,6 +312,9 @@ def test_a_consume_answered_with_no_result_gives_none_and_says_why_so_an_owner_h
     got = C.consume(**CONSUME_ARGS)
     assert got.result is None and said in (got.held_why or "")
     assert C._HELD_WAY_ON in (got.held_why or "")  # what happened, and the way on, a used approval included
+    assert "new approval" in (got.held_why or "")
+    # Every owner prints this, and the key and the route are the carrier's alone: it adds them itself
+    assert "client_request_key" not in (got.held_why or "") and "O-01" not in (got.held_why or "")
     # What an owner shows the operator carries neither the member's proof nor the consent
     assert CONSUME_ARGS["origin_proof_ref"] not in repr(got) and CONSUME_ARGS["consent_set_ref"] not in repr(got)
 
@@ -515,8 +518,9 @@ def test_the_set_is_submitted_with_the_o01_wire_and_the_token_in_its_one_header(
 
 def test_a_receipts_note_is_keyed_on_the_admission_state_and_the_reason_and_names_the_hosts_standing() -> None:
     """Addendum 7: the notes replace the fixed text. A held member's names what the client found failing on the host,
-    or else the project's policy, with the fix, and that the action is requested again once G3 counts; the carrier's
-    refusal today (REJECTED) is worded apart. A member the client has no note for gets none."""
+    what the probe found, or else that the route's log names the cause, and that the action is requested again once G3
+    counts. Each refusal of the service's is worded apart, and each says to request it again. A member the client has
+    no note for gets none."""
     from aew import g3standing as S
 
     failing = S.Standing(False, 1, "G3 is not on this host: /run/aew-g3/request.sock does not exist", "install it")
@@ -525,17 +529,23 @@ def test_a_receipts_note_is_keyed_on_the_admission_state_and_the_reason_and_name
     said = C.note(held, failing)
     assert said is not None and failing.reason in said and "Fix: install it" in said
     assert "Nothing was admitted" in said and "request the action again" in said
+    assert "new client_request_key in the set file" in said
     said = C.note(held, counting)
-    assert said is not None and S.POLICY_FIX in said and "the project's policy" in said
-    refused = {"results": [{"admission_state": "REJECTED", "reason_code": "ORIGIN_NOT_ESTABLISHED"}]}
-    said = C.note(refused, failing)
-    assert said is not None and said.startswith("Approved in the confirmer and submitted, and the owner refused it")
-    assert failing.reason in said and "Nothing was admitted" in said
-    assert failing.reason not in (C.note(refused, counting) or "x" + failing.reason)
-    # until an owner consumes G3 consent, every note says so, even where G3 counts (#365 review m2)
-    for receipt in (held, refused):
-        for st in (failing, counting):
-            assert C.NOT_YET in (C.note(receipt, st) or "")
+    assert said is not None and S.POLICY_FIX not in said and "the project's policy" not in said
+    assert "The route's log, its stderr, names the cause" in said and "--project" in said
+    said = C.note(held, counting, "planted: the service is down")
+    assert said is not None and "the G3 service does not answer: planted: the service is down" in said
+    assert S.POLICY_FIX not in said
+    for reason, why in (("ORIGIN_NOT_ESTABLISHED", "no consent record"), ("ORIGIN_UNQUALIFIED", "is not one the G3"),
+                        ("CURRENTNESS_EXPIRED", "has expired"), ("CONSENT_ALREADY_USED_OR_MISSING", "already used")):
+        refused = {"results": [{"admission_state": "REJECTED", "reason_code": reason}]}
+        said = C.note(refused, counting)
+        assert said is not None and said.startswith("Approved in the confirmer and submitted, and the owner refused it")
+        assert why in said and "request the action again" in said and "new client_request_key" in said
+    # that no owner accepted consent yet was true until an owner did: nothing says so now (#365 review m2)
+    for key in C.NOTES:
+        receipt = {"results": [{"admission_state": key[0], "reason_code": key[1]}]}
+        assert "No owner accepts" not in (C.note(receipt, counting) or "")
     assert C.note({"results": [{"admission_state": "ADMITTED", "reason_code": None}]}, failing) is None
     assert C.note({"results": [{"admission_state": "REJECTED", "reason_code": "PRECONDITION_STALE"}]},
                   failing) is None
@@ -547,6 +557,9 @@ def test_a_receipts_note_is_keyed_on_the_admission_state_and_the_reason_and_name
     (503, {"code": "owner_unavailable"}, Unavailable, "o01_unavailable"),
     (202, "not a receipt", ValidationFailed, "o01_refused"),
     (200, {"results": []}, ValidationFailed, "o01_refused"),  # a receipt's shape, but not the route's 202
+    (500, None, ValidationFailed, "o01_refused"),
+    (502, None, ValidationFailed, "o01_refused"),
+    (409, {"code": "request_key_conflict"}, ValidationFailed, "o01_refused"),
 ])
 def test_every_refusal_of_the_o01_route_is_typed_and_the_token_is_in_none_of_them(
         route: Any, status: int, body: Any, error: type, reason: str) -> None:
@@ -554,21 +567,74 @@ def test_every_refusal_of_the_o01_route_is_typed_and_the_token_is_in_none_of_the
     answers.append((status, body))
     with pytest.raises(error) as e:
         C.submit({"intents": []}, url, TOKEN)
-    assert e.value.details["reason"] == reason and "approval is unused" in e.value.message
+    # A route that gave no receipt may have consumed the member; a refusal of the set or the token came before any owner
+    said = "approval is unused" if status in (400, 401, 409) else "approval may have been used"
+    assert e.value.details["reason"] == reason and said in e.value.message
+    assert (said == "approval is unused") is ("may have been used" not in e.value.message)
     assert TOKEN not in repr(e.value) + str(e.value) + json.dumps(e.value.to_dict())
 
 
+def test_a_key_the_route_cannot_show_says_nothing_of_the_approval_and_gives_the_way_on(route: Any) -> None:
+    """A 409 unresolved_no_redispatch can follow a member that was used: only the owner's list can say."""
+    url, _, answers = route
+    answers.append((409, {"code": "unresolved_no_redispatch"}))
+    with pytest.raises(ValidationFailed) as e:
+        C.submit({"intents": []}, url, TOKEN)
+    assert "unused" not in e.value.message and "owner-operations" in e.value.message
+    assert "new client_request_key" in e.value.message
+
+
+@pytest.mark.parametrize("members", [1, 3])
+def test_the_clients_wait_on_the_route_outlasts_the_routes_wait_on_the_service(
+        monkeypatch: pytest.MonkeyPatch, members: int) -> None:
+    """The route may take one bound per member over a stalled service, and the held receipt must reach the operator."""
+    seen: list[float] = []
+
+    class Conn:
+        def __init__(self, host: str, port: int, timeout: float) -> None:
+            seen.append(timeout)
+
+        def request(self, *_: Any, **__: Any) -> None:
+            raise OSError("planted")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(C.http.client, "HTTPConnection", Conn)
+    with pytest.raises(Unavailable):
+        C.submit({"intents": [{}] * members}, "http://127.0.0.1:1", TOKEN)
+    assert seen == [C.TIMEOUT_S * (members + 1)]
+
+
+def test_a_partial_sets_note_names_each_side_and_never_says_nothing_was_admitted() -> None:
+    """Requesting all of it again would admit the first member twice, so the note says which to request."""
+    from aew import g3standing as S
+
+    counting = S.Standing(True, judged=(1, 3))
+    admitted = {"intent_ref": "intent:a", "admission_state": "ADMITTED", "effect_state": "NOT_OBSERVED",
+                "reason_code": None}
+    for state, reason in (("REJECTED", "CONSENT_ALREADY_USED_OR_MISSING"), ("HELD", "ORIGIN_NOT_ESTABLISHED")):
+        other = {"intent_ref": "intent:b", "admission_state": state, "reason_code": reason}
+        said = C.note({"results": [admitted, other]}, counting) or ""
+        assert "Nothing was admitted" not in said and "Admitted: intent:a" in said
+        assert f"Not admitted: intent:b ({state} {reason})" in said and C.SOME_ADMITTED in said
+        assert "request only the members not admitted, with a new client_request_key" in said
+    assert C.note({"results": [admitted]}, counting) == C.NO_EFFECT + "."
+
+
 def test_a_refused_set_only_the_overlay_has_points_at_the_operator_endpoint(route: Any) -> None:
-    """A hand-written raise takes a PIN and fails at the carrier, unconsumed: the refusal names the governed way."""
+    """A hand-written raise takes a PIN and fails at the carrier, unconsumed: the refusal names the governed way, and
+    not the checks of a set's own fields, which would change nothing."""
     url, _, answers = route
     answers.append((400, {"code": "STRUCTURAL"}))
     with pytest.raises(ValidationFailed) as e:
         C.submit({"intents": [{"action": "SET_STEERING_MODE"}]}, url, TOKEN)
     assert "aew lead mode raise" in e.value.message and "approval is unused" in e.value.message
+    assert "client_request_key" not in e.value.message and "installation_ref" not in e.value.message
     answers.append((400, {"code": "STRUCTURAL"}))
     with pytest.raises(ValidationFailed) as e:
         C.submit({"intents": [{"action": "ATTACH_LEAD"}]}, url, TOKEN)
-    assert "aew lead mode raise" not in e.value.message
+    assert "aew lead mode raise" not in e.value.message and "installation_ref" in e.value.message
 
 
 def test_a_route_that_does_not_answer_is_unavailable_and_the_token_is_not_in_it() -> None:
@@ -580,6 +646,7 @@ def test_a_route_that_does_not_answer_is_unavailable_and_the_token_is_not_in_it(
     with pytest.raises(Unavailable) as e:
         C.submit({"intents": []}, f"http://127.0.0.1:{port}", TOKEN)
     assert e.value.details["reason"] == "o01_unreachable" and TOKEN not in repr(e.value) + str(e.value)
+    assert "approval may have been used" in e.value.message  # the route may have consumed it, its reply lost
 
 
 # ------------------------------------------------------------------------------------------------ the command
@@ -601,6 +668,7 @@ def test_a_lead_session_is_refused_before_anything_is_read_with_the_operators_ro
     owners = kept_out_refusal(frozenset({"g3", "request"}))
     assert owners and err["message"].startswith(owners)  # the one owner's text, present (QN2), and first (F1)
     assert "ask the operator to run `aew g3 request`" in err["message"]
+    assert "steering's request_confirmation" in err["message"]  # addendum 6's aside: where a Lead does ask
 
 
 # F3: each refusal the command claims, proven through `main`, with the service and the route as recorders.

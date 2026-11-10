@@ -42,7 +42,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 
 ## `local`
 
-- `local`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir); `aew.engine.lock:FileLock._open` (direct: Path.mkdir); `aew.engine.outbox:bump_wake` (direct: Path.mkdir); `aew.engine.queue_ops:Queue._checkout_sync_lock` (direct: Path.mkdir); `aew.harness.containment.layout:for_run` (direct: Path.mkdir); `aew.history.index:HistoryIndex._db` (direct: Path.mkdir); `aew.switch_offer:_remember_no` (direct: Path.mkdir)
+- `local`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir); `aew.engine.lock:FileLock._open` (direct: Path.mkdir); `aew.engine.outbox:bump_wake` (direct: Path.mkdir); `aew.engine.queue_ops:Queue._checkout_sync_lock` (direct: Path.mkdir); `aew.harness.containment.layout:for_run` (direct: Path.mkdir); `aew.harness.wake_queue:WakeQueue._save` (direct: Path.mkdir); `aew.harness.wake_queue:mark_serving` (direct: Path.mkdir); `aew.history.index:HistoryIndex._db` (direct: Path.mkdir); `aew.switch_offer:_remember_no` (direct: Path.mkdir)
 - `local/anomalies`, named by `aew.engine.disposition_ops:SPOOL_REL`: written or removed by `aew.engine.disposition_ops:signal_source` (direct: Path.mkdir)
 - `local/anomalies/{}`: written or removed by `aew.engine.disposition_ops:_unlink` (direct: Path.unlink)
 - `local/anomalies/{}.json`: written or removed by `aew.engine.disposition_ops:signal_source` (direct: Path.write_text)
@@ -66,6 +66,8 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/events/{}.1.jsonl`: written or removed by `aew.harness.event_spool:Reader.retire` (direct: Path.unlink)
 - `local/events/{}.jsonl`: written or removed by `aew.harness.event_spool:Reader.retire` (direct: Path.unlink)
 - `local/harness/lead`, named by `aew.harness.opencode.lead:LEAD_DIR`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
+- `local/harness/lead/server`: written or removed by `aew.harness.opencode.lead:serve_spec` (direct: Path.mkdir)
+- `local/harness/lead/server/lead-server.json`: written or removed by `aew.harness.opencode.lead:serve_spec` (direct: Path.unlink)
 - `local/harness/lead/xdg-data/opencode/opencode.db`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_logins` (direct: sqlite3.connect); `aew.harness.opencode.login:clear_saved_permissions` (direct: sqlite3.connect)
 - `local/harness/lead/xdg-state/opencode`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_models` (direct: Path.mkdir)
 - `local/harness/lead/xdg-state/opencode/model.json`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_models` (direct: Path.write_text)
@@ -166,6 +168,8 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/lead-{}-{}/git/objects`: written or removed by `aew.harness.containment.layout:private_git` (direct: Path.mkdir)
 - `local/harness/runs/lead-{}-{}/harness`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/lead-{}-{}/harness/.aew-containment-probe-{}.spec.json`: written or removed by `aew.harness.containment.probe:_self_test` (direct: Path.unlink, Path.write_text)
+- `local/harness/runs/lead-{}-{}/harness/xdg-runtime`: written or removed by `aew.harness.opencode.lead:serve_spec` (direct: Path.mkdir)
+- `local/harness/runs/lead-{}-{}/harness/xdg-runtime/lead-server.json`: written or removed by `aew.harness.opencode.lead:serve_spec` (direct: Path.unlink)
 - `local/harness/runs/lead-{}-{}/label.json`: written or removed by `aew.harness.lead_broker:record_label` (direct: Path.write_text)
 - `local/harness/runs/lead-{}-{}/scratch`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
 - `local/harness/runs/lead-{}-{}/scratch/.cache`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.mkdir)
@@ -212,6 +216,8 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/{}/tools/own_name/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
 - `local/history.sqlite`, named by `aew.history.index:INDEX_REL`: written or removed by `aew.engine.history_ops:HistoryCommands.history_reindex` (direct: Path.unlink); `aew.history.index:HistoryIndex._db` (direct: sqlite3.connect); `aew.history.index:HistoryIndex._rebuild` (direct: Path.unlink); `aew.history.index:HistoryIndex.sync` (direct: Path.unlink)
 - `local/lead`: written or removed by `aew.harness.broker_liveness:write` (direct: Path.mkdir); `aew.harness.tool_calls:append` (direct: Path.mkdir)
+- `local/lead-wakes.json`, named by `aew.harness.wake_queue:WAKES_REL`: written or removed by `aew.harness.wake_queue:WakeQueue._save` (direct: atomic_write)
+- `local/lead-wakes.serving`, named by `aew.harness.wake_queue:SERVING_REL`: written or removed by `aew.harness.wake_queue:clear_serving` (direct: Path.unlink); `aew.harness.wake_queue:mark_serving` (direct: atomic_write)
 - `local/lead/broker.json`, named by `aew.harness.broker_liveness:REL`: written or removed by `aew.harness.broker_liveness:write` (direct: Path.unlink, Path.write_text, replace_with_retry)
 - `local/lead/tool-calls.jsonl`, named by `aew.harness.tool_calls:LOG_REL`: written or removed by `aew.harness.tool_calls:append` (direct: Path.open)
 - `local/lead/tool-calls.{}.jsonl`: written or removed by `aew.harness.tool_calls:_rotate` (direct: os.replace)
@@ -226,11 +232,16 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/notify/deliveries.jsonl`: written or removed by `aew.harness.notify:DeliveryLog.record` (direct: Path.open)
 - `local/notify/deliveries.{}.jsonl`: written or removed by `aew.harness.notify:DeliveryLog.record` (direct: os.replace)
 - `local/notify/state.json`: written or removed by `aew.harness.notify:Watcher._write_state` (direct: Path.unlink, Path.write_text, replace_with_retry)
-- `local/operator`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir); `aew.engine.lock:FileLock._open` (direct: Path.mkdir); `aew.harness.operator_endpoint:OperatorEndpoint._claim` (direct: Path.mkdir)
-- `local/operator/endpoint.json`, named by `aew.harness.operator_client:LOCATOR_REL`: written or removed by `aew.harness.operator_endpoint:OperatorEndpoint._release` (direct: Path.unlink); `aew.harness.operator_endpoint:OperatorEndpoint._write_locator` (direct: os.replace)
+- `local/operator`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir); `aew.engine.lock:FileLock._open` (direct: Path.mkdir); `aew.harness.operator_autostart:ensure` (direct: Path.mkdir); `aew.harness.operator_client:sessions_lock` (direct: Path.mkdir); `aew.harness.operator_endpoint:OperatorEndpoint._claim` (direct: Path.mkdir)
+- `local/operator/endpoint.json`, named by `aew.harness.operator_client:LOCATOR_REL`: written or removed by `aew.harness.operator_client:no_session_left` (direct: Path.unlink); `aew.harness.operator_client:withdraw_locator` (direct: Path.unlink); `aew.harness.operator_endpoint:OperatorEndpoint._release` (direct: Path.unlink); `aew.harness.operator_endpoint:OperatorEndpoint._write_locator` (direct: os.replace)
 - `local/operator/endpoint.lock`: written or removed by `aew.engine.lock:FileLock._open` (direct: open)
 - `local/operator/endpoint.lock.queue`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: open)
+- `local/operator/endpoint.log`: written or removed by `aew.harness.operator_autostart:ensure` (direct: open)
 - `local/operator/endpoint.tmp`: written or removed by `aew.harness.operator_endpoint:OperatorEndpoint._write_locator` (direct: Path.write_text)
+- `local/operator/sessions`, named by `aew.harness.operator_client:SESSIONS_REL`: written or removed by `aew.harness.operator_client:name_session` (direct: Path.mkdir)
+- `local/operator/sessions.lock`: written or removed by `aew.engine.lock:FileLock._open` (direct: open)
+- `local/operator/sessions.lock.queue`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: open)
+- `local/operator/sessions/{}.json`: written or removed by `aew.harness.operator_autostart:for_session` (direct: Path.unlink); `aew.harness.operator_client:name_session` (direct: atomic_write)
 - `local/packs/{}/pack.md`: written or removed by `aew.engine.context_ops:ContextPacks.build_pack` (direct: atomic_write); `aew.engine.context_ops:ContextPacks.context_pack` (direct: atomic_write)
 - `local/recall`: written or removed by `aew.engine.recall:Substrate._connect` (direct: Path.mkdir)
 - `local/recall/history-fts.sqlite`, named by `aew.engine.recall:SUBSTRATE_REL`: written or removed by `aew.engine.recall:Substrate._connect` (direct: sqlite3.connect); `aew.engine.recall:Substrate._delete` (direct: Path.unlink)
@@ -387,6 +398,9 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.containment.probe:_self_test` (direct: Path.unlink): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; a loop variable over `layout.writable`; a loop variable over `markers`, a list this reading cannot read; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.containment.probe:_self_test` (direct: Path.write_text): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.containment.probe:new_sentinel` (direct: Path.write_bytes): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
+- `aew.harness.containment.shim:start_server` (direct: open): `serve['log']`, from a value that is not a dict literal
+- `aew.harness.containment.shim:start_server` (direct: os.open): a relative path, `{}.tmp`, with no root this reading can name
+- `aew.harness.containment.shim:start_server` (direct: os.replace): `serve['url_file']`, from a value that is not a dict literal
 - `aew.harness.containment:establish` (direct: Path.unlink): `InvocationsPort.invocation_workspace` returns no expression; `integ['workspace']`, from a value that is not a dict literal; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.model_list:read` (direct: Path.mkdir): the attribute `contract.scratch` is not a value this reading can follow; the attribute `contract.workspace` is not a value this reading can follow
 - `aew.harness.opencode.adapter:OpenCodeAdapter._start_server` (direct: Path.mkdir): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
@@ -396,6 +410,7 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.opencode.lead:ContainedLead._inside` (direct: Path.mkdir): `directory` is bound by a `with`, an unpacking or an `except`
 - `aew.harness.opencode.lead:ContainedLead._retire` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.opencode.login:stored` (direct: sqlite3.connect): a relative path, `{}?mode=ro`, with no root this reading can name
+- `aew.harness.operator_client:session_holders_live` (direct: Path.unlink): a loop variable over `files`, a list this reading cannot read
 - `aew.harness.runlog:write_live` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.runlog:write_progress` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.supervisor:Supervisor.start` (direct: Path.mkdir): the attribute `contract.scratch` is not a value this reading can follow
@@ -425,7 +440,7 @@ Write sites whose destination this reading follows to a place outside `.aew`: ea
 - a temporary directory: `aew.capability.bind:_write_entry` (Path.unlink), `aew.capability.bind:_write_entry` (Path.write_bytes), `aew.capability.bind:_write_entry` (os.replace), `aew.capability.bind:_write_entry` (os.symlink), `aew.capability.bind:place` (Path.mkdir), `aew.capability.bind:place` (Path.write_bytes), `aew.capability.bind:place` (shutil.rmtree), `aew.capability.status:health` (Path.write_bytes), `aew.engine.history_ops:HistoryCommands.history_reindex` (Path.unlink), `aew.harness.bridge:stop_listener` (shutil.rmtree), `aew.harness.containment:_doctor` (Path.mkdir), `aew.harness.containment:_doctor` (shutil.rmtree), `aew.harness.containment:establish` (shutil.rmtree), `aew.harness.containment:tool_checks` (Path.mkdir), `aew.harness.containment.layout:for_run` (Path.mkdir), `aew.harness.containment.layout:for_run` (Path.write_bytes), `aew.harness.containment.layout:for_run` (os.makedirs), `aew.harness.containment.layout:private_git` (Path.mkdir), `aew.harness.containment.layout:private_git` (shutil.copy2), `aew.harness.containment.netns:RunNetwork.close` (shutil.rmtree), `aew.harness.containment.probe:_control` (shutil.rmtree), `aew.harness.containment.probe:_markers` (Path.write_bytes), `aew.harness.containment.probe:_self_test` (Path.unlink), `aew.harness.containment.probe:_self_test` (Path.write_text), `aew.harness.containment.probe:new_sentinel` (Path.write_bytes), `aew.harness.operator_endpoint:OperatorEndpoint.close` (shutil.rmtree), `aew.history.index:HistoryIndex._db` (Path.mkdir), `aew.history.index:HistoryIndex._db` (sqlite3.connect), `aew.history.index:HistoryIndex._rebuild` (Path.unlink), `aew.history.index:HistoryIndex._use_private_copy` (shutil.copy2), `aew.history.index:HistoryIndex.sync` (Path.unlink), `aew.snapshot.fingerprint:_staged_index` (shutil.copy2), `aew.snapshot.fingerprint:_staged_index` (shutil.rmtree), `aew.snapshot.fingerprint:_working_index` (shutil.copy2), `aew.snapshot.fingerprint:_working_index` (shutil.rmtree)
 - an absolute path: `aew.cli.credentials:_open_terminal` (os.open), `aew.harness.containment:establish` (Path.unlink), `aew.harness.containment.layout:for_run` (Path.mkdir), `aew.harness.containment.probe:_self_test` (Path.unlink), `aew.harness.containment.probe:_self_test` (Path.write_text), `aew.harness.containment.probe:new_sentinel` (Path.write_bytes), `aew.operator:_ask_posix` (os.open), `aew.operator:_discard_posix` (os.open), `aew.operator:has_terminal` (os.open)
 - an in-memory database: `aew.engine.recall:_Matcher.__init__` (sqlite3.connect), `aew.engine.recall:fts5_available` (sqlite3.connect)
-- the Windows console: `aew.cli.credentials:_open_terminal` (open), `aew.operator:_ask_windows` (open)
+- the Windows console: `aew.cli.credentials:_open_terminal` (open), `aew.harness.operator_window:BackgroundConsole._write_windows` (open), `aew.harness.operator_window:BackgroundConsole.problem` (open), `aew.operator:_ask_windows` (open)
 - the null device: `aew.harness.supervisor:main` (open)
 - the repository's working tree: `aew.harness.containment:establish` (Path.unlink), `aew.harness.containment.probe:_self_test` (Path.unlink), `aew.harness.containment.probe:_self_test` (Path.write_text), `aew.harness.containment.probe:new_sentinel` (Path.write_bytes), `aew.workspace.integration:_prune_empty_parents` (Path.rmdir), `aew.workspace.integration:sync_worktree` (Path.unlink)
 - the task workspaces' directory: `aew.harness.check_changes:remove_copy` (shutil.rmtree), `aew.harness.check_changes:run_once` (Path.mkdir), `aew.harness.check_changes:run_once` (shutil.copyfile), `aew.harness.containment:establish` (Path.unlink), `aew.harness.containment.probe:_self_test` (Path.unlink), `aew.harness.containment.probe:_self_test` (Path.write_text), `aew.harness.containment.probe:new_sentinel` (Path.write_bytes), `aew.workspace.worktrees:_clear_orphan` (shutil.rmtree), `aew.workspace.worktrees:allocate` (Path.mkdir), `aew.workspace.worktrees:allocate_detached` (Path.mkdir), `aew.workspace.worktrees:remove` (shutil.rmtree)

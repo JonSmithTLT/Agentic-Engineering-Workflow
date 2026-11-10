@@ -54,6 +54,13 @@ if sys.argv[1:3] == ["session", "list"]:  # its first run makes its database, as
     sqlite3.connect(db).execute({table!r}).connection.commit()
     (here / "made-db").write_text("x")
     sys.exit(0)
+if sys.argv[1:2] == ["serve"]:  # the Lead's server: it announces an address, and its lease is its stdin
+    (here / "serve-argv.json").write_text(json.dumps(sys.argv[1:]))
+    print(json.dumps({{"url": "http://127.0.0.1:4100"}}), flush=True)
+    sys.stdin.buffer.read()
+    sys.exit(0)
+for name in ("OPENCODE_PASSWORD", "OPENCODE_SERVER_PASSWORD"):  # the real server removes them (--stdio, measured)
+    os.environ.pop(name, None)
 (here / "tui-argv.json").write_text(json.dumps(sys.argv[1:]))
 if (here / "mode").read_text().strip() == "agent":
     sys.argv = ["fake_agent", "--script", str(here / "tui-script.json"), "--transcript", str(here / "tui.jsonl")]

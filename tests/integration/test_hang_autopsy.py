@@ -9,10 +9,12 @@ wait is bounded and ends on an event (a file, a process's end), never on a sleep
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import bounds
@@ -148,6 +150,7 @@ def test_waits_for_an_event_that_never_comes(tmp_path):
         bounds.bounded_wait("inner.child_dumped", lambda: any(
             "block_on_pipe" in p.read_text(encoding="utf-8", errors="replace") for p in where.glob("stacks-*.txt"))
             and any(where.glob("events-*.jsonl")), seconds=60, gone=lambda: child.poll() is not None)
+        assert child.poll() is None, f"the child ended with {child.returncode} before it blocked"
         never = threading.Event()
         assert never.wait(12), "the event never came"
     finally:
@@ -156,6 +159,7 @@ def test_waits_for_an_event_that_never_comes(tmp_path):
 '''
 
 
+@pytest.mark.serial  # real processes against a 4 s test timeout and a 1 s dump: alone on its runner
 def test_a_hung_test_names_its_blocked_frame_the_childs_blocked_frame_and_the_dead_thread(tmp_path):
     """The deliberately hung test: the test process waits on an event that never comes, a child Python helper is
     blocked in a C call (``os.read`` on a pipe), and a child thread died of an uncaught exception. The autopsy names all
@@ -632,8 +636,9 @@ def test_a_process_a_test_leaves_running_is_reported_by_its_test_directory(tmp_p
 
 def test_a_controller_slower_than_its_margins_is_ended_by_the_sentinel_and_says_so(tmp_path, monkeypatch):
     """Review of #217, (b): the suspected cause of the one unexplained session-set failure, made deterministic. The
-    controller's collect outlasts both margins, so the sentinel acts: it writes ``session-deadline`` itself (saying
-    so), records the set it ended, and the controller never writes ``session-finished``."""
+    controller's collect outlasts both margins, so the sentinel ends the session, and the controller never writes
+    ``session-finished``. What the sentinel writes as it acts is `test_hang_autopsy_units.py`'s: with a 1 s margin here,
+    a busy runner can have the backstop end it mid-note, and that loses a note, not the ending."""
     hangs = tmp_path / "hangs"
     monkeypatch.setenv("G3_TEST_SLOW_COLLECT_S", "60")
     proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "4", "--session-deadline-margin", "1",
@@ -644,9 +649,354 @@ def test_a_controller_slower_than_its_margins_is_ended_by_the_sentinel_and_says_
     why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
     assert proc.returncode in (DEADLINE_EXIT, -9, 137), why  # ended by the sentinel: its job code, or SIGKILL
     assert "session-finished.txt" not in names and "abnormal-exit.txt" not in names, why
-    assert "written by the sentinel" in (session / "session-deadline.txt").read_text(encoding="utf-8"), why
-    assert any(n.startswith("sentinel-processes-deadline") for n in names), why
-    assert "(deadline)" in (session / "sentinel-log.txt").read_text(encoding="utf-8"), why
+    said = session / "session-deadline.txt"
+    if said.exists() and said.stat().st_size:  # whatever it says, not the controller's: its collect is still going
+        assert "written by the sentinel" in said.read_text(encoding="utf-8"), why
+
+
+# Native code holding the GIL, for as long as any of these sessions lasts, and bounded: no Python thread runs meanwhile.
+HOLD_THE_GIL = ("import ctypes, sys\n"
+                "    if sys.platform == 'win32':\n"
+                "        ctypes.PyDLL('kernel32').Sleep(120000)\n"
+                "    else:\n"
+                "        ctypes.PyDLL(None).sleep(120)\n")
+
+
+@pytest.mark.parametrize("before", ["", "def test_first():\n    pass\n\n\n"], ids=["its_first_test", "a_later_test"])
+def test_a_worker_hung_in_native_code_holding_the_gil_leaves_its_stack(tmp_path, before):
+    """The deadline's Python threads can't run, so nothing but faulthandler's C thread can say what hung: from the
+    worker's start (its first test), and still after the watchdog has had the timer for a test (a later one)."""
+    tests = f"{before}def test_holds_the_gil_in_native_code():\n    {HOLD_THE_GIL}"
+    hangs = tmp_path / "hangs"
+    proc = inner(project(tmp_path, tests), hangs, "--session-deadline", "20", "--session-deadline-margin", "3",
+                 "--test-timeout", "600", "-n", "1", "--max-worker-restart", "0")
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode == DEADLINE_EXIT, why
+    assert "test_holds_the_gil_in_native_code" in texts(session, "worker-gw0-deadline-stacks*"), why
+
+
+def test_a_controller_hung_in_native_code_holding_the_gil_leaves_its_stack(tmp_path):
+    extra = f'''
+
+def pytest_runtest_logreport(report):
+    if report.when == "call":
+        controller_holds_the_gil()
+
+
+def controller_holds_the_gil():
+    {HOLD_THE_GIL}'''
+    hangs = tmp_path / "hangs"
+    proc = inner(project(tmp_path, "def test_reported():\n    pass\n", conftest_extra=extra), hangs,
+                 "--session-deadline", "20", "--session-deadline-margin", "3", "-n", "1", "--max-worker-restart", "0")
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode in (DEADLINE_EXIT, -9, 137), why  # ended by the sentinel: its job code, or SIGKILL
+    assert "controller_holds_the_gil" in texts(session, "controller-deadline-stacks*"), why
+
+
+CANNOT_EXIT = '''
+
+def pytest_unconfigure(config):
+    import threading
+
+    threading.Thread(target=keeps_the_interpreter_from_exiting).start()  # not a daemon
+
+
+def keeps_the_interpreter_from_exiting():
+    import time
+
+    time.sleep(120)  # bounded
+'''
+
+
+def test_a_controller_that_cannot_exit_after_its_session_finished_is_ended_and_names_what_held_it(tmp_path):
+    """Two Windows jobs (2026-11-08) ran past their deadlines to the job's timeout. One way there: everything after
+    ``session-finished``, which the sentinel used to take for the end of the session."""
+    hangs = tmp_path / "hangs"
+    proc = inner(project(tmp_path, "def test_passes():\n    pass\n", conftest_extra=CANNOT_EXIT), hangs,
+                 "--session-deadline", "600", "--session-deadline-margin", "2", "-p", "no:xdist")
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    names = {p.name for p in session.iterdir()}
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode in (DEADLINE_EXIT, -9, 137), why  # a clean session, and still not over: never a pass
+    assert {"session-finished.txt", "stuck-after-finish.txt"} <= names, why
+    assert "keeps_the_interpreter_from_exiting" in texts(session, "controller-after-finish-stacks*"), why
+
+
+def real_interpreter() -> tuple[str, dict[str, str]]:
+    """This Python as CI runs it. On Windows a venv's python.exe is a launcher that keeps its child in a kill-on-close
+    job, which ends any leftover child as the session exits, so through it the test below could not fail. So the base
+    interpreter, with this one's import path; and that test checks the nesting it got (testing strategy §3)."""
+    base = getattr(sys, "_base_executable", sys.executable)
+    return base, {**env(), "PYTHONPATH": os.pathsep.join(p for p in sys.path if p)}
+
+
+def test_a_child_left_holding_the_steps_output_after_a_clean_session_is_ended_and_named(tmp_path):
+    """Read as a CI runner reads a step: over only at the end of its output. Pytest exits 0 and a child it left holds
+    the output: without the sentinel, the step would last until the job's timeout, and its uploads would never run."""
+    hangs, out = tmp_path / "hangs", tmp_path / "out"
+    out.mkdir()
+    extra = f'''
+
+def pytest_sessionstart(session):
+    import subprocess, sys
+    from pathlib import Path
+
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], stdin=subprocess.DEVNULL,
+                             stdout=1, stderr=2, **{NO_WINDOW!r})  # -s: these are the step's own
+    Path({str(out)!r}, "child.pid").write_text(str(child.pid), encoding="utf-8")
+'''
+    # The sentinel's Linux snapshot is taken every few seconds, and has to have seen the child.
+    tests = f'''import sys
+from pathlib import Path
+
+import bounds
+
+
+def test_passes():
+    if sys.platform != "win32":
+        pid = Path({str(out)!r}, "child.pid").read_text(encoding="utf-8")
+        hangs = Path({str(hangs)!r}, "autopsy")
+        bounds.bounded_wait("test.snapshot", lambda: any(
+            pid in p.read_text(encoding="utf-8") for p in hangs.glob("session-*/sentinel-snapshot*")), seconds=60)
+'''
+    python, variables = real_interpreter()
+    proc = subprocess.Popen([python, "-m", "pytest", "-q", "-s", "-p", "no:cacheprovider", "--hang-dir", str(hangs),
+                             "--session-deadline", "600", "--session-deadline-margin", "2", "-p", "no:xdist", "tests"],
+                            cwd=project(tmp_path, tests, conftest_extra=extra), env=variables,
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **NO_WINDOW)
+    try:
+        output, _ = proc.communicate(timeout=90)  # to the end of its output: this is what would not come
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        pytest.fail(f"the step's output was still open 90 s on; pytest exit {proc.poll()}; kept files:\n{texts(hangs)}")
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    why = f"{proc.returncode}\n{output!r}\n--- kept files:\n{texts(session)}"
+    # Never by accident through a job that would have ended the child anyway: the session prints how it nested.
+    assert "KILL_ON_JOB_CLOSE" not in texts(session, "session-started*"), f"not the nesting this tests: {why}"
+    assert proc.returncode == 0, why  # the session did pass: this is not its failure
+    pid = (out / "child.pid").read_text(encoding="utf-8")
+    assert pid in texts(session, "left-running*"), why
+    assert proctree.identity(int(pid)) is None, why
+
+
+def test_a_child_started_as_the_session_finishes_is_seen_and_ended(tmp_path):
+    """Review of #387, m3. The sentinel's Linux snapshot can be seconds old when the session finishes, so it takes a new
+    one first. The controller lingers here, as the sentinel can only do that while it lives (the module docstring)."""
+    hangs, out = tmp_path / "hangs", tmp_path / "out"
+    out.mkdir()
+    extra = f'''
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_unconfigure(config):
+    import subprocess, threading, time
+    from pathlib import Path
+
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], stdin=subprocess.DEVNULL,
+                             stdout=1, stderr=2, **{NO_WINDOW!r})
+    Path({str(out)!r}, "child.pid").write_text(str(child.pid), encoding="utf-8")
+    threading.Thread(target=time.sleep, args=(1.5,)).start()  # not a daemon: the exit waits, and well inside a margin
+'''
+    python, variables = real_interpreter()
+    proc = subprocess.Popen([python, "-m", "pytest", "-q", "-s", "-p", "no:cacheprovider", "--hang-dir", str(hangs),
+                             "--session-deadline", "600", "--session-deadline-margin", "3", "-p", "no:xdist", "tests"],
+                            cwd=project(tmp_path, "def test_passes():\n    pass\n", conftest_extra=extra),
+                            env=variables, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            **NO_WINDOW)
+    try:
+        output, _ = proc.communicate(timeout=90)  # to the end of its output: this is what would not come
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        pytest.fail(f"the step's output was still open 90 s on; pytest exit {proc.poll()}; kept files:\n{texts(hangs)}")
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    why = f"{proc.returncode}\n{output!r}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode == 0, why
+    pid = (out / "child.pid").read_text(encoding="utf-8")
+    assert pid in texts(session, "left-running*"), why
+    assert proctree.identity(int(pid)) is None, why
+
+
+def test_the_sentinel_ends_the_session_even_if_collecting_its_evidence_hangs(tmp_path, monkeypatch):
+    """The controller and the sentinel both collect before they end anything, and collecting can hang. A job that
+    reaches its timeout uploads nothing at all, so the ending can't wait on what's collected on the way. The backstop's
+    own note is `test_hang_autopsy_units.py`'s: the note may be what hangs, so its loss isn't a failure to end."""
+    hangs = tmp_path / "hangs"
+    monkeypatch.setenv("G3_TEST_HANG_EVIDENCE_S", "120")
+    proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "4", "--session-deadline-margin", "1",
+                 "-p", "no:xdist", timeout=60)
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    names = {p.name for p in session.iterdir()}
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode in (DEADLINE_EXIT, -9, 137), why
+    assert "session-finished.txt" not in names, why
+
+
+def test_the_backstop_moves_with_a_session_that_finished_long_before_its_deadline(tmp_path, monkeypatch):
+    """Review of #387, m4. The backstop's first time is past the deadline, here ten minutes off. A controller stuck
+    after finishing and evidence that hangs too would then keep the step open that long."""
+    hangs = tmp_path / "hangs"
+    monkeypatch.setenv("G3_TEST_HANG_EVIDENCE_S", "120")
+    proc = inner(project(tmp_path, "def test_passes():\n    pass\n", conftest_extra=CANNOT_EXIT), hangs,
+                 "--session-deadline", "600", "--session-deadline-margin", "2", "-p", "no:xdist", timeout=60)
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    names = {p.name for p in session.iterdir()}
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode in (DEADLINE_EXIT, -9, 137), why
+    assert "session-finished.txt" in names, why  # ended well before its deadline: the backstop moved with the finish
+
+
+@pytest.mark.parametrize("marker", ["session-finished", "session-deadline", "job-unavailable", "sentinel-ready"])
+def test_a_marker_an_earlier_session_with_this_pid_left_says_nothing_to_this_session(tmp_path, marker):
+    """Review of #387, M1: Windows reuses pids, and hang directories are shared. A session reads only what it wrote:
+    planted under the name a pid alone would give, the earlier marker doesn't end this healthy session, doesn't reach
+    its directory, and stays as that session's evidence."""
+    hangs = tmp_path / "hangs"
+    extra = f'''
+
+import os
+from pathlib import Path
+
+stale = Path({str(hangs)!r}, "autopsy", f"session-{{os.getpid()}}")
+stale.mkdir(parents=True)
+(stale / {marker + ".txt"!r}).write_text("planted", encoding="utf-8")
+'''
+    proc = inner(project(tmp_path, "import time\n\n\ndef test_outlasts_a_margin():\n    time.sleep(3)\n",
+                         conftest_extra=extra),
+                 hangs, "--session-deadline", "600", "--session-deadline-margin", "1", "-p", "no:xdist")
+    found = {p.name: p for p in (hangs / "autopsy").glob("session-*")}
+    stale = next(p for name, p in found.items() if (p / f"{marker}.txt").exists()
+                 and (p / f"{marker}.txt").read_text(encoding="utf-8") == "planted")
+    own = [p for p in found.values() if p != stale]
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- found: {sorted(found)}\n{texts(hangs / 'autopsy')}"
+    assert proc.returncode == 0 and len(own) == 1, why
+    sentinel_ends(own[0])
+    assert "planted" not in texts(own[0]), why
+    assert not (own[0] / "stuck-after-finish.txt").exists(), why
+
+
+@pytest.mark.parametrize(("tests", "args", "code"), [
+    ("def test_passes():\n    pass\n", ("-p", "no:xdist"), 0),
+    ("def test_passes():\n    pass\n", ("-n", "1", "--max-worker-restart", "0"), 0),
+    (OUTLIVES, ("-n", "1", "--max-worker-restart", "0"), DEADLINE_EXIT),
+    (OUTLIVES, ("-p", "no:xdist"), DEADLINE_EXIT),
+], ids=["healthy_one_process", "healthy_worker", "deadline_worker", "deadline_one_process"])
+def test_nothing_hung_so_no_stacks_file_is_left_empty(tmp_path, tests, args, code):
+    """Review of #387, m5. A worker's drop as its session ends, a worker's drop as its deadline's thread starts, and the
+    after-finish file, which reaches the folder only if the timer wrote to it, each have a case here. The controller's
+    drop doesn't: `finish` drops as well, so that one is `test_a_deadline_thread_that_is_running_...`'s."""
+    hangs = tmp_path / "hangs"
+    deadline = "600" if code == 0 else "5"
+    proc = inner(project(tmp_path, tests), hangs, "--session-deadline", deadline, "--session-deadline-margin", "6",
+                 *args)
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept: {sorted(p.name for p in session.iterdir())}"
+    assert proc.returncode == code, why
+    assert not [p.name for p in session.iterdir() if p.name.endswith("stacks.txt") and p.stat().st_size == 0], why
+
+
+def test_a_deadline_thread_that_is_running_takes_the_timer_off_before_it_collects(tmp_path, monkeypatch):
+    """Review of #387, m1. The timer fires half way to the sentinel, and that C thread racing a collector whose threads
+    start and end is an access violation. Here the collect outlasts the timer's time: it must not fire at all."""
+    hangs = tmp_path / "hangs"
+    monkeypatch.setenv("G3_TEST_SLOW_COLLECT_S", "3")
+    proc = inner(project(tmp_path, OUTLIVES), hangs, "--session-deadline", "4", "--session-deadline-margin", "2.5",
+                 "-p", "no:xdist")
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode == DEADLINE_EXIT, why
+    assert not (session / "controller-deadline-stacks.txt").exists(), why
+
+
+def test_the_after_finish_timer_is_off_before_finalization(tmp_path):
+    """Review of #387, m6: the timer's C thread must not read thread state while the interpreter is tearing it down. An
+    ``atexit`` callback registered earlier runs after the cancel, so one outlasting the timer shows it didn't fire."""
+    extra = '''
+
+import atexit, time
+
+atexit.register(time.sleep, 2)  # past the timer's half margin, and inside the sentinel's one margin
+'''
+    hangs = tmp_path / "hangs"
+    proc = inner(project(tmp_path, "def test_passes():\n    pass\n", conftest_extra=extra), hangs,
+                 "--session-deadline", "600", "--session-deadline-margin", "3", "-p", "no:xdist")
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode == 0, why
+    assert not (session / "controller-after-finish-stacks.txt").exists(), why
+
+
+# The controller's last Python: registered early, so it runs after `finish`'s own callback. What it lists is what an
+# upload starting the moment the step ends could list.
+LISTS_THE_FOLDER_LAST = '''
+
+import atexit, glob, os
+
+
+def list_the_folder():
+    if "PYTEST_XDIST_WORKER" not in os.environ:
+        with open(os.environ["G3_TEST_LISTING"], "w", encoding="utf-8") as f:
+            f.write("\\n".join(glob.glob(os.environ["G3_TEST_FOLDER"])))
+
+
+atexit.register(list_the_folder)
+'''
+
+
+@pytest.mark.parametrize("args", [("-p", "no:xdist"), ("-n", "1", "--max-worker-restart", "0")],
+                         ids=["one_process", "worker"])
+def test_nothing_in_the_uploaded_folder_disappears_after_the_controller_exits(tmp_path, args):
+    """An upload lists its folder and then reads each file, so one removed between the two fails the job with every test
+    passed: main's run 42537250768 (`ENOENT`, an empty after-finish stacks file). So all the controller's last listing
+    holds is there once the sentinel has gone, and its scratch file isn't left behind."""
+    hangs, listing = tmp_path / "hangs", tmp_path / "listing.txt"
+    folder = str(hangs / "autopsy" / "session-*" / "*")
+    proc = inner(project(tmp_path, "def test_passes():\n    pass\n", conftest_extra=LISTS_THE_FOLDER_LAST), hangs,
+                 "--session-deadline", "600", "--session-deadline-margin", "2", *args,
+                 extra_env={"G3_TEST_LISTING": str(listing), "G3_TEST_FOLDER": folder})
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    last = {Path(p).name for p in listing.read_text(encoding="utf-8").splitlines()}
+    assert proc.returncode == 0, f"{proc.stdout}{proc.stderr}"
+    assert "session-finished.txt" in last, last  # it did list the folder, at the end
+    assert last <= {p.name for p in session.iterdir()}, last
+    assert not list(Path(tempfile.gettempdir()).glob(f"aew-{session.name}-*"))
+
+
+def test_stacks_written_before_a_slow_exit_still_reach_the_folder(tmp_path):
+    """The controller exits, late: past the timer's half margin and inside the sentinel's one. No hang to end, and
+    the stacks are the only word on what held it, so they're kept."""
+    extra = CANNOT_EXIT.replace("time.sleep(120)  # bounded", "time.sleep(4.5)  # past the timer's 3, inside the 6")
+    hangs = tmp_path / "hangs"
+    proc = inner(project(tmp_path, "def test_passes():\n    pass\n", conftest_extra=extra), hangs,
+                 "--session-deadline", "600", "--session-deadline-margin", "6", "-p", "no:xdist")
+    session = session_dir(hangs)
+    sentinel_ends(session)
+    why = f"{proc.returncode}\n{proc.stdout}{proc.stderr}\n--- kept files:\n{texts(session)}"
+    assert proc.returncode == 0 and not (session / "stuck-after-finish.txt").exists(), why
+    assert "keeps_the_interpreter_from_exiting" in texts(session, "controller-after-finish-stacks*"), why
+    assert not list(Path(tempfile.gettempdir()).glob(f"aew-{session.name}-*")), why
+
+
+def test_the_sentinel_removes_nothing_but_its_own_file_outside_the_folder():
+    """What the sentinel does runs after the controller exits, so anything it removes under the folder is the race
+    above. This reads its class, since a removal on a path it only sometimes takes wouldn't show in a run."""
+    tree = ast.parse((Path(bounds.__file__).parent / "session_deadline.py").read_text(encoding="utf-8"))
+    sentinel = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Sentinel")
+    removals = [ast.unparse(n.func) for n in ast.walk(sentinel) if isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and n.func.attr in {"unlink", "remove", "rename", "replace", "rmtree", "rmdir", "move"}]
+    assert removals == ["self.after_finish_file.unlink"], removals
 
 
 TREE = '''import os, subprocess, sys

@@ -642,6 +642,11 @@ class Resume:
         out = self._status_report(work_id)
         if work_id is None:
             out["role_catalog_problems"] = self.roles.role_catalog().problems
+            from aew.harness import wake_queue  # local, as the notifier's summary is
+
+            wakes = wake_queue.status(self.k.aew_root, generation=out["lead"]["generation"])
+            if wakes is not None:  # the operator always sees what the Lead is waiting on (steering design §1)
+                out["lead_wakes"] = wakes
         return out
 
     def _status_report(self, work_id: str | None) -> dict[str, Any]:

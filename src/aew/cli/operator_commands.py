@@ -1,7 +1,9 @@
 """`aew operator` and `aew lead mode` (M4-E E2; plan v3 §2.1; A1 §1).
 
 ``aew operator serve --dev`` runs the operator endpoint in the operator's own terminal; its console shows the
-one-time codes. ``aew lead mode raise`` only sends a request to it, and then reads the code typed at this terminal or,
+one-time codes. ``aew opencode`` starts one itself, in the background, unless one is live or
+``AEW_OPERATOR_AUTOSTART=off`` is set (:mod:`aew.harness.operator_autostart`). ``aew lead mode raise`` only sends a
+request to it, and then reads the code typed at this terminal or,
 where G3 counts, waits while the operator approves in G3's confirmer: it has no engine path of its own. ``aew lead mode
 lower`` is the Lead's (a restriction), relayed in a Lead session like any Lead-reachable command. The Lead broker
 refuses ``raise``, ``serve`` and ``ping`` in a Lead session (``lead_broker.OPERATOR_ENDPOINT``).
@@ -21,14 +23,19 @@ from aew.errors import OperatorAuthorizationRequired
 
 
 def register(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("operator", help="the operator endpoint: the only way to raise the Lead's steering mode "
-                                        "(run it in your own terminal)")
+    p = sub.add_parser("operator", help="the operator endpoint: the only way to raise the Lead's steering mode (`aew "
+                                        "opencode` starts one unless AEW_OPERATOR_AUTOSTART=off; or run it in your "
+                                        "own terminal)")
     osub = p.add_subparsers(dest="operator_cmd", required=True)
     q = osub.add_parser("serve", help="run this project's operator endpoint here until interrupted; its console shows "
                                       "the one-time codes the operator types at the requesting terminal")
     q.add_argument("--dev", action="store_true",
                    help="required: on this host the operator principal cannot be shown distinct from the Lead "
                         "host's, so every record is labelled `guarantee: dev` (not production authority until F18.6)")
+    q.add_argument("--background", action="store_true",
+                   help="as `aew opencode` starts it: it stops when the Lead sessions it serves end. A request that "
+                        "needs a typed code shows it in the endpoint's own window on Windows; on Linux, with no "
+                        "terminal, it says to run this without --background, and stops so that can start")
     q.set_defaults(handler=_serve)
     q = osub.add_parser("ping", help="whether this project's operator endpoint answers, and its guarantee label")
     _add_json(q)
@@ -54,15 +61,22 @@ def register_lead_mode(lsub: argparse._SubParsersAction) -> None:
 
 def _serve(a: argparse.Namespace) -> None:
     from aew.cli.dashboard_commands import console
-    from aew.harness import operator_client, operator_endpoint
+    from aew.harness import operator_client, operator_endpoint, operator_window
 
     engine = _engine(a)
-    endpoint = operator_endpoint.OperatorEndpoint(engine, console=console, dev=a.dev)
+    if a.background:
+        window = operator_window.BackgroundConsole()
+        endpoint = operator_endpoint.OperatorEndpoint(engine, console=window, dev=a.dev, background=True,
+                                                      console_done=window.done, code_problem=window.problem,
+                                                      show_challenge=window.challenge)
+    else:
+        endpoint = operator_endpoint.OperatorEndpoint(engine, console=console, dev=a.dev)
     operator_endpoint.harden()  # before any challenge exists in this process's memory
     endpoint.start()
     sys.stdout.write(json.dumps({"ok": True, "pid": endpoint.pid, "guarantee": "dev",
                                  "locator": operator_client.LOCATOR_REL,
-                                 "stop": "interrupt this command (Ctrl-C)"}, indent=2) + "\n")
+                                 "stop": "it stops when the Lead sessions it serves end" if a.background
+                                 else "interrupt this command (Ctrl-C)"}, indent=2) + "\n")
     sys.stdout.flush()
     endpoint.serve_forever()
 

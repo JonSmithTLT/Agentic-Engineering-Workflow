@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "helpers"))
 # starts), so no grant starts one behind a test's back; the CLI processes tests start inherit this. Withholding the
 # worker only reduces authority: the S2 check ends a custodian whose worker never registered (`custody_register_s`).
 os.environ.setdefault("AEW_CUSTODY_WORKER", "off")
+os.environ.setdefault("AEW_OPERATOR_AUTOSTART", "off")  # a session test starts no endpoint of its own
 
 import git_isolation  # noqa: E402  (no test writes to the enclosing repository, or to the user's git configuration)
 

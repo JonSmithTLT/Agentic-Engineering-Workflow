@@ -496,6 +496,86 @@ def test_only_a_text_over_the_cut_pays_for_saying_how_to_reach_the_rest():
     assert rows(JSON_MARKER) == 1
 
 
+# -------------------------------------------------------------------------------------------- missing capabilities
+
+
+def missing() -> dict[str, Any]:
+    return {"missing_tools": [{"command": "rg", "got": "a failing stub", "why": "AEW's pinned copy: declined"}],
+            "missing_skills": [{"name": "project-style", "reason": "not_shipped"}]}
+
+
+@pytest.mark.parametrize("shape", ["single", "status", "wait-any"])
+def test_missing_capabilities_are_person_readable_with_reasons_and_run_attribution(shape):
+    entry = missing()
+    payload = {"single": {"run": "R-1", "status": "running", **entry},
+               "status": {"runs": [{"run": "R-1", "status": "starting", **entry}]},
+               "wait-any": {"statuses": {"R-1": "running"}, "timed_out": True,
+                            "runs": {"R-1": None}, "run_capabilities": {"R-1": entry}}}[shape]
+    result = wait(**payload)
+    before = copy.deepcopy(result)
+    text = render(result)
+    head = text.split("\n\n" + JSON_MARKER)[0]
+    assert "Missing run capabilities (advisory): tools: 1; skills: 1; runs: 1." in head
+    assert "missing tool: R-1: rg; got a failing stub; AEW's pinned copy: declined" in head
+    assert "missing skill: R-1: project-style; not_shipped" in head
+    assert result == before, "display must not alter the payload or the run outcome"
+    assert lead_json(text)["result"] == payload
+    assert text.split("\n")[-3] == head.split("\n")[2], "the summary is repeated where the view lands"
+    assert text.split("\n")[-2:] == head.split("\n")[:2]
+
+
+def test_an_ended_waits_repeated_top_level_lists_are_counted_only_once():
+    out = wait(run="R-2", status="crashed", **missing(), run_capabilities={"R-1": missing(), "R-2": missing()})
+    head = render(out).split("\n\n" + JSON_MARKER)[0]
+    assert "tools: 2; skills: 2; runs: 2" in head
+    assert head.count("missing skill: R-2:") == head.count("missing tool: R-2:") == 1
+    assert "harness_wait: R-2 crashed" in head
+
+
+def test_long_capability_lists_are_bounded_across_runs_and_summarized_before_the_json_cut():
+    entries = {f"R-{i}": {"missing_tools": [{"command": "rg", "got": "a failing stub", "why": "declined"}] * 10,
+                           "missing_skills": [{"name": "界" * 500, "reason": "not_shipped"}] * 10}
+               for i in range(50)}
+    out = wait(statuses={r: "running" for r in entries}, timed_out=True, run_capabilities=entries)
+    text = render(out)
+    seen = opencode_cut(text)
+    summary = "Missing run capabilities (advisory): tools: 500; skills: 500; runs: 50."
+    assert summary in seen and "full output saved to" in seen
+    assert seen.count("missing tool: ") == seen.count("missing skill: ") == MAX_LISTED + 1
+    assert f"missing tool: ({500 - MAX_LISTED} more left out)" in seen
+    assert f"missing skill: ({500 - MAX_LISTED} more left out)" in seen
+    assert seen.index(summary) < seen.index(readable.JSON_OVER_THE_CUT)
+    assert "not_shipped" in seen and "…" in seen
+    assert len(seen.encode("utf-8")) < readable.CUT_BYTES
+    assert lead_json(text)["result"]["run_capabilities"] == entries
+
+
+@pytest.mark.parametrize("path", [("run",), ("missing_tools", 0, "command"), ("missing_tools", 0, "got"),
+                                  ("missing_tools", 0, "why"), ("missing_skills", 0, "name"),
+                                  ("missing_skills", 0, "reason")])
+def test_missing_capability_values_cannot_forge_a_line_or_show_a_credential(path):
+    entry = {"run": "R-1", **missing()}
+    holder: Any = entry
+    for key in path[:-1]:
+        holder = holder[key]
+    holder[path[-1]] = HOSTILE + synthetic()
+    text = render(wait(runs=[entry]))
+    head = text.split("\n\n" + JSON_MARKER)[0]
+    assert not any(c in head for c in "\x1b\x07\u2028\u200b")
+    assert len([line for line in text.split("\n") if line == JSON_MARKER]) == 1
+    assert synthetic() not in text
+    assert len([line for line in head.split("\n") if line.startswith("missing tool:")]) == 1
+    assert len([line for line in head.split("\n") if line.startswith("missing skill:")]) == 1
+
+
+@pytest.mark.parametrize("payload", [{}, {"run": "R-1", "missing_tools": [], "missing_skills": []},
+                                      {"runs": {"R-1": {"state": "busy"}}},
+                                      {"runs": [{"run": "R-1", "missing_tools": None, "missing_skills": "bad"}]}])
+def test_no_recorded_missing_capabilities_adds_no_claim_of_complete_tooling(payload):
+    text = render(wait(**payload))
+    assert "Missing run capabilities" not in text and "missing tool:" not in text and "missing skill:" not in text
+
+
 def test_a_long_refusal_s_text_still_holds_its_json():
     """A refusal goes round the cut (`step.ts:122`), so its text is the error the model reads, whole: `opencode_cut`
     models the success path only, and is not applied here."""

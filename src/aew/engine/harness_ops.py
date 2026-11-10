@@ -441,8 +441,7 @@ class Harness:
                             "heartbeat_age_s": runlog.heartbeat_age(directory),
                             "evidence": self.run_evidence(inv["work_unit"], r["run"], cache),
                             "results": self.run_results(inv["work_unit"], r["run"], cache),
-                            "missing_tools": _missing_tools(record),
-                            "missing_skills": _missing_skills(record),
+                             **_missing_capabilities(record),
                             "model_check": _field(record, "model_check").get("status"),
                             "foreign_sessions": _list(_field(record, "result").get("foreign_sessions")),
                             "run_dir": str(directory)})
@@ -511,6 +510,12 @@ class Harness:
         def digests() -> dict[str, Any]:
             return {r: runlog.read_progress(runlog.run_dir(self.k.aew_root, r)) for r in names}
 
+        def capabilities() -> dict[str, Any]:
+            # Progress digests are not delivered contracts. Keep both lists per named run, including the others in
+            # wait-any, without changing `runs` or reading control state on a timeout/trigger return.
+            return {r: _missing_capabilities(runlog.observed_status(runlog.run_dir(self.k.aew_root, r))[1])
+                    for r in names}
+
         def control_end(fresh: dict[str, Any], run: str) -> str | None:
             inv_id = targets[run][0]
             inv = fresh["invocations"].get(inv_id)
@@ -561,7 +566,7 @@ class Harness:
             # runs' own files only, no state read: the broker's wait calls this with a timeout of 0 on every
             # observation.
             woken = wake_queue.some_broker_posts(self.k.aew_root)
-            again = {"timed_out": True, "runs": digests(),
+            again = {"timed_out": True, "runs": digests(), "run_capabilities": capabilities(),
                      "next_action": K.wake_step(names) if woken else K.wait_step(names, again=True)}
             if len(names) == 1:
                 return {"run": names[0], "status": statuses[names[0]], **again}
@@ -572,6 +577,7 @@ class Harness:
             others = [r for r in names if r != run]
             runlog.write_returned(runlog.run_dir(self.k.aew_root, run), woke["newest"])
             return {"run": run, "status": status, "timed_out": False, **shape, "triggers": woke["triggers"],
+                    "run_capabilities": capabilities(),
                     "next_action": K.trigger_step(shape["why"], run, others, then=(
                         K.wake_step([run, *others], after_a_start=False)
                         if wake_queue.some_broker_posts(self.k.aew_root) else None))}
@@ -583,7 +589,7 @@ class Harness:
         out.update({"run": run, "status": status, "reason": (record or {}).get("reason"),
                     "evidence": self.run_evidence(inv["work_unit"], run),
                     "results": self.run_results(inv["work_unit"], run), "timed_out": False,
-                    **P.wake([K.RUN_ENDED], digests())})
+                    **P.wake([K.RUN_ENDED], digests()), "run_capabilities": capabilities()})
         if process_kind.kind() == process_kind.STORE_WRITER:  # a non-writer (a relayed read) writes nothing in .aew
             runlog.write_end_returned(runlog.run_dir(self.k.aew_root, run))  # no wake repeats what this result says
         ended_digest = out["runs"].get(run)
@@ -591,12 +597,9 @@ class Harness:
             runlog.write_returned(runlog.run_dir(self.k.aew_root, run), int(ended_digest.get("trigger_seq") or 0))
         if _reason_code(record):
             out["reason_code"] = _reason_code(record)
-        missing = _missing_tools(record)
-        if missing:  # beside what its evidence found: what it went without (#330's owed lines)
-            out["missing_tools"] = missing
-        missing_skills = _missing_skills(record)
-        if missing_skills:  # attention only, just like tools: no change to the run's outcome or next action
-            out["missing_skills"] = missing_skills
+        for field, missing in _missing_capabilities(record).items():
+            if missing:  # keep the single ended run's existing top-level lists, beside the per-run collection
+                out[field] = missing
         if control is not None:
             # `reason`, not `why`: a wait result's `why` is the wake enum (E122 review, n3)
             out["ended_by"] = {"lane": "control", "reason": control}  # the run record may still show it running
@@ -1003,6 +1006,11 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
 
 
 _SKILL_NAME = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")  # a skill id, at most 64 ASCII characters
+
+
+def _missing_capabilities(record: dict[str, Any] | None) -> dict[str, Any]:
+    """The same recorded-delivery projection on status and every wait return; advisory, never a run outcome."""
+    return {"missing_tools": _missing_tools(record), "missing_skills": _missing_skills(record)}
 
 
 def _missing_skills(record: dict[str, Any] | None) -> list[dict[str, str]]:

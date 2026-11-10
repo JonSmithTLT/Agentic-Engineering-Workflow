@@ -1941,6 +1941,14 @@ digest moves, since digests read the policy files in force and no file changes. 
   Right after a takeover the old mark can count until the old broker's watchdog closes its record, within a poll
   (measured under a second), and longer only if that watchdog is stuck on the control lock.
 - **Windows stays a declared gap,** with no wake posted and no "no broker" line in its next steps.
+- **What a wake quotes is scrubbed as a wait's result is.** The wake's JSON passes through the same function as a
+  wait's result (`contract.scrub`), and the line under it reads the scrubbed copy. In the digest both read, a command
+  is redacted before it's shortened.
+- **An end the Lead already has is no wake.** It has the end when its own wait returned it: the typed wait, or a wait
+  from its shell that its broker relayed. The broker records that for the relayed wait, whose own process writes
+  nothing. The operator's wait at a terminal tells the Lead nothing. It also has the end of an invocation it closed. An
+  invocation AEW closed on its own, such as a queue lease's child ended with its custodian, still wakes it. A run that
+  reads as ended and then goes on is watched again, and its later end is news.
 
 ## Amendment 2026-11-08 — WSLg's directory is a host mask
 

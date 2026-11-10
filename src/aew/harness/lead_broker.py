@@ -607,11 +607,15 @@ def run_read(engine: Any, argv: list[str], cwd: str,
     own parser, and runs as an argument list, never a shell string, on the Lead's project only, in a process of its
     own: a non-writer, reading lock-free as in the sandbox, with no credential and no broker in its environment, so a
     long read holds nothing of the session's. ``track`` is told when that process starts and ends, so the session
-    ends it when it closes."""
+    ends it when it closes.
+
+    That process writes nothing. A ``harness wait`` it ran told the Lead what it printed, so the broker, a store
+    writer, records that from the printed result (``harness_ops.record_told``), as the Lead's typed wait records it:
+    the triggers it returned are returned once, and an end it returned is no wake."""
     from aew import process_kind
     from aew.cli.main import build_parser, coordination_reads_for, recall_search_for
     from aew.engine.api import Engine
-    from aew.engine.harness_ops import scrubbed_env
+    from aew.engine.harness_ops import record_told, scrubbed_env
     from aew.harness import procs
 
     project = getattr(engine, "aew_root", None) or Path(cwd)  # as run_cli builds it
@@ -658,7 +662,7 @@ def run_read(engine: Any, argv: list[str], cwd: str,
     env = procs.engine_imports(scrubbed_env())  # the broker's own `aew`, and no credential
     for variable in ENV_NAMES:
         env.pop(variable, None)
-    env[process_kind.LEAD_CONTAINED_ENV] = "1"  # a non-writer (process_kind): lock-free reads, nothing written
+    env[process_kind.LEAD_CONTAINED_ENV] = "1"  # a non-writer (process_kind): lock-free reads, it writes nothing
     timeout = (float(ns.timeout) if wait else 0.0) + RELAYED_TIMEOUT_S
     detached: dict[str, Any] = ({"creationflags": procs.CREATE_NO_WINDOW} if procs.IS_WINDOWS
                                 else {"start_new_session": True})
@@ -678,7 +682,20 @@ def run_read(engine: Any, argv: list[str], cwd: str,
         finally:
             if track is not None:
                 track(proc, False)
+    if wait:
+        told = _printed(out)
+        if told is not None and told.get("run") in ns.run:  # what the Lead was told of the runs it named
+            record_told(project, told, lead=True)
     return {"stdout": out, "stderr": err, "exit": proc.returncode}
+
+
+def _printed(stdout: str) -> dict[str, Any] | None:
+    """A relayed wait's result, as its process printed it (JSON), or None."""
+    try:
+        value = json.loads(stdout)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def _relayed_value_ok(kind: str, text: str) -> bool:

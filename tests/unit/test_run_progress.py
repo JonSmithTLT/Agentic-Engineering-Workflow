@@ -142,6 +142,28 @@ def test_the_last_command_is_cut_to_200_characters_with_its_exit_code():
     assert last["text"] == ("echo " + "x" * 400)[:200] + "..." and last["exit"] == 3 and last["at"] is not None
 
 
+def test_a_command_is_redacted_before_it_is_shortened():
+    """A credential across the cut is redacted whole, wherever the digest keeps the command: the last command, the
+    last test, the red commands and the trigger. A cut first would leave its first characters, too few for the
+    redaction to recognise. The trigger still holds against the command as the digest keeps it."""
+    secret = "SYNTHETICsyntheticSYNTHETICsyntheticSYNTHET"  # synthetic, as long as a real credential's secret
+    planted = f"aew1.tk_0123456789abcdef.{secret}"
+    head = "python -m pytest tests/test_x.py -k "
+    command = head + "x" * (P.MAX_COMMAND - len(head) - len("aew1.tk_0123456789abcdef.") - 10) + planted + " -q"
+    run = Run()
+    run.step(shell(command, 0, "3 passed"))
+    assert run.step(shell(command, 1, failing("tests/test_x.py::test_a") + ", 2 passed")) == [P.TEST_FAILED]
+    d = run.digest()
+    shown = json.dumps(d)
+    assert "0123456789abcdef" not in shown and secret[:10] not in shown
+    assert d["last_command"]["text"].endswith("aew1.<redacted> -q")
+    assert d["last_test"]["command"] == d["last_command"]["text"] and d["red_commands"]
+    assert all("aew1.<redacted>" in c for c in d["red_commands"])
+    assert P.holds(d, d["triggers"][-1])
+    # Both sides of the comparison are redacted, so a digest written before redaction still matches.
+    assert P.holds({"red_commands": [command]}, d["triggers"][-1])
+
+
 def test_a_command_with_no_exit_code_reads_none_never_a_guess():
     run = Run()
     run.step(shell("make build", None))

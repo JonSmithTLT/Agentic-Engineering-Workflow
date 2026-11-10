@@ -17,6 +17,7 @@ from aew.engine.dispatch import blocker_from, checked
 from aew.engine.queue_ops import is_custodian
 from aew.errors import (
     ConcurrencyLimit,
+    ContainmentUnavailable,
     DependencyUnsatisfied,
     HarnessIncompatible,
     IllegalTransition,
@@ -177,8 +178,10 @@ class Invocations:
     def _require_provider_key(self, profile: dict[str, Any], provider_relay: bool) -> None:
         """Refuse a launch, before anything is committed, whose pinned provider would get no key on the relay route
         (``netns.provider_key_missing``; the operator's decision of 2026-11-06: AEW does not rely on OpenCode's free
-        models, which refused a keyless contained worker). The run's supervisor checks it again (``_contain``)."""
-        from aew.harness.containment import netns
+        models, which refused a keyless contained worker), or whose provider needs a client certificate that only the
+        relay presents, when the run would have no relay (register E123). The run's supervisor checks both again
+        (``_contain``)."""
+        from aew.harness.containment import client_cert, netns
 
         policy, _ = self.k.execution_policy()
         names = [str(n) for n in (policy or {}).get("provider_env") or []]
@@ -187,6 +190,9 @@ class Invocations:
         if missing is not None:
             raise HarnessIncompatible(netns.provider_key_message(str(profile.get("provider")), missing),
                                       reason=netns.PROVIDER_KEY_MISSING, variable=missing)
+        no_relay = client_cert.no_relay(profile.get("provider"), policy, on_relay_route=relayed)
+        if no_relay is not None:
+            raise ContainmentUnavailable(no_relay, provider=profile.get("provider"), reason=client_cert.NO_RELAY)
 
     def _record_launch_run(self, ctx: TxnContext, inv_id: str) -> None:
         """``--launch`` on a dispatch: run 1 adopts the credential this transaction issued."""

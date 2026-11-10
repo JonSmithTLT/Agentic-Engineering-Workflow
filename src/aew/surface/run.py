@@ -121,7 +121,7 @@ def _harness_wait(c: Call) -> Any:
     target: str | list[str] = runs[0] if len(runs) == 1 else runs
     timeout = float(c.a.get("timeout_s") or DEFAULT_WAIT_S)
     if c.cancelled is None:  # no broker to keep free: the engine's own blocking wait
-        return c.engine.harness_wait(target, timeout=timeout, any_=len(runs) > 1, triggers=True)
+        return c.engine.harness_wait(target, timeout=timeout, any_=len(runs) > 1, triggers=True, lead=True)
     deadline = time.monotonic() + timeout
     wake_root = Path(c.engine.aew_root)
     while True:
@@ -129,7 +129,7 @@ def _harness_wait(c: Call) -> Any:
             why = c.cancelled()
             if why:
                 raise errors.StaleAuthority(f"this Lead session no longer holds Lead authority: {why}")
-            out = c.engine.harness_wait(target, timeout=0, any_=len(runs) > 1, triggers=True)
+            out = c.engine.harness_wait(target, timeout=0, any_=len(runs) > 1, triggers=True, lead=True)
         if not out.get("timed_out") or time.monotonic() >= deadline:
             return out
         mark, since = outbox.wake_mark(wake_root), time.monotonic()  # block on the wake file alone: no engine state

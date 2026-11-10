@@ -13,11 +13,14 @@ from aewflow import create_planned_ticket
 from fake_harness import HarnessLab, credential_hits
 from harness_conformance import FakeOpenCodeDriver
 
+from aew import process_kind
 from aew.engine.api import Engine
 from aew.harness import contract as K
 from aew.harness import progress as P
 from aew.harness import runlog, wake_queue
 from aew.harness.lead_broker import POLL_S, LeadBroker
+from aew.surface import run as R
+from aew.surface.context import SurfaceContext
 
 
 @pytest.fixture
@@ -122,24 +125,42 @@ def test_a_real_dispatch_under_a_real_broker_says_end_your_turn_and_the_wake_com
     assert Engine.discover(lab.root).wakes_reach_lead() is False and wake_queue.serving(lab.aew_root) is None
 
 
-def test_a_real_run_ending_wakes_the_lead_unless_a_wait_already_told_it(lab: HarnessLab, tmp_path: Path):
-    """Review, m6. Two runs under one broker: one whose end only a wake can tell, one a short wait returned."""
-    lab.script("default", {"steps": [{"do": "write", "files": {"calc/extra.py": "X = 1\n"}}],
-                           "server": {"tool_parts": True, "live_usage": {}}})
-    wid = create_planned_ticket(lab.project, tmp_path)
+def test_a_real_run_ending_wakes_the_lead_unless_its_own_wait_told_it(lab: HarnessLab, tmp_path: Path):
+    """Two runs under one broker, the Lead in its turn each time (review, m6 and f1). The first's end is returned by
+    the operator's wait at a terminal, which tells the Lead nothing, so its end wakes the Lead when the turn ends. The
+    second's is returned by the Lead's own typed wait, through the surface, in a process declared as the Lead
+    session's is (`aew`), so no wake repeats it."""
     poster = _RecordingPoster()
     broker = LeadBroker(Engine.discover(lab.root), lab.project.token)
     broker.start()
     try:
         broker.start_wakes(poster)
-        poster.turn = True  # the Lead is in its turn, taking a short wait
-        run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
-        out = Engine.discover(lab.root).harness_wait(run, timeout=120, triggers=True)
+        poster.turn = True
+        lab.script("default", {"steps": [{"do": "write", "files": {"calc/extra.py": "X = 1\n"}}],
+                               "server": {"tool_parts": True, "live_usage": {}}})
+        first = lab.lead("work", "assign", create_planned_ticket(lab.project, tmp_path), "--launch")["launch"]["run"]
+        out = Engine.discover(lab.root).harness_wait(first, timeout=120, triggers=True)  # the operator's
         assert out["why"] == [K.RUN_ENDED], out
+        assert not runlog.end_returned(runlog.run_dir(lab.aew_root, first))
         time.sleep(3 * POLL_S)  # a wake gathered during the wait is waiting for the turn's end
         poster.turn = False
+        assert _until(poster.whys), "the end the operator's wait returned never woke the Lead"
+        assert poster.whys() == [[K.RUN_ENDED]] and first in poster.posts[0]
+
+        poster.turn = True
+        lab.script("default", {"steps": [{"do": "write", "files": {"src/a/y.py": "Y = 1\n"}}],
+                               "server": {"tool_parts": True, "live_usage": {}}})
+        wid = create_planned_ticket(lab.project, tmp_path, title="Add y", scope=("src/a/**",))
+        second = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
+        with process_kind.declared_as("aew"):
+            typed = R.run_tool(Engine.discover(lab.root), SurfaceContext.outside_session(), "harness_wait",
+                               {"runs": [second], "timeout_s": 120}, token=lab.project.token)
+        assert typed["result"]["why"] == [K.RUN_ENDED], typed
+        assert runlog.end_returned(runlog.run_dir(lab.aew_root, second))
         time.sleep(3 * POLL_S)
-        assert poster.posts == []
+        poster.turn = False
+        time.sleep(3 * POLL_S)
+        assert poster.whys() == [[K.RUN_ENDED]]
     finally:
         broker.close()
 

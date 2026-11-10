@@ -813,8 +813,8 @@ class Engine:
         return self._harness.harness_stop(token=token, run=run, reason=reason)
 
     def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False,
-                     triggers: bool = False) -> dict[str, Any]:
-        return self._harness.harness_wait(runs, timeout=timeout, any_=any_, triggers=triggers)
+                     triggers: bool = False, lead: bool = False) -> dict[str, Any]:
+        return self._harness.harness_wait(runs, timeout=timeout, any_=any_, triggers=triggers, lead=lead)
 
     def ingest_evidence_unit_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                                     kind: str) -> dict[str, Any]:

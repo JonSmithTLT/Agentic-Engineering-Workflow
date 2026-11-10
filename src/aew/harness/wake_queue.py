@@ -15,8 +15,9 @@ module owns everything about that except the post itself, which is a harness's (
   the same Ticket and role. What fails is dropped, and named in the next wake's ``since_last_wake``.
 - **An ended run is told once.** Its invocation stays active until the Lead accepts or cancels it, so its mark stays
   too, recording that the end was told (``ended_told``), and goes once the run is no longer its invocation's live one.
-  An end the Lead already has is no wake: a store writer's wait returned it (``runlog.end_returned``; a relayed read,
-  a non-writer, records nothing), or the Lead itself closed the invocation.
+  An end the Lead already has is no wake: its own wait returned it (``runlog.end_returned``: the typed wait, or a
+  shell wait its broker relayed; the operator's wait at a terminal doesn't count), or the Lead closed the invocation.
+  An invocation AEW closed on its own (:func:`closed_by_aew`) did not tell the Lead, so its run's end still wakes it.
   A run that reads as ended and then goes on, as a stalled heartbeat does, is watched again.
 - **The broker's own mark.** Each run's mark is the newest trigger the Lead has been shown by a wake or by a wait
   (``runlog.read_returned``: a post moves that mark too, so neither repeats the other), with the absolute counts
@@ -93,6 +94,19 @@ def live_runs(state: Mapping[str, Any]) -> list[Watched]:
         if inv.get("status") == "active" and runs:
             last = runs[-1]
             out.append(Watched(last["run"], inv.get("work_unit"), inv.get("role"), last.get("launched_at")))
+    return out
+
+
+def closed_by_aew(state: Mapping[str, Any]) -> set[str]:
+    """The runs whose invocation AEW closed, not the Lead: a child of a queue lease's custodian (the post-integration
+    verifier) is closed with its custodian, which the engine itself ends when its worker is gone (``queue_ops.sync``).
+    The Lead learns of such an end only from a wake."""
+    invocations = state.get("invocations") or {}
+    out: set[str] = set()
+    for inv in invocations.values():
+        custodian = invocations.get(inv.get("custodian")) if isinstance(inv.get("custodian"), str) else None
+        if inv.get("status") != "active" and custodian is not None and custodian.get("status") != "active":
+            out.update(r["run"] for r in inv.get("runs") or [] if isinstance(r, Mapping) and r.get("run"))
     return out
 
 
@@ -227,14 +241,16 @@ class WakeQueue:
         before = json.dumps(self.doc, sort_keys=True)  # ahead of the clear: a failure's going is a change to save
         self.doc["last_failure"] = None
         settled = self._settle()  # not settled: a posted wake is still waiting to land, at most one undelivered wake
-        live = live_runs(self.state()) if settled else []
+        state = self.state() if settled else {}
+        live = live_runs(state)
+        news = {w.run for w in live} | closed_by_aew(state)  # the runs whose end the Lead has not closed itself
         if settled:
             self._watch(live)
-            self._gather({w.run for w in live})
+            self._gather(news)
         if json.dumps(self.doc, sort_keys=True) != before:
             self._save()
         if settled and self.doc["wake"] is not None and not self.poster.busy():
-            self._post(live)
+            self._post(live, news)
 
     def failed(self, why: str) -> None:
         """A pass that failed: shown in the status line, and the next pass tries again. Without a post, ``posting``
@@ -287,10 +303,10 @@ class WakeQueue:
         status_, _record = runlog.observed_status(self._dir(run))
         return not runlog.possibly_live(status_, mark.get("launched_at"))
 
-    def _gather(self, live: set[str]) -> None:
+    def _gather(self, news: set[str]) -> None:
         for run, mark in list(self.doc["marks"].items()):
             ended = self._ended(run, mark)
-            if ended and run not in live:  # the Lead accepted, cancelled or replaced it: its end is no news to it
+            if ended and run not in news:  # the Lead accepted, cancelled or replaced it: its end is no news to it
                 del self.doc["marks"][run]
                 continue
             if ended and runlog.end_returned(self._dir(run)):  # a wait already told the Lead
@@ -345,9 +361,9 @@ class WakeQueue:
 
     # ---- the post
 
-    def _post(self, live: list[Watched]) -> None:
+    def _post(self, live: list[Watched], news: set[str]) -> None:
         wake = self.doc["wake"]
-        self._check(wake, live)
+        self._check(wake, live, news)
         if not wake["why"]:  # every reason in it went stale: nothing to say
             self.doc["wake"] = None
             self._save()
@@ -359,14 +375,14 @@ class WakeQueue:
         self._posted(wake)
         self._save()
 
-    def _check(self, wake: dict[str, Any], live: list[Watched]) -> None:
+    def _check(self, wake: dict[str, Any], live: list[Watched], news: set[str]) -> None:
         """No stale wakes: each reason is checked against the run as it is now, immediately before the post."""
         for run, entry in list(wake["runs"].items()):
             digest = runlog.read_progress(self._dir(run))
             mark = self.doc["marks"].get(run) or {}
             kept: list[dict[str, Any]] = []
             for trigger in entry["triggers"]:
-                if self._current(trigger, entry, digest, run, mark, live):
+                if self._current(trigger, entry, digest, run, mark, live, news):
                     kept.append(trigger)
                 else:
                     self.doc["dropped"] = int(self.doc["dropped"]) + 1
@@ -383,10 +399,10 @@ class WakeQueue:
         wake["why"] = _ordered(wake)
 
     def _current(self, trigger: Mapping[str, Any], entry: Mapping[str, Any], digest: Mapping[str, Any] | None,
-                 run: str, mark: Mapping[str, Any], live: list[Watched]) -> bool:
+                 run: str, mark: Mapping[str, Any], live: list[Watched], news: set[str]) -> bool:
         why = trigger.get("why")
         if why == K.RUN_ENDED:  # current, unless the Lead has it (a wait, its own close) or a later attempt replaced it
-            return (any(w.run == run for w in live) and not runlog.end_returned(self._dir(run)) and not any(
+            return (run in news and not runlog.end_returned(self._dir(run)) and not any(
                 w.run != run and (w.work_unit, w.role) == (mark.get("work_unit"), mark.get("role")) for w in live))
         if why == K.QUIET:  # still no other wake for this run
             return len(entry["triggers"]) == 1 and not self._ended(run, mark)

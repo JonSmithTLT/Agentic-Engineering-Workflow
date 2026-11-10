@@ -210,7 +210,8 @@ def test_the_bridge_key_is_not_a_lead_credential(held):
 
 def _fake_wait(engine, monkeypatch, seen, until=None):
     """A run that never ends, or that ends once ``until`` is set: each single check (timeout 0) reports it."""
-    def harness_wait(runs, *, timeout=600.0, any_=False, triggers=False):
+    def harness_wait(runs, *, timeout=600.0, any_=False, triggers=False, lead=False):
+        assert lead, "the typed wait is the Lead's own"  # its end then needs no wake (record_told)
         seen.append(timeout)
         run = runs if isinstance(runs, str) else runs[0]
         if until is not None and until.is_set():

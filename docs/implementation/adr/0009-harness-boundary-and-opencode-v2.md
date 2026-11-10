@@ -1637,7 +1637,11 @@ operator's own did: the TUI at their terminal, their stored provider logins, Lea
   `CONTAINED_LOCAL`), the surface map
   marking exactly the relayed set, each a read, and a command outside it, an option outside its list or a value
   that is not a name, sha256 or revision refused before anything runs; `tests/integration/test_lead_relayed_reads.py`,
-  each relayed read printing what the host prints (a heartbeat's age apart) and changing nothing under `.aew`, one
+  each relayed read printing what the host prints (a heartbeat's age apart) and, as condition 2 reads since CS-4
+  addendum 15, "A test runs each relayed command against a project and finds the store and `.aew/local/` unchanged,
+  apart from any derived cache the read already rebuilds today and the broker's delivery records, each of which the
+  test names by its exact path" (the delivery records: `local/harness/runs/<run>/progress.returned.json` and
+  `local/harness/runs/<run>/progress.end-returned`, for the run a relayed `harness wait` returned), one
   answering while a write holds the control lock (a non-writer's lock-free read), no output carrying a planted
   server password, bridge key or token, a held relayed `harness wait` delaying no Lead
   write and returning when its run ends, the session's close ending one in flight at once, and no read reaching
@@ -1941,6 +1945,15 @@ digest moves, since digests read the policy files in force and no file changes. 
   Right after a takeover the old mark can count until the old broker's watchdog closes its record, within a poll
   (measured under a second), and longer only if that watchdog is stuck on the control lock.
 - **Windows stays a declared gap,** with no wake posted and no "no broker" line in its next steps.
+- **What a wake quotes is scrubbed as a wait's result is.** The wake's JSON passes through the same function as a
+  wait's result (`contract.scrub`), and the line under it reads the scrubbed copy. In the digest both read, a command
+  is redacted before it's shortened.
+- **An end the Lead already has is no wake.** It has the end when its own wait returned it: the typed wait, or a wait
+  from its shell that its broker relayed. The broker records that for the relayed wait, whose own process writes
+  nothing: the broker's delivery records, an exception to relayed reads' condition 2 (STG-05 CS-4 addendum 15). The
+  operator's wait at a terminal tells the Lead nothing. It also has the end of an invocation it closed. An
+  invocation AEW closed on its own, such as a queue lease's child ended with its custodian, still wakes it. A run that
+  reads as ended and then goes on is watched again, and its later end is news.
 
 ## Amendment 2026-11-08 — WSLg's directory is a host mask
 

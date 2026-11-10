@@ -2027,7 +2027,6 @@ None.
 ### `aew.surface.contract`
 
 - `aew.priority_levels`
-- `aew.schemas`
 - `aew.surface.context`
 
 ### `aew.surface.errors`

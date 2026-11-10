@@ -267,9 +267,6 @@ class LeadBroker:
         self._wakes: threading.Thread | None = None  # the wake queue's thread (:meth:`start_wakes`)
         self._reads: set[subprocess.Popen[str]] = set()  # the relayed reads in flight (RELAYED_READS)
         self._reads_lock = threading.Lock()
-        # When the Lead last called this broker (any op, refused or not), on time.time()'s scale: a Lead that calls
-        # has seen the steering loop's stop, which clears its `loop_waiting` wake (A-58 CL-R07; BOY-09.b's clear).
-        self._last_call: float | None = None
         self._watch = threading.Thread(target=self._watchdog, name="aew-lead-broker-watch", daemon=True)
         # The liveness record the operator endpoint watches (M4-E E7a; amendment 1, M2, R2-m3): its own thread, never
         # reading the store, with the wedge threshold of this broker's own store (R4-m1).
@@ -309,7 +306,9 @@ class LeadBroker:
             return quiet_wake_s(policy)
 
         queue = WakeQueue(own.aew_root, poster=poster, state=own.store.current, quiet_s=quiet, clock=time.time,
-                          new_id=poster.new_id, last_call=lambda: self._last_call)
+                          new_id=poster.new_id,
+                          loop_ingests=lambda state, work_id: self.loop is not None and self.loop.will_ingest(
+                              dict(state), work_id, own))
 
         def run() -> None:
             while not self._stop.wait(POLL_S):
@@ -395,7 +394,6 @@ class LeadBroker:
     # ------------------------------------------------------------------ the one operation
 
     def handle(self, op: str, args: dict[str, Any]) -> Any:
-        self._last_call = time.time()
         if op == "lead.tool":  # cooperative: it takes the serialization itself
             return self._tool(args)
         if op == "lead.read":  # cooperative: a read in a process of its own, needing no Lead authority

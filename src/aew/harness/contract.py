@@ -425,7 +425,7 @@ WAKE_GUIDE: dict[str, Wake] = {
         tell="whether the run is still making progress"),
     LOOP_WAITING: Wake(
         means="the steering loop stopped on something only you can judge (a decision, a blocker, or a stop it can't "
-              "act past), and starts nothing until you act",
+              "act past), and won't act on its subject until you do",
         act="read `loop` in the wake (the stop's code, subject and message); settle what it names with the tools "
             "that exist, or lower the steering mode (`steering`) if you won't",
         tell="why the loop stopped and what you did about it"),

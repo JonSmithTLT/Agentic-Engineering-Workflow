@@ -62,6 +62,7 @@ from typing import Any
 from aew import errors
 from aew.engine import steering as S
 from aew.engine.primitives import spec_for
+from aew.harness import contract as K
 from aew.harness import event_spool
 from aew.util import replace_with_retry, sha256_bytes, utc_now
 
@@ -141,9 +142,14 @@ class Activation:
 # ---------------------------------------------------------------------------------------------- selection (CWR §7)
 
 
+LEAD_ONLY = (DECISION_REQUIRED, UNKNOWN)  # stops only the Lead can clear; a BLOCKED can clear on its own
+
+
 def select(project: dict[str, Any], units: list[dict[str, Any]]) -> Choice | Stop:
     """Steps 2 and 3 of a tick, the same in every mode: the first eligible action, or why there is none. ``project``
-    is the project's projection, ``units`` each live Ticket's."""
+    is the project's projection, ``units`` each live Ticket's. When none is eligible, the stop reported is the first
+    that only the Lead can clear (``LEAD_ONLY``), else the first: so a Ticket's self-clearing BLOCKED never hides
+    another's decision, and the Lead's ``loop_waiting`` wake names what needs it (review of the priority PR, m6)."""
     high = [a for a in project.get("anomalies") or [] if (a.get("details") or {}).get("severity") == "high"]
     if high:
         a = high[0]["details"]
@@ -157,7 +163,7 @@ def select(project: dict[str, Any], units: list[dict[str, Any]]) -> Choice | Sto
     if loose:
         return Stop(DECISION_REQUIRED, f"{loose[0]['decision']} ({', '.join(loose[0].get('evidence') or [])}) is "
                                        "the Lead's")
-    first: Stop | None = None
+    stops: list[Stop] = []
     for p in sorted(units, key=lambda u: str(u.get("subject"))):
         subject = str(p.get("subject"))
         actions = p.get("actions") or []
@@ -176,8 +182,32 @@ def select(project: dict[str, Any], units: list[dict[str, Any]]) -> Choice | Sto
             eligible = [a for a in actions if a.get("availability") == "AVAILABLE" and a.get("auto_runnable")]
             if eligible:
                 return Choice(eligible[0], subject, p)
-        first = first or why
-    return first or Stop(IDLE, "no eligible action")
+        if why is not None:
+            stops.append(why)
+    lead_only = [s for s in stops if s.code in LEAD_ONLY]
+    return (lead_only or stops or [Stop(IDLE, "no eligible action")])[0]
+
+
+def ingesting_action(state: dict[str, Any], action: dict[str, Any]) -> bool:
+    """Whether running ``action`` takes in its Ticket's implementer run: one of its stage's steps is a
+    ``work.transition`` whose rule's guard ingests it (``Gates.INGESTS_IMPLEMENTATION``, derived from the guards
+    and pinned against their code). Derived from the guards, never from a tool's or a primitive's name."""
+    from aew.engine import transitions
+    from aew.engine.evidence_ops import Gates
+    from aew.surface import availability, contract
+
+    t = contract.tool(str(action.get("action")))
+    builders = availability.STAGES.get(str(action.get("action")))
+    if t is None or builders is None:
+        return False
+    arguments = dict(action.get("arguments") or {})
+    unit = (state.get("work") or {}).get(arguments.get("work_id") or "") or {}
+    for primitive, build in zip(t.expands_to, builders, strict=False):
+        step = build(arguments) if primitive == "work.transition" else None
+        rule = transitions.RULES.get((unit.get("state"), (step or {}).get("to")))
+        if rule is not None and rule.guard in Gates.INGESTS_IMPLEMENTATION:
+            return True
+    return False
 
 
 def arguments_digest(action: dict[str, Any]) -> str:
@@ -271,6 +301,8 @@ class SteeringLoop:
         # The conditions already notified (review of PR #199, F1, F2, R2): kept across quiet stops and activations,
         # bounded, the least recently met forgotten first.
         self._notified: OrderedDict[tuple[Any, ...], None] = OrderedDict()
+        # The subjects the loop acted on since its last record: a stop about one of them is a new occurrence (M2).
+        self._acted: set[str] = set()
         self._act: Activation | None = None  # the last activation: resumed while only the loop itself has committed
         self._activations = 0
         self.executed: list[dict[str, Any]] = []  # what this loop ran: (action, subject, intent), for tests and status
@@ -493,6 +525,7 @@ class SteeringLoop:
         act.counts[key] = act.counts.get(key, 0) + 1
         act.last_own_rev = act.own_rev = int(result.get("revision") or 0)
         self._forget(picked.subject)  # the subject moved: a stop about it from now on is a new occurrence
+        self._acted.add(picked.subject)  # and so is the next record's, if it stops there again (``occurrence``)
         self.executed.append({"action": picked.action["action"], "subject": picked.subject,
                               "intent": result.get("stage_intent_id"), "ok": result.get("ok")})
         excess = self._declaration_check(act, picked, result)
@@ -598,13 +631,17 @@ class SteeringLoop:
             revision = int(self.engine.store.current()["revision"])
         except errors.AEWError:
             revision = -1
+        condition = condition_key(stop)
         data = {"schema": S.LOOP_SCHEMA, "generation": self.generation,
                 "status": "idle" if stop.code == IDLE else "stopped", "mode": mode,
                 "activation": act.id if act else None, "actions": act.actions if act else 0,
-                "stop": {"code": stop.code, "message": stop.message[:2000], "subject": stop.subject,
-                         "revision": revision, "at": utc_now(), "condition": condition_key(stop)},
+                # redacted before it is shortened, so a cut never leaves a credential's fragment (review, m4)
+                "stop": {"code": stop.code, "message": K.redact(stop.message)[:2000], "subject": stop.subject,
+                         "revision": revision, "at": utc_now(), "condition": condition,
+                         "occurrence": self._occurrence(stop, condition)},
                 "updated_at": utc_now()}
         _write(self.aew_root / S.LOOP_REL, data)
+        self._acted.clear()
         if not stop.attention:
             return
         if stop.condition in self._notified:
@@ -616,10 +653,54 @@ class SteeringLoop:
         while len(self._notified) > NOTIFIED_MAX:
             self._notified.popitem(last=False)
 
+    def _occurrence(self, stop: Stop, condition: str) -> int:
+        """Which occurrence of its condition ``stop`` is (A-58 ``CL-R07``: the Lead is told once per occurrence),
+        derived from the loop's own last record, so a restarted broker in the same generation keeps it. The same as
+        that record's when it is this generation's, its condition is the same, and the loop has acted on nothing
+        about it since: not on its subject, and for a ``project`` stop on nothing at all, since ``select`` returns a
+        project stop before any choice. Otherwise one more. An action on another subject never moves it, so a busy
+        activation doesn't re-tell a stuck Ticket's stop. The limit: a different stop recorded in between also moves
+        it, so the Lead is told the same stop again then; the safe direction (one more wake, never a missed one)."""
+        previous = _read(self.aew_root / S.LOOP_REL) or {}
+        before = previous.get("stop") if isinstance(previous.get("stop"), dict) else {}
+        number = before.get("occurrence") if isinstance(before.get("occurrence"), int) else 0
+        acted = bool(self._acted) if stop.subject == "project" else stop.subject in self._acted
+        if previous.get("generation") == self.generation and before.get("condition") == condition and not acted:
+            return max(number, 1)
+        return number + 1
+
+    def will_ingest(self, state: dict[str, Any], work_id: str | None, engine: Any = None) -> bool:
+        """Whether this loop will take in ``work_id``'s ended run itself, with no Lead step (A-58 ``CL-R07``: a
+        ``run_ended`` the loop will ingest isn't the Lead's): steering is Run and the Ticket projects an action the
+        loop auto-runs whose transition's guard ingests the implementer's run (``ingesting_action``). If that step
+        then stops, the loop's own stop wakes the Lead (``loop_waiting``). ``engine``: the caller's own, for a caller
+        on another thread (the wake queue's)."""
+        if not work_id or S.effective(state)["mode"] != "run":
+            return False
+        unit = (state.get("work") or {}).get(work_id) or {}
+        if unit.get("kind") != "ticket" or unit.get("state") in TERMINAL_STATES:
+            return False
+        from aew.surface.projection import project
+
+        actions = project(engine or self.engine, self._ctx(), work_id).get("actions") or []
+        return any(a.get("availability") == "AVAILABLE" and a.get("auto_runnable")
+                   and ingesting_action(state, a) for a in actions)
+
     def _forget(self, subject: str) -> None:
         """The loop acted on ``subject``: a stop about it from now on is a new occurrence, notified again."""
         for condition in [c for c in self._notified if c[1] == subject]:
             del self._notified[condition]
+
+
+def _read(path: Path) -> dict[str, Any] | None:
+    """The loop's own last record, or None when there is none or it can't be read."""
+    try:
+        if not path.is_file() or path.stat().st_size > 64 * 1024:
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def _write(path: Path, data: dict[str, Any]) -> None:

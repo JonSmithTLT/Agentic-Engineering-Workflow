@@ -36,6 +36,10 @@ Outside the API:
 - `/session/{rest}`: handled by `_exchange`, under `/session/`; answered only while the server has `sessions`.
 - `/{file}`: handled by `_static`, outside `/api/`, `/session/`; answered only while the server has `static_root`.
 
+## Dashboard sessions
+
+`SessionTable.mint` and `Service.issue` require keyword-only `authorized_by`, with no default; mint accepts only `operator-tty`, `operator-start` (read from `aew.dashboard.session.AUTHORIZED_BY`). `operator-tty` records the typed-back code used by `aew dashboard serve` and `open`; `operator-start` records the first no-code session opened by `aew opencode`. The existing session listing reports this provenance unchanged. A browser session grants only `dashboard.read`, never an engine operator confirmation.
+
 ## Tools
 
 | Tool | Kind | Class | Status | Mutates | Dispatches | Expands to |

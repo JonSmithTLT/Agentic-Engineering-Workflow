@@ -267,6 +267,7 @@ None.
 - `aew.dashboard.defaults`
 - `aew.dashboard.server`
 - `aew.dashboard.service`
+- `aew.dashboard.session`
 - `aew.errors`
 - `aew.operator`
 
@@ -1216,6 +1217,7 @@ Imports from the groups:
 - `aew`
 - `aew.capability`
 - `aew.cli`
+- `aew.dashboard`
 - `aew.engine`
 - `aew.knowledge`
 - `aew.policy`
@@ -1331,6 +1333,16 @@ None.
 ### `aew.harness.contract`
 
 None.
+
+### `aew.harness.dashboard_autostart`
+
+- `aew.dashboard.defaults`
+- `aew.dashboard.service`
+- `aew.dashboard.session`
+- `aew.engine.api`
+- `aew.errors`
+- `aew.harness.operator_client`
+- `aew.operator`
 
 ### `aew.harness.delivery`
 
@@ -1459,6 +1471,7 @@ None.
 - `aew.harness.containment.netns`
 - `aew.harness.containment.relay`
 - `aew.harness.containment.shim`
+- `aew.harness.dashboard_autostart`
 - `aew.harness.lead_broker`
 - `aew.harness.opencode.adapter`
 - `aew.harness.opencode.capabilities`

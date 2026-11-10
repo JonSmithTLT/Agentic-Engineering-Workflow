@@ -872,7 +872,8 @@ def require_credential(acquire: bool) -> None:
 def run_session(engine: Any, command: list[str], *, acquire: bool, session_label: str | None,
                 keep_seat: bool, contained: Callable[[str | None, dict[str, str]], Harness],
                 env: dict[str, str] | None = None,
-                with_token: Callable[[str], None] | None = None) -> dict[str, Any]:
+                with_token: Callable[[str], None] | None = None,
+                on_ready: Callable[[], None] | None = None) -> dict[str, Any]:
     """``aew lead session``: broker the Lead credential for one Lead harness session.
 
     ``env`` is the harness's environment (default: the caller's, minus every credential variable). A harness
@@ -888,6 +889,10 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     ``with_token`` is called once with the Lead credential, before the broker starts: what `aew opencode`'s switch offer
     needs, since on ``acquire`` the credential doesn't exist any earlier. It must not raise. `aew lead session` passes
     none, so it never applies an offer.
+
+    ``on_ready`` starts session-bound companions only after the seat's credential has been validated and the harness
+    prepared, before the TUI runs. A refused acquisition or credential never calls it; the harness and broker are
+    closed even if the callback raises.
     """
     from aew.engine.harness_ops import scrubbed_env
     from aew.harness.procs import harden_current_process, run_session_tree
@@ -928,6 +933,8 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
         if harness.poster is not None:
             broker.start_wakes(harness.poster)
         try:
+            if on_ready is not None:
+                on_ready()
             if harness.entry is not None:
                 harness.entry.started()
             code, ownership = run_session_tree(harness.argv, env=harness.env, cwd=str(engine.repo_root),

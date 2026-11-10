@@ -264,6 +264,10 @@ considered:
       instructions in review packs and the operator settings surface; its §6 addendum, provider mediation (principal accessibility, the gateway as a
       prerequisite for client-certificate providers, an F25 semantics value); the v0.5 activation amendments it owes are
       written and proposed (2026-10-11), not yet adopted; replaces no WC/KC text
+  - path: docs/design/decisions-2026-11-conversational-lead.md
+    reason: >-
+      decision record (F9, F15, F43, U1, 2026-11-09); the conversational Lead (A-58): a Lead rests idle and AEW wakes
+      it, and every signal for it is a reason on one list, delivered by a wake and by the wait; replaces no WC/KC text
   - path: docs/design/decisions-2026-10-07-f23-internal-alpha-threat-model.md
     reason: decision record (F23, 2026-10-07); the internal-alpha threat model and which hardening it requires; replaces no WC/KC text
   - path: docs/design/q7-m4h-value-gate-experiment-v0.3.1.md

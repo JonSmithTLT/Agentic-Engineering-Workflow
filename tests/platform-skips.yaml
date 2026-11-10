@@ -772,6 +772,20 @@ skipped:
       POSIX permission bits (the store is owner-only: 0600 files, 0700 directories); Windows has none. Covered on
       Linux; on Windows the store's writers, recovery and doctor run through test_store.py,
       test_store_processes.py, test_log_sealing.py and test_doctor.py.
+    tests/integration/test_operator_autostart.py::test_the_real_background_command_makes_no_code_and_the_command_it_names_starts_at_once: >-
+      a real challenge on Windows would show the endpoint's window, and no test shows one; what the command gives the
+      endpoint is covered there by test_the_background_command_wires_its_console_to_the_endpoint. Covered on Linux.
+    tests/integration/test_operator_autostart.py::test_a_hardened_session_keeps_its_background_endpoint: >-
+      PR_SET_DUMPABLE is Linux's: a Windows session is not hardened. Covered on Linux.
+    tests/integration/test_operator_autostart.py::test_aew_dash_c_opencode_above_it_is_a_lead_session_too: >-
+      the check's walk of the process chain reads /proc, on Linux only; the words it reads are covered there by
+      test_the_endpoint_starts_only_with_dev_and_never_in_a_lead_session.
+    tests/integration/test_lead_contained_session.py::test_a_contained_session_starts_the_operator_endpoint_outside_its_sandbox_and_it_ends_with_the_session: >-
+      the Lead is contained on Linux (bubblewrap); Windows' session is covered by
+      test_aew_opencode_starts_the_operator_endpoint_and_it_ends_with_the_session. Covered on Linux.
+    tests/integration/test_operator_autostart.py::test_aew_opencode_under_a_lead_session_starts_nothing_and_says_why: >-
+      the check's walk of the process chain reads /proc, on Linux only; on Windows it has only the environment half,
+      covered there by test_a_lead_session_starts_no_endpoint.
     tests/integration/test_g3_endpoint_wire.py::test_a_pin_approval_on_the_real_wire_raises_and_the_console_shows_it: &g3-endpoint-wire >-
       the G3 service is a Linux profile (A-37): Unix filesystem sockets and SO_PEERCRED; it never runs on Windows.
       Covered on Linux; the same rules at the endpoint run on both platforms in
@@ -1028,6 +1042,9 @@ skipped:
       the session job object is Windows'; Linux defines the session's set by the subreaper and start times
       (test_the_session_set_follows_parents_by_start_time_and_never_takes_in_a_reused_pid, and the deadline and
       abnormal-exit tests in tests/integration/test_hang_autopsy.py). Covered on Windows.
+    tests/integration/test_opencode_lead.py::test_aew_opencode_starts_the_operator_endpoint_and_it_ends_with_the_session: >-
+      the Lead runs contained on Linux: test_a_contained_session_starts_the_operator_endpoint_outside_its_sandbox_and_it_ends_with_the_session
+      covers this path there.
     tests/integration/test_opencode_lead.py::test_the_lead_tui_gets_a_curated_environment_and_acts_through_the_broker: >-
       the Lead runs not contained only where there is no bubblewrap (Windows); on Linux it runs contained (STG-05
       CS-4), and tests/integration/test_lead_contained_session.py covers this guarantee there. Covered on Windows.

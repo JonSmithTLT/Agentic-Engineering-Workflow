@@ -16,7 +16,8 @@ that tool first, with the shell command as its fallback.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 from typing import Any, NamedTuple
 
 from aew.engine import transitions as T
@@ -63,6 +64,7 @@ class Stage(NamedTuple):
     tool: str
     description: str
     steps: tuple[StageStep, ...]
+    starts: Mapping[str, int] = MappingProxyType({})  # a state past its first steps -> the step it starts at there
 
     def entries(self) -> tuple[StageStep, ...]:
         """The steps a call can start at: its first required step, and any optional step before it. Only these move a
@@ -142,15 +144,15 @@ PATH = (
     Move("invoke.create.mutating", "reviewer", f"`aew invoke create <T> --role reviewer --launch {EXPECT_REV}`",
          label="Dispatch the reviewer"),
     Move("review.ingest", None, _command("review.ingest"), label="Accept the review",
-         note="Name the report `status` lists, not a run. Where the class requires no verification, take the shell "
-              "commands from here."),
+         note="Name the report `status` lists, not a run. Where the class requires no verification, `ticket_prepare` "
+              "takes it from here, with no report."),
     _transition("VERIFY_PENDING"),
     Move("invoke.create.mutating", "verifier", f"`aew invoke create <T> --role verifier --launch {EXPECT_REV}`",
          label="Dispatch the verifier"),
     Move("verify.ingest", None, _command("verify.ingest"), label="Accept the verification"),
     _transition("COMMIT_READY"),
     Move("integrate.prepare", None, f"`aew integrate prepare <T> {EXPECT_REV}`", label="Prepare the candidate",
-         note="On a class path with no verification, take this from the shell once the Ticket is COMMIT_READY."),
+         note="On a class path with no verification, `ticket_prepare` takes it from REVIEW_PASSED, with no report."),
     Move("invoke.create.mutating", "integration", f"`aew invoke create <T> --scope integration --launch {EXPECT_REV}`",
          label="Dispatch the integration verifier", post_verify=True),
     Move("verify.ingest.integration", None, _command("verify.ingest"), label="Accept the integration verification",
@@ -219,7 +221,8 @@ def _edge_stage(stages: Sequence[Stage], state: str, dst: str, via: str) -> Stag
         primitive = "verify.ingest.integration"
     qualifier = dst if via == "transition" else None
     for stage in stages:
-        if any((s.primitive, s.qualifier) == (primitive, qualifier) for s in stage.entries()):
+        entries = (stage.steps[stage.starts[state] - 1],) if state in stage.starts else stage.entries()
+        if any((s.primitive, s.qualifier) == (primitive, qualifier) for s in entries):
             return stage
     return None
 

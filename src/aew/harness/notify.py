@@ -46,6 +46,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,7 @@ STATE = "state.json"
 PAYLOAD_SCHEMA = "aew/notify-event/v1"
 STATE_SCHEMA = "aew/notify-state/v1"
 DEFAULT_TIMEOUT_S = 10
+FLUSH_DELIVERIES = 2  # a session's end offers two events: generation_ended and broker_gone
 DEFAULT_MAX_OUTPUT_BYTES = 65536
 SPOOL_QUEUE_MAX = 64  # spool events waiting for the delivery thread; past it a spool event is dropped and counted
 RATE_PER_MINUTE = 10  # deliveries per spool writer, and of liveness events, per minute (amendment 1, m9)
@@ -389,13 +391,30 @@ class Watcher:
                 t.join(timeout)
         self._save()
 
-    def drain(self, timeout: float = 30.0) -> bool:
-        """For tests: wait until every queued event is delivered or recorded."""
+    def flush(self, until: Callable[[], bool] | None = None) -> bool:
+        """Before the endpoint stops for good (plan v3 §2.8): one more pass, then what it queued delivered or recorded,
+        bounded by :data:`FLUSH_DELIVERIES` of the notifier's own timeout, or until ``until`` says to stop waiting.
+        False if it ended that way: what is left stays outstanding, as at any close."""
+        try:
+            self.pass_once()
+        except Exception:  # noqa: BLE001  a pass's own defect is logged, as the watch loop's is
+            log.exception("the notifier's last pass failed")
+        return self.drain(FLUSH_DELIVERIES * self._delivery_timeout(), until=until)
+
+    def _delivery_timeout(self) -> float:
+        try:
+            policy, _ = self.engine.execution_policy()
+            return float(((policy or {}).get("notify") or {}).get("timeout_s") or DEFAULT_TIMEOUT_S)
+        except Exception:  # noqa: BLE001  a drifted or unreadable policy is a failed delivery, never a crash
+            return float(DEFAULT_TIMEOUT_S)
+
+    def drain(self, timeout: float = 30.0, until: Callable[[], bool] | None = None) -> bool:
+        """Wait until every queued event is delivered or recorded."""
         deadline = time.monotonic() + timeout
         with self._cv:
             while self._urgent or self._spool or self._busy:
                 left = deadline - time.monotonic()
-                if left <= 0:
+                if left <= 0 or (until is not None and until()):
                     return False
                 self._cv.wait(min(left, 0.1))
         return True

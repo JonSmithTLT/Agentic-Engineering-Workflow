@@ -43,6 +43,11 @@ items:
   needs: decision
   owner: operator
   due: Unscheduled
-  what: A-44's Q9 and Q10, which are put to the operator with slice S7's probe data (E109), and where slice S8 is placed,
-    which rests on them
+  what: Where what the Lead is waiting on, shown on the site, is placed. It rests on nothing else.
+
+- row: E215
+  needs: decision
+  owner: operator
+  due: Unscheduled
+  what: A-44's Q10, put to the operator with E109's data.
 

@@ -806,7 +806,8 @@ def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on
         engine.store.lock_timeout = 30.0  # a lookup that took the lock would wait this long, then fail
         engine.archive._synced = None  # nothing synced: the lookup must sync the index itself
         real_sync, real_read = HI.HistoryIndex.sync, engine.store.read
-        calls = {"sync": 0, "read": 0}
+        real_lock, real_db = engine.store.control_lock, HI.HistoryIndex._db
+        calls: dict[str, Any] = {"sync": 0, "read": 0, "lock": [], "index_waits": []}
 
         def failing_once(self: Any, root: Any, **kwargs: Any) -> Any:
             calls["sync"] += 1
@@ -818,16 +819,28 @@ def test_archived_architecture_evidence_never_takes_the_control_lock_or_waits_on
             calls["read"] += 1
             return real_read(*args, **kwargs)
 
+        def counted_lock(operation: str) -> Any:
+            calls["lock"].append(operation)  # the one place AEW opens the control lock (`ControlStore.control_lock`)
+            return real_lock(operation)
+
+        def counted_db(self: Any) -> Any:
+            calls["index_waits"].append(self.timeout)  # how long this connection would wait on a busy index
+            return real_db(self)
+
         if failure == "index_busy":
             monkeypatch.setattr(HI.HistoryIndex, "sync", failing_once)
         monkeypatch.setattr(engine.store, "read", counted_read)
+        monkeypatch.setattr(engine.store, "control_lock", counted_lock)
+        monkeypatch.setattr(HI.HistoryIndex, "_db", counted_db)
         with FileLock(p.root / ".aew" / LOCK_REL, timeout=5):
-            started = time.monotonic()
             status, _, raw = client.get("/maps", timeout=120)
-            took = time.monotonic() - started
             assert status == 200, raw[:300]
             arch = json.loads(raw)["data"]["architecture"]
-            assert took < 10, took  # neither the 30 s control lock nor the 30 s index wait
+            # What it means, not how long it took, which a loaded runner stretches (main's run 42722446134: 18.7 s):
+            # the control lock is never opened, and no index connection waits longer than the lock-free bound.
+            assert calls["lock"] == [], calls
+            assert all(wait <= P.ARCHIVE_WAIT_S for wait in calls["index_waits"]), calls
+            assert calls["index_waits"] or failure == "index_busy", "the real sync met the moved history"
             assert calls["read"] == 0  # no state re-read: it would take the control lock
             assert arch["evidence"]["id"] == discovery and arch["freshness"]["status"] == "UNKNOWN"
             assert arch["freshness"]["reasons"][0]["code"] == "ARCHITECTURE_UNKNOWN"

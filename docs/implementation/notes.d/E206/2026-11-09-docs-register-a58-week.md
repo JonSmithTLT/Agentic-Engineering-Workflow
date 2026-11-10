@@ -1,0 +1,1 @@
+The reading of 2026-11-09 (read, not run): a turn's end ends the run and kills the tree, so "idle worker whose shells still run" exists on the normal path only in `held`. Measure before building (A-58 `CL-R05`, row E219).

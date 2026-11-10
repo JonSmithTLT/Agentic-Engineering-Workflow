@@ -430,6 +430,8 @@ A spot check never satisfies an acceptance gate.
 
 AEW should make valuable supervision available while workers run.
 
+Amended by A-58 ([the conversational Lead](decisions-2026-11-conversational-lead.md)): the Lead rests between wakes rather than waiting as its idle loop; the wait stays for waits of seconds and where wakes can't reach.
+
 The intended Lead loop is approximately:
 
 ```text

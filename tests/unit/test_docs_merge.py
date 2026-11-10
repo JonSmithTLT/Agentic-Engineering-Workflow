@@ -752,7 +752,7 @@ def merge_board():
     return {"schema": "aew/systems/v1", "wip_limit": 12, "unowned": {}, "systems": [
         {"id": f"SYS-{n:02}", "name": f"System {n}", "register": [], "remaining": [], "decision": "none",
          "recommendation": "finish", "state": {"board_state": "partly_built"}, "who": "Lead"}
-        for n in range(1, 5)]}
+        for n in range(1, 9)]}
 
 
 def test_neighbouring_system_blocks_merge_into_the_render_of_merged_yaml(repo):
@@ -774,8 +774,8 @@ def test_two_branches_changing_a_view_count_conflict_even_when_the_number_is_equ
     data = merge_board()
     base = repo.commit(systems_files(data))
     ours, theirs = copy.deepcopy(data), copy.deepcopy(data)
-    ours["systems"][0]["recommendation"] = "done"
-    theirs["systems"][2]["recommendation"] = "done"
+    ours["systems"][2]["recommendation"] = "done"
+    theirs["systems"][5]["recommendation"] = "done"
     conflicts, _ = repo.merge(repo.commit(systems_files(ours), base), repo.commit(systems_files(theirs), base))
     assert systems.MARKDOWN in conflicts, "equal new counts must still conflict through their different members"
     assert systems.SYSTEMS not in conflicts

@@ -10,6 +10,7 @@ broker. The session's own path here is the one where the Lead runs not contained
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,10 @@ import pytest
 from aewflow import sample_project
 from conftest import run_aew
 from fake_harness import AGENT, HarnessLab, contains_credential, credential_hits
+from notifier import until
+from racing_read import read_text_or_none
 
+from aew.harness import procs
 from aew.harness.containment import shim
 from aew.harness.opencode import lead, projection
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
@@ -182,3 +186,23 @@ def test_the_lead_commands_are_what_the_tui_is_given():
 
 # G3 H1: a failure here keeps an autopsy (stacks, processes, helper children, files; tests/helpers/autopsy.py).
 pytestmark = pytest.mark.autopsy
+
+
+@UNCONTAINED_PATH
+def test_aew_opencode_starts_the_operator_endpoint_and_it_ends_with_the_session(lab, tmp_path):
+    """Through the command itself. Its console stays hidden: nothing here asks for a code."""
+    lab.env["OPENCODE_DB"] = str(tmp_path / "no-login.db")  # synthetic: no stored login, never the operator's
+    lab.env["AEW_OPERATOR_AUTOSTART"] = "on"
+    res, _, _ = run_tui(lab, [])
+    assert res.returncode == 0, res.stderr
+    assert "starting the operator endpoint" in res.stderr and "AEW_OPERATOR_AUTOSTART=off" in res.stderr
+    log = lab.root / ".aew" / "local" / "operator" / "endpoint.log"
+    pid = until(lambda: re.search(r'"pid": (\d+)', read_text_or_none(log) or ""), 60, "its start")
+    until(lambda: not procs.pid_alive(int(pid.group(1))), 60, "the endpoint to stop with the session")
+
+
+def test_print_config_says_a_session_starts_the_endpoint_and_how_to_turn_that_off(lab):
+    res = run_aew("-C", str(lab.root), "opencode", "--print-config",
+                  env={**lab.env, "AEW_LEAD_TOKEN": lab.project.token})
+    assert res.returncode == 0, res.stderr
+    assert any("AEW_OPERATOR_AUTOSTART=off" in note for note in res.json["notes"])

@@ -128,6 +128,20 @@ def test_an_approval_consumed_raises_the_mode_and_its_record_names_the_consent(s
     assert steered.fake.consumed[0]["operation_ref"].startswith("aew:steering-raise:")
 
 
+def test_a_background_endpoint_with_no_terminal_raises_on_an_approval(steered):
+    """No code is needed, so having nowhere to show one stops nothing, and the outcome line goes to its log."""
+    lines: list[str] = []
+    ep = operator_endpoint.OperatorEndpoint(steered.engine, console=lines.append, dev=True, timeout=30, background=True,
+                                            code_problem=lambda: "it has no terminal")
+    ep.start()
+    try:
+        assert _raise(steered)["mode"] == MODE
+        assert _no_code(lines) and any("G3 approval" in line for line in lines)
+        assert ep._retiring_by is None and not ep._retired.is_set(), "it keeps serving"
+    finally:
+        ep.close()
+
+
 def test_a_replayed_consent_is_refused_by_the_service(steered, endpoint):
     """The endpoint never takes a consent from a requester, so a replay is the same consent consumed twice."""
     _raise(steered)

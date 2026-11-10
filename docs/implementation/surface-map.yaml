@@ -1491,7 +1491,7 @@ commands:
     mutates: "yes"
     mutates_basis: "runs the operator endpoint, which commits steering raises (authority)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
-    note: "the steering-on variants: the endpoint the raise goes through"
+    note: "the steering-on variants: the endpoint the raise goes through. `aew opencode` starts it with --background, which never needs the operator to type it"
   - name: operator ping
     home: diagnostic
     users: [operator]

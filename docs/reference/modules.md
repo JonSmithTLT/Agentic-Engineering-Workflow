@@ -304,6 +304,7 @@ None.
 - `aew.errors`
 - `aew.harness.operator_client`
 - `aew.harness.operator_endpoint`
+- `aew.harness.operator_window`
 - `aew.operator`
 
 ### `aew.cli.settings_commands`
@@ -1446,6 +1447,7 @@ None.
 - `aew.harness.opencode.lead_wake`
 - `aew.harness.opencode.login`
 - `aew.harness.opencode.projection`
+- `aew.harness.operator_autostart`
 - `aew.harness.weaker_register`
 - `aew.policy.execution`
 - `aew.process_kind`
@@ -1473,12 +1475,21 @@ None.
 - `aew.surface.context`
 - `aew.surface.contract`
 
+### `aew.harness.operator_autostart`
+
+- `aew.harness.contract`
+- `aew.harness.lead_broker`
+- `aew.harness.operator_client`
+- `aew.harness.procs`
+
 ### `aew.harness.operator_client`
 
+- `aew.engine.lock`
 - `aew.errors`
 - `aew.harness.bridge`
 - `aew.harness.procs`
 - `aew.operator`
+- `aew.util`
 
 ### `aew.harness.operator_endpoint`
 
@@ -1492,6 +1503,10 @@ None.
 - `aew.harness.operator_client`
 - `aew.harness.procs`
 - `aew.operator`
+
+### `aew.harness.operator_window`
+
+None.
 
 ### `aew.harness.procs`
 

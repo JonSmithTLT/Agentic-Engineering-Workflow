@@ -154,6 +154,17 @@ starts:
   contained_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
   registered_by: [src/aew/harness/lead_broker.py::WeakerLead.__call__]
   weaker_registered_by: [src/aew/harness/opencode/lead.py::ContainedLead.__call__]
+- site: src/aew/harness/operator_autostart.py::_start
+  call: Popen
+  classes: [not_agent_context]
+  reason: the operator endpoint on Windows, AEW's own process, started before the Lead's session exists; it refuses to
+    start in a Lead session (OperatorEndpoint.__init__)
+- site: src/aew/harness/operator_autostart.py::_start
+  call: run
+  classes: [not_agent_context]
+  reason: the launcher of the operator endpoint on Linux, started before the Lead's sandbox is built and refused under
+    a Lead session (operator_autostart.ensure); the endpoint it leaves still refuses on the broker's environment, but
+    its walk no longer sees that session (OperatorEndpoint.__init__)
 - site: src/aew/harness/procs.py::ProcessTree._spawn
   call: Popen
   classes: [not_agent_context, not_agent_context, not_agent_context, not_agent_context]

@@ -329,7 +329,7 @@ class Tracker:
         text = to_posix(text)
         if text:  # one spelling per file: `src/b/./x.py` is `src/b/x.py`, and `src/a/../b/x.py` is `src/b/x.py`
             text = posixpath.normpath(text)
-        return text if len(text) <= MAX_PATH else text[:MAX_PATH] + "..."
+        return _cut(text, MAX_PATH)  # redacted first, as every text the digest keeps
 
     def _outside_scope(self, rel: str) -> bool:
         """Outside the Ticket's scope, as its gate reads it (``policy.guardrails.outside_ticket_scope``: an empty scope

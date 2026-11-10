@@ -199,6 +199,51 @@ def test_a_relayed_wait_tells_the_lead_through_its_broker_and_its_own_process_wr
         lab.cleanup()
 
 
+def test_a_relayed_wait_that_returns_a_trigger_is_recorded_by_its_broker_alone(tmp_path, monkeypatch):
+    """Review N1: the same for a trigger. A run still working wrote outside its scope. The read's process, with no
+    broker, returns the trigger and writes nothing; through the broker, the trigger's mark is all that is written, so
+    the next wait doesn't return it again."""
+    lab = FakeOpenCodeDriver().create_lab(tmp_path)
+    try:
+        broker = start_broker(lab, monkeypatch)
+        try:
+            lab.script("default", {"steps": [{"do": "write", "files": {"src/b/x.py": "Y = 2\n"}}, {"do": "hang"}],
+                                   "server": {"tool_parts": True, "live_usage": {}}})
+            wid = create_planned_ticket(lab.project, tmp_path, scope=("src/a/**",))
+            launch = lab.lead("work", "assign", wid, "--launch")["launch"]
+            run = launch["run"]
+            directory = runlog.run_dir(lab.aew_root, run)
+            try:
+                lab.until(lambda: (runlog.read_progress(directory) or {}).get("out_of_scope") == ["src/b/x.py"],
+                          what="the write outside the scope", timeout=120)
+                own = f"{runlog.RUNS_REL}/{run}/"
+
+                def written(before: dict[str, object]) -> list[str]:  # the live run's supervisor writes its own files
+                    return [c for c in changes(before, worker_surface.snapshot(lab.aew_root))
+                            if not c[1:].startswith(own) or c.endswith(TOLD)]
+
+                before = worker_surface.snapshot(lab.aew_root)
+                alone = run_aew("harness", "wait", run, "--timeout", "30", cwd=lab.root,
+                                env={**lab.env, process_kind.LEAD_CONTAINED_ENV: "1"})
+                trigger = json.loads(alone.stdout)
+                assert trigger["why"] == [K.OUT_OF_SCOPE], alone.stdout + alone.stderr
+                assert written(before) == []
+                via = relayed(lab, broker, "harness", "wait", run, "--timeout", "30")
+                assert json.loads(via.stdout)["why"] == [K.OUT_OF_SCOPE], via.stdout + via.stderr
+                seq = max(t["seq"] for t in trigger["triggers"])
+                assert written(before) == [f"+{own}{runlog.RETURNED_FILE}"]
+                assert runlog.read_returned(directory) == seq and not runlog.end_returned(directory)
+                again = json.loads(relayed(lab, broker, "harness", "wait", run, "--timeout", "0").stdout)
+                assert again["timed_out"] is True, again  # returned once
+            finally:
+                lab.lead("invoke", "cancel", launch["invocation"], "--reason", "the test is over")
+                lab.wait(run)
+        finally:
+            broker.close()
+    finally:
+        lab.cleanup()
+
+
 def test_a_relayed_read_runs_lock_free_while_a_write_holds_the_control_lock(lab, broker):
     """Conditions 2 and 6: a relayed read runs as a non-writer (``process_kind``), lock-free as the sandbox's reads
     are, so it answers while a write holds the control lock and never takes it; a store writer would wait for it."""

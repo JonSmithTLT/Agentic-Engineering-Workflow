@@ -164,6 +164,22 @@ def test_a_command_is_redacted_before_it_is_shortened():
     assert P.holds({"red_commands": [command]}, d["triggers"][-1])
 
 
+def test_a_path_is_redacted_before_it_is_shortened():
+    """As a command is: a credential across a long path's cut is redacted whole, in the files touched, the paths
+    outside the scope and the trigger that names one."""
+    secret = "SYNTHETICsyntheticSYNTHETICsyntheticSYNTHET"
+    planted = f"aew1.tk_0123456789abcdef.{secret}"
+    head = "src/b/"
+    path = head + "x" * (P.MAX_PATH - len(head) - len("aew1.tk_0123456789abcdef.") - 10) + planted + ".py"
+    run = Run()
+    assert run.step(write(path)) == [P.OUT_OF_SCOPE]
+    d = run.digest()
+    shown = json.dumps(d)
+    assert "0123456789abcdef" not in shown and secret[:10] not in shown
+    assert d["files_touched"]["paths"] == d["out_of_scope"] == [d["triggers"][-1]["path"]]
+    assert d["out_of_scope"][0].endswith("aew1.<redacted>.py")
+
+
 def test_a_command_with_no_exit_code_reads_none_never_a_guess():
     run = Run()
     run.step(shell("make build", None))

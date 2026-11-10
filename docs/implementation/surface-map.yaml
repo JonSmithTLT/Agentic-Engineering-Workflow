@@ -513,6 +513,7 @@ commands:
         lands: A2
         uses:
           - "transition ASSIGNED -> REPLAN_REQUIRED"
+          - "transition ASSIGNED -> RUNNING"
           - "transition BLOCKED -> REPLAN_REQUIRED"
           - "transition COMMIT_READY -> REPLAN_REQUIRED"
           - "transition COMMIT_READY -> RUNNING"
@@ -520,7 +521,6 @@ commands:
           - "transition INTERRUPTED -> REPLAN_REQUIRED"
           - "transition READY -> REPLAN_REQUIRED"
           - "transition REVIEW_FAILED -> REPLAN_REQUIRED"
-          - "transition REVIEW_PASSED -> COMMIT_READY"
           - "transition REVIEW_PASSED -> REPLAN_REQUIRED"
           - "transition REVIEW_PASSED -> RUNNING"
           - "transition REVIEW_PENDING -> REPLAN_REQUIRED"
@@ -1491,7 +1491,7 @@ commands:
     mutates: "yes"
     mutates_basis: "runs the operator endpoint, which commits steering raises (authority)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
-    note: "the steering-on variants: the endpoint the raise goes through"
+    note: "the steering-on variants: the endpoint the raise goes through. `aew opencode` starts it with --background, which never needs the operator to type it"
   - name: operator ping
     home: diagnostic
     users: [operator]

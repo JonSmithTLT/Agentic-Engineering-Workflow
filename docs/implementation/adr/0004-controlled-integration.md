@@ -373,3 +373,13 @@ The M4-E plan v3 §2.3, built by E6a. Everything above holds, except where this 
 - **A weaker validation run or check run** is entered in the register of weaker contexts (ADR-0009's amendment of
   2026-11-01) before its first check, and leaves it ended once its checks' trees are closed.
 - **Tests:** `tests/unit/test_check_run_contained.py`, `tests/integration/test_validation_checks.py`.
+
+## Amendment 2026-11-08 — the publish's finish follows others' commits (E137)
+
+- **What changes:** "One locked finalization (M1)", for the revision. The intent commit (`integrate.publishing`) carries
+  the Lead's revision check and is its publication decision. The finish then runs from the revision that commit
+  returned, and follows other writers' commits up to `FINISH_ATTEMPTS` times, re-verifying the authority, the intent,
+  the lease and the binding under the lock on each attempt. Past that it refuses, naming `aew integrate reconcile`.
+- **What holds:** publication, worktree sync and DONE stay a single locked transaction, so no other writer interleaves
+  between publication and completion. Others' commits can land only between the intent and that transaction.
+- **Tests:** `tests/integration/test_integration_stages.py`.

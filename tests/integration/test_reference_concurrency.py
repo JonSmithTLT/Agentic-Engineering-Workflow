@@ -73,8 +73,8 @@ def test_the_family_found_every_filelock_construction_the_token_reader_counts():
     constructions = sum(CT.counts(src.text, []).get(CO.LOCK[1], 0) for src in CTX.sources().values())
     sites = CO.lock_sites(PROGRAM, F.Evaluator(PROGRAM))
     placed = sum(len(r.fact["openers"]) for r in BUILT.records if r.key.startswith("lock:"))
-    # 6: CAP-1's register, and E112's register of weaker contexts (G3 addendum 7, ruling 2)
-    assert constructions == len(sites) == placed == 6, (constructions, len(sites), placed)
+    # 7: CAP-1's register, E112's register of weaker contexts (G3 addendum 7, ruling 2), and the operator's sessions
+    assert constructions == len(sites) == placed == 7, (constructions, len(sites), placed)
 
 
 def test_the_live_instances_the_cannot_see_list_names_exist_in_the_tree():
@@ -138,8 +138,11 @@ def _initialized(tmp_path: Path) -> tuple[Path, Path]:
 KNOWN_LOCKS = {
     "local/dashboard/endpoint.lock": ("aew.dashboard.service", "Service._lock",
                                       {"Service.start", "Service._remove_endpoint"}),
-    "local/operator/endpoint.lock": ("aew.harness.operator_endpoint", "OperatorEndpoint._claim",
+    "local/operator/endpoint.lock": ("aew.harness.operator_endpoint", "OperatorEndpoint._within",
                                      {"OperatorEndpoint._claim"}),
+    # a session naming itself and a background endpoint's last look at them
+    "local/operator/sessions.lock": ("aew.harness.operator_client", "sessions_lock",
+                                     {"name_session", "no_session_left", "no_session_live", "withdraw_locator"}),
     "local/maps/registry.lock": ("aew.maps.store", "select", {"select"}),
     # the host's capability register (STG-15, CAP-1): outside `.aew`, so unplaced, keyed by its opener
     "unplaced:aew.capability.store:locked": ("aew.capability.store", "locked", {"locked"}),
@@ -149,7 +152,7 @@ KNOWN_LOCKS = {
 }
 
 
-def test_the_locks_are_the_six_the_code_was_read_to_take():
+def test_the_locks_are_those_the_code_was_read_to_take():
     paths = sorted(k.removeprefix("lock:") for k in RECORDS if k.startswith("lock:"))
     assert paths == sorted(["local/control.lock", *KNOWN_LOCKS])
     for path, (module, symbol, takers) in KNOWN_LOCKS.items():

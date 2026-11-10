@@ -48,7 +48,7 @@ from typing import Any
 
 from aew import process_kind
 from aew.errors import AEWError, ContainmentUnavailable, HarnessIncompatible, UsageError
-from aew.harness import agentenv, lead_broker
+from aew.harness import agentenv, lead_broker, operator_autostart
 from aew.harness.opencode import capabilities, login, projection
 from aew.harness.opencode.adapter import binary_command
 
@@ -250,6 +250,8 @@ def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | No
                   "host, and the sandbox holds a placeholder."]
     else:
         notes.append("No AEW credential and no provider key is in it unless passed with --provider-env.")
+    notes.append(f"A session starts this project's operator endpoint in the background unless one is live; "
+                 f"{operator_autostart.OFF_ENV}=off turns that off.")
     # what the TUI is given where it runs as it is: an uncontained Lead's line included (review of #356, n1)
     config = (projection.lead_config(guide, push_wake=wakes) if contained_here()
               else json.loads(env["OPENCODE_CONFIG_CONTENT"]))
@@ -294,9 +296,11 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         lead.require_provider()
         _tools_before_the_tui()
         stages.mark("logins")
-        out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
-                                      env=tui_env(os.environ, provider_env=[], guide=guide,
-                                                  push_wake=pushes_wakes(engine)), contained=lead)
+        with operator_autostart.for_session(engine, provider_env=provider_env):
+            out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label,
+                                          keep_seat=keep_seat,
+                                          env=tui_env(os.environ, provider_env=[], guide=guide,
+                                                      push_wake=pushes_wakes(engine)), contained=lead)
         return _outcome(out, version)
     # Off Linux the TUI runs as it is, labelled so, with its label.json and its register entry (G3 addendum 7, ruling
     # 1); under an explicit `required` that refuses before any credential is read.
@@ -312,8 +316,9 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     line = no_provider_line(provider_env, os.environ)
     if line is not None:
         sys.stderr.write(line)
-    out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
-                                  env=env, contained=weaker)
+    with operator_autostart.for_session(engine, provider_env=provider_env):
+        out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
+                                      env=env, contained=weaker)
     return _outcome(out, version)
 
 

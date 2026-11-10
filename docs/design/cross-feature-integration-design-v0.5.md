@@ -540,7 +540,7 @@ If a later committed change arrives after the prior wake was delivered/acknowled
 
 Multiple undispatched facts may coalesce to the latest version while preserving the hold/state record.
 
-These are outbox events delivered through the existing D5/F9 Lead coordination lane in `wait --any` **whether or not the F9 messaging switch is enabled**. M4-H may therefore keep messaging off without disabling these wakes.
+These are outbox events delivered through the existing D5/F9 Lead coordination lane in `wait --any` **whether or not the F9 messaging switch is enabled**. M4-H may therefore keep messaging off without disabling these wakes. (Amended by A-58, [the conversational Lead](decisions-2026-11-conversational-lead.md): the lane is a reason on the Lead's one list, delivered by a wake and by the wait.)
 
 Reference: designer decision D5, 2026-10-10 (evening).
 
@@ -769,7 +769,7 @@ Every source field-log item receives an explicit disposition.
 | #13 context compaction reconstruction | Fine as designed under **C1 Context Continuity / designer ruling of 2026-10-10**; no new work |
 | #14 config/security masks | Built/owned by containment masks; no new work |
 | #15 disk budget | Doctor/workspace-retirement owner |
-| #16 CI external check | External-check / `wait --any` integration candidate |
+| #16 CI external check | External-check / `wait --any` integration candidate (amended by A-58: a row on the Lead's one list) |
 | #17 thin plan / invented semantics | F14 underspecification signals |
 | #18 engine-behavior claim in fix | Served engine facts + citation rule / review protocol |
 | #19 engine-behavior claim in designer brief | Designer-brief citation rule |
@@ -779,7 +779,7 @@ Every source field-log item receives an explicit disposition.
 | W3 stable finding ids/fix map | Existing review protocol + delta packet |
 | W4 frozen review tree/repros | Existing evidence/review design |
 | W5 operator scripts | `operator_validation` |
-| W6 notifications | Existing `wait --any` direction |
+| W6 notifications | Existing `wait --any` direction (amended by A-58: one list, a wake and the wait) |
 | W7 live worker messaging | F9-A |
 | W8 dependency-based slicing | Plan/dependency graph + overlap projection |
 

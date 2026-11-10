@@ -169,16 +169,20 @@ _NOTES = {"accept": " (non-mutating Tickets)"}
 # The typed stage a Lead calls to take an edge, for the engine's own words to a Lead (E130): a refusal's next steps, and
 # its hints. The engine never imports the surface, so this mirrors the catalog (`aew.surface.contract`) as that catalog
 # mirrors the primitives, and a test holds it exactly equal, both ways, to what the stages' first steps say
-# (tests/unit/test_lead_text.py). An edge a stage only passes through is not here: no stage starts from that state. Read
-# it through :func:`stage_for`, which names a stage only where it is a whole step for the Ticket at hand.
+# (tests/unit/test_lead_text.py). An edge a stage only passes through is not here: no stage starts from that state. A
+# stage's later starts are here (E133). Read it through :func:`stage_for`, which names a stage only where it is a whole
+# step for the Ticket at hand.
 STAGE_AT = {
     ("READY", "ASSIGNED"): "ticket_start",
     ("RUNNING", "REVIEW_PENDING"): "ticket_request_review",
     ("REVIEW_PENDING", "REVIEW_PASSED"): "ticket_request_verification",
     ("REVIEW_PENDING", "REVIEW_FAILED"): "ticket_request_verification",
+    ("REVIEW_PASSED", "VERIFY_PENDING"): "ticket_request_verification",
+    ("REVIEW_PASSED", "COMMIT_READY"): "ticket_prepare",
     ("VERIFY_PENDING", "VERIFIED"): "ticket_prepare",
     ("VERIFY_PENDING", "VERIFICATION_FAILED"): "ticket_prepare",
     ("VERIFY_PENDING", "VERIFICATION_INCONCLUSIVE"): "ticket_prepare",
+    ("VERIFIED", "COMMIT_READY"): "ticket_prepare",
     ("COMMIT_READY", "DONE"): "integration_publish",
     ("COMMIT_READY", "VERIFICATION_FAILED"): "integration_publish",
 }
@@ -213,7 +217,8 @@ def stage_for(frm: str, dst: str, fit: Fit | None) -> str | None:
     stage = STAGE_AT.get((frm, dst))
     if stage is None or fit is None or not all(getattr(fit, need) for need in _NEEDS.get(stage, ())):
         return None
-    return stage
+    # `ticket_prepare` from REVIEW_PASSED skips the verification phase: only for a class that requires none.
+    return None if (frm, dst) == ("REVIEW_PASSED", "COMMIT_READY") and fit.verification else stage
 
 
 def command(frm: str, dst: str, work_id: str = "<T>") -> str | None:

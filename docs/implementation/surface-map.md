@@ -259,9 +259,11 @@ registry records the plan, not the decision:
 
   **What covers a use:**
   - **A built stage's transition step** covers the edges its `work.transition` step takes, into its fixed target
-    (`availability.STAGES`). The sources are the state its producing step leaves, or, when no earlier step produces
-    one, the sources of edges into the target that the step's own arguments can take. An edge that requires a reason
-    is taken only by a step that passes one (the re-review's N1).
+    (`availability.STAGES`). The sources are the states the stage can start that step from (`availability.STARTS_AT`),
+    or, when no earlier step produces the state, the sources of edges into the target that the step's own arguments can
+    take. An edge from a state only an earlier step of the stage leaves is passed through, not covered: a Ticket left
+    there has no stage to call (E133). An edge that requires a reason is taken only by a step that passes one (the
+    re-review's N1).
   - **A built stage's dispatch step** covers a state-selected use only if the stage *starts* in that state: no
     earlier step of it produces the state, and its arguments select the branch. A home that reaches the state
     through its own transition cannot replace a lost invocation of a unit already there.
@@ -288,7 +290,6 @@ registry records the plan, not the decision:
     is decided.
   - The option scan derives the option set, not its meaning. Whether a home's argument really does what an option
     does is the classification's judgment, which review checks.
-  - A stage that runs from more states than its producing step leaves is not credited with them.
   - A built stage's earlier steps are not checked against a state-selected use's state. The scan credits a dispatch
     step that has no state-producing step before it with every branch its arguments select.
   - A state check inside a helper a guard calls (`require_launchable`, for example) is a single precondition, not a

@@ -34,7 +34,7 @@ from conftest import Project
 from fake_harness import contains_credential
 from invariants import assert_control_invariants, load_control
 from stage_equivalence import differences, end_state, recorded_decisions
-from test_stage_runner import call, intent, launching
+from test_stage_runner import call, intent, intervene, launching
 from test_stages_ticket import HANG, _declared, _effects, _observe, _twins
 
 from aew.engine import disposition_ops as DO
@@ -132,6 +132,45 @@ def test_a_request_stage_launches_one_invocation_per_required_card(lab_project, 
     assert cards == ["code_reviewer", "security_reviewer"]
     assert len([s for s in si["steps"] if s["primitive"] == "dispatch.launch" and s["outputs"]["runs"]]) == 2
     assert_control_invariants(p)
+
+
+def test_ticket_request_verification_goes_on_from_review_passed_accepting_nothing(lab_project, tmp_path):
+    """E133: a review accepted in the shell, or by a stage that stopped: the verifier is what is left. The step count of
+    a per-card stage holds with its first step unplanned."""
+    p, _lab = lab_project
+    wid, _impl = implemented(p, tmp_path)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    p.lead("review", "ingest", wid, "--evidence", review(p, wid))
+    out = call(p, "ticket_request_verification", work_id=wid)
+    assert out["ok"], out["stopped"]
+    si = intent(p, out)
+    assert [s["primitive"] for s in si["plan"]] == ["work.transition", "invoke.create.mutating", "dispatch.launch"]
+    assert "accept_review_evidence" not in si["judgment_inputs"]
+    assert si["status"] == SI.COMPLETED and unit(p, wid)["state"] == "VERIFY_PENDING"
+    assert_control_invariants(p)
+
+
+@pytest.mark.parametrize(("step", "again", "takes_the_report"), [
+    ("review.ingest", "ticket_request_verification", True),
+    ("work.transition", "ticket_request_verification", False),
+    ("invoke.create.mutating", None, False)])  # a launch takes no revision, so nothing stops it stale
+def test_ticket_request_verification_stale_at_each_step_names_only_a_call_that_goes_on(lab_project, tmp_path,
+                                                                                       monkeypatch, step, again,
+                                                                                       takes_the_report):
+    """E133's review, M2: every step, following what the refusal names."""
+    p, _lab = lab_project
+    wid, _impl = implemented(p, tmp_path)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    report = review(p, wid)
+    intervene(monkeypatch, step)
+    stopped = call(p, "ticket_request_verification", work_id=wid, review_evidence=report)
+    assert not stopped["ok"], step
+    details = stopped["stopped"]["error"]["details"]
+    assert details.get("call_again") == again, stopped["stopped"]
+    if again is not None:
+        followed = call(p, again, work_id=wid, **({"review_evidence": report} if takes_the_report else {}))
+        assert followed["ok"], followed["stopped"]
+        assert_control_invariants(p)
 
 
 def test_ticket_request_verification_accepts_the_review_and_launches_each_verifier(lab_project, tmp_path):

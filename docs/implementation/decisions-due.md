@@ -53,7 +53,15 @@ show <row>` prints beside the item: two changes that both extend one `what` conf
 
 **Due by:** Unscheduled · **Owner:** operator · **Needs:** decision
 
-**What:** A-44's Q9 and Q10, which are put to the operator with slice S7's probe data (E109), and where slice S8 is placed, which rests on them
+**What:** Where what the Lead is waiting on, shown on the site, is placed. It rests on nothing else.
+
+**Blocks:** -
+
+### E215
+
+**Due by:** Unscheduled · **Owner:** operator · **Needs:** decision
+
+**What:** A-44's Q10, put to the operator with E109's data.
 
 **Blocks:** -
 

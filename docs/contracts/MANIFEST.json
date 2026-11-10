@@ -503,9 +503,9 @@
    "position": "A-47",
    "source": "30-stages/STG-23-LB01-checked-launch-briefs/adopted/lb01-r3/LB01-POSITION.md",
    "source-sha256": "65e697b2c22324dc8aba8fcf11da0319d0eda6f39514685469c6321dd26a88ea",
-   "edits-sha256": "d94a29298765d93834077aa3b98969c98a6c0a5051d3467bfcd46f1cfbf647e1",
+   "edits-sha256": "dab73aa8bb24c8528b1a7623052e7c8d6c89062be9ec8e8284922b181a26427b",
    "header": true,
-   "sha256": "4e3e75ff4f787e8b862ffd9c2430c038641b87d34cde3942ccbabf7c80714801"
+   "sha256": "344750ed85e7f550b6170077652e5b02f818df4cc0563518f4c601810bc073a0"
   },
   {
    "path": "A-49/TB01-POSITION.md",
@@ -556,6 +556,56 @@
    "edits-sha256": "none",
    "header": true,
    "sha256": "d316612aea8088318b5f71bd08c6af0d3102f908531689cd3d1c34a824dfe301"
+  },
+  {
+   "path": "A-54/SPB-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-54",
+   "source": "30-stages/STG-29-AEW-SPT-boundary/adopted/spb-r6.1/SPB-POSITION.md",
+   "source-sha256": "114216fa87504d7f52dc02842d4756b6efc7e4b116c3487514fcb11f19c4d8a5",
+   "edits-sha256": "cf4f12ad07a95522deeaa0575f876e8569ce01795849056967c5aee2d26240a6",
+   "header": true,
+   "sha256": "37c22f135796b84f04b2c31701204fac4457cb213f9678e611a7f6fd536fac81"
+  },
+  {
+   "path": "A-55/OIB-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-55",
+   "source": "30-stages/STG-30-offline-install-bundle/adopted/oib-r1/OIB-POSITION.md",
+   "source-sha256": "b43d344903215b25844e84e58c74c542d8a2c2b9f0591f1ef0b7d63ab7e3a973",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "8708f7f24cfad84d04413903f6893fda7706870fa9f5c3dc61c560e7e0b209c7"
+  },
+  {
+   "path": "A-56/SMP-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-56",
+   "source": "30-stages/STG-31-steering-mode-persistence/adopted/smp-r4/SMP-POSITION.md",
+   "source-sha256": "05f0050a07dea956d7365a9677ec84b51348f55991ab443b7a905e8e7d7c3bd5",
+   "edits-sha256": "none",
+   "header": true,
+   "sha256": "d0ed708e435c38703e6a6f2796cd8a0b01db44f582c7ae3836c67a39092c07f1"
+  },
+  {
+   "path": "A-57/KP-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-57",
+   "source": "30-stages/STG-32-knowledge-lessons/adopted/kp-r1/KP-POSITION.md",
+   "source-sha256": "a232582c9ec62c284f9f0f16d5c0bbb92e643a33ba6d8c7d077e99a7075bd68e",
+   "edits-sha256": "5f95180ff88fd3b492460ddf7443f91e64ddc246ca60ca031cc18140a7839e60",
+   "header": true,
+   "sha256": "974063b6f57d97e7e1166391d02e02a801f41719c5212609d3a88a4aae2953d3"
+  },
+  {
+   "path": "A-58/CL-POSITION.md",
+   "generated": "do not edit; regenerated from the adopted design text (see README.md)",
+   "position": "A-58",
+   "source": "30-stages/STG-33-conversational-lead/adopted/cl-r1/CL-POSITION.md",
+   "source-sha256": "034a2d9d68030228f11da27ff442515c3cf4f13de012202d203a7389984780d7",
+   "edits-sha256": "fee37ec9c1635deb4a534e4d08cafb3cad48c460ecbcb870d7ed0a72a6ebdf95",
+   "header": true,
+   "sha256": "dd86c30ac0a0048fd0e4fd517c8efdb367dbce4d61c410edc4bae8d4f6d6de62"
   },
   {
    "path": "A-25/aew-d01-read-v0.3.4-FULL.schema.json",

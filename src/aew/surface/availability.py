@@ -87,6 +87,54 @@ def _integration_ingest(a: dict[str, Any]) -> dict[str, Any] | None:
     return {"work_id": a.get("work_id"), "evidence": a.get("verification_evidence")}
 
 
+# Where a stage starts for a Ticket already past its first steps (E133; a stage stopped there, or a move made in the
+# shell): by stage, the state and the step that takes it on. A judgment already made is never asked again, and the steps
+# before this one are not planned. Any other state starts at step 1.
+STARTS_AT: dict[str, dict[str, int]] = {"ticket_request_verification": {"REVIEW_PASSED": 2},
+                                        "ticket_prepare": {"REVIEW_PASSED": 2, "VERIFIED": 2, "COMMIT_READY": 3}}
+# The argument naming the report a stage's first step accepts.
+REPORT_ARGUMENT = {"ticket_request_verification": "review_evidence", "ticket_prepare": "verification_evidence"}
+REPORT_NEEDED, REPORT_ALREADY_ACCEPTED = "report_needed", "report_already_accepted"
+NOT_FROM_THIS_STATE = "not_from_this_state"
+# Where a stage's first step accepts its report.
+REPORT_ACCEPTED_AT = {"ticket_request_verification": "REVIEW_PENDING", "ticket_prepare": "VERIFY_PENDING"}
+HAS_CANDIDATE = frozenset({"prepared", "validated", "publishing"})  # no stage's later start answers these
+
+
+def _starts_by(stage: str, n: int) -> Callable[[Any, dict[str, Any], dict[str, Any]], bool]:
+    """Whether step ``n`` of ``stage`` is planned: the Ticket's state does not start the stage after it."""
+    def applies(_engine: Any, state: dict[str, Any], a: dict[str, Any]) -> bool:
+        unit = (state.get("work") or {}).get(a.get("work_id") or "") or {}
+        return STARTS_AT[stage].get(str(unit.get("state")), 1) <= n
+    return applies
+
+
+def report_problem(engine: Any, stage: str, a: dict[str, Any],
+                   state: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """The refusal of a call whose report does not fit where the Ticket stands (E133), or None: a stage that accepts a
+    report needs it named, and one started past that step accepts none. Naming one there would record a judgment no
+    step makes. The stage's planner raises this, and availability answers it."""
+    argument = REPORT_ARGUMENT.get(stage)
+    if argument is None:
+        return None
+    current = engine.store.current() if state is None else state
+    accepts = planned_shape(engine, stage, a, state=current).get(1, True)
+    wid = a.get("work_id")
+    if accepts and a.get(argument) is None:
+        found = ((current.get("work") or {}).get(wid or "") or {}).get("state")
+        if found == REPORT_ACCEPTED_AT[stage]:
+            return {"code": REPORT_NEEDED,
+                    "message": f"{stage} accepts a report for {wid} now: name it as `{argument}`"}
+        where = f"{wid} is {found}" if found else f"{wid} is no work unit here"
+        return {"code": NOT_FROM_THIS_STATE,
+                "message": f"{stage} starts at {REPORT_ACCEPTED_AT[stage]} with a report, or from "
+                           f"{', '.join(sorted(STARTS_AT[stage]))} without one, and {where}"}
+    if not accepts and a.get(argument) is not None:
+        return {"code": REPORT_ALREADY_ACCEPTED,
+                "message": f"{wid} is already past accepting a report: call {stage} without `{argument}`"}
+    return None
+
+
 PUBLISH, REBUILD, RELAUNCH = "publish", "rebuild", "relaunch"
 
 
@@ -135,7 +183,9 @@ STAGES: dict[str, tuple[StepArgs, ...]] = {
 # Steps planned only when a condition on the current state holds (else ``planned: False``), by stage and step. A
 # stage's planner is given the same answers (``planned_shape``), and a continue keeps the shape its intent recorded.
 APPLIES: dict[str, dict[int, Callable[[Any, dict[str, Any], dict[str, Any]], bool]]] = {
-    "ticket_prepare": {4: _verifier_mode, 5: _verifier_mode},
+    "ticket_request_verification": {1: _starts_by("ticket_request_verification", 1)},
+    "ticket_prepare": {1: _starts_by("ticket_prepare", 1), 2: _starts_by("ticket_prepare", 2), 4: _verifier_mode,
+                       5: _verifier_mode},
     "integration_publish": {1: _publish_applies(PUBLISH), 2: _publish_applies(PUBLISH, REBUILD),
                             3: _publish_applies(REBUILD, RELAUNCH, verifier=True),
                             4: _publish_applies(REBUILD, RELAUNCH, verifier=True)},
@@ -182,6 +232,28 @@ def stage_cards(engine: Any, stage: str, arguments: dict[str, Any], *,
     _n, slot = CARDS[stage]
     found = engine.stage_cards(arguments.get("work_id"), slot, state=state)
     return {"cards": list(found["cards"]) or [None], "unresolved": list(found["unresolved"])}
+
+
+def way_on(stage: str, arguments: dict[str, Any], unit: dict[str, Any], *, committed: bool) -> dict[str, Any] | None:
+    """The call that takes a Ticket on after ``stage`` stopped stale (E133's review, M2), as what a refusal may name:
+    the tool and what to say about it. None where no call does: only a state a stage starts from, or a stop that
+    committed nothing, or a prepared candidate's relaunch by `integration_publish`, is known to go on."""
+    argument = REPORT_ARGUMENT.get(stage)
+    state, integration = unit.get("state"), unit.get("integration") or {}
+    if not committed:
+        named = argument is not None and arguments.get(argument) is not None
+        return {"tool": stage, "say": f"Nothing of this call was committed. Call {stage} again on the current revision"
+                                      + (f", naming `{argument}` again" if named else "")}
+    if stage == "ticket_prepare" and state == "COMMIT_READY" and integration.get("status") == "prepared":
+        return {"tool": "integration_publish",
+                "say": f"The steps committed stand, and the candidate is prepared. Call integration_publish with "
+                       f"{integration.get('candidate')} as `prepared_candidate` on the current revision, which "
+                       "launches its verifier"}
+    has_candidate = state == "COMMIT_READY" and integration.get("status") in HAS_CANDIDATE
+    if state not in STARTS_AT.get(stage, {}) or has_candidate:
+        return None
+    return {"tool": stage, "say": f"The steps committed stand. Call {stage} again on the current revision, without "
+                                  f"`{argument}`, and it goes on from where this one stopped"}
 
 
 # ---------------------------------------------------------------------------------------------- produced inputs
@@ -354,7 +426,9 @@ def _compose(engine: Any, stage: str, arguments: dict[str, Any], state: dict[str
         done[n] = (primitive, args)
     answers = [s["availability"] for s in steps if s.get("planned", True)]
     held = _held(t, arguments, current)
-    overall = BLOCKED if BLOCKED in answers or held else UNKNOWN if UNKNOWN in answers else AVAILABLE
-    reasons = sorted({c for s in steps for c in s.get("reason_codes") or []} | ({RESOLVE_STAGE} if held else set()))
-    blockers = [*held, *(b for s in steps for b in s.get("blocking_conditions") or [])]
+    report = report_problem(engine, stage, arguments, current)
+    overall = BLOCKED if BLOCKED in answers or held or report else UNKNOWN if UNKNOWN in answers else AVAILABLE
+    reasons = sorted({c for s in steps for c in s.get("reason_codes") or []} | ({RESOLVE_STAGE} if held else set())
+                     | ({report["code"]} if report else set()))
+    blockers = [*held, *([report] if report else []), *(b for s in steps for b in s.get("blocking_conditions") or [])]
     return {"stage": stage, "availability": overall, "reason_codes": reasons, "blockers": blockers, "steps": steps}

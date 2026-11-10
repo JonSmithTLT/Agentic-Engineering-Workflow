@@ -30,15 +30,19 @@ def _qualifier(args: dict[str, Any] | None) -> str | None:
 def _steps(t: contract.Tool) -> tuple[guide.StageStep, ...]:
     builders = SA.STAGES.get(t.name)
     applies = SA.APPLIES.get(t.name, {})
+    starts = SA.STARTS_AT.get(t.name, {})
     if builders is None:  # not migrated: its primitives are all the catalog says about its steps
         return tuple(guide.StageStep(p) for p in t.expands_to)
-    return tuple(guide.StageStep(p, _qualifier(build(_PROBE)), build(_PROBE) is None or n in applies)
+    # A step skipped only by a later start is not optional: `Stage.starts` says from which states it is skipped.
+    return tuple(guide.StageStep(p, _qualifier(build(_PROBE)), build(_PROBE) is None
+                                 or (n in applies and not any(n < at for at in starts.values())))
                  for n, (p, build) in enumerate(zip(t.expands_to, builders, strict=True), start=1))
 
 
 def stages(profile: str = NORMAL) -> tuple[guide.Stage, ...]:
     """The tools on ``profile`` that commit a step of the workflow, in catalog order, as the guide reads them."""
-    return tuple(guide.Stage(t.name, t.description, _steps(t)) for t in contract.exposed(profile) if t.expands_to)
+    return tuple(guide.Stage(t.name, t.description, _steps(t), SA.STARTS_AT.get(t.name, {}))
+                 for t in contract.exposed(profile) if t.expands_to)
 
 
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:

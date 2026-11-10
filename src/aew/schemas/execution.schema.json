@@ -86,11 +86,11 @@
     },
     "lead": {
       "type": "object",
-      "description": "How the Lead is woken while it waits on workers (steering design §1). quiet_wake_s is the backstop: a live run that has had no wake for this long wakes the Lead with why `quiet`, whose digest shows whether the run is still making progress. Default 1200 s, from the Lead's report of 2026-11-06 (20 to 30 minutes); the acceptance runs measure it. push_wake says whether the Lead broker posts wakes into the Lead's session at all; off, the Lead waits with `harness_wait`. Operational: they change when the Lead is shown a run, never what is legal.",
+      "description": "How the Lead is woken while it waits on workers (steering design §1). quiet_wake_s is the backstop: a live run that has had no wake for this long wakes the Lead with why `quiet`, whose digest shows whether the run is still making progress. Default 1200 s, from the Lead's report of 2026-11-06 (20 to 30 minutes); the acceptance runs measure it. push_wake says whether the Lead broker posts wakes into the Lead's session at all: on unless the policy says off (no wake is posted on Windows, register E210), and off, the Lead waits with `harness_wait`. Operational: they change when the Lead is shown a run, never what is legal.",
       "additionalProperties": false,
       "properties": {
         "quiet_wake_s": {"x-aew-class": "operational", "type": "integer", "minimum": 600, "maximum": 3600, "default": 1200},
-        "push_wake": {"x-aew-class": "operational", "type": "string", "enum": ["off", "on"], "default": "off"}
+        "push_wake": {"x-aew-class": "operational", "type": "string", "enum": ["on", "off"], "default": "on"}
       }
     },
     "notify": {

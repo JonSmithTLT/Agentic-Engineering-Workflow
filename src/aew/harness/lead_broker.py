@@ -296,8 +296,8 @@ class LeadBroker:
         """Post the Lead's wakes through ``poster`` (steering design r4 §1), on a thread of its own and its own engine:
         a tick reads the control state and files, and takes no credential. A failed tick is the next tick's: a wake is
         held, never lost, and the Lead's fallback is `harness_wait`."""
-        from aew.harness.wake_queue import WakeQueue, mark_serving
-        from aew.policy.execution import quiet_wake_s
+        from aew.harness.wake_queue import WakeQueue, clear_serving, mark_serving, serving
+        from aew.policy.execution import PUSH_WAKE_ON, push_wake, quiet_wake_s
 
         own = _own_engine(self.engine)
 
@@ -313,6 +313,16 @@ class LeadBroker:
                 try:
                     if self.superseded or self._authority_lost():  # no more wakes into a session that lost the seat
                         return
+                    try:
+                        off = push_wake(own.execution_policy()[0]) != PUSH_WAKE_ON
+                    except Exception:  # an edit not yet adopted: no pass can run, so nothing says wakes reach the Lead
+                        clear_serving(own.aew_root, self.generation)
+                        raise
+                    if off:  # turned off mid-session: posts stop now
+                        clear_serving(own.aew_root, self.generation)
+                        continue
+                    if serving(own.aew_root) != self.generation:  # turned on again; a later generation's stops this one
+                        mark_serving(own.aew_root, self.generation)
                     queue.tick()
                 except Exception as exc:  # noqa: BLE001 - a wake must never take the session down
                     queue.failed(f"{type(exc).__name__}: {str(exc)[:200]}")  # the status line, not the TUI's terminal

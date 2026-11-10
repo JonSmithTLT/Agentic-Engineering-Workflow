@@ -1012,6 +1012,13 @@ def main(argv: list[str], scripts: Path) -> int:
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
     sys.stdout.write(json.dumps({"url": f"http://127.0.0.1:{server.server_address[1]}"}) + "\n")
+    if not app.run.startswith("R-"):  # the Lead's server only: a test ends it by this file (a server lost mid-session)
+        def dies() -> None:
+            while not (scripts / KILL_LEAD_SERVER).exists():
+                time.sleep(0.1)
+            os._exit(9)
+
+        threading.Thread(target=dies, daemon=True).start()
     sys.stdout.flush()
     sys.stdin.buffer.read()  # the lease: stdin EOF ends the server
     os._exit(0)
@@ -1020,6 +1027,7 @@ def main(argv: list[str], scripts: Path) -> int:
 # A helper the product starts, with an environment the product curates: its diagnostics (childdiag: periodic stacks,
 # uncaught exceptions, its output teed) are installed from ``<scripts>/childdiag-dir.txt`` when the test wrote one
 # (G3 H1), and nothing changes when it did not.
+KILL_LEAD_SERVER = "kill-lead-server"
 LAUNCHER = """import sys
 sys.path.insert(0, {helpers!r})
 import childdiag

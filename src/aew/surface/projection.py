@@ -476,6 +476,8 @@ def _project(engine: Any, ctx: SurfaceContext, subject: str | None) -> dict[str,
         actions.append(_action("harness_wait", {"runs": live}, kind=contract.WAIT, availability=AVAILABLE,
                                reason_codes=[], cli_fallback=["harness", "wait", *live,
                                                               *(["--any"] if len(live) > 1 else [])]))
+        if engine.wakes_reach_lead():  # the wait stays on offer; the readable next step is the turn's end
+            actions[-1]["woken"] = True
     # A high anomaly about the subject (or the project) is an open obligation: no action of it auto-runs, its
     # availability unchanged (plan v3 §2.4, n6). The steering loop stops on it too (E7).
     held = any(a["severity"] == "high" for a in part["anomalies"])

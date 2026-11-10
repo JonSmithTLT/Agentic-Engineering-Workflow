@@ -837,6 +837,7 @@ None.
 - `aew.knowledge.context`
 - `aew.knowledge.evidence`
 - `aew.policy.execution`
+- `aew.process_kind`
 - `aew.roles`
 - `aew.skills`
 - `aew.snapshot.fingerprint`

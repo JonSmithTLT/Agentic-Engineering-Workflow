@@ -300,10 +300,22 @@ class FakeOpenCodeDriver(Driver):
                                 encoding="utf-8", **NO_WINDOW)
         os.close(slave)
 
+        from aew.capability import consent
+
+        # The start's tool screen (``consent.at_lead_start``) asks at this terminal when the lab lacks a needed tool,
+        # and an unanswered one waits out ``operator.ask``'s whole timeout before the Lead goes on (300 s a start
+        # from #343 until this answer). The operator here answers `none`: a test host downloads nothing, and the
+        # decline lands in the lab's own register (its XDG_DATA_HOME).
+        choose = f"Choose {' / '.join(consent.CHOICES)}: ".encode()
+
         def drain() -> None:  # what reaches the terminal itself, until the session lets it go
+            tail = b""
             try:
-                while os.read(master, 65536):
-                    pass
+                while chunk := os.read(master, 65536):
+                    tail = (tail + chunk)[-len(choose):]
+                    if tail == choose:
+                        os.write(master, f"{consent.NONE}\n".encode())
+                        tail = b""
             except OSError:
                 pass
             finally:

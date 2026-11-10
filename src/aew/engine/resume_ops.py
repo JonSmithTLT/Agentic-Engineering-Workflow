@@ -9,6 +9,7 @@ takeover.
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -16,6 +17,7 @@ from aew import SPEC_SET
 from aew.engine import gate_ops
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
+from aew.engine import priority as PRIORITY
 from aew.engine import validation_ops as VO
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
@@ -53,6 +55,19 @@ RESUME_ORDER = [
 VACANT_SEAT = (f"`aew opencode --acquire` takes it for a Lead session, with no credential shown, or `aew lead acquire "
                f"{EXPECT_REV}` shows one for the edit-and-adopt route. {HELD_SEAT}")
 
+
+
+def _priority(unit: dict[str, Any]) -> dict[str, Any]:
+    """A Ticket's priority in the status report when it isn't the default (register E227), with a `low` one's age:
+    absent means normal, so every status read stays as small as it was for the usual Ticket (E231's one pool)."""
+    if unit.get("kind") != "ticket":
+        return {}
+    found = PRIORITY.of(unit)
+    if found["level"] == PRIORITY.DEFAULT:
+        return {}
+    if found["level"] == "low":
+        found["age"] = PRIORITY.age(unit, dt.datetime.now(dt.UTC))
+    return {"priority": found}
 
 class Resume:
     """`aew resume`, `aew status`, deterministic next actions and checkpoints."""
@@ -667,11 +682,11 @@ class Resume:
             "revision": state["revision"],
             "lead": {"status": lead["status"], "generation": lead["generation"],
                      "session_label": lead.get("session_label")},
-            "work_graph": work_graph_lines(state),
+            "work_graph": work_graph_lines(state, now=dt.datetime.now(dt.UTC)),
             "hierarchy": (self.hierarchy.work_tree()["lines"]
                           if any(u["kind"] != "ticket" for u in state["work"].values()) else []),
             "work": {wid: {"state": u["state"], "kind": u["kind"], "title": u["title"],
-                           "blocked_by": u.get("blocked_by", [])}
+                           "blocked_by": u.get("blocked_by", []), **_priority(u)}
                      for wid, u in sorted(state["work"].items())},
             "active_invocations": sorted(i for i, inv in state["invocations"].items() if inv["status"] == "active"),
             "next_actions": self.next_actions(state),

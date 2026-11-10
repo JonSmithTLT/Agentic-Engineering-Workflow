@@ -10,6 +10,7 @@ from aew.engine import dependencies as deps
 from aew.engine import gate_ops as GR
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
+from aew.engine import priority as PRIORITY
 from aew.engine import transitions
 from aew.engine.base import TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
@@ -482,6 +483,8 @@ class WorkCommands:
         acceptance_checks: list[str] | None = None,
         acceptance_inputs: list[str] | None = None,
         class0_assertions: list[str] | None = None,
+        priority: str | None = None,
+        priority_reason: str | None = None,
     ) -> dict[str, Any]:
         args: dict[str, Any] = {
             "kind": kind, "title": title, "risk_class": risk_class, "mutating": mutating, "parent": parent,
@@ -489,7 +492,8 @@ class WorkCommands:
             "contract": contract, "mandatory_gates": mandatory_gates, "min_descendant_class": min_descendant_class,
             "rationale": rationale, "external_refs": external_refs, "body": body, "card": card,
             "promoted_from": promoted_from, "acceptance_checks": acceptance_checks,
-            "acceptance_inputs": acceptance_inputs, "class0_assertions": class0_assertions}
+            "acceptance_inputs": acceptance_inputs, "class0_assertions": class0_assertions,
+            "priority": priority, "priority_reason": priority_reason}
         self._check_create_arguments(args)  # before the transaction, as always: a malformed request needs no state
         with self.k.lead_txn(token, expect_rev, "work.create") as ctx:
             # The guard's query (M4-E E4), then the same draft for real: the unit, its record and its counter.
@@ -562,6 +566,21 @@ class WorkCommands:
                 "--acceptance-check gates a mutating Ticket's change (Class 0 amendment, section 9 item 4); a "
                 "non-mutating Ticket changes no source, so the check would be recorded and never run. State what its "
                 "evidence must show in --goal or --contract instead", acceptance_checks=acceptance_checks)
+        level, reason = a.get("priority"), a.get("priority_reason")
+        if level is not None or reason is not None:
+            # E227: the Lead's judgment of a Ticket's place in the steering loop's order, set at the draft only.
+            if kind != "ticket":
+                raise UsageError("a priority belongs to a Ticket: the steering loop starts Tickets, and a Story's or "
+                                 "Epic's order is its Tickets'")
+            if level is None:
+                raise UsageError("a priority reason goes with its level: give --priority too")
+            if level not in PRIORITY.LEVELS:
+                raise UsageError(f"priority must be one of {', '.join(PRIORITY.LEVELS)}", priority=level)
+            if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+                raise UsageError("a priority reason, when given, is not blank")
+            if level != PRIORITY.DEFAULT and reason is None:
+                raise UsageError(f"a {level} priority records why: give its reason (--priority-reason), the judgment "
+                                 "`status` shows beside it", priority=level)
         if a.get("class0_assertions") and risk_class != 0:
             raise UsageError("--class0-assert records the Lead's Class 0 eligibility assertions; it applies only "
                              "with --class 0")
@@ -605,6 +624,8 @@ class WorkCommands:
             "risk_class": risk_class, "mutating": is_mutating, "depends_on": edges,
             "policy": policy, "created_at": utc_now(), "plan": None, "plans": [],
         }
+        if kind == "ticket" and a.get("priority") is not None:
+            unit["priority"] = {"level": a["priority"], "reason": a.get("priority_reason")}
         if kind == "ticket":
             unit.update(blocked_by=[{"kind": "plan_not_accepted"}], workspace=None, invocations=[],
                         implementer_invocation=None, evidence=[], classifications=[], waivers=[],

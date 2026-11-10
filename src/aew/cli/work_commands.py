@@ -17,6 +17,7 @@ from aew.cli.commands import (
     add_token,
     operator_attribution,
 )
+from aew.engine import priority as PRIORITY
 from aew.errors import UsageError
 from aew.harness import bridge
 from aew.harness.contract import ENDED_WITHOUT_EVIDENCE
@@ -145,6 +146,11 @@ def register(sub: argparse._SubParsersAction) -> None:
                    choices=["transformation_clear", "inputs_complete", "no_consequential_boundary"],
                    help="Class 0 only: a semantic assertion the engine cannot check (all three are needed for Class 0 "
                         "eligibility)")
+    q.add_argument("--priority", choices=PRIORITY.LEVELS,
+                   help="Ticket only: its place in the steering loop's order, set here and only here (default "
+                        f"{PRIORITY.DEFAULT}); a {' or '.join(lv for lv in PRIORITY.LEVELS if lv != PRIORITY.DEFAULT)} "
+                        "one needs --priority-reason")
+    q.add_argument("--priority-reason", help="why this priority: `status` shows it beside the level")
     _add_lead(q)
     q.set_defaults(handler=lambda a: _engine(a).work_create(
         token=_lead_token(a), expect_rev=a.expect_rev, kind=a.kind, title=a.title, risk_class=a.risk_class,
@@ -152,7 +158,8 @@ def register(sub: argparse._SubParsersAction) -> None:
         goal_backwards=a.goal, contract=a.contract, mandatory_gates=a.mandatory_gate,
         min_descendant_class=a.min_descendant_class, rationale=a.rationale, external_refs=a.external_ref,
         body=_read_text_arg(a.body_file), card=a.card, acceptance_checks=a.acceptance_check,
-        acceptance_inputs=a.acceptance_input, class0_assertions=a.class0_assert))
+        acceptance_inputs=a.acceptance_input, class0_assertions=a.class0_assert,
+        priority=a.priority, priority_reason=a.priority_reason))
 
     q = wsub.add_parser("show")
     q.add_argument("work_id")

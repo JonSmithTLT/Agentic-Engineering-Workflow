@@ -54,12 +54,13 @@ import os
 import threading
 import time
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from aew import errors
+from aew.engine import priority as PRIORITY
 from aew.engine import steering as S
 from aew.engine.primitives import spec_for
 from aew.harness import event_spool
@@ -135,9 +136,13 @@ class Activation:
 # ---------------------------------------------------------------------------------------------- selection (CWR §7)
 
 
-def select(project: dict[str, Any], units: list[dict[str, Any]]) -> Choice | Stop:
+def select(project: dict[str, Any], units: list[dict[str, Any]],
+           rank: Mapping[str, tuple[int, int, str]] | None = None) -> Choice | Stop:
     """Steps 2 and 3 of a tick, the same in every mode: the first eligible action, or why there is none. ``project``
-    is the project's projection, ``units`` each live Ticket's."""
+    is the project's projection, ``units`` each live Ticket's, taken in ``rank``'s order (``priority.order``: the
+    level, then how many live units each unblocks, then the id; register E227) and in id order without one. A `low`
+    Ticket starts only when no `critical` or `normal` one has an eligible action, and nothing is pre-empted. When
+    none is eligible, the stop reported is the first in that order."""
     high = [a for a in project.get("anomalies") or [] if (a.get("details") or {}).get("severity") == "high"]
     if high:
         a = high[0]["details"]
@@ -152,7 +157,11 @@ def select(project: dict[str, Any], units: list[dict[str, Any]]) -> Choice | Sto
         return Stop(DECISION_REQUIRED, f"{loose[0]['decision']} ({', '.join(loose[0].get('evidence') or [])}) is "
                                        "the Lead's")
     first: Stop | None = None
-    for p in sorted(units, key=lambda u: str(u.get("subject"))):
+    def place(u: dict[str, Any]) -> tuple[int, int, str]:
+        subject = str(u.get("subject"))
+        return (rank or {}).get(subject) or (PRIORITY.LEVELS.index(PRIORITY.DEFAULT), 0, subject)
+
+    for p in sorted(units, key=place):
         subject = str(p.get("subject"))
         actions = p.get("actions") or []
         why: Stop | None = None
@@ -314,7 +323,7 @@ class SteeringLoop:
             if S.effective(state)["mode"] is None:
                 return False
             project, units = self._project(self.engine, self._ctx(), state)
-            return selection(select(project, units)) != self._selected
+            return selection(select(project, units, PRIORITY.order(state))) != self._selected
         except Exception:  # noqa: BLE001  a look that fails is no change: the next look, wake or commit retries
             return False
 
@@ -421,7 +430,7 @@ class SteeringLoop:
                                           "(A1 §3)", episode=act.id)
         ctx = self._ctx()
         project, units = self._project(self.engine, ctx, state)
-        picked = select(project, units)
+        picked = select(project, units, PRIORITY.order(state))
         self._selected = selection(picked)
         if isinstance(picked, Stop):
             return picked

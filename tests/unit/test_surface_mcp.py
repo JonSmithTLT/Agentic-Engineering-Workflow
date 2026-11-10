@@ -51,8 +51,9 @@ class Spy:
 # `replace_gate` choice and its `replacement` field (designer, addendum 4: measured against §2.6's stop line, +47 B);
 # 11,727 with steering PR 1's `harness_wait` description, which says it also returns when a run needs the Lead (-14 B);
 # 11,704 with E133's stages that start past their report: the report is not required, and their descriptions say so
-# (-23 B).
-NORMAL_BYTES_PIN = 11_704
+# (-23 B); 11,814 with E227's `priority` and `priority_reason` on `ticket_draft`, the only place a priority is set
+# (the operator, 2026-11-10: set at the draft only), measured against the stop line (+110 B).
+NORMAL_BYTES_PIN = 11_814
 RESOLVE_BYTES_PIN = 818
 
 

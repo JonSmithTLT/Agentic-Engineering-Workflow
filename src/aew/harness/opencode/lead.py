@@ -276,6 +276,19 @@ def no_provider_line(provider_env: list[str], base: Mapping[str, str]) -> str | 
             "start `aew opencode` again.\n")
 
 
+def keyless_certified(policy: Mapping[str, Any] | None, keys: Mapping[str, Any],
+                      refreshing: Mapping[str, Any]) -> dict[str, Any]:
+    """The providers the contained Lead relays with a client certificate and no key (register E123; review m4, which
+    the operator's account of the work provider makes required: it has no API key). Each is a provider of the policy's
+    own id with ``containment.network.upstreams.<id>`` and ``client_certs.<id>``. Never one AEW knows a key variable
+    for (relayed only with its key, as before), one already relayed, or one the Lead denies
+    (``projection.LEAD_DENIED_PROVIDERS``, ``netns.CATALOG_ADDRESSED``): no route is opened to those."""
+    from aew.harness.containment import client_cert, netns
+
+    denied = {*projection.LEAD_DENIED_PROVIDERS, *netns.CATALOG_ADDRESSED, *netns.PROVIDER_KEY_ENV, *keys, *refreshing}
+    return {p: c for p, c in sorted(client_cert.configured(policy).items()) if c.upstream and p not in denied}
+
+
 def _unrelayed(engine: Any) -> None:
     """A Lead with no relay (off Linux, or not contained under ``allow_weaker``) is told at its start which providers
     it can't use: each the policy names a client certificate for, which only the relay presents (E123 review, m3)."""
@@ -537,7 +550,7 @@ class ContainedLead:
 
     def __init__(self, engine: Any, *, argv: list[str], provider_env: list[str], guide: str,
                  base: Mapping[str, str], stages: StartStages | None = None) -> None:
-        from aew.harness.containment import client_cert, netns
+        from aew.harness.containment import netns
 
         self.stages = stages or StartStages()
 
@@ -589,10 +602,7 @@ class ContainedLead:
             else:
                 self.keys[entry.integration] = entry.secret
                 self.lines.append(f"{entry.integration} ({entry.kind}): relayed")
-        # A provider of its own id that the policy names a client certificate for takes no key: its relay presents the
-        # certificate (E123 review, m4). One AEW knows a key variable for is relayed only with its key, as before.
-        self.certified = {p: c for p, c in sorted(client_cert.configured(policy).items())
-                          if p not in self.keys and p not in self.refreshing and p not in netns.PROVIDER_KEY_ENV}
+        self.certified = keyless_certified(policy, self.keys, self.refreshing)
         # the provider variables AEW knows that are set in the operator's environment and not fed: names only
         unfed = sorted({v: p for p, v in netns.PROVIDER_KEY_ENV.items()
                         if v not in self.fed and agentenv.lookup(base, v)}.items())

@@ -70,7 +70,9 @@ class ClientCert:
 def entries(network: Mapping[str, Any] | None) -> dict[str, ClientCert]:
     """The client certificates a policy's ``containment.network`` names, by provider id. The schema requires all three
     files of each; one that is not a string here (a policy the schema did not check) is left out."""
-    found = (network or {}).get("client_certs") if isinstance(network, Mapping) else None
+    if not isinstance(network, Mapping):
+        return {}
+    found = network.get("client_certs")
     out: dict[str, ClientCert] = {}
     for provider, files in (found.items() if isinstance(found, Mapping) else ()):
         if isinstance(files, Mapping) and all(isinstance(files.get(f), str) and files.get(f) for f in FILES):

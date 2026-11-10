@@ -3,7 +3,7 @@
 - **The key's path:** AEW's own lines name the key by its policy field. These are the refusals, doctor's line, the relay's label and its answers. The run's layout record lists the key's path among its masked paths, as it lists every mask.
 - **Masks:** the certificate and key are masked from every contained run, so the launch's self-test proves them unreadable from inside.
 - **No relay:** a run with no relay refuses the provider. The engine's launch check and the supervisor's both refuse it, and the supervisor checks again after `establish`, where a sandbox that couldn't be established under `allow_weaker` leaves no relay.
-- **The Lead:** the contained Lead relays such a provider of its own id with no key. A Lead with no relay says at its start which providers it can't use.
+- **The Lead:** the contained Lead relays such a provider of its own id with no key, which the provider requires (it has no API key, only the certificate: the operator). The provider must have `containment.network.upstreams.<id>`, and never be one the Lead denies. A Lead with no relay says at its start which providers it can't use.
 - **Handshake failures** reach the harness as a 502 naming the policy field or the CA file:
   - `client_cert_refused`;
   - `client_cert_required`: under TLS 1.3 from the certificate_required alert, under TLS 1.2 from handshake_failure, worded as a likelihood;
@@ -13,7 +13,7 @@
 
 **The 429 ladder, measured at home.** The relay passes a 429 through as the upstream sent it, `Retry-After` included, with one request upstream and no retry (`test_a_429_reaches_the_harness_as_the_upstream_sent_it_with_its_retry_after`). Not measured yet:
 - whether OpenCode 2.0.18 backs off on it, and how it treats `Retry-After`. This needs a real OpenCode run against a local fake upstream on the VM, in a network namespace;
-- how parallel workers share one limit;
+- how runs share the provider's limit. The provider that requires a client certificate keeps one bucket per identity and per model (the operator, 2026-11-10). The identity is the client certificate, so the Lead and every worker on the same model spend one bucket together; runs on different models don't contend. The first live check watches the 429s with the Lead and two workers on the same model, then on different models, not one run alone;
 - what the provider's own 429s look like. Only a live run against that provider can show this.
 
 **The first real run's checks, not yet run:** these need a real OpenCode run in a network namespace, like the 429 measurement.

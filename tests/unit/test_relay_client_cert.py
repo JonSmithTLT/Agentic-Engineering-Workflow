@@ -299,6 +299,25 @@ def test_the_contained_leads_keyless_provider_of_its_own_id_gets_a_relay_that_pr
     assert seen.peer is not None and ((("commonName", "aew-relay"),),) == seen.peer["subject"]
 
 
+def test_the_lead_relays_keyless_only_an_own_id_provider_with_an_upstream_and_a_certificate(pki):
+    """The work provider has no API key, only its certificate (the operator), so its own id is relayed to the Lead with
+    no credential. Never one the Lead denies, one AEW knows a key variable for, one already relayed, one with no
+    upstream; and an own-id provider with an upstream but no certificate gets no relay."""
+    from aew.harness.opencode import lead, projection
+
+    found = pki.files()
+    files = {"cert": found.cert, "key": found.key, "ca": found.ca}
+    url = f"https://{HOST}/v1"
+    denied = [*projection.LEAD_DENIED_PROVIDERS, *netns.CATALOG_ADDRESSED, "openai"]
+    policy = {"containment": {"network": {
+        "client_certs": {p: files for p in [PROVIDER, "no-upstream", "already", *denied]},
+        "upstreams": {p: url for p in [PROVIDER, "already", "plain", *denied]}}}}
+    chosen = lead.keyless_certified(policy, {}, {"already": object()})
+    assert list(chosen) == [PROVIDER], chosen
+    assert chosen[PROVIDER].upstream == url
+    assert lead.keyless_certified({}, {}, {}) == {}
+
+
 def test_a_contained_lead_whose_only_provider_takes_a_certificate_is_not_refused_for_having_no_key(pki):
     """The Lead's own refusal for no relayed provider (``require_provider``) counts a certificate provider."""
     from types import SimpleNamespace

@@ -255,7 +255,7 @@ class Cloner:
             if isinstance(node, dict):
                 if isinstance(node.get("path"), str) and node["path"] in written and "sha256" in node:
                     node["sha256"] = sha256_text(written[node["path"]])
-                if node.get("record") in written and "record_sha256" in node:
+                if isinstance(node.get("record"), str) and node["record"] in written and "record_sha256" in node:
                     node["record_sha256"] = sha256_text(written[node["record"]])
                 for v in node.values():
                     rehash(v)

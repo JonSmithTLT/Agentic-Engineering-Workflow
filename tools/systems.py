@@ -36,13 +36,18 @@ and holds the file to:
 
 ``render`` writes ``systems.md`` with priority read from the Now list; ``check`` also refuses a stale page.
 ``show SYS-NN`` prints an entry as stored and its derived priority, without writing anything.
-Not here yet: state read from the code (``switch.default``, ``wired``), enforcement of the limit,
-and derived ``serves``.
+``check`` also checks table-owned switch defaults and evidence, decidable on_by_default pairs, wired reference
+records, stale remaining slices and FORMAT.md rule 1's count. A count above wip_limit requires the operator's covering
+wip_allowance; the allowance is stale once the count recovers. The operator's words and their extra conditions are
+reviewed, not authenticated or interpreted by the tool. Defaults outside the tables and lead_text/pack wiring remain
+hand-kept and are labelled. Render reads only the lightweight policy tables, not the as-built reference.
+Not here yet: deriving board_state or built, serves, lanes or a dashboard view.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import glob
 import importlib.util
 import json
@@ -67,7 +72,12 @@ HOLD_RE = re.compile(r"^HOLD-\d{2}$")
 ROW_OWED = "row owed"  # a ``remaining`` slice whose register row is still to be filed
 
 # The file's fields. Each entry's required fields, then its optional ones; nested mappings name theirs.
-TOP_FIELDS = ("schema", "wip_limit", "unowned", "systems")
+TOP_FIELDS = ("schema", "wip_limit", "unowned", "systems", "wip_allowance")
+ALLOWANCE_FIELDS = ("count", "operator", "date")
+GATE_SOURCE = "src/aew/knowledge/manifest.py:DEFAULT_GATES"
+SWITCH_SOURCE = "src/aew/policy/execution.py:STRING_SWITCHES"
+WIRED_RECORDS = {"cli": "cli-commands", "dashboard": "dashboard-routes", "tool": "tools"}
+HAND_WIRED = ("lead_text", "pack")
 REQUIRED = ("id", "name", "purpose", "design", "register", "as_built", "touches", "depends_on", "state",
             "finish_line", "remaining", "decision", "recommendation", "who", "reason", "evidence")
 OPTIONAL = ("serves_claims", "serves_pending", "design_unpublished", "touches_new", "switch")
@@ -135,6 +145,8 @@ class Owners:
     now_rows: frozenset[str]  # the open rows the Now list names
     records: frozenset[str]  # the as-built reference's record ids
     now_order: dict[str, int] = field(default_factory=dict)  # row -> lowest open Now item number
+    gate_defaults: dict[str, Any] = field(default_factory=dict)
+    string_switches: dict[tuple[str, str], tuple[str, ...]] = field(default_factory=dict)
 
 
 def _tool(name: str) -> ModuleType:
@@ -167,13 +179,37 @@ def register_owners(text: str) -> tuple[frozenset[str], frozenset[str], frozense
 
 def reference_records(root: Path) -> frozenset[str]:
     """The as-built reference's record ids, rendered in memory from ``root``'s code."""
-    reference = _tool("reference")
-    common = reference._families()[0]
+    try:
+        reference = _tool("reference")
+        common = reference._families()[0]
+    except (ImportError, OSError) as exc:
+        raise SystemsError(f"the as-built reference cannot be imported: {exc}") from exc
     try:
         files = reference.render_files(root)
-    except common.ReferenceError as exc:
+        return frozenset(json.loads(files[reference.INDEX])["records"])
+    except (common.ReferenceError, ImportError, OSError, KeyError, ValueError) as exc:
         raise SystemsError(f"the as-built reference cannot be rendered: {exc}") from exc
-    return frozenset(json.loads(files[reference.INDEX])["records"])
+
+
+def code_tables(root: Path = ROOT) -> tuple[dict[str, Any], dict[tuple[str, str], tuple[str, ...]]]:
+    """The code's tables, never defaults copied into this tool. Render reads these lightweight owners too, only to
+    label provenance; it never calls owners/check or renders the reference. Check reads them after the reference."""
+    try:
+        manifest = __import__("aew.knowledge.manifest", fromlist=["DEFAULT_GATES"])
+        execution = __import__("aew.policy.execution", fromlist=["STRING_SWITCHES"])
+        for module in (manifest, execution):
+            if (root / "src").resolve() not in Path(module.__file__).resolve().parents:
+                raise SystemsError("policy tables are not imported from this checkout; set absolute PYTHONPATH to src")
+        gates, switches = manifest.DEFAULT_GATES, execution.STRING_SWITCHES
+    except (ImportError, AttributeError, OSError) as exc:
+        raise SystemsError(f"the policy tables cannot be read: {exc}") from exc
+    if not isinstance(gates, dict) or not isinstance(switches, dict):
+        raise SystemsError("DEFAULT_GATES and STRING_SWITCHES must be mappings")
+    if any(not (isinstance(key, tuple) and len(key) == 2 and all(isinstance(k, str) for k in key)
+                and isinstance(values, tuple) and values and all(isinstance(v, str) for v in values))
+           for key, values in switches.items()):
+        raise SystemsError("STRING_SWITCHES must map (block, key) pairs to nonempty tuples of string values")
+    return dict(gates), dict(switches)
 
 
 def owners(root: Path = ROOT) -> Owners:
@@ -181,7 +217,9 @@ def owners(root: Path = ROOT) -> Owners:
         rows, open_rows, now_rows = register_owners((root / REGISTER).read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
         raise SystemsError(f"{REGISTER} cannot be read: {exc}") from exc
-    return Owners(root, rows, open_rows, now_rows, reference_records(root), now_order(root))
+    records = reference_records(root)
+    gates, switches = code_tables(root)
+    return Owners(root, rows, open_rows, now_rows, records, now_order(root), gates, switches)
 
 
 def now_order(root: Path) -> dict[str, int]:
@@ -248,6 +286,23 @@ def schema_problems(data: Any) -> list[Problem]:
         bad("file", f"schema is {data.get('schema')!r}, not {SCHEMA!r}")
     if not (isinstance(data.get("wip_limit"), int) and not isinstance(data.get("wip_limit"), bool)):
         bad("file", "wip_limit (the operator's N) is a whole number")
+    if "wip_allowance" in data:
+        allowance = data["wip_allowance"]
+        if not isinstance(allowance, dict) or set(allowance) != set(ALLOWANCE_FIELDS):
+            bad("wip_allowance", "an allowance has exactly count, operator and date")
+        else:
+            count, words, when = (allowance[k] for k in ALLOWANCE_FIELDS)
+            if (not isinstance(count, int) or isinstance(count, bool)
+                    or not isinstance(data.get("wip_limit"), int) or count <= data["wip_limit"]):
+                bad("wip_allowance", "count must be an integer above wip_limit")
+            if not isinstance(words, str) or not words.strip():
+                bad("wip_allowance", "operator must be the operator's non-empty words, verbatim")
+            try:
+                if not isinstance(when, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", when):
+                    raise ValueError
+                datetime.date.fromisoformat(when)
+            except ValueError:
+                bad("wip_allowance", "date must be a quoted YYYY-MM-DD string naming a real date")
     unowned = data.get("unowned")
     if not isinstance(unowned, dict):
         bad("unowned", "unowned is a mapping from a register row id to its reason")
@@ -302,6 +357,16 @@ def schema_problems(data: Any) -> list[Problem]:
             value = _get(entry, path)
             if value is not None and value not in allowed:
                 bad(where, f"{'.'.join(path)} is {value!r}, not one of {', '.join(allowed)}")
+        if isinstance(entry.get("state"), dict):
+            state = entry["state"]
+            if not isinstance(state.get("on_by_default"), bool):
+                bad(where, "state.on_by_default is a boolean")
+            if not isinstance(state.get("wired"), list) or not all(isinstance(v, str) for v in state["wired"]):
+                bad(where, "state.wired is a list of text")
+        if isinstance(entry.get("switch"), dict):
+            for key in ("key", "default", "default_evidence"):
+                if key in entry["switch"] and not isinstance(entry["switch"][key], str):
+                    bad(where, f"switch.{key} is text")
     return out
 
 
@@ -506,6 +571,88 @@ def public_problems(text: str) -> list[Problem]:
     return out
 
 
+def switch_source(switch: dict[str, Any], switches: dict[tuple[str, str], tuple[str, ...]]) -> str | None:
+    """Recognize table-owned namespaces, including misspellings within them; suffix text is explanatory only."""
+    key = switch.get("key", "").split(" ", 1)[0]
+    block = key.split(".", 1)[0]
+    if key.startswith("gates."):
+        return GATE_SOURCE
+    return SWITCH_SOURCE if block in {b for b, _ in switches} else None
+
+
+def switch_problems(data: dict[str, Any], own: Owners) -> list[Problem]:
+    out = []
+    for e in data["systems"]:
+        switch = e.get("switch")
+        if not switch or not (source := switch_source(switch, own.string_switches)):
+            continue
+        key = switch["key"].split(" ", 1)[0]
+        block, _, name = key.partition(".")
+        allowed = own.string_switches.get((block, name)) if source == SWITCH_SOURCE else None
+        if source == GATE_SOURCE:
+            known = name in own.gate_defaults
+            value = own.gate_defaults.get(name)
+        else:
+            known = allowed is not None
+            value = allowed[0] if allowed else None
+        if not known:
+            out.append(Problem("default", e["id"], f"switch.key {key} is not in {source}; fix the key"))
+            continue
+        if not isinstance(value, (str, int, float, bool, type(None))):
+            out.append(Problem("default", e["id"], f"{key} is not a scalar default in {source}; "
+                                                 "do not claim it as a switch"))
+            continue
+        if switch.get("default") != str(value):
+            out.append(Problem("default", e["id"], f"switch.default for {key} must be {str(value)!r} from {source}"))
+        if switch.get("default_evidence") != source:
+            out.append(Problem("default", e["id"], f"switch.default_evidence for {key} must be {source}, "
+                                                 "not a line cite"))
+        if allowed and len(allowed) == 2 and {"off", "disabled"} & set(allowed):
+            on = value not in ("off", "disabled")
+            if e["state"]["on_by_default"] is not on:
+                out.append(Problem("on_by_default", e["id"], f"state.on_by_default for {key} must be {on} "
+                                                            f"from {source}"))
+    return out
+
+
+def wired_problems(data: dict[str, Any], own: Owners) -> list[Problem]:
+    out = []
+    for e in data["systems"]:
+        for claim in e["state"]["wired"]:
+            if claim in HAND_WIRED:
+                continue
+            prefix, _, name = claim.partition(":")
+            family = WIRED_RECORDS.get(prefix)
+            if family is None:
+                out.append(Problem("wired", e["id"], f"unknown wired claim {claim!r}; use cli:, dashboard:, tool:, "
+                                                    "lead_text or pack"))
+            elif f"{family}:{name}" not in own.records:
+                out.append(Problem("wired", e["id"], f"wired {claim!r} has no {family}:{name} reference record; "
+                                                    "correct or remove the claim"))
+    return out
+
+
+def stale_slice_problems(data: dict[str, Any], own: Owners) -> list[Problem]:
+    return [Problem("stale_slice", e["id"], f"remaining slice {s['slice']!r} names closed row {s['row']}; "
+                    "remove completed work or re-point work still owed to its open row or 'row owed'")
+            for e in data["systems"] for s in e["remaining"]
+            if s["row"] in own.rows - own.open_rows and not HOLD_RE.match(s["row"])]
+
+
+def limit_problems(data: dict[str, Any]) -> list[Problem]:
+    """No count above N without the operator's covering allowance; a recovered count cannot retain that allowance.
+    The words and any extra conditions they state are reviewed by the operator/Lead, not verified by this tool."""
+    ids, limit = counted_systems(data), data["wip_limit"]
+    allowance = data.get("wip_allowance")
+    if len(ids) <= limit:
+        return ([Problem("allowance", "wip_allowance", "stale at or under wip_limit: remove the allowance and render")]
+                if allowance is not None else [])
+    if allowance is not None and len(ids) <= allowance["count"]:
+        return []
+    return [Problem("wip", "file", f"limit's count {len(ids)} exceeds wip_limit {limit}: {', '.join(ids)}; "
+                    "finish or freeze work, or obtain the operator's covering wip_allowance, then render")]
+
+
 # Keys, titles, and membership rules live together. View 3 deliberately overlaps the partition.
 VIEWS = (
     ("soon", "Finish and switch on soon", lambda e, n: e["recommendation"] == "switch_on"
@@ -553,13 +700,27 @@ def render_markdown(data: dict[str, Any], order: dict[str, int]) -> str:
     out = ["# The systems build board", "Generated from [systems.yaml](systems.yaml). Do not edit; run "
            "`python tools/register.py render` (or `python tools/systems.py render`). Priority comes from "
            "[the register's Now list](future-work.md#1-now-the-milestones-and-the-gates-in-order). "
-           "Count definition: FORMAT.md rule 1.",
+           "Count definition: FORMAT.md rule 1. Switch defaults are checked against the code's tables; board_state "
+           "and built remain hand-kept. A PR that closes a row named in a slice, or changes what counts, re-runs "
+           "`python tools/systems.py check` against current main before it merges (no merge queue).",
            "## Totals"]
     for state in ENUMS[("state", "board_state")]:
         ids = sorted(e["id"] for e in data["systems"] if e["state"]["board_state"] == state)
         out.append(f"**{state}:** {_members(ids)}")
     out.append(f"**Limit's count / wip_limit:** {len(counted_systems(data))} / {data['wip_limit']} — "
-               f"{', '.join(counted_systems(data)) or 'none'} (reported, not enforced)")
+               f"{', '.join(counted_systems(data)) or 'none'}")
+    allowance = data.get("wip_allowance")
+    if allowance is not None:
+        out.append(f"**Operator allowance:** up to {allowance['count']} — {', '.join(counted_systems(data)) or 'none'} "
+                   f"— {_line(allowance['operator'])} — {allowance['date']}")
+    _, switches = code_tables()
+    hand_switches = [e for e in data["systems"] if e.get("switch") and not switch_source(e["switch"], switches)]
+    out.append(f"**Switch defaults not read from the code:** {_members([e['id'] for e in hand_switches])} — "
+               + "; ".join(f"{e['id']}: {_line(e['switch']['key'])}" for e in hand_switches))
+    hand_wired = [e for e in data["systems"] if set(e["state"]["wired"]) & set(HAND_WIRED)]
+    out.append(f"**Hand-kept wiring (no reference record):** {_members([e['id'] for e in hand_wired])} — "
+               + "; ".join(f"{e['id']}: {', '.join(w for w in e['state']['wired'] if w in HAND_WIRED)}"
+                           for e in hand_wired))
     selected = views(data, order)
     for key, title, _ in VIEWS:
         entries = selected[key]
@@ -583,7 +744,11 @@ def render_markdown(data: dict[str, Any], order: dict[str, int]) -> str:
                 slice_members = "; ".join(f"{_line(s['slice'])} ({s['row']})" for s in slices) or "none"
                 out.append(f"**Own slices left:** {len(slices)} — {slice_members} — **Next:** {next_slice}")
                 if e.get("switch"):
-                    out.append(f"**Switch:** {e['switch']['key']}")
+                    source = switch_source(e["switch"], switches)
+                    provenance = f"checked against {source}" if source else "not read from the code"
+                    out.append(f"**Switch:** {_line(e['switch']['key'])} — default: "
+                               f"{_line(e['switch'].get('default', 'not stated'))} — {provenance}")
+                out.append("**Wired:** " + (", ".join(e["state"]["wired"]) or "none"))
             elif key == "questions":
                 out.append(f"**Decision:** {_line(e['decision'])}")
     return "\n\n".join(out) + "\n"
@@ -631,6 +796,8 @@ def problems(text: str, own: Owners) -> list[Problem]:
              + dependency_problems(data) + owner_problems(data) + reverse_problems(data, own) + hold_problems(data, own)
               + lint_problems(data) + public_problems(text))
     if not schema_problems(data):
+        found += switch_problems(data, own) + wired_problems(data, own) + stale_slice_problems(data, own)
+        found += limit_problems(data)
         found += rendered_problems(own.root, data, own.now_order)
     return sorted(set(found), key=lambda p: (p.check, p.where, p.text))
 

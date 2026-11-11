@@ -15,8 +15,6 @@ superseded credentials, so a superseded Lead can never overwrite newer state.
 from __future__ import annotations
 
 import copy
-import os
-import sys
 from collections.abc import Set as AbstractSet
 from typing import TYPE_CHECKING, Any
 
@@ -25,6 +23,7 @@ from aew.engine.authority import issue_token, revoke, verify_offer
 from aew.engine.base import TxnContext
 from aew.engine.store import Transition
 from aew.errors import IllegalTransition, PermissionDenied, StaleRevision
+from aew.harness import procs, seat
 from aew.harness.contract import EXPECT_REV, fields_command
 from aew.knowledge.records import format_id
 from aew.roles import NON_MUTATING_EXECUTORS
@@ -60,7 +59,7 @@ class Lead:
         self.queue = queue
         self.coordination = coordination
 
-    def _seat_held(self, state: dict[str, Any]) -> PermissionDenied:
+    def _seat_held(self, state: dict[str, Any], *, resume: tuple[str, str] | None = None) -> PermissionDenied:
         """Why ``lead acquire`` is refused, and the way on (register V2). The common case is a Lead wrapper that exited
         while the seat was held: its credential went with it, so the seat cannot be re-acquired or handed off, and an
         operator-authorized takeover is the path. Saying which invocations a takeover interrupts lets the operator
@@ -91,30 +90,37 @@ class Lead:
             work = ((after["queue"]["entries"].get(lease["entry"])) or {}).get("work")
             interrupts += (f"; the integration lease of {work} is then reconciled with `aew integrate reconcile {work} "
                            f"{EXPECT_REV}`")
+        advice = (f"Cannot resume with `aew opencode`: {resume[1]}. " if resume else
+                  "A successor takes it over cooperatively with `aew lead handoff accept`. If the holding session "
+                  "is gone (its wrapper exited or crashed and its credential went with it), the seat cannot be "
+                  "re-acquired: the operator takes it over at their own terminal. ")
+        next_holder = "Operator takeover starts" if resume else "It starts"
         return PermissionDenied(
-            f"the Lead seat is held ({holder}). A successor takes it over cooperatively with `aew lead handoff "
-            f"accept`. If the holding session is gone (its wrapper exited or crashed and its credential went with "
-            f"it), the seat cannot be re-acquired: the operator takes it over at their own terminal. It starts "
-            f"generation {generation + 1}, revokes the old credential, and {interrupts}:\n\n{TAKEOVER}",
+            f"the Lead seat is held ({holder}). {advice}{next_holder} generation {generation + 1}, "
+            f"revokes the old credential, and {interrupts}:\n\n{TAKEOVER}",
             generation=generation, session_label=lead.get("session_label"), acquired_at=lead.get("acquired_at"),
             active_invocations=active, interrupted_work=stopped,
-            next=f"aew lead takeover {EXPECT_REV} --reason '{TAKEOVER_REASON}'")
+            next=f"aew lead takeover {EXPECT_REV} --reason '{TAKEOVER_REASON}'",
+            **({"reason": resume[0]} if resume else {}))
 
-    def _new_lead(self, state: dict[str, Any], session_label: str | None) -> str:
+    def _new_lead(self, state: dict[str, Any], session_label: str | None, kind: str = seat.LEAD_ACQUIRE) -> str:
         lead = state["lead"]
+        identity = seat.start_identity(kind)
         lead["generation"] += 1
+        at = utc_now()
         token = issue_token(state, "lead", {"generation": lead["generation"], "session_label": session_label})
         lead.update(
             status="active",
             session_label=session_label,
             token_id=token.split(".")[1],
-            acquired_at=utc_now(),
+            acquired_at=at,
+            start={"generation": lead["generation"], "kind": kind, "at": at, **identity},
             handoff=None,
         )
         # The Lead host principal (M4-E E2): the operator endpoint labels its records against it (plan v3 §2.1).
-        if sys.platform != "win32":
-            lead["host_uid"] = os.getuid()
-        else:  # pragma: windows-only
+        if isinstance(identity["user"], int):
+            lead["host_uid"] = identity["user"]
+        else:
             lead.pop("host_uid", None)
         return token
 
@@ -186,14 +192,15 @@ class Lead:
             "handoff_pending": lead["status"] == "handoff_pending",
         }
 
-    def lead_acquire(self, *, expect_rev: int, session_label: str | None = None) -> dict[str, Any]:
+    def lead_acquire(self, *, expect_rev: int, session_label: str | None = None,
+                     kind: str = "lead_acquire") -> dict[str, Any]:
         with self.k.store.session() as s:
             if s.state["lead"]["status"] != "vacant":
                 raise self._seat_held(s.state)
             if expect_rev != s.revision:
                 raise StaleRevision(f"expected revision {expect_rev}, current is {s.revision}",
                                     expected=expect_rev, current=s.revision)
-            token = self._new_lead(s.state, session_label)
+            token = self._new_lead(s.state, session_label, kind)
             actor = {"kind": "session", "session_label": session_label,
                      "generation": s.state["lead"]["generation"]}
             self.queue.sync(s.state)  # can end a dead custodian's children (G2)
@@ -207,6 +214,91 @@ class Lead:
                                       refs=refs),
                            expect_rev=expect_rev, state=projected)
         return {"ok": True, "token": token, "generation": s.state["lead"]["generation"], "revision": rev}
+
+    def _check_resume(self, state: dict[str, Any]) -> None:
+        lead = state["lead"]
+        start = lead.get("start") or {}
+        if lead["status"] == "vacant" or start.get("kind") not in seat.RESUMABLE or not start.get("start_id"):
+            raise self._seat_held(state, resume=("seat_not_opencode", "the seat was not taken by an OpenCode session"))
+        if start["generation"] != lead["generation"]:
+            raise self._seat_held(state, resume=("seat_resume_changed",
+                                                  "the recorded start is from another generation"))
+        if (start["host"], start["user"]) != seat.principal():
+            raise self._seat_held(state, resume=("seat_other_principal", "the seat belongs to another host or user"))
+        if procs.same_process(start["pid"], start["start_id"]):
+            raise self._seat_held(state, resume=("seat_session_live", "the recorded session is still running"))
+        if lead["status"] != "active":
+            raise self._seat_held(state, resume=("seat_handoff_pending", "a cooperative handoff is pending"))
+
+    @staticmethod
+    def _resume_invocations(state: dict[str, Any]) -> dict[str, tuple[str, str]]:
+        return {inv_id: (inv.get("role") or inv.get("kind") or "unknown", inv["work_unit"])
+                for inv_id, inv in sorted(state["invocations"].items()) if inv["status"] == "active"}
+
+    def lead_resume(self, *, session_label: str | None = None) -> dict[str, Any]:
+        from aew.switch_offer import may_ask
+
+        snapshot = self.k.store.current()
+        self._check_resume(snapshot)
+        if not may_ask():
+            raise self._seat_held(snapshot, resume=("seat_operator_terminal_required",
+                                                    "resume requires the operator's own terminal"))
+        lead = snapshot["lead"]
+        generation = lead["generation"]
+        shown = self._resume_invocations(snapshot)
+        leftovers = seat.read_leftovers(self.k.store.root, generation)
+        processes = seat.describe_leftovers(leftovers)
+        work = ", ".join(f"{inv_id} ({role}, {unit})" for inv_id, (role, unit) in shown.items()) or "none"
+        authorized_by = "operator-tty"
+        if shown or leftovers is None or leftovers:
+            auth = operator.authorize(
+                f"Project '{self.k.project_id}': RESUME Lead seat\n"
+                f"  generation     : {generation} -> {generation + 1}\n"
+                f"  carry          : {work}\n"
+                f"  processes left : {processes}"
+            )
+            authorized_by = auth["authorized_by"]
+
+        with self.k.store.session() as s:
+            state = s.state
+            self._check_resume(state)
+            current = state["lead"]
+            if current["generation"] != generation or current["start"] != lead["start"]:
+                raise self._seat_held(state, resume=("seat_resume_changed", "the recorded holder changed"))
+            if seat.read_leftovers(self.k.store.root, generation) != leftovers:
+                raise self._seat_held(state, resume=("seat_resume_changed", "the recorded processes left changed"))
+            carry = self._resume_invocations(state)
+            unseen = [inv_id for inv_id, subject in carry.items() if shown.get(inv_id) != subject]
+            if unseen:
+                raise self._seat_held(state, resume=("seat_resume_unshown",
+                                                      f"active invocations not shown: {', '.join(unseen)}"))
+            self.k.check_manifest_pin(state)
+            self._revoke_all_lead_credentials(state, "superseded by operator seat resume")
+            token = self._new_lead(state, session_label, lead["start"]["kind"])
+            new_gen = state["lead"]["generation"]
+            for inv_id in carry:
+                inv = state["invocations"][inv_id]
+                inv["generation"] = new_gen
+                if inv.get("token_id"):
+                    state["tokens"][inv["token_id"]]["scope"]["generation"] = new_gen
+            actor = {"kind": "operator", "authorized_by": authorized_by, "session_label": session_label,
+                     "generation": new_gen}
+            ctx = TxnContext(session=s, actor=actor)
+            ended = ", ".join(sorted(shown.keys() - carry.keys())) or "none"
+            decision = self.k.new_decision(
+                ctx, "seat_resume", f"Resumed Lead seat: generation {generation} -> {new_gen}",
+                body=f"Shown invocations: {work}\nCarried: {', '.join(carry) or 'none'}\n"
+                     f"Ended before transfer: {ended}\nProcesses left: {processes}\n"
+                     "Local process evidence and terminal attribution are dev-grade. "
+                     "Off Linux, AEW session detection uses the environment.\n",
+            )
+            self.queue.sync(state)
+            self.coordination.seal_ending(s, ctx.refs)
+            projected = self.archive.end_lead_credentials(s)
+            rev = s.commit(Transition(op="lead.resume", actor=actor, summary=f"Lead seat resumed ({decision})",
+                                      refs=ctx.refs, events=ctx.events), expect_rev=s.revision, state=projected)
+        return {"ok": True, "token": token, "generation": new_gen, "revision": rev, "previous_generation": generation,
+                "carried_invocations": list(carry), "leftovers": leftovers, "decision": decision}
 
     def lead_handoff_offer(
         self, *, token: str, expect_rev: int, note: str = "", carry_invocations: list[str] | None = None

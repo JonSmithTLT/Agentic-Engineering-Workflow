@@ -2012,3 +2012,23 @@ runs where the Lead's shell runs, and arrive as text.
   which includes a row stopping at a check of an argument the walk filled in itself, and it doesn't walk a typed tool's
   object-typed properties; a new reader that takes a path from past those is what the broker's refusal and a review are
   for.
+
+## Amendment (2026-11-11) — OpenCode's seat and held exit (E330)
+
+When `aew opencode` took the seat itself, the seat is released at exit when nothing is in flight. Otherwise
+it stays held, and the next `aew opencode` resumes it under the 2026-11-10 conditions
+(REVISION-CHECK-REPLACED, decision 3). A seat held by a live Lead, or by the operator's own token, still
+needs a terminal takeover. (Since 2026-10-04 the release also waits until no process the session started is running.)
+
+The session holds its harness process (when `aew opencode` takes the seat itself, the seat too; with the
+operator's `AEW_LEAD_TOKEN`, authority outlives it). The seat stays held against leftover processes and
+is resumable at the operator's own terminal under the conditions in ADR-0005's E330 amendment. A failed
+start after resume and a clean exit both keep the seat held if an acknowledged process may still run.
+The next generation's held-exit evidence carries those processes forward. The local evidence records
+process identities on Linux and a count on Windows. An unknown result or missing evidence requires
+acknowledgement. Local process evidence is dev-grade on both platforms.
+
+Each new generation records `lead.start` in the seat operation's commit, with `generation`, `kind`, `at`,
+`host`, `user`, `pid` and `start_id`. The two resumable kinds are `opencode_acquire` and `vacant_start`.
+Resume keeps the eligible kind and writes the new session identity. Other issuance routes record the
+non-resumable `lead_acquire` kind. The transition log distinguishes the operations themselves.

@@ -338,11 +338,13 @@ commands:
     users: [operator]
     journeys: [V1, V2, V3, V4]
     mutates: "yes"
-    mutates_basis: "runs the Lead session (lead_broker.run_session); with --acquire takes the seat; on Linux, before
+    mutates_basis: "runs the Lead session (lead_broker.run_session); takes a vacant seat or resumes an eligible
+      held seat without a credential; --acquire explicitly selects that mode, and --prompt-token asks for an
+      existing Lead credential at the hidden prompt; on Linux, before
       the TUI opens, downloads the tools AEW brings that the operator chooses at the consent screen, when a needed one
       is missing and not declined; on either platform, adopts a moved default the operator takes at the switch offer,
       typing the code at their own terminal (aew.switch_offer)"
-    refusals: [CONTAINMENT_UNAVAILABLE, PROJECT_NOT_FOUND, USAGE]
+    refusals: [CONTAINMENT_UNAVAILABLE, PERMISSION_DENIED, PROJECT_NOT_FOUND, USAGE]
     environment:
       AEW_DASHBOARD_AUTOSTART:
         "off": disable dashboard auto-start

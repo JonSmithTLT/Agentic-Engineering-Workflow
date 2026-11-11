@@ -339,9 +339,15 @@ def _unrelayed(engine: Any) -> None:
 
 
 def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: bool, provider_env: list[str],
-        extra_args: list[str], print_config: bool) -> dict[str, Any]:
+        extra_args: list[str], print_config: bool, prompt_token: bool = False) -> dict[str, Any]:
+    from aew import lead_credential
+    from aew.harness import seat
+
     if print_config:
         return {"ok": True, **describe(engine, provider_env=provider_env, extra_args=extra_args)}
+    opencode_kind = (seat.OPENCODE_ACQUIRE if acquire else
+                     seat.VACANT_START if not prompt_token and not os.environ.get(lead_credential.ENV) else None)
+    acquire = opencode_kind is not None
     stages = StartStages()
     version = check_version()
     stages.mark("version")
@@ -350,7 +356,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     if contained_here():
         # Everything that can refuse does so before a seat is taken (an acquired seat whose credential is lost
         # would stay held), a missing credential first.
-        lead_broker.require_credential(acquire)
+        lead_broker.require_credential(acquire, prompt_token=prompt_token)
         _readiness(engine)
         lead = ContainedLead(engine, argv=argv, provider_env=provider_env, guide=guide, base=os.environ,
                              stages=stages)
@@ -361,7 +367,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
         stages.mark("logins")
         with session_services(engine, provider_env=provider_env) as on_ready:
             out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label,
-                                          keep_seat=keep_seat,
+                                          keep_seat=keep_seat, opencode_kind=opencode_kind, prompt_token=prompt_token,
                                           env=tui_env(os.environ, provider_env=[], guide=guide,
                                                       push_wake=pushes_wakes(engine)), contained=lead,
                                           with_token=offer.apply, on_ready=on_ready)
@@ -374,7 +380,7 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     if provider_env:
         sys.stderr.write(f"aew opencode: {', '.join(provider_env)} passed to the Lead's OpenCode; the Lead model's "
                          "shell commands can read it.\n")
-    lead_broker.require_credential(acquire)  # a missing credential refuses first, before any start line, as contained
+    lead_broker.require_credential(acquire, prompt_token=prompt_token)
     _readiness(engine)
     _tools_before_the_tui(asking=False)
     line = no_provider_line(provider_env, os.environ)
@@ -384,7 +390,8 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     offer = _switch_offers(engine)
     with session_services(engine, provider_env=provider_env) as on_ready:
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
-                                      env=env, contained=weaker, with_token=offer.apply, on_ready=on_ready)
+                                      env=env, contained=weaker, with_token=offer.apply, on_ready=on_ready,
+                                      opencode_kind=opencode_kind, prompt_token=prompt_token)
     return _outcome(out, version)
 
 
@@ -408,7 +415,7 @@ def _outcome(out: dict[str, Any], version: Any) -> dict[str, Any]:
     from aew.harness.containment.shim import EXIT_SERVER_LOST, EXIT_SETUP
 
     if out.get("exit") == EXIT_SERVER_LOST:  # the shim's own codes, which a TUI that ran doesn't exit with
-        held = str(out.get("seat") or "").startswith("held;")  # a run in flight: `aew opencode` alone is refused
+        held = str(out.get("seat") or "").startswith("held;")
         follow = "continue as `seat` says" if held else "start `aew opencode` again"
         return {**out, "ok": False, "opencode": version,
                 "server_lost": f"the Lead's server ended, and nothing restarts it, so the session ended; {follow}, and "

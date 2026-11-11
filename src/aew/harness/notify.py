@@ -75,7 +75,8 @@ STATE_MAX_BYTES = 1 << 20
 REAP_S = 5.0  # how long a delivery waits for its pipes and process tree after the notifier ended or was killed
 # The Lead generation ends by these operations, read from the transition log (plan v3 §2.8; crash and stale come from
 # the broker's liveness record).
-GENERATION_OPS = {"lead.takeover": "takeover", "lead.handoff.accept": "handoff", "lead.release": "release"}
+GENERATION_OPS = {"lead.takeover": "takeover", "lead.handoff.accept": "handoff", "lead.release": "release",
+                  "lead.resume": "resume"}
 # Names of variables that carry a provider key or another secret: never passed to the notifier, even when a keep-list
 # name matches (plan v3 E7: the run bridge's curated keep-list minus every AEW_* and provider-key variable).
 SECRET_NAME = re.compile(r"(API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)", re.I)

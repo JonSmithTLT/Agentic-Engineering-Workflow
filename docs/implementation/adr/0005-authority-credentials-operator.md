@@ -266,3 +266,19 @@ portion of the 2026-10-05 amendment above:
   automatically; an occupied port skips the dashboard and offers `aew dashboard serve --port 0` to explicitly request
   an ephemeral port (or a free port the operator chooses). A dashboard failure never fails the Lead session. No write
   path is added; a write route bypassing adopt or the operator endpoint reopens the no-code decision.
+
+## Amendment (2026-11-11) — OpenCode takes or resumes the Lead seat (E330)
+
+The Lead credential held by the broker is taken in-process when `aew opencode` starts on a vacant seat
+(`--acquire` says the same and is still accepted), or, when `AEW_LEAD_TOKEN` is set in the operator's own
+shell or a flag asks for the hidden prompt, from that credential, which is removed from the session's
+environment. The flag is `--prompt-token`. An explicit `--acquire` selects the in-process path even if the
+environment variable is set. `aew lead session` keeps its existing credential and acquisition modes.
+
+Beside takeover, the operator can resume a seat that `aew opencode` itself took or previously resumed.
+Resume requires the same host and user, the recorded session process gone, no pending handoff, and the
+operator's own terminal outside any AEW session and non-writer process. The new generation fences the old
+Lead and carries the still-active invocations and their credentials. If any invocation will be carried or
+any leftover process may still run, the operator types one code after seeing the generation move and the
+invocations and processes concerned. The commit re-checks the holder and the subjects shown. Takeover
+retains its existing confirmation and interruption.

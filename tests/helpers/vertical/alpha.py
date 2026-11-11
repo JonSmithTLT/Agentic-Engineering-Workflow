@@ -85,6 +85,8 @@ def summary(rows: list[dict[str, Any]], *, platform: str, strict_pass: str) -> s
             problems.extend(f"{scenario}: {problem}" for problem in fresh_problems(ledger, excuses))
         elif scenario == FORCED:
             problems.extend(f"{scenario}: {problem}" for problem in result_problems(ledger))
+            if (takeovers := ledger["counts"].get("takeovers", 0)) > 0:
+                problems.append(f"{scenario}: takeovers = {takeovers} (must be zero)")
     for scenario in PREFLIGHT:
         if scenario not in scenarios or scenarios[scenario][1] != strict_pass:
             problems.append(f"{scenario}: strict preflight pass not observed")

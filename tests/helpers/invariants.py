@@ -146,6 +146,15 @@ def control_violations(root: Path) -> list[str]:
     tokens = state["tokens"]
     problems: list[str] = []
     evidence: dict[str, dict[str, dict[str, Any]]] = {}
+    lead = state["lead"]
+    start = lead.get("start") or {}
+    if start and (start.get("generation") != lead["generation"] or start.get("at") != lead["acquired_at"]):
+        problems.append("Lead seat start does not match its generation and acquisition time")
+    if lead["status"] == "active" and start.get("kind") in {"opencode_acquire", "vacant_start"}:
+        if not (start.get("host") and start.get("user") is not None and start.get("pid") and start.get("start_id")):
+            problems.append("active OpenCode seat lacks its host, user or session identity")
+        if isinstance(start.get("user"), int) and lead.get("host_uid") != start["user"]:
+            problems.append("OpenCode seat's host uid differs from its acquisition user")
 
     # 1. Live mutating workspaces never share a path. The policy cap (`mutating_concurrency`) is an admission rule,
     #    enforced by the `cap.mutating` dispatch guard, not an invariant of the state: lowering the cap never makes
@@ -747,6 +756,15 @@ def outbox_violations(root: Path, state: dict[str, Any]) -> list[str]:
     try:
         for record in outbox.read_transitions(aew_root, through, state["revision"], outbox=marker, prev_h=prev_h):
             raw = view.resolve(record["revision"]) or {}
+            if record.get("op") == "lead.resume":
+                events = record["events"] or []
+                generations = [e for e in events if e["kind"] == "lead.generation"]
+                decisions = [e for e in events if e["kind"] == "decision.recorded" and e.get("type") == "seat_resume"]
+                actor = record.get("actor") or {}
+                if (len(generations) != 1 or generations[0]["to"] != generations[0]["from"] + 1
+                        or actor.get("generation") != generations[0]["to"] or actor.get("kind") != "operator"
+                        or not actor.get("authorized_by") or len(decisions) != 1):
+                    problems.append(f"seat resume at revision {record['revision']} lacks its generation or decision")
             if len(raw.get("events") or []) > outbox.MAX_HOT_EVENTS:
                 problems.append(f"26: revision {record['revision']} holds {len(raw['events'])} hot events")
             if (raw.get("event_overflow") is None) != (len(record["events"] or []) <= outbox.MAX_HOT_EVENTS):

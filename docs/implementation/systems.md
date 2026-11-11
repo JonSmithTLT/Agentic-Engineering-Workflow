@@ -6,19 +6,19 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **on_and_used:** 4 — SYS-17, SYS-20, SYS-37, SYS-38
 
-**awaiting_signoff (built, awaiting your sign-off):** 1 — SYS-39
+**awaiting_signoff (built, awaiting your sign-off):** 2 — SYS-39, SYS-47
 
 **partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-08, SYS-09, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-48
 
 **built_off:** 4 — SYS-07, SYS-12, SYS-14, SYS-23
 
-**built_not_wired:** 1 — SYS-10
+**built_not_wired:** 0 — none
 
 **staged:** 2 — SYS-22, SYS-27
 
-**designed_only:** 19 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-43, SYS-44, SYS-45, SYS-46, SYS-47
+**designed_only:** 18 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-43, SYS-44, SYS-45, SYS-46
 
-**Waiting on your sign-off:** 1 — SYS-39
+**Waiting on your sign-off:** 2 — SYS-39, SYS-47
 
 **Limit's count / wip_limit:** 12 / 12 — SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-13, SYS-19, SYS-22, SYS-48
 
@@ -28,31 +28,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 11 — SYS-09, SYS-47, SYS-40, SYS-42, SYS-44, SYS-48, SYS-07, SYS-30, SYS-32, SYS-39, SYS-46
-
-### SYS-09 — Capability register (CAP-1 and the base bundle)
-
-**Board state:** partly_built
-
-**Who:** Lead
-
-**Now:** 7
-
-**Own slices left:** 2 — The stale package docstring (capability/__init__.py:8-10), in BOARD v2 §6's docs PR (row owed); Later: MCP servers and SPT's records (A-54, SPB), host placement and network; designed only (STG-15) — **Next:** The stale package docstring (capability/__init__.py:8-10), in BOARD v2 §6's docs PR — row owed — part of 1 small docs PR (estimate)
-
-**Wired:** cli:capability list, cli:capability check, cli:capability import, cli:capability add, cli:capability remove, cli:capability host-copies, cli:doctor
-
-### SYS-47 — Relay client certificate (E123)
-
-**Board state:** designed_only
-
-**Who:** Lead (E99 is adopted as A-55, which names E123 as the provider-access owner); operator for the live AIR-85 qualification
-
-**Now:** 13
-
-**Own slices left:** 2 — E123: certificate, key and CA fields in the execution policy schema, the client certificate loaded in the relay's TLS context per upstream, mask-and-refuse at launch, no-relay refusal, throwaway-CA tests, and a 429 measurement against a local fake upstream (on the Now list) (E123); The gate's live qualification of the forced request fields against the provider (AIR-85), a live run before a provider that requires a client certificate is used (row owed) — **Next:** E123: certificate, key and CA fields in the execution policy schema, the client certificate loaded in the relay's TLS context per upstream, mask-and-refuse at launch, no-relay refusal, throwaway-CA tests, and a 429 measurement against a local fake upstream (on the Now list) — E123 — 1-2 PRs (estimate)
-
-**Wired:** none
+**Members:** 13 — SYS-40, SYS-42, SYS-44, SYS-48, SYS-03, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47
 
 ### SYS-40 — Lead reports (report_write)
 
@@ -102,19 +78,57 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** none
 
+### SYS-03 — Read-only operator dashboard (server side)
+
+**Board state:** partly_built
+
+**Who:** designer (the HOLD-12 match), then operator (release /attention and E73), then Lead
+
+**Now:** not on the Now list
+
+**Own slices left:** 2 — E94: the web package refresh (S3); the packaged build still names contract 0.1.2's digest while the served contract is 0.1.3. The web developer's (E94); E148: a containment reader so the site shows a run's provider route; the run label now carries relay_family (E143's follow-on) but nothing in src/aew/dashboard reads it. The web developer's to place (E148) — **Next:** E94: the web package refresh (S3); the packaged build still names contract 0.1.2's digest while the served contract is 0.1.3. The web developer's — E94 — 1 PR by the web developer (estimate)
+
+**Wired:** cli:dashboard serve, cli:dashboard open, cli:dashboard status, dashboard:/overview, dashboard:/project, dashboard:/capabilities, dashboard:/work, dashboard:/runs, dashboard:/evidence, dashboard:/knowledge, dashboard:/history, dashboard:/activity, dashboard:/maps
+
+### SYS-04 — Steering (Crawl/Walk/Run), operator endpoint and notifier
+
+**Board state:** partly_built
+
+**Who:** Lead
+
+**Now:** not on the Now list
+
+**Own slices left:** 2 — The scheduler on: PR 4 (RUN's proof through the real tools), then the measured RUN trial (E228); The steering and Lead text fix, with the crawl and walk stop named as the Lead's step, and request_confirmation hidden from the steering tool's enum and schema; request_raise stays advertised (E183) — **Next:** The scheduler on: PR 4 (RUN's proof through the real tools), then the measured RUN trial — E228 — 1 PR and a measured trial (estimate)
+
+**Switch:** steering.mode — default: absent — not read from the code
+
+**Wired:** tool:steering, cli:operator serve, cli:operator ping, cli:lead mode raise, cli:lead mode lower, lead_text
+
 ### SYS-07 — Project maps in agents' context
 
 **Board state:** built_off
 
-**Who:** Lead (1-2 PRs after first use); decided by the operator
+**Who:** Lead (PR B, then E293); decided by the operator
 
 **Now:** not on the Now list
 
-**Own slices left:** 2 — maps.pack_slices on for all cards (operator, 2026-11-06, design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md, item 3); each card's added pack size and tokens recorded, not a gate (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 3) (E62); F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03) (F22.2) — **Next:** maps.pack_slices on for all cards (operator, 2026-11-06, design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md, item 3); each card's added pack size and tokens recorded, not a gate (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 3) — E62 — 1-2 PRs (estimate)
+**Own slices left:** 3 — PR B, the switch-on: maps.pack_slices on for all cards in a new project (operator, 2026-11-06, design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md, item 3), offered to an existing project through the shared switch offer, with each card's added pack size and tokens recorded, not a gate (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 3); and E184's owed items: the Lead's dispatch result carries a reference and the byte count, never the slice body, and the projects already switched on are told (E62); E293, V-01's maps profile: the built maps held against A-14's obligations, the profile written, each divergence fixed; its own PR right after the switch-on, its first step a read-only table of the obligations against the code (E293); F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03) (F22.2) — **Next:** PR B, the switch-on: maps.pack_slices on for all cards in a new project (operator, 2026-11-06, design workspace record 2026-11-06-operator-board-decisions-concurrency-steering-maps-knowledge.md, item 3), offered to an existing project through the shared switch offer, with each card's added pack size and tokens recorded, not a gate (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 3); and E184's owed items: the Lead's dispatch result carries a reference and the byte count, never the slice body, and the projects already switched on are told — E62 — 1-2 PRs (estimate)
 
 **Switch:** maps.pack_slices — default: off — checked against src/aew/policy/execution.py:STRING_SWITCHES
 
 **Wired:** cli:map generate, cli:map select-architecture, cli:map show, cli:map diff, dashboard:/maps, dashboard:/maps/structural, dashboard:/maps/structural/{root}, dashboard:/maps/structural/{root}/inputs, dashboard:/maps/diff, pack, tool:resume
+
+### SYS-08 — Governed stages on the typed Lead surface (StageIntent) and dispositions
+
+**Board state:** partly_built
+
+**Who:** Lead (E83)
+
+**Now:** not on the Now list
+
+**Own slices left:** 1 — E83: declare the auto-run set (ticket_start and ticket_request_review, called without `execution`) and test that classify.auto_runnable's set equals it; it rides the scheduler's PR 4 (E228) (E83) — **Next:** E83: declare the auto-run set (ticket_start and ticket_request_review, called without `execution`) and test that classify.auto_runnable's set equals it; it rides the scheduler's PR 4 (E228) — E83 — 1 small PR (estimate)
+
+**Wired:** cli:lead mcp, cli:lead tool, cli:stage continue, cli:stage abandon, cli:work dispose, lead_text
 
 ### SYS-30 — Research minimum slice, CNI links and PoCs as linked Tickets
 
@@ -148,7 +162,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** not on the Now list
 
-**Own slices left:** 2 — The offer that switches an existing project's gates.yaml to the default, at the operator's terminal, which replaces the migration (F10); AEW's git wrapper never acts on the wrong repository from inside a git operation (E225) — **Next:** The offer that switches an existing project's gates.yaml to the default, at the operator's terminal, which replaces the migration — F10 — 1 PR (estimate)
+**Own slices left:** 1 — AEW's git wrapper never acts on the wrong repository from inside a git operation; placed on 2026-11-11 in the near-finish small fixes (E225) — **Next:** AEW's git wrapper never acts on the wrong repository from inside a git operation; placed on 2026-11-11 in the near-finish small fixes — E225 — 1 PR (estimate)
 
 **Switch:** gates.mutating_concurrency — default: 2 — checked against src/aew/knowledge/manifest.py:DEFAULT_GATES
 
@@ -166,9 +180,21 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** none
 
+### SYS-47 — Relay client certificate (E123)
+
+**Board state:** awaiting_signoff
+
+**Who:** operator (AIR-85, then the sign-off)
+
+**Now:** not on the Now list
+
+**Own slices left:** 0 — none — **Next:** none
+
+**Wired:** cli:doctor
+
 ## Finish, with more to build
 
-**Members:** 17 — SYS-02, SYS-05, SYS-19, SYS-29, SYS-22, SYS-08, SYS-41, SYS-43, SYS-06, SYS-45, SYS-13, SYS-03, SYS-04, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 15 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-29, SYS-22, SYS-41, SYS-43, SYS-06, SYS-45, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-02 — Agent containment (Linux core on; Windows backend and follow-ons)
 
@@ -196,15 +222,27 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** cli:harness launch, cli:harness config, cli:opencode, cli:doctor
 
+### SYS-09 — Capability register (CAP-1 and the base bundle)
+
+**Board state:** partly_built
+
+**Who:** Lead (E191 with E196, placed on 2026-11-11 for the near-finish push); the operator for the real contained run
+
+**Now:** 7
+
+**Own slices left:** 3 — `aew init --fetch-tool none`: downloads nothing, shows no consent screen and leaves each tool unanswered (E191); The stale texts in the code, the package docstring (capability/__init__.py:8-10) among them; comments and strings only (E196); Later: MCP servers and SPT's records (A-54, SPB), host placement and network; designed only (STG-15) — **Next:** `aew init --fetch-tool none`: downloads nothing, shows no consent screen and leaves each tool unanswered — E191 — part of 1 small PR with E196 (estimate)
+
+**Wired:** cli:capability list, cli:capability check, cli:capability import, cli:capability add, cli:capability remove, cli:capability host-copies, cli:doctor
+
 ### SYS-19 — Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
 
 **Board state:** partly_built
 
-**Who:** Lead (E120); designer or operator for the two loose ends (BOARD v2 §4)
+**Who:** Lead (E120, E243, E334)
 
 **Now:** 9
 
-**Own slices left:** 4 — E120: what its first PR left owed: the record's section 2 (what a run went without), and E243's project-owned source for the two lists its record now says are not known (E120); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): artifact_digests, always empty: populate or drop (BOARD v2 §4 loose end) (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): working_diff, never called: keep or remove (BOARD v2 §4 loose end) (row owed); A project-owned source for E120's two lists (E243) — **Next:** E120: what its first PR left owed: the record's section 2 (what a run went without), and E243's project-owned source for the two lists its record now says are not known — E120 — 1-2 PRs (estimate)
+**Own slices left:** 3 — E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known (E120); A project-owned source for E120's two lists, to the designer's input contract: PR 1 (the coverage declaration, the honest lines, doctor rows, the guide) is in review, then PR 2 (the selector in the validation executor) (E243); A check's declared caches leave the working state every reader takes (the snapshot, changed_paths and the Ticket commit); being built (E334) — **Next:** E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known — E120 — 1-2 PRs (estimate)
 
 **Wired:** cli:check run, dashboard:/evidence/{id}
 
@@ -212,11 +250,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Board state:** designed_only
 
-**Who:** Lead (BOARD v2 §2, on the Now list)
+**Who:** Lead (BOARD v2 §2, on the Now list); its brief is owed
 
 **Now:** 15
 
-**Own slices left:** 3 — Move the code's O-01 command wire from 0.2 to 0.8 (I-7's 0.9 follows, BOARD v2 §2: 'O-01 0.2 to 0.8/0.9') (STG-14); The nine rows' actions and handlers across their owners (IF-13, the resource policy issuer, R-01), with surface-map entries; P11's migration half and U10 wait for U-01 (STG-14); Provider profiles declare rate_basis (which counters the limiter counts) and its window; I-6's ceilings in that unit and period (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 1) (STG-14) — **Next:** Move the code's O-01 command wire from 0.2 to 0.8 (I-7's 0.9 follows, BOARD v2 §2: 'O-01 0.2 to 0.8/0.9') — STG-14 — 1-2 PRs (estimate)
+**Own slices left:** 4 — Retire the STG-02 producer when I-6's real O-01 route lands, and move the G3 client's tests to the real route (E356); Move the code's O-01 command wire from 0.2 to 0.8 (I-7's 0.9 follows, BOARD v2 §2: 'O-01 0.2 to 0.8/0.9') (STG-14); The nine rows' actions and handlers across their owners (IF-13, the resource policy issuer, R-01), with surface-map entries; P11's migration half and U10 wait for U-01 (STG-14); Provider profiles declare rate_basis (which counters the limiter counts) and its window; I-6's ceilings in that unit and period (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 1) (STG-14) — **Next:** Retire the STG-02 producer when I-6's real O-01 route lands, and move the G3 client's tests to the real route — E356 — 1 PR (estimate), with I-6's route
 
 **Wired:** none
 
@@ -228,21 +266,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Now:** 23
 
-**Own slices left:** 3 — E142: serve security-review and c-review (on the Now list) (E142); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E136: the other eleven skills as optional_skills, batched (on the Now list) (E136); E135: the evaluation runner, and qualification before anything beyond the personal alpha (E135) — **Next:** E142: serve security-review and c-review (on the Now list) — E142 — 1 PR (estimate)
+**Own slices left:** 3 — E142: serve security-review and c-review; being built (E142); E136: the other eleven skills as optional_skills, in about three batched PRs, each with the per-skill public-text check; after E142 (E136); E135: the evaluation runner, and qualification before anything beyond the personal alpha (E135) — **Next:** E142: serve security-review and c-review; being built — E142 — 1 PR (estimate)
 
 **Wired:** pack
-
-### SYS-08 — Governed stages on the typed Lead surface (StageIntent) and dispositions
-
-**Board state:** partly_built
-
-**Who:** Lead (E137, then E138, E83 by the register's order); designer for D4; operator for placing E6b out of HOLD-10
-
-**Now:** 25
-
-**Own slices left:** 4 — E137: the other judgment stages stranded at their last committed step, and the custody worker's registration (suspected); the publish case is fixed (E137); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E138: record the escaping exception's class where it can be read, with a stage result when steps committed (E138); E83: declare the auto-run set (ticket_start and ticket_request_review, under RUN only) and test that classify.auto_runnable's set equals it (E83); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): designer decision D4: what a listed unrequired verification result marks, before that half of requires_disposition can mark anything (row owed) — **Next:** E137: the other judgment stages stranded at their last committed step, and the custody worker's registration (suspected); the publish case is fixed — E137 — 1 PR (estimate)
-
-**Wired:** cli:lead mcp, cli:lead tool, cli:stage continue, cli:stage abandon, cli:work dispose, lead_text
 
 ### SYS-41 — Lead consult (spawn a non-mutating agent for the Lead's own question)
 
@@ -306,32 +332,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** tool:message_send, cli:message thread, cli:message list, cli:message unseen, cli:harness send
 
-### SYS-03 — Read-only operator dashboard (server side)
-
-**Board state:** partly_built
-
-**Who:** designer (the HOLD-12 match), then operator (release /attention and E73), then Lead
-
-**Now:** not on the Now list
-
-**Own slices left:** 3 — E73: the maps registry reader converges on engine/store.py read_lock_free instead of returning NONE on the first FileNotFoundError (E73); E94: the web package refresh (S3); the packaged build still names contract 0.1.2's digest while the served contract is 0.1.3. The web developer's (E94); E148: a containment reader so the site shows a run's provider route; the run label now carries relay_family (E143's follow-on) but nothing in src/aew/dashboard reads it. The web developer's to place (E148) — **Next:** E73: the maps registry reader converges on engine/store.py read_lock_free instead of returning NONE on the first FileNotFoundError — E73 — 1 small PR (estimate)
-
-**Wired:** cli:dashboard serve, cli:dashboard open, cli:dashboard status, dashboard:/overview, dashboard:/project, dashboard:/capabilities, dashboard:/work, dashboard:/runs, dashboard:/evidence, dashboard:/knowledge, dashboard:/history, dashboard:/activity, dashboard:/maps
-
-### SYS-04 — Steering (Crawl/Walk/Run), operator endpoint and notifier
-
-**Board state:** partly_built
-
-**Who:** Lead
-
-**Now:** not on the Now list
-
-**Own slices left:** 12 — The steering tool's text and the Lead's text say what works today (the designer's ruling, BOARD v2 §1). The code narrows that ruling, so the text must also say: lower succeeds only after the operator has raised the mode at the --dev endpoint, and in a project with no steering.mode every action, lower included, is refused as not configured (row owed); Only if the operator decides it (BOARD v2 §3): hide request_raise and request_confirmation from the normal catalog until a grant path exists; lower stays (row owed); Confirmation: E7c as planned, or re-pointed at G3 per A-37; `aew confirm` (HOLD-19); E6b publication grants and E8b breaker reset and relaunch at the endpoint; E7d's events (HOLD-19); F18.6, the principal proof, so operator records can carry more than guarantee: dev (F18.6); Scheduler priority: a Ticket field, three levels, the derived unblock count (E227); The scheduler on: the switch-on chain after E123 (E228); A priority floor, the operator's setting (E229); A steering raise that persists for the project (SMP, A-56) (E230); A console window for a Linux background endpoint (E232); Push wake measured on Windows (E240); The conversational Lead's docs follow-ons (E249) — **Next:** The steering tool's text and the Lead's text say what works today (the designer's ruling, BOARD v2 §1). The code narrows that ruling, so the text must also say: lower succeeds only after the operator has raised the mode at the --dev endpoint, and in a project with no steering.mode every action, lower included, is refused as not configured — row owed — 1 small PR (estimate)
-
-**Switch:** steering.mode — default: absent — not read from the code
-
-**Wired:** tool:steering, cli:operator serve, cli:operator ping, cli:lead mode raise, cli:lead mode lower, lead_text
-
 ### SYS-24 — Lead attachment lifecycle (Q12), custodian outliving the Lead, lease-expiry takeover
 
 **Board state:** designed_only
@@ -384,7 +384,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Members:** 1 — SYS-26
 
-**Decided:** 31 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-11, SYS-12, SYS-13, SYS-14, SYS-15, SYS-18, SYS-19, SYS-20, SYS-21, SYS-22, SYS-24, SYS-25, SYS-34, SYS-37, SYS-39, SYS-40, SYS-41, SYS-42, SYS-43, SYS-44, SYS-45, SYS-48
+**Decided:** 34 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-11, SYS-12, SYS-13, SYS-14, SYS-15, SYS-18, SYS-19, SYS-20, SYS-21, SYS-22, SYS-23, SYS-24, SYS-25, SYS-29, SYS-34, SYS-37, SYS-39, SYS-40, SYS-41, SYS-42, SYS-43, SYS-44, SYS-45, SYS-47, SYS-48
 
 ### SYS-26 — Resource and progress supervision (stall detection, run health, weak-worker continuity, dynamic scheduler)
 
@@ -404,15 +404,13 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Not counted
 
-**Members:** 16 — SYS-18, SYS-12, SYS-01, SYS-10, SYS-11, SYS-14, SYS-15, SYS-16, SYS-21, SYS-23, SYS-25, SYS-26, SYS-27, SYS-28, SYS-35, SYS-36
+**Members:** 15 — SYS-18, SYS-12, SYS-01, SYS-11, SYS-14, SYS-15, SYS-16, SYS-21, SYS-23, SYS-25, SYS-26, SYS-27, SYS-28, SYS-35, SYS-36
 
 **SYS-18 — Ticket revisions:** freeze
 
 **SYS-12 — Discovery layer, D2 (output and text rules):** freeze
 
 **SYS-01 — Evaluation instrument (F19, M4-H):** freeze
-
-**SYS-10 — STG-02 slice producer: the O-01 command route and D-01 reads, with the vendored adopted contract files:** freeze
 
 **SYS-11 — Run cost and usage ledger (with live usage meter):** freeze
 

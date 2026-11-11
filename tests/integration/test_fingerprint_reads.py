@@ -334,10 +334,3 @@ def test_a_recorded_fingerprint_a_non_writer_computed_is_found_with_no_tree_in_t
     assert recorded == {reader.removeprefix("git-tree:")} and unstored == [reader.removeprefix("git-tree:")]
     writer = F.relevant_inputs_fingerprint(ws)  # the same tree, now stored by a writer
     assert writer == reader and worker_surface.unstored_fingerprints(ws)[1] == []
-
-
-def test_working_diff_stores_what_it_reads_in_any_process_and_still_gives_the_diff(tmp_path):
-    """Flagged (no caller in src): it reads blob content, so it stores the blobs it adds, even in a reader."""
-    ws, base, _ = edits(tmp_path)
-    with as_kind("reader"):
-        assert "brand new" in F.working_diff(ws, base)

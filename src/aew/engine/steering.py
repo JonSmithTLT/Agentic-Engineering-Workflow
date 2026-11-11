@@ -202,10 +202,11 @@ def loop_state(aew_root: Any, generation: int | None = None) -> dict[str, Any] |
     stop = data.get("stop")
     if isinstance(stop, dict):
         # redacted before it is shortened, so a cut never leaves a credential's fragment (review of E228's PR, m4)
-        out["stop"] = {k: redact(str(stop.get(k)))[:500] if stop.get(k) is not None else None
-                       for k in ("code", "message", "subject", "revision", "at", "condition")}
+        shown: dict[str, Any] = {k: redact(str(stop.get(k)))[:500] if stop.get(k) is not None else None
+                                 for k in ("code", "message", "subject", "revision", "at", "condition")}
         occurrence = stop.get("occurrence")
-        out["stop"]["occurrence"] = occurrence if isinstance(occurrence, int) and occurrence > 0 else None
+        shown["occurrence"] = occurrence if isinstance(occurrence, int) and occurrence > 0 else None
+        out["stop"] = shown
     return out
 
 

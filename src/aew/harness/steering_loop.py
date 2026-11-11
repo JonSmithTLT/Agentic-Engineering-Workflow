@@ -204,7 +204,7 @@ def ingesting_action(state: dict[str, Any], action: dict[str, Any]) -> bool:
     unit = (state.get("work") or {}).get(arguments.get("work_id") or "") or {}
     for primitive, build in zip(t.expands_to, builders, strict=False):
         step = build(arguments) if primitive == "work.transition" else None
-        rule = transitions.RULES.get((unit.get("state"), (step or {}).get("to")))
+        rule = transitions.RULES.get((str(unit.get("state")), str((step or {}).get("to"))))
         if rule is not None and rule.guard in Gates.INGESTS_IMPLEMENTATION:
             return True
     return False
@@ -662,8 +662,10 @@ class SteeringLoop:
         activation doesn't re-tell a stuck Ticket's stop. The limit: a different stop recorded in between also moves
         it, so the Lead is told the same stop again then; the safe direction (one more wake, never a missed one)."""
         previous = _read(self.aew_root / S.LOOP_REL) or {}
-        before = previous.get("stop") if isinstance(previous.get("stop"), dict) else {}
-        number = before.get("occurrence") if isinstance(before.get("occurrence"), int) else 0
+        found = previous.get("stop")
+        before: dict[str, Any] = found if isinstance(found, dict) else {}
+        recorded = before.get("occurrence")
+        number = recorded if isinstance(recorded, int) else 0
         acted = bool(self._acted) if stop.subject == "project" else stop.subject in self._acted
         if previous.get("generation") == self.generation and before.get("condition") == condition and not acted:
             return max(number, 1)

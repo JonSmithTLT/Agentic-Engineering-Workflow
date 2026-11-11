@@ -104,11 +104,14 @@ class LeadSession:
     proc: subprocess.Popen[str]
     transcript: Path
     relayed: bool = False  # on a terminal AEW relays (the contained Lead): the TUI's screen comes before the result
+    # Why the driver ended the session at its start, or "" (the tool screen it could not answer: FakeOpenCodeDriver)
+    ended_by_driver: Callable[[], str] = lambda: ""
 
     def result(self, timeout: float = 900) -> tuple[CLIResult, dict[int, dict[str, Any]]]:
         """Wait for the session to end: the command's result (what the operator's terminal shows) and the steps
         the Lead's model took."""
         out, err = self.proc.communicate(timeout=timeout)
+        assert not self.ended_by_driver(), self.ended_by_driver()
         if self.relayed:  # what the TUI drew, its leave sequence, then the result line
             screen, _, out = out.rpartition(procs.TERMINAL_LEAVE.decode())
             assert not contains_credential(screen), "the operator's terminal showed a credential"
@@ -119,6 +122,10 @@ class LeadSession:
 # child already leads a session of its own: NO_WINDOW).
 AT_A_TERMINAL = ("import fcntl, os, sys, termios\nfcntl.ioctl(0, termios.TIOCSCTTY, 0)\n"
                  "os.execv(sys.executable, [sys.executable, '-m', 'aew', *sys.argv[1:]])\n")
+# How long the Lead's start may show its tool screen's first line before the driver has answered its prompt: both are
+# written by one call (``operator.ask`` writes the whole screen at once), so anything near this means the prompt was
+# not recognised, and the driver ends the session rather than wait out ``operator.ask``'s 300 s.
+SCREEN_ANSWER_S = 30.0
 
 
 class Driver:
@@ -305,17 +312,35 @@ class FakeOpenCodeDriver(Driver):
         # The start's tool screen (``consent.at_lead_start``) asks at this terminal when the lab lacks a needed tool,
         # and an unanswered one waits out ``operator.ask``'s whole timeout before the Lead goes on (300 s a start
         # from #343 until this answer). The operator here answers `none`: a test host downloads nothing, and the
-        # decline lands in the lab's own register (its XDG_DATA_HOME).
-        choose = f"Choose {' / '.join(consent.CHOICES)}: ".encode()
+        # decline lands in the lab's own register (its XDG_DATA_HOME). The screen's first line and its prompt are
+        # the screen's own (``consent.screen``), never restated here; and a screen shown but not answered ends the
+        # session at once, which ``LeadSession.result`` fails on, so a prompt this driver no longer matches is a
+        # failure naming it, never a start that silently waits the timeout out again (review of the fix, n1).
+        lines = consent.screen([]).split("\n")
+        header, choose = next(line for line in lines if line).encode(), lines[-1].encode()
+        shown: dict[str, Any] = {}
 
         def drain() -> None:  # what reaches the terminal itself, until the session lets it go
-            tail = b""
+            import select
+
+            seen = b""
             try:
-                while chunk := os.read(master, 65536):
-                    tail = (tail + chunk)[-len(choose):]
-                    if tail == choose:
+                while True:
+                    if ("at" in shown and "answered" not in shown and "missed" not in shown
+                            and time.monotonic() - shown["at"] > SCREEN_ANSWER_S):
+                        shown["missed"] = True
+                        proc.kill()  # the screen's prompt was not recognised: fail now, not after its timeout
+                    if not select.select([master], [], [], 1)[0]:
+                        continue
+                    chunk = os.read(master, 65536)
+                    if not chunk:
+                        return
+                    seen = (seen + chunk)[-(len(header) + len(choose) + 65536):]
+                    if "at" not in shown and header in seen:
+                        shown["at"] = time.monotonic()
+                    if "answered" not in shown and seen.endswith(choose):
                         os.write(master, f"{consent.NONE}\n".encode())
-                        tail = b""
+                        shown["answered"] = True
             except OSError:
                 pass
             finally:
@@ -323,7 +348,10 @@ class FakeOpenCodeDriver(Driver):
 
         threading.Thread(target=drain, daemon=True).start()
         lab.sessions.append(proc)
-        return LeadSession(proc, transcript, relayed=True)
+        return LeadSession(proc, transcript, relayed=True, ended_by_driver=lambda: (
+            f"the start showed its tool screen ({header.decode()!r}) and the driver found no prompt to answer "
+            f"within {SCREEN_ANSWER_S:.0f} s, so it ended the session: the prompt is no longer the screen's last "
+            "line" if shown.get("missed") else ""))
 
 
 class OpenCodeDriver(Driver):

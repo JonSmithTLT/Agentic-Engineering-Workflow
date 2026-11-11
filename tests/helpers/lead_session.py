@@ -117,7 +117,7 @@ class Upstream:
     """A provider's stand-in upstream on the host's loopback: it records each request's path and Authorization, and
     its account header (the ChatGPT login's) apart."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, path: str = "/v1") -> None:
         self.seen: list[tuple[str, str]] = []
         self.accounts: list[str] = []
         seen, accounts = self.seen, self.accounts
@@ -138,7 +138,7 @@ class Upstream:
 
         self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
-        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/v1"
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}{path}"
 
     def close(self) -> None:
         self.server.shutdown()
@@ -193,11 +193,12 @@ def make_lab(tmp_path: Path, *, upstreams: dict[str, str] | None = None, mode: s
 
 
 def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, str] | None = None,
-                    timeout: float = 120) -> dict[str, Any]:
+                    timeout: float = 120, refreshing_upstream: str | None = None) -> dict[str, Any]:
     """`aew opencode` at a terminal the test holds: standard input is a pseudo-terminal that is its controlling
     terminal (as at the operator's shell); its standard output and error are collected. Returns the exit code, the
     result JSON (after the relay's reset), the refusal's error with what stderr held before and after it
-    (``discovery.rules.split_refusal``), and whether the terminal got its settings back."""
+    (``discovery.rules.split_refusal``), and whether the terminal got its settings back. A synthetic refreshing
+    upstream replaces the built-in URL in the test subprocess only."""
     import pty
     import termios
 
@@ -211,10 +212,18 @@ def at_the_terminal(lab: HarnessLab, home: Path, *args: str, extra: dict[str, st
         import fcntl, os, sys, termios
         os.setsid()
         fcntl.ioctl(0, termios.TIOCSCTTY, 0)
-        os.execv(sys.executable, [sys.executable, "-m", "aew", *sys.argv[1:]])
+        refreshing_upstream = sys.argv.pop(1)
+        if not refreshing_upstream:
+            os.execv(sys.executable, [sys.executable, "-m", "aew", *sys.argv[1:]])
+
+        import runpy
+        from aew.harness.containment import netns
+
+        netns.REFRESHING_UPSTREAMS["openai"] = refreshing_upstream
+        runpy.run_module("aew", run_name="__main__", alter_sys=True)
     """)
-    proc = subprocess.Popen([sys.executable, "-c", wrapper, "-C", str(lab.root), "opencode", *args], stdin=slave,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    command = [sys.executable, "-c", wrapper, refreshing_upstream or "", "-C", str(lab.root), "opencode", *args]
+    proc = subprocess.Popen(command, stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
     shown = bytearray()
     try:
         deadline = time.monotonic() + timeout

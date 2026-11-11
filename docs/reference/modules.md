@@ -1553,7 +1553,6 @@ None.
 - `aew.harness.containment.client_cert`
 - `aew.harness.containment.egress`
 - `aew.harness.containment.netns`
-- `aew.harness.containment.relay`
 - `aew.harness.containment.shim`
 - `aew.harness.dashboard_autostart`
 - `aew.harness.lead_broker`
@@ -1581,6 +1580,8 @@ None.
 ### `aew.harness.opencode.login`
 
 - `aew.errors`
+- `aew.harness.containment.netns`
+- `aew.harness.containment.relay`
 - `aew.harness.opencode.capabilities`
 
 ### `aew.harness.opencode.model_pricing`

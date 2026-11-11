@@ -10,6 +10,8 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 
+import pytest
+
 from aew.engine import guide
 from aew.engine import transitions as T
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
@@ -40,7 +42,6 @@ def test_the_guide_says_how_many_mutating_tickets_run_at_once_as_the_cap_says_an
     assert "up to 5 mutating Tickets" in lead_text.render({**DEFAULT_GATES, "mutating_concurrency": 5}, CONFIGURED)
     serial = lead_text.render({**DEFAULT_GATES, "mutating_concurrency": 1}, CONFIGURED)
     assert "one mutating Ticket works at a time here" in serial and "work at once here" not in serial
-    assert guide.SCOPE_RULE not in serial
 
 
 def test_each_class_lists_exactly_the_gates_this_projects_policy_requires():
@@ -57,29 +58,29 @@ def test_class_0_is_explained_as_evidenced_and_the_implementation_is_accepted_by
     text = lead_text.render(DEFAULT_GATES, CONFIGURED)
     assert "**Class 0 is still evidenced.**" in text  # X4b
     assert "the post-integration verification, the guardrails, and an accepted plan all still apply" in text
-    assert "**Accept the implementation by transition**" in text  # the most refused command in the dogfood
-    assert "(`aew evidence ingest` is for non-mutating Tickets only.)" in text
+    assert "Accept the implementation by transition" in text  # the most refused command in the dogfood
     assert "--class <0-4>" in text and "--class 1 " not in text  # X4a: no anchoring example
 
 
-def test_resolve_guidance_distinguishes_a_retained_stale_stop_from_an_ended_intent():
-    text = lead_text.render(DEFAULT_GATES, CONFIGURED)
-    assert "A partial stale stage whose result names `resolve` is one" in text
-    assert "an ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) is not" in text
-    assert "a stage that already stopped is not one" not in text
+@pytest.mark.parametrize(("section", "heading"), [
+    ("first-ticket", "Before the first Ticket"),
+    ("stories-and-epics", "Stories and Epics"),
+    ("finished-work", "Finished work"),
+    ("non-mutating", "Non-mutating Tickets"),
+])
+def test_the_loaded_guide_points_to_each_section_without_loading_it(section, heading):
+    core = lead_text.render(DEFAULT_GATES, CONFIGURED)
+    detail = guide.render_section(section, DEFAULT_GATES)
+    when, _ = guide.SECTIONS[section]
+    assert f"| `aew lead guide {section}` | {when} |" in core
+    assert detail.startswith(f"## {heading}")
+    assert f"## {heading}" not in core
+    assert "A mutating Ticket, step by step" not in core
 
 
-def test_every_listed_move_is_one_the_engine_allows():
-    text = lead_text.render(DEFAULT_GATES, CONFIGURED)
-    for state in guide.LIFECYCLE:
-        line = next((ln for ln in text.splitlines() if ln.startswith(f"- **{state}** → ")), None)
-        if line is None:
-            continue
-        for move in line.split(" → ", 1)[1].split("; "):
-            for dst in move.split(":")[0].split(", "):
-                assert dst in T.allowed_from(state), f"{state} -> {dst} is listed but the engine refuses it"
-    for name, to in T.VERIFICATION_CLASSIFICATIONS.items():
-        assert f"`{name}` → {to}" in text
+def test_the_non_mutating_section_uses_the_projects_own_gates():
+    gates = {**DEFAULT_GATES, "non_mutating_paths": {"0": ["review_special"]}}
+    assert "an independent `special` review passes" in guide.render_section("non-mutating", gates)
 
 
 def test_the_guide_follows_the_post_integration_policy_and_names_unconfigured_checks():

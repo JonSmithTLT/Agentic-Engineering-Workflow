@@ -1,11 +1,4 @@
-"""The Lead's text names its typed tools, derived from the catalog, and nobody keeps it up to date by hand (E130).
-
-The operator, 2026-11-04: "are we going to have to manually keep the system text up to date?" Eight real sessions showed
-63% of the screen in shell tails, while a typed call is one row, and everything the Lead read pointed it at the shell.
-These tests are the answer: the system text's tools are `contract.TOOLS`' for the normal profile, a step a stage covers
-is led by that stage, and the shell stays the named way where no stage covers a step. A planted catalog row moves the
-text with no other edit. What is still hand-written is the prose, listed in the pull request.
-"""
+"""The Lead's system, guide and next-step text use the live catalog and transition rules (E130, E231)."""
 
 from __future__ import annotations
 
@@ -27,7 +20,6 @@ from aew.engine.resume_ops import Resume
 from aew.harness.contract import wake_guidance
 from aew.harness.opencode import projection
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
-from aew.surface import availability as SA
 from aew.surface import contract, lead_text
 from aew.surface import projection as surface
 from aew.surface.context import NORMAL, RECOVERY
@@ -67,12 +59,12 @@ def rendered() -> str:
 
 
 def test_the_lead_quotes_recorded_coverage_and_the_generated_guide_matches():
-    text = rendered()
+    text = guide.render_section("finished-work", DEFAULT_GATES)
     assert "quote AEW's recorded coverage" in text and "never compose coverage yourself or drop its unknowns" in text
     assert "coverage not recorded" in text.lower() and "validated within its scope" in text.lower()
     documented = (ROOT / "docs/guides/lead-guide.md").read_text(encoding="utf-8")
     assert documented.startswith("<!-- Generated:")
-    assert documented.partition("-->\n\n")[2] == text
+    assert documented.partition("-->\n\n")[2] == rendered()
 
 
 def system_text() -> str:
@@ -84,30 +76,6 @@ def plant(monkeypatch: pytest.MonkeyPatch, name: str = PLANTED, **kw: Any) -> No
     row = contract.Tool(name, kw.pop("kind", contract.STAGE), contract.MECHANICAL, "A planted tool.",
                         {"type": "object", "properties": {}, "additionalProperties": False}, **kw)
     monkeypatch.setitem(contract.TOOLS, name, row)
-
-
-def steps(text: str) -> dict[str, str]:
-    """Each numbered step of the mutating path, by what leads it."""
-    section = text.split("## A mutating Ticket, step by step", 1)[1].split("Each state and the moves", 1)[0]
-    found = re.split(r"^\d+\. ", section, flags=re.MULTILINE)[1:]
-    return {step.split(":", 1)[0]: step for step in found}
-
-
-def state_row(text: str, state: str) -> str:
-    return next(line for line in text.splitlines() if line.startswith(f"- **{state}** → "))
-
-
-def way_of(text: str, state: str, dst: str) -> str:
-    """How the guide's table says to take ``state -> dst``."""
-    for group in state_row(text, state).split(" → ", 1)[1].split("; "):
-        dsts, way = group.split(": ", 1)
-        if dst in dsts.split(", "):
-            return way
-    raise AssertionError((state, dst))
-
-
-def covered(stages: tuple[guide.Stage, ...]) -> list[tuple[guide.Move, guide.Stage]]:
-    return [(m, s) for m in guide.PATH if (s := guide._covering(stages, m)) is not None]
 
 
 def stage_named(text: str) -> list[str]:
@@ -133,7 +101,9 @@ def stray_arguments(text: str) -> list[str]:
 
 def lead_texts() -> dict[str, str]:
     """What a Lead reads as written: the system text with the guide, and each command's template."""
-    return {"system": system_text(), **{f"/{k}": v["template"] for k, v in projection.LEAD_COMMANDS.items()}}
+    return {"system": system_text(),
+            **{section: guide.render_section(section, DEFAULT_GATES) for section in guide.SECTIONS},
+            **{f"/{k}": v["template"] for k, v in projection.LEAD_COMMANDS.items()}}
 
 
 def engine_words() -> dict[str, set[str]]:
@@ -162,15 +132,6 @@ def test_every_normal_tool_is_named_in_what_the_lead_is_given():
         assert f"`{t.name}`" in text, t.name
 
 
-def test_the_system_text_teaches_no_step_a_stage_covers_from_the_shell():
-    """#331 review F4: `LEAD_SYSTEM` printed `aew work create` as the way a title gets in, on every request and again in
-    the guide's first step. It points at the guide instead; the guide keeps the command as the step's fallback."""
-    for move, _stage in covered(lead_text.stages()):
-        command = re.sub(r"^`+(sh\n)?", "", move.shell).split(" <", 1)[0]
-        if command.startswith("aew "):
-            assert command not in projection.LEAD_SYSTEM, command
-
-
 def test_the_system_text_says_nothing_of_stages_still_to_come():
     assert "Until typed stages arrive" not in system_text()
     assert projection.lead_tools_text() in projection.LEAD_SYSTEM
@@ -188,107 +149,6 @@ def test_a_tool_added_to_the_catalog_is_named_with_no_other_edit(monkeypatch, ki
 def test_the_list_follows_the_catalog_when_a_tool_goes(monkeypatch):
     monkeypatch.setattr(contract, "TOOLS", {k: t for k, t in contract.TOOLS.items() if k != "work_show"})
     assert "`work_show`" not in projection.lead_tools_text()
-
-
-# --------------------------------------------------------------------------------------- the stage leads what it covers
-
-
-def test_a_step_a_stage_covers_is_led_by_that_stage_and_its_shell_command_follows():
-    stages, found = lead_text.stages(), steps(rendered())
-    moves = covered(stages)
-    assert {s.tool for _, s in moves} == set(SA.STAGES)
-    for move, stage in moves:
-        step = found[f"`{stage.tool}`"]
-        assert step.index(stage.description) < step.index("Shell fallback:")
-        assert move.shell in step.split("Shell fallback:", 1)[1], (stage.tool, move.shell)
-        assert move.shell not in step.split("Shell fallback:", 1)[0], (stage.tool, move.shell)
-
-
-def test_every_stage_step_is_on_the_path_so_no_stage_is_left_out_of_the_guide():
-    """A migrated stage whose step the path does not know would keep its shell command as the lead, silently. A launch
-    is its dispatch's own run: no move of its own."""
-    path = {(m.primitive, m.qualifier) for m in guide.PATH}
-    for stage in lead_text.stages():
-        if stage.tool in SA.STAGES:
-            missing = [s for s in stage.steps if (s.primitive, s.qualifier) not in path
-                       and s.primitive != "dispatch.launch"]
-            assert not missing, (stage.tool, missing)
-
-
-def test_a_stage_planted_over_a_move_no_stage_covers_takes_it_over_with_no_other_edit(monkeypatch):
-    """The other half of the guard: no second table says which tool takes which step. `plan.accept` has no stage today;
-    planting one moves the step to it, the shell command becoming its fallback."""
-    shell = next(m.shell for m in guide.PATH if m.primitive == "plan.accept")
-    assert steps(rendered())["Accept the plan"].startswith(f"Accept the plan: {shell}")
-    plant(monkeypatch, expands_to=("plan.accept",))
-    now = steps(rendered())
-    assert "Accept the plan" not in now
-    assert shell in now[f"`{PLANTED}`"].split("Shell fallback:", 1)[1]
-
-
-def test_a_move_a_stage_starts_at_names_it_and_one_it_passes_through_does_not():
-    """A stage takes a Ticket only from its first step's state: step 1 of E130 measured the refusal from a later one
-    ("T-0001 is REVIEW_PASSED, not REVIEW_PENDING"). So the states a stage only passes through keep the command, and a
-    state a stage can start from past its first steps names it (E133)."""
-    text = rendered()
-    named = {"READY": "ticket_start", "RUNNING": "ticket_request_review",
-             "REVIEW_PENDING": "ticket_request_verification", "VERIFY_PENDING": "ticket_prepare",
-             "REVIEW_PASSED": "ticket_request_verification", "VERIFIED": "ticket_prepare",
-             "COMMIT_READY": "integration_publish"}
-    for state, tool in named.items():
-        assert f"`{tool}`" in state_row(text, state)
-    for state in ("ASSIGNED", "REVIEW_FAILED", "VERIFICATION_INCONCLUSIVE"):
-        row = state_row(text, state)
-        assert not stage_named(row) and guide.TRANSITION in row, row
-
-
-def test_a_moves_stage_is_one_the_engine_lets_it_start_from():
-    """Each edge the table gives a stage is that stage's entry step, by the transition table's own operation."""
-    stages = lead_text.stages()
-    for state in guide.LIFECYCLE:
-        for dst, via in contract_edges(state):
-            stage = guide._edge_stage(stages, state, dst, via)
-            if stage is None:
-                continue
-            primitive = guide._PRIMITIVE_OF.get(via, via)
-            entries = ({stage.steps[stage.starts[state] - 1].primitive} if state in stage.starts
-                       else {s.primitive for s in stage.entries()})
-            assert primitive in entries or f"{primitive}.integration" in entries, (state, dst, stage.tool)
-
-
-def contract_edges(state: str) -> list[tuple[str, str]]:
-    return list(T.allowed_from(state).items())
-
-
-# ---------------------------------------------------------------------------------------------- the fallback stays
-
-
-def test_a_move_no_stage_covers_is_led_by_its_shell_command():
-    stages, text = lead_text.stages(), rendered()
-    found = steps(text)
-    alone = [m for m in guide.PATH if guide._covering(stages, m) is None]
-    assert [m.primitive for m in alone] == ["plan.accept"]
-    for move in alone:
-        assert found[move.label].startswith(f"{move.label}: {move.shell}")
-    assert found["Accept the plan"].startswith("Accept the plan: `aew plan accept <T> --revision <n> ")
-    assert "aew verify classify <T> --as <CLASS>" in state_row(text, "VERIFICATION_FAILED")
-
-
-def test_with_no_stages_every_step_is_the_shell_commands_alone():
-    text = guide.render(DEFAULT_GATES, DEFAULT_CHECKS, ())
-    assert "Shell fallback" not in text
-    for move in guide.PATH:
-        assert move.shell and move.shell in text, move.primitive
-
-
-def test_the_shell_for_what_no_stage_reaches_is_named():
-    """Step 1's list: a path without review or verification, rework, a classification, a parent's close and a
-    non-mutating dispatch have no stage."""
-    text = rendered()
-    for command in ("aew work transition <T> --to <STATE>", "aew integrate prepare <T>",
-                    "aew invoke create <T> --role implementer --launch", "aew verify classify <T>",
-                    "aew work close <S>", "aew work dispatch <T> --launch"):
-        assert command in text, command
 
 
 # ---------------------------------------------------------------------------- no tool the profile does not have
@@ -331,10 +191,7 @@ def test_a_tool_renamed_in_the_catalog_with_its_old_name_left_fails_the_guard(mo
     assert name in left
 
 
-def test_an_argument_a_step_or_command_names_is_taken_by_a_tool_it_names():
-    for lead, step in steps(rendered()).items():
-        if lead.startswith("`"):
-            assert stray_arguments(step) == [], lead
+def test_an_argument_a_lead_command_names_is_taken_by_a_tool_it_names():
     for name, command in projection.LEAD_COMMANDS.items():
         assert stray_arguments(command["template"]) == [], name
 
@@ -347,7 +204,6 @@ def test_an_argument_renamed_on_one_tool_with_its_old_name_left_beside_it_fails_
     monkeypatch.setitem(contract.TOOLS, "integration_publish",
                         row._replace(input_schema={**row.input_schema, "properties": props}))
     assert "verification_evidence" in known_words()
-    assert stray_arguments(steps(rendered())["`integration_publish`"]) == ["verification_evidence"]
     hint = resume_with()._integration_verifier(integration_state(report="EV-3"), "T-0007")
     assert stray_arguments(hint) == ["verification_evidence"]
 
@@ -360,7 +216,7 @@ def test_an_argument_renamed_in_the_catalog_with_its_old_name_left_fails_the_gua
 
     monkeypatch.setattr(contract, "TOOLS", {k: renamed(t) for k, t in contract.TOOLS.items()})
     assert "verification_evidence" not in known_words()
-    assert "verification_evidence" in WORD.findall(system_text())
+    assert "verification_evidence" in engine_words()
 
 
 def test_a_recovery_or_designed_row_never_reaches_the_normal_text(monkeypatch):
@@ -390,17 +246,11 @@ def test_every_document_listing_the_lead_commands_lists_them_all():
 
 def test_a_lead_command_template_names_only_real_tools_and_takes_no_stage_step_from_the_shell():
     names = {t.name for t in contract.exposed(NORMAL)}
-    # the command each covered move's shell form opens with, e.g. `aew work create`
-    covered_shell = {" ".join(re.sub(r"^`+(sh\n)?", "", m.shell).split()[:3]) for m, _ in
-                     covered(lead_text.stages()) if m.primitive != "work.transition"}
-    assert "aew work create" in covered_shell
     for name, command in projection.LEAD_COMMANDS.items():
         template = command["template"]
         assert set(stage_named(template)) <= names, name
         # a fixed read is the only inline shell a template may run (ADR-0009): no stage step comes from the shell
         assert re.findall(r"!`([^`]*)`", template) == (["aew usage show"] if name == "aew-usage" else []), name
-        for shell in covered_shell:
-            assert shell not in template, (name, shell)
     assert "`ticket_draft`" in projection.LEAD_COMMANDS["aew-ticket"]["template"]
     assert "`checkpoint`" in projection.LEAD_COMMANDS["aew-handoff"]["template"]
 
@@ -425,18 +275,6 @@ def test_a_transition_step_says_its_target_and_a_dispatch_says_its_role_or_scope
                                                       for s in by_tool["ticket_request_review"].steps}
     assert ("invoke.create.mutating", "integration") in {(s.primitive, s.qualifier)
                                                          for s in by_tool["ticket_prepare"].steps}
-
-
-def test_the_guide_for_a_project_is_rendered_with_the_stages():
-    seen: list[Any] = []
-
-    class Engine:
-        def lead_guide(self, stages: Any) -> str:
-            seen.append(stages)
-            return "text"
-
-    assert lead_text.guide_for(Engine()) == "text"
-    assert seen == [lead_text.stages()]
 
 
 # --------------------------------------------------------------------------- the engine's own words: the one mirror
@@ -595,21 +433,6 @@ def test_a_move_that_requires_a_reason_is_printed_with_one(frm, dst):
     assert T.RULES[frm, dst].reason_required
     assert "--reason <reason>" in T.command(frm, dst, "T-0007")
     assert f"`aew work transition T-0007 --to {dst} --reason <reason> " in T.next_steps(frm, "T-0007")
-    text = rendered()
-    assert way_of(text, frm, dst) == f"{guide.TRANSITION} {guide.WITH_REASON}"
-    assert f'"{guide.WITH_REASON}" adds `--reason <reason>`' in text
-
-
-def test_a_moves_shell_is_the_engines_own_command():
-    """#331 review F3: a step's shell fallback is the transition table's command, never a copy that can drift."""
-    via_of = {"plan.accept": "plan.accept", "work.assign": "assign", "review.ingest": "review.ingest",
-              "verify.ingest": "verify.ingest", "verify.ingest.integration": "verify.ingest",
-              "integrate.publish": "integrate.publish"}
-    for move in guide.PATH:
-        if move.primitive in via_of:
-            assert move.shell == f"`{T._COMMANDS[via_of[move.primitive]].format(w='<T>', to='<STATE>')}`", move
-
-
 # ---------------------------------------------------------------------------------------- the hints a projection shows
 
 

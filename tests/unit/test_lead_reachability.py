@@ -205,13 +205,15 @@ def assert_never_the_leads(text: str) -> None:
 
 
 def test_the_lead_guide_never_tells_the_lead_to_run_an_operator_decision():
+    from aew.engine import guide
     from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
     from aew.surface import lead_text
 
     assert len(operator_decided_commands()) == len(lead_broker.OPERATOR_DECIDED)
-    text = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
-    assert "aew authority accept" in text
-    assert_never_the_leads(text)
+    assert_never_the_leads(lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS))
+    assert "aew authority accept" in guide.render_section("first-ticket", DEFAULT_GATES)
+    for section in guide.SECTIONS:
+        assert_never_the_leads(guide.render_section(section, DEFAULT_GATES))
 
 
 def test_a_lead_session_never_records_a_decision_as_the_operators():

@@ -59,12 +59,16 @@ def pack_templates() -> Iterator[tuple[str, str]]:
 
 def texts(guides: Mapping[str, str]) -> Iterator[tuple[str, str, str]]:
     """``(source, plane, text)`` for every static text."""
+    from aew.engine import guide
     from aew.harness.opencode.projection import LEAD_COMMANDS, LEAD_SYSTEM
+    from aew.knowledge.manifest import DEFAULT_GATES
 
     yield "lead-system", MODEL, LEAD_SYSTEM
     for name, command in sorted(LEAD_COMMANDS.items()):
         yield f"lead-command:{name}", MODEL, command["template"]
-    yield "guide", MODEL, rendered_guide()
+    # Keep the same discovery identity for the rendered guide when a section moves behind a pointer.
+    sections = (guide.render_section(section, DEFAULT_GATES) for section in guide.SECTIONS)
+    yield "guide", MODEL, "\n".join((rendered_guide(), *sections))
     for source, text in sorted(guides.items()):
         yield source, OPERATOR, text
     for role, text in pack_templates():

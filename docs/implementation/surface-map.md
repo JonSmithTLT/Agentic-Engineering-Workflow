@@ -61,6 +61,7 @@ The dispositions:
   proved (below). It is never reached through the shell, so the command stays out of `lead_broker.LEAD_REACHABLE`.
 - **`engine-owned`:** the engine does it. It is not in `LEAD_REACHABLE`, and no typed tool runs it.
 - **`forbidden-to-lead`:** operator, admin or diagnostic authority. It is reachable through neither Lead door.
+- **`relayed-read`:** a read the contained Lead reaches through the broker. The entry sets `relayed: contained-lead`.
 
 For `engine-owned` and `forbidden-to-lead`, the entry names its `primitive`, so "no typed tool runs it" is checked
 against every tool's `expands_to`. A command that has no primitive gives `primitive: none` with its
@@ -105,7 +106,7 @@ typed Lead tool (`aew.surface.contract.TOOLS`) has one entry:
   A read with a typed equivalent (`aew status` and the `status` tool, for example) may also carry `door: typed` and
   `via`.
 - **`lead_disposition`**, for every Lead-reachable command: the end state. It is `typed`, `engine-owned`,
-  `forbidden-to-lead`, or `undecided` until A2's plan decides it with its reason.
+  `forbidden-to-lead`, `relayed-read`, or `undecided` until A2's plan decides it with its reason.
   - Today, a command whose current tool already covers it is `typed`, and every other is `undecided`.
   - Dispositions are not this guard's to decide. The point is not one typed button per command: A2's plan decides
     which needs the Lead really has (`typed`), which the engine should own, and which the Lead must never reach.

@@ -37,7 +37,7 @@ def call(p: Project, name: str, **arguments: Any) -> dict[str, Any]:
 DEAD_ENDS = {
     "BLOCKED, no plan": {
         "why": "`ticket_start` answers BLOCKED until a plan is accepted, and nothing offers the plan itself",
-        "hint": "propose and accept a plan"},
+        "hint": "propose a plan"},
     "RUNNING, no report": {
         "why": "the review request answers BLOCKED until the implementer reports; there is nothing to do but wait",
         "hint": "in progress; when its report and checks are in"},

@@ -8,7 +8,7 @@
 # and its `lead_disposition` (the end state A2's plan decides); and the refusal codes it can raise. Bump `version`
 # when an entry's meaning changes.
 schema: aew/surface-map/v1
-version: 4
+version: 5
 
 vocabulary:
   homes:
@@ -40,12 +40,13 @@ vocabulary:
       `partly_via` names the tools that cover some of its uses
   relayed:
     contained-lead: a read the contained Lead's broker runs on the host for it (lead_broker.RELAYED_READS; STG-05
-      CS-4 addendum 4), since what it reads is under the `.aew/local` its sandbox masks
+      CS-4 addendum 4), so it can read project state or policy from the host
   lead_dispositions:
     typed: the Lead genuinely needs it; it has a typed home (its door is typed)
     engine-owned: AEW does it deterministically; the Lead does not call it (it leaves LEAD_REACHABLE)
     forbidden-to-lead: operator, admin or diagnostic authority; exposed through neither Lead door (it leaves
       LEAD_REACHABLE)
+    relayed-read: a read with a deliberate home through the contained Lead's broker
     undecided: until A2's plan decides it, with its reason
   # Where a `planned` row's disposition lands (the A1 slice plan, reviewed CLEAR, section 6): the slice whose change
   # builds its homes and decides it.
@@ -239,6 +240,16 @@ commands:
     mutates: "yes"
     mutates_basis: "takes --expect-rev: commits a control transition (compare-and-set on the control revision)"
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
+  - name: lead guide
+    home: product
+    users: [lead, operator]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "a read: renders a named section from adopted project policy"
+    probe: [lead, guide, first-ticket]
+    relayed: contained-lead
+    lead_disposition: relayed-read
+    refusals: [PROJECT_NOT_FOUND, USAGE]
   - name: lead show
     home: diagnostic
     users: [operator, lead]

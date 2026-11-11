@@ -86,7 +86,6 @@ LEGACY_BARE_SPANS = {
     ("engine/evidence_ops.py", "aew work redispatch"): 1,
     ("engine/guide.py", "aew authority accept"): 1,
     ("engine/guide.py", "aew authority reject"): 1,
-    ("engine/guide.py", "aew evidence ingest"): 1,
     ("engine/guide.py", "aew lead acquire"): 1,
     ("engine/guide.py", "aew lead takeover"): 1,
     ("engine/guide.py", "aew work transition"): 1,
@@ -336,9 +335,11 @@ def test_a_file_the_finders_cannot_read_is_marked_not_dropped(tmp_path: Path) ->
 def test_every_placeholder_fill_parses_where_it_is_used() -> None:
     """The table is only what is in use: each placeholder appears in some printed command, in the source or in the
     guide the source renders (E130: the guide's commands are the transition table's, filled when it renders)."""
+    from aew.engine import guide
     from aew.surface import lead_text
 
-    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)])
+    printed = "\n".join([*(s.text for s in P.ast_sites() if _held(s)), lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS),
+                          *(guide.render_section(section, DEFAULT_GATES) for section in guide.SECTIONS)])
     unused = [name for name in P.PLACEHOLDERS if name not in printed]
     assert not unused, unused
 
@@ -393,21 +394,18 @@ def test_each_next_step_a_refusal_names_parses(state: str) -> None:
         assert all(isinstance(ns, argparse.Namespace) for ns in P.parse(printed, fenced=fenced))
 
 
-@pytest.mark.parametrize("post_verify", [False, True])
-def test_every_command_the_rendered_guide_prints_passes(post_verify: bool) -> None:
-    """Blind spot 2 at its largest: the guide joins its moves from the transition table at run time. Rendered for the
-    default policy (and with a post-integration verifier), every command it prints passes the check."""
+def test_every_command_the_rendered_guide_and_sections_print_passes() -> None:
+    """The core's pointer commands and the on-demand sections are checked after rendering."""
+    from aew.engine import guide
     from aew.surface import lead_text
 
-    gates = {**DEFAULT_GATES, "post_integration": {**(DEFAULT_GATES.get("post_integration") or {}),
-                                                   "verification": post_verify}}
-    printed = P.commands(lead_text.render(gates, DEFAULT_CHECKS))
-    assert len(printed) > 30  # a floor on the finder: E130's guide prints each command once, not per move
-    # The guide names these commands in its explanations. Its runnable examples are checked below.
-    references = {
-        "aew authority accept", "aew authority reject", "aew lead acquire", "aew lead takeover",
-        "aew lead release", "aew evidence ingest", "aew work transition",
-    }
+    core = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
+    sections = [guide.render_section(section, DEFAULT_GATES) for section in guide.SECTIONS]
+    printed = P.commands("\n".join([core, *sections]))
+    assert {f"aew lead guide {section}" for section in guide.SECTIONS} <= {command for command, _ in printed}
+    # These names are explained in prose. The runnable forms take additional arguments.
+    references = {"aew authority accept", "aew authority reject", "aew lead acquire", "aew lead takeover",
+                  "aew lead release", "aew work transition"}
     for command, fenced in printed:
         if not fenced and command in references:
             P.parse(f"{command} --help", fenced=False)

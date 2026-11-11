@@ -108,7 +108,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     p.set_defaults(handler=_resume)
 
     p = sub.add_parser("guide", help="how work flows in AEW for this project: risk classes, the gates each "
-                                     "requires, the Ticket lifecycle and the tool or command for each step (read-only)")
+                                     "requires, the Ticket lifecycle and pointers to more guidance (read-only)")
     _add_json(p)
     p.set_defaults(handler=_guide)
 
@@ -169,8 +169,14 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
 
 
 def _register_lead(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser("lead", help="Lead authority: acquire, handoff, takeover, release")
+    p = sub.add_parser("lead", help="Lead authority and guidance")
     lsub = p.add_subparsers(dest="lead_cmd", required=True)
+
+    from aew.engine.guide import SECTIONS
+
+    q = lsub.add_parser("guide", help="read one section of the Lead guide")
+    q.add_argument("section", choices=tuple(SECTIONS))
+    q.set_defaults(handler=_guide_section)
 
     q = lsub.add_parser("show")
     q.set_defaults(handler=lambda a: _engine(a).lead_show())
@@ -274,6 +280,12 @@ def _register_stage(sub: argparse._SubParsersAction) -> None:
         q.add_argument("--rationale", required=True, help="why (recorded on the intent)")
         _add_lead(q)
         q.set_defaults(handler=_stage_resolve, choice=choice)
+
+
+def _guide_section(args: argparse.Namespace) -> str:
+    from aew.surface import lead_text
+
+    return lead_text.guide_section_for(_engine(args), args.section)
 
 
 def _guide(args: argparse.Namespace) -> Any:

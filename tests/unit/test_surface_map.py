@@ -555,6 +555,8 @@ def check_disposition(reg: dict[str, Any]) -> list[str]:
             out.append(f"tool `{name}`: a tool is a typed door itself; dispositions are for commands")
         elif d not in allowed:
             out.append(f"`aew {name}`: unknown lead_disposition {d!r}")
+        elif d == "relayed-read" and (mutates(e) != "no" or e.get("relayed") != "contained-lead"):
+            out.append(f"`aew {name}`: relayed-read requires a read relayed to the contained Lead")
         elif (d == TYPED) != (e.get("door") == TYPED):
             out.append(f"`aew {name}`: lead_disposition typed and door typed go together (door {e.get('door')!r})")
     return out
@@ -2021,7 +2023,7 @@ def test_the_registry_is_versioned_and_states_its_vocabulary():
     assert set(vocab["journeys"]) == {"V1", "V2", "V3", "V4"}
     assert set(vocab["mutates"]) == {"no", "yes", "with"}
     assert set(vocab["doors"]) == {TYPED, "shell-only (pending A2/A4)"}
-    assert set(vocab["lead_dispositions"]) == {TYPED, *LEAVES_LEAD_DOORS, UNDECIDED}
+    assert set(vocab["lead_dispositions"]) == {TYPED, *LEAVES_LEAD_DOORS, UNDECIDED, "relayed-read"}
 
 
 def test_the_walk_and_the_ideal_path_are_the_live_ones():

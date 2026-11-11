@@ -69,7 +69,6 @@ SRC = ROOT / "src" / "aew"
 # from; one not listed here fails the check.
 PLACEHOLDERS: dict[str, str] = {
     K.REVISION: "17",
-    "<invocation from aew harness status>": "INV-0012",
     # The guide's and the packs' forms: each names what goes there, and the reader knows where to find it.
     "<T>": "T-0007",  # a Ticket
     "<mode>": "walk",  # a steering mode
@@ -88,7 +87,6 @@ PLACEHOLDERS: dict[str, str] = {
     "<that file>": "report.md",
     "<your-report.md>": "report.md",
     "<0-4>": "2",  # a risk class
-    "<STATE>": "REVIEW_PENDING",
     "<CLASS>": "LOCAL_IMPLEMENTATION_DEFECT",  # a verification failure's classification
     "<reason>": "why",
     "<why>": "why",  # the projection's argv lists

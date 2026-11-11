@@ -240,6 +240,7 @@ None.
 - `aew.doctor`
 - `aew.engine.api`
 - `aew.engine.first_configuration`
+- `aew.engine.guide`
 - `aew.errors`
 - `aew.harness.containment.netns`
 - `aew.harness.contract`
@@ -838,7 +839,6 @@ None.
 
 ### `aew.engine.guide`
 
-- `aew.engine.transitions`
 - `aew.engine.workspace_ops`
 - `aew.harness.contract`
 - `aew.roles`

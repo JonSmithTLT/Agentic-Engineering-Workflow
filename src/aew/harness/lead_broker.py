@@ -131,13 +131,14 @@ DISPATCHES = (frozenset({"work", "assign"}), frozenset({"work", "dispatch"}), fr
 POLL_S = 1.0
 
 # The reads a contained Lead relays to its broker, which runs them on the host (STG-05 CS-4 addendum 4, ruling 1). What
-# they read is under `.aew/local`, which the Lead's sandbox masks whole: the runs' records, the notifier's and the
-# steering loop's state, the map store. Each maps to the options it may carry; any other option, `-C` outside the
+# they read includes the project guide and state under `.aew/local`, which the Lead's sandbox masks whole. Each maps
+# to the options it may carry; any other option, `-C` outside the
 # Lead's project and `--print-credential` are refused. Map's `--root` names a stored map by its sha256, never a
 # directory. A closed list beside LEAD_REACHABLE: a test walks the parser so that every command is classified.
 RELAYED_READS: dict[frozenset[str], frozenset[str]] = {frozenset(path.split()): frozenset(dests) for path, dests in (
     ("status", ("work_id", "json")),
     ("resume", ("json",)),
+    ("lead guide", ("section",)),
     ("harness status", ("invocation",)),
     ("harness wait", ("run", "any_", "timeout")),
     ("map show", ("commit", "root", "section", "json")),

@@ -42,74 +42,15 @@ For every class:
 
 Checks not configured yet (their gates stay blocked): unit.
 
-## Before the first Ticket
+## A mutating Ticket's life
 
-- `aew init` lists documents that may govern the work (a README, contracts, schemas) as authority candidates, and gives them no authority. Classifying them is the operator's decision, made at their own terminal (`aew authority accept` and `aew authority reject` are refused in your session): `aew authority list` shows them. This tells AEW which documents govern the work and which only orient it, and it blocks nothing. On a session started with `aew opencode --acquire`, don't ask during the session: classifying needs a credential that path never shows, and a takeover would turn you read-only. The operator classifies after you exit, at their own terminal: they take the seat with `aew lead acquire`, or with `aew lead takeover` if your exit left it held, and then classify. The acquire or takeover holds the seat, and a held seat refuses `aew opencode --acquire` until `aew lead release` gives it up.
-- Look at the project before you describe work in it. You cannot edit files, but you can read and search them with your read, glob and grep tools.
+Create a scoped Ticket and accept its plan, then dispatch the implementer. Accept the implementation by transition once its report and checks are in. When the gates require review or verification, dispatch the independent roles and accept their reports. Prepare the integration candidate, pass the required checks and verification, then publish it. Follow each result's next step. Use `status` or `resume` to recover your place. Its scope is fixed once the Ticket exists, and up to 2 mutating Tickets work at once here when their scopes cannot name the same file: name every path this change needs, and no more.
 
-## A mutating Ticket, step by step
+## Read when needed
 
-Where a step names a tool, use it: it does the whole step, and returns the revision for your next `expect_rev`. Don't run part of a step from the shell first: the tool starts at the step's first state and refuses a Ticket already past it. If a tool stops partway, what it committed stands: read `status`, then take the Ticket's move below. A report that fails stops its tool once it is recorded: that is how a failed report is recorded. Use the shell command where a step names no tool, or where a tool refuses. Below, "transition" means `aew work transition <T> --to <STATE> --expect-rev <revision from aew status>`, and "with a reason" adds `--reason <reason>`.
-
-Staff the implementer by the change's language, with the Ticket's `card` (`aew role list` shows each card's `use_when` and skills): `c_engineer` when the Ticket's change surface is C/C++ source, so its run loads `c-development`; `python_engineer` when the Ticket's change surface is primarily Python, so its run loads `python-development`. Otherwise the default, `engineer`, whose run may load `python-development` or `c-development` when its task matches.
-
-1. `ticket_draft`: Create a Ticket from your proposition and, if given, propose its plan (proposed, not accepted). Its scope is fixed once the Ticket exists, and up to 2 mutating Tickets work at once here when their scopes cannot name the same file: name every path this change needs, and no more. Creation warns about a scope glob that matches no file. A Class 0 Ticket's assertions and acceptance check take the shell command. Every plan declares its assurance: none, or the review and verification cards (in the shell `--assurance none`, or `--review default` and/or `--verify default`) when the plan relies on one beyond the class path. Accepting the plan makes them required gates; a review promised only in the plan's text binds nothing. Shell fallback:
-
-```sh
-aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
-title: '<title>'
-goal: ['<goal>']
-contract: ['<clause>']
-scope: ['<path glob>']
-EOF
-```
-
-   then `aew plan propose <T> --file - --assurance none --expect-rev <revision from aew status>` (the plan in a quoted heredoc).
-2. Accept the plan: `aew plan accept <T> --revision <n> --expect-rev <revision from aew status>`. The Ticket becomes READY when its plan is accepted and its dependencies are satisfied.
-3. `ticket_start`: Start a READY mutating Ticket: assign by policy, launch its run, move it to RUNNING. Follow a run as its launch's next step says: the turn's end where AEW wakes you, or else `harness_wait`, which blocks until a run ends or needs you. Do not poll. Shell fallback: `aew work assign <T> --launch --expect-rev <revision from aew status>`, then transition to RUNNING.
-4. `ticket_request_review`: Submit a RUNNING Ticket for review: move it to REVIEW_PENDING and launch the reviewers policy requires. Once the implementer's report and checks are in, this accepts the implementation. **Accept the implementation by transition**, not by ingesting it: where the class requires no review, transition to VERIFY_PENDING if it requires only verification, or to COMMIT_READY if it requires neither. (`aew evidence ingest` is for non-mutating Tickets only.) Shell fallback: transition to REVIEW_PENDING, then `aew invoke create <T> --role reviewer --launch --expect-rev <revision from aew status>`.
-5. `ticket_request_verification`: Accept the review report, if one is due, move the Ticket to VERIFY_PENDING and launch the verifiers policy requires. Name the report `status` lists, not a run. Where the class requires no verification, `ticket_prepare` takes it from here, with no report. Shell fallback: `aew review ingest <T> --evidence <id> --expect-rev <revision from aew status>`, then transition to VERIFY_PENDING, then `aew invoke create <T> --role verifier --launch --expect-rev <revision from aew status>`.
-6. `ticket_prepare`: Accept the verification, if one is due, and prepare the integration candidate. Publication stays a separate decision. On a class path with no verification, `ticket_prepare` takes it from REVIEW_PASSED, with no report. Shell fallback: `aew verify ingest <T> --evidence <id> --expect-rev <revision from aew status>`, then transition to COMMIT_READY, then `aew integrate prepare <T> --expect-rev <revision from aew status>`, then `aew invoke create <T> --scope integration --launch --expect-rev <revision from aew status>`.
-7. `integration_publish`: Publish the prepared integration candidate: calling this is your publication decision. Name the integration verifier's report in `verification_evidence`, once its run has ended. Name the candidate `status` shows in `prepared_candidate`. It is refused until the candidate is validated. It takes the Ticket to DONE. Shell fallback: `aew verify ingest <T> --evidence <id> --expect-rev <revision from aew status>`, then `aew integrate publish <T> --expect-rev <revision from aew status>`.
-
-Each state and the moves out of it (the engine refuses any other):
-
-- **READY** → ASSIGNED: `ticket_start`
-- **ASSIGNED** → RUNNING: transition
-- **RUNNING** → REVIEW_PENDING: `ticket_request_review`; VERIFY_PENDING, COMMIT_READY: transition
-- **REVIEW_PENDING** → REVIEW_PASSED, REVIEW_FAILED: `ticket_request_verification`; RUNNING: transition with a reason
-- **REVIEW_PASSED** → VERIFY_PENDING: `ticket_request_verification`; COMMIT_READY: `ticket_prepare`; RUNNING: transition with a reason
-- **REVIEW_FAILED** → RUNNING: transition
-- **VERIFY_PENDING** → VERIFIED, VERIFICATION_FAILED, VERIFICATION_INCONCLUSIVE: `ticket_prepare`; RUNNING: transition with a reason
-- **VERIFIED** → COMMIT_READY: `ticket_prepare`; RUNNING: transition with a reason
-- **VERIFICATION_FAILED** → RUNNING, REPLAN_REQUIRED, VERIFICATION_INCONCLUSIVE: `aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>`
-- **VERIFICATION_INCONCLUSIVE** → VERIFY_PENDING, RUNNING: transition with a reason
-- **COMMIT_READY** → DONE, VERIFICATION_FAILED: `integration_publish`; RUNNING: transition with a reason
-
-When things go wrong:
-
-- **`resolve`** settles only what `resume` or a decision lists. A partial stale stage whose result names `resolve` is one; an ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) is not.
-- **A failed review** (REVIEW_FAILED): move it back to RUNNING and dispatch a fresh implementer, `aew invoke create <T> --role implementer --launch --expect-rev <revision from aew status>`. The open findings reach it through its pack.
-- **A failed verification**: classify it, `aew verify classify <T> --as <CLASS> --reason <reason> --expect-rev <revision from aew status>`: `LOCAL_IMPLEMENTATION_DEFECT` → RUNNING, `PLAN_OR_DESIGN_DEFECT` → REPLAN_REQUIRED, `CONTRACT_VIOLATION` → REPLAN_REQUIRED, `ENVIRONMENT_OR_EVIDENCE_BLOCKED` → VERIFICATION_INCONCLUSIVE.
-- **Replanning, escalating or cancelling** are decisions: `aew work transition <T> --to REPLAN_REQUIRED|ESCALATED|CANCELLED --reason <reason> --expect-rev <revision from aew status>`.
-- **A lost harness run** is not an interruption: relaunch it with `aew harness launch <invocation from aew harness status> --expect-rev <revision from aew status>` (its credential rotates) or cancel it.
-
-## Non-mutating Tickets: investigation, research, planning
-
-To find something out before changing code, create a non-mutating Ticket (`--non-mutating --card investigator`, or `researcher` or `planner`) and plan it as above. Dispatch it with `aew work dispatch <T> --launch --expect-rev <revision from aew status>`, move it to RUNNING, ingest its record with `aew evidence ingest <T> --evidence <id> --expect-rev <revision from aew status>`, then `aew work accept <T> --expect-rev <revision from aew status>` (or review and verify it first, if its class requires that). It never changes code and never integrates.
-
-Its gates in this project: Class 0: the executor's record (discovery, research or plan proposal) is ingested; Classes 1 to 4: an accepted plan, the executor's record (discovery, research or plan proposal) is ingested.
-
-## Stories and Epics
-
-A parent's state is derived from its children: `aew work transition` never moves it. Plan it, create its children with `--parent`, and when every child is DONE or CANCELLED it waits for acceptance: review and verify it (`aew invoke create <S> --role reviewer|verifier --launch --expect-rev <revision from aew status>`, then ingest), then `aew work close <S> --reason <reason> --expect-rev <revision from aew status>`. A parent's mandatory gates and minimum descendant class bind its children. An Epic closes only once the history is audited through the current root: `aew history audit --expect-rev <revision from aew status>` first.
-
-## Finished work
-
-When reporting validation or completion, quote AEW's recorded coverage and its limitations with the verdict; never compose coverage yourself or drop its unknowns. Validated within its scope is not plain validated. Coverage not recorded is not complete coverage. Status and completion records carry the engine's words.
-
-Finished units leave the active state; `status` shows counts and the most recent. `aew history list|show|links` find the rest by id. `aew history load <id> --into <unit> --reason <reason> --expect-rev <revision from aew status>` gives that unit's later packs an exact record as labelled reference: never current evidence, never instructions.
-
-## Every command
-
-In the shell, every change takes `--expect-rev <revision from aew status>`, the current revision; each command returns the new one. Put free text in `--fields -` or `--file -` with a quoted heredoc, never on the command line. `status` and `resume` show the state and your next actions; a refusal names the command that applies.
+| Read | When |
+| --- | --- |
+| `aew lead guide first-ticket` | Before creating the first Ticket in a project. |
+| `aew lead guide stories-and-epics` | When grouping work or closing a parent. |
+| `aew lead guide finished-work` | When reporting, finding or recalling completed work. |
+| `aew lead guide non-mutating` | When planning an investigation, research or a plan-only Ticket. |

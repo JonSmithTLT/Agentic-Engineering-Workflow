@@ -1,11 +1,4 @@
-"""The Lead's guide with its stages, from the catalog (E130; the operator, 2026-11-04: nobody keeps this text by hand).
-
-The guide (:mod:`aew.engine.guide`) renders the Ticket path, and the engine never imports this package, so what it says
-about the typed tools is handed to it as data. This module builds that data from the two owners of a stage's contract:
-the catalog row (:mod:`aew.surface.contract`: its name, description and ``expands_to``) and the migrated stage table
-(:data:`aew.surface.availability.STAGES`: each step's guard arguments, which say a transition's target and a dispatch's
-role and scope). A stage added to the catalog takes over the steps of the path it covers with no edit here or there.
-"""
+"""Render the Lead guide and derive stage metadata from the typed surface for the E130 conformance check."""
 
 from __future__ import annotations
 
@@ -49,14 +42,16 @@ def stages(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> tup
                  for t in contract.exposed(profile, switches) if t.expands_to)
 
 
-def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], *,
-           switches: frozenset[str] = frozenset()) -> str:
-    """The guide for a policy, with the normal profile's stages for the supplied switches."""
-    return guide.render(gates_policy, checks_policy, stages(switches=switches))
+def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
+    """The loaded guide for a policy."""
+    return guide.render(gates_policy, checks_policy)
 
 
 def guide_for(engine: Any) -> str:
-    """The guide for this project's own policy (`aew guide`, and the Lead's system text)."""
-    from aew.surface.context import switches_for
+    """The guide for this project's own policy (the CLI and the Lead's system text)."""
+    return str(engine.lead_guide())
 
-    return str(engine.lead_guide(stages(switches=switches_for(engine))))
+
+def guide_section_for(engine: Any, section: str) -> str:
+    """One on-demand section, rendered from the project's adopted gates."""
+    return guide.render_section(section, engine.policy("gates"))

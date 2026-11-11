@@ -819,7 +819,11 @@ def test_a_verifiers_clean_report_is_a_publish_decision_that_takes_the_ticket_to
             assert engine(p).custody_step(custodian, custody[custodian])[0] == CO.ACTED
             assert entry(p, wid)["state"] == "VALIDATED"
         projection.clear_cache()
-        [decision] = project(engine(p), CTX, wid)["decisions_required"]
+        receipt = R.run_tool(engine(p), CTX, "status", {"work_id": wid}, token=p.token)
+        [decision] = receipt["projection"]["decisions_required"]
+        next_step = readable._next(receipt)
+        assert "integration_publish" in next_step and "verification_evidence=" in next_step
+        assert decision["evidence"][0] in next_step
         assert decision["decision"] == "PUBLISH" and decision["tool"] == "integration_publish"
         assert decision["availability"] == "AVAILABLE"
         assert decision["arguments"]["verification_evidence"] == decision["evidence"][0]

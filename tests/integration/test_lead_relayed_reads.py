@@ -123,6 +123,9 @@ def cases(run: str, invocation: str) -> list[list[str]]:
            ["map", "show"],
            ["map", "show", "--json"], ["map", "diff", "--commit", "HEAD", "--commit", "HEAD"], ["map", "diff"],
            ["usage", "show"], ["usage", "show", run, "--json"], ["usage", "show", invocation]]
+    from aew.engine.guide import SECTIONS
+
+    out.extend(["lead", "guide", section] for section in SECTIONS)
     assert {frozenset(worker_surface.words(a)) for a in out} == set(lead_broker.RELAYED_READS)
     return out
 
@@ -157,6 +160,12 @@ def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, 
         assert (via.returncode, CLOCK.sub("AGE", via.stdout), via.stderr) == (
             here.returncode, CLOCK.sub("AGE", here.stdout), here.stderr), argv
     assert run in relayed(lab, broker, "harness", "status").stdout  # it read the run's own record, on the host
+
+
+@pytest.mark.parametrize("section", ["unknown-section", "../finished-work"])
+def test_a_contained_lead_cannot_pass_an_unlisted_guide_section(lab, broker, section):
+    reply = relayed(lab, broker, "lead", "guide", section)
+    assert reply.returncode != 0 and "invalid choice" in reply.stderr
 
 
 class _Poster:

@@ -90,7 +90,7 @@ def approved_ceiling(record: dict) -> int:
 def render_pool(label: dict, switches: frozenset[str]) -> Pool:
     tools = capability.placed(label, contained=True)
     assert tools["tools"], "the fixture must exercise the placed-tool line"
-    guide = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS, switches=switches)
+    guide = lead_text.render(DEFAULT_GATES, DEFAULT_CHECKS)
     config = projection.lead_config(guide, contained=label, tools=tools, push_wake=True)
     full = config["agents"][projection.LEAD_AGENT]["system"]
     system = full.removesuffix("\n\n" + guide)

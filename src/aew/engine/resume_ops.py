@@ -10,7 +10,6 @@ takeover.
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
@@ -279,9 +278,14 @@ class Resume:
             out = []
             for b in u.get("blocked_by", []):
                 if b["kind"] == "plan_not_accepted":
-                    out.append(f"propose and accept a plan (`aew plan propose {wid} --file - "
-                               f"--assurance none|--review <card>|--verify <card> {EXPECT_REV}`, the plan "
-                               f"in a quoted heredoc, then `aew plan accept {wid} --revision <n> {EXPECT_REV}`)")
+                    proposed = next((p for p in reversed(u.get("plans") or []) if p["status"] == "proposed"), None)
+                    if proposed is not None:
+                        out.append(f"assess the proposed plan, then `aew plan accept {wid} "
+                                   f"--revision {proposed['revision']} {EXPECT_REV}`")
+                    else:
+                        out.append(f"propose a plan (`aew plan propose {wid} --file - "
+                                   f"--assurance none|--review <card>|--verify <card> {EXPECT_REV}`, the plan "
+                                   "in a quoted heredoc)")
                 elif b["kind"] == "plan_binding_stale":
                     out.append(f"an ancestor's plan changed: `aew plan reconfirm {wid} --reason <reason> "
                                f"{EXPECT_REV}` or a new plan revision")
@@ -603,12 +607,11 @@ class Resume:
             **({"harness_runs": runs} if (runs := self.harness.harness_resume(state)) else {}),
         }
 
-    def lead_guide(self, stages: Sequence[Any]) -> str:
-        """How work flows in AEW for this project's Lead, from its own policy (F16) and the typed stages the caller
-        hands in (E130: the engine never imports the surface). Read-only."""
+    def lead_guide(self) -> str:
+        """How work flows in AEW for this project's Lead, from its own policy. Read-only."""
         from aew.engine import guide
 
-        return guide.render(self.k.policy("gates"), self.k.policy("checks"), stages)
+        return guide.render(self.k.policy("gates"), self.k.policy("checks"))
 
     def render_resume(self, r: dict[str, Any]) -> str:
         lines = [f"# AEW resume — {r['project']['name']} (control revision {r['control']['revision']})", "",

@@ -75,6 +75,24 @@ class TextLead:
         return self.text.split("\n")[:2]
 
 
+# Removed walkthrough rows, grouped where a single typed stage takes consecutive moves.
+# The expected calls/commands are checked in the readable next line of real typed results.
+WALKTHROUGH_NEXT = {
+    "propose plan": "aew plan propose",
+    "accept plan": "aew plan accept",
+    "assign and move to RUNNING": "ticket_start",
+    "wait for launched run": "harness_wait",
+    "accept implementation and dispatch review": "ticket_request_review",
+    "ingest review and dispatch verification": "ticket_request_verification",
+    "ingest verification and prepare": "ticket_prepare",
+    "publish validated candidate": "integration_publish",
+}
+
+
+def names_next(lead: TextLead, step: str) -> None:
+    assert WALKTHROUGH_NEXT[step] in lead.head[1], (step, lead.head[1])
+
+
 @pytest.fixture
 def lab_project(tmp_path, monkeypatch):
     p = sample_project(tmp_path)
@@ -97,6 +115,7 @@ def test_a_lead_reading_only_the_text_goes_through_a_stale_revision_a_refusal_an
     # The next step in the text is what the JSON offers.
     seen = lead.status(wid)
     assert lead.head == [f"status: done ({wid}: RUNNING)", readable._next(seen)]
+    names_next(lead, "accept implementation and dispatch review")
 
     # A stale revision: the stop says so, and the text holds the revision to go on with.
     stale = seen["revision"]
@@ -127,11 +146,23 @@ def test_a_lead_reading_only_the_text_goes_through_a_stale_revision_a_refusal_an
     assert again["ok"], again["stopped"]
     stop_fixture_reviewer(again)
     passing = review(p, wid, resolved=[f"{failing}#F1"])
-    verifying_now = lead.call("ticket_request_verification", expect_rev=lead.status(wid)["revision"], work_id=wid,
+    revision = lead.status(wid)["revision"]
+    names_next(lead, "ingest review and dispatch verification")
+    verifying_now = lead.call("ticket_request_verification", expect_rev=revision, work_id=wid,
                               review_evidence=passing)
     assert verifying_now["ok"], verifying_now["stopped"]
     assert lead.status(wid)["projection"]["state"] == "VERIFY_PENDING"
     assert_control_invariants(p)
+
+
+def test_a_ticket_drafted_without_a_plan_is_told_to_propose_it(lab_project):
+    p, _lab = lab_project
+    lead = TextLead(p)
+    args = {k: v for k, v in DRAFT.items() if k != "plan"}
+    drafted = lead.call("ticket_draft", **{**args, "expect_rev": lead.call("status")["revision"]})
+    assert drafted["ok"]
+    assert [step["primitive"] for step in drafted["completed_steps"]] == ["work.create"]
+    names_next(lead, "propose plan")
 
 
 def test_a_wait_whose_run_crashed_says_so_through_the_adapter(lab_project):
@@ -140,7 +171,10 @@ def test_a_wait_whose_run_crashed_says_so_through_the_adapter(lab_project):
     lead = TextLead(p)
     drafted = lead.call("ticket_draft", **{**DRAFT, "expect_rev": lead.call("status")["revision"]})
     wid = drafted["projection"]["subject"]
+    names_next(lead, "accept plan")
     p.lead("plan", "accept", wid, "--revision", "1")
+    lead.status(wid)
+    names_next(lead, "assign and move to RUNNING")
     started = lead.offered(wid, "ticket_start")
     assert started["ok"], started["stopped"]
     runs = [r["run"] for r in started["projection"]["runs"]]
@@ -250,6 +284,7 @@ def test_a_lead_reading_only_the_text_waits_through_a_long_run_without_stopping_
     started = lead.offered(wid, "ticket_start")
     assert started["ok"], started["stopped"]
     runs = [r["run"] for r in started["projection"]["runs"]]
+    names_next(lead, "wait for launched run")
     assert lead.head[1] == f'next: harness_wait runs={json.dumps(runs)} ({K.WAIT_RULE})'  # after a dispatch: wait
     [launched] = [s for s in started["result"]["steps"] if "launch" in s]  # the dispatch's own step says so too
     waiting = K.no_broker_step if X.wakes_post_here({}) else K.wait_step  # wakes on, and no broker posts them here
@@ -313,7 +348,9 @@ def test_a_lead_reading_only_the_text_publishes_the_candidate_it_read(
     checks_mode(p)
     wid, report = verifying(p, tmp_path)
     lead = TextLead(p)
-    prepared = lead.call("ticket_prepare", expect_rev=lead.status(wid)["revision"], work_id=wid,
+    revision = lead.status(wid)["revision"]
+    names_next(lead, "ingest verification and prepare")
+    prepared = lead.call("ticket_prepare", expect_rev=revision, work_id=wid,
                          verification_evidence=report)
     assert prepared["ok"], prepared["stopped"]
     assert lead.head[0] == f"ticket_prepare: done ({wid}: COMMIT_READY)"
@@ -324,7 +361,9 @@ def test_a_lead_reading_only_the_text_publishes_the_candidate_it_read(
     found, result = engine(p).custody_step(custodian, custody[custodian])
     assert found == CO.ACTED and result is not None and result["result"] == "pass", result
 
-    wrong = lead.call("integration_publish", expect_rev=lead.status(wid)["revision"], work_id=wid,
+    revision = lead.status(wid)["revision"]
+    names_next(lead, "publish validated candidate")
+    wrong = lead.call("integration_publish", expect_rev=revision, work_id=wid,
                       prepared_candidate="0" * 40)
     assert not wrong["ok"] and candidate in wrong["stopped"]["error"]["message"]
     published = lead.call("integration_publish", expect_rev=wrong["revision"], work_id=wid,

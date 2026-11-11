@@ -188,7 +188,7 @@ def test_turn_end_is_refused_before_recording_and_names_the_available_timing(tmp
 
 def test_on_guide_keeps_the_standard_ticket_path_descriptions(tmp_path):
     w = world(tmp_path)
-    assert lead_text.guide_for(w.e) == str(w.e.lead_guide(lead_text.stages()))
+    assert lead_text.guide_for(w.e) == str(w.e.lead_guide())
     standard = contract.catalog(contract.ALL_SWITCHES, presentation="standard")
     assert all(s.description == standard[s.tool].description
                for s in lead_text.stages(switches=contract.ALL_SWITCHES))

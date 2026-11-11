@@ -40,20 +40,27 @@ def validate_caches(policy: dict[str, Any], *, repo: Path, commit: str | None, s
     patterns = {pattern for cfg in policy["checks"].values() for pattern in cfg.get("caches", [])}
     if not patterns:
         return
-    tracked = git.git("ls-tree", "-r", "--name-only", "-z", commit, cwd=repo).stdout if commit else b""
+    tracked = bytearray()
+    if commit is not None:
+        entries = git.git("ls-tree", "-r", "-z", commit, cwd=repo).stdout.split(b"\0")
+        for entry in filter(None, entries):
+            mode, _, path = entry.partition(b"\t")
+            tracked.extend(path + (b"/" if mode.startswith(b"160000 ") else b"") + b"\0")
     candidates = b"\0".join(_CACHE_PROBES) + b"\0" + tracked
     # A clean Git repository gives check-ignore only this pattern. The candidates need not exist on disk.
     with tempfile.TemporaryDirectory(prefix="aew-cache-probes-") as directory:
         root = Path(directory)
-        git.git("init", "-q", "--template=", cwd=root)
+        git_dir = str(root / ".git")
+        env = {"GIT_DIR": git_dir, "GIT_COMMON_DIR": git_dir, "GIT_WORK_TREE": str(root)}
+        git.git("init", "-q", "--template=", cwd=root, env=env)
         for pattern in sorted(patterns):
-            path = pattern.removeprefix("!").lstrip()
+            path = pattern.removeprefix("!")
             windows = PureWindowsPath(path)
-            if windows.anchor or ".." in windows.parts or any(c in pattern for c in "\0\r\n"):
+            if path.startswith("/") or windows.drive or ".." in windows.parts or any(c in pattern for c in "\0\r\n"):
                 raise ValidationFailed(f"{source}: invalid check cache pattern {pattern!r}", pattern=pattern)
             (root / ".gitignore").write_text(pattern + "\n", encoding="utf-8", newline="\n")
             matched = git.git("-c", "core.excludesFile=", "check-ignore", "--no-index", "-z", "--stdin",
-                              cwd=root, input=candidates, check=False)
+                              cwd=root, env=env, input=candidates, check=False)
             if matched.returncode not in (0, 1):
                 raise GitError("git check-ignore failed while validating check caches",
                                stderr=matched.stderr.decode("utf-8", "replace").strip())

@@ -32,8 +32,8 @@ from aew.knowledge.records import decision_record, format_id
 from aew.policy import checks as C
 from aew.policy import execution as X
 from aew.schemas import validate
-from aew.util import load_yaml, read_yaml, sha256_bytes, sha256_file, utc_now
 from aew.snapshot.fingerprint import CacheInputs
+from aew.util import load_yaml, read_yaml, sha256_bytes, sha256_file, utc_now
 from aew.workspace import git
 
 WORKSPACE_MARKER = "aew-workspace.yaml"  # stored in a linked worktree's private git dir

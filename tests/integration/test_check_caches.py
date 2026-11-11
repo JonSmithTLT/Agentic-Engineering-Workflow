@@ -30,13 +30,15 @@ def project(tmp_path, **checks):
 
 def test_a_check_writing_only_its_declared_caches_passes_and_stays_current(tmp_path):
     p = project(tmp_path, unit=check(WRITE_CACHE, CACHES))
-    wid, impl = to_commit_ready(p, tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    impl = assign(p, wid)
+    assert impl.check("unit")["result"] == "pass"
     assert (impl.workspace / CACHE).read_text() == "cached"
     gate = p.ok("gate", "show", wid)
     (impl.workspace / CACHE).write_text("new cache content", encoding="utf-8", newline="\n")
     after = p.ok("gate", "show", wid)
     assert gate["snapshot"] == after["snapshot"]
-    assert after["unmet"] == {}
+    assert "local_checks" not in after["unmet"]
 
 
 def test_a_check_writing_outside_its_caches_is_inconclusive(tmp_path):
@@ -63,14 +65,16 @@ def test_a_tracked_file_matching_a_cache_pattern_still_counts(tmp_path):
 
 def test_one_checks_caches_do_not_stale_another_checks_evidence(tmp_path):
     p = project(tmp_path, unit=check(), cache_writer=check(WRITE_CACHE, CACHES))
-    wid, impl = to_commit_ready(p, tmp_path)
+    wid = create_planned_ticket(p, tmp_path)
+    impl = assign(p, wid)
+    assert impl.check("unit")["result"] == "pass"
     assert not (impl.workspace / CACHE).exists()
     before = p.ok("gate", "show", wid)
-    (impl.workspace / CACHE).parent.mkdir()
-    (impl.workspace / CACHE).write_text("another check's output", encoding="utf-8", newline="\n")
+    assert impl.check("cache_writer")["result"] == "pass"
+    assert (impl.workspace / CACHE).is_file()
     after = p.ok("gate", "show", wid)
     assert before["snapshot"] == after["snapshot"]
-    assert after["unmet"] == {}
+    assert "local_checks" not in after["unmet"]
 
 
 def test_a_ticket_commit_leaves_declared_caches_out_and_integrates(tmp_path):

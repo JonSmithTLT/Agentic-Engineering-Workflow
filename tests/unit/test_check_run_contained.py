@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from aew.engine.evidence_ops import EvidenceCommands, _check_mutation_diagnostic
 from aew.errors import ContainmentUnavailable
-from aew.harness import containment, procs
+from aew.harness import check_changes, containment, procs
 from aew.harness import weaker_register as W
 from aew.policy import checks as C
 
@@ -37,6 +38,18 @@ def test_e332_mutation_diagnostic_explains_an_unnameable_diff():
     assert result["changed_paths"] == []
     assert "couldn't be named" in result["message"]
     assert "snapshots could not be compared" in result["message"]
+
+
+def test_known_untracked_caches_get_the_exact_policy_line():
+    paths = ["pkg/__pycache__/module.pyc", ".pytest_cache/v/cache/nodeids"]
+    line = 'caches: ["__pycache__/", "*.pyc", ".pytest_cache/"]'
+    message = _check_mutation_diagnostic(paths, set(), check_id="unit")["message"]
+    assert line in message and "unit" in message
+    guidance = check_changes.fix(SimpleNamespace(manifest={}), paths, check_id="unit", tracked=set())
+    assert line in guidance and "STALE" in guidance
+    forced = _check_mutation_diagnostic(paths, set(), check_id="unit", include_ignored=["pkg"])["message"]
+    assert line not in forced
+    assert line not in _check_mutation_diagnostic(paths, set(paths), check_id="unit")["message"]
 
 
 class Layout:

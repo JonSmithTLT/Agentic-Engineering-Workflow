@@ -111,7 +111,7 @@ class _Index:
 
 
 def untracked_caches(workspace: Path, cache_patterns: tuple[tuple[str, ...], ...],
-                     include_ignored: list[str] | None = None) -> list[str]:
+                     include_ignored: list[str] | None = None, *, env: dict[str, str] | None = None) -> list[str]:
     """Untracked staging candidates matched by any configured check, except explicitly included inputs."""
     if not cache_patterns:
         return []
@@ -123,14 +123,14 @@ def untracked_caches(workspace: Path, cache_patterns: tuple[tuple[str, ...], ...
         for patterns in cache_patterns:
             rulefile.write_text("\n".join(patterns) + "\n", encoding="utf-8", newline="\n")
             result = git.git("ls-files", "-z", "--others", "--ignored", *with_head,
-                             f"--exclude-from={rulefile}", cwd=workspace)
+                             f"--exclude-from={rulefile}", cwd=workspace, env=env)
             matches.update(path for path in result.stdout.split(b"\0") if path)
     if matches:
         # Exclude only paths Git would stage. Giving add an ignored pathspec can make it refuse the whole add.
-        visible = git.git("ls-files", "-z", "--others", "--exclude-standard", cwd=workspace).stdout
+        visible = git.git("ls-files", "-z", "--others", "--exclude-standard", cwd=workspace, env=env).stdout
         matches.intersection_update(visible.split(b"\0"))
     if include_ignored and matches:
-        includes = git.git("ls-files", "-z", "--others", "--", *include_ignored, cwd=workspace).stdout
+        includes = git.git("ls-files", "-z", "--others", "--", *include_ignored, cwd=workspace, env=env).stdout
         matches.difference_update(includes.split(b"\0"))
     return sorted(path.decode("utf-8", "surrogateescape").rstrip("/") for path in matches)
 
@@ -154,7 +154,7 @@ def _working_index(workspace: Path, *, skip_aew: bool = False, stores: bool | No
         env = {"GIT_INDEX_FILE": str(tmp_index), **READ_ALL_CONTENT}
         _neutralize_index_flags(workspace, env)
         spec = ["--", ".", *([f":(exclude){AEW_ROOT_REL}"] if skip_aew else [])]
-        caches = untracked_caches(workspace, cache_patterns, include_ignored)
+        caches = untracked_caches(workspace, cache_patterns, include_ignored, env=env)
         try:
             if stores and caches:
                 pathspecs = [*spec[1:], *(f":(exclude,literal){path}" for path in caches)]

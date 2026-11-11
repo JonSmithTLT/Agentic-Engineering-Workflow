@@ -691,6 +691,30 @@ def reevaluated(doc=None):
                                pack=OC.OpenCodePack(FIXTURES), evaluator_revision="offline-test")
 
 
+def test_retained_reevaluation_and_semantic_pin_are_exact_qualifier_output(tmp_path):
+    from harness_qualify import reevaluate
+
+    published = json.loads((FIXTURES / "messaging-2.2.6-linux-reevaluated.json").read_bytes())
+    provenance = published["facts"]["qualification.reevaluation"]
+    record = reevaluated()
+    record.facts["qualification.reevaluation"]["evaluator_revision"] = provenance["evaluator_revision"]
+    fixtures = tmp_path / "fixtures"
+    shutil.copytree(FIXTURES, fixtures)
+    (fixtures / "messaging-2.2.6.json").unlink()  # reproduce the pre-adoption fixture inventory
+    pack = OC.OpenCodePack(fixtures)
+    _, pinned = pack.pinned(fixtures)
+    diff = core.fact_diff(record.facts, pinned, unmeasured=record.unmeasured, checks=record.checks)
+    expected = core.document(record, diff, core.fixture_report(pack, record.version, record.facts, fixtures),
+                             pack.adoptable(record.facts, pinned))
+    assert published == expected
+    assert published["verdict"]["binary"] == core.PASS
+    rendered, _ = pack.render(record.version, record.facts, FIXTURES)["messaging-2.2.6.json"]
+    assert (FIXTURES / "messaging-2.2.6.json").read_bytes() == rendered
+    assert provenance["runtime_executed"] is False
+    assert provenance["ruling"]["digest"] == reevaluate.RULING_DIGEST
+    assert provenance["windows_runtime"] == "NOT RUN; capability GAP"
+
+
 def test_the_ruled_predicate_recomputes_all_ten_checks_without_altering_the_failed_source():
     import copy
 

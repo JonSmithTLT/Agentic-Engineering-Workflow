@@ -10,8 +10,8 @@ versions:
       to declare the capability; no AEW code is deleted in a bump; adopt and deny verdicts become register rows.
     verdicts:
       - feature: 'Messaging behaviour qualification'
-        verdict: hold
-        reason: 'The additionally approved corrected Linux pass passed nine selected checks but still failed prompt identity: after admission the response creation time changes and a changed-mode retry echoes the requested mode while preserving the original payload. The historical response-identity premise needs review before binding or delivery support is enabled. Both failed records are retained. Windows runtime is NOT RUN.'
+        verdict: 'hold -> consume'
+        reason: 'Offline re-evaluation of the retained additional Linux record under the Lead retry ruling passes all ten selected checks; messaging-2.2.6.json is qualifier-generated, with the full re-evaluation in messaging-2.2.6-linux-reevaluated.json. Retry identity relies only on id, session, text and metadata, with GET proving one admission. Response creation time and mode remain observations, never decision inputs; AEW owns enqueue time and mode and must refuse changed-mode retries. Both historical failed records remain unchanged. Binding implementation is still absent. Windows runtime is NOT RUN and its capability remains GAP.'
         row: 'E175'
       - feature: 'Session `warming`'
         verdict: 'deny'

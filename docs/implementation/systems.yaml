@@ -3634,7 +3634,7 @@ systems:
   depends_on:
   - SYS-02
   state:
-    board_state: built_not_wired
+    board_state: awaiting_signoff
     built: 'yes'
     wired: []
     on_by_default: true

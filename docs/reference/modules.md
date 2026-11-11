@@ -36,6 +36,7 @@ None.
 - `aew.g3client`
 - `aew.g3standing`
 - `aew.harness.check_changes`
+- `aew.harness.containment.netns`
 - `aew.harness.model_list`
 - `aew.harness.opencode.adapter`
 - `aew.harness.opencode.capabilities`
@@ -1351,6 +1352,7 @@ None.
 - `aew.harness.containment.egress`
 - `aew.harness.containment.layout`
 - `aew.harness.containment.relay`
+- `aew.harness.opencode.login`
 
 ### `aew.harness.containment.peer`
 
@@ -1499,6 +1501,7 @@ None.
 - `aew.harness.harness_capabilities`
 - `aew.harness.opencode.capabilities`
 - `aew.harness.opencode.client`
+- `aew.harness.opencode.model_pricing`
 - `aew.harness.opencode.projection`
 - `aew.harness.progress`
 - `aew.harness.runlog`
@@ -1556,6 +1559,10 @@ None.
 
 - `aew.errors`
 - `aew.harness.opencode.capabilities`
+
+### `aew.harness.opencode.model_pricing`
+
+None.
 
 ### `aew.harness.opencode.projection`
 

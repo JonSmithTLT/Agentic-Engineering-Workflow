@@ -181,6 +181,7 @@ class Harness:
             stop_old = self._record_request(previous, "stop", {"reason": f"superseded by {run}"}) if previous else None
             credential = rotate_invocation_token(state, invocation, f"rotated: {run}")
             runs.append({"run": run, "harness": inv["execution_profile"]["harness"], "token_id": inv["token_id"],
+                         **self.invocations.provider_key_admission(ctx.dispatch_decisions[-1].facts["inv"]),
                          "launched_at": utc_now(), "kind": "relaunch" if previous else "launch",
                          "generation": state["lead"]["generation"]})
             ctx.refs.append(f"run:{run}")
@@ -239,7 +240,7 @@ class Harness:
 
         try:
             execution, _ = self.k.execution_policy()
-            findings = readiness_findings(execution, START)
+            findings = readiness_findings(execution, START, admitted=self.invocations.admitted_key_sources(result))
         except Exception:  # the launch's own checks report an unreadable policy; this only adds to them
             return result
         return {**result, "readiness": findings} if findings else result

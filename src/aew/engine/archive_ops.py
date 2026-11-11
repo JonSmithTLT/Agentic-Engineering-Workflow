@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 from aew.coordination import layout as coordination
 from aew.engine import hierarchy as H
+from aew.engine.request_ids import prune_archived
 from aew.errors import HistoryMoved, IntegrityError, LockTimeout, ValidationFailed
 from aew.history import manifest as M
 from aew.history import store as history_store
@@ -378,6 +379,7 @@ class Archive:
         hot = {w: u for w, u in work.items() if w not in archived}
         projected = dict(state)
         projected["work"] = hot
+        prune_archived(projected, archived)
         projected["invocations"] = {i: v for i, v in state["invocations"].items() if i not in gone_invocations}
         projected["tokens"] = {t: v for t, v in state["tokens"].items() if t not in gone_tokens}
         counts = Counter({"done": 0, "cancelled": 0, **(state["cold"].get("archived") or {})})

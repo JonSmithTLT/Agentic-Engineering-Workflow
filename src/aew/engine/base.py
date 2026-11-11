@@ -12,6 +12,8 @@ from typing import Any
 
 from aew import process_kind
 from aew.engine.authority import CUSTODY_PUBLISH, require_custodian, require_lead
+from aew.engine.request_ids import INDEX as CONTROL_REQUESTS
+from aew.engine.request_ids import ControlRequest
 from aew.engine.seams import TxnFinalizers
 from aew.engine.store import CONTROL_REL, ControlStore, Session, Transition
 from aew.errors import (
@@ -38,7 +40,7 @@ V1, V2 = "aew/control/v1", "aew/control/v2"
 # control schema's v1 rule refuses exactly these (a unit test checks the two agree), and a test or tool that fakes a v1
 # project from `aew init`'s v2 output goes through `as_v1`. A key added for v2 (M4-D's `queue`) is added here.
 V2_ONLY_KEYS = ("cold", "recent", "archived_refs", "retained_workspaces", "retired_observations", "queue",
-                "steering", "stage_intents", "coordination_store", "coordination_unseen", "anomalies")
+                "steering", "stage_intents", "coordination_store", "coordination_unseen", "anomalies", CONTROL_REQUESTS)
 
 
 # Control state's pins of the policy files (``{path under .aew: sha256 or None}``); absent in a project initialized
@@ -132,6 +134,8 @@ class TxnContext:
     # The dispatch decisions this transaction computed (M4-A): the dispatch finalizer admits a new invocation or run
     # only with one of them.
     dispatch_decisions: list[Any] = field(default_factory=list)
+    replayed: dict[str, Any] | None = None
+    request_ref: tuple[str, str] | None = None
 
     @property
     def state(self) -> dict[str, Any]:
@@ -388,6 +392,7 @@ class Kernel:
         reason: str | None = None,
         allow_pending: bool = False,
         _adopting_manifest: bool = False,
+        request: ControlRequest | None = None,
     ) -> Iterator[TxnContext]:
         """A control transition: current Lead credential + expected revision, atomic commit.
 
@@ -405,7 +410,9 @@ class Kernel:
                         f"expected control revision {expect_rev}, current is {s.revision}",
                         expected=expect_rev, current=s.revision,
                     )
-                if s.state.get("schema") != V2 and op not in V1_OPS and not self.legacy_v1_writes:
+                if s.state.get("schema") != V2 and (
+                    request is not None or (op not in V1_OPS and not self.legacy_v1_writes)
+                ):
                     raise MigrationRequired(
                         "this project's control state is v1: migrate it first (the operator runs `aew migrate "
                         f"{EXPECT_REV}` at their own terminal); until then the Lead can change the seat and cancel "
@@ -417,8 +424,16 @@ class Kernel:
                 self._txn_pins = None if _adopting_manifest else s.state.get(POLICY_PINS)
                 try:
                     ctx = TxnContext(session=s, actor=actor, txn_op=op)
+                    if request is not None:
+                        ctx.replayed = request.replay(s.state, actor["generation"], op)
+                        if ctx.replayed is not None:
+                            yield ctx
+                            return
                     yield ctx
                     self.finalizers.run(ctx)
+                    if request is not None:
+                        projected = s.state if ctx.commit_state is None else ctx.commit_state
+                        request.remember(projected, actor["generation"], op, ctx.request_ref, s.revision + 1)
                     s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason,
                                         refs=ctx.refs, events=ctx.events),
                              expect_rev=expect_rev, state=ctx.commit_state)

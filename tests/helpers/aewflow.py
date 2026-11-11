@@ -378,8 +378,9 @@ def parent_review(p: Project, wid: str, *, disposition: str = "pass", findings: 
                       "Reviewed the children's integrated changes together.\n")["evidence"]
 
 
-def parent_verify(p: Project, wid: str, *, result: str = "pass") -> str:
-    out = p.lead("invoke", "create", wid, "--role", "verifier")
+def parent_verify(p: Project, wid: str, *, result: str = "pass", card: str | None = None) -> str:
+    selection = ("--card", card) if card else ("--role", "verifier")
+    out = p.lead("invoke", "create", wid, *selection)
     ver = Role(p, out["invocation_token"], Path(out["observation"]["path"]))
     unit_ev = ver.check("unit")["evidence"]
     claims = [{"type": "goal_backwards", "claim": "the parent objective is met on the authoritative source",

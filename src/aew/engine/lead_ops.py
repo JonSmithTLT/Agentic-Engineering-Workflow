@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 from aew import operator
 from aew.engine.authority import issue_token, revoke, verify_offer
 from aew.engine.base import TxnContext
+from aew.engine.request_ids import INDEX
 from aew.engine.store import Transition
 from aew.errors import IllegalTransition, PermissionDenied, StaleRevision
 from aew.harness.contract import EXPECT_REV, fields_command
@@ -103,6 +104,7 @@ class Lead:
     def _new_lead(self, state: dict[str, Any], session_label: str | None) -> str:
         lead = state["lead"]
         lead["generation"] += 1
+        state.pop(INDEX, None)
         token = issue_token(state, "lead", {"generation": lead["generation"], "session_label": session_label})
         lead.update(
             status="active",

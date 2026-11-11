@@ -88,3 +88,22 @@ def test_alpha_requires_steering_off_result_contents_and_strict_preflight():
     text = render(scenarios)
     assert "V1: no measured ledger" in text
     assert "strict preflight pass not observed" in text
+
+
+def test_receipt_lines_keep_dry_runs_distinct_from_real_receipts():
+    assert alpha.receipt_lines(None) == [
+        "Alpha receipt: NOT RECORDED (a real-model run the operator starts, per event)"]
+    assert alpha.receipt_lines({"kind": "dry_run"}) == ["Alpha receipt: DRY RUN, not the receipt"]
+
+
+def test_real_receipt_lists_all_fields_and_the_existing_containment_bar():
+    receipt = {field: "not recorded" for field in alpha.FIELDS}
+    receipt.update(kind="real", header={"platform": "win32", "workers_model": "openai/worker-free"},
+                   containment={"workers": {"R-INV-0001-1": None}, "lead": ["workdir_separation_only"]})
+    lines = alpha.receipt_lines(receipt)
+    assert "Alpha receipt: RECORDED" in lines
+    assert ledger.WINDOWS_UNQUALIFIED in lines
+    assert all(any(line.startswith(f"{field}:") for line in lines) for field in alpha.FIELDS)
+    assert any("below containment minimum" in line for line in lines)
+    assert any("a -free id" in line for line in lines)
+    assert "free: not ruled out (id rule only; catalog not read)" in lines

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from aew.harness.models import free_model_id
+
 
 def zero_cost(entry: dict[str, Any]) -> bool:
     """Whether a catalog entry prices the model at nothing: no cost at all, or every tier's input and output at 0."""
@@ -27,9 +29,9 @@ def zero_cost(entry: dict[str, Any]) -> bool:
 
 def free_model(ref: str, catalog: list[dict[str, Any]]) -> str | None:
     """Why ``ref`` (``provider/model``) is a free model, or None when it is not one."""
+    if reason := free_model_id(ref):
+        return reason
     provider, _, model = ref.partition("/")
-    if model.endswith("-free") or "-free-" in model or model == "free":
-        return f"{ref}: a -free id"
     if not catalog:
         return f"{ref}: the catalog read came back empty, so free cannot be told from paid"
     if not any(m.get("providerID") == provider for m in catalog):

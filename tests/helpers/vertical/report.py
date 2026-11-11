@@ -152,7 +152,9 @@ def report(directory: Path, *, run: S.Run | None = None, pytest: str | None = No
              "| Scenario | Result | Lead label | Why not measured |", "|---|---|---|---|"]
     lines += [f"| {cell(r['scenario'])} | {r['outcome']} | {r['lead_label'] or '-'} | {cell(r['why']) or '-'} |"
               for r in found]
-    lines += ["", "```", alpha.summary(found, platform=platform, strict_pass=PASSED), "```"]
+    receipt, _ = _ledger(directory / "alpha-receipt.json")
+    lines += ["", "```", alpha.summary(found, platform=platform, strict_pass=PASSED),
+              *alpha.receipt_lines(receipt), "```"]
     for r in found:
         summary = directory / ledger_dir_name(r["scenario"]) / SUMMARY
         if summary.is_file():

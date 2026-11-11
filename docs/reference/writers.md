@@ -71,6 +71,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/lead/xdg-data/opencode/opencode.db`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_logins` (direct: sqlite3.connect); `aew.harness.opencode.login:clear_saved_permissions` (direct: sqlite3.connect)
 - `local/harness/lead/xdg-state/opencode`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_models` (direct: Path.mkdir)
 - `local/harness/lead/xdg-state/opencode/model.json`: written or removed by `aew.harness.opencode.lead:ContainedLead._seed_models` (direct: Path.write_text)
+- `local/harness/runs`, named by `aew.harness.runlog:RUNS_REL`: written or removed by `aew.kit.receipt:write_receipt` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.mkdir)
 - `local/harness/runs/R-{}-{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
 - `local/harness/runs/R-{}-{}/events.jsonl`: written or removed by `aew.harness.runlog:_open_append` (direct: os.open)
@@ -182,7 +183,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/harness/runs/lead-{}-{}/tools/own_name/.aew-tools`: written or removed by `aew.capability.bind:place` (direct: Path.write_bytes)
 - `local/harness/runs/lead-{}-{}/tools/own_name/.{}.new`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, Path.write_bytes, os.symlink)
 - `local/harness/runs/lead-{}-{}/tools/own_name/{}`: written or removed by `aew.capability.bind:_write_entry` (direct: Path.unlink, os.replace)
-- `local/harness/runs/{}`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.mkdir)
+- `local/harness/runs/{}`: written or removed by `aew.engine.harness_ops:Harness._spawn_run` (direct: Path.mkdir); `aew.kit.receipt:write_receipt` (direct: atomic_write)
 - `local/harness/runs/{}/.aew-mask`: written or removed by `aew.harness.containment.layout:for_run` (direct: Path.write_bytes)
 - `local/harness/runs/{}/events.jsonl`: written or removed by `aew.harness.runlog:_open_append` (direct: os.open)
 - `local/harness/runs/{}/git`: written or removed by `aew.harness.containment.layout:retire_private_git` (direct: shutil.rmtree)
@@ -424,6 +425,10 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.weaker_register:_prune` (direct: Path.unlink): a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.weaker_register:enter` (direct: create_exclusive): a relative path, `aew/weaker-contexts/{}-{}-{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.weaker_register:sweep` (direct: atomic_write): a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.kit.receipt:write_receipt` (direct: Path.mkdir): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit.receipt:write_receipt` (direct: atomic_write): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit:prepare` (direct: Path.mkdir): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit:prepare` (direct: Path.write_text): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.profile:cli_finish` (direct: open): the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.stg02.ledger:Ledger.__init__` (direct: Path.mkdir): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.ledger:Ledger._connect` (direct: sqlite3.connect): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it

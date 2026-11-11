@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import posixpath
 import re
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import pytest
@@ -82,6 +83,25 @@ def test_each_shipped_skill_names_itself_by_its_folder_states_its_version_and_sa
         assert re.search(rf"^  version: '{re.escape(entry['version'])}'$", front, re.M), name
         description = re.search(r"^description: (.+)$", front, re.M)
         assert description and re.search(r"\b(skip|not)\b", description.group(1), re.I), name
+
+
+def test_every_link_in_a_shipped_skill_reaches_a_shipped_file_and_skill_md_links_every_one():
+    """The pointer rule (E142): a step moved to ``references/`` or ``examples/`` is read only through its link, so a
+    broken link loses the step silently. ``specification.md``: each runtime resource has an explicit link from the
+    entrypoint."""
+    link = re.compile(r"\]\(([^)#\s]+)\)")
+    for name, entry in skills.entries().items():
+        listed = set(entry["files"])
+        linked_from_skill_md: set[str] = set()
+        for rel in listed:
+            here = PurePosixPath(rel).parent
+            for target in link.findall((SHIPPED / name / rel).read_text(encoding="utf-8")):
+                assert "://" not in target, (name, rel, target)
+                resolved = posixpath.normpath((here / target).as_posix())
+                assert resolved in listed, (name, rel, target)
+                if rel == skills.SKILL_FILE:
+                    linked_from_skill_md.add(resolved)
+        assert linked_from_skill_md == listed - {skills.SKILL_FILE}, name
 
 
 def test_the_package_data_ships_every_file_the_manifest_lists():

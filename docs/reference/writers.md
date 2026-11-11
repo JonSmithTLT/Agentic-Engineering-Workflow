@@ -220,6 +220,8 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/lead-wakes.json`, named by `aew.harness.wake_queue:WAKES_REL`: written or removed by `aew.harness.wake_queue:WakeQueue._save` (direct: atomic_write)
 - `local/lead-wakes.serving`, named by `aew.harness.wake_queue:SERVING_REL`: written or removed by `aew.harness.wake_queue:clear_serving` (direct: Path.unlink); `aew.harness.wake_queue:mark_serving` (direct: atomic_write)
 - `local/lead/broker.json`, named by `aew.harness.broker_liveness:REL`: written or removed by `aew.harness.broker_liveness:write` (direct: Path.unlink, Path.write_text, replace_with_retry)
+- `local/lead/defects.jsonl`: written or removed by `aew.harness.tool_calls:append` (direct: Path.open)
+- `local/lead/defects.{}.jsonl`: written or removed by `aew.harness.tool_calls:_rotate` (direct: os.replace)
 - `local/lead/tool-calls.jsonl`, named by `aew.harness.tool_calls:LOG_REL`: written or removed by `aew.harness.tool_calls:append` (direct: Path.open)
 - `local/lead/tool-calls.{}.jsonl`: written or removed by `aew.harness.tool_calls:_rotate` (direct: os.replace)
 - `local/maps`, named by `aew.maps.store:MAPS_REL`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir); `aew.engine.lock:FileLock._open` (direct: Path.mkdir); `aew.maps.store:_append_log` (direct: Path.mkdir)

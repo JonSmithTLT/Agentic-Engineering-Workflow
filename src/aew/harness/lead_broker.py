@@ -306,7 +306,9 @@ class LeadBroker:
             return quiet_wake_s(policy)
 
         queue = WakeQueue(own.aew_root, poster=poster, state=own.store.current, quiet_s=quiet, clock=time.time,
-                          new_id=poster.new_id)
+                          new_id=poster.new_id,
+                          loop_ingests=lambda state, work_id: self.loop is not None and self.loop.will_ingest(
+                              dict(state), work_id, own))
 
         def run() -> None:
             while not self._stop.wait(POLL_S):

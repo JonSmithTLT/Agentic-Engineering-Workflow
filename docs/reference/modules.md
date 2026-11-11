@@ -1127,6 +1127,7 @@ None.
 - `aew.engine.primitives`
 - `aew.engine.store`
 - `aew.errors`
+- `aew.harness.contract`
 - `aew.knowledge.records`
 - `aew.util`
 
@@ -1612,13 +1613,17 @@ None.
 
 - `aew.engine.authority`
 - `aew.engine.dispatch`
+- `aew.engine.evidence_ops`
 - `aew.engine.outbox`
 - `aew.engine.primitives`
 - `aew.engine.priority`
 - `aew.engine.steering`
+- `aew.engine.transitions`
 - `aew.errors`
+- `aew.harness.contract`
 - `aew.harness.event_spool`
 - `aew.harness.operator_client`
+- `aew.surface.availability`
 - `aew.surface.context`
 - `aew.surface.contract`
 - `aew.surface.projection`
@@ -1673,6 +1678,7 @@ None.
 
 ### `aew.harness.wake_queue`
 
+- `aew.engine.steering`
 - `aew.harness.broker_liveness`
 - `aew.harness.contract`
 - `aew.harness.lead_broker`

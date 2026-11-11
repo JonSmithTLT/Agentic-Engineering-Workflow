@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from aew import errors
-from aew.engine import outbox
+from aew.engine import outbox, stage_intents
 from aew.engine.primitives import spec_for
 from aew.harness import defects
 from aew.harness.contract import redact
@@ -292,6 +292,7 @@ def _runner_defect(call: Call, t: contract.Tool, exc: Exception) -> tuple[dict[s
             payload = stage._payload(call, call.intent, [])
         except Exception:  # the journal may be unreadable; the count is unknown
             call.committed_unknown = True
+    if call.committed_unknown or payload.get("status") == stage_intents.ACTIVE:
         next_action = "Call `resume` to see what committed and the unfinished stage, then `resolve`."
     elif t.mutates:
         next_action = "Read `status` before retrying with a fresh `expect_rev`. See completed_steps for commits."

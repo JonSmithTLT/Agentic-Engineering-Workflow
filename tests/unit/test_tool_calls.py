@@ -56,6 +56,19 @@ def test_a_log_that_cannot_be_written_never_fails_the_call(tmp_path, caplog):
     assert "could not be written" in caplog.text
 
 
+def test_defects_rotate_to_their_own_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(T, "MAX_BYTES", 10)
+    monkeypatch.setattr(T, "KEEP", 2)
+    T.append(tmp_path, {"n": 0})
+    for n in range(4):
+        T.append(tmp_path, {"n": n}, log_rel=T.DEFECT_LOG_REL)
+    folder = tmp_path / "local/lead"
+    assert sorted(p.name for p in folder.iterdir()) == [
+        "defects.1.jsonl", "defects.2.jsonl", "defects.jsonl", "tool-calls.jsonl",
+    ]
+    assert T.read(tmp_path) == [{"n": 0}]
+
+
 def test_a_line_that_cannot_be_built_never_changes_the_call(tmp_path, caplog, monkeypatch):
     """PR #177 review, finding 4: arguments that are not JSON and not even encodable text (a lone surrogate) are
     digested as given, and anything else that fails while a line is built or written is logged and dropped."""

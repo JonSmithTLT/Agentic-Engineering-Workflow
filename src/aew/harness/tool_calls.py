@@ -25,6 +25,7 @@ from typing import Any
 from aew.util import sha256_bytes, utc_now
 
 LOG_REL = "local/lead/tool-calls.jsonl"
+DEFECT_LOG_REL = "local/lead/defects.jsonl"
 MAX_BYTES = 1 << 20  # one file; a line is a few hundred bytes, so some thousands of calls each
 KEEP = 4  # rotated files kept: tool-calls.1.jsonl (newest) .. tool-calls.4.jsonl
 MAX_FIELD = 128  # characters kept of a field the caller controls (the tool name, ingress, profile) or echoes (a code)
@@ -40,11 +41,13 @@ def path(aew_root: Path) -> Path:
 
 
 def rotated(aew_root: Path, n: int) -> Path:
-    return _rotated(path(aew_root), n)
+    return Path(aew_root) / f"local/lead/tool-calls.{n}.jsonl"
 
 
-def _rotated(target: Path, n: int) -> Path:
-    return target.with_name(f"{target.stem}.{n}{target.suffix}")
+def _rotated(aew_root: Path, n: int, log_rel: str) -> Path:
+    if log_rel == DEFECT_LOG_REL:
+        return Path(aew_root) / f"local/lead/defects.{n}.jsonl"
+    return rotated(aew_root, n)
 
 
 def arguments_digest(arguments: Any) -> str:
@@ -115,18 +118,19 @@ def append(aew_root: Path, line: dict[str, Any], *, log_rel: str = LOG_REL) -> N
             except FileNotFoundError:
                 full = False
             if full:
-                _rotate(target)
+                _rotate(aew_root, target, log_rel)
             with target.open("a", encoding="utf-8", newline="\n") as fh:
                 fh.write(text)
     except OSError as exc:
         log.warning("the local log %s could not be written: %s", log_rel, exc)
 
 
-def _rotate(target: Path) -> None:
+def _rotate(aew_root: Path, target: Path, log_rel: str) -> None:
     for n in range(KEEP - 1, 0, -1):  # the oldest kept is overwritten by the one before it
-        if _rotated(target, n).exists():
-            os.replace(_rotated(target, n), _rotated(target, n + 1))
-    os.replace(target, _rotated(target, 1))
+        source = _rotated(aew_root, n, log_rel)
+        if source.exists():
+            os.replace(source, _rotated(aew_root, n + 1, log_rel))
+    os.replace(target, _rotated(aew_root, 1, log_rel))
 
 
 def read(aew_root: Path) -> list[dict[str, Any]]:

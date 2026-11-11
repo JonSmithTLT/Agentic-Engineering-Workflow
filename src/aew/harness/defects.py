@@ -15,7 +15,6 @@ from aew.harness import tool_calls
 from aew.harness.contract import CREDENTIAL_SHAPED, redact
 from aew.util import utc_now
 
-DEFECT_LOG_REL = "local/lead/defects.jsonl"
 # Keep the most recent end of the traceback, including the exception, within a small fraction of one rotated file.
 MAX_TRACE = 16 * 1024
 # Match surface/readable.py's ROW * WHY_ROWS. Count JSON escapes as well so non-ASCII causes fit on the wire.
@@ -74,7 +73,7 @@ def record(aew_root: Path | None, exc: Exception, *, defect: str, op: str, step:
             trace = redact_text("".join(traceback.format_exception(exc)))
             tool_calls.append(aew_root, {"time": utc_now(), "defect": defect, "op": op, "step": step,
                                          "ingress": field(ingress), "exception": exception, "cause_code": cause_code,
-                                         "traceback": trace[-MAX_TRACE:]}, log_rel=DEFECT_LOG_REL)
+                                         "traceback": trace[-MAX_TRACE:]}, log_rel=tool_calls.DEFECT_LOG_REL)
     except Exception:  # noqa: BLE001  defect telemetry must never replace the original failure
         log.warning("the defect log dropped record %s", defect)
 

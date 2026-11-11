@@ -221,7 +221,9 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/lead-wakes.serving`, named by `aew.harness.wake_queue:SERVING_REL`: written or removed by `aew.harness.wake_queue:clear_serving` (direct: Path.unlink); `aew.harness.wake_queue:mark_serving` (direct: atomic_write)
 - `local/lead/broker.json`, named by `aew.harness.broker_liveness:REL`: written or removed by `aew.harness.broker_liveness:write` (direct: Path.unlink, Path.write_text, replace_with_retry)
 - `local/lead/defects.jsonl`: written or removed by `aew.harness.tool_calls:append` (direct: Path.open)
+- `local/lead/defects.{}.jsonl`: written or removed by `aew.harness.tool_calls:_rotate` (direct: os.replace)
 - `local/lead/tool-calls.jsonl`, named by `aew.harness.tool_calls:LOG_REL`: written or removed by `aew.harness.tool_calls:append` (direct: Path.open)
+- `local/lead/tool-calls.{}.jsonl`: written or removed by `aew.harness.tool_calls:_rotate` (direct: os.replace)
 - `local/maps`, named by `aew.maps.store:MAPS_REL`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: Path.mkdir); `aew.engine.lock:FileLock._open` (direct: Path.mkdir); `aew.maps.store:_append_log` (direct: Path.mkdir)
 - `local/maps/registry-log.jsonl`, named by `aew.maps.store:LOG_REL`: written or removed by `aew.maps.store:_append_log` (direct: open)
 - `local/maps/registry.json`, named by `aew.maps.store:REGISTRY_REL`: written or removed by `aew.maps.store:select` (direct: atomic_write)
@@ -417,7 +419,6 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.runlog:write_progress` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call
 - `aew.harness.supervisor:Supervisor.start` (direct: Path.mkdir): the attribute `contract.scratch` is not a value this reading can follow
 - `aew.harness.supervisor:contain_launch` (direct: shutil.rmtree): the attribute `layout.net_dir` is not a value this reading can follow
-- `aew.harness.tool_calls:_rotate` (direct: os.replace): a sibling of `target` named by `f'{target.stem}.{n}{target.suffix}'`, which is neither fixed nor made by the process
 - `aew.harness.usage_live:Meter._persist` (direct: atomic_write): `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
 - `aew.harness.weaker_register:Entry.end` (direct: atomic_write): a relative path, `aew/weaker-contexts/{}-{}-{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.weaker_register:_checked_root` (direct: Path.mkdir): a relative path, `aew/weaker-contexts`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name

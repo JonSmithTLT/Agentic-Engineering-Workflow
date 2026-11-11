@@ -9,7 +9,7 @@ import pytest
 from aewflow import create_planned_ticket
 from test_lead_tool import call as broker_call
 from test_lead_tool import held as held
-from test_stage_resolve import unfinished
+from test_stage_resolve import resolve, unfinished
 from test_stage_runner import CTX, call
 from test_stage_runner import project as project
 from test_steering_loop import Scripted, loop, mode, notes, policy_text
@@ -35,6 +35,10 @@ def mcp_call(forward, name, arguments):
     return out
 
 
+def test_e138_message_budget_matches_readable():
+    assert defects.MAX_MESSAGE == readable.ROW * readable.WHY_ROWS
+
+
 @pytest.mark.parametrize("kind", [RuntimeError, ValueError])
 def test_e138_mid_stage_defect_reports_the_running_step(project, tmp_path, monkeypatch, kind):
     wid = create_planned_ticket(project, tmp_path)
@@ -53,9 +57,74 @@ def test_e138_mid_stage_defect_reports_the_running_step(project, tmp_path, monke
     assert intent in unfinished(project)
     assert "next: Call `resume`" in readable.render(out)
     [record] = [json.loads(line) for line in
-                (project.root / ".aew/local/lead/defects.jsonl").read_text(encoding="utf-8").splitlines()]
+                (project.root / ".aew" / tool_calls.DEFECT_LOG_REL).read_text(encoding="utf-8").splitlines()]
     assert record["defect"] == stopped["error"]["details"]["defect"]
     assert kind.__name__ in record["traceback"] and record["step"] == "work.assign"
+
+
+@pytest.mark.parametrize(("choice", "status"), [("abandon", "ABANDONED"), ("continue", "COMPLETED")])
+def test_e138_resolve_finishes_an_intent_left_by_a_defect(project, tmp_path, monkeypatch, choice, status):
+    wid = create_planned_ticket(project, tmp_path)
+    with monkeypatch.context() as injection:
+        injection.setitem(stage.STEP_RUNNERS, "work.assign", fail_with(RuntimeError("step runner failed")))
+        out = call(project, "probe_start", work_id=wid)
+    intent = out["stage_intent_id"]
+    assert out["stopped"]["at"] == "work.assign"
+    assert out["stopped"]["error"]["code"] == "DEFECT"
+    assert intent in unfinished(project)
+    finished = resolve(project, intent, choice)
+    assert finished["ok"], finished["stopped"]
+    journal = Engine.discover(project.root).stage_intent(intent)
+    assert journal["status"] == status
+    assert len(journal["steps"]) == (2 if choice == "continue" else 1)
+    assert intent not in unfinished(project)
+
+
+def test_e138_argument_resolution_failure_names_the_new_step(project, tmp_path, monkeypatch):
+    wid = create_planned_ticket(project, tmp_path)
+    real_resolve = stage._resolve
+
+    def fail_on_second_step(c, intent, args):
+        if c.engine.stage_intent(intent)["steps"]:
+            raise RuntimeError("argument resolution failed")
+        return real_resolve(c, intent, args)
+
+    monkeypatch.setattr(stage, "_resolve", fail_on_second_step)
+    out = call(project, "probe_start", work_id=wid)
+    assert out["stopped"]["at"] == "work.assign"
+    assert out["stopped"]["error"]["details"]["committed"] == 1
+
+
+def test_e138_checkpoint_commits_before_the_runner_raises(project, monkeypatch):
+    checkpoint = run.RUNNERS["checkpoint"]
+
+    def commit_then_fail(c):
+        checkpoint(c)
+        raise RuntimeError("after the commit")
+
+    monkeypatch.setitem(run.RUNNERS, "checkpoint", commit_then_fail)
+    out = call(project, "checkpoint")
+    validate("surface", out, source="E138 committed checkpoint defect")
+    assert not out["ok"] and out["stage_intent_id"] is None
+    assert [s["primitive"] for s in out["completed_steps"]] == ["checkpoint"]
+    assert out["stopped"]["error"]["details"]["committed"] == 1
+    assert out["result"]["next_action"].startswith("Read `status` before retrying with a fresh `expect_rev`")
+
+
+def test_e138_failure_after_a_completed_stage_names_the_tool(project, monkeypatch):
+    payload = stage._payload
+
+    def fail_once(c, intent, outputs):
+        if outputs:
+            raise RuntimeError("after the last runner returned")
+        return payload(c, intent, outputs)
+
+    monkeypatch.setattr(stage, "_payload", fail_once)
+    out = call(project, "probe_notes")
+    assert not out["ok"] and out["stopped"]["at"] == "probe_notes"
+    assert out["stopped"]["error"]["details"]["committed"] == 2
+    assert out["result"]["status"] == "COMPLETED"
+    assert out["result"]["next_action"].startswith("Read `status` before retrying with a fresh `expect_rev`")
 
 
 def test_e138_mcp_process_names_its_own_failure():
@@ -159,7 +228,7 @@ def test_e138_broker_failure_stays_typed_and_secrets_stay_out(held, tmp_path, mo
         escaped = json.dumps(hidden)[1:-1]
         assert hidden not in caught.value.message
         assert all(escaped not in json.dumps(item) for item in (stage_result, out, line))
-    record = json.loads((engine.aew_root / defects.DEFECT_LOG_REL).read_text(encoding="utf-8").splitlines()[-1])
+    record = json.loads((engine.aew_root / tool_calls.DEFECT_LOG_REL).read_text(encoding="utf-8").splitlines()[-1])
     assert path in record["traceback"]
     assert aew_key not in record["traceback"] and provider_key not in record["traceback"]
 

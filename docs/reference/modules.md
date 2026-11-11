@@ -1827,6 +1827,7 @@ None.
 ### `aew.maps.gitobjects`
 
 - `aew.errors`
+- `aew.knowledge.manifest`
 - `aew.maps.canonical`
 - `aew.workspace.git`
 
@@ -1853,6 +1854,7 @@ None.
 - `aew.maps.freshness`
 - `aew.maps.gitobjects`
 - `aew.maps.rules`
+- `aew.maps.service`
 - `aew.maps.store`
 - `aew.maps.structural`
 - `aew.policy.execution`
@@ -2123,6 +2125,7 @@ None.
 - `aew.surface.classify`
 - `aew.surface.context`
 - `aew.surface.contract`
+- `aew.surface.stage`
 - `aew.util`
 
 ### `aew.surface.readable`
@@ -2135,6 +2138,7 @@ None.
 
 - `aew.engine.outbox`
 - `aew.engine.primitives`
+- `aew.engine.stage_intents`
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.harness.defects`

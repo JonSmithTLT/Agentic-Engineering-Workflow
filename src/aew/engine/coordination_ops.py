@@ -797,7 +797,7 @@ class Coordination:
     def attention(self, state: dict[str, Any], *, work_id: str | None = None,
                   invocations: set[str] | None = None, exclude: set[str] | None = None,
                   only: set[str] | None = None, after: dict[str, int] | None = None,
-                  runs: set[str] | None = None) -> dict[str, Any] | None:
+                  runs: set[str] | None = None, limit: int = L.UNSEEN_CAP) -> dict[str, Any] | None:
         """Fresh, verified worker bodies and Lead-pending IDs, bounded across the whole result (MS6).
         This durable-attention view deliberately ignores generation-local told/posted records. Settled bodies come
         only from the bounded hot list's pinned seals, never an archive/history walk on the polling path."""
@@ -859,10 +859,19 @@ class Coordination:
         revs = held["omitted_revs"]
         settled_omitted = (held["omitted"] if revs and not any(
             r[0] <= revs[0] and revs[1] <= r[1] for r in recovered) else 0)
-        return {"awaiting_lead": replies[:L.UNSEEN_CAP], "awaiting_worker": awaiting,
-                "omitted": max(0, len(replies) - L.UNSEEN_CAP) + (settled_omitted if work_id is None
+        return {"awaiting_lead": replies[:limit], "awaiting_worker": awaiting,
+                "omitted": max(0, len(replies) - limit) + (settled_omitted if work_id is None
                     and invocations is None else 0), "omitted_revs": revs,
                 "recovery": "aew message unseen", "integrity_errors": damaged}
+
+    def available_message_ids(self, state: dict[str, Any], ids: set[str]) -> set[str]:
+        """Retention identities only, never a transmitted body batch: live inbox bounds plus the settled hot cap.
+        Durable shown/dead/out-of-view IDs may be pruned from posted; eligible IDs must not be evicted just because
+        a different invocation occupied the first 20 bodies of the public attention view."""
+        bound = L.UNSEEN_CAP + L.MAX_UNSEEN_WORKER * sum(inv.get("status") == "active"
+                                                       for inv in state["invocations"].values())
+        view = self.attention(state, only=ids, limit=bound)
+        return {m["id"] for m in (view or {}).get("awaiting_lead", [])}
 
     def delivery_view(self, state: dict[str, Any], *, invocations: set[str] | None = None,
                       after: dict[str, int] | None = None, runs: set[str] | None = None) -> dict[str, Any] | None:

@@ -493,7 +493,7 @@ class Harness:
 
     def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False,
                      triggers: bool = False, lead: bool = False,
-                     message_after: dict[str, int] | None = None) -> dict[str, Any]:
+                     message_after: dict[str, int] | None = None, record_return: bool = True) -> dict[str, Any]:
         """Wait until a run is no longer running (it ended, failed, was never confirmed, or was lost); with several runs
         and ``any_``, until the first of them is (register E1; ADR-0012 D4, D5 and D8; M4 report §2.9).
 
@@ -644,7 +644,7 @@ class Harness:
                            if wake_queue.some_broker_posts(self.k.aew_root) else None))}
             if view is not None:
                 result["coordination"] = view
-            if process_kind.kind() == process_kind.STORE_WRITER:  # a relayed read's broker records it (record_told)
+            if record_return and process_kind.kind() == process_kind.STORE_WRITER:
                 record_told(self.k.aew_root, result, lead=lead)
             return result
         inv = targets[run][1]
@@ -661,7 +661,7 @@ class Harness:
             out["coordination"] = view
             bodies = view["awaiting_lead"]
             out.update(P.wake([K.RUN_ENDED, *([K.WORKER_MESSAGE] if bodies else [])], digests(), messages=bodies))
-        if process_kind.kind() == process_kind.STORE_WRITER:  # a relayed read's broker records it (record_told)
+        if record_return and process_kind.kind() == process_kind.STORE_WRITER:
             record_told(self.k.aew_root, out, lead=lead)
         if _reason_code(record):
             out["reason_code"] = _reason_code(record)

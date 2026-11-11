@@ -137,3 +137,33 @@ def test_a_relayed_live_wait_records_only_its_carried_body_locally(lab, tmp_path
         b.close()
         (sync / "end").touch()
     lab.wait(run)
+
+
+def test_post_before_wait_suppresses_messages_but_not_an_explicit_end_and_keeps_end_facts_identical(lab, tmp_path):
+    from types import SimpleNamespace
+
+    from test_message_wakes import Poster, queue, shape
+
+    run, sync = launch(lab, tmp_path, [REPLY])
+    send(lab)
+    (sync / "go").touch()
+    assert steps_done(lab, run, 2)["exit"] == 0
+    (sync / "end").touch()
+    lab.wait(run)
+    e = Engine.discover(lab.root)
+    explicit = e.harness_wait(run, timeout=0, triggers=True, record_return=False)
+    b = lead_broker.LeadBroker(e, lab.project.token)
+    b.server.start()
+    poster = Poster()
+    try:
+        q = queue(SimpleNamespace(root=lab.root, e=e), b, poster)
+        q.tick()
+        wake = shape(poster)
+        assert wake["why"] == [K.RUN_ENDED, K.WORKER_MESSAGE]
+        assert [m["id"] for m in wake["messages"]] == ["MSG-INV-0001-2"]
+        assert all(explicit[key] == value for key, value in wake["ended"][run].items())
+        after_post = e.harness_wait(run, timeout=0, triggers=True, message_after={})
+        assert after_post["why"] == [K.RUN_ENDED] and after_post["messages"] == []
+        assert after_post["evidence"] == explicit["evidence"] and after_post["results"] == explicit["results"]
+    finally:
+        b.close()

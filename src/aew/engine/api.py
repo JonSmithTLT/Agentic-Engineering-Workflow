@@ -816,9 +816,9 @@ class Engine:
 
     def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False,
                      triggers: bool = False, lead: bool = False,
-                     message_after: dict[str, int] | None = None) -> dict[str, Any]:
+                     message_after: dict[str, int] | None = None, record_return: bool = True) -> dict[str, Any]:
         return self._harness.harness_wait(runs, timeout=timeout, any_=any_, triggers=triggers, lead=lead,
-                                          message_after=message_after)
+                                          message_after=message_after, record_return=record_return)
 
     def ingest_evidence_unit_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                                     kind: str) -> dict[str, Any]:
@@ -983,6 +983,9 @@ class Engine:
                               runs: set[str] | None = None) -> dict[str, Any] | None:
         return self._coordination.delivery_view(self._k.store.read_committed(), invocations=invocations,
                                                 after=after, runs=runs)
+
+    def message_available_ids(self, ids: set[str]) -> set[str]:
+        return self._coordination.available_message_ids(self._k.store.read_committed(), ids)
 
     def message_waiting(self, *, invocation_token: str, after: str) -> dict[str, Any]:
         return self._coordination.message_waiting(invocation_token=invocation_token, after=after)

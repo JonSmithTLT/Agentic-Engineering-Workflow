@@ -315,7 +315,12 @@ class LeadBroker:
             return quiet_wake_s(policy)
 
         queue = WakeQueue(own.aew_root, poster=poster, state=own.store.current, quiet_s=quiet, clock=time.time,
-                          new_id=poster.new_id)
+                          new_id=poster.new_id, generation=self.generation,
+                          messages=own.message_delivery_view, available=own.message_available_ids,
+                          current=self._receipt_current, serial=self.server.serialized,
+                          verify=own.message_result_ids,
+                          ended_result=lambda run: own.harness_wait(run, timeout=0, triggers=True,
+                                                                   message_after={}, record_return=False))
 
         def run() -> None:
             while not self._stop.wait(POLL_S):

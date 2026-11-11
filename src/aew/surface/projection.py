@@ -38,7 +38,7 @@ from aew.errors import AEWError
 from aew.harness import contract as K
 from aew.knowledge import evidence as E
 from aew.surface import availability as SA
-from aew.surface import contract
+from aew.surface import contract, stage
 from aew.surface.classify import AVAILABLE, BLOCKED, UNKNOWN, auto_runnable, effective_class
 from aew.surface.context import SurfaceContext
 from aew.util import utc_now
@@ -211,7 +211,7 @@ def _stage_decisions(part: dict[str, Any], state: dict[str, Any], subject: str) 
             part["decisions"].append({"decision": "RESOLVE_STAGE", "tool": "resolve", "evidence": [sid],
                                       "arguments": {"expect_rev": part["revision"], "subject": sid},
                                       "cli": ["stage", "<continue|abandon>", sid, "--rationale", "<why>",
-                                              "--expect-rev", r]})
+                                              "--expect-rev", r], "stopped": stage.kept_stop(si)})
 
 
 def _ticket_actions(part: dict[str, Any], wid: str, rev: int) -> None:

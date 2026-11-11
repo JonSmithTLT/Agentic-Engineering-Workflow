@@ -464,7 +464,8 @@ def _call_again(intent: str, c: Call, refusal: errors.StaleRevision) -> errors.S
     if way is None:
         from aew.surface.run import _stale
 
-        if 0 < len(si["steps"]) < len(si["plan"]) and _stale(c.engine, c.ctx) is None:
+        if (0 < len(si["steps"]) < len(si["plan"]) and _stale(c.engine, c.ctx) is None
+                and assess(c.engine, si)["safe_to_continue"]):
             return errors.StaleRevision(
                 f"{refusal.message}. The committed steps stand. Call resolve with subject {intent}, choice continue "
                 "and your rationale on the current revision to recheck and run only the remaining steps, or choice "
@@ -696,7 +697,16 @@ def assess(engine: Any, si: dict[str, Any]) -> dict[str, Any]:
             "policy": {"legality_digest": si["binding"]["legality_digest"], "status": checks["policy"]["status"]},
             "next_step": nxt, "boundary": boundary, "owner_generation": check["owner_generation"],
             "current_generation": check["current_generation"], "rebind": check["rebind"],
-            "opened": dict(si["opened"]), "rebound": list(si["rebound"])}
+            "opened": dict(si["opened"]), "rebound": list(si["rebound"]), "stopped": kept_stop(si)}
+
+
+def kept_stop(si: dict[str, Any]) -> dict[str, Any] | None:
+    """The recorded stop of an unfinished intent, distinct from what its next explicit continue would meet."""
+    stop = si.get("stopped") if si["status"] == SI.ACTIVE else None
+    if stop is None:
+        return None
+    return {"n": stop["n"], "boundary": stop["boundary"], "rev": stop["rev"],
+            "error": {"code": stop["error"]["code"], "reason": stop["error"].get("reason")}}
 
 
 def unfinished(engine: Any) -> list[dict[str, Any]]:

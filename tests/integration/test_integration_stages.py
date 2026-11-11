@@ -858,9 +858,16 @@ def test_a_draft_interrupted_by_another_tickets_registration_has_a_typed_continu
     assert si["stopped"]["error"]["reason"] == "resolve_stage"
     assert stopped["stopped"]["error"]["details"]["resolve"] == {"tool": "resolve", "subject": si["id"]}
     for _ in range(stales):
+        kept = engine(p).stage_intent(si["id"])["stopped"]
+        summary = {"n": kept["n"], "boundary": kept["boundary"], "rev": kept["rev"],
+                   "error": {"code": kept["error"]["code"], "reason": kept["error"]["reason"]}}
+        resumed = R.run_tool(engine(p), CTX, "resume", {}, token=p.token)
+        [row] = [s for s in resumed["result"]["stage_intents"] if s["intent"] == si["id"]]
+        assert row["stopped"] == summary and row["safe_to_continue"]
         projection.clear_cache()
         [decision] = [d for d in project(engine(p), CTX, wid)["decisions_required"]
                       if d["decision"] == "RESOLVE_STAGE"]
+        assert decision["stopped"] == summary
         out = call(p, decision["tool"], **{**decision["arguments"], "choice": "continue",
                                           "rationale": "finish the draft, keeping its created Ticket"})
         if not out["ok"]:
@@ -872,6 +879,83 @@ def test_a_draft_interrupted_by_another_tickets_registration_has_a_typed_continu
     assert len(seen) == stales + 1 and seen == sorted(set(seen))
     assert lease(p)["custodian"] == custodian
     assert_control_invariants(p)
+
+
+def test_a_continued_verification_request_that_goes_stale_again_stays_resolvable(tmp_path, monkeypatch):
+    """F2, adopted from the review repro: an empty continuation still has durable committed acceptance steps."""
+    p = sample_project(tmp_path)
+    lab = launching(p, tmp_path, monkeypatch)
+    lab.script("default", [{"do": "hang"}])
+    try:
+        wid = create_planned_ticket(p, tmp_path)
+        implement(assign(p, wid))
+        p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+        report = review(p, wid)
+        ran = intervene(monkeypatch, "invoke.create.mutating", times=2)
+        out = call(p, "ticket_request_verification", work_id=wid, review_evidence=report)
+        si = intent(p, out)
+        committed = list(si["steps"])
+        assert si["status"] == SI.ACTIVE and len(committed) == 2
+        out = call(p, "resolve", subject=si["id"], choice="continue", rationale="dispatch the verifier")
+        assert not out["ok"] and intent(p, out)["status"] == SI.ACTIVE
+        error = out["stopped"]["error"]
+        assert error["details"]["reason"] == "resolve_stage"
+        assert "Nothing of this call was committed" not in error["message"]
+        assert intent(p, out)["steps"] == committed and len(ran) == 2
+        out = call(p, "resolve", subject=si["id"], choice="continue", rationale="dispatch the verifier")
+        assert out["ok"], out["stopped"]
+        assert intent(p, out)["status"] == SI.COMPLETED and len(ran) == 3
+        assert intent(p, out)["steps"][:len(committed)] == committed
+        assert control(p)["work"][wid]["state"] == "VERIFY_PENDING"
+        assert_control_invariants(p)
+    finally:
+        lab.cleanup()
+
+
+def test_verifier_publish_registration_between_acceptance_and_publish(tmp_path, monkeypatch, custody):
+    """F3, adopted from the review repro: fresh lease registration after acceptance, explicit resolve to DONE."""
+    p = sample_project(tmp_path)
+    lab = launching(p, tmp_path, monkeypatch)
+    sync = tmp_path / "sync"
+    try:
+        wid, report = verifying(p, tmp_path)
+        lab.script("default", verifier_script(sync))
+        out = call(p, "ticket_prepare", work_id=wid, verification_evidence=report)
+        assert out["ok"], out["stopped"]
+        [run] = intent(p, out)["steps"][4]["outputs"]["runs"]
+        custodian = lease(p)["custodian"]
+        lab.until(lambda: (sync / "ready").exists(), what="the verifier to report")
+        (sync / "release").touch()
+        lab.wait(run)
+        found, routed = engine(p).custody_step(custodian, custody[custodian])
+        assert found == CO.ACTED and routed["routed"]["to"] == "VALIDATED", routed
+        candidate = control(p)["work"][wid]["integration"]["candidate"]
+        registrations = []
+
+        def register(c):
+            fresh = lease(p)["custodian"]
+            rev = p.rev()
+            c.engine.custody_register(custody[fresh])
+            assert p.rev() > rev
+            registrations.append(fresh)
+
+        ran = intervene(monkeypatch, "integrate.publish", before=register)
+        out = call(p, "integration_publish", work_id=wid, prepared_candidate=candidate,
+                   verification_evidence=routed["routed"]["report"])
+        si = intent(p, out)
+        assert not out["ok"] and si["status"] == SI.ACTIVE and len(registrations) == 1
+        assert [s["primitive"] for s in si["steps"]] == ["verify.ingest.integration"]
+        assert out["stopped"]["error"]["details"]["resolve"] == {"tool": "resolve", "subject": si["id"]}
+        prefix = list(si["steps"])
+        out = call(p, "resolve", subject=si["id"], choice="continue", rationale="publish the accepted candidate")
+        assert out["ok"], out["stopped"]
+        final = intent(p, out)
+        assert final["status"] == SI.COMPLETED and done(p, wid) and len(ran) == 2
+        assert final["steps"][:1] == prefix
+        assert [s["primitive"] for s in final["steps"]] == ["verify.ingest.integration", "integrate.publish"]
+        assert_control_invariants(p)
+    finally:
+        lab.cleanup()
 
 
 @pytest.mark.parametrize("change", ["abandon", "stale_revision", "policy_drift", "takeover"])

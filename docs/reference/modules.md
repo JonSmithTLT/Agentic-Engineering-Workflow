@@ -2078,6 +2078,7 @@ None.
 - `aew.surface.classify`
 - `aew.surface.context`
 - `aew.surface.contract`
+- `aew.surface.stage`
 - `aew.util`
 
 ### `aew.surface.readable`

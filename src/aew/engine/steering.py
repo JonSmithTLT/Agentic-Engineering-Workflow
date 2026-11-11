@@ -279,6 +279,8 @@ class Steering:
         mode (it then becomes the standing mode, and the effective one: the latest record wins). A raise changes
         nothing; ``status`` shows it pending at the endpoint."""
         state = ctx.state
+        if state.get("schema") != V2:
+            return  # steering state is v2-only (the control schema refuses it on v1): the first adopt after migrating
         default = ((policy or {}).get("steering") or {}).get("mode")
         s = state.get("steering")
         if s is None:

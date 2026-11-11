@@ -1170,6 +1170,7 @@ def test_a_rename_out_of_the_code_is_full_tier(tmp_path, monkeypatch):
 @pytest.mark.parametrize(("change", "expected"), [
     ("register", "docs"), ("invalid", "full"), ("mixed", "full"), ("delete", "full"),
     ("rename", "full"), ("create", "full"), ("empty", "full"), ("one-parent", "full"),
+    ("delete-entry", "full"), ("trim-evidence", "full"),
 ])
 def test_the_flake_register_tier_requires_an_exact_verified_edit(tmp_path, monkeypatch, capsys, change, expected):
     git = _git(tmp_path)
@@ -1178,14 +1179,17 @@ def test_the_flake_register_tier_requires_an_exact_verified_edit(tmp_path, monke
     register.parent.mkdir()
     (register.parent / "test_sample.py").write_text("def test_sample(): pass\n", encoding="utf-8")
     doc = {"schema": "aew/flake-register/v1", "entries": [{
-        "id": "sample", "test": "tests/test_sample.py::test_sample", "scope": "test", "status": "open", "lane": "fast",
+        "id": "relayed-reads", "test": "tests/test_sample.py::test_sample", "scope": "test", "status": "open",
+        "lane": "fast",
         "platforms": ["windows"], "class": "race", "owner": "CI", "cause": "unestablished",
-        "evidence": [{"run": 1, "job": 2, "at": "2026-11-11T00:00:00Z"}],
+        "evidence": [{"run": 1, "job": job, "at": "2026-11-11T00:00:00Z"} for job in (2, 3, 4)],
     }], "census": []}
+    doc["entries"].append({**doc["entries"][0], "id": "hung-notifier"})
     if change != "create":
         register.write_text(yaml.safe_dump(doc), encoding="utf-8")
     git("add", "-A")
     git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
     git("checkout", "-qb", "pr")
     if change in {"delete", "rename"}:
         if change == "rename":
@@ -1194,6 +1198,10 @@ def test_the_flake_register_tier_requires_an_exact_verified_edit(tmp_path, monke
             git("rm", tier.FLAKE_REGISTER)
     elif change != "empty":
         doc["entries"][0]["cause"] = "observed twice"
+        if change == "delete-entry":
+            doc["entries"].pop()
+        elif change == "trim-evidence":
+            doc["entries"][0]["evidence"] = doc["entries"][0]["evidence"][:1]
         register.write_text("invalid: [" if change == "invalid" else yaml.safe_dump(doc), encoding="utf-8")
     if change == "mixed":
         (tmp_path / "README.md").write_text("additional change", encoding="utf-8")
@@ -1204,6 +1212,14 @@ def test_the_flake_register_tier_requires_an_exact_verified_edit(tmp_path, monke
     args = ["--event", "pull_request", "--base-ref", "main", "--merge-ref", merge, "--labels", ""]
     assert tier.main(args) == 0
     assert f"decision={expected} tier={expected}" in capsys.readouterr().out
+    if change in {"delete-entry", "trim-evidence"}:
+        import flake_register
+
+        monkeypatch.setattr(flake_register, "ROOT", tmp_path)
+        current = flake_register.load_register(register.read_text(encoding="utf-8"),
+                                               source=lambda path: (tmp_path / path).read_text(encoding="utf-8"))
+        with pytest.raises(flake_register.InvalidRegister, match="hung-notifier|relayed-reads"):
+            flake_register.check_base(base, current)
 
 
 def test_a_flake_register_path_without_git_proof_or_with_a_force_stays_full(tmp_path, capsys):
@@ -1217,6 +1233,11 @@ def test_a_flake_register_path_without_git_proof_or_with_a_force_stays_full(tmp_
     assert tier.decide("push", [path], "main", register_valid=True) == "full"
     assert tier.decide("pull_request", [path], "other", register_valid=True) == "full"
     assert tier.shortcut_barred([path]) and tier.shortcut_barred(["tools/flake_register.py"])
+
+
+@pytest.mark.parametrize("code", ["tools/flake_register.py", "tools/ci/tier.py"])
+def test_decide_requires_an_exact_register_path_even_with_valid_history(code):
+    assert tier.decide("pull_request", [tier.FLAKE_REGISTER, code], "main", register_valid=True) == "full"
 
 
 GREEN = {"changes": "success", "core": "success", "lanes": "success", "web": "success", "static": "success",
@@ -1998,8 +2019,10 @@ def test_flake_register_is_checked_by_both_core_lanes_and_queued_even_on_a_green
     workflows = ROOT / ".github/workflows"
     ci = yaml.safe_load((workflows / "ci.yml").read_text(encoding="utf-8"))
     core = ci["jobs"]["core"]
-    checks = [step for step in core["steps"] if step.get("run") == "python tools/flake_register.py check"]
+    check = 'python tools/flake_register.py check --base "$env:FLAKE_BASE"'
+    checks = [step for step in core["steps"] if step.get("run") == check]
     assert len(checks) == 1 and "if" not in checks[0] and not checks[0].get("continue-on-error")
+    assert "github.event.pull_request.base.sha" in checks[0]["env"]["FLAKE_BASE"]
     assert {"fast", "serial"} <= set(tier.LANES["docs"])
     nightly = yaml.safe_load((workflows / "nightly.yml").read_text(encoding="utf-8"))
     queue = nightly["jobs"]["flake-queue"]

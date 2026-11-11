@@ -61,6 +61,22 @@ def test_the_checked_in_seed_passes_validation():
     assert len(crashed["nodes"]) == 2
 
 
+def test_seed_job_times_and_reopened_send_order_are_counted_from_the_recurrence():
+    doc = flake.load_register((ROOT / flake.REGISTER).read_text(encoding="utf-8"))
+    entries = {entry["id"]: entry for entry in doc["entries"]}
+    evidence_by_job = {item["job"]: item for entry in doc["entries"] + doc["census"] for item in entry["evidence"]}
+    assert evidence_by_job[129513622219]["at"] == "2026-11-09T23:37:46Z"
+    assert evidence_by_job[129513621627]["at"] == "2026-11-09T23:34:16Z"
+    assert evidence_by_job[130116078982]["at"] == "2026-11-10T20:47:40Z"
+    assert evidence_by_job[130330721324]["at"] == "2026-11-11T05:12:40Z"
+    assert evidence_by_job[130703547111]["at"] == "2026-11-11T18:20:54Z"
+    assert any(row["test"].endswith("endpoint_stops[close]") and row["evidence"][0]["job"] == 130703547111
+               for row in doc["census"])
+    assert entries["send-adapter-order-381"]["closure"]["pr"] == 381
+    assert entries["send-adapter-order"]["evidence"] == [evidence_by_job[130330721324]]
+    assert ("send-adapter-order", 1, False) in flake.queue(doc, (), NOW)
+
+
 @pytest.mark.parametrize(("field", "value", "message"), [
     ("owner", "", "owner"), ("evidence", [], "evidence"),
     ("test", "tests/unit/test_example.py::test_renamed", "does not exist"),
@@ -83,7 +99,16 @@ def test_session_entries_use_the_lane_instead_of_a_test_node():
         load(document(entry))
 
 
-@pytest.mark.parametrize("failure", ["absence", "recurrence", "clock", "renamed proof"])
+def test_session_evidence_resolves_every_node():
+    entry = row(scope="session", lane="regression")
+    entry["evidence"] = [evidence(1, nodes=[NODE])]
+    assert load(document(entry))
+    entry["evidence"][0]["nodes"].append(NODE + "_renamed")
+    with pytest.raises(flake.InvalidRegister, match="session evidence test node does not exist"):
+        load(document(entry))
+
+
+@pytest.mark.parametrize("failure", ["absence", "clock", "renamed proof"])
 def test_closing_needs_a_cause_and_a_deterministic_existing_test(failure):
     entry = {**row(), "status": "closed"}
     closure = {"pr": 101, "cause": "ordered the writes", "test": NODE, "proof": "fixed order"}
@@ -92,10 +117,22 @@ def test_closing_needs_a_cause_and_a_deterministic_existing_test(failure):
         entry["closure"] = {**closure, "proof": "timing"}
     elif failure == "renamed proof":
         entry["closure"] = {**closure, "test": NODE + "_renamed"}
-    elif failure == "recurrence":
-        entry["evidence"].append(evidence(2))
     with pytest.raises(flake.InvalidRegister, match="closure needs"):
         load(document(entry))
+
+
+def test_history_allows_append_and_proven_closure_but_preserves_closed_history():
+    base = load(document(row()))
+    entry = copy.deepcopy(base["entries"][0])
+    entry["evidence"].append(evidence(2))
+    flake.validate_history(base, load(document(entry)))
+    entry.update(status="closed", closure={"pr": 101, "cause": "ordered writes", "test": NODE, "proof": "fixed order"})
+    closed = load(document(entry))
+    flake.validate_history(base, closed)
+    entry["status"] = "open"
+    del entry["closure"]
+    with pytest.raises(flake.InvalidRegister, match="base closure must be retained"):
+        flake.validate_history(closed, load(document(entry)))
 
 
 def test_duplicate_keys_ids_and_evidence_fail_closed():
@@ -136,6 +173,11 @@ def _index(rows, *, member="sightings.json"):
     return data.getvalue()
 
 
+def _ci_run(**changes):
+    return {"path": ".github/workflows/ci.yml", "head_branch": "main", "event": "push",
+            "repository": {"full_name": "o/r"}, "head_repository": {"full_name": "o/r"}, **changes}
+
+
 def test_index_listing_filters_by_name_and_reads_recent_rows_after_older_ones(monkeypatch):
     def artifact(ident, days, *, expired=False):
         return {"id": ident, "workflow_run": {"id": 123}, "expired": expired,
@@ -150,10 +192,60 @@ def test_index_listing_filters_by_name_and_reads_recent_rows_after_older_ones(mo
         return _index([{"entry": "a", "job": 2, "at": evidence(2, days=7)["at"], "observation": "one"}])
 
     monkeypatch.setattr(flake, "_pages", pages)
+    monkeypatch.setattr(flake, "_api", lambda *_: _ci_run())
     monkeypatch.setattr(flake, "_gh_read", read)
     assert list(flake.recent_index_sightings("o/r", NOW - flake.WINDOW)) == [
         ("a", evidence(2, days=7, observation="one")),
     ]
+
+
+def test_indexes_from_untrusted_runs_are_ignored_and_bad_archive_is_reported(monkeypatch):
+    runs = {
+        1: _ci_run(head_repository={"full_name": "fork/r"}), 2: _ci_run(head_branch="feature"),
+        3: _ci_run(path=".github/workflows/nightly.yml"), 4: _ci_run(event="pull_request"), 5: _ci_run(),
+    }
+    downloads = []
+
+    def read(endpoint):
+        ident = int(endpoint.split("/")[-2])
+        downloads.append(ident)
+        valid = {"entry": "a", "job": 22, "at": NOW.isoformat()}
+        return _index([valid, {"entry": "invalid"}]) if ident == 5 else _index([valid])
+
+    monkeypatch.setattr(flake, "_pages", lambda *_: [
+        {"id": ident, "workflow_run": {"id": min(ident, 5)}, "created_at": NOW.isoformat(),
+         "size_in_bytes": 120, "expired": False} for ident in range(1, 7)
+    ])
+    monkeypatch.setattr(flake, "_api", lambda _repo, endpoint: runs[int(endpoint.rsplit("/", 1)[1])])
+    monkeypatch.setattr(flake, "_gh_read", read)
+    warnings = []
+    assert list(flake.recent_index_sightings("o/r", NOW - flake.WINDOW, warnings.append)) == [
+        ("a", {"run": 5, "job": 22, "at": NOW.isoformat()}),
+    ]
+    assert downloads == [5, 6]
+    assert warnings == ["Skipped malformed flake sighting index 5 from run 5."]
+
+
+def test_queue_prints_index_warnings_in_the_issue_body(monkeypatch, capsys):
+    warning = "Skipped malformed flake sighting index 5 from run 5."
+
+    def sightings(_doc, _repo, _now, warn):
+        warn(warning)
+        return []
+
+    monkeypatch.setattr(flake, "github_sightings", sightings)
+    assert flake.main(["queue", "--repo", "o/r"]) == 0
+    assert warning in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("listed", "expected"), [(999, 1001), (1000, 1000)])
+def test_incomplete_seven_day_run_listing_fails_loudly(monkeypatch, listed, expected):
+    monkeypatch.setattr(flake, "_api", lambda *_: [
+        {"total_count": expected, "workflow_runs": [{"id": i} for i in range(offset, min(offset + 100, listed))]}
+        for offset in range(0, listed, 100)
+    ])
+    with pytest.raises(flake.InvalidRegister, match="seven-day coverage unverified"):
+        flake._workflow_runs("o/r", "ci.yml", "2026-11-04")
 
 
 @pytest.mark.parametrize("data", [b"bad zip", _index([], member="../sightings.json"), _index([{"entry": "a"}])])
@@ -184,9 +276,11 @@ def test_session_sightings_use_annotations_and_a_live_cancel_not_setup_or_a_quic
         assert ident in {1, 2}
         return [{"message": "The job has exceeded the maximum execution time of 34m0s"}]
 
-    doc = document(row("session", scope="session", lane="regression"))
+    doc = document(row("session", scope="session", lane="regression"), row("overlap", scope="session", lane="regress*"))
     got = list(flake.session_sightings(doc, runs, jobs, annotations, NOW))
-    assert [(ident, item["job"]) for ident, item in got] == [("session", 1), ("session", 2), ("session", 3)]
+    assert [(ident, item["job"]) for ident, item in got] == [
+        (ident, job) for job in (1, 2, 3) for ident in ("session", "overlap")
+    ]
 
 
 def test_check_suites_read_job_evidence_in_batches_across_attempts(monkeypatch):
@@ -223,14 +317,12 @@ def test_check_suites_read_job_evidence_in_batches_across_attempts(monkeypatch):
             for run, (cancelled, active) in zip(runs[:-1], suites, strict=True)
         ]}}
 
-    def pages(_repo, endpoint, _key=None):
-        if endpoint.startswith("actions/workflows/ci.yml/runs?"):
-            yield from runs
-        else:
-            assert endpoint.startswith(("actions/artifacts?", "actions/workflows/nightly.yml/runs?"))
-
     monkeypatch.setattr(flake, "_gh_json", gh)
-    monkeypatch.setattr(flake, "_pages", pages)
+    monkeypatch.setattr(flake, "_pages", lambda *_: [])
+    monkeypatch.setattr(flake, "_api", lambda _repo, endpoint, *_: [
+        {"total_count": len(runs), "workflow_runs": runs} if "/ci.yml/" in endpoint
+        else {"total_count": 0, "workflow_runs": []}
+    ])
     doc = document(row("session", scope="session", lane="regression"))
     assert [(item["run"], item["job"]) for _, item in flake.github_sightings(doc, "o/r", NOW)] == [
         (1, 11), (3, 31), (4, 41),

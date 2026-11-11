@@ -180,7 +180,12 @@ jobs:
           mkdir -p "${{ runner.temp }}/coverage"
           echo "COVERAGE_FILE=${{ runner.temp }}/coverage/.coverage" >> "$GITHUB_ENV"
       - name: Validate the flake register in core fast and serial
-        run: python tools/flake_register.py check
+        env:
+          FLAKE_BASE: >-
+            ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha ||
+                github.event.before || 'refs/remotes/origin/main' }}
+        run: python tools/flake_register.py check --base "$env:FLAKE_BASE"
+        shell: pwsh
       - uses: actions/download-artifact@v8
         with:
           name: shard-durations

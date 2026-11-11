@@ -18,6 +18,7 @@ from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import Any
 from zipfile import BadZipFile, ZipFile
+from zlib import error as CompressionError
 
 import yaml
 
@@ -153,7 +154,7 @@ def _evidence_key(row: dict[str, Any]) -> tuple[int, int, str]:
     return row["run"], row["job"], row.get("observation", "")
 
 
-def _validate_evidence(rows: Any, *, nodes: bool = False) -> None:
+def _validate_evidence(rows: Any, *, source: Callable[[str], str | None] | None = None) -> None:
     if not isinstance(rows, list) or not rows:
         raise InvalidRegister("at least one item of evidence is required")
     seen = set()
@@ -170,9 +171,11 @@ def _validate_evidence(rows: Any, *, nodes: bool = False) -> None:
             raise InvalidRegister("empty observation identity")
         if "note" in row and not _nonempty(row["note"]):
             raise InvalidRegister("empty evidence note")
-        if "nodes" in row and (not nodes or not isinstance(row["nodes"], list) or not row["nodes"]
-                               or not all(_nonempty(node) for node in row["nodes"])):
-            raise InvalidRegister("only session evidence can list observed test nodes")
+        if "nodes" in row:
+            if source is None or not isinstance(row["nodes"], list) or not row["nodes"]:
+                raise InvalidRegister("only session evidence can list observed test nodes")
+            if any(not _test_exists(node, source) for node in row["nodes"]):
+                raise InvalidRegister("session evidence test node does not exist")
         key = _evidence_key(row)
         if key in seen:
             raise InvalidRegister(f"duplicate evidence {key}")
@@ -205,7 +208,7 @@ def _validate_entry(entry: dict[str, Any], source: Callable[[str], str | None]) 
         raise InvalidRegister("vertical is in shadow mode")
     if scope == "test" and not _test_exists(entry.get("test"), source):
         raise InvalidRegister("test node does not exist")
-    _validate_evidence(entry["evidence"], nodes=scope == "session")
+    _validate_evidence(entry["evidence"], source=source if scope == "session" else None)
     if entry["status"] == "open" and not any(row.get("kind", "sighting") == "sighting" for row in entry["evidence"]):
         raise InvalidRegister("an open entry needs sighting evidence")
     if entry["status"] == "open" and "closure" in entry:
@@ -248,6 +251,41 @@ def load_register(text: str, source: Callable[[str], str | None] = read_source) 
     return doc
 
 
+def validate_history(base: dict[str, Any], current: dict[str, Any]) -> None:
+    entries = {entry["id"]: entry for entry in current["entries"]}
+    for old in base["entries"]:
+        ident = old["id"]
+        if ident not in entries:
+            raise InvalidRegister(f"{ident}: base entry must be retained")
+        new = entries[ident]
+        evidence = {_evidence_key(row): row for row in new["evidence"]}
+        if any(evidence.get(_evidence_key(row)) != row for row in old["evidence"]):
+            raise InvalidRegister(f"{ident}: base evidence is append-only")
+        if "closure" in old and new.get("closure") != old["closure"]:
+            raise InvalidRegister(f"{ident}: base closure must be retained")
+
+
+def check_base(base_ref: str, current: dict[str, Any]) -> None:
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-C", str(ROOT), *args], check=True, capture_output=True,
+                              encoding="utf-8", timeout=30).stdout
+
+    base = git("rev-parse", "--verify", "--end-of-options", f"{base_ref}^{{commit}}").strip()
+    tree = git("ls-tree", base, "--", REGISTER)
+    if not tree:
+        return  # The register is being introduced.
+    if not tree.startswith("100644 blob "):
+        raise InvalidRegister("base register must be a regular file")
+
+    def source(path: str) -> str | None:
+        try:
+            return git("show", f"{base}:{path}")
+        except subprocess.CalledProcessError:
+            return None
+
+    validate_history(load_register(git("show", f"{base}:{REGISTER}"), source), current)
+
+
 def index_sightings(data: bytes, run: int) -> Iterable[tuple[str, dict[str, Any]]]:
     if len(data) > MAX_INDEX_BYTES:
         raise InvalidRegister("oversized flake sighting index archive")
@@ -256,7 +294,7 @@ def index_sightings(data: bytes, run: int) -> Iterable[tuple[str, dict[str, Any]
             if archive.namelist() != [INDEX_MEMBER] or archive.getinfo(INDEX_MEMBER).file_size > MAX_INDEX_BYTES:
                 raise InvalidRegister("invalid flake sighting index member")
             rows = json.loads(archive.read(INDEX_MEMBER))
-    except (BadZipFile, RuntimeError, NotImplementedError) as exc:
+    except (BadZipFile, CompressionError, EOFError, RuntimeError, NotImplementedError) as exc:
         raise InvalidRegister("invalid flake sighting index archive") from exc
     if not isinstance(rows, list):
         raise InvalidRegister("flake sighting index must contain a list")
@@ -317,11 +355,12 @@ def session_sightings(doc: dict[str, Any], runs: Iterable[dict[str, Any]],
             if not cancelled and job["status"] != "in_progress":
                 continue
             matched = [entry for entry in entries if _matches_session(entry, job["name"])]
-            if len(matched) != 1 or not job.get("started_at") or not _started_pytest(job.get("steps") or []):
+            if not matched or not job.get("started_at") or not _started_pytest(job.get("steps") or []):
                 continue
             notes = annotations(job["id"]) if cancelled else []
             if session_problem(run, job, notes, now):
-                yield matched[0]["id"], {"run": run["id"], "job": job["id"], "at": job["started_at"]}
+                for entry in matched:
+                    yield entry["id"], {"run": run["id"], "job": job["id"], "at": job["started_at"]}
 
 
 def queue(doc: dict[str, Any], recent: Iterable[tuple[str, dict[str, Any]]],
@@ -362,19 +401,43 @@ def _pages(repo: str, endpoint: str, key: str | None = None) -> Iterable[dict[st
         yield from page[key] if key else page
 
 
-def recent_index_sightings(repo: str, cutoff: datetime) -> Iterable[tuple[str, dict[str, Any]]]:
+def _own_ci_run(repo: str, run: dict[str, Any]) -> bool:
+    return (run.get("path") == ".github/workflows/ci.yml" and run.get("head_branch") == "main"
+            and run.get("event") in {"push", "workflow_dispatch"}
+            and all(((run.get(key) or {}).get("full_name") or "").casefold() == repo.casefold()
+                    for key in ("repository", "head_repository")))
+
+
+def _index_warning(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+def recent_index_sightings(
+    repo: str, cutoff: datetime, warn: Callable[[str], None] = _index_warning,
+) -> Iterable[tuple[str, dict[str, Any]]]:
     # GitHub filters exact names, and pages can contain out-of-order timestamps.
+    trusted: dict[int, bool] = {}
     for artifact in _pages(repo, f"actions/artifacts?per_page=100&name={INDEX_ARTIFACT}", "artifacts"):
         if artifact["expired"] or _time(artifact["created_at"]) < cutoff:
             continue
         run = (artifact.get("workflow_run") or {}).get("id")
         artifact_id = artifact["id"]
         if type(run) is not int or run < 1 or type(artifact_id) is not int or artifact_id < 1:
-            raise InvalidRegister("invalid flake sighting index metadata")
-        if not 0 < artifact["size_in_bytes"] <= MAX_INDEX_BYTES:
-            raise InvalidRegister("invalid flake sighting index size")
-        data = _gh_read(f"repos/{repo}/actions/artifacts/{artifact_id}/zip")
-        yield from index_sightings(data, run)
+            warn("Skipped a flake sighting index with invalid artifact or run metadata.")
+            continue
+        if run not in trusted:
+            trusted[run] = _own_ci_run(repo, _api(repo, f"actions/runs/{run}"))
+        if not trusted[run]:
+            continue
+        try:
+            if not 0 < artifact["size_in_bytes"] <= MAX_INDEX_BYTES:
+                raise InvalidRegister("invalid flake sighting index size")
+            data = _gh_read(f"repos/{repo}/actions/artifacts/{artifact_id}/zip")
+            rows = list(index_sightings(data, run))
+        except (ValueError, KeyError, TypeError):
+            warn(f"Skipped malformed flake sighting index {artifact_id} from run {run}.")
+            continue
+        yield from rows
 
 
 def _check_nodes(query: str, ids: list[str]) -> dict[str, Any]:
@@ -444,13 +507,28 @@ def _github_sessions(
     yield from session_sightings(doc, runs, lambda run: jobs_by_run[run["id"]], annotations, now)
 
 
-def github_sightings(doc: dict[str, Any], repo: str, now: datetime) -> Iterable[tuple[str, dict[str, Any]]]:
+def _workflow_runs(repo: str, workflow: str, cutoff: str) -> list[dict[str, Any]]:
+    endpoint = f"actions/workflows/{workflow}/runs?created=%3E%3D{cutoff}&per_page=100"
+    pages = _api(repo, endpoint, "--paginate", "--slurp")
+    runs = {run["id"]: run for page in pages for run in page["workflow_runs"]}
+    expected = max((page["total_count"] for page in pages), default=0)
+    # GitHub caps filtered searches at 1,000. At the cap it may also cap total_count.
+    if not pages or len(runs) < expected or len(runs) >= 1000:
+        raise InvalidRegister(
+            f"incomplete {workflow} run listing ({len(runs)} of {expected}); seven-day coverage unverified"
+        )
+    return list(runs.values())
+
+
+def github_sightings(
+    doc: dict[str, Any], repo: str, now: datetime, warn: Callable[[str], None] = _index_warning,
+) -> Iterable[tuple[str, dict[str, Any]]]:
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo) or any(part in {".", ".."} for part in repo.split("/")):
         raise InvalidRegister("expected a GitHub repository in owner/name form")
-    yield from recent_index_sightings(repo, now - WINDOW)
+    yield from recent_index_sightings(repo, now - WINDOW, warn)
     cutoff = (now - WINDOW).date().isoformat()
     for workflow in ("ci.yml", "nightly.yml"):
-        runs = _pages(repo, f"actions/workflows/{workflow}/runs?created=%3E%3D{cutoff}&per_page=100", "workflow_runs")
+        runs = _workflow_runs(repo, workflow, cutoff)
         yield from _github_sessions(doc, repo, [run for run in runs if _candidate_run(run)], now)
 
 
@@ -485,19 +563,25 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("check", "queue", "record"))
     parser.add_argument("--repo", help="read recent GitHub sightings for this repository")
+    parser.add_argument("--base", help="compare a checked register with this Git commit")
     args = parser.parse_args(argv)
     try:
         path = REGISTER_PATH
         doc = load_register(path.read_text(encoding="utf-8"))
         if args.command == "check":
+            if args.base is not None:
+                check_base(args.base, doc)
             print(f"{REGISTER}: {len(doc['entries'])} entries checked")
         elif args.command == "queue":
             now = datetime.now(UTC)
-            recent = github_sightings(doc, args.repo, now) if args.repo else ()
+            warnings: list[str] = []
+            recent = github_sightings(doc, args.repo, now, warnings.append) if args.repo else ()
             rows = queue(doc, recent, now)
             print("## Flake queue · last seven days\n")
             for ident, count, repeated in rows:
                 print(f"- `{ident}`: {count}" + (" **repeat offender**" if repeated else ""))
+            for warning in warnings:
+                print(f"\n{warning}")
         else:
             if not args.repo:
                 parser.error("record requires --repo")

@@ -6,79 +6,95 @@ entries:
   platforms:
   - linux
   - windows
-  status: open
+  status: closed
   class: test ownership
   cause: The snapshot can catch a broker-owned atomic wake-file sibling.
   owner: CI timing fixes
   test: tests/integration/test_lead_relayed_reads.py::test_a_relayed_wait_tells_the_lead_through_its_broker_and_its_own_process_writes_nothing
-  planned_fix: fix/ci-timing-races
+  closure:
+    pr: 451
+    cause: Exclude atomic temporary siblings only for the named broker-owned files from the writes-nothing snapshot.
+    test: tests/integration/test_lead_relayed_reads.py::test_a_relayed_wait_tells_the_lead_through_its_broker_and_its_own_process_writes_nothing
+    proof: fixed order
   evidence:
   - run: 42966482319
     job: 130369441983
-    at: '2026-11-11T07:30:03Z'
+    at: '2026-11-11T07:18:49Z'
   - run: 42970324312
     job: 130370468891
-    at: '2026-11-11T08:02:55Z'
+    at: '2026-11-11T07:52:38Z'
   - run: 43036622556
     job: 130578799483
-    at: '2026-11-11T14:44:22Z'
+    at: '2026-11-11T14:26:49Z'
 - id: hung-notifier
   scope: test
   lane: integration
   platforms:
   - windows
-  status: open
+  status: closed
   class: wall clock
-  cause: The elapsed-time assertion fails under load. The exact cause awaits the fix proof.
+  cause: The delivery could time out before a slow flush checked for outstanding work.
   owner: CI timing fixes
   test: tests/integration/test_operator_autostart.py::test_a_hung_notifier_never_keeps_the_endpoint_up
-  planned_fix: fix/ci-timing-races
+  closure:
+    pr: 451
+    cause: Hold the injected notifier in flight until the flush has checked and the test releases its event.
+    test: tests/integration/test_operator_autostart.py::test_a_hung_notifier_never_keeps_the_endpoint_up
+    proof: event
   evidence:
   - run: 42734765902
     job: 129561336924
-    at: '2026-11-10T01:33:11Z'
+    at: '2026-11-10T01:19:04Z'
   - run: 42944077391
     job: 130280464257
-    at: '2026-11-11T03:04:10Z'
+    at: '2026-11-11T02:50:21Z'
   - run: 43044751020
     job: 130608819960
-    at: '2026-11-11T15:43:25Z'
+    at: '2026-11-11T15:29:02Z'
 - id: autopsy-abrupt-controller
   scope: test
   lane: integration
   platforms:
   - windows
-  status: open
+  status: closed
   class: file sharing
-  cause: A Windows sharing violation on the session-started marker. Cause unestablished.
+  cause: A read of the session-started marker could race the sentinel's Windows file-holder lookup.
   owner: CI timing fixes
   test: tests/integration/test_hang_autopsy.py::test_a_controller_killed_abruptly_leaves_no_session_process_alive
   row: E3
-  planned_fix: fix/ci-timing-races
+  closure:
+    pr: 451
+    cause: Identify the sentinel by its command line and wait for it to end before reading the session files.
+    test: tests/integration/test_hang_autopsy.py::test_a_controller_killed_abruptly_leaves_no_session_process_alive
+    proof: fixed order
   evidence:
   - run: 42742215636
     job: 129586989504
-    at: '2026-11-10T03:32:41Z'
+    at: '2026-11-10T03:17:32Z'
 - id: autopsy-deadline-self-exit
   scope: test
   lane: integration
   platforms:
   - windows
-  status: open
+  status: closed
   class: autopsy evidence
-  cause: The expected autopsy outcome failed. Cause unestablished.
+  cause: The configured deadline could expire before the inner pytest session reached the test under load.
   owner: CI timing fixes
   test: tests/integration/test_hang_autopsy.py::test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_controller_exits_by_itself
   row: E3
-  planned_fix: fix/ci-timing-races
+  closure:
+    pr: 451
+    cause: The test signals it is running before the controller deadline acts.
+    test: tests/integration/test_hang_autopsy.py::test_a_test_that_outlives_the_session_deadline_leaves_its_autopsy_and_the_controller_exits_by_itself
+    proof: event
   evidence:
   - run: 40068909423
     job: 120797907071
-    at: '2026-10-24T06:31:18Z'
+    at: '2026-10-24T06:15:57Z'
     note: Older unit-isolation audit sighting.
   - run: 43038670060
     job: 130586078922
-    at: '2026-11-11T15:30:17Z'
+    at: '2026-11-11T15:12:30Z'
 - id: autopsy-after-finish
   scope: test
   lane: integration
@@ -90,26 +106,29 @@ entries:
   owner: CI timing fixes
   test: tests/integration/test_hang_autopsy.py::test_a_controller_that_cannot_exit_after_its_session_finished_is_ended_and_names_what_held_it
   row: E3
-  planned_fix: fix/ci-timing-races
   evidence:
   - run: 43044751020
     job: 130608819960
-    at: '2026-11-11T15:43:25Z'
+    at: '2026-11-11T15:29:02Z'
 - id: autostart-unlink
   scope: test
   lane: integration
   platforms:
   - windows
-  status: open
+  status: closed
   class: file sharing
   cause: Endpoint can still be reading the session file when the test unlinks it.
   owner: CI timing fixes
   test: tests/integration/test_operator_autostart.py::test_a_terminal_serve_beside_a_background_endpoint_says_what_it_is_and_what_to_do
-  planned_fix: fix/ci-timing-races
+  closure:
+    pr: 451
+    cause: Remove the session file under the same lock the endpoint holds while reading it.
+    test: tests/integration/test_operator_autostart.py::test_a_terminal_serve_beside_a_background_endpoint_says_what_it_is_and_what_to_do
+    proof: fixed order
   evidence:
   - run: 43036622556
     job: 130613369011
-    at: '2026-11-11T15:36:52Z'
+    at: '2026-11-11T15:20:01Z'
 - id: windows-regression-no-response
   scope: session
   lane: regression
@@ -123,63 +142,63 @@ entries:
   evidence:
   - run: 40040987149
     job: 120711840907
-    at: '2026-10-23T23:50:00Z'
+    at: '2026-10-23T23:50:07Z'
     note: regression 6/6 (windows-latest)
   - run: 40105140142
     job: 120905228257
-    at: '2026-10-24T15:02:00Z'
+    at: '2026-10-24T15:02:31Z'
     note: regression 6/6 (windows-latest)
   - run: 40122019308
     job: 120955536309
-    at: '2026-10-24T18:59:00Z'
+    at: '2026-10-24T18:59:35Z'
     note: regression 6/6 (windows-latest)
   - run: 40807266351
     job: 123229668024
-    at: '2026-10-29T02:50:00Z'
+    at: '2026-10-29T02:50:40Z'
     note: regression 6/6 (windows-latest)
   - run: 42379557679
     job: 128425197424
-    at: '2026-11-07T14:22:00Z'
+    at: '2026-11-07T14:22:26Z'
     note: regression 3/3 (windows-latest)
   - run: 42387213023
     job: 128447670590
-    at: '2026-11-07T15:46:00Z'
+    at: '2026-11-07T15:46:58Z'
     note: regression 3/3 (windows-latest)
   - run: 42438057510
     job: 128603423719
-    at: '2026-11-08T02:45:00Z'
+    at: '2026-11-08T02:45:15Z'
     note: regression 2/3 (windows-latest)
   - run: 42488944387
     job: 128756854110
-    at: '2026-11-08T14:15:00Z'
+    at: '2026-11-08T14:15:57Z'
     note: full suite 2/4 (windows-latest, py3.11)
   - run: 42507149351
     job: 128816686865
-    at: '2026-11-08T18:31:00Z'
+    at: '2026-11-08T18:31:13Z'
     note: regression 1/3 (windows-latest)
   - run: 42511646481
     job: 128825870593
-    at: '2026-11-08T18:48:00Z'
+    at: '2026-11-08T18:48:52Z'
     note: regression 1/4 (windows-latest)
   - run: 42515866419
     job: 128839449841
-    at: '2026-11-08T20:23:00Z'
+    at: '2026-11-08T20:23:17Z'
     note: regression 2/3 (windows-latest)
   - run: 42720386402
     job: 129513622219
-    at: '2026-11-10T00:00:00Z'
+    at: '2026-11-09T23:37:46Z'
     nodes:
     - tests/regression/test_m4b_review.py::test_the_hostile_repository_runs_its_programs_under_plain_git
     note: Regression 4/4 exceeded the 34-minute limit.
   - run: 42897935870
     job: 130116078982
-    at: '2026-11-10T00:00:00Z'
+    at: '2026-11-10T20:47:40Z'
     nodes:
     - tests/regression/test_m4b_review.py::test_the_hostile_repository_runs_its_programs_under_plain_git
     note: Regression 2/3 exceeded the 34-minute limit.
   - run: 43054294887
     job: 130639497975
-    at: '2026-11-11T00:00:00Z'
+    at: '2026-11-11T16:02:42Z'
     kind: diagnostic
     note: Diagnostic passed and uploaded evidence. A clean run establishes no cause.
 - id: windows-integration-no-response
@@ -195,15 +214,15 @@ entries:
   evidence:
   - run: 40067175977
     job: 120795261624
-    at: '2026-10-24T06:09:00Z'
+    at: '2026-10-24T06:09:02Z'
     note: integration 13/16 (windows-latest)
   - run: 41135972305
     job: 124338490301
-    at: '2026-10-30T22:07:00Z'
+    at: '2026-10-30T22:07:47Z'
     note: integration 5/11 (windows-latest)
   - run: 42922658468
     job: 130216276102
-    at: '2026-11-11T01:08:46Z'
+    at: '2026-11-11T00:38:40Z'
     nodes:
     - tests/integration/test_launch_conflict.py::test_an_overlapping_pair_is_held_and_the_hold_says_why_and_what_it_waits_on
     - tests/integration/test_log_sealing.py::test_a_compaction_killed_at_each_sealing_point_recovers[log.seal.after_segment]
@@ -227,16 +246,16 @@ entries:
   evidence:
   - run: 41755990823
     job: 126332208394
-    at: '2026-11-04T00:00:00Z'
+    at: '2026-11-04T01:43:48Z'
   - run: 41961592709
     job: 127029853675
-    at: '2026-11-05T00:00:00Z'
+    at: '2026-11-05T03:34:45Z'
   - run: 42388866340
     job: 128452962363
-    at: '2026-11-07T00:00:00Z'
+    at: '2026-11-07T16:02:44Z'
   - run: 42403676138
     job: 128497779495
-    at: '2026-11-07T00:00:00Z'
+    at: '2026-11-07T19:21:07Z'
 - id: autopsy-blocked-frame
   scope: test
   lane: serial
@@ -251,13 +270,13 @@ entries:
   evidence:
   - run: 41003785215
     job: 123894030020
-    at: '2026-10-30T00:00:00Z'
+    at: '2026-10-30T04:36:16Z'
   - run: 42314564072
     job: 128242366295
-    at: '2026-11-06T00:00:00Z'
+    at: '2026-11-07T00:46:19Z'
   - run: 42415169632
     job: 128532109870
-    at: '2026-11-07T00:00:00Z'
+    at: '2026-11-07T21:27:54Z'
   - run: 42522792847
     job: 128863776450
     at: '2026-11-08T22:18:46Z'
@@ -275,7 +294,7 @@ entries:
   evidence:
   - run: 42302072140
     job: 128185319305
-    at: '2026-11-06T00:00:00Z'
+    at: '2026-11-06T22:24:39Z'
   - run: 42497048933
     job: 128782027730
     at: '2026-11-08T16:01:19Z'
@@ -301,7 +320,7 @@ entries:
   evidence:
   - run: 42720386402
     job: 129513621627
-    at: '2026-11-09T00:00:00Z'
+    at: '2026-11-09T23:34:16Z'
   - run: 42726170238
     job: 129532402637
     at: '2026-11-10T00:10:26Z'
@@ -364,7 +383,7 @@ entries:
   evidence:
   - run: 40978975578
     job: 123815626769
-    at: '2026-10-30T00:00:00Z'
+    at: '2026-10-30T00:33:21Z'
 - id: history-catch-up
   scope: test
   lane: integration
@@ -379,7 +398,7 @@ entries:
   evidence:
   - run: 40813958475
     job: 123253178879
-    at: '2026-10-29T00:00:00Z'
+    at: '2026-10-29T04:21:59Z'
 - id: steering-first-activation
   scope: test
   lane: integration
@@ -393,7 +412,7 @@ entries:
   evidence:
   - run: 42447730963
     job: 128630180357
-    at: '2026-11-08T00:00:00Z'
+    at: '2026-11-08T04:40:25Z'
 - id: notifier-broker-gone
   scope: test
   lane: integration
@@ -407,7 +426,7 @@ entries:
   evidence:
   - run: 42415136973
     job: 128532237216
-    at: '2026-11-07T00:00:00Z'
+    at: '2026-11-07T21:27:22Z'
 - id: notifier-process-timeout
   scope: test
   lane: fast
@@ -422,7 +441,7 @@ entries:
   evidence:
   - run: 42323749891
     job: 128254105031
-    at: '2026-11-07T00:00:00Z'
+    at: '2026-11-07T01:22:55Z'
 - id: history-byte-identical
   scope: test
   lane: integration
@@ -437,7 +456,7 @@ entries:
   evidence:
   - run: 42379241068
     job: 128423250898
-    at: '2026-11-07T00:00:00Z'
+    at: '2026-11-07T14:05:51Z'
 - id: validation-hung-run
   scope: test
   lane: integration
@@ -451,7 +470,7 @@ entries:
   evidence:
   - run: 42318565941
     job: 128238184866
-    at: '2026-11-07T00:00:00Z'
+    at: '2026-11-07T00:34:19Z'
 - id: validation-no-checks
   scope: test
   lane: integration
@@ -465,8 +484,23 @@ entries:
   evidence:
   - run: 42507960689
     job: 128814986412
-    at: '2026-11-08T00:00:00Z'
+    at: '2026-11-08T18:10:35Z'
 - id: send-adapter-order
+  scope: test
+  lane: integration
+  platforms:
+  - windows
+  status: open
+  class: test ordering
+  cause: Unestablished. The proof test for the earlier ordering fix failed again.
+  owner: CI flake triage
+  test: tests/integration/test_harness_send_when.py::test_harness_send_defaults_to_next_step_and_posts_steer
+  evidence:
+  - run: 42961602808
+    job: 130330721324
+    at: '2026-11-11T05:12:40Z'
+    note: 'Timed out waiting for the posted message after the #381 fix. See the closed send-adapter-order-381 entry.'
+- id: send-adapter-order-381
   scope: test
   lane: integration
   platforms:
@@ -480,7 +514,7 @@ entries:
   evidence:
   - run: 42314564072
     job: 128224004178
-    at: '2026-11-06T00:00:00Z'
+    at: '2026-11-06T23:51:31Z'
   - run: 42505866134
     job: 128809916564
     at: '2026-11-08T17:58:00Z'
@@ -503,13 +537,13 @@ entries:
   evidence:
   - run: 42422514394
     job: 128554012944
-    at: '2026-11-07T00:00:00Z'
+    at: '2026-11-07T23:15:50Z'
   - run: 42161374319
     job: 127708097772
-    at: '2026-11-06T00:00:00Z'
+    at: '2026-11-06T04:21:05Z'
   - run: 42427863523
     job: 128574766784
-    at: '2026-11-08T00:00:00Z'
+    at: '2026-11-08T00:35:10Z'
   closure:
     pr: 370
     cause: Assert call ordering instead of elapsed time.
@@ -528,7 +562,7 @@ entries:
   evidence:
   - run: 42398802240
     job: 128483175968
-    at: '2026-11-07T00:00:00Z'
+    at: '2026-11-07T18:16:19Z'
   closure:
     pr: 366
     cause: Keep sending the heartbeat while the control lock is held.
@@ -548,13 +582,13 @@ entries:
   evidence:
   - run: 42409008906
     job: 128513538565
-    at: '2026-11-07T00:00:00Z'
+    at: '2026-11-07T20:23:18Z'
   - run: 42342840789
     job: 128314183722
-    at: '2026-11-07T00:00:00Z'
+    at: '2026-11-07T05:29:32Z'
   - run: 42342840789
     job: 128314183755
-    at: '2026-11-07T00:00:00Z'
+    at: '2026-11-07T05:32:45Z'
   closure:
     pr: 366
     cause: Keep sending the heartbeat while the control lock is held.
@@ -592,7 +626,7 @@ entries:
   evidence:
   - run: 42664610532
     job: 129324801413
-    at: '2026-11-09T00:00:00Z'
+    at: '2026-11-09T17:26:22Z'
 - id: dashboard-wrong-server-scope
   scope: test
   lane: integration
@@ -607,7 +641,7 @@ entries:
   evidence:
   - run: 40119161810
     job: 120947332852
-    at: '2026-10-24T00:00:00Z'
+    at: '2026-10-24T18:27:05Z'
 - id: dashboard-wrong-server-catch-up
   scope: test
   lane: integration
@@ -622,7 +656,7 @@ entries:
   evidence:
   - run: 40158679984
     job: 121066264159
-    at: '2026-10-25T00:00:00Z'
+    at: '2026-10-25T03:38:36Z'
 - id: history-search-hits
   scope: test
   lane: integration
@@ -637,7 +671,7 @@ entries:
   evidence:
   - run: 40148297671
     job: 121034511437
-    at: '2026-10-25T00:00:00Z'
+    at: '2026-10-25T00:52:54Z'
 - id: history-search-budget
   scope: test
   lane: integration
@@ -652,7 +686,7 @@ entries:
   evidence:
   - run: 39424229920
     job: 118632578550
-    at: '2026-10-20T00:00:00Z'
+    at: '2026-10-20T12:41:32Z'
 - id: history-search-labels
   scope: test
   lane: integration
@@ -667,7 +701,7 @@ entries:
   evidence:
   - run: 40249945860
     job: 121340525357
-    at: '2026-10-26T00:00:00Z'
+    at: '2026-10-26T00:52:35Z'
 - id: history-search-window
   scope: test
   lane: integration
@@ -682,10 +716,10 @@ entries:
   evidence:
   - run: 39906741301
     job: 120260393434
-    at: '2026-10-23T00:00:00Z'
+    at: '2026-10-23T05:37:20Z'
   - run: 40056126762
     job: 120764019068
-    at: '2026-10-24T00:00:00Z'
+    at: '2026-10-24T03:25:59Z'
 - id: superseded-broker
   scope: test
   lane: serial
@@ -700,13 +734,13 @@ entries:
   evidence:
   - run: 39885155956
     job: 120191507371
-    at: '2026-10-23T00:00:00Z'
+    at: '2026-10-23T01:38:40Z'
   - run: 40210722031
     job: 121221158651
-    at: '2026-10-25T00:00:00Z'
+    at: '2026-10-25T16:14:28Z'
   - run: 40218029242
     job: 121243320560
-    at: '2026-10-25T00:00:00Z'
+    at: '2026-10-25T17:50:19Z'
 - id: superseded-broker-unheld
   scope: test
   lane: integration
@@ -721,7 +755,7 @@ entries:
   evidence:
   - run: 40243390773
     job: 121319789151
-    at: '2026-10-25T00:00:00Z'
+    at: '2026-10-25T23:09:50Z'
 - id: superseded-broker-held
   scope: test
   lane: integration
@@ -736,7 +770,7 @@ entries:
   evidence:
   - run: 40249945860
     job: 121339448202
-    at: '2026-10-26T00:00:00Z'
+    at: '2026-10-26T00:34:05Z'
 - id: absent-store-read
   scope: test
   lane: fast
@@ -751,10 +785,10 @@ entries:
   evidence:
   - run: 40025520094
     job: 120660601974
-    at: '2026-10-23T00:00:00Z'
+    at: '2026-10-23T21:16:18Z'
   - run: 40035060397
     job: 120692376645
-    at: '2026-10-23T00:00:00Z'
+    at: '2026-10-23T22:42:07Z'
 - id: steering-session-window
   scope: test
   lane: integration
@@ -769,7 +803,7 @@ entries:
   evidence:
   - run: 40250443774
     job: 121341794923
-    at: '2026-10-26T00:00:00Z'
+    at: '2026-10-26T01:02:03Z'
 - id: store-lock-fairness
   scope: test
   lane: serial
@@ -784,7 +818,7 @@ entries:
   evidence:
   - run: 40164907355
     job: 121083858298
-    at: '2026-10-25T00:00:00Z'
+    at: '2026-10-25T05:16:07Z'
 - id: usage-live-sequence
   scope: test
   lane: fast
@@ -799,19 +833,19 @@ entries:
   evidence:
   - run: 40133031125
     job: 120988637579
-    at: '2026-10-24T00:00:00Z'
+    at: '2026-10-24T21:10:21Z'
   - run: 40133031125
     job: 120988637702
-    at: '2026-10-24T00:00:00Z'
+    at: '2026-10-24T21:10:21Z'
   - run: 40136586789
     job: 120999288023
-    at: '2026-10-24T00:00:00Z'
+    at: '2026-10-24T21:59:15Z'
   - run: 40136586789
     job: 120999288146
-    at: '2026-10-24T00:00:00Z'
+    at: '2026-10-24T21:59:15Z'
   - run: 40251097761
     job: 121342947427
-    at: '2026-10-26T00:00:00Z'
+    at: '2026-10-26T00:53:55Z'
 - id: surface-map-bytecode
   scope: test
   lane: fast
@@ -825,7 +859,7 @@ entries:
   evidence:
   - run: 39029232477
     job: 117386168139
-    at: '2026-10-17T00:00:00Z'
+    at: '2026-10-17T11:34:44Z'
 - id: broker-liveness-wedge
   scope: test
   lane: serial
@@ -839,7 +873,7 @@ entries:
   evidence:
   - run: 38291135208
     job: 114952066419
-    at: '2026-10-12T18:42:49Z'
+    at: '2026-10-12T18:30:38Z'
   row: E75
 - id: custody-control-file-sharing
   scope: test
@@ -854,7 +888,7 @@ entries:
   evidence:
   - run: 38291227264
     job: 114951659210
-    at: '2026-10-12T18:56:05Z'
+    at: '2026-10-12T18:29:35Z'
   row: E76
 - id: waiter-control-parses
   scope: test
@@ -869,7 +903,7 @@ entries:
   evidence:
   - run: 41957465614
     job: 127016519175
-    at: '2026-11-05T03:03:39Z'
+    at: '2026-11-05T02:49:55Z'
   row: E147
 - id: usage-ledger-malformed-run
   scope: test
@@ -884,10 +918,10 @@ entries:
   evidence:
   - run: 42735787796
     job: 129565065793
-    at: '2026-11-10T02:07:06Z'
+    at: '2026-11-10T01:53:13Z'
   - run: 42754727183
     job: 129631475037
-    at: '2026-11-10T05:32:35Z'
+    at: '2026-11-10T05:08:17Z'
 - id: notifier-endpoint-handle
   scope: test
   lane: integration
@@ -902,7 +936,7 @@ entries:
   evidence:
   - run: 40059454181
     job: 120769829661
-    at: '2026-10-24T00:00:00Z'
+    at: '2026-10-24T04:12:11Z'
 - id: send-turn-end-sharing
   scope: test
   lane: integration
@@ -917,7 +951,7 @@ entries:
   evidence:
   - run: 40078233631
     job: 120826561940
-    at: '2026-10-24T00:00:00Z'
+    at: '2026-10-24T08:39:11Z'
 - id: steering-own-commits
   scope: test
   lane: integration
@@ -932,7 +966,7 @@ entries:
   evidence:
   - run: 40049078207
     job: 120737834815
-    at: '2026-10-24T00:00:00Z'
+    at: '2026-10-24T01:18:52Z'
 - id: autopsy-controller-pid
   scope: test
   lane: integration
@@ -947,7 +981,7 @@ entries:
   evidence:
   - run: 40071994698
     job: 120807522450
-    at: '2026-10-24T00:00:00Z'
+    at: '2026-10-24T06:57:25Z'
 - id: dashboard-request-log
   scope: test
   lane: integration
@@ -961,7 +995,7 @@ entries:
   evidence:
   - run: 40054404378
     job: 120754514126
-    at: '2026-10-24T00:00:00Z'
+    at: '2026-10-24T02:51:43Z'
 - id: dashboard-busy-body
   scope: test
   lane: integration
@@ -975,15 +1009,26 @@ entries:
   evidence:
   - run: 40049588105
     job: 120739368133
-    at: '2026-10-24T00:00:00Z'
+    at: '2026-10-24T01:28:18Z'
 census:
+- test: tests/integration/test_operator_autostart.py::test_the_whole_route_tells_the_operator_a_session_ended_and_then_the_endpoint_stops[close]
+  platform: windows
+  lane: integration
+  evidence:
+  - run: 43068869631
+    job: 130703547111
+    at: '2026-11-11T18:20:54Z'
+    note: 'PR #444 at bc7237cd. Timed out waiting for broker_gone. At timeout the endpoint was already dead and nothing
+      had been received. First sighting in a census of 80 failed jobs since 2026-11-01. The operator approved one re-run.
+      Cause unestablished. The endpoint may stop after the last session exits, before its next look judges the broker closed.
+      Builder 2 owns triage if it recurs.'
 - test: tests/integration/test_harness_conformance.py::test_opencode_adapter_conforms[stopping_a_run_ends_every_process_it_started]
   platform: windows
   lane: integration
   evidence:
   - run: 43056428553
     job: 130648035427
-    at: '2026-11-11T17:07:11Z'
+    at: '2026-11-11T16:46:49Z'
     note: 'PR #438: R-INV-0001-1 still running after 120s, timed_out true. No reproduction in five runs each at the head and
       main. Cause unestablished.'
 - test: tests/integration/test_integration_stages.py::test_a_spawned_custody_worker_validates_end_to_end
@@ -992,7 +1037,7 @@ census:
   evidence:
   - run: 42970324312
     job: 130370469009
-    at: '2026-11-11T08:00:59Z'
+    at: '2026-11-11T07:44:14Z'
     note: Control file read returned FileNotFoundError.
 - test: tests/integration/test_harness_send_when.py::test_harness_send_defaults_to_next_step_and_posts_steer
   platform: windows
@@ -1000,24 +1045,20 @@ census:
   evidence:
   - run: 40156093988
     job: 121057816730
-    at: '2026-10-25T00:00:00Z'
+    at: '2026-10-25T03:01:47Z'
     note: E75 observation with no prompt event after the first.
   - run: 42174277062
     job: 127752526905
-    at: '2026-11-06T07:04:13Z'
+    at: '2026-11-06T06:53:13Z'
     note: E192 messaging timing observation.
-  - run: 42961602808
-    job: 130330721324
-    at: '2026-11-11T05:28:39Z'
-    note: Timed out waiting for the posted message.
 - test: tests/regression/test_m3_harness_adversarial.py::test_launch_commit_succeeds_but_the_supervisor_never_spawns
   platform: windows
   lane: regression
   evidence:
   - run: 41120823172
     job: 124286794000
-    at: '2026-10-30T00:00:00Z'
+    at: '2026-10-30T20:20:38Z'
   - run: 42920256806
     job: 130195616773
-    at: '2026-11-10T23:57:27Z'
+    at: '2026-11-10T23:46:05Z'
     note: JSONDecodeError.

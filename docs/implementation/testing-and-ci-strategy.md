@@ -112,23 +112,23 @@ recurrence or a period without a sighting does not close it. Census-only nodes a
 
 A pull request into `main` that modifies only the existing register takes the docs tier when both merge parents and
 the tested register can be verified. Creation, deletion, rename, mixed changes, invalid input and unverifiable history
-take full CI. Core fast and serial both run the validator. The priority merge hold exempts only this validated exact-file case.
+take full CI. Core fast and serial both compare against the base. Existing entry IDs and their evidence are retained,
+and closing an entry requires a valid closure. A later recurrence can open its own entry with a link to the earlier closure.
 
 `python tools/flake_register.py queue` ranks open entries by distinct sightings in the trailing seven days and marks
 counts of three or more. The scheduled `flake-queue` job updates a standing issue on green and red nights. It combines
-committed evidence, indexed CI sightings, and cancelled test jobs with no-response annotations or an observed
+committed evidence and cancelled test jobs with no-response annotations or an observed
 five-minute post-cancel stall. A limit reached in setup before pytest is infrastructure. Triage can preserve new
 sightings with `python tools/flake_register.py record --repo OWNER/REPO`.
 
-The sighting producer publishes a 14-day `flake-sighting-index` artifact for a run with sightings. Its single
-`sightings.json` member contains a list of rows with `entry`, `job`, `at`, and optional `observation`. The run ID
-comes from GitHub artifact metadata. Each row retains the original sighting timestamp, including when a later attempt
-updates that run's index. The queue lists this exact artifact name and reads recent indexes, leaving the individual
-sighting artifacts available as evidence.
+The second flake PR will publish a 14-day `flake-sighting-index` artifact for a run with sightings. Its single
+`sightings.json` member will contain rows with `entry`, `job`, `at`, and optional `observation`. The run ID will come from
+GitHub artifact metadata. Each row will retain its original timestamp across attempts. The queue accepts indexes from
+this repository's `ci.yml` runs on `main` and reports malformed archives in the issue while reading other indexes.
 
-The queue reads check-suite counts in batches, fetches detailed jobs only for runs with cancelled jobs or an active
-job on a cancelled run, and reads annotations only for matching cancelled jobs. The scheduled job has Checks read
-access for the counts and annotations.
+The queue batches check-suite reads, then fetches details for matching cancelled jobs and active jobs on cancelled runs.
+It records qualifying jobs against each matching session entry. The scheduled job has Checks read access for these
+queries and reports an incomplete seven-day run listing as an error.
 
 ### Coverage (register E2, M4-A)
 

@@ -391,12 +391,13 @@ def verified_register_edit(merge_ref: str) -> bool:
         helpers = str(ROOT / "tools")
         if helpers not in sys.path:
             sys.path.insert(0, helpers)
-        from flake_register import load_register
+        from flake_register import load_register, validate_history
 
-        text = show(parents[0], FLAKE_REGISTER)
-        if text is None:
+        text, base = (show(parent, FLAKE_REGISTER) for parent in parents[:2])
+        if text is None or base is None:
             return False
-        load_register(text, source=lambda path: show(parents[0], path))
+        validate_history(load_register(base, source=lambda path: show(parents[1], path)),
+                         load_register(text, source=lambda path: show(parents[0], path)))
     except (OSError, subprocess.CalledProcessError, ImportError, ValueError):
         return False
     return True

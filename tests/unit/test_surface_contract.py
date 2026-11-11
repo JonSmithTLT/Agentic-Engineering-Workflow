@@ -18,9 +18,9 @@ from aew.errors import ValidationFailed
 from aew.schemas import _validator, validate_def
 from aew.surface import contract, run
 from aew.surface.classify import (
+    AUTO_RUN,
     AVAILABLE,
     BLOCKED,
-    RUN_AUTO_RUN,
     UNKNOWN,
     auto_run_set,
     auto_runnable,
@@ -237,20 +237,19 @@ def test_auto_runnable_is_only_a_built_legal_non_judgment_progression_row():
     assert "profile" not in auto_runnable.__code__.co_varnames  # presentation never decides eligibility
 
 
-def test_only_the_two_declared_steps_auto_run_and_only_under_run():
+def test_only_the_two_declared_steps_auto_run_each_called_without_execution():
     """Register E83 (R01-38; R-DEC-04): the shipped stages `auto_runnable` can admit are exactly the declared set,
     ticket_start and ticket_request_review, so a stage that joins or leaves it fails here; the derived set is
-    `auto_runnable`'s own rule, tool by tool; and only Run lets them run unconfirmed (Walk and Crawl confirm both)."""
-    from aew.engine import steering
-
-    assert auto_run_set(contract.TOOLS) == RUN_AUTO_RUN == {"ticket_start", "ticket_request_review"}
+    `auto_runnable`'s own rule, tool by tool; and each is admitted only when called without `execution`, which
+    promotes it to judgment-bearing. (That only Run lets them run unconfirmed is the steering loop's rule, tested in
+    tests/integration/test_steering_loop.py.)"""
+    assert auto_run_set(contract.TOOLS) == AUTO_RUN == {"ticket_start", "ticket_request_review"}
     for name, t in contract.TOOLS.items():
         assert (name in auto_run_set(contract.TOOLS)) == auto_runnable(t, AVAILABLE, effective_class(t)), name
-    for name in sorted(RUN_AUTO_RUN):
-        primitives = contract.TOOLS[name].expands_to
-        assert steering.confirmation_reason("run", primitives) is None, name
-        assert steering.confirmation_reason("walk", primitives) is not None, name
-        assert steering.confirmation_reason("crawl", primitives) is not None, name
+    for name in sorted(AUTO_RUN):
+        t = contract.TOOLS[name]
+        assert "execution" in t.promotes, name
+        assert not auto_runnable(t, AVAILABLE, effective_class(t, {"execution": {}})), name
 
 
 def test_the_schema_refuses_an_auto_runnable_wait_or_unknown_action():

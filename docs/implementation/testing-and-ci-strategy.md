@@ -103,6 +103,33 @@ Deterministic fault points are named code locations, not timings. That is why th
   - AEW's behaviour was correct: it refuses a second implementer while one is live, and the Lead recovers with `aew invoke cancel` followed by a fresh dispatch.
   - Per the policy, the failure became a deterministic CLI test, `test_compositions.py::test_an_assignment_committed_by_a_crashed_process_is_recovered_by_cancel_and_redispatch`. The walk now models the recovery. The default merge-gate seeds take step-for-step identical paths before and after that change.
 
+### Flake register
+
+`tests/flake-register.yaml` records a test or a session, its platform scope, lane, suspected cause, owner and dated
+run and job evidence. `python tools/flake_register.py check` validates the file and resolves test functions in source.
+Closing an entry records the merged fix and a deterministic proof by event, fault injection or fixed order. A
+recurrence or a period without a sighting does not close it. Census-only nodes and diagnostic runs do not enter the queue.
+
+A pull request into `main` that modifies only the existing register takes the docs tier when both merge parents and
+the tested register can be verified. Creation, deletion, rename, mixed changes, invalid input and unverifiable history
+take full CI. Core fast and serial both run the validator. The priority merge hold exempts only this validated exact-file case.
+
+`python tools/flake_register.py queue` ranks open entries by distinct sightings in the trailing seven days and marks
+counts of three or more. The scheduled `flake-queue` job updates a standing issue on green and red nights. It combines
+committed evidence, indexed CI sightings, and cancelled test jobs with no-response annotations or an observed
+five-minute post-cancel stall. A limit reached in setup before pytest is infrastructure. Triage can preserve new
+sightings with `python tools/flake_register.py record --repo OWNER/REPO`.
+
+The sighting producer publishes a 14-day `flake-sighting-index` artifact for a run with sightings. Its single
+`sightings.json` member contains a list of rows with `entry`, `job`, `at`, and optional `observation`. The run ID
+comes from GitHub artifact metadata. Each row retains the original sighting timestamp, including when a later attempt
+updates that run's index. The queue lists this exact artifact name and reads recent indexes, leaving the individual
+sighting artifacts available as evidence.
+
+The queue reads check-suite counts in batches, fetches detailed jobs only for runs with cancelled jobs or an active
+job on a cancelled run, and reads annotations only for matching cancelled jobs. The scheduled job has Checks read
+access for the counts and annotations.
+
 ### Coverage (register E2, M4-A)
 
 - **What is measured.** Line and branch coverage of `src/aew`, measured with coverage.py (the `coverage` extra) on the Linux jobs: the `fast` lane in `core`, and every shard of the `integration`, `acceptance`, `regression` and `adversarial` lanes. Every Python subprocess the tests start is measured too: `aew` CLIs, harness supervisors, the Lead broker and xdist workers (`patch = ["subprocess"]`, `parallel = true`, `[tool.coverage.run]` in `pyproject.toml`). The `serial` lane runs without coverage, because its property is timing.

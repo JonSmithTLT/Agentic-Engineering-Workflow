@@ -85,6 +85,7 @@ CODE_ROOTS = ("src/", "tests/", ".github/", "tools/", "eval/")
 UNIT_DIR = "tests/unit/"
 SPEC_PIN = "tests/test_spec_pin.py"
 DURATIONS = "tests/durations.json"
+FLAKE_REGISTER = "tests/flake-register.yaml"
 FAST_LANES = frozenset({"fast", "serial"})
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -284,11 +285,14 @@ def tier_of(paths: list[str], module_lanes: Mapping[str, set[str] | None] | None
 
 
 def decide(event: str, paths: list[str] | None, base_ref: str,
-           module_lanes: Mapping[str, set[str] | None] | None = None, forced: bool = False) -> str:
+           module_lanes: Mapping[str, set[str] | None] | None = None, forced: bool = False,
+           register_valid: bool = False) -> str:
     """The decision for ``event``: reduced tiers only for a pull request into ``main`` whose diff is known and
     which is not forced full."""
     if event not in REDUCED_EVENTS or base_ref not in REDUCED_BASES or paths is None or forced:
         return "full"
+    if FLAKE_REGISTER in paths:
+        return "docs" if paths == [FLAKE_REGISTER] and register_valid else "full"
     return tier_of(paths, module_lanes)
 
 
@@ -308,7 +312,8 @@ def covers(ran: str, recomputed: str) -> bool:
 
 def shortcut_barred(paths: list[str] | None) -> bool:
     """Whether these changed paths, or not knowing them, rule out the pin-only shortcut."""
-    return paths is None or any(p.startswith(CI_CODE) for p in paths)
+    flake_inputs = {FLAKE_REGISTER, "tools/flake_register.py"}
+    return paths is None or any(path.startswith(CI_CODE) or path in flake_inputs for path in paths)
 
 
 def job_problems(tier: str, results: dict[str, str], modules_changed: bool = True) -> list[str]:
@@ -371,6 +376,30 @@ def show(rev: str, path: str) -> str | None:
         return _run(["git", "show", f"{rev}:{path}"]).stdout
     except (OSError, subprocess.CalledProcessError):
         return None
+
+
+def verified_register_edit(merge_ref: str) -> bool:
+    """Both parents exist and the tested merge modifies the existing regular register in place."""
+    try:
+        parents = _run(["git", "rev-list", "--parents", "-n", "1", merge_ref]).stdout.split()
+        if len(parents) != 3 or any(rev_parse(f"{parent}^{{commit}}") != parent for parent in parents):
+            return False
+        for rev in (parents[1], parents[0]):
+            tree = _run(["git", "ls-tree", rev, "--", FLAKE_REGISTER]).stdout
+            if not tree.startswith("100644 blob "):
+                return False
+        helpers = str(ROOT / "tools")
+        if helpers not in sys.path:
+            sys.path.insert(0, helpers)
+        from flake_register import load_register
+
+        text = show(parents[0], FLAKE_REGISTER)
+        if text is None:
+            return False
+        load_register(text, source=lambda path: show(parents[0], path))
+    except (OSError, subprocess.CalledProcessError, ImportError, ValueError):
+        return False
+    return True
 
 
 def merge_module_lanes(merge_ref: str, paths: list[str]) -> tuple[dict[str, set[str] | None], dict[str, str]]:
@@ -466,6 +495,7 @@ def main(argv: list[str] | None = None) -> int:
     reasons: list[str] = []
     paths: list[str] | None = None
     module_lanes: dict[str, set[str] | None] = {}
+    register_valid = False
     if args.paths_file:
         paths = [line.strip() for line in args.paths_file.read_text(encoding="utf-8").splitlines() if line.strip()]
     elif args.event in REDUCED_EVENTS:
@@ -475,9 +505,13 @@ def main(argv: list[str] | None = None) -> int:
         else:
             module_lanes, why = merge_module_lanes(args.merge_ref, paths)
             reasons += [f"{p}: {w}" for p, w in sorted(why.items())]
+            if paths == [FLAKE_REGISTER]:
+                register_valid = verified_register_edit(args.merge_ref)
+                if not register_valid:
+                    reasons.append("the register edit or merge parents could not be verified")
     forced = False
     unreadable = False
-    reduced = decide(args.event, paths, args.base_ref, module_lanes) != "full"
+    reduced = decide(args.event, paths, args.base_ref, module_lanes, register_valid=register_valid) != "full"
     if reduced:  # the forced flag only matters when the paths alone would reduce the run
         trailer = forced_by_trailer(args.merge_ref) if args.merge_ref else False
         if args.labels is not None:  # given (tests, dry runs): an empty string is no label
@@ -490,7 +524,7 @@ def main(argv: list[str] | None = None) -> int:
         elif trailer or FORCE_LABEL in labels:
             forced = True
             reasons.append(f"forced full ({FORCE_TRAILER}: yes)" if trailer else f"forced full (label {FORCE_LABEL})")
-    decision = decide(args.event, paths, args.base_ref, module_lanes, forced)
+    decision = decide(args.event, paths, args.base_ref, module_lanes, forced, register_valid)
     tier = run_tier(decision)
     modules = sorted(p for p in paths or [] if fast_kind(p) == "module")
     print(f"decision={decision} tier={tier} mode={MODE} ({args.event}, "

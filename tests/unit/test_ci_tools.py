@@ -1167,6 +1167,58 @@ def test_a_rename_out_of_the_code_is_full_tier(tmp_path, monkeypatch):
     assert tier.decide("pull_request", paths, "main") == "full"
 
 
+@pytest.mark.parametrize(("change", "expected"), [
+    ("register", "docs"), ("invalid", "full"), ("mixed", "full"), ("delete", "full"),
+    ("rename", "full"), ("create", "full"), ("empty", "full"), ("one-parent", "full"),
+])
+def test_the_flake_register_tier_requires_an_exact_verified_edit(tmp_path, monkeypatch, capsys, change, expected):
+    git = _git(tmp_path)
+    git("init", "-q")
+    register = tmp_path / tier.FLAKE_REGISTER
+    register.parent.mkdir()
+    (register.parent / "test_sample.py").write_text("def test_sample(): pass\n", encoding="utf-8")
+    doc = {"schema": "aew/flake-register/v1", "entries": [{
+        "id": "sample", "test": "tests/test_sample.py::test_sample", "scope": "test", "status": "open", "lane": "fast",
+        "platforms": ["windows"], "class": "race", "owner": "CI", "cause": "unestablished",
+        "evidence": [{"run": 1, "job": 2, "at": "2026-11-11T00:00:00Z"}],
+    }], "census": []}
+    if change != "create":
+        register.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    git("checkout", "-qb", "pr")
+    if change in {"delete", "rename"}:
+        if change == "rename":
+            git("mv", tier.FLAKE_REGISTER, "renamed.md")
+        else:
+            git("rm", tier.FLAKE_REGISTER)
+    elif change != "empty":
+        doc["entries"][0]["cause"] = "observed twice"
+        register.write_text("invalid: [" if change == "invalid" else yaml.safe_dump(doc), encoding="utf-8")
+    if change == "mixed":
+        (tmp_path / "README.md").write_text("additional change", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "--allow-empty", "-qm", "edit")
+    merge = git("rev-parse", "HEAD") if change == "one-parent" else _merge(git, "pr")
+    monkeypatch.chdir(tmp_path)
+    args = ["--event", "pull_request", "--base-ref", "main", "--merge-ref", merge, "--labels", ""]
+    assert tier.main(args) == 0
+    assert f"decision={expected} tier={expected}" in capsys.readouterr().out
+
+
+def test_a_flake_register_path_without_git_proof_or_with_a_force_stays_full(tmp_path, capsys):
+    path = tier.FLAKE_REGISTER
+    listing = tmp_path / "changed.txt"
+    listing.write_text(path, encoding="utf-8")
+    args = ["--event", "pull_request", "--base-ref", "main", "--paths-file", str(listing), "--labels", ""]
+    assert tier.main(args) == 0
+    assert "decision=full tier=full" in capsys.readouterr().out
+    assert tier.decide("pull_request", [path], "main", forced=True, register_valid=True) == "full"
+    assert tier.decide("push", [path], "main", register_valid=True) == "full"
+    assert tier.decide("pull_request", [path], "other", register_valid=True) == "full"
+    assert tier.shortcut_barred([path]) and tier.shortcut_barred(["tools/flake_register.py"])
+
+
 GREEN = {"changes": "success", "core": "success", "lanes": "success", "web": "success", "static": "success",
          "fastbase": "skipped"}
 REDUCED = {**GREEN, "lanes": "skipped"}
@@ -1940,6 +1992,20 @@ def test_d2_runs_on_every_pull_request_and_main_and_its_ratchet_in_the_gate_and_
     assert nightly_steps.index(nightly_assure) < nightly_steps.index(nightly_ratchet)
     reference = "\n".join(str(s.get("run", "")) for s in nightly["jobs"]["reference"]["steps"])
     assert "--lane-report" in reference  # the capture writes beside it
+
+
+def test_flake_register_is_checked_by_both_core_lanes_and_queued_even_on_a_green_night():
+    workflows = ROOT / ".github/workflows"
+    ci = yaml.safe_load((workflows / "ci.yml").read_text(encoding="utf-8"))
+    core = ci["jobs"]["core"]
+    checks = [step for step in core["steps"] if step.get("run") == "python tools/flake_register.py check"]
+    assert len(checks) == 1 and "if" not in checks[0] and not checks[0].get("continue-on-error")
+    assert {"fast", "serial"} <= set(tier.LANES["docs"])
+    nightly = yaml.safe_load((workflows / "nightly.yml").read_text(encoding="utf-8"))
+    queue = nightly["jobs"]["flake-queue"]
+    assert queue["if"] == "always() && github.event_name == 'schedule'"
+    assert queue["permissions"] == {"contents": "read", "actions": "read", "checks": "read", "issues": "write"}
+    assert "needs" not in queue
 
 
 def test_the_nightly_report_fires_on_a_timeout_as_well_as_a_failure():
@@ -3239,8 +3305,10 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     workflow = ROOT / ".github" / "workflows" / "flake-dispatch.yml"
     doc = yaml.safe_load(workflow.read_text(encoding="utf-8"))
     assert set(doc[True]) == {"workflow_dispatch"}
+    assert doc["permissions"] == {"contents": "read"}
     assert set(doc["jobs"]) == {"regression"}
     job = doc["jobs"]["regression"]
+    assert "permissions" not in job
     assert job["runs-on"] == "windows-latest"
     steps = job["steps"]
     pytest_step, upload = steps[-2:]
@@ -3257,6 +3325,7 @@ def test_flake_dispatch_leaves_time_to_upload_after_pytest_times_out():
     assert step_seconds + bounds.JOB_MARGIN_S + 2 * bounds.DEADLINE_MARGIN_S < job["timeout-minutes"] * 60
     assert upload["uses"].startswith("actions/upload-artifact@")
     assert upload["if"] == "always()"
+    assert upload["with"]["retention-days"] == 14
 
 
 def test_every_job_that_runs_pytest_caps_its_sessions_with_one_absolute_deadline():

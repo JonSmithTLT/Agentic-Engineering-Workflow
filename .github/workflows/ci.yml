@@ -73,9 +73,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - name: pytest, for the lanes of changed test modules (tests/helpers/lanes.py; without it the tier is full)
+      - name: Dependencies for the lane and flake register checks (without them the tier is full)
         continue-on-error: true
-        run: python -m pip install "pytest>=8"
+        run: python -m pip install "pytest>=8" "PyYAML>=6.0"
       - id: tier
         env:
           EVENT: ${{ github.event_name }}
@@ -179,6 +179,8 @@ jobs:
         run: |
           mkdir -p "${{ runner.temp }}/coverage"
           echo "COVERAGE_FILE=${{ runner.temp }}/coverage/.coverage" >> "$GITHUB_ENV"
+      - name: Validate the flake register in core fast and serial
+        run: python tools/flake_register.py check
       - uses: actions/download-artifact@v8
         with:
           name: shard-durations

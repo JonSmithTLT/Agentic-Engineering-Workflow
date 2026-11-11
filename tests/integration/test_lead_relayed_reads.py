@@ -23,9 +23,10 @@ from fake_harness import IMPL_REPORT, HarnessLab
 from harness_conformance import FakeOpenCodeDriver, supervisor_gone, sync_dir
 
 from aew import process_kind
+from aew.engine import steering
 from aew.engine.api import Engine
 from aew.engine.store import ControlStore
-from aew.harness import bridge, lead_broker, procs, runlog, wake_queue
+from aew.harness import bridge, broker_liveness, lead_broker, procs, runlog, wake_queue
 from aew.harness import contract as K
 from aew.harness import progress as P
 
@@ -34,12 +35,28 @@ IMPLEMENT = [
     {"do": "check", "id": "unit"},
     {"do": "submit", "kind": "implementation_report", "meta": IMPL_REPORT},
 ]
-# What the session's own broker writes under `.aew/local` while it serves (its liveness, the steering loop's state):
-# never a relayed read's.
-SESSION_OWN = ("local/lead", "local/steering")
 # These broker receipt files are not session-liveness noise: every test must account for their exact writes.
 MESSAGE_DELIVERY_RECORDS = frozenset({"local/lead/told-messages.json", "local/lead/told-messages.lock",
                                       "local/lead/told-messages.lock.queue"})
+# What the session's own broker writes under `.aew/local` while it serves, never a relayed read's: its liveness and
+# tool-call log (`local/lead/`), the steering loop's state (`local/steering/`), and the wake queue's two files, each
+# with the temporary file ``util.atomic_write`` publishes it through (`.<name>.<random>.tmp` beside it). A snapshot
+# taken while the broker's wake loop writes catches that temporary file (CI, 2026-11-11: `+local/.lead-wakes.json.
+# zrxsd_zt.tmp` on `main`); any other temporary file under `.aew` is still a change.
+SESSION_DIRS = tuple(rel.rsplit("/", 1)[0] + "/" for rel in (broker_liveness.REL, steering.LOOP_REL))
+SESSION_FILES = (wake_queue.WAKES_REL, wake_queue.SERVING_REL)
+
+
+def session_own(rel: str) -> bool:
+    if rel in MESSAGE_DELIVERY_RECORDS:
+        return False  # exact message receipts must remain visible, not hidden as broker-liveness noise
+    if rel.startswith(SESSION_DIRS) or rel in SESSION_FILES:
+        return True
+    folder, _, name = rel.rpartition("/")
+    return any(folder == own.rpartition("/")[0] and name.startswith(f".{own.rpartition('/')[2]}.")
+               and name.endswith(".tmp") for own in SESSION_FILES)
+
+
 # The broker's delivery records (STG-05 CS-4 addendum 15): after a relayed `harness wait`, in the directory of the run
 # it returned, what it told the Lead (`lead_broker.record_delivery`). Named by exact path; the read's process writes
 # nothing.
@@ -119,8 +136,7 @@ def cases(run: str, invocation: str) -> list[list[str]]:
 
 
 def changes(before: dict[str, object], after: dict[str, object]) -> list[str]:
-    return [c for c in worker_surface.changes(before, after)
-            if not c[1:].startswith(SESSION_OWN) or c[1:] in MESSAGE_DELIVERY_RECORDS]
+    return [c for c in worker_surface.changes(before, after) if not session_own(c[1:])]
 
 
 def test_each_relayed_read_prints_what_the_host_prints_and_changes_nothing(lab, broker, tmp_path, monkeypatch):

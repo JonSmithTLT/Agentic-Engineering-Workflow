@@ -104,6 +104,7 @@ def test_the_declared_entries_include_everything_the_project_manifest_names_unde
 # ------------------------------------------------------------------------------------------------- the conventions
 
 AEW_ROOT_FORMS = {
+    ("aew.kit.receipt", "aew_root", "engine.aew_root"),
     ("aew.cli.main", "(_, aew_root)", "Kernel.locate("),
     ("aew.cli.main", "(repo_root, aew_root)", "Kernel.locate("),
     ("aew.dashboard.reader", "self.aew_root", "aew_root"),
@@ -199,7 +200,9 @@ def test_the_store_stages_a_file_in_two_places_and_the_page_says_the_one_that_is
 def test_the_roots_the_reach_starts_from_are_the_owners_table_and_nothing_else():
     roots = R.roots_of(CTX, set(TABLE))
     assert {k for keys in roots.values() for k in keys} == set(TABLE)
-    assert {r[0] for r in roots} == {"aew.cli.main", "aew.harness.supervisor", "aew.stg02.server"}
+    assert {r[0] for r in roots} == {
+        "aew.cli.main", "aew.harness.supervisor", "aew.kit.__main__", "aew.stg02.server",
+    }
 
 
 def test_every_writer_of_this_tree_names_entry_points_that_are_rows_of_the_table_and_their_kinds():

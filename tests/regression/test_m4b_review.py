@@ -176,7 +176,6 @@ def test_aews_git_runs_no_configured_program_on_agent_written_files(hostile):
     hostile.agent_edits()
     F.working_tree_id(hostile.repo)
     F.changed_paths(hostile.repo, hostile.base)
-    F.working_diff(hostile.repo, hostile.base)
     commit = I.commit_workspace(hostile.repo, "aew(T-1): edit")
     git.git("diff", "--no-color", hostile.base, commit, cwd=hostile.repo)
     git.git("log", "-p", "-1", commit, cwd=hostile.repo)

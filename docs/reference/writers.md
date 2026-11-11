@@ -247,7 +247,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/operator/sessions`, named by `aew.harness.operator_client:SESSIONS_REL`: written or removed by `aew.harness.operator_client:name_session` (direct: Path.mkdir)
 - `local/operator/sessions.lock`: written or removed by `aew.engine.lock:FileLock._open` (direct: open)
 - `local/operator/sessions.lock.queue`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: open)
-- `local/operator/sessions/{}.json`: written or removed by `aew.harness.operator_autostart:for_session` (direct: Path.unlink); `aew.harness.operator_client:name_session` (direct: atomic_write)
+- `local/operator/sessions/{}.json`: written or removed by `aew.harness.operator_client:name_session` (direct: atomic_write); `aew.harness.operator_client:unname_session` (direct: Path.unlink)
 - `local/packs/{}/pack.md`: written or removed by `aew.engine.context_ops:ContextPacks.build_pack` (direct: atomic_write); `aew.engine.context_ops:ContextPacks.context_pack` (direct: atomic_write)
 - `local/recall`: written or removed by `aew.engine.recall:Substrate._connect` (direct: Path.mkdir)
 - `local/recall/history-fts.sqlite`, named by `aew.engine.recall:SUBSTRATE_REL`: written or removed by `aew.engine.recall:Substrate._connect` (direct: sqlite3.connect); `aew.engine.recall:Substrate._delete` (direct: Path.unlink)
@@ -430,6 +430,10 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.weaker_register:_prune` (direct: Path.unlink): a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.weaker_register:enter` (direct: create_exclusive): a relative path, `aew/weaker-contexts/{}-{}-{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.weaker_register:sweep` (direct: atomic_write): a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.kit.receipt:write_receipt` (direct: Path.mkdir): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit.receipt:write_receipt` (direct: atomic_write): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit:prepare` (direct: Path.mkdir): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit:prepare` (direct: Path.write_text): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.profile:cli_finish` (direct: open): the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.stg02.ledger:Ledger.__init__` (direct: Path.mkdir): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.ledger:Ledger._connect` (direct: sqlite3.connect): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it

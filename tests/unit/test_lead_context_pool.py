@@ -180,7 +180,9 @@ def test_a_smaller_rendered_guide_requires_a_lower_baseline_and_cap(record, monk
     with pytest.raises(AssertionError, match=message):
         check_pool(smaller, record, switches=MESSAGING_ON)
     check_pool(render_pool(label, frozenset()), record, switches=frozenset())
-    record["baseline"]["guide_bytes"] = smaller.guide_bytes
+    # Measured allocations already account for growth beyond the baseline; retain that accounting and remove
+    # only this saving, rather than copying the grown rendered guide into the baseline and counting growth twice.
+    record["baseline"]["guide_bytes"] -= freed
     with pytest.raises(AssertionError, match=rf"{cap} B cap.*{freed} B saving.*{RECORD_PATH}"):
         check_pool(smaller, record, switches=MESSAGING_ON)
     record["approval"]["ceiling_bytes"] -= freed

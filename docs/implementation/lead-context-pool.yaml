@@ -47,15 +47,15 @@ allocations:
   messaging_guide_line:
     bytes: 437
     kind: measured
-    source: "Review M3, merged render_pool with switches passed to lead_config; duplicate worker_message row removed. On: system 9279, guide 16611, join 2, MCP 11900 = 37792 B. Off: system 9023, guide 16433, join 2, MCP 11830 = 37288 B. On/off delta 504 B; net growth over the recorded 37355 B baseline is 437 B (on catalog already included). Original allocation 200 B; excess 237 B awaits Lead/operator decision. No cap raise recorded."
+    source: "Review M3, merged render_pool with switches passed to lead_config; duplicate worker_message row removed. On: system 9279, guide 16611, join 2, MCP 11900 = 37792 B. Off: system 9023, guide 16433, join 2, MCP 11830 = 37288 B. On/off delta 504 B; net growth over the recorded 37355 B baseline is 437 B (on catalog already included). Original allocation 200 B; operator approved the 237 B excess on 2026-11-11, raising the cap from 42555 B to 42792 B for these measured on/off figures."
   E176:
     bytes: 3000
     kind: estimate
     source: "E231 budget rule section 1 and the E176 Lead memory brief. About 3 KB for the notes block and its guide text."
 # Current cap. Preserve the operator's exact words and date in approval history when it changes.
 approval:
-  ceiling_bytes: 42555
-  operator: "A is fine"
+  ceiling_bytes: 42792
+  operator: "The operator approved raising the Lead context-pool cap to 42,792 B (from 42,555 B, +237 B)."
   date: '2026-11-11'
 # The approved drop after PR 3 still applies.
 approval_history:
@@ -68,6 +68,10 @@ approval_history:
   # In response to "(a) approve 42,555 B" after E137 added 96 B to the guide.
   - ceiling_bytes: 42555
     operator: "A is fine"
+    date: '2026-11-11'
+  # Messaging: 37,792 B on, 37,288 B off; 504 B delta, 237 B above the original allocation.
+  - ceiling_bytes: 42792
+    operator: "The operator approved raising the Lead context-pool cap to 42,792 B (from 42,555 B, +237 B)."
     date: '2026-11-11'
 # When approved, a raise takes the systems board's wip_allowance shape.
 # wip_allowance:

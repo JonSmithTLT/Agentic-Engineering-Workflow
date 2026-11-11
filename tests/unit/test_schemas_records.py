@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from jsonschema import Draft202012Validator
 
@@ -12,6 +14,7 @@ from aew.knowledge.records import (
     work_unit_record,
 )
 from aew.schemas import SCHEMAS, _validator, schema, validate
+from aew.workspace import git
 
 WHO = {"kind": "lead", "session_label": "lead-a", "generation": 1}
 
@@ -106,6 +109,40 @@ def test_evidence_schema_requires_snapshot():
     with pytest.raises(ValidationFailed) as exc:
         validate("evidence", evidence, source="e")
     assert any("evaluated_snapshot" in v for v in exc.value.details["violations"])
+
+
+def test_legacy_evidence_snapshot_with_empty_artifact_digests_validates():
+    validate("evidence", {
+        "schema": "aew/evidence/v1",
+        "id": "INV-0001-review-1",
+        "kind": "review",
+        "work_unit": "T-0001",
+        "producer": {"role": "reviewer", "invocation": "INV-0001"},
+        "created_at": "2026-09-25T00:00:00Z",
+        "evaluated_snapshot": {
+            "base_revision": "a" * 40,
+            "workspace_id": "T-0001-1",
+            "relevant_inputs_fingerprint": "git-tree:" + "b" * 40,
+            "artifact_digests": [],
+        },
+        "method": {},
+        "claim": "Reviewed the implementation.",
+        "result": "pass",
+        "review": {"independence": "R1", "disposition": "pass", "findings": []},
+    }, source="legacy evidence")
+
+
+def test_only_the_dashboard_projection_uses_artifact_digests_in_backend_source():
+    root = Path(__file__).resolve().parents[2]
+    # The bundled dashboard client consumes contract 0.1.3, including this field.
+    matches = git.out("grep", "-I", "-F", "artifact_digests", "--", "src",
+                      ":(exclude)src/aew/dashboard/static", cwd=root)
+    projection = "src/aew/dashboard/projections.py:"
+    assert matches.splitlines() == [
+        projection + '        digests = _bounded([str(d) for d in (snapshot or {}).get("artifact_digests") or []])',
+        projection + '                                        "relevant_inputs_fingerprint": fingerprint, '
+        '"artifact_digests": digests}',
+    ]
 
 
 def test_gates_schema_requires_all_risk_classes():

@@ -51,6 +51,23 @@ def test_missing_gate_is_reported_for_each_higher_class_even_past_a_gap():
     ]
 
 
+def test_missing_gate_names_the_first_class_that_requires_it():
+    gates = {**DEFAULT_GATES, "risk_paths": {"4": [], "2": ["review_r1"], "1": ["review_r1"]}}
+    assert problems(gates, DEFAULT_CHECKS, catalogue()) == [
+        "policy/gates.yaml risk_paths[4] lacks gate `review_r1`, which risk_paths[1] requires: "
+        "raising a unit to class 4 would drop it."
+    ]
+
+
+def test_extra_path_keys_are_checked_for_evaluators_but_do_not_enter_class_order():
+    paths = {**DEFAULT_GATES["risk_paths"], "default": ["review_security"], "5": []}
+    gates = {**DEFAULT_GATES, "risk_paths": paths}
+    assert problems(gates, DEFAULT_CHECKS, catalogue("security")) == []
+    found = problems(gates, DEFAULT_CHECKS, catalogue())
+    assert len(found) == 1
+    assert found[0].startswith("policy/gates.yaml risk_paths[default] requires gate `review_security`")
+
+
 @pytest.mark.parametrize("paths", [
     {"4": ["review_r1", "local_checks"], "0": ["local_checks"], "2": ["local_checks", "review_r1"]},
     {"3": ["review_r1"]},

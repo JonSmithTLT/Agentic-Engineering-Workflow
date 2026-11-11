@@ -10,6 +10,9 @@ plain sentence per contradiction, naming the file, the entry and the consequence
 unit type is ``gates.unsatisfiable``, the evaluators' own dispatch (ITEMS 55, designer decision 1): there is no list
 of gate names here. A path table's or review trigger's suffix is judged as ``work create`` judges one, against the
 catalogue's checks defined and configured (addendum 1; review F3).
+
+The designer's 2026-11-10 revision-check ruling treats a class raise as preserving the lower class's gates. E340
+checks that each risk path retains the exact gate names required by lower classes.
 """
 
 from __future__ import annotations
@@ -33,10 +36,15 @@ def problems(gates: dict[str, Any], checks: dict[str, Any], catalogue: G.Catalog
                 out.append(f"policy/gates.yaml {where} names check `{check_id}`, which policy/checks.yaml does not "
                            f"define: every gate that needs it stays MISSING. Define it in checks.yaml or remove it "
                            f"from {where}.")
+    # E340 (designer's 2026-11-10 revision-check ruling): a class raise must preserve exact gate names.
+    # Only the path tables are covered here. post_integration.validation.by_class can be non-monotone
+    # pending the designer's ruling.
     for table, utype in PATH_TABLES:
         paths = gates.get(table) or {}
         first_required: dict[str, str] = {}
-        for cls in sorted(paths, key=int):
+        for cls in map(str, range(5)):  # work creation and reclassification admit classes 0..4
+            if cls not in paths:
+                continue
             path = paths[cls] or []
             present = set(path)
             for gate, lower in first_required.items():
@@ -45,6 +53,8 @@ def problems(gates: dict[str, Any], checks: dict[str, Any], catalogue: G.Catalog
                                f"requires: raising a unit to class {cls} would drop it.")
             for gate in path:
                 first_required.setdefault(gate, cls)
+        for cls, path in sorted(paths.items()):
+            for gate in path or []:
                 if gate == "local_checks" and utype == G.MUTATING:
                     continue  # its ids are judged above, where the list is
                 found = G.unsatisfiable(gate, utype, catalogue)

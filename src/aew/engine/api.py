@@ -608,7 +608,8 @@ class Engine:
         # theirs, so a later adopt acts only on a real change of it (#432's merge check, M1).
         raws = {rel: files[rel].encode("utf-8") if rel in files else None for rel in policy_files(manifest)}
         rel = (manifest.get("policy") or {}).get("execution") or X.REL_PATH
-        policy = X.parse(raws[rel], source=f"{AEW_DIR}/{rel}") if raws.get(rel) is not None else None
+        raw = raws.get(rel)
+        policy = X.parse(raw, source=f"{AEW_DIR}/{rel}") if raw is not None else None
         files.update(steering_mod.seed_at_init(state, policy, policy_digests_of(manifest, raws, aew_root)))
         ControlStore(aew_root).create(state, files)
         return cls(repo_root, aew_root)

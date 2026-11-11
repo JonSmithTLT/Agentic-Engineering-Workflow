@@ -950,7 +950,7 @@ def test_legality_modules_never_import_coordination():
                          "aew/engine/archive_ops.py", "aew/surface/contract.py", "aew/cli/message_commands.py",
                          "aew/harness/told_messages.py"}
     assert {m for m in _imports(src / "aew/harness/told_messages.py") if _is_coordination(m)} == {
-        "aew.coordination.layout"}
+        "aew.coordination.layout", "aew.coordination.layout.MESSAGE_ID_RE"}
     for leaf_only in ("aew/engine/store.py", "aew/engine/archive_ops.py", "aew/surface/contract.py",
                       "aew/cli/message_commands.py"):
         assert {m for m in _imports(src / leaf_only) if _is_coordination(m)} == {"aew.coordination",

@@ -772,6 +772,7 @@ None.
 - `aew.schemas`
 - `aew.snapshot.fingerprint`
 - `aew.util`
+- `aew.workspace.git`
 - `aew.workspace.integration`
 
 ### `aew.engine.faults`

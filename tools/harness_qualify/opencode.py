@@ -669,8 +669,11 @@ class OpenCodePack:
                        "tool_parts": facts["tool_parts"]}), "measured: a real run with the scripted model")
         messaging = {k: v for k, v in facts.items() if k.startswith("messaging.")}
         if messaging:
+            doc = {"harness": HARNESS, "version": version, "facts": messaging}
+            if "qualification.reevaluation" in facts:
+                doc.update(platform="linux", qualification=facts["qualification.reevaluation"])
             out[f"messaging-{version}.json"] = (
-                dump({"harness": HARNESS, "version": version, "facts": messaging}),
+                dump(doc),
                 "measured: messaging behaviour with the scripted loopback model; platform is in the run record")
         return out
 

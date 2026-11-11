@@ -309,10 +309,12 @@ def test_messaging_boundaries_have_passing_controls_and_each_fact_can_fail(tmp_p
 
 @pytest.mark.parametrize("name", ["prompt_identity", "held_resume"])
 def test_messaging_identity_and_hold_checks_fail_each_unsafe_observation(tmp_path, monkeypatch, name):
-    from harness_qualify import messaging
+    from harness_qualify import messaging, reevaluate
 
     expected = {mode + "." + key: True for mode in ("steer", "queue")
                 for key in (*messaging.IDENTITY_FACTS, *messaging.HELD_FACTS)}
+    expected["_responses"] = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_text(encoding="utf-8"))[
+        "facts"]["measurement.prompt_identity"]
     measured = dict(expected)
     monkeypatch.setattr(messaging, "identity_measurement", lambda ctx: dict(measured))
 
@@ -322,12 +324,15 @@ def test_messaging_identity_and_hold_checks_fail_each_unsafe_observation(tmp_pat
 
     assert check().status == core.PASS
     keys = messaging.IDENTITY_FACTS if name == "prompt_identity" else messaging.HELD_FACTS
+    if name == "prompt_identity":
+        # Retired observations are not gates; derived admitted facts are tested by raw-envelope mutations below.
+        keys = tuple(k for k in keys if k not in (*reevaluate.RETIRED, "duplicate_admitted", "admitted_identity_valid"))
     for mode in ("steer", "queue"):
         for key in keys:
             key = mode + "." + key
             measured = {**expected, key: False}
             outcome = check()
-            assert outcome.status == core.FAIL and outcome.notes == [key]
+            assert outcome.status == core.FAIL and key in outcome.notes
             measured = {k: v for k, v in expected.items() if k != key}
             assert check().status == core.FAIL
 
@@ -600,7 +605,11 @@ def test_messaging_checks_fail_scripted_server_payload_and_admission_violations(
     ctx = core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6")
     check = next(c for c in OC.OpenCodePack(FIXTURES).checks() if c.id == "messaging." + name)
     result = check.run(ctx)
-    assert result.status == (core.PASS if mutation in ("none", "envelope_defaults") else core.FAIL), result
+    ignored_response_changes = ("envelope_defaults", "admitted_time_changed", "admitted_mode_changed",
+                                "changed_admitted_accepted")
+    assert result.status == (core.PASS if mutation in ("none", *ignored_response_changes) else core.FAIL), result
+    if name == "prompt_identity" and mutation == "admitted_time_changed":
+        assert result.facts["observation.prompt_identity"]["steer.admitted_created_time_preserved"] is False
 
 
 def test_messaging_semantics_render_pin_and_diff_without_overwriting_unrelated_fixtures(tmp_path):
@@ -672,6 +681,178 @@ def test_the_corrected_linux_record_preserves_the_post_admission_response_contra
         assert first["payload"] == retried["payload"] == changed["payload"]
         assert facts["messaging.held_resume"][mode + ".staged_first"] is True
     assert not any(word in raw.decode() for word in ("/home/", "/mnt/", "C:\\Users", "AEW-plans", "AEW-reviews"))
+
+
+def reevaluated(doc=None):
+    from harness_qualify import reevaluate
+
+    source = doc or json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_text(encoding="utf-8"))
+    return reevaluate.evaluate(source, source_digest="29ef41ae1ce5e73cc8c6b2dd1a03b379b48eacc3e2e0bb4543ae937c7a432ef2",
+                               pack=OC.OpenCodePack(FIXTURES), evaluator_revision="offline-test")
+
+
+def test_the_ruled_predicate_recomputes_all_ten_checks_without_altering_the_failed_source():
+    import copy
+
+    from harness_qualify import reevaluate
+
+    source = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_text(encoding="utf-8"))
+    before = copy.deepcopy(source)
+    record = reevaluated(source)
+    assert source == before and source["verdict"]["binary"] == core.FAIL
+    selected = {r["id"]: r["status"] for r in record.checks if r["id"] in reevaluate.REQUIRED}
+    assert selected == dict.fromkeys(reevaluate.REQUIRED, core.PASS)
+    assert core.document(record, core.Diff([], [], {}), [])["verdict"]["binary"] == core.PASS
+    assert record.aew_revision == reevaluate.SOURCE_REVISION and record.platform == "linux"
+    assert record.capabilities["report_step_and_shell_calls"]["status"] == "gap"  # implementation still absent
+    provenance = record.facts["qualification.reevaluation"]
+    assert provenance["runtime_executed"] is False and provenance["ruling"]["digest"] == reevaluate.RULING_DIGEST
+    assert provenance["windows_runtime"] == "NOT RUN; capability GAP"
+    for mode in ("steer", "queue"):
+        active = record.facts["messaging.prompt_identity"]
+        observed = record.facts["observation.prompt_identity"]
+        assert active[mode + ".duplicate_admitted"] is True
+        assert observed[mode + ".admitted_created_time_preserved"] is False
+        assert observed[mode + ".changed_admitted_returns_original"] is False
+        assert not {mode + "." + k for k in reevaluate.RETIRED} & active.keys()
+    assert record.facts["measurement.prompt_identity"] == source["facts"]["measurement.prompt_identity"]
+
+
+@pytest.mark.parametrize("field", ["id", "sessionID", "text", "metadata", "missing_metadata", "status",
+                                 "admitted_once", "get_metadata", "missing_raw"])
+@pytest.mark.parametrize("mode", ["steer", "queue"])
+def test_ruled_replay_fails_each_relied_on_field_or_missing_get_evidence(field, mode):
+    source = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_text(encoding="utf-8"))
+    raw = source["facts"]["measurement.prompt_identity"][mode]
+    if field in ("id", "sessionID"):
+        raw["admitted_retry"][field] = "forged"
+    elif field in ("text", "metadata"):
+        raw["admitted_retry"]["payload"][field] = "forged"
+    elif field == "missing_metadata":
+        del raw["admitted_retry"]["payload"]["metadata"]
+    elif field == "status":
+        raw["admitted_retry_status"] = 409
+    elif field == "admitted_once":
+        source["facts"]["messaging.prompt_identity"][mode + ".admitted_once"] = False
+    elif field == "get_metadata":
+        source["facts"]["messaging.prompt_identity"][mode + ".metadata_round_trip"] = False
+    elif field == "missing_raw":
+        del source["facts"]["measurement.prompt_identity"][mode]
+    record = reevaluated(source)
+    check = next(r for r in record.checks if r["id"] == "messaging.prompt_identity")
+    assert check["status"] == core.FAIL and mode + ".duplicate_admitted" in check["notes"]
+    assert core.verdict(record, core.Diff([], [], {}))["binary"] == core.FAIL
+
+
+@pytest.mark.parametrize("check_id", ["api.openapi", "messaging.wait_binding", "messaging.shell_timeout"])
+def test_replay_does_not_waive_any_other_required_failure(check_id):
+    source = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_text(encoding="utf-8"))
+    next(row for row in source["checks"] if row["id"] == check_id).update(status=core.FAIL, notes=["planted failure"])
+    record = reevaluated(source)
+    assert next(r for r in record.checks if r["id"] == check_id)["status"] == core.FAIL
+    assert core.verdict(record, core.Diff([], [], {}))["binary"] == core.FAIL
+
+
+@pytest.mark.parametrize("mutation", ["windows", "missing_check", "duplicate_check", "wrong_revision", "network"])
+def test_replay_refuses_a_record_outside_the_ruled_platform_provenance_or_selection(mutation):
+    source = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_text(encoding="utf-8"))
+    if mutation == "windows":
+        source["platform"] = "win32"
+    elif mutation == "missing_check":
+        source["checks"] = [r for r in source["checks"] if r["id"] != "messaging.wait_binding"]
+    elif mutation == "duplicate_check":
+        source["checks"].append(source["checks"][0])
+    elif mutation == "wrong_revision":
+        source["aew_revision"] = "another-commit"
+    elif mutation == "network":
+        source["network"] = "not verified"
+    with pytest.raises(ValueError):
+        reevaluated(source)
+
+
+def test_offline_cli_generates_only_the_messaging_pin_and_calls_no_runtime(tmp_path, monkeypatch):
+    import hashlib
+
+    from harness_qualify import reevaluate
+
+    fixtures = tmp_path / "fixtures"
+    shutil.copytree(FIXTURES, fixtures)
+    (fixtures / "messaging-2.2.6.json").unlink(missing_ok=True)  # only the test's own copy
+    before = {p.name: p.read_bytes() for p in fixtures.iterdir() if p.is_file()}
+    source = FIXTURES / "messaging-2.2.6-linux.json"
+    original = source.read_bytes()
+    ruling = tmp_path / "ruling.md"
+    ruling.write_bytes(b"test-only ruling citation")
+    monkeypatch.setattr(reevaluate, "RULING_DIGEST", hashlib.sha256(ruling.read_bytes()).hexdigest())
+    monkeypatch.setattr(core, "aew_revision", lambda: "offline-cli-test")
+    monkeypatch.setattr(OC, "serve", lambda *a, **k: pytest.fail("offline replay started a server"))
+    monkeypatch.setattr(OC, "read_version", lambda *a, **k: pytest.fail("offline replay started the binary"))
+    monkeypatch.setattr(model, "start", lambda *a, **k: pytest.fail("offline replay started a model"))
+    out = tmp_path / "out"
+    assert HQ_main(["--reevaluate", str(source), "--ruling", str(ruling), "--out", str(out),
+                    "--fixtures", str(fixtures), "--write-fixtures"]) == core.EXIT_OK
+    assert source.read_bytes() == original
+    assert all((fixtures / name).read_bytes() == raw for name, raw in before.items())
+    pin = json.loads((fixtures / "messaging-2.2.6.json").read_bytes())
+    assert pin["platform"] == "linux" and pin["qualification"]["runtime_executed"] is False
+    assert set(p.name for p in fixtures.iterdir()) - before.keys() == {"messaging-2.2.6.json"}
+    published = json.loads((out / "record.json").read_bytes())
+    assert published["verdict"]["binary"] == core.PASS
+    assert len([r for r in published["checks"] if r["status"] == core.PASS]) == 10
+
+
+def test_offline_cli_refuses_an_uncited_ruling_without_writing_a_pin(tmp_path):
+    ruling = tmp_path / "wrong.md"
+    ruling.write_text("not the cited ruling", encoding="utf-8")
+    out = tmp_path / "out"
+    assert HQ_main(["--reevaluate", str(FIXTURES / "messaging-2.2.6-linux.json"), "--ruling", str(ruling),
+                    "--out", str(out), "--write-fixtures"]) == core.EXIT_USAGE
+    assert not out.exists()
+
+
+def test_ruled_active_predicate_never_reads_response_time_or_mode():
+    from harness_qualify import reevaluate
+
+    class FieldsOnly(dict):
+        def get(self, key, *default):
+            if key in ("time", "delivery"):
+                pytest.fail("the ruled predicate read a non-authoritative response field")
+            return super().get(key, *default)
+
+        def __getitem__(self, key):
+            if key in ("time", "delivery"):
+                pytest.fail("the ruled predicate read a non-authoritative response field")
+            return super().__getitem__(key)
+
+    source = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_text(encoding="utf-8"))
+    raw = source["facts"]["measurement.prompt_identity"]
+    for mode in ("steer", "queue"):
+        for key in ("first", "admitted_retry"):
+            raw[mode][key] = FieldsOnly(raw[mode][key])
+    assert reevaluate.identity_outcome(source["facts"]["messaging.prompt_identity"], raw).status == core.PASS
+
+
+def test_a_remaining_failed_check_writes_a_failed_record_but_no_semantic_pin(tmp_path, monkeypatch):
+    import hashlib
+
+    from harness_qualify import reevaluate
+
+    fixtures = tmp_path / "fixtures"
+    shutil.copytree(FIXTURES, fixtures)
+    pin = fixtures / "messaging-2.2.6.json"
+    pin.unlink(missing_ok=True)
+    source = json.loads((FIXTURES / "messaging-2.2.6-linux.json").read_text(encoding="utf-8"))
+    next(r for r in source["checks"] if r["id"] == "messaging.wait_binding").update(status=core.FAIL, notes=["planted"])
+    failed_record = reevaluated(source)
+    monkeypatch.setattr(reevaluate, "evaluate", lambda *a, **k: failed_record)
+    ruling = tmp_path / "ruling.md"
+    ruling.write_bytes(b"test-only ruling citation")
+    monkeypatch.setattr(reevaluate, "RULING_DIGEST", hashlib.sha256(ruling.read_bytes()).hexdigest())
+    monkeypatch.setattr(core, "aew_revision", lambda: "offline-cli-test")
+    out = tmp_path / "out"
+    assert reevaluate.run(FIXTURES / "messaging-2.2.6-linux.json", ruling, out=out, fixtures=fixtures,
+                          write_pin=True) == core.EXIT_FAILED
+    assert not pin.exists() and json.loads((out / "record.json").read_bytes())["verdict"]["binary"] == core.FAIL
 
 
 # --------------------------------------------------------------------------------- the OpenCode pack, offline parts

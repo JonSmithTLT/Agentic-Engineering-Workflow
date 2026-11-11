@@ -73,14 +73,11 @@ def inbox_identity(value: Any) -> Any:
     return {**value, "payload": payload}
 
 
-def expected_inbox(value: Any, sid: str, mid: str, mode: str, text: str, metadata: dict[str, Any]) -> bool:
+def expected_reply(value: Any, sid: str, mid: str, text: str, metadata: dict[str, Any]) -> bool:
     if not isinstance(value, dict):
         return False
-    created = (value.get("time") or {}).get("created")
     payload = value.get("payload") or {}
     return (value.get("id") == mid and value.get("sessionID") == sid and value.get("type") == "user"
-            and value.get("delivery") == mode and isinstance(created, (int, float))
-            and not isinstance(created, bool) and math.isfinite(created) and created >= 0
             and payload.get("text") == text and payload.get("metadata") == metadata)
 
 
@@ -104,8 +101,8 @@ def identity_measurement(ctx: Context) -> dict[str, Any]:
                 before = len(main_requests(llm))
                 status, first = http(server, "POST", path, payload)
                 first = data(first)
-                facts[mode + ".first_identity_valid"] = expected_inbox(
-                    first, sid, mid, mode, payload["text"], payload["metadata"])
+                facts[mode + ".first_identity_valid"] = expected_reply(
+                    first, sid, mid, payload["text"], payload["metadata"])
                 retry_status, retry = http(server, "POST", path, payload)
                 changed_status, changed = http(server, "POST", path, {
                     **payload, "text": "HQ_WRONG_TEXT", "delivery": "queue" if mode == "steer" else "steer"})
@@ -136,8 +133,8 @@ def identity_measurement(ctx: Context) -> dict[str, Any]:
                 facts[mode + ".changed_admitted_returns_original"] = changed_status == 200 and inbox_identity(
                     data(changed)) == inbox_identity(first)
                 after = data(retried)
-                facts[mode + ".admitted_identity_valid"] = expected_inbox(
-                    after, sid, mid, mode, payload["text"], payload["metadata"])
+                facts[mode + ".admitted_identity_valid"] = expected_reply(
+                    after, sid, mid, payload["text"], payload["metadata"])
                 facts[mode + ".admitted_created_time_preserved"] = isinstance(after, dict) and isinstance(
                     first, dict) and after.get("time") == first.get("time")
                 facts[mode + ".admitted_delivery_preserved"] = isinstance(after, dict) and isinstance(
@@ -172,6 +169,10 @@ def identity_check(ctx: Context, name: str) -> Outcome:
     observed = ctx.once("messaging.identity", lambda: identity_measurement(ctx))
     keys = IDENTITY_FACTS if name == "prompt_identity" else HELD_FACTS
     facts = {mode + "." + key: observed.get(mode + "." + key) for mode in ("steer", "queue") for key in keys}
+    if name == "prompt_identity":
+        from .reevaluate import identity_outcome
+
+        return identity_outcome(facts, observed.get("_responses"))
     failed = [key for key, value in facts.items() if value is not True]
     measured = {"messaging." + name: facts}
     if name == "prompt_identity":

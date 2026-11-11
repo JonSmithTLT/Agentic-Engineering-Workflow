@@ -978,6 +978,10 @@ class Engine:
         exists. The CLI registers `aew message` only then."""
         return self._coordination.reads_on(self._k.store.read_committed())
 
+    def messaging_enabled(self) -> bool:
+        """The adopted messaging switch for presentation snapshots; recording checks it again under the lock."""
+        return self._coordination.project_switch(self._k.store.read_committed()) == "enabled"
+
     def new_decision(self, ctx: TxnContext, decision_type: str, summary: str, *, work_unit: str | None = None,
                      classification: str | None = None, evidence_refs: list[str] | None = None,
                      resulting_transition: dict[str, Any] | None = None, reason: str | None = None,

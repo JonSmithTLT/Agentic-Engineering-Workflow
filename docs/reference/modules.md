@@ -1434,6 +1434,7 @@ None.
 - `aew.policy.execution`
 - `aew.process_kind`
 - `aew.surface.context`
+- `aew.surface.contract`
 - `aew.surface.run`
 - `aew.surface.validate`
 - `aew.util`
@@ -2032,6 +2033,7 @@ None.
 Imports from the groups:
 
 - `aew`
+- `aew.coordination`
 - `aew.engine`
 - `aew.harness`
 - `aew.knowledge`
@@ -2061,12 +2063,14 @@ None.
 
 ### `aew.surface.context`
 
-None.
+- `aew.surface.contract`
 
 ### `aew.surface.contract`
 
+- `aew.coordination.layout`
 - `aew.priority_levels`
 - `aew.surface.context`
+- `aew.surface.presentation`
 
 ### `aew.surface.errors`
 
@@ -2088,8 +2092,13 @@ None.
 - `aew.surface.client`
 - `aew.surface.contract`
 - `aew.surface.errors`
+- `aew.surface.presentation`
 - `aew.surface.readable`
 - `aew.surface.validate`
+
+### `aew.surface.presentation`
+
+- `aew.surface.contract`
 
 ### `aew.surface.projection`
 

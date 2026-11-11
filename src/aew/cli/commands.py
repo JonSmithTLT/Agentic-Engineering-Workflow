@@ -380,13 +380,23 @@ def _lead_tool(args: argparse.Namespace) -> Any:
     import json
 
     from aew.surface import SURFACE, client, contract
+    from aew.surface.context import switches_for
     from aew.surface.errors import AdapterInputError
 
     if args.list:
+        if client.in_session():
+            switches = contract.switches_from_env()
+        else:
+            from aew.errors import ProjectNotFound
+
+            try:
+                switches = switches_for(_engine(args))
+            except ProjectNotFound:
+                switches = frozenset()
         return {"ok": True, "surface": SURFACE, "tools": [
             {"name": t.name, "kind": t.kind, "base_operation_class": t.base_class, "status": t.status,
              "progression": t.progression, "profiles": list(t.profiles), "description": t.description}
-            for t in contract.TOOLS.values()]}
+            for t in contract.catalog(switches).values()]}
     if not args.name:
         raise UsageError("name a tool (see `aew lead tool --list`)")
     try:
@@ -408,10 +418,11 @@ def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
     from aew import lead_credential
     from aew.harness import lead_broker
     from aew.surface import contract, run
-    from aew.surface.context import SurfaceContext
+    from aew.surface.context import SurfaceContext, switches_for
 
     engine = _engine(args)
-    tool = contract.TOOLS.get(args.name)
+    switches = switches_for(engine)
+    tool = contract.tool(args.name, switches)
     # a query or a wait reads, and needs no credential; anything else asks for it (an unknown name: the runner refuses)
     reads = tool is None or tool.kind in ("query", "wait")
     token = (lead_credential.optional() if reads else lead_credential.required()) or ""
@@ -419,7 +430,8 @@ def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
     def cli(argv: list[str], stdin: str) -> dict[str, Any]:
         return lead_broker.run_cli(engine, token, argv, str(engine.repo_root), stdin, channel="cli")
 
-    return run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile), args.name, arguments,
+    return run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile, switches=switches),
+                        args.name, arguments,
                         token=token or None, run_cli=cli)
 
 

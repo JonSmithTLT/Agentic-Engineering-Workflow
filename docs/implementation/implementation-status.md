@@ -264,7 +264,7 @@ This is the status table of WC Appendix C, one section per capability: a **Statu
 
 **MS0 done (2026-10-10):** the live-delivery probe of OpenCode 2.0.18 on both hosts decided the transport, `steer` (ADR-0017 D8, with its [evidence](adr/evidence/f9a-delivery-probe-2026-10-10/README.md)); the probe is `tests/live/f9a_delivery_probe/`, run by hand.
 
-**HS1 built (2026-10-10; register E55, the F9-A plan's amendment 2):** `aew harness send --when next-step|turn-end`; `next-step` (OpenCode `steer`, at the agent's next step boundary) is the default, replacing `queue`; with messaging off `turn-end` is refused (`TURN_END_NEEDS_MESSAGING`), and with messaging on every send is refused until MS5b records it in the store (`HARNESS_SEND_NEEDS_STORE`, or `MESSAGING_SNAPSHOT_MISMATCH` while the run's launch snapshot disagrees); `tests/integration/test_harness_send_when.py`. Next: MS3 after M4-E's E4
+**HS1 built (2026-10-10; register E55, the F9-A plan's amendment 2):** `aew harness send --when next-step|turn-end`; `next-step` (OpenCode `steer`, at the agent's next step boundary) is the default, replacing `queue`; with messaging off `turn-end` is refused (`TURN_END_NEEDS_MESSAGING`), and with messaging on every send is refused until MS5b records it in the store (`HARNESS_SEND_NEEDS_STORE`, or `MESSAGING_SNAPSHOT_MISMATCH` while the run's launch snapshot disagrees); `tests/integration/test_harness_send_when.py`. MS3's E4, E3c and MS2 prerequisites are merged; its build is recorded on F9.
 
 **Later slices:** each records what it built, and its evidence, as a note on register row F9 ([`notes.d/F9/`](notes.d/README.md); `python tools/register.py show F9`), never by editing a paragraph here.
 

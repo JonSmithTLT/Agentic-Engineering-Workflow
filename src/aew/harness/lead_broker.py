@@ -261,6 +261,9 @@ class LeadBroker:
         self._require_lead(state, token)  # only the current Lead's credential is ever brokered
         self.generation = int(state["lead"]["generation"])  # the generation this session acts for
         self.session_label = state["lead"].get("session_label")
+        from aew.surface.context import switches_for
+
+        self.surface_switches = switches_for(engine)
         self.server = bridge.BridgeServer(self.handle, OPERATIONS, COOPERATIVE)
         self.superseded: str | None = None
         self._stop = idle()
@@ -282,7 +285,10 @@ class LeadBroker:
 
     @property
     def env(self) -> dict[str, str]:
-        return {ENV_ENDPOINT: self.server.address, ENV_KEY: self.server.key_hex}
+        from aew.surface.contract import ENV_SWITCHES
+
+        return {ENV_ENDPOINT: self.server.address, ENV_KEY: self.server.key_hex,
+                **({ENV_SWITCHES: json.dumps(sorted(self.surface_switches))} if self.surface_switches else {})}
 
     def start(self) -> None:
         self.server.start()
@@ -484,7 +490,7 @@ class LeadBroker:
             raise errors.UsageError("lead.tool: unknown ingress or surface profile", ingress=ingress, profile=profile)
         try:
             arguments = json.loads(args["arguments"])
-            check_call(name, arguments, profile)  # before any engine call: an ill-formed call commits nothing
+            check_call(name, arguments, profile, self.surface_switches)  # never trust the MCP's environment
         except ValueError:
             with self.server.serialized():
                 self._mark(meta)
@@ -505,7 +511,7 @@ class LeadBroker:
                     self._mark(meta)
                     problem = self._authority_lost()
                 ctx = SurfaceContext(lead_session=self._session(problem), generation=self.generation,
-                                     profile=profile, ingress=ingress)
+                                     profile=profile, ingress=ingress, switches=self.surface_switches)
                 result = surface_run.run_tool(self.engine, ctx, name, arguments, token=self._token,
                                               serial=self.server.serialized, cancelled=self._cancelled)
             else:
@@ -513,7 +519,7 @@ class LeadBroker:
                     self._mark(meta)
                     problem = self._authority_lost()
                     ctx = SurfaceContext(lead_session=self._session(problem), generation=self.generation,
-                                         profile=profile, ingress=ingress)
+                                         profile=profile, ingress=ingress, switches=self.surface_switches)
                     result = surface_run.run_tool(self.engine, ctx, name, arguments, token=self._token,
                                                   run_cli=cli)
         if result["stopped"] and result["stopped"]["boundary"] == "stale_authority":
@@ -942,7 +948,12 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     # environment: a refusal for a missing provider variable says so (review of PR #214, F2).
     with agentenv.session_host("this Lead session (`aew opencode` or `aew lead session`)"):
         broker.start()
-        child_env = {**(scrubbed_env() if env is None else scrubbed_env(env)), **broker.env}
+        broker_env = broker.env
+        child_env = {**(scrubbed_env() if env is None else scrubbed_env(env)), **broker_env}
+        from aew.surface.contract import ENV_SWITCHES
+
+        if ENV_SWITCHES not in broker_env:
+            child_env.pop(ENV_SWITCHES, None)  # an ambient presentation hint never becomes this session's snapshot
         try:
             harness = contained(broker.server.private_dir, child_env)
         except BaseException:

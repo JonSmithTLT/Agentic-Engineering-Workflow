@@ -4,9 +4,9 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Totals
 
-**on_and_used:** 2 — SYS-20, SYS-37
+**on_and_used:** 4 — SYS-17, SYS-20, SYS-37, SYS-38
 
-**awaiting_signoff (built, awaiting your sign-off):** 3 — SYS-17, SYS-38, SYS-39
+**awaiting_signoff (built, awaiting your sign-off):** 1 — SYS-39
 
 **partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-08, SYS-09, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-48
 
@@ -18,7 +18,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **designed_only:** 19 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-43, SYS-44, SYS-45, SYS-46, SYS-47
 
-**Waiting on your sign-off:** 3 — SYS-17, SYS-38, SYS-39
+**Waiting on your sign-off:** 1 — SYS-39
 
 **Limit's count / wip_limit:** 12 / 12 — SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-13, SYS-19, SYS-22, SYS-48
 

@@ -2086,7 +2086,7 @@ systems:
   - src/aew/engine/seams.py
   depends_on: []
   state:
-    board_state: awaiting_signoff
+    board_state: on_and_used
     built: 'yes'
     wired:
     - cli:history log
@@ -2096,6 +2096,9 @@ systems:
     - dashboard:/activity
     on_by_default: true
     used_in_default_flow: 'yes'
+  signoff:
+    date: '2026-11-10'
+    words: 'SYS-38 and SYS-17 signed off, history audit clean'
   finish_line: 'Done: events written atomically with every commit, sealed and chained, and read by wait-any, the dashboard''s
     /activity, the notifier, the steering loop, coordination and validation waits. Its further consumers (the dashboard
     event endpoint, knowledge capture, the scheduler) finish on their own systems.'
@@ -2343,6 +2346,9 @@ systems:
     - cli:g3 request
     on_by_default: true
     used_in_default_flow: 'yes'
+  signoff:
+    date: '2026-11-10'
+    words: 'SYS-37 and SYS-20 signed off, tested in my root session AS WELL'
   finish_line: 'Done: the steering raise (SET_STEERING_MODE) is the first protected action G3 admits, on the operator''s decision of 2026-11-07 (design workspace record `2026-11-07-operator-g3-first-real-action-steering-raise.md`), applied through G3-C''s overlay as the operator chose on 2026-11-08. E82''s known-answer tests and G3-C are merged; G3 is installed by root on a Linux host where
     every agent context runs contained; a raise approved in the confirmer with the PIN is admitted once by its owner and
     the mode rises; a replay is refused; and after a weaker launch the next raise falls back to the typed code with the
@@ -3594,6 +3600,9 @@ systems:
     wired: []
     on_by_default: true
     used_in_default_flow: 'yes'
+  signoff:
+    date: '2026-11-10'
+    words: 'SYS-37 and SYS-20 signed off, tested in my root session AS WELL'
   finish_line: 'Done: G3''s standing reads the register before admitting a consent (it sweeps, then reads), and the operator''s
     root session on a Linux host, 2026-11-10, showed a weaker launch keep the next raise off the G3 path: it fell back to
     the typed code and named the weaker context.'
@@ -3658,7 +3667,7 @@ systems:
   touches: []
   depends_on: []
   state:
-    board_state: awaiting_signoff
+    board_state: on_and_used
     built: 'yes'
     wired:
     - cli:history show
@@ -3672,6 +3681,9 @@ systems:
     - dashboard:/history/integrity
     on_by_default: true
     used_in_default_flow: 'yes'
+  signoff:
+    date: '2026-11-10'
+    words: 'SYS-38 and SYS-17 signed off, history audit clean'
   finish_line: 'Done: ADR-0011 accepted and implemented; archive.finalize runs in every Lead transaction, and the history
     surface reads what it writes.'
   remaining: []

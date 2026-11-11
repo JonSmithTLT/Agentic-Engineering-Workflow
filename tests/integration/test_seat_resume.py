@@ -12,6 +12,7 @@ import pytest
 from aewflow import assign, create_planned_ticket, sample_project
 from conftest import clean_env
 from invariants import assert_control_invariants
+from racing_read import read_text_or_none
 
 from aew import operator, process_kind, switch_offer
 from aew.engine.api import Engine
@@ -379,7 +380,7 @@ def test_v2_driver_answers_and_counts_the_resume_prompt(tmp_path):
     session = Session(proc, out, err, tmp_path / "pid", master)
 
     def receive(_timeout, gone):
-        until(lambda: gone() or out.read_text(encoding="utf-8").strip() == "ready", 15, "resume challenge")
+        until(lambda: gone() or (read_text_or_none(out) or "").strip() == "ready", 15, "resume challenge")
         assert out.read_text(encoding="utf-8").strip() == "ready", err.read_text(encoding="utf-8")
         return {"words": "ready"}
 

@@ -46,8 +46,8 @@ from aew.engine.api import Engine
 from aew.engine.primitives import PrimitiveSpec
 from aew.harness import contract as K
 from aew.harness import event_spool, operator_endpoint, runlog
-from aew.harness import wake_queue as W
 from aew.harness import steering_loop as L
+from aew.harness import wake_queue as W
 from aew.history.index import INDEX_REL
 from aew.surface import contract, stage
 from aew.surface import run as R
@@ -304,8 +304,8 @@ def test_walk_confirms_unknown_or_undeclared_effects(p, monkeypatch, case):
 @pytest.mark.parametrize("case", ["walk", "run"])
 def test_confirm_before_actions_never_execute(p, endpoint, case):
     """Amendment 1, m3: when confirm_before(a) holds the action is never executed; the loop stops with
-    CONFIRMATION_UNAVAILABLE (recorded in loop.json; held from the spool until E7c). ``run``: the mode in force when the action comes
-    up is what counts, so a Lead that lowers Run to Walk stops a dispatching action from auto-running."""
+    CONFIRMATION_UNAVAILABLE (recorded in loop.json; held from the spool until E7c). ``run``: the mode in force when the
+    action comes up is what counts, so a Lead that lowers Run to Walk stops a dispatching action from auto-running."""
     mode(p, "walk" if case == "walk" else "run")
     if case == "run":
         e = Engine.discover(p.root)

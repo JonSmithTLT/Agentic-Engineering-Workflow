@@ -68,10 +68,13 @@ _MOVED_HEAD_ROW = 72
 _MOVED_HEAD_ROWS = 6
 # Follow _build_candidate's persisted conflict-path cap. The readable row budget usually binds first.
 _MOVED_HEAD_PATHS = 50
+# The message owns the curly quote delimiters around each displayed name.
+_MOVED_NAME_PUNCTUATION = str.maketrans({"`": "｀", "“": "′", "”": "′", '"': "′"})
 
 
 def _display_name(text: str) -> str:
-    return redact("".join(c for c in text if not unicodedata.category(c).startswith("C"))).replace("`", "｀")
+    return redact("".join(c for c in text if not unicodedata.category(c).startswith("C"))).translate(
+        _MOVED_NAME_PUNCTUATION)
 
 
 def _moved_head_diagnostic(repo: Path, moved: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -97,9 +100,10 @@ def _moved_head_diagnostic(repo: Path, moved: dict[str, Any]) -> tuple[str, dict
         prefix += f" Conflicting paths ({len(paths)}):"
         names: list[str] = []
         for path in paths:
-            name = _display_name(path)
+            name = " ".join(_display_name(path).split())
+            name = f"“{name}”"
             trial = f"{prefix} {', '.join([*names, name])}."
-            if len(textwrap.wrap(" ".join(trial.split()), _MOVED_HEAD_ROW)) < _MOVED_HEAD_ROWS:
+            if len(textwrap.wrap(trial, _MOVED_HEAD_ROW)) < _MOVED_HEAD_ROWS:
                 names.append(name)
                 if len(names) == _MOVED_HEAD_PATHS:
                     break

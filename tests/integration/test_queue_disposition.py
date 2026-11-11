@@ -169,7 +169,7 @@ def test_a_rebuild_that_conflicts_waits_for_the_lead_and_is_never_resolved(calc,
     head = outside_commit(calc, "calc/core.py", "def add(a, b):\n    return b + a\n")
     err = refused(calc, "integrate", "publish", wid)
     assert err["code"] == "STALE_CANDIDATE" and err["details"]["why"] == "conflict"
-    assert all(name in err["message"] for name in (head[:12], "outside: calc/core.py", "paths (1): calc/core.py"))
+    assert all(name in err["message"] for name in (head[:12], "outside: calc/core.py", "paths (1): “calc/core.py”"))
     _, e = entry(calc, wid)
     assert e["state"] == "AWAITING_DISPOSITION" and e["disposition"]["reason"] == "conflict"
     assert control(calc)["work"][wid]["integration"]["status"] == "conflict"

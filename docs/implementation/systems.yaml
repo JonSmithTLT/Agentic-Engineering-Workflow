@@ -695,7 +695,7 @@ systems:
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: 'Lead (E35''s probe; H-1 to H-3 after CAP-1 PR 3); operator places E149, and E150 follows it; F24 leaves HOLD-06
+  who: 'Lead (E35''s probe; H-1 to H-3); operator places E149, and E150 follows it; F24 leaves HOLD-06
     after the designer''s match, then the operator places it (BOARD v2 §3: after first use, unless 429s recur)'
   reason: 'The OpenCode adapter is on and used every run; what is left (E35, H-1 to H-3) is on the Now list in the Lead''s
     order, and the version ''pin'' is a label, not a gate (BOARD v2 §6), so currency work matters before a newer binary
@@ -704,28 +704,28 @@ systems:
   evidence:
   - src/aew/harness/registry.py:19-29 (BUILTIN names only opencode; AEW_HARNESS_ADAPTERS, read from the launching Lead's
     environment per :3-5, adds others; no CLI, tool or dashboard surface registers one)
-  - src/aew/harness/supervisor.py:74, :222 (registry.load at every launch)
-  - 'src/aew/policy/execution.py:29, :67, :215-216 (DEFAULT_HARNESS ''opencode''; the template''s harness: opencode; profile_harness
+  - src/aew/harness/supervisor.py:75, :332 (registry.load at every launch)
+  - 'src/aew/policy/execution.py:30, :68, :247-248 (DEFAULT_HARNESS ''opencode''; the template''s harness: opencode; profile_harness
     falls back to it)'
   - src/aew/harness/opencode/capabilities.py:14-15 (SUPPORTED_MAJOR = 2, TESTED_VERSIONS = ('2.2.6',))
-  - src/aew/harness/opencode/capabilities.py:89-96 (version_problems refuses only a non-2 major); :1-7 (the per-launch /openapi.json
+  - src/aew/harness/opencode/capabilities.py:103-110 (version_problems refuses only a non-2 major); :1-7 (the per-launch /openapi.json
     probe is the real gate)
   - 'src/aew/harness/opencode/adapter.py:180-183 (default_binary: TESTED_VERSIONS[0] picks the Windows default binary),
     :364-365 (token_semantics has 2.0.18 and 2.2.6 rows), :543 (the usage meter is labelled TESTED_VERSIONS[0])'
-  - 'src/aew/harness/opencode/adapter.py:189 (OPENCODE_DISABLE_PROJECT_CONFIG=1 in the server env: an E35 seam partly present)'
-  - 'src/aew/harness/opencode/projection.py:100 (worker rules start rule(''*'', ''deny''): execute and browser denied by
+  - 'src/aew/harness/opencode/adapter.py:230 (OPENCODE_DISABLE_PROJECT_CONFIG=1 in the server env: an E35 seam partly present)'
+  - 'src/aew/harness/opencode/projection.py:152 (worker rules start rule(''*'', ''deny''): execute and browser denied by
     default, not by an explicit rule)'
-  - 'src/aew/harness/opencode/projection.py:360 (Lead MCP server codemode: False)'
-  - src/aew/harness/contract.py:232-251 (LaunchContract has no skills, tools_allowed or native_sandbox field)
-  - src/aew/harness/base.py:73-117 (launch, launch_bound_s, inspect, terminate, send, interrupt, collect; no capabilities())
+  - 'src/aew/harness/opencode/projection.py:607 (Lead MCP server codemode: False)'
+  - src/aew/harness/contract.py:266-284 (LaunchContract has no skills, tools_allowed or native_sandbox field)
+  - src/aew/harness/base.py:77-121 (launch, launch_bound_s, inspect, terminate, send, interrupt, collect; no capabilities())
   - grep of '429' under src/aew/harness matches only RFC 4291 comments at src/aew/harness/containment/peer.py:54-83 (no
     429 handling)
-  - src/aew/doctor.py:100-114 (doctor names the harness binary and the tested versions; the version is checked at each launch)
-  - src/aew/cli/work_commands.py:495-499 (aew harness config prints the projection an OpenCode harness receives)
-  - 'src/aew/harness/base.py:21-47 (E143''s follow-on: the closed launch report, RELAY_FAMILY_SHOWN and LAUNCH_REFUSALS,
-    with relay_family_of and refusal_of); src/aew/harness/supervisor.py:235-237, :242, :257-260, :352-363 (E143''s follow-on:
-    the supervisor carries them to the run''s label and its acknowledgements); src/aew/harness/opencode/adapter.py:208-210,
-    :593-600 (the adapter''s relay-route family check, from E143, now names base''s constants)'
+  - src/aew/doctor.py:100-113 (doctor names the harness binary and the tested versions; the version is checked at each launch)
+  - src/aew/cli/work_commands.py:508-512 (aew harness config prints the projection an OpenCode harness receives)
+  - 'src/aew/harness/base.py:22-50 (E143''s follow-on: the closed launch report, RELAY_FAMILY_SHOWN and LAUNCH_REFUSALS,
+    with relay_family_of and refusal_of); src/aew/harness/supervisor.py:348-350, :355, :371-373 (E143''s follow-on:
+    the supervisor carries them to the run''s label and its acknowledgements); src/aew/harness/opencode/adapter.py:57-60,
+    :795-813 (the adapter''s relay-route family check, from E143, now names base''s constants)'
   - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md:1742 (its 'Amendment 2026-11-06', the relay-route family
     check and what a launch reports)
   - 'docs/implementation/future-work.yaml (the Now list''s E35 line; the Now list''s STG-15, E35 line, at c11a61ea) (on
@@ -849,7 +849,7 @@ systems:
   - slice: 'The Lead''s tool budget, decided before E158'
     row: E231
     estimate: a decision, then 0-1 PR (estimate)
-  - slice: 'The Lead''s exits: the eight dead ends, and the lands guard'
+  - slice: 'The Lead''s exits: the eleven dead ends, and the lands guard'
     row: E233
     estimate: not sized (estimate)
   - slice: 'The worker route''s size check'
@@ -1133,8 +1133,8 @@ systems:
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
   who: Lead (E137, then E138, E83 by the register's order); designer for D4; operator for placing E6b out of HOLD-10
-  reason: 'On and used in the default Lead flow, with defects filed from the real tool-call log; BOARD v2 §1 sizes the four
-    as about 4 small PRs with no switch. E83''s behaviour already holds in code (only ticket_start and ticket_request_review
+  reason: 'On and used in the default Lead flow, with defects filed from the real tool-call log; BOARD v2 §1 sized four
+    as about 4 small PRs with no switch, and E133 has since merged, leaving three. E83''s behaviour already holds in code (only ticket_start and ticket_request_review
     are POLICY_RESOLVED progression rows); its gap is the declaration and the pinning test, subject to classify''s promotion
     over each expanded primitive''s class (classify.py:33-34), which the census did not trace per primitive. The custody
     refusal does not block publishing: the Lead''s integration_publish publishes a VALIDATED entry outside custody.'
@@ -2343,8 +2343,7 @@ systems:
     - cli:g3 request
     on_by_default: true
     used_in_default_flow: 'yes'
-  finish_line: 'Done: the steering raise (SET_STEERING_MODE) is the first protected action G3 admits, as G3-C''s brief and
-    the designer''s rulings on it of 2026-11-08 bind it. E82''s known-answer tests and G3-C are merged; G3 is installed by root on a Linux host where
+  finish_line: 'Done: the steering raise (SET_STEERING_MODE) is the first protected action G3 admits, on the operator''s decision of 2026-11-07 (design workspace record `2026-11-07-operator-g3-first-real-action-steering-raise.md`), applied through G3-C''s overlay as the operator chose on 2026-11-08. E82''s known-answer tests and G3-C are merged; G3 is installed by root on a Linux host where
     every agent context runs contained; a raise approved in the confirmer with the PIN is admitted once by its owner and
     the mode rises; a replay is refused; and after a weaker launch the next raise falls back to the typed code with the
     standing''s reason. The operator''s root session on a Linux host, 2026-11-10, passed this acceptance. ATTACH_LEAD and

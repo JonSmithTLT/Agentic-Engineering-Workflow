@@ -209,6 +209,10 @@ def _run_main(argv: list[str]) -> int:
         return refusal.exit_code
     if result is not None:
         emit(result, as_json=as_json)
+        after_emit = getattr(args, "_after_emit", None)
+        if after_emit is not None:
+            sys.stdout.flush()
+            after_emit()
     if isinstance(result, dict) and result.get("ok") is False:
         return 1
     exit_status = getattr(args, "exit_status", None)  # a command whose result has its own exit status (`harness wait`)

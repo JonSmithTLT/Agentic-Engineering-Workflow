@@ -407,10 +407,29 @@ class LeadBroker:
 
     def handle(self, op: str, args: dict[str, Any]) -> Any:
         if op == "lead.tool":  # cooperative: it takes the serialization itself
-            return self._tool(args)
+            answer = self._tool(args)
+
+            def deliver_tool(send: Callable[[Any], None]) -> None:
+                from aew.surface import run as surface_run
+
+                send(answer)
+                with self.server.serialized():
+                    if self._receipt_current() and "stage_result" in answer:
+                        surface_run.record_message_result(self.engine, answer["stage_result"], self._token)
+
+            return bridge.ResultDelivery(deliver_tool)
         if op == "lead.read":  # cooperative: a read in a process of its own, needing no Lead authority
-            return run_read(self.engine, list(args["argv"]), args["cwd"], track=self._track,
-                            on_result=self._read_receipt)
+            receipts: list[Callable[[], None]] = []
+            answer = run_read(self.engine, list(args["argv"]), args["cwd"], track=self._track,
+                              on_result=self._read_receipt, defer_receipt=receipts.append)
+
+            def deliver_read(send: Callable[[Any], None]) -> None:
+                send(answer)
+                for receipt in receipts:
+                    if self._receipt_current():
+                        receipt()
+
+            return bridge.ResultDelivery(deliver_read)
         problem = self._authority_lost()
         if problem:
             self.superseded = problem
@@ -563,9 +582,6 @@ class LeadBroker:
                                          profile=profile, ingress=ingress, switches=self.surface_switches)
                     result = surface_run.run_tool(self.engine, ctx, name, arguments, token=self._token,
                                                   run_cli=cli)
-        with self.server.serialized():
-            if self._cancelled() is None:
-                surface_run.record_message_result(self.engine, result, self._token)
         if result["stopped"] and result["stopped"]["boundary"] == "stale_authority":
             with self.server.serialized():
                 lost = self._authority_lost()
@@ -654,7 +670,8 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
 
 def run_read(engine: Any, argv: list[str], cwd: str,
              track: Callable[[subprocess.Popen[str], bool], None] | None = None, *,
-             on_result: Callable[[dict[str, Any], argparse.Namespace], None] | None = None) -> dict[str, Any]:
+             on_result: Callable[[dict[str, Any], argparse.Namespace], None] | None = None,
+             defer_receipt: Callable[[Callable[[], None]], None] | None = None) -> dict[str, Any]:
     """Run one read relayed for the contained Lead (``RELAYED_READS``; STG-05 CS-4 addendum 4, ruling 1) on the host,
     and return what it printed, as it printed it, with its exit status. The request is parsed against the command's
     own parser, and runs as an argument list, never a shell string, on the Lead's project only, in a process of its
@@ -664,7 +681,8 @@ def run_read(engine: Any, argv: list[str], cwd: str,
 
     That process writes nothing. A ``harness wait`` it ran told the Lead what it printed, so the broker, a store
     writer, records that (:func:`record_delivery`), as the Lead's typed wait records it: the triggers it returned are
-    returned once, and an end it returned is no wake."""
+    returned once, and an end it returned is no wake. The live bridge supplies ``defer_receipt`` so both these marks
+    and ``on_result`` message receipts run only after its successful send; direct helper callers complete inline."""
     from aew import process_kind
     from aew.cli.main import build_parser, coordination_reads_for, recall_search_for
     from aew.engine.api import Engine
@@ -741,8 +759,16 @@ def run_read(engine: Any, argv: list[str], cwd: str,
         finally:
             if track is not None:
                 track(proc, False)
+
+    def complete(receipt: Callable[[], None]) -> None:
+        if defer_receipt is None:
+            receipt()  # direct helper compatibility; the live bridge defers until successful send
+        else:
+            defer_receipt(receipt)
+
     if wait:
-        record_delivery(project, list(ns.run), out)
+        wait_out = out
+        complete(lambda: record_delivery(project, list(ns.run), wait_out))
     if on_result is not None and proc.returncode == 0:
         try:
             result = json.loads(out)
@@ -753,7 +779,7 @@ def run_read(engine: Any, argv: list[str], cwd: str,
                 out = (engine.render_status(result) if ns.command == "status" else engine.render_resume(result))
                 if not out.endswith("\n"):
                     out += "\n"
-            on_result(result, ns)
+            complete(lambda: on_result(result, ns))
     return {"stdout": out, "stderr": err, "exit": proc.returncode}
 
 

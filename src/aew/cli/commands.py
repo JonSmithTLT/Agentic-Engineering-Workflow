@@ -428,7 +428,7 @@ def _lead_tool_here(args: argparse.Namespace, arguments: Any) -> Any:
 
     result = run.run_tool(engine, SurfaceContext.outside_session(profile=args.profile, switches=switches),
                           args.name, arguments, token=token or None, run_cli=cli)
-    run.record_message_result(engine, result, token or None)
+    args._after_emit = lambda: run.record_message_result(engine, result, token or None)
     return result
 
 

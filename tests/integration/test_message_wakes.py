@@ -12,6 +12,7 @@ from test_message_send import broker
 
 from aew.harness import bridge
 from aew.harness import contract as K
+from aew.harness import progress as P
 from aew.harness import told_messages as T
 from aew.harness import wake_queue as W
 
@@ -164,6 +165,7 @@ def test_post_selection_winning_the_race_records_only_its_frozen_ids(w):
             reader.join(20)
             assert not reader.is_alive() and not errors
             assert answers[0]["exit"] == 0  # the post's HTTP section holds neither broker serial nor control lock
+            assert b.server.drain(10)
             reply(w, body="A second reply after selection.")
 
         poster.during_post = during
@@ -321,3 +323,26 @@ def test_explicit_rejection_consumes_nothing_and_allows_a_fresh_selection(w):
         assert W.posted_messages(w.root / ".aew", b.generation) == set()
         queue(w, b, poster).tick()
         assert len(poster.admitted) == 1 and W.posted_messages(w.root / ".aew", b.generation) == {mid}
+
+
+def test_worker_message_handler_ablation_breaks_the_actual_wake_assertion_and_restoration_posts(w, monkeypatch):
+    mid = reply(w)
+    poster = Poster()
+    original = P.holds
+
+    def disabled(digest, trigger, **kwargs):
+        return False if trigger.get("why") == K.WORKER_MESSAGE else original(digest, trigger, **kwargs)
+
+    def require_post(q):
+        q.tick()
+        assert poster.attempts, "worker_message handler did not post the verified reply"
+        assert [m["id"] for m in shape(poster)["messages"]] == [mid]
+
+    with broker(w) as b:
+        q = queue(w, b, poster)
+        with monkeypatch.context() as missing:
+            missing.setattr(P, "holds", disabled)
+            with pytest.raises(AssertionError, match="worker_message handler did not post the verified reply"):
+                require_post(q)
+        assert W.posted_messages(w.root / ".aew", b.generation) == set()
+        require_post(q)

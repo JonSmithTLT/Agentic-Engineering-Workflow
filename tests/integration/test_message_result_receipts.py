@@ -13,6 +13,80 @@ from aew.harness import bridge
 from aew.harness import told_messages as T
 
 
+@pytest.mark.parametrize("sealed", [False, True])
+@pytest.mark.parametrize("route", ["typed", "relayed"])
+def test_failed_bridge_result_send_consumes_no_live_or_sealed_body(w, sealed, route):
+    from aew.errors import AEWError
+
+    mid = reply(w)
+    if sealed:
+        w.lead("invoke_cancel", invocation=w.inv, reason="seal before the failed result send")
+    with broker(w) as b:
+        handler = b.server.handler
+
+        def failing(op, args):
+            result = handler(op, args)
+
+            def deliver(sender):
+                def broken(value):
+                    raise OSError("scripted result write failed")
+
+                if isinstance(result, bridge.ResultDelivery):
+                    result.deliver(broken)
+                else:
+                    broken(result)
+
+            return bridge.ResultDelivery(deliver)
+
+        b.server.handler = failing
+        op, args = (("lead.tool", {"name": "status", "profile": "normal", "ingress": "mcp",
+                                  "arguments": json.dumps({"work_id": w.wid})}) if route == "typed" else
+                    ("lead.read", {"argv": ["status", "--json"], "cwd": str(w.root)}))
+        with pytest.raises(AEWError, match="scripted result write failed") as failed:
+            bridge.call(op, args, endpoint=b.server.address, key=b.server.key_hex)
+        assert failed.value.code == "BRIDGE_ERROR"
+        assert b.server.drain(10)
+        assert [m["id"] for m in w.e.message_attention()["awaiting_lead"]] == [mid]
+        assert T.read(w.root / ".aew", b.generation) == set()
+
+
+@pytest.mark.parametrize("sealed", [False, True])
+@pytest.mark.parametrize("failure", ["write", "flush", "none"])
+def test_own_shell_receipt_follows_successful_emit_and_flush(w, monkeypatch, sealed, failure):
+    import importlib
+    import io
+
+    main = importlib.import_module("aew.cli.main")
+    mid = reply(w)
+    if sealed:
+        w.lead("invoke_cancel", invocation=w.inv, reason="sealed own-shell output boundary")
+    monkeypatch.setenv("AEW_LEAD_TOKEN", w.token)
+    monkeypatch.delenv("AEW_LEAD_BROKER", raising=False)
+
+    class Output(io.StringIO):
+        def flush(self):
+            if failure == "flush":
+                raise OSError("scripted output flush failed")
+            super().flush()
+
+    def emit(result, **kwargs):
+        assert [m["id"] for m in w.e.message_attention()["awaiting_lead"]] == [mid]
+        if failure == "write":
+            raise OSError("scripted output write failed")
+
+    monkeypatch.setattr(main, "_utf8_streams", lambda: None)
+    monkeypatch.setattr(main, "emit", emit)
+    with monkeypatch.context() as output:
+        output.setattr(main.sys, "stdout", Output())
+        argv = ["-C", str(w.root), "lead", "tool", "status", "--arguments", json.dumps({"work_id": w.wid})]
+        if failure == "none":
+            assert main._run_main(argv) == 0
+        else:
+            with pytest.raises(OSError, match="scripted output"):
+                main._run_main(argv)
+    assert [m["id"] for m in w.e.message_attention()["awaiting_lead"]] == ([] if failure == "none" else [mid])
+
+
 @pytest.fixture
 def w(tmp_path):
     return world(tmp_path)
@@ -101,6 +175,7 @@ def test_relayed_complete_bodies_write_only_local_receipts_and_never_durable_sho
         answer = bridge.call("lead.read", {"argv": argv, "cwd": str(w.root)},
                              endpoint=b.server.address, key=b.server.key_hex)
         assert answer["exit"] == 0, answer["stderr"]
+        assert b.server.drain(10)
         assert mid in answer["stdout"]
         assert worker_surface.changes(before, worker_surface.snapshot(w.root / ".aew")) == sorted(
             "+" + p for p in ("local/lead/", T.REL, T.LOCK_REL, T.LOCK_REL + ".queue"))
@@ -109,6 +184,7 @@ def test_relayed_complete_bodies_write_only_local_receipts_and_never_durable_sho
         # A deliberate re-read re-lists the body without clearing the durable inbox or rewriting a thread/seen log.
         again = bridge.call("lead.read", {"argv": argv, "cwd": str(w.root)},
                             endpoint=b.server.address, key=b.server.key_hex)
+        assert b.server.drain(10)
         assert again["exit"] == 0 and mid in again["stdout"]
 
 

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from aewflow import create_planned_ticket
 from fake_harness import credential_hits
-from harness_conformance import FakeOpenCodeDriver, sync_dir
+from harness_conformance import IMPLEMENT, FakeOpenCodeDriver, sync_dir
 from racing_read import read_text_or_none
 from test_harness_send_when import enable_messaging
 
@@ -123,6 +124,43 @@ def test_an_unqualified_adapter_refuses_wait_without_consuming_a_message(lab, tm
     assert result["exit"] != 0 and json.loads(result["stderr"])["error"]["code"] == "WAIT_UNSUPPORTED", result
     thread = Engine.discover(lab.root).message_thread("INV-0001")
     assert not any(f["kind"] == "DELIVERED" for f in thread["messages"][0]["facts"])
+    (sync / "end").touch()
+    lab.wait(run)
+
+
+def test_final_worker_reply_survives_submit_seal_and_a_post_submit_continuation(lab, tmp_path):
+    from test_message_send import broker
+
+    from aew.harness import bridge
+    from aew.harness import told_messages as T
+
+    run, sync = launch(lab, tmp_path, [
+        {"do": "aew", "args": ["message", "reply", MID, "--file", "-"],
+         "stdin": "Final reply before the implementation report."}, *IMPLEMENT])
+    send(lab)
+    (sync / "go").touch()
+    assert steps_done(lab, run, 2)["exit"] == 0
+    steps_done(lab, run, 5)  # real worker submit, not an inserted report or sealed owner fact
+    e = Engine.discover(lab.root)
+    inv = e.store.read()["invocations"]["INV-0001"]
+    mid = "MSG-INV-0001-2"
+    assert [m["id"] for m in e.message_attention()["awaiting_lead"]] == [mid]
+    with broker(SimpleNamespace(e=e, token=lab.project.token)) as b:
+        answer = bridge.call("lead.read", {"argv": ["status", "--json"], "cwd": str(lab.root)},
+                             endpoint=b.server.address, key=b.server.key_hex)
+        assert answer["exit"] == 0 and b.server.drain(10)
+        assert T.read(lab.aew_root, b.generation) == {mid}
+    # Local receipt must not prevent the final reply from entering the settled unseen list at ingestion.
+    current = e.store.read()
+    if current["work"][inv["work_unit"]]["state"] == "ASSIGNED":
+        e.work_transition(token=lab.project.token, expect_rev=current["revision"],
+                          work_id=inv["work_unit"], to="RUNNING")
+    e.work_transition(token=lab.project.token, expect_rev=e.store.read()["revision"],
+                      work_id=inv["work_unit"], to="REVIEW_PENDING")
+    settled = e.message_attention()["awaiting_lead"]
+    assert [m["id"] for m in settled] == [mid] and "seal" in settled[0]
+    assert e.message_delivery_view()["awaiting_lead"] == []
+    assert [m["id"] for m in e.resume()["coordination"]["awaiting_lead"]] == [mid]
     (sync / "end").touch()
     lab.wait(run)
 

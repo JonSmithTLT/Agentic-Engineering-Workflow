@@ -167,3 +167,7 @@ def test_wait_maximum_is_no_larger_than_the_qualified_linux_margin():
     observed = json.loads(fixture.read_bytes())["facts"]["measurement.shell_timeout"]
     assert 0 < wait_binding.MAX_WAIT_S <= min(90, observed["default_seconds"] - 30,
                                              observed["maximum_safe_wait_seconds"])
+
+
+def test_foreground_call_grace_is_positive_and_at_most_the_adopted_two_seconds():
+    assert 0 < wait_binding.CALL_GRACE_S <= 2.0

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import time
@@ -85,6 +86,16 @@ def test_authority_changed_while_a_real_process_waits_for_the_lock_prevents_its_
             if child.poll() is None:
                 child.kill()
             child.wait(timeout=10)
+
+
+def test_a_real_relayed_read_process_cannot_create_a_receipt_or_its_lock_directory(tmp_path):
+    child = subprocess.run([sys.executable, "-B", str(HELPER), str(tmp_path), "1", A, "--non-writer"],
+                           capture_output=True, timeout=30,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    assert child.returncode != 0
+    error = json.loads(child.stderr)["error"]
+    assert error["code"] == "PERMISSION_DENIED" and error["details"]["reason"] == "non_writer_process"
+    assert not list(tmp_path.iterdir())
 
 
 pytestmark = pytest.mark.serial

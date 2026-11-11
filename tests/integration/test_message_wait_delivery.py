@@ -13,6 +13,7 @@ from aew.engine import outbox
 from aew.engine.api import Engine
 from aew.harness import bridge, lead_broker, runlog
 from aew.harness import contract as K
+from aew.harness import progress as P
 from aew.harness import told_messages as T
 
 
@@ -126,6 +127,7 @@ def test_a_relayed_live_wait_records_only_its_carried_body_locally(lab, tmp_path
         answer = bridge.call("lead.read", {"argv": ["harness", "wait", run, "--timeout", "0"], "cwd": str(lab.root)},
                              endpoint=b.server.address, key=b.server.key_hex)
         assert answer["exit"] == 0, answer
+        assert b.server.drain(10)
         ids = {m["id"] for m in json.loads(answer["stdout"])["messages"]}
         assert ids == {"MSG-INV-0001-2"} and T.read(lab.aew_root, b.generation) == ids
         assert thread.read_bytes() == before
@@ -167,3 +169,76 @@ def test_post_before_wait_suppresses_messages_but_not_an_explicit_end_and_keeps_
         assert after_post["evidence"] == explicit["evidence"] and after_post["results"] == explicit["results"]
     finally:
         b.close()
+
+
+def test_worker_message_handler_ablation_breaks_the_actual_wait_assertion_and_restoration_returns(
+        lab, tmp_path, monkeypatch):
+    run, sync = launch(lab, tmp_path, [REPLY])
+    send(lab)
+    (sync / "go").touch()
+    assert steps_done(lab, run, 2)["exit"] == 0
+    e = Engine.discover(lab.root)
+    original = P.holds
+
+    def disabled(digest, trigger, **kwargs):
+        return False if trigger.get("why") == K.WORKER_MESSAGE else original(digest, trigger, **kwargs)
+
+    def require_reply():
+        result = e.harness_wait(run, timeout=0, triggers=True, message_after={})
+        assert result.get("why") == [K.WORKER_MESSAGE], "worker_message handler did not return the verified reply"
+        assert [m["id"] for m in result["messages"]] == ["MSG-INV-0001-2"]
+
+    try:
+        with monkeypatch.context() as missing:
+            missing.setattr(P, "holds", disabled)
+            with pytest.raises(AssertionError, match="worker_message handler did not return the verified reply"):
+                require_reply()
+        require_reply()
+    finally:
+        (sync / "end").touch()
+    lab.wait(run)
+
+
+@pytest.mark.parametrize("ended", [False, True])
+def test_failed_relayed_wait_send_records_neither_message_nor_sequence_or_end_receipt(lab, tmp_path, ended):
+    from aew.errors import AEWError
+
+    run, sync = launch(lab, tmp_path, [REPLY])
+    send(lab)
+    (sync / "go").touch()
+    assert steps_done(lab, run, 2)["exit"] == 0
+    if ended:
+        (sync / "end").touch()
+        lab.wait(run)
+    e = Engine.discover(lab.root)
+    directory = runlog.run_dir(lab.aew_root, run)
+    paths = [directory / name for name in (runlog.RETURNED_FILE, runlog.END_RETURNED_FILE)]
+    before = [p.read_bytes() if p.exists() else None for p in paths]
+    b = lead_broker.LeadBroker(e, lab.project.token)
+    b.server.start()
+    handler = b.server.handler
+
+    def failing(op, args):
+        result = handler(op, args)
+
+        def deliver(sender):
+            def broken(value):
+                raise OSError("scripted wait result write failed")
+
+            result.deliver(broken)
+
+        return bridge.ResultDelivery(deliver)
+
+    b.server.handler = failing
+    try:
+        with pytest.raises(AEWError, match="scripted wait result write failed") as failed:
+            bridge.call("lead.read", {"argv": ["harness", "wait", run, "--timeout", "0"], "cwd": str(lab.root)},
+                        endpoint=b.server.address, key=b.server.key_hex)
+        assert failed.value.code == "BRIDGE_ERROR" and b.server.drain(10)
+        assert [p.read_bytes() if p.exists() else None for p in paths] == before
+        assert T.read(lab.aew_root, b.generation) == set()
+        assert [m["id"] for m in e.message_attention()["awaiting_lead"]] == ["MSG-INV-0001-2"]
+    finally:
+        b.close()
+        (sync / "end").touch()
+    lab.wait(run)

@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import sys
 import time
+from contextlib import nullcontext
 from pathlib import Path
 
-from aew import util
+from aew import process_kind, util
+from aew.errors import AEWError
 from aew.harness import told_messages as T
 
 
@@ -21,6 +25,7 @@ def main():
     p.add_argument("--crash", choices=["before", "after"])
     p.add_argument("--authority", type=Path)
     p.add_argument("--checked", type=Path)
+    p.add_argument("--non-writer", action="store_true")
     args = p.parse_args()
     if args.ready:
         args.ready.touch()
@@ -46,8 +51,14 @@ def main():
             args.checked.touch()
         return held
 
-    T.record(args.root, args.generation, args.messages, current=current)
+    try:
+        with process_kind.declared_as("aew (contained Lead)") if args.non_writer else nullcontext():
+            T.record(args.root, args.generation, args.messages, current=current)
+    except AEWError as exc:
+        print(json.dumps({"error": exc.to_dict()}), file=sys.stderr)
+        return exc.exit_code
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

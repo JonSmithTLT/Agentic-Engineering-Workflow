@@ -46,8 +46,9 @@ MESSAGE_DELIVERY_RECORDS = frozenset({"local/lead/told-messages.json", "local/le
 TOLD = (runlog.END_RETURNED_FILE, runlog.RETURNED_FILE)
 
 
-def delivery_records(run: str) -> set[str]:
-    return {f"{runlog.RUNS_REL}/{run}/{name}" for name in TOLD}
+def delivery_records(run: str | None, *, messages: bool = False) -> set[str]:
+    return ({f"{runlog.RUNS_REL}/{run}/{name}" for name in TOLD} if run is not None else set()) | (
+        set(MESSAGE_DELIVERY_RECORDS) if messages else set())
 
 
 # The one field read from the clock when the command runs: a run's heartbeat age (`harness status`).
@@ -84,7 +85,9 @@ def contained(lab: HarnessLab, broker: lead_broker.LeadBroker) -> dict[str, str]
 
 
 def relayed(lab: HarnessLab, broker: lead_broker.LeadBroker, *argv: str):
-    return run_aew(*argv, cwd=lab.root, env=contained(lab, broker))
+    result = run_aew(*argv, cwd=lab.root, env=contained(lab, broker))
+    assert broker.server.drain(20)
+    return result
 
 
 def direct(lab: HarnessLab, *argv: str):

@@ -2036,6 +2036,8 @@ The delivery-record exception to relayed reads' no-write rule is constrained as 
 Typed broker tools and own-shell `aew lead tool` keep the existing durable shown writer for verified bodies in a
 successful result; credentialed `message unseen` keeps its recovery semantics. Plain operator and contained-local
 reads consume nothing. A relayed status/resume uses a single machine result, rendering that same result for readable
-output, then the broker records only its verified bodies locally. Local receipts do not clear durable attention or
+output, then after the successful bridge send the broker records only its verified bodies locally. Relayed wait
+sequence/end marks use that same send-success boundary. Own-shell typed consumption follows successful stdout emit
+and flush. A failed send/write/flush records no message receipt. Local receipts do not clear durable attention or
 the worker inbox cap. Receipt of a successful response is not proof the model read or understood it, and a process
-loss between result production, receipt recording and return may cause re-listing rather than exactly-once delivery.
+loss between successful output and receipt recording may cause re-listing rather than exactly-once delivery.

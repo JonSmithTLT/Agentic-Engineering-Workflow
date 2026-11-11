@@ -13,7 +13,7 @@ What each harness provides to AEW's steering features, and what each feature nee
 | `read_model_list` | list the models the harness offers, read as a launch reads them, with no session | **gap**: `model/list` on the app-server; doctor's read is built for OpenCode only (a register row holds the work) | **yes**: `GET /api/model` on a server started as a launch starts it, with no session |
 | `read_progress` | read the worker's tool calls: paths, commands and exit codes | **yes**: pushed: `item/started`, `item/completed`, `item/commandExecution/*`, `item/fileChange/patchUpdated` (not probed yet) | **yes**: polled: tool parts of `session.message.list` (the meter's poll) |
 | `read_usage` | read the worker's token usage | **yes**: pushed: `thread/tokenUsage/updated` (not probed yet) | **yes**: polled: the meter (`session.list`, `session.message.list`) |
-| `report_step_and_shell_calls` | report open step and foreground shell call identities and their lifetime ends | **gap**: no adapter integrates call/step lifetime reporting or message waits (a register row holds the work) | **gap**: qualification and worker wait lifetime binding not built yet (a register row holds the work) |
+| `report_step_and_shell_calls` | report open step and foreground shell call identities and their lifetime ends | **gap**: no adapter integrates call/step lifetime reporting or message waits (a register row holds the work) | **partial**: call/step/reconnect binding on qualified Linux 2.2.6; Windows runtime NOT RUN and worker wait refused there; deterministic fake/process coverage on both hosts is not runtime qualification (a register row holds the work) |
 | `steer_running_turn` | input admitted at the running turn's next step | **yes**: `turn/steer` with `expectedTurnId` | **yes**: `session.prompt` with `delivery: steer` |
 | `wake_idle_session` | post input that starts an idle session's turn | **yes**: `turn/start` on an idle thread | **yes**: `session.prompt` |
 
@@ -25,7 +25,7 @@ A feature's verdict on a harness is the weakest of its needs there: **gap** when
 |---|---|---|---|---|
 | `doctor_model_list` | `read_model_list` | aew doctor | **gap** | **yes** |
 | `interrupt_worker` | `interrupt_turn` | steering design §3 | **yes** | **yes** |
-| `message_wait_binding` | `report_step_and_shell_calls` | messaging worker wait | **gap** | **gap** |
+| `message_wait_binding` | `report_step_and_shell_calls` | messaging worker wait | **gap** | **partial** |
 | `progress_digest` | `read_progress`, `read_usage` | steering PR 1 | **yes** | **yes** |
 | `push_wake` | `wake_idle_session`, `queue_until_turn_end`, `attach_to_operator_session`, `mark_non_operator_input` | steering PR 2 | **gap** | **partial** |
 | `steer_worker` | `steer_running_turn` | messaging MS5 | **yes** | **yes** |

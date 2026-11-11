@@ -308,7 +308,8 @@ def staffing_text() -> str:
             f"card's `use_when` and skills): {picks}.{rest}")
 
 
-def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: Sequence[Stage]) -> str:
+def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: Sequence[Stage], *,
+           messaging: bool = False) -> str:
     from aew.engine.workspace_ops import mutating_cap  # local: its imports reach the harness, which reaches this text
 
     paths = gates_policy.get("risk_paths") or {}
@@ -492,4 +493,8 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], stages: 
         "free text in `--fields -` or `--file -` with a quoted heredoc, never on the command line. `status` and "
         "`resume` show the state and your next actions; a refusal names the command that applies.",
     ]
+    if messaging:
+        from aew.harness.contract import messaging_guide_lines
+
+        lines.extend(["", "## Coordination messages", "", *messaging_guide_lines()])
     return "\n".join(lines) + "\n"

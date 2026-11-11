@@ -74,7 +74,6 @@ from aew.harness.contract import (
     UNAVAILABLE_TOOLS,
     LaunchContract,
 )
-from aew.harness.harness_capabilities import GAP as CAP_GAP
 from aew.harness.harness_capabilities import PARTIAL as CAP_PARTIAL
 from aew.harness.harness_capabilities import YES as CAP_YES
 from aew.harness.harness_capabilities import Support
@@ -383,7 +382,9 @@ class OpenCodeAdapter(HarnessAdapter):
                                                         "there is no role of its own"),
         "read_model_list": Support(CAP_YES, "`GET /api/model` on a server started as a launch starts it, with no "
                                             "session"),
-        "report_step_and_shell_calls": Support(CAP_GAP, "qualification and worker wait lifetime binding not built yet",
+        "report_step_and_shell_calls": Support(CAP_PARTIAL, "call/step/reconnect binding on qualified Linux 2.2.6; "
+                                               "Windows runtime NOT RUN and worker wait refused there; deterministic "
+                                               "fake/process coverage on both hosts is not runtime qualification",
                                                "E175"),
     }
 
@@ -551,7 +552,9 @@ class OpenCodeAdapter(HarnessAdapter):
                            pinned_model=projection.model_ref(contract.execution_profile),
                            progress=progress.Tracker(run=self.run_dir.name, workspace=contract.workspace,
                                                      scope_paths=contract.extra.get(progress.SCOPE_PATHS),
-                                                     clock=time.time, changed=_changed_now(contract)),
+                                                      clock=time.time, changed=_changed_now(contract),
+                                                      messaging=(contract.extra.get("coordination") or {}).get(
+                                                          "messaging") == "enabled"),
                            progress_path=self.run_dir / runlog.PROGRESS_FILE)
         try:
             self.meter.set_prompt_state("unsent")

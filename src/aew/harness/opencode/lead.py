@@ -95,12 +95,12 @@ SEED_TIMEOUT_S = 60.0
 MODEL_SEED_MAX = 64 * 1024
 
 
-def guide_of(engine: Any) -> str:
+def guide_of(engine: Any, *, switches: frozenset[str] | None = None) -> str:
     """The project's Lead guide (F16), or nothing when its policy cannot be read (the Lead then sees why elsewhere)."""
     from aew.surface import lead_text
 
     try:
-        return lead_text.guide_for(engine)
+        return lead_text.guide_for(engine, switches=switches)
     except AEWError:
         return ""
 
@@ -113,7 +113,7 @@ def refuse_unusable(provider_env: list[str], base: Mapping[str, str]) -> None:
 
 
 def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = "",
-            push_wake: bool = False) -> dict[str, str]:
+             push_wake: bool = False, switches: frozenset[str] = frozenset()) -> dict[str, str]:
     keep = agentenv.WINDOWS_KEEP if sys.platform == "win32" else agentenv.POSIX_KEEP
     env = {k: v for k, v in base.items() if k.upper() in keep or k.upper().startswith("XDG_")
            or (sys.platform != "win32" and k.startswith("LC_")) or k.upper() in PASSED_THROUGH}
@@ -129,10 +129,24 @@ def tui_env(base: Mapping[str, str], *, provider_env: list[str], guide: str = ""
 
     # A Lead that runs here is not contained (the contained Lead's start replaces this configuration): it is told no
     # tool of AEW's is placed, as an uncontained worker is (review of #353, n3)
-    config = projection.lead_config(guide, tools=capability.placed(None, contained=False), push_wake=push_wake)
+    config = projection.lead_config(guide, tools=capability.placed(None, contained=False), push_wake=push_wake,
+                                    switches=switches)
     env.update({"OPENCODE_CONFIG_CONTENT": json.dumps(config, sort_keys=True),
                 "OPENCODE_DISABLE_PROJECT_CONFIG": "1", "OPENCODE_DISABLE_AUTOUPDATE": "1"})
     return env
+
+
+def session_presentation(engine: Any, *, provider_env: list[str], contained: ContainedLead | None = None
+                         ) -> Callable[[dict[str, str], frozenset[str]], dict[str, str]]:
+    """Refresh guide/system only after offer.apply, from the exact snapshot the broker and catalog already took."""
+    def prepare(env: dict[str, str], switches: frozenset[str]) -> dict[str, str]:
+        guide = guide_of(engine, switches=switches)
+        if contained is not None:
+            contained.guide, contained.surface_switches = guide, switches
+        return {**env, **tui_env(env, provider_env=provider_env, guide=guide, switches=switches,
+                               push_wake=pushes_wakes(engine))}
+
+    return prepare
 
 
 def command(engine: Any, extra_args: list[str]) -> list[str]:
@@ -231,10 +245,14 @@ def contained_here() -> bool:
 def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | None = None) -> dict[str, Any]:
     """What `aew opencode` would run, without starting anything. It holds no environment variable's value, but for the
     import path in its `config` that the Lead's MCP server is given (no credential)."""
-    guide = guide_of(engine)
+    from aew.surface.context import switches_for
+
+    switches = switches_for(engine)
+    guide = guide_of(engine, switches=switches)
     refuse_unusable(provider_env, os.environ)  # contained, the variables feed relays and stay out of the TUI's env
     wakes = pushes_wakes(engine)
-    env = tui_env(os.environ, provider_env=[] if contained_here() else provider_env, guide=guide, push_wake=wakes)
+    env = tui_env(os.environ, provider_env=[] if contained_here() else provider_env, guide=guide, push_wake=wakes,
+                  switches=switches)
     try:
         argv: list[str] | str = command(engine, extra_args or [])
     except HarnessIncompatible as exc:
@@ -255,7 +273,7 @@ def describe(engine: Any, *, provider_env: list[str], extra_args: list[str] | No
                  f"session without a typed-back code; {dashboard_autostart.OFF_ENV}=off turns that off. A running "
                  "dashboard is reused without issuing; later opens against an auto-started server refuse.")
     # what the TUI is given where it runs as it is: an uncontained Lead's line included (review of #356, n1)
-    config = (projection.lead_config(guide, push_wake=wakes) if contained_here()
+    config = (projection.lead_config(guide, push_wake=wakes, switches=switches) if contained_here()
               else json.loads(env["OPENCODE_CONFIG_CONTENT"]))
     return {"command": argv, "config": config,
             "env_names": sorted([*env, *lead_broker.ENV_NAMES]), "provider_env": provider_env, "notes": notes}
@@ -364,7 +382,8 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
                                           keep_seat=keep_seat,
                                           env=tui_env(os.environ, provider_env=[], guide=guide,
                                                       push_wake=pushes_wakes(engine)), contained=lead,
-                                          with_token=offer.apply, on_ready=on_ready)
+                                           with_token=offer.apply, on_ready=on_ready,
+                                           prepare_env=session_presentation(engine, provider_env=[], contained=lead))
         return _outcome(out, version)
     # Off Linux the TUI runs as it is, labelled so, with its label.json and its register entry (G3 addendum 7, ruling
     # 1); under an explicit `required` that refuses before any credential is read.
@@ -384,7 +403,8 @@ def run(engine: Any, *, acquire: bool, session_label: str | None, keep_seat: boo
     offer = _switch_offers(engine)
     with session_services(engine, provider_env=provider_env) as on_ready:
         out = lead_broker.run_session(engine, argv, acquire=acquire, session_label=session_label, keep_seat=keep_seat,
-                                      env=env, contained=weaker, with_token=offer.apply, on_ready=on_ready)
+                                       env=env, contained=weaker, with_token=offer.apply, on_ready=on_ready,
+                                       prepare_env=session_presentation(engine, provider_env=provider_env))
     return _outcome(out, version)
 
 
@@ -632,6 +652,7 @@ class ContainedLead:
         refuse_unusable(provider_env, base)
         self.terminal = _launching_terminal()
         self.engine, self.argv, self.guide, self.base = engine, list(argv), guide, base
+        self.surface_switches: frozenset[str] = frozenset()  # set by the broker's post-offer presentation callback
         policy = engine.execution_policy()[0]
         self.warning_h = login_warning_h(policy)
         self.provider_env = [str(n) for n in provider_env]
@@ -828,7 +849,7 @@ class ContainedLead:
                                             models={p: m for p, m in self.models.items()
                                                     if network is not None and p in network.relays},
                                             tools=capability.placed(label, contained=True),
-                                            push_wake=pushes_wakes(engine))
+                                             push_wake=pushes_wakes(engine), switches=self.surface_switches)
             inside = self._inside(child_env, layout, run_dir, state, config, network)
             leaked = network.leaks(json.dumps(inside), json.dumps(config)) if network else []
             if leaked:  # F28 §3.6, row 6: names only

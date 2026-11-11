@@ -962,9 +962,11 @@ def require_credential(acquire: bool) -> None:
 
 def run_session(engine: Any, command: list[str], *, acquire: bool, session_label: str | None,
                 keep_seat: bool, contained: Callable[[str | None, dict[str, str]], Harness],
-                env: dict[str, str] | None = None,
-                with_token: Callable[[str], None] | None = None,
-                on_ready: Callable[[], None] | None = None) -> dict[str, Any]:
+                 env: dict[str, str] | None = None,
+                 with_token: Callable[[str], None] | None = None,
+                 on_ready: Callable[[], None] | None = None,
+                 prepare_env: Callable[[dict[str, str], frozenset[str]], dict[str, str]] | None = None
+                 ) -> dict[str, Any]:
     """``aew lead session``: broker the Lead credential for one Lead harness session.
 
     ``env`` is the harness's environment (default: the caller's, minus every credential variable). A harness
@@ -1017,6 +1019,8 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
         if ENV_SWITCHES not in broker_env:
             child_env.pop(ENV_SWITCHES, None)  # an ambient presentation hint never becomes this session's snapshot
         try:
+            if prepare_env is not None:
+                child_env = prepare_env(child_env, broker.surface_switches)
             harness = contained(broker.server.private_dir, child_env)
         except BaseException:
             broker.close()

@@ -89,6 +89,14 @@ def test_lead_projection_golden():
     golden("projection-lead", config)
 
 
+def test_lead_projection_messaging_golden():
+    config = projection.lead_config(switches=frozenset({"coordination.messaging"}))
+    server = config["mcp"]["servers"][projection.LEAD_MCP_SERVER]
+    server["command"][0] = "<this interpreter>"
+    server["environment"]["PYTHONPATH"] = "<this aew's import root>"
+    golden("projection-lead-messaging", config)
+
+
 def effect(rules: list[dict[str, str]], action: str, resource: str = "*") -> str:
     """OpenCode's evaluation: the last rule whose action and resource match wins."""
     out = "ask"

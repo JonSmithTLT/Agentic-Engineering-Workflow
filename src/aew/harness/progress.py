@@ -105,7 +105,13 @@ STATE_VERSION = 2
 RUN_ENDED, TEST_FAILED, OUT_OF_SCOPE = K.RUN_ENDED, K.TEST_FAILED, K.OUT_OF_SCOPE
 WORKER_MESSAGE, WORKER_IDLE, QUIET = K.WORKER_MESSAGE, K.WORKER_IDLE, K.QUIET
 WHY: tuple[str, ...] = K.WHY
-DETECTED_IN_POLL: tuple[str, ...] = K.WAITED_ON
+
+
+def detected_in_poll(messaging: bool = False) -> tuple[str, ...]:
+    return K.waited_on(messaging)
+
+
+DETECTED_IN_POLL: tuple[str, ...] = detected_in_poll()
 
 UNKNOWN = "unknown"
 SCOPE_PATHS, WORKSPACE_BASE = K.SCOPE_PATHS, K.WORKSPACE_BASE  # the launch contract's keys (contract.py owns them)
@@ -205,8 +211,10 @@ class Tracker:
     ``out_of_scope`` reads ``unknown``) and the wall clock. Its methods change only the state they are given."""
 
     def __init__(self, *, run: str, workspace: str | None, scope_paths: Iterable[str] | None,
-                 clock: Callable[[], float], changed: Callable[[], list[str] | None] | None = None) -> None:
+                  clock: Callable[[], float], changed: Callable[[], list[str] | None] | None = None,
+                  messaging: bool = False) -> None:
         self.run = run
+        self.detected = detected_in_poll(messaging)
         self.workspace = workspace
         # The workspace as given and as resolved: a path the model sends may name either (a link in the path).
         self._roots = [] if not workspace else list(dict.fromkeys([workspace, os.path.realpath(workspace)]))
@@ -454,6 +462,8 @@ class Tracker:
                     found.append((WORKER_IDLE, {"idle_s": round(now - float(state["idle_since"]), 1)}))
         fired: list[str] = []
         for why, detail in found:
+            if why not in self.detected:
+                continue
             last_at = state["fired"].get(why)
             if why != RUN_ENDED and isinstance(last_at, (int, float)) and now - float(last_at) < ANTI_SPIN_S:
                 state["suppressed"][why] = int(state["suppressed"].get(why, 0)) + 1

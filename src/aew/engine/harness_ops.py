@@ -216,11 +216,12 @@ class Harness:
         is the fallback for a broker that isn't posting (steering design r4 §1)."""
         if self.wakes_reach_lead():
             return K.wake_step(runs)
+        messaging = self.coordination.project_switch(self.k.store.current()) == X.MESSAGING_ENABLED
         try:
             fallback = X.wakes_post_here(self.k.execution_policy()[0])
         except AEWError:
             fallback = False
-        return K.no_broker_step(runs) if fallback else K.wait_step(runs)
+        return K.no_broker_step(runs, messaging=messaging) if fallback else K.wait_step(runs, messaging=messaging)
 
     def launch_dispatched(self, result: dict[str, Any]) -> dict[str, Any]:
         """Finish ``--launch`` on a dispatch: the dispatch-issued credential goes to the run's supervisor and
@@ -540,7 +541,8 @@ class Harness:
         for run in names:
             inv_id, inv = self._find_run(state, run)
             targets[run] = (inv_id, inv, next((r.get("launched_at") for r in inv["runs"] if r["run"] == run), None))
-        messaging = triggers and self.coordination.project_switch(state) == X.MESSAGING_ENABLED
+        messaging = (triggers and K.WORKER_MESSAGE in K.waited_on(
+            self.coordination.project_switch(state) == X.MESSAGING_ENABLED))
         invocation_ids = {target[0] for target in targets.values()}
         cursor = message_after
         if messaging and cursor is None:
@@ -627,7 +629,8 @@ class Harness:
             # observation.
             woken = wake_queue.some_broker_posts(self.k.aew_root)
             again = {"timed_out": True, "runs": digests(), "run_capabilities": capabilities(),
-                     "next_action": K.wake_step(names) if woken else K.wait_step(names, again=True)}
+                     "next_action": (K.wake_step(names) if woken
+                                     else K.wait_step(names, again=True, messaging=messaging))}
             if len(names) == 1:
                 return {"run": names[0], "status": statuses[names[0]], **again}
             return {"statuses": statuses, **again}
@@ -641,7 +644,7 @@ class Harness:
                       "run_capabilities": capabilities(),
                        "next_action": K.trigger_step(shape["why"], run, others, then=(
                           K.wake_step([run, *others], after_a_start=False)
-                           if wake_queue.some_broker_posts(self.k.aew_root) else None))}
+                           if wake_queue.some_broker_posts(self.k.aew_root) else None), messaging=messaging)}
             if view is not None:
                 result["coordination"] = view
             if record_return and process_kind.kind() == process_kind.STORE_WRITER:
@@ -778,8 +781,7 @@ class Harness:
         * both on (G4): every send is recorded in the message store, failing closed. This AEW cannot record one yet
           (F9-A's MS5b adds the store path), so every send is refused ``HARNESS_SEND_NEEDS_STORE``;
         * they disagree: refused ``MESSAGING_SNAPSHOT_MISMATCH``, before any timing's own refusal. The Lead relaunches
-          the run, except with the project switched on before MS4 records snapshots: then sending needs messaging
-          switched off.
+          the run to record a launch snapshot matching the current adopted switch.
 
         A refusal writes nothing: no request file, no control-state entry, nothing posted. Work and invocation state
         do not change."""

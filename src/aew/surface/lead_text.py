@@ -42,20 +42,23 @@ def _steps(t: contract.Tool) -> tuple[guide.StageStep, ...]:
 def stages(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> tuple[guide.Stage, ...]:
     """The tools on ``profile`` with standard descriptions, independent of MCP's budgeted presentation.
 
-    MS3 limit: message_send has no Ticket-path move, so the rendered guide does not name it even when selected here.
-    Switch-aware guide/system guidance belongs to the reply/attention slice.
+    Coordination is not a Ticket-path move; its on-only guidance comes from the shared harness guide owner.
     """
     return tuple(guide.Stage(t.name, t.description, _steps(t), SA.STARTS_AT.get(t.name, {}))
                  for t in contract.exposed(profile, switches) if t.expands_to)
 
 
-def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
+def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], *,
+           switches: frozenset[str] = frozenset()) -> str:
     """The guide for a policy, with the normal profile's stages (the file `docs/guides/lead-guide.md` holds)."""
-    return guide.render(gates_policy, checks_policy, stages())
+    return guide.render(gates_policy, checks_policy, stages(switches=switches),
+                        messaging=contract.MESSAGING in switches)
 
 
-def guide_for(engine: Any) -> str:
+def guide_for(engine: Any, *, switches: frozenset[str] | None = None) -> str:
     """The guide for this project's own policy (`aew guide`, and the Lead's system text)."""
     from aew.surface.context import switches_for
 
-    return str(engine.lead_guide(stages(switches=switches_for(engine))))
+    selected = switches_for(engine) if switches is None else switches
+    return str(engine.lead_guide(stages(switches=selected),
+                                **({"messaging": True} if contract.MESSAGING in selected else {})))

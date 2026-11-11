@@ -1539,6 +1539,7 @@ None.
 - `aew.harness.weaker_register`
 - `aew.policy.execution`
 - `aew.process_kind`
+- `aew.surface.context`
 - `aew.surface.lead_text`
 - `aew.switch_offer`
 

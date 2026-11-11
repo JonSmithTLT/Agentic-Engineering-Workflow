@@ -907,8 +907,8 @@ class Engine:
     def lead_acquire(self, *, expect_rev: int, session_label: str | None = None) -> dict[str, Any]:
         return self._lead.lead_acquire(expect_rev=expect_rev, session_label=session_label)
 
-    def lead_guide(self, stages: Sequence[Any]) -> str:
-        return self._resume.lead_guide(stages)
+    def lead_guide(self, stages: Sequence[Any], *, messaging: bool = False) -> str:
+        return self._resume.lead_guide(stages, messaging=messaging)
 
     def lead_handoff_accept(self, *, offer: str, expect_rev: int, session_label: str | None = None) -> dict[str, Any]:
         return self._lead.lead_handoff_accept(offer=offer, expect_rev=expect_rev, session_label=session_label)

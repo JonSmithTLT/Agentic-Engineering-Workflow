@@ -91,10 +91,9 @@ def test_message_send_bounds_are_enforced_before_the_runner(change):
 
 # Audited direct off readers, not a blanket file exemption. Counts pin each function's reads, so a new site must be
 # classified even inside an existing file. The shared helper names aliases/getattr/dynamic access as coverage limits;
+# contract.catalog()/check_call() without switches are also outside this syntax detector (documented in its module);
 # a same-count replacement in an audited scope still needs semantic review. Switched invariants live in CATALOGS.
 OFF_READERS = {
-    "src/aew/harness/opencode/projection.py": (
-        "Known MS3 limit: import-time off summary; snapshot-aware naming belongs to reply/attention.", {"_named": 1}),
     "src/aew/harness/steering_loop.py": (
         "Only progression actions are picked; message_send never progresses.", {"SteeringLoop.tick": 1}),
     "src/aew/surface/availability.py": (
@@ -138,7 +137,8 @@ OFF_READERS = {
         "Send has no operator-only primitive, pinned by the on catalog contract.",
         {"test_no_typed_tool_reaches_an_operator_only_command": 2}),
     "tests/unit/test_lead_text.py": (
-        "Off-text goldens/planting and workflow guidance; on message_send omission is the documented MS3 limit.",
+        "Historical off-text goldens/planting; on snapshot naming has an independent wire/prose oracle "
+        "in messaging_guidance.",
         {"plant": 1, "stage_named": 1, "known_words": 1, "stray_arguments": 4,
          "test_every_normal_tool_is_named_in_what_the_lead_is_given": 2,
          "test_the_list_follows_the_catalog_when_a_tool_goes": 1,
@@ -151,6 +151,9 @@ OFF_READERS = {
     "tests/unit/test_message_catalog.py": (
         "Off baseline must remain unmodified by compacting.",
         {"test_the_compact_presentation_changes_only_descriptions": 2}),
+    "tests/unit/test_messaging_guidance.py": (
+        "Independent switched-row plant copies metadata and mutates the registry, not a live off-only enumeration.",
+        {"test_a_switched_row_omitted_by_the_prose_selector_fails_the_independent_oracle": 2}),
     "tests/unit/test_operator_endpoint.py": (
         "Named raise/confirmation tools; message_send is mechanical, with no operator principal.",
         {"test_no_operator_principal_outside_the_endpoint": 2}),
@@ -209,3 +212,10 @@ def test_the_shared_guard_handles_imports_and_keeps_switch_aware_calls():
     assert off_only_reads("from aew.surface.contract import TOOLS\nrows = list(TOOLS)") == [
         CatalogRead("<module>", "TOOLS")]
     assert not off_only_reads("rows = contract.exposed(profile, switches)\nrow = contract.tool(name, switches=s)")
+
+
+@pytest.mark.parametrize("source", ["rows = contract.catalog()", "check_call(name, args, profile)",
+    "from aew.surface.contract import catalog\nrows = catalog()",
+    "from aew.surface.validate import check_call\ncheck_call(name, args, profile)"])
+def test_the_documented_catalog_and_check_call_limits_are_not_claimed_as_coverage(source):
+    assert not off_only_reads(source)

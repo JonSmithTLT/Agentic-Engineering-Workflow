@@ -419,7 +419,7 @@ class Kernel:
                 try:
                     ctx = TxnContext(session=s, actor=actor, txn_op=op)
                     if request is not None:
-                        ctx.replayed = request.replay(s.state, actor["generation"], op)
+                        ctx.replayed = request.replay(s.state, actor["generation"], op, aew_root=self.aew_root)
                         if ctx.replayed is not None:
                             yield ctx
                             return

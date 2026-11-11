@@ -270,7 +270,10 @@ def test_a_parent_gate_only_another_unit_type_evaluates_is_stuck_and_replaceable
     assert decision["availability"] == "AVAILABLE", decision
     option = decision["approval_options"]["check:unit"]
     assert option["replacement"] == "check:unit"
-    args = {**decision["arguments"], **option, "rationale": "the configured check carries the standard"}
+    [preview] = status_previews(p)
+    assert preview["approval_digests"]["check:unit"] == option["approval_digest"]
+    assert "approval_subjects" not in preview
+    args = {**option, "rationale": "the configured check carries the standard"}
     out = R.run_tool(Engine.discover(p.root), CTX, "resolve", args, token=p.token)
     assert out["ok"] and out["result"]["mandatory_gates"] == ["check:unit"], out
     assert gate_ops.REASON not in p.ok("dispatch", "explain", child, "--json")["reason_codes"]

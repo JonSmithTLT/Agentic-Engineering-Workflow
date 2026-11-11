@@ -516,7 +516,8 @@ class Hierarchy:
                                       "then close it", unverified=backlog)
             self.gates.record_relied_on(ctx, unit, gc, list(gc["gates"]))
             decision = self.k.new_decision(ctx, "closeout", f"{work_id} closed: {unit['title']}", work_unit=work_id,
-                                         reason=reason, evidence_refs=[f"{work_id}@{binding}"] if binding else [])
+                                         reason=reason,
+                                         evidence_refs=[f"{work_id}@record:{binding}"] if binding else [])
             path = f"work/{work_id}/closeout.md"
             text = self._closeout_record(state, work_id, unit, gc, decision)
             ctx.session.write(path, text)
@@ -596,7 +597,7 @@ class Hierarchy:
             decision = self.k.new_decision(ctx, "cancellation", f"{work_id} cancelled with its open descendants",
                                          work_unit=work_id, reason=reason,
                                          body="Cascaded to: " + (", ".join(open_desc) or "none") + "\n"
-                                         + (f"{work_id}@{binding}\n" if binding else ""))
+                                         + (f"{work_id}@record:{binding}\n" if binding else ""))
             for did in sorted(open_desc, key=lambda d: -H.depth(state, d)):
                 d = state["work"][did]
                 why = f"cancelled with {work_id} ({decision}): {reason}"

@@ -1,1 +1,3 @@
 E327 adds optional approval bindings to class-C decisions. Manifest adoption checks the approved byte digests before re-pinning settings, including the files a switch offer writes. Authority acceptance and rejection record the decider and bind file bytes or the stored directory candidate record. The Lead generation and integration candidate checks use their existing subjects. The project revision check remains in force.
+
+Operator commands show the digest before confirmation. The Lead relay accepts the optional digest from status, resume, or gate show. Publishing and takeover report `APPROVAL_SUBJECT_CHANGED` for changed approval subjects and include the next step. Other revision conflicts still report `STALE_REVISION`.

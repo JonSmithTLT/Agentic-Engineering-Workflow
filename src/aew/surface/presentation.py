@@ -17,7 +17,7 @@ DESCRIPTIONS = {
     "harness_wait": "Wait for a run to end or need the Lead; one call, no polling.",
     "checkpoint": "Record a bounded handoff note; advances no work.",
     "steering": "Lower steering or request a raise or confirmation; requests grant nothing.",
-    "resolve": "Continue or abandon a stage, dispose findings/claims/anomalies, replace gates.",
+    "resolve": "Resolve a decision.",
     "ticket_draft": "Create a Ticket and optionally propose, never accept, its plan.",
     "ticket_start": "Assign a READY mutating Ticket by policy, launch and move to RUNNING.",
     "ticket_request_review": "Move a RUNNING Ticket to REVIEW_PENDING and launch required reviewers.",

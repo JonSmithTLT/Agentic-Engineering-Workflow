@@ -284,10 +284,18 @@ class Gates:
             state = self.archive.rehydrate(state, work_id) or state
         gc = self.gate_context(state, work_id)
         gc.pop("evidence")
-        gc["gate_approval_digests"] = {gate: approval.gate_digest(gc, gate) for gate in gc["gates"]}
+        digests = {gate: approval.gate_digest(gc, gate) for gate in gc["gates"]}
+        gc["gate_approval_digests"] = digests
+        gc["gate_approval_argv"] = {
+            gate: approval.command("waive", work_id, state["revision"], digest,
+                                   "--gate", gate, "--reason", "<reason>")
+            for gate, digest in digests.items()
+        }
         snapshot = gc.get("snapshot")
         if snapshot and "children_digest" in snapshot:
-            gc["closeout_approval_digest"] = approval.closeout_digest(snapshot)
+            digest = approval.closeout_digest(snapshot)
+            gc["closeout_approval_digest"] = digest
+            gc["closeout_approval_argv"] = approval.command("work.close", work_id, state["revision"], digest)
         gc["evidence_ids"] = [e["id"] for e in E.scan(self.k.aew_root, work_id)[0]]
         gc["unmet"] = G.unmet(gc["gates"])
         if gc.get("plan_binding"):
@@ -1645,7 +1653,7 @@ class EvidenceCommands:
                 gc = self.gates.gate_context(ctx.state, work_id)
                 if binding is not None:
                     approval.compare("waive", f"{work_id}/{gate}", binding, approval.gate_digest(gc, gate))
-                    ref = [f"{work_id}/{gate}@{binding}"]
+                    ref = [f"{work_id}/{gate}@record:{binding}"]
                 if gate in gc["obligations"]["non_waivable"]:
                     raise GateUnsatisfied(f"{gate} is inherited as non-waivable")
                 if gate not in policy.get("waivable_gates", []):

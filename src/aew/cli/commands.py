@@ -335,14 +335,19 @@ def _authority_decide(a: argparse.Namespace) -> Any:
     subject = engine.authority_candidate(a.candidate)
     action = a.authority_cmd
     digest = subject["digest"]
-    if digest is None:
+    if action == "accept" and subject["kind"] == "file, missing":
         from aew.errors import NotFound
 
-        raise NotFound(f"authority candidate file {subject['path']} is missing", path=subject["path"])
+        raise NotFound(f"authority candidate file {subject['path']} is missing. "
+                       f"Reject it with aew authority reject {a.candidate}.", path=subject["path"])
     summary = f"{action} {subject['path']} ({subject['kind']}, SHA-256 {digest})"
     if action == "accept":
         summary += f" as {a.klass} authority"
     authorization = operator_attribution(a.decided_by, f"RECORD as YOUR decision: {summary}")
+    if a.decided_by == "lead":
+        import sys
+
+        print(summary, file=sys.stderr)
     args: dict[str, Any] = {"token": token, "expect_rev": a.expect_rev, "candidate_id": a.candidate,
                             "decided_by": a.decided_by, "reason": a.reason, "binding": digest,
                             "authorization": authorization}

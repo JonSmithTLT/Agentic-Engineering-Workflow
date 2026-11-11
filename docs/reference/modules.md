@@ -358,8 +358,10 @@ None.
 - `aew.harness.bridge`
 - `aew.harness.contract`
 - `aew.harness.delivery`
+- `aew.harness.operator_client`
 - `aew.operator`
 - `aew.priority_levels`
+- `aew.process_kind`
 - `aew.surface.context`
 - `aew.surface.errors`
 - `aew.surface.run`
@@ -1088,6 +1090,7 @@ None.
 
 ### `aew.engine.request_ids`
 
+- `aew.engine.outbox`
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.util`

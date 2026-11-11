@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import re
 from copy import deepcopy
+from pathlib import Path
 from typing import Any, NamedTuple
 
+from aew.engine import outbox
 from aew.errors import IdempotencyConflict, IntegrityError, UsageError
 from aew.harness.contract import EXPECT_REV, invocation_of_run
 from aew.util import sha256_text
@@ -41,7 +43,8 @@ class ControlRequest(NamedTuple):
             raise UsageError("request-id arguments must be JSON values") from exc
         return cls(request_id, digest, digests)
 
-    def replay(self, state: dict[str, Any], generation: int, op: str) -> dict[str, Any] | None:
+    def replay(self, state: dict[str, Any], generation: int, op: str, *,
+               aew_root: Path | None = None) -> dict[str, Any] | None:
         index = state.get(INDEX)
         if index is None or index["generation"] != generation:
             return None
@@ -57,7 +60,7 @@ class ControlRequest(NamedTuple):
                 f"{op} request {self.id!r} already committed with different arguments: {description}",
                 op=op, request_id=self.id, fields=changed,
             )
-        return _render(state, op, entry)
+        return _render(state, op, entry, aew_root=aew_root)
 
     def remember(self, state: dict[str, Any], generation: int, op: str, ref: tuple[str, str] | None,
                  revision: int, metadata: dict[str, Any] | None = None) -> None:
@@ -89,7 +92,7 @@ def prune_archived(projected: dict[str, Any], archived: set[str]) -> None:
         projected.pop(INDEX)
 
 
-def _render(state: dict[str, Any], op: str, receipt: dict[str, Any]) -> dict[str, Any]:
+def _render(state: dict[str, Any], op: str, receipt: dict[str, Any], *, aew_root: Path | None = None) -> dict[str, Any]:
     wid, ref = receipt["unit"], receipt["ref"]
     unit = state["work"][wid]
     common = {"ok": True, "replayed": True, "revision": receipt["revision"]}
@@ -97,6 +100,13 @@ def _render(state: dict[str, Any], op: str, receipt: dict[str, Any]) -> dict[str
     if op == "work.create":
         return common | {"id": wid, "record": unit["record"]} | metadata
     if op == "work.promote":
+        if ref == wid:
+            transition = outbox.read_record(aew_root, receipt["revision"]) if aew_root is not None else None
+            decisions = [Path(path).stem for path in (transition or {}).get("refs", [])
+                         if path.startswith("decisions/")]
+            if not decisions:
+                raise IntegrityError(f"promotion of {wid} has no decision at revision {receipt['revision']}")
+            ref = decisions[0]
         return common | {"work_id": unit["promoted_from"], "promoted_to": wid, "decision": ref}
     if op == "plan.propose":
         plan = next(p for p in unit["plans"] if str(p["revision"]) == ref)

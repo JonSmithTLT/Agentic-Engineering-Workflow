@@ -998,7 +998,7 @@ class Validation:
             was = breaker["open"]
             reset = {"at": utc_now(), **authorization}
             if binding is not None:
-                reset["approval_ref"] = f"validation-breaker@{binding}"
+                reset["approval_ref"] = f"validation-breaker@record:{binding}"
             breaker.update(open=None, failures=[], reset=reset)
             ctx.summary = "validation circuit breaker reset by the operator" + ("" if was else " (it was closed)")
         return {"ok": True, "was_open": was is not None, "revision": ctx.session.committed_revision}

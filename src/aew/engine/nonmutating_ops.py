@@ -181,9 +181,12 @@ class Inputs:
                 continue
             fresh = F.record_freshness(self.k.repo_root, ev, commit)
             ack = self.acknowledged(unit, inp["id"], inp["sha256"], commit or "")
-            shown = {"evidence": inp["id"], "sha256": ev["_sha256"], "commit": head}
-            out.append({**inp, "acknowledgement_subject": shown,
-                        "approval_digest": approval.input_digest(inp["id"], ev["_sha256"], head),
+            shown = approval.input_subject(inp["id"], ev["_sha256"], head)
+            digest = shown["digest"]
+            argv = approval.command("input.acknowledge", work_id, state["revision"], digest,
+                                    "--input", inp["id"], "--from", inp["from"], "--reason", "<reason>")
+            out.append({**inp, "acknowledgement_subject": shown["subject"], "approval_digest": digest,
+                        "acknowledgement_argv": argv,
                         "freshness": fresh["status"], "basis": fresh.get("basis"),
                         "acknowledgement": (ack or {}).get("decision"),
                         "blocks_dispatch": ev["_sha256"] != inp["sha256"]
@@ -327,13 +330,13 @@ class NonMutating:
             ev = self.inputs.find_unit_evidence(source, evidence_id)
             if binding is not None:
                 approval.compare("input.acknowledge", evidence_id, binding,
-                                 approval.input_digest(evidence_id, ev["_sha256"], commit))
+                                 approval.input_subject(evidence_id, ev["_sha256"], commit)["digest"])
             fresh = F.record_freshness(self.k.repo_root, ev, commit)
             decision = self.k.new_decision(
                 ctx, "input_acknowledgement",
                 f"{work_id}: input {evidence_id} ({fresh['status']}) acknowledged for commit {(commit or '')[:12]}",
                 work_unit=work_id, reason=reason,
-                evidence_refs=[f"{ev['_path']}@{binding}" if binding else ev["_path"]],
+                evidence_refs=[f"{ev['_path']}@record:{binding}" if binding else ev["_path"]],
                 body=f"Freshness at acknowledgement: {fresh}\n")
             unit.setdefault("input_acknowledgements", []).append(
                 {"evidence": evidence_id, "sha256": ev["_sha256"], "from": source, "commit": commit,
@@ -771,7 +774,7 @@ class NonMutating:
             decision = self.k.new_decision(
                 ctx, "evidence_acceptance", f"{work_id} record {execution['record']['id']} accepted", work_unit=work_id,
                 evidence_refs=[r["path"] for r in unit.get("evidence", []) if r["id"] == execution["record"]["id"]],
-                reason=reason, body=f"{execution['record']['id']}@{binding}\n" if binding else "")
+                reason=reason, body=f"{execution['record']['id']}@record:{binding}\n" if binding else "")
             path = f"work/{work_id}/completion.md"
             text = self._evidence_only_completion(state, work_id, unit, gc, decision)
             ctx.session.write(path, text)
@@ -975,7 +978,7 @@ class NonMutating:
                                          f"{work_id} plan v{unit['plan']['accepted']} reconfirmed under current "
                                          "ancestor plans", work_unit=work_id, reason=reason,
                                          body=f"Binding problem resolved: {problem}\n",
-                                         evidence_refs=[f"{work_id}@{binding}"] if binding else [])
+                                         evidence_refs=[f"{work_id}@record:{binding}"] if binding else [])
             unit["plan"]["ancestor_plans"] = snapshot
             unit["plan"].pop("bindings_invalidated", None)
             unit["plan"].setdefault("reconfirmations", []).append({"decision": decision, "at": utc_now()})

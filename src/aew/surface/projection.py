@@ -187,18 +187,21 @@ def _gate_decisions(part: dict[str, Any], engine: Any, state: dict[str, Any], su
     except AEWError:  # the catalogue or policy cannot be read now: doctor says so
         items = []
     for i in items:
+        args = {"expect_rev": part["revision"], "subject": i["id"], "choice": "replace_gate"}
+        choices = {name: {**args, "replacement": name, "approval_digest": shown["digest"]}
+                   for name, shown in i["approval_subjects"].items()}
+        if len(choices) == 1:
+            args = next(iter(choices.values()))
         part["decisions"].append({
             "decision": "REPLACE_GATE", "tool": "resolve", "evidence": [i["id"]],
-            "arguments": {"expect_rev": part["revision"], "subject": i["id"], "choice": "replace_gate"},
-            "availability": AVAILABLE if i["replaceable"] else BLOCKED,
-            "approval_options": {name: {"replacement": name, "approval_digest": shown["digest"]}
-                                 for name, shown in i["approval_subjects"].items()},
-            "cli": ["lead", "tool", "resolve", "--arguments", "-"]})
+            "arguments": args, "availability": AVAILABLE if i["replaceable"] else BLOCKED,
+            "approval_options": choices, "cli": ["lead", "tool", "resolve", "--arguments", "-"]})
         part["blockers"].append(_blocker(
             "GATE_UNSATISFIABLE",
             f"{i['work_id']}'s mandatory gate `{i['gate']}` {i['verdict']}: {i['why']}; {i['route']}",
             {k: i[k] for k in ("id", "work_id", "gate", "candidates", "replaceable", "satisfiable_by", "stranded_by",
-                               "stuck_units", "stale_invocations", "approval_subjects")}))
+                               "stuck_units", "stale_invocations")}
+            | {"approval_digests": {name: row["digest"] for name, row in i["approval_subjects"].items()}}))
 
 
 def _dispose(item: dict[str, Any], rev: int, engine: Any, *,
@@ -431,7 +434,8 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
     ``blockers``."""
     out = []
     listed = {e for d in part["decisions"] for e in d.get("evidence") or [] if d["decision"].startswith("DISPOSE")}
-    fit = engine.stage_fit(engine.store.current(), subject) if part["state"] else None
+    state = engine.store.current() if part["state"] else None
+    fit = engine.stage_fit(state, subject) if state is not None else None
     for d in map(lambda d: _fitting(d, fit), part["decisions"]):
         if "role" not in d:
             arguments = d.get("arguments")
@@ -470,10 +474,10 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
             out.append(_decision(d["decision"], subject, tool=d["tool"], evidence=[e], arguments=arguments,
                                  cli_fallback=[x.replace("{evidence}", e) for x in d["cli"]], availability=found))
             # The report's own marked items, which its acceptance would refuse to advance past (M4-E E5b, §2.4).
-            for item in _items(engine, subject, evidence=[e]):
+            for item in _items(engine, subject, evidence=[e], state=state):
                 if item["evidence"] == e and item["id"] not in listed:
                     listed.add(item["id"])
-                    x = _dispose(item, int(part["revision"]), engine)
+                    x = _dispose(item, int(part["revision"]), engine, state=state)
                     out.append(_decision(x["decision"], subject, tool=x["tool"], evidence=x["evidence"],
                                          arguments=x["arguments"], cli_fallback=x["cli"], availability=AVAILABLE))
     return out

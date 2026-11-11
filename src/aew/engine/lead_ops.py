@@ -307,7 +307,7 @@ class Lead:
         with self.k.store.session() as s:
             state = s.state
             approval.compare("lead.takeover", "Lead generation", str(lead["generation"]),
-                             str(state["lead"]["generation"]))
+                             str(state["lead"]["generation"]), next_step="Re-run takeover.")
             if s.revision != snapshot["revision"]:
                 raise StaleRevision("control state changed during operator authorization; re-run takeover",
                                     expected=snapshot["revision"], current=s.revision)
@@ -324,7 +324,7 @@ class Lead:
                 f"Operator-authorized Lead takeover: generation {previous['generation']} -> {new_gen}",
                 decided_by={"kind": "operator", "authorized_by": auth["authorized_by"],
                             "new_session_label": session_label},
-                reason=reason, evidence_refs=[f"lead@generation:{lead['generation']}"],
+                reason=reason, evidence_refs=[f"lead@record:generation:{lead['generation']}"],
                 body=f"Superseded holder: {previous}\nInterrupted invocations: {interrupted or 'none'}\n",
             )
             self.queue.sync(s.state)  # the takeover ended every custodian: their leases await reconcile

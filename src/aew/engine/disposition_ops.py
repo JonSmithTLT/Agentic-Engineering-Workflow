@@ -439,7 +439,7 @@ class Dispositions:
                       "work_unit": wid, **decided, "by": dict(ctx.actor),
                       "anomaly": {**anomaly, "disposition": {"id": dp, **decided}} if anomaly else None}
             if binding is not None:
-                record["approval_ref"] = f"{subject}@{binding}"
+                record["approval_ref"] = f"{subject}@record:{binding}"
             validate("disposition", record, source=f"disposition {dp}")
             if anomaly is not None:
                 del state["anomalies"][subject]

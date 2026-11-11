@@ -23,10 +23,10 @@ from conftest import git
 
 from aew import operator
 from aew.engine.api import Engine
-from aew.engine.approval import input_digest
 from aew.engine.primitives import CONTROL_OP_SPECS
 from aew.engine.store import Transition
 from aew.errors import ApprovalSubjectChanged
+from aew.knowledge.records import read_record
 from aew.util import load_yaml, safe_dump_yaml, sha256_bytes
 
 C_OPS = sorted(name for name, specs in CONTROL_OP_SPECS.items()
@@ -47,6 +47,18 @@ def control_bytes(project):
 
 @pytest.mark.parametrize("op", C_OPS)
 def test_an_approval_never_pins_content_the_approver_was_not_shown(project, tmp_path, monkeypatch, op):
+    _approval_case(project, tmp_path, monkeypatch, op, changed=True)
+
+
+@pytest.mark.parametrize("op", [
+    "authority.accept", "authority.reject", "manifest.adopt", "plan.accept", "lead.takeover",
+    "integrate.breaker_reset", "integrate.publishing", "stage.continue", "work.gate_replace",
+])
+def test_bound_unchanged_approval_commits(project, tmp_path, monkeypatch, op):
+    _approval_case(project, tmp_path, monkeypatch, op, changed=False)
+
+
+def _approval_case(project, tmp_path, monkeypatch, op, *, changed):
     if op in PENDING:
         pytest.fail(f"{op}: approval race case pending")
 
@@ -58,13 +70,15 @@ def test_an_approval_never_pins_content_the_approver_was_not_shown(project, tmp_
     if op == "manifest.adopt":
         manifest.write_bytes(manifest.read_bytes() + b"\n# reviewed\n")
         binding = engine.manifest_approval()
-        manifest.write_bytes(manifest.read_bytes() + b"# changed after review\n")
+        if changed:
+            manifest.write_bytes(manifest.read_bytes() + b"# changed after review\n")
         args = {"reason": "reviewed settings"}
     elif op in {"authority.accept", "authority.reject"}:
         candidate = next(c for c in engine.authority_list()["candidates"] if c["path"] == "README.md")
         binding = engine.authority_candidate(candidate["id"])["digest"]
         path = project.root / candidate["path"]
-        path.write_bytes(path.read_bytes() + b"\nchanged after review\n")
+        if changed:
+            path.write_bytes(path.read_bytes() + b"\nchanged after review\n")
         args = {"candidate_id": candidate["id"], "decided_by": "operator"}
         if op == "authority.accept":
             args["klass"] = "orientation"
@@ -76,7 +90,8 @@ def test_an_approval_never_pins_content_the_approver_was_not_shown(project, tmp_
         entry = engine.status(wid)["work_unit"]["plans"][0]
         binding = entry["sha256"]
         path = engine.aew_root / proposal["path"]
-        path.write_bytes(path.read_bytes() + b"\nchanged after review\n")
+        if changed:
+            path.write_bytes(path.read_bytes() + b"\nchanged after review\n")
     elif op in {"work.cancel", "work.close"}:
         wid = create_unit(project, "story", "Parent whose children change", cls=0)
         plan_unit(project, tmp_path, wid)
@@ -99,6 +114,11 @@ def test_an_approval_never_pins_content_the_approver_was_not_shown(project, tmp_
             after_writer.append(control_bytes(project))
             return {"authorized_by": "operator-tty"}
 
+        if not changed:
+            monkeypatch.setattr(operator, "authorize", lambda _: {"authorized_by": "operator-tty"})
+            assert engine.lead_takeover(expect_rev=project.rev(), reason="Replace the holder shown")["ok"]
+            assert project.rev() == before_rev + 1
+            return
         monkeypatch.setattr(operator, "authorize", change_generation)
         with pytest.raises(ApprovalSubjectChanged) as failure:
             engine.lead_takeover(expect_rev=project.rev(), reason="Replace the holder shown")
@@ -111,18 +131,20 @@ def test_an_approval_never_pins_content_the_approver_was_not_shown(project, tmp_
         from aew.engine.queue_ops import empty
 
         failure = {"at": "2026-01-01T00:00:00Z", "code": "FAILED", "run": "V-0001", "work": "T-0001"}
-        change_control(engine, lambda state: state.setdefault("queue", empty()).update(
-            validation_breaker={"failures": [failure], "open": None}))
+        if changed:
+            change_control(engine, lambda state: state.setdefault("queue", empty()).update(
+                validation_breaker={"failures": [failure], "open": None}))
         args = {"reason": "resume validation"}
     elif op == "integrate.publishing":
         wid, _ = to_commit_ready(project, tmp_path)
         prepare_and_validate(project, wid)
         binding = engine.status(wid)["approval_subjects"][op]["digest"]
-        git("commit", "--allow-empty", "-m", "new authoritative revision", cwd=project.root)
-        rebuilt = engine.integrate_publish(token=project.token, expect_rev=project.rev(), work_id=wid)
-        assert rebuilt["rebuilt"]
-        project.lead("verify", "ingest", wid, "--evidence", verify(project, wid, scope="integration"))
-        assert engine.status(wid)["approval_subjects"][op]["digest"] != binding
+        if changed:
+            git("commit", "--allow-empty", "-m", "new authoritative revision", cwd=project.root)
+            rebuilt = engine.integrate_publish(token=project.token, expect_rev=project.rev(), work_id=wid)
+            assert rebuilt["rebuilt"]
+            project.lead("verify", "ingest", wid, "--evidence", verify(project, wid, scope="integration"))
+            assert engine.status(wid)["approval_subjects"][op]["digest"] != binding
         args = {"work_id": wid, "candidate": binding}
     elif op == "plan.reconfirm":
         parent = create_unit(project, "story", "Parent", cls=0)
@@ -142,8 +164,9 @@ def test_an_approval_never_pins_content_the_approver_was_not_shown(project, tmp_
         binding = engine.stage_recheck(intent, contract_digest=digest, plan=plan)["approval"]["digest"]
         from aew.engine.stage_intents import step
 
-        with step(intent, 1, final=False):
-            engine.checkpoint(token=project.token, expect_rev=project.rev(), note="completed another step")
+        if changed:
+            with step(intent, 1, final=False):
+                engine.checkpoint(token=project.token, expect_rev=project.rev(), note="completed another step")
         args = {"intent": intent, "contract_digest": digest, "plan": plan, "rationale": "continue reviewed steps"}
     elif op == "verify.classify":
         wid = create_unit(project, "story", "Parent", cls=1)
@@ -182,15 +205,17 @@ def test_an_approval_never_pins_content_the_approver_was_not_shown(project, tmp_
         item = next(item for item in engine.gate_items(wid) if item["gate"] == PROSE)
         replacement = "check:unit"
         binding = item["approval_subjects"][replacement]["digest"]
-        create_unit(project, "ticket", "New affected child", cls=1, parent=wid)
+        if changed:
+            create_unit(project, "ticket", "New affected child", cls=1, parent=wid)
         args = {"subject": item["id"], "replacement": replacement, "rationale": "same standard"}
     elif op == "input.acknowledge":
         source = create_investigation(project, tmp_path, cls=0)
         evidence_id = complete_investigation(project, source)
-        rec = engine.status(source)["work_unit"]["execution"]["record"]
-        binding = input_digest(evidence_id, rec["sha256"], engine.authoritative_commit())
+        wid = create_investigation(project, tmp_path, cls=0, title="Consumer",
+                                   extra=("--depends-on", f"{source}:evidence"))
+        [shown] = engine.input_status(engine.store.current(), wid)
+        binding = shown["approval_digest"]
         git("commit", "--allow-empty", "-m", "new authoritative revision", cwd=project.root)
-        wid = create_unit(project, "story", "Consumer", cls=0)
         args = {"work_id": wid, "source": source, "evidence_id": evidence_id, "reason": "reviewed input"}
     elif op == "waive":
         path = engine.aew_root / "policy/gates.yaml"
@@ -217,6 +242,11 @@ def test_an_approval_never_pins_content_the_approver_was_not_shown(project, tmp_
         args["authorization"] = {"authorized_by": "operator-tty"}
     if op != "integrate.publishing":
         args["binding"] = binding
+    if not changed:
+        result = getattr(engine, method)(token=project.token, expect_rev=rev, **args)
+        assert result.get("ok", result.get("status") == "ACTIVE"), result
+        assert project.rev() > rev
+        return
     with pytest.raises(ApprovalSubjectChanged) as failure:
         getattr(engine, method)(token=project.token, expect_rev=rev, **args)
     assert failure.value.details["op"] == op
@@ -301,3 +331,47 @@ def test_manifest_adoption_distinguishes_missing_from_empty_policy(project):
     assert refused.value.details["subject"] == rel
     assert refused.value.details["current"] == sha256_bytes(b"")
     assert project.rev() == rev
+
+
+@pytest.mark.parametrize("replacement", ["missing", "directory"])
+def test_reject_of_a_candidate_whose_file_is_gone(project, monkeypatch, capsys, replacement):
+    from aew.cli.main import main
+    from aew.engine.approval import digest
+
+    engine = Engine.discover(project.root)
+    candidate = next(c for c in engine.authority_list()["candidates"] if c["path"] == "README.md")
+    path = project.root / candidate["path"]
+    path.unlink()
+    if replacement == "directory":
+        path.mkdir()
+    prompts = []
+
+    def confirm(prompt):
+        prompts.append(prompt)
+        return {"authorized_by": "operator-tty"}
+
+    monkeypatch.setattr(operator, "authorize", confirm)
+    monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
+    argv = ["-C", str(project.root), "authority", "reject", candidate["id"], "--expect-rev", str(project.rev())]
+    assert main(argv) == 0
+    import json
+
+    out = json.loads(capsys.readouterr().out)
+    stored = read_record(engine.aew_root / "decisions" / f"{out['decision']}.md", "decision").meta
+    expected = digest(candidate)
+    assert len(prompts) == 1 and "file, missing" in prompts[0] and expected in prompts[0]
+    assert stored["evidence_refs"] == [f"README.md@record:{expected}"]
+    assert stored["decided_by"]["kind"] == "operator"
+    assert stored["decided_by"]["authorized_by"] == "operator-tty"
+    assert any(c["id"] == candidate["id"] and c["status"] == "rejected"
+               for c in engine.authority_list()["candidates"])
+
+
+@pytest.mark.parametrize("facade", [True, False])
+def test_authority_accept_requires_an_explicit_decider(project, facade):
+    engine = Engine.discover(project.root)
+    candidate = engine.authority_list()["candidates"][0]
+    target = engine if facade else engine._project
+    with pytest.raises(TypeError, match="decided_by"):
+        target.authority_accept(token=project.token, expect_rev=project.rev(), candidate_id=candidate["id"],
+                                klass="orientation")

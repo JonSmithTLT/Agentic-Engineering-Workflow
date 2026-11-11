@@ -359,8 +359,8 @@ class StageIntents:
             si["resolution"] = {"choice": "continue", "rationale": rationale.strip()[:2000], "generation": generation,
                                  "rev": rev, "at": at}
             if binding is not None:
-                si["rebound"][-1]["approval_ref"] = f"{intent}@{binding}"
-                si["resolution"]["approval_ref"] = f"{intent}@{binding}"
+                si["rebound"][-1]["approval_ref"] = f"{intent}@record:{binding}"
+                si["resolution"]["approval_ref"] = f"{intent}@record:{binding}"
             # The renewed judgment supersedes a recoverable stale stop; its original transaction remains in history.
             si["stopped"] = None
             done, planned = len(si["steps"]), len(si["plan"])

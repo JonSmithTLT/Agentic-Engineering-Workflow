@@ -815,6 +815,7 @@ class Integration:
             named = (ctx.state["work"].get(work_id) or {}).get("integration") or {}
             if candidate is not None:
                 approval.compare("integrate.publishing", work_id, candidate, named.get("candidate"),
+                                 next_step="Read its projection and decide on the current one.",
                                  reason="candidate_mismatch", named=candidate)
             args: dict[str, Any] = {}
             refused = self.publish_query(ctx.state, work_id, args)
@@ -840,7 +841,7 @@ class Integration:
                 integ["publishing_at"] = utc_now()
                 ctx.summary = f"{work_id} publishing {integ['candidate'][:12]} over {integ['base'][:12]}"
                 if candidate is not None:
-                    ctx.summary += f" ({work_id}@{candidate})"
+                    ctx.summary += f" ({work_id}@record:{candidate})"
             else:
                 raise IntegrityError(f"engine defect: the publish query of {work_id} answered no outcome",
                                      outcome=outcome)

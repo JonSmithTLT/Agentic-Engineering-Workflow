@@ -118,11 +118,16 @@ class ProjectAdmin:
         if path.endswith("/"):
             digest = approval.digest(candidate)
             return {"path": path, "kind": "directory", "digest": digest, "ref": f"{path}@record:{digest}"}
+        source = self.k.repo_root / path
         try:
-            digest = sha256_bytes((self.k.repo_root / path).read_bytes())
-        except (FileNotFoundError, IsADirectoryError):
-            digest = None
-        return {"path": path, "kind": "file", "digest": digest, "ref": f"{path}@{digest}"}
+            if source.is_file():
+                digest = sha256_bytes(source.read_bytes())
+                return {"path": path, "kind": "file", "digest": digest, "ref": f"{path}@{digest}"}
+        except (FileNotFoundError, IsADirectoryError, PermissionError):
+            if source.is_file():
+                raise
+        digest = approval.digest(candidate)
+        return {"path": path, "kind": "file, missing", "digest": digest, "ref": f"{path}@record:{digest}"}
 
     def authority_accept(self, *, token: str, expect_rev: int, candidate_id: str, klass: str,
                          decided_by: str, reason: str | None = None,
@@ -144,7 +149,8 @@ class ProjectAdmin:
             ref = path
             if binding is not None:
                 subject = self._candidate_subject(candidate)
-                approval.compare("authority.accept", path, binding, subject["digest"])
+                approval.compare("authority.accept", path, binding,
+                                 subject["digest"] if subject["kind"] != "file, missing" else None)
                 ref = subject["ref"]
             by = dict(ctx.actor, kind="operator" if decided_by == "operator" else "lead",
                       recorded_by_lead=True, **(authorization or {}))
@@ -862,6 +868,33 @@ class Engine:
         return {"ok": True, "work_id": work_id, "revision": chosen["revision"] if chosen else None,
                 "clean": not findings, "errors": [f for f in findings if f["severity"] == "error"],
                 "warnings": [f for f in findings if f["severity"] == "warning"]}
+
+    def approval_subject(self, work_id: str, op: str, *, gate: str | None = None,
+                         evidence: str | None = None, source: str | None = None) -> dict[str, Any] | None:
+        if op == "input.acknowledge":
+            rows = self.input_status(self.store.current(), work_id)
+            for row in rows:
+                if row["id"] == evidence and row["from"] == source and "approval_digest" in row:
+                    return {"subject": row["acknowledgement_subject"], "digest": row["approval_digest"]}
+            if evidence is None or source is None:
+                return None
+            try:
+                report = self._inputs.find_unit_evidence(source, evidence)
+            except AEWError:
+                return None
+            return approval.input_subject(evidence, report["_sha256"], self.authoritative_commit())
+        if op in {"work.close", "waive"}:
+            view = self.gate_show(work_id)
+            if op == "work.close":
+                digest = view.get("closeout_approval_digest")
+                subject = view.get("snapshot")
+            else:
+                digest = view["gate_approval_digests"].get(gate)
+                subject = {"gate": gate, "result": view["gates"].get(gate), "snapshot": view.get("snapshot")}
+            return {"subject": subject, "digest": digest} if digest else None
+        shown = self.status(work_id, usage=False).get("approval_subjects", {}).get(op)
+        return {"subject": {k: v for k, v in shown.items() if k not in {"digest", "argv"}},
+                "digest": shown["digest"]} if shown else None
 
     def gate_show(self, work_id: str) -> dict[str, Any]:
         return self._gates.gate_show(work_id)

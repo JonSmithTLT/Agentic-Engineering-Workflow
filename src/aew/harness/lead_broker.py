@@ -615,6 +615,7 @@ def run_cli(engine: Any, token: str, argv: list[str], cwd: str, stdin: str, *, c
         raise errors.PermissionDenied("this Lead session brokers a different AEW project",
                                       project=str(engine.aew_root))
     ns.token = token
+    ns.relayed = True
     ns.cwd = str(target)
     previous = os.getcwd()
     stdin_before = sys.stdin

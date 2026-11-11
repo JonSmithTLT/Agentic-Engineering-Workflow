@@ -334,11 +334,11 @@ class GateRepair:
                      rationale: str, binding: str | None = None) -> dict[str, Any]:
         args: dict[str, Any] = {"subject": subject, "replacement": replacement, "rationale": rationale}
         with self.k.lead_txn(token, expect_rev, OP, reason=rationale) as ctx:
+            require(self.replace_query(ctx.state, None, args))
             if binding is not None:
                 current = next((item["approval_subjects"].get(replacement) for item in self.gate_items(ctx.state)
                                 if item["id"] == subject), None)
                 approval.compare(OP, subject, binding, current["digest"] if current else None)
-            require(self.replace_query(ctx.state, None, args))  # the guard (predicate and conditions), then the write
             found = args["found"]
             owner = found["work_id"]
             unit = ctx.state["work"][owner]
@@ -350,7 +350,7 @@ class GateRepair:
                       "generation": ctx.state["lead"]["generation"], "expected_revision": expect_rev, "rev": rev,
                       "at": utc_now(), "stale_invocations": found["stale_invocations"]}
             if binding is not None:
-                record["approval_ref"] = f"{subject}@{binding}"
+                record["approval_ref"] = f"{subject}@record:{binding}"
             validate("gate-correction", record, source=f"gate correction {gc}")
             self._write(ctx, unit, record, found["gates"])
             ctx.summary = f"{owner} mandatory gate `{found['gate']}` replaced by `{replacement}` ({gc})"

@@ -105,6 +105,15 @@ def test_plan_propose_and_work_promote_replay_the_committed_results(tmp_path):
     replay = _replay(p, "work_promote", promoted, **promote)
     assert replay == promoted | {"replayed": True}
 
+    from aew.engine.store import Transition
+
+    engine = Engine.discover(p.root)
+    with engine.store.session() as session:
+        receipt = session.state[INDEX]["operations"]["work.promote"]["same"]
+        receipt["ref"] = promoted["promoted_to"]
+        session.commit(Transition(op="test.legacy_receipt", actor={"kind": "test"}, summary="legacy receipt"))
+    assert _replay(p, "work_promote", promoted, **promote) == promoted | {"replayed": True}
+
 
 def test_archiving_prunes_only_receipts_for_the_archived_unit(project):
     args = {"kind": "epic", "title": "Request IDs", "risk_class": 1}

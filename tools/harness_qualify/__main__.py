@@ -28,6 +28,7 @@ from harness_qualify import FIXTURES, pack_for, report, run  # noqa: E402
 from harness_qualify.core import (  # noqa: E402
     EXIT_USAGE,
     NETWORK_BLOCKED_ENV,
+    NetworkIsolationError,
     UnknownCheck,
     document,
     exit_code,
@@ -69,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         record, diff, fixture_rows, adopt = run(pack, args.binary, out=args.out, fixtures=fixtures, only=args.only,
                                                 slow=args.slow, keep=args.keep)
-    except UnknownCheck as exc:
+    except (UnknownCheck, NetworkIsolationError) as exc:
         sys.stderr.write(f"{exc}\n")
         return EXIT_USAGE
     text = report(record, diff, fixture_rows, adopt)

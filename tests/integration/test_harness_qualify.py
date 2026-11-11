@@ -5,6 +5,7 @@ pack, its scripted model, and its OpenCode pack against the fake OpenCode server
 from __future__ import annotations
 
 import ast
+import errno
 import http.client
 import json
 import shutil
@@ -143,6 +144,79 @@ def test_the_private_environment_passes_no_credential_proxy_or_home(tmp_path):
     assert env["PATH"] == "/bin" and "127.0.0.1" in env["NO_PROXY"]
 
 
+@pytest.mark.parametrize("observation", ["not verified: an external route exists",
+                                      "NOT blocked: a connection out succeeded under --unshare-net",
+                                      "not verified: external-egress observation failed (TimeoutError)"])
+def test_unverified_isolation_starts_no_binary_or_model(tmp_path, monkeypatch, observation):
+    monkeypatch.setenv(core.NETWORK_BLOCKED_ENV, "1")
+    monkeypatch.setattr(core, "network_state", lambda: observation)
+    pack = StubPack({"answer": 42})
+    monkeypatch.setattr(pack, "read_version", lambda *a: pytest.fail("started the binary before verifying isolation"))
+    binary = tmp_path / "binary"
+    binary.touch()
+    with pytest.raises(core.NetworkIsolationError, match="not verified|NOT blocked"):
+        core.qualify(pack, binary, out=tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
+def test_verified_isolation_is_observed_before_version_and_preserved_in_the_record(tmp_path, monkeypatch):
+    order = []
+    verified = "blocked: run under bwrap --unshare-net (verified: loopback only, no external route, egress denied)"
+    monkeypatch.setenv(core.NETWORK_BLOCKED_ENV, "1")
+
+    def observe():
+        order.append("isolation")
+        return verified
+
+    monkeypatch.setattr(core, "network_state", observe)
+    pack = StubPack({"answer": 42, "broken": False})
+
+    def version(*args):
+        assert order == ["isolation"]
+        order.append("version")
+        return "1.0"
+
+    monkeypatch.setattr(pack, "read_version", version)
+    binary = tmp_path / "binary"
+    binary.touch()
+    record = core.qualify(pack, binary, out=tmp_path / "out", only=["stub.ok"])
+    assert record.network == verified and order == ["isolation", "version"]
+
+
+@pytest.mark.parametrize(("interfaces", "route", "denial", "expected"), [
+    (["lo"], "", errno.ENETUNREACH, "blocked:"),
+    (["lo"], "", errno.EHOSTUNREACH, "blocked:"),
+    (["lo", "eth0"], "", errno.ENETUNREACH, "not verified: interfaces"),
+    (["lo"], "eth0 00000000 01000000", errno.ENETUNREACH, "not verified: an external route"),
+    (["lo"], "", errno.ETIMEDOUT, "not verified: external-egress"),
+    (["lo"], "", None, "NOT blocked:"),
+])
+def test_network_verification_requires_all_observations(monkeypatch, interfaces, route, denial, expected):
+    monkeypatch.setenv(core.NETWORK_BLOCKED_ENV, "1")
+    monkeypatch.setattr(core.sys, "platform", "linux")
+    def read(path, **kwargs):
+        if path.name == "dev":
+            return "header\nheader\n" + "\n".join(n + ": 0" for n in interfaces)
+        return "header\n" + route if path.name == "route" else ""
+
+    monkeypatch.setattr(Path, "read_text", read)
+    original = core.socket.create_connection
+
+    def connect(address, **kwargs):
+        if address[0] == "192.0.2.1":
+            if denial is not None:
+                raise OSError(denial, "scripted denial")
+            return original(listener.getsockname(), **kwargs)
+        return original(address, **kwargs)
+
+    # A passing external connection is also planted without ever making an external request.
+    with core.socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        monkeypatch.setattr(core.socket, "create_connection", connect)
+        assert core.network_state().startswith(expected)
+
+
 # ---------------------------------------------------------------------------------------------- the scripted model
 
 def _sse(llm: Any, body: dict[str, Any]) -> list[dict[str, Any]]:
@@ -172,6 +246,359 @@ def test_the_scripted_model_calls_the_offered_tool_and_reports_the_usage_it_was_
     assert aux[-1]["response"]["usage"]["input_tokens"] == 0
     assert llm.upgrades == 1 and [r["main"] for r in llm.requests if r["method"] == "POST"] == [True, False]
     assert all("Authorization" not in json.dumps(r) or r["auth"] in ("present", "absent") for r in llm.requests)
+
+
+def test_scripted_parallel_calls_have_distinct_identity_and_output_indexes():
+    llm = model.ResponsesModel([])
+    try:
+        events = llm._events({"calls": [
+            {"call": ["shell"], "arguments": {"command": "first"}},
+            {"call": ["shell"], "arguments": {"command": "second"}}]}, {"shell": {}}, {})
+    finally:
+        llm.close()
+    calls = [e for e in events if e["type"] == "response.output_item.done"]
+    assert [e["output_index"] for e in calls] == [0, 1]
+    assert len({e["item"]["call_id"] for e in calls}) == 2
+    assert [json.loads(e["item"]["arguments"])["command"] for e in calls] == ["first", "second"]
+    assert events[-1]["response"]["output"] == [e["item"] for e in calls]
+    assert [e["sequence_number"] for e in events] == list(range(len(events)))
+
+
+@pytest.mark.serial
+def test_the_scripted_response_pauses_at_a_tool_owned_gate():
+    import threading
+
+    entered, release = threading.Event(), threading.Event()
+    llm = model.start("responses", [{"text": "released", "entered": entered, "release": release}])
+    result = []
+    worker = threading.Thread(target=lambda: result.extend(_sse(llm, {"tools": [{"name": "shell"}]})))
+    try:
+        worker.start()
+        assert entered.wait(5) and not result
+        release.set()
+        worker.join(5)
+        assert not worker.is_alive() and result[-1]["response"]["output"][0]["content"][0]["text"] == "released"
+    finally:
+        release.set()
+        worker.join(5)
+        llm.close()
+
+
+@pytest.mark.parametrize("name", ["steer_boundary", "queue_boundary"])
+def test_messaging_boundaries_have_passing_controls_and_each_fact_can_fail(tmp_path, monkeypatch, name):
+    from harness_qualify import messaging
+
+    expected = {key: True for keys in messaging.BOUNDARY_FACTS.values() for key in keys}
+    measured = dict(expected)
+    monkeypatch.setattr(messaging, "boundary_measurement", lambda ctx: dict(measured))
+
+    def check():
+        ctx = core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6")
+        return next(c for c in OC.OpenCodePack(FIXTURES).checks() if c.id == "messaging." + name).run(ctx)
+
+    assert check().status == core.PASS
+    for key in messaging.BOUNDARY_FACTS[name]:
+        measured = {**expected, key: False}
+        outcome = check()
+        assert outcome.status == core.FAIL and outcome.notes == [key]
+        measured = {k: v for k, v in expected.items() if k != key}
+        assert check().status == core.FAIL  # missing evidence cannot pass either
+
+
+@pytest.mark.parametrize("name", ["prompt_identity", "held_resume"])
+def test_messaging_identity_and_hold_checks_fail_each_unsafe_observation(tmp_path, monkeypatch, name):
+    from harness_qualify import messaging
+
+    expected = {mode + "." + key: True for mode in ("steer", "queue")
+                for key in (*messaging.IDENTITY_FACTS, *messaging.HELD_FACTS)}
+    measured = dict(expected)
+    monkeypatch.setattr(messaging, "identity_measurement", lambda ctx: dict(measured))
+
+    def check():
+        ctx = core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6")
+        return next(c for c in OC.OpenCodePack(FIXTURES).checks() if c.id == "messaging." + name).run(ctx)
+
+    assert check().status == core.PASS
+    keys = messaging.IDENTITY_FACTS if name == "prompt_identity" else messaging.HELD_FACTS
+    for mode in ("steer", "queue"):
+        for key in keys:
+            key = mode + "." + key
+            measured = {**expected, key: False}
+            outcome = check()
+            assert outcome.status == core.FAIL and outcome.notes == [key]
+            measured = {k: v for k, v in expected.items() if k != key}
+            assert check().status == core.FAIL
+
+
+@pytest.mark.parametrize(("responses", "expected", "calls"), [
+    ([(200, {"id": "msg_1"})], "admitted", 1),
+    ([(404, {"_tag": "MessageNotFoundError"})], "pending", 1),
+    ([(404, {"_tag": "SessionNotFoundError"})], "session_lost", 1),
+    ([(404, {}), (200, {"id": "session"})], "pending", 2),
+    ([(404, {}), (404, {})], "session_lost", 2),
+    ([(404, {"_tag": "Unknown"}), (503, {})], "unknown", 2),
+    ([(503, {})], "unknown", 1),
+])
+def test_messaging_admission_never_promotes_untagged_or_missing_results(monkeypatch, responses, expected, calls):
+    from harness_qualify import messaging
+
+    seen = []
+    replies = iter(responses)
+
+    def request(server, method, path):
+        seen.append((method, path))
+        return next(replies)
+
+    monkeypatch.setattr(messaging, "http", request)
+    assert messaging.admission(None, "session", "msg_1") == expected
+    assert len(seen) == calls
+    if calls == 2:
+        assert seen[-1] == ("GET", "/api/session/session")
+
+
+def test_session_loss_check_fails_each_unsafe_observation(tmp_path, monkeypatch):
+    from harness_qualify import messaging
+
+    expected = {mode + "." + key: True for mode in ("steer", "queue") for key in messaging.LOSS_FACTS}
+    measured = dict(expected)
+    monkeypatch.setattr(messaging, "loss_measurement", lambda ctx: dict(measured))
+    ctx = core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6")
+    assert messaging.loss_check(ctx).status == core.PASS
+    for key in expected:
+        measured = {**expected, key: False}
+        out = messaging.loss_check(ctx)
+        assert out.status == core.FAIL and out.notes == [key]
+
+
+def binding_events():
+    def frame(kind, **values):
+        return {"type": "session." + kind, "data": {"sessionID": "ses_1", "assistantMessageID": "step_1", **values}}
+
+    return [frame("step.started"), frame("tool.input.started", id="call_1", name="shell"),
+            frame("tool.called", id="call_1"), frame("tool.input.started", id="call_2", name="shell"),
+            frame("tool.called", id="call_2"), frame("tool.failed", id="call_2"),
+            frame("tool.success", id="call_1"), frame("step.ended"), frame("execution.succeeded")]
+
+
+@pytest.mark.parametrize("mutation", ["none", "missing_call", "misbound_call", "misbound_end", "missing_end",
+                                     "early_step_end", "early_execution_end", "missing_execution_end",
+                                     "no_parallel", "no_failure", "no_success", "no_reconnect"])
+def test_wait_binding_check_uses_scripted_event_identity_and_order(tmp_path, monkeypatch, mutation):
+    from harness_qualify import messaging
+
+    events = binding_events()
+    if mutation == "missing_call":
+        events.pop(2)
+    elif mutation == "misbound_call":
+        events[2]["data"]["assistantMessageID"] = "other_step"
+    elif mutation == "misbound_end":
+        events[7]["data"]["assistantMessageID"] = "other_step"
+    elif mutation == "missing_end":
+        events.pop(7)
+    elif mutation == "early_step_end":
+        events.insert(5, events.pop(7))
+    elif mutation == "early_execution_end":
+        events.insert(5, events.pop(8))
+    elif mutation == "missing_execution_end":
+        events.pop(8)
+    elif mutation == "no_parallel":
+        events.insert(3, events.pop(6))
+    elif mutation == "no_failure":
+        events[5]["type"] = "session.tool.success"
+    elif mutation == "no_success":
+        events[6]["type"] = "session.tool.failed"
+
+    def measure(ctx):
+        return {**messaging.binding_facts(events), "short_call_ends_before_step": True,
+                "real_shell_child_started": True, "stream_drop_and_reconnect": mutation != "no_reconnect"}
+
+    monkeypatch.setattr(messaging, "binding_measurement", measure)
+    outcome = messaging.binding_check(core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6"))
+    assert outcome.status == (core.PASS if mutation == "none" else core.FAIL), outcome
+
+
+@pytest.mark.parametrize(("default", "short", "default_stopped", "short_stopped", "status"), [
+    (120, 1, True, True, core.PASS), (60, 1, True, True, core.PASS),
+    (30, 1, True, True, core.FAIL), (float("nan"), 1, True, True, core.FAIL),
+    (120, 120, True, True, core.FAIL), (120, 1, False, True, core.FAIL),
+    (120, 1, True, False, core.FAIL), (True, 1, True, True, core.FAIL),
+])
+def test_shell_timeout_check_cannot_claim_an_unmeasured_or_unsafe_budget(
+        tmp_path, monkeypatch, default, short, default_stopped, short_stopped, status):
+    from harness_qualify import messaging
+
+    monkeypatch.setattr(messaging, "timeout_measurement", lambda ctx: {
+        "default_seconds": default, "short_seconds": short, "default_stopped_before_completion": default_stopped,
+        "short_stopped_before_completion": short_stopped})
+    out = messaging.timeout_check(core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6"))
+    assert out.status == status
+    if status == core.PASS:
+        assert 0 < out.facts["messaging.shell_timeout"]["maximum_safe_wait_seconds"] <= min(90, default - 30)
+
+
+def test_the_messaging_pack_has_all_seven_behaviour_checks_and_no_enum_substitute():
+    checks = [c for c in OC.OpenCodePack(FIXTURES).checks() if c.id.startswith("messaging.")]
+    assert [c.id for c in checks] == ["messaging." + name for name in (
+        "steer_boundary", "queue_boundary", "prompt_identity", "held_resume", "session_loss", "wait_binding",
+        "shell_timeout")]
+    assert all(c.depth == core.BEHAVIOUR and c.measures == (c.id,) for c in checks)
+
+
+@pytest.mark.parametrize(("mutation", "name"), [
+    ("none", "steer_boundary"), ("none", "queue_boundary"),
+    ("model_admission", "steer_boundary"), ("model_cancelled", "steer_boundary"),
+    ("shell_admission", "steer_boundary"), ("shell_cancelled", "steer_boundary"),
+    ("shell_failed", "steer_boundary"), ("steer_late", "steer_boundary"),
+    ("steer_reordered", "steer_boundary"), ("queue_early", "queue_boundary"),
+    ("queue_reordered", "queue_boundary"), ("queue_overtakes", "queue_boundary"),
+])
+def test_boundary_checks_fail_raw_transcript_and_request_violations(tmp_path, monkeypatch, mutation, name):
+    from harness_qualify import messaging
+
+    ids = {n: "msg_" + n for n in ("initial", "s1", "s2", "q1", "q2")}
+    users = list(ids.values())
+    following = "HQ_s1 HQ_s2"
+    during_model, during_shell = set(), set()
+    started = completed = True
+    exits = [0]
+    if mutation == "model_admission":
+        during_model.add(ids["s1"])
+    elif mutation == "model_cancelled":
+        started = False
+    elif mutation == "shell_admission":
+        during_shell.add(ids["s1"])
+    elif mutation == "shell_cancelled":
+        completed = False
+    elif mutation == "shell_failed":
+        exits = [137]
+    elif mutation == "steer_late":
+        following = "HQ_s1"
+    elif mutation == "steer_reordered":
+        users[1:3] = reversed(users[1:3])
+    elif mutation == "queue_early":
+        following += " HQ_q1"
+    elif mutation == "queue_reordered":
+        users[3:5] = reversed(users[3:5])
+    elif mutation == "queue_overtakes":
+        users = [ids[n] for n in ("initial", "q1", "s1", "s2", "q2")]
+    monkeypatch.setattr(messaging, "boundary_measurement", lambda ctx: messaging.boundary_facts(
+        ids, during_model, during_shell, set(), users, following, started, completed, exits))
+    ctx = core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6")
+    assert messaging.boundary_check(ctx, name).status == (core.PASS if mutation == "none" else core.FAIL)
+
+
+class MessagingServerSeam:
+    """Deterministic raw server-result seam for the qualifier, not the worker adapter's fake V2 fidelity claim."""
+
+    def __init__(self, llm, mutation):
+        self.client = self
+        self.llm = llm
+        self.mutation = mutation
+        self.sessions = {}
+        self.items = {}
+        self.owners = {}
+
+    def get(self, path, params=None):
+        if path == "/api/model":
+            return {"data": [{"id": OC.MODEL}]}
+        if path == "/api/session/active":
+            return {"data": {}}
+        if path.endswith("/message"):
+            return {"data": list(self.sessions[path.split("/")[3]])}
+        return {"id": path.split("/")[3]}
+
+    def post(self, path, body):
+        if path == "/api/session":
+            sid = "session_" + str(len(self.sessions))
+            self.sessions[sid] = []
+            return {"id": sid}
+        return self.request("POST", path, body)[1]
+
+    def delete(self, path):
+        self.sessions.pop(path.split("/")[3])
+
+    def request(self, method, path, body=None):
+        pieces = path.split("/")
+        sid = pieces[3]
+        if method == "GET":
+            if sid not in self.sessions:
+                return 404, {"_tag": "MessageNotFoundError" if self.mutation == "lost_as_message" else
+                             "SessionNotFoundError"}
+            if len(pieces) == 4:
+                return 200, {"id": sid}
+            message = next((m for m in self.sessions[sid] if m["id"] == pieces[-1]), None)
+            if message is not None:
+                return 200, message
+            if self.mutation == "false_admission":
+                return 200, {"id": pieces[-1]}
+            return 404, {"_tag": "SessionNotFoundError" if self.mutation == "message_as_lost" else
+                         "MessageNotFoundError"}
+        mid = body["id"]
+        if mid in self.owners and self.owners[mid] != sid:
+            return (200, self.items[mid]) if self.mutation == "conflict_accepted" else (409, {"_tag": "ConflictError"})
+        duplicate = mid in self.items
+        if duplicate and self.mutation in ("changed_pending_accepted", "changed_admitted_accepted"):
+            admitted = any(m["id"] == mid for m in self.sessions[sid])
+            if (admitted and self.mutation == "changed_admitted_accepted") or (
+                    not admitted and self.mutation == "changed_pending_accepted"):
+                self.items[mid] = {**self.items[mid], "payload": body}
+        if not duplicate:
+            self.owners[mid] = sid
+            self.items[mid] = {"id": mid, "time": {"created": len(self.items)}, "payload": dict(body)}
+        if body.get("resume") is not False or (duplicate and self.mutation == "retry_wakes"):
+            self.llm.requests.append({"main": True})
+            pending = [item for key, item in self.items.items() if self.owners[key] == sid and not any(
+                m["id"] == key for m in self.sessions[sid])]
+            if self.mutation == "wake_first":
+                pending.reverse()
+            for item in pending:
+                payload = item["payload"]
+                self.sessions[sid].append({"type": "user", "id": item["id"], "text": payload["text"],
+                                           "metadata": {} if self.mutation == "metadata_dropped" else
+                                           payload.get("metadata", {})})
+        return 200, self.items[mid]
+
+
+@pytest.mark.parametrize(("mutation", "name"), [
+    ("none", "prompt_identity"), ("none", "held_resume"), ("metadata_dropped", "prompt_identity"),
+    ("changed_pending_accepted", "prompt_identity"), ("changed_admitted_accepted", "prompt_identity"),
+    ("conflict_accepted", "prompt_identity"), ("retry_wakes", "held_resume"), ("wake_first", "held_resume"),
+    ("false_admission", "prompt_identity"), ("none", "session_loss"),
+    ("message_as_lost", "session_loss"), ("lost_as_message", "session_loss"),
+])
+def test_messaging_checks_fail_scripted_server_payload_and_admission_violations(tmp_path, monkeypatch, mutation, name):
+    import contextlib
+    from types import SimpleNamespace
+
+    from harness_qualify import messaging
+
+    llm = SimpleNamespace(requests=[], base_url="http://127.0.0.1:1/v1", close=lambda: None)
+    server = MessagingServerSeam(llm, mutation)
+    monkeypatch.setattr(messaging.model, "start", lambda *a: llm)
+    monkeypatch.setattr(OC, "serve", lambda *a, **k: contextlib.nullcontext(server))
+    monkeypatch.setattr(messaging, "http", lambda srv, method, path, body=None: srv.request(method, path, body))
+    monkeypatch.setattr(messaging.time, "sleep", lambda seconds: None)
+    ctx = core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6")
+    check = next(c for c in OC.OpenCodePack(FIXTURES).checks() if c.id == "messaging." + name)
+    result = check.run(ctx)
+    assert result.status == (core.PASS if mutation == "none" else core.FAIL), result
+
+
+def test_messaging_semantics_render_pin_and_diff_without_overwriting_unrelated_fixtures(tmp_path):
+    fixtures = tmp_path / "fixtures"
+    shutil.copytree(FIXTURES, fixtures)
+    pack = OC.OpenCodePack(fixtures)
+    fact = {"messaging.steer_boundary": {"steer_fifo": True}}
+    rendered = pack.render("2.2.6", fact, fixtures)
+    payload, _ = rendered["messaging-2.2.6.json"]
+    assert payload == core.dump({"harness": "opencode", "version": "2.2.6", "facts": fact})
+    assert not {"openapi-2.2.6.min.json", "tool-parts-2.2.6.json", "store-2.2.6.json"} & set(rendered)
+    path = fixtures / "messaging-2.2.6.json"
+    path.write_bytes(payload)
+    _, pinned = pack.pinned(fixtures)
+    assert pinned["messaging.steer_boundary"] == fact["messaging.steer_boundary"]
+    changed = {"messaging.steer_boundary": {"steer_fifo": False}}
+    assert core.fact_diff(changed, pinned).lines()[0] == "~ messaging.steer_boundary.steer_fifo: true -> false"
 
 
 # --------------------------------------------------------------------------------- the OpenCode pack, offline parts

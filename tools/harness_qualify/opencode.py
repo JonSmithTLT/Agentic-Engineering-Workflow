@@ -553,6 +553,8 @@ class OpenCodePack:
         return read_version(binary, work, env)
 
     def checks(self) -> list[Check]:
+        from .messaging import checks as messaging_checks
+
         fx, pin = self.fixtures, self.pinned_version
         api = [
             Check("api.openapi", check_openapi, depth=API,
@@ -600,7 +602,7 @@ class OpenCodePack:
         ]
         # The live lane's driver cannot drive some actions (``harness_conformance``'s "cannot drive" skip): its
         # limits, not tests that went unrun.
-        return [*api, *behaviour, *citations,
+        return [*api, *messaging_checks(), *behaviour, *citations,
                 *neutral_checks(HARNESS, "AEW_OPENCODE_BIN", conformance=["tests/live/test_opencode_live.py"],
                                 allowed_skips={r"^opencode-live cannot drive \[": 1})]
 
@@ -632,6 +634,9 @@ class OpenCodePack:
         store = fixtures / f"store-{version}.json"
         if store.exists():
             facts["store.schema"] = load(store.name)["tables"]
+        messaging = fixtures / f"messaging-{version}.json"
+        if messaging.exists():
+            facts.update(load(messaging.name)["facts"])
         return version, facts
 
     def render(self, version: str, facts: Mapping[str, Any], fixtures: Path) -> dict[str, tuple[bytes | None, str]]:
@@ -661,7 +666,12 @@ class OpenCodePack:
         if "tool_parts" in facts:
             out[f"tool-parts-{version}.json"] = (
                 dump({"harness": HARNESS, "version": version, "probe": "harness_qualify progress.tool_parts",
-                      "tool_parts": facts["tool_parts"]}), "measured: a real run with the scripted model")
+                       "tool_parts": facts["tool_parts"]}), "measured: a real run with the scripted model")
+        messaging = {k: v for k, v in facts.items() if k.startswith("messaging.")}
+        if messaging:
+            out[f"messaging-{version}.json"] = (
+                dump({"harness": HARNESS, "version": version, "facts": messaging}),
+                "measured: messaging behaviour with the scripted loopback model; platform is in the run record")
         return out
 
     def unmeasured(self) -> Mapping[str, str]:
@@ -686,4 +696,3 @@ def _shipped_ripgrep() -> str:
     text = Path(records.__file__).read_text(encoding="utf-8")
     m = re.search(r"ripgrep/releases/download/(\d+\.\d+\.\d+)/", text)
     return m.group(1) if m else "?"
-

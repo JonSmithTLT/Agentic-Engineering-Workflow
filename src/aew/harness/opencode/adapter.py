@@ -74,6 +74,7 @@ from aew.harness.contract import (
     UNAVAILABLE_TOOLS,
     LaunchContract,
 )
+from aew.harness.harness_capabilities import GAP as CAP_GAP
 from aew.harness.harness_capabilities import PARTIAL as CAP_PARTIAL
 from aew.harness.harness_capabilities import YES as CAP_YES
 from aew.harness.harness_capabilities import Support
@@ -381,6 +382,8 @@ class OpenCodeAdapter(HarnessAdapter):
                                                         "there is no role of its own"),
         "read_model_list": Support(CAP_YES, "`GET /api/model` on a server started as a launch starts it, with no "
                                             "session"),
+        "report_step_and_shell_calls": Support(CAP_GAP, "qualification and worker wait lifetime binding not built yet",
+                                               "E175"),
     }
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

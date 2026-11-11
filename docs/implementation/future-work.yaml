@@ -6269,7 +6269,7 @@ sections:
       of `src/aew` that name it with no `--expect-rev` or `--reason`, some with a path missing `.aew/`. Each gets them,
       and a test follows each printed line to its outcome. The switch offer fixed its own'
     Closed: '2026-11-10'
-    By: absorbed into E336
+    By: Absorbed into E336, docs and printed commands, which carries its work (the register PR of 2026-11-10)
 
   - '#': F1
     Was: Hot and cold control state (archival of terminal records)

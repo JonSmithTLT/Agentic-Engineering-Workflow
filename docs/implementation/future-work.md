@@ -4943,7 +4943,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-10
 
-**By:** absorbed into E336
+**By:** Absorbed into E336, docs and printed commands, which carries its work (the register PR of 2026-11-10)
 
 *Later notes: `notes.d/E251/`, oldest first (`python tools/register.py show E251`).*
 

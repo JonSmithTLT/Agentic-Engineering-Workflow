@@ -231,12 +231,14 @@ class Harness:
             return False
         return wake_queue.some_broker_posts(self.k.aew_root)
 
-    def _wait_on(self, runs: list[str]) -> str:
+    def _wait_on(self, runs: list[str], state: dict[str, Any] | None = None) -> str:
         """The next step while ``runs`` work: the turn's end where AEW wakes the Lead, else the wait, which says when it
-        is the fallback for a broker that isn't posting (steering design r4 §1)."""
+        is the fallback for a broker that isn't posting (steering design r4 §1). Reuse a caller's ``state`` rather
+        than re-parsing control state for guidance (OBX-38)."""
         if self.wakes_reach_lead():
             return K.wake_step(runs)
-        messaging = self.coordination.project_switch(self.k.store.current()) == X.MESSAGING_ENABLED
+        messaging = self.coordination.project_switch(
+            self.k.store.current() if state is None else state) == X.MESSAGING_ENABLED
         try:
             fallback = X.wakes_post_here(self.k.execution_policy()[0])
         except AEWError:
@@ -724,7 +726,7 @@ class Harness:
         if action is None:  # `aew status` no longer lists the run: say why (E122 review, m1)
             action = self._unlisted_run(current, run, targets[run][0])
         if out.get("still_running"):  # the others still work: after this one, the wait goes on (E122)
-            action = f"{action}; then {self._wait_on(out['still_running'])}"
+            action = f"{action}; then {self._wait_on(out['still_running'], current)}"
         out["next_action"] = K.run_ended_step(action)
         return out
 
@@ -895,7 +897,7 @@ class Harness:
                         if e["producer"].get("run") == run]
             evidence = sorted(e["id"] for e in produced)
             if status in (K.STARTING, K.RUNNING):
-                action = f"{run} is running for {inv_id}: {self._wait_on([run])}"
+                action = f"{run} is running for {inv_id}: {self._wait_on([run], state)}"
             elif status == K.ENDED_WITH_EVIDENCE:
                 action = (f"{run} ended with evidence {', '.join(evidence)}: "
                           f"{self._after_run(state, inv, produced)} (the run itself decides nothing)")

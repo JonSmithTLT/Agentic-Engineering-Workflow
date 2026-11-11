@@ -142,6 +142,13 @@ def step(s: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             if s.get("pidfile"):
                 Path(s["pidfile"]).write_text(str(proc.pid), encoding="utf-8")
+            if s.get("timeout_after_file"):
+                # The orphan test starts its short shell clock only once the bridge wait has bound to this call.
+                # Process/shell/CLI startup is not the event the test is trying to race.
+                if not wait_file(s["timeout_after_file"], 60):
+                    proc.kill()
+                    proc.wait()
+                    raise AssertionError("shell timeout barrier was never reached")
             try:
                 proc.wait(timeout=s.get("timeout_s"))
             except subprocess.TimeoutExpired:

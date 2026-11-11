@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 import json
+import threading
+from contextlib import contextmanager
 
 import pytest
 from test_coordination_store import world
@@ -145,6 +147,71 @@ def test_typed_broker_status_records_only_carried_messages_durably(w, sealed):
     assert [m["id"] for m in answer["stage_result"]["projection"]["coordination"]["awaiting_lead"]] == [mid]
     assert w.e.message_attention()["awaiting_lead"] == [] and w.rev() == revision
     assert not (w.root / ".aew/local/lead/told-messages.json").exists()
+
+
+@pytest.mark.parametrize("sealed", [False, True])
+def test_typed_send_and_receipt_exclude_wake_selection_and_session_close(w, sealed):
+    """Force the post-send scheduling boundary instead of relying on which bridge thread runs next."""
+    mid = reply(w)
+    if sealed:
+        w.lead("invoke_cancel", invocation=w.inv, reason="sealed body at the send boundary")
+    with broker(w) as b:
+        delivery = b.handle("lead.tool", {"name": "status", "profile": "normal", "ingress": "mcp",
+                                          "arguments": json.dumps({"work_id": w.wid})})
+
+        def send(answer):
+            assert answer["stage_result"]["ok"]
+            # Another thread could take this same lock for the wake's final check or close. It must not
+            # enter between output becoming visible and its successful-send receipt being recorded.
+            acquired = b.server._serial.acquire(blocking=False)
+            if acquired:
+                b.server._serial.release()
+            assert not acquired, "typed send exposed a scheduling gap before its receipt"
+            assert [m["id"] for m in w.e.message_attention()["awaiting_lead"]] == [mid]
+
+        delivery.deliver(send)
+        assert w.e.message_attention()["awaiting_lead"] == []
+
+
+def test_broker_close_cannot_discard_a_successfully_sent_typed_receipt(w, monkeypatch):
+    reply(w)
+    with broker(w) as b:
+        delivery = b.handle("lead.tool", {"name": "status", "profile": "normal", "ingress": "mcp",
+                                          "arguments": json.dumps({"work_id": w.wid})})
+        boundary = threading.Event()
+        errors = []
+        serial = b.server.serialized
+
+        @contextmanager
+        def serialized():
+            if threading.current_thread() is closer:
+                boundary.set()  # close reached the serialization held by delivery
+            with serial():
+                yield
+
+        monkeypatch.setattr(b.server, "serialized", serialized)
+
+        def close():
+            try:
+                b.close()
+            except BaseException as exc:  # report the closer's error in the test's own thread
+                errors.append(exc)
+            finally:
+                boundary.set()  # old code can finish closing without ever serializing
+
+        closer = threading.Thread(target=close)
+
+        def send(answer):
+            assert answer["stage_result"]["ok"]
+            closer.start()  # the client closes its session immediately after receiving the output
+            assert boundary.wait(10)
+
+        try:
+            delivery.deliver(send)
+        finally:
+            closer.join(60)
+        assert not closer.is_alive() and not errors
+    assert w.e.message_attention()["awaiting_lead"] == []
 
 
 def test_own_shell_lead_tool_consumes_but_plain_operator_status_does_not(w):

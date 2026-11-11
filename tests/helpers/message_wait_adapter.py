@@ -9,6 +9,12 @@ from aew.harness.opencode.adapter import OpenCodeAdapter
 class FakeWaitOpenCodeAdapter(OpenCodeAdapter):
     reports_steps = True
 
+    def wait_binding(self):
+        binding = super().wait_binding()
+        if binding is not None:
+            (self.state_dir / "wait-bound").touch()  # test barrier: the actual wait captured its call, not just a PID
+        return binding
+
 
 class UnsupportedWaitOpenCodeAdapter(OpenCodeAdapter):
     reports_steps = False

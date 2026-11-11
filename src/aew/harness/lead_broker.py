@@ -352,7 +352,10 @@ class LeadBroker:
     def close(self) -> None:
         if self.loop is not None:  # no new auto-run action once the session starts closing (review of PR #199, F4)
             self.loop.request_stop()
-        self._stop.set()
+        # A typed result sends and records its receipt under this same serialization. Closing immediately after
+        # receiving those bytes must not invalidate the receipt in the gap before its successful-send write.
+        with self.server.serialized():
+            self._stop.set()
         if self._wakes is not None:
             from aew.harness.wake_queue import clear_serving
 
@@ -415,8 +418,8 @@ class LeadBroker:
             def deliver_tool(send: Callable[[Any], None]) -> None:
                 from aew.surface import run as surface_run
 
-                send(answer)
                 with self.server.serialized():
+                    send(answer)
                     if self._receipt_current() and "stage_result" in answer:
                         surface_run.record_message_result(self.engine, answer["stage_result"], self._token)
 

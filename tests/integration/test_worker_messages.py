@@ -98,10 +98,13 @@ def test_message_wait_delivers_exactly_the_returned_lead_message_once(lab, tmp_p
 
 
 def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp_path):
+    bound = lab.aew_root / "local/harness/runs/R-INV-0001-1/harness/wait-bound"
     run, sync = launch(lab, tmp_path, [
-        {"do": "shell", "command": "aew message wait --timeout 5", "timeout_s": 1}])
+        {"do": "shell", "command": "aew message wait --timeout 5", "timeout_s": 1,
+         "timeout_after_file": str(bound)}])
     (sync / "go").touch()
     shell = steps_done(lab, run, 2)
+    assert bound.exists(), "the test must orphan an admitted wait, not kill the shell before CLI startup"
     assert shell["timed_out"]
     send(lab)
     output = Path(shell["stdout_file"])

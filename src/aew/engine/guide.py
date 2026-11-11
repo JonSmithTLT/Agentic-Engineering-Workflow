@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from types import MappingProxyType
 from typing import Any, NamedTuple
 
-from aew.harness.contract import EXPECT_REV, HELD_SEAT_IN_A_GUIDE
+from aew.harness.contract import EXPECT_REV, HELD_SEAT_IN_A_GUIDE, LeadGuideSection
 
 CLASS_TEXT = {  # WC §7.4 definitions and §7.4 examples, verbatim in substance
     "0": ("eligible mechanical work", "work for which the Class 0 eligibility predicate holds (below)",
@@ -331,10 +331,11 @@ def _finished_work(_gates_policy: dict[str, Any]) -> str:
 
 
 SECTIONS: dict[str, tuple[str, Callable[[dict[str, Any]], str]]] = {
-    "first-ticket": ("Before creating the first Ticket in a project.", _first_ticket),
-    "stories-and-epics": ("When grouping work or closing a parent.", _stories_and_epics),
-    "finished-work": ("When reporting, finding or recalling completed work.", _finished_work),
-    "non-mutating": ("When planning an investigation, research or a plan-only Ticket.", _non_mutating),
+    LeadGuideSection.FIRST_TICKET.value: ("Before creating the first Ticket in a project.", _first_ticket),
+    LeadGuideSection.STORIES_AND_EPICS.value: ("When grouping work or closing a parent.", _stories_and_epics),
+    LeadGuideSection.FINISHED_WORK.value: ("When reporting, finding or recalling completed work.", _finished_work),
+    LeadGuideSection.NON_MUTATING.value: ("When planning an investigation, research or a plan-only Ticket.",
+                                          _non_mutating),
 }
 
 

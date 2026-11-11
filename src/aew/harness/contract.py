@@ -17,7 +17,18 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from enum import StrEnum
 from typing import Any, NamedTuple
+
+
+class LeadGuideSection(StrEnum):
+    """Section names shared by the CLI parser and the Lead guide renderer."""
+
+    FIRST_TICKET = "first-ticket"
+    STORIES_AND_EPICS = "stories-and-epics"
+    FINISHED_WORK = "finished-work"
+    NON_MUTATING = "non-mutating"
+
 
 RUN_SCHEMA = "aew/harness-run/v1"
 # Where AEW cannot contain a run (Windows), what its runs actually have, stated so that its absence is never read as

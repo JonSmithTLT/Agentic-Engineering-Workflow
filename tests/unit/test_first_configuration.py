@@ -398,10 +398,17 @@ def test_every_text_that_names_lead_acquire_says_it_holds_the_seat():
     assert exempt == set(NO_SEAT_SENTENCE)  # an entry with nothing left to excuse goes
 
 
-@pytest.mark.parametrize("guide", ["quickstart.md", "lead-guide.md"])
-def test_every_guide_section_that_names_lead_acquire_names_the_way_back(guide):
-    """Review of #329, F2: classifying leaves the seat held, and `aew lead release` is what gives `--acquire` back."""
-    text = (Path(aew.__file__).resolve().parents[2] / "docs" / "guides" / guide).read_text(encoding="utf-8")
+@pytest.mark.parametrize("source", ["quickstart", "lead-guide"])
+def test_every_guide_section_that_names_lead_acquire_names_the_way_back(source):
+    """Review of #329, F2: classifying leaves the seat held, and `aew lead release` gives `--acquire` back."""
+    from aew.engine import guide
+    from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
+
+    if source == "quickstart":
+        text = (Path(aew.__file__).resolve().parents[2] / "docs/guides/quickstart.md").read_text(encoding="utf-8")
+    else:
+        text = "\n".join((guide.render(DEFAULT_GATES, DEFAULT_CHECKS),
+                          *(guide.render_section(name, DEFAULT_GATES) for name in guide.SECTIONS)))
     sections = [s for s in re.split(r"^#+ ", text, flags=re.M) if "aew lead acquire" in s]
     assert sections  # control: the guide still names it, or this test looks at nothing
     for section in sections:

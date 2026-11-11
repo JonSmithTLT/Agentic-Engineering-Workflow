@@ -172,10 +172,10 @@ def _register_lead(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("lead", help="Lead authority and guidance")
     lsub = p.add_subparsers(dest="lead_cmd", required=True)
 
-    from aew.engine.guide import SECTIONS
+    from aew.harness.contract import LeadGuideSection
 
     q = lsub.add_parser("guide", help="read one section of the Lead guide")
-    q.add_argument("section", choices=tuple(SECTIONS))
+    q.add_argument("section", choices=tuple(section.value for section in LeadGuideSection))
     q.set_defaults(handler=_guide_section)
 
     q = lsub.add_parser("show")

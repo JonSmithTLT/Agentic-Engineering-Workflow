@@ -38,7 +38,11 @@ def _valid(doc: Any) -> bool:
 
 
 def read(aew_root: Path, generation: int) -> set[str]:
-    doc = _load(aew_root / REL)
+    return ids(_load(aew_root / REL), generation)
+
+
+def ids(doc: Any, generation: int) -> set[str]:
+    """Strict shared decoding for local ID sets; damaged generation/payload supplies no suppression."""
     return set(doc["messages"]) if _valid(doc) and doc["generation"] == generation else set()
 
 

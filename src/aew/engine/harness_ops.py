@@ -492,7 +492,8 @@ class Harness:
         raise NotFound(f"no run {run}")
 
     def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False,
-                     triggers: bool = False, lead: bool = False) -> dict[str, Any]:
+                     triggers: bool = False, lead: bool = False,
+                     message_after: dict[str, int] | None = None) -> dict[str, Any]:
         """Wait until a run is no longer running (it ended, failed, was never confirmed, or was lost); with several runs
         and ``any_``, until the first of them is (register E1; ADR-0012 D4, D5 and D8; M4 report §2.9).
 
@@ -539,6 +540,22 @@ class Harness:
         for run in names:
             inv_id, inv = self._find_run(state, run)
             targets[run] = (inv_id, inv, next((r.get("launched_at") for r in inv["runs"] if r["run"] == run), None))
+        messaging = triggers and self.coordination.project_switch(state) == X.MESSAGING_ENABLED
+        invocation_ids = {target[0] for target in targets.values()}
+        cursor = message_after
+        if messaging and cursor is None:
+            cursor = (self.coordination.message_cursor(state, invocation_ids)
+                      if process_kind.kind() == process_kind.STORE_WRITER else {})
+
+        def messages(*, ended: bool = False) -> dict[str, Any] | None:
+            view = (self.coordination.delivery_view(self.k.store.current(), invocations=invocation_ids,
+                                                     after=None if ended else cursor, runs=set(names))
+                     if messaging else None)
+            if view is not None:
+                eligible = {m["id"] for m in view["awaiting_lead"]}
+                view["awaiting_lead"] = [m for m in view["awaiting_lead"] if P.holds(
+                    None, {"why": K.WORKER_MESSAGE, "message": m["id"]}, eligible_messages=eligible)]
+            return view
         unexamined: dict[str, Any] | None = state  # the first check examines the initial snapshot itself
         returned = {run: runlog.read_returned(runlog.run_dir(self.k.aew_root, run)) for run in names}
 
@@ -585,6 +602,14 @@ class Harness:
                         status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, ended[0]))
                         return ended[0], status, record, ended[1]
             if triggers:  # a live run that needs the Lead (steering PR 1)
+                view = messages()
+                bodies = (view or {}).get("awaiting_lead") or []
+                if bodies:
+                    run = bodies[0]["run"]
+                    woke.update(run=run, triggers=[{"why": K.WORKER_MESSAGE, "message": m["id"]} for m in bodies],
+                                messages=view)
+                    status, record = runlog.observed_status(runlog.run_dir(self.k.aew_root, run))
+                    return run, status, record, None
                 for run in targets:
                     found, newest = P.pending(runlog.read_progress(runlog.run_dir(self.k.aew_root, run)),
                                               returned[run])
@@ -608,13 +633,17 @@ class Harness:
             return {"statuses": statuses, **again}
         run, status, record, control = found
         if woke:  # a trigger: the run still works, and the wake's shape says what it needs (steering PR 1)
-            shape = P.wake([t["why"] for t in woke["triggers"]], digests())
+            view = woke.get("messages")
+            shape = P.wake([t["why"] for t in woke["triggers"]], digests(),
+                           messages=(view or {}).get("awaiting_lead"))
             others = [r for r in names if r != run]
             result = {"run": run, "status": status, "timed_out": False, **shape, "triggers": woke["triggers"],
                       "run_capabilities": capabilities(),
-                      "next_action": K.trigger_step(shape["why"], run, others, then=(
+                       "next_action": K.trigger_step(shape["why"], run, others, then=(
                           K.wake_step([run, *others], after_a_start=False)
-                          if wake_queue.some_broker_posts(self.k.aew_root) else None))}
+                           if wake_queue.some_broker_posts(self.k.aew_root) else None))}
+            if view is not None:
+                result["coordination"] = view
             if process_kind.kind() == process_kind.STORE_WRITER:  # a relayed read's broker records it (record_told)
                 record_told(self.k.aew_root, result, lead=lead)
             return result
@@ -626,7 +655,12 @@ class Harness:
         out.update({"run": run, "status": status, "reason": (record or {}).get("reason"),
                     "evidence": self.run_evidence(inv["work_unit"], run),
                     "results": self.run_results(inv["work_unit"], run), "timed_out": False,
-                    **P.wake([K.RUN_ENDED], digests()), "run_capabilities": capabilities()})
+                     **P.wake([K.RUN_ENDED], digests()), "run_capabilities": capabilities()})
+        view = messages(ended=True)
+        if view is not None:
+            out["coordination"] = view
+            bodies = view["awaiting_lead"]
+            out.update(P.wake([K.RUN_ENDED, *([K.WORKER_MESSAGE] if bodies else [])], digests(), messages=bodies))
         if process_kind.kind() == process_kind.STORE_WRITER:  # a relayed read's broker records it (record_told)
             record_told(self.k.aew_root, out, lead=lead)
         if _reason_code(record):

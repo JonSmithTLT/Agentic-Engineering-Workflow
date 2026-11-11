@@ -448,7 +448,8 @@ class LeadBroker:
         with self.server.serialized():
             if not self._receipt_current():
                 return
-            ids = self.engine.message_result_ids(result, work_id=work_id, invocations=invocations)
+            ids = self.engine.message_result_ids(result, work_id=work_id, invocations=invocations,
+                                                 runs=set(ns.run) if path == frozenset({"harness", "wait"}) else None)
             if ids:
                 told_messages.record(self.engine.aew_root, self.generation, ids, current=self._receipt_current)
 

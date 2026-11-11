@@ -795,7 +795,9 @@ class Coordination:
         return (state["invocations"].get(inv_id) or {}).get("status") == "active"
 
     def attention(self, state: dict[str, Any], *, work_id: str | None = None,
-                  invocations: set[str] | None = None) -> dict[str, Any] | None:
+                  invocations: set[str] | None = None, exclude: set[str] | None = None,
+                  only: set[str] | None = None, after: dict[str, int] | None = None,
+                  runs: set[str] | None = None) -> dict[str, Any] | None:
         """Fresh, verified worker bodies and Lead-pending IDs, bounded across the whole result (MS6).
         This durable-attention view deliberately ignores generation-local told/posted records. Settled bodies come
         only from the bounded hot list's pinned seals, never an archive/history walk on the polling path."""
@@ -828,7 +830,7 @@ class Coordination:
                 if _is_lead(m):
                     if m["sender"] == L.lead_party(generation) and m["id"] not in answered:
                         awaiting.append({"id": m["id"], "invocation": inv_id, "work_unit": inv["work_unit"]})
-                elif m["id"] not in answered:
+                elif m["id"] not in answered and m["seq"] > (after or {}).get(inv_id, 0):
                     replies.append(shown(thread, m))
         held = state.get(L.UNSEEN_KEY) or {"entries": [], "omitted": 0, "omitted_revs": None}
         verified: dict[str, tuple[dict[str, Any], Thread]] = {}
@@ -852,6 +854,8 @@ class Coordination:
                 damaged.append({"invocation": inv_id, "code": exc.code})
         # An ID is quoted once per result, and no local suppression can prune durable attention.
         replies = list({m["id"]: m for m in replies}.values())
+        replies = [m for m in replies if m["id"] not in (exclude or set())
+                   and (only is None or m["id"] in only) and (runs is None or m["run"] in runs)]
         revs = held["omitted_revs"]
         settled_omitted = (held["omitted"] if revs and not any(
             r[0] <= revs[0] and revs[1] <= r[1] for r in recovered) else 0)
@@ -860,23 +864,38 @@ class Coordination:
                     and invocations is None else 0), "omitted_revs": revs,
                 "recovery": "aew message unseen", "integrity_errors": damaged}
 
+    def delivery_view(self, state: dict[str, Any], *, invocations: set[str] | None = None,
+                      after: dict[str, int] | None = None, runs: set[str] | None = None) -> dict[str, Any] | None:
+        """Automatic news, unlike durable attention: suppress local told/confirmed posted IDs before the total cap.
+        ``after`` is a wait's entry cursor for live threads only; explicit ended-run carry passes no cursor. Local
+        loss may repeat news but never removes the verified durable body. No telemetry can establish eligibility."""
+        from aew.harness import told_messages, wake_queue
+
+        if self.project_switch(state) != X.MESSAGING_ENABLED:
+            return None
+        generation = state["lead"]["generation"]
+        suppressed = told_messages.read(self.k.aew_root, generation) | wake_queue.posted_messages(
+            self.k.aew_root, generation)
+        return self.attention(state, invocations=invocations, exclude=suppressed, after=after, runs=runs)
+
+    def message_cursor(self, state: dict[str, Any], invocations: set[str]) -> dict[str, int]:
+        """Own-shell wait entry cursors, from complete verified threads, not a capped attention view."""
+        return {inv_id: len(read_thread(self.k.aew_root, inv["work_unit"], inv_id).messages)
+                for inv_id, inv in state["invocations"].items() if inv_id in invocations and inv["status"] == "active"}
+
     def result_messages(self, result: Any, *, work_id: str | None = None,
-                        invocations: set[str] | None = None) -> list[str]:
+                        invocations: set[str] | None = None, runs: set[str] | None = None) -> list[str]:
         """Lock-free verification of complete attention bodies at fixed host-result fields, never text traversal.
         Callers supply the request scope. Unknown/failed results, partial bodies and changed identities consume
         nothing. A concurrent change may omit a receipt (safe re-listing), never justify consuming an unseen body.
         This function writes nothing and cannot turn an ID in worker text into a delivery identity."""
         if not isinstance(result, dict) or result.get("ok") is False:
             return []
-        view = self.attention(self.k.store.read_committed(), work_id=work_id, invocations=invocations)
-        if view is None:
-            return []
-        verified = {m["id"]: m for m in view["awaiting_lead"]}
         # Engine read envelopes, or the two fixed envelopes in a typed StageResult. No recursive lookup.
         envelopes = [result]
         if result.get("surface") == "aew/surface/v1" and result.get("ok") is True:
             envelopes = [result.get("projection"), result.get("result")]
-        found: set[str] = set()
+        candidates: list[dict[str, Any]] = []
         for envelope in envelopes:
             if not isinstance(envelope, dict):
                 continue
@@ -884,8 +903,16 @@ class Coordination:
             if not isinstance(coordination, dict) or not isinstance(coordination.get("awaiting_lead"), list):
                 continue
             for m in coordination["awaiting_lead"]:
-                if isinstance(m, dict) and isinstance(m.get("id"), str) and m == verified.get(m["id"]):
-                    found.add(m["id"])
+                if isinstance(m, dict) and isinstance(m.get("id"), str):
+                    candidates.append(m)
+        if not candidates:
+            return []
+        view = self.attention(self.k.store.read_committed(), work_id=work_id, invocations=invocations,
+                              only={m["id"] for m in candidates}, runs=runs)
+        if view is None:
+            return []
+        verified = {m["id"]: m for m in view["awaiting_lead"]}
+        found = {m["id"] for m in candidates if m == verified.get(m["id"])}
         return sorted(found)
 
     def message_list(self, work_id: str) -> dict[str, Any]:

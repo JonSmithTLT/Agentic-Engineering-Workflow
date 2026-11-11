@@ -129,7 +129,8 @@ def _harness_wait(c: Call) -> Any:
             why = c.cancelled()
             if why:
                 raise errors.StaleAuthority(f"this Lead session no longer holds Lead authority: {why}")
-            out = c.engine.harness_wait(target, timeout=0, any_=len(runs) > 1, triggers=True, lead=True)
+            out = c.engine.harness_wait(target, timeout=0, any_=len(runs) > 1, triggers=True, lead=True,
+                                        **({"message_after": {}} if contract.MESSAGING in c.ctx.switches else {}))
         if not out.get("timed_out") or time.monotonic() >= deadline:
             return out
         mark, since = outbox.wake_mark(wake_root), time.monotonic()  # block on the wake file alone: no engine state

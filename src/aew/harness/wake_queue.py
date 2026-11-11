@@ -166,6 +166,14 @@ def read(aew_root: Path) -> dict[str, Any] | None:
     return {**_empty(), **doc}
 
 
+def posted_messages(aew_root: Path, generation: int) -> set[str]:
+    """Confirmed generation-local admissions only. Missing, old or malformed local state suppresses nothing."""
+    from aew.harness import told_messages
+
+    doc = read(aew_root) or {}
+    return told_messages.ids({"generation": doc.get("generation"), "messages": doc.get("posted_messages")}, generation)
+
+
 def status(aew_root: Path, *, generation: int | None = None, off: bool = False) -> dict[str, Any] | None:
     """What the operator's status line shows (steering design §1), or None when no wake was ever recorded: the
     outstanding wake, the last posted and the last delivered, the runs being watched, and whether the broker posts

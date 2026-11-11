@@ -815,8 +815,10 @@ class Engine:
         return self._harness.harness_stop(token=token, run=run, reason=reason)
 
     def harness_wait(self, runs: str | list[str], *, timeout: float = 600.0, any_: bool = False,
-                     triggers: bool = False, lead: bool = False) -> dict[str, Any]:
-        return self._harness.harness_wait(runs, timeout=timeout, any_=any_, triggers=triggers, lead=lead)
+                     triggers: bool = False, lead: bool = False,
+                     message_after: dict[str, int] | None = None) -> dict[str, Any]:
+        return self._harness.harness_wait(runs, timeout=timeout, any_=any_, triggers=triggers, lead=lead,
+                                          message_after=message_after)
 
     def ingest_evidence_unit_report(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str,
                                     kind: str) -> dict[str, Any]:
@@ -973,8 +975,14 @@ class Engine:
         return self._coordination.attention(self._k.store.read_committed(), work_id=work_id, invocations=invocations)
 
     def message_result_ids(self, result: Any, *, work_id: str | None = None,
-                           invocations: set[str] | None = None) -> list[str]:
-        return self._coordination.result_messages(result, work_id=work_id, invocations=invocations)
+                           invocations: set[str] | None = None, runs: set[str] | None = None) -> list[str]:
+        return self._coordination.result_messages(result, work_id=work_id, invocations=invocations, runs=runs)
+
+    def message_delivery_view(self, *, invocations: set[str] | None = None,
+                              after: dict[str, int] | None = None,
+                              runs: set[str] | None = None) -> dict[str, Any] | None:
+        return self._coordination.delivery_view(self._k.store.read_committed(), invocations=invocations,
+                                                after=after, runs=runs)
 
     def message_waiting(self, *, invocation_token: str, after: str) -> dict[str, Any]:
         return self._coordination.message_waiting(invocation_token=invocation_token, after=after)

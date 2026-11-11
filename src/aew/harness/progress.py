@@ -516,15 +516,23 @@ class Tracker:
 
 # ------------------------------------------------------------------ what a wake may say (the wait and the broker)
 
-def holds(digest: Mapping[str, Any], trigger: Mapping[str, Any]) -> bool:
+def holds(digest: Mapping[str, Any] | None, trigger: Mapping[str, Any], *,
+          eligible_messages: set[str] | None = None, run_ended: bool = False) -> bool:
     """Whether a trigger's condition still holds in the run's digest now: no stale wakes (steering design §1). The one
     rule the Lead's wait applies before it returns a trigger, and steering PR 2's broker before it posts a wake.
 
     ``out_of_scope``: the path is still outside the scope. ``test_failed``: the trigger's own test command's latest run
     still fails (``red_commands``; a digest without it: ``last_test``, when it is that command). The same command, not
     the same failing set. ``worker_idle``: the worker is still idle. ``run_ended`` is the record lane's, and the other
-    reasons are not detected in the poll."""
+    reasons are not detected in the poll. A worker message requires a verified eligible-ID set, never a digest claim;
+    the record lane supplies run_ended explicitly. A quiet check is push-only and belongs to the queue's timer."""
     why = trigger.get("why")
+    if why == WORKER_MESSAGE:
+        return isinstance(trigger.get("message"), str) and trigger["message"] in (eligible_messages or set())
+    if why == RUN_ENDED:
+        return run_ended
+    if digest is None:
+        return False
     if why == OUT_OF_SCOPE:
         outside = digest.get("out_of_scope")
         return isinstance(outside, list) and trigger.get("path") in outside
@@ -551,12 +559,12 @@ def pending(digest: Mapping[str, Any] | None, returned: int) -> tuple[list[dict[
     return [t for t in fresh if holds(digest, t)], newest
 
 
-def wake(why: list[str], runs: Mapping[str, Any]) -> dict[str, Any]:
+def wake(why: list[str], runs: Mapping[str, Any], *, messages: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """The wake's shape (steering design §2): why, each named run's digest, the worker messages (none while messaging
     is off) and the wake guide's keys for what to do next. The Lead's wait returns it; steering PR 2's broker will
     post it."""
     whys = [w for w in WHY if w in why]
-    return {"why": whys, "runs": dict(runs), "messages": [], "next": whys}
+    return {"why": whys, "runs": dict(runs), "messages": list(messages or []), "next": whys}
 
 
 def _same(command: Any) -> str:

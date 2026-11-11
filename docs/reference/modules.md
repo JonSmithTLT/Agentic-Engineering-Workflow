@@ -700,6 +700,8 @@ None.
 - `aew.engine.store`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.harness.told_messages`
+- `aew.harness.wake_queue`
 - `aew.history.manifest`
 - `aew.history.store`
 - `aew.knowledge.manifest`
@@ -1706,6 +1708,7 @@ None.
 - `aew.harness.lead_broker`
 - `aew.harness.progress`
 - `aew.harness.runlog`
+- `aew.harness.told_messages`
 - `aew.util`
 
 ### `aew.harness.weaker_register`

@@ -141,6 +141,9 @@ def test_an_older_engine_refuses_an_outbox_era_control_file(tmp_path):
     baseline = json.loads((ROOT / "tests/fixtures/baseline/control.schema.42239e1.json").read_text(encoding="utf-8"))
     p = sample_project(tmp_path)
     state = load_control(p.root)
+    # `steering`, which `aew init` records from the pinned policy (register E228), is a later key the baseline also
+    # refuses; this test pins the refusal of the outbox era's keys only.
+    state.pop("steering", None)
     errors = [e.message for e in Draft202012Validator(baseline).iter_errors(state)]
     expected = ["Additional properties are not allowed ('outbox', 'policy_sha256' were unexpected)"]
     if sys.platform != "win32":  # M4-E E2: a POSIX Lead records host_uid, one more key the baseline never knew

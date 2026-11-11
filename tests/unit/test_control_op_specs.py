@@ -355,7 +355,9 @@ def _record_non_transaction_entries(k, seen, monkeypatch):
     with pytest.raises(ReachedTransaction):
         lead.lead_takeover(expect_rev=1, reason="synthetic")
 
-    migration = migrate_ops.Migration(k, hierarchy=None, archive=archive, coordination=coordination)
+    steering = SimpleNamespace(register_on_migrate=nothing)
+    migration = migrate_ops.Migration(k, hierarchy=None, archive=archive, coordination=coordination,
+                                      steering=steering)
     monkeypatch.setattr(migration, "discard_unreachable", lambda: [])
     with pytest.raises(ReachedTransaction):
         migration.migrate(token="synthetic", expect_rev=1)

@@ -24,6 +24,9 @@ def test_the_baseline_engine_refuses_a_control_file_with_the_queue_and_the_outbo
     p.lead("integrate", "prepare", wid)  # a held lease and a live custody invocation
     state = load_control(p.root)
     assert state["schema"] == "aew/control/v2" and state["queue"]["lease"] is not None
+    # `steering`, which `aew init` records from the pinned policy (register E228), is a later key the baseline also
+    # refuses; this test pins the refusal of the queue and outbox keys only.
+    state.pop("steering", None)
     baseline = json.loads((ROOT / "tests/fixtures/baseline/control.schema.42239e1.json").read_text(encoding="utf-8"))
     errors = sorted(e.message for e in Draft202012Validator(baseline).iter_errors(state))
     unexpected = "Additional properties are not allowed ('outbox', 'policy_sha256', 'queue' were unexpected)"

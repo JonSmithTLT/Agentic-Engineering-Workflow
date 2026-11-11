@@ -47,6 +47,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+from aew.engine import coverage as CV
 from aew.engine import faults, transitions
 from aew.engine import queue_ops as Q
 from aew.errors import (
@@ -61,7 +62,7 @@ from aew.knowledge import evidence as E
 from aew.policy import checks as C
 from aew.policy import guardrails as GR
 from aew.policy import validation as V
-from aew.util import atomic_write, create_exclusive, dump_yaml, sha256_file, sha256_text, utc_now
+from aew.util import atomic_write, create_exclusive, dump_yaml, load_yaml, sha256_file, sha256_text, utc_now
 from aew.workspace import integration as I
 
 if TYPE_CHECKING:
@@ -310,6 +311,7 @@ class Validation:
                 continue
             if current and current["state"] == "committed" and current["identity"] == identity and not diagnostic:
                 return {"ok": True, "work_id": work_id, "noop": True, "run": current["id"],
+                        "coverage": CV.load(self.k.aew_root, current.get("coverage") or CV.legacy()),
                         "evidence": list(current.get("evidence") or []), "result": current.get("result"),
                         "integration": unit["integration"]["status"], "revision": self._rev()}
             # A diagnostic run is advisory: the authoritative runs' attempt bound never applies to it, so it can never
@@ -393,6 +395,7 @@ class Validation:
                 doctor = ("`aew doctor`'s containment line shows this host's sandbox self-test; "
                           if code in V.CONTAINMENT_FAILURES else "")
                 return {"ok": False, "work_id": work_id, "run": run["id"], "diagnostic": True, "unavailable": code,
+                        "coverage": self._returned_coverage(work_id, run["id"]),
                         "detail": outcome.get("detail") or "", "containment": self._recorded_label(run["id"]),
                         "revision": self._rev(),
                         "next": f"{doctor}fix what the detail names, then run `aew integrate validate {work_id} "
@@ -436,6 +439,21 @@ class Validation:
                    "state": "running", "infra_attempt": attempt}
             if diagnostic:
                 run["diagnostic"] = True
+            coverage_inputs = {"subject": {"work_id": work_id, "scope": "integration", "run": run_id,
+                                            "candidate": integ["candidate"], "base": integ["base"],
+                                            "snapshot": integ["candidate_snapshot"]},
+                               "configured": CV.inventory(self.k.policy("checks"), self.k.policy("guardrails")),
+                               "changed_files": CV.files(integ.get("changed_paths"),
+                                                         source=f"candidate_diff_from:{integ['base']}",
+                                                         reason="candidate_diff_not_recorded")}
+            inputs_path = f"work/{work_id}/{RUNS_DIR}/{run_id}-coverage-inputs.yaml"
+            text = dump_yaml(coverage_inputs)
+            ctx.session.write(inputs_path, text)
+            ctx.refs.append(inputs_path)
+            run["coverage_inputs"] = {"path": inputs_path, "sha256": sha256_text(text)}
+            # The pin has not executed anything. Its bounded summary is display-only and cannot satisfy a gate.
+            run["coverage"] = CV.build(**coverage_inputs, checks=[], capabilities={}, result="running", complete=False)
+            run["coverage"] = {"summary": run["coverage"]["summary"]}
             integ[slot_of(run)] = run
             runs = integ.setdefault("validation_runs", {"count": 0, "ids": []})
             runs["count"] += 1
@@ -549,7 +567,8 @@ class Validation:
             verdict = GR.evaluate(I.changed_between(self.k.repo_root, integ["base"], integ["candidate"]),
                                   pinned["guardrails"], scope[0], scope[1])
             out = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0, "outcome": "ran",
-                   "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"], "spawn_errno": None}
+                   "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"], "spawn_errno": None,
+                   "cwd": str(workspace.resolve())}
         else:
             try:
                 out = C.run(cfg, workspace, policy=self.k.policy("execution"), env=env, layout=layout, trees=trees)
@@ -565,7 +584,7 @@ class Validation:
             result, reason = ("pass" if out["exit_code"] == 0 else "fail"), None
         record = {"check_id": check_id, "definition_sha256": entry["definition_sha256"], "result": result,
                   "reason": reason, "exit_code": out["exit_code"], "duration_s": out["duration_s"],
-                  "command": out["command"], "log": out["log"],
+                  "command": out["command"], "cwd": out.get("cwd"), "log": out["log"],
                   **({"network": out["network"]} if out.get("network") else {})}
         name = f"{check_id}.json"
         atomic_write(directory / name, json.dumps(record, indent=2, sort_keys=True))
@@ -650,6 +669,8 @@ class Validation:
                 ctx.summary = f"{work_id} validation run {run['id']} committed: {overall}"
             self.units.before_commit(ctx)
         out: dict[str, Any] = {"ok": abandoned is None, "work_id": work_id, "run": run["id"],
+                               "coverage": CV.load(self.k.aew_root, current.get("coverage") or CV.legacy())
+                               if current.get("id") == run["id"] else CV.not_validated(result="abandoned"),
                                "revision": ctx.session.committed_revision}
         if abandoned:
             flag = " --diagnostic" if run.get("diagnostic") else ""
@@ -712,6 +733,7 @@ class Validation:
         plan = unit.get("plan") or {}
         label = self._recorded_label(run["id"])  # the staged label, as the run's record keeps it (DV-7)
         out = []
+        coverage = self._coverage_record(run, staged, result=self._overall(staged["results"], staged["mutated"]))
         for r in staged["results"]:
             result = "inconclusive" if staged["mutated"] else r["result"]
             reason = "WORKSPACE_MUTATED" if staged["mutated"] else r.get("reason")
@@ -727,11 +749,13 @@ class Validation:
                 "evaluated_snapshot": staged["before"],
                 "method": {"capability": "targeted_test_execution" if r["command"][0] != "aew-builtin"
                            else "guardrail_check", "provider": "aew-check-runner", "command": r["command"],
+                           "cwd": r.get("cwd"),
                            "containment": label.get("filesystem", containment.WORKDIR_ONLY),
                            # the check's effective network (F28 §3.8), where it ran in a sandbox
                            **({"network": r["network"]} if r.get("network") else {})},
                 "claim": f"check {r['check_id']} passes on the integration candidate {run['identity']['candidate']}",
                 "result": result,
+                "coverage": coverage,
                 "evidence": [{"path": log_rel, "sha256": sha256_file(self.k.aew_root / log_rel)}],
                 "check": {"check_id": r["check_id"], "exit_code": r["exit_code"], "duration_s": r["duration_s"],
                           "mutated_inputs": staged["mutated"], "definition_sha256": r["definition_sha256"]},
@@ -750,8 +774,9 @@ class Validation:
         integ = unit["integration"]
         integ["validation"] = {"mode": V.CHECKS, "run": run["id"], "evidence": evidence_ids,
                                "identity": run["identity"]}
+        integ["coverage"] = copy.deepcopy(self._find(unit, run["id"]).get("coverage") or CV.legacy())
         unit["last_verification"] = {"evidence": evidence_ids[0] if evidence_ids else None, "result": overall,
-                                     "scope": "integration", "run": run["id"]}
+                                     "scope": "integration", "run": run["id"], "coverage": integ["coverage"]}
         if overall == "pass":
             integ["status"] = "validated"
             if who.kind == CUSTODIAN:
@@ -798,10 +823,49 @@ class Validation:
         ``_end_infra``, ``_abandon`` and the finalizer, ends here (DV-7)."""
         run["containment"] = self._recorded_label(run["id"])
         path = f"work/{work_id}/{RUNS_DIR}/{run['id']}.yaml"
-        text = dump_yaml({"schema": "aew/validation-run/v1", **{k: v for k, v in run.items() if k != "record"}})
+        staged = self._staged(run)
+        coverage = self._coverage_record(run, staged, result=run.get("result") if run["state"] == "committed"
+                                         else run["state"])
+        text = dump_yaml({"schema": "aew/validation-run/v1", **{k: v for k, v in run.items() if k != "record"},
+                          "coverage": coverage})
         ctx.session.write(path, text)
         ctx.refs.append(path)
         run["record"] = {"path": path, "sha256": sha256_text(text)}
+        run["coverage"] = CV.pin(path, run["record"]["sha256"], coverage)
+
+    def _coverage_record(self, run: dict[str, Any], staged: dict[str, Any] | None, *,
+                         result: str | None) -> dict[str, Any]:
+        """Only hash-verified finished results are observations; missing partial staging is explicitly unknown.
+        A legacy run without pinned coverage inputs is never reconstructed using today's policy or workspace.
+        """
+        pin = run.get("coverage_inputs")
+        if not pin:
+            return CV.legacy()
+        path = self.k.aew_root / pin["path"]
+        if sha256_file(path) != pin["sha256"]:
+            return CV.build(subject={"run": run["id"], "scope": "integration"}, configured=[], checks=[],
+                            changed_files=CV.files(None, source="coverage_inputs",
+                                                   reason="coverage_inputs_unavailable"), capabilities={},
+                            result=result or "not validated", complete=False, limits=["coverage_inputs_unavailable"])
+        inputs = load_yaml(path.read_text(encoding="utf-8"))
+        label = self._recorded_label(run["id"])
+        from aew.engine.harness_ops import _missing_capabilities
+
+        capabilities = _missing_capabilities({"containment": label})
+        # An engine check executor has no role skills to request. Its tool observation remains labelled as recorded
+        # (or not) from the sandbox's actual label, not from the project CI inventory.
+        capabilities["skills_recorded"] = True
+        checks = [{"check_id": r["check_id"], "definition_sha256": r["definition_sha256"],
+                   "command": r["command"], "cwd": r.get("cwd"), "evaluated_snapshot": staged["before"],
+                   "result": "inconclusive" if staged["mutated"] else r["result"],
+                   "reason": "WORKSPACE_MUTATED" if staged["mutated"] else r.get("reason"), "run": run["id"]}
+                  for r in staged["results"]] if staged else []
+        return CV.build(**inputs, checks=checks, capabilities={run["id"]: capabilities},
+                        result=result or "not validated", complete=staged is not None)
+
+    def _returned_coverage(self, work_id: str, run_id: str) -> dict[str, Any]:
+        unit = self.k.store.current()["work"].get(work_id) or {}
+        return CV.load(self.k.aew_root, self._find(unit, run_id).get("coverage") or CV.legacy())
 
     def finalize(self, ctx: Any) -> None:
         """A transaction finalizer: every terminal run without its immutable record gets one in the same commit. A run
@@ -846,10 +910,12 @@ class Validation:
             ctx.summary = f"{work_id} validation run {run_id} abandoned: {reason}"
         if current.get("diagnostic"):  # no attempt bound applies to it, and its own command starts the next one
             return {"ok": False, "work_id": work_id, "run": run_id, "diagnostic": True, "abandoned": reason,
+                    "coverage": CV.load(self.k.aew_root, current.get("coverage") or CV.legacy()),
                     "detail": detail, "containment": current["containment"],
                     "revision": ctx.session.committed_revision,
                     "next": f"`aew integrate validate {work_id} --diagnostic` starts a new run"}
         return {"ok": False, "work_id": work_id, "run": run_id, "abandoned": reason, "detail": detail,
+                "coverage": CV.load(self.k.aew_root, current.get("coverage") or CV.legacy()),
                 "revision": ctx.session.committed_revision,
                 "next": f"`aew integrate validate {work_id}` starts a new run within the attempt bound"}
 
@@ -889,6 +955,8 @@ class Validation:
             ctx.summary = f"{work_id} validation unavailable ({why}): the entry waits for the Lead"
             self.units.before_commit(ctx)
         return {"ok": False, "work_id": work_id, "unavailable": True, **detail,
+                "coverage": CV.load(self.k.aew_root, run.get("coverage") or CV.legacy()) if run
+                else CV.not_validated(result="unavailable (validation did not start)"),
                 "queue": Q.entry_of(ctx.state, work_id)[1], "revision": ctx.session.committed_revision,
                 "next": f"fix the environment, then `aew integrate requeue {work_id}`; or defer it. Independent "
                         "entries behind it integrate meanwhile"}

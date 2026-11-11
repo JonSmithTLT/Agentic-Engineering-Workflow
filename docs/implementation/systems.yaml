@@ -11,10 +11,15 @@
 # rulings; used_in_default_flow with its evidence by the Lead, after a real run; decision by the Lead, quoting the
 # operator. wip_limit is the operator's N; tools/systems.py counted_systems defines the count (FORMAT.md rule 1).
 # unowned lists the open Now rows that belong to no one system, each with its reason.
+# wip_allowance holds the operator's words, cap and quoted date; it is stale once the count is back at or under N.
 #
 # First imported 2026-11-06 from the lead designer's board, draft 3 (47 entries).
 schema: aew/systems/v1
 wip_limit: 12
+wip_allowance:
+  count: 14
+  operator: Until the operator’s root G3 session closes SYS-20 and SYS-37, I allow 14 counted systems. No new system starts while this allowance stands; it lapses when both close.
+  date: '2026-11-10'
 unowned:
   E117: the personal alpha's gate, a live run the operator starts; a milestone gate, not a system
 systems:
@@ -219,11 +224,6 @@ systems:
       F48: the Windows containment backend, restored as its own row by the hold match (main 5308bd8c)'
     row: F48
     estimate: 5+ PRs (estimate; census)
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E143: the free-model egress carve-out for testing ; its follow-on, the relay-route family in the launch report, has
-      merged'
-    row: E143
-    estimate: remaining per its notes (estimate)
   - slice: 'Windows network containment, with the Lead''s usage on Windows'
     row: E222
     estimate: not sized (estimate)
@@ -660,10 +660,6 @@ systems:
     version runs the default flow in a real run. E149 and E150 once placed. A second adapter (F24) is outside this finish
     line until HOLD-06 releases it.'
   remaining:
-  - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      Refuse a launch with no provider key, close the Lead''s OpenCode provider, and Lead permission tightening (E156)'
-    row: E156
-    estimate: 1 PR (estimate)
   - slice: 'E35''s probe: whether OPENCODE_DISABLE_PROJECT_CONFIG also excludes .opencode/ plugins and the remote .well-known
       layer (on the Now list, before first use)'
     row: E35
@@ -852,9 +848,9 @@ systems:
     row: E122
     estimate: 1 PR (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
-      E139: worker packs made true, each finding with a guard; the Lead''s text adds request economy (designer-decisions-2026-11-06-rate-limit-unit.md,
+      The Lead''s request-economy text remains owed after E139''s worker-pack fixes (designer-decisions-2026-11-06-rate-limit-unit.md,
       ruling 3)'
-    row: E139
+    row: E162
     estimate: 1-2 PRs (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
       Lead text fixes, and a typed `plan accept`'
@@ -970,7 +966,7 @@ systems:
   switch:
     key: maps.pack_slices
     default: 'off'
-    default_evidence: src/aew/policy/execution.py:188
+    default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
     owner: operator
     turning_on_changes: structural adds a bounded structural-map section to the packs of roles whose context names codebase_map
       (every worker archetype, register E184) and the map's row to the Lead's resume view; `aew init` generates and
@@ -1605,7 +1601,7 @@ systems:
   depends_on: []
   switch:
     key: MODES["O-CMD"] and MODES["O-SECRET"] in tests/helpers/discovery/modes.py (mirrored in vertical-uat.md §8.3; a test
-      holds the two equal). A test-tooling constant, not a knowledge/manifest.py policy key, so the generator reads it there
+      holds the two equal). A test-tooling constant outside the checked policy tables, so its default stays hand-kept
     default: shadow
     default_evidence: tests/helpers/discovery/modes.py:20,23
     owner: operator
@@ -1719,7 +1715,7 @@ systems:
   switch:
     key: coordination.messaging
     default: disabled
-    default_evidence: 'src/aew/policy/execution.py:176 (messaging(), :171-176: an absent policy or key reads as disabled)'
+    default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
     owner: operator (read from the adopted execution policy only, src/aew/policy/execution.py:172-174)
     turning_on_changes: 'Today: the typed message_send records without delivery, and `aew message thread|list|unseen` register.
       Every `aew harness send` is refused MESSAGING_SNAPSHOT_MISMATCH,
@@ -1851,7 +1847,7 @@ systems:
   switch:
     key: recall.raw_history_search
     default: 'off'
-    default_evidence: src/aew/policy/execution.py:148
+    default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
     owner: operator
     turning_on_changes: explicit, once adopted, registers `aew history search` for an operator terminal or a Lead shell
       (refused inside an invocation) and serves the dashboard's /history/search route and its web page; nothing becomes
@@ -2608,12 +2604,6 @@ systems:
     unevaluated; a card's requested and optional skills are offered and loaded; the run's record says what was offered and
     loaded; exercised in a real run; E135's qualification before anything beyond the personal alpha.
   remaining:
-  - slice: 'E127: the four skills, the hash manifest, provided_skills passed from the adapter and the dry run, the skills-folder
-      read and edit rules, optional_skills on cards, the Lead''s staffing text, the offered and loaded record; serial with
-      CAP-1 PR 3 (SYS-09) as with E123: both change the same binds (future-work.yaml E127, ''after CAP-1 PR 2''). E127 goes
-      first: it is a first-use item, and PR 3 is outside the first-use gate (future-work.yaml (§1 text, at c11a61ea))'
-    row: E127
-    estimate: 1-2 PRs (estimate)
   - slice: 'E142: serve security-review and c-review (on the Now list)'
     row: E142
     estimate: 1 PR (estimate)
@@ -2628,8 +2618,8 @@ systems:
     (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md))'
   recommendation: finish
   who: Lead
-  reason: The request-and-report seam is built and nothing provides a skill; E127, E142 and E136 are on the Now list, and
-    E127 is unblocked since CAP-1 PR 2 merged, so finishing is the Lead's by the register's order (BOARD v2 §0, §1).
+  reason: E127 provides four skills. The system remains staged for the remaining rollout; E142's two skills, E136's
+    eleven optional skills (frozen pending E120), and E135's qualification are still owed.
   evidence:
   - src/aew/roles/cards/code_reviewer.yaml:11, security_reviewer.yaml:14, c_reviewer.yaml:11, c_engineer.yaml:13, python_engineer.yaml:12,
     verifier.yaml:11 cards request skills
@@ -3802,8 +3792,7 @@ systems:
   switch:
     key: gates.mutating_concurrency
     default: '2'
-    default_evidence: src/aew/knowledge/manifest.py:29 (DEFAULT_GATES); fallback src/aew/engine/workspace_ops.py:254 (reads
-      DEFAULT_GATES)
+    default_evidence: src/aew/knowledge/manifest.py:DEFAULT_GATES
     owner: operator
     turning_on_changes: Raised to N, up to N mutating Tickets hold a live worktree at once and integration stays serialized
       (doctor's line, src/aew/engine/api.py:373-376). A new project gets 2 (ADR-0003's amendment of 2026-11-07); an existing
@@ -4494,14 +4483,13 @@ systems:
   finish_line: CI fails on an unowned register row, a line citation in a hand-kept field, or a count above N; systems.md
     is rendered and compared; switch and wired state are read from the code (E182's done line).
   remaining:
-  - slice: 'E182 PR 3: state from the code (switch defaults, wired against the as-built reference and the Lead''s catalog)
-      and the N = 12 check'
-    row: E182
-    estimate: 1 PR (estimate)
+  - slice: Derive serves and lanes (E182's later work).
+    row: row owed
+    estimate: not sized (estimate)
   decision: 'decided: placed now, PR 1 first (operator, 2026-11-06, design workspace record 2026-11-06-operator-board-generator-placement.md)'
   recommendation: finish
   who: Lead
-  reason: The data check and rendered views are built; state from the code and enforcement of the count remain under E182.
+  reason: Data, views, code-owned switch defaults and wiring, stale slices and the limit are checked; serves and lanes remain.
   evidence:
   - design workspace 00-governance/decisions/2026-11-06-operator-board-generator-placement.md
   - E182's row (on the Now list)

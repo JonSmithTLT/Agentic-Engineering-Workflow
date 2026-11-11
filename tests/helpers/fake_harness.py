@@ -16,7 +16,7 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -164,6 +164,8 @@ class HarnessLab:
     tmp: Path
     env: dict[str, str] = field(default_factory=Env)  # an Env (__post_init__): its repr is the lab's, minus values
     sessions: list[subprocess.Popen[str]] = field(default_factory=list)  # Lead sessions the test started
+    # Why a driver ended a session it started (each "" while it has not): every wait below fails on the first reason
+    ended_by_driver: list[Callable[[], str]] = field(default_factory=list)
     closers: list[Any] = field(default_factory=list)  # what else the lab started, each closed by cleanup()
     provider: Any = None  # the provider its runs' relay reaches, when it started one (fake_opencode.ProviderUpstream)
 
@@ -243,6 +245,7 @@ class HarnessLab:
         from aew.cli.work_commands import WAIT_NO_EVIDENCE_EXIT  # here: the supervisor loads this module too
 
         while True:  # the CLI's wait also returns when the run needs the Lead (its progress triggers): wait on
+            self.check_sessions()
             res = run_aew("-C", str(self.root), "harness", "wait", run, "--timeout", str(timeout), env=self.env,
                           timeout=timeout + 120)
             assert res.returncode in (0, WAIT_NO_EVIDENCE_EXIT), (run, res.stderr or res.stdout)
@@ -274,9 +277,16 @@ class HarnessLab:
         raise AssertionError(f"{run} has no transcript step {i}: {self.transcript(run)}\n"
                              f"{harness_diagnostics.describe_run(runlog.run_dir(self.aew_root, run))}")
 
+    def check_sessions(self) -> None:
+        """Fail now when a driver ended a Lead session it started (a tool screen it could not answer): a wait on
+        that session's work would otherwise run to its own timeout, or the test's."""
+        for why in (reason() for reason in self.ended_by_driver):
+            assert not why, why
+
     def until(self, predicate: Any, timeout: float = 60, what: str = "condition") -> Any:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
+            self.check_sessions()
             value = predicate()
             if value:
                 return value

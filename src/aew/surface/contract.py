@@ -20,6 +20,7 @@ import json
 import os
 from typing import Any, NamedTuple
 
+from aew import priority_levels
 from aew.coordination import layout as L
 from aew.surface.context import NORMAL, PROFILES, RECOVERY
 
@@ -102,6 +103,8 @@ EXPECT_REV = {"type": "integer", "minimum": 0, "description": "your last result'
 WORK_ID_PATTERN = {"type": "string", "pattern": "^[A-Z]+-[0-9]+$"}
 WORK_ID = {**WORK_ID_PATTERN, "description": "e.g. T-0012"}
 TEXT = {"type": "string", "description": "free text"}
+# A Ticket's priority levels (register E227), from their engine-free owner: the MCP process serves this list.
+PRIORITY_LEVELS: list[str] = list(priority_levels.LEVELS)
 EVIDENCE_ID = {"type": "string", "minLength": 1, "description": "the evidence id you inspected"}
 EXECUTION = _obj({
     "profile": {"type": "string", "minLength": 1},
@@ -287,7 +290,8 @@ TOOLS: dict[str, Tool] = _catalog(
                "contract": _strings("contract criteria"), "non_mutating": {"type": "boolean"},
                "parent": WORK_ID, "depends_on": _strings("ID or ID:mutating|evidence"),
                "rationale": TEXT, "body": TEXT, "card": {"type": "string", "minLength": 1},
-               "plan": PLAN},
+               "plan": PLAN, "priority": {"enum": PRIORITY_LEVELS},
+               "priority_reason": {"type": "string", "description": "why; needed unless normal"}},
               ("expect_rev", "title", "risk_class")),
          expands_to=("work.create", "plan.propose"), required_judgments=("ticket_proposition", "plan_proposal"),
          mutates=True, progression=True, produced_by=((), ((UNIT, 1),))),
@@ -340,7 +344,7 @@ TOOLS: dict[str, Tool] = _catalog(
     Tool(
         "message_send", STAGE, MECHANICAL,
         "Record a coordination message for an active worker, not a scope change. "
-        "Delivery is not built yet; turn-end is refused.",
+        "Delivery not built; turn-end refused.",
         _obj({"expect_rev": EXPECT_REV,
               "to": {"type": "string", "pattern": "^INV-[0-9]+$"},
               "body": {"type": "string", "minLength": 1, "maxLength": L.MAX_BODY_CHARS},

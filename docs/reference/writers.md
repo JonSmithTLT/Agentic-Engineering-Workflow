@@ -337,6 +337,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `work/{}/gate-corrections/{}.yaml`: written or removed by `aew.engine.gate_ops:GateRepair._write` (store-transaction: session.write)
 - `work/{}/plan-v{}.md`: written or removed by `aew.engine.work_ops:WorkUnits.propose` (store-transaction: session.write)
 - `work/{}/stage-intents/{}.yaml`: written or removed by `aew.engine.stage_intents:StageIntents._end` (store-transaction: session.write)
+- `work/{}/validation-runs/IV-{}-{}-coverage-inputs.yaml`: written or removed by `aew.engine.validation_ops:Validation._pin` (store-transaction: session.write)
 - `work/{}/validation-runs/{}.yaml`: written or removed by `aew.engine.validation_ops:Validation._write_record` (store-transaction: session.write)
 
 ## Which entry points reach the writers

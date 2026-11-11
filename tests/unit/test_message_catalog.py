@@ -43,7 +43,8 @@ def test_the_compact_presentation_changes_only_descriptions():
 
 
 def test_the_normal_surface_fits_the_budget_in_both_configurations():
-    for switches, pin, count in [(frozenset(), 11704, 15), (contract.ALL_SWITCHES, 11784, 16)]:
+    # Main's priority fields add 126 B to 11,704 off / 11,784 on. MS3's own description saves 10 B; no cap raise.
+    for switches, pin, count in [(frozenset(), 11830, 15), (contract.ALL_SWITCHES, 11900, 16)]:
         # Designed normal rows count too, even though tools/list does not offer them yet.
         presentation = "compact" if switches else "standard"
         listing = {"tools": [mcp.tool_entry(t) for t in contract.catalog(switches, presentation=presentation).values()
@@ -118,6 +119,9 @@ OFF_READERS = {
          "test_a_continued_stage_ends_where_an_uninterrupted_one_and_its_primitives_do": 1}),
     "tests/integration/test_stage_runner.py": ("Named planned-stage fixture.", {"project": 1}),
     "tests/integration/test_stages_request.py": ("Named planned-stage fixture.", {"stages_named": 1}),
+    "tests/integration/test_ticket_priority_draft.py": (
+        "Named ticket_draft priority field wording; unrelated to message_send or switch-registered rows.",
+        {"test_ticket_draft_refuses_a_low_or_critical_priority_with_no_reason_naming_its_field": 1}),
     "tests/integration/test_steering_loop.py": (
         "Planned/progression fixtures and judgment cases; on send is non-progression (CATALOGS proves it).",
         {"p": 1, "test_walk_confirms_unknown_or_undeclared_effects": 1,
@@ -150,6 +154,9 @@ OFF_READERS = {
     "tests/unit/test_operator_endpoint.py": (
         "Named raise/confirmation tools; message_send is mechanical, with no operator principal.",
         {"test_no_operator_principal_outside_the_endpoint": 2}),
+    "tests/unit/test_scheduler_priority.py": (
+        "Named ticket_draft priority schema/authority; messaging changes neither that row nor its level owner.",
+        {"test_the_levels_have_one_owner_the_control_schema": 1}),
     "tests/unit/test_stage_availability.py": (
         "Planner-backed stages only; message_send is deliberately outside that table.",
         {"test_the_migrated_stage_table_matches_the_catalog": 2,

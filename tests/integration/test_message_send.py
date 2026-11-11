@@ -19,8 +19,8 @@ from aew.surface.context import SurfaceContext, switches_for
 from aew.surface.validate import AdapterInputError
 
 SRC = Path(__file__).resolve().parents[2] / "src"
-OFF_LIST_SHA = {"normal": "2df5350ac5394ad6c9e701414b09bc48cbecc78d8e9c74c6ab04d3659656f8d0",
-                "recovery": "abb785f106d78d1cae1b52551188cfc51eea7ee61cd2c7633b3c95d1385e1f71"}
+OFF_LIST_SHA = {"normal": "48afb5063f03ee0fd7bc3d7a11c8bf6bfaab6f71c31048132c6e4e1313242a48",
+                "recovery": "7bf05654630eb33df51161c11cc8db475797aa1ecc490107712549d2dcb9d8c6"}
 OFF_CLI_SHA = "da1c7adb3e31ec1579573637d0770778fb3f6db1a359c8c580d2f813bcbce904"
 
 
@@ -60,7 +60,7 @@ def cli(w, *arguments):
 
 @pytest.mark.parametrize("profile", ["normal", "recovery"])
 def test_with_messaging_off_tools_list_is_byte_identical_on_both_profiles(profile):
-    # Captured at the MS3 base ac66b054; canonical full tools/list, not just its size or tool names.
+    # Independently captured from main b2a7a287 after its priority schema; full tools/list, not only bytes or names.
     assert digest(mcp.tools_list(profile)) == OFF_LIST_SHA[profile]
 
 

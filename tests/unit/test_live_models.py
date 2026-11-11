@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from live_models import free_model, zero_cost
 
+from aew.harness.opencode.model_pricing import paid_base_problem
+
 PAID = {"input": 0.05, "output": 0.4, "cache": {"read": 0.005, "write": 0}}
 NOTHING = {"input": 0, "output": 0, "cache": {"read": 0, "write": 0}}
 CATALOG = [
@@ -20,6 +22,18 @@ CATALOG = [
 def test_a_paid_opencode_zen_model_is_not_refused_for_its_provider():
     assert free_model("opencode/gpt-5-nano", CATALOG) is None
     assert free_model("openai/gpt-5-nano", CATALOG) is None
+
+
+def test_malformed_zen_catalog_entries_get_the_paid_model_refusal():
+    entry = {"providerID": "opencode", "id": "synthetic-model"}
+    for rate in ("not-a-number", {}, True):
+        malformed = {**entry, "cost": [{"input": rate, "output": 1}]}
+        assert not zero_cost(malformed)
+        problem = paid_base_problem(malformed)
+        assert problem and "opencode/synthetic-model does not have a verified paid base price" in problem
+    for invalid in ({"cost": [PAID]}, {"id": [], "cost": [PAID]}):
+        problem = paid_base_problem(invalid)
+        assert problem and "missing or invalid catalog id" in problem and "--profile or --model" in problem
 
 
 def test_a_model_the_catalog_prices_at_zero_is_refused_whatever_its_provider():

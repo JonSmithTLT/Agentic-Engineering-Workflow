@@ -182,6 +182,7 @@ CONTAINED_LOCAL: dict[frozenset[str], str] = {frozenset(path.split()): why for p
     ("check run", "a worker run's, through its run's bridge"), ("submit", "a worker run's, through its run's bridge"),
     ("whoami", "a worker run's, through its run's bridge"),
     ("integrate custody", "AEW's own custody worker, started by the engine"),
+    ("notify desktop", "the operator endpoint's notifier, run at the operator's desktop: it reads no project state"),
 )}
 
 

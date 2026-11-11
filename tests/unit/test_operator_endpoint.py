@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from conftest import IS_WINDOWS, run_aew
 from invariants import assert_control_invariants
 
@@ -35,14 +36,17 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "aew"
 
 
 def _policy(project, **steering: Any) -> Path:
+    """The execution policy with exactly the steering mode and notifier given: none given, none at all (`aew init`'s
+    template has the standing crawl mode and the desktop notifier, register E228)."""
     path = project.root / ".aew" / "policy" / "execution.yaml"
-    text = path.read_text(encoding="utf-8").split("\n# --- e2 test ---\n")[0]
-    extra = ""
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    doc.pop("steering", None)
+    doc.pop("notify", None)
     if steering.get("mode"):
-        extra += f"steering:\n  mode: {steering['mode']}\n"
+        doc["steering"] = {"mode": steering["mode"]}
     if steering.get("notify"):
-        extra += "notify:\n  command: " + json.dumps(steering["notify"]) + "\n"
-    path.write_text(text + "\n# --- e2 test ---\n" + extra, encoding="utf-8")
+        doc["notify"] = {"command": list(steering["notify"])}
+    path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8", newline="\n")
     return path
 
 
@@ -131,8 +135,9 @@ def test_raise_is_refused_from_a_lead_session_and_the_typed_surface(project):
 
 
 def test_mode_commands_refuse_while_steering_is_not_configured(project):
-    """Decision 3: absent is legacy/manual behaviour, not a fourth mode; status shows nothing new."""
-    engine = Engine.discover(project.root)
+    """Decision 3: absent is legacy/manual behaviour, not a fourth mode; status shows nothing new. A project made
+    before the template had a standing mode, or whose operator removed it."""
+    engine = _adopt(project)
     for call in (lambda: engine.steering_raise_preview("walk"),
                  lambda: engine.steering_lower(token=project.token, expect_rev=project.rev(), mode="crawl"),
                  lambda: engine.steering_request(token=project.token, expect_rev=project.rev(), kind="raise",

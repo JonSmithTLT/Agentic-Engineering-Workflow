@@ -58,7 +58,7 @@ def is_default(command: Any) -> bool:
     """Whether ``command`` is the shipped default: ``aew notify desktop``, with ``aew`` by name or by path."""
     if not isinstance(command, (list, tuple)) or len(command) != len(COMMAND):
         return False
-    program = os.path.basename(str(command[0])).lower()
+    program = str(command[0]).replace("\\", "/").rsplit("/", 1)[-1].lower()  # either separator, on any platform
     return program in ("aew", "aew.exe") and tuple(command[1:]) == COMMAND[1:]
 
 

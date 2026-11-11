@@ -76,7 +76,7 @@ provider_env: []
 # Steering (crawl/walk/run): crawl is the standing mode, so every step the steering loop could take waits for the
 # Lead. Unattended Run is the operator's to switch on, for one Lead generation, with `aew lead mode raise run`
 # approved at the operator endpoint. It needs the notifier below, and a `deadline_s` on every profile routing can pick
-# (`aew init --model` writes one, provisional until a measured run replaces it).
+# (first configuration writes one with its model, provisional until a measured run replaces it).
 steering:
   mode: crawl
 # The notifier the operator endpoint runs for each event while it serves: `aew notify desktop` shows it as a desktop

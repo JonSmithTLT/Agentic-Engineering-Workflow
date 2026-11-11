@@ -9,3 +9,13 @@ not a lock on the replaced JSON inode. The implementation and its crash/concurre
 The system/guide switch-aware naming correction and the two catalog-test follow-ons are carried here too.
 Budget terminology: explain's compact entry is 936 bytes (937 with its separator); the pre-consolidation headroom
 is distinct, not a measured proof of a later consolidated schema.
+
+The catalog-reader helper's documented limits now explicitly include contract.catalog() and check_call(...) without
+switches, including direct imports. This resolves the carried documentation nit without widening a syntax guard into
+a claim of data-flow coverage. Those calls, aliases, getattr, dynamic access and wrappers still need semantic review.
+
+The initial Linux scripted qualification completed with verified loopback-only network isolation at commit
+1e5de25752e89ee76d320d82f51a2e13e6631d90. Its record is messaging-2.2.6-linux-initial.json in the OpenCode fixtures:
+eight selected checks passed and two failed (prompt identity after admission and queue-mode staged-first ordering).
+This is a failed record, not support or a passing semantic pin. No binding-dependent worker implementation is enabled;
+the failed checks need investigation and any further binary run needs approval. Windows runtime remains NOT RUN.

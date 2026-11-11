@@ -609,6 +609,31 @@ def test_messaging_semantics_render_pin_and_diff_without_overwriting_unrelated_f
     assert core.fact_diff(changed, pinned).lines()[0] == "~ messaging.steer_boundary.steer_fifo: true -> false"
 
 
+def test_the_initial_linux_messaging_record_retains_failures_and_never_claims_binding_support():
+    path = FIXTURES / "messaging-2.2.6-linux-initial.json"
+    raw = path.read_bytes()
+    doc = json.loads(raw)
+    assert core.sha256_file(path) == "49c36810fd43a45e0fa45d3ffccd86f6aea4fc9868a11fa5a29cebe10a2113a7"
+    assert doc["facts"]["record.public_copy"]["raw_record_digest"] == (
+        "bb28a742b7d2395b6bdfdab05d1925de37a1b54beab31b4b8978deea0e605132")
+    assert doc["schema"] == core.SCHEMA and doc["verdict"]["binary"] == core.FAIL
+    assert doc["version"] == "2.2.6" and doc["platform"] == "linux"
+    assert doc["aew_revision"] == "1e5de25752e89ee76d320d82f51a2e13e6631d90"
+    assert doc["binary_sha256"] == "50503d24577fa4117a7c95ee85b2cd679606a87eacf20ca54ed5db5c9e1cf895"
+    assert doc["network"] == ("blocked: run under bwrap --unshare-net "
+                              "(verified: loopback only, no external route, egress denied)")
+    selected = {r["id"]: r["status"] for r in doc["checks"] if r["status"] != core.SKIPPED}
+    assert len(selected) == 10 and [k for k, v in selected.items() if v == core.FAIL] == [
+        "messaging.prompt_identity", "messaging.held_resume"]
+    assert all(v == core.PASS for k, v in selected.items() if k not in (
+        "messaging.prompt_identity", "messaging.held_resume"))
+    assert doc["capabilities"]["report_step_and_shell_calls"]["status"] == "gap"
+    timeout = doc["facts"]["measurement.shell_timeout"]
+    assert 0 < timeout["maximum_safe_wait_seconds"] <= min(90, timeout["default_seconds"] - 30)
+    assert doc["facts"]["openapi.min"] == json.loads((FIXTURES / "openapi-2.2.6.min.json").read_text(encoding="utf-8"))
+    assert not any(word in raw.decode() for word in ("/home/", "/mnt/", "C:\\Users", "AEW-plans", "AEW-reviews"))
+
+
 # --------------------------------------------------------------------------------- the OpenCode pack, offline parts
 
 def test_the_pinned_fixtures_layouts_are_reproduced_from_their_own_data():

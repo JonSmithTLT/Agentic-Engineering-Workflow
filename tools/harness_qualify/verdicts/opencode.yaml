@@ -9,6 +9,10 @@ versions:
     rules: Never hand authority, containment, credentials or evidence to the harness; adopting needs both harnesses
       to declare the capability; no AEW code is deleted in a bump; adopt and deny verdicts become register rows.
     verdicts:
+      - feature: 'Messaging behaviour qualification'
+        verdict: hold
+        reason: 'The initial isolated Linux scripted pass passed timing boundaries, session-loss handling, call/step reporting and timeouts, but failed admitted-ID equality and queue-mode staged-first checks. Investigation must separate qualifier assumptions from runtime semantics before any binding or delivery support is enabled. Windows runtime is NOT RUN.'
+        row: 'E175'
       - feature: 'Session `warming`'
         verdict: 'deny'
         reason: 'Transient model requests count against a provider''s rate limit. Its default is off ("default: false" in the bundle; the upgrade check read it as on), and it is set off anyway so a default flip cannot open it. A provider''s `cache.warming` falls back to it.'

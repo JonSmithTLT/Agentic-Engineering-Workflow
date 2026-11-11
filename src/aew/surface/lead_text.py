@@ -49,9 +49,10 @@ def stages(profile: str = NORMAL, switches: frozenset[str] = frozenset()) -> tup
                  for t in contract.exposed(profile, switches) if t.expands_to)
 
 
-def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
-    """The guide for a policy, with the normal profile's stages (the file `docs/guides/lead-guide.md` holds)."""
-    return guide.render(gates_policy, checks_policy, stages())
+def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any], *,
+           switches: frozenset[str] = frozenset()) -> str:
+    """The guide for a policy, with the normal profile's stages for the supplied switches."""
+    return guide.render(gates_policy, checks_policy, stages(switches=switches))
 
 
 def guide_for(engine: Any) -> str:

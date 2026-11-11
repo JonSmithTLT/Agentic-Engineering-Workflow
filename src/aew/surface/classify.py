@@ -11,13 +11,15 @@ the checkpoint and the recovery escape are never auto-runnable, and the caller's
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from aew.engine.guards import AVAILABLE, BLOCKED, UNKNOWN
 from aew.engine.primitives import JUDGMENT_BEARING, MECHANICAL, POLICY_RESOLVED, spec_for
 from aew.surface.contract import Tool
 
-__all__ = ["AVAILABLE", "BLOCKED", "RANK", "UNKNOWN", "auto_runnable", "effective_class"]  # availability: one source
+__all__ = ["AVAILABLE", "BLOCKED", "RANK", "RUN_AUTO_RUN", "UNKNOWN", "auto_run_set", "auto_runnable",
+           "effective_class"]  # availability: one source
 RANK = {MECHANICAL: 0, POLICY_RESOLVED: 1, JUDGMENT_BEARING: 2}
 
 
@@ -35,6 +37,20 @@ def effective_class(t: Tool | None, arguments: dict[str, Any] | None = None) -> 
     for primitive in t.expands_to:
         out = _max(out, spec_for(primitive).operation_class)  # undeclared: JUDGMENT_BEARING (fail closed)
     return out
+
+
+# Register E83 (R01-38; the operator's R-DEC-04, 2026-10-25): the only shipped stages a stage runner may auto-run, and
+# only under Run (Walk confirms both: each changes more than control state). ``auto_run_set`` derives the set from
+# the contract by ``auto_runnable``'s own rule; a test holds the two equal, so a stage joining or leaving it is a
+# decision, never a side effect of a contract edit.
+RUN_AUTO_RUN = frozenset({"ticket_start", "ticket_request_review"})
+
+
+def auto_run_set(tools: Mapping[str, Tool]) -> frozenset[str]:
+    """The tools of ``tools`` that ``auto_runnable`` can ever admit: built progression rows whose class with no
+    arguments is not judgment-bearing (an argument can only promote a class, never lower it)."""
+    return frozenset(name for name, t in tools.items()
+                     if t.progression and t.built and effective_class(t) != JUDGMENT_BEARING)
 
 
 def auto_runnable(t: Tool | None, availability: str, operation_class: str) -> bool:

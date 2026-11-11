@@ -17,11 +17,6 @@ from aew.util import dump_yaml, read_yaml
 AEW_DIR = ".aew"
 MANIFEST = "project.yaml"
 
-# Logical knowledge names -> manifest keys (KC §14). Roles request these names,
-# never physical paths, so layouts can change without changing role behavior.
-KNOWLEDGE_NAMES = ("project_overview", "open_questions", "architecture_map", "codebase_map", "ownership_map",
-                   "glossary")
-
 DEFAULT_GATES: dict[str, Any] = {
     "schema": "aew/gates/v1",
     # Two mutating Tickets at once by default (register F10; HEB-06.c): each works in its own worktree and integrates
@@ -143,11 +138,6 @@ def load_manifest(aew_root: Path) -> dict[str, Any]:
     manifest = read_yaml(path)
     validate("project", manifest, source=str(path))
     return manifest
-
-
-def resolve_knowledge(manifest: dict[str, Any], aew_root: Path, name: str) -> Path | None:
-    rel = manifest.get("knowledge", {}).get(name)
-    return (aew_root / rel) if rel else None
 
 
 def project_overview_template(name: str) -> str:

@@ -112,6 +112,9 @@ def _judge(name: str, pin: dict[str, Any], listing: dict[str, Any], when: str, p
                         f"it lists" + (f", such as {same[0]}" if same else ", with that provider's variable set")
                         + " (edit the execution policy and adopt it)")
         return ""
+    if problem := match.get("price_problem"):
+        problems.append(f"profile {name}: {problem}")
+        return ""
     if match.get("enabled") is False:
         problems.append(f"profile {name}: {ref} is disabled in {where}; enable it in the harness, or set "
                         f"profiles.{name}.model to another model it lists")
@@ -159,7 +162,7 @@ def cache_key(adapter_cls: Any, policy: dict[str, Any], pin: dict[str, Any]) -> 
             digest.update(block)
     projected = adapter_cls.projected_config(_contract(Path("/aew-doctor/run"), pin, policy))
     rule = {k: policy.get(k) for k in ("containment", "provider_env")}  # the network rule is containment's
-    config = hashlib.sha256(json.dumps([projected, rule], sort_keys=True, default=str).encode()).hexdigest()
+    config = hashlib.sha256(json.dumps([projected, rule, 2], sort_keys=True, default=str).encode()).hexdigest()
     return f"{digest.hexdigest()}:{config}"
 
 
@@ -249,8 +252,10 @@ def read(engine: Any, policy: dict[str, Any], pin: dict[str, Any], adapter_cls: 
                 aew_root=engine.aew_root, kind="doctor_model_list", marker=marker)
         except HarnessIncompatible as exc:  # a launch is refused for it, so the row is red (#367, F4)
             reason = exc.details.get("reason")
+            weaker_allowed = (policy.get("containment") or {}).get("mode") == "allow_weaker"
             raise _Unread(f"a launch would be refused{' (' + str(reason) + ')' if reason else ''}: {exc.message}"
-                          + ("; the provider-key row says the same" if reason == netns.PROVIDER_KEY_MISSING else ""),
+                          + ("; the provider-key row says the same"
+                             if reason == netns.PROVIDER_KEY_MISSING and not weaker_allowed else ""),
                           red=True) from None
         except ContainmentUnavailable as exc:
             raise _Unread(f"a launch's containment was not established here, so the list was not read: {exc.message}",

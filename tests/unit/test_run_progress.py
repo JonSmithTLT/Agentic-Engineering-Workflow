@@ -16,6 +16,7 @@ import fake_opencode as F
 import pytest
 
 from aew.engine import outbox
+from aew.harness import contract as K
 from aew.harness import progress as P
 from aew.harness import runlog
 from aew.harness import usage_live as L
@@ -371,8 +372,11 @@ def test_since_last_wake_counts_from_the_last_trigger():
 
 
 def test_the_why_enum_is_closed_and_the_poll_detects_four():
-    assert P.WHY == ("run_ended", "test_failed", "out_of_scope", "worker_message", "worker_idle", "quiet")
-    assert set(P.DETECTED_IN_POLL) == set(P.WHY) - {P.WORKER_MESSAGE, P.QUIET}
+    assert P.WHY == ("run_ended", "test_failed", "out_of_scope", "worker_message", "worker_idle", "quiet",
+                     "loop_waiting")
+    # a wait is about runs: the reasons only a push wake gives, and `worker_message` until messaging is on, aren't in it
+    assert set(P.DETECTED_IN_POLL) == set(P.WHY) - {P.WORKER_MESSAGE, *K.PUSHED_ONLY}
+    assert set(K.PUSHED_ONLY) == {P.QUIET, K.LOOP_WAITING}
 
 
 def test_the_digests_state_at_its_bounds_stays_far_below_the_meters_cap():

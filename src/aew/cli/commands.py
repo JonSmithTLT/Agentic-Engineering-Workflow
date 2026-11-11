@@ -145,6 +145,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
         g3_commands,
         history_commands,
         map_commands,
+        notify_commands,
         operator_commands,
         settings_commands,
         usage_commands,
@@ -160,6 +161,7 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     capability_commands.register(sub)  # the capability register (STG-15, CAP-1)
     usage_commands.register(sub)  # the cost and usage ledger's reads (F25 R9)
     g3_commands.register(sub)  # the G3 client (STG-03, G3-D)
+    notify_commands.register(sub)  # the notifiers AEW ships (register E104)
     if coordination_reads:  # F9-A (plan D-31): only while messaging is on or a thread exists, never in a run
         from aew.cli import message_commands
 
@@ -341,7 +343,9 @@ def _init(args: argparse.Namespace) -> Any:
     from aew.capability import consent
     from aew.engine import first_configuration
     from aew.engine.api import Engine
+    from aew.harness import contract as K
     from aew.harness.containment import netns
+    from aew.policy import execution
 
     consent.check_names(args.fetch_tool)  # an unknown tool refuses before anything is written
     configuration = first_configuration.from_flags(check_command=args.check_command, check_timeout=args.check_timeout,
@@ -361,7 +365,9 @@ def _init(args: argparse.Namespace) -> Any:
         "authority_candidates": engine.manifest["authority"]["candidates"],
         **({"first_configuration": configuration.report()} if configuration is not None else {}),
         "next": configuration.next_step() if configuration is not None
-        else "acquire Lead authority: aew lead acquire --expect-rev 0",
+        else (f"this project still has no check command or model. To set both, "
+              f"{first_configuration.post_pin_route(first_configuration.CHECKS_REL, execution.REL_PATH, fresh=True)}. "
+              f"{K.HELD_SEAT}. Then start the Lead with `aew opencode --acquire`"),
         "provider_key": netns.FIRST_USE_LINE,
         "map": maps.first_map(engine),  # register E184: the first structural map, generated and selected
     }

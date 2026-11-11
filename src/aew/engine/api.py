@@ -315,14 +315,16 @@ class ProjectAdmin:
             return checks
         add("manifest-pin", "PASS" if self.k.manifest_pin_ok(state) else "FAIL",
             "project.yaml matches its pinned hash" if self.k.manifest_pin_ok(state)
-            else "project.yaml modified outside AEW; the operator reviews it, then `aew manifest adopt`")
+            else f".aew/project.yaml modified outside AEW; the operator reviews it, then runs {K.MANIFEST_ADOPT}")
         drift = self.k.policy_pin_drift(state)
         if drift is None:
-            add("policy-pin", "WARN", "the policy files are not pinned (a project initialized before the pin): the "
-                "operator reviews them, then `aew manifest adopt` pins them")
+            add("policy-pin", "WARN",
+                "the policy files under .aew/ are not pinned (a project initialized before the pin). "
+                f"The operator reviews them, then runs {K.MANIFEST_ADOPT} to pin them")
         else:
             add("policy-pin", "FAIL" if drift else "PASS",
-                f"modified outside AEW: {', '.join(drift)}; the operator reviews them, then `aew manifest adopt`"
+                f"modified outside AEW: {', '.join(f'.aew/{rel}' for rel in drift)}; "
+                f"the operator reviews them, then runs {K.MANIFEST_ADOPT}"
                 if drift else "the policy files match their pinned hashes")
         for name in ("guardrails", "checks", "gates"):
             try:
@@ -359,7 +361,6 @@ class ProjectAdmin:
             add("pricing-snapshots", "FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
         add("usage-ledger", *usage_ops.ledger_doctor(state, usage_ops.Reader(self.k.aew_root, None)))
         from aew.harness import containment
-        from aew.harness import contract as K
         try:
             policy_now = self.k.execution_policy()[0]
         except Exception:
@@ -1100,9 +1101,9 @@ class Engine:
                                  auto_run=auto_run)
 
     def stage_stop(self, *, token: str, expect_rev: int, intent: str, n: int, boundary: str, code: str, message: str,
-                   reason: str | None = None) -> dict[str, Any]:
+                   reason: str | None = None, await_resolution: bool = False) -> dict[str, Any]:
         return self._stages.stop(token=token, expect_rev=expect_rev, intent=intent, n=n, boundary=boundary,
-                                 code=code, message=message, reason=reason)
+                                 code=code, message=message, reason=reason, await_resolution=await_resolution)
 
     def stage_close(self, *, token: str, expect_rev: int, intent: str) -> dict[str, Any]:
         return self._stages.close(token=token, expect_rev=expect_rev, intent=intent)

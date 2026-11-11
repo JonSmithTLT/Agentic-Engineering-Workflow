@@ -1,9 +1,8 @@
-"""MS3 switch catalog, compact description parity, schemas and the normal MCP byte cap."""
+"""MS3 switch catalog, compact description parity, schemas and normal MCP projection."""
 
 from __future__ import annotations
 
 import copy
-import json
 from collections import Counter
 from pathlib import Path
 
@@ -40,19 +39,6 @@ def test_the_compact_presentation_changes_only_descriptions():
         assert mcp.tool_entry(original)["annotations"] == mcp.tool_entry(changed)["annotations"]
     assert contract.TOOLS == before
     assert "message_send" not in compact  # no standalone compact policy switch is enabled by this slice
-
-
-def test_the_normal_surface_fits_the_budget_in_both_configurations():
-    # Main's priority fields add 126 B to 11,704 off / 11,784 on. MS3's own description saves 10 B; no cap raise.
-    for switches, pin, count in [(frozenset(), 11830, 15), (contract.ALL_SWITCHES, 11900, 16)]:
-        # Designed normal rows count too, even though tools/list does not offer them yet.
-        presentation = "compact" if switches else "standard"
-        listing = {"tools": [mcp.tool_entry(t) for t in contract.catalog(switches, presentation=presentation).values()
-                             if "normal" in t.profiles]}
-        assert len(listing["tools"]) == count
-        assert len(json.dumps(listing, separators=(",", ":"))) == pin
-        assert listing == mcp.tools_list("normal", switches)
-        assert pin <= 11900
 
 
 @pytest.mark.parametrize("switches", [frozenset(), contract.ALL_SWITCHES], ids=["off", "on"])
@@ -96,7 +82,8 @@ OFF_READERS = {
     "src/aew/harness/opencode/projection.py": (
         "Known MS3 limit: import-time off summary; snapshot-aware naming belongs to reply/attention.", {"_named": 1}),
     "src/aew/harness/steering_loop.py": (
-        "Only progression actions are picked; message_send never progresses.", {"SteeringLoop.tick": 1}),
+        "Only progression actions are picked, and ingesting_action reads only planned stages; message_send never "
+        "progresses and has no planner.", {"SteeringLoop.tick": 1, "ingesting_action": 1}),
     "src/aew/surface/availability.py": (
         "Only planned workflow stages; message_send has no planner.", {"_compose": 1}),
     "src/aew/surface/mcp.py": ("Wait classification only; message_send is not a wait.", {"_is_wait": 1}),

@@ -101,6 +101,23 @@ def test_opening_is_a_cas_on_the_expected_revision(project):
     assert load_control(p.root) == before
 
 
+@pytest.mark.parametrize(("done", "code", "boundary"), [
+    (0, "STALE_REVISION", "stale_revision"), (2, "STALE_REVISION", "stale_revision"),
+    (1, "ILLEGAL_TRANSITION", "refused"), (1, "STALE_REVISION", "refused")])
+def test_only_partial_stale_stops_can_remain_active(project, done, code, boundary):
+    p = project
+    sid = open_stage(p)
+    for n in range(1, done + 1):
+        run_step(p, sid, n)
+    before = load_control(p.root)
+    with pytest.raises(IllegalTransition) as exc:
+        engine(p).stage_stop(token=p.token, expect_rev=p.rev(), intent=sid, n=min(done + 1, 2),
+                             code=code, boundary=boundary, message="a stop", await_resolution=True)
+    assert exc.value.details["reason"] == "not_resolvable_stop"
+    assert load_control(p.root) == before
+    assert_control_invariants(p)
+
+
 def test_a_committed_step_never_commits_again(project):
     p = project
     si = open_stage(p)

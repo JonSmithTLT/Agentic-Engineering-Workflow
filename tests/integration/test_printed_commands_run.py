@@ -10,6 +10,7 @@ command did what the message promised, not only that it exited 0.
 from __future__ import annotations
 
 import argparse
+import re
 import shlex
 
 import printed_commands as P
@@ -18,23 +19,29 @@ from aewflow import create_planned_ticket, sample_project, to_commit_ready
 from conftest import Project, make_git_repo
 from fake_harness import HarnessLab
 
+from aew import operator
 from aew.cli import credentials
+from aew.cli import main as cli
 from aew.errors import UsageError
 from aew.harness import contract as K
 
 REASON = "following the printed advice"
 
 
-def run_printed(p: Project, command: str, fenced: bool, env: dict[str, str] | None = None):
-    """Run one printed command: its revision is `aew status`'s, its `<reason>` a real one, and a fenced block's body
-    goes to standard input."""
+def printed_argv(p: Project, command: str, fenced: bool) -> tuple[list[str], str | None]:
+    """Fill a printed command with the current revision and a reason, and extract any heredoc body."""
     head, body = P.split(command, fenced)
     revision = p.ok("status", "--json")["revision"]
     filled = head.replace(K.REVISION, str(revision)).replace("<reason>", shlex.quote(REASON))
     assert "<" not in filled, f"a placeholder this test cannot fill: {filled}"
     argv = shlex.split(filled)
     assert argv[0] == "aew"
-    return p.aew(*argv[1:], env=env, input=body)
+    return argv[1:], body
+
+
+def run_printed(p: Project, command: str, fenced: bool, env: dict[str, str] | None = None):
+    argv, body = printed_argv(p, command, fenced)
+    return p.aew(*argv, env=env, input=body)
 
 
 def printed(text: str, word: str) -> tuple[str, bool]:
@@ -71,6 +78,27 @@ def test_resume_a_vacant_seat_is_acquired_as_printed(tmp_path):
     assert res.returncode == 0, res.stderr or res.stdout
     lead = p.ok("lead", "show")
     assert (lead["status"], lead["generation"]) == ("active", 1), lead
+
+
+def test_doctor_a_changed_manifest_is_adopted_as_printed(tmp_path, monkeypatch):
+    p = sample_project(tmp_path)
+    path = p.root / ".aew/project.yaml"
+    path.write_bytes(path.read_bytes() + b"\n# Reviewed project edit.\n")
+    before = p.rev()
+
+    def manifest_pin():
+        checks = p.aew("doctor", "--json").json["checks"]
+        return next(check for check in checks if check["check"] == "manifest-pin")
+
+    drift = manifest_pin()
+    assert drift["status"] == "FAIL" and ".aew/project.yaml" in drift["detail"]
+    argv, body = printed_argv(p, *printed(drift["detail"], "manifest adopt"))
+    assert body is None
+    monkeypatch.setenv("AEW_LEAD_TOKEN", p.token)
+    monkeypatch.setattr(operator, "ask", lambda prompt, **_: re.search(r"code ([0-9A-F]{6})", prompt)[1])
+    assert cli.main(["-C", str(p.root), *argv]) in (0, None)
+    assert p.rev() == before + 1
+    assert manifest_pin()["status"] == "PASS"
 
 
 @pytest.fixture

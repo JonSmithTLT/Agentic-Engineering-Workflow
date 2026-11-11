@@ -15,6 +15,9 @@ from aew.workspace import git, integration
 CACHES = (".build-cache/",)
 CACHE = ".build-cache/result.bin"
 WRITE_CACHE = f"from pathlib import Path; p=Path({CACHE!r}); p.parent.mkdir(exist_ok=True); p.write_text('cached')"
+PYC = "calc/__pycache__/core.cpython-311.pyc"
+WRITE_PYC = (f"from pathlib import Path; p=Path({PYC!r}); p.parent.mkdir(exist_ok=True); "
+             "p.write_bytes(b'cache')")
 
 
 def check(code="pass", caches=None):
@@ -98,10 +101,40 @@ def test_guardrails_scope_ignores_declared_caches(tmp_path):
     assert impl.check("guardrails")["result"] == "pass"
 
 
+def test_following_the_printed_cache_hint_makes_the_check_pass_and_stay_current(tmp_path):
+    p = project(tmp_path, unit=check(WRITE_PYC), lint=check())
+    (p.root / ".gitignore").write_text("", encoding="utf-8")
+    git.git("commit", "-qam", "make cache output visible to Git", cwd=p.root, env=git.identity_env(p.root))
+    wid = create_planned_ticket(p, tmp_path)
+    impl = assign(p, wid)
+    first = impl.check("unit")
+    assert first["result"] == "inconclusive"
+    line = first["message"].split("add `", 1)[1].split("`", 1)[0]
+    assert line == 'caches: ["__pycache__/", "*.pyc"]'
+    assert "make existing evidence STALE" in first["message"]
+    assert impl.check("lint")["result"] == "pass"
+    before = p.ok("gate", "show", wid)
+
+    path = p.root / ".aew/policy/checks.yaml"
+    policy = path.read_text(encoding="utf-8")
+    anchor = "  unit:\n"
+    assert anchor in policy
+    path.write_text(policy.replace(anchor, f"{anchor}    {line}\n", 1), encoding="utf-8", newline="\n")
+    p.adopt_policy()
+    assert p.ok("gate", "show", wid)["snapshot"] != before["snapshot"]
+    assert impl.check("unit")["result"] == "pass"
+    assert impl.check("lint")["result"] == "pass"
+    after = p.ok("gate", "show", wid)
+    (impl.workspace / PYC).write_bytes(b"recompiled")
+    assert p.ok("gate", "show", wid)["snapshot"] == after["snapshot"]
+    assert "local_checks" not in after["unmet"]
+
+
 @pytest.mark.parametrize(("pattern", "reason"), [
-    ("*", "probe"), ("**", "probe"), ("*.py", "probe"), ("a/b.py", "probe"), ("calc/", "tracked path"),
-    ("[c]alc/**", "tracked path"), ("/absolute", "invalid"), ("C:/absolute", "invalid"),
-    ("cache/../escape", "invalid"),
+    ("*", "new project paths"), ("**", "new project paths"), ("*.py", "new project paths"),
+    ("a/b.py", "new project paths"), ("calc/", "tracked path"), ("[c]alc/**", "tracked path"),
+    ("/build/", "repository-relative"), ("C:/absolute", "repository-relative"),
+    ("cache/../escape", "repository-relative"),
 ])
 def test_a_cache_pattern_matching_a_probe_or_tracked_path_is_refused(tmp_path, pattern, reason):
     p = project(tmp_path, unit=check())
@@ -110,8 +143,14 @@ def test_a_cache_pattern_matching_a_probe_or_tracked_path_is_refused(tmp_path, p
     policy["checks"]["unit"]["caches"] = [pattern]
     path.write_text(dump_yaml(policy), encoding="utf-8", newline="\n")
     rev = p.rev()
-    with pytest.raises(ValidationFailed, match=reason):
+    with pytest.raises(ValidationFailed, match=reason) as refused:
         p.adopt_policy()
+    message = str(refused.value)
+    assert repr(pattern) in message
+    if reason == "repository-relative":
+        assert "leading slash, drive, or '..' component" in message
+    else:
+        assert "Use a narrower pattern" in message
     assert p.rev() == rev
 
 
@@ -130,6 +169,50 @@ def test_include_ignored_wins_over_a_cache_match(tmp_path):
     path.write_text("included", encoding="utf-8", newline="\n")
     assert before != F.relevant_inputs_fingerprint(repo, cache_patterns=(CACHES,), include_ignored=[CACHE])
     assert CACHE not in F.untracked_caches(repo, (CACHES,), [CACHE])
+
+
+def test_include_ignored_keeps_a_cache_named_path_in_changed_paths_and_the_commit(tmp_path):
+    repo = make_git_repo(tmp_path / "repo", {"tracked.txt": "base\n"})
+    head = git.out("rev-parse", "HEAD", cwd=repo)
+    path = repo / CACHE
+    path.parent.mkdir()
+    path.write_bytes(b"included input")
+    path.with_name("other.bin").write_bytes(b"disposable cache")
+    options = {"cache_patterns": (CACHES,), "include_ignored": [CACHE]}
+    for stores in (False, True):
+        assert F.changed_paths(repo, head, stores=stores, **options) == [CACHE]
+    new = integration.commit_workspace(repo, "commit the included input", **options)
+    assert git.out("diff", "--name-only", head, new, cwd=repo).splitlines() == [CACHE]
+
+
+def test_reader_and_writer_fingerprints_agree_with_a_declared_cache_present(tmp_path, monkeypatch):
+    repo = make_git_repo(tmp_path / "repo", {"tracked.txt": "base\n"})
+    (repo / "source.py").write_bytes(b"value = 1\n")
+    monkeypatch.setattr(F, "_stores_objects", lambda: True)
+    expected = F.relevant_inputs_fingerprint(repo)
+    path = repo / CACHE
+    path.parent.mkdir()
+    path.write_bytes(b"cache")
+    assert F.relevant_inputs_fingerprint(repo, cache_patterns=(CACHES,)) == expected
+    monkeypatch.setattr(F, "_stores_objects", lambda: False)
+    assert F.relevant_inputs_fingerprint(repo, cache_patterns=(CACHES,)) == expected
+
+
+def test_ticket_commit_with_many_declared_cache_paths(tmp_path):
+    repo = make_git_repo(tmp_path / "repo", {"tracked.txt": "base\n"})
+    head = git.out("rev-parse", "HEAD", cwd=repo)
+    cache_dir = (repo / CACHE).parent
+    cache_dir.mkdir()
+    # These literal excludes exceed the status command's 8,000-character budget.
+    count = 300
+    for index in range(count):
+        (cache_dir / f"cached-result-{index:03d}.bin").write_bytes(b"cache")
+    options = {"cache_patterns": (CACHES,)}
+    assert integration.commit_workspace(repo, "cache only", **options) == head
+    (repo / "source.py").write_bytes(b"value = 1\n")
+    new = integration.commit_workspace(repo, "commit source", **options)
+    assert git.out("diff", "--name-only", head, new, cwd=repo).splitlines() == ["source.py"]
+    assert f"Excluded {count} declared cache path(s)." in git.out("log", "--format=%B", new, cwd=repo)
 
 
 def test_cache_only_commit_and_existing_git_ignores(tmp_path):

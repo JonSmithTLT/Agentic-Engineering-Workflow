@@ -58,8 +58,15 @@ def validate_caches(policy: dict[str, Any], *, repo: Path, commit: str | None, s
         for pattern in sorted(patterns):
             path = pattern.removeprefix("!")
             windows = PureWindowsPath(path)
-            if path.startswith("/") or windows.drive or ".." in windows.parts or any(c in pattern for c in "\0\r\n"):
-                raise ValidationFailed(f"{source}: invalid check cache pattern {pattern!r}", pattern=pattern)
+            if path.startswith("/") or windows.drive or ".." in windows.parts:
+                raise ValidationFailed(
+                    f"{source}: check cache pattern {pattern!r} uses a leading slash, drive, or '..' component. "
+                    "Use a repository-relative pattern without those components, such as 'build/'.",
+                    pattern=pattern)
+            if any(c in pattern for c in "\0\r\n"):
+                raise ValidationFailed(
+                    f"{source}: check cache pattern {pattern!r} contains a NUL or line break. "
+                    "Use a single-line pattern without those characters.", pattern=pattern)
             (root / ".gitignore").write_text(pattern + "\n", encoding="utf-8", newline="\n")
             matched = git.git("-c", "core.excludesFile=", "-c", f"core.ignorecase={case_setting}",
                               "check-ignore", "--no-index", "-z", "--stdin", cwd=root, env=env,
@@ -69,9 +76,10 @@ def validate_caches(policy: dict[str, Any], *, repo: Path, commit: str | None, s
                                stderr=matched.stderr.decode("utf-8", "replace").strip())
             if matched.stdout:
                 found = matched.stdout.split(b"\0", 1)[0]
-                kind = "probe" if found in _CACHE_PROBES else "tracked path"
+                kind = "new project paths such as" if found in _CACHE_PROBES else "the tracked path"
                 name = found.decode("utf-8", "replace")
-                raise ValidationFailed(f"{source}: check cache pattern {pattern!r} matches {kind} {name!r}",
+                raise ValidationFailed(f"{source}: check cache pattern {pattern!r} would also match {kind} {name!r}. "
+                                       "Use a narrower pattern that matches only disposable cache files.",
                                        pattern=pattern, path=name)
 
 

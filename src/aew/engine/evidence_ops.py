@@ -136,7 +136,8 @@ def _check_mutation_diagnostic(paths: list[str], tracked: set[str] | None, *,
             path == prefix or path.startswith(prefix + "/") for path in paths for prefix in forced):
         if hint := C.cache_hint(paths):
             message += (f" If these are disposable caches, add `{hint}` under check {check_id!r} in "
-                        "policy/checks.yaml and adopt the policy.")
+                        "policy/checks.yaml and adopt the policy. "
+                        "This can change the fingerprint and make existing evidence STALE.")
     return {"changed_paths": shown, "message": message}
 
 

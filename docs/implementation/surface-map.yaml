@@ -1028,7 +1028,7 @@ commands:
           - "option --replace"
     owner: pending (A1)
     refusals: [PERMISSION_DENIED, PROJECT_NOT_FOUND, STALE_AUTHORITY, STALE_REVISION, USAGE]
-    note: "the Lead's counted U14 recheck fallback; a stage's own launch is `dispatch.launch`, not this command"
+    note: "a stage launches its own harness with `dispatch.launch`"
   - name: harness status
     home: product
     users: [operator, lead]

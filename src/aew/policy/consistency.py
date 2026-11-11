@@ -37,8 +37,8 @@ def problems(gates: dict[str, Any], checks: dict[str, Any], catalogue: G.Catalog
                            f"define: every gate that needs it stays MISSING. Define it in checks.yaml or remove it "
                            f"from {where}.")
     # E340 (designer's 2026-11-10 revision-check ruling): a class raise must preserve exact gate names.
-    # Only the path tables are covered here. post_integration.validation.by_class can be non-monotone
-    # pending the designer's ruling.
+    # This rule covers the path tables. The designer's 2026-11-11 ruling requires
+    # post_integration.validation.by_class to be monotone. A follow-on PR enforces that rule.
     for table, utype in PATH_TABLES:
         paths = gates.get(table) or {}
         first_required: dict[str, str] = {}

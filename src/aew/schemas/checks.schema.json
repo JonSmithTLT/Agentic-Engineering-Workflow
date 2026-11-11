@@ -23,6 +23,48 @@
         }
       }
     },
-    "baseline_failures": {"x-aew-class": "legality_affecting", "type": "array", "items": {"type": "string"}}
+    "baseline_failures": {"x-aew-class": "legality_affecting", "type": "array", "items": {"type": "string"}},
+    "coverage": {
+      "x-aew-class": "operational",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ci_tools": {
+          "x-aew-class": "operational",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "covered_by"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "covered_by": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+            }
+          }
+        },
+        "affected_tests": {
+          "x-aew-class": "operational",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["selector", "unit"],
+          "properties": {
+            "unit": {"type": "string", "minLength": 1},
+            "selector": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["command"],
+              "properties": {
+                "command": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                "cwd": {"type": "string", "default": "."},
+                "timeout_s": {"type": "number", "exclusiveMinimum": 0},
+                "network": {"enum": ["isolated", "shared"], "default": "isolated"},
+                "inputs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+                "may_select_none": {"type": "boolean", "default": false}
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }

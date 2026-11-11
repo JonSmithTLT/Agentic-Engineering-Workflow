@@ -12,7 +12,7 @@ import re
 import sys
 import unicodedata
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aew.errors import IntegrityError
 from aew.harness import runlog
@@ -20,6 +20,9 @@ from aew.harness.contract import redact
 from aew.knowledge import evidence as E
 from aew.policy import checks as C
 from aew.util import load_yaml, sha256_file
+
+if TYPE_CHECKING:
+    from aew.engine.base import Kernel
 
 # Display choices for E120's bounded hot-state projection, not execution limits: 50 paths give a small diff sample;
 # ten entries per category give a useful scan; 500 characters bound one authored field. Full facts stay in records.
@@ -37,6 +40,46 @@ def inventory(checks: dict[str, Any], guardrails: dict[str, Any]) -> list[dict[s
     """The configured inventory at the observation's pin, not a list inferred from its command text."""
     return [{"check_id": cid, "definition_sha256": digest}
             for cid, digest in sorted(C.current_definitions(checks, guardrails).items())]
+
+
+def checks_at_pin(kernel: Kernel) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Resolve the declaration and its digest from the same adopted bytes."""
+    from aew.engine.base import check_policy_bytes
+
+    raw, digest = kernel.policy_bytes_with_pin("checks")
+    policy = check_policy_bytes("checks", raw, source=kernel.manifest["policy"]["checks"])
+    declaration = policy.get("coverage")
+    return policy, None if declaration is None or digest is None else {"declaration": declaration, "sha256": digest}
+
+
+def _ci_present(root: Path) -> bool:
+    if (root / ".github" / "workflows").is_dir():
+        return True
+    from aew.maps import rules, structural
+    from aew.workspace import git
+
+    labels = rules.load().data["directory_labels"]
+    ci_dirs = {name for name, label in labels.items() if label == "ci"}
+    paths = git.git("ls-files", "-z", cwd=root).stdout.decode("utf-8", errors="replace")
+    return any(part.lower() in ci_dirs for path in paths.split("\0") if not path.startswith(".aew/")
+               for part in path.split("/")[:-1][:structural.DIRECTORY_DEPTH])
+
+
+def doctor_rows(policy: dict[str, Any], declaration: dict[str, Any], root: Path) -> list[tuple[str, str]]:
+    ci_present = any(key not in declaration for key in ("ci_tools", "affected_tests")) and _ci_present(root)
+    rows = []
+    for key, label in (("ci_tools", "Project CI tools"), ("affected_tests", "Affected tests")):
+        if key in declaration:
+            rows.append(("PASS", f"{label}: declared"))
+        elif ci_present:
+            rows.append(("WARN", f"{label}: the project has CI configuration but this list is not declared. "
+                         "Validations state 'not known'. See 'Declare project CI coverage' in the quickstart."))
+        else:
+            rows.append(("PASS", f"{label}: not declared; validations state 'not known'"))
+    configured = C.current_definitions(policy, {})
+    rows.extend(("WARN", f"CI runs {_text(tool['name'])}; no configured check runs it")
+                for tool in declaration.get("ci_tools", []) if configured.keys().isdisjoint(tool["covered_by"]))
+    return rows
 
 
 def files(paths: list[str] | None, *, source: str, reason: str = "source_diff_not_recorded") -> dict[str, Any]:
@@ -61,24 +104,57 @@ def observation(meta: dict[str, Any], *, cwd: str | None = None, cited: bool = F
             "command": copy.deepcopy(method.get("command")), "cwd": cwd if cwd is not None else method.get("cwd"),
             "definition_sha256": check.get("definition_sha256"),
             "evaluated_snapshot": copy.deepcopy(meta.get("evaluated_snapshot")), "result": meta.get("result"),
+            "outcome": check.get("outcome"), "exit_code": check.get("exit_code"),
             "reason": check.get("reason"), "run": (meta.get("producer") or {}).get("run"), "cited": cited}
+
+
+def _ci_inventory(declared: list[dict[str, Any]], configured: list[dict[str, Any]],
+                  checks: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
+    available = {c["check_id"] for c in configured}
+    reasons_for: dict[str | None, str] = {"spawn_failed": "could_not_start", "timeout": "not_completed"}
+    items, completed_by = [], {}
+    for tool in declared:
+        name = tool["name"]
+        covering = available.intersection(tool["covered_by"])
+        observed = [c for c in checks if c.get("check_id") in covering]
+        finished = sorted({c["check_id"] for c in observed if c.get("exit_code") is not None})
+        reasons = [] if finished else sorted({reasons_for.get(c.get("outcome"), "not_run_in_this_validation")
+                                               for c in observed})
+        if not finished and not reasons:
+            reasons = ["not_run_in_this_validation" if covering else "not_configured"]
+        if finished:
+            completed_by[name] = finished
+        items.append({"name": name, "ran": bool(finished), "reasons": reasons})
+    return items, completed_by
 
 
 def build(*, subject: dict[str, Any], configured: list[dict[str, Any]], checks: list[dict[str, Any]],
           changed_files: dict[str, Any], capabilities: dict[str, Any], result: str,
+          declaration_pin: dict[str, Any] | None = None, checkless: bool = False,
           complete: bool = True, limits: list[str] | None = None) -> dict[str, Any]:
     """Freeze only supplied observed facts. Incomplete execution is not proof that every absent check was unrun."""
     ran = {(c.get("check_id"), c.get("definition_sha256")) for c in checks}
+    reason = ("execution_completion_not_recorded" if not complete else
+              "no_checks_in_this_subject" if checkless else "no_project_source")
+    affected_tests = {"known": False, "reason": reason}
+    ci_tools: dict[str, Any] = {"known": False, "reason": reason}
+    completed_by: dict[str, list[str]] = {}
+    if complete and not checkless and declaration_pin is not None:
+        declaration = declaration_pin["declaration"]
+        if "affected_tests" in declaration:
+            affected_tests["reason"] = "selection_not_run"
+        if "ci_tools" in declaration:
+            items, completed_by = _ci_inventory(declaration["ci_tools"], configured, checks)
+            ci_tools = {"known": True, "source": "declared:" + declaration_pin["sha256"], "items": items}
     out = {"schema": "aew/validation-coverage/v1", "subject": copy.deepcopy(subject),
            "checks": copy.deepcopy(checks),
            "configured_not_run": [{**c, "reason": "not_run_in_this_validation"} for c in configured
                                   if (c["check_id"], c["definition_sha256"]) not in ran] if complete else [],
            "changed_files": copy.deepcopy(changed_files), "run_capabilities": copy.deepcopy(capabilities),
-           "affected_tests": {"known": False, "reason": "no_project_source"},
-           "ci_tools": {"known": False, "reason": "no_project_source"},
+           "affected_tests": affected_tests, "ci_tools": ci_tools,
            "observation_limits": list(limits or []) + ([] if complete else ["execution_completion_not_recorded"]),
            "result": result}
-    out["summary"] = summarize(out)
+    out["summary"] = summarize(out, completed_by=completed_by)
     return out
 
 
@@ -109,8 +185,9 @@ def _execution_data(command: Any) -> str:
     return _text(json.dumps(shown, ensure_ascii=False))
 
 
-def _bounded_summary(summary: dict[str, Any], known: list[str], unknown: list[str]) -> dict[str, Any]:
-    """Reserve unknown lines first, then fit known detail; truncation is explicit and full facts stay immutable."""
+def _bounded_summary(summary: dict[str, Any], inventories: list[str], known: list[str],
+                     unknown: list[str]) -> dict[str, Any]:
+    """Reserve inventory headings and unknown lines before detail. Full facts stay in the record."""
     note = "(summary detail omitted to fit byte budget; see coverage record)"
     summary["lines"] = []
     # JSON's default separators match durable records' consumers; UTF-8 bytes, not Unicode character counts.
@@ -131,14 +208,16 @@ def _bounded_summary(summary: dict[str, Any], known: list[str], unknown: list[st
                 remaining -= size
         return kept
 
+    inventory_kept = fit(inventories)
     unknown_kept = fit(unknown)
     known_kept = fit(known)
-    omitted = len(known_kept) + len(unknown_kept) < len(known) + len(unknown)
-    summary["lines"] = [*known_kept, *([note] if omitted else []), *unknown_kept]
+    omitted = (len(inventory_kept) + len(known_kept) + len(unknown_kept)
+               < len(inventories) + len(known) + len(unknown))
+    summary["lines"] = [*inventory_kept, *known_kept, *([note] if omitted else []), *unknown_kept]
     return summary
 
 
-def summarize(value: dict[str, Any]) -> dict[str, Any]:
+def summarize(value: dict[str, Any], *, completed_by: dict[str, list[str]] | None = None) -> dict[str, Any]:
     """The same four-case rule everywhere. Future known inventories exercise this rule without a new adapter."""
     checks = value.get("checks") or []
     not_run = value.get("configured_not_run") or []
@@ -148,13 +227,29 @@ def summarize(value: dict[str, Any]) -> dict[str, Any]:
         recorded = [r for r in caps.values() if r.get(f"{kind}_recorded")]
         if recorded:
             counts[f"missing_run_{kind}"] = sum(len(r.get(f"missing_{kind}") or []) for r in recorded)
-    unknown, inventory_gaps = [], []
+    unknown, inventories, inventory_gaps = [], [], []
     for field, label in (("affected_tests", "Affected tests"), ("ci_tools", "Project CI tools")):
         item = value.get(field) or {"known": False, "reason": "coverage_not_recorded"}
         if item.get("known") is True:
-            counts[f"{field}_not_run"] = sum(not i.get("ran", False) for i in item.get("items") or [])
-            inventory_gaps.extend(f"{label}: {_text(i.get('name'))}: not run ({_text(i.get('reason', 'not run'))})"
-                                  for i in item.get("items") or [] if not i.get("ran", False))
+            items = item.get("items") or []
+            missed = [i for i in items if not i.get("ran", False)]
+            counts[f"{field}_not_run"] = len(missed)
+            if field == "ci_tools":
+                unconfigured = sum("not_configured" in i.get("reasons", []) for i in missed)
+                line = f"{label} (per the project's declaration): {len(items)} declared"
+                line += f", {unconfigured} not configured, {len(missed) - unconfigured} otherwise not run"
+                ran_tools = [f"{_text(name)}: ran (check {_text(', '.join(ids))})"
+                             for name, ids in (completed_by or {}).items()]
+                inventories.append("; ".join([line, *ran_tools[:SUMMARY_ITEMS]]))
+            else:
+                unit = f", {_text(item['unit'])}" if item.get("unit") else ""
+                count = len(items) + item.get("omitted", 0)
+                detail = f"{count} selected, {len(missed)} not run" if count else "none selected"
+                inventories.append(f"{label} (per the project's selector{unit}): {detail}")
+            inventory_gaps.extend(
+                f"{label}: {_text(i.get('name'))}: not run "
+                f"({_text(', '.join(reason.replace('_', ' ') for reason in i.get('reasons', [])) or 'not run')})"
+                for i in missed)
         else:
             unknown.append(f"{label}: not known ({_text(str(item.get('reason')).replace('_', ' '))})")
     for run, entry in caps.items():
@@ -196,8 +291,8 @@ def summarize(value: dict[str, Any]) -> dict[str, Any]:
         verdict = "pass within its recorded scope"
     return _bounded_summary({"verdict": verdict, "known_gaps": counts,
                              "headline": f"{'Check' if single else 'Validation'}: {verdict}; {counts_text}"},
-                            [*_listed(observed), *_listed(gaps), *_listed(inventory_gaps), *_listed(tools),
-                             *_listed(skills)], _listed(unknown))
+                            inventories, [*_listed(observed), *_listed(gaps), *_listed(inventory_gaps),
+                             *_listed(tools), *_listed(skills)], _listed(unknown))
 
 
 def legacy() -> dict[str, Any]:

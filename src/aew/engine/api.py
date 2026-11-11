@@ -371,13 +371,18 @@ class ProjectAdmin:
             add(name, status, detail)
         add("git-drivers", *self._git_drivers_doctor())
         try:
-            checks_policy = self.k.policy("checks")
+            from aew.engine.coverage import checks_at_pin, doctor_rows
+
+            checks_policy, declaration_pin = checks_at_pin(self.k)
             unconfigured = [k for k, v in checks_policy["checks"].items() if not v.get("configured")]
             if unconfigured:
                 add("checks-configured", "WARN",
                     f"unconfigured checks {unconfigured}: gates requiring them stay blocked")
             else:
                 add("checks-configured", "PASS", "all declared checks configured")
+            declaration = declaration_pin["declaration"] if declaration_pin else {}
+            for status, detail in doctor_rows(checks_policy, declaration, self.k.repo_root):
+                add("checks-configured", status, detail)
             cap = mutating_cap(self.k.policy("gates"))
             add("mutating-concurrency", "PASS",
                 f"{cap}: up to {cap} mutating Ticket(s) hold a live workspace at once, each in its own worktree; "

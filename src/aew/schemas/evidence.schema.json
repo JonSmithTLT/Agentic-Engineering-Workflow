@@ -163,6 +163,7 @@
       "properties": {
         "check_id": {"type": "string"},
         "exit_code": {"type": ["integer", "null"]},
+        "outcome": {"enum": ["ran", "spawn_failed", "timeout"]},
         "duration_s": {"type": "number"},
         "mutated_inputs": {"type": "boolean"},
         "definition_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$",
@@ -187,7 +188,15 @@
          "properties": {"known": {"const": false}, "reason": {"type": "string", "minLength": 1}}},
         {"type": "object", "required": ["known", "source", "items"], "additionalProperties": false,
          "properties": {"known": {"const": true}, "source": {"type": "string", "minLength": 1},
-                        "items": {"type": "array", "items": {"type": "object"}}}}
+                        "unit": {"type": "string", "minLength": 1},
+                        "omitted": {"type": "integer", "minimum": 0},
+                        "items": {"type": "array", "items": {
+                          "type": "object", "required": ["name", "ran", "reasons"], "additionalProperties": false,
+                          "properties": {"name": {"type": "string"}, "ran": {"type": "boolean"},
+                                         "reasons": {"type": "array", "uniqueItems": true,
+                                           "items": {"enum": ["not_configured", "not_run_in_this_validation",
+                                                              "could_not_start", "not_completed"]}}}
+                        }}}}
       ]
     },
     "coverage": {

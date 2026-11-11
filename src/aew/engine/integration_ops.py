@@ -404,8 +404,7 @@ class Integration:
         record["coverage"] = CV.build(
             subject={"work_id": work_id, "scope": "integration", "base": base}, configured=[], checks=[],
             changed_files=CV.files(None, source="candidate_diff", reason="candidate_not_prepared"),
-            capabilities={}, result="not validated",
-            complete=False)
+            capabilities={}, result="not validated", declaration_pin=None, checkless=True)
         if admission is not None:  # a rebuild's own decision; a granted build's is on its custodian
             record["admission"] = admission
         candidate: str = merged.get("commit") or ""
@@ -441,7 +440,7 @@ class Integration:
                 subject={"work_id": work_id, "scope": "integration", "base": base, "candidate": candidate,
                          "snapshot": snap}, configured=[], checks=[],
                 changed_files=CV.files(changed, source=f"candidate_diff_from:{base}"), capabilities={},
-                result="not validated", complete=False)
+                result="not validated", declaration_pin=None, checkless=True)
             self.queue.record_attempt(state, work_id, unit["integration"])
             ctx.summary = f"{work_id} integration candidate {candidate[:12]} prepared on {base[:12]}"
         return unit, conflict, refused

@@ -96,6 +96,28 @@ The credential route holds the seat. When you're done, use `aew lead release`, t
 `aew opencode --acquire`. If work is still in flight and the old session kept the seat, follow the takeover
 instructions it printed.
 
+### Declare project CI coverage
+
+Ask the Lead to read the project's CI configuration and draft a `coverage.ci_tools` list for
+`.aew/policy/checks.yaml`. List each tool once. Its `covered_by` list names configured check IDs or the built-in
+`guardrails` check. Use `covered_by: []` when no check covers it.
+
+```yaml
+coverage:
+  ci_tools:
+    - name: ruff
+      covered_by: [lint]
+    - name: pyright
+      covered_by: []
+```
+
+The operator reviews the draft, pastes it into the policy and runs the manifest adoption command from the preceding
+section in one sitting. The project is frozen between the edit and adoption because reads of the changed policy
+are refused. A contained Lead can draft the text. An uncontained Lead can also edit the file for the operator to adopt.
+
+Validation reports the CI tools from the adopted declaration. A tool marked as run means a covering check finished.
+Doctor reports undeclared lists and tools with no configured check under `checks-configured`.
+
 ### Giving AEW the Lead credential
 
 A command that needs the Lead credential asks for it at a hidden prompt on your terminal, and uses it for that command

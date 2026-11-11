@@ -543,6 +543,7 @@ None.
 - `aew.engine.configuration`
 - `aew.engine.context_ops`
 - `aew.engine.coordination_ops`
+- `aew.engine.coverage`
 - `aew.engine.custody_ops`
 - `aew.engine.dispatch`
 - `aew.engine.disposition_ops`
@@ -644,6 +645,7 @@ None.
 - `aew.knowledge.manifest`
 - `aew.knowledge.records`
 - `aew.knowledge.render`
+- `aew.policy.checks`
 - `aew.policy.classes`
 - `aew.policy.execution`
 - `aew.process_kind`
@@ -709,13 +711,17 @@ None.
 
 ### `aew.engine.coverage`
 
+- `aew.engine.base`
 - `aew.engine.harness_ops`
 - `aew.errors`
 - `aew.harness.contract`
 - `aew.harness.runlog`
 - `aew.knowledge.evidence`
+- `aew.maps.rules`
+- `aew.maps.structural`
 - `aew.policy.checks`
 - `aew.util`
+- `aew.workspace.git`
 
 ### `aew.engine.custody_ops`
 

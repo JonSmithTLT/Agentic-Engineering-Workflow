@@ -380,6 +380,16 @@ skipped:
     tests/integration/test_containment.py::test_a_check_runs_inside_the_runs_layout: >-
       Linux bubblewrap containment (F2/E13, M4-B); Windows has no OS filesystem containment and records
       workdir_separation_only. Covered on Linux (CI and the Rocky 8 lane).
+    tests/integration/test_opencode_adapter.py::test_fresh_shell_workers_start_from_the_named_stored_login[dispatch]: >-
+      The stored worker key requires the Linux provider relay. Windows keeps the explicit environment path.
+    tests/integration/test_opencode_adapter.py::test_fresh_shell_workers_start_from_the_named_stored_login[direct]: >-
+      The stored worker key requires the Linux provider relay. Windows keeps the explicit environment path.
+    tests/integration/test_opencode_adapter.py::test_fresh_shell_workers_start_from_the_named_stored_login[broker]: >-
+      The stored worker key requires the Linux provider relay. Windows keeps the explicit environment path.
+    tests/integration/test_opencode_adapter.py::test_fresh_shell_workers_start_from_the_named_stored_login[steering]: >-
+      The stored worker key requires the Linux provider relay. Windows keeps the explicit environment path.
+    tests/integration/test_opencode_adapter.py::test_fresh_shell_workers_start_from_the_named_stored_login[anthropic]: >-
+      The stored worker key requires the Linux provider relay. Windows keeps the explicit environment path.
     tests/integration/test_opencode_adapter.py::test_residual_the_harness_servers_environment_is_readable_from_the_agents_shell: >-
       reads /proc/<parent>/environ, which Windows has no equivalent of (a same-user process can read another's
       memory there instead: ADR-0009 residual). Covered on Linux.
@@ -673,6 +683,8 @@ skipped:
     tests/integration/test_containment.py::test_each_row_fails_closed_when_its_protection_is_missing[row5-mask]: >-
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); each row's judgement fails closed on every platform in tests/unit/test_containment_probe.py.
+    tests/integration/test_containment.py::test_each_row_fails_closed_when_its_protection_is_missing[row5-worker-store]: >-
+      Linux bubblewrap row 5 checks the relocated synthetic OpenCode store and its SQLite companion files.
     tests/integration/test_containment.py::test_a_worker_has_no_controlling_terminal_even_when_its_launcher_has_one[contained]: >-
       Linux bubblewrap containment (STG-05 CS-2); Windows has no OS filesystem containment. Covered on Linux (CI and
       the Rocky 8 lane); row 4's judgement is tested on every platform in tests/unit/test_containment_probe.py, and

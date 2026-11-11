@@ -15,6 +15,7 @@ from typing import Any
 
 import fake_opencode
 import pytest
+from sleep_patch import patch_sleep
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL = ROOT / "tools" / "harness_qualify"
@@ -584,7 +585,7 @@ def test_messaging_checks_fail_scripted_server_payload_and_admission_violations(
     monkeypatch.setattr(messaging.model, "start", lambda *a: llm)
     monkeypatch.setattr(OC, "serve", lambda *a, **k: contextlib.nullcontext(server))
     monkeypatch.setattr(messaging, "http", lambda srv, method, path, body=None: srv.request(method, path, body))
-    monkeypatch.setattr(messaging.time, "sleep", lambda seconds: None)
+    patch_sleep(monkeypatch, messaging)
     ctx = core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6")
     check = next(c for c in OC.OpenCodePack(FIXTURES).checks() if c.id == "messaging." + name)
     result = check.run(ctx)

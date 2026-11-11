@@ -314,8 +314,8 @@ class FakeOpenCodeDriver(Driver):
         # from #343 until this answer). The operator here answers `none`: a test host downloads nothing, and the
         # decline lands in the lab's own register (its XDG_DATA_HOME). The screen's first line and its prompt are
         # the screen's own (``consent.screen``), never restated here; and a screen shown but not answered ends the
-        # session at once, which ``LeadSession.result`` fails on, so a prompt this driver no longer matches is a
-        # failure naming it, never a start that silently waits the timeout out again (review of the fix, n1).
+        # session at once, which ``LeadSession.result`` and every lab wait fail on, so a prompt this driver no
+        # longer matches is a failure naming it, never a start that silently waits the timeout out (review, n1).
         lines = consent.screen([]).split("\n")
         header, choose = next(line for line in lines if line).encode(), lines[-1].encode()
         shown: dict[str, Any] = {}
@@ -346,12 +346,15 @@ class FakeOpenCodeDriver(Driver):
             finally:
                 os.close(master)
 
+        def ended() -> str:
+            return (f"the start showed its tool screen ({header.decode()!r}) and the driver found no prompt to answer "
+                    f"within {SCREEN_ANSWER_S:.0f} s, so it ended the session: the prompt is no longer the screen's "
+                    "last line" if shown.get("missed") else "")
+
         threading.Thread(target=drain, daemon=True).start()
         lab.sessions.append(proc)
-        return LeadSession(proc, transcript, relayed=True, ended_by_driver=lambda: (
-            f"the start showed its tool screen ({header.decode()!r}) and the driver found no prompt to answer "
-            f"within {SCREEN_ANSWER_S:.0f} s, so it ended the session: the prompt is no longer the screen's last "
-            "line" if shown.get("missed") else ""))
+        lab.ended_by_driver.append(ended)  # a wait on the session's work fails too, not only its result
+        return LeadSession(proc, transcript, relayed=True, ended_by_driver=ended)
 
 
 class OpenCodeDriver(Driver):

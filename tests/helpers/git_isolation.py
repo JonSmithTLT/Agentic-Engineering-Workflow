@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import atexit
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -45,19 +44,18 @@ from typing import Any
 
 import pytest
 
+from aew.workspace.git import COUNTED_CONFIG as _COUNTED_CONFIG
+from aew.workspace.git import LOCAL_ENV_VARS
+
 # What points git at another repository, or at parts of one. `git rev-parse --local-env-vars` lists most of them, and a
 # test compares this to what the installed git prints, so a new one fails rather than leaks. Variables that only tune a
 # git that is in the right repository stay set: GIT_CONFIG_NOSYSTEM, GIT_DEFAULT_HASH, GIT_INDEX_VERSION and the like.
-REDIRECTING = frozenset({
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_CONFIG", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS",
-    "GIT_DIR", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_GRAFT_FILE", "GIT_IMPLICIT_WORK_TREE", "GIT_INDEX_FILE",
-    "GIT_INTERNAL_SUPER_PREFIX", "GIT_NAMESPACE", "GIT_NO_REPLACE_OBJECTS", "GIT_OBJECT_DIRECTORY", "GIT_PREFIX",
-    "GIT_QUARANTINE_PATH", "GIT_REFLOG_ACTION", "GIT_REPLACE_REF_BASE", "GIT_SHALLOW_FILE", "GIT_TEMPLATE_DIR",
-    "GIT_WORK_TREE",
-})
+REDIRECTING = LOCAL_ENV_VARS | {
+    "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_INTERNAL_SUPER_PREFIX", "GIT_NAMESPACE", "GIT_QUARANTINE_PATH",
+    "GIT_REFLOG_ACTION", "GIT_TEMPLATE_DIR",
+}
 # A hook runs with these set, and they outrank a test repository's own `user.name`.
 IDENTITY = frozenset(f"GIT_{who}_{what}" for who in ("AUTHOR", "COMMITTER") for what in ("NAME", "EMAIL", "DATE"))
-_COUNTED_CONFIG = re.compile(r"GIT_CONFIG_(KEY|VALUE)_\d+\Z")
 
 SESSION_NAME, SESSION_EMAIL = "AEW Test", "aew-test@invalid"
 # Exact: a change to any of these is never another session's ordinary work.

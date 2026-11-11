@@ -1130,6 +1130,9 @@ def test_migrating_a_v1_project_records_its_adopted_steering_default_so_a_raise_
     assert state(w)["steering"]["default"] == "crawl" and (now["mode"], now["source"]) == ("crawl", S.STANDING_DEFAULT)
     record = next(r for r in _steering_records(w) if r["id"] == now["record"])
     assert (record["by"]["via"], record["new"], record["revision"]) == ("migrate", "crawl", out["revision"]), record
+    # the migrate transition names its record, as adopt's does (the quick check of E228's fourth PR, QC-3)
+    named = [r for r in log_record(w, out["revision"])["refs"] if r.startswith(f"{S.RECORDS_DIR}/")]
+    assert len(named) == 1 and f'"id":"{record["id"]}"' in (w.root / ".aew" / named[0]).read_text(), named
     _raise_walk(w)
     set_messaging(w.root, "disabled")  # an adopted edit that does not touch steering
     w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="unrelated edit", authorization=OPERATOR)

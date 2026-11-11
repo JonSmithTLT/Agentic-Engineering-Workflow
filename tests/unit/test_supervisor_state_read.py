@@ -184,3 +184,19 @@ def test_a_failed_authority_read_at_the_bridge_leaves_the_engine_as_the_gate(tmp
     sup = stand_in(tmp_path, LockFreeOnly([errors.ProjectNotFound("mid-replace")]))
     assert sup.authority_problem() is None
     assert sup._authority() == (False, None)
+
+
+def test_watch_refuses_a_run_whose_deadline_start_has_not_decided(tmp_path, monkeypatch):
+    """A supervisor's deadline is UNDECIDED until ``start`` decides it at custody, and ``watch`` refuses it rather than
+    read it as no deadline (the review of E228's fourth PR, n3, and its quick check, QC-2): no run is watched
+    unbounded because ``start`` was skipped."""
+    from aew.engine import api
+    from aew.harness import supervisor
+
+    monkeypatch.setattr(api, "Engine", lambda repo_root, aew_root: SimpleNamespace())
+    monkeypatch.setattr(supervisor, "token_id_of", lambda credential: TOKEN)
+    handoff = {"run": RUN, "invocation": INV, "credential": TOKEN, "repo_root": str(tmp_path),
+               "aew_root": str(tmp_path)}
+    sup = Supervisor(tmp_path, handoff, ack=None)
+    with pytest.raises(errors.IllegalTransition, match="start has not run"):
+        sup.watch()

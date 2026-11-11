@@ -53,7 +53,7 @@ HANDOFF_LIMIT = 64 * 1024
 TERMINATE_S = 20.0
 ENDING_EXTRA_S = 60.0  # beyond the adapter's stop: collection and the evidence and credential scans
 START_ENV = "AEW_RUN_START_S"
-UNDECIDED = object()  # a run's deadline before custody decides it: `watch` reads it as the profile's (bounded)
+UNDECIDED = object()  # a run's deadline before custody decides it: `watch` refuses it, never reads it as no deadline
 STARTING_MARGIN_S = 60.0  # beyond the self-test and the adapter's launch: the contract, the bridge, the layout
 # The error type of a provider refusal on content, as the adapter's detail spells it ("failed (provider.content-filter,
 # 200: ...)"); matched at the type, never in the provider's message text (PR #310 review, F3).
@@ -198,7 +198,7 @@ class Supervisor:
         self._start_s = 0.0  # the start's deadline in seconds from custody, and as a monotonic time
         self._start_until: float | None = None
         # The hard deadline this run gets, decided at custody (``applied_deadline``). Until ``start`` decides it, it is
-        # UNDECIDED, which ``watch`` reads as the bounded side, never as no deadline (PR 4 review, n3).
+        # UNDECIDED, which ``watch`` refuses, so no run is watched without one (the review of E228's fourth PR, n3).
         self.deadline_s: Any = UNDECIDED
         self.stop_reason: tuple[str, str] | None = None  # (status, reason) requested by a bridge refusal
         self._control_seen: Any = None
@@ -323,7 +323,8 @@ class Supervisor:
         # harness starts keeps this run's deadline (quick check of E228's third PR, M1). The decision point is custody,
         # not the dispatch: a Run that stops being effective between the dispatch commit and this read (lowered by the
         # operator or the Lead, its generation ended, or an adopt changing the default) gives the run no Run-only
-        # deadline, and it runs as the new mode does. The design accepts that window (PR 4 review, m1).
+        # deadline, and it runs as the new mode does. The design accepts that window (the review of E228's fourth PR,
+        # m1).
         self.deadline_s = self.applied_deadline(state)
         # Beat before the first record: a non-terminal record with no heartbeat reads as `lost`, and writing the record
         # wakes every `harness wait` into exactly that gap (CI, Windows, 2026-10-09; register E3).
@@ -526,8 +527,10 @@ class Supervisor:
         return profile.get("deadline_s")
 
     def watch(self) -> None:
+        if self.deadline_s is UNDECIDED:
+            raise errors.IllegalTransition("watch needs the deadline start decides at custody; start has not run")
         self._watching.set()
-        deadline_s = self.applied_deadline(None) if self.deadline_s is UNDECIDED else self.deadline_s
+        deadline_s = self.deadline_s
         deadline = time.monotonic() + deadline_s if deadline_s else None
         last_beat = last_poll = 0.0
         unread = False  # the last authority read failed: read again at the next tick (#366 review, M2)

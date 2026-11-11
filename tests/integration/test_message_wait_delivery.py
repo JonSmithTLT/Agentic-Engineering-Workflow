@@ -242,3 +242,48 @@ def test_failed_relayed_wait_send_records_neither_message_nor_sequence_or_end_re
         b.close()
         (sync / "end").touch()
     lab.wait(run)
+
+
+def test_two_real_runs_share_the_twenty_body_wait_budget_and_omitted_replies_return_next(lab, tmp_path):
+    from aewflow import create_investigation
+    from test_harness_send_when import enable_messaging
+    from test_worker_messages import HELPERS
+
+    enable_messaging(lab)
+    lab.env["AEW_HARNESS_ADAPTERS"] = f"opencode={HELPERS / 'message_wait_adapter.py'}:FakeWaitOpenCodeAdapter"
+    sync = tmp_path / "two-run-sync"
+    sync.mkdir()
+    runs = []
+    e = Engine.discover(lab.root)
+    for n in (1, 2):
+        run = f"R-INV-{n:04d}-1"
+        lab.script(run, {"steps": [
+            {"do": "wait_file", "path": str(sync / "go"), "timeout": 90},
+            *[{"do": "aew", "args": ["message", "reply", f"MSG-INV-{n:04d}-1", "--file", "-"],
+               "stdin": f"worker {n} reply {i}"} for i in range(11)],
+            {"do": "touch", "path": str(sync / f"done-{n}")},
+            {"do": "wait_file", "path": str(sync / "end"), "timeout": 90}]})
+        wid = create_investigation(lab.project, tmp_path)
+        launched = lab.lead("work", "dispatch", wid, "--launch")
+        assert launched["launch"]["run"] == run
+        runs.append(run)
+        e.message_record_lead(token=lab.project.token, expect_rev=e.store.read()["revision"],
+                              to=launched["invocation"], body=f"Report the observations for worker {n}.")
+    (sync / "go").touch()
+    try:
+        lab.until(lambda: all((sync / f"done-{n}").exists() for n in (1, 2)),
+                  60, "both real workers' eleven replies")
+        expected = {f"MSG-INV-{n:04d}-{seq}" for n in (1, 2) for seq in range(2, 13)}
+        first = e.harness_wait(runs, timeout=0, any_=True, triggers=True, message_after={})
+        carried = {m["id"] for m in first["messages"]}
+        assert len(carried) == 20 and carried < expected
+        assert first["coordination"]["omitted"] == 2
+        assert first["coordination"]["recovery"] == "aew message unseen"
+        T.record(lab.aew_root, e.store.read()["lead"]["generation"], carried, current=lambda: True)
+        second = e.harness_wait(runs, timeout=0, any_=True, triggers=True, message_after={})
+        assert {m["id"] for m in second["messages"]} == expected - carried
+        assert second["why"] == [K.WORKER_MESSAGE]
+    finally:
+        (sync / "end").touch()
+    for run in runs:
+        lab.wait(run)

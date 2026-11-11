@@ -351,10 +351,53 @@ left to the implementation, and what this slice adds beside them:
 | MS1 | The coordination store: D1 to D4; D5's derived facts and the fact reader (no fact writer); D6's switch read from adopted bytes, off state, marker and defaults (no snapshots); the engine API (`message_record_lead`, `message_record_worker`, `message_thread`); `message.send` declared and listed in `NOT_STEPS` | **Built (2026-10-10)** |
 | MS2 | D7, D11's engine side, D12, D9's evidence inputs, the operator reads | **Built (2026-10-10)**: the amendment of 2026-10-10 |
 | MS3 | The Lead's `message_send` typed tool, switch-registered, the compact presentation and D13's budget; the broker's switch snapshot | **Built (2026-11-10)**: record-only result explicitly says delivery is not built yet; turn-end refused until MS5b; standalone off/compact policy mode remains deferred |
-| MS4 | The worker's reply as `aew-run` bridge operations; the run's switch snapshot at launch | Not built (after MS0) |
+| MS4 | The worker's reply as `aew-run` bridge operations; the run's switch snapshot at launch | **Built (2026-11-11)**: own-thread reply/read/wait, enabled-only launch snapshots; qualified Linux 2.2.6 wait binding, deterministic fake/process tests on both hosts; Windows runtime NOT RUN |
 | MS5 | Live delivery and the continuation | Not built |
-| MS6 | Lead attention: the wait, `resume`, untrusted rendering | Not built |
+| MS6 | Lead attention: the wait, `resume`, untrusted rendering | **Built (2026-11-11)**: verified live/sealed overlays, bounded wait/wake bodies, typed durable receipts and generation-local relayed told/wake posted suppression; shared switch-aware guidance |
 | MS7 | F19 hooks, acceptance, live qualification | Not built |
+
+**MS4/MS6 as built (2026-11-11, PR 2).** The historical 2.0.18 transport observations in D8 are not a current
+qualification claim. The committed `messaging-2.2.6-linux.json` record and semantic pin cover the approved isolated
+Linux 2.2.6 checks. The worker wait maximum is **88 seconds**, within the measured foreground-timeout margin and
+the plan's 90-second ceiling. The adapter binds to the open step and foreground calls, invalidates on either parallel
+call finishing, any step boundary, execution end, stream drop/reconnect or run end, and allows at most 2 seconds for
+a foreground call to appear. Its final lifetime/connection check precedes send; only successful sends record worker
+delivery. It returns `outcome: ended_early` when the lifetime ends (future U1 owns `client_gone` telemetry). Unqualified
+adapters/platforms refuse `WAIT_UNSUPPORTED`; no production adapter substitutes run-end binding. Windows runtime
+qualification remains **NOT RUN / GAP**, not inherited from Linux or from deterministic Windows process tests.
+
+The Lead's status/resume/action projection reads verified live threads and the bounded settled hot list's pinned
+seals; it neither trusts the digest for body identity nor walks all history per poll. Wait and wake reuse that view,
+quote at most 20 distinct worker bodies per result/wake, and retain omission counts and the existing recovery read.
+A typed StageResult shares that budget across its filtered payload and project projection: payload bodies take
+priority; each envelope counts its own omissions. Worker data is attributed and escaped, with fences longer than
+embedded backtick runs; it cannot supply an action, hint or blocker. No new notifier or polling lane was added.
+
+Typed broker and own-shell `aew lead tool` results use D11's established durable shown writer after successful
+output (own-shell also flushes stdout). Relayed status/resume/harness-status/wait results instead union only verified,
+request-scoped complete-body IDs into generation-local `local/lead/told-messages.json`. Its stable lock and turnstile,
+atomic replacement, six-condition local-only delivery-record contract and send boundary are in ADR-0009's amendment
+of 2026-11-11. Such reads never change a thread, seal, seen log, registration, control/history record or `local/wake`.
+Plain operator and contained-local reads consume nothing; credentialed `message unseen` keeps its recovery semantics.
+The grow-only told set survives same-generation broker restart and `/new`; damage permits re-listing. It neither
+clears durable attention nor frees the worker's durable inbox cap.
+
+Wake selection persists exact IDs, target session, deterministic post ID and immutable bytes before admission.
+Only successful admission or exact-ID inbox/message reconciliation adds generation-local `posted_messages` to the
+existing wake record; no wake writes a durable shown fact. Posted retention is bounded by the live inbox bounds plus
+the settled cap, not the public first-20 view. Final selection shares serialization with broker read completion;
+neither HTTP admission nor result transmission holds that serialization or the control lock. A timed-out request may
+still land after an empty GET: its uncertain identity is retained, never replaced with a fresh ID. This may hold
+automatic wakes while uncertainty persists; explicit reads/waits and durable resume remain available. A process loss
+after output but before a receipt can re-list; a successful send/admission is not evidence of model understanding.
+Local told/posted suppress automatic news only: a new session's resume still carries durably unseen bodies.
+
+Guide/system/catalog use the broker's one post-offer adopted switch snapshot, independently of current engine
+authority. On guidance names `messages` as worker data and `message_send` to answer/steer, with the relayed-relisting
+cost line once. Off system/catalog/wake pins remain unchanged. The wire/prose naming oracle and the syntax detector's
+documented limits are in `test_messaging_guidance.py` and `tests/helpers/catalog_reads.py`; neither is a semantic
+proof of every emitted hint. Live worker transport, finality, both timings, recorded harness send, default-on and
+MS7 provider evidence remain later slices. No default or qualification pin is changed by this build-status update.
 
 ## Consequences
 

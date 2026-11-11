@@ -8,7 +8,7 @@ import threading
 
 import pytest
 from test_coordination_store import world
-from test_message_send import broker
+from test_message_send import broker, cli
 
 from aew.harness import bridge
 from aew.harness import contract as K
@@ -124,7 +124,7 @@ def test_runless_settled_news_posts_only_verified_bodies_and_never_durable_shown
         assert len(poster.attempts) == 1
 
 
-@pytest.mark.parametrize("route", ["local", "typed"])
+@pytest.mark.parametrize("route", ["local", "typed", "own_shell"])
 def test_read_winning_the_final_check_prevents_the_post(w, route):
     mid = reply(w)
     result = w.e.status(w.wid)
@@ -132,10 +132,16 @@ def test_read_winning_the_final_check_prevents_the_post(w, route):
     with broker(w) as b:
         if route == "local":
             poster.before_check = lambda: b._read_receipt(result, argparse.Namespace(command="status", work_id=w.wid))
-        else:
+        elif route == "typed":
             poster.before_check = lambda: bridge.call("lead.tool", {
                 "name": "status", "arguments": json.dumps({"work_id": w.wid}), "profile": "normal", "ingress": "mcp"},
                 endpoint=b.server.address, key=b.server.key_hex)
+        else:
+            def own_shell():
+                result = cli(w, "lead", "tool", "status", "--arguments", json.dumps({"work_id": w.wid}))
+                assert result.returncode == 0, result.stderr
+
+            poster.before_check = own_shell
         q = queue(w, b, poster)
         q.tick()
         assert poster.attempts == []

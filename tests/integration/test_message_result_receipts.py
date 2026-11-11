@@ -161,6 +161,50 @@ def test_failed_typed_result_does_not_consume_its_attention_overlay(w):
     assert [m["id"] for m in w.e.message_attention()["awaiting_lead"]] == [mid]
 
 
+def test_filtered_typed_read_and_its_project_projection_share_one_body_budget(w):
+    from aew.surface import run
+    from aew.surface.context import SurfaceContext, switches_for
+
+    first = w.send()["message"]["id"]
+    old_ids = {w.reply(first, body=f"settled reply {i}")["message"]["id"] for i in range(20)}
+    w.lead("invoke_cancel", invocation=w.inv, reason="retain a full settled attention batch")
+    replacement = w.lead("invoke_create", work_id=w.wid, role="implementer")
+    second = w.send(to=replacement["invocation"])["message"]["id"]
+    new_ids = {w.reply(second, body=f"live reply {i}", invocation_token=replacement["invocation_token"])[
+        "message"]["id"] for i in range(20)}
+    answer = run.run_tool(w.e, SurfaceContext.outside_session(switches=switches_for(w.e)),
+                          "harness_status", {"invocation": w.inv}, token=w.token)
+    carried = {m["id"] for key in ("result", "projection")
+               for m in answer[key]["coordination"]["awaiting_lead"]}
+    assert len(carried) <= 20, "one StageResult carried two independent 20-body batches"
+    assert carried == old_ids
+    assert answer["projection"]["coordination"]["omitted"] == 40
+    assert answer["projection"]["coordination"]["recovery"] == "aew message unseen"
+    run.record_message_result(w.e, answer, w.token)
+    assert {m["id"] for m in w.e.message_attention()["awaiting_lead"]} == new_ids
+
+
+def test_own_shell_typed_resume_records_the_sealed_body_and_the_next_commit_prunes_it(w):
+    from aew.coordination import layout as L
+
+    mid = reply(w)
+    w.lead("invoke_cancel", invocation=w.inv, reason="ingest before the own-shell resume")
+    sealed = w.thread_path().read_bytes()
+    before = w.e.store.read()[L.UNSEEN_KEY]
+    assert [e["message"] for e in before["entries"]] == [mid]
+    plain = cli(w, "resume", "--json")
+    assert plain.returncode == 0 and mid in plain.stdout
+    assert w.e.store.read()[L.UNSEEN_KEY] == before
+    typed = cli(w, "lead", "tool", "resume", "--arguments", "{}")
+    assert typed.returncode == 0 and mid in typed.stdout, typed.stderr
+    assert w.e.message_attention()["awaiting_lead"] == []
+    assert w.e.store.read()[L.UNSEEN_KEY] == before  # the receipt itself commits nothing
+    w.lead("checkpoint", note="prune the durably shown settled entry")
+    assert L.UNSEEN_KEY not in w.e.store.read()
+    assert w.thread_path().read_bytes() == sealed
+    assert mid not in cli(w, "resume", "--json").stdout
+
+
 @pytest.mark.parametrize("sealed", [False, True])
 @pytest.mark.parametrize("argv", [["status"], ["status", "--json"], ["resume"], ["resume", "--json"],
                                   ["harness", "status"]])

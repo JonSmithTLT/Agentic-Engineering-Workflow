@@ -276,6 +276,7 @@ def _run_tool(engine: Any, ctx: SurfaceContext, t: contract.Tool, arguments: Any
             stopped = {"at": call.steps[-1]["primitive"], "boundary": "refused", "error": call.unsuccessful}
     with call.serial():
         projection = _projection(engine, ctx, call.subject if stopped is None else None)
+    payload, projection = _message_budget(payload, projection)
     # The whole result is scrubbed, not only the payload: the projection's hints and the engine's messages carry
     # authored text too (PR #88 review).
     result = scrub({
@@ -288,6 +289,34 @@ def _run_tool(engine: Any, ctx: SurfaceContext, t: contract.Tool, arguments: Any
     })
     validate("surface", result, source=f"the {t.name} result")
     return result
+
+
+def _message_budget(payload: Any, projection: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+    """A filtered query/wait's bodies take priority over unsolicited projection bodies. Share the cap by identity
+    across the two fixed envelopes, preserving per-envelope omission counts and never mutating a cached projection.
+    Duplicate views of an already selected identity cost no additional body slot. Readers verify the carried body
+    before recording a receipt; omitted identities remain durable unseen for subsequent reads/recovery."""
+    selected: set[str] = set()
+
+    def bounded(envelope: Any) -> Any:
+        if not isinstance(envelope, dict) or not isinstance(envelope.get("coordination"), dict):
+            return envelope
+        view = envelope["coordination"]
+        bodies = view.get("awaiting_lead")
+        if not isinstance(bodies, list):
+            return envelope
+        kept = []
+        for body in bodies:
+            if body["id"] in selected or len(selected) < contract.MESSAGE_BODY_CAP:
+                selected.add(body["id"])
+                kept.append(body)
+        out = {**envelope, "coordination": {**view, "awaiting_lead": kept,
+                                           "omitted": view["omitted"] + len(bodies) - len(kept)}}
+        if "messages" in envelope:  # harness_wait's second fixed representation of the same selected body batch
+            out["messages"] = [m for m in envelope["messages"] if m["id"] in selected]
+        return out
+
+    return bounded(payload), bounded(projection)
 
 
 def record_message_result(engine: Any, result: dict[str, Any], token: str | None) -> None:

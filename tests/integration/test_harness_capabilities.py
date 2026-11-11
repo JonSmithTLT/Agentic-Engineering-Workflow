@@ -76,3 +76,11 @@ def test_a_features_verdict_on_a_harness_is_the_weakest_of_its_needs():
     assert H.verdict(H.CODEX, "push_wake") == H.GAP  # no native queue, and AEW hosts the app-server
     assert H.verdict(H.CODEX, "steer_worker") == H.YES
     assert H.verdict({}, "steer_worker") == H.GAP
+
+
+def test_worker_wait_binding_declares_only_qualified_linux_support_and_codex_remains_a_gap():
+    columns = H.declarations()
+    assert H.verdict(columns[H.OPENCODE], "message_wait_binding") == H.PARTIAL
+    support = columns[H.OPENCODE]["report_step_and_shell_calls"]
+    assert "Linux 2.2.6" in support.how and "Windows runtime NOT RUN" in support.how
+    assert H.verdict(H.CODEX, "message_wait_binding") == H.GAP

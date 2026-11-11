@@ -1108,9 +1108,8 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: 'Every stage the Lead''s main path takes ends in a typed result it can act on: no publish stranded after
-    a STALE_REVISION (E137), no escaping defect without its class and stage result (E138), a typed exit from REVIEW_PASSED,
-    VERIFIED and COMMIT_READY and after a verifier''s report (E133), and the auto-run set declared and pinned (E83), each
-    exercised in a real Lead run. Dispositions and the custody publish (E6b, PIC) stay out of the finish line until the
+    a STALE_REVISION (E137), no escaping defect without its class and stage result (E138), and the auto-run set declared
+    and pinned (E83), each exercised in a real Lead run. Dispositions and the custody publish (E6b, PIC) stay out of the finish line until the
     designer''s D4 and the operator''s placement out of HOLD-10.'
   remaining:
   - slice: 'E137: the other judgment stages stranded at their last committed step, and the custody worker''s registration
@@ -1121,10 +1120,6 @@ systems:
       E138: record the escaping exception''s class where it can be read, with a stage result when steps committed'
     row: E138
     estimate: 1 small PR (estimate)
-  - slice: 'E133: typed exits from REVIEW_PASSED, VERIFIED and COMMIT_READY, and the verifier-mode publish; it waited on
-      E130, which has merged'
-    row: E133
-    estimate: 1-2 PRs (estimate)
   - slice: 'E83: declare the auto-run set (ticket_start and ticket_request_review, under RUN only) and test that classify.auto_runnable''s
       set equals it'
     row: E83
@@ -1137,7 +1132,7 @@ systems:
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: Lead (E137, then E138, E133, E83 by the register's order); designer for D4; operator for placing E6b out of HOLD-10
+  who: Lead (E137, then E138, E83 by the register's order); designer for D4; operator for placing E6b out of HOLD-10
   reason: 'On and used in the default Lead flow, with defects filed from the real tool-call log; BOARD v2 §1 sizes the four
     as about 4 small PRs with no switch. E83''s behaviour already holds in code (only ticket_start and ticket_request_review
     are POLICY_RESOLVED progression rows); its gap is the declaration and the pinning test, subject to classify''s promotion
@@ -1163,7 +1158,7 @@ systems:
     BOARD v2 §1 lists no switch)'
   - 'src/aew/surface/mcp.py:168-170: a non-AEW exception is answered INTERNAL_ERROR (-32603, :44) with no stage result (E138)'
   - docs/implementation/future-work.yaml (row E137, at c11a61ea) (E137, 3 of 9 publishes stopped stale), :1621-1627 (E138),
-    :1569-1579 (E133), :1092-1099 (E83); the Now list names E137
+    :1092-1099 (E83); the Now list names E137
   - 'docs/implementation/future-work.yaml (row F15.2, at c11a61ea): F15.2 closed 2026-10-24, held in HOLD-10; :502-503 list
     F15 and F15.2 as HOLD-10 members'
   - 'src/aew/surface/contract.py:279-290: ticket_start expands to work.assign, dispatch.launch, work.transition and ticket_request_review

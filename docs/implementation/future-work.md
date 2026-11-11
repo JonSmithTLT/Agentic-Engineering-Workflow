@@ -1715,18 +1715,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E132/`, oldest first (`python tools/register.py show E132`).*
 
-### E133
-
-**Work:** Typed exits that are missing. In verifier mode the projection offers no typed publish after the verifier reports (its decision has `tool: None` while the candidate is `prepared`, though `integration_publish` takes `verification_evidence`). No stage starts from REVIEW_PASSED, VERIFIED, or COMMIT_READY without a candidate, so after a shell ingest or a stopped stage only shell exits remain. The surface map omits REVIEW_PASSED to VERIFY_PENDING and VERIFIED to COMMIT_READY from `uncovered`, so it cannot see this
-
-**Source:** E130's first step and the real tool-call log, 2026-11-04; the code at `c02d1f16`
-
-**When:** **Unscheduled**, after E130, whose test pins no tool at those two states and has to change with this
-
-**Notes:** Filed by the Lead. Two earlier guesses were withdrawn on the log's evidence: `resolve`'s decisions omit arguments by design, and no publish was refused for publishing early
-
-*Later notes: `notes.d/E133/`, oldest first (`python tools/register.py show E133`).*
-
 ### E134
 
 **Work:** A pack golden for each role, so any change to a pack's text shows in a diff, and a re-run of the A4 and A5 evaluations when what agents are told changes, counting typed share from the tool-call log. The second is the only check on what a model does
@@ -4616,6 +4604,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #331 (`80a2360c`). The re-count of real sessions moves to E132, as its first step
 
 *Later notes: `notes.d/E130/`, oldest first (`python tools/register.py show E130`).*
+
+### E133
+
+**Was:** Typed exits that are missing. In verifier mode the projection offers no typed publish after the verifier reports (its decision has `tool: None` while the candidate is `prepared`, though `integration_publish` takes `verification_evidence`). No stage starts from REVIEW_PASSED, VERIFIED, or COMMIT_READY without a candidate, so after a shell ingest or a stopped stage only shell exits remain. The surface map omits REVIEW_PASSED to VERIFY_PENDING and VERIFIED to COMMIT_READY from `uncovered`, so it cannot see this
+
+**Closed:** 2026-11-09
+
+**By:** #402 (`f427fa6c`): REVIEW_PASSED, VERIFIED and COMMIT_READY with no candidate start their stages, and a verifier's report is a `PUBLISH` decision. The states still without an offered exit are pinned in `DEAD_ENDS` in `tests/integration/test_every_state_has_an_exit.py`, a list that may only shrink (the row's note of 2026-11-08); the Lead's exits are E233's
+
+*Later notes: `notes.d/E133/`, oldest first (`python tools/register.py show E133`).*
 
 ### E139
 

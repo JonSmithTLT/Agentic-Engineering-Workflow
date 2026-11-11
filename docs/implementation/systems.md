@@ -232,11 +232,11 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Board state:** partly_built
 
-**Who:** Lead (E137, then E138, E133, E83 by the register's order); designer for D4; operator for placing E6b out of HOLD-10
+**Who:** Lead (E137, then E138, E83 by the register's order); designer for D4; operator for placing E6b out of HOLD-10
 
 **Now:** 25
 
-**Own slices left:** 5 — E137: the other judgment stages stranded at their last committed step, and the custody worker's registration (suspected); the publish case is fixed (E137); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E138: record the escaping exception's class where it can be read, with a stage result when steps committed (E138); E133: typed exits from REVIEW_PASSED, VERIFIED and COMMIT_READY, and the verifier-mode publish; it waited on E130, which has merged (E133); E83: declare the auto-run set (ticket_start and ticket_request_review, under RUN only) and test that classify.auto_runnable's set equals it (E83); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): designer decision D4: what a listed unrequired verification result marks, before that half of requires_disposition can mark anything (row owed) — **Next:** E137: the other judgment stages stranded at their last committed step, and the custody worker's registration (suspected); the publish case is fixed — E137 — 1 PR (estimate)
+**Own slices left:** 4 — E137: the other judgment stages stranded at their last committed step, and the custody worker's registration (suspected); the publish case is fixed (E137); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E138: record the escaping exception's class where it can be read, with a stage result when steps committed (E138); E83: declare the auto-run set (ticket_start and ticket_request_review, under RUN only) and test that classify.auto_runnable's set equals it (E83); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): designer decision D4: what a listed unrequired verification result marks, before that half of requires_disposition can mark anything (row owed) — **Next:** E137: the other judgment stages stranded at their last committed step, and the custody worker's registration (suspected); the publish case is fixed — E137 — 1 PR (estimate)
 
 **Wired:** cli:lead mcp, cli:lead tool, cli:stage continue, cli:stage abandon, cli:work dispose, lead_text
 

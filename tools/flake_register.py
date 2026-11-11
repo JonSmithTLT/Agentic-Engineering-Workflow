@@ -17,6 +17,7 @@ from fnmatch import fnmatchcase
 from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import Any
+from urllib.parse import quote
 from zipfile import BadZipFile, ZipFile
 from zlib import error as CompressionError
 
@@ -507,8 +508,11 @@ def _github_sessions(
     yield from session_sightings(doc, runs, lambda run: jobs_by_run[run["id"]], annotations, now)
 
 
-def _workflow_runs(repo: str, workflow: str, cutoff: str) -> list[dict[str, Any]]:
-    endpoint = f"actions/workflows/{workflow}/runs?created=%3E%3D{cutoff}&per_page=100"
+def _workflow_runs(repo: str, workflow: str, now: datetime) -> list[dict[str, Any]]:
+    start = (now - WINDOW).astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    end = now.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # A fixed upper bound keeps newly created runs from shifting the remaining pages.
+    endpoint = f"actions/workflows/{workflow}/runs?created={quote(f'{start}..{end}')}&per_page=100"
     pages = _api(repo, endpoint, "--paginate", "--slurp")
     runs = {run["id"]: run for page in pages for run in page["workflow_runs"]}
     expected = max((page["total_count"] for page in pages), default=0)
@@ -526,9 +530,8 @@ def github_sightings(
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo) or any(part in {".", ".."} for part in repo.split("/")):
         raise InvalidRegister("expected a GitHub repository in owner/name form")
     yield from recent_index_sightings(repo, now - WINDOW, warn)
-    cutoff = (now - WINDOW).date().isoformat()
     for workflow in ("ci.yml", "nightly.yml"):
-        runs = _workflow_runs(repo, workflow, cutoff)
+        runs = _workflow_runs(repo, workflow, now)
         yield from _github_sessions(doc, repo, [run for run in runs if _candidate_run(run)], now)
 
 

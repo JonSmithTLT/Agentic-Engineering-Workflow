@@ -245,7 +245,20 @@ def test_incomplete_seven_day_run_listing_fails_loudly(monkeypatch, listed, expe
         for offset in range(0, listed, 100)
     ])
     with pytest.raises(flake.InvalidRegister, match="seven-day coverage unverified"):
-        flake._workflow_runs("o/r", "ci.yml", "2026-11-04")
+        flake._workflow_runs("o/r", "ci.yml", NOW)
+
+
+def test_run_listing_uses_a_fixed_seven_day_interval_for_every_page(monkeypatch):
+    def api(repo, endpoint, *flags):
+        assert repo == "o/r"
+        assert endpoint == (
+            "actions/workflows/ci.yml/runs?created=2026-11-04T18%3A00%3A00Z..2026-11-11T18%3A00%3A00Z&per_page=100"
+        )
+        assert flags == ("--paginate", "--slurp")
+        return [{"total_count": 2, "workflow_runs": [{"id": ident}]} for ident in (1, 2)]
+
+    monkeypatch.setattr(flake, "_api", api)
+    assert flake._workflow_runs("o/r", "ci.yml", NOW) == [{"id": 1}, {"id": 2}]
 
 
 @pytest.mark.parametrize("data", [b"bad zip", _index([], member="../sightings.json"), _index([{"entry": "a"}])])

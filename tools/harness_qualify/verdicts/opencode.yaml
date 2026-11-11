@@ -11,7 +11,7 @@ versions:
     verdicts:
       - feature: 'Messaging behaviour qualification'
         verdict: hold
-        reason: 'The initial isolated Linux scripted pass passed timing boundaries, session-loss handling, call/step reporting and timeouts, but failed admitted-ID equality and queue-mode staged-first checks. Investigation must separate qualifier assumptions from runtime semantics before any binding or delivery support is enabled. Windows runtime is NOT RUN.'
+        reason: 'The additionally approved corrected Linux pass passed nine selected checks but still failed prompt identity: after admission the response creation time changes and a changed-mode retry echoes the requested mode while preserving the original payload. The historical response-identity premise needs review before binding or delivery support is enabled. Both failed records are retained. Windows runtime is NOT RUN.'
         row: 'E175'
       - feature: 'Session `warming`'
         verdict: 'deny'

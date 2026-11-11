@@ -645,6 +645,35 @@ def test_the_initial_linux_messaging_record_retains_failures_and_never_claims_bi
     assert not any(word in raw.decode() for word in ("/home/", "/mnt/", "C:\\Users", "AEW-plans", "AEW-reviews"))
 
 
+def test_the_corrected_linux_record_preserves_the_post_admission_response_contradiction():
+    path = FIXTURES / "messaging-2.2.6-linux.json"
+    raw = path.read_bytes()
+    doc = json.loads(raw)
+    assert core.sha256_file(path) == "29ef41ae1ce5e73cc8c6b2dd1a03b379b48eacc3e2e0bb4543ae937c7a432ef2"
+    assert doc["schema"] == core.SCHEMA and doc["verdict"]["binary"] == core.FAIL
+    assert doc["aew_revision"] == "e1be99c878ed321eb11d029e842af0ea33d81d6c"
+    assert doc["platform"] == "linux" and doc["version"] == "2.2.6"
+    assert "verified: loopback only, no external route, egress denied" in doc["network"]
+    assert sum(r["status"] == core.PASS for r in doc["checks"]) == 9
+    assert [r["id"] for r in doc["checks"] if r["status"] == core.FAIL] == ["messaging.prompt_identity"]
+    assert doc["capabilities"]["report_step_and_shell_calls"]["status"] == "gap"
+    facts = doc["facts"]
+    assert facts["record.public_copy"]["raw_record_digest"] == (
+        "97b6ce4147051e1de6099a689e97635acb64b753ea392b6058194359b274efc4")
+    for mode in ("steer", "queue"):
+        measured = facts["measurement.prompt_identity"][mode]
+        first, retried, changed = (measured[k] for k in ("first", "admitted_retry", "admitted_changed"))
+        assert measured["admitted_retry_status"] == measured["admitted_changed_status"] == 200
+        assert retried["time"]["created"] != first["time"]["created"]
+        assert retried["delivery"] == first["delivery"] == mode
+        assert changed["delivery"] != first["delivery"]
+        assert first["id"] == retried["id"] == changed["id"]
+        assert first["sessionID"] == retried["sessionID"] == changed["sessionID"]
+        assert first["payload"] == retried["payload"] == changed["payload"]
+        assert facts["messaging.held_resume"][mode + ".staged_first"] is True
+    assert not any(word in raw.decode() for word in ("/home/", "/mnt/", "C:\\Users", "AEW-plans", "AEW-reviews"))
+
+
 # --------------------------------------------------------------------------------- the OpenCode pack, offline parts
 
 def test_the_pinned_fixtures_layouts_are_reproduced_from_their_own_data():

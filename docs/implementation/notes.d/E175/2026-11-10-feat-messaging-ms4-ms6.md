@@ -25,3 +25,11 @@ check now wakes in the same delivery mode, still omitting resume to exercise its
 raw synthetic response envelopes and separately test the preserved identity, creation time, mode, text and metadata.
 Only absent versus empty optional attachment arrays are canonicalized; no relied-on field is dropped. New planted
 controls distinguish harmless empty arrays from changed creation time or delivery. The initial failed record remains.
+
+The additional approved pass also completed with verified network isolation. Nine selected checks passed; prompt
+identity still failed. The retained responses show a changed creation time after admission; a changed-mode retry
+returns the requested mode while retaining the original ID, session, text and metadata. Same-mode held ordering now
+passes. The corrected failed record is messaging-2.2.6-linux.json; it does not replace or waive the initial record.
+These runtime facts return to review of the response-identity premise before dependent assumptions are implemented.
+No third binary pass is authorized. Binding remains a declared gap, no passing semantic pin is adopted, and Windows
+runtime remains NOT RUN. This is a qualification checkpoint, not completion of the worker/attention slice.

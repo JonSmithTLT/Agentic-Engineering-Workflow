@@ -3011,18 +3011,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E250/`, oldest first (`python tools/register.py show E250`).*
 
-### E251
-
-**Work:** A printed `aew manifest adopt` runs as printed: the switch offer's review counted 21 printed mentions in 8 files of `src/aew` that name it with no `--expect-rev` or `--reason`, some with a path missing `.aew/`. Each gets them, and a test follows each printed line to its outcome. The switch offer fixed its own
-
-**Source:** The switch offer's review, M1's class, 2026-11-09
-
-**When:** **Unscheduled**, in the small-fixes lane
-
-**Notes:** Filed by the week's register PR
-
-*Later notes: `notes.d/E251/`, oldest first (`python tools/register.py show E251`).*
-
 ### E253
 
 **Work:** Lessons (A-57, `L`), the knowledge system's first increment, in six parts (the designer's estimates, 13 to 16 PRs, not counting the switch offer or auto-start): the Lead's search on by default, a relayed read (1, E185); workers' search with the independence filter (1-2); Lessons findable: store, kinds, door, ceilings, import, list, show, hold, strike (3-4); Lessons delivered: approve, reject, release, challenge, pack section, selection, pin, pointers, counts (3); the dashboard's Lessons page with the pasted command (2); click plus PIN, with a renewed security review of the POST (3-4), which depends on endpoint auto-start
@@ -3851,6 +3839,282 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 *Later notes: `notes.d/E221/`, oldest first (`python tools/register.py show E221`).*
 
+### E326
+
+**Work:** The revision check's PR 1, specs, request ids and the missing guards: one spec per engine operation, naming its class (A, the engine's guards decide; B, the caller sends the named item's prior value; C, the caller sends the digest of the content shown) and its binding, with a coverage test over every commit site; a request-id store, where the same key with the same arguments returns the first result and different arguments are refused; the single-active guards that are missing (one active reviewer and one active verifier per Ticket slot, one active parent verifier); and `plan.adopt` comparing the evidence's sha with the accepted record's. It only adds checks
+
+**Source:** The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`), parts 1, 2 and 4, decided by the operator the same day: "Yes, all three"
+
+**When:** **Unscheduled**, the first of the revision check's four PRs (E326 to E329), which run as one chain and start on the ruling
+
+**Notes:** Filed by the register PR of 2026-11-10. The operator's position: one project-wide revision blocks every caller on every unrelated commit and catches no conflict on the item a caller changes
+
+*Later notes: `notes.d/E326/`, oldest first (`python tools/register.py show E326`).*
+
+### E327
+
+**Work:** The revision check's PR 2, the C bindings, optional until the switch-on (E329): `work.gate_replace` and a gate's waiver bind the gate context shown; `manifest.adopt` compares the bytes the operator saw, which closes the switch offer's race; and the authority attribution fix, where `authority accept` stops defaulting `decided_by` to the Lead and `authority reject` records who decided. Its test: `test_an_approval_never_pins_content_the_approver_was_not_shown`
+
+**Source:** The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`), parts 1, 3(a) item 4 and 4, decided by the operator the same day: "Yes, all three"
+
+**When:** **Unscheduled**, the revision check's chain, after E326
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E327/`, oldest first (`python tools/register.py show E327`).*
+
+### E328
+
+**Work:** The revision check's PR 3, the B bindings and `CHANGED_SINCE_READ`: every `work.transition`, move, promote, staff, launch, `integrate.defer`, `integrate.requeue` and `steering.lower` carries the prior value its caller read, with a two-writer test for each. A refusal is `CHANGED_SINCE_READ`, naming the item, the field, the expected and current values, and the commit or record that changed it. Lead and loop callers are prefilled from their last result; at the operator's terminal the command reads the value itself, so no operator flag becomes required
+
+**Source:** The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`), parts 1, 2 and 4, decided by the operator the same day: "Yes, all three"
+
+**When:** **Unscheduled**, the revision check's chain, after E327
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E328/`, oldest first (`python tools/register.py show E328`).*
+
+### E329
+
+**Work:** The revision check's PR 4, the switch-on: every B and C binding becomes required, and a B or C operation without its binding is refused, with a test for each; the project-wide compare is dropped at every site, `lead_txn`, `message.record_lead`, takeover, handoff accept and `Session.commit`'s re-check; `expect_rev` is accepted and ignored for one release, then removed; open stage intents are migrated and the stage and loop retries simplified. The amendments the ruling lists (the specification's WC §5 and KC lines, ADR-0001, ADR-0004, ADR-0005, ADR-0009, ADR-0017, the typed Lead surface, crawl-walk-run, bounded recovery and the guides) land in the same PR. Tests: `test_an_unrelated_commit_never_stales_a_lead_mutation` for every A operation, and the vertical's `revision_args` and `stale_retries` at 0. The revision stays as the commit order, the log key, the history cursor, the dashboard's cursors and ETag, and a stamp on records
+
+**Source:** The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`), parts 2, 4 and 5; the operator's yes of 2026-11-10 to dropping the project-wide check (decision 1): "Yes, all three"
+
+**When:** **Unscheduled**, the revision check's chain, after E328, and after E330, which changes the same seat code
+
+**Notes:** Filed by the register PR of 2026-11-10. What the operator accepted with it: an A operation that is legal but rests on an old reading of unrelated state can commit; the generation still stops a stale Lead
+
+*Later notes: `notes.d/E329/`, oldest first (`python tools/register.py show E329`).*
+
+### E330
+
+**Work:** Seat resume: `aew opencode` resumes a held seat with a new seat operation, distinct from takeover. It applies only when the seat was taken by `aew opencode` (the seat records the acquisition's kind, host and user), on the same host and user, the old session's recorded process is gone, no handoff is pending, and the caller is not inside an AEW session, is not a non-writer process and has a terminal. It moves to a new generation with the old credentials revoked, carries the active invocations so no worker is killed, and records a `seat_resume` decision naming the operator, both generations, what was carried and the processes left. A typed-back code is asked once, only when invocations are carried or processes are left, and it names each. A live other Lead, a seat not taken that way, another host or user, a pending handoff or a failed check refuses, naming the holder and `aew lead takeover`. With it: `aew opencode` takes a vacant seat without `--acquire`, and the typed-token route stays when `AEW_LEAD_TOKEN` is set or a flag asks for the hidden prompt; and the vertical driver's `reopen()` starts `aew opencode` on the held seat, so resume takes it, where the alpha verdict fails the takeover branch and the strict instrument keeps it as its counted fallback. The amendments (ADR-0005's resume paragraph, ADR-0009's held-seat lines, and the flagless start's, which the designer words) land with it
+
+**Source:** The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`), part 3(b), decided by the operator the same day with the code when work is carried or processes are left (decision 3); the operator's answers of 2026-11-10 on the alpha's G3-held steps (design workspace record `2026-11-11-operator-alpha-g3-steps.md`), question 6 and part 1's driver
+
+**When:** **Unscheduled**, the seat and settings chain, after E336; it can be built beside E326 to E328
+
+**Notes:** Filed by the register PR of 2026-11-10. Takeover keeps its code and its interruption as written. The rest of V2 joins the personal alpha's gate once this merges (the operator, 2026-11-10)
+
+*Later notes: `notes.d/E330/`, oldest first (`python tools/register.py show E330`).*
+
+### E331
+
+**Work:** Settings adopted at the operator's terminal, with no Lead token: `aew manifest adopt`, E164's `aew policy model allow` and `aew policy route`, and `aew authority accept` and `reject`, each through adopt or the authority operation itself, never a new write route. It is refused inside an AEW session, from a non-writer process and without a terminal. The prompt shows each file's diff against the pinned version, and the commit compares the digests shown (a C binding); the record is the operator's own (kind operator, `authorized_by` operator-tty, no Lead actor); a running Lead keeps its seat and meets STALE_POLICY at its next affected step. The code is the weaker-contexts register's to decide: while it is clear on this host the diff takes a plain confirmation, and while a weaker context is live or recent the typed-back code is asked, naming the weaker run. Its PR also rewrites `aew init`'s flagless and partial-flag `next` to the new path, and lands the amendments (ADR-0005 and ADR-0001's lines on who adopts, the surface map's adopt entry, the guides' seat dance)
+
+**Source:** The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`), part 3(a), decided by the operator the same day (decision 2); the operator's decision of 2026-11-10 that the weaker-contexts register decides the code; the designer's answer of 2026-11-10 on `init`'s `next`
+
+**When:** **Unscheduled**, the seat and settings chain, after E327 merges; its code only when the weaker-contexts register is not clear
+
+**Notes:** Filed by the register PR of 2026-11-10. It ends the seat dance a setting change needs today
+
+*Later notes: `notes.d/E331/`, oldest first (`python tools/register.py show E331`).*
+
+### E332
+
+**Work:** `aew check run` names the paths a check changed: a check that changes its own snapshot is answered today with `mutated_inputs: true` and `result: inconclusive` alone, so the worker cannot tell what to restore, the Lead what changed, and the operator is never told. The result names the changed paths and says what to do
+
+**Source:** The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same day (gap X3)
+
+**When:** **Unscheduled**, the first of the vertical's "say what changed" chain (E332 to E335)
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E332/`, oldest first (`python tools/register.py show E332`).*
+
+### E333
+
+**Work:** The moved-head conflict refusal names the commit, its subject and the path in its message, so a reader can tell what moved the head without reading the history
+
+**Source:** The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same day (gap X4)
+
+**When:** **Unscheduled**, the "say what changed" chain, after E332
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E333/`, oldest first (`python tools/register.py show E333`).*
+
+### E334
+
+**Work:** A check's own caches (`__pycache__`, `.pytest_cache`) never change its snapshot, or first configuration excludes them (U14). Today the gate counts them as a change and refuses with GATE_UNSATISFIED, and the vertical's operator clears them by hand: the one fallback that is a product question with no row
+
+**Source:** The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same day (gap X2; U14 in `vertical-uat.md`)
+
+**When:** **Unscheduled**, the "say what changed" chain, after E333; the designer confirms the snapshot's definition first
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E334/`, oldest first (`python tools/register.py show E334`).*
+
+### E335
+
+**Work:** The action projection states each decision's owner, so the acceptances that are the Lead's by design (review evidence and verification) are taken by the Lead and not asked of the operator. Today the projection has no owner field, so the Lead asks every decision and the vertical's exact-decision check fails
+
+**Source:** The operator's question of 2026-11-10 on what still falls to them, and the vertical's re-measure of the same day (gap X1)
+
+**When:** **Unscheduled**, the "say what changed" chain, after E334; the designer confirms first
+
+**Notes:** Filed by the register PR of 2026-11-10. F43 and F44 are its nearest rows
+
+*Later notes: `notes.d/E335/`, oldest first (`python tools/register.py show E335`).*
+
+### E336
+
+**Work:** Docs and printed commands: an operator who follows what AEW prints, or what the quickstart says, reaches a command that runs as printed. Where `aew opencode --acquire` does the job, the operator is pointed there and not through the seat dance; init's no-configuration `next` and `post_pin_route` say so; every printed `aew manifest adopt` has its `--expect-rev` and `--reason` and a path under `.aew/`, with a test that follows each printed line to its outcome (E251); the quickstart shows all three shells. Init's flagless and partial-flag `next` name what is missing and never print a second `aew init`
+
+**Source:** The operator's question of 2026-11-10 on what still falls to them; the designer's answer of 2026-11-10 on `init`'s `next`; E251
+
+**When:** **Unscheduled**, the first of the seat and settings chain (E336, E330, E331, then E164)
+
+**Notes:** Filed by the register PR of 2026-11-10. It absorbs E251
+
+*Later notes: `notes.d/E336/`, oldest first (`python tools/register.py show E336`).*
+
+### E337
+
+**Work:** A provider key without a per-shell export, Linux first: a worker on the relay route (`proxy_only`, Linux) may spend the operator's stored OpenCode API-key login for its pinned provider when the policy's `provider_env` names that provider's key variable (the operator's consent for each provider) and the provider's upstream is the built-in one. A usable export where AEW launches wins; otherwise the engine's readiness check and the supervisor read the store on the host, read-only and bounded, and the key goes only to the run's relay, never to the sandbox, a harness configuration, the launch contract, a record, a log or an error. Never off the relay route, never to an upstream override, never a second credential after an upstream rejects one, never a write, and never a refreshing (OAuth) login. `aew doctor` and each launch record name the source, never the value. Each of the designer's seven custody conditions is a planted case with an ablation; a certificate-only provider makes no store read. ADR-0009's dated amendment, the login docstring, the OpenCode guide, the quickstart and init's `next` land in the same PR
+
+**Source:** The operator's decision of 2026-11-10 on E337's design: "yes to both, linux now and file the windows row"; the designer's review of the same day, its custody conditions and its ruling after the operator's decision
+
+**When:** **Unscheduled**, its Linux PR first; Windows custody is E341, which does not hold it
+
+**Notes:** Filed by the register PR of 2026-11-10. E337 closes on Linux with E341 named. Rotation takes effect at the next worker launch; V5, the Lead broker's inherited environment, stays separate. The Codex adapter's share is a note on F24 of the same day
+
+*Later notes: `notes.d/E337/`, oldest first (`python tools/register.py show E337`).*
+
+### E338
+
+**Work:** The personal alpha's own verdict over the vertical's ledgers, with the strict lane unchanged: a fallback is excused when its step's `held_by` contains G3, and every hold is printed by name, on a pass too; fallback observations gain an additive `oracle_key`; the operator's counters (credentials, environment variables, raw YAML, revisions, adopts, takeovers, seat operations) gate it at their thresholds, and the Lead's are shown without gating; it reads V1 fresh with steering off. With the operator's answers on the G3-held steps: reopen's excuse also covers its two unserved reads (attention and attachments), printed; the plan's sha and the publish candidate join the ledger, checked by this verdict alone; `pin_reentries` and `windows_console_challenges` are counted and shown, not gating; the rest of V2 joins after E330, and V4 after `aew policy route` (E164); and the raise's G3 binding is recognised in the oracle on the designer's three conditions, with E228, before a host qualification
+
+**Source:** The operator's decisions of 2026-11-10 on the vertical's re-measure: "yes send it, the counter split is fine"; the operator's answers of 2026-11-10 on the alpha's G3-held steps (design workspace record `2026-11-11-operator-alpha-g3-steps.md`): "yup i dont see any issues with these"
+
+**When:** **Unscheduled**, the first of the lane and small guards chain (E338 to E340); its separate verdict is open as #426
+
+**Notes:** Filed by the register PR of 2026-11-10. It changes no gate of the strict lane, no PIN budget and no sealed file
+
+*Later notes: `notes.d/E338/`, oldest first (`python tools/register.py show E338`).*
+
+### E339
+
+**Work:** `waive` checks that the gate is one of the unit's gates, and checks the unit's state (`waive` in `src/aew/engine/evidence_ops.py`), keeping inherited gates that cannot be waived as they are
+
+**Source:** The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`), part 1, rows noticed for the Lead
+
+**When:** **Unscheduled**, the lane and small guards chain, after E327 or coordinated with it
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E339/`, oldest first (`python tools/register.py show E339`).*
+
+### E340
+
+**Work:** Policy consistency requires a higher risk class's paths to contain a lower one's (`PATH_TABLES` in `src/aew/policy/consistency.py`)
+
+**Source:** The designer's decision of 2026-11-10 replacing the project-wide revision check (design workspace `ab975c1`), part 1, rows noticed for the Lead
+
+**When:** **Unscheduled**, the lane and small guards chain, after E339
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E340/`, oldest first (`python tools/register.py show E340`).*
+
+### E341
+
+**Work:** Windows worker key custody: a relay and an isolation boundary, so a Windows worker can use a stored key with the guarantee a Linux worker has under E337, then native persistence (Credential Manager). Shared by both harnesses: neither claims protected Windows worker custody before it
+
+**Source:** The operator's decision of 2026-11-10 on E337's design: "yes to both, linux now and file the windows row"; the designer's review of the same day
+
+**When:** **Unscheduled**, after E337's Linux PR
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E341/`, oldest first (`python tools/register.py show E341`).*
+
+### E342
+
+**Work:** The operator endpoint's auto-start drops every `PROVIDER_KEY_ENV` name from its environment, not only the ones this session feeds (`endpoint_env` in `src/aew/harness/operator_autostart.py`), so "the endpoint uses none" is true by mechanism and not only in a comment
+
+**Source:** The designer's review of E337's design, 2026-11-10, its ruling on the endpoint's environment
+
+**When:** **Unscheduled**, in the small-fixes lane
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E342/`, oldest first (`python tools/register.py show E342`).*
+
+### E343
+
+**Work:** A worker's run brief survives compaction. It is the first user message, and OpenCode's summary template leaves out "instructions and setup", so after compaction the worker holds only the summary (598 B in the probe) and the brief is gone unless the model's summary carries it. Pin the brief where compaction keeps it (the system text or instructions), with a test
+
+**Source:** The E231 probe at main `8a3810b6` on OpenCode 2.2.6, 2026-11-10, keyless on the Linux gate environment, its worker leg
+
+**When:** **Unscheduled**; the Lead ranks it high, as worker ability
+
+**Notes:** Filed by the register PR of 2026-11-10. Whether a real model's summary keeps the brief was not measured
+
+*Later notes: `notes.d/E343/`, oldest first (`python tools/register.py show E343`).*
+
+### E344
+
+**Work:** The harness features that reach the Lead unasked: OpenCode's Code Mode text and its `execute` tool (about 6.0 KB) although the `aew-lead` server is projected with `codemode: false`, and `question`, `webfetch` and `websearch` (2.7 KB). Each gets a harness-feature verdict, deny or keep, with its reason, and a denied one leaves the Lead's request
+
+**Source:** The E231 probe at main `8a3810b6` on OpenCode 2.2.6, 2026-11-10, keyless on the Linux gate environment, the Lead's first request by part
+
+**When:** **Unscheduled**; its bytes are E231's budget input
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E344/`, oldest first (`python tools/register.py show E344`).*
+
+### E345
+
+**Work:** `aew work show` in the contained Lead's shell runs the sandbox's own `aew`, which fails with a Python traceback (no `git` there), though `CONTAINED_LOCAL` in `src/aew/harness/lead_broker.py` classes it as a local read. It is refused, naming the typed `work_show`, or relayed
+
+**Source:** The E231 probe at main `8a3810b6` on OpenCode 2.2.6, 2026-11-10, keyless on the Linux gate environment, typed against relayed reads
+
+**When:** **Unscheduled**, in the small-fixes lane
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E345/`, oldest first (`python tools/register.py show E345`).*
+
+### E346
+
+**Work:** Each Run activation's notifier check reads the operator endpoint's answer, not the Lead broker's environment: the endpoint's `ping` carries its notifier state, which the loop already pings for before each action (BOY-12.d). Today an endpoint at the desktop with a Lead over ssh is refused Run with a fix that is already satisfied, and the reverse passes while every delivery fails
+
+**Source:** The review of scheduler PR 3 (E228's run defaults), 2026-11-10, its finding F3
+
+**When:** **Unscheduled**, after scheduler PR 3 merges
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E346/`, oldest first (`python tools/register.py show E346`).*
+
+### E347
+
+**Work:** The desktop notifier's event reader validates the notify-event schema (`notify-event.schema.json`), or its docstring says it trusts its caller. The endpoint always sends a validated payload, so nothing changes today
+
+**Source:** The review of scheduler PR 3 (E228's run defaults), 2026-11-10, its nit N2
+
+**When:** **Unscheduled**, after scheduler PR 3 merges, in the small-fixes lane
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E347/`, oldest first (`python tools/register.py show E347`).*
+
+### E348
+
+**Work:** On Windows, the desktop notifier runs `powershell.exe` and `aew` by the paths `shutil.which` resolves, not by bare names. Hardening
+
+**Source:** The review of scheduler PR 3 (E228's run defaults), 2026-11-10
+
+**When:** **Unscheduled**, after scheduler PR 3 merges, in the small-fixes lane
+
+**Notes:** Filed by the register PR of 2026-11-10
+
+*Later notes: `notes.d/E348/`, oldest first (`python tools/register.py show E348`).*
+
 ## 7. Operator acceptance session (UAT, 2026-09-30)
 
 One operator-driven `aew opencode` session: an investigation of SPT (Lead GPT 6.1 Sol, roles mostly GPT 5.6 Luna), accepted as D-0017 in 47 minutes. The review, with the evidence for each item, and the operator's priorities: https://claude.ai/artifact/6FQhB6ihqHDTRTd5DYpqjE. The Lead's own debrief independently raised the plan-and-gate divergence (fixed below) and verification traceability (U2), and added the check-result guidance (fixed below) and U8 to U10.
@@ -4672,6 +4936,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #383 (`002b2c9a`): the diagnostic says the netstat table has no `LISTENING` row for the port though something answered (`NO_LISTENING_ROW` in `tests/helpers/dashboard_client.py`), and the test holds that without a skip
 
 *Later notes: `notes.d/E236/`, oldest first (`python tools/register.py show E236`).*
+
+### E251
+
+**Was:** A printed `aew manifest adopt` runs as printed: the switch offer's review counted 21 printed mentions in 8 files of `src/aew` that name it with no `--expect-rev` or `--reason`, some with a path missing `.aew/`. Each gets them, and a test follows each printed line to its outcome. The switch offer fixed its own
+
+**Closed:** 2026-11-10
+
+**By:** absorbed into E336
+
+*Later notes: `notes.d/E251/`, oldest first (`python tools/register.py show E251`).*
 
 ### F1
 

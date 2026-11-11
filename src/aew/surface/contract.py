@@ -10,8 +10,8 @@ tests enumerate it against the dispatch registry.
 F15.1 builds the queries, the wait, the single-step ``checkpoint`` and the recovery-only ``cli`` escape. F15.2 builds
 the stages over the StageIntent journal (§12.5): M4-E E5a builds ``ticket_draft`` and ``ticket_start``, E5b
 ``ticket_request_review`` and ``ticket_request_verification``, E6a ``ticket_prepare`` and the publication decision,
-``integration_publish``, as a stage (plan v3 §2.3). A row still ``DESIGNED`` has its full contract here so the tests
-pin it, is never listed, and a call to it is refused before the runner.
+``integration_publish``, as a stage (plan v3 §2.3). Every tool row below is built. The contract still accepts the
+``DESIGNED`` status for a row the runner must refuse and the listing must omit.
 """
 
 from __future__ import annotations

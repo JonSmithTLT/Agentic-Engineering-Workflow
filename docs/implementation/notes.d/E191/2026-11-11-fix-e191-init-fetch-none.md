@@ -1,0 +1,1 @@
+`aew init --fetch-tool none` skips the consent screen and tool downloads and leaves each tool unanswered. Use it by itself. A combination with named tools is refused before initialization writes anything.

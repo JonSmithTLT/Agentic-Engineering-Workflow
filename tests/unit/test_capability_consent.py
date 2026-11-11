@@ -264,6 +264,16 @@ def test_init_with_fetch_tool_downloads_what_it_names_with_no_screen(served):
         consent.check_names(["nonesuch"])  # refused before `aew init` writes anything
 
 
+def test_init_fetch_none_leaves_every_tool_unanswered_at_a_terminal(served, terminal):
+    term = terminal("all")
+    consent.check_names(["none"])
+    out = consent.at_init(["none"])
+    assert term.prompts == [] and served["fetched"] == []
+    assert not _installed() and not store.read()["declined"]
+    assert out["answer"] is None and out["downloaded"] == {} and out["declined"] == []
+    assert [tool["provider"] for tool in out["missing"]] == ["fake", "extra"]
+
+
 def test_init_never_downloads_in_a_lead_session_or_an_agents_own_aew(served, terminal, monkeypatch):
     term = terminal()
     monkeypatch.setenv(LEAD_SESSION_VARS[0], "x")

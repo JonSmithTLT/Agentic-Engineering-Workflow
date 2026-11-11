@@ -418,6 +418,7 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
         while True:
             try:
                 with SI.step(intent, n, retried=retried, final=final, covers=covers):
+                    c.running = step["primitive"]
                     out = STEP_RUNNERS[step["primitive"]](c, args, rev)
                 break
             except errors.StaleRevision as refusal:

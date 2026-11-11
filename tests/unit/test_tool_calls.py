@@ -83,3 +83,12 @@ def test_a_line_is_bounded_whatever_the_call_carried(tmp_path):
              error=None, revision_before=1, duration_ms=1)
     text = T.path(tmp_path).read_text(encoding="utf-8")
     assert len(text.encode("utf-8")) <= T.MAX_LINE and T.read(tmp_path)[0]["tool"] == "t" * T.MAX_FIELD
+
+    detail = dict.fromkeys(("exception", "defect", "cause_code"), huge)
+    result["stopped"]["error"] = {"code": "DEFECT", "details": detail}
+    T.record(tmp_path, tool=huge, arguments=huge, ingress=huge, profile=huge, result=result, input_error=None,
+             error=None, revision_before=1, duration_ms=1)
+    last = T.path(tmp_path).read_bytes().splitlines()[-1]
+    assert len(last) + 1 <= T.MAX_LINE
+    line = T.read(tmp_path)[-1]
+    assert all(line[key] == "t" * T.MAX_FIELD for key in ("exception", "defect", "cause_code"))

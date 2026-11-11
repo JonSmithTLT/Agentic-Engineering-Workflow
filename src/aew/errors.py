@@ -28,6 +28,12 @@ class AEWError(Exception):
         return out
 
 
+class Defect(AEWError):
+    """An unexpected failure of the typed Lead surface."""
+
+    code = "DEFECT"
+
+
 class UsageError(AEWError):
     code = "USAGE"
     exit_code = 2

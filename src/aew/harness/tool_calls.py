@@ -40,7 +40,11 @@ def path(aew_root: Path) -> Path:
 
 
 def rotated(aew_root: Path, n: int) -> Path:
-    return Path(aew_root) / f"local/lead/tool-calls.{n}.jsonl"
+    return _rotated(path(aew_root), n)
+
+
+def _rotated(target: Path, n: int) -> Path:
+    return target.with_name(f"{target.stem}.{n}{target.suffix}")
 
 
 def arguments_digest(arguments: Any) -> str:
@@ -70,14 +74,19 @@ def entry(*, tool: str, arguments: Any, ingress: str, profile: str, result: dict
                            "revision_after": None, "stage_intent": None, "duration_ms": duration_ms}
     if result is not None:
         stopped = result.get("stopped") or {}
+        stopped_error: dict[str, Any] = stopped.get("error") or {}
+        error = stopped_error
         out.update(effective_class=_short(result.get("effective_operation_class")), ok=bool(result.get("ok")),
                    boundary=_short(stopped.get("boundary")),
-                   error_code=_short((stopped.get("error") or {}).get("code")),
+                   error_code=_short(stopped_error.get("code")),
                    revision_after=_int(result.get("revision")), stage_intent=_short(result.get("stage_intent_id")))
     elif input_error is not None:
         out.update(boundary=INPUT_ERROR, error_code=_short(input_error.get("code")))
     elif error is not None:
         out.update(boundary="error", error_code=_short(error.get("code")))
+    if out["error_code"] == "DEFECT" and error is not None:
+        detail = error.get("details") or {}
+        out.update({name: _short(detail.get(name)) for name in ("exception", "defect", "cause_code")})
     return out
 
 
@@ -94,11 +103,11 @@ def record(aew_root: Path, **fields: Any) -> None:
         log.warning("the typed-tool call log dropped a line: %s: %s", type(exc).__name__, exc)
 
 
-def append(aew_root: Path, line: dict[str, Any]) -> None:
+def append(aew_root: Path, line: dict[str, Any], *, log_rel: str = LOG_REL) -> None:
     """Append ``line``, rotating first when the file is full. Never raises: the log is telemetry."""
-    target = path(aew_root)
-    text = json.dumps(line, sort_keys=True, separators=(",", ":")) + "\n"
     try:
+        target = Path(aew_root) / log_rel
+        text = json.dumps(line, sort_keys=True, separators=(",", ":")) + "\n"
         with _lock:
             target.parent.mkdir(parents=True, exist_ok=True)
             try:
@@ -106,18 +115,18 @@ def append(aew_root: Path, line: dict[str, Any]) -> None:
             except FileNotFoundError:
                 full = False
             if full:
-                _rotate(aew_root)
+                _rotate(target)
             with target.open("a", encoding="utf-8", newline="\n") as fh:
                 fh.write(text)
     except OSError as exc:
-        log.warning("the typed-tool call log %s could not be written: %s", target, exc)
+        log.warning("the local log %s could not be written: %s", log_rel, exc)
 
 
-def _rotate(aew_root: Path) -> None:
+def _rotate(target: Path) -> None:
     for n in range(KEEP - 1, 0, -1):  # the oldest kept is overwritten by the one before it
-        if rotated(aew_root, n).exists():
-            os.replace(rotated(aew_root, n), rotated(aew_root, n + 1))
-    os.replace(path(aew_root), rotated(aew_root, 1))
+        if _rotated(target, n).exists():
+            os.replace(_rotated(target, n), _rotated(target, n + 1))
+    os.replace(target, _rotated(target, 1))
 
 
 def read(aew_root: Path) -> list[dict[str, Any]]:

@@ -73,15 +73,15 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `capability-records` | `capability-records.schema.json` | 40 | 28 |
 | `checks` | `checks.schema.json` | 12 | 3 |
 | `codebase-map` | `codebase-map.schema.json` | 66 | 57 |
-| `control` | `control.schema.json` | 507 | 281 |
+| `control` | `control.schema.json` | 516 | 281 |
 | `coordination-marker` | `coordination-marker.schema.json` | 5 | 3 |
 | `coordination-message` | `coordination-message.schema.json` | 18 | 17 |
 | `coordination-seal` | `coordination-seal.schema.json` | 19 | 16 |
 | `decision` | `decision.schema.json` | 17 | 10 |
-| `disposition` | `disposition.schema.json` | 36 | 15 |
+| `disposition` | `disposition.schema.json` | 37 | 15 |
 | `evidence` | `evidence.schema.json` | 176 | 66 |
 | `execution` | `execution.schema.json` | 67 | 10 |
-| `gate-correction` | `gate-correction.schema.json` | 20 | 17 |
+| `gate-correction` | `gate-correction.schema.json` | 21 | 17 |
 | `gates` | `gates.schema.json` | 72 | 21 |
 | `guardrails` | `guardrails.schema.json` | 16 | 3 |
 | `history` | `history.schema.json` | 12 | 9 |
@@ -94,7 +94,7 @@ Flattened: a path is `a.b` for a property, `a[]` for items, `a.*` for the values
 | `role` | `role.schema.json` | 31 | 5 |
 | `run-usage` | `run-usage.schema.json` | 44 | 27 |
 | `spool-event` | `spool-event.schema.json` | 6 | 0 |
-| `stage-intent` | `stage-intent.schema.json` | 102 | 69 |
+| `stage-intent` | `stage-intent.schema.json` | 104 | 69 |
 | `surface` | `surface.schema.json` | 91 | 58 |
 | `ticket-field-registry` | `ticket-field-registry.schema.json` | 49 | 27 |
 | `transition-events` | `transition-events.schema.json` | 26 | 3 |

@@ -35,6 +35,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import approval
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine.dispatch import Blocker, GuardRegistration, checked
@@ -230,15 +231,47 @@ class GateRepair:
                                             for o in s["owners"]}})
                 for s in found] or None
 
+    def _replacement_subject(self, item: dict[str, Any], replacement: str, catalogue: G.Catalogue,
+                             card_digests: dict[str, str]) -> dict[str, Any]:
+        prefix = next((p for p in (G.REVIEW_CARD_PREFIX, G.VERIFY_CARD_PREFIX) if replacement.startswith(p)), None)
+        cards = (replacement.removeprefix(prefix),) if prefix else catalogue.specialties.get(
+            replacement.removeprefix(G.REVIEW_GATES_PREFIX), ())
+        checks = catalogue.local_checks if replacement == "local_checks" else (
+            (replacement.removeprefix(G.CHECK_PREFIX),) if replacement.startswith(G.CHECK_PREFIX) else ())
+        value = {"gate_context": item, "replacement": replacement,
+                 "check_definitions": {c: catalogue.checks.get(c) for c in checks},
+                 "card_definitions": {c: card_digests.get(c) for c in cards}}
+        return {"subject": value, "digest": approval.digest(value)}
+
     def gate_items(self, state: dict[str, Any], subject: str | None = None) -> list[dict[str, Any]]:
-        """The open items (all of them, or those whose parent or a stuck unit is ``subject``); none when the catalogue
-        cannot be read now (doctor reports that on its own)."""
+        """Open items and the concrete replacement definitions the Lead can decide on."""
         try:
             catalogue = self.roles.gate_catalogue()
         except NotFound:
             return []
-        return [i for i in open_items(state, catalogue)
-                if subject in (None, "project", i["work_id"]) or subject in i["stuck_units"]]
+        cards = {key: value.sha256 for key, value in self.roles.role_catalog().cards.items()}
+        result = []
+        for item in open_items(state, catalogue):
+            if subject not in (None, "project", item["work_id"]) and subject not in item["stuck_units"]:
+                continue
+            if item["replaceable"]:
+                unit = state["work"][item["work_id"]]
+                kind = unit["kind"]
+                mandatory = (unit.get("policy") or {}).get("mandatory_gates") or []
+                names = {name for name in G.gate_kinds(G.PARENT) if "<" not in name}
+                names.update(G.CHECK_PREFIX + check for check in catalogue.checks)
+                names.update(G.REVIEW_GATES_PREFIX + name for name in catalogue.specialties)
+                names.update(prefix + card for prefix in (G.REVIEW_CARD_PREFIX, G.VERIFY_CARD_PREFIX)
+                             for card in catalogue.cards)
+                subjects = {
+                    name: self._replacement_subject(item, name, catalogue, cards)
+                    for name in sorted(names) if name not in mandatory
+                    and G.unsatisfiable_inherited(name, kind, catalogue) is None
+                }
+            else:
+                subjects = {}
+            result.append({**item, "approval_subjects": subjects})
+        return result
 
     # ---- the replacement
 
@@ -298,9 +331,13 @@ class GateRepair:
         return checked(check)
 
     def gate_replace(self, *, token: str, expect_rev: int, subject: str, replacement: str | None,
-                     rationale: str) -> dict[str, Any]:
+                     rationale: str, binding: str | None = None) -> dict[str, Any]:
         args: dict[str, Any] = {"subject": subject, "replacement": replacement, "rationale": rationale}
         with self.k.lead_txn(token, expect_rev, OP, reason=rationale) as ctx:
+            if binding is not None:
+                current = next((item["approval_subjects"].get(replacement) for item in self.gate_items(ctx.state)
+                                if item["id"] == subject), None)
+                approval.compare(OP, subject, binding, current["digest"] if current else None)
             require(self.replace_query(ctx.state, None, args))  # the guard (predicate and conditions), then the write
             found = args["found"]
             owner = found["work_id"]
@@ -312,6 +349,8 @@ class GateRepair:
                       "reason": rationale.strip()[:MAX_TEXT], "by": dict(ctx.actor),
                       "generation": ctx.state["lead"]["generation"], "expected_revision": expect_rev, "rev": rev,
                       "at": utc_now(), "stale_invocations": found["stale_invocations"]}
+            if binding is not None:
+                record["approval_ref"] = f"{subject}@{binding}"
             validate("gate-correction", record, source=f"gate correction {gc}")
             self._write(ctx, unit, record, found["gates"])
             ctx.summary = f"{owner} mandatory gate `{found['gate']}` replaced by `{replacement}` ({gc})"

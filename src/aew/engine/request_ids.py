@@ -60,7 +60,7 @@ class ControlRequest(NamedTuple):
         return _render(state, op, entry)
 
     def remember(self, state: dict[str, Any], generation: int, op: str, ref: tuple[str, str] | None,
-                 revision: int) -> None:
+                 revision: int, metadata: dict[str, Any] | None = None) -> None:
         if ref is None:
             raise IntegrityError(f"{op} did not record its request identity")
         unit, record = ref
@@ -72,6 +72,7 @@ class ControlRequest(NamedTuple):
         index["operations"].setdefault(op, {})[self.id] = {
             "arguments": dict(self.arguments), "digest": self.digest,
             "unit": unit, "ref": record, "revision": revision,
+            **({"metadata": deepcopy(metadata)} if metadata else {}),
         }
 
 
@@ -92,10 +93,11 @@ def _render(state: dict[str, Any], op: str, receipt: dict[str, Any]) -> dict[str
     wid, ref = receipt["unit"], receipt["ref"]
     unit = state["work"][wid]
     common = {"ok": True, "replayed": True, "revision": receipt["revision"]}
+    metadata = deepcopy(receipt.get("metadata", {}))
     if op == "work.create":
-        return common | {"id": wid, "record": unit["record"]}
+        return common | {"id": wid, "record": unit["record"]} | metadata
     if op == "work.promote":
-        return common | {"work_id": unit["promoted_from"], "promoted_to": wid, "record": unit["record"]}
+        return common | {"work_id": unit["promoted_from"], "promoted_to": wid, "decision": ref}
     if op == "plan.propose":
         plan = next(p for p in unit["plans"] if str(p["revision"]) == ref)
         return common | {"work_id": wid, "revision_number": plan["revision"], "path": plan["path"]}
@@ -108,14 +110,20 @@ def _render(state: dict[str, Any], op: str, receipt: dict[str, Any]) -> dict[str
         return common | {"invocation": inv_id, "run": ref, "superseded": runs[i - 1]["run"] if i else None,
                          "run_record": deepcopy({k: runs[i][k] for k in public if k in runs[i]})}
     inv = state["invocations"][ref]
+    # The rotate step is shared by mutating, non-mutating and parent invocations.
     status = f"aew harness status {ref}"
     credential = {"status": "NOT_REPLAYABLE"}
     if inv.get("runs") or inv["status"] != "active":
         credential["next_action"] = status
     else:
         credential["rotate"] = f"aew harness launch {ref} {EXPECT_REV}"
-    return common | {"work_id": wid, "invocation": ref, "invocation_token": None, "credential_replay": credential,
-                     "role": inv["role"], "role_card": (inv.get("card") or {}).get("id"), "scope": inv["scope"],
-                     "evaluated_snapshot": deepcopy(inv.get("snapshot")),
-                     **deepcopy({k: inv[k] for k in ("pack", "observation", "subject", "dispatch")
-                                 if k in inv})}
+    identity = common | {"invocation": ref, "invocation_token": None, "credential_replay": credential}
+    if op == "work.redispatch":
+        return identity | {"work_id": wid, "observation": deepcopy(inv["observation"])} | metadata
+    result = {"role": inv["role"], "role_card": (inv.get("card") or {}).get("id"), "scope": inv["scope"],
+              "evaluated_snapshot": deepcopy(inv.get("snapshot")), "pack": deepcopy(inv.get("pack"))}
+    if inv["scope"] == "observation":
+        result["subject"] = deepcopy(inv["subject"])
+    if inv["scope"] in {"observation", "parent"}:
+        result["observation"] = deepcopy(inv["observation"])
+    return identity | result | metadata

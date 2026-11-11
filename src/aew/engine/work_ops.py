@@ -6,12 +6,12 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from aew import profile
+from aew.engine import approval, transitions
 from aew.engine import dependencies as deps
 from aew.engine import gate_ops as GR
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import priority as PRIORITY
-from aew.engine import transitions
 from aew.engine.base import TxnContext
 from aew.engine.dependencies import readiness_blockers, recompute_readiness
 from aew.engine.dispatch import Blocker
@@ -510,14 +510,15 @@ class WorkCommands:
             ctx.refs.append(path)
             ctx.summary = f"created {kind} {work_id}: {title}"
             self.units.before_commit(ctx)
+            unmatched = self._unmatched_scope(scope_paths or []) if kind == "ticket" and unit["mutating"] else []
+            warnings = [f"scope glob {g!r} matches no file in the project: fine if the Ticket creates it, "
+                        "otherwise a change there needs a scope that names it" for g in unmatched]
             if request is not None:
                 ctx.request_ref = (work_id, work_id)
-        out = {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
-        unmatched = self._unmatched_scope(scope_paths or []) if kind == "ticket" and unit["mutating"] else []
-        if unmatched:
-            out["warnings"] = [f"scope glob {g!r} matches no file in the project: fine if the Ticket creates it, "
-                               "otherwise a change there needs a scope that names it" for g in unmatched]
-        return out
+                if warnings:
+                    ctx.request_metadata = {"warnings": warnings}
+        return {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision,
+                **({"warnings": warnings} if warnings else {})}
 
     # ---- `work.create`'s guard as a query (M4-E E4; aew.engine.guards)
 
@@ -752,7 +753,8 @@ class WorkCommands:
 
         return checked(check)
 
-    def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int) -> dict[str, Any]:
+    def plan_accept(self, *, token: str, expect_rev: int, work_id: str, revision: int,
+                    binding: str | None = None) -> dict[str, Any]:
         with self.k.lead_txn(token, expect_rev, "plan.accept") as ctx:
             unit = self.units.unit(ctx.state, work_id)
             if H.is_parent(unit):
@@ -775,6 +777,10 @@ class WorkCommands:
                 against = f"plan v{entry['supersedes']}" if entry.get("supersedes") else "no accepted plan"
                 raise IllegalTransition(f"plan v{revision} was proposed against {against}, but plan v{current} is "
                                         "accepted now; propose a new revision to change it")
+            if binding is not None:
+                approval.compare("plan.accept", entry["path"], binding,
+                                 sha256_file(self.k.aew_root / entry["path"]))
+                approval.compare("plan.accept", entry["path"], binding, entry["sha256"])
             for p in unit["plans"]:
                 if p["status"] == "accepted":
                     p["status"] = "superseded"
@@ -786,7 +792,8 @@ class WorkCommands:
             if H.is_parent(unit) and not unit.get("baseline_commit"):
                 unit["baseline_commit"] = self.k.authoritative_commit()
             decision = self.k.new_decision(ctx, "plan_acceptance", f"{work_id} plan v{revision} accepted",
-                                         work_unit=work_id, evidence_refs=[entry["path"]])
+                                         work_unit=work_id,
+                                         evidence_refs=[f"{entry['path']}@{binding}" if binding else entry["path"]])
             if unit["state"] == "REPLAN_REQUIRED":
                 # Work done under the superseded plan never continues implicitly: the old attempt's workspace
                 # stops being live and its invocations are cancelled; the next assignment starts fresh (review M2).

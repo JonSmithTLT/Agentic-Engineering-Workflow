@@ -55,7 +55,8 @@ def test_accept_and_reject_candidates(project):
                               decided_by="operator")
     decision = project.root / f".aew/decisions/{res['decision']}.md"
     assert decision.exists() and "authority_acceptance" in decision.read_text()
-    project.lead("authority", "reject", cands["README.md"], "--reason", "orientation only")
+    project.as_operator("authority_reject", candidate_id=cands["README.md"], decided_by="operator",
+                        reason="orientation only")
     listing = project.ok("authority", "list")
     assert [a["path"] for a in listing["accepted"]] == ["docs/adr/"]
     status = {c["path"]: c["status"] for c in listing["candidates"]}
@@ -67,7 +68,7 @@ def test_manifest_edit_outside_engine_detected_and_adopted(project):
     manifest = project.root / ".aew/project.yaml"
     manifest.write_text(manifest.read_text().replace("profile: base", "profile: python"))
     cands = project.ok("authority", "list")["candidates"]
-    res = project.aew("authority", "accept", cands[0]["id"], "--class", "orientation",
+    res = project.aew("authority", "accept", cands[0]["id"], "--class", "orientation", "--decided-by", "lead",
                       "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 6 and res.error["code"] == "INTEGRITY_ERROR"
     assert project.ok("status", "--json")["contradictions"]
@@ -380,7 +381,7 @@ def test_a_refused_acquire_advises_reconcile_only_for_a_lease_the_takeover_leave
 def test_token_issued_in_one_process_verified_in_another(project):
     # project.token came from a separate `aew lead acquire` process; this is another process.
     cands = project.ok("authority", "list")["candidates"]
-    project.lead("authority", "reject", cands[0]["id"])
+    project.as_operator("authority_reject", candidate_id=cands[0]["id"], decided_by="operator")
 
 
 @pytest.mark.parametrize("mangle", ["tamper", "malformed", "empty-secret"])
@@ -439,7 +440,7 @@ def test_pending_handoff_freezes_outgoing_lead(project):
                       "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
     assert res.returncode == 4
     project.lead("lead", "handoff", "cancel")
-    project.lead("authority", "reject", cands[0]["id"])
+    project.as_operator("authority_reject", candidate_id=cands[0]["id"], decided_by="operator")
 
 
 @pytest.mark.acceptance("AT-4b")
@@ -531,7 +532,7 @@ def test_operator_authorized_takeover_supersedes_everyone(project):
     assert "operator-tty" in decision and "Lead session lost" in decision
     cands = project.ok("authority", "list")["candidates"]
     project.token = c_token
-    project.lead("authority", "reject", cands[0]["id"])
+    project.as_operator("authority_reject", candidate_id=cands[0]["id"], decided_by="operator")
 
 
 @pytest.mark.acceptance("AT-7")

@@ -369,8 +369,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("work_id")
     q.add_argument("--revision", type=int, required=True)
     _add_lead(q)
-    q.set_defaults(handler=lambda a: _engine(a).plan_accept(
-        token=_lead_token(a), expect_rev=a.expect_rev, work_id=a.work_id, revision=a.revision))
+    q.set_defaults(handler=_plan_accept)
     q = psub.add_parser("adopt", help="propose a plan revision from an accepted Planner plan_proposal (Lead)")
     q.add_argument("work_id", help="the unit whose plan it becomes")
     q.add_argument("--evidence", required=True)
@@ -573,14 +572,29 @@ def _staffing(a: argparse.Namespace) -> str:
     return f"{a.work_id} " + (", ".join(parts) or "(no change)") + (" (pinned)" if a.pin else "")
 
 
+def _plan_accept(a: argparse.Namespace) -> Any:
+    engine = _engine(a)
+    token = _lead_token(a)
+    unit = engine.status(a.work_id)["work_unit"]
+    shown = next((plan for plan in unit.get("plans", []) if plan["revision"] == a.revision), None)
+    return engine.plan_accept(token=token, expect_rev=a.expect_rev, work_id=a.work_id, revision=a.revision,
+                              binding=shown["sha256"] if shown else None)
+
+
 def _breaker_reset(a: argparse.Namespace) -> Any:
     from aew import operator
 
     # The operator's own decision, typed back at the controlling terminal: never available to an agent shell.
+    engine = _engine(a)
+    token = _lead_token(a)
+    shown = engine.integrate_breaker_status()
+    binding = shown["approval_digest"]
+    failures = "\n".join(f"  {row['run']} on {row['work']}: {row['code']} ({row['at']})" for row in shown["failures"])
     authorization = operator.authorize("RESET the validation circuit breaker: automatic infrastructure retries of "
-                                       f"post-integration validation resume ({a.reason})")
-    return _engine(a).integrate_breaker_reset(token=_lead_token(a), expect_rev=a.expect_rev, reason=a.reason,
-                                              authorization=authorization)
+                                       f"post-integration validation resume ({a.reason})\n"
+                                       f"Failures (SHA-256 {binding}):\n{failures or '  none'}")
+    return engine.integrate_breaker_reset(token=token, expect_rev=a.expect_rev, reason=a.reason,
+                                          authorization=authorization, binding=binding)
 
 
 def _custody(a: argparse.Namespace) -> Any:

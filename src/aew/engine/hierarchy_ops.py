@@ -15,9 +15,9 @@ from collections import defaultdict
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import approval, transitions
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
-from aew.engine import transitions
 from aew.engine.dependencies import UNSTARTED, dependency_blockers, effective_edge_set
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
@@ -257,7 +257,8 @@ class Hierarchy:
                 if card:
                     gate = f"{G.VERIFY_CARD_PREFIX}{card}"
                     # This requirement applies even if the failed card was not in the plan. Waivers cannot
-                    # discharge it, and a pass recorded before the failure is not a re-verification.
+                    # discharge it. Sequence is the report's evidence order, so even a previously passing report
+                    # that matches the current source and children cannot count if it predates the failed report.
                     retry_results = G.evaluate_evidence_unit(
                         state, work_id, [e for e in evidence if e["seq"] > failed["seq"]],
                         obligations={"gates": [gate], "non_waivable": [gate]}, special={},
@@ -420,13 +421,14 @@ class Hierarchy:
         return {"ok": True, "work_id": work_id, "result": ev["result"], "revision": ctx.session.committed_revision}
 
     def classify_parent_verification(self, *, token: str, expect_rev: int, work_id: str, classification: str,
-                                     reason: str) -> dict[str, Any]:
+                                     reason: str, binding: str | None = None) -> dict[str, Any]:
         """The Lead classifies a failed parent verification (WC §6); it prescribes what closeout then requires."""
         with self.k.lead_txn(token, expect_rev, "verify.classify", reason=reason) as ctx:
             unit = self.units.unit(ctx.state, work_id)
             pv = unit.get("parent_verification") or {}
             if not pv.get("awaiting_classification"):
                 raise IllegalTransition(f"{work_id} has no failed parent verification awaiting classification")
+            ref = approval.failure_ref("verify.classify", unit, pv["awaiting_classification"], binding)
             requires = {"LOCAL_IMPLEMENTATION_DEFECT": "a remediation child (the child set must change)",
                         "PLAN_OR_DESIGN_DEFECT": "a new accepted parent plan revision",
                         "CONTRACT_VIOLATION": "a new accepted parent plan revision",
@@ -435,7 +437,7 @@ class Hierarchy:
             decision = self.k.new_decision(ctx, "verification_failure_classification",
                                          f"{work_id} parent verification failure classified {classification}",
                                          work_unit=work_id, classification=classification,
-                                         evidence_refs=[pv["awaiting_classification"]], reason=reason,
+                                         evidence_refs=[ref] if ref else [], reason=reason,
                                          body=f"Closeout now requires {requires}.\n")
             unit["parent_verification"] = {**pv, "awaiting_classification": None, "failed_evidence":
                                            pv["awaiting_classification"], "classification": classification,
@@ -480,7 +482,8 @@ class Hierarchy:
         for inv_id in unit.get("invocations", []):
             self.invocations.complete_invocation(state, inv_id, status)
 
-    def work_close(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None) -> dict[str, Any]:
+    def work_close(self, *, token: str, expect_rev: int, work_id: str, reason: str | None = None,
+                   binding: str | None = None) -> dict[str, Any]:
         """Lead closeout of a Story/Epic: every child terminal, parent gates CURRENT, findings resolved."""
         with self.k.lead_txn(token, expect_rev, "work.close", reason=reason) as ctx:
             state = ctx.state
@@ -497,6 +500,8 @@ class Hierarchy:
                 raise DependencyUnsatisfied(f"{work_id} cannot close while its dependencies are unsatisfied",
                                             blockers=blockers)
             gc = self._parent_gate_context(state, work_id)
+            if binding is not None:
+                approval.compare("work.close", work_id, binding, approval.closeout_digest(gc["snapshot"]))
             unmet = self._classification_unmet(work_id, unit, gc)
             if unmet:
                 raise GateUnsatisfied(f"{work_id}: {unmet}")
@@ -511,7 +516,7 @@ class Hierarchy:
                                       "then close it", unverified=backlog)
             self.gates.record_relied_on(ctx, unit, gc, list(gc["gates"]))
             decision = self.k.new_decision(ctx, "closeout", f"{work_id} closed: {unit['title']}", work_unit=work_id,
-                                         reason=reason)
+                                         reason=reason, evidence_refs=[f"{work_id}@{binding}"] if binding else [])
             path = f"work/{work_id}/closeout.md"
             text = self._closeout_record(state, work_id, unit, gc, decision)
             ctx.session.write(path, text)
@@ -562,7 +567,13 @@ class Hierarchy:
                 "source + child set). Children completing alone does not prove parent acceptance (WC §8).\n")
         return render_frontmatter(meta, body)
 
-    def work_cancel(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
+    @staticmethod
+    def cancellation_subject(state: dict[str, Any], work_id: str) -> dict[str, Any]:
+        descendants = [d for d in H.descendants(state, work_id) if state["work"][d]["state"] not in H.TERMINAL]
+        return {"descendants": descendants, "digest": approval.cascade_digest(work_id, descendants)}
+
+    def work_cancel(self, *, token: str, expect_rev: int, work_id: str, reason: str,
+                    binding: str | None = None) -> dict[str, Any]:
         """Cancel a Story/Epic and, atomically, every non-terminal descendant (decision recorded)."""
         if not (reason and reason.strip()):
             raise UsageError("cancelling a parent needs a reason")
@@ -574,7 +585,10 @@ class Hierarchy:
                     f"aew work transition {work_id} --to CANCELLED {EXPECT_REV}", "reason", "why this Ticket must end"))
             if unit["state"] in H.TERMINAL:
                 raise IllegalTransition(f"{work_id} is {unit['state']}")
-            open_desc = [d for d in H.descendants(state, work_id) if state["work"][d]["state"] not in H.TERMINAL]
+            subject = self.cancellation_subject(state, work_id)
+            open_desc = subject["descendants"]
+            if binding is not None:
+                approval.compare("work.cancel", work_id, binding, subject["digest"])
             publishing = [d for d in open_desc
                           if (state["work"][d].get("integration") or {}).get("status") == "publishing"]
             if publishing:
@@ -582,7 +596,8 @@ class Hierarchy:
                                         "first", publishing=publishing)
             decision = self.k.new_decision(ctx, "cancellation", f"{work_id} cancelled with its open descendants",
                                          work_unit=work_id, reason=reason,
-                                         body="Cascaded to: " + (", ".join(open_desc) or "none") + "\n")
+                                         body="Cascaded to: " + (", ".join(open_desc) or "none") + "\n"
+                                         + (f"{work_id}@{binding}\n" if binding else ""))
             for did in sorted(open_desc, key=lambda d: -H.depth(state, d)):
                 d = state["work"][did]
                 why = f"cancelled with {work_id} ({decision}): {reason}"
@@ -748,7 +763,7 @@ class Hierarchy:
             ctx.summary = f"{work_id} promoted to {new_id} ({decision})"
             self.units.before_commit(ctx)
             if request is not None:
-                ctx.request_ref = (new_id, new_id)
+                ctx.request_ref = (new_id, decision)
         return {"ok": True, "work_id": work_id, "promoted_to": new_id, "decision": decision,
                 "revision": ctx.session.committed_revision}
 

@@ -188,6 +188,7 @@ class NonMutatingPort(Protocol):
 
 
 class HierarchyPort(Protocol):
+    def cancellation_subject(self, state: dict[str, Any], work_id: str) -> dict[str, Any]: ...
     """What other collaborators use of ``Hierarchy``."""
 
     def children_digest(self, state: dict[str, Any], work_id: str) -> str: ...

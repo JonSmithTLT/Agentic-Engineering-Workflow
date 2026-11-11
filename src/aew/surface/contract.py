@@ -263,6 +263,8 @@ TOOLS: dict[str, Tool] = _catalog(
                "subject": {"type": "string", "minLength": 1, "description": "a stage intent, finding or anomaly id"},
                "choice": {"enum": list(RESOLVE_CHOICES)},
                "follow_up": WORK_ID_PATTERN,
+               "approval_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$",
+                                   "description": "The SHA-256 shown for this decision in the last projection"},
                "replacement": {"type": "string"},  # not blank: checked by the adapter, as the rationale is
                "rationale": TEXT},  # required, and not blank: checked by the adapter (aew.surface.validate)
               ("expect_rev", "subject", "choice", "rationale")),

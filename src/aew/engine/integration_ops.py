@@ -20,8 +20,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import approval, faults, transitions
 from aew.engine import coverage as CV
-from aew.engine import faults, transitions
 from aew.engine import queue_ops as Q
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import checked
@@ -813,11 +813,9 @@ class Integration:
             self.queue.regrant(ctx, work_id, lambda state, entrypoint, wid, **kw: self.dispatch.decide_in(
                 ctx, entrypoint, wid, **kw))
             named = (ctx.state["work"].get(work_id) or {}).get("integration") or {}
-            if candidate is not None and named.get("candidate") != candidate:
-                raise IllegalTransition(f"{work_id}'s integration candidate is {named.get('candidate')}, not the "
-                                        f"{candidate} named: read its projection and decide on the current one",
-                                        reason="candidate_mismatch", named=candidate,
-                                        current=named.get("candidate"))
+            if candidate is not None:
+                approval.compare("integrate.publishing", work_id, candidate, named.get("candidate"),
+                                 reason="candidate_mismatch", named=candidate)
             args: dict[str, Any] = {}
             refused = self.publish_query(ctx.state, work_id, args)
             outcome = (args.get("found") or {}).get("outcome")

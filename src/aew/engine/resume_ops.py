@@ -14,8 +14,8 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from aew import SPEC_SET
+from aew.engine import approval, gate_ops
 from aew.engine import coverage as CV
-from aew.engine import gate_ops
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import priority as PRIORITY
@@ -678,7 +678,25 @@ class Resume:
         state = self.k.store.current()
         if work_id:
             unit = self.units.view(state, work_id)  # hot, or archived as it stands now (R7)
+            subjects = {}
+            if work_id in state["work"]:
+                if integration := (unit.get("integration") or {}).get("candidate"):
+                    subjects["integrate.publishing"] = {"candidate": integration, "digest": integration}
+                if unit["kind"] != "ticket":
+                    subjects["work.cancel"] = self.hierarchy.cancellation_subject(state, work_id)
+                if record := (unit.get("execution") or {}).get("record"):
+                    subjects["work.accept"] = {"record": record, "digest": approval.execution_record_digest(record)}
+                parent_failure = (unit.get("parent_verification") or {}).get("awaiting_classification")
+                ticket_failure = (unit.get("last_verification") or {}).get("evidence") \
+                    if unit["state"] == "VERIFICATION_FAILED" else None
+                if failure := parent_failure or ticket_failure:
+                    subjects["verify.classify"] = {"evidence": failure,
+                                                   "digest": approval.failure_digest(unit, failure)}
+                if (unit.get("plan") or {}).get("accepted"):
+                    snapshot = self.units.ancestor_plan_snapshot(state, work_id)
+                    subjects["plan.reconfirm"] = {"ancestors": snapshot, "digest": approval.digest(snapshot)}
             return {"revision": state["revision"], "work_unit": dict(unit, id=work_id),
+                    **({"approval_subjects": subjects} if subjects else {}),
                     **({"coverage": CV.for_unit(self.k.aew_root, unit, full=True)}
                        if unit["kind"] == "ticket" and unit.get("mutating") else {})}
         lead = state["lead"]

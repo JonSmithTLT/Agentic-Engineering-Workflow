@@ -36,6 +36,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -477,7 +478,10 @@ class OpenCodeAdapter(HarnessAdapter):
         command = binary_command()
         if metered:
             self._start_meter(contract)  # before any server exists: no server, and so no prompt, without a live file
-        env = server_env(dict(os.environ), self.state_dir, provider_env=list(contract.extra.get("provider_env") or []),
+        names = list(contract.extra.get("provider_env") or [])
+        if network is not None and network.stored_key_variable is not None:
+            names = [name for name in names if name != network.stored_key_variable]
+        env = server_env(dict(os.environ), self.state_dir, provider_env=names,
                          config=config, password=secrets.token_urlsafe(32))
         if agent_env.get(weaker_register.MARKER):  # a weaker run's server, and all it starts, carry its marker too
             env[weaker_register.MARKER] = agent_env[weaker_register.MARKER]
@@ -710,6 +714,19 @@ class OpenCodeAdapter(HarnessAdapter):
             if declared:
                 match = None
             if match is not None:
+                if ref["providerID"] == "opencode":
+                    tiers = match.get("cost")
+                    base_prices = [tier for tier in tiers if isinstance(tier, dict) and "tier" not in tier] \
+                        if isinstance(tiers, list) else []
+                    rates = [base_prices[0].get(name) for name in ("input", "output")] if len(base_prices) == 1 else []
+                    prices = [rate for rate in rates if isinstance(rate, (int, float)) and not isinstance(rate, bool)]
+                    paid = len(prices) == 2 and all(math.isfinite(rate) and rate >= 0 for rate in prices) \
+                        and any(rate > 0 for rate in prices)
+                    if ref["id"].endswith("-free") or not paid:
+                        raise HarnessIncompatible(
+                            f"model opencode/{ref['id']} does not have a verified paid base price; "
+                            "pin a paid OpenCode model or choose another provider", model=ref,
+                        )
                 variants = [v.get("id") for v in match.get("variants") or []]
                 # Each refusal of the pin, here and the catalog's below, names the way on: a new invocation where the
                 # pin must change, a relaunch where the cause is outside it (ADR-0010; CS-4 addendum 11; #304 m1).

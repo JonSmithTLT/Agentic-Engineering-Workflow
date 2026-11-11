@@ -16,7 +16,8 @@ from aew.policy import execution as X
 DOCTOR, START = "doctor", "start"
 
 
-def readiness_checks(execution: dict[str, Any] | None, site: str = DOCTOR) -> list[dict[str, str]]:
+def readiness_checks(execution: dict[str, Any] | None, site: str = DOCTOR, *,
+                     admitted: set[str] | None = None) -> list[dict[str, str]]:
     """Readiness: what a launch from this environment would meet in the execution policy, before any launch, and
     structural only (no provider is called): each profile's model as the harness will be given it, the provider
     variables, and each profile's provider key (ADR-0010 amendment 2026-10-11; the M4 user acceptance test's doubled
@@ -29,13 +30,31 @@ def readiness_checks(execution: dict[str, Any] | None, site: str = DOCTOR) -> li
     fails, as before."""
     if execution is None:
         return []
+    from aew.harness.containment import netns
+
+    profiles = _relay_profiles(execution)
+    names = execution.get("provider_env") or []
+    candidates = {provider for provider in profiles.values()
+                  if netns.stored_key_candidate(provider, names, os.environ, execution, on_relay_route=True)}
+    if admitted is None:
+        keys, unavailable = netns.doctor_worker_keys(os.environ, candidates) if candidates else ({}, None)
+        stored = set(keys)
+        del keys
+    else:
+        stored, unavailable = admitted & candidates, None
+    supplied = {netns.PROVIDER_KEY_ENV[p] for p in stored}
+    # Only the pinned provider's row satisfies its own variable. Any other profile
+    # still needs that same name from the environment.
+    universally_supplied = supplied if (
+        len(set(profiles.values())) == 1 and len(profiles) == len(execution.get("profiles") or {})
+    ) else set()
     rows: list[dict[str, str]] = []
     if execution.get("profiles"):
         rows.append(_row("model-refs", *_model_refs_doctor(execution)))
     if execution.get("provider_env"):
-        rows.append(_row("provider-env", *_provider_env_doctor(execution, site)))
+        rows.append(_row("provider-env", *_provider_env_doctor(execution, site, supplied=universally_supplied)))
     if execution.get("profiles"):
-        found = _provider_key_doctor(execution)
+        found = _provider_key_doctor(execution, profiles, stored, unavailable)
         if found is not None:
             rows.append(_row("provider-key", *found))
     found = _client_cert_doctor(execution)
@@ -44,10 +63,12 @@ def readiness_checks(execution: dict[str, Any] | None, site: str = DOCTOR) -> li
     return rows
 
 
-def readiness_findings(execution: dict[str, Any] | None, site: str = START) -> list[str]:
+def readiness_findings(execution: dict[str, Any] | None, site: str = START, *,
+                       admitted: set[str] | None = None) -> list[str]:
     """Each FAIL and WARN readiness row as one entry with its cause and fix, worded for ``site``; empty when every row
     passes."""
-    return [f"readiness {r['status']} ({r['check']}): {r['detail']}" for r in readiness_checks(execution, site)
+    return [f"readiness {r['status']} ({r['check']}): {r['detail']}"
+            for r in readiness_checks(execution, site, admitted=admitted)
             if r["status"] in ("FAIL", "WARN")]
 
 
@@ -74,13 +95,14 @@ def _model_refs_doctor(policy: dict[str, Any]) -> tuple[str, str]:
     return "PASS", "the harness is given " + "; ".join(refs)
 
 
-def _provider_env_doctor(policy: dict[str, Any], site: str = DOCTOR) -> tuple[str, str]:
+def _provider_env_doctor(policy: dict[str, Any], site: str = DOCTOR, *,
+                         supplied: set[str] | None = None) -> tuple[str, str]:
     """The provider variables the policy names, as a launch from this environment would find them (FAIL: a launch
     from here is refused, naming each; never their values). At a start or a launch (``site`` :data:`START`) the
     process already has its environment, so the fix is to exit the session, set the variable and start it again."""
     from aew.harness import agentenv
 
-    names = [str(n) for n in policy.get("provider_env") or []]
+    names = [str(n) for n in policy.get("provider_env") or [] if n not in (supplied or ())]
     problems = agentenv.provider_env_problems(names, os.environ)
     # Doctor reads its own terminal's environment; a Lead session already running reads the one it started with
     # (review of PR #214, F2), so both lines say so.
@@ -94,44 +116,57 @@ def _provider_env_doctor(policy: dict[str, Any], site: str = DOCTOR) -> tuple[st
     if problems:
         return "FAIL", ("a harness launch from this environment is refused: " + "; ".join(w for _, w in problems)
                         + f" ({caveat})")
+    if supplied:
+        detail = "stored OpenCode login: " + ", ".join(sorted(supplied))
+        return "PASS", detail + (f"; environment: {', '.join(names)}" if names else "")
     return "PASS", (f"set in this environment: {', '.join(names)} (values not shown; {caveat}: restart one that "
                     "started before they were set)")
 
 
-def _provider_key_doctor(policy: dict[str, Any]) -> tuple[str, str] | None:
-    """Each profile's provider as a launch from this environment would find its key on the relay route
-    (``netns.provider_key_missing``, the check every such launch makes): FAIL naming the profiles whose launch is
-    refused (``provider_key_missing``) and the fix; PASS when every profile whose key AEW can judge has one; None
-    when there is nothing to judge (no profile on the relay route, as on Windows, or no provider whose key variable
-    AEW knows). Names only, never a value."""
+def _relay_profiles(policy: dict[str, Any]) -> dict[str, str]:
     from aew.harness import registry
     from aew.harness.containment import netns
 
-    names = [str(n) for n in policy.get("provider_env") or []]
-    missing: dict[str, list[str]] = {}
-    judged = []
-    for name in sorted(policy["profiles"]):
+    profiles: dict[str, str] = {}
+    for name in sorted(policy.get("profiles") or {}):
         try:
             pair = X.model_pair(policy, name, registry.model_identity)
             relay = registry.load(X.profile_harness(policy, policy["profiles"][name])).PROVIDER_RELAY
         except AEWError:  # reported by the model-refs line, or the launch's own refusal
             continue
-        on_route = netns.relay_route(policy, relay)
-        if not on_route or pair.provider not in netns.PROVIDER_KEY_ENV:
-            continue
-        judged.append(name)
-        variable = netns.provider_key_missing(pair.provider, names, os.environ, on_relay_route=on_route)
+        if netns.relay_route(policy, relay) and pair.provider in netns.PROVIDER_KEY_ENV:
+            profiles[name] = pair.provider
+    return profiles
+
+
+def _provider_key_doctor(policy: dict[str, Any], profiles: dict[str, str], stored: set[str],
+                         unavailable: str | None) -> tuple[str, str] | None:
+    from aew.harness.containment import netns
+
+    names = [str(n) for n in policy.get("provider_env") or []]
+    missing: dict[str, list[str]] = {}
+    sources = []
+    for name, provider in profiles.items():
+        variable = netns.provider_key_missing(provider, names, os.environ, on_relay_route=True,
+                                              stored=provider in stored)
         if variable is not None:
-            missing.setdefault(f"{pair.provider} ({variable})", []).append(name)
+            missing.setdefault(f"{provider} ({variable})", []).append(name)
+        else:
+            source = "stored OpenCode login" if provider in stored else "environment"
+            sources.append(f"{name}: {source}")
+    detail = "; ".join(sources)
+    if stored - netns.CATALOG_ADDRESSED:
+        detail += ". Workers and the contained Lead share one rate-limit bucket per model when using the same key."
     if missing:
         return "FAIL", ("a harness launch from this environment is refused (provider_key_missing), since its provider "
                         "would get no key: " + "; ".join(f"{p}, for profile(s) {', '.join(v)}"
                                                           for p, v in sorted(missing.items()))
                         + ". AEW does not use OpenCode's free models; " + netns.FREE_TIER_RULE + " Name the variable "
                         "in the execution policy's provider_env, set it in the terminal you start AEW from, and pin "
-                        "a paid model")
-    if judged:
-        return "PASS", f"a provider key reaches the run for profile(s) {', '.join(judged)} (names only)"
+                        "a paid model" + (f". {unavailable}" if unavailable else "")
+                        + (f". Available sources: {detail}" if detail else ""))
+    if detail:
+        return "PASS", detail
     return None
 
 

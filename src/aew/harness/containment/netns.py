@@ -32,12 +32,15 @@ import ssl
 import sys
 import tempfile
 from collections.abc import Callable, Iterable, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 from aew.errors import AEWError, ContainmentUnavailable
 from aew.harness import agentenv
 from aew.harness.containment import client_cert, egress, relay
 from aew.harness.containment.layout import ISOLATED, NET_SHIM, NETWORK_MODES, PROXY_ONLY, SHARED, Layout
+from aew.harness.opencode import login
 
 NOT_PROVIDED = "not_provided"  # AEW cannot characterize a run's network on this platform
 # Loopback ports inside the sandbox. A fresh network namespace holds nothing else, so any port is free there; they are
@@ -68,7 +71,8 @@ FREE_TIER_RULE = ("OpenCode's published rule (https://opencode.ai/docs/zen/) is 
                   "OpenCode; use paid models or Go from other clients.\"")
 # What `aew init` tells the operator at first use (the designer's decision record of 2026-11-06).
 FIRST_USE_LINE = ("AEW needs a provider key and a paid model: name the key's variable in the execution policy's "
-                  "provider_env, set it in the terminal you start AEW from, and pin a paid model. AEW does not use "
+                  "provider_env. On contained Linux, use a saved OpenCode API-key login through the built-in relay, "
+                  "or set the named variable in the terminal you start AEW from. AEW does not use "
                   "OpenCode's free models; " + FREE_TIER_RULE)
 # The closed reason of a launch refused because its provider would get no key: a worker's on the relay route (the
 # engine's ``require_launchable`` and the supervisor's ``_contain``), and a contained Lead with no provider relayed
@@ -119,7 +123,7 @@ def relay_route(policy: Mapping[str, Any] | None, provider_relay: bool) -> bool:
 
 
 def provider_key_missing(provider: str | None, provider_env: Iterable[str], env: Mapping[str, str], *,
-                         on_relay_route: bool) -> str | None:
+                         on_relay_route: bool, stored: bool = False) -> str | None:
     """The variable a run's provider reads its key from (:data:`PROVIDER_KEY_ENV`) when no key would reach the run,
     else None. Pure. On the relay route the harness gets only what the execution policy's ``provider_env`` names (a
     sentinel inside, the value in the relay), so the key reaches the run only when ``provider_env`` names that variable
@@ -129,12 +133,64 @@ def provider_key_missing(provider: str | None, provider_env: Iterable[str], env:
     variable = PROVIDER_KEY_ENV.get(provider or "")
     if not on_relay_route or variable is None:
         return None
-    if variable in {str(n) for n in provider_env} and agentenv.lookup(env, variable):
+    if variable in {str(n) for n in provider_env} and (agentenv.lookup(env, variable) or stored):
         return None
     return variable
 
 
-def provider_key_message(provider: str, variable: str) -> str:
+def stored_key_candidate(provider: str | None, names: Iterable[str], env: Mapping[str, str],
+                         policy: Mapping[str, Any] | None, *, on_relay_route: bool) -> bool:
+    """Whether the launch is authorized to look for this provider's stored API key."""
+    variable = PROVIDER_KEY_ENV.get(provider or "")
+    overrides = settings(policy).get("upstreams") or {}
+    return (
+        on_relay_route and mode(policy) == PROXY_ONLY and provider in UPSTREAMS and provider not in overrides
+        and variable is not None and variable in names
+        and not agentenv.lookup(env, variable)
+    )
+
+
+_doctor_keys: ContextVar[list[tuple[dict[str, login.WorkerKey], str | None]] | None] = ContextVar(
+    "doctor_worker_keys", default=None,
+)
+
+
+@contextmanager
+def doctor_key_snapshot():
+    """Keep one host snapshot for both readiness lines and all model-list reads in a doctor call."""
+    token = _doctor_keys.set([])
+    try:
+        yield
+    finally:
+        _doctor_keys.reset(token)
+
+
+def doctor_worker_keys(env: Mapping[str, str], providers: set[str]) -> tuple[dict[str, login.WorkerKey], str | None]:
+    snapshot = _doctor_keys.get()
+    if snapshot:
+        return snapshot[0]
+    keys, why = login.worker_keys(env, providers)
+    usable = {provider: key for provider, key in keys.items()
+              if agentenv.provider_env_problem(PROVIDER_KEY_ENV[provider], {PROVIDER_KEY_ENV[provider]: key.secret})
+              is None}
+    if snapshot is not None:
+        snapshot.append((usable, why))
+    return usable, why
+
+
+def resolve_worker_key(provider: str | None, names: Iterable[str], env: Mapping[str, str],
+                       policy: Mapping[str, Any] | None, *, on_relay_route: bool
+                       ) -> tuple[login.WorkerKey | None, str | None]:
+    """Resolve the stored fallback only. Explicit values retain the ordinary environment checks."""
+    if not stored_key_candidate(provider, names, env, policy, on_relay_route=on_relay_route):
+        return None, None
+    assert provider is not None
+    keys, why = doctor_worker_keys(env, {provider})
+    key = keys.get(provider)
+    return key, None if key else why or "no usable stored OpenCode API-key row for this provider"
+
+
+def provider_key_message(provider: str, variable: str, *, stored_detail: str | None = None) -> str:
     """The refusal of a worker launch whose provider would get no key (:func:`provider_key_missing`): why, the
     published rule, and both steps."""
     return (f"the run's provider {provider} would get no key: a contained run reaches its provider only through AEW's "
@@ -143,7 +199,8 @@ def provider_key_message(provider: str, variable: str) -> str:
             f"{FREE_TIER_RULE} Set a key: name {variable} in the execution policy's provider_env "
             f"(`provider_env: [{variable}]`) and set it in the terminal you start AEW from, or the Lead session you "
             f"launch from (`aew opencode` keeps the environment it started with). Then pin a paid model of {provider} "
-            "in the execution policy's profile, or dispatch a new invocation with --profile or --model")
+            "in the execution policy's profile, or dispatch a new invocation with --profile or --model"
+            + (f". {stored_detail}." if stored_detail else ""))
 
 
 def refused_note(target: str, provider: str | None, key_relayed: bool) -> str | None:
@@ -284,12 +341,14 @@ class RunNetwork:
         self.http_proxy = False   # the Lead's HTTP_PROXY names the egress proxy too, for its refusal's https form
         self.provider: str | None = None  # a worker's provider, and whether its key reached its relay: kept from the
         self.key_relayed = False          # start for the record's note (:meth:`refused`), as close() clears the values
+        self.key_source: str | None = None
+        self.stored_key_variable: str | None = None
         self._closed = False
 
     @classmethod
     def start(cls, layout: Layout, *, provider: str | None, provider_env: Iterable[str],
               policy: Mapping[str, Any] | None, env: Mapping[str, str], relay_needed: bool,
-              allow: egress.Allowlist | None = None) -> RunNetwork:
+              allow: egress.Allowlist | None = None, stored: login.WorkerKey | None = None) -> RunNetwork:
         """Start what ``layout``'s network needs: under ``proxy_only``, the relay (when the harness calls a provider,
         ``relay_needed``) and the egress proxy with ``allow``, the run's allowlist (``egress_policy``), when there is
         one. The caller builds that allowlist once and gives the same one to the run's self-test, so the self-test
@@ -306,6 +365,10 @@ class RunNetwork:
         try:
             if relay_needed:
                 target = upstream(provider, policy)
+                if stored is not None and stored_key_candidate(provider, names, env, policy, on_relay_route=True):
+                    variable = PROVIDER_KEY_ENV[provider or ""]
+                    net._values[variable] = values[variable] = stored.secret
+                    net.stored_key_variable = variable
                 try:
                     proxy = operator_proxy(target, names, env)
                 except AEWError as exc:
@@ -315,6 +378,8 @@ class RunNetwork:
                     target, {sentinels[n]: v for n, v in values.items() if v}, proxy=proxy, tls=tls, client=client,
                     listener=listen(os.path.join(layout.net_dir, RELAY))).start()
                 net.key_relayed = bool(values.get(PROVIDER_KEY_ENV.get(provider or "", "")))
+                if net.key_relayed:
+                    net.key_source = "stored OpenCode login" if net.stored_key_variable else "environment"
             if allow is not None:
                 net.egress = egress.EgressProxy(allow, listener=listen(os.path.join(layout.net_dir, EGRESS))).start()
         except OSError as exc:
@@ -443,6 +508,8 @@ class RunNetwork:
         out: dict[str, Any] = {"mode": self.mode}
         if not self.lead:
             out.update(relay.describe(self.relay))
+            if self.key_source:
+                out["provider_key_source"] = self.key_source
         else:  # the Lead's: each relayed provider's fixed upstream
             out["provider_relay"] = "configured" if self.relays else "none"
             out["provider_relays"] = {p: r.upstream.url for p, (_, r) in self.relays.items()}

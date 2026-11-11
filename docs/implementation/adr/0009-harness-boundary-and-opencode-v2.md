@@ -2012,3 +2012,23 @@ runs where the Lead's shell runs, and arrive as text.
   which includes a row stopping at a check of an argument the walk filled in itself, and it doesn't walk a typed tool's
   object-typed properties; a new reader that takes a path from past those is what the broker's refusal and a review are
   for.
+
+## Amendment 2026-11-10 — workers may use the operator's stored API-key login (E337)
+
+The operator approved default worker use with Linux first. The adopted execution policy's
+`provider_env` name is the consent for the pinned provider. The stored source is eligible
+only on Linux through the established `proxy_only` relay to that provider's built-in
+upstream. A configured upstream override uses the environment path.
+
+A usable named export takes precedence. An invalid nonempty export retains its refusal.
+For an unset or empty named variable, admission checks the provider's deciding API-key
+row, and the supervisor reads it afresh before feeding the relay. Both reads are bounded,
+read-only and host-side. OAuth is excluded. The launch record names the source and may
+carry the store's non-secret row identity and update time for comparison. The key never
+enters the launch contract, the record, the harness environment, logs or errors. The worker
+receives a sentinel. An upstream rejection ends the attempt with that credential. The next
+launch resolves the source afresh.
+
+This extends the worker preflight rule in the 2026-11-06 amendment. Certificate-only
+providers make no store read. Off the relay, the existing explicit environment path applies.
+The Lead's stored login and the weaker containment guarantees are described above.

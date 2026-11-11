@@ -1,4 +1,4 @@
-"""The operator's stored OpenCode login, read on the host for the contained Lead's provider relays (STG-05 CS-4).
+"""The operator's stored OpenCode login, read on the host for contained provider relays.
 
 OpenCode 2.0.18 keeps each login as a row of the ``credential`` table in its SQLite database, ``<data>/opencode.db``
 (``$XDG_DATA_HOME/opencode``, by default ``~/.local/share/opencode``; ``OPENCODE_DB`` names another), read in the pinned
@@ -240,3 +240,50 @@ def stored(env: Mapping[str, str]) -> tuple[list[Login], str | None]:
         if integration and integration not in out:
             out[integration] = _read(str(integration), method, value)
     return [out[k] for k in sorted(out)], None
+
+
+@dataclass(frozen=True)
+class WorkerKey:
+    secret: str = field(repr=False)
+    generation: tuple[int, int | None]
+
+
+def worker_keys(env: Mapping[str, str], providers: set[str]) -> tuple[dict[str, WorkerKey], str | None]:
+    """Read the deciding API-key rows for the requested providers in one bounded operation.
+
+    The deciding row may be of another kind. In that case SQLite returns no credential material
+    for it, and the host does not fall back to an older row. Diagnostics never include the path.
+    """
+    if not providers:
+        return {}, None
+    path = db_path(env)
+    if not path.is_absolute():
+        return {}, "the stored OpenCode login database needs an absolute location"
+    if not path.is_file():
+        return {}, "the stored OpenCode login database is missing"
+    try:
+        con = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=BUSY_TIMEOUT_S)
+        try:
+            rows = con.execute(
+                "WITH deciding AS (SELECT integration_id, rowid, time_updated, value, "
+                "row_number() OVER (PARTITION BY integration_id "
+                "ORDER BY active IS NOT 1, time_updated DESC, rowid DESC) AS rank "
+                "FROM credential WHERE integration_id IN (SELECT value FROM json_each(?))) "
+                "SELECT integration_id, rowid, time_updated, "
+                "CASE WHEN json_valid(value) THEN CASE WHEN json_extract(value, '$.type') = 'key' "
+                "THEN value END END FROM deciding WHERE rank = 1",
+                (json.dumps(sorted(providers)),),
+            ).fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error as exc:
+        locked = getattr(exc, "sqlite_errorcode", None) in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+        return {}, f"the stored OpenCode login database is {'locked' if locked else 'unreadable'}"
+    if not rows:
+        return {}, "the stored OpenCode API-key row is missing"
+    found: dict[str, WorkerKey] = {}
+    for provider, rowid, updated, value in rows:
+        entry = _read(provider, None, value)
+        if entry.kind == "key" and entry.secret:
+            found[provider] = WorkerKey(entry.secret, (rowid, updated if type(updated) is int else None))
+    return found, None if found else "the stored OpenCode login has no supported API-key row"

@@ -81,7 +81,8 @@ def starting_limit_s(harness: str | None) -> float:
 def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapter], *, provider: str | None,
                    provider_env: list[str], role: str, scope: str, workspace: str, run_dir: Path, scratch: str,
                    bridge_dir: str | None, bridge: str | None, project: Path, aew_root: Path, kind: str,
-                   marker: Path | None = None, skills_dir: str | None = None) -> tuple[Any, dict[str, Any], Any, Any]:
+                   marker: Path | None = None, skills_dir: str | None = None,
+                   key_admission: dict[str, Any] | None = None) -> tuple[Any, dict[str, Any], Any, Any]:
     """A harness launch's containment: the provider key's check, the sandbox, self-tested, its label, the entry in the
     register of weaker contexts when the label is weaker, and the network of its own (the provider relay when the
     harness calls a provider, and the egress proxy when its allowlist names something). Returns ``(layout, label,
@@ -92,12 +93,12 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
     ``HarnessIncompatible`` for a provider key a launch would not get."""
     from aew.harness.containment import client_cert, netns
 
-    # The engine refused this before anything was committed (``require_launchable``); checked again here, on the names
-    # this launch carries, before any sandbox or network exists (the operator's decision of 2026-11-06: AEW does not
-    # rely on OpenCode's free models).
+    # Check policy-known refusals before building the sandbox. A stored source needs the actual relay below.
     on_route = netns.relay_route(policy, adapter_cls.PROVIDER_RELAY)
     missing = netns.provider_key_missing(provider, provider_env, os.environ, on_relay_route=on_route)
-    if missing is not None:
+    if missing is not None and not netns.stored_key_candidate(
+        provider, provider_env, os.environ, policy, on_relay_route=on_route,
+    ):
         raise errors.HarnessIncompatible(netns.provider_key_message(str(provider), missing),
                                          reason=netns.PROVIDER_KEY_MISSING, variable=missing)
     no_relay = client_cert.no_relay(provider, policy, on_relay_route=on_route)
@@ -116,6 +117,23 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
         # The relay's absence is known only now: under allow_weaker a sandbox that could not be established runs the
         # harness on the host's network with no relay, whatever the policy's network mode (E123 review, M1)
         unrelayed = layout is None or not layout.private_network
+        stored, unavailable = netns.resolve_worker_key(
+            provider, provider_env, os.environ, policy, on_relay_route=on_route and not unrelayed,
+        )
+        missing = netns.provider_key_missing(
+            provider, provider_env, os.environ, on_relay_route=on_route, stored=stored is not None,
+        )
+        changed = bool(key_admission and not unrelayed and (
+            stored is None or key_admission.get("generation") != list(stored.generation)
+        ))
+        if missing is not None:
+            detail = unavailable or ("the stored OpenCode login needs the provider relay" if unrelayed else None)
+            if changed:
+                detail = "the stored OpenCode login changed after admission" + (f": {detail}" if detail else "")
+            raise errors.HarnessIncompatible(
+                netns.provider_key_message(str(provider), missing, stored_detail=detail),
+                reason=netns.PROVIDER_KEY_MISSING, variable=missing,
+            )
         no_relay = client_cert.no_relay(provider, policy, on_relay_route=not unrelayed) \
             if adapter_cls.PROVIDER_RELAY else None
         if no_relay is not None:
@@ -128,9 +146,12 @@ def contain_launch(policy: dict[str, Any] | None, adapter_cls: type[HarnessAdapt
         network = None
         if layout is not None and layout.private_network:
             network = netns.RunNetwork.start(layout, provider=provider, provider_env=provider_env, policy=policy,
-                                             env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, allow=allow)
+                                              env=os.environ, relay_needed=adapter_cls.PROVIDER_RELAY, allow=allow,
+                                              stored=stored)
             label["network"].update(network.describe())
-    except errors.ContainmentUnavailable:
+            if changed:
+                label["network"]["provider_key_note"] = "the stored OpenCode login changed after admission"
+    except (errors.ContainmentUnavailable, errors.HarnessIncompatible):
         if layout is not None and layout.net_dir:
             shutil.rmtree(layout.net_dir, ignore_errors=True)
             containment.retire_private_git(run_dir)
@@ -315,6 +336,7 @@ class Supervisor:
         profile = inv["execution_profile"] or {}
         self.record.update(work_unit=inv["work_unit"], role=inv["role"], harness=profile.get("harness"),
                            execution_profile=profile)
+        entry = next((row for row in inv.get("runs", []) if row["run"] == self.run), {})
         # Beat before the first record: a non-terminal record with no heartbeat reads as `lost`, and writing the record
         # wakes every `harness wait` into exactly that gap (CI, Windows, 2026-10-09; register E3).
         self._starting_beats(profile.get("harness"))
@@ -330,7 +352,7 @@ class Supervisor:
             self.record["bridge"] = {"endpoint": self.bridge.address}
             Path(contract.scratch).mkdir(parents=True, exist_ok=True)
             adapter_cls = registry.load(profile["harness"])
-            self._contain(contract, adapter_cls)
+            self._contain(contract, adapter_cls, key_admission=entry.get("provider_key_admission"))
             contract = self._label_skills(contract)
             self.record["contract"] = contract.to_record()
             self._tools(contract)
@@ -418,7 +440,8 @@ class Supervisor:
         contract.extra[K.AVAILABLE_TOOLS] = capability.placed(self.record["containment"],
                                                              contained=self.layout is not None)
 
-    def _contain(self, contract: K.LaunchContract, adapter_cls: type[HarnessAdapter]) -> None:
+    def _contain(self, contract: K.LaunchContract, adapter_cls: type[HarnessAdapter], *,
+                 key_admission: dict[str, Any] | None = None) -> None:
         """Build and self-test this run's sandbox before any harness process exists (F2, M4-B), and start its network
         outside it (F28, STG-05 CS-3b): :func:`contain_launch`, which ``aew doctor``'s read of the harness's model list
         shares. Under the default policy a sandbox or a network that cannot be established refuses the launch; the
@@ -431,7 +454,7 @@ class Supervisor:
                 provider_env=[str(n) for n in contract.extra.get("provider_env") or []], role=contract.role,
                 scope=contract.scope, workspace=contract.workspace, run_dir=self.run_dir, scratch=contract.scratch,
                 bridge_dir=self.bridge.private_dir, bridge=self.bridge.address, project=self.engine.repo_root,
-                aew_root=self.engine.aew_root, kind="worker_run",
+                 aew_root=self.engine.aew_root, kind="worker_run", key_admission=key_admission,
                 skills_dir=str(self._skills_dir()) if (contract.extra.get("skills") or {}).get("exposed") else None)
         except errors.ContainmentUnavailable as exc:  # the self-test's rows, when it ran, stay on the refusal's label
             self.layout = None

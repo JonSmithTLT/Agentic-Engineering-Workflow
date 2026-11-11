@@ -167,7 +167,7 @@ commands:
       starts it with no session, and with --run-checks each configured check, once, on a disposable copy"
     probe: [doctor]
     refusals: [USAGE]
-    note: "V3's counted fallback while `aew preflight` does not exist"
+    note: "V3's counted fallback while `aew preflight` does not exist. Readiness names the provider key source."
   - name: init
     home: product
     users: [operator]

@@ -16,17 +16,25 @@ fetch lazily is refused outright (``partial_clone``).
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from aew.errors import MapCurrentnessUnproven
+from aew.errors import GitError, MapCurrentnessUnproven
+from aew.knowledge.manifest import AEW_DIR
 from aew.maps.canonical import Entry, listing_sha256, render_bytes, sha256
 from aew.workspace import git
 
 CAPPED_SIZE, CAPPED_TOTAL = "capped_size", "capped_total"
 MISSING_SHOWN = 20
+
+
+def _aew_state(path: str) -> bool:
+    """A path under the project's own AEW state, which the map leaves out (ADR-0015, amended for register E184): a
+    commit of ``.aew/`` alone then changes no map, so init's map is not STALE at the first commit of the state."""
+    return path == AEW_DIR or path.startswith(AEW_DIR + "/")
 
 
 class TrackedTree:
@@ -92,7 +100,7 @@ class TrackedTree:
 
 def parse_listing(raw: bytes, *, sizes: bool = True) -> list[Entry]:
     """``ls-tree -r -z -l`` output: ``<mode> SP <type> SP <oid> SP <size>\\t<path>\\0`` per entry (no size field
-    without ``-l``)."""
+    without ``-l``), less every path under ``.aew/`` (:func:`_aew_state`)."""
     out: list[Entry] = []
     for item in raw.split(b"\0"):
         if not item:
@@ -102,6 +110,8 @@ def parse_listing(raw: bytes, *, sizes: bool = True) -> list[Entry]:
         mode, kind, oid = fields[:3]
         size = fields[3].strip() if sizes and len(fields) == 4 else b"-"
         path, utf8 = render_bytes(name)
+        if _aew_state(path):
+            continue
         # "-" for a gitlink; "BAD" when the object is missing (a partial clone): unknown, never guessed
         out.append(Entry(mode=mode.decode("ascii"), type=kind.decode("ascii"), oid=oid.decode("ascii"),
                          size=int(size) if size.isdigit() else None, path=path, utf8=utf8))
@@ -157,21 +167,54 @@ def missing_blobs(repo: Path, entries: list[Entry]) -> list[str]:
     return sorted(e.path for e, line in zip(blobs, lines, strict=False) if line.endswith(" missing"))
 
 
-def refuse_lazy_fetch(repo: Path, *, timeout: float | None = None) -> None:
+def refuse_lazy_fetch(repo: Path, *, timeout: float | None = None, deadline: float | None = None) -> None:
     """A partial clone on git older than 2.44 could fetch a missing object lazily whatever AEW asks: refused.
-    ``timeout`` bounds each git process (``object_git``'s default without it)."""
-    bound = {} if timeout is None else {"timeout": timeout}
-    if git.is_partial_clone(repo, **bound) and git.version(repo, **bound) < git.NO_LAZY_FETCH_FROM:
+    ``timeout`` bounds each git process (``object_git``'s default without it); ``deadline`` bounds both together, each
+    process getting only the time left (E184 review MIN-1: one ``timeout`` for each let the step take twice it)."""
+
+    def bound() -> dict[str, float]:
+        if deadline is not None:
+            return {"timeout": _left(deadline)}
+        return {} if timeout is None else {"timeout": timeout}
+
+    if git.is_partial_clone(repo, **bound()) and git.version(repo, **bound()) < git.NO_LAZY_FETCH_FROM:
         raise MapCurrentnessUnproven(
             "this repository is a partial clone and this git (older than 2.44) cannot be stopped from fetching "
             "missing objects lazily: generate the map in a full clone, or upgrade git", reason="partial_clone")
 
 
+def _left(deadline: float) -> float:
+    """The seconds left before ``deadline`` (``time.monotonic``); a ``GitError`` (``timeout``) once none are."""
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise GitError("reading the commit's objects did not finish within the time allowed and was stopped",
+                       reason="timeout")
+    return left
+
+
 @contextmanager
-def open_tree(repo: Path, rev: str) -> Iterator[TrackedTree]:
-    """The tracked tree of commit ``rev``: a constant number of git processes, whatever the repository's size."""
-    refuse_lazy_fetch(repo)  # before any object is resolved or read
-    commit, tree, object_format = resolve(repo, rev)
-    entries = list_tree(repo, tree)
-    with git.CatFileBatch(repo) as batch:
-        yield TrackedTree(commit=commit, tree=tree, object_format=object_format, entries=entries, fetch=batch.read)
+def open_tree(repo: Path, rev: str, *, deadline: float | None = None) -> Iterator[TrackedTree]:
+    """The tracked tree of commit ``rev``: a constant number of git processes, whatever the repository's size. With
+    ``deadline`` (a ``time.monotonic`` instant), every git process and every blob read is bounded by the time left,
+    and running out raises ``GitError`` (``timeout``): one bound on the whole generation, not one per process."""
+    if deadline is None:
+        refuse_lazy_fetch(repo)  # before any object is resolved or read
+        commit, tree, object_format = resolve(repo, rev)
+        entries = list_tree(repo, tree)
+        with git.CatFileBatch(repo) as batch:
+            yield TrackedTree(commit=commit, tree=tree, object_format=object_format, entries=entries,
+                              fetch=batch.read)
+        return
+    refuse_lazy_fetch(repo, deadline=deadline)
+    commit, tree, object_format = resolve(repo, rev, timeout=_left(deadline))
+    entries = list_tree(repo, tree, timeout=_left(deadline))
+    with git.CatFileBatch(repo, timeout=_left(deadline)) as batch:
+
+        def fetch(oid: str) -> bytes | None:
+            batch.timeout = _left(deadline)  # read() arms its watchdog with this: the read ends by the deadline
+            return batch.read(oid)
+
+        try:
+            yield TrackedTree(commit=commit, tree=tree, object_format=object_format, entries=entries, fetch=fetch)
+        finally:  # the close waits only for the time left, then kills the reader (E184 review MIN-1)
+            batch.close_timeout = min(batch.close_timeout, max(0.0, deadline - time.monotonic()))

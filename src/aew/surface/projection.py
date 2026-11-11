@@ -38,7 +38,7 @@ from aew.errors import AEWError
 from aew.harness import contract as K
 from aew.knowledge import evidence as E
 from aew.surface import availability as SA
-from aew.surface import contract
+from aew.surface import contract, stage
 from aew.surface.classify import AVAILABLE, BLOCKED, UNKNOWN, auto_runnable, effective_class
 from aew.surface.context import SurfaceContext
 from aew.util import utc_now
@@ -211,7 +211,7 @@ def _stage_decisions(part: dict[str, Any], state: dict[str, Any], subject: str) 
             part["decisions"].append({"decision": "RESOLVE_STAGE", "tool": "resolve", "evidence": [sid],
                                       "arguments": {"expect_rev": part["revision"], "subject": sid},
                                       "cli": ["stage", "<continue|abandon>", sid, "--rationale", "<why>",
-                                              "--expect-rev", r]})
+                                              "--expect-rev", r], "stopped": stage.kept_stop(si)})
 
 
 def _ticket_actions(part: dict[str, Any], wid: str, rev: int) -> None:
@@ -431,6 +431,8 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
                 blockers.extend(_blocker(b["code"], b["message"], b.get("details")) for b in composed["blockers"])
             out.append(_decision(d["decision"], subject, tool=d["tool"], arguments=arguments,
                                  cli_fallback=list(d["cli"]), evidence=d.get("evidence"), availability=found))
+            if "stopped" in d:
+                out[-1]["stopped"] = d["stopped"]
             continue
         for e in _reports(engine, subject, runs, d):  # one decision per report, bound to it
             arguments = ({"expect_rev": part["revision"], "work_id": subject, d["argument"]: e, **d.get("with", {})}

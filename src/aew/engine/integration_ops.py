@@ -839,6 +839,8 @@ class Integration:
                 integ["status"] = "publishing"
                 integ["publishing_at"] = utc_now()
                 ctx.summary = f"{work_id} publishing {integ['candidate'][:12]} over {integ['base'][:12]}"
+                if candidate is not None:
+                    ctx.summary += f" ({work_id}@{candidate})"
             else:
                 raise IntegrityError(f"engine defect: the publish query of {work_id} answered no outcome",
                                      outcome=outcome)

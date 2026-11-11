@@ -13,7 +13,7 @@ import printed_commands as P
 import pytest
 from conftest import IS_WINDOWS, Project, clean_env, git, run_aew
 
-from aew.errors import IllegalTransition, ValidationFailed
+from aew.errors import IllegalTransition, PermissionDenied, ValidationFailed
 from aew.harness import contract as K
 
 
@@ -436,9 +436,8 @@ def test_superseded_lead_rejected_after_handoff(project):
 def test_pending_handoff_freezes_outgoing_lead(project):
     project.lead("lead", "handoff", "offer")
     cands = project.ok("authority", "list")["candidates"]
-    res = project.aew("authority", "reject", cands[0]["id"],
-                      "--expect-rev", str(project.rev()), env={"AEW_LEAD_TOKEN": project.token})
-    assert res.returncode == 4
+    with pytest.raises(PermissionDenied, match="a Lead handoff is pending"):
+        project.as_operator("authority_reject", candidate_id=cands[0]["id"], decided_by="operator")
     project.lead("lead", "handoff", "cancel")
     project.as_operator("authority_reject", candidate_id=cands[0]["id"], decided_by="operator")
 

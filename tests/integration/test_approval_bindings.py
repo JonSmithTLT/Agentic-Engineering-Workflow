@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from aewflow import (
+    Role,
     complete_investigation,
     create_investigation,
     create_unit,
     dispatch,
     parent_verify,
     plan_unit,
+    prepare_and_validate,
     sample_project,
     submit_record,
     to_commit_ready,
+    verify,
 )
 from conftest import git
 
@@ -45,7 +50,8 @@ def test_an_approval_never_pins_content_the_approver_was_not_shown(project, tmp_
     if op in PENDING:
         pytest.fail(f"{op}: approval race case pending")
 
-    if op in {"input.acknowledge", "integrate.publishing", "verify.classify", "work.accept", "work.gate_replace"}:
+    if op in {"input.acknowledge", "integrate.publishing", "verify.classify", "work.accept", "work.close",
+              "work.gate_replace"}:
         project = sample_project(tmp_path / "workflow")
     engine = Engine.discover(project.root)
     manifest = engine.aew_root / "project.yaml"
@@ -74,15 +80,15 @@ def test_an_approval_never_pins_content_the_approver_was_not_shown(project, tmp_
     elif op in {"work.cancel", "work.close"}:
         wid = create_unit(project, "story", "Parent whose children change", cls=0)
         plan_unit(project, tmp_path, wid)
-        first = create_unit(project, "ticket", "First child", cls=0, parent=wid)
         if op == "work.cancel":
+            create_unit(project, "ticket", "First child", cls=0, parent=wid)
             binding = engine.status(wid)["approval_subjects"][op]["digest"]
+            create_unit(project, "ticket", "Child added after review", cls=0, parent=wid)
         else:
-            project.lead("work", "transition", first, "--to", "CANCELLED", "--reason", "No longer needed")
+            complete_investigation(project, create_investigation(project, tmp_path, cls=0, parent=wid))
             binding = engine.gate_show(wid)["closeout_approval_digest"]
-        child = create_unit(project, "ticket", "Child added after review", cls=0, parent=wid)
-        if op == "work.close":
-            project.lead("work", "transition", child, "--to", "CANCELLED", "--reason", "No longer needed")
+            child = create_investigation(project, tmp_path, cls=0, parent=wid, title="Child added after review")
+            complete_investigation(project, child)
         args = {"work_id": wid, "reason": "Parent decision"}
     elif op == "lead.takeover":
         before_rev = project.rev()
@@ -110,9 +116,13 @@ def test_an_approval_never_pins_content_the_approver_was_not_shown(project, tmp_
         args = {"reason": "resume validation"}
     elif op == "integrate.publishing":
         wid, _ = to_commit_ready(project, tmp_path)
-        project.lead("integrate", "prepare", wid)
+        prepare_and_validate(project, wid)
         binding = engine.status(wid)["approval_subjects"][op]["digest"]
-        change_control(engine, lambda state: state["work"][wid]["integration"].update(candidate="f" * 40))
+        git("commit", "--allow-empty", "-m", "new authoritative revision", cwd=project.root)
+        rebuilt = engine.integrate_publish(token=project.token, expect_rev=project.rev(), work_id=wid)
+        assert rebuilt["rebuilt"]
+        project.lead("verify", "ingest", wid, "--evidence", verify(project, wid, scope="integration"))
+        assert engine.status(wid)["approval_subjects"][op]["digest"] != binding
         args = {"work_id": wid, "candidate": binding}
     elif op == "plan.reconfirm":
         parent = create_unit(project, "story", "Parent", cls=0)
@@ -151,7 +161,11 @@ def test_an_approval_never_pins_content_the_approver_was_not_shown(project, tmp_
         ev = submit_record(worker, "discovery_record")["evidence"]
         project.lead("evidence", "ingest", wid, "--evidence", ev)
         binding = engine.status(wid)["approval_subjects"][op]["digest"]
-        change_control(engine, lambda state: state["work"][wid]["execution"]["record"].update(sha256="f" * 64))
+        new_attempt = engine.work_redispatch(token=project.token, expect_rev=project.rev(), work_id=wid,
+                                             reason="recheck the findings")
+        worker = Role(project, new_attempt["invocation_token"], Path(new_attempt["observation"]["path"]))
+        revised = submit_record(worker, "discovery_record")["evidence"]
+        project.lead("evidence", "ingest", wid, "--evidence", revised)
         args = {"work_id": wid}
     elif op == "work.dispose":
         from test_stages_request import seed_anomaly

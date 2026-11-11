@@ -43,7 +43,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 9 | E120 | Validation's coverage on the record, and failure lines back to the worker |
 | 10 | closed: E121 | A readable result: a headline per result in chat, closed by #328 |
 | 11 | E122 | The next step while the Lead waits |
-| 12 | STG-03 | **After first use, or earlier if a builder slot is free:** G3-C with `ATTACH_LEAD`, E82 and the G3 install. G3-A, G3-B and G3-D are merged (#269, #282, #286). It never holds first use |
+| 12 | closed: STG-03 | G3-C, E82 and the G3 install, closed by #363, #365, #374, #386 and #389 and the operator's root session on a Linux host, 2026-11-10 |
 | 13 | E123 | **Before the work step:** the relay presenting a client certificate, and the bundle (E99, adopted as A-55) |
 | 14 | STG-15, E35 | CAP-1 PR 3, right after PR 2 and beside first use, which it doesn't hold. **After those:** H-1, H-2 and H-3 |
 | 15 | STG-14 | I-6, the resource, model and host policy (A-39), the first of the wire increments V-01 needs. Its protected rows stay held until G3 is established, and G3 is established on no host yet |
@@ -702,18 +702,6 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 *Later notes: `notes.d/F49/`, oldest first (`python tools/register.py show F49`).*
 
-### STG-03
-
-**Work:** The G3 service build, beside CS-4, briefed from A-37 (G3 revision 7.1)
-
-**Source (governing):** A-37 (G3 revision 7.1); the register rebaseline (design workspace, `b598fdc`)
-
-**Belongs to or gated by:** **Stage.** STG-03; built beside STG-05's CS-4; G3-C, the owners' side, waits for E112, G3 addendum 7's ruling 1
-
-**Notes:** One row per build stage, and each slice notes on it (designer, D-CS1-12, 2026-10-23).
-
-*Later notes: `notes.d/STG-03/`, oldest first (`python tools/register.py show STG-03`).*
-
 ### STG-05
 
 **Work:** Agent containment, built in slices (CS-1 to CS-4; CS-5 was cut with the WIS issuer, operator, 2026-10-24, design workspace `f206099`): the store's path and the control lock kept out of agents' reach, the store's modes, the masks (`/run`, sockets, display credentials, the terminal), the network namespace (CS-3, F28's network containment), and the launch self-test's rows, failing closed
@@ -1270,18 +1258,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Parked by the Lead on 2026-10-24 during the build freeze; the triage of stranded insights (design workspace, ST-10) asked for this row
 
 *Later notes: `notes.d/E81/`, oldest first (`python tools/register.py show E81`).*
-
-### E82
-
-**Work:** Prove the command set's fingerprint and its per-member order (CS-03, CS-05): a known-answer test of the SW-02 fingerprint, which G3-C binds consent to, and a two-member continuation set. Tests only
-
-**Source:** STG-12's S12-4 trace, FIX claim "the set fingerprint and the per-member order are unproven" (`CLAIMS.yaml` at design workspace `18cdf63`, pack `290d5bca540f`); the claim's deviation is the brief
-
-**When:** **Internal alpha**, one of the trace's FIX rows (S12-6). Before G3-C binds consent to the fingerprint, so item 12 of the Now list pulls it ahead
-
-**Notes:** The designer asked for this row on 2026-10-25, with family 6's claims
-
-*Later notes: `notes.d/E82/`, oldest first (`python tools/register.py show E82`).*
 
 ### E83
 
@@ -4535,6 +4511,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 *Later notes: `notes.d/E78/`, oldest first (`python tools/register.py show E78`).*
 
+### E82
+
+**Was:** Prove the command set's fingerprint and its per-member order (CS-03, CS-05): a known-answer test of the SW-02 fingerprint, which G3-C binds consent to, and a two-member continuation set. Tests only
+
+**Closed:** 2026-11-07
+
+**By:** #363 (`117e2b88`): `tests/unit/test_stg02_set_fingerprint.py` checks the fingerprint against the adopted A-24 package's recorded digests, one of them a two-member set, and `tests/integration/test_stg02_slice.py` admits each member of a two-member set on its own. Its limit is in the row's note of 2026-11-07
+
+*Later notes: `notes.d/E82/`, oldest first (`python tools/register.py show E82`).*
+
 ### E84
 
 **Was:** A move or a promotion keeps the moved work's inherited obligations, or is refused (EW-U05.g): a reorganization preserves the applicable proof obligations. One of the trace's FIX rows (S12-6), taken ahead of its milestone
@@ -5700,6 +5686,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** The operator aligned AGENTS.md with the product rule in PR #193 (2026-10-10): after a CLEAR whose only open points are nits, the author fixes them and one short delta review covers the whole diff since the CLEAR, once per CLEAR (AGENTS.md §1, "Nits after a CLEAR get one short delta review"); no project-policy exception remains (ledger CFI-97, CFI-98). Recorded with the [architecture integration decision record](../design/decisions-2026-10-11-architecture-integration.md) §5
 
 *Later notes: `notes.d/Q15/`, oldest first (`python tools/register.py show Q15`).*
+
+### STG-03
+
+**Was:** The G3 service build, beside CS-4, briefed from A-37 (G3 revision 7.1)
+
+**Closed:** 2026-11-10
+
+**By:** G3-A, G3-B and G3-D (#269, #282, #286); E82 (#363); G3-C (#365, #374, #386 and #389), whose first protected action is the steering raise (`SET_STEERING_MODE`), on the operator's decision of 2026-11-07; and the operator's root session on a Linux host, 2026-11-10, which installed G3 and passed the raise's acceptance: approved in the confirmer with the PIN and admitted once by its owner, a replay refused, and after a weaker launch the next raise on the typed code with the standing's reason. `ATTACH_LEAD` and `REATTACH_LEAD` stay proposed, with no row. G3 on Windows is E223
+
+*Later notes: `notes.d/STG-03/`, oldest first (`python tools/register.py show STG-03`).*
 
 ### U2
 

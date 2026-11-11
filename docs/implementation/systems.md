@@ -4,21 +4,19 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Totals
 
-**on_and_used:** 3 — SYS-17, SYS-38, SYS-39
+**on_and_used:** 5 — SYS-17, SYS-20, SYS-37, SYS-38, SYS-39
 
-**partly_built:** 18 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-08, SYS-09, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-20, SYS-21, SYS-25, SYS-48
+**partly_built:** 17 — SYS-01, SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-08, SYS-09, SYS-11, SYS-13, SYS-15, SYS-16, SYS-18, SYS-19, SYS-21, SYS-25, SYS-48
 
 **built_off:** 4 — SYS-07, SYS-12, SYS-14, SYS-23
 
-**built_not_wired:** 2 — SYS-10, SYS-37
+**built_not_wired:** 1 — SYS-10
 
 **staged:** 2 — SYS-22, SYS-27
 
 **designed_only:** 19 — SYS-24, SYS-26, SYS-28, SYS-29, SYS-30, SYS-31, SYS-32, SYS-33, SYS-34, SYS-35, SYS-36, SYS-40, SYS-41, SYS-42, SYS-43, SYS-44, SYS-45, SYS-46, SYS-47
 
-**Limit's count / wip_limit:** 14 / 12 — SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-13, SYS-19, SYS-20, SYS-22, SYS-37, SYS-48
-
-**Operator allowance:** up to 14 — Until the operator’s root G3 session closes SYS-20 and SYS-37, I allow 14 counted systems. No new system starts while this allowance stands; it lapses when both close. — 2026-11-10 (only the cap and staleness are checked; the words' conditions are not checked)
+**Limit's count / wip_limit:** 12 / 12 — SYS-02, SYS-03, SYS-04, SYS-05, SYS-06, SYS-07, SYS-08, SYS-09, SYS-13, SYS-19, SYS-22, SYS-48
 
 **Switch defaults not read from the code:** 4 — SYS-02, SYS-04, SYS-11, SYS-12 — SYS-02: containment.mode (execution policy); SYS-04: steering.mode; SYS-11: policy.pricing (project manifest); SYS-12: MODES["O-CMD"] and MODES["O-SECRET"] in tests/helpers/discovery/modes.py (mirrored in vertical-uat.md §8.3; a test holds the two equal). A test-tooling constant outside the checked policy tables, so its default stays hand-kept
 
@@ -26,7 +24,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 11 — SYS-47, SYS-40, SYS-42, SYS-44, SYS-48, SYS-07, SYS-30, SYS-32, SYS-37, SYS-39, SYS-46
+**Members:** 10 — SYS-47, SYS-40, SYS-42, SYS-44, SYS-48, SYS-07, SYS-30, SYS-32, SYS-39, SYS-46
 
 ### SYS-47 — Relay client certificate (E123)
 
@@ -126,18 +124,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** none
 
-### SYS-37 — Register of weaker contexts (E112, G3 addendum 7)
-
-**Board state:** built_not_wired
-
-**Who:** Lead, with G3-C
-
-**Now:** not on the Now list
-
-**Own slices left:** 0 — none — **Next:** none
-
-**Wired:** none
-
 ### SYS-39 — Integration pipeline (ADR-0004 queue, custody worker, workspaces)
 
 **Board state:** on_and_used
@@ -166,7 +152,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 19 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-06, SYS-20, SYS-29, SYS-22, SYS-08, SYS-41, SYS-43, SYS-45, SYS-03, SYS-04, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 18 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-06, SYS-29, SYS-22, SYS-08, SYS-41, SYS-43, SYS-45, SYS-03, SYS-04, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-02 — Agent containment (Linux core on; Windows backend and follow-ons)
 
@@ -229,18 +215,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 11 — FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F15.3: the aew-run role server over the existing run bridge (whoami, check.run and typed submit as in-sandbox MCP tools; the supervisor keeps the credential). Held in HOLD-06 until the designer's match and the operator's placement (F15.3); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F15.8: the aew-run read half (map.* reads, evidence.show, check.suggest as bridge operations; tools.presentation). Waits on typed map and evidence reads (F15.8); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): aew-knowledge as its own capability namespace over the shared transport library: part of F15.3's text, so held with it in HOLD-06; what it serves waits on K-01's increment (F15.3); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): typed Lead rows for maps, history, settings, usage and g3, reachable today only untyped through the shell rule `aew *` (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): BOARD v2 §4 loose end and §6 stale text: drop the catalog's unused DESIGNED status and correct the contract.py docstring that says rows stay DESIGNED (row owed); E122: the next step while the Lead waits. Waiting is one blocking request, never a polling loop (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 3) (E122); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): The Lead's request-economy text remains owed after E139's worker-pack fixes (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 3) (E162); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): Lead text fixes, and a typed `plan accept` (E162); The Lead's tool budget, decided before E158 (E231); The Lead's exits: the eight dead ends, and the lands guard (E233); The worker route's size check (E241) — **Next:** FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F15.3: the aew-run role server over the existing run bridge (whoami, check.run and typed submit as in-sandbox MCP tools; the supervisor keeps the credential). Held in HOLD-06 until the designer's match and the operator's placement — F15.3 — 1-2 PRs (estimate, census)
 
 **Wired:** cli:lead mcp, cli:lead tool, lead_text
-
-### SYS-20 — G3 trusted operator origin (approvals)
-
-**Board state:** partly_built
-
-**Who:** Lead (STG-03); operator for the root install on a host
-
-**Now:** 12
-
-**Own slices left:** 4 — E82: a known-answer test of the SW-02 set fingerprint and a two-member continuation set, tests only, before G3-C (E82); G3-C: owners consume a G3 consent once at allocation, ATTACH_LEAD included, and consult the register of weaker contexts (STG-03); The G3 install on a Linux host: root runs g3/install.sh and sets the PIN (STG-03); G3 on Windows (E223) — **Next:** E82: a known-answer test of the SW-02 set fingerprint and a two-member continuation set, tests only, before G3-C — E82 — 1 PR (estimate; census)
-
-**Wired:** cli:g3 request
 
 ### SYS-29 — Resource, model and host policy (wire increment I-6)
 
@@ -414,9 +388,13 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Done
 
-**Members:** 2 — SYS-17, SYS-38
+**Members:** 4 — SYS-17, SYS-20, SYS-37, SYS-38
 
 ### SYS-17 — Transaction outbox and its consumers
+
+### SYS-20 — G3 trusted operator origin (approvals)
+
+### SYS-37 — Register of weaker contexts (E112, G3 addendum 7)
 
 ### SYS-38 — ADR-0011 archival and history
 

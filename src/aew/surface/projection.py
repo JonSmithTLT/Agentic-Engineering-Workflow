@@ -431,6 +431,8 @@ def _decisions(engine: Any, part: dict[str, Any], subject: str, runs: list[dict[
                 blockers.extend(_blocker(b["code"], b["message"], b.get("details")) for b in composed["blockers"])
             out.append(_decision(d["decision"], subject, tool=d["tool"], arguments=arguments,
                                  cli_fallback=list(d["cli"]), evidence=d.get("evidence"), availability=found))
+            if "stopped" in d:
+                out[-1]["stopped"] = d["stopped"]
             continue
         for e in _reports(engine, subject, runs, d):  # one decision per report, bound to it
             arguments = ({"expect_rev": part["revision"], "work_id": subject, d["argument"]: e, **d.get("with", {})}

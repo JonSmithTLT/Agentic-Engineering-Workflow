@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from aew import lead_credential
+from aew.engine import steering as S
 from aew.errors import UsageError
 from aew.harness import contract as K
 from aew.harness import models
@@ -32,6 +33,13 @@ FLAGS = {"check_command": "--check-command", "check_timeout": "--check-timeout",
          "provider": "--provider"}
 CHECK_ID, PROFILE = "unit", "default"  # `unit` is the only check these flags set, and the profile's one name
 CHECKS_REL = "policy/checks.yaml"
+# The profile's hard deadline (A1 §3.2: Run never auto-starts a run without one), so a raise to Run needs nothing more
+# set. It bounds only runs started under Run (`deadline_scope: run`, review of E228's third PR, F5): the reason for it
+# is Run's, so an attended run keeps no deadline. PROVISIONAL: no recorded run carries a wall time yet (register E228's
+# note of 2026-11-10: 42 run results read, 0 usage records), so it is the steering envelope's own activation bound, the
+# longest one unattended activation may run: one run should not outlive the activation that started it. E117's measured
+# run replaces it with a measured value and its source.
+DEADLINE_S = S.ENVELOPE_DEFAULTS["loop_deadline_s"]
 DESCRIPTION = "set at aew init"
 # A bare shell operator: there is no shell here, so each of these would reach the program as an argument.
 OPERATORS = ("&&", "||", "|", ";", "<", ">")
@@ -165,7 +173,8 @@ class FirstConfiguration:
     def _execution_text(self) -> str:
         """The template with its comments, and the four values it leaves open. Each line is anchored, so a line that
         moved fails here and never writes half a policy; YAML's own dumper quotes the values."""
-        profile = {**({"provider": self.provider} if self.provider is not None else {}), "model": self.model}
+        profile = {**({"provider": self.provider} if self.provider is not None else {}), "model": self.model,
+                   "deadline_s": DEADLINE_S, "deadline_scope": "run"}
         text = X.TEMPLATE
         for line, new in (("configured: false", "configured: true\n"),
                           ("profiles: {}", dump_yaml({"profiles": {PROFILE: profile}})),

@@ -9,6 +9,7 @@ import re
 import shlex
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import printed_commands as P
@@ -244,7 +245,8 @@ def test_a_value_that_needs_quoting_comes_back_from_the_file_as_it_was_typed(mod
     """YAML's own dumper quotes it, in the commented template, and the policy's own parser reads it back."""
     parsed = parse(model=model, provider="openai")
     doc = check_policy_bytes("execution", parsed.files()[X.REL_PATH].encode(), source="planted")
-    assert doc["profiles"]["default"] == {"provider": "openai", "model": model}
+    assert doc["profiles"]["default"] == {"provider": "openai", "model": model, "deadline_s": FC.DEADLINE_S,
+                                          "deadline_scope": "run"}
 
 
 @pytest.mark.parametrize("word", ["on", "null", "123", "a: b", "#x", "é", "x y", "{python}", "a\nb", "'", '"'])
@@ -259,7 +261,8 @@ def test_a_flagged_execution_policy_keeps_the_templates_comments_and_changes_onl
     comments = [line for line in X.TEMPLATE.splitlines() if line.startswith("#")]
     assert [line for line in text.splitlines() if line.startswith("#")] == comments
     assert yaml.safe_load(text) == {**yaml.safe_load(X.TEMPLATE), "configured": True,
-                                    "profiles": {"default": {"model": "openai/m"}},
+                                    "profiles": {"default": {"model": "openai/m", "deadline_s": FC.DEADLINE_S,
+                                                             "deadline_scope": "run"}},
                                     "routing": {**yaml.safe_load(X.TEMPLATE)["routing"], "default": "default"},
                                     "provider_env": ["OPENAI_API_KEY"]}
 
@@ -279,7 +282,8 @@ def test_the_flags_write_only_what_the_ruling_says():
     execution = yaml.safe_load(files[X.REL_PATH])
     assert execution["harness"] == X.DEFAULT_HARNESS and set(execution) == set(yaml.safe_load(X.TEMPLATE))
     assert "containment" not in execution and "network" not in files[X.REL_PATH].split("schema:", 1)[1]
-    assert execution["profiles"] == {"default": {"provider": "openai", "model": "openai/m"}}  # as it was typed
+    assert execution["profiles"] == {"default": {"provider": "openai", "model": "openai/m",
+                                                 "deadline_s": FC.DEADLINE_S, "deadline_scope": "run"}}  # and Run's
     checks = yaml.safe_load(files[FC.CHECKS_REL])
     assert set(checks["checks"]) == {"unit"}
     assert checks["checks"]["unit"] == {"configured": True, "command": ["make", "test"], "cwd": ".", "timeout_s": 60,
@@ -459,3 +463,47 @@ def test_each_flag_is_refused_in_a_lead_session_and_init_itself_stays_as_it_was(
     assert refusal is not None and "ask the operator" in refusal and argv[0] in refusal
     assert lead_broker.refuses_locally(build_parser().parse_args(["init"])) is None
     assert lead_broker.refuses_locally(build_parser().parse_args(["init", "--name", "x"])) is None
+
+
+def test_the_profiles_deadline_is_the_provisional_one_its_note_records():
+    """Register E228 (the chain's third PR): a raise to Run needs `deadline_s` on every profile routing can pick, so
+    first configuration writes one. No recorded run carries a wall time yet, so the value is provisional: the steering
+    envelope's activation bound, derived, never restated, and the note that records the measurement says so."""
+    from aew.engine import steering as S
+
+    assert FC.DEADLINE_S == S.ENVELOPE_DEFAULTS["loop_deadline_s"]
+    note = (Path(__file__).resolve().parents[2] / "docs" / "implementation" / "notes.d" / "E228"
+            / "2026-11-10-feat-scheduler-run-defaults.md").read_text(encoding="utf-8")
+    assert "provisional" in note and 'ENVELOPE_DEFAULTS["loop_deadline_s"]' in note and "0 wall times" in note
+    assert S.profiles_without_deadline(yaml.safe_load(parse(model="openai/m").files()[X.REL_PATH])) == []
+
+
+@pytest.mark.parametrize("mode", [None, "crawl", "walk", "run"])
+def test_the_provisional_deadline_bounds_only_a_run_started_under_run(mode):
+    """Review of E228's third PR, F5: first configuration's deadline is Run's (`deadline_scope: run`): the pin carries
+    the scope as written, and the supervisor applies the deadline only to a run that starts while the effective mode is
+    Run, so an attended run gets none. A deadline the operator wrote (no scope, or `always`) bounds every run, and a
+    state that cannot be read keeps the deadline."""
+    from aew.engine import steering as S
+    from aew.harness.supervisor import Supervisor
+
+    policy = yaml.safe_load(parse(model="openai/m").files()[X.REL_PATH])
+
+    def pin(policy: dict[str, Any]) -> Any:
+        return X.resolve(policy, None, archetype="implementer", card_id=None, risk_class=1,
+                         identity=lambda h, p, m, f: SimpleNamespace(provider="openai", model="m"))
+
+    state = {"lead": {"generation": 1, "status": "held"},
+             "steering": {**S.empty(), "standing": {"mode": mode, "record": None, "rev": 0}}}
+
+    def applied(profile: dict[str, Any], read: Any = state) -> Any:
+        return Supervisor.applied_deadline(SimpleNamespace(record={"execution_profile": profile},  # type: ignore[arg-type]
+                                                           _committed_state=lambda: read))
+
+    first = pin(policy)
+    assert first["deadline_s"] == FC.DEADLINE_S and first["deadline_scope"] == "run"
+    assert applied(first) == (FC.DEADLINE_S if mode == "run" else None)
+    assert applied(first, read=None) == FC.DEADLINE_S
+    for scope in ({}, {"deadline_scope": "always"}):
+        own = pin({**policy, "profiles": {"default": {"model": "openai/m", "deadline_s": 900, **scope}}})
+        assert own.get("deadline_scope") == scope.get("deadline_scope") and applied(own) == 900

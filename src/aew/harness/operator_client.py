@@ -244,10 +244,18 @@ def _send(conn: Any, op: str, args: dict[str, Any]) -> None:
         raise errors.NotFound("the operator endpoint closed the connection") from None
 
 
-def ping(aew_root: Path) -> dict[str, Any]:
+# How long `ping` waits for the endpoint's answer. A ping asks the operator nothing, so a live endpoint answers at
+# once; an endpoint that is alive but silent (stopped in its terminal, or wedged) is not answering, and the steering
+# loop, which pings before each Run action, takes no action then and records its stop (review of E228's third PR, F6).
+PING_TIMEOUT_S = 5.0
+
+
+def ping(aew_root: Path, *, timeout_s: float = PING_TIMEOUT_S) -> dict[str, Any]:
     conn = _connect(aew_root)
     try:
         _send(conn, "ping", {})
+        if not conn.poll(timeout_s):
+            raise errors.NotFound(f"the operator endpoint did not answer a ping within {timeout_s:g} s")
         return _reply(conn)
     finally:
         conn.close()

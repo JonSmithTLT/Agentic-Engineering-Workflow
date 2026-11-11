@@ -34,8 +34,17 @@ def problems(gates: dict[str, Any], checks: dict[str, Any], catalogue: G.Catalog
                            f"define: every gate that needs it stays MISSING. Define it in checks.yaml or remove it "
                            f"from {where}.")
     for table, utype in PATH_TABLES:
-        for cls, path in sorted((gates.get(table) or {}).items()):
-            for gate in path or []:
+        paths = gates.get(table) or {}
+        first_required: dict[str, str] = {}
+        for cls in sorted(paths, key=int):
+            path = paths[cls] or []
+            present = set(path)
+            for gate, lower in first_required.items():
+                if gate not in present:
+                    out.append(f"policy/gates.yaml {table}[{cls}] lacks gate `{gate}`, which {table}[{lower}] "
+                               f"requires: raising a unit to class {cls} would drop it.")
+            for gate in path:
+                first_required.setdefault(gate, cls)
                 if gate == "local_checks" and utype == G.MUTATING:
                     continue  # its ids are judged above, where the list is
                 found = G.unsatisfiable(gate, utype, catalogue)

@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
+
+import pytest
 
 from aew.engine.gates import Catalogue
 from aew.knowledge.manifest import DEFAULT_CHECKS, DEFAULT_GATES
 from aew.policy.consistency import problems
+from aew.util import load_yaml
 
 
 def catalogue(*specialties: str, cards: tuple[str, ...] = ()) -> Catalogue:
@@ -16,7 +20,44 @@ def catalogue(*specialties: str, cards: tuple[str, ...] = ()) -> Catalogue:
 
 
 def test_the_default_policy_is_consistent():
+    """The defaults that Engine.init writes to policy/gates.yaml and policy/checks.yaml."""
     assert problems(DEFAULT_GATES, DEFAULT_CHECKS, catalogue()) == []
+
+
+def test_the_old_project_policy_is_consistent():
+    path = Path(__file__).resolve().parents[1] / "fixtures/switch-offer-old-project/gates.yaml"
+    assert problems(load_yaml(path.read_text(encoding="utf-8")), DEFAULT_CHECKS, catalogue()) == []
+
+
+@pytest.mark.parametrize(("table", "gate"), [
+    ("risk_paths", "review_r1"),
+    ("non_mutating_paths", "execute_record"),
+    ("parent_paths", "children_complete"),
+])
+def test_a_risk_raise_cannot_drop_a_gate(table, gate):
+    gates = {**DEFAULT_GATES, table: {"3": [], "2": [gate]}}
+    assert problems(gates, DEFAULT_CHECKS, catalogue()) == [
+        f"policy/gates.yaml {table}[3] lacks gate `{gate}`, which {table}[2] requires: "
+        "raising a unit to class 3 would drop it."
+    ]
+
+
+def test_missing_gate_is_reported_for_each_higher_class_even_past_a_gap():
+    gates = {**DEFAULT_GATES, "risk_paths": {"4": [], "0": ["local_checks"], "2": []}}
+    assert problems(gates, DEFAULT_CHECKS, catalogue()) == [
+        f"policy/gates.yaml risk_paths[{cls}] lacks gate `local_checks`, which risk_paths[0] requires: "
+        f"raising a unit to class {cls} would drop it."
+        for cls in (2, 4)
+    ]
+
+
+@pytest.mark.parametrize("paths", [
+    {"4": ["review_r1", "local_checks"], "0": ["local_checks"], "2": ["local_checks", "review_r1"]},
+    {"3": ["review_r1"]},
+])
+def test_sparse_consistent_paths_have_no_false_positives(paths):
+    gates = {**DEFAULT_GATES, "risk_paths": paths}
+    assert problems(gates, DEFAULT_CHECKS, catalogue()) == []
 
 
 def test_a_gate_check_missing_from_checks_yaml_is_named_with_its_place():
@@ -27,12 +68,12 @@ def test_a_gate_check_missing_from_checks_yaml_is_named_with_its_place():
 
 def test_a_gate_with_no_evaluator_for_its_unit_type_is_reported():
     gates = copy.deepcopy(DEFAULT_GATES)
-    gates["non_mutating_paths"]["2"] = ["accepted_plan", "execute_record", "local_checks"]  # never evaluated there
-    gates["risk_paths"]["3"] = [*gates["risk_paths"]["3"], "review_security"]
+    gates["non_mutating_paths"]["4"] = ["accepted_plan", "execute_record", "local_checks"]  # never evaluated there
+    gates["risk_paths"]["4"] = [*gates["risk_paths"]["4"], "review_security"]
     found = problems(gates, DEFAULT_CHECKS, catalogue())
-    assert any("non_mutating_paths[2] requires gate `local_checks`" in f and "no gate of that kind" in f
+    assert any("non_mutating_paths[4] requires gate `local_checks`" in f and "no gate of that kind" in f
                for f in found), found
-    assert any("risk_paths[3] requires gate `review_security`" in f and "specialty `security`" in f
+    assert any("risk_paths[4] requires gate `review_security`" in f and "specialty `security`" in f
                for f in found), found
     with_card = problems(gates, DEFAULT_CHECKS, catalogue("security"))  # a security reviewer card satisfies it
     assert with_card == [f for f in found if "non_mutating_paths" in f], with_card
@@ -42,7 +83,7 @@ def test_a_path_table_gate_whose_suffix_does_not_resolve_is_reported():
     """ITEMS 55, addendum 1: a card gate needs the card, and `check:<id>` needs the check defined and configured, as
     `work create` judges it (review F3): `unit` is defined in the default checks.yaml but not configured."""
     gates = copy.deepcopy(DEFAULT_GATES)
-    gates["risk_paths"]["2"] = [*gates["risk_paths"]["2"], "review_card:nobody", "check:lint", "check:unit"]
+    gates["risk_paths"]["4"] = [*gates["risk_paths"]["4"], "review_card:nobody", "check:lint", "check:unit"]
     found = problems(gates, DEFAULT_CHECKS, catalogue(cards=("someone",)))
     assert any("`review_card:nobody`" in f and "no card `nobody`" in f and "review_card:someone" not in f
                for f in found), found

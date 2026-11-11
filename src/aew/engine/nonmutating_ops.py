@@ -444,7 +444,8 @@ class NonMutating:
             gc = self.gates.gate_context(state, work_id)
             chosen = self.roles.resolve_card(state, work_id, slot, card_id=facts.get("card_id"),
                                              role=facts.get("role"), gc=gc)
-            self.invocations.require_free_assurance_card(state, work_id, chosen.archetype, chosen.id)
+            self.invocations.require_free_assurance_card(state, work_id, chosen.archetype, chosen.id,
+                                                         scope="observation")
             record = (unit.get("execution") or {}).get("record")
             if not record:
                 raise IllegalTransition(f"{work_id} has no accepted record to {slot}")

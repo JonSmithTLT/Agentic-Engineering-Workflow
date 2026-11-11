@@ -838,13 +838,13 @@ class EvidenceCommands:
         def check() -> None:
             unit = state["work"][work_id]
             slot = facts["slot"]
-            gc = self.gates.gate_context(state, work_id) if slot in {"review", "verify"} \
-                and facts.get("scope", "ticket") == "ticket" else None
+            scope = facts.get("scope", "ticket")
+            gc = self.gates.gate_context(state, work_id) if slot in {"review", "verify"} and scope == "ticket" else None
             if gc is not None and unit.get("mutating"):
                 self.gates.require_reported_workspace(work_id, unit, gc)
             chosen = self.roles.resolve_card(state, work_id, slot, card_id=facts.get("card_id"),
                                              role=facts.get("role"), gc=gc)
-            self.invocations.require_free_assurance_card(state, work_id, chosen.archetype, chosen.id)
+            self.invocations.require_free_assurance_card(state, work_id, chosen.archetype, chosen.id, scope=scope)
             facts.update(card=chosen, archetype=chosen.archetype)
         return checked(check)
 

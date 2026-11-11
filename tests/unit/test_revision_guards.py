@@ -7,7 +7,21 @@ import pytest
 
 from aew.engine.nonmutating_ops import NonMutating
 from aew.engine.request_ids import INDEX, ControlRequest
-from aew.errors import GateUnsatisfied, IdempotencyConflict
+from aew.engine.workspace_ops import Invocations
+from aew.errors import GateUnsatisfied, IdempotencyConflict, IllegalTransition
+
+
+@pytest.mark.parametrize(("occupied", "other"), [("ticket", "integration"), ("integration", "ticket")])
+def test_ticket_and_integration_verification_use_separate_card_slots(occupied, other):
+    state = {
+        "work": {"T-0001": {"invocations": ["INV-0001"]}},
+        "invocations": {"INV-0001": {"status": "active", "role": "verifier",
+                                    "scope": occupied, "card": {"id": "verifier"}}},
+    }
+    Invocations.require_free_assurance_card(state, "T-0001", "verifier", "verifier", scope=other)
+    with pytest.raises(IllegalTransition) as exc:
+        Invocations.require_free_assurance_card(state, "T-0001", "verifier", "verifier", scope=occupied)
+    assert exc.value.details["holding"] == "INV-0001"
 
 
 def test_replay_ignores_an_index_left_by_an_older_generation():

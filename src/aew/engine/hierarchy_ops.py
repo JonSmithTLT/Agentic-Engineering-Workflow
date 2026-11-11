@@ -318,7 +318,8 @@ class Hierarchy:
             chosen = self.roles.resolve_card(state, work_id, facts["slot"], card_id=facts.get("card_id"),
                                              role=facts.get("role"), gc=gc)
             if chosen.archetype == "verifier":
-                self.invocations.require_free_assurance_card(state, work_id, chosen.archetype, chosen.id)
+                self.invocations.require_free_assurance_card(state, work_id, chosen.archetype, chosen.id,
+                                                             scope="parent")
             facts.update(gc=gc, card=chosen, archetype=chosen.archetype)
         return checked(check)
 

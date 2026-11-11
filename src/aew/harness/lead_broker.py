@@ -56,6 +56,7 @@ from aew import errors, lead_credential
 from aew.engine import dispatch, faults
 from aew.engine.authority import require_held_lead, require_lead
 from aew.harness import agentenv, bridge, broker_liveness, seat, steering_loop, tool_calls
+from aew.harness.contract import EXPECT_REV
 from aew.util import read_text_input, stdin_only
 
 ENV_ENDPOINT = "AEW_LEAD_BROKER"
@@ -1034,8 +1035,9 @@ def _end_acquired_seat(engine: Any, token: str, generation: int, *, opencode: bo
                     "`aew lead takeover` at your own terminal" if opencode else
                     "continue with `aew lead takeover` at your own terminal")
     if left is None:
-        return ("held because the leftover process outcome is unknown; to free the seat, run `aew lead takeover` "
-                "at your own terminal, then `aew lead release`")
+        return ("held because the leftover process outcome is unknown; to free the seat, run "
+                f"`aew lead takeover --reason <reason> {EXPECT_REV}` at your own terminal, then "
+                f"`aew lead release {EXPECT_REV}` with the new revision")
     if left:
         return f"held; processes left: {seat.describe_leftovers(left)}; {continuation}"
     return f"held; {continuation}" + (f" (active: {', '.join(active)})" if active else "")

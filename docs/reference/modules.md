@@ -1427,6 +1427,7 @@ None.
 - `aew.harness.bridge`
 - `aew.harness.broker_liveness`
 - `aew.harness.containment`
+- `aew.harness.contract`
 - `aew.harness.procs`
 - `aew.harness.runlog`
 - `aew.harness.seat`

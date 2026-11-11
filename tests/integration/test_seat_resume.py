@@ -319,7 +319,8 @@ def test_unknown_leftover_outcome_keeps_the_seat_and_names_the_way_back(acquired
     result = lead_broker.run_session(engine, ["synthetic"], acquire=True, session_label="new", keep_seat=False,
                                      contained=synthetic_harness, opencode_kind=seat.VACANT_START)
     assert "held because the leftover process outcome is unknown" in result["seat"]
-    assert "`aew lead takeover` at your own terminal, then `aew lead release`" in result["seat"]
+    assert "`aew lead takeover --reason <reason> --expect-rev " in result["seat"]
+    assert "at your own terminal, then `aew lead release --expect-rev " in result["seat"]
     generation = engine.lead_show()["generation"]
     assert engine.lead_show()["status"] == "active" and seat.read_leftovers(engine.aew_root, generation) is None
     replacement = engine.lead_takeover(expect_rev=project.rev(), reason="retake held seat")

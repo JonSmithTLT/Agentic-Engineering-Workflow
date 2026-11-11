@@ -142,7 +142,7 @@ KNOWN_LOCKS = {
                                      {"OperatorEndpoint._claim"}),
     # a session naming itself and a background endpoint's last look at them
     "local/operator/sessions.lock": ("aew.harness.operator_client", "sessions_lock",
-                                     {"name_session", "no_session_left", "no_session_live", "withdraw_locator"}),
+                                     {"name_session", "no_session_left", "no_session_live", "unname_session", "withdraw_locator"}),
     "local/maps/registry.lock": ("aew.maps.store", "select", {"select"}),
     # the host's capability register (STG-15, CAP-1): outside `.aew`, so unplaced, keyed by its opener
     "unplaced:aew.capability.store:locked": ("aew.capability.store", "locked", {"locked"}),

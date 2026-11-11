@@ -242,7 +242,7 @@ A sibling of a path (`with_name`, `with_suffix`, `with_stem`) is a path of its o
 - `local/operator/sessions`, named by `aew.harness.operator_client:SESSIONS_REL`: written or removed by `aew.harness.operator_client:name_session` (direct: Path.mkdir)
 - `local/operator/sessions.lock`: written or removed by `aew.engine.lock:FileLock._open` (direct: open)
 - `local/operator/sessions.lock.queue`: written or removed by `aew.engine.lock:FileLock._join_queue` (direct: open)
-- `local/operator/sessions/{}.json`: written or removed by `aew.harness.operator_autostart:for_session` (direct: Path.unlink); `aew.harness.operator_client:name_session` (direct: atomic_write)
+- `local/operator/sessions/{}.json`: written or removed by `aew.harness.operator_client:name_session` (direct: atomic_write); `aew.harness.operator_client:unname_session` (direct: Path.unlink)
 - `local/packs/{}/pack.md`: written or removed by `aew.engine.context_ops:ContextPacks.build_pack` (direct: atomic_write); `aew.engine.context_ops:ContextPacks.context_pack` (direct: atomic_write)
 - `local/recall`: written or removed by `aew.engine.recall:Substrate._connect` (direct: Path.mkdir)
 - `local/recall/history-fts.sqlite`, named by `aew.engine.recall:SUBSTRATE_REL`: written or removed by `aew.engine.recall:Substrate._connect` (direct: sqlite3.connect); `aew.engine.recall:Substrate._delete` (direct: Path.unlink)

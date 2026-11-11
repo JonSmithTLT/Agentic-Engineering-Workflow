@@ -565,6 +565,7 @@ def test_a_read_only_invocation_is_checked_for_mutation_until_its_report_is_inge
     r1 = Role(p, rv["invocation_token"], Path(rv["observation"]["path"]))
     (r1.workspace / "calc/core.py").write_text("tampered before review\n", encoding="utf-8", newline="\n")
     assert r1.submit("review", review, expect_ok=False).error["code"] == "OBSERVATION_MUTATED"
+    p.lead("invoke", "cancel", rv["invocation"], "--reason", "reviewer changed its observation")
     rv2 = p.lead("invoke", "create", wid, "--card", "code_reviewer")
     ev = Role(p, rv2["invocation_token"], Path(rv2["observation"]["path"])).submit("review", review)["evidence"]
     p.lead("invoke", "cancel", rv2["invocation"], "--reason", "reviewer lost")

@@ -36,6 +36,8 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import IO, Any
 
+from aew import errors
+from aew.harness import defects
 from aew.surface import SERVER_NAME, client, contract, readable
 from aew.surface.errors import AdapterInputError
 from aew.surface.validate import check_call
@@ -86,6 +88,11 @@ def tools_list(profile: str, switches: frozenset[str] = frozenset()) -> dict[str
 
     return {"tools": [tool_entry(compact(t) if contract.MESSAGING in switches else t)
                       for t in contract.exposed(profile, switches)]}
+
+
+def advertised_bytes(listing: dict[str, Any]) -> int:
+    """Compact MCP JSON bytes with ASCII escapes, the budget measure."""
+    return len(json.dumps(listing, separators=(",", ":"), ensure_ascii=True))
 
 
 class Server:
@@ -171,8 +178,15 @@ class Server:
         except _RpcError as exc:
             return _error(rid, exc.code, exc.message, exc.data)
         except Exception as exc:  # an implementation defect: reported, and the session goes on
-            self.log.write(f"aew lead mcp: internal error in {method}: {type(exc).__name__}: {exc}\n")
-            return _error(rid, INTERNAL_ERROR, "internal error")
+            name = params.get("name")
+            row = contract.tool(name, self.switches) if method == "tools/call" and isinstance(name, str) else None
+            tool = f" ({row.name})" if row else ""
+            where = f"{'/'.join(defects.field(part) or '<unknown>' for part in method.split('/'))}{tool}"
+            where = where[: defects.MAX_MESSAGE // 2]
+            exception = defects.field(type(exc).__name__)
+            self.log.write(f"aew lead mcp: internal error in {where}: {exception}: {defects.redact_text(str(exc))}\n")
+            return _error(rid, INTERNAL_ERROR,
+                          f"MCP failed in {where}: {exception}. Details were written to this process's stderr.")
         return {"jsonrpc": "2.0", "id": rid, "result": result}
 
     # ------------------------------------------------------------------ methods
@@ -205,6 +219,13 @@ class Server:
         except AdapterInputError as exc:
             code = BROKER_UNREACHABLE if exc.code == "BROKER_UNREACHABLE" else INVALID_PARAMS
             raise _RpcError(code, exc.message, {"adapter_input_error": exc.to_dict()}) from None
+        except errors.AEWError as exc:
+            aew_error: dict[str, Any] = {"code": defects.field(exc.code)}
+            if isinstance(exc, errors.Defect):
+                aew_error["details"] = defects.public_details(exc)
+            message = ("The Lead broker failed on this call." if exc.code == "BRIDGE_ERROR"
+                       else defects.bounded_message(exc.message, authored=not isinstance(exc, errors.Defect)))
+            raise _RpcError(INTERNAL_ERROR, message, {"aew_error": aew_error}) from None
         return {"content": [{"type": "text", "text": self.text(result)}],
                 "structuredContent": result, "isError": not result.get("ok")}
 

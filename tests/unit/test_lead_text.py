@@ -54,6 +54,7 @@ NOT_TOOLS = {
     "messages": "a wait/wake result's verified worker bodies, data rather than instructions",
     "last_test": "a field of a run's progress digest, which a wait returns (steering design §2)",
     "last_message": "a field of a run's progress digest: the worker's last words, as data (steering design r4 §6)",
+    "loop": "a field of a push wake: the steering loop's stop a `loop_waiting` wake is about (A-58 CL-R07)",
     **{key: "what marks a kind of wait return, a key of the wake guidance (E122)" for key in wake_guidance()},
 }
 # Where the engine's and the surface's words to a Lead are written: every string in these, docstrings aside.

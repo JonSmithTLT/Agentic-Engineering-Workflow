@@ -68,6 +68,25 @@ class Invocations:
             return None
         return self.snapshot_of(ws["path"], ws["id"])
 
+    @staticmethod
+    def require_free_assurance_card(state: dict[str, Any], work_id: str, archetype: str, card_id: str, *,
+                                    scope: str) -> None:
+        """Ticket and candidate verification occupy separate slots even when they use the same card."""
+        if archetype not in {"reviewer", "verifier"}:
+            return
+        for invocation in state["work"][work_id].get("invocations", []):
+            current = state["invocations"].get(invocation) or {}
+            if (current.get("status") == "active" and current.get("role") == archetype
+                    and current.get("scope", "ticket") == scope
+                    and (current.get("card") or {}).get("id") == card_id):
+                cancel = K.fields_command(f"aew invoke cancel {invocation} {K.EXPECT_REV}", "reason",
+                                          "why this active invocation must end")
+                raise IllegalTransition(
+                    f"{invocation} is still active for {work_id}'s {card_id} card. "
+                    f"Pass --card <card> to dispatch a different {archetype} card, or cancel it with:\n\n{cancel}",
+                    holding=invocation,
+                )
+
     def new_invocation(
         self,
         ctx: TxnContext,
@@ -164,27 +183,26 @@ class Invocations:
                 f"{inv_id} has no execution profile, so no harness, provider or model is pinned for it: configure "
                 "policy/execution.yaml, or dispatch a new invocation with --profile or --model (ADR-0010)")
         adapter = registry.load(profile["harness"])  # fails before any commit when it cannot even be loaded
-        self._require_provider_env()
-        self._require_provider_key(profile, adapter.PROVIDER_RELAY)
+        admission = self._require_provider_key(profile, adapter.PROVIDER_RELAY)
         if relaunch:  # at dispatch the workspace or observation is being allocated in this same transaction
             self.invocation_workspace(state, inv)  # its workspace, candidate or observation is still live
-        return inv
+        return {**inv, "provider_key_admission": admission} if admission else inv
 
-    def _require_provider_env(self) -> None:
+    def _require_provider_env(self, names: list[str], *, stored_detail: str | None = None) -> None:
         """Refuse a launch, before anything is committed, when a variable the execution policy's ``provider_env``
         names cannot reach the run's harness server from this process's environment, which is the one the run's
         supervisor inherits (``harness_ops.supervisor_env``). Before, the server started without it and the run failed
         as ``provider_auth_failed``, blaming the provider (M4 user acceptance test). The names are the policy's current
         ones, as the launch contract's are."""
-        policy, _ = self.k.execution_policy()
-        problems = agentenv.provider_env_problems([str(n) for n in (policy or {}).get("provider_env") or []],
-                                                  os.environ)
+        problems = agentenv.provider_env_problems(names, os.environ)
         if problems:
             raise HarnessIncompatible("the execution policy's provider_env cannot reach the run: "
-                                      + "; ".join(why for _, why in problems), reason=base.PROVIDER_ENV_UNUSABLE,
+                                      + "; ".join(why for _, why in problems)
+                                      + (f". {stored_detail}." if stored_detail else ""),
+                                      reason=base.PROVIDER_ENV_UNUSABLE,
                                       variables=[name for name, _ in problems])
 
-    def _require_provider_key(self, profile: dict[str, Any], provider_relay: bool) -> None:
+    def _require_provider_key(self, profile: dict[str, Any], provider_relay: bool) -> dict[str, Any] | None:
         """Refuse a launch, before anything is committed, whose pinned provider would get no key on the relay route
         (``netns.provider_key_missing``; the operator's decision of 2026-11-06: AEW does not rely on OpenCode's free
         models, which refused a keyless contained worker), or whose provider needs a client certificate that only the
@@ -193,22 +211,52 @@ class Invocations:
         from aew.harness.containment import client_cert, netns
 
         policy, _ = self.k.execution_policy()
-        names = [str(n) for n in (policy or {}).get("provider_env") or []]
         relayed = netns.relay_route(policy, provider_relay)
-        missing = netns.provider_key_missing(profile.get("provider"), names, os.environ, on_relay_route=relayed)
+        provider = profile.get("provider")
+        names = netns.worker_provider_names(provider, map(str, (policy or {}).get("provider_env") or []))
+        stored, unavailable = netns.resolve_worker_key(provider, names, os.environ, policy, on_relay_route=relayed)
+        selected = netns.PROVIDER_KEY_ENV.get(str(provider))
+        needs_relay = selected in names and selected is not None and not relayed and not agentenv.lookup(
+            os.environ, selected,
+        )
+        self._require_provider_env(
+            [name for name in names if (stored is None and unavailable is None) or name != selected],
+            stored_detail=(netns.STORED_REQUIRES_RELAY if needs_relay else
+                           netns.STORED_REQUIRES_BUILTIN
+                           if selected in names and netns.stored_key_override(provider, policy) else None),
+        )
+        missing = netns.provider_key_missing(provider, names, os.environ, on_relay_route=relayed,
+                                              stored=stored is not None)
         if missing is not None:
-            raise HarnessIncompatible(netns.provider_key_message(str(profile.get("provider")), missing),
+            message = netns.provider_key_message(str(provider), missing, stored_detail=unavailable)
+            raise HarnessIncompatible(message,
                                       reason=netns.PROVIDER_KEY_MISSING, variable=missing)
         no_relay = client_cert.no_relay(profile.get("provider"), policy, on_relay_route=relayed)
         if no_relay is not None:
             raise ContainmentUnavailable(no_relay, provider=profile.get("provider"), reason=client_cert.NO_RELAY)
+        return {"provider": provider, "generation": list(stored.generation)} if stored else None
+
+    def provider_key_admission(self, inv: dict[str, Any]) -> dict[str, Any]:
+        """The name-only admission result, copied to the run entry by the committing caller."""
+        result = inv.get("provider_key_admission")
+        return {"provider_key_admission": result} if result else {}
+
+    def admitted_key_sources(self, result: dict[str, Any]) -> set[str]:
+        launch = result.get("launch") or result
+        inv = self.k.store.current()["invocations"].get(launch.get("invocation")) or {}
+        entry = next((row for row in inv.get("runs", []) if row["run"] == launch.get("run")), {})
+        provider = (entry.get("provider_key_admission") or {}).get("provider")
+        return {provider} if isinstance(provider, str) else set()
 
     def _record_launch_run(self, ctx: TxnContext, inv_id: str) -> None:
         """``--launch`` on a dispatch: run 1 adopts the credential this transaction issued."""
         inv = self.require_launchable(ctx.state, inv_id, relaunch=False)
         run = K.run_id(inv_id, 1)
-        inv["runs"] = [{"run": run, "harness": inv["execution_profile"]["harness"], "token_id": inv["token_id"],
-                        "launched_at": utc_now(), "kind": "dispatch", "generation": ctx.state["lead"]["generation"]}]
+        ctx.state["invocations"][inv_id]["runs"] = [{
+            "run": run, "harness": inv["execution_profile"]["harness"], "token_id": inv["token_id"],
+            "launched_at": utc_now(), "kind": "dispatch", "generation": ctx.state["lead"]["generation"],
+            **self.provider_key_admission(inv),
+        }]
         if self.coordination.project_switch(ctx.state) == X.MESSAGING_ENABLED:
             inv["runs"][-1]["coordination"] = {"messaging": X.MESSAGING_ENABLED}
         ctx.refs.append(f"run:{run}")

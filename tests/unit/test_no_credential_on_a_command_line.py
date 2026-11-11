@@ -128,6 +128,12 @@ def test_the_guides_show_the_prompt_first_and_each_per_session_form_as_the_refus
         FORM_GUIDES, [])
 
 
+def test_quickstart_shows_each_provider_key_form():
+    guide = (ROOT / FORM_GUIDES[0]).read_text(encoding="utf-8")
+    forms = lead_credential.forms("OPENAI_API_KEY", "OPENAI_API_KEY")
+    assert all(form in guide.splitlines() for form in forms.values())
+
+
 def test_the_refusals_give_each_form_and_suggest_no_value_on_a_command_line():
     for refusal in (lead_credential.token_value_refusal(lead_session=False).message, lead_credential.how_to_set()):
         assert all(form in refusal for form in lead_credential.SECURE_FORMS.values())

@@ -1,0 +1,76 @@
+# E231, under LEAD-CONTEXT-BUDGET-2026-11-10.
+# Replace each estimate with the net measured delta and its evidence in the PR that lands the item.
+# The derived ceiling (baseline plus allocations) must fit the operator's cap.
+# Messaging on also limits unused bytes below the cap to the remaining estimates.
+# A smaller rendered pool must lower the baseline and cap by the saving.
+# Growth without an allocation can pass while it fits inside the reserved room.
+# System, guide and join are UTF-8 bytes. MCP is compact JSON bytes with ASCII escapes.
+# The pool counts built rows only. Retiring D13's test drops its coverage of designed normal rows.
+schema: aew/lead-context-pool/v1
+authority:
+  decision: 00-governance/decisions/2026-11-10-operator-lead-context-budget.md
+  a44_amendment: 30-stages/STG-20-blocked-on-you/AMENDMENT-2026-11-11-context-pool.md
+baseline:
+  push_wake: true
+  switches: [coordination.messaging]
+  system_bytes: 9020
+  guide_bytes: 16433
+  join_bytes: 2
+  mcp_bytes: 11900
+  # Host-independent fixture with one relay and one placed tool. Its placed-tool line is
+  # 242 B. The line would be 453 B with all six shipped tools placed.
+  containment:
+    filesystem: os_readonly_roots
+    network:
+      mode: proxy_only
+      egress_policy: any_public
+      provider_relays:
+        openai: https://example.invalid/v1
+    self_test:
+      tools:
+        yq:
+          served: aew
+          command: yq-go
+allocations:
+  E158:
+    bytes: 1200
+    kind: estimate
+    source: "E231 budget rule section 5 and the E158 consult decision. About 1,000 B for the tool and an estimated 200 B for its guidance. The separate Q-BUDGET proof supplies the net measurement."
+  E160:
+    bytes: 300
+    kind: estimate
+    source: "Register E160. A short paragraph for plan assessment guidance."
+  E162:
+    bytes: 500
+    kind: estimate
+    source: "Register E162. Three short pieces of Lead guidance covering check setup, commit permission and catalog references."
+  messaging_guide_line:
+    bytes: 437
+    kind: measured
+    source: "Review M3, merged render_pool with switches passed to lead_config; duplicate worker_message row removed. On: system 9279, guide 16611, join 2, MCP 11900 = 37792 B. Off: system 9023, guide 16433, join 2, MCP 11830 = 37288 B. On/off delta 504 B; net growth over the recorded 37355 B baseline is 437 B (on catalog already included). Original allocation 200 B; excess 237 B awaits Lead/operator decision. No cap raise recorded."
+  E176:
+    bytes: 3000
+    kind: estimate
+    source: "E231 budget rule section 1 and the E176 Lead memory brief. About 3 KB for the notes block and its guide text."
+# Current cap. Preserve the operator's exact words and date in approval history when it changes.
+approval:
+  ceiling_bytes: 42555
+  operator: "A is fine"
+  date: '2026-11-11'
+# The approved drop after PR 3 still applies.
+approval_history:
+  - ceiling_bytes: 42405
+    operator: "yes approve 42,405 and the drop after PR 3"
+    date: '2026-11-11'
+  - ceiling_bytes: 42459
+    operator: "a, approve 42,459"
+    date: '2026-11-11'
+  # In response to "(a) approve 42,555 B" after E137 added 96 B to the guide.
+  - ceiling_bytes: 42555
+    operator: "A is fine"
+    date: '2026-11-11'
+# When approved, a raise takes the systems board's wip_allowance shape.
+# wip_allowance:
+#   count: <approved byte ceiling>
+#   operator: <operator's exact words>
+#   date: <ISO date as a quoted string>

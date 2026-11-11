@@ -98,6 +98,57 @@ def shape(poster, n=-1):
     return json.loads(poster.attempts[n][2].splitlines()[1])
 
 
+@pytest.mark.parametrize("with_message", [False, True], ids=["loop-only", "mixed"])
+@pytest.mark.parametrize("recovery", ["expiry", "404"])
+def test_loop_and_message_wakes_share_bounded_pinned_recovery_across_restart(w, with_message, recovery, monkeypatch):
+    from aew.engine import steering as S
+    from aew.harness import steering_loop as L
+
+    poster, now = Poster(), [100.0]
+    with broker(w) as b:
+        mid = reply(w) if with_message else None
+
+        def stop(occurrence):
+            value = L.Stop("BLOCKED", "FILES_CONFLICT: held", w.wid)
+            path = w.root / ".aew" / S.LOOP_REL
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"schema": S.LOOP_SCHEMA, "generation": b.generation,
+                "status": "stopped", "mode": "run", "activation": None, "actions": 0,
+                "stop": {"code": value.code, "message": value.message, "subject": value.subject,
+                         "revision": 7, "at": "now", "condition": L.condition_key(value),
+                         "occurrence": occurrence}, "updated_at": "now"}), encoding="utf-8")
+
+        def fresh():
+            q = queue(w, b, poster, clock=lambda: now[0])
+            if not with_message:
+                q.message_source = None  # production pinned posting must work with messaging off too
+            return q
+
+        stop(1)
+        poster.failure = "before"
+        with pytest.raises(TimeoutError):
+            fresh().tick()
+        original = W.read(w.root / ".aew")["wake"]
+        assert original["selected_messages"] == ([mid] if with_message else [])
+        assert W.read(w.root / ".aew")["loop"]["told"] is None
+        stop(2)  # same payload, distinct occurrence: never retry the obsolete immutable envelope
+        q = fresh()
+        q.tick()
+        assert len(poster.attempts) == 1
+        assert W.read(w.root / ".aew")["loop"]["told"] is None
+        if recovery == "expiry":
+            poster.unavailable = True
+            now[0] += W.UNCERTAIN_HOLD_S + 1
+        else:
+            monkeypatch.setattr(poster, "landed_in", lambda session, wake: W.SESSION_GONE)
+        q.tick()
+        assert len(poster.attempts) == 2
+        assert poster.attempts[-1][1] != original["id"]
+        assert K.LOOP_WAITING in shape(poster)["why"]
+        assert (K.WORKER_MESSAGE in shape(poster)["why"]) == with_message
+        assert W.read(w.root / ".aew")["loop"]["told"] == poster.attempts[-1][1]
+
+
 @pytest.mark.parametrize("archived", [False, True])
 def test_runless_settled_news_posts_only_verified_bodies_and_never_durable_shown(w, archived):
     mid = reply(w)

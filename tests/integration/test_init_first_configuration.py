@@ -9,6 +9,7 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+import printed_commands as P
 import pytest
 import yaml
 from conftest import make_git_repo, run_aew
@@ -17,6 +18,7 @@ from vertical import scripted_operator as S
 from vertical.chat import Mailbox
 
 from aew.cli.main import build_parser
+from aew.engine import first_configuration as FC
 from aew.engine.api import Engine
 from aew.errors import ValidationFailed
 from aew.harness import contract as K
@@ -95,8 +97,9 @@ def test_the_route_a_note_prints_after_the_pin_runs_as_printed(tmp_path):
     root = repo(tmp_path)
     res = init(root, "--model", "opencode/big")
     assert "provider_note" not in res.json["first_configuration"]
-    assert "`aew lead acquire --expect-rev 0`" in res.json["next"]
-    assert run_aew("-C", str(root), "lead", "acquire", "--expect-rev", "0").returncode == 0
+    command, fenced = P.commands(res.json["next"])[0]
+    assert not fenced and command == "aew lead acquire --expect-rev 0"
+    assert run_aew("-C", str(root), *shlex.split(command)[1:]).returncode == 0
 
 
 def test_a_fresh_init_with_an_opencode_model_names_its_key_and_a_launch_passes_only_with_it_set(tmp_path):
@@ -110,7 +113,8 @@ def test_a_fresh_init_with_an_opencode_model_names_its_key_and_a_launch_passes_o
     assert variable == "OPENCODE_API_KEY" and res.json["first_configuration"]["provider_env"] == [variable]
     policy = yaml.safe_load((root / ".aew" / "policy" / "execution.yaml").read_text(encoding="utf-8"))
     assert policy["provider_env"] == [variable]
-    assert policy["profiles"]["default"] == {"model": "opencode/x"}
+    assert policy["profiles"]["default"] == {"model": "opencode/x", "deadline_s": FC.DEADLINE_S,
+                                             "deadline_scope": "run"}
     for env, want in (({variable: "synthetic-not-a-key"}, None), ({}, variable), ({variable: ""}, variable)):
         assert netns.provider_key_missing("opencode", policy["provider_env"], env, on_relay_route=True) == want, env
 
@@ -194,11 +198,24 @@ def test_the_bytes_are_checked_before_the_pin_and_a_refusal_writes_nothing(tmp_p
     assert not (root / ".aew").exists()
 
 
-def test_flagless_init_says_what_it_always_said(tmp_path):
-    """The bytes are the goldens' (`test_coordination_store`): this is its result."""
+def test_flagless_init_names_both_missing_settings_and_orders_the_route(tmp_path):
+    """The pin's bytes are covered by the goldens in `test_coordination_store`."""
     root = repo(tmp_path)
     out = init(root).json
-    assert out["next"] == "acquire Lead authority: aew lead acquire --expect-rev 0"
+    guidance = out["next"]
+    assert "no check command or model" in guidance
+    assert ".aew/policy/checks.yaml" in guidance and ".aew/policy/execution.yaml" in guidance
+    assert K.HELD_SEAT in guidance
+    assert guidance.endswith("Then start the Lead with `aew opencode --acquire`")
+    assert [command for command, _ in P.commands(guidance)] == [
+        "aew lead acquire --expect-rev 0",
+        K.MANIFEST_ADOPT.strip("`"),
+        "aew opencode --acquire",  # the held-seat warning
+        f"aew lead release {K.EXPECT_REV}",
+        "aew opencode --acquire",
+    ]
+    for command, fenced in P.commands(guidance):
+        P.parse(command, fenced=fenced)
     assert "first_configuration" not in out
     # `tools`: the tools AEW brings, as the operator chose them (aew.capability.consent), in a key of its own
     # `map`: the first structural map, generated and selected by init (register E184), or the line saying why not
@@ -273,7 +290,9 @@ def test_each_fixture_is_recorded_not_counted_and_pinned_by_the_real_path(tmp_pa
     execution = op.root / ".aew/policy/execution.yaml"
     doc = yaml.safe_load(execution.read_text(encoding="utf-8"))
     assert doc["harness"] == "fake" and doc["steering"] == {"mode": "crawl"}
-    assert doc["profiles"] == {"default": {"model": S.OFFLINE_MODEL}}  # what the operator typed is left as typed
+    # what the operator typed is left as typed, with the profile's deadline (register E228)
+    assert doc["profiles"] == {"default": {"model": S.OFFLINE_MODEL, "deadline_s": FC.DEADLINE_S,
+                                           "deadline_scope": "run"}}
     assert Engine.discover(op.root).store.current()["policy_sha256"]["policy/execution.yaml"] == sha256_file(execution)
 
 
@@ -313,3 +332,33 @@ def test_no_source_file_names_a_driver_fixture():
     words = ("fakeprov", "vuatprov", "world_around_init", "setup_fixture")
     found = [(p.name, w) for p in src.rglob("*.py") for w in words if w in p.read_text(encoding="utf-8")]
     assert found == []
+
+
+def test_a_first_configured_project_raises_to_run_as_its_template_says(tmp_path, monkeypatch):
+    """Review of E228's third PR, F9 (guide §5): the template's next step, `aew init --model` then `aew lead mode raise
+    run`, succeeds with the shipped default notifier able to deliver, and is refused with its fix when it cannot. The
+    raise is committed as the endpoint commits it, after its challenge."""
+    import os
+
+    from aew.engine import steering as S
+    from aew.errors import IllegalTransition
+    from aew.harness import desktop_notifier as D
+
+    root = repo(tmp_path)
+    assert init(root, *GOOD).returncode == 0
+    assert run_aew("-C", str(root), "lead", "acquire", "--expect-rev", "0").returncode == 0
+    engine = Engine.discover(root)
+    policy, _ = engine.execution_policy()
+    assert policy["notify"]["command"] == ["aew", "notify", "desktop"] and policy["steering"]["mode"] == "crawl"
+    assert S.profiles_without_deadline(policy) == []
+    monkeypatch.setattr(D, "problem", lambda *a, **k: "no desktop session: test")
+    with pytest.raises(IllegalTransition) as refused:
+        engine.steering_raise_preview("run")
+    assert refused.value.details["reason"] == "notifier_unavailable" and D.FIX in refused.value.message
+    monkeypatch.setattr(D, "problem", lambda *a, **k: None)
+    bound = engine.steering_raise_preview("run")
+    principal = S.OperatorPrincipal(uid=os.getuid() if hasattr(os, "getuid") else None, method="peer_credentials",
+                                    endpoint_pid=os.getpid(), endpoint_started_at="2026-11-10T00:00:00Z")
+    engine.steering_raise(principal, mode="run", generation=bound["generation"],
+                          legality_digest=bound["legality_digest"])
+    assert engine.steering_view()["effective"] == "run"

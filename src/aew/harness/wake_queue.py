@@ -25,6 +25,17 @@ module owns everything about that except the post itself, which is a harness's (
   written outside the scope again wakes the Lead again (steering PR 1's stated limit).
 - **`quiet` is the backstop.** A live run with no wake for ``quiet_s`` wakes the Lead, and the digest shows whether it
   still moves. A wake of any kind for that run restarts its clock.
+- **The steering loop's stop, `loop_waiting`** (A-58 ``CL-R07``). A stop the loop recorded (``loop.json``: anything
+  but idle) waits on the Lead's judgment, and belongs to no run, so it rides in the wake's own ``loop`` slot beside
+  ``runs``. It **still holds** while ``loop.json`` shows the same occurrence of the stop for the current Lead
+  generation. A Lead call does not clear it: only ``status`` and the steering view show the loop's stop, so a stop
+  that arose during the Lead's turn would otherwise be lost after its next call (review of E228's PR, M1). It is
+  **told once** per occurrence, keyed by the generation, the stop's condition (``steering_loop.condition_key``) and
+  the loop's occurrence number (``SteeringLoop._occurrence``). A Lead that is woken, reads and ends its turn is not
+  woken again for the same stop; the loop acting on its subject and stopping there again is a new occurrence.
+- **A run the loop takes in itself** is not the Lead's: under Run, a ``run_ended`` whose Ticket the loop will advance
+  by a step whose guard ingests the run (``SteeringLoop.will_ingest``) does not wake (CL-R07). If that step stops,
+  the loop's stop does.
 
 **Text in a wake grants nothing.** The header says it is not the operator, and vouches only for AEW's own text. What a
 wake quotes (a command, a file name, the worker's last message) sits in the JSON, where it is framed as data.
@@ -165,7 +176,7 @@ def some_broker_posts(aew_root: Path) -> bool:
 
 def _empty() -> dict[str, Any]:
     return {"schema": SCHEMA, "wake": None, "marks": {}, "folded": {}, "last_posted": None, "last_delivered": None,
-            "last_failure": None, "dropped": 0}
+            "last_failure": None, "dropped": 0, "loop": None}
 
 
 def read(aew_root: Path) -> dict[str, Any] | None:
@@ -249,6 +260,9 @@ def wake_text(wake_id: str, shape: Mapping[str, Any]) -> str:
     for run, digest in sorted((clean.get("runs") or {}).items()):
         digest = digest or {}
         lines.append(f"- {run}: {digest.get('state', P.UNKNOWN)}, {digest.get('steps', P.UNKNOWN)} steps")
+    loop = clean.get("loop")
+    if loop:  # its code and subject are the loop's own values; its message stays in the JSON
+        lines.append(f"- steering loop: stopped, {loop.get('code')} on {loop.get('subject')}")
     return "\n".join(lines)
 
 
@@ -263,9 +277,13 @@ class WakeQueue:
                   current: Callable[[], bool] | None = None,
                   serial: Callable[[], AbstractContextManager[Any]] = nullcontext,
                   ended_result: Callable[[str], dict[str, Any]] | None = None,
-                  verify: Callable[[dict[str, Any]], list[str]] | None = None) -> None:
+                  verify: Callable[[dict[str, Any]], list[str]] | None = None,
+                  loop_ingests: Callable[[Mapping[str, Any], str | None], bool] = lambda state, work_id: False) -> None:
+        """``loop_ingests``: whether the steering loop will take in a Ticket's ended run itself
+        (``SteeringLoop.will_ingest``): such a ``run_ended`` isn't the Lead's (A-58 ``CL-R07``)."""
         self.aew_root = Path(aew_root)
         self.poster, self.state, self.quiet_s, self.clock, self.new_id = poster, state, quiet_s, clock, new_id
+        self.loop_ingests = loop_ingests
         self.doc = read(self.aew_root) or _empty()
         self.generation, self.message_source, self.available = generation, messages, available
         self.current, self.serial, self.ended_result = current, serial, ended_result
@@ -292,10 +310,11 @@ class WakeQueue:
             self._watch(live)
             self._gather(news)
             self._gather_messages(view)
+            self._gather_loop(state)
         if json.dumps(self.doc, sort_keys=True) != before:
             self._save()
         if settled and self.doc["wake"] is not None and not self.poster.busy():
-            self._post(live, news)
+            self._post(live, news, state)
 
     def failed(self, why: str) -> None:
         """A pass that failed: shown in the status line, and the next pass tries again. Without a post, ``posting``
@@ -380,13 +399,12 @@ class WakeQueue:
                 if ((selected and (view is None or not selected <= eligible))
                         or self.poster.session() != wake["session"]):
                     return False  # absence from a read is not proof a timed-out request cannot still be admitted
-                reasons = json.dumps({"runs": wake["runs"], "messages": wake.get("message_triggers")}, sort_keys=True)
+                reasons = self._selection(wake)
                 state = self.state()
                 live = live_runs(state)
                 checked = json.loads(json.dumps(wake))
-                self._check(checked, live, {w.run for w in live} | closed_by_aew(state))
-                if reasons != json.dumps({"runs": checked["runs"], "messages": checked.get("message_triggers")},
-                                         sort_keys=True):
+                self._check(checked, live, {w.run for w in live} | closed_by_aew(state), state)
+                if reasons != self._selection(checked):
                     return False  # keep the immutable uncertain envelope; do not replace it with a new post ID
             # Retry the identical ID, target and bytes, not a newly selected envelope after a timeout.
             self._admit(wake)
@@ -403,6 +421,10 @@ class WakeQueue:
             self.doc["wake"] = None
         self._save()
         return landed == DELIVERED
+
+    @staticmethod
+    def _selection(wake: Mapping[str, Any]) -> str:
+        return json.dumps({k: wake.get(k) for k in ("runs", "message_triggers", "loop", "loop_key")}, sort_keys=True)
 
     # ---- gathering
 
@@ -466,10 +488,46 @@ class WakeQueue:
         named = {t.get("path") for t in fresh if t.get("why") == K.OUT_OF_SCOPE}
         return [{"why": K.OUT_OF_SCOPE, "path": p} for p in outside if p not in mark["told_outside"] and p not in named]
 
+    def _wake(self) -> dict[str, Any]:
+        """The pending wake, a new one when there is none: at most one undelivered wake."""
+        if self.doc["wake"] is None:
+            self.doc["wake"] = {"id": self.new_id(), "phase": PENDING, "at": self.clock(), "why": [], "runs": {}}
+        return self.doc["wake"]
+
+    def _loop_stop(self, state: Mapping[str, Any]) -> dict[str, Any] | None:
+        """The steering loop's recorded stop, when the current Lead generation's loop is stopped (A-58 ``CL-R07``):
+        its code, subject, message and occurrence key. An idle loop, another generation's record, or none, is None."""
+        from aew.engine import steering as S
+
+        generation = (state.get("lead") or {}).get("generation")
+        loop = S.loop_state(self.aew_root, generation=generation) if generation is not None else None
+        stop = (loop or {}).get("stop")
+        if (not loop or loop.get("status") != "stopped" or not stop or not stop.get("condition")
+                or not stop.get("occurrence")):
+            return None
+        return {"code": stop.get("code"), "subject": stop.get("subject"), "message": stop.get("message"),
+                "key": f"{generation}:{stop['condition']}:{stop['occurrence']}"}
+
+    def _gather_loop(self, state: Mapping[str, Any]) -> None:
+        """A stopped loop's occurrence, put in the wake until a wake that tells it is posted. The occurrence is the
+        loop's (``SteeringLoop._occurrence``: a new one when the loop acted on the stop's subject, or recorded another
+        stop, in between), so a stop that clears and comes back is told again, between two passes or within one
+        activation. The limit: one the loop records again after a different stop is told again too."""
+        stop = self._loop_stop(state)
+        if stop is None:
+            self.doc["loop"] = None
+            return
+        mark = self.doc["loop"]
+        if mark is None or mark["key"] != stop["key"]:
+            mark = self.doc["loop"] = {"key": stop["key"], "told": None}
+        if not mark["told"]:
+            wake = self._wake()
+            wake["loop"] = {k: stop[k] for k in ("code", "subject", "message")}
+            wake["loop_key"] = stop["key"]
+            wake["why"] = _ordered(wake)
+
     def _merge(self, run: str, found: list[dict[str, Any]], newest: int) -> None:
-        wake = self.doc["wake"]
-        if wake is None:
-            wake = self.doc["wake"] = {"id": self.new_id(), "phase": PENDING, "at": self.clock(), "why": [], "runs": {}}
+        wake = self._wake()
         entry = wake["runs"].setdefault(run, {"triggers": [], "newest": 0})
         for trigger in found:
             same = next((t for t in entry["triggers"] if self._same(t, trigger)), None)
@@ -485,12 +543,12 @@ class WakeQueue:
 
     # ---- the post
 
-    def _post(self, live: list[Watched], news: set[str]) -> None:
+    def _post(self, live: list[Watched], news: set[str], state: Mapping[str, Any]) -> None:
         wake = self.doc["wake"]
         with self.serial():
             if self.current is not None and not self.current():
                 return
-            self._check(wake, live, news)
+            self._check(wake, live, news, state)
             if not wake["why"]:  # every reason in it went stale: nothing to say
                 self.doc["wake"] = None
                 self._save()
@@ -523,14 +581,24 @@ class WakeQueue:
                 self._save()
             raise
 
-    def _check(self, wake: dict[str, Any], live: list[Watched], news: set[str]) -> None:
-        """No stale wakes: each reason is checked against the run as it is now, immediately before the post."""
+    def _check(self, wake: dict[str, Any], live: list[Watched], news: set[str], state: Mapping[str, Any]) -> None:
+        """No stale wakes: each reason is checked against the run, or the loop, as it is now, immediately before the
+        post."""
+        if wake.get("loop") is not None:
+            stop, mark = self._loop_stop(state), self.doc["loop"]
+            # Told by another wake: dropped. Told by this one, which a new session never saw: posted again (m1).
+            if (stop is None or mark is None or mark["key"] != stop["key"]
+                    or wake.get("loop_key", mark["key"]) != stop["key"]
+                    or mark["told"] not in (None, wake["id"])):
+                del wake["loop"]  # the loop moved on, or another wake told it
+                wake.pop("loop_key", None)
+                self.doc["dropped"] = int(self.doc["dropped"]) + 1
         for run, entry in list(wake["runs"].items()):
             digest = runlog.read_progress(self._dir(run))
             mark = self.doc["marks"].get(run) or {}
             kept: list[dict[str, Any]] = []
             for trigger in entry["triggers"]:
-                if self._current(trigger, entry, digest, run, mark, live, news):
+                if self._current(trigger, entry, digest, run, mark, live, news, state):
                     kept.append(trigger)
                 else:
                     self.doc["dropped"] = int(self.doc["dropped"]) + 1
@@ -561,11 +629,15 @@ class WakeQueue:
             wake["why"] = _ordered(wake)
 
     def _current(self, trigger: Mapping[str, Any], entry: Mapping[str, Any], digest: Mapping[str, Any] | None,
-                 run: str, mark: Mapping[str, Any], live: list[Watched], news: set[str]) -> bool:
+                 run: str, mark: Mapping[str, Any], live: list[Watched], news: set[str],
+                 state: Mapping[str, Any]) -> bool:
         why = trigger.get("why")
-        if why == K.RUN_ENDED:  # current, unless the Lead has it (a wait, its own close) or a later attempt replaced it
+        if why == K.RUN_ENDED:  # current, unless the Lead has it (a wait, its own close), a later attempt replaced it,
+            # or the steering loop will take it in itself (CL-R07; never while it is stopped: `will_ingest`); once
+            # the loop has, the run is no longer news
             return (run in news and not runlog.end_returned(self._dir(run)) and not any(
-                w.run != run and (w.work_unit, w.role) == (mark.get("work_unit"), mark.get("role")) for w in live))
+                w.run != run and (w.work_unit, w.role) == (mark.get("work_unit"), mark.get("role")) for w in live)
+                and not self.loop_ingests(state, mark.get("work_unit")))
         if why == K.QUIET:  # still no other wake for this run
             return len(entry["triggers"]) == 1 and not self._ended(run, mark)
         return digest is not None and P.holds(digest, trigger)
@@ -578,7 +650,7 @@ class WakeQueue:
             mark = self.doc["marks"].get(run) or {}
             runs[run] = None if digest is None else {**digest, "since_last_wake": self._since(run, digest, mark)}
         view = wake.get("message_view")
-        shape = P.wake(list(wake["why"]), runs, messages=(view or {}).get("awaiting_lead"))
+        shape = P.wake(list(wake["why"]), runs, messages=(view or {}).get("awaiting_lead"), loop=wake.get("loop"))
         if view is not None:
             shape["coordination"] = view
             if self.ended_result is not None:
@@ -617,6 +689,10 @@ class WakeQueue:
             self.doc["posted_messages"] = sorted(self.available(ids) if self.available is not None else ids)
         now = self.clock()
         wake["phase"] = POSTED
+        if wake.get("loop") is not None and self.doc["loop"] is not None:
+            # once per occurrence: a Lead that reads and stops isn't woken again. The wake's id, not a flag, so the
+            # same wake re-posted to a new session that never saw it keeps its loop part (review, m1).
+            self.doc["loop"]["told"] = wake["id"]
         self.doc["last_posted"] = {"id": wake["id"], "at": now, "why": wake["why"], "session": wake.get("session")}
         for run, entry in wake["runs"].items():
             mark = self.doc["marks"].get(run)
@@ -647,4 +723,6 @@ def _ordered(wake: Mapping[str, Any]) -> list[str]:
     """The ``why`` values a wake holds, in the wake guide's order (the guide owns the enum and its order)."""
     held = {t["why"] for entry in wake["runs"].values() for t in entry["triggers"]}
     held.update(t["why"] for t in wake.get("message_triggers", []))
+    if wake.get("loop") is not None:
+        held.add(K.LOOP_WAITING)
     return [w for w in K.WHY if w in held]

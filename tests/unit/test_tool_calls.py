@@ -56,6 +56,19 @@ def test_a_log_that_cannot_be_written_never_fails_the_call(tmp_path, caplog):
     assert "could not be written" in caplog.text
 
 
+def test_defects_rotate_to_their_own_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(T, "MAX_BYTES", 10)
+    monkeypatch.setattr(T, "KEEP", 2)
+    T.append(tmp_path, {"n": 0})
+    for n in range(4):
+        T.append(tmp_path, {"n": n}, log_rel=T.DEFECT_LOG_REL)
+    folder = tmp_path / "local/lead"
+    assert sorted(p.name for p in folder.iterdir()) == [
+        "defects.1.jsonl", "defects.2.jsonl", "defects.jsonl", "tool-calls.jsonl",
+    ]
+    assert T.read(tmp_path) == [{"n": 0}]
+
+
 def test_a_line_that_cannot_be_built_never_changes_the_call(tmp_path, caplog, monkeypatch):
     """PR #177 review, finding 4: arguments that are not JSON and not even encodable text (a lone surrogate) are
     digested as given, and anything else that fails while a line is built or written is logged and dropped."""
@@ -83,3 +96,12 @@ def test_a_line_is_bounded_whatever_the_call_carried(tmp_path):
              error=None, revision_before=1, duration_ms=1)
     text = T.path(tmp_path).read_text(encoding="utf-8")
     assert len(text.encode("utf-8")) <= T.MAX_LINE and T.read(tmp_path)[0]["tool"] == "t" * T.MAX_FIELD
+
+    detail = dict.fromkeys(("exception", "defect", "cause_code"), huge)
+    result["stopped"]["error"] = {"code": "DEFECT", "details": detail}
+    T.record(tmp_path, tool=huge, arguments=huge, ingress=huge, profile=huge, result=result, input_error=None,
+             error=None, revision_before=1, duration_ms=1)
+    last = T.path(tmp_path).read_bytes().splitlines()[-1]
+    assert len(last) + 1 <= T.MAX_LINE
+    line = T.read(tmp_path)[-1]
+    assert all(line[key] == "t" * T.MAX_FIELD for key in ("exception", "defect", "cause_code"))

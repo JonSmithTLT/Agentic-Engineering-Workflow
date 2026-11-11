@@ -569,12 +569,16 @@ def pending(digest: Mapping[str, Any] | None, returned: int) -> tuple[list[dict[
     return [t for t in fresh if holds(digest, t)], newest
 
 
-def wake(why: list[str], runs: Mapping[str, Any], *, messages: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def wake(why: list[str], runs: Mapping[str, Any], loop: Mapping[str, Any] | None = None, *,
+         messages: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """The wake's shape (steering design §2): why, each named run's digest, the worker messages (none while messaging
-    is off) and the wake guide's keys for what to do next. The Lead's wait returns it; steering PR 2's broker will
-    post it."""
+    is off) and the wake guide's keys for what to do next. The Lead's wait returns it; the broker posts it. ``loop`` is
+    the steering loop's stop a ``loop_waiting`` wake is about, which belongs to no run (A-58 ``CL-R07``)."""
     whys = [w for w in WHY if w in why]
-    return {"why": whys, "runs": dict(runs), "messages": [{"id": m["id"]} for m in messages or []], "next": whys}
+    out = {"why": whys, "runs": dict(runs), "messages": [{"id": m["id"]} for m in messages or []], "next": whys}
+    if loop is not None:
+        out["loop"] = dict(loop)
+    return out
 
 
 def _same(command: Any) -> str:

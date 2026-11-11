@@ -1027,8 +1027,9 @@ class Coordination:
             return "FAIL", "; ".join(problems)
         if switch == X.MESSAGING_ENABLED and L.STORE_KEY not in state:
             return "WARN", ("messaging is switched on but the project is not registered (adopted under an older AEW), "
-                            "so nothing is recorded: the operator adopts a reviewed edit of the execution policy "
-                            "(`aew manifest adopt`; it refuses an unchanged policy, so make a real edit: a comment is "
+                            "so nothing is recorded: the operator adopts a reviewed edit of .aew/"
+                            f"{X.policy_path(self.k.aew_root, self.k.manifest).relative_to(self.k.aew_root).as_posix()}"
+                            f" ({K.MANIFEST_ADOPT}; it refuses an unchanged policy, so make a real edit: a comment is "
                             "enough)")
         unseen = state.get(L.UNSEEN_KEY) or {}
         return "PASS", (f"messaging {switch}; {len(threads)} thread(s), every ended one sealed"
@@ -1110,7 +1111,9 @@ class Coordination:
             raise MessagingDisabled(
                 "coordination messaging is switched on but this project is not registered for it (no "
                 "`coordination_store` in control state: the switch was adopted under an older AEW). The operator "
-                "registers it by adopting a reviewed edit of the execution policy (`aew manifest adopt`; an edit is "
+                "registers it by adopting a reviewed edit of "
+                f".aew/{X.policy_path(self.k.aew_root, self.k.manifest).relative_to(self.k.aew_root).as_posix()}"
+                f" ({K.MANIFEST_ADOPT}; an edit is "
                 "needed, a comment is enough)", reason="not_registered")
 
     def _invocation(self, state: dict[str, Any], inv_id: str) -> dict[str, Any]:

@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -196,25 +195,43 @@ def loop_state(aew_root: Any, generation: int | None = None) -> dict[str, Any] |
         return None
     if generation is not None and data.get("generation") != generation:
         return None
+    from aew.harness.contract import redact
+
     out = {k: data.get(k) for k in ("generation", "status", "mode", "activation", "actions", "updated_at")}
     stop = data.get("stop")
     if isinstance(stop, dict):
-        out["stop"] = {k: str(stop.get(k))[:500] if stop.get(k) is not None else None
-                       for k in ("code", "message", "subject", "revision", "at")}
+        # redacted before it is shortened, so a cut never leaves a credential's fragment (review of E228's PR, m4)
+        shown: dict[str, Any] = {k: redact(str(stop.get(k)))[:500] if stop.get(k) is not None else None
+                                 for k in ("code", "message", "subject", "revision", "at", "condition")}
+        occurrence = stop.get("occurrence")
+        shown["occurrence"] = occurrence if isinstance(occurrence, int) and occurrence > 0 else None
+        out["stop"] = shown
     return out
 
 
 def notifier_problem(policy: dict[str, Any] | None) -> str | None:
     """Why the adopted notifier cannot deliver, or ``None``: unattended Run needs a configured notifier whose
     ``command[0]`` resolves to an executable file (operator decision 1; plan v3 E2). The operator endpoint delivers
-    through it (``aew.harness.notify``, M4-E E7a), and checks it again before each delivery."""
+    through it (``aew.harness.notify``, M4-E E7a), and checks it again before each delivery. The shipped default,
+    ``aew notify desktop``, runs the endpoint's own engine (``desktop_notifier.runnable``), so it needs no lookup; it
+    must find a desktop session in the environment the endpoint gives it (register E104, BOY-12.d). A command the
+    operator wrote keeps the executable check alone."""
+    from aew.harness import desktop_notifier
+
     command = ((policy or {}).get("notify") or {}).get("command") or []
     if not command:
         return "no notifier is configured (execution policy `notify.command`)"
-    program = command[0]
-    found = shutil.which(program) if os.sep not in program and "/" not in program else program
+    if desktop_notifier.is_default(command):  # the shipped default refuses while it cannot deliver (BOY-12.d)
+        # Every variable the check reads is one the endpoint passes its notifier (`notify.sanitized_env` keeps PATH
+        # and `desktop_notifier.SESSION_VARS`), so the environment here answers as the notifier's would. The limit:
+        # a Run activation checks it in the broker's process, not the endpoint's (a register row: BOY-12.d's ping).
+        missing = desktop_notifier.problem(os.environ)
+        if missing:
+            return f"the default desktop notifier is unavailable: {missing}. Fix: {desktop_notifier.FIX}"
+        return None
+    found = desktop_notifier.resolve(command)
     if not found or not os.path.isfile(found) or not os.access(found, os.X_OK):
-        return f"the notifier `{program}` does not resolve to an executable file"
+        return f"the notifier `{command[0]}` does not resolve to an executable file"
     return None
 
 
@@ -262,6 +279,8 @@ class Steering:
         mode (it then becomes the standing mode, and the effective one: the latest record wins). A raise changes
         nothing; ``status`` shows it pending at the endpoint."""
         state = ctx.state
+        if state.get("schema") != V2:
+            return  # steering state is v2-only (the control schema refuses it on v1): the first adopt after migrating
         default = ((policy or {}).get("steering") or {}).get("mode")
         s = state.get("steering")
         if s is None:

@@ -315,14 +315,16 @@ class ProjectAdmin:
             return checks
         add("manifest-pin", "PASS" if self.k.manifest_pin_ok(state) else "FAIL",
             "project.yaml matches its pinned hash" if self.k.manifest_pin_ok(state)
-            else "project.yaml modified outside AEW; the operator reviews it, then `aew manifest adopt`")
+            else f".aew/project.yaml modified outside AEW; the operator reviews it, then runs {K.MANIFEST_ADOPT}")
         drift = self.k.policy_pin_drift(state)
         if drift is None:
-            add("policy-pin", "WARN", "the policy files are not pinned (a project initialized before the pin): the "
-                "operator reviews them, then `aew manifest adopt` pins them")
+            add("policy-pin", "WARN",
+                "the policy files under .aew/ are not pinned (a project initialized before the pin). "
+                f"The operator reviews them, then runs {K.MANIFEST_ADOPT} to pin them")
         else:
             add("policy-pin", "FAIL" if drift else "PASS",
-                f"modified outside AEW: {', '.join(drift)}; the operator reviews them, then `aew manifest adopt`"
+                f"modified outside AEW: {', '.join(f'.aew/{rel}' for rel in drift)}; "
+                f"the operator reviews them, then runs {K.MANIFEST_ADOPT}"
                 if drift else "the policy files match their pinned hashes")
         for name in ("guardrails", "checks", "gates"):
             try:
@@ -359,7 +361,6 @@ class ProjectAdmin:
             add("pricing-snapshots", "FAIL", f"{getattr(exc, 'code', type(exc).__name__)}: {exc}")
         add("usage-ledger", *usage_ops.ledger_doctor(state, usage_ops.Reader(self.k.aew_root, None)))
         from aew.harness import containment
-        from aew.harness import contract as K
         try:
             policy_now = self.k.execution_policy()[0]
         except Exception:
@@ -794,8 +795,10 @@ class Engine:
     def harness_interrupt(self, *, token: str, run: str) -> dict[str, Any]:
         return self._harness.harness_interrupt(token=token, run=run)
 
-    def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False) -> dict[str, Any]:
-        return self._harness.harness_launch(token=token, expect_rev=expect_rev, invocation=invocation, replace=replace)
+    def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False,
+                       request_id: str | None = None) -> dict[str, Any]:
+        return self._harness.harness_launch(token=token, expect_rev=expect_rev, invocation=invocation, replace=replace,
+                                            request_id=request_id)
 
     def wakes_reach_lead(self) -> bool:
         return self._harness.wakes_reach_lead()
@@ -887,16 +890,17 @@ class Engine:
 
     def invoke_create(self, *, token: str, expect_rev: int, work_id: str, role: str | None = None,
                       card: str | None = None, scope: str = "ticket", execution_profile: dict[str, Any] | None = None,
-                      launch: bool = False) -> dict[str, Any]:
+                      launch: bool = False, request_id: str | None = None) -> dict[str, Any]:
         return self._evidence.invoke_create(token=token, expect_rev=expect_rev, work_id=work_id, role=role, card=card,
-                                            scope=scope, execution_profile=execution_profile, launch=launch)
+                                            scope=scope, execution_profile=execution_profile, launch=launch,
+                                            request_id=request_id)
 
     def invoke_evidence_unit(self, *, token: str, expect_rev: int, work_id: str, role: str | None, card: str | None,
                              scope: str, execution_profile: dict[str, Any] | None = None,
-                             launch: bool = False) -> dict[str, Any]:
+                             launch: bool = False, request_id: str | None = None) -> dict[str, Any]:
         return self._evidence.invoke_evidence_unit(token=token, expect_rev=expect_rev, work_id=work_id, role=role,
                                                    card=card, scope=scope, execution_profile=execution_profile,
-                                                   launch=launch)
+                                                   launch=launch, request_id=request_id)
 
     def invoke_show(self, invocation: str) -> dict[str, Any]:
         return self._evidence.invoke_show(invocation)
@@ -1034,10 +1038,11 @@ class Engine:
 
     def plan_propose(self, *, token: str, expect_rev: int, work_id: str, body: str, reason: str | None = None,
                      affected_paths: list[str] | None = None, review: list[str] | None = None,
-                     verify: list[str] | None = None, no_assurance: bool = False) -> dict[str, Any]:
+                     verify: list[str] | None = None, no_assurance: bool = False,
+                     request_id: str | None = None) -> dict[str, Any]:
         return self._work.plan_propose(token=token, expect_rev=expect_rev, work_id=work_id, body=body, reason=reason,
                                        affected_paths=affected_paths, review=review, verify=verify,
-                                       no_assurance=no_assurance)
+                                       no_assurance=no_assurance, request_id=request_id)
 
     def plan_reconfirm(self, *, token: str, expect_rev: int, work_id: str, reason: str) -> dict[str, Any]:
         return self._nm.plan_reconfirm(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason)
@@ -1141,9 +1146,9 @@ class Engine:
                                  auto_run=auto_run)
 
     def stage_stop(self, *, token: str, expect_rev: int, intent: str, n: int, boundary: str, code: str, message: str,
-                   reason: str | None = None) -> dict[str, Any]:
+                   reason: str | None = None, await_resolution: bool = False) -> dict[str, Any]:
         return self._stages.stop(token=token, expect_rev=expect_rev, intent=intent, n=n, boundary=boundary,
-                                 code=code, message=message, reason=reason)
+                                 code=code, message=message, reason=reason, await_resolution=await_resolution)
 
     def stage_close(self, *, token: str, expect_rev: int, intent: str) -> dict[str, Any]:
         return self._stages.close(token=token, expect_rev=expect_rev, intent=intent)
@@ -1409,7 +1414,7 @@ class Engine:
                     promoted_from: str | None = None, acceptance_checks: list[str] | None = None,
                     acceptance_inputs: list[str] | None = None,
                     class0_assertions: list[str] | None = None, priority: str | None = None,
-                    priority_reason: str | None = None) -> dict[str, Any]:
+                    priority_reason: str | None = None, request_id: str | None = None) -> dict[str, Any]:
         return self._work.work_create(token=token, expect_rev=expect_rev, kind=kind, title=title, risk_class=risk_class,
                                       mutating=mutating, parent=parent, depends_on=depends_on, scope_paths=scope_paths,
                                       goal_backwards=goal_backwards, contract=contract, mandatory_gates=mandatory_gates,
@@ -1417,7 +1422,7 @@ class Engine:
                                       external_refs=external_refs, body=body, card=card, promoted_from=promoted_from,
                                       acceptance_checks=acceptance_checks, acceptance_inputs=acceptance_inputs,
                                       class0_assertions=class0_assertions, priority=priority,
-                                      priority_reason=priority_reason)
+                                      priority_reason=priority_reason, request_id=request_id)
 
     def work_depend(self, *, token: str, expect_rev: int, work_id: str, add: list[str] | None = None,
                     remove: list[str] | None = None, reason: str) -> dict[str, Any]:
@@ -1438,9 +1443,9 @@ class Engine:
                                          reason=reason)
 
     def work_promote(self, *, token: str, expect_rev: int, work_id: str, to: str, title: str, reason: str,
-                     risk_class: int | None = None) -> dict[str, Any]:
+                     risk_class: int | None = None, request_id: str | None = None) -> dict[str, Any]:
         return self._hierarchy.work_promote(token=token, expect_rev=expect_rev, work_id=work_id, to=to, title=title,
-                                            reason=reason, risk_class=risk_class)
+                                            reason=reason, risk_class=risk_class, request_id=request_id)
 
     def work_gate_replace(self, *, token: str, expect_rev: int, subject: str, replacement: str | None,
                           rationale: str) -> dict[str, Any]:
@@ -1464,9 +1469,10 @@ class Engine:
                                        inspection=inspection)
 
     def work_redispatch(self, *, token: str, expect_rev: int, work_id: str, reason: str, card: str | None = None,
-                        execution_profile: dict[str, Any] | None = None, launch: bool = False) -> dict[str, Any]:
+                        execution_profile: dict[str, Any] | None = None, launch: bool = False,
+                        request_id: str | None = None) -> dict[str, Any]:
         return self._nm.work_redispatch(token=token, expect_rev=expect_rev, work_id=work_id, reason=reason, card=card,
-                                        execution_profile=execution_profile, launch=launch)
+                                        execution_profile=execution_profile, launch=launch, request_id=request_id)
 
     def work_roles(self, work_id: str) -> dict[str, Any]:
         return self._gates.work_roles(work_id)

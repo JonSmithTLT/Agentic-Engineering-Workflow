@@ -284,6 +284,11 @@ normal surface. So:
 
 Built with MS3.
 
+**2026-11-11 amendment under LEAD-CONTEXT-BUDGET-2026-11-10 (E231).** The contained Lead's
+[context pool](../lead-context-pool.yaml) takes over the byte ceilings in D13 when its gate merges. Its baseline
+includes the shipped messaging-on compact catalog. The 16-tool ceiling and description-only compact presentation
+stay in force. E158's separate Q-BUDGET proof still applies.
+
 ## Crash and damage rules
 
 - A crash between the marker and the first thread file leaves a marker with no thread: the reads show an empty

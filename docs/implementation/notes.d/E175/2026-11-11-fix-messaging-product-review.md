@@ -32,3 +32,16 @@ n1: told_messages cites ADR-0009's delivery-record contract as owner, not the pr
 
 No push of the product branch; hand back after the main merge and exact-head validation for the Lead's quick check.
 MS4 qualification publication remains separate (#448). No new runtime/provider probe or qualification pin rewrite.
+
+Main integration: retain both steering-loop and message gathering, projection and broker callbacks. Production's
+pinned post applies with messaging off too. The immutable selection includes the loop occurrence key, so a later
+occurrence with identical public payload cannot authorize retrying an obsolete uncertain envelope. Mixed and loop-only
+restart tests cover both expiry and pinned-session 404; abandoned occurrences are never marked told.
+Generated conflicts were settled by tools/reference.py resolve, not taking either generated side.
+
+M3 measurement after main integration: messaging on system/guide/join/MCP = 9,279/16,611/2/11,900 B, total 37,792 B;
+off = 9,023/16,433/2/11,830 B, total 37,288 B. On/off delta = 504 B. Net growth against the recorded 37,355 B baseline
+(which already includes the on catalog) = 437 B. Replace the 200 B estimate with that measured net delta, preserving
+all approval words and the 42,555 B cap. Baseline plus allocations now totals 42,792 B: **237 B over the cap**.
+The pool gate deliberately remains red; the Lead must take this excess to the operator. No raise is authorized here.
+Catalog listing baseline remains 11,900 B / 16 tools on and 11,830 B / 15 off. Windows runtime remains NOT RUN / GAP.

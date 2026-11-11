@@ -94,9 +94,10 @@ OPERATOR_ATTRIBUTED = {frozenset({"work", "staff"}): ("by", "operator"),
 # The operator endpoint and its client commands (M4-E plan v3 §2.1; A1 §1.1): an autonomy increase is the operator's,
 # through the endpoint, so a Lead session can neither run the endpoint nor ask it for anything. `lead mode lower` is a
 # separate command, so this path-based refusal refuses the raise only (plan v3 E2, M1). M4-E E6b, E7c and E8b add the
-# grants, `confirm` and the relaunch breaker reset's client command here (plan v3 amendment 1, §4).
+# grants, `confirm` and the relaunch breaker reset's client command here (plan v3 amendment 1, §4). `notify desktop`
+# is the endpoint's notifier: what it shows on the operator's desktop is never an agent's text (A-44).
 OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator", "serve"}),
-                     frozenset({"operator", "ping"}))
+                     frozenset({"operator", "ping"}), frozenset({"notify", "desktop"}))
 # The capability register's operator changes (STG-15, CAP-1; the designer's ruling 1): they change what every
 # contained context gets, so they are approved at the operator endpoint, and on no agent's surface (CAPR-05).
 OPERATOR_REGISTER = (frozenset({"capability", "import"}), frozenset({"capability", "add"}),
@@ -320,7 +321,9 @@ class LeadBroker:
                           current=self._receipt_current, serial=self.server.serialized,
                           verify=own.message_result_ids,
                           ended_result=lambda run: own.harness_wait(run, timeout=0, triggers=True,
-                                                                   message_after={}, record_return=False))
+                                                                   message_after={}, record_return=False),
+                          loop_ingests=lambda state, work_id: self.loop is not None and self.loop.will_ingest(
+                              dict(state), work_id, own))
 
         def run() -> None:
             while not self._stop.wait(POLL_S):
@@ -509,25 +512,45 @@ class LeadBroker:
         every call, an input error or a refusal included. The log is telemetry and never fails the call
         (``tool_calls.record``). Its revision before is read inside the serialized section the call runs in, so another
         caller's commit while this one waited for the section is not counted as this call's (PR #177 review, 5)."""
+        from aew.harness import defects
+        from aew.surface import contract
+        from aew.surface.errors import AdapterInputError
+
         started = time.monotonic()
         meta: dict[str, Any] = {}
         answer: dict[str, Any] | None = None
         refused: dict[str, Any] | None = None
         try:
             answer = self._serve_tool(args, meta)
-            return answer
-        except errors.AEWError as exc:
-            refused = {"code": exc.code}
-            raise
-        finally:
-            after = ((answer or {}).get("stage_result") or {}).get("revision")
+            after = (answer.get("stage_result") or {}).get("revision")
             if self.loop is not None and after is not None and after != meta.get("revision_before"):
                 self.loop.wake()  # the commit of a Lead tool call wakes the steering loop (plan v3 E7, M8.1)
+            return answer
+        except AdapterInputError as exc:
+            answer = {"adapter_input_error": exc.to_dict()}
+            return answer
+        except errors.AEWError as exc:
+            refused = {"code": exc.code, "details": exc.details}
+            answer = None
+            raise
+        except Exception as exc:
+            name, ingress = args.get("name"), args.get("ingress")
+            tool = contract.tool(name, self.surface_switches) if isinstance(name, str) else None
+            op = tool.name if tool else "lead.tool"
+            defect = defects.report(
+                self.engine.aew_root, exc, op=op, at=op, ingress=ingress if isinstance(ingress, str) else "unknown",
+                committed=None, stage_intent=None,
+                next_action="The call's outcome is unknown. Read `status` before retrying.",
+            )
+            refused = {"code": defect.code, "details": defect.details}
+            answer = None
+            raise defect from exc
+        finally:
             tool_calls.record(
                 self.engine.aew_root, tool=args.get("name"), arguments=args.get("arguments"),
                 ingress=args.get("ingress"), profile=args.get("profile"), result=(answer or {}).get("stage_result"),
                 input_error=(answer or {}).get("adapter_input_error"),
-                error=refused or (None if answer is not None else {"code": "DEFECT"}),
+                error=refused,
                 revision_before=meta.get("revision_before"), duration_ms=int((time.monotonic() - started) * 1000))
 
     def _mark(self, meta: dict[str, Any]) -> None:

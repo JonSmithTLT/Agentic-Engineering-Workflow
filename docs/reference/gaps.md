@@ -136,6 +136,7 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.opencode.lead:serve_spec`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:clear_saved_permissions`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.opencode.login:stored`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
+- `aew.harness.opencode.login:worker_keys`: sqlite3.connect of a path this reading cannot place: a relative path, `{}?mode=ro`, with no root this reading can name
 - `aew.harness.operator_client:session_holders_live`: Path.unlink of a path this reading cannot place: a loop variable over `files`, a list this reading cannot read
 - `aew.harness.operator_client:withdraw_locator`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.runlog:_open_append`: no static call chain from any entry point's declaring function reaches this writer
@@ -146,8 +147,6 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.supervisor:Supervisor.start`: Path.mkdir of a path this reading cannot place: the attribute `contract.scratch` is not a value this reading can follow
 - `aew.harness.supervisor:contain_launch`: shutil.rmtree of a path this reading cannot place: the attribute `layout.net_dir` is not a value this reading can follow
 - `aew.harness.told_messages:record`: no static call chain from any entry point's declaring function reaches this writer
-- `aew.harness.tool_calls:_rotate`: no static call chain from any entry point's declaring function reaches this writer
-- `aew.harness.tool_calls:append`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.usage_live:Meter._persist`: atomic_write of a path this reading cannot place: `run_dir` of `HarnessAdapter.__init__` is not passed at a call; `state_path` of `OpenCodeMeter`, which no static call binds
 - `aew.harness.wake_queue:WakeQueue._save`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.weaker_register:Entry.end`: atomic_write of a path this reading cannot place: a relative path, `aew/weaker-contexts/{}-{}-{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name

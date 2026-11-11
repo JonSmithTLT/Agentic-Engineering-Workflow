@@ -1396,6 +1396,13 @@ None.
 - `aew.harness.operator_client`
 - `aew.operator`
 
+### `aew.harness.defects`
+
+- `aew.errors`
+- `aew.harness.contract`
+- `aew.harness.tool_calls`
+- `aew.util`
+
 ### `aew.harness.delivery`
 
 None.
@@ -1438,6 +1445,7 @@ None.
 - `aew.harness.bridge`
 - `aew.harness.broker_liveness`
 - `aew.harness.containment`
+- `aew.harness.defects`
 - `aew.harness.procs`
 - `aew.harness.runlog`
 - `aew.harness.steering_loop`
@@ -1449,6 +1457,7 @@ None.
 - `aew.process_kind`
 - `aew.surface.context`
 - `aew.surface.contract`
+- `aew.surface.errors`
 - `aew.surface.run`
 - `aew.surface.validate`
 - `aew.util`
@@ -2112,6 +2121,7 @@ None.
 - `aew`
 - `aew.errors`
 - `aew.harness.bridge`
+- `aew.harness.defects`
 - `aew.surface`
 - `aew.surface.client`
 - `aew.surface.contract`
@@ -2150,14 +2160,17 @@ None.
 
 - `aew.engine.outbox`
 - `aew.engine.primitives`
+- `aew.engine.stage_intents`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.harness.defects`
 - `aew.schemas`
 - `aew.surface`
 - `aew.surface.availability`
 - `aew.surface.classify`
 - `aew.surface.context`
 - `aew.surface.contract`
+- `aew.surface.errors`
 - `aew.surface.projection`
 - `aew.surface.scrubbing`
 - `aew.surface.stage`

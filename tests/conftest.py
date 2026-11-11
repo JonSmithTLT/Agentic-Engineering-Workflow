@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "helpers"))
 # worker only reduces authority: the S2 check ends a custodian whose worker never registered (`custody_register_s`).
 os.environ.setdefault("AEW_CUSTODY_WORKER", "off")
 os.environ.setdefault("AEW_OPERATOR_AUTOSTART", "off")  # a session test starts no endpoint of its own
+os.environ.setdefault("AEW_DASHBOARD_AUTOSTART", "off")  # no session test opens a real browser or a window
 
 import git_isolation  # noqa: E402  (no test writes to the enclosing repository, or to the user's git configuration)
 
@@ -182,7 +183,12 @@ class Project:
         return res.json
 
     def rev(self) -> int:
-        return self.ok("lead", "show")["revision"]
+        """The committed control revision, read as `aew lead show` reads it (``lead_show``: the store's ``current``,
+        under the control lock and after recovery, as any writer process reads it), but in this process: before every
+        Lead call, a second `aew` process cost about 1.4 s on Windows and a quarter of a Lead-heavy test's time."""
+        from aew.engine.api import Engine
+
+        return Engine.discover(self.root).lead_show()["revision"]
 
     def lead(self, *args: str) -> Any:
         """Run a Lead mutation with the current token and revision."""

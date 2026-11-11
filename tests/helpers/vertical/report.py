@@ -33,6 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from vertical import alpha
 from vertical import scoreboard as S
 from vertical.ledger import ENFORCED_PLATFORMS, WINDOWS_UNQUALIFIED, ledger_dir_name, windows_lines
 from vertical.scoreboard import cell
@@ -151,6 +152,7 @@ def report(directory: Path, *, run: S.Run | None = None, pytest: str | None = No
              "| Scenario | Result | Lead label | Why not measured |", "|---|---|---|---|"]
     lines += [f"| {cell(r['scenario'])} | {r['outcome']} | {r['lead_label'] or '-'} | {cell(r['why']) or '-'} |"
               for r in found]
+    lines += ["", "```", alpha.summary(found, platform=platform, strict_pass=PASSED), "```"]
     for r in found:
         summary = directory / ledger_dir_name(r["scenario"]) / SUMMARY
         if summary.is_file():

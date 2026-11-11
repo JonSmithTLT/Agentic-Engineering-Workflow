@@ -5,6 +5,9 @@ process's :class:`SessionTable`, verified by the engine's own ``authority.lookup
 browser to the local server and authorizes nothing in the engine. The raw secret exists here between minting and the
 one-time exchange, then only as its verifier; it is never written to a file or logged.
 
+Scope provenance is explicit: ``operator-tty`` for serve/open after the typed-back code, ``operator-start`` for the
+first no-code session opened by ``aew opencode`` (designer ruling, 2026-11-10). Neither grants engine authority.
+
 Delivery is a one-time URL ``/session/<code>`` (256 random bits, ten minutes, single use) that the browser exchanges
 for the ``aew_session`` cookie (``HttpOnly``, ``SameSite=Strict``, ``Max-Age`` to the session's expiry). Revocation is
 the end of the serving process (the table dies with it), the expiry, or displacement from the bounded table.
@@ -34,6 +37,9 @@ EXPIRED_GRACE = timedelta(days=7)
 SUPERSEDED = "superseded: session limit"
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 SCOPE_OPERATIONS = ["dashboard.read"]
+OPERATOR_TTY = "operator-tty"
+OPERATOR_START = "operator-start"
+AUTHORIZED_BY = (OPERATOR_TTY, OPERATOR_START)
 
 
 def parse_time(value: str) -> datetime:
@@ -103,8 +109,10 @@ class SessionTable:
 
     # ------------------------------------------------------------------ issuing
 
-    def mint(self) -> str:
+    def mint(self, *, authorized_by: str) -> str:
         """Issue a session and return its one-time bootstrap code (never the credential)."""
+        if authorized_by not in AUTHORIZED_BY:
+            raise ValueError("dashboard provenance must be operator-tty or operator-start")
         now = self.clock()
         self._purge(now)
         live = sorted((r for r in self.tokens.values() if self._live(r, now)), key=lambda r: r["issued_at"])
@@ -114,7 +122,7 @@ class SessionTable:
             oldest["revoke_reason"] = SUPERSEDED
         expires = (parse_time(now) + timedelta(hours=self.hours)).strftime(TIME_FORMAT)
         scope = {"surface": "dashboard", "project": self.project_id, "operations": list(SCOPE_OPERATIONS),
-                 "authorized_by": "operator-tty"}
+                  "authorized_by": authorized_by}
         credential = authority.mint(self.tokens, authority.OPERATOR_SESSION, scope, generation=self.generation,
                                     expires_at=expires)
         code = secrets.token_urlsafe(32)  # 256 bits
@@ -178,7 +186,8 @@ class SessionTable:
     def live(self) -> list[dict[str, Any]]:
         """The live sessions as ``aew dashboard status`` shows them: ids and times, never a verifier."""
         now = self.clock()
-        return [{"token_id": tid, "issued_at": r["issued_at"], "expires_at": r["expires_at"]}
+        return [{"token_id": tid, "issued_at": r["issued_at"], "expires_at": r["expires_at"],
+                 "authorized_by": r["scope"]["authorized_by"]}
                 for tid, r in sorted(self.tokens.items(), key=lambda kv: kv[1]["issued_at"]) if self._live(r, now)]
 
     @property

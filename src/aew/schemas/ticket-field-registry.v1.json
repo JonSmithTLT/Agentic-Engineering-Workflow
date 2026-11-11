@@ -13,7 +13,8 @@
     "kind": {"material": true, "description": "The unit's kind and whether it mutates; never revised (a change of kind is a replacement)"},
     "parent": {"material": false, "description": "Where the unit sits in the hierarchy; never changed by a revision (plan §3.12). Its effect on obligations is hashed in gate_set and dependencies"},
     "card": {"material": false, "description": "Presentation metadata: the title (E19-B §2.3, §4.3)"},
-    "staffing": {"material": false, "description": "The engine-defined role plan, changed only by work staff (ADR-0006)"}
+    "staffing": {"material": false, "description": "The engine-defined role plan, changed only by work staff (ADR-0006)"},
+    "scheduling": {"material": false, "description": "The order the steering loop starts Tickets in: the priority the Lead sets at the draft (register E227). Scheduling, never legality, so it never stales evidence"}
   },
   "unassigned": "acceptance",
   "record": [
@@ -43,7 +44,8 @@
     {"field": "parent", "group": "parent", "rule": "exact"},
     {"field": "promoted_from", "group": "parent", "rule": "exact"},
     {"field": "title", "group": "card", "rule": "text"},
-    {"field": "role_plan", "group": "staffing", "rule": "exact"}
+    {"field": "role_plan", "group": "staffing", "rule": "exact"},
+    {"field": "priority", "group": "scheduling", "rule": "exact", "note": "set at the draft only (the operator, 2026-11-10)"}
   ],
   "derived": [
     {"field": "effective_class", "group": "gate_set", "rule": "exact"},

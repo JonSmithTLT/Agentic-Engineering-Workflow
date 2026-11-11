@@ -49,8 +49,9 @@ from aew.harness.containment.relay import TLS_MINIMUM
 FIELD = "containment.network.client_certs"
 FILES = ("cert", "key", "ca")
 WHAT = {"cert": "client certificate", "key": "client key", "ca": "CA"}
-# The closed reasons of a refusal over a client certificate: one that cannot be used, and a run with no relay.
-UNUSABLE, NO_RELAY = "client_cert_unusable", "client_cert_no_relay"
+# The closed reasons of a refusal over a client certificate: one that cannot be used, a run with no relay, and a
+# contained Lead whose only certificate provider no OpenCode profile pins a model of (E123 quick check, N3).
+UNUSABLE, NO_RELAY, NO_MODEL = "client_cert_unusable", "client_cert_no_relay", "client_cert_no_model"
 
 
 @dataclass(frozen=True)
@@ -103,18 +104,22 @@ def mask_entries(network: Mapping[str, Any] | None) -> list[tuple[str, str, str]
             for c in entries(network).values() for f in ("cert", "key")]
 
 
-def no_relay(provider: str | None, policy: Mapping[str, Any] | None, *, on_relay_route: bool) -> str | None:
+def no_relay(provider: str | None, policy: Mapping[str, Any] | None, *, on_relay_route: bool,
+             lead: bool = False) -> str | None:
     """The refusal of a run whose provider needs a client certificate when the run would reach it without AEW's relay,
-    which alone presents it; None when the provider needs none, or the run is on the relay route."""
+    which alone presents it; None when the provider needs none, or the run is on the relay route. ``lead``: the
+    contained Lead's start, whose other way forward is a provider of its own, not a profile (E123 quick check, N4)."""
     found = for_provider(provider, policy)
     if found is None or on_relay_route:
         return None
+    other = ("give the Lead a provider that needs no certificate: log in with your own OpenCode at your own terminal "
+             "(`opencode auth login`), or pass a key with `--provider-env NAME`, then start `aew opencode` again"
+             if lead else "pin a profile whose provider needs no certificate")
     return (f"the run's provider {provider} needs the client certificate named in {found.field('cert')}, and only "
             "AEW's provider relay presents it: this run would reach the provider without it (its network mode is not "
             "proxy_only; it is not contained, as on Windows; or its sandbox could not be established here and the "
             "policy allows weaker runs). Run it on Linux with containment.network.mode: proxy_only (the default) and "
-            "containment that works (`aew doctor` names what is missing), or pin a profile whose provider needs no "
-            "certificate")
+            f"containment that works (`aew doctor` names what is missing), or {other}")
 
 
 def unrelayed_lines(policy: Mapping[str, Any] | None, who: str) -> list[str]:

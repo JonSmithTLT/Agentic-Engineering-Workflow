@@ -20,7 +20,7 @@ from multiprocessing.connection import Client, Listener
 from typing import Any
 
 from aew import errors, operator
-from aew.dashboard.session import SessionTable
+from aew.dashboard.session import OPERATOR_TTY, SessionTable
 from aew.harness.bridge import private_address, rebuild_error, serve_listener, stop_listener
 
 OPEN_TIMEOUT_S = 300.0
@@ -92,9 +92,12 @@ class ControlServer:
     def _open(self, conn: Any, args: dict[str, Any]) -> dict[str, Any]:
         requester = str(args.get("requester") or "unknown")[:400]
         if self.console is None:
+            # The one later-open refusal for an auto-started dashboard, on Windows too (operator, 2026-11-09).
+            # Future in-process G3 approval goes here wherever doctor's g3 check counts, not in another mint route.
             raise errors.OperatorAuthorizationRequired(
                 "the dashboard server has no console to show a confirmation code on, so no new session can be "
-                "authorized; restart `aew dashboard serve` at a terminal")
+                "authorized; if started by `aew opencode`, end that session first, then run `aew dashboard serve` "
+                "in a terminal of its own")
         if not self._authorizing.acquire(blocking=False):
             raise errors.PermissionDenied("another `aew dashboard open` is waiting for the operator; try again after "
                                           "it is answered or times out")
@@ -116,7 +119,7 @@ class ControlServer:
             if not hmac.compare_digest(given, code):
                 self.console("\n(the `aew dashboard open` request was refused: wrong code)\n")
                 raise errors.PermissionDenied("operator refused or mistyped the confirmation code")
-            bootstrap = self.table.mint()
+            bootstrap = self.table.mint(authorized_by=OPERATOR_TTY)
             self.opened += 1
             record = self.table.newest()
             self.console("\n(a browser session was issued to the requesting terminal)\n")

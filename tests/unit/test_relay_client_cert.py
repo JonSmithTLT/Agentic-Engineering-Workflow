@@ -336,13 +336,15 @@ def test_the_lead_relays_keyless_only_an_own_id_provider_with_an_upstream_and_a_
 
 
 def test_a_contained_lead_whose_only_provider_takes_a_certificate_is_not_refused_for_having_no_key(pki):
-    """The Lead's own refusal for no relayed provider (``require_provider``) counts a certificate provider."""
+    """The Lead's own refusal for no relayed provider (``require_provider``) counts a certificate provider with a model
+    a profile pins for it (E123 quick check, N3: one with none is refused, in test_lead_contained.py)."""
     from types import SimpleNamespace
 
     from aew import errors
     from aew.harness.opencode import lead
 
-    lead.ContainedLead.require_provider(SimpleNamespace(keys={}, refreshing={}, certified={PROVIDER: pki.files()}))
+    lead.ContainedLead.require_provider(SimpleNamespace(keys={}, refreshing={}, certified={PROVIDER: pki.files()},
+                                                        models={PROVIDER: ["big-1"]}))
     with pytest.raises(errors.HarnessIncompatible):
         lead.ContainedLead.require_provider(SimpleNamespace(keys={}, refreshing={}, certified={}))
 
@@ -462,6 +464,7 @@ def test_a_run_with_no_relay_refuses_a_provider_that_needs_a_certificate(pki):
     found = pki.files()
     message = client_cert.no_relay(PROVIDER, policy_of(found, "shared"), on_relay_route=False)
     assert message is not None and found.field("cert") in message and "proxy_only" in message
+    assert "pin a profile whose provider needs no certificate" in message and "--provider-env" not in message
     assert client_cert.no_relay(PROVIDER, policy_of(found), on_relay_route=True) is None
     assert client_cert.no_relay("openai", policy_of(found), on_relay_route=False) is None
 

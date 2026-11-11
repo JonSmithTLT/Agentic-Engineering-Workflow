@@ -195,6 +195,7 @@ def test_a_step_taken_todays_way_is_a_fallback_until_it_lands_and_then_has_no_dr
     (fallback,) = op.ledger.operator_fallbacks()
     assert fallback["step"] == "change_model" and fallback["ideal"] == "step 12 (P14 ADOPT_MANIFEST_EDIT)"
     assert fallback["observed"] == "not built, held by G3"
+    assert fallback["oracle_key"] == "setting"
     missing = _without("--model")
     landed = _facts(registry={**O.code_facts().registry, "ADOPT_MANIFEST_EDIT": O.code_facts().admitted_origin},
                     owner_action="ADOPT_MANIFEST_EDIT")

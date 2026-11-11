@@ -25,7 +25,7 @@ GUARD_READS: dict[str, frozenset[str]] = {
     "work.create": frozenset({"kind", "title", "risk_class", "mutating", "parent", "depends_on", "scope_paths",
                               "goal_backwards", "contract", "mandatory_gates", "min_descendant_class", "rationale",
                               "external_refs", "body", "card", "promoted_from", "acceptance_checks",
-                              "acceptance_inputs", "class0_assertions"}),
+                              "acceptance_inputs", "class0_assertions", "priority", "priority_reason"}),
     "plan.propose": frozenset({"work_id", "body", "reason", "affected_paths", "review", "verify", "no_assurance"}),
 }
 FOUND = "found"  # where a query records what it found: written, never an input

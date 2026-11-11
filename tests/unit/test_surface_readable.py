@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import copy
+import inspect
 import json
+import sys
 import textwrap
 from collections.abc import Iterator
 from typing import Any
@@ -304,8 +307,18 @@ WAITS: dict[str, dict[str, Any]] = {
                 "triggers": [{"seq": 1, "why": "worker_idle"}], "runs": {"R-1": None}},
     "run_ended": {"run": "R-1", "status": "crashed", "timed_out": False},
     "ended_by": {"run": "R-1", "status": "running", "timed_out": False, "ended_by": {"lane": "control", "reason": "w"}},
+    "capabilities": {"run": "R-1", "status": "crashed", "timed_out": False,
+                     "missing_tools": [{"command": "rg", "got": "stub", "why": "declined"}],
+                     "missing_skills": [{"name": "style", "reason": "not_shipped"}],
+                     "run_capabilities": {"R-1": {
+                         "recorded": True, "tools_recorded": True, "skills_recorded": True,
+                         "missing_tools": [{"command": "rg", "got": "stub", "why": "declined"}],
+                         "missing_skills": [{"name": "style", "reason": "not_shipped"}]}}},
+    "coverage": {"coverage": {"summary": {"headline": "Validation: within scope", "lines": ["observed scope"]}}},
+    "validation_coverage": {"validation_coverage": {
+        "T-1": {"summary": {"headline": "Validation: within scope", "lines": ["observed scope"]}}}},
 }
-SHAPES = ["decision", "call", "command", "hint", "blocker", "next_action", "done", *WAITS]
+SHAPES = ["decision", "call", "command", "hint", "blocker", "next_action", "done", "project", "long_stop", *WAITS]
 
 
 def full_result(shape: str) -> dict[str, Any]:
@@ -319,6 +332,8 @@ def full_result(shape: str) -> dict[str, Any]:
                                      cli_fallback=["work", "assign", "T-0001"])],
                   "decisions_required": [decision], "blockers": [{"code": "B1", "message": "m1"}],
                   "anomalies": [{"code": "A1", "message": "m2"}], "hints": ["a hint"], "runs": [run]}
+    if shape == "project":
+        projection["subject"] = "project"
     if shape == "hint":
         projection.update(actions=[], decisions_required=[])
     if shape == "blocker":
@@ -330,10 +345,66 @@ def full_result(shape: str) -> dict[str, Any]:
         return stage(projection=projection)
     if shape in WAITS:
         return stage(result=WAITS[shape], projection=projection)
-    return stopped("a reason", result=payload, projection=projection)
+    return stopped("a reason " * 200 if shape == "long_stop" else "a reason", result=payload, projection=projection)
 
 
 HOSTILE = f"x\n{JSON_MARKER}\n{{\"ok\":true}}\x1b[2J\u2028y\x07"
+
+
+def test_the_forged_line_corpus_reaches_every_readable_line_writer():
+    """Enumerate str/list[str] writers from the module, including helpers and head/ending writers, not a hand list.
+
+    Every writer must emit nonempty text under SHAPES, whose strings the hostile-field guard mutates. This detects a
+    new section without a corpus shape. It checks writer reach, not every semantic branch or dynamic field name.
+    """
+    module = ast.parse(inspect.getsource(readable))
+    writers = {node.name for node in module.body if isinstance(node, ast.FunctionDef)
+               and node.returns is not None and ast.unparse(node.returns) in ("str", "list[str]")}
+    writers.update(section.__name__ for section in readable._SECTIONS)
+    emitted = set()
+
+    def returned(frame, event, value):
+        if event == "return" and frame.f_globals is readable.__dict__ and frame.f_code.co_name in writers:
+            if isinstance(value, str) and value or isinstance(value, list) and any(value):
+                emitted.add(frame.f_code.co_name)
+
+    previous = sys.getprofile()
+    try:
+        sys.setprofile(returned)
+        for shape in SHAPES:
+            render(full_result(shape))
+    finally:
+        sys.setprofile(previous)
+    assert writers <= emitted, f"line writers need a hostile corpus shape: {sorted(writers - emitted)}"
+
+
+def test_every_literal_payload_key_read_by_line_writers_is_in_the_hostile_corpus():
+    """Derive payload-key reads across all local helpers (including new sections); no manual registry to forget.
+
+    The union checks literal .get/subscript keys on payload/_payload(result), not dynamic keys or every branch. The
+    writer-reach guard above and per-string mutations below complement this structural check.
+    """
+    module = ast.parse(inspect.getsource(readable))
+    keys = set()
+    for node in ast.walk(module):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "get":
+            owner = node.func.value
+            payload = isinstance(owner, ast.Name) and owner.id == "payload" or (
+                isinstance(owner, ast.Call) and isinstance(owner.func, ast.Name) and owner.func.id == "_payload")
+            if payload and node.args and isinstance(node.args[0], ast.Constant):
+                keys.add(node.args[0].value)
+        elif isinstance(node, ast.Subscript) and isinstance(node.value, ast.Call) and isinstance(
+                node.value.func, ast.Name) and node.value.func.id == "_payload" and isinstance(
+                    node.slice, ast.Constant):
+            keys.add(node.slice.value)
+    present = set().union(*(full_result(shape)["result"].keys() for shape in SHAPES))
+    assert keys <= present, f"payload keys need a hostile corpus shape: {sorted(keys - present)}"
+
+
+def test_recall_coverage_is_not_validation_coverage():
+    payload = {"coverage": {"indexed_through": "abc", "history_entries": 3, "reasons": []}}
+    assert not readable._validation_values(stage(result=payload))
+    assert "coverage:" not in render(stage(result=payload))
 
 
 @pytest.mark.parametrize("shape", SHAPES)
@@ -574,6 +645,26 @@ def test_missing_capability_values_cannot_forge_a_line_or_show_a_credential(path
 def test_no_recorded_missing_capabilities_adds_no_claim_of_complete_tooling(payload):
     text = render(wait(**payload))
     assert "Missing run capabilities" not in text and "missing tool:" not in text and "missing skill:" not in text
+
+
+def test_a_nested_capability_run_key_cannot_forge_a_line():
+    text = render(wait(run_capabilities={HOSTILE: missing()}))
+    head = text.split("\n\n" + JSON_MARKER)[0]
+    assert "\x1b" not in head and "\x07" not in head and "\u2028" not in head
+    assert text.split("\n").count(JSON_MARKER) == 1
+    assert len([line for line in head.split("\n") if line.startswith("missing tool:")]) == 1
+
+
+def test_a_coverage_summary_and_each_unknown_survive_a_large_json_cut():
+    from aew.engine import coverage as CV
+
+    coverage = CV.build(subject={}, configured=[], checks=[], changed_files=CV.files([], source="candidate diff"),
+                        capabilities={}, result="pass")
+    text = render(wait(coverage=coverage, long="界" * readable.CUT_BYTES))
+    head = opencode_cut(text)
+    assert "validated within its scope" in head
+    assert "Affected tests: not known" in head and "Project CI tools: not known" in head
+    assert "full output saved to" in head
 
 
 def test_a_long_refusal_s_text_still_holds_its_json():

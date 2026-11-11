@@ -63,8 +63,13 @@ class Service:
         except OSError as exc:
             raise UsageError(f"the dashboard cannot listen on 127.0.0.1:{port} ({exc.strerror or exc}); it never moves "
                              "to another port by itself: pass --port N for a different one, or --port 0 for an "
-                             "ephemeral port", port=port) from None
-        self.control = ControlServer(self.table, url_for_code=self.url_for_code, console=console, status=self.status)
+                             "ephemeral port", port=port, errno=exc.errno) from None
+        try:
+            self.control = ControlServer(self.table, url_for_code=self.url_for_code, console=console,
+                                         status=self.status)
+        except BaseException:
+            self.server.httpd.server_close()
+            raise
         self.started_at: str | None = None
         self._stop = threading.Event()
 
@@ -95,9 +100,9 @@ class Service:
             self.control.start()
             self._write_endpoint()
 
-    def issue(self) -> str:
+    def issue(self, *, authorized_by: str) -> str:
         """Mint a session; its one-time URL."""
-        return self.url_for_code(self.table.mint())
+        return self.url_for_code(self.table.mint(authorized_by=authorized_by))
 
     def status(self) -> dict[str, Any]:
         return {"running": True, "pid": os.getpid(), "port": self.port, "url": self.url, "project": self.project_id,
@@ -141,6 +146,7 @@ class Service:
             "schema": "aew/dashboard-endpoint/v1", "instance": self.instance, "pid": pid,
             "started_by": procs.started_at(pid), "start_id": procs.start_id(pid), "started_at": self.started_at,
             "port": self.port, "url": self.url, "project": self.project_id,
+            "opens": self.control.console is not None,
             "control": {"endpoint": self.control.address, "key_file": KEY_REL},
         }, indent=2) + "\n")
 
@@ -168,9 +174,17 @@ class Service:
             return  # the files stay; they name this (soon dead) pid, and a stale file is never trusted (``locate``)
 
 
+def session_step(running: dict[str, Any]) -> str:
+    """A usable next step for the published server, including one with no later-open console."""
+    if running.get("opens", True):  # older locators describe the standalone server
+        return "run `aew dashboard open` for a new session, or stop it first"
+    return ("end the `aew opencode` session that started it, then run `aew dashboard serve` in a terminal of its own "
+            "for a new session")
+
+
 def _refuse(running: dict[str, Any]) -> None:
     raise UsageError(f"a dashboard server is already running for this project at {running['url']} (pid "
-                     f"{running['pid']}); run `aew dashboard open` for a new session, or stop it first",
+                     f"{running['pid']}); {session_step(running)}",
                      url=running["url"], pid=running["pid"])
 
 
@@ -193,4 +207,5 @@ def locate(aew_root: Path) -> dict[str, Any] | None:
     if not isinstance(endpoint, str) or not key:
         return None
     return {"pid": info["pid"], "port": info.get("port"), "url": info.get("url"), "started_at": info.get("started_at"),
-            "project": info.get("project"), "endpoint": endpoint, "key": key, "instance": info.get("instance")}
+            "project": info.get("project"), "endpoint": endpoint, "key": key, "instance": info.get("instance"),
+            "opens": info.get("opens", True)}

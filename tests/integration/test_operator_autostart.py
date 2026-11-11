@@ -20,6 +20,7 @@ from notifier import adopt, hidden, raise_to, received, recorder, script, until
 
 from aew import errors
 from aew.engine.api import Engine
+from aew.engine.lock import FileLock
 from aew.harness import broker_liveness, notify, operator_client, operator_endpoint, procs
 from aew.harness import operator_autostart as A
 
@@ -752,7 +753,10 @@ def test_two_starts_keep_both_lines_in_the_log(project, monkeypatch):
 
 
 def test_a_session_file_that_cannot_be_removed_costs_the_session_nothing(project, monkeypatch):
-    class Held:
+    class Held:  # a session's file that is there, and that the endpoint's look holds open
+        def exists(self) -> bool:
+            return True
+
         def unlink(self, missing_ok: bool = False) -> None:
             raise PermissionError("in use by the endpoint's look")
 
@@ -802,6 +806,57 @@ def test_a_real_sessions_file_held_open_at_its_end_costs_it_nothing_and_goes_wit
         if session.poll() is None:
             session.kill()
             session.communicate()
+
+
+def _queued(lock: Path) -> bool:
+    """Whether a taker is waiting on ``lock``: it holds the lock's turnstile (``<lock>.queue``) while it waits."""
+    try:
+        with FileLock(lock.with_name(lock.name + ".queue"), timeout=0):
+            return False
+    except errors.LockTimeout:
+        return True
+
+
+def test_a_sessions_end_removes_its_file_only_under_the_lock_every_look_holds(project):
+    """The product fix behind the WinError 32 above (#451's review): a session's end waits for the sessions lock
+    before it removes its file, so it never meets a look's open file. The test holds the lock and the file as a look
+    does, and sees the session queue for the lock with its file still there: a removal without the lock removes it at
+    once on Linux, and on Windows is refused and the session ends without ever queueing. Then the look ends, and the
+    session's end removes the file."""
+    env = clean_env({"PYTHONPATH": str(SRC)})
+    env.pop(A.OFF_ENV, None)
+    root = project.root / ".aew"
+    session = subprocess.Popen([sys.executable, "-c", HELD_SESSION, str(project.root)], env=env, stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                               creationflags=procs.CREATE_NO_WINDOW if IS_WINDOWS else 0)
+    try:
+        assert session.stdout is not None and session.stdout.readline().strip() == "session", session.stderr
+        [named] = list((root / operator_client.SESSIONS_REL).glob("*.json"))  # by glob: a venv's launcher on Windows
+        look = operator_client.sessions_lock(root)
+        with look:
+            with open(named, "rb"):
+                assert session.stdin is not None
+                session.stdin.write("\n")
+                session.stdin.flush()
+                until(lambda: _queued(look.path) or session.poll() is not None, HANG_GUARD_S, "the session's end")
+                assert session.poll() is None, "the session ended without waiting for the sessions lock"
+                assert named.exists(), "the session removed its file while a look held the lock"
+        said, told = session.communicate(timeout=HANG_GUARD_S)
+        assert session.returncode == 0 and said.split() == ["ended"], told
+        assert not named.exists(), "the session's end removed its file once the look let the lock go"
+    finally:
+        if session.poll() is None:
+            session.kill()
+            session.communicate()
+
+
+def test_a_session_whose_file_is_already_gone_ends_without_making_the_operator_folder(tmp_path):
+    """#451's review: removing a file that is already gone needs no lock, and taking it would create
+    ``local/operator`` and its lock files for nothing."""
+    aew_root = tmp_path / ".aew"
+    aew_root.mkdir()
+    operator_client.unname_session(aew_root, aew_root / operator_client.SESSIONS_REL / "1.json")
+    assert list(aew_root.iterdir()) == []
 
 
 @pytest.mark.skipif(IS_WINDOWS, reason="the walk reads /proc")

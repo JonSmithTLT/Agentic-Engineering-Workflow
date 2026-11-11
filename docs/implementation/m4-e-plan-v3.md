@@ -619,6 +619,10 @@ or `choice` needs, and refuses a mismatch as a transport input error (frozen dec
 - **Headroom:** about 250 bytes and one tool. Any further normal tool, or growth past 11,900, stops for a budget
   decision before the slice that needs it (§9).
 
+**2026-11-11 amendment under LEAD-CONTEXT-BUDGET-2026-11-10 (E231).** The
+[contained Lead context pool](lead-context-pool.yaml) takes over the byte budget and stop line above when its offline
+gate merges. The normal profile retains the 16-tool ceiling. E158 still needs its separate Q-BUDGET proof before its brief.
+
 ### 2.7 Control-state additions (M11)
 
 New hot keys follow the `queue` precedent (M4-D): optional, v2-only (`V2_ONLY_KEYS`), absent meaning empty, schema
@@ -1127,7 +1131,7 @@ Every test the designs name, mapped to a slice and a test name. The test files a
 | BRP §9: policy 0 keeps Lead-mediated behaviour; changed dispatch or base binding ineligible; second failure stops | E8 | `test_relaunch_off_by_default`, `test_changed_binding_is_ineligible`, `test_second_failure_raises_attention_only` |
 | A2 §8: live old process prevents relaunch; stale heartbeat alone insufficient; revoke before mint; project tool event ineligible; workspace mutation ineligible; unknown reason ineligible; credential/config/quota/security never relaunch; breaker; new run id and credential | E8 | `test_a2[<each>]` |
 | TLS-26: live OpenCode MCP spawn and list | E9 | live `test_opencode_spawns_aew_lead_and_lists_normal_tools` |
-| TLS-16: normal surface budget per slice | E2 onward | `test_the_normal_list_..._fits_the_budget` (exact list per slice) |
+| TLS-16: normal surface budget per slice | E2 onward | `test_the_contained_normal_lead_fits_its_context_pool` (E231 amendment) |
 | N1: an adopted raise changes nothing until an endpoint record exists | E2 | `test_adopted_raise_waits_for_the_endpoint` |
 | N2: the custodian validates, routes and releases; never the Lead credential; nothing once the custodian ends | E6a | `test_custodian_runs_checks_validation_after_prepare`, `test_custodian_routes_but_never_accepts_verifier_reports`, `test_custody_worker_holds_no_lead_credential`, `test_custody_worker_commits_nothing_after_its_custodian_ends` |
 | N2c: relaunch happens only from the stage runner at `launch_failed`, never from a supervisor or the recovery `cli` | E8 | `test_relaunch_only_at_the_stage_launch_failed_stop` |

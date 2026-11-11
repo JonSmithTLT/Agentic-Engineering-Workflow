@@ -2786,7 +2786,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 ### E231
 
-**Work:** The Lead's tool budget, decided before E158's brief: measure the per-request cost of the typed surface against what a shell fallback costs the Lead, then keep, raise, compact (ADR-0017's presentation) or consolidate. Today TLS-21 holds the normal surface under 12,000 bytes and 16 tools, with the stop line at 11,900; the pin is `NORMAL_BYTES_PIN` in `tests/unit/test_surface_mcp.py`, with 15 names. The free name is `message_send`'s; if E158 needs one, `explain` folds into `work_show`; E174, E177 and E173 look first at `resolve` choices or a `status` field
+**Work:** The Lead's tool budget, decided before E158's brief: measure the per-request cost of the typed surface against what a shell fallback costs the Lead, then keep, raise, compact (ADR-0017's presentation) or consolidate. `lead-context-pool.yaml` records the approved pool for the contained Lead. TLS-21's offered-tool ceiling stays separate. If E158 needs a name, `explain` folds into `work_show`; E174, E177 and E173 look first at `resolve` choices or a `status` field
 
 **Source:** The Lead's reading of 2026-11-08, for the operator and the designer; the designer's ruling of 2026-11-08
 

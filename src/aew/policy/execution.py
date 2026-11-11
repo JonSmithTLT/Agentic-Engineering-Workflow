@@ -74,12 +74,12 @@ routing:
   cards: {}
 provider_env: []
 # Steering (crawl/walk/run): crawl is the standing mode from `aew init`, which pins this policy (a project made before
-# this template: from the adopt that pins it, or `aew migrate`). Under crawl the loop runs no step itself: it stops at
-# each step it could take, for the Lead, and the notifier below shows each such stop once. Unattended Run is the
-# operator's to switch on, for one Lead generation, with `aew lead mode raise run` approved at the operator endpoint. It
-# needs the notifier below, and a `deadline_s` on every profile routing can pick (first configuration writes one with
-# its model, provisional until a measured run replaces it, with `deadline_scope: run`: it bounds only runs started under
-# Run).
+# this template: from the adopt that pins it, or its migration to v2). Under crawl the loop runs no step itself: it
+# stops at each step it could take, for the Lead, and the notifier below shows each such stop once. Unattended Run is
+# the operator's to switch on, for one Lead generation, with `aew lead mode raise run` approved at the operator
+# endpoint. It needs the notifier below, and a `deadline_s` on every profile routing can pick (first configuration
+# writes one with its model, provisional until a measured run replaces it, with `deadline_scope: run`: it bounds only
+# runs started under Run).
 steering:
   mode: crawl
 # The notifier the operator endpoint runs for each event while it serves: `aew notify desktop` shows it as a desktop

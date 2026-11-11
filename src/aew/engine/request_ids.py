@@ -8,7 +8,7 @@ from copy import deepcopy
 from typing import Any, NamedTuple
 
 from aew.errors import IdempotencyConflict, IntegrityError, UsageError
-from aew.harness.contract import EXPECT_REV
+from aew.harness.contract import EXPECT_REV, invocation_of_run
 from aew.util import sha256_text
 
 INDEX = "control_requests"
@@ -16,8 +16,13 @@ INDEX = "control_requests"
 EXPLICIT_ID = re.compile(r"[A-Za-z0-9._:-]{1,64}")
 
 
+def _digest(value: Any) -> str:
+    return sha256_text(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False))
+
+
 class ControlRequest(NamedTuple):
     id: str
+    digest: str
     arguments: dict[str, str]
 
     @classmethod
@@ -29,13 +34,12 @@ class ControlRequest(NamedTuple):
                 "request_id must be 1–64 characters from A–Z, a–z, 0–9, period, underscore, colon or hyphen"
             )
         try:
-            digests = {
-                name: sha256_text(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False))
-                for name, value in arguments.items()
-            }
+            digest = _digest(arguments)
+            # These prefixes only diagnose which fields changed. The full digest decides equality.
+            digests = {name: _digest(value)[:12] for name, value in arguments.items()}
         except (TypeError, ValueError) as exc:
             raise UsageError("request-id arguments must be JSON values") from exc
-        return cls(request_id, digests)
+        return cls(request_id, digest, digests)
 
     def replay(self, state: dict[str, Any], generation: int, op: str) -> dict[str, Any] | None:
         index = state.get(INDEX)
@@ -44,34 +48,74 @@ class ControlRequest(NamedTuple):
         entry = index["operations"].get(op, {}).get(self.id)
         if entry is None:
             return None
-        before = entry["arguments"]
-        changed = sorted(name for name in before.keys() | self.arguments.keys()
-                         if before.get(name) != self.arguments.get(name))
-        if changed:
+        if entry["digest"] != self.digest:
+            before = entry["arguments"]
+            changed = sorted(name for name in before.keys() | self.arguments.keys()
+                             if before.get(name) != self.arguments.get(name))
+            description = ", ".join(changed) or "field digest prefixes matched"
             raise IdempotencyConflict(
-                f"{op} request {self.id!r} already committed with different arguments: {', '.join(changed)}",
+                f"{op} request {self.id!r} already committed with different arguments: {description}",
                 op=op, request_id=self.id, fields=changed,
             )
-        return deepcopy(entry["result"])
+        return _render(state, op, entry)
 
-    def remember(self, state: dict[str, Any], generation: int, op: str, result: dict[str, Any] | None,
+    def remember(self, state: dict[str, Any], generation: int, op: str, ref: tuple[str, str] | None,
                  revision: int) -> None:
-        if result is None:
-            raise IntegrityError(f"{op} did not record its request result")
+        if ref is None:
+            raise IntegrityError(f"{op} did not record its request identity")
+        unit, record = ref
+        if unit not in state["work"]:
+            return
         index = state.get(INDEX)
         if index is None or index["generation"] != generation:
             index = state[INDEX] = {"generation": generation, "operations": {}}
         index["operations"].setdefault(op, {})[self.id] = {
-            "arguments": dict(self.arguments), "result": deepcopy(result) | {"revision": revision},
+            "arguments": dict(self.arguments), "digest": self.digest,
+            "unit": unit, "ref": record, "revision": revision,
         }
 
 
-def without_invocation_credential(result: dict[str, Any]) -> dict[str, Any]:
-    invocation = result["invocation"]
-    return result | {
-        "invocation_token": None,
-        "credential_replay": {
-            "status": "NOT_REPLAYABLE",
-            "rotate": f"aew harness launch {invocation} --replace {EXPECT_REV}",
-        },
-    }
+def prune_archived(projected: dict[str, Any], archived: set[str]) -> None:
+    index = projected.get(INDEX)
+    if index is None or not archived:
+        return
+    operations = {op: {key: entry for key, entry in receipts.items() if entry["unit"] not in archived}
+                  for op, receipts in index["operations"].items()}
+    remaining = {op: receipts for op, receipts in operations.items() if receipts}
+    if remaining:
+        projected[INDEX] = {"generation": index["generation"], "operations": remaining}
+    else:
+        projected.pop(INDEX)
+
+
+def _render(state: dict[str, Any], op: str, receipt: dict[str, Any]) -> dict[str, Any]:
+    wid, ref = receipt["unit"], receipt["ref"]
+    unit = state["work"][wid]
+    common = {"ok": True, "replayed": True, "revision": receipt["revision"]}
+    if op == "work.create":
+        return common | {"id": wid, "record": unit["record"]}
+    if op == "work.promote":
+        return common | {"work_id": unit["promoted_from"], "promoted_to": wid, "record": unit["record"]}
+    if op == "plan.propose":
+        plan = next(p for p in unit["plans"] if str(p["revision"]) == ref)
+        return common | {"work_id": wid, "revision_number": plan["revision"], "path": plan["path"]}
+    if op == "harness.launch":
+        inv_id = invocation_of_run(ref)
+        inv = state["invocations"][inv_id]
+        runs = inv["runs"]
+        i = next(i for i, run in enumerate(runs) if run["run"] == ref)
+        public = ("run", "harness", "launched_at", "kind", "generation", "dispatch")
+        return common | {"invocation": inv_id, "run": ref, "superseded": runs[i - 1]["run"] if i else None,
+                         "run_record": deepcopy({k: runs[i][k] for k in public if k in runs[i]})}
+    inv = state["invocations"][ref]
+    status = f"aew harness status {ref}"
+    credential = {"status": "NOT_REPLAYABLE"}
+    if inv.get("runs") or inv["status"] != "active":
+        credential["next_action"] = status
+    else:
+        credential["rotate"] = f"aew harness launch {ref} {EXPECT_REV}"
+    return common | {"work_id": wid, "invocation": ref, "invocation_token": None, "credential_replay": credential,
+                     "role": inv["role"], "role_card": (inv.get("card") or {}).get("id"), "scope": inv["scope"],
+                     "evaluated_snapshot": deepcopy(inv.get("snapshot")),
+                     **deepcopy({k: inv[k] for k in ("pack", "observation", "subject", "dispatch")
+                                 if k in inv})}

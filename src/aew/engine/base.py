@@ -122,7 +122,7 @@ class TxnContext:
     # only with one of them.
     dispatch_decisions: list[Any] = field(default_factory=list)
     replayed: dict[str, Any] | None = None
-    request_result: dict[str, Any] | Callable[[], dict[str, Any]] | None = None
+    request_ref: tuple[str, str] | None = None
 
     @property
     def state(self) -> dict[str, Any]:
@@ -426,9 +426,7 @@ class Kernel:
                     self.finalizers.run(ctx)
                     if request is not None:
                         projected = s.state if ctx.commit_state is None else ctx.commit_state
-                        result = ctx.request_result
-                        request.remember(projected, actor["generation"], op, result() if callable(result) else result,
-                                         s.revision + 1)
+                        request.remember(projected, actor["generation"], op, ctx.request_ref, s.revision + 1)
                     s.commit(Transition(op=ctx.op or op, actor=actor, summary=ctx.summary, reason=reason,
                                         refs=ctx.refs, events=ctx.events),
                              expect_rev=expect_rev, state=ctx.commit_state)

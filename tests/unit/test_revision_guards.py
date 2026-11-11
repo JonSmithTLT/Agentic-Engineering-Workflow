@@ -6,7 +6,29 @@ from types import SimpleNamespace
 import pytest
 
 from aew.engine.nonmutating_ops import NonMutating
-from aew.errors import GateUnsatisfied
+from aew.engine.request_ids import INDEX, ControlRequest
+from aew.errors import GateUnsatisfied, IdempotencyConflict
+
+
+def test_replay_ignores_an_index_left_by_an_older_generation():
+    request = ControlRequest.prepare("same", title="Test")
+    assert request is not None
+    state = {"work": {"E-0001": {"record": "work/E-0001/epic.md"}}}
+    request.remember(state, 1, "work.create", ("E-0001", "E-0001"), 2)
+    assert state[INDEX]["generation"] == 1
+    assert request.replay(state, 1, "work.create") is not None
+    assert request.replay(state, 2, "work.create") is None
+
+
+def test_field_digest_prefixes_do_not_decide_replay_equality():
+    first = ControlRequest.prepare("same", title="First")
+    other = ControlRequest.prepare("same", title="Other")
+    assert first is not None and other is not None
+    state = {"work": {"E-0001": {"record": "work/E-0001/epic.md"}}}
+    first.remember(state, 1, "work.create", ("E-0001", "E-0001"), 2)
+    collision = ControlRequest(first.id, other.digest, first.arguments)
+    with pytest.raises(IdempotencyConflict, match="field digest prefixes matched"):
+        collision.replay(state, 1, "work.create")
 
 
 class ReachedFreshnessCheck(Exception):

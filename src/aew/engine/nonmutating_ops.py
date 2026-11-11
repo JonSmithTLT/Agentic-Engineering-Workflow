@@ -29,7 +29,7 @@ from aew.engine.base import TxnContext
 from aew.engine.dependencies import dependency_blockers, effective_edge_set
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
-from aew.engine.request_ids import ControlRequest, without_invocation_credential
+from aew.engine.request_ids import ControlRequest
 from aew.engine.seams import (
     GATE,
     GATE_CONTEXT,
@@ -52,7 +52,7 @@ from aew.errors import (
     UsageError,
     ValidationFailed,
 )
-from aew.harness.contract import EXPECT_REV
+from aew.harness.contract import EXPECT_REV, fields_command
 from aew.knowledge import evidence as E
 from aew.knowledge.records import format_id
 from aew.snapshot.fingerprint import changed_paths
@@ -548,14 +548,13 @@ class NonMutating:
                  "reason": f"{reason} ({record}); attempt {unit['execution']['attempt']} = {inv_id}"})
             ctx.summary = f"{work_id} redispatched: attempt {unit['execution']['attempt']} ({inv_id})"
             self.units.before_commit(ctx)
-            inv = ctx.state["invocations"][inv_id]
-            out = {"ok": True, "work_id": work_id, "decision": record, "superseded": previous,
-                   "invocation": inv_id, "invocation_token": inv_token, "execution": unit["execution"],
-                   "observation": inv["observation"]}
             if request is not None:
-                ctx.request_result = without_invocation_credential(out)
+                ctx.request_ref = (work_id, inv_id)
         self.prune_observations()
-        return out | {"revision": ctx.session.committed_revision}
+        inv = ctx.state["invocations"][inv_id]
+        return {"ok": True, "work_id": work_id, "decision": record, "superseded": previous,
+                "invocation": inv_id, "invocation_token": inv_token, "execution": unit["execution"],
+                "observation": inv["observation"], "revision": ctx.session.committed_revision}
 
     def execute_record_binding(self, state: dict[str, Any], inv_id: str, inv: dict[str, Any], kind: str,
                                submitted: dict[str, Any]) -> dict[str, Any]:
@@ -911,9 +910,14 @@ class NonMutating:
                 raise UsageError(f"{evidence_id} is not the accepted plan_proposal of a DONE planning Ticket {source}")
             ev = self.inputs.find_unit_evidence(source, evidence_id)
             if ev["_sha256"] != rec["sha256"]:
+                create = fields_command(
+                    f"aew work create ticket --non-mutating --card planner --class <0-4> --scope '<path glob>' "
+                    f"--goal '<goal>' {EXPECT_REV}", "title", "<title>",
+                )
                 raise GateUnsatisfied(
-                    f"{evidence_id} no longer matches {source}'s accepted plan proposal; "
-                    f"start a new planning Ticket with `aew work dispatch <T> {EXPECT_REV}`",
+                    f"{evidence_id} no longer matches {source}'s accepted plan proposal. "
+                    f"First create a new planning Ticket:\n\n{create}\n\nAccept its plan, then dispatch it with "
+                    f"`aew work dispatch <T> {EXPECT_REV}`",
                     evidence=evidence_id, expected=rec["sha256"], current=ev["_sha256"],
                 )
             commit = self.k.authoritative_commit()

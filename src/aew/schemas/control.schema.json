@@ -33,7 +33,7 @@
       "minimum": 0
     },
     "control_requests": {
-      "description": "Optional create receipts for the current Lead generation. A new generation clears this index.",
+      "description": "Optional create identities for hot units in the current Lead generation.",
       "type": "object",
       "required": ["generation", "operations"],
       "additionalProperties": false,
@@ -49,18 +49,14 @@
             "propertyNames": {"pattern": "^[A-Za-z0-9._:-]{1,64}$"},
             "additionalProperties": {
               "type": "object",
-              "required": ["arguments", "result"],
+              "required": ["arguments", "digest", "unit", "ref", "revision"],
               "additionalProperties": false,
               "properties": {
-                "arguments": {"type": "object", "additionalProperties": {"$ref": "#/$defs/sha256"}},
-                "result": {
-                  "type": "object",
-                  "required": ["revision"],
-                  "properties": {
-                    "revision": {"type": "integer", "minimum": 1},
-                    "invocation_token": {"type": "null"}
-                  }
-                }
+                "arguments": {"type": "object", "additionalProperties": {"pattern": "^[0-9a-f]{12}$", "type": "string"}},
+                "digest": {"$ref": "#/$defs/sha256"},
+                "unit": {"type": "string"},
+                "ref": {"type": "string"},
+                "revision": {"type": "integer", "minimum": 1}
               }
             }
           }

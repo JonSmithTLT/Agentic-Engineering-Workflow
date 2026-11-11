@@ -28,7 +28,7 @@ from aew.engine.dispatch import Blocker, blocker_from, checked
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.guards import NotQueryable, refusal, require
 from aew.engine.guards import checked as guard_checked
-from aew.engine.request_ids import ControlRequest, without_invocation_credential
+from aew.engine.request_ids import ControlRequest
 from aew.engine.seams import (
     CLASSIFY_VERIFICATION,
     GATE,
@@ -787,7 +787,7 @@ class EvidenceCommands:
             resolve = self.kinds.resolve_evidence_only if evidence_only else self.kinds.resolve
             handler = resolve(INVOKE, unit)
             out = handler(token=token, expect_rev=expect_rev, **arguments, _ctx=ctx)
-            ctx.request_result = without_invocation_credential(out)
+            ctx.request_ref = (work_id, out["invocation"])
         return out | {"revision": ctx.session.committed_revision}
 
     # ---- the dispatch guards of ``invoke create`` for a mutating Ticket (M4-A), in the order the route checked

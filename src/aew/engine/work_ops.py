@@ -510,20 +510,14 @@ class WorkCommands:
             ctx.refs.append(path)
             ctx.summary = f"created {kind} {work_id}: {title}"
             self.units.before_commit(ctx)
-            out = {"ok": True, "id": work_id, "record": path}
             if request is not None:
-                out.update(self._create_warnings(kind, unit, scope_paths))
-                ctx.request_result = out
-        if request is None:
-            out.update(self._create_warnings(kind, unit, scope_paths))
-        return out | {"revision": ctx.session.committed_revision}
-
-    def _create_warnings(self, kind: str, unit: dict[str, Any], scope_paths: list[str] | None) -> dict[str, Any]:
+                ctx.request_ref = (work_id, work_id)
+        out = {"ok": True, "id": work_id, "record": path, "revision": ctx.session.committed_revision}
         unmatched = self._unmatched_scope(scope_paths or []) if kind == "ticket" and unit["mutating"] else []
         if unmatched:
-            return {"warnings": [f"scope glob {g!r} matches no file in the project: fine if the Ticket creates it, "
-                                 "otherwise a change there needs a scope that names it" for g in unmatched]}
-        return {}
+            out["warnings"] = [f"scope glob {g!r} matches no file in the project: fine if the Ticket creates it, "
+                               "otherwise a change there needs a scope that names it" for g in unmatched]
+        return out
 
     # ---- `work.create`'s guard as a query (M4-E E4; aew.engine.guards)
 
@@ -730,10 +724,10 @@ class WorkCommands:
                                            affected_paths=affected_paths, assurance=assurance)
             ctx.summary = f"{work_id} plan v{revision} proposed"
             self.units.before_commit(ctx)
-            out = {"ok": True, "work_id": work_id, "revision_number": revision, "path": path}
             if request is not None:
-                ctx.request_result = out
-        return out | {"revision": ctx.session.committed_revision}
+                ctx.request_ref = (work_id, str(revision))
+        return {"ok": True, "work_id": work_id, "revision_number": revision, "path": path,
+                "revision": ctx.session.committed_revision}
 
     def propose_query(self, state: dict[str, Any], work_id: str, args: dict[str, Any]) -> Any:
         """``plan.propose`` (M4-E E4: its guard as a query): a non-empty body, for a hot unit that is not finished,

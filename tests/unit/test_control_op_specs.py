@@ -17,8 +17,11 @@ from aew.engine import primitives as P
 from aew.schemas import schema
 
 ENGINE = Path(P.__file__).resolve().parent
-DIRECT_COMMIT_MODULES = {"lead_ops.py", "migrate_ops.py"}
+SOURCE = ENGINE.parent
+UNCHECKED = {"anomaly.record", "steering.raise", "custody.register", "integrate.route",
+             "harness.stop", "harness.send", "harness.interrupt"}
 FORWARDERS = {("api.py", "lead_txn"), ("validation_ops.py", "txn")}
+TRANSACTION_COMMITS = {("base.py", "lead_txn"), ("base.py", "custody_txn")}
 
 
 def _strings(node, bindings, seen=frozenset()):
@@ -40,12 +43,20 @@ class EntryScan(ast.NodeVisitor):
         self.entries = set()
         self.unreadable = set()
         self.forwarders = set()
+        self.unchecked = set()
+        self.checked_revision = False
+        self.calls = []
 
     def visit_FunctionDef(self, node):
-        previous = self.function, self.bindings
+        previous = self.function, self.bindings, self.checked_revision
         self.function, self.bindings = node.name, self.bindings.copy()
+        self.checked_revision = any(
+            isinstance(n, ast.Compare) and ast.unparse(n.left) == "expect_rev"
+            and any(ast.unparse(v) == "s.revision" for v in n.comparators)
+            for n in ast.walk(node)
+        )
         self.generic_visit(node)
-        self.function, self.bindings = previous
+        self.function, self.bindings, self.checked_revision = previous
 
     def visit_Assign(self, node):
         for target in node.targets:
@@ -53,47 +64,83 @@ class EntryScan(ast.NodeVisitor):
                 self.bindings[target.id] = node.value
         self.generic_visit(node)
 
-    def _record(self, expression, line):
+    def _record(self, expression, line, *, checked=True):
         values = _strings(expression, self.bindings)
         if None in values:
             self.unreadable.add((self.file, line, ast.unparse(expression) if expression else "<missing>"))
-        self.entries.update(values - {None})
+        (self.entries if checked else self.unchecked).update(values - {None})
 
     def visit_Call(self, node):
         if isinstance(node.func, ast.Attribute):
             name = node.func.attr
-            validation_entry = (self.file == "validation_ops.py" and name == "txn"
-                                and isinstance(node.func.value, ast.Name) and node.func.value.id == "who")
-            if name == "lead_txn" or validation_entry:
+            if name in {"lead_txn", "txn", "custody_txn"}:
                 location = self.file, self.function
-                expr = node.args[2] if len(node.args) > 2 else next(
+                position = 1 if name == "custody_txn" else 2
+                expr = node.args[position] if len(node.args) > position else next(
                     (kw.value for kw in node.keywords if kw.arg == "op"), None)
                 if location in FORWARDERS and isinstance(expr, ast.Name) and expr.id == "op":
                     self.forwarders.add(location)
                 else:
-                    self._record(expr, node.lineno)
-            if name == "commit" and self.file in DIRECT_COMMIT_MODULES and node.args:
-                transition = node.args[0]
+                    self._record(expr, node.lineno, checked=name != "custody_txn")
+            if name == "commit":
+                transition = node.args[0] if node.args else next(
+                    (kw.value for kw in node.keywords if kw.arg == "transition"), None)
+                if isinstance(transition, ast.Name):
+                    transition = self.bindings.get(transition.id, transition)
                 if (isinstance(transition, ast.Call) and isinstance(transition.func, ast.Name)
                         and transition.func.id == "Transition"):
-                    self._record(next((kw.value for kw in transition.keywords if kw.arg == "op"), None), node.lineno)
+                    expr = next((kw.value for kw in transition.keywords if kw.arg == "op"), None)
+                    location = self.file, self.function
+                    checked = self.checked_revision or any(kw.arg == "expect_rev" for kw in node.keywords)
+                    if location in TRANSACTION_COMMITS and expr and ast.unparse(expr) == "ctx.op or op":
+                        pass  # the callers are enumerated separately, including custody
+                    elif location == ("harness_ops.py", "_lead_request") and expr and (
+                        ast.unparse(expr) == "f'harness.{kind}'"
+                    ):
+                        self.calls.append(node.lineno)
+                    else:
+                        self._record(expr, node.lineno, checked=checked)
+                else:
+                    self.unreadable.add((self.file, node.lineno, ast.unparse(node)))
+            if name == "_write" and self.checked_revision and self.function:
+                self.entries.add(self.function.replace("_", ".", 1))
         self.generic_visit(node)
 
 
-def _static_entries():
+def _scan(path, source):
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path.relative_to(source)))
+    scan = EntryScan(path.name if path.parent == source / "engine" else path.relative_to(source).as_posix())
+    scan.visit(tree)
+    for line in scan.calls:
+        calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                 and isinstance(n.func, ast.Attribute) and n.func.attr == "_lead_request"]
+        kinds = [_strings(call.args[2] if len(call.args) > 2 else None, {}) for call in calls]
+        if not kinds or any(None in values for values in kinds):
+            scan.unreadable.add((scan.file, line, "harness.{kind}"))
+        else:
+            scan.unchecked.update(f"harness.{kind}" for values in kinds for kind in values)
+    return scan
+
+
+def _enumerate_entries(source):
     entries = set()
+    unchecked = set()
     forwarders = set()
     unreadable = set()
-    for path in ENGINE.glob("*.py"):
-        scan = EntryScan(path.name)
-        scan.visit(ast.parse(path.read_text(encoding="utf-8"), filename=path.name))
+    for path in source.rglob("*.py"):
+        scan = _scan(path, source)
         entries.update(scan.entries)
+        unchecked.update(scan.unchecked)
         forwarders.update(scan.forwarders)
         unreadable.update(scan.unreadable)
+    return entries, unchecked, forwarders, unreadable
+
+
+def _static_entries():
+    entries, unchecked, forwarders, unreadable = _enumerate_entries(SOURCE)
     assert not unreadable
     assert forwarders == FORWARDERS
-    # The coordination writer records under its own revision compare and has no Transition.
-    entries.add("message.record_lead")
+    assert unchecked == UNCHECKED
     return entries
 
 
@@ -122,6 +169,20 @@ def test_static_scan_reports_undeclared_and_unreadable_entries():
     assert scan.entries & P.CONTROL_OP_SPECS.keys() == {"checkpoint"}
     assert scan.entries - P.CONTROL_OP_SPECS.keys() == {"unknown.write"}
     assert scan.unreadable == {("planted.py", 5, "compute_op()")}
+
+
+@pytest.mark.parametrize(("module", "body", "op"), [
+    ("surface/planted_review.py", 'engine.lead_txn(token, rev, "planted.facade")', "planted.facade"),
+    ("engine/planted_review.py", 'if expect_rev != s.revision:\n        raise ValueError(expect_rev)\n'
+     '    s.commit(Transition(op="planted.direct", actor=actor, summary="x"))', "planted.direct"),
+])
+def test_planted_control_entries_are_found_in_new_modules(tmp_path, module, body, op):
+    path = tmp_path / module
+    path.parent.mkdir()
+    path.write_text(f"def planted():\n    {body}\n", encoding="utf-8")
+    entries, unchecked, forwarders, unreadable = _enumerate_entries(tmp_path)
+    assert not (unchecked or forwarders or unreadable)
+    assert entries - P.CONTROL_OP_SPECS.keys() == {op}
 
 
 def test_control_op_specs_leave_primitive_lookups_at_the_base():
@@ -261,7 +322,7 @@ def _record_non_transaction_entries(k, seen, monkeypatch):
         raise ReachedTransaction
 
     def record_message(*args, **kwargs):
-        seen.add("message.record_lead")
+        seen.add(writer.message_record_lead.__name__.replace("_", ".", 1))
         raise ReachedTransaction
 
     def nothing(*args, **kwargs):

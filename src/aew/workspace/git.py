@@ -332,6 +332,7 @@ NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 # they exist so that a stuck git fails a command instead of hanging it (PR #126, CI).
 OBJECT_TIMEOUT_S = 300.0
 BATCH_READ_TIMEOUT_S = 120.0
+BATCH_CLOSE_TIMEOUT_S = 30.0  # the wait for a batch reader to exit once its input is closed (normally at once)
 
 
 def object_git(*args: str, cwd: Path, check: bool = True, input: bytes | None = None,
@@ -385,6 +386,7 @@ class CatFileBatch:
     def __init__(self, cwd: Path, timeout: float = BATCH_READ_TIMEOUT_S) -> None:
         self.cwd = cwd
         self.timeout = timeout
+        self.close_timeout = BATCH_CLOSE_TIMEOUT_S  # a caller with a deadline lowers it (maps.gitobjects.open_tree)
         self._proc: subprocess.Popen[bytes] | None = None
 
     def __enter__(self) -> CatFileBatch:
@@ -433,7 +435,7 @@ class CatFileBatch:
         try:
             if proc.stdin is not None:
                 proc.stdin.close()
-            proc.wait(timeout=30)
+            proc.wait(timeout=self.close_timeout)
         except (OSError, subprocess.TimeoutExpired):
             proc.kill()
             proc.wait()

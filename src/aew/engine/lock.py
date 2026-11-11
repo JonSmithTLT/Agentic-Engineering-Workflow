@@ -30,9 +30,11 @@ from types import TracebackType
 from aew import profile
 from aew.errors import LockTimeout
 
+DEFAULT_TIMEOUT_S = 60.0  # a FileLock's wait when its caller names none
+
 
 class FileLock:
-    def __init__(self, path: Path, timeout: float = 60.0) -> None:
+    def __init__(self, path: Path, timeout: float = DEFAULT_TIMEOUT_S) -> None:
         self.path = path
         self.timeout = timeout
         self._fh = None

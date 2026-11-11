@@ -988,10 +988,6 @@ systems:
       ruling 3)
     row: E62
     estimate: 1-2 PRs (estimate)
-  - slice: An architecture_map pack section, or drop the pack promise of `aew map select-architecture`; wire or remove KNOWLEDGE_NAMES
-      and resolve_knowledge (BOARD v2 §4 loose ends)
-    row: row owed
-    estimate: 1 small PR, batched (estimate)
   - slice: 'F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03)'
     row: F22.2
     estimate: many PRs, unsized (estimate)
@@ -1009,16 +1005,19 @@ systems:
   - src/aew/schemas/execution.schema.json:109-111 the schema default off; 'Turning it on is the operator's configuration
     decision'
   - src/aew/maps/slices.py:4-5 packs and resume byte-identical to a project without maps while off
-  - 'src/aew/maps/slices.py:43-48 wanted(): switch structural AND the role''s context names codebase_map'
-  - src/aew/engine/context_ops.py:170-172 the pack slice is pinned only when slices.wanted()
+  - 'src/aew/maps/slices.py:50-55 wanted(): switch structural AND the role''s context names codebase_map'
+  - src/aew/engine/context_ops.py:177 the pack slice is pinned only when slices.wanted()
   - src/aew/engine/resume_ops.py:452-467 the resume row behind the same switch
   - src/aew/roles/archetypes/investigator.yaml:21 the only archetype naming codebase_map
   - src/aew/roles/archetypes/planner.yaml:20 the planner's knowledge omits codebase_map (E62)
   - src/aew/knowledge/context.py:609-610 the codebase-map section rendered last and cuttable
   - src/aew/knowledge/context.py:122-130 KNOWLEDGE_SECTIONS has no architecture_map key
-  - src/aew/maps/service.py:142-151 select_architecture records a discovery-evidence id
-  - src/aew/knowledge/manifest.py:22-23,145-147 KNOWLEDGE_NAMES and resolve_knowledge, no callers in src/aew (grep)
-  - src/aew/knowledge/manifest.py:102-105 init writes architecture_map, codebase_map, ownership_map, glossary as None
+  - src/aew/maps/service.py:257-268 select_architecture records a discovery-evidence id
+  - 'src/aew/maps/service.py refresh_at_dispatch and slices.pin''s lead argument: a Lead''s dispatch refreshes a STALE
+    or absent map at use, inert while the switch is off (ADR-0015, amendment of 2026-11-11)'
+  - src/aew/knowledge/manifest.py:99-102 init writes architecture_map, codebase_map, ownership_map, glossary as None;
+    the architecture_map key stays (KC v0.4 §14), and KNOWLEDGE_NAMES and resolve_knowledge, which had no callers,
+    are removed (the BOARD v2 §4 loose ends, closed by the drop branch)
   - src/aew/cli/map_commands.py:56-93 aew map generate, select-architecture, show, diff
   - src/aew/dashboard/server.py:288-298 the five /maps routes
   - 'importers of aew.maps outside the package (grep): cli/map_commands, dashboard/mapview, dashboard/projections, dashboard/reader,

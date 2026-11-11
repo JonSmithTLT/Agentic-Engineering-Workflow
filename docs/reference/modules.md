@@ -1818,6 +1818,7 @@ None.
 ### `aew.maps.gitobjects`
 
 - `aew.errors`
+- `aew.knowledge.manifest`
 - `aew.maps.canonical`
 - `aew.workspace.git`
 
@@ -1844,6 +1845,7 @@ None.
 - `aew.maps.freshness`
 - `aew.maps.gitobjects`
 - `aew.maps.rules`
+- `aew.maps.service`
 - `aew.maps.store`
 - `aew.maps.structural`
 - `aew.policy.execution`

@@ -8,6 +8,7 @@ fails the pack."""
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from pathlib import Path
@@ -135,6 +136,29 @@ def test_a_base_that_is_not_the_head_is_stored_and_pinned_never_selected_and_mad
     assert again["sha256"] == old["root"] and again["refresh"].startswith(FOUND)
     assert made == [old["source_revision"]]  # made once, then found stored
     assert slices.lines(aew_root(p), p.root, entry, []) == lines
+
+
+def test_a_map_made_again_past_the_search_window_is_found_stored_after(tmp_path, monkeypatch):
+    """E184 quick check QC-MIN-1: the search reads the newest ``SCAN_MAX`` artifacts by modification time. A base's
+    map older than that is made again, and the same-bytes write marks it as just made, so the next pack at that base
+    finds it stored instead of making it on every dispatch."""
+    p = sample_project(tmp_path)
+    old = select_map(p)
+    head = advance_main(p, "moved.txt")
+    select_map(p)
+    path = aew_root(p) / store.artifact_rel(old["root"])
+    record = store.read_artifact(aew_root(p), old["root"])
+    for i in range(store.SCAN_MAX + 1):  # newer maps of other commits push the old base's out of the window
+        store.write_artifact(aew_root(p), {k: v for k, v in record.items() if k != "artifact_sha256"}
+                             | {"source_revision": f"{i:040x}"})
+    long_ago = time.time() - 3600
+    os.utime(path, (long_ago, long_ago))
+    made = counted_builds(monkeypatch)
+    first, _ = slices.pin(aew_root(p), p.root, old["source_revision"], [], lead=LEAD, head=head)
+    assert first["sha256"] == old["root"] and first["refresh"].startswith(REFRESHED)  # past the window: made again
+    again, _ = slices.pin(aew_root(p), p.root, old["source_revision"], [], lead=LEAD, head=head)
+    assert again["sha256"] == old["root"] and again["refresh"].startswith(FOUND)
+    assert made == [old["source_revision"]]
 
 
 def test_a_stored_map_is_used_only_for_its_own_commit_and_generator_and_only_if_it_verifies(tmp_path):

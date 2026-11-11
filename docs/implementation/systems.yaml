@@ -533,32 +533,32 @@ systems:
     text fix (E183) says so.'
   evidence:
   - src/aew/engine/steering.py:3 (the project default is execution policy's steering.mode; absent is legacy/manual)
-  - 'src/aew/engine/steering.py:56-58 (RANK: absent and crawl rank together, 0)'
-  - src/aew/engine/steering.py:59 (GUARANTEE = "dev" until F18.6)
-  - 'src/aew/engine/steering.py:86-88 (is_raise: a strictly higher rank)'
-  - src/aew/engine/steering.py:137-138 (crawl, or no mode, confirms every eligible step)
-  - 'src/aew/engine/steering.py:257-281 (on_adopt: an adopted default that is a raise is left pending at :271-274; only
-    a non-raise becomes standing, :280)'
-  - src/aew/engine/steering.py:351-355 (a raise to run needs an executable notifier)
-  - 'src/aew/engine/steering.py:359-369 (lower: _require_configured at :365, then IllegalTransition unless the effective
-    mode is higher, :367-369)'
-  - 'src/aew/engine/steering.py:391-393 (request: _require_configured)'
-  - src/aew/engine/steering.py:419-421 (a request grants nothing until the operator acts)
-  - src/aew/engine/steering.py:425-429 (_require_configured raises SteeringNotConfigured)
+  - 'src/aew/engine/steering.py:57 (RANK: absent and crawl rank together, 0)'
+  - src/aew/engine/steering.py:58 (GUARANTEE = "dev" until F18.6)
+  - 'src/aew/engine/steering.py:88-90 (is_raise: a strictly higher rank)'
+  - src/aew/engine/steering.py:139-140 (crawl, or no mode, confirms every eligible step)
+  - 'src/aew/engine/steering.py:277-303 (on_adopt: an adopted default that is a raise is left pending at :293-296; only
+    a non-raise becomes standing, :302)'
+  - src/aew/engine/steering.py:374-378 (a raise to run needs an executable notifier)
+  - 'src/aew/engine/steering.py:382-392 (lower: _require_configured at :388, then IllegalTransition unless the effective
+    mode is higher, :390-392)'
+  - 'src/aew/engine/steering.py:405 and :416 (request: _require_configured at :416)'
+  - src/aew/engine/steering.py:407 and :442 (a request grants nothing until the operator acts)
+  - src/aew/engine/steering.py:450-454 (_require_configured raises SteeringNotConfigured)
   - 'src/aew/policy/execution.py:76-89 (the execution template: steering.mode crawl and the default desktop notifier; first
     configuration writes deadline_s with deadline_scope run)'
-  - src/aew/harness/steering_loop.py:69 and :405-406 (STEERING_OFF when no mode is in force)
-  - src/aew/harness/steering_loop.py:78 and :432-436 (CONFIRMATION_UNAVAILABLE)
-  - src/aew/harness/lead_broker.py:271-275 and :286-287 (the loop is built and started with every Lead broker)
-  - 'src/aew/harness/lead_broker.py:216-219 (the Lead''s refusal text sends it to request_raise and to aew lead mode lower:
+  - src/aew/harness/steering_loop.py:73 and :455-456 (STEERING_OFF when no mode is in force)
+  - src/aew/harness/steering_loop.py:82 and :484-486 (CONFIRMATION_UNAVAILABLE)
+  - src/aew/harness/lead_broker.py:283-285 and :299-300 (the loop is built and started with every Lead broker)
+  - 'src/aew/harness/lead_broker.py:219-222 (the Lead''s refusal text sends it to request_raise and to aew lead mode lower:
     lead_text)'
-  - src/aew/harness/operator_endpoint.py:142-147 (starts only with --dev)
-  - src/aew/harness/operator_endpoint.py:300-307 (offers only ping, mode_raise, capability_change)
-  - src/aew/cli/operator_commands.py:27-31 (aew operator serve --dev) and :47 (aew lead mode lower)
-  - 'src/aew/surface/contract.py:116 (STEERING_ACTIONS: lower, request_raise, request_confirmation)'
-  - src/aew/surface/contract.py:228-237 (the steering tool and its text) and :67 (profiles default BOTH)
-  - 'src/aew/surface/run.py:176-190 (the tool''s adapter: lower or record a request)'
-  - src/aew/harness/notify.py:677 (not_configured when notify.command is absent)
+  - src/aew/harness/operator_endpoint.py:127-132 (starts only with --dev)
+  - src/aew/harness/operator_endpoint.py:320-327 (offers only ping, mode_raise, capability_change)
+  - src/aew/cli/operator_commands.py:30-34 (aew operator serve --dev) and :54 (aew lead mode lower)
+  - 'src/aew/surface/contract.py:123 (STEERING_ACTIONS: lower, request_raise, request_confirmation)'
+  - src/aew/surface/contract.py:246-255 (the steering tool and its text) and :71 (profiles default BOTH)
+  - 'src/aew/surface/run.py:180-192 (the tool''s adapter: lower or record a request)'
+  - src/aew/harness/notify.py:698-701 (not_configured when notify.command is absent)
   - 'docs/implementation/future-work.yaml (row F18.6): Unscheduled, restored from HOLD-17, which closed on 2026-11-06; (row
     HOLD-19): its one member still held is F46, the settings surface, not steering'
 - id: SYS-05
@@ -977,7 +977,7 @@ systems:
     row: F22.2
     estimate: many PRs, unsized (estimate)
   decision: 'decided: finished and switched on in slot 2 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md);
-    E293 placed now (the operator, 2026-11-11: "we can do the maps profile since maps is mostly done right?")'
+    E293 placed now by the operator (the Lead''s reading of the question; 2026-11-11: "we can do the maps profile since maps is mostly done right?")'
   recommendation: switch_on
   who: Lead (PR B, then E293); decided by the operator
   reason: 'Built and off. The map refreshed at use is built, inert while the switch is off (ADR-0015, amendment of 2026-11-11),
@@ -2075,7 +2075,6 @@ systems:
   - E125
   - E153
   - E243
-  - E334
   as_built:
   - modules:aew.snapshot.fingerprint
   - modules:aew.engine.validation_ops
@@ -2103,7 +2102,7 @@ systems:
     used_in_default_flow: partly
   finish_line: 'Every validation records what it evaluated and what it did not check, from a project-owned source of its
     affected tests and CI tools (E120, E243), with ''not known'' and a reason where a project has none; a failing check''s
-    lines reach the worker (E120); a check''s own declared caches never change its snapshot (E334); all exercised by the
+    lines reach the worker (E120); all exercised by the
     vertical driver and a real run. artifact_digests is dropped from the engine and working_diff removed (done). The remote
     validation provider stays Designed until it has acceptance.'
   remaining:
@@ -2112,21 +2111,17 @@ systems:
     row: E120
     estimate: 1-2 PRs (estimate)
   - slice: 'A project-owned source for E120''s two lists, to the designer''s input contract: PR 1 (the coverage declaration,
-      the honest lines, doctor rows, the guide) is in review, then PR 2 (the selector in the validation executor)'
+      the honest lines, doctor rows, the guide) briefed, fixes in progress, then PR 2 (the selector in the validation executor)'
     row: E243
     estimate: 2 PRs (estimate)
-  - slice: 'A check''s declared caches leave the working state every reader takes (the snapshot, changed_paths and the
-      Ticket commit); being built'
-    row: E334
-    estimate: 1 PR (estimate)
   decision: 'decided: only its slot items finish (the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md),
     item 6); unfrozen for the drop of artifact_digests and working_diff, and E243 placed inside the finish line (the operator,
     2026-11-11: "1. sire. 2. yup if it knows it tehn yes statre it", the Lead''s reading: "sure" and "state")'
   recommendation: finish
-  who: Lead (E120, E243, E334)
+  who: Lead (E120, E243)
   reason: E120 is on the Now list and still open; the local readiness surface (E125) and V3's two detectors (E153) have
     closed, and the two loose ends are gone (artifact_digests dropped from the engine, working_diff removed, ADR-0002 amended).
-    E243's contract is the designer's, about 2 PRs to first use. E334 is the designer's ruling of 2026-11-11 on U14. The
+    E243's contract is the designer's, about 2 PRs to first use. The
     remote provider stays Designed only.
   evidence:
   - src/aew/snapshot/fingerprint.py:383 (evaluated_snapshot carries no artifact_digests); :31 working_diff removed (2026-11-11,
@@ -2350,9 +2345,10 @@ systems:
   - src/aew/engine/status_ops.py:113 notifier failures shown in aew status; :129-130 the Next actions block
   - src/aew/harness/operator_endpoint.py:185 the notifier Watcher starts only with the operator endpoint; src/aew/engine/steering.py:208-210
     no notify.command means no notifier
-  - src/aew/policy/execution.py:65-74 the init template writes no notify key
-  - no /waiting route, `aew ask` or `aew notify desktop` in src/aew/cli, src/aew/dashboard or src/aew/engine (grep at c11a61ea);
-    the GET /v1/read/waiting at src/aew/stg02/server.py:220 and src/aew/stg02/reads.py:115-117 is the STG-02 slice's fixture-backed
+  - src/aew/policy/execution.py:76-89 the init template writes steering.mode crawl and notify.command [aew, notify, desktop]
+  - no /waiting route or `aew ask` in src/aew/cli, src/aew/dashboard or src/aew/engine (grep at c11a61ea); `aew notify desktop`
+    now exists at src/aew/cli/notify_commands.py:11-28 (shows one notify event from stdin as a desktop notification;
+    `--check` says whether one can be shown), registered at src/aew/cli/commands.py:164; the GET /v1/read/waiting at src/aew/stg02/server.py:220 and src/aew/stg02/reads.py:115-117 is the STG-02 slice's fixture-backed
     D-01 read (the STG-02 producer, under SYS-29 until E356 retires it), not E102's GET /api/v1/waiting
   - docs/implementation/future-work.yaml (row E101, at c11a61ea) E101 (S1, Contained); :1283-1295 E102; :1296-1306 E103;
     :1307-1321 E104 (V-01); :1322-1355 E105 to E107 (V-01); :1374-1384 E109 (Evaluation); :1385-1392 E110 (Unscheduled,
@@ -4363,7 +4359,11 @@ systems:
     key and CA paths masked from every sandbox, a launch refuses if they are not masked, a run with no relay refuses that
     provider, tested against a throwaway CA. The operator''s sign-off check is AIR-85, the gate''s live qualification
     of the forced request fields against a provider that requires a client certificate, run where the first release is
-    installed against such a provider.'
+    installed against such a provider. Beside AIR-85, the first real run also checks what E123''s note of 2026-11-09 left
+    unmeasured and no open row carries: OpenCode 2.0.18''s back-off on a 429 and its handling of Retry-After, that the Lead
+    and two workers on one model spend one per-model bucket together (and that runs on different models do not), what
+    the provider''s own 429s look like, whether OpenCode resolves a provider of its own id
+    (a worker''s and the Lead''s projections, each checked), and whether it needs a placeholder key for one.'
   remaining: []
   decision: 'decided: awaiting the operator''s sign-off, with AIR-85 as its sign-off check, run where the first release
     is installed against such a provider (the operator, 2026-11-10: "yyes record SYS-47 that way")'

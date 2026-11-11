@@ -821,7 +821,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 ### HOLD-19
 
-**Work:** The register rows held on the adopted position A-19, operator intent: 2 rows still held after the hold match of 2026-11-06, each with its old title and source in Notes
+**Work:** The register rows held on the adopted position A-19, operator intent: 1 row still held (F46), after the hold match of 2026-11-06 left 2 (F46 and F46.4) and F46.4 left on 2026-11-11; the Notes list the members as the register held them, each with its old title and source
 
 **Source (governing):** the adopted position A-19; the register rebaseline (design workspace, `b598fdc`), section 5
 
@@ -829,7 +829,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 
 **Notes:** Members, each as the register held it at `b879f6bd` (its full row is there; the design documents it cites stay as inputs, not authority):
 - **F46**, The Operator Settings Surface: every operator-editable setting (marked by an explicit schema or registry annotation) has a dashboard editor showing its current value, description, valid values, classification, effective boundary, proposed value, validation result, diff and authority and effect; a generic schema renderer, custom editors where needed, and a completeness test proving every such setting has one (source: [decision record](../design/decisions-2026-10-11-architecture-integration.md) §3.16, §3.17, §6.1 to §6.3, §6.7 (ledger AIR-65 to AIR-73, AIR-78 to AIR-80, AIR-84); the operator's request of 2026-10-11); note: the operator wants it; CAPR-13's register editor is its first case
-- **F46.4**, The web integration: the dashboard's configuration page on F46.1 to F46.3's accepted contracts and merged routes, with a compact, backend-supplied "What changes when I save?" explanation, and invocation pins, existing and future, accepted unchanged; the remaining configuration documents reuse the same workflow (source: the operator's approval of the F46 work breakdown and the aligned configuration page direction, with its authorized refinement (2026-10-11); F46)
+- **F46.4** (left the hold on 2026-11-11, retired into I-6 (STG-14): see the 2026-11-11 note), The web integration: the dashboard's configuration page on F46.1 to F46.3's accepted contracts and merged routes, with a compact, backend-supplied "What changes when I save?" explanation, and invocation pins, existing and future, accepted unchanged; the remaining configuration documents reuse the same workflow (source: the operator's approval of the F46 work breakdown and the aligned configuration page direction, with its authorized refinement (2026-10-11); F46)
 - The other members left the hold on 2026-11-06 (the operator's decision of 2026-11-06 on the hold match, `2026-11-06-operator-hold-match-batches.md` (design workspace `cffb1ee`)): merged as notes: F15.5 into STG-14, F46.2 into STG-14; closed as done: F46.1; dropped: F46.3
 
 *Later notes: `notes.d/HOLD-19/`, oldest first (`python tools/register.py show HOLD-19`).*
@@ -2862,7 +2862,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The Lead's answer to E120's builder, 2026-11-09, with the designer's check; the operator's framing, 2026-11-09: "the user would have to procvide it and/or adjust what the search finds"
 
-**When:** **Unscheduled**, placed by the operator inside SYS-19's finish line, 2026-11-11: "yup if it knows it tehn yes statre it". The designer's input contract holds it to about 2 PRs to first use; PR 1 is in review
+**When:** **Unscheduled**, placed by the operator inside SYS-19's finish line, 2026-11-11: "yup if it knows it tehn yes statre it". The designer's input contract holds it to about 2 PRs to first use; PR 1 briefed, fixes in progress
 
 **Notes:** Filed by the week's register PR. E120 is a partial delivery of the operator's decision of 2026-10-30 and must not read as closed: it says AEW couldn't look, not what was missed
 
@@ -3438,7 +3438,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** Row spec RS-35 of the hold match (`ROW-SPECS.yaml`, design workspace `a239a8e`). The hold match of 2026-11-06 (design workspace `cffb1ee`, HOLD-14), routing A-14's requirements P01-04, P01-06 to P01-11, P01-24, P01-29, P01-32, P01-34, P01-37 and P01-38; A-14 adopted at `docs/contracts/A-14/A-14__AEW-P01-Project-Understanding-and-Maps-Contract-candidate-v0.2.1.md`; P-DEC-02 (maps stay derived and agent-reachable, with no protected map writer and no custody service) in the operator's first selections of 2026-10-24
 
-**When:** **V-01.** The hold match recommends the row at V-01 and the operator accepted the batches as recommended (2026-11-06); V-01 serves the built structural map to agents for orientation and structure (the operator's first selections of 2026-10-24). It works on the built maps (F22.1) and waits on no other row. Placed now by the operator, 2026-11-11: "we can do the maps profile since maps is mostly done right?", as its own PR right after SYS-07's switch-on (E62); it adds no system to the limit's count.
+**When:** **V-01.** The hold match recommends the row at V-01 and the operator accepted the batches as recommended (2026-11-06); V-01 serves the built structural map to agents for orientation and structure (the operator's first selections of 2026-10-24). It works on the built maps (F22.1) and waits on no other row. Placed now by the operator (the Lead's reading of the question), 2026-11-11: "we can do the maps profile since maps is mostly done right?", as its own PR right after SYS-07's switch-on (E62); it adds no system to the limit's count.
 
 **Notes:** Its neighbour is E62, maps on for every card (restored by the hold match at V-01): E62 turns the pack slices on, and this row qualifies what they serve. P01-12's served line and HOLD-14's 'For the operator' bullet in the hold match (HOLD-MATCH.md) add that this row also qualifies the pack slices' own bounds and omission counts, the slices' share of P01-12, which F15.8 (HOLD-06, the typed map reads' envelope) owns; P01-12 stays F15.8's. It is not F22 (the architecture map and composed view, P01-20 and P01-22, Unscheduled), F22.2 (the semantic layer, On measured need behind CAPR-B2 under P-DEC-03), F22.3 (test and constraint indexes) or F30 (impact analysis). It is not a site map view: V-01 shows maps on the agents' route only, and the shared read wire carries no map read for V-01 (P-DEC-04, the selection before I-7). Maps are never evidence. E62's regenerate-on-publish half leaves E62 and is not this row's. A neighbour filed since this spec: E184, `maps.pack_slices` on for every card. Filed from its row spec by the row-specs register PR
 

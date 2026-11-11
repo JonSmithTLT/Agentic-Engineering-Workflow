@@ -28,7 +28,19 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 13 — SYS-40, SYS-42, SYS-44, SYS-48, SYS-03, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47
+**Members:** 14 — SYS-19, SYS-40, SYS-42, SYS-44, SYS-48, SYS-03, SYS-04, SYS-07, SYS-08, SYS-30, SYS-32, SYS-39, SYS-46, SYS-47
+
+### SYS-19 — Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
+
+**Board state:** partly_built
+
+**Who:** Lead (E120, E243)
+
+**Now:** 9
+
+**Own slices left:** 2 — E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known (E120); A project-owned source for E120's two lists, to the designer's input contract: PR 1 (the coverage declaration, the honest lines, doctor rows, the guide) briefed, fixes in progress, then PR 2 (the selector in the validation executor) (E243) — **Next:** E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known — E120 — 1-2 PRs (estimate)
+
+**Wired:** cli:check run, dashboard:/evidence/{id}
 
 ### SYS-40 — Lead reports (report_write)
 
@@ -194,7 +206,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 15 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-29, SYS-22, SYS-41, SYS-43, SYS-06, SYS-45, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 14 — SYS-02, SYS-05, SYS-09, SYS-29, SYS-22, SYS-41, SYS-43, SYS-06, SYS-45, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-02 — Agent containment (Linux core on; Windows backend and follow-ons)
 
@@ -233,18 +245,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 3 — `aew init --fetch-tool none`: downloads nothing, shows no consent screen and leaves each tool unanswered (E191); The stale texts in the code, the package docstring (capability/__init__.py:8-10) among them; comments and strings only (E196); Later: MCP servers and SPT's records (A-54, SPB), host placement and network; designed only (STG-15) — **Next:** `aew init --fetch-tool none`: downloads nothing, shows no consent screen and leaves each tool unanswered — E191 — part of 1 small PR with E196 (estimate)
 
 **Wired:** cli:capability list, cli:capability check, cli:capability import, cli:capability add, cli:capability remove, cli:capability host-copies, cli:doctor
-
-### SYS-19 — Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
-
-**Board state:** partly_built
-
-**Who:** Lead (E120, E243, E334)
-
-**Now:** 9
-
-**Own slices left:** 3 — E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known (E120); A project-owned source for E120's two lists, to the designer's input contract: PR 1 (the coverage declaration, the honest lines, doctor rows, the guide) is in review, then PR 2 (the selector in the validation executor) (E243); A check's declared caches leave the working state every reader takes (the snapshot, changed_paths and the Ticket commit); being built (E334) — **Next:** E120: what its first PR left owed: the record's section 2 (what a run went without), with E243's source for the two lists its record now says are not known — E120 — 1-2 PRs (estimate)
-
-**Wired:** cli:check run, dashboard:/evidence/{id}
 
 ### SYS-29 — Resource, model and host policy (wire increment I-6)
 

@@ -13,8 +13,12 @@ def zero_cost(entry: dict[str, Any]) -> bool:
         costs = [costs]
     if not costs:
         return True
-    return all(float(c.get("input") or 0) == 0 and float(c.get("output") or 0) == 0
-               for c in costs if isinstance(c, dict))
+    return isinstance(costs, list) and all(
+        isinstance(tier, dict)
+        and all(isinstance(rate, (int, float)) and not isinstance(rate, bool) and rate == 0
+                for rate in (tier.get("input", 0), tier.get("output", 0)))
+        for tier in costs
+    )
 
 
 def free_model(ref: str, catalog: list[dict[str, Any]]) -> str | None:
@@ -39,14 +43,19 @@ def _has_paid_base(entry: dict[str, Any]) -> bool:
     base = [tier for tier in tiers if isinstance(tier, dict) and "tier" not in tier] if isinstance(tiers, list) else []
     rates = [base[0].get(name) for name in ("input", "output")] if len(base) == 1 else []
     prices = [rate for rate in rates if isinstance(rate, (int, float)) and not isinstance(rate, bool)]
-    return len(prices) == 2 and all(math.isfinite(rate) and rate >= 0 for rate in prices) \
+    return len(prices) == 2 and all((isinstance(rate, int) or math.isfinite(rate)) and rate >= 0 for rate in prices) \
         and any(rate > 0 for rate in prices)
 
 
 def paid_base_problem(entry: dict[str, Any]) -> str | None:
     """A worker's OpenCode Zen pin requires a verified paid base price."""
-    ref = f"opencode/{entry['id']}"
-    if free_model(ref, [entry]) is not None:
-        return (f"model {ref} does not have a verified paid base price; dispatch a new invocation with "
-                "--profile or --model to pin a paid OpenCode model or choose another provider")
-    return None
+    model = entry.get("id")
+    if isinstance(model, str) and model:
+        ref = f"opencode/{model}"
+        if free_model(ref, [entry]) is None:
+            return None
+        label = f"model {ref}"
+    else:
+        label = "the OpenCode model with a missing or invalid catalog id"
+    return (f"{label} does not have a verified paid base price; dispatch a new invocation with "
+            "--profile or --model to pin a paid OpenCode model or choose another provider")

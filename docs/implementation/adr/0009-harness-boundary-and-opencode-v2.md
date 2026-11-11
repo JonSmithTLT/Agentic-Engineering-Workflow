@@ -2032,8 +2032,12 @@ row, and the supervisor reads it afresh before feeding the relay. Both reads are
 read-only and host-side. SQLite may create WAL sidecar files as a filesystem side effect. The main file and
 its rows stay unchanged. One login decides per provider for the Lead and workers, active first, then by update time
 and descending row ID. Workers only use API-key rows and each launch read selects only the pinned provider's row.
-A refreshing deciding login remains the Lead's login and workers use the named export. The launch record names the source. The
-control-state run entry's `provider_key_admission` carries the non-secret row identity and update time
+A refreshing deciding login remains the Lead's login and workers use the named export.
+The worker lookup uses core SQL for Rocky 8 compatibility without JSON1. It reads and parses the
+whole deciding value on the host, then discards OAuth text after classification. OAuth contents
+never reach a return value, record, log, error or sandbox.
+The launch record names the source. The control-state run entry's `provider_key_admission`
+carries the non-secret row identity and update time
 for comparison. The key never
 enters the launch contract, the record, the harness environment, logs or errors. The worker
 receives a sentinel. An upstream rejection ends the attempt with that credential. The next

@@ -262,7 +262,10 @@ def worker_keys(env: Mapping[str, str], providers: set[str]) -> tuple[dict[str, 
     """Read the deciding API-key rows for the requested providers in one bounded operation.
 
     Select only the deciding row for each provider with ordinary SQLite SQL. Discard any row
-    that is not an API-key row. Diagnostics never include the path.
+    that is not an API-key row. To support Rocky 8 without SQLite JSON1, the host reads and
+    parses the whole deciding value in Python. If it is OAuth, the text is discarded after
+    classification. Its contents never reach a return value, record, log, error or sandbox.
+    Diagnostics never include the path.
     """
     if not providers:
         return {}, {}

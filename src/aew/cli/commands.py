@@ -337,9 +337,10 @@ def _authority_decide(a: argparse.Namespace) -> Any:
     digest = subject["digest"]
     if action == "accept" and subject["kind"] == "file, missing":
         from aew.errors import NotFound
+        from aew.harness.contract import EXPECT_REV
 
         raise NotFound(f"authority candidate file {subject['path']} is missing. "
-                       f"Reject it with aew authority reject {a.candidate}.", path=subject["path"])
+                       f"Reject it with `aew authority reject {a.candidate} {EXPECT_REV}`.", path=subject["path"])
     summary = f"{action} {subject['path']} ({subject['kind']}, SHA-256 {digest})"
     if action == "accept":
         summary += f" as {a.klass} authority"

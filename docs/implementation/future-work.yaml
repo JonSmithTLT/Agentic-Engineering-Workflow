@@ -120,7 +120,7 @@ sections:
     | 8 | closed: E119 | `aew init` takes the check, model and provider names, with the oracle's row and driver in one PR, closed by #329 |
     | 9 | E120 | Validation's coverage on the record, and failure lines back to the worker |
     | 10 | closed: E121 | A readable result: a headline per result in chat, closed by #328 |
-    | 11 | E122 | The next step while the Lead waits |
+    | 11 | closed: E122 | The next step while the Lead waits, closed by #352 and #358 |
     | 12 | closed: STG-03 | G3-C, E82 and the G3 install, closed by #363, #365, #374, #386 and #389 and the operator's root session on a Linux host, 2026-11-10 |
     | 13 | E123 | **Before the work step:** the relay presenting a client certificate, and the bundle (E99, adopted as A-55) |
     | 14 | STG-15, E35 | CAP-1 PR 3, right after PR 2 and beside first use, which it doesn't hold. **After those:** H-1, H-2 and H-3 |
@@ -158,7 +158,7 @@ sections:
 
     **The systems generator** (item 39; the operator, 2026-11-06, "Now, PR 1 first"): its PR 1 takes the next free slot after the first-use one-offs in flight, and PRs 2 and 3 follow it. It doesn't delay first use.
 
-    **Contention for a slot:** what blocks other items, starts a series or unlocks a capability that can be tested goes first, and a chain of pull requests keeps moving beside the one-offs (the operator, 2026-11-04). The Lead's placements under that rule: CAP-1 PR 2, then PR 3, hold one slot; E125 follows E119, on the way to V3's first green; E127 follows CAP-1 PR 2, since both change the same binds. Items 19 to 25 are the Lead's placements of 2026-11-05, and items 26, 37 and 38 of 2026-11-06; none of them is a condition of first use unless the operator says so. The other one-offs keep the operator's order of 2026-11-03: E121, E122, E120, with E119 alongside, then E126, E118 and E35's probe. E117 runs when the operator judges there's something new to measure, as the last step before first use. **The numbers name the items, and don't set the order.** **New design stops until the first receipt,** except what first use surfaces, SPB's adoption question, the research the operator asked for and what the operator asks for directly (the Lead's leeway, 2026-11-06), so a new ruling becomes a row only if it serves this list. **Everything moved stays in V-01,** except the plan assessment gate (V-01's item 10), which the operator placed in the alpha on 2026-11-06 (E160), and V-01 stays the gate before any release. **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
+    **Contention for a slot:** what blocks other items, starts a series or unlocks a capability that can be tested goes first, and a chain of pull requests keeps moving beside the one-offs (the operator, 2026-11-04). The Lead's placements under that rule: CAP-1 PR 2, then PR 3, hold one slot; E125 follows E119, on the way to V3's first green; E127 follows CAP-1 PR 2, since both change the same binds. Items 19 to 25 are the Lead's placements of 2026-11-05, and items 26, 37 and 38 of 2026-11-06; none of them is a condition of first use unless the operator says so. The other one-offs keep the operator's order of 2026-11-03: E121 and E122 (both closed), then E120, with E119 alongside, then E126, E118 and E35's probe. E117 runs when the operator judges there's something new to measure, as the last step before first use. **The numbers name the items, and don't set the order.** **New design stops until the first receipt,** except what first use surfaces, SPB's adoption question, the research the operator asked for and what the operator asks for directly (the Lead's leeway, 2026-11-06), so a new ruling becomes a row only if it serves this list. **Everything moved stays in V-01,** except the plan assessment gate (V-01's item 10), which the operator placed in the alpha on 2026-11-06 (E160), and V-01 stays the gate before any release. **After I-6,** V-01's next build items are the provider relay's meter (E97), then R-01's qualification of the paid class (E98), which judges that meter (the Lead's order, as A-42's adoption leaves it). They join this list when they are queued.
 
     **The milestones and gates, in order.** They replace the gates this section held before the rebaseline, and the M4, M5 and M6 targets (register rebaseline, operator, 2026-10-24).
 - number: 2
@@ -2431,13 +2431,6 @@ sections:
     Work: Validation's coverage goes on the record, saying what it did not check, and a failing check's lines go back to
       the worker. Results also list the skills a run asked for and did not get
     Source: the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`); dogfood findings
-      of 2026-10-31
-    When: '**Now.**'
-    Notes: Filed by the Lead
-
-  - '#': E122
-    Work: The next step while the Lead waits on a run, so a mid-tier Lead does not stop or spin
-    Source: the operator's decision of 2026-11-02, a personal alpha before V-01 (design workspace `0c4ad71`); dogfood finding
       of 2026-10-31
     When: '**Now.**'
     Notes: Filed by the Lead
@@ -5944,6 +5937,12 @@ sections:
     Was: 'A readable result: a headline per result in the Lead''s chat'
     Closed: '2026-11-05'
     By: '#328 (`7e06f876`)'
+
+  - '#': E122
+    Was: The next step while the Lead waits on a run, so a mid-tier Lead does not stop or spin
+    Closed: '2026-11-07'
+    By: '#352 (`a7633b44`) and #358 (`f398f258`): each return of `harness_wait` is a decision point, and `WAKE_GUIDE` and
+      `WAIT_TIMED_OUT` in `src/aew/harness/contract.py` own what each return says; the Lead''s wait returns on a trigger'
 
   - '#': E125
     Was: 'The local readiness surface, V-01''s row 11 as amended: before any Ticket, a setup problem is named with its cause

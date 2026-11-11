@@ -152,7 +152,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 18 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-06, SYS-29, SYS-22, SYS-08, SYS-41, SYS-43, SYS-45, SYS-03, SYS-04, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 18 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-29, SYS-22, SYS-08, SYS-41, SYS-43, SYS-06, SYS-45, SYS-03, SYS-04, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-02 — Agent containment (Linux core on; Windows backend and follow-ons)
 
@@ -203,18 +203,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 4 — E120: what its first PR left owed: the record's section 2 (what a run went without), and E243's project-owned source for the two lists its record now says are not known (E120); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): artifact_digests, always empty: populate or drop (BOARD v2 §4 loose end) (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): working_diff, never called: keep or remove (BOARD v2 §4 loose end) (row owed); A project-owned source for E120's two lists (E243) — **Next:** E120: what its first PR left owed: the record's section 2 (what a run went without), and E243's project-owned source for the two lists its record now says are not known — E120 — 1-2 PRs (estimate)
 
 **Wired:** cli:check run, dashboard:/evidence/{id}
-
-### SYS-06 — Typed agent surfaces (the Lead's catalog and transports; role-side MCP servers)
-
-**Board state:** partly_built
-
-**Who:** operator (placing F15.3 and F15.8 out of HOLD-06, after the designer's match); then Lead. Lead for the DESIGNED-status loose end
-
-**Now:** 11
-
-**Own slices left:** 11 — FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F15.3: the aew-run role server over the existing run bridge (whoami, check.run and typed submit as in-sandbox MCP tools; the supervisor keeps the credential). Held in HOLD-06 until the designer's match and the operator's placement (F15.3); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F15.8: the aew-run read half (map.* reads, evidence.show, check.suggest as bridge operations; tools.presentation). Waits on typed map and evidence reads (F15.8); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): aew-knowledge as its own capability namespace over the shared transport library: part of F15.3's text, so held with it in HOLD-06; what it serves waits on K-01's increment (F15.3); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): typed Lead rows for maps, history, settings, usage and g3, reachable today only untyped through the shell rule `aew *` (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): BOARD v2 §4 loose end and §6 stale text: drop the catalog's unused DESIGNED status and correct the contract.py docstring that says rows stay DESIGNED (row owed); E122: the next step while the Lead waits. Waiting is one blocking request, never a polling loop (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 3) (E122); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): The Lead's request-economy text remains owed after E139's worker-pack fixes (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 3) (E162); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): Lead text fixes, and a typed `plan accept` (E162); The Lead's tool budget, decided before E158 (E231); The Lead's exits: the eight dead ends, and the lands guard (E233); The worker route's size check (E241) — **Next:** FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F15.3: the aew-run role server over the existing run bridge (whoami, check.run and typed submit as in-sandbox MCP tools; the supervisor keeps the credential). Held in HOLD-06 until the designer's match and the operator's placement — F15.3 — 1-2 PRs (estimate, census)
-
-**Wired:** cli:lead mcp, cli:lead tool, lead_text
 
 ### SYS-29 — Resource, model and host policy (wire increment I-6)
 
@@ -275,6 +263,18 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 4 — the `plan_assessment` kind, its schema and the revision binding (E160); the assessor entrypoint for Tickets and parents, its pack and the anti-shopping rule (E160); the gate on the class paths and its dispatch refusal, the planner-review credit, the findings' source kind with the waiver refusal, and the operator's dismissal (E160); the Lead's staffing text (one passage beside E127's staffing line) and engine enforcement of `requires_distinct_invocation_from` (E160) — **Next:** the `plan_assessment` kind, its schema and the revision binding — E160 — about 1 PR (estimate; the designer's reading, planner design Q3: 3-4 PRs in all)
 
 **Wired:** none
+
+### SYS-06 — Typed agent surfaces (the Lead's catalog and transports; role-side MCP servers)
+
+**Board state:** partly_built
+
+**Who:** operator (placing F15.3 and F15.8 out of HOLD-06, after the designer's match); then Lead. Lead for the DESIGNED-status loose end
+
+**Now:** 33
+
+**Own slices left:** 10 — FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F15.3: the aew-run role server over the existing run bridge (whoami, check.run and typed submit as in-sandbox MCP tools; the supervisor keeps the credential). Held in HOLD-06 until the designer's match and the operator's placement (F15.3); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F15.8: the aew-run read half (map.* reads, evidence.show, check.suggest as bridge operations; tools.presentation). Waits on typed map and evidence reads (F15.8); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): aew-knowledge as its own capability namespace over the shared transport library: part of F15.3's text, so held with it in HOLD-06; what it serves waits on K-01's increment (F15.3); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): typed Lead rows for maps, history, settings, usage and g3, reachable today only untyped through the shell rule `aew *` (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): BOARD v2 §4 loose end and §6 stale text: drop the catalog's unused DESIGNED status and correct the contract.py docstring that says rows stay DESIGNED (row owed); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): The Lead's request-economy text remains owed after E139's worker-pack fixes (designer-decisions-2026-11-06-rate-limit-unit.md, ruling 3) (E162); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): Lead text fixes, and a typed `plan accept` (E162); The Lead's tool budget, decided before E158 (E231); The Lead's exits: the eight dead ends, and the lands guard (E233); The worker route's size check (E241) — **Next:** FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F15.3: the aew-run role server over the existing run bridge (whoami, check.run and typed submit as in-sandbox MCP tools; the supervisor keeps the credential). Held in HOLD-06 until the designer's match and the operator's placement — F15.3 — 1-2 PRs (estimate, census)
+
+**Wired:** cli:lead mcp, cli:lead tool, lead_text
 
 ### SYS-45 — Branch review and document work (ref_review, technical_writer)
 

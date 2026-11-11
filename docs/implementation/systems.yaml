@@ -837,10 +837,6 @@ systems:
       that says rows stay DESIGNED'
     row: row owed
     estimate: part of one small batched PR (estimate)
-  - slice: 'E122: the next step while the Lead waits. Waiting is one blocking request, never a polling loop (designer-decisions-2026-11-06-rate-limit-unit.md,
-      ruling 3)'
-    row: E122
-    estimate: 1 PR (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
       The Lead''s request-economy text remains owed after E139''s worker-pack fixes (designer-decisions-2026-11-06-rate-limit-unit.md,
       ruling 3)'

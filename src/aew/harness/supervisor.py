@@ -53,6 +53,7 @@ HANDOFF_LIMIT = 64 * 1024
 TERMINATE_S = 20.0
 ENDING_EXTRA_S = 60.0  # beyond the adapter's stop: collection and the evidence and credential scans
 START_ENV = "AEW_RUN_START_S"
+UNDECIDED = object()  # a run's deadline before custody decides it: `watch` reads it as the profile's (bounded)
 STARTING_MARGIN_S = 60.0  # beyond the self-test and the adapter's launch: the contract, the bridge, the layout
 # The error type of a provider refusal on content, as the adapter's detail spells it ("failed (provider.content-filter,
 # 200: ...)"); matched at the type, never in the provider's message text (PR #310 review, F3).
@@ -196,7 +197,9 @@ class Supervisor:
         self._started_mono: float | None = None  # when the harness started: the usage record's wall time (F25 R1)
         self._start_s = 0.0  # the start's deadline in seconds from custody, and as a monotonic time
         self._start_until: float | None = None
-        self.deadline_s: Any = None  # the hard deadline this run gets, decided at custody (``applied_deadline``)
+        # The hard deadline this run gets, decided at custody (``applied_deadline``). Until ``start`` decides it, it is
+        # UNDECIDED, which ``watch`` reads as the bounded side, never as no deadline (PR 4 review, n3).
+        self.deadline_s: Any = UNDECIDED
         self.stop_reason: tuple[str, str] | None = None  # (status, reason) requested by a bridge refusal
         self._control_seen: Any = None
         self._state_unreadable = False  # the last lock-free state read failed (logged once until one succeeds)
@@ -316,8 +319,11 @@ class Supervisor:
         profile = inv["execution_profile"] or {}
         self.record.update(work_unit=inv["work_unit"], role=inv["role"], harness=profile.get("harness"),
                            execution_profile=profile)
-        # Decided here, from the state custody was checked against, never after the launch: a Run that ends while the
-        # harness starts must not leave a run it started unbounded (quick check of E228's third PR, M1)
+        # Decided here, from the state custody was checked against, never after the launch, so a Run that ends while the
+        # harness starts keeps this run's deadline (quick check of E228's third PR, M1). The decision point is custody,
+        # not the dispatch: a Run that stops being effective between the dispatch commit and this read (lowered by the
+        # operator or the Lead, its generation ended, or an adopt changing the default) gives the run no Run-only
+        # deadline, and it runs as the new mode does. The design accepts that window (PR 4 review, m1).
         self.deadline_s = self.applied_deadline(state)
         # Beat before the first record: a non-terminal record with no heartbeat reads as `lost`, and writing the record
         # wakes every `harness wait` into exactly that gap (CI, Windows, 2026-10-09; register E3).
@@ -521,7 +527,7 @@ class Supervisor:
 
     def watch(self) -> None:
         self._watching.set()
-        deadline_s = self.deadline_s
+        deadline_s = self.applied_deadline(None) if self.deadline_s is UNDECIDED else self.deadline_s
         deadline = time.monotonic() + deadline_s if deadline_s else None
         last_beat = last_poll = 0.0
         unread = False  # the last authority read failed: read again at the next tick (#366 review, M2)

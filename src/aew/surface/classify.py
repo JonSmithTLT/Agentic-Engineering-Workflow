@@ -48,11 +48,10 @@ AUTO_RUN = frozenset({"ticket_start", "ticket_request_review"})
 
 
 def auto_run_set(tools: Mapping[str, Tool]) -> frozenset[str]:
-    """The tools of ``tools`` that ``auto_runnable`` can ever admit: built progression rows whose class, called with
-    no promoting argument (``execution`` for the two shipped steps), is not judgment-bearing. A promoting argument only
-    raises a class, never lowers it, so a call with one is never auto-runnable."""
-    return frozenset(name for name, t in tools.items()
-                     if t.progression and t.built and effective_class(t) != JUDGMENT_BEARING)
+    """The tools of ``tools`` that ``auto_runnable`` can ever admit, by its own rule (called, never restated: PR 4
+    review, n2): each legal now and called with no promoting argument (``execution`` for the two shipped steps). A
+    promoting argument only raises a class, never lowers it, so a call with one is never auto-runnable."""
+    return frozenset(name for name, t in tools.items() if auto_runnable(t, AVAILABLE, effective_class(t)))
 
 
 def auto_runnable(t: Tool | None, availability: str, operation_class: str) -> bool:

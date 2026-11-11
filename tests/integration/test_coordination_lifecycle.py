@@ -1097,6 +1097,64 @@ def test_migrating_a_v1_project_that_adopted_messaging_registers_it(tmp_path):
     assert_control_invariants(w)
 
 
+def _raise_walk(w: World) -> None:
+    from aew.engine import steering as S
+
+    principal = S.OperatorPrincipal(uid=None, method="peer_credentials", endpoint_pid=os.getpid(),
+                                    endpoint_started_at="2026-11-11T00:00:00Z")
+    w.e.steering_raise(principal, mode="walk", generation=int(state(w)["lead"]["generation"]),
+                       legality_digest=w.e.policy_digests()["legality_digest"])
+
+
+def _steering_records(w: World) -> list[dict[str, Any]]:
+    return [json.loads(line) for f in sorted((w.root / ".aew/records/steering").glob("*.jsonl"))
+            for line in f.read_text(encoding="utf-8").splitlines()]
+
+
+def test_migrating_a_v1_project_records_its_adopted_steering_default_so_a_raise_outlives_an_unrelated_adopt(tmp_path):
+    """#432's merge check, M1: a v1 project cannot hold the v2-only steering key, so its adoption of the template's
+    crawl records nothing; the migration that makes it v2 records crawl as the standing mode (`via: migrate`), as
+    coordination's registration is recorded. So the recorded default is the pinned policy's, and an operator raise to
+    walk outlives the next adopted edit of another file (before, that edit saw crawl != none and dropped the raise)."""
+    from aew.engine import steering as S
+    from aew.engine.base import as_v1
+    from aew.engine.store import serialize_control
+
+    w = world(tmp_path, messaging=None)
+    (w.root / ".aew/state/control.yaml").write_bytes(serialize_control(as_v1(load_control(w.root))))
+    set_messaging(w.root, "enabled")
+    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="while v1", authorization=OPERATOR)
+    assert "steering" not in state(w)
+    out = w.e.migrate(token=w.token, expect_rev=w.rev())
+    now = S.effective(state(w))
+    assert state(w)["steering"]["default"] == "crawl" and (now["mode"], now["source"]) == ("crawl", S.STANDING_DEFAULT)
+    record = next(r for r in _steering_records(w) if r["id"] == now["record"])
+    assert (record["by"]["via"], record["new"], record["revision"]) == ("migrate", "crawl", out["revision"]), record
+    _raise_walk(w)
+    set_messaging(w.root, "disabled")  # an adopted edit that does not touch steering
+    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="unrelated edit", authorization=OPERATOR)
+    assert S.effective(state(w))["mode"] == "walk"
+    assert_control_invariants(w)
+
+
+def test_a_raise_on_a_project_fresh_from_init_outlives_an_unrelated_adopt(tmp_path):
+    """#432's merge check, M1, its init half: `aew init` records the pinned template's crawl as the standing mode in
+    revision 0 (`via: init`), so a raise made before any adopt outlives the first adopted edit of another file."""
+    from aew.engine import steering as S
+
+    w = world(tmp_path, messaging=None)
+    now = S.effective(state(w))
+    assert state(w)["steering"]["default"] == "crawl" and (now["mode"], now["source"]) == ("crawl", S.STANDING_DEFAULT)
+    record = next(r for r in _steering_records(w) if r["id"] == now["record"])
+    assert (record["by"]["via"], record["previous"], record["revision"]) == ("init", None, 0), record
+    assert record["legality_digest"] == w.e.policy_digests()["legality_digest"]  # the digests of what init pinned
+    _raise_walk(w)
+    set_messaging(w.root, "enabled")
+    w.e.manifest_adopt(token=w.token, expect_rev=w.rev(), reason="unrelated edit", authorization=OPERATOR)
+    assert S.effective(state(w))["mode"] == "walk"
+    assert_control_invariants(w)
+
+
 def test_resolving_a_stage_ends_no_invocation_and_needs_no_seal(w):
     """M4-E E3c's resolutions (`stage abandon`, `stage continue`) are Lead transactions that change only the intent:
     a `launch_failed` stop leaves the invocation active (a relaunch is `harness.launch`). So they are not ending paths

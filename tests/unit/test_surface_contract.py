@@ -239,13 +239,11 @@ def test_auto_runnable_is_only_a_built_legal_non_judgment_progression_row():
 
 def test_only_the_two_declared_steps_auto_run_each_called_without_execution():
     """Register E83 (R01-38; R-DEC-04): the shipped stages `auto_runnable` can admit are exactly the declared set,
-    ticket_start and ticket_request_review, so a stage that joins or leaves it fails here; the derived set is
-    `auto_runnable`'s own rule, tool by tool; and each is admitted only when called without `execution`, which
-    promotes it to judgment-bearing. (That only Run lets them run unconfirmed is the steering loop's rule, tested in
+    ticket_start and ticket_request_review, so a stage that joins or leaves it fails here (the derived set calls
+    `auto_runnable` itself); and each is admitted only when called without `execution`, which promotes it to
+    judgment-bearing. (That only Run lets them run unconfirmed is the steering loop's rule, tested in
     tests/integration/test_steering_loop.py.)"""
     assert auto_run_set(contract.TOOLS) == AUTO_RUN == {"ticket_start", "ticket_request_review"}
-    for name, t in contract.TOOLS.items():
-        assert (name in auto_run_set(contract.TOOLS)) == auto_runnable(t, AVAILABLE, effective_class(t)), name
     for name in sorted(AUTO_RUN):
         t = contract.TOOLS[name]
         assert "execution" in t.promotes, name

@@ -22,7 +22,13 @@ from typing import Any
 
 import pytest
 import yaml
-from aewflow import create_planned_ticket, sample_project, set_mutating_concurrency, stand_in_containment
+from aewflow import (
+    create_planned_ticket,
+    sample_project,
+    set_mutating_concurrency,
+    stand_in_containment,
+    without_steering,
+)
 from fake_harness import POLICY, HarnessLab
 from invariants import load_control
 from legality_modules import legality_modules
@@ -400,42 +406,41 @@ def test_protected_path_overlap_stops_every_mode(calc, tmp_path):
     assert "PROTECTED_CONDITION_OVERLAP" in stops[0][1] and wid in stops[0][1]
 
 
-class Recorded:
-    """An executor that records each call with its arguments and runs nothing."""
-
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
-
-    def __call__(self, engine: Any, ctx: Any, name: str, arguments: dict[str, Any], **kw: Any) -> dict[str, Any]:
-        self.calls.append((name, dict(arguments)))
-        return {"ok": True, "stopped": None, "stage_intent_id": None, "revision": arguments.get("expect_rev")}
-
-
-def test_under_run_a_ticket_held_for_a_conflict_is_started_by_the_loop_once_released(tmp_path):
+def test_under_run_a_ticket_held_for_a_conflict_is_started_by_the_loop_once_released(tmp_path, monkeypatch):
     """E228's proof: under Run, a Ticket whose scope meets a live Ticket's is held by the launch conflict check
-    (FILES_CONFLICT, CNI-03.a), and the loop stops on that hold, starting nothing; once the live Ticket is cancelled,
-    which releases its workspace, the loop itself starts the held one, with no Lead call in between."""
+    (FILES_CONFLICT, CNI-03.a), and the loop stops on that hold, starting nothing for it; once the live Ticket is
+    cancelled, which releases its workspace, the same loop's next activation starts the held one through the real
+    tool (no recorder: it is RUNNING with a run on the fake harness), with no Lead call in between."""
     p = sample_project(tmp_path)
-    set_mutating_concurrency(p, 3)
-    command, _ = recorder(tmp_path)
-    bounded(p, command)
-    first = create_planned_ticket(p, tmp_path, title="Add subtract()", scope=("calc/**", "tests/**"))
-    second = create_planned_ticket(p, tmp_path, title="Add two", scope=("calc/two.py", "tests/test_two.py"))
-    p.lead("work", "assign", first)
-    raise_to(Engine.discover(p.root), "run")
-    ep = operator_endpoint.OperatorEndpoint(Engine.discover(p.root), console=Console(), dev=True, timeout=10)
-    ep.start()
+    lab = launching(p, tmp_path, monkeypatch)
+    lab.script("default", HANG)
     try:
-        held = Recorded()
-        stop = loop(p, executor=held).activate()
-        assert not [c for c in held.calls if c[1].get("work_id") == second], held.calls
-        assert stop.code == L.BLOCKED and stop.subject == second and "FILES_CONFLICT" in stop.message, stop
-        p.lead("work", "transition", first, "--to", "CANCELLED", "--reason", "the objective moved elsewhere")
-        released = Recorded()
-        loop(p, executor=released).activate()
+        set_mutating_concurrency(p, 3)
+        command, _ = recorder(tmp_path)
+        bounded(p, command)
+        first = create_planned_ticket(p, tmp_path, title="Add subtract()", scope=("calc/**", "tests/**"))
+        second = create_planned_ticket(p, tmp_path, title="Add two", scope=("calc/two.py", "tests/test_two.py"))
+        p.lead("work", "assign", first)
+        raise_to(Engine.discover(p.root), "run")
+        ep = operator_endpoint.OperatorEndpoint(Engine.discover(p.root), console=Console(), dev=True, timeout=10)
+        ep.start()
+        try:
+            lp = loop(p)  # one loop for both activations, as the broker keeps one
+            stop = lp.activate()
+            assert stop.code == L.BLOCKED and stop.subject == second and "FILES_CONFLICT" in stop.message, stop
+            assert not [x for x in lp.executed if x["subject"] == second], lp.executed
+            p.lead("work", "transition", first, "--to", "CANCELLED", "--reason", "the objective moved elsewhere")
+            lp.activate()
+        finally:
+            ep.close()
+        started = [x for x in lp.executed if (x["action"], x["subject"]) == ("ticket_start", second)]
+        assert started and started[0]["ok"], lp.executed
+        control = load_control(p.root)
+        assert control["work"][second]["state"] == "RUNNING", control["work"][second]
+        invocations = [i for i in control["invocations"].values() if i["work_unit"] == second]
+        assert invocations and invocations[-1]["runs"], invocations  # the run the start launched is recorded
     finally:
-        ep.close()
-    assert ("ticket_start", second) in [(name, args.get("work_id")) for name, args in released.calls], released.calls
+        lab.cleanup()
 
 
 def test_high_anomaly_stops_every_mode(calc, tmp_path):
@@ -617,6 +622,7 @@ def test_under_run_the_loop_auto_runs_ticket_request_review_through_the_real_too
         assert [s["primitive"] for s in si["steps"]] == ["work.transition", "invoke.create.mutating",
                                                          "dispatch.launch"], si
         assert si["steps"][2]["outputs"]["runs"], si  # the reviewer was launched
+        assert si["auto_run"]["mode"] == "run", si  # attributed to the loop, under Run
     finally:
         lab.cleanup()
 
@@ -1160,6 +1166,7 @@ def test_the_loop_runs_in_the_broker_and_stops_with_its_session(p, tmp_path):
 
 def test_a_project_without_steering_records_nothing(project):
     """Decision 3: with no steering mode the loop does nothing and writes nothing."""
+    without_steering(project)
     stop = loop(project, executor=Spy()).activate()
     assert stop.code == L.OFF and not (project.root / ".aew/local/steering/loop.json").exists()
     assert not event_spool.file_of(project.root / ".aew", event_spool.BROKER).exists()

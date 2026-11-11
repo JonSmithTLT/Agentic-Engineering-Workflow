@@ -11,7 +11,7 @@ versions:
     verdicts:
       - feature: 'Messaging behaviour qualification'
         verdict: 'hold -> consume'
-        reason: 'Offline re-evaluation of the retained additional Linux record under the Lead retry ruling passes all ten selected checks; messaging-2.2.6.json is qualifier-generated, with the full re-evaluation in messaging-2.2.6-linux-reevaluated.json. Retry identity relies only on id, session, text and metadata, with GET proving one admission. Response creation time and mode remain observations, never decision inputs; AEW owns enqueue time and mode and must refuse changed-mode retries. Both historical failed records remain unchanged. Binding implementation is still absent. Windows runtime is NOT RUN and its capability remains GAP.'
+        reason: 'Offline re-evaluation under messaging amendment 3, addendum 1 revision 2 (SHA256 f91361861601e084d561f4b96ee513508c0e4e6b194f3b028e146539c13c5ef5), alongside the Lead ruling, passes all ten selected checks. messaging-2.2.6.json and the separate full Linux re-evaluation record are qualifier-generated. Both admitted retry envelopes gate id, sessionID, text and metadata; GET proves admission and the session list proves once. Only retry time and delivery parts are retired as gates; original observations remain. AEW owns enqueue time and mode and refuses changed-mode retries when transport is built. Both historical failed records remain unchanged. Binding implementation is absent; Windows runtime is NOT RUN and capability remains GAP. E175 tracks request-body retention and a changed-metadata/aew_when probe before the next approved run in PR 3.'
         row: 'E175'
       - feature: 'Session `warming`'
         verdict: 'deny'

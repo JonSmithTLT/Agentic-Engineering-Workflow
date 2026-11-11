@@ -660,6 +660,7 @@
    "queue.admitted_identity_valid": true,
    "queue.admitted_once": true,
    "queue.admitted_retry_does_not_wake": true,
+   "queue.changed_admitted_keeps_identity": true,
    "queue.changed_pending_returns_original": true,
    "queue.duplicate_admitted": true,
    "queue.duplicate_pending": true,
@@ -671,6 +672,7 @@
    "steer.admitted_identity_valid": true,
    "steer.admitted_once": true,
    "steer.admitted_retry_does_not_wake": true,
+   "steer.changed_admitted_keeps_identity": true,
    "steer.changed_pending_returns_original": true,
    "steer.duplicate_admitted": true,
    "steer.duplicate_pending": true,
@@ -15225,8 +15227,17 @@
   },
   "openapi.problems": [],
   "qualification.reevaluation": {
-   "evaluator_revision": "34b53c2fd914969fe9f0fba0da934038c24966f8",
-   "predicate": "post-admission-retry-fields/v1",
+   "addendum": {
+    "digest": "f91361861601e084d561f4b96ee513508c0e4e6b194f3b028e146539c13c5ef5",
+    "parts": [
+     2,
+     4
+    ],
+    "revision": 2,
+    "title": "Messaging amendment 3, addendum 1: retry fields"
+   },
+   "evaluator_revision": "0a1676380480429774bb0418a58cd7a64068791a",
+   "predicate": "post-admission-retry-fields/v2",
    "required_checks": [
     "api.openapi",
     "api.steer_running_turn",
@@ -15278,7 +15289,7 @@
   },
   {
    "fixture": "messaging-2.2.6.json",
-   "how": "measured: messaging behaviour with the scripted loopback model; platform is in the run record",
+   "how": "measured: messaging behaviour with the scripted loopback model; pin is platform-scoped",
    "status": "new"
   },
   {

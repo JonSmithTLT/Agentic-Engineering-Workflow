@@ -177,8 +177,8 @@ The designer's rulings of 2026-11-03 (§3) and 2026-11-04 ("skills by fit"), aft
 
 ## Amendment 2026-11-11 — the specialist reviewers' skills ship (register E142)
 
-The operator's 2026-11-04 decision to serve the two skills the role cards already requested, and the pointer rule inside a skill (operator, 2026-11-10: the pack says what the worker is doing, the skill says how).
+The operator's 2026-11-04 decision to serve the two skills the role cards already requested, and the pointer rule inside a skill (operator, 2026-11-10, decision record `2026-11-10-operator-lead-context-budget.md`: the pack says what the worker is doing, the skill says how).
 
 - **Six skills ship, not four:** `security-review` and `c-review` join the 11-05 amendment's four, under the same manifest, allow-list and `unevaluated` label. `security_reviewer` and `c_reviewer` need no card change: their `skills:` named these all along, and their runs go from "does not provide" to delivered. Every built-in card's `skills:` now ships, and a test keeps it so.
 - **The pointer rule inside a skill.** `SKILL.md` is the always-read core of how to do the task; detail read only when the task needs it moves, verbatim, to `references/` and `examples/`, each with a "when X, read Y" line where it was. Both skills ship their candidate text split this way: `security-review`'s cryptography, secret-lifetime and untrusted-input steps (which its own procedure applies "only where the changed path implicates those properties"), and `c-review`'s C++ lifetime step and its defined-behavior, concurrency and ABI step. Their examples move to `examples/good/` and `examples/bad/`. The split is unmeasured: no model has run either skill.
-- Tests: `tests/unit/test_skill_delivery.py` (the six, every requested skill shipped, the two reviewers' delivery).
+- Tests: `tests/unit/test_skill_delivery.py` (the six, every requested skill shipped, the two reviewers' delivery, and every link in a shipped skill reaching a shipped file that `SKILL.md` links).

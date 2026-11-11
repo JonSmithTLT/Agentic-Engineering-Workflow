@@ -88,15 +88,24 @@ def test_each_shipped_skill_names_itself_by_its_folder_states_its_version_and_sa
 def test_every_link_in_a_shipped_skill_reaches_a_shipped_file_and_skill_md_links_every_one():
     """The pointer rule (E142): a step moved to ``references/`` or ``examples/`` is read only through its link, so a
     broken link loses the step silently. ``specification.md``: each runtime resource has an explicit link from the
-    entrypoint."""
-    link = re.compile(r"\]\(([^)#\s]+)\)")
+    entrypoint. Every link form is read: inline with a ``#fragment``, a ``"title"`` or ``<angle brackets>``, and a
+    reference-style definition; an inline ``](`` the pattern cannot read fails rather than being skipped (E142's
+    review). A link to a fragment of the same file names no file and is left out."""
+    inline = re.compile(r"\]\(\s*<?([^)\s<>]*)>?(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\s*\)")
+    definition = re.compile(r"^ {0,3}\[[^\]]+\]:\s*<?([^\s<>]+)>?", re.M)
     for name, entry in skills.entries().items():
         listed = set(entry["files"])
         linked_from_skill_md: set[str] = set()
         for rel in listed:
             here = PurePosixPath(rel).parent
-            for target in link.findall((SHIPPED / name / rel).read_text(encoding="utf-8")):
-                assert "://" not in target, (name, rel, target)
+            text = (SHIPPED / name / rel).read_text(encoding="utf-8")
+            found = inline.findall(text)
+            assert len(found) == text.count("]("), (name, rel, "an inline link the pattern cannot read")
+            for raw in found + definition.findall(text):
+                target = raw.split("#", 1)[0]
+                if not target and raw.startswith("#"):
+                    continue
+                assert target and "://" not in target, (name, rel, raw)
                 resolved = posixpath.normpath((here / target).as_posix())
                 assert resolved in listed, (name, rel, target)
                 if rel == skills.SKILL_FILE:

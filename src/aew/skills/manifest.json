@@ -51,13 +51,13 @@
   "c-review": {
    "version": "0.1.0",
    "label": "unevaluated",
-   "sha256": "983205dddefb1be8fb0a8b9ef734f6ed7135b1a49d3550ef394a1ea8532e6caa",
+   "sha256": "aedc806f9a661a30f9583e23efc705fd4e0338963d69f0da8e576598b3a39254",
    "files": {
     "examples/bad/missing-local-free.md": "ea9abb30e4365311f70ab69f3c5a9a8eb35499e253bb32acf94ab2645735fcf6",
     "examples/good/replace-buffer-leak.md": "93d5b24c919a895ad9ce1b613711ea1833b63f72bf5f7bda47ed195acf975702",
     "references/cpp-lifetime.md": "f4aaf96517d61c23d54500edb67fb814b480235817669ed017f5a4528386aa66",
     "references/defined-behavior-and-abi.md": "eecd8dd719ad60388449a6b0ebe8de6dad01f61fc26a414af5698e2699af53fd",
-    "SKILL.md": "2172b64e7c170dc815f94a2e4f2b30679d62cc8ab9f8ee025dad67b1f5131845"
+    "SKILL.md": "2b14fd04ab352179bc253504da086cfea692169d76cb3345539f01d46d6f39b9"
    },
    "source": {
     "candidate": "docs/skills/candidates/c-review",

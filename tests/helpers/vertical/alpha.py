@@ -1,10 +1,23 @@
 """The personal alpha's scripted gate, evaluated beside the strict vertical."""
 from __future__ import annotations
 
+import json
 from typing import Any
 
+from aew.harness.models import free_model_id
+from aew.kit.receipt import FIELDS
 from vertical import oracle
-from vertical.ledger import ENFORCED_PLATFORMS, HELD, RESULT_REACHED, V1_DECISIONS, WINDOWS_UNQUALIFIED
+from vertical.ledger import (
+    CONTAINMENT_MINIMUM,
+    ENFORCED_PLATFORMS,
+    HELD,
+    LABEL_ORDER,
+    LEAD,
+    RESULT_REACHED,
+    V1_DECISIONS,
+    WINDOWS_UNQUALIFIED,
+    WORKERS,
+)
 
 OPERATOR_COUNTERS = ("credentials", "env_vars", "raw_yaml", "revisions", "manifest_adopts", "takeovers",
                      "seat_operations")
@@ -97,3 +110,40 @@ def verdict_text(problems: list[str], excuses: list[str], *, platform: str) -> s
     qualification = [] if platform in ENFORCED_PLATFORMS else [WINDOWS_UNQUALIFIED]
     status = "FAIL" if problems else "PASS"
     return "\n".join([*qualification, f"Alpha scripted gate: {status}", *problems, *excuses])
+
+
+def receipt_lines(receipt: dict[str, Any] | None) -> list[str]:
+    """Read the operator's receipt beside the scripted verdict."""
+    if receipt is None:
+        return ["Alpha receipt: NOT RECORDED (a real-model run the operator starts, per event)"]
+    if receipt.get("kind") == "dry_run":
+        return ["Alpha receipt: DRY RUN, not the receipt"]
+
+    header = receipt.get("header") or {}
+    platform = header.get("platform")
+    status = "RECORDED" if receipt.get("kind") == "real" else "NOT RECORDED (no real run evidence)"
+    lines = [f"Alpha receipt: {status}"]
+    if platform == "win32":
+        lines.append(WINDOWS_UNQUALIFIED)
+    lines.append(f"header: {json.dumps(header)}")
+    for field in FIELDS:
+        value = receipt.get(field)
+        lines.append(f"{field}: {json.dumps(value) if value is not None else 'not recorded'}")
+    for name in ("workers_model", "lead_model"):
+        model = header.get(name)
+        if isinstance(model, str) and (reason := free_model_id(model)):
+            lines.append(f"{name}: {reason}")
+    lines.append(f"free: {header.get('free') or 'not ruled out (id rule only; catalog not read)'}")
+
+    minimum = CONTAINMENT_MINIMUM.get(platform, {})
+    labels = receipt.get("containment")
+    if isinstance(labels, dict):
+        for role, recorded in ((WORKERS, list((labels.get("workers") or {}).values())),
+                               (LEAD, labels.get("lead") or [])):
+            required = minimum.get(role)
+            if required is not None:
+                for label in recorded or [None]:
+                    if label not in LABEL_ORDER or LABEL_ORDER.index(label) < LABEL_ORDER.index(required):
+                        lines.append(f"{role}: {label or 'no label'} below containment minimum {required}")
+    lines.append("Other receipt fields: no bar (set after the first receipt)")
+    return lines

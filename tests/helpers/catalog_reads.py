@@ -2,7 +2,9 @@
 
 This is syntax, not data-flow or a proof that every hit is wrong. It sees ``contract.TOOLS`` and calls to
 ``contract.tool``/``contract.exposed`` without switches, plus unaliased imports of those names. It does not follow
-aliases, getattr, dynamic access or wrappers. Callers classify intentional off snapshots and metadata-only readers.
+aliases, getattr, dynamic access or wrappers. It also does not detect ``contract.catalog()`` or ``check_call(...)``
+called without switches (including their direct-import spellings). Callers classify intentional off snapshots and
+metadata-only readers; the guard is not evidence that those other readers are switch-aware.
 """
 
 from __future__ import annotations

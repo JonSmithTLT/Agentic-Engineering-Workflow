@@ -156,6 +156,10 @@ Everything the generator could not resolve, by family: each distinct unresolved 
 - `aew.harness.weaker_register:sweep`: atomic_write of a path this reading cannot place: a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.history.store:History.append`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.history.store:prewrite`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.kit:prepare`: Path.mkdir of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit:prepare`: Path.write_text of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit.receipt:write_receipt`: Path.mkdir of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit.receipt:write_receipt`: atomic_write of a path this reading cannot place: `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here
 - `aew.profile:cli_finish`: open of a path this reading cannot place: the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.stg02.ledger:Ledger.__init__`: Path.mkdir of a path this reading cannot place: `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it

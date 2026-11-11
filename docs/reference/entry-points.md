@@ -7,7 +7,7 @@ Every AEW process entry point, from `aew.process_kind.ENTRY_POINTS`: its kind, w
 - **Kind:** store_writer
 - **Why:** the CLI the operator, the Lead and AEW's own workers (the custody worker) run: engine commands take the control lock
 - **Declares itself at:** `aew.cli.main:_main`
-- **Starts, `-m`:** `aew.engine.custody_ops:worker_argv`, `aew.harness.desktop_notifier:runnable`, `aew.harness.lead_broker:run_read`, `aew.harness.operator_autostart:endpoint_argv`
+- **Starts, `-m`:** `aew.engine.custody_ops:worker_argv`, `aew.harness.desktop_notifier:runnable`, `aew.harness.lead_broker:run_read`, `aew.harness.operator_autostart:endpoint_argv`, `aew.kit:launch_argv`
 - **Starts, `console-script-argv`:** `aew.dashboard.projections:Projector._search_hit`
 - **Starts, `console-script-on-PATH`:** `aew.harness.agentenv:build`, `aew.harness.opencode.lead:tui_env`
 
@@ -46,6 +46,13 @@ Every AEW process entry point, from `aew.process_kind.ENTRY_POINTS`: its kind, w
 - **Why:** a run's supervisor: holds the run's credential and commits through the engine
 - **Declares itself at:** `aew.harness.supervisor:main`
 - **Starts, `-m`:** `aew.engine.harness_ops:Harness._spawn_run`
+
+### `aew.kit.__main__`
+
+- **Kind:** store_writer
+- **Why:** the operator's seeded kit initializes and maps its own repository
+- **Declares itself at:** `aew.kit.__main__:main`
+- **Starts:** none found
 
 ### `aew.stg02.server`
 

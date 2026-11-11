@@ -187,8 +187,10 @@ class Operator:
         self.ledger.operator_input(text, step=step, argv=argv, shown=shown)
         self.transcript.append({"step": step, "input": text})
 
-    def fallback(self, step: str, ideal: str, observed: str, instead: str) -> None:
-        self.ledger.observe("fallback", step=step, ideal=ideal, observed=observed[-600:], fallback=instead)
+    def fallback(self, step: str, ideal: str, observed: str, instead: str, *, oracle_key: str | None = None) -> None:
+        provenance = {} if oracle_key is None else {"oracle_key": oracle_key}
+        self.ledger.observe("fallback", step=step, ideal=ideal, observed=observed[-600:], fallback=instead,
+                            **provenance)
 
     def workaround(self, key: str, instead: str, *, step: str = "") -> None:
         """Step ``key`` of the oracle's path is about to be taken today's way (``instead``). While the step has not
@@ -202,7 +204,7 @@ class Operator:
             return
         held = f", held by {', '.join(found['held_by'])}" if found.get("held_by") else ""
         self.fallback(step or key, f"step {found['step']} ({cited or 'no serving surface'})",
-                      f"{found['state']}{held}", instead)
+                      f"{found['state']}{held}", instead, oracle_key=key)
 
     def export(self, step: str, name: str, value: str) -> None:
         self.shell_env[name] = value

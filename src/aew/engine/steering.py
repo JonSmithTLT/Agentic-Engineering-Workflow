@@ -196,11 +196,17 @@ def loop_state(aew_root: Any, generation: int | None = None) -> dict[str, Any] |
         return None
     if generation is not None and data.get("generation") != generation:
         return None
+    from aew.harness.contract import redact
+
     out = {k: data.get(k) for k in ("generation", "status", "mode", "activation", "actions", "updated_at")}
     stop = data.get("stop")
     if isinstance(stop, dict):
-        out["stop"] = {k: str(stop.get(k))[:500] if stop.get(k) is not None else None
-                       for k in ("code", "message", "subject", "revision", "at")}
+        # redacted before it is shortened, so a cut never leaves a credential's fragment (review of E228's PR, m4)
+        shown: dict[str, Any] = {k: redact(str(stop.get(k)))[:500] if stop.get(k) is not None else None
+                                 for k in ("code", "message", "subject", "revision", "at", "condition")}
+        occurrence = stop.get("occurrence")
+        shown["occurrence"] = occurrence if isinstance(occurrence, int) and occurrence > 0 else None
+        out["stop"] = shown
     return out
 
 

@@ -21,7 +21,7 @@ from aew.priority_levels import DEFAULT, LEVELS, LOWEST
 
 __all__ = ["DEFAULT", "LEVELS", "LOWEST", "WAITING", "age", "of", "order", "unblocks", "waiting_age"]
 
-# A Ticket that has not started yet: the only one `status` says is waiting (review of the priority PR, m2).
+# A Ticket in the queue (READY or BLOCKED): the only one `status` says is waiting (review of the priority PR, m2).
 WAITING = frozenset({"READY", "BLOCKED"})
 
 
@@ -71,8 +71,8 @@ def age(unit: Mapping[str, Any], now: dt.datetime) -> str | None:
 
 
 def waiting_age(unit: Mapping[str, Any], now: dt.datetime) -> str | None:
-    """How long a lowest-priority Ticket that has not started has waited (E227: "each `low` Ticket's age"), or None:
-    a Ticket of another level, one that has started or finished, or one whose creation time can't be read."""
+    """How long a lowest-priority Ticket in the queue (READY or BLOCKED) has waited (E227: "each `low` Ticket's age"),
+    or None: a Ticket of another level, one past the queue, or one whose creation time can't be read."""
     if of(unit)["level"] != LOWEST or unit.get("state") not in WAITING:
         return None
     return age(unit, now)

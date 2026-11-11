@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from fnmatch import fnmatchcase
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
-from aewflow import SUBTRACT_PATCH, create_planned_ticket, sample_project
+from aewflow import SAMPLE_FILES, SUBTRACT_PATCH, create_planned_ticket, sample_project
 from fake_harness import IMPL_REPORT, HarnessLab
 
 from aew.engine.api import Engine
@@ -22,6 +22,50 @@ def lab(tmp_path):
     lab = HarnessLab.create(sample_project(tmp_path), tmp_path)
     yield lab
     lab.cleanup()
+
+
+def test_e332_worker_check_names_changed_paths(lab, tmp_path):
+    tracked = "calc/core.py"
+    checks_path = lab.aew_root / "policy/checks.yaml"
+    checks = load_yaml(checks_path.read_text(encoding="utf-8"))
+    checks["checks"].update({
+        "stamp": {"configured": True, "command": [
+            "{python}", "-c", "from pathlib import Path; "
+            "Path('calc/core.py').write_text('# rewritten'); "
+            "[Path(f' a-output-{i:02}.txt').touch() for i in range(24)]"]},
+        "stamp_fixed": {"configured": True, "command": ["{python}", "-c", "pass"]},
+    })
+    checks_path.write_text(dump_yaml(checks), encoding="utf-8", newline="\n")
+    lab.project.pin_policy()
+    wid = create_planned_ticket(lab.project, tmp_path)
+    lab.script("default", [
+        {"do": "check", "id": "stamp"},
+        {"do": "write", "files": {tracked: SAMPLE_FILES[tracked]}},
+        {"do": "check", "id": "stamp_fixed"},
+    ])
+    run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
+    lab.wait(run)
+    out = lab.step(run, 0)["stdout_json"]
+    flag = {k: out[k] for k in ("result", "mutated_inputs", "message", "changed_paths") if k in out}
+    assert flag["result"] == "inconclusive" and flag["mutated_inputs"] is True
+    assert "changed_paths" in flag, flag
+    paths = flag["changed_paths"]
+    assert len(paths) == 20 and paths[0] == tracked
+    assert paths[1] == " a-output-00.txt"
+    assert all(PurePosixPath(path).as_posix() == path and not PurePosixPath(path).is_absolute()
+               and not PureWindowsPath(path).drive and "\\" not in path for path in paths)
+    message = flag["message"]
+    assert "25" in message and "changed_paths" in message and tracked not in message
+    assert "Restore" in message and "stop writing" in message and ".gitignore" in message
+    evidence, problems = E.scan(lab.aew_root, wid)
+    assert not problems
+    sealed = next(record for record in evidence if record["id"] == out["evidence"])
+    for key in ("changed_paths", "message"):
+        assert key not in sealed and key not in sealed["check"]
+    assert lab.step(run, 1)["wrote"] == [tracked]
+    fixed = lab.step(run, 2)["stdout_json"]
+    assert fixed["result"] == "pass" and fixed["mutated_inputs"] is False
+    assert "changed_paths" not in fixed and "message" not in fixed
 
 
 def test_failing_lines_reach_the_worker_and_missing_skills_do_not_fail_its_run(lab, tmp_path):

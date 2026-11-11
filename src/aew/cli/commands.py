@@ -341,7 +341,9 @@ def _init(args: argparse.Namespace) -> Any:
     from aew.capability import consent
     from aew.engine import first_configuration
     from aew.engine.api import Engine
+    from aew.harness import contract as K
     from aew.harness.containment import netns
+    from aew.policy import execution
 
     consent.check_names(args.fetch_tool)  # an unknown tool refuses before anything is written
     configuration = first_configuration.from_flags(check_command=args.check_command, check_timeout=args.check_timeout,
@@ -361,7 +363,9 @@ def _init(args: argparse.Namespace) -> Any:
         "authority_candidates": engine.manifest["authority"]["candidates"],
         **({"first_configuration": configuration.report()} if configuration is not None else {}),
         "next": configuration.next_step() if configuration is not None
-        else "acquire Lead authority: aew lead acquire --expect-rev 0",
+        else (f"this project still has no check command or model. To set both, "
+              f"{first_configuration.post_pin_route(first_configuration.CHECKS_REL, execution.REL_PATH, fresh=True)}. "
+              f"{K.HELD_SEAT}. Then start the Lead with `aew opencode --acquire`"),
         "provider_key": netns.FIRST_USE_LINE,
         "map": maps.first_map(engine),  # register E184: the first structural map, generated and selected
     }

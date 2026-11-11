@@ -168,13 +168,15 @@ def merge_lead(op: Operator) -> None:
         op.ledger.lead_event(e)
 
 
-def write_out(op: Operator, request: pytest.FixtureRequest, *, asks_result: bool = True) -> Path:
+def write_out(op: Operator, request: pytest.FixtureRequest, *, asks_result: bool = True,
+              checked_result: list[str] | None = None) -> Path:
     """Write the scenario's ledger. Called from the ``finally`` around its body: an exception escaping the body (the
     Lead did not start, setup raised) is in flight here, and makes the scenario not measured (STG-13, addendum 1).
     ``asks_result``: whether its verdict calls ``result_problems`` (test_vertical_report checks the two agree). Recorded
     for the scoreboard, no counter and no threshold: a scenario that stops before a result by design is not a "no"."""
     op.ledger.ended_by(sys.exc_info()[1])
-    op.ledger.observe(RESULT_REACHED, reached=bool(op.reports), asked=asks_result)
+    result_evidence = {} if checked_result is None else {"problems": checked_result}
+    op.ledger.observe(RESULT_REACHED, reached=bool(op.reports), asked=asks_result, **result_evidence)
     base = Path(os.environ.get(OUT_ENV) or op.tmp / "vertical-out")
     out = base / ledger_dir_name(request.node.name)
     op.ledger.observe("transcript", operator=op.transcript)
@@ -350,11 +352,13 @@ def v1_decisions(op: Operator, *, reopened: bool = False) -> tuple[str, ...]:
 def test_v1_fresh_path_reaches_a_published_fix_with_no_machinery(tmp_path, world, request, steering):
     op = setup_operator(tmp_path, "V1", steering=steering)
     world.append(op)
+    checked_result = None
     try:
         run_v1_path(op, steering=steering)
+        checked_result = result_problems(op)
     finally:
-        write_out(op, request)
-    problems = verdict(op, decisions=v1_decisions(op)) + result_problems(op)
+        write_out(op, request, checked_result=checked_result)
+    problems = verdict(op, decisions=v1_decisions(op)) + checked_result
     assert_verdict(op, problems)
 
 
@@ -614,6 +618,7 @@ def test_v2_forced_kill_mid_stage_reaches_a_result(tmp_path, world, request):
     world.append(op)
     scripts = Path(op.lab.env["AEW_FAKE_SCRIPTS"])
     facts: dict[str, Any] = {"how": "kill, mid-stage", "terminal": "fresh"}
+    checked_result = None
     try:
         configure(op)
         op.in_setup = False
@@ -635,9 +640,10 @@ def test_v2_forced_kill_mid_stage_reaches_a_result(tmp_path, world, request):
         facts["chain"] = [g for g in gaps if g in ("decision_refused", "resolve_stage", "refusal_names_a_step",
                                                    "reconcile", "redispatch")]
         op.ledger.observe("v2", **facts)
+        checked_result = result_problems(op)
     finally:
-        write_out(op, request)
-    problems = verdict(op, decisions=v1_decisions(op, reopened=True)) + result_problems(op)
+        write_out(op, request, checked_result=checked_result)
+    problems = verdict(op, decisions=v1_decisions(op, reopened=True)) + checked_result
     if not facts.get("held_mid_stage"):
         problems.append("the session was not killed mid-stage (the launch hook never held)")
     if facts.get("interrupted"):

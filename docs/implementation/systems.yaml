@@ -2086,7 +2086,7 @@ systems:
   - src/aew/engine/seams.py
   depends_on: []
   state:
-    board_state: on_and_used
+    board_state: awaiting_signoff
     built: 'yes'
     wired:
     - cli:history log
@@ -3658,7 +3658,7 @@ systems:
   touches: []
   depends_on: []
   state:
-    board_state: on_and_used
+    board_state: awaiting_signoff
     built: 'yes'
     wired:
     - cli:history show
@@ -3751,7 +3751,7 @@ systems:
       (doctor's line, src/aew/engine/api.py:373-376). A new project gets 2 (ADR-0003's amendment of 2026-11-07); an existing
       project keeps the value its gates.yaml holds until the operator takes the offer to switch it.
   state:
-    board_state: on_and_used
+    board_state: awaiting_signoff
     built: 'yes'
     wired:
     - cli:integrate prepare

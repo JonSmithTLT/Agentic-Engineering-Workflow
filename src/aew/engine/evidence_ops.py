@@ -52,6 +52,7 @@ from aew.engine.work_ops import (
 from aew.errors import (
     AEWError,
     GateUnsatisfied,
+    GitError,
     IllegalTransition,
     NotFound,
     PermissionDenied,
@@ -68,6 +69,7 @@ from aew.policy import guardrails as GR
 from aew.schemas import validate_property
 from aew.snapshot.fingerprint import changed_paths
 from aew.util import create_exclusive, parse_frontmatter, sha256_file, utc_now
+from aew.workspace import git
 from aew.workspace.integration import changed_between as git_changed_between
 
 if TYPE_CHECKING:
@@ -96,6 +98,38 @@ _GATE_MEMO: contextvars.ContextVar[dict[str, dict[str, Any]] | None] = contextva
 # Read-only roles that work in a live workspace they share with the implementer, or in an integration candidate
 # (M3-B6); in observation scope the same roles are covered by ObservationMutated (ADR-0008).
 SHARED_WORKSPACE_READERS = {"reviewer", "verifier"}
+# Use fingerprint.py's 20-path-plus-total convention, allowing all tracked paths through.
+_CHECK_PATH_LIMIT = 20
+
+
+def _tracked_paths(workspace: Path) -> set[str] | None:
+    try:
+        raw = git.git("ls-files", "--cached", "-z", cwd=workspace).stdout
+        return set(raw.decode("utf-8", "replace").split("\0")[:-1])
+    except (GitError, OSError):
+        return None
+
+
+def _check_mutation_diagnostic(paths: list[str], tracked: set[str] | None) -> dict[str, Any]:
+    if not paths:
+        return {"changed_paths": [], "message": "The check changed its inputs, but the changed paths couldn't be "
+                "named because the two snapshots could not be compared. Inspect the workspace and restore any "
+                "tracked changes made by the check before submitting. Make the check stop writing those files."}
+
+    tracked_paths = [path for path in paths if tracked is None or path in tracked]
+    untracked_paths = [path for path in paths if tracked is not None and path not in tracked]
+    shown = tracked_paths + untracked_paths[:max(0, _CHECK_PATH_LIMIT - len(tracked_paths))]
+    message = f"The check changed {len(paths)} input path(s). See changed_paths for the {len(shown)} shown."
+    if tracked_paths:
+        message += (" Restore any tracked files changed by the check before submitting and make the check stop "
+                    "writing them.")
+    if tracked is None:
+        message += " Git could not determine which paths were tracked."
+    if untracked_paths or tracked is None:
+        message += (" For untracked output, write it outside the project or keep it out of the snapshot with "
+                    ".gitignore, .git/info/exclude, or fingerprint.exclude. For ignored output included by "
+                    "fingerprint.include_ignored, remove it from that list.")
+    return {"changed_paths": shown, "message": message}
 
 
 class Gates:
@@ -361,6 +395,15 @@ class Gates:
 
     def kind_registrations(self) -> list[KindRegistration]:
         return [KindRegistration(GATE_CONTEXT, MUTATING, self._ticket_gate_context)]
+
+    # The guards whose transition takes in the implementer's run (``_ingest_implementation``: its relied-on gates and
+    # the invocation's completion). The steering loop reads it to know which run ends it will take in itself (A-58
+    # CL-R07); a test derives it from the guards' code, so a guard that starts or stops ingesting moves it. The limit:
+    # the test sees only a guard that calls ``_ingest_implementation`` itself, so it misses
+    # ``commit_ready_without_review_or_verification`` (through ``_commit_ready``), ``returning_from_escalation``
+    # (through ``check_guard``'s direct edge) and the non-mutating Tickets' guards. Each miss costs one more wake,
+    # never a missed one (quick check of E228's PR, QC-m3).
+    INGESTS_IMPLEMENTATION = frozenset({"ready_for_review", "ready_for_verification_without_review"})
 
     def guard_registrations(self) -> list[GuardRegistration]:
         """The gate-based Lead guards (mutating Tickets' M1 guards; non-mutating Tickets replace them), and the return
@@ -933,6 +976,7 @@ class EvidenceCommands:
             with DO.signalled(self.k.aew_root, work_id):  # recorded as an anomaly by the next Lead commit (E5b)
                 self.gates.require_workspace_intact(inv_id, inv, workspace, ws_id)  # never a check on an edited one
         before = self.invocations.snapshot_of(workspace, ws_id)
+        tracked_before = _tracked_paths(workspace)  # the check may remove or unstage an index entry
         coverage_files = self._coverage_files(workspace, base, inv.get("scope") or "ticket")
         if cfg.get("builtin"):
             if base is None:
@@ -999,10 +1043,19 @@ class EvidenceCommands:
                 capabilities=CV.run_capabilities(self.k.aew_root, [meta["producer"]["run"]]
                                                  if meta["producer"].get("run") else []), result=result)
             create_exclusive(self.k.aew_root / f"evidence/{work_id}/{eid}.md", E.seal(meta, ""))
+        diagnostic = {}
+        if mutated:
+            paths = Gates._paths_between(workspace, before["relevant_inputs_fingerprint"],
+                                         after["relevant_inputs_fingerprint"])
+            tracked_after = _tracked_paths(workspace) if paths else None
+            tracked = (tracked_before | tracked_after
+                       if tracked_before is not None and tracked_after is not None else None)
+            diagnostic = _check_mutation_diagnostic(paths, tracked)
         return {"ok": True, "evidence": eid, "result": result, "exit_code": run["exit_code"],
                 "coverage": meta["coverage"],
                 "mutated_inputs": mutated, "evaluated_snapshot": before, "log": str(self.k.aew_root / log_rel),
                 "log_access": "Full log for the shell, not the harness read tool.",
+                **diagnostic,
                 **({"failure_output": C.failure_output(run["log"])} if run["exit_code"] != 0 else {})}
 
     def submit(self, *, invocation_token: str, kind: str, text: str) -> dict[str, Any]:

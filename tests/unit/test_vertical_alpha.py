@@ -104,6 +104,7 @@ def test_real_receipt_lists_all_fields_and_the_existing_containment_bar():
     assert "Alpha receipt: RECORDED" in lines
     assert ledger.WINDOWS_UNQUALIFIED in lines
     assert all(any(line.startswith(f"{field}:") for line in lines) for field in alpha.FIELDS)
-    assert any("below containment minimum" in line for line in lines)
+    assert [line for line in lines if "below containment minimum" in line] == [
+        "workers: no label below containment minimum workdir_separation_only"]
     assert any("a -free id" in line for line in lines)
     assert "free: not ruled out (id rule only; catalog not read)" in lines

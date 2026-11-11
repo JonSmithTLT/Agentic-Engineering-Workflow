@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import json
 import os
+import socket
 import subprocess
 import sys
 import tomllib
@@ -16,7 +17,10 @@ import pytest
 from aew.engine.conflicts import overlapping_scopes
 from aew.errors import UsageError
 from aew.harness import runlog
+from aew.harness.containment import netns
 from aew.kit import CHECK_COMMAND, DATES_SCOPE, MONEY_SCOPE, OPENING_REQUEST, git, launch_argv, prepare
+from aew.kit import __main__ as kit_main
+from aew.kit import receipt as receipt_module
 from aew.kit.receipt import FIELDS, SCHEMA, write_receipt
 from aew.policy.execution import pack_slices
 
@@ -117,6 +121,8 @@ def test_prepare_requires_a_selected_first_map(tmp_path, monkeypatch):
     with pytest.raises(UsageError, match="no_commit"):
         prepare(tmp_path, MODEL, LEAD_MODEL)
     assert not (tmp_path / "kit.json").exists()
+    with pytest.raises(UsageError, match="Choose a new destination"):
+        prepare(tmp_path, MODEL, LEAD_MODEL)
 
 
 def test_launch_argv_uses_this_python_and_only_named_provider_variables(tmp_path):
@@ -135,12 +141,16 @@ def test_seed_is_a_packaged_resource():
     assert any(fnmatch.fnmatchcase("seed.json", pattern) for pattern in patterns)
 
 
-def test_written_receipt_has_reader_fields_and_no_host_paths(tmp_path):
+def test_written_receipt_has_reader_fields_and_no_host_paths(tmp_path, monkeypatch):
     engine = prepare(tmp_path, MODEL, LEAD_MODEL)
     run = "R-INV-0001-1"
     directory = runlog.run_dir(engine.aew_root, run)
     directory.mkdir(parents=True)
     runlog.write_record(directory, {"run": run, "launch": {"harness": "fake", "version": "2.2.6"}})
+    upstreams = {provider: f"https://{provider}.invalid" for provider in netns.PROVIDER_KEY_ENV}
+    policy = {"harness": "fake", "containment": {"network": {"upstreams": upstreams}}}
+    monkeypatch.setattr("aew.kit.receipt.Engine.discover", lambda repo: engine)
+    monkeypatch.setattr(engine, "execution_policy", lambda: (policy, None))
     path = write_receipt(tmp_path)
     body = path.read_text(encoding="utf-8")
     receipt = json.loads(body)
@@ -149,5 +159,101 @@ def test_written_receipt_has_reader_fields_and_no_host_paths(tmp_path):
     assert receipt["kind"] == "dry_run"
     assert receipt["readability"] == "not asked"
     assert str(tmp_path) not in body and tmp_path.as_posix() not in body
-    assert Path.home().name not in body
+    assert Path.home().name not in body and socket.gethostname() not in body
     assert json.loads(write_receipt(tmp_path, readable="no").read_text(encoding="utf-8"))["readability"] == "no"
+
+
+@pytest.mark.parametrize("provider", ["opencode", "opencode-go"])
+def test_prepare_refuses_a_provider_denied_to_the_lead(tmp_path, provider):
+    with pytest.raises(UsageError, match="Lead denies provider"):
+        prepare(tmp_path, MODEL, f"{provider}/model")
+    assert not (tmp_path / "repo").exists()
+
+
+def test_real_lead_receipt_without_worker_launches(tmp_path):
+    engine = prepare(tmp_path, MODEL, LEAD_MODEL)
+    directory = runlog.run_dir(engine.aew_root, "lead-test")
+    directory.mkdir(parents=True)
+    (directory / "label.json").write_text('{"filesystem":"os_readonly_roots"}', encoding="utf-8")
+    receipt = json.loads(write_receipt(tmp_path).read_text(encoding="utf-8"))
+    assert receipt["kind"] == "real"
+    assert receipt["header"]["workers_launched"] == "no worker launched"
+    assert receipt["systems"]["SYS-09"] == "not seen"
+    assert receipt["no_wake"]["live_reach"].startswith("not recorded:")
+
+
+def test_receipt_reads_persisted_capability_declines(tmp_path, monkeypatch):
+    prepare(tmp_path, MODEL, LEAD_MODEL)
+    prepared = json.loads((tmp_path / "kit.json").read_text(encoding="utf-8"))["prepared_at"]
+    monkeypatch.setattr(receipt_module.capability_store, "read", lambda: {"declined": {
+        "recent-tool:linux": {"at": prepared}, "earlier-tool:linux": {"at": "2000-01-01T00:00:00Z"},
+    }})
+    receipt = json.loads(write_receipt(tmp_path).read_text(encoding="utf-8"))
+    assert receipt["systems"]["SYS-09"]["tool_declines_since_prepare"] == ["recent-tool"]
+
+
+def test_receipt_filters_planted_ticket_paths_after_scope_comparison(tmp_path, monkeypatch):
+    engine = prepare(tmp_path, MODEL, LEAD_MODEL)
+    monkeypatch.setattr("aew.kit.receipt.Engine.discover", lambda repo: engine)
+    monkeypatch.setattr("aew.kit.receipt.socket.gethostname", lambda: "synthetic-host")
+    event = {"kind": "work.state", "unit": "ticket", "to": "CANCELLED", "id": "T-0001"}
+    monkeypatch.setattr("aew.kit.receipt._records", lambda _engine: [{"op": "work.transition", "events": [event]}])
+    record = """---
+scope:
+  paths:
+  - ledger/has space.py
+---
+"""
+    changed = ["ledger/has space.py", "outside.py", "/private/absolute.py", "../parent.py", "synthetic-host/file.py"]
+    monkeypatch.setattr(engine, "work_show", lambda _: {
+        "record": record, "control": {"integration": {"changed_paths": changed}},
+    })
+    text = write_receipt(tmp_path).read_text(encoding="utf-8")
+    scope = json.loads(text)["scope"]
+    assert scope["cancelled_tickets"] == ["T-0001"]
+    assert scope["tickets"]["T-0001"] == {
+        "scope": {"paths": [], "withheld": 1},
+        "changed": {"paths": ["outside.py"], "withheld": 4},
+        "outside": {"paths": ["outside.py"], "withheld": 3},
+    }
+    assert all(path not in text for path in ("/private/absolute.py", "../parent.py", "synthetic-host"))
+
+
+def test_sys39_non_overlapping_mutating_runs_do_not_count(tmp_path):
+    runs = [
+        {"run": f"R-INV-000{i}-1", "contract": {"role": "implementer", "work_unit": f"T-000{i}"},
+         "started_at": f"2026-11-11T0{i}:00:00Z", "ended_at": f"2026-11-11T0{i}:30:00Z"}
+        for i in (1, 2)
+    ]
+    systems = receipt_module._system_facts(tmp_path, runs, [], [], None, {}, {}, [])
+    assert systems["SYS-39"]["overlapping_mutating_runs"] == []
+
+
+def test_windows_main_prints_install_check_first(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "argv", ["kit", "start", str(tmp_path), "--model", MODEL, "--lead-model", LEAD_MODEL])
+    monkeypatch.setattr(kit_main, "prepare", lambda *args, **kwargs: None)
+    monkeypatch.setattr(kit_main.subprocess, "call", lambda argv: pytest.fail("Windows must not start the Lead"))
+    assert kit_main.main() == 0
+    output = capsys.readouterr().out
+    assert output.startswith("Windows: UNQUALIFIED")
+    assert OPENING_REQUEST not in output
+
+
+@pytest.mark.parametrize(("flag", "typed", "expected"), [("yes", "", "yes"), (None, "n", "no"), (None, "y", "yes")])
+def test_main_records_readability(tmp_path, monkeypatch, flag, typed, expected):
+    argv = ["kit", "receipt", str(tmp_path)] + (["--readable", flag] if flag else [])
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: typed)
+    answers = []
+    monkeypatch.setattr(kit_main, "write_receipt", lambda dest, *, readable: answers.append(readable) or dest)
+    assert kit_main.main() == 0
+    assert answers == [expected]
+
+
+def test_main_refuses_to_run_in_an_agent_session(monkeypatch, capsys):
+    monkeypatch.setenv("AEW_AGENT_ENDPOINT", "fixture")
+    assert kit_main.main() == 1
+    assert "operator's own terminal" in capsys.readouterr().err

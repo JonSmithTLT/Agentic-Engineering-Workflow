@@ -152,9 +152,17 @@ def report(directory: Path, *, run: S.Run | None = None, pytest: str | None = No
              "| Scenario | Result | Lead label | Why not measured |", "|---|---|---|---|"]
     lines += [f"| {cell(r['scenario'])} | {r['outcome']} | {r['lead_label'] or '-'} | {cell(r['why']) or '-'} |"
               for r in found]
-    receipt, _ = _ledger(directory / "alpha-receipt.json")
-    lines += ["", "```", alpha.summary(found, platform=platform, strict_pass=PASSED),
-              *alpha.receipt_lines(receipt), "```"]
+    receipt_path = directory / "alpha-receipt.json"
+    receipt, unreadable = _ledger(receipt_path)
+    if unreadable:
+        receipt_lines = ["Alpha receipt: UNREADABLE (could not read a JSON receipt)"]
+    elif receipt_path.is_file() and not isinstance(receipt, dict):
+        receipt_lines = ["Alpha receipt: UNREADABLE (expected a JSON object)"]
+    else:
+        receipt_lines = alpha.receipt_lines(receipt)
+    scripted = [alpha.summary(found, platform=platform, strict_pass=PASSED)] if (
+        found or from_junit or not receipt_path.is_file()) else []
+    lines += ["", "```", *scripted, *receipt_lines, "```"]
     for r in found:
         summary = directory / ledger_dir_name(r["scenario"]) / SUMMARY
         if summary.is_file():

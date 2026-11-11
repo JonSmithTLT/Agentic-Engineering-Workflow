@@ -47,6 +47,13 @@ Every AEW process entry point, from `aew.process_kind.ENTRY_POINTS`: its kind, w
 - **Declares itself at:** `aew.harness.supervisor:main`
 - **Starts, `-m`:** `aew.engine.harness_ops:Harness._spawn_run`
 
+### `aew.kit.__main__`
+
+- **Kind:** store_writer
+- **Why:** the operator's seeded kit initializes and maps its own repository
+- **Declares itself at:** `aew.kit.__main__:main`
+- **Starts:** none found
+
 ### `aew.stg02.server`
 
 - **Kind:** non_writer

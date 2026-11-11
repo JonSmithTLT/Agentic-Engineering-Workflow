@@ -13,17 +13,21 @@ from importlib.metadata import PackageNotFoundError, distribution
 from itertools import combinations
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from aew import __version__
+from aew.capability import store as capability_store
 from aew.engine import coverage
 from aew.engine.api import Engine
 from aew.engine.harness_ops import _missing_capabilities
 from aew.errors import AEWError, UsageError
 from aew.harness import runlog
+from aew.harness.containment import netns
 from aew.harness.models import free_model_id
 from aew.harness.opencode.capabilities import TESTED_VERSIONS
 from aew.kit import KIT_RECORD, git
 from aew.maps.slices import HEADING
+from aew.policy.execution import push_wake
 from aew.util import atomic_write, glob_any, parse_frontmatter
 
 SCHEMA = "aew/alpha-receipt/v1"
@@ -97,6 +101,11 @@ def _paths(values: Any) -> list[str]:
     })
 
 
+def _path_evidence(values: list[str]) -> dict[str, Any]:
+    visible = _paths(values)
+    return {"paths": visible, "withheld": len(set(values)) - len(visible)}
+
+
 def _id(value: Any) -> bool:
     return isinstance(value, str) and ID.fullmatch(value) is not None
 
@@ -113,8 +122,8 @@ def _coverage(aew_root: Path, unit: dict[str, Any]) -> tuple[Any, list[str] | No
         record = {}
     changed = record.get("changed_files") or {}
     integrated = (unit.get("integration") or {}).get("changed_paths")
-    paths = _paths(integrated) if isinstance(integrated, list) else (
-        _paths(changed.get("paths")) if changed.get("known") else None)
+    paths = integrated if isinstance(integrated, list) else (
+        changed.get("paths") if changed.get("known") else None)
     if record.get("schema") != "aew/validation-coverage/v1" or not record.get("subject"):
         return _missing("no bound E120 coverage record"), paths
 
@@ -127,8 +136,12 @@ def _coverage(aew_root: Path, unit: dict[str, Any]) -> tuple[Any, list[str] | No
 
     def observed(field: str, path: str) -> Any:
         inventory = record.get(field) or {}
+        if not inventory.get("known"):
+            reason = inventory.get("reason")
+            source = reason if isinstance(reason, str) and re.fullmatch(r"[a-z_]+", reason) else "reason unavailable"
+            return _missing(f"E120 {field} inventory unavailable ({source})")
         for item in inventory.get("items") or []:
-            if inventory.get("known") and item.get("name") == path and isinstance(item.get("ran"), bool):
+            if item.get("name") == path and isinstance(item.get("ran"), bool):
                 return item["ran"]
         return _missing("the coverage record does not name this probe")
 
@@ -156,7 +169,7 @@ def _slice_bytes(aew_root: Path, invocation: Any) -> int | None:
 
 def _system_facts(aew_root: Path, runs: list[dict[str, Any]], transitions: list[dict[str, Any]],
                   lead_labels: list[dict[str, Any]], version: Any, intents: dict[str, Any],
-                  widths: dict[str, Any]) -> dict[str, Any]:
+                  widths: dict[str, Any], declines: list[str]) -> dict[str, Any]:
     systems: dict[str, Any] = dict.fromkeys(SYSTEMS, "not seen")
     if runs or lead_labels:
         systems["SYS-02"] = {"workers": {r["run"]: _label(r.get("containment") or {}) for r in runs},
@@ -180,9 +193,10 @@ def _system_facts(aew_root: Path, runs: list[dict[str, Any]], transitions: list[
             plans[run] = {name: _paths(plan.get(name)) for name in ("requested", "offered", "exposed", "delivered")}
     if packs:
         systems["SYS-07"] = {"used_when_on": True, "packs": packs}
-    if capabilities or lead_labels:
+    if capabilities or declines:
         systems["SYS-09"] = {"init_tools_screen": "not shown", "run_capabilities": capabilities,
-                             "lead_start_consent": _missing("Lead-start screen output is not persisted")}
+                             "tool_declines_since_prepare": declines,
+                             "decline_source": "capability register (Lead-start consent or operator commands)"}
     if plans:
         systems["SYS-22"] = {"runs": plans, "loaded": _missing("the skills plan records delivery only")}
     if covered := sorted(ticket for ticket, width in widths.items() if isinstance(width, dict)):
@@ -203,9 +217,33 @@ def _system_facts(aew_root: Path, runs: list[dict[str, Any]], transitions: list[
         if transition["op"] == "integrate.publish" and any(e["kind"] == "queue.entry" for e in events):
             publications.extend(e["id"] for e in events if e["kind"] == "work.state" and e.get("to") == "DONE"
                                 and _id(e.get("id")))
-    if pairs or publications:
+    if len(workers) >= 2 or publications:
         systems["SYS-39"] = {"overlapping_mutating_runs": pairs, "queue_publications": sorted(set(publications))}
     return systems
+
+
+def _declines(prepared_at: Any) -> list[str]:
+    start = _time(prepared_at)
+    if start is None:
+        return []
+    try:
+        marks = capability_store.read().get("declined") or {}
+    except AEWError:
+        return []
+    return sorted({key.split(":", 1)[0] for key, mark in marks.items()
+                   if re.fullmatch(r"[a-z0-9_.-]+:[a-z0-9_.-]+", key) and isinstance(mark, dict)
+                   if (stamp := _time(mark.get("at"))) is not None and stamp >= start})
+
+
+def _kind(policy: dict[str, Any], lead_labels: list[dict[str, Any]], versions: list[str]) -> str:
+    harness = policy.get("harness", "opencode")
+    if harness == "opencode":
+        return "real" if lead_labels or versions else "not_recorded"
+    upstreams = netns.settings(policy).get("upstreams") or {}
+    inert = upstreams and all((urlsplit(url).hostname or "").endswith(".invalid") for url in upstreams.values())
+    if harness == "fake" and inert and netns.PROVIDER_KEY_ENV.keys() <= upstreams.keys():
+        return "dry_run"
+    return "not_recorded"
 
 
 def write_receipt(dest: Path, *, readable: str | None = None) -> Path:
@@ -218,9 +256,9 @@ def write_receipt(dest: Path, *, readable: str | None = None) -> Path:
     engine = Engine.discover(dest / "repo")
     aew_root = engine.aew_root
     root = aew_root / runlog.RUNS_REL
-    runs = [record for path in sorted(root.glob("R-INV-*")) if _id(path.name)
-            if (record := runlog.read_record(path)) and record.get("run") == path.name]
-    lead_labels = [label for path in sorted(root.glob("lead-*/label.json")) if (label := _json(path))]
+    runs = [record for run_directory in sorted(root.glob("R-INV-*")) if _id(run_directory.name)
+            if (record := runlog.read_record(run_directory)) and record.get("run") == run_directory.name]
+    lead_labels = [label for label_file in sorted(root.glob("lead-*/label.json")) if (label := _json(label_file))]
     transitions = _records(engine)
     intent_ids = {ref for transition in transitions if transition["op"].startswith("stage.")
                   for ref in transition.get("refs") or [] if _id(ref) and ref.startswith("SI-")}
@@ -236,7 +274,9 @@ def write_receipt(dest: Path, *, readable: str | None = None) -> Path:
                       if event["kind"] == "work.state" and event.get("unit") == "ticket" and _id(event.get("id"))})
     versions = sorted({v for r in runs if (r.get("launch") or {}).get("harness") == "opencode"
                        if isinstance(v := r["launch"].get("version"), str) and VERSION.fullmatch(v)})
-    pinned = (engine.execution_policy()[0] or {}).get("harness")
+    policy = engine.execution_policy()[0] or {}
+    cancelled = sorted({event["id"] for t in transitions for event in t.get("events") or []
+                        if event.get("unit") == "ticket" and event.get("to") == "CANCELLED" and _id(event.get("id"))})
     version = {"recorded": versions, "tested": list(TESTED_VERSIONS),
                "qualified": all(v in TESTED_VERSIONS for v in versions)} if versions else _missing(
                    "no OpenCode launch version")
@@ -249,38 +289,45 @@ def write_receipt(dest: Path, *, readable: str | None = None) -> Path:
     for ticket in tickets:
         shown = engine.work_show(ticket)
         meta = parse_frontmatter(shown["record"])[0] if shown.get("record") else {}
-        scope = _paths((meta.get("scope") or {}).get("paths"))
+        scope = (meta.get("scope") or {}).get("paths") or []
         widths[ticket], changed = _coverage(aew_root, shown["control"])
-        scopes[ticket] = {"paths": scope, "changed": changed if changed is not None else _missing("no changed paths"),
-                          "outside": [p for p in changed if not glob_any(p, scope)] if changed is not None
-                          else _missing("no changed paths")}
+        missing_paths = _missing("no changed paths")
+        scopes[ticket] = {
+            "scope": _path_evidence(scope),
+            "changed": _path_evidence(changed) if changed is not None else missing_paths,
+            "outside": _path_evidence([p for p in changed if not glob_any(p, scope)])
+            if changed is not None else missing_paths,
+        }
     lead_times = [stamp for t in transitions if (t.get("actor") or {}).get("kind") == "lead"
                   if (stamp := _time(t.get("at"))) is not None]
     no_step = [r["run"] for r in runs if (end := _time(r.get("ended_at"))) is not None
                and not any(stamp > end for stamp in lead_times)]
     seed_digest = kit.get("seed_digest")
     receipt = {
-        "schema": SCHEMA, "kind": "real" if pinned == "opencode" and versions else "dry_run",
+        "schema": SCHEMA, "kind": _kind(policy, lead_labels, versions),
         "header": {"aew_version": __version__, "aew_commit": _commit(),
                    "seed_digest": seed_digest if isinstance(seed_digest, str) and SHA.fullmatch(seed_digest) else
                    _missing("no seed digest"), "platform": sys.platform,
                    "qualification": "UNQUALIFIED" if sys.platform == "win32" else "Linux" if sys.platform == "linux"
                    else "outside the enforced platforms", "opencode": version, **observed_models,
+                   "workers_launched": sum(bool(run.get("launch")) for run in runs) or "no worker launched",
+                   "init_tools_screen": "not shown",
                    "lead_ran_on": _missing("E212 has no Lead model record"),
                    "free": "not ruled out (id rule only; catalog not read)"},
-        "no_wake": {"wakes_reach_lead_now": engine.wakes_reach_lead(), "ended_without_later_lead_commit": no_step,
+        "no_wake": {"push_wake_policy_at_receipt": push_wake(policy), "ended_without_later_lead_commit": no_step,
+                    "live_reach": _missing("wakes_reach_lead is live and was not sampled during the session"),
                     "non_committing_steps": _missing("the transition log records committed steps only")},
         "validation_width": widths or _missing("no Tickets"),
-        "scope": {"tickets": scopes, "scope_changes": "scope is fixed at Ticket creation",
-                  "created_tickets": tickets},
+        "scope": {"tickets": scopes, "created_tickets": tickets, "cancelled_tickets": cancelled},
         "dead_end_gates": {"recorded_gate_refusals": gate_refusals,
                            "legal_next_steps_at_refusal": _missing("no contemporaneous projection is kept")},
         "readability": readable or "not asked",
         "containment": {"workers": {r["run"]: _label(r.get("containment") or {}) for r in runs},
                         "lead": [_label(label) for label in lead_labels]},
-        "systems": _system_facts(aew_root, runs, transitions, lead_labels, version, intents, widths),
+        "systems": _system_facts(aew_root, runs, transitions, lead_labels, version, intents, widths,
+                                 _declines(kit.get("prepared_at"))),
     }
-    path = dest / "receipt/alpha-receipt.json"
-    path.parent.mkdir(exist_ok=True)
-    atomic_write(path, json.dumps(receipt, indent=2, sort_keys=True) + "\n")
-    return path
+    output = dest / "receipt/alpha-receipt.json"
+    output.parent.mkdir(exist_ok=True)
+    atomic_write(output, json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+    return output

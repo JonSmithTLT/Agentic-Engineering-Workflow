@@ -155,6 +155,18 @@ proposed_choices:
     lands: A2
     note: "the escalation's outcome, with a rationale; the returns the phase order admits (§2.7, §3.1a)"
 
+# Operator modules are invoked with Python, outside the aew parser.
+operator_modules:
+- command: python -m aew.kit
+  home: product
+  users: [operator]
+  lead_disposition: forbidden-to-lead
+  lead_kept_out_by: The module refuses the worker bridge environment and Lead sessions before doing any work.
+  reason: The operator initializes a separate sample project, chooses its models, and supplies the receipt answer.
+  operations:
+    start: initializes the seed repository and starts the ordinary operator Lead session on Linux
+    receipt: reads AEW records and writes a receipt beside the sample repository
+
 commands:
   - name: doctor
     home: product

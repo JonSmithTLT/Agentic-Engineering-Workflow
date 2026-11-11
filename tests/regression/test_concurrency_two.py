@@ -103,11 +103,11 @@ def test_at_the_default_cap_a_disjoint_pair_runs_at_once_and_integrates_one_afte
     assert evidence["overlapping_mutating_runs"] == [runs]
     assert evidence["queue_publications"] == [first, second]
     for work_id, files in ((first, ONE), (second, TWO)):
-        assert receipt["scope"]["tickets"][work_id]["changed"] == sorted(files)
+        assert receipt["scope"]["tickets"][work_id]["changed"] == {"paths": sorted(files), "withheld": 0}
         width = receipt["validation_width"][work_id]
         assert {"check": "unit", "result": "pass"} in width["checks"]
-        assert width["neighbour_test"].startswith("not recorded:")
-        assert width["lint"].startswith("not recorded:")
+        assert width["neighbour_test"].endswith("(no_project_source)")
+        assert width["lint"].endswith("(no_project_source)")
     assert_control_invariants(p)
 
 

@@ -114,12 +114,13 @@ def receipt_lines(receipt: dict[str, Any] | None) -> list[str]:
     """Read the operator's receipt beside the scripted verdict."""
     if receipt is None:
         return ["Alpha receipt: NOT RECORDED (a real-model run the operator starts, per event)"]
-    if receipt.get("kind") != "real":
+    if receipt.get("kind") == "dry_run":
         return ["Alpha receipt: DRY RUN, not the receipt"]
 
     header = receipt.get("header") or {}
     platform = header.get("platform")
-    lines = ["Alpha receipt: RECORDED"]
+    status = "RECORDED" if receipt.get("kind") == "real" else "NOT RECORDED (no real run evidence)"
+    lines = [f"Alpha receipt: {status}"]
     if platform == "win32":
         lines.append(WINDOWS_UNQUALIFIED)
     lines.append(f"header: {json.dumps(header)}")

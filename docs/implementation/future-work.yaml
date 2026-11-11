@@ -2792,11 +2792,15 @@ sections:
   - '#': E164
     Work: '`aew policy model allow <provider/model>`, and a profile add beside it: each is one command at the operator''s
       terminal, refused in a Lead session and attributed through `require_operator_attribution`, that writes and adopts
-      the execution policy''s change in one step, with its surface-map entry. The site''s settings editor gets the same
-      lever when the dashboard''s settings work reaches the execution policy'
+      the execution policy''s change in one step, with its surface-map entry. With them, `aew policy route <archetype> <provider/model>`:
+      one typed operator action that routes an archetype to a model, reusing or adding that model''s profile, and adopts
+      the validated policy through the operator-terminal adopt (E331), with the displayed diff bound to the decision; the
+      model must already be allowed, no restart is needed, and its record is functional, `NOT_ESTABLISHED` under IF13-10.
+      The site''s settings editor gets the same lever when the dashboard''s settings work reaches the execution policy'
     Source: The operator's decision of 2026-11-06, more leeway for the Lead (design workspace `9ed0eb2`), its pointer on
       the models the Lead may pin; the designer's decision of 2026-11-06, the Lead's consult (v2), its pointer on adding
-      a model
+      a model; the operator's answers of 2026-11-10 on the alpha's G3-held steps (design workspace record `2026-11-11-operator-alpha-g3-steps.md`),
+      question 3, which adds the route command and revises the 2026-11-06 STG-14 disposition for the alpha's terminal path
     When: '**Now.** Item 29 of the Now list, beside E158''s second PR'
     Notes: Filed by the Lead. Without it, an allow-list that is empty by default only moves friction onto the operator
 

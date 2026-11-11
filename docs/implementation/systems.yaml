@@ -1647,8 +1647,10 @@ systems:
   - docs/contracts/A-09/A-09__AEW-coordination-native-integration-boundary-contract-candidate-v0.2.2.md
   register:
   - E131
+  - E175
   - E248
   as_built:
+  - tools:message_send
   - modules:aew.engine.coordination_ops
   - modules:aew.coordination
   - modules:aew.coordination.layout
@@ -1688,7 +1690,8 @@ systems:
     default: disabled
     default_evidence: src/aew/policy/execution.py:STRING_SWITCHES
     owner: operator (read from the adopted execution policy only, src/aew/policy/execution.py:172-174)
-    turning_on_changes: 'Today: `aew message thread|list|unseen` register, and every `aew harness send` is refused MESSAGING_SNAPSHOT_MISMATCH,
+    turning_on_changes: 'Today: the typed message_send records without delivery, and `aew message thread|list|unseen` register.
+      Every `aew harness send` is refused MESSAGING_SNAPSHOT_MISMATCH,
       because no run can yet record a messaging-on launch snapshot (the refusal says to switch messaging off), so the one
       live send path stops. HARNESS_SEND_NEEDS_STORE is unreachable until MS4. After MS3-MS5b: the Lead sends recorded messages
       and workers reply on their thread.'
@@ -1696,38 +1699,35 @@ systems:
     board_state: partly_built
     built: partly
     wired:
+    - tool:message_send
     - cli:message thread
     - cli:message list
     - cli:message unseen
     - cli:harness send
     on_by_default: false
     used_in_default_flow: partly
-  finish_line: 'ADR-0017''s remaining slices built: the Lead''s typed send tool (MS3, with E131''s typed harness send),
-    worker reply/read/wait bridge ops and real launch snapshots (MS4), delivery and store-recorded harness send (MS5, MS5b),
-    the coordination_unseen attention projection (MS6, E60) and MS7; coordination.messaging switched on by the operator;
-    and a real run in which the Lead and a worker exchange a recorded message.'
+  finish_line: 'After MS3''s record-only typed send: worker reply/read/wait bridge ops and real launch snapshots (MS4),
+    Lead attention (MS6), delivery (MS5), finality and store-recorded harness send (MS5b), with messaging on by default
+    and an absent-key-only operator offer for existing projects; and a real recorded exchange (MS7, owed separately).'
   remaining:
   - slice: 'Steering''s progress digest (slot 3, first): harness_wait wakes with a short digest from the worker''s live
       record (runlog.read_live, which has no reader today): files touched, the last command and test result, steps and time;
       it wakes early on a failing test, an out-of-scope file or a worker''s message. It takes SYS-11''s live-sample reader'
     row: row owed
     estimate: 1-2 PRs (estimate; the designer's reading, the reset record)
-  - slice: 'Placement: after the consult (SYS-41), the designer''s recommendation in BOARD v2 §3, pending the operator'
-    row: F9
-    estimate: no PR
-  - slice: 'MS3: the Lead''s typed message_send tool, with E131''s typed harness send'
-    row: E131
-    estimate: part of 5-7 PRs for MS3-MS6 (estimate, BOARD v2 §3)
-  - slice: 'MS4: worker reply/read/wait bridge ops and the real launch snapshot replacing run_messaging_snapshot''s stub'
-    row: HOLD-09
-    estimate: part of 5-7 PRs for MS3-MS6 (estimate, BOARD v2 §3)
-  - slice: 'MS5 and MS5b: delivery, and harness send recorded in the message store'
-    row: HOLD-09
-    estimate: part of 5-7 PRs for MS3-MS6 (estimate, BOARD v2 §3)
-  - slice: 'MS6: attention, the projection of coordination_unseen (E60); then MS7'
-    row: HOLD-09
-    estimate: part of 5-7 PRs for MS3-MS6 (estimate, BOARD v2 §3); MS7 not sized
-  - slice: 'surface.presentation, which does nothing: wire it or remove it (BOARD v2 §4 loose end)'
+  - slice: 'MS4+MS6: worker reply/read/wait, launch snapshot, one Lead wake and local told-ID consumption'
+    row: E175
+    estimate: 1 PR
+  - slice: 'MS5: live delivery and continuation'
+    row: E175
+    estimate: 1 PR
+  - slice: 'MS5b: finality, both timings, recorded harness send and default-on'
+    row: E175
+    estimate: 1 PR
+  - slice: 'MS7: separately approved real-provider qualification; not a default-on gate'
+    row: E175
+    estimate: not sized
+  - slice: 'Standalone off/compact surface.presentation policy remains deferred until F19 thaws with a named consumer'
     row: row owed
     estimate: 1 small PR (estimate, BOARD v2 §4)
   - slice: 'A typed harness_interrupt'
@@ -1736,18 +1736,18 @@ systems:
   decision: 'decided: finished and switched on in slot 3 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: finish
   who: operator (the BOARD v2 §3 decision and HOLD-09's release), then Lead
-  reason: 'Store, sealing and reads are built, but nothing can send: message_record_* has no caller outside the engine API,
-    and harness send refuses every send while messaging is on. BOARD v2 §3 (the designer''s recommendation) is to finish
-    it after the consult (SYS-41), since it matters most once the Lead runs several workers and overlaps A-44''s agents''
-    questions. Releasing HOLD-09 follows the designer''s requirement match, then the operator''s placement.'
+  reason: 'MS3 builds the typed record-only send and compact on-catalog; delivery and reply/attention are still unbuilt,
+    and harness send refuses every send while messaging is on. The operator placed E131/E175 and withdrew the consult
+    gate on 2026-11-10: finish the remaining three implementation slices with default-on at MS5b. Required Linux
+    qualification can hold the affected implementation and usable release; Windows qualification remains held/not run.'
   evidence:
   - src/aew/policy/execution.py:138,149-150 (coordination.messaging and surface.presentation enums)
   - 'src/aew/policy/execution.py:171-176 (messaging(): disabled unless the adopted policy says enabled)'
   - src/aew/policy/execution.py:179-182 (presentation(); grep finds no caller of presentation() in src)
-  - 'src/aew/engine/coordination_ops.py:340-342 (Coordination docstring: ''No surface calls it yet'')'
+  - src/aew/surface/contract.py (catalog and switch-registered message_send)
+  - src/aew/surface/run.py (_message_send, record-only result and turn-end refusal)
   - src/aew/engine/coordination_ops.py:902 (_require_recordable)
-  - src/aew/engine/api.py:967-991 (message_record_lead/worker, message_mark_shown passthroughs; grep finds no caller outside
-    api.py and coordination_ops.py)
+  - src/aew/engine/api.py (message_record_lead/worker, message_mark_shown and messaging_enabled passthroughs)
   - src/aew/engine/primitives.py:136,176-177 (message.send declared, listed in NOT_STEPS)
   - src/aew/engine/harness_ops.py:562 (harness_send, the HS1 path)
   - src/aew/engine/harness_ops.py:827-838 (SNAPSHOT_RECORDED = False; run_messaging_snapshot always returns disabled)

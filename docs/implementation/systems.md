@@ -168,7 +168,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 17 — SYS-02, SYS-05, SYS-19, SYS-29, SYS-22, SYS-08, SYS-41, SYS-43, SYS-06, SYS-45, SYS-03, SYS-04, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 17 — SYS-02, SYS-05, SYS-19, SYS-29, SYS-22, SYS-08, SYS-41, SYS-43, SYS-06, SYS-45, SYS-13, SYS-03, SYS-04, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-02 — Agent containment (Linux core on; Windows backend and follow-ons)
 
@@ -292,6 +292,20 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 **Wired:** none
 
+### SYS-13 — Lead-worker coordination messaging
+
+**Board state:** partly_built
+
+**Who:** operator (the BOARD v2 §3 decision and HOLD-09's release), then Lead
+
+**Now:** 40
+
+**Own slices left:** 7 — Steering's progress digest (slot 3, first): harness_wait wakes with a short digest from the worker's live record (runlog.read_live, which has no reader today): files touched, the last command and test result, steps and time; it wakes early on a failing test, an out-of-scope file or a worker's message. It takes SYS-11's live-sample reader (row owed); MS4+MS6: worker reply/read/wait, launch snapshot, one Lead wake and local told-ID consumption (E175); MS5: live delivery and continuation (E175); MS5b: finality, both timings, recorded harness send and default-on (E175); MS7: separately approved real-provider qualification; not a default-on gate (E175); Standalone off/compact surface.presentation policy remains deferred until F19 thaws with a named consumer (row owed); A typed harness_interrupt (E248) — **Next:** Steering's progress digest (slot 3, first): harness_wait wakes with a short digest from the worker's live record (runlog.read_live, which has no reader today): files touched, the last command and test result, steps and time; it wakes early on a failing test, an out-of-scope file or a worker's message. It takes SYS-11's live-sample reader — row owed — 1-2 PRs (estimate; the designer's reading, the reset record)
+
+**Switch:** coordination.messaging — default: disabled — checked against src/aew/policy/execution.py:STRING_SWITCHES
+
+**Wired:** tool:message_send, cli:message thread, cli:message list, cli:message unseen, cli:harness send
+
 ### SYS-03 — Read-only operator dashboard (server side)
 
 **Board state:** partly_built
@@ -317,20 +331,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Switch:** steering.mode — default: absent — not read from the code
 
 **Wired:** tool:steering, cli:operator serve, cli:operator ping, cli:lead mode raise, cli:lead mode lower, lead_text
-
-### SYS-13 — Lead-worker coordination messaging
-
-**Board state:** partly_built
-
-**Who:** operator (the BOARD v2 §3 decision and HOLD-09's release), then Lead
-
-**Now:** not on the Now list
-
-**Own slices left:** 8 — Steering's progress digest (slot 3, first): harness_wait wakes with a short digest from the worker's live record (runlog.read_live, which has no reader today): files touched, the last command and test result, steps and time; it wakes early on a failing test, an out-of-scope file or a worker's message. It takes SYS-11's live-sample reader (row owed); Placement: after the consult (SYS-41), the designer's recommendation in BOARD v2 §3, pending the operator (F9); MS3: the Lead's typed message_send tool, with E131's typed harness send (E131); MS4: worker reply/read/wait bridge ops and the real launch snapshot replacing run_messaging_snapshot's stub (HOLD-09); MS5 and MS5b: delivery, and harness send recorded in the message store (HOLD-09); MS6: attention, the projection of coordination_unseen (E60); then MS7 (HOLD-09); surface.presentation, which does nothing: wire it or remove it (BOARD v2 §4 loose end) (row owed); A typed harness_interrupt (E248) — **Next:** Steering's progress digest (slot 3, first): harness_wait wakes with a short digest from the worker's live record (runlog.read_live, which has no reader today): files touched, the last command and test result, steps and time; it wakes early on a failing test, an out-of-scope file or a worker's message. It takes SYS-11's live-sample reader — row owed — 1-2 PRs (estimate; the designer's reading, the reset record)
-
-**Switch:** coordination.messaging — default: disabled — checked against src/aew/policy/execution.py:STRING_SWITCHES
-
-**Wired:** cli:message thread, cli:message list, cli:message unseen, cli:harness send
 
 ### SYS-24 — Lead attachment lifecycle (Q12), custodian outliving the Lead, lease-expiry takeover
 

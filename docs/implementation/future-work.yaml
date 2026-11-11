@@ -149,6 +149,7 @@ sections:
     | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
     | 38 | closed: E171 | The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch`, closed by #343 |
     | 39 | E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3) |
+    | 40 | E131, E175 | Lead-worker messaging, placed by the operator (2026-11-10): MS3, MS4+MS6, MS5, then MS5b with default-on |
 
     **After items 1 to 11 and 16 to 18, first use:** the operator's SPT work, image work included. CI is SPT's first ticket: AEW's workers write it and the operator pushes. SPT stays as it is until then. Later fixes come from that use.
 
@@ -2488,10 +2489,10 @@ sections:
     Notes: Filed by the Lead
 
   - '#': E131
-    Work: A typed `harness send`. It is shell-only today, and the surface map plans it as `message_send`, landing with F9-A,
-      which HOLD-09 holds
+    Work: F9-A MS3's typed `message_send`, recording coordination without a control commit or redispatch. Live delivery
+      and the recorded `harness send` path follow under E175
     Source: The operator, 2026-11-04; the count of 8 real sessions
-    When: '**Unscheduled**, the operator''s to place, since it depends on HOLD-09'
+    When: '**Now.** Placed by the operator (2026-11-10). F9 was restored from HOLD-09; MS3 follows merged E4, E3c and MS2'
     Notes: Filed by the Lead
 
   - '#': E132
@@ -2903,7 +2904,7 @@ sections:
     Work: Messaging with delivered and read state, built on E131's typed `harness send` rather than beside it. Mostly wiring,
       since ADR-0017 is the adopted transport
     Source: The Lead's comparison of Lead sessions (2026-11-06), endorsed in the designer's findings of 2026-11-06
-    When: '**Unscheduled.** Designed when the operator queues it, after E131'
+    When: '**Now.** Placed by the operator (2026-11-10), after E131: MS4+MS6, MS5, then MS5b and default-on'
     Notes: Filed by the Lead
 
   - '#': E176
@@ -3437,13 +3438,14 @@ sections:
     Notes: Filed by the week's register PR
 
   - '#': E231
-    Work: 'The Lead''s tool budget, decided before E158 is placed: measure the per-request cost of the typed surface against
+    Work: 'The Lead''s tool budget, decided before E158''s brief: measure the per-request cost of the typed surface against
       what a shell fallback costs the Lead, then keep, raise, compact (ADR-0017''s presentation) or consolidate. Today TLS-21
       holds the normal surface under 12,000 bytes and 16 tools, with the stop line at 11,900; the pin is `NORMAL_BYTES_PIN`
       in `tests/unit/test_surface_mcp.py`, with 15 names. The free name is `message_send`''s; if E158 needs one, `explain`
       folds into `work_show`; E174, E177 and E173 look first at `resolve` choices or a `status` field'
     Source: The Lead's reading of 2026-11-08, for the operator and the designer; the designer's ruling of 2026-11-08
-    When: '**Unscheduled**, before E158 is placed'
+    When: '**Gate: before E158''s brief.** The operator chose lossless consolidation (2026-11-10); the combined measurement
+      is owed'
     Notes: Filed by the week's register PR
 
   - '#': E232

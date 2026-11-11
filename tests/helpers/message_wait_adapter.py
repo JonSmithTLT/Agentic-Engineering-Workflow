@@ -9,6 +9,10 @@ from aew.harness.opencode.adapter import OpenCodeAdapter
 class FakeWaitOpenCodeAdapter(OpenCodeAdapter):
     reports_steps = True
 
+
+class BoundWaitOpenCodeAdapter(FakeWaitOpenCodeAdapter):
+    """Only the orphan scenario needs a file barrier after a real adapter start and captured call."""
+
     def wait_binding(self):
         binding = super().wait_binding()
         if binding is not None:

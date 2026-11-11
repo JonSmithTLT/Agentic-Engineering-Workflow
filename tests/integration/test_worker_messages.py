@@ -29,9 +29,11 @@ def lab(tmp_path):
     assert not credential_hits(tmp_path)
 
 
-def launch(lab, tmp_path, steps, *, qualified=True):
+def launch(lab, tmp_path, steps, *, qualified=True, wait_barrier=False):
     enable_messaging(lab)
     cls = "FakeWaitOpenCodeAdapter" if qualified else "UnsupportedWaitOpenCodeAdapter"
+    if qualified and wait_barrier:
+        cls = "BoundWaitOpenCodeAdapter"
     lab.env["AEW_HARNESS_ADAPTERS"] = f"opencode={HELPERS / 'message_wait_adapter.py'}:{cls}"
     sync = sync_dir(tmp_path)
     lab.script("R-INV-0001-1", {"steps": [
@@ -101,7 +103,7 @@ def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp
     bound = lab.aew_root / "local/harness/runs/R-INV-0001-1/harness/wait-bound"
     run, sync = launch(lab, tmp_path, [
         {"do": "shell", "command": "aew message wait --timeout 5", "timeout_s": 1,
-         "timeout_after_file": str(bound)}])
+         "timeout_after_file": str(bound)}], wait_barrier=True)
     (sync / "go").touch()
     shell = steps_done(lab, run, 2)
     assert bound.exists(), "the test must orphan an admitted wait, not kill the shell before CLI startup"

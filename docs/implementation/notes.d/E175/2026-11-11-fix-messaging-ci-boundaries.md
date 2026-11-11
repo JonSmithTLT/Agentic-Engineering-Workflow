@@ -19,3 +19,10 @@ implementation and orphan-test files are byte-identical between fb2947b0 and 028
 The original targeted Windows diagnostic at 0282a0db passed all six selected cases; it does not reproduce CI's
 schedule. The forced send-gap and close-boundary tests fail against that head's broker implementation. No retries,
 deadline raises, new runtime/provider probe, qualification change or context-pool change.
+
+Exact-head q7 reproduction at 0282a0db: the original wait-any parse assertion failed, 88 other cases passed. The first
+fix gate found a test-helper regression: a shared fake adapter is also constructed without start, so it has no
+harness directory. Keep its behavior unchanged and put the file barrier in an orphan-only subclass instead.
+That gate passed the originally reported cases but failed five neighboring helper consumers; it is not a green gate.
+The serial Windows four-module diagnostic hit its 600-second session bound after nine passes (exit 70): incomplete,
+not a Windows pass. Do not retry that run or raise its bound; final qualification requires the new head's CI.

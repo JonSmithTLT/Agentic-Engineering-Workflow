@@ -78,9 +78,12 @@ def test_one_checks_caches_do_not_stale_another_checks_evidence(tmp_path):
 
 
 def test_a_ticket_commit_leaves_declared_caches_out_and_integrates(tmp_path):
-    p = project(tmp_path, unit=check(WRITE_CACHE, CACHES))
+    # The Ticket has a cache at prepare. The integration verifier's workspace is read-only on Linux.
+    p = project(tmp_path, unit=check(caches=CACHES))
     wid, impl = to_commit_ready(p, tmp_path, scope=("calc/**", "tests/**", ".build-cache/**"))
-    assert (impl.workspace / CACHE).is_file()
+    path = impl.workspace / CACHE
+    path.parent.mkdir()
+    path.write_text("cache at prepare", encoding="utf-8", newline="\n")
     out = integrate(p, wid)
     assert git.git("cat-file", "-e", f"{out['integrated_commit']}:{CACHE}", cwd=p.root, check=False).returncode != 0
     log = git.out("log", "--format=%B", out["integrated_commit"], cwd=p.root)

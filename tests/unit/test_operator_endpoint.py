@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from conftest import IS_WINDOWS, run_aew
 from invariants import assert_control_invariants
 
@@ -35,14 +36,17 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "aew"
 
 
 def _policy(project, **steering: Any) -> Path:
+    """The execution policy with exactly the steering mode and notifier given: none given, none at all (`aew init`'s
+    template has the standing crawl mode and the desktop notifier, register E228)."""
     path = project.root / ".aew" / "policy" / "execution.yaml"
-    text = path.read_text(encoding="utf-8").split("\n# --- e2 test ---\n")[0]
-    extra = ""
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    doc.pop("steering", None)
+    doc.pop("notify", None)
     if steering.get("mode"):
-        extra += f"steering:\n  mode: {steering['mode']}\n"
+        doc["steering"] = {"mode": steering["mode"]}
     if steering.get("notify"):
-        extra += "notify:\n  command: " + json.dumps(steering["notify"]) + "\n"
-    path.write_text(text + "\n# --- e2 test ---\n" + extra, encoding="utf-8")
+        doc["notify"] = {"command": list(steering["notify"])}
+    path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8", newline="\n")
     return path
 
 
@@ -106,7 +110,8 @@ def test_raise_is_refused_from_a_lead_session_and_the_typed_surface(project):
     """A1 §6: a model Lead cannot raise its mode. The broker refuses the raise and the endpoint's own commands (and
     only them: lowering stays Lead-reachable); the typed tool has no raise; the engine refuses any other value."""
     parser = build_parser()
-    for argv in (["lead", "mode", "raise", "walk"], ["operator", "serve", "--dev"], ["operator", "ping"]):
+    for argv in (["lead", "mode", "raise", "walk"], ["operator", "serve", "--dev"], ["operator", "ping"],
+                 ["notify", "desktop"]):  # the endpoint's notifier: the desktop shows no agent's text (A-44)
         refusal = lead_broker.refuses_locally(parser.parse_args(argv))
         assert refusal and "operator endpoint" in refusal, argv
     assert lead_broker.refuses_locally(parser.parse_args(["lead", "mode", "lower", "crawl", "--expect-rev", "1"])) \
@@ -131,8 +136,9 @@ def test_raise_is_refused_from_a_lead_session_and_the_typed_surface(project):
 
 
 def test_mode_commands_refuse_while_steering_is_not_configured(project):
-    """Decision 3: absent is legacy/manual behaviour, not a fourth mode; status shows nothing new."""
-    engine = Engine.discover(project.root)
+    """Decision 3: absent is legacy/manual behaviour, not a fourth mode; status shows nothing new. A project made
+    before the template had a standing mode, or whose operator removed it."""
+    engine = _adopt(project)
     for call in (lambda: engine.steering_raise_preview("walk"),
                  lambda: engine.steering_lower(token=project.token, expect_rev=project.rev(), mode="crawl"),
                  lambda: engine.steering_request(token=project.token, expect_rev=project.rev(), kind="raise",
@@ -517,3 +523,35 @@ def test_the_endpoint_accepts_only_its_operations(project, endpoint):
             conn.close()
         assert reply["ok"] is False, message
     assert ep.refused == 3
+
+
+def test_a_ping_to_an_endpoint_that_never_answers_ends_in_its_bound(tmp_path):
+    """Review of E228's third PR, F6: the steering loop pings before each Run action, so a ping to an endpoint that is
+    alive but silent (stopped in its terminal, or wedged) ends within its bound, as not found: the loop takes no
+    action and records its stop, instead of waiting on it."""
+    import time
+    import uuid
+    from multiprocessing.connection import Listener
+
+    family = "AF_PIPE" if IS_WINDOWS else "AF_UNIX"
+    address = (rf"\\.\pipe\aew-test-silent-{uuid.uuid4().hex}" if IS_WINDOWS
+               else str(tmp_path / "silent.sock"))
+    listener = Listener(address, family=family)
+    held: list[Any] = []
+    accepting = threading.Thread(target=lambda: held.append(listener.accept()), daemon=True)
+    accepting.start()
+    root = tmp_path / "aew"
+    path = operator_client.locator_path(root)
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"schema": operator_client.LOCATOR_SCHEMA, "address": address, "family": family}),
+                    encoding="utf-8")
+    try:
+        started = time.monotonic()
+        with pytest.raises(errors.NotFound, match="did not answer a ping"):
+            operator_client.ping(root, timeout_s=0.5)
+        assert time.monotonic() - started < 10
+        assert operator_client.PING_TIMEOUT_S <= 10
+    finally:
+        for conn in held:
+            conn.close()
+        listener.close()

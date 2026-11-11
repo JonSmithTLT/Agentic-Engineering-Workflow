@@ -17,6 +17,7 @@ from vertical import scripted_operator as S
 from vertical.chat import Mailbox
 
 from aew.cli.main import build_parser
+from aew.engine import first_configuration as FC
 from aew.engine.api import Engine
 from aew.errors import ValidationFailed
 from aew.harness import contract as K
@@ -110,7 +111,8 @@ def test_a_fresh_init_with_an_opencode_model_names_its_key_and_a_launch_passes_o
     assert variable == "OPENCODE_API_KEY" and res.json["first_configuration"]["provider_env"] == [variable]
     policy = yaml.safe_load((root / ".aew" / "policy" / "execution.yaml").read_text(encoding="utf-8"))
     assert policy["provider_env"] == [variable]
-    assert policy["profiles"]["default"] == {"model": "opencode/x"}
+    assert policy["profiles"]["default"] == {"model": "opencode/x", "deadline_s": FC.DEADLINE_S,
+                                             "deadline_scope": "run"}
     for env, want in (({variable: "synthetic-not-a-key"}, None), ({}, variable), ({variable: ""}, variable)):
         assert netns.provider_key_missing("opencode", policy["provider_env"], env, on_relay_route=True) == want, env
 
@@ -273,7 +275,9 @@ def test_each_fixture_is_recorded_not_counted_and_pinned_by_the_real_path(tmp_pa
     execution = op.root / ".aew/policy/execution.yaml"
     doc = yaml.safe_load(execution.read_text(encoding="utf-8"))
     assert doc["harness"] == "fake" and doc["steering"] == {"mode": "crawl"}
-    assert doc["profiles"] == {"default": {"model": S.OFFLINE_MODEL}}  # what the operator typed is left as typed
+    # what the operator typed is left as typed, with the profile's deadline (register E228)
+    assert doc["profiles"] == {"default": {"model": S.OFFLINE_MODEL, "deadline_s": FC.DEADLINE_S,
+                                           "deadline_scope": "run"}}
     assert Engine.discover(op.root).store.current()["policy_sha256"]["policy/execution.yaml"] == sha256_file(execution)
 
 
@@ -313,3 +317,33 @@ def test_no_source_file_names_a_driver_fixture():
     words = ("fakeprov", "vuatprov", "world_around_init", "setup_fixture")
     found = [(p.name, w) for p in src.rglob("*.py") for w in words if w in p.read_text(encoding="utf-8")]
     assert found == []
+
+
+def test_a_first_configured_project_raises_to_run_as_its_template_says(tmp_path, monkeypatch):
+    """Review of E228's third PR, F9 (guide §5): the template's next step, `aew init --model` then `aew lead mode raise
+    run`, succeeds with the shipped default notifier able to deliver, and is refused with its fix when it cannot. The
+    raise is committed as the endpoint commits it, after its challenge."""
+    import os
+
+    from aew.engine import steering as S
+    from aew.errors import IllegalTransition
+    from aew.harness import desktop_notifier as D
+
+    root = repo(tmp_path)
+    assert init(root, *GOOD).returncode == 0
+    assert run_aew("-C", str(root), "lead", "acquire", "--expect-rev", "0").returncode == 0
+    engine = Engine.discover(root)
+    policy, _ = engine.execution_policy()
+    assert policy["notify"]["command"] == ["aew", "notify", "desktop"] and policy["steering"]["mode"] == "crawl"
+    assert S.profiles_without_deadline(policy) == []
+    monkeypatch.setattr(D, "problem", lambda *a, **k: "no desktop session: test")
+    with pytest.raises(IllegalTransition) as refused:
+        engine.steering_raise_preview("run")
+    assert refused.value.details["reason"] == "notifier_unavailable" and D.FIX in refused.value.message
+    monkeypatch.setattr(D, "problem", lambda *a, **k: None)
+    bound = engine.steering_raise_preview("run")
+    principal = S.OperatorPrincipal(uid=os.getuid() if hasattr(os, "getuid") else None, method="peer_credentials",
+                                    endpoint_pid=os.getpid(), endpoint_started_at="2026-11-10T00:00:00Z")
+    engine.steering_raise(principal, mode="run", generation=bound["generation"],
+                          legality_digest=bound["legality_digest"])
+    assert engine.steering_view()["effective"] == "run"

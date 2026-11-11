@@ -854,18 +854,22 @@ def test_with_messaging_off_the_engine_records_nothing(tmp_path, setting):
 # messaging. The operational digest below is therefore a project's with no table.
 INIT_POLICY_SHA256 = {
     "policy/checks.yaml": "f06632f61b021fe69f372d08cb2385c96b3b6954454cea72fa31e37c57e7bbe2",
-    "policy/execution.yaml": "a13a8659844ae4c9f03a76ef3b0b24219697be052845105f01193111fd8cdffb",
+    # the standing `steering.mode: crawl` and the shipped notifier, `aew notify desktop` (register E228's third PR)
+    "policy/execution.yaml": "baa00eb269549358a93f596a37c079f32bfcb4efeff9db69f23f1023394c6514",
     # mutating_concurrency: 2, the default since register F10 (ADR-0003's amendment of 2026-11-07)
     "policy/gates.yaml": "1ebcc3ae1a30b879d7ec4b8d920db7a9f6e82c6f1b3feec245afddcb5e7111c7",
     "policy/guardrails.yaml": "7d48716add96baf7d0e509c0eca70701c2ea0332a839dd7435c1d773b1f8bcf0",
 }
-# What the execution template configures, parsed: unchanged since before F9-A (only its comments have changed).
+# What the execution template configures, parsed: unchanged since before F9-A, but for what Run needs by default
+# (register E228's third PR): the standing crawl mode and the shipped notifier.
 INIT_EXECUTION_PARSED = {"schema": "aew/execution/v1", "configured": False, "harness": "opencode", "profiles": {},
                          "routing": {"default": None, "archetypes": {}, "classes": {}, "cards": {}},
-                         "provider_env": []}
+                         "provider_env": [], "steering": {"mode": "crawl"},
+                         "notify": {"command": ["aew", "notify", "desktop"]}}
 INIT_POLICY_DIGESTS = {
     "legality_digest": "sha256:d0554ccb6c8e61c54461935032f93b1c6f3da4895be316baea0cb9652b81943f",  # gates.yaml's cap
-    "operational_digest": "sha256:656c7e5fe5947690a7b5287e9b0309b24bb451ed41c84dd39b2dd0473396d06c",
+    # moved by the template's standing crawl mode and notifier, both operational (register E228's third PR)
+    "operational_digest": "sha256:b171d55f4bfaed0d117731cc4d2435834b54537c4a0e30629cd3467706bc1bef",
 }
 
 

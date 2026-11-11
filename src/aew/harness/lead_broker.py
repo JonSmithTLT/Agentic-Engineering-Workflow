@@ -94,9 +94,10 @@ OPERATOR_ATTRIBUTED = {frozenset({"work", "staff"}): ("by", "operator"),
 # The operator endpoint and its client commands (M4-E plan v3 §2.1; A1 §1.1): an autonomy increase is the operator's,
 # through the endpoint, so a Lead session can neither run the endpoint nor ask it for anything. `lead mode lower` is a
 # separate command, so this path-based refusal refuses the raise only (plan v3 E2, M1). M4-E E6b, E7c and E8b add the
-# grants, `confirm` and the relaunch breaker reset's client command here (plan v3 amendment 1, §4).
+# grants, `confirm` and the relaunch breaker reset's client command here (plan v3 amendment 1, §4). `notify desktop`
+# is the endpoint's notifier: what it shows on the operator's desktop is never an agent's text (A-44).
 OPERATOR_ENDPOINT = (frozenset({"lead", "mode", "raise"}), frozenset({"operator", "serve"}),
-                     frozenset({"operator", "ping"}))
+                     frozenset({"operator", "ping"}), frozenset({"notify", "desktop"}))
 # The capability register's operator changes (STG-15, CAP-1; the designer's ruling 1): they change what every
 # contained context gets, so they are approved at the operator endpoint, and on no agent's surface (CAPR-05).
 OPERATOR_REGISTER = (frozenset({"capability", "import"}), frozenset({"capability", "add"}),

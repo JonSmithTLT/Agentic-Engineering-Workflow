@@ -350,7 +350,7 @@ left to the implementation, and what this slice adds beside them:
 | MS0 | The OpenCode 2.0.18 live-delivery probe; D8's transport | **Done (2026-10-10)**: D8's transport, its evidence, and the probe under `tests/live/f9a_delivery_probe/` |
 | MS1 | The coordination store: D1 to D4; D5's derived facts and the fact reader (no fact writer); D6's switch read from adopted bytes, off state, marker and defaults (no snapshots); the engine API (`message_record_lead`, `message_record_worker`, `message_thread`); `message.send` declared and listed in `NOT_STEPS` | **Built (2026-10-10)** |
 | MS2 | D7, D11's engine side, D12, D9's evidence inputs, the operator reads | **Built (2026-10-10)**: the amendment of 2026-10-10 |
-| MS3 | The Lead's `message_send` typed tool, switch-registered, the compact presentation and D13's budget; the broker's switch snapshot | Not built (after M4-E's E4 and MS2) |
+| MS3 | The Lead's `message_send` typed tool, switch-registered, the compact presentation and D13's budget; the broker's switch snapshot | **Built (2026-11-10)**: record-only result explicitly says delivery is not built yet; turn-end refused until MS5b; standalone off/compact policy mode remains deferred |
 | MS4 | The worker's reply as `aew-run` bridge operations; the run's switch snapshot at launch | Not built (after MS0) |
 | MS5 | Live delivery and the continuation | Not built |
 | MS6 | Lead attention: the wait, `resume`, untrusted rendering | Not built |

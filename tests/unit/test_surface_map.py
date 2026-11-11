@@ -49,6 +49,13 @@ from aew.surface import availability, contract
 from aew.surface.context import NORMAL
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _tools():
+    """All switch-registered surfaces participate in every map check, not just the shipped off catalog."""
+    return contract.catalog(contract.ALL_SWITCHES)
+
+
 REGISTRY = ROOT / "docs" / "implementation" / "surface-map.yaml"
 DOC = ROOT / "docs" / "implementation" / "surface-map.md"
 VERTICAL = ROOT / "tests" / "helpers" / "vertical" / "oracle.py"
@@ -149,7 +156,7 @@ PLANNED_DIGEST = "3fbe5e854364b78381f9001ecadd53003846a244dc52e48d9f417891aa8c1e
 PLANNED_GRADUATED: frozenset[str] = frozenset()
 PROPOSED_TOOLS: frozenset[str] = frozenset({"ticket_rework", "work_amend", "message_send"})
 PROPOSED_TOOLS_DIGEST = "80bf701d68e4277fdd2ce9420d8ce0e1a85444cfc1931cc5941f92980e0b1b9e"
-PROPOSED_TOOLS_GRADUATED: frozenset[str] = frozenset()
+PROPOSED_TOOLS_GRADUATED: frozenset[str] = frozenset({"message_send"})
 PROPOSED_CHOICES: frozenset[str] = frozenset({
     "accept_plan", "reconcile", "adopt_proposal", "reconfirm", "classify", "cancel", "close", "relaunch",
     "acknowledge_input", "waive", "accept_record", "defer", "requeue",
@@ -254,7 +261,7 @@ def revision_dests(name: str) -> set[str]:
 def floor(name: str, kind: str) -> set[str]:
     """The refusal codes a command's or tool's own arguments imply."""
     if kind == "tool":
-        t = contract.TOOLS[name]
+        t = _tools()[name]
         codes = {"STALE_REVISION"} if "expect_rev" in t.input_schema.get("properties", {}) else set()
         return codes | ({"PERMISSION_DENIED", "STALE_AUTHORITY"} if t.mutates else set())
     p, ds = live_commands()[name], dests(name)
@@ -288,7 +295,7 @@ def label(kind: str, name: str) -> str:
 
 
 def is_live(kind: str, name: str) -> bool:
-    return name in (live_commands() if kind == "cli" else contract.TOOLS)
+    return name in (live_commands() if kind == "cli" else _tools())
 
 
 def lead_reachable(name: str) -> bool:
@@ -330,7 +337,7 @@ def proved_typed(name: str, e: dict[str, Any]) -> list[str]:
     if spec is None or not spec.side_effect_class or spec.side_effect_class == "none":
         out.append(f"primitive {p!r} has no declared side effect in primitives.SPECS")
     for tool_name in e.get("via") or []:
-        t = contract.TOOLS.get(tool_name)
+        t = _tools().get(tool_name)
         if t is None or not t.built or NORMAL not in t.profiles:
             out.append(f"{tool_name!r} is not a built tool on the normal profile")
         elif p not in t.expands_to:
@@ -371,7 +378,7 @@ def baseline_key(kind: str, name: str) -> str:
 def check_registered(reg: dict[str, Any]) -> list[str]:
     commands, tools = by_name(reg, "cli"), by_name(reg, "tool")
     missing = [f"`aew {n}`" for n in live_commands() if n not in commands]
-    missing += [f"tool `{n}`" for n in contract.TOOLS if n not in tools]
+    missing += [f"tool `{n}`" for n in _tools() if n not in tools]
     return [f"{item} exists but is not registered in surface-map.yaml" for item in missing]
 
 
@@ -485,7 +492,7 @@ def check_mutates(reg: dict[str, Any]) -> list[str]:
         if not is_live(kind, name):
             continue
         if kind == "tool":
-            if m != ("yes" if contract.TOOLS[name].mutates else "no"):
+            if m != ("yes" if _tools()[name].mutates else "no"):
                 out.append(f"tool `{name}`: mutates {e.get('mutates')!r} contradicts contract.Tool.mutates")
             continue
         flags = set((e.get("mutates") or {}).get("with") or []) if m == "with" else set()
@@ -524,7 +531,7 @@ def check_door(reg: dict[str, Any]) -> list[str]:
         if door != TYPED and e.get("via"):
             out.append(f"{label(kind, name)}: only a typed door has `via` (use `partly_via`)")
         for tool_name in [*(e.get("via") or []), *(e.get("partly_via") or [])]:
-            t = contract.TOOLS.get(tool_name)
+            t = _tools().get(tool_name)
             if t is None or not t.built or NORMAL not in t.profiles:
                 out.append(f"{label(kind, name)}: {tool_name!r} is not a built tool on the normal profile")
             elif e.get("primitive") and e["primitive"] not in t.expands_to:
@@ -598,7 +605,7 @@ def check_new_surface(reg: dict[str, Any]) -> list[str]:
                     out.append(f"new `aew {name}` ({d}): `primitive: none` needs its `primitive_reason`")
             elif not primitive_names(name, p):
                 out.append(f"new `aew {name}` ({d}): primitive {p!r} is not this command's step")
-            through = [t.name for t in contract.TOOLS.values() if p not in (None, "none") and p in t.expands_to]
+            through = [t.name for t in _tools().values() if p not in (None, "none") and p in t.expands_to]
             if through or e.get("via"):
                 out.append(f"new `aew {name}` ({d}): it must not be reachable through a typed tool "
                            f"({sorted(set(through) | set(e.get('via') or []))})")
@@ -648,7 +655,7 @@ def check_owner(reg: dict[str, Any]) -> list[str]:
     out = []
     for kind, e in entries(reg):
         name = str(e.get("name"))
-        lifecycle = lead_reachable(name) if kind == "cli" else getattr(contract.TOOLS.get(name), "mutates", False)
+        lifecycle = lead_reachable(name) if kind == "cli" else getattr(_tools().get(name), "mutates", False)
         if lifecycle and e.get("owner") not in OWNERS:
             out.append(f"{label(kind, name)}: owner is {e.get('owner')!r}, not one of {OWNERS} (A1)")
     return out
@@ -720,7 +727,7 @@ def home_runs(reg: dict[str, Any], home: str) -> tuple[str, set[str]] | None:
             return BUILT, built
         proposal = proposals(reg, "proposed_choices").get(choice.group(1))
         return (PROPOSED, set((proposal.get("pairs") or {}).values())) if proposal else None
-    t = contract.TOOLS.get(home)
+    t = _tools().get(home)
     if t is not None and t.built and NORMAL in t.profiles:
         return BUILT, set(t.expands_to)
     proposal = proposals(reg, "proposed_tools").get(home)
@@ -744,8 +751,8 @@ def planned_problems(reg: dict[str, Any]) -> list[str]:
             out.append(f"{it} has exactly {list(PLANNED_KEYS)}, in that order, and may add {list(PLANNED_OPTIONAL)}; "
                        f"not {list(plan)}")
         d, homes, p = plan.get("disposition"), plan.get("homes"), plan.get("primitive")
-        if d not in (TYPED, *LEAVES_LEAD_DOORS):
-            out.append(f"{it}: disposition {d!r} is not one of {[TYPED, *LEAVES_LEAD_DOORS]}")
+        if d not in (TYPED, UNDECIDED, *LEAVES_LEAD_DOORS):
+            out.append(f"{it}: disposition {d!r} is not one of {[TYPED, UNDECIDED, *LEAVES_LEAD_DOORS]}")
         if plan.get("lands") not in lands:
             out.append(f"{it}: lands {plan.get('lands')!r} is not in the vocabulary's `lands`")
         if not plan.get("reason"):
@@ -760,6 +767,8 @@ def planned_problems(reg: dict[str, Any]) -> list[str]:
             out.append(f"{it}: a typed plan names the primitive its homes run")
         elif d != TYPED and homes:
             out.append(f"{it}: only a typed plan has homes ({d} is reached through neither Lead door)")
+        if d == UNDECIDED and p not in (None, "none"):
+            out.append(f"{it}: an undecided plan names no primitive until its design decides it")
         if p not in (None, "none") and not primitive_names(name, str(p)):
             out.append(f"{it}: primitive {p!r} is not this command's step")
     for section, home in (("proposed_tools", "{}"), ("proposed_choices", "R({})")):
@@ -776,7 +785,7 @@ def check_home_built(reg: dict[str, Any]) -> list[str]:
     row whose homes are all built and all run its primitive is decided `typed` in the same change (door typed, `via`,
     `primitive`). A built home that does not run the primitive yet is an A2 debt (`planned_sweep`), not a built home."""
     out = [f"proposed tool `{n}` is built now (contract.TOOLS): remove its proposal and decide the rows it homes"
-           for n in proposals(reg, "proposed_tools") if n in contract.TOOLS]
+           for n in proposals(reg, "proposed_tools") if n in _tools()]
     out += [f"proposed choice `{n}` is built now (contract.RESOLVE_CHOICE_PRIMITIVE): remove its proposal and decide "
             "the rows it homes" for n in proposals(reg, "proposed_choices")
             if any(c == n for c, _ in contract.RESOLVE_CHOICE_PRIMITIVE)]
@@ -888,7 +897,7 @@ def command_options(name: str) -> list[str]:
 def stage_edges(name: str) -> set[tuple[str, str]]:
     """The edges a built stage's `work.transition` steps take as a Ticket's move (above). An edge the stage only passes
     through is not one: a Ticket left at that state has no stage to call (E133)."""
-    t, out = contract.TOOLS[name], set()
+    t, out = _tools()[name], set()
     starts = availability.STARTS_AT.get(name, {})
     for n, (primitive, build) in enumerate(zip(t.expands_to, availability.STAGES.get(name, ()), strict=False)):
         if primitive != "work.transition":
@@ -1183,7 +1192,7 @@ def starts_with(tool: str, ep: str, constraints: tuple[Constraint, ...]) -> bool
     """Whether built stage ``tool`` runs entrypoint ``ep`` in the state it STARTS in (no earlier step of it produces
     the state) with arguments that select the branch (the re-review's N2: a home that reaches the state through its own
     earlier step cannot replace a lost invocation of a unit already there)."""
-    t = contract.TOOLS.get(tool)
+    t = _tools().get(tool)
     if t is None or tool not in availability.STAGES:
         return False
     for n, (primitive, build) in enumerate(zip(t.expands_to, availability.STAGES[tool], strict=False)):
@@ -1199,7 +1208,7 @@ def starts_with(tool: str, ep: str, constraints: tuple[Constraint, ...]) -> bool
 def typed_homes(reg: dict[str, Any], built_only: bool) -> list[tuple[str, set[str], set[tuple[str, str]]]]:
     """Every typed home in the system, built (and, unless ``built_only``, proposed): its name, the primitives it runs
     and the transition edges it covers (patterns, for a proposal)."""
-    out = [(t.name, set(t.expands_to), stage_edges(t.name)) for t in contract.TOOLS.values()
+    out = [(t.name, set(t.expands_to), stage_edges(t.name)) for t in _tools().values()
            if t.built and NORMAL in t.profiles]
     choices: dict[str, set[str]] = {}
     for (c, _), p in contract.RESOLVE_CHOICE_PRIMITIVE.items():
@@ -2047,8 +2056,16 @@ def _new(reg: dict[str, Any], name: str, **fields: Any) -> None:
 
 
 DRIFT: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
+    ("fields", lambda r: _entry(r, "harness interrupt")["planned"].update(homes=["message_send"]),
+     "`aew harness interrupt`'s plan: only a typed plan has homes"),
+    ("fields", lambda r: _entry(r, "harness interrupt")["planned"].update(primitive="message.send"),
+     "`aew harness interrupt`'s plan: an undecided plan names no primitive"),
     ("registered", _drop("cli", "work move"), "`aew work move` exists but is not registered"),
     ("registered", _drop("tool", "ticket_start"), "tool `ticket_start` exists but is not registered"),
+    ("registered", _drop("tool", "message_send"), "tool `message_send` exists but is not registered"),
+    ("mutates", lambda r: _entry(r, "message_send", "tool").update(mutates="no"), "tool `message_send`: mutates"),
+    ("home_built", lambda r: r["proposed_tools"].append({"name": "message_send", "expands_to": [], "lands": "F9-A"}),
+     "proposed tool `message_send` is built now"),
     ("live", lambda r: r["commands"].append({"name": "work teleport"}), "`aew work teleport` is registered but no"),
     ("live", lambda r: r["tools"].append({"name": "ticket_fly"}), "tool `ticket_fly` is registered but no longer"),
     ("fields", lambda r: _entry(r, "init").update(users=[]), "`aew init` names no users"),

@@ -987,6 +987,10 @@ class Engine:
         exists. The CLI registers `aew message` only then."""
         return self._coordination.reads_on(self._k.store.read_committed())
 
+    def messaging_enabled(self) -> bool:
+        """The adopted messaging switch for presentation snapshots; recording checks it again under the lock."""
+        return self._coordination.project_switch(self._k.store.read_committed()) == "enabled"
+
     def new_decision(self, ctx: TxnContext, decision_type: str, summary: str, *, work_unit: str | None = None,
                      classification: str | None = None, evidence_refs: list[str] | None = None,
                      resulting_transition: dict[str, Any] | None = None, reason: str | None = None,
@@ -1106,9 +1110,9 @@ class Engine:
                                  auto_run=auto_run)
 
     def stage_stop(self, *, token: str, expect_rev: int, intent: str, n: int, boundary: str, code: str, message: str,
-                   reason: str | None = None) -> dict[str, Any]:
+                   reason: str | None = None, await_resolution: bool = False) -> dict[str, Any]:
         return self._stages.stop(token=token, expect_rev=expect_rev, intent=intent, n=n, boundary=boundary,
-                                 code=code, message=message, reason=reason)
+                                 code=code, message=message, reason=reason, await_resolution=await_resolution)
 
     def stage_close(self, *, token: str, expect_rev: int, intent: str) -> dict[str, Any]:
         return self._stages.close(token=token, expect_rev=expect_rev, intent=intent)

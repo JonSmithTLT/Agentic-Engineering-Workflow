@@ -395,6 +395,15 @@ def stage_intent_violations(root: Path, hot: dict[str, Any], full: dict[str, Any
         stop, done = si.get("stopped"), len(si["steps"])
         if stop and stop["n"] != done + 1 and not stop["n"] == done == len(si["plan"]):
             problems.append(f"{where}: stopped at step {stop['n']} after {done} committed")
+        if si["status"] == S.COMPLETED and stop is not None:
+            problems.append(f"{where}: a completed intent still carries a stop")
+        if si["status"] == S.ACTIVE and stop is not None:
+            error = stop["error"]
+            if not (error["code"] == "STALE_REVISION" and error.get("reason") == "resolve_stage"
+                    and stop["boundary"] == "stale_revision" and 0 < done < len(si["plan"])):
+                problems.append(f"{where}: an ACTIVE stop is not a partial stale stop awaiting resolve")
+            if si["rebound"] and stop["rev"] <= si["rebound"][-1]["rev"]:
+                problems.append(f"{where}: its retained stop does not follow its last continue")
         resolutions(si, where)
 
     def resolutions(si: dict[str, Any], where: str) -> None:

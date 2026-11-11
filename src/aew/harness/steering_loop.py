@@ -659,8 +659,10 @@ class SteeringLoop:
         that record's when it is this generation's, its condition is the same, and the loop has acted on nothing
         about it since: not on its subject, and for a ``project`` stop on nothing at all, since ``select`` returns a
         project stop before any choice. Otherwise one more. An action on another subject never moves it, so a busy
-        activation doesn't re-tell a stuck Ticket's stop. The limit: a different stop recorded in between also moves
-        it, so the Lead is told the same stop again then; the safe direction (one more wake, never a missed one)."""
+        activation doesn't re-tell a stuck Ticket's stop. The limits: a different stop recorded in between also moves
+        it, so the Lead is told the same stop again then; the safe direction (one more wake, never a missed one). And
+        a close in the middle of an activation records nothing, so what the loop acted on in it is lost: a restart in
+        the same generation keeps a told number for a stop it had acted on (quick check, QC-n3; a narrow window)."""
         previous = _read(self.aew_root / S.LOOP_REL) or {}
         found = previous.get("stop")
         before: dict[str, Any] = found if isinstance(found, dict) else {}
@@ -673,11 +675,19 @@ class SteeringLoop:
 
     def will_ingest(self, state: dict[str, Any], work_id: str | None, engine: Any = None) -> bool:
         """Whether this loop will take in ``work_id``'s ended run itself, with no Lead step (A-58 ``CL-R07``: a
-        ``run_ended`` the loop will ingest isn't the Lead's): steering is Run and the Ticket projects an action the
-        loop auto-runs whose transition's guard ingests the implementer's run (``ingesting_action``). If that step
-        then stops, the loop's own stop wakes the Lead (``loop_waiting``). ``engine``: the caller's own, for a caller
-        on another thread (the wake queue's)."""
+        ``run_ended`` the loop will ingest isn't the Lead's): steering is Run, the loop's own last record in this
+        generation is not a stop (idle, or none), and the Ticket projects an action the loop auto-runs whose
+        transition's guard ingests the implementer's run (``ingesting_action``). ``engine``: the caller's own, for a
+        caller on another thread (the wake queue's).
+
+        Not while it is stopped (quick check of E228's PR, QC-M1): a loop held on a stop it already told may never
+        reach this Ticket's step, and that stop, keeping its occurrence, wakes nobody, so the run's end stays the
+        Lead's (at worst one more wake). From an idle record the loop either takes the run in or records a stop, and
+        a stop recorded after an idle record is a new occurrence (``_occurrence``), which wakes the Lead."""
         if not work_id or S.effective(state)["mode"] != "run":
+            return False
+        record = _read(self.aew_root / S.LOOP_REL) or {}
+        if record.get("generation") == self.generation and record.get("status") == "stopped":
             return False
         unit = (state.get("work") or {}).get(work_id) or {}
         if unit.get("kind") != "ticket" or unit.get("state") in TERMINAL_STATES:

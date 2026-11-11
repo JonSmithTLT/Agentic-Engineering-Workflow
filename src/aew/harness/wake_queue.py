@@ -392,7 +392,7 @@ class WakeQueue:
             return
         mark = self.doc["loop"]
         if mark is None or mark["key"] != stop["key"]:
-            mark = self.doc["loop"] = {"key": stop["key"], "seen_at": self.clock(), "told": None}
+            mark = self.doc["loop"] = {"key": stop["key"], "told": None}
         if not mark["told"]:
             wake = self._wake()
             wake["loop"] = {k: stop[k] for k in ("code", "subject", "message")}
@@ -465,7 +465,8 @@ class WakeQueue:
                  state: Mapping[str, Any]) -> bool:
         why = trigger.get("why")
         if why == K.RUN_ENDED:  # current, unless the Lead has it (a wait, its own close), a later attempt replaced it,
-            # or the steering loop will take it in itself (CL-R07); once the loop has, the run is no longer news
+            # or the steering loop will take it in itself (CL-R07; never while it is stopped: `will_ingest`); once
+            # the loop has, the run is no longer news
             return (run in news and not runlog.end_returned(self._dir(run)) and not any(
                 w.run != run and (w.work_unit, w.role) == (mark.get("work_unit"), mark.get("role")) for w in live)
                 and not self.loop_ingests(state, mark.get("work_unit")))

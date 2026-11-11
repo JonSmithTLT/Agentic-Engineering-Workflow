@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -346,12 +347,15 @@ def _authority_decide(a: argparse.Namespace) -> Any:
     if action == "accept":
         summary += f" as {a.klass} authority"
     authorization = operator_attribution(a.decided_by, f"RECORD as YOUR decision: {summary}")
+    binding = digest
     if a.decided_by == "lead":
-        import sys
-
-        print(summary, file=sys.stderr)
+        if sys.stderr.isatty():
+            print(summary, file=sys.stderr, flush=True)
+        else:
+            # Redirected commands reserve stderr for the JSON refusal.
+            binding = None
     args: dict[str, Any] = {"token": token, "expect_rev": a.expect_rev, "candidate_id": a.candidate,
-                            "decided_by": a.decided_by, "reason": a.reason, "binding": digest,
+                            "decided_by": a.decided_by, "reason": a.reason, "binding": binding,
                             "authorization": authorization}
     if action == "accept":
         return engine.authority_accept(klass=a.klass, **args)

@@ -600,9 +600,9 @@ def _plan_accept(a: argparse.Namespace) -> Any:
     unit = engine.status(a.work_id)["work_unit"]
     shown = next((plan for plan in unit.get("plans", []) if plan["revision"] == a.revision), None)
     binding = None
-    if shown and not getattr(a, "relayed", False):
+    if shown and not getattr(a, "relayed", False) and sys.stderr.isatty():
         binding = shown["sha256"]
-        print(f"Accept plan {shown['path']} (SHA-256 {binding})", file=sys.stderr)
+        print(f"Accept plan {shown['path']} (SHA-256 {binding})", file=sys.stderr, flush=True)
     return engine.plan_accept(token=token, expect_rev=a.expect_rev, work_id=a.work_id, revision=a.revision,
                               binding=binding)
 

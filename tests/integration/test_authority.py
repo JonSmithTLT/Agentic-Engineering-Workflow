@@ -64,6 +64,22 @@ def test_accept_and_reject_candidates(project):
     assert project.ok("status", "--json")["contradictions"] == []
 
 
+def test_lead_authority_accept_shows_the_bound_digest_on_a_terminal(project, monkeypatch, capsys):
+    from aew.cli.main import main
+    from aew.engine.api import Engine
+
+    candidate = next(c for c in project.ok("authority", "list")["candidates"] if c["path"] == "README.md")
+    shown = Engine.discover(project.root).authority_candidate(candidate["id"])
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
+    monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
+    assert main(["-C", str(project.root), "authority", "accept", candidate["id"], "--class", "orientation",
+                 "--decided-by", "lead", "--expect-rev", str(project.rev())]) == 0
+    out = capsys.readouterr()
+    assert f"README.md (file, SHA-256 {shown['digest']})" in out.err
+    decision = json.loads(out.out)["decision"]
+    assert shown["ref"] in (project.root / f".aew/decisions/{decision}.md").read_text(encoding="utf-8")
+
+
 def test_manifest_edit_outside_engine_detected_and_adopted(project):
     manifest = project.root / ".aew/project.yaml"
     manifest.write_text(manifest.read_text().replace("profile: base", "profile: python"))

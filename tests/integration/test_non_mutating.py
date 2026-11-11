@@ -164,6 +164,22 @@ def test_a_record_under_review_binds_the_review_to_it(tmp_path):
     assert_control_invariants(p)
 
 
+def test_second_active_review_on_the_same_observation_card_is_refused(tmp_path):
+    p = sample_project(tmp_path)
+    wid = create_investigation(p, tmp_path, cls=2)
+    p.lead("work", "staff", wid, "--review", "code_reviewer")
+    executor, _ = dispatch(p, wid)
+    record = submit_record(executor, "discovery_record")["evidence"]
+    p.lead("evidence", "ingest", wid, "--evidence", record)
+    p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
+    first = p.lead("invoke", "create", wid, "--card", "code_reviewer")
+    assert first["scope"] == "observation"
+
+    error = refused(p, "invoke", "create", wid, "--card", "code_reviewer")
+    assert error["code"] == "ILLEGAL_TRANSITION"
+    assert error["details"]["holding"] == first["invocation"]
+
+
 def test_external_research_never_goes_stale_on_source_changes(tmp_path):
     p = sample_project(tmp_path)
     research = create_investigation(p, tmp_path, title="pytest capability", card="researcher")

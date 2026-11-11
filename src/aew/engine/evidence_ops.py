@@ -801,6 +801,8 @@ class EvidenceCommands:
         def check() -> None:
             unit = state["work"][work_id]
             st = unit["state"]
+            if facts.get("scope", "ticket") not in {"ticket", "integration"}:
+                raise UsageError("--scope must be ticket or integration for a mutating Ticket")
             if facts.get("scope", "ticket") == "integration":
                 slot = "verify"
                 if not (st == "COMMIT_READY" and (unit.get("integration") or {}).get("status") == "prepared"):

@@ -86,6 +86,20 @@ WALKTHROUGH_NEXT = {
     "ingest review and dispatch verification": "ticket_request_verification",
     "ingest verification and prepare": "ticket_prepare",
     "publish validated candidate": "integration_publish",
+    "launch assigned implementer": "aew harness launch INV-0001 {rev}",
+    "start assigned implementer": "aew work transition {wid} --to RUNNING {rev}",
+    "replace lost reviewer": "aew invoke create {wid} --role reviewer --launch {rev}",
+    "start review rework": "aew work transition {wid} --to RUNNING {rev}",
+    "dispatch review rework": "aew invoke create {wid} --role implementer --launch {rev}",
+    "replace lost verifier": "aew invoke create {wid} --role verifier --launch {rev}",
+    "retry inconclusive verification": "aew work transition {wid} --to VERIFY_PENDING --reason <reason> {rev}",
+    "replan": "aew work transition {wid} --to REPLAN_REQUIRED --reason <reason> {rev}",
+    "escalate": "aew work transition {wid} --to ESCALATED --reason <reason> {rev}",
+    "cancel": "aew work transition {wid} --to CANCELLED --reason <reason> {rev}",
+    "return from escalation": "aew work transition {wid} --to <phase> --reason <reason> {rev}",
+    "propose replacement plan": "aew plan propose {wid} --file - --assurance none|--review <card>|--verify <card> "
+                                "--reason <reason> {rev}",
+    "accept replacement plan": "aew plan accept {wid} --revision 2 {rev}",
 }
 
 
@@ -107,10 +121,10 @@ def test_a_lead_reading_only_the_text_goes_through_a_stale_revision_a_refusal_an
     wid, _impl = implemented(p, tmp_path)
     lead = TextLead(p)
 
-    def stop_fixture_reviewer(stage: dict[str, Any]) -> None:
+    def stop_fixture_run(stage: dict[str, Any]) -> None:
         [dispatch] = [step for step in stage["completed_steps"] if step["primitive"] == "invoke.create.mutating"]
         [invocation] = [ref.removeprefix("invocation:") for ref in dispatch["refs"] if ref.startswith("invocation:")]
-        p.lead("invoke", "cancel", invocation, "--reason", "replace the hanging fixture reviewer")
+        p.lead("invoke", "cancel", invocation, "--reason", "replace the hanging fixture run")
 
     # The next step in the text is what the JSON offers.
     seen = lead.status(wid)
@@ -128,7 +142,9 @@ def test_a_lead_reading_only_the_text_goes_through_a_stale_revision_a_refusal_an
     assert requested["completed_steps"][0]["summary"] in lead.text.split("\n")[2]
 
     # A review that fails: the stage stops at the refusal, with what it committed and why, in the text.
-    stop_fixture_reviewer(requested)
+    stop_fixture_run(requested)
+    assert lead.status(wid)["projection"]["state"] == "REVIEW_PENDING"
+    assert WALKTHROUGH_NEXT["replace lost reviewer"].format(wid=wid, rev=K.EXPECT_REV) in lead.head[1]
     failing = review(p, wid, disposition="changes_required", findings=FAILING)
     stopped = lead.call("ticket_request_verification", expect_rev=lead.status(wid)["revision"], work_id=wid,
                         review_evidence=failing)
@@ -144,7 +160,7 @@ def test_a_lead_reading_only_the_text_goes_through_a_stale_revision_a_refusal_an
                                                + "\n\ndef test_again():\n    assert True\n"})
     again = lead.offered(wid, "ticket_request_review")
     assert again["ok"], again["stopped"]
-    stop_fixture_reviewer(again)
+    stop_fixture_run(again)
     passing = review(p, wid, resolved=[f"{failing}#F1"])
     revision = lead.status(wid)["revision"]
     names_next(lead, "ingest review and dispatch verification")
@@ -152,6 +168,9 @@ def test_a_lead_reading_only_the_text_goes_through_a_stale_revision_a_refusal_an
                               review_evidence=passing)
     assert verifying_now["ok"], verifying_now["stopped"]
     assert lead.status(wid)["projection"]["state"] == "VERIFY_PENDING"
+    stop_fixture_run(verifying_now)
+    assert lead.status(wid)["projection"]["state"] == "VERIFY_PENDING"
+    assert WALKTHROUGH_NEXT["replace lost verifier"].format(wid=wid, rev=K.EXPECT_REV) in lead.head[1]
     assert_control_invariants(p)
 
 

@@ -25,6 +25,7 @@ allowed:
   - cli:aew work dispatch|INPUT_STALE
   - cli:aew work dispose|result
   - cli:aew work transition|ILLEGAL_TRANSITION
+  - static:docs/guides/lead-guide.md|aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
   - static:docs/guides/lead-guide.md|aew work reclassify <T> --class <0-4> --reason <reason> --expect-rev <revision from aew status>
   - static:docs/guides/opencode.md|aew harness config opencode INV-0001
   - static:docs/guides/opencode.md|aew harness interrupt R-INV-0001-1
@@ -83,6 +84,7 @@ allowed:
   - static:guide|aew invoke create <S> --role reviewer|verifier --launch --expect-rev <revision from aew status>
   - static:guide|aew work accept <T> --expect-rev <revision from aew status>
   - static:guide|aew work close <S> --reason <reason> --expect-rev <revision from aew status>
+  - static:guide|aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
   - static:guide|aew work dispatch <T> --launch --expect-rev <revision from aew status>
   - static:guide|aew work reclassify <T> --class <0-4> --reason <reason> --expect-rev <revision from aew status>
   - static:pack:implementer|aew check run <check-id>
@@ -397,6 +399,10 @@ residuals:
   decision: 'the operator, 2026-11-01: "yes accept the two O-IDS entries"'
   reason: re-key of the pre-existing allowed entry; the line changed only because CS-4 addendum 12 removed --token
 - rule: O-IDS
+  site: static:docs/guides/lead-guide.md|aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
   site: static:docs/guides/lead-guide.md|aew work reclassify <T> --class <0-4> --reason <reason> --expect-rev <revision from aew status>
   decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
   reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text; this command now carries the revision it lacked'
@@ -422,6 +428,10 @@ residuals:
   reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
 - rule: O-IDS
   site: static:guide|aew work close <S> --reason <reason> --expect-rev <revision from aew status>
+  decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
+  reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
+- rule: O-IDS
+  site: static:guide|aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
   decision: 'the operator, 2026-11-01: "Accept, operator-merge (Recommended)"'
   reason: 'operator, 2026-11-01, ITEMS 56: --expect-rev N re-keyed to the named placeholder; same finding, new text'
 - rule: O-IDS

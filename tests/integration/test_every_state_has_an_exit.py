@@ -16,14 +16,17 @@ from typing import Any
 
 from aewflow import Role, assign, create_planned_ticket, implement, review, sample_project, verify
 from conftest import Project
+from printed_commands import check as check_printed_command
 from test_integration_stages import custody, lease, verifier_script, verifying  # noqa: F401 (custody is a fixture)
+from test_lead_reads_text import WALKTHROUGH_NEXT
 from test_stage_runner import intent, launching
 
 from aew.engine import custody_ops as CO
 from aew.engine import transitions as T
 from aew.engine.api import Engine
 from aew.engine.store import Transition
-from aew.surface import contract, projection, run
+from aew.harness.contract import EXPECT_REV
+from aew.surface import contract, projection, readable, run
 from aew.surface.context import SurfaceContext
 
 CTX = SurfaceContext.outside_session()
@@ -43,19 +46,19 @@ DEAD_ENDS = {
         "hint": "in progress; when its report and checks are in"},
     "ASSIGNED": {
         "why": "assigned but not moved on: `ticket_start` passes through here, and no stage starts from it",
-        "hint": "launch the implementer from its pack (INV-0001), then move to RUNNING"},
+        "hint": "launch from its pack or"},
     "REVIEW_PENDING, no report and no live run": {
         "why": "the reviewer's report or run is what offers something; a lost run leaves nothing",
-        "hint": "dispatch the next planned reviewer card (`aew invoke create`)"},
+        "hint": "dispatch the next planned reviewer:"},
     "REVIEW_FAILED": {
         "why": "rework has no typed home: `ticket_start` does not fit it (`work.assign` starts from READY)",
-        "hint": "return to RUNNING and dispatch an implementer with the findings"},
+        "hint": "--to RUNNING"},
     "VERIFY_PENDING, no report and no live run": {
         "why": "the verifier's report or run is what offers something; a lost run leaves nothing",
-        "hint": "dispatch the next planned verifier card (`aew invoke create`)"},
+        "hint": "dispatch the next planned verifier:"},
     "VERIFICATION_INCONCLUSIVE": {
         "why": "the return to VERIFY_PENDING needs a reason and the Lead's judgment; nothing offers it",
-        "hint": "resolve the environment/evidence blocker, then return to VERIFY_PENDING"},
+        "hint": "fix the environment/evidence blocker"},
     "COMMIT_READY, prepared with no report": {
         "why": "a prepared candidate's verifier is launched by a stage that already ran; nothing offers it again",
         "hint": "dispatch post-integration verification (`aew invoke create"},
@@ -64,10 +67,10 @@ DEAD_ENDS = {
         "hint": "awaits the Lead"},
     "ESCALATED": {
         "why": "the return is the Lead's decision after the escalation's outcome; nothing offers it",
-        "hint": "record the escalation outcome and return the Ticket"},
+        "hint": "no later than RUNNING"},
     "REPLAN_REQUIRED": {
         "why": "a new plan revision is the way on; nothing offers it",
-        "hint": "propose and accept a new plan revision"},
+        "hint": "propose a plan"},
 }
 # Only ever lowered: an entry leaves when its exit lands, and this number goes down with it.
 MOST_DEAD_ENDS = 11
@@ -159,6 +162,10 @@ def walk(tmp_path: Path, monkeypatch: Any, held: dict[str, str]) -> dict[str, di
     look(p, wid)
     p.lead("work", "transition", wid, "--to", "REPLAN_REQUIRED", "--reason", "the plan is wrong")
     look(p, wid)
+    plan = tmp_path / "replacement.md"
+    plan.write_text("Repair the plan.\n", encoding="utf-8")
+    p.lead("plan", "propose", wid, "--file", str(plan), "--assurance", "none", "--reason", "fix the plan")
+    look(p, wid, "REPLAN_REQUIRED, proposed")
     # A takeover is what interrupts a Ticket, run for real by tests/acceptance/test_at8_at13_hierarchy.py's
     # test_fresh_session_reconstructs_an_active_hierarchy_and_takeover_interrupts_read_only_work. The state is what this
     # check needs, so it is seeded with one plain commit.
@@ -198,9 +205,37 @@ def walk(tmp_path: Path, monkeypatch: Any, held: dict[str, str]) -> dict[str, di
 def test_every_non_terminal_state_offers_an_exit_or_is_pinned_with_its_reason(tmp_path, monkeypatch, custody):  # noqa: F811
     seen = walk(tmp_path, monkeypatch, custody)
     assert "PUBLISH" in offers(seen["COMMIT_READY, prepared, entry VALIDATED"])
+    _assert_recovery_commands(seen)
+    del seen["REPLAN_REQUIRED, proposed"]  # the same E133 state, with the replacement plan now on offer
     assert differences(seen, DEAD_ENDS, MOST_DEAD_ENDS) == []
     for label, pinned in DEAD_ENDS.items():  # what each hint says today, read from the projection and not remembered
         assert any(pinned["hint"] in hint for hint in seen[label]["hints"]), (label, seen[label]["hints"])
+
+
+def _assert_recovery_commands(seen: dict[str, dict[str, Any]]) -> None:
+    """Reach each recovery state and check the command where a text-only Lead looks for it."""
+    next_steps = {
+        "ASSIGNED": ("launch assigned implementer", "start assigned implementer"),
+        "REVIEW_PENDING, no report and no live run": ("replace lost reviewer",),
+        "REVIEW_FAILED": ("start review rework", "dispatch review rework"),
+        "VERIFY_PENDING, no report and no live run": ("replace lost verifier",),
+        "VERIFICATION_INCONCLUSIVE": ("retry inconclusive verification",),
+        "ESCALATED": ("return from escalation",),
+        "REPLAN_REQUIRED": ("propose replacement plan",),
+        "REPLAN_REQUIRED, proposed": ("accept replacement plan",),
+    }
+    for label, steps in next_steps.items():
+        found = seen[label]
+        line = readable._next({"projection": found})
+        for step in steps:
+            command = WALKTHROUGH_NEXT[step].format(wid=found["subject"], rev=EXPECT_REV)
+            assert f"`{command}`" in line, (label, line)
+            check_printed_command(command, "span")
+    running = seen["RUNNING, no report"]
+    for step in ("replan", "escalate", "cancel"):
+        command = WALKTHROUGH_NEXT[step].format(wid=running["subject"], rev=EXPECT_REV)
+        assert any(f"`{command}`" in hint for hint in running["hints"]), (step, running["hints"])
+        check_printed_command(command, "span")
 
 
 def test_the_check_fails_on_a_new_dead_end_a_closed_one_a_missing_state_and_a_longer_list():

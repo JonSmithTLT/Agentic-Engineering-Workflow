@@ -111,7 +111,6 @@ LEGACY_BARE_SPANS = {
     ("engine/resume_ops.py", "aew integrate reconcile"): 1,
     ("engine/resume_ops.py", "aew integrate requeue"): 1,
     ("engine/resume_ops.py", "aew integrate validate"): 1,
-    ("engine/resume_ops.py", "aew invoke create"): 3,
     ("engine/resume_ops.py", "aew lead handoff accept"): 2,
     ("engine/resume_ops.py", "aew lead takeover"): 1,
     ("engine/resume_ops.py", "aew work redispatch"): 2,

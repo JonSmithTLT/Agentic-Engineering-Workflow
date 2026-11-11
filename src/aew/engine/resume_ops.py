@@ -18,6 +18,7 @@ from aew.engine import gate_ops
 from aew.engine import gates as G
 from aew.engine import hierarchy as H
 from aew.engine import priority as PRIORITY
+from aew.engine import transitions as T
 from aew.engine import validation_ops as VO
 from aew.engine.dependencies import dependency_blockers
 from aew.engine.nonmutating_ops import is_nm_ticket
@@ -69,6 +70,26 @@ def _priority(unit: dict[str, Any]) -> dict[str, Any]:
     if waited is not None:
         found["age"] = waited
     return {"priority": found}
+
+
+def _transition(wid: str, target: str, *, reason: bool = False) -> str:
+    rationale = " --reason <reason>" if reason else ""
+    return f"`aew work transition {wid} --to {target}{rationale} {EXPECT_REV}`"
+
+
+def _dispatch(wid: str, role: str) -> str:
+    return f"`aew invoke create {wid} --role {role} --launch {EXPECT_REV}`"
+
+
+def _plan_action(wid: str, unit: dict[str, Any], *, replacing: bool = False) -> str:
+    current = (unit.get("plan") or {}).get("accepted")
+    proposed = next((p for p in reversed(unit.get("plans") or [])
+                     if p["status"] == "proposed" and p.get("supersedes") == current), None)
+    if proposed is not None:
+        return f"assess the proposed plan, then `aew plan accept {wid} --revision {proposed['revision']} {EXPECT_REV}`"
+    reason = " --reason <reason>" if replacing else ""
+    return (f"propose a plan (`aew plan propose {wid} --file - "
+            f"--assurance none|--review <card>|--verify <card>{reason} {EXPECT_REV}`, the plan in a quoted heredoc)")
 
 
 class Resume:
@@ -176,6 +197,9 @@ class Resume:
                     out.append(f"input {i['id']} from {i['from']} is {i['freshness']}: the next executor dispatch "
                                f"is refused until it is refreshed or acknowledged (`aew work acknowledge-input {wid} "
                                f"--input {i['id']} --from {i['from']} --reason <reason> {EXPECT_REV}`)")
+        for target, label in (("REPLAN_REQUIRED", "replan"), ("ESCALATED", "escalate"), ("CANCELLED", "cancel")):
+            if (u["state"], target) in T.RULES:
+                out.append(f"{label} if needed: {_transition(wid, target, reason=True)}")
         return out
 
     def _nm_ticket_actions(self, state: dict[str, Any], wid: str, u: dict[str, Any]) -> list[str]:
@@ -278,14 +302,7 @@ class Resume:
             out = []
             for b in u.get("blocked_by", []):
                 if b["kind"] == "plan_not_accepted":
-                    proposed = next((p for p in reversed(u.get("plans") or []) if p["status"] == "proposed"), None)
-                    if proposed is not None:
-                        out.append(f"assess the proposed plan, then `aew plan accept {wid} "
-                                   f"--revision {proposed['revision']} {EXPECT_REV}`")
-                    else:
-                        out.append(f"propose a plan (`aew plan propose {wid} --file - "
-                                   f"--assurance none|--review <card>|--verify <card> {EXPECT_REV}`, the plan "
-                                   "in a quoted heredoc)")
+                    out.append(_plan_action(wid, u))
                 elif b["kind"] == "plan_binding_stale":
                     out.append(f"an ancestor's plan changed: `aew plan reconfirm {wid} --reason <reason> "
                                f"{EXPECT_REV}` or a new plan revision")
@@ -301,7 +318,8 @@ class Resume:
             if (state["invocations"].get(implementer) or {}).get("runs"):  # launched by a harness (M3-D8)
                 return [f"implementer {implementer} was launched: `aew work transition {wid} --to RUNNING "
                         f"{EXPECT_REV}`"]
-            return [f"launch the implementer from its pack ({implementer}), then move to RUNNING"]
+            return [f"launch from its pack or `aew harness launch {implementer} {EXPECT_REV}`, "
+                    f"then {_transition(wid, 'RUNNING')}"]
         if st == "RUNNING":
             if implementer in active:
                 if self._submitted(state, wid, u, "implementation_report"):
@@ -311,7 +329,7 @@ class Resume:
                     return [f"implementer {implementer} reported: {self.harness.after_implementation(state, wid)}"]
                 return [f"implementer {implementer} in progress; when its report and checks are in, advance to "
                         "REVIEW_PENDING (or VERIFY_PENDING / COMMIT_READY, as its gates require)"]
-            return ["dispatch a fresh implementer (`aew invoke create`)"]
+            return [f"dispatch a fresh implementer: {_dispatch(wid, 'implementer')}"]
         if st == "REVIEW_PENDING":
             pending = self._submitted(state, wid, u, "review")
             if pending:
@@ -319,9 +337,12 @@ class Resume:
                 return [f"ingest review {e}: {lead}" for e in pending]
             if active:
                 return [f"review in progress ({', '.join(active)})"]
-            return ["dispatch the next planned reviewer card (`aew invoke create`)"]
+            return [f"dispatch the next planned reviewer: {_dispatch(wid, 'reviewer')}"]
         if st == "REVIEW_FAILED":
-            return ["return to RUNNING and dispatch an implementer with the findings"]
+            if is_nm_ticket(u):
+                return [f"{_transition(wid, 'RUNNING')}, then "
+                        f"`aew work redispatch {wid} --reason <reason> --launch {EXPECT_REV}`"]
+            return [f"{_transition(wid, 'RUNNING')}, then {_dispatch(wid, 'implementer')}"]
         if st == "REVIEW_PASSED":
             return ["advance to VERIFY_PENDING (or COMMIT_READY if no verification is required)"]
         if st == "VERIFY_PENDING":
@@ -331,12 +352,12 @@ class Resume:
                 return [f"ingest verification {e}: {lead}" for e in pending]
             if active:
                 return [f"verification in progress ({', '.join(active)})"]
-            return ["dispatch the next planned verifier card (`aew invoke create`)"]
+            return [f"dispatch the next planned verifier: {_dispatch(wid, 'verifier')}"]
         if st == "VERIFICATION_FAILED":
             return [f"classify the failure (Lead only): `aew verify classify {wid} --as <CLASS> --reason <reason> "
                     f"{EXPECT_REV}`"]
         if st == "VERIFICATION_INCONCLUSIVE":
-            return ["resolve the environment/evidence blocker, then return to VERIFY_PENDING"]
+            return [f"fix the environment/evidence blocker, then {_transition(wid, 'VERIFY_PENDING', reason=True)}"]
         if st == "VERIFIED":
             return ["advance to COMMIT_READY"]
         if st == "COMMIT_READY":
@@ -368,9 +389,13 @@ class Resume:
             return [f"inspect workspace/artifacts and reconcile (interrupted in {u.get('interrupted_from')}); "
                     "success is never assumed"]
         if st == "REPLAN_REQUIRED":
-            return ["propose and accept a new plan revision"]
+            return [_plan_action(wid, u, replacing=True)]
         if st == "ESCALATED":
-            return ["record the escalation outcome and return the Ticket"]
+            origin = u.get("escalated_from")
+            if not isinstance(origin, str) or T.PHASE_ORDER.get(origin, -1) < T.PHASE_ORDER["RUNNING"]:
+                return []  # before RUNNING the common hints name replan and cancel
+            return [f"return to RUNNING, REVIEW_PENDING or VERIFY_PENDING, no later than {origin}: "
+                    f"{_transition(wid, '<phase>', reason=True)}"]
         return []
 
     def _led(self, state: dict[str, Any], wid: str, frm: str, dst: str, command: str) -> str:

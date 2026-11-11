@@ -6,7 +6,8 @@ from collections.abc import Callable, Mapping, Sequence
 from types import MappingProxyType
 from typing import Any, NamedTuple
 
-from aew.harness.contract import EXPECT_REV, HELD_SEAT_IN_A_GUIDE, LeadGuideSection
+from aew.engine import assurance, transitions
+from aew.harness.contract import EXPECT_REV, HELD_SEAT_IN_A_GUIDE, LeadGuideSection, fields_block
 
 CLASS_TEXT = {  # WC §7.4 definitions and §7.4 examples, verbatim in substance
     "0": ("eligible mechanical work", "work for which the Class 0 eligibility predicate holds (below)",
@@ -152,15 +153,23 @@ def staffing_text() -> str:
             f"card's `use_when` and skills): {picks}.{rest}")
 
 
+def _local_checks(gates_policy: dict[str, Any]) -> str:
+    return ", ".join(f"`{check}`" for check in gates_policy.get("local_checks") or []) or "none configured"
+
+
 def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
     from aew.engine.workspace_ops import mutating_cap  # local: its imports reach the harness, which reaches this text
 
     paths = gates_policy.get("risk_paths") or {}
-    local = gates_policy.get("local_checks") or []
-    checks = ", ".join(f"`{c}`" for c in local) or "none configured"
+    checks = _local_checks(gates_policy)
     post = gates_policy.get("post_integration") or {}
     post_verify, post_checks = bool(post.get("verification")), list(post.get("checks") or [])
     unconfigured = [k for k, v in (checks_policy.get("checks") or {}).items() if not v.get("configured")]
+    class_zero_command = f"aew work create ticket --class <0-4> {EXPECT_REV}"
+    class_zero_fields = {
+        "title": "<title>", "goal": ["<goal>"], "contract": ["<clause>"], "scope": ["<path glob>"],
+        "acceptance-check": ["<check>"], "class0-assert": list(assurance.CLASS0_ASSERTIONS),
+    }
     lines = [
         "# How work gets done in AEW: the Lead's guide",
         "",
@@ -203,11 +212,15 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "trigger (security, trust, persistence, compatibility) reached by the scope; no inherited elevated "
         "obligation (a parent's minimum class or non-waivable gate); a clean `aew plan lint` (a warning counts, "
         "such as an affected path outside the scope); and your three "
-        "recorded assertions, made at creation with `--class0-assert transformation_clear --class0-assert "
-        "inputs_complete --class0-assert no_consequential_boundary`. A Class 0 Ticket that is not eligible is refused "
+        "recorded assertions. A Class 0 Ticket that is not eligible is refused "
         "with every reason (`explain` shows them), never reclassified: raise its class yourself with "
         f"`aew work reclassify <T> --class <0-4> --reason <reason> {EXPECT_REV}` (at least any inherited minimum; the "
         "inherited gates stay required), or make it eligible.",
+        "",
+        "Set a Class 0 Ticket's assertions and acceptance check at creation in the shell with `--class` set to "
+        "`0`. `ticket_draft` cannot supply them.",
+        "",
+        fields_block(class_zero_command, class_zero_fields),
         "",
         "## What each class requires in this project",
         "",
@@ -255,6 +268,17 @@ def render(gates_policy: dict[str, Any], checks_policy: dict[str, Any]) -> str:
         "Use `status` or `resume` to recover your place. "
         + _scope_rule(mutating_cap(gates_policy)),
         "",
+        "Assurance binds when the plan declaring it is accepted. A review promised only in prose binds nothing.",
+        "",
+        "Use `resolve` for what `resume` or a decision lists, including a partial stale stage whose result names "
+        "`resolve`. An ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) cannot be resolved.",
+        "",
+        "Verification classifications: " + ", ".join(
+            f"{classification} → {target}"
+            for classification, target in transitions.VERIFICATION_CLASSIFICATIONS.items()) + ".",
+        "",
+        staffing_text(),
+        "",
         "## Read when needed",
         "",
         "| Read | When |",
@@ -278,8 +302,7 @@ def _first_ticket(_gates_policy: dict[str, Any]) -> str:
         f"and then classify. {HELD_SEAT_IN_A_GUIDE}.",
         "- Look at the project before you describe work in it. You cannot edit files, but you can read and search them "
         "with your read, glob and grep tools.",
-        staffing_text(),
-    )).rstrip() + "\n"
+    )) + "\n"
 
 
 def _non_mutating(gates_policy: dict[str, Any]) -> str:
@@ -295,7 +318,7 @@ def _non_mutating(gates_policy: dict[str, Any]) -> str:
     ]
     nm = gates_policy.get("non_mutating_paths") or {}
     if nm:
-        checks = ", ".join(f"`{c}`" for c in gates_policy.get("local_checks") or []) or "none configured"
+        checks = _local_checks(gates_policy)
         lines += ["", "Its gates in this project: " + "; ".join(
             f"{label}: " + (", ".join(_gate(g, checks) for g in gates) or "none") for label, gates in _grouped(nm))
             + "."]

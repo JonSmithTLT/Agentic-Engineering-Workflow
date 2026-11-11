@@ -213,12 +213,16 @@ def test_next_actions_give_commands_a_lead_can_run(repo, tmp_path):
     actions = "\n".join(p.ok("resume", "--json")["next_actions"])
     propose = f"aew plan propose {wid} --file - --assurance none|--review <card>|--verify <card> {K.EXPECT_REV}"
     assert propose in actions, actions
-    assert f"aew plan accept {wid} --revision <n> {K.EXPECT_REV}" in actions, actions
+    assert f"aew plan accept {wid}" not in actions, actions  # accept only once there is a revision to assess
     assert f"aew work create ticket --parent {story}" in actions, actions
     _each_parses(actions)
     plan = tmp_path / "plan.md"
     plan.write_text("Do it.\n", encoding="utf-8")
     p.lead("plan", "propose", "--assurance", "none", wid, "--file", str(plan))
+    actions = "\n".join(p.ok("resume", "--json")["next_actions"])
+    assert f"aew plan accept {wid} --revision 1 {K.EXPECT_REV}" in actions, actions
+    assert propose not in actions, actions
+    _each_parses(actions)
     p.lead("plan", "accept", wid, "--revision", "1")
     actions = "\n".join(p.ok("resume", "--json")["next_actions"])
     assert f"aew work assign {wid} --launch {K.EXPECT_REV}" in actions, actions

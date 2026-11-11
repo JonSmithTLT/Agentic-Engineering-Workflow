@@ -251,11 +251,6 @@ def _escape(c: str) -> str:
     return f"\\u{ord(c):04x}" if ord(c) < 0x10000 else f"\\U{ord(c):08x}"
 
 
-# A Ticket's creation as the guide and the Lead's instructions show it: its text as data, in the frame above.
-CREATE_TICKET = fields_block(f"aew work create ticket --class <0-4> {EXPECT_REV}", {
-    "title": "<title>", "goal": ["<goal>"], "contract": ["<clause>"], "scope": ["<path glob>"]})
-
-
 # The keys in a launch contract's ``extra`` for the run's progress digest (steering design §2): the Ticket's scope
 # paths (globs, as the gates record them) and the commit the workspace was made from. Absent or None, the digest reads
 # ``out_of_scope`` and ``changed_now`` as ``unknown``.

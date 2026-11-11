@@ -108,7 +108,8 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     p.set_defaults(handler=_resume)
 
     p = sub.add_parser("guide", help="how work flows in AEW for this project: risk classes, the gates each "
-                                     "requires, the Ticket lifecycle and pointers to more guidance (read-only)")
+                                     "requires, the Ticket lifecycle and pointers to more guidance (read-only)",
+                       epilog="Read a section from the guide's pointers with aew lead guide <section>.")
     _add_json(p)
     p.set_defaults(handler=_guide)
 

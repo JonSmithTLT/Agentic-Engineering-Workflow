@@ -83,6 +83,17 @@ def test_the_non_mutating_section_uses_the_projects_own_gates():
     assert "an independent `special` review passes" in guide.render_section("non-mutating", gates)
 
 
+def test_resolve_guidance_distinguishes_a_retained_stale_stop_from_an_ended_intent():
+    text = lead_text.render(DEFAULT_GATES, CONFIGURED)
+    assert "including a partial stale stage whose result names `resolve`" in text
+    assert "An ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) cannot be resolved" in text
+
+
+def test_staffing_guidance_applies_after_the_first_ticket_too():
+    assert guide.staffing_text() in lead_text.render(DEFAULT_GATES, CONFIGURED)
+    assert guide.staffing_text() not in guide.render_section("first-ticket", DEFAULT_GATES)
+
+
 def test_the_guide_follows_the_post_integration_policy_and_names_unconfigured_checks():
     gates = copy.deepcopy(DEFAULT_GATES)
     gates["post_integration"] = {"verification": False, "checks": []}

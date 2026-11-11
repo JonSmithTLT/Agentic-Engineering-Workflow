@@ -168,6 +168,17 @@ def test_a_contained_lead_cannot_pass_an_unlisted_guide_section(lab, broker, sec
     assert reply.returncode != 0 and "invalid choice" in reply.stderr
 
 
+def test_a_contained_lead_reads_the_selected_section(lab, broker):
+    from aew.engine import guide
+
+    policy = Engine.discover(lab.root).policy("gates")
+    for section in guide.SECTIONS:
+        reply = relayed(lab, broker, "lead", "guide", section)
+        assert reply.returncode == 0, reply.stderr
+        assert reply.stdout == guide.render_section(section, policy)
+        assert "## Choosing a risk class" not in reply.stdout
+
+
 class _Poster:
     """The Lead's session for the wake queue: in its turn until the test ends it."""
 

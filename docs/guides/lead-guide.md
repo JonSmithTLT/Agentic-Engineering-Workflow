@@ -22,7 +22,20 @@ A risk class is about the change's surface and ambiguity, not its size (WC §7.4
 
 Rules (WC §7.4): classify each unit by its own change surface, ambiguity and risk. A class may go up whenever evidence exposes more risk; lowering it needs a recorded decision with its reason. A parent's mandatory gates and minimum descendant class still apply to its children. Say in the plan why you chose the class.
 
-**Class 0 eligibility** (enforced when a mutating Ticket is dispatched at Class 0): a bounded scope (it matches tracked files, no glob starts with `**`, and it covers at most 50 tracked files and, in a tree of 40 files or more, a quarter of the tree; the gates policy's `class0` can change these bounds); a goal (`--goal`) and an acceptance check that is a configured project check (`--acceptance-check`, mutating Tickets only; on any class, a declared acceptance check is a gate the Ticket must pass before COMMIT_READY, and it cannot be waived); no acceptance input inside the scope; no protected path in the scope; no review trigger (security, trust, persistence, compatibility) reached by the scope; no inherited elevated obligation (a parent's minimum class or non-waivable gate); a clean `aew plan lint` (a warning counts, such as an affected path outside the scope); and your three recorded assertions, made at creation with `--class0-assert transformation_clear --class0-assert inputs_complete --class0-assert no_consequential_boundary`. A Class 0 Ticket that is not eligible is refused with every reason (`explain` shows them), never reclassified: raise its class yourself with `aew work reclassify <T> --class <0-4> --reason <reason> --expect-rev <revision from aew status>` (at least any inherited minimum; the inherited gates stay required), or make it eligible.
+**Class 0 eligibility** (enforced when a mutating Ticket is dispatched at Class 0): a bounded scope (it matches tracked files, no glob starts with `**`, and it covers at most 50 tracked files and, in a tree of 40 files or more, a quarter of the tree; the gates policy's `class0` can change these bounds); a goal (`--goal`) and an acceptance check that is a configured project check (`--acceptance-check`, mutating Tickets only; on any class, a declared acceptance check is a gate the Ticket must pass before COMMIT_READY, and it cannot be waived); no acceptance input inside the scope; no protected path in the scope; no review trigger (security, trust, persistence, compatibility) reached by the scope; no inherited elevated obligation (a parent's minimum class or non-waivable gate); a clean `aew plan lint` (a warning counts, such as an affected path outside the scope); and your three recorded assertions. A Class 0 Ticket that is not eligible is refused with every reason (`explain` shows them), never reclassified: raise its class yourself with `aew work reclassify <T> --class <0-4> --reason <reason> --expect-rev <revision from aew status>` (at least any inherited minimum; the inherited gates stay required), or make it eligible.
+
+Set a Class 0 Ticket's assertions and acceptance check at creation in the shell with `--class` set to `0`. `ticket_draft` cannot supply them.
+
+```sh
+aew work create ticket --class <0-4> --expect-rev <revision from aew status> --fields - <<'EOF'
+title: '<title>'
+goal: ['<goal>']
+contract: ['<clause>']
+scope: ['<path glob>']
+acceptance-check: ['<check>']
+class0-assert: ['transformation_clear', 'inputs_complete', 'no_consequential_boundary']
+EOF
+```
 
 ## What each class requires in this project
 
@@ -45,6 +58,14 @@ Checks not configured yet (their gates stay blocked): unit.
 ## A mutating Ticket's life
 
 Create a scoped Ticket and accept its plan, then dispatch the implementer. Accept the implementation by transition once its report and checks are in. When the gates require review or verification, dispatch the independent roles and accept their reports. Prepare the integration candidate, pass the required checks and verification, then publish it. Follow each result's next step. Use `status` or `resume` to recover your place. Its scope is fixed once the Ticket exists, and up to 2 mutating Tickets work at once here when their scopes cannot name the same file: name every path this change needs, and no more.
+
+Assurance binds when the plan declaring it is accepted. A review promised only in prose binds nothing.
+
+Use `resolve` for what `resume` or a decision lists, including a partial stale stage whose result names `resolve`. An ended stage (COMPLETED, STOPPED_AT_BOUNDARY, REFUSED or ABANDONED) cannot be resolved.
+
+Verification classifications: LOCAL_IMPLEMENTATION_DEFECT → RUNNING, PLAN_OR_DESIGN_DEFECT → REPLAN_REQUIRED, CONTRACT_VIOLATION → REPLAN_REQUIRED, ENVIRONMENT_OR_EVIDENCE_BLOCKED → VERIFICATION_INCONCLUSIVE.
+
+Staff the implementer by the change's language, with the Ticket's `card` (`aew role list` shows each card's `use_when` and skills): `c_engineer` when the Ticket's change surface is C/C++ source, so its run loads `c-development`; `python_engineer` when the Ticket's change surface is primarily Python, so its run loads `python-development`. Otherwise the default, `engineer`, whose run may load `python-development` or `c-development` when its task matches.
 
 ## Read when needed
 

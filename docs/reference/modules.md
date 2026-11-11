@@ -838,6 +838,8 @@ None.
 
 ### `aew.engine.guide`
 
+- `aew.engine.assurance`
+- `aew.engine.transitions`
 - `aew.engine.workspace_ops`
 - `aew.harness.contract`
 - `aew.roles`
@@ -1093,6 +1095,7 @@ None.
 - `aew.engine.priority`
 - `aew.engine.queue_ops`
 - `aew.engine.seams`
+- `aew.engine.transitions`
 - `aew.engine.validation_ops`
 - `aew.errors`
 - `aew.harness.contract`

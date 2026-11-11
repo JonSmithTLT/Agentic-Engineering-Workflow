@@ -10,6 +10,7 @@ covered by its decision), the stops a launch can end in, stage/primitive equival
 from __future__ import annotations
 
 import json
+import shlex
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -21,16 +22,20 @@ from aewflow import create_investigation, create_planned_ticket, dispatch, sampl
 from conftest import Project
 from fake_harness import contains_credential
 from invariants import assert_control_invariants, load_control
+from printed_commands import commands
 from stage_equivalence import differences, end_state, recorded_decisions
 from test_stage_resolve import resolve, unfinished
 from test_stage_runner import call, intent, launching
 
-from aew.engine import faults, harness_ops
+from aew.engine import assurance, faults, harness_ops
 from aew.engine import stage_intents as SI
 from aew.engine.api import Engine
 from aew.engine.primitives import spec_for
 from aew.errors import IllegalTransition
 from aew.harness import runlog
+from aew.harness.contract import REVISION
+from aew.surface import lead_text
+from aew.util import parse_frontmatter
 
 DRAFT: dict[str, Any] = {
     "title": "Add subtract()", "risk_class": 1, "scope": ["calc/**", "tests/**"],
@@ -77,6 +82,24 @@ def test_ticket_draft_without_a_plan_plans_only_the_creation(tmp_path):
     si = intent(p, out)
     assert [s["primitive"] for s in si["plan"]] == ["work.create"] and si["status"] == SI.COMPLETED
     assert unit(p, si["subject"]["id"])["plans"] == []
+
+
+def test_the_leads_guide_shell_form_creates_a_class_zero_ticket_with_its_assertions_and_check(tmp_path):
+    p = sample_project(tmp_path)
+    engine = Engine.discover(p.root)
+    text = lead_text.guide_for(engine)
+    assert "Set a Class 0 Ticket's assertions and acceptance check at creation in the shell" in text
+    [form] = [command for command, fenced in commands(text)
+              if fenced and command.startswith("aew work create ticket --class ")]
+    header, _, fields = form.partition("\n")
+    argv = shlex.split(header.removesuffix(" <<'EOF'").replace(REVISION, str(p.rev())).replace("<0-4>", "0"))
+    result = p.aew(*argv[1:], env={"AEW_LEAD_TOKEN": p.token},
+                   input=fields.removesuffix("\nEOF").replace("<check>", "unit").replace("<path glob>", "calc/core.py"))
+    assert result.returncode == 0, result.stderr
+    ticket, _ = parse_frontmatter(engine.work_show(result.json["id"])["record"])
+    assert ticket["initial_risk_class"] == 0
+    assert set(ticket["class0_assertions"]) == set(assurance.CLASS0_ASSERTIONS)
+    assert ticket["acceptance"]["checks"] == ["unit"]
 
 
 def test_a_refused_plan_stops_the_draft_after_the_ticket_it_created(tmp_path):

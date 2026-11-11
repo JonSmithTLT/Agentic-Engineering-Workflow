@@ -24,7 +24,19 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish and switch on soon
 
-**Members:** 10 — SYS-47, SYS-40, SYS-42, SYS-44, SYS-48, SYS-07, SYS-30, SYS-32, SYS-39, SYS-46
+**Members:** 11 — SYS-09, SYS-47, SYS-40, SYS-42, SYS-44, SYS-48, SYS-07, SYS-30, SYS-32, SYS-39, SYS-46
+
+### SYS-09 — Capability register (CAP-1 and the base bundle)
+
+**Board state:** partly_built
+
+**Who:** Lead
+
+**Now:** 7
+
+**Own slices left:** 2 — The stale package docstring (capability/__init__.py:8-10), in BOARD v2 §6's docs PR (row owed); Later: MCP servers and SPT's records (A-54, SPB), host placement and network; designed only (STG-15) — **Next:** The stale package docstring (capability/__init__.py:8-10), in BOARD v2 §6's docs PR — row owed — part of 1 small docs PR (estimate)
+
+**Wired:** cli:capability list, cli:capability check, cli:capability import, cli:capability add, cli:capability remove, cli:capability host-copies, cli:doctor
 
 ### SYS-47 — Relay client certificate (E123)
 
@@ -152,7 +164,7 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 
 ## Finish, with more to build
 
-**Members:** 18 — SYS-02, SYS-05, SYS-09, SYS-19, SYS-29, SYS-22, SYS-08, SYS-41, SYS-43, SYS-06, SYS-45, SYS-03, SYS-04, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
+**Members:** 17 — SYS-02, SYS-05, SYS-19, SYS-29, SYS-22, SYS-08, SYS-41, SYS-43, SYS-06, SYS-45, SYS-03, SYS-04, SYS-13, SYS-24, SYS-31, SYS-33, SYS-34
 
 ### SYS-02 — Agent containment (Linux core on; Windows backend and follow-ons)
 
@@ -179,18 +191,6 @@ Generated from [systems.yaml](systems.yaml). Do not edit; run `python tools/regi
 **Own slices left:** 9 — E35's probe: whether OPENCODE_DISABLE_PROJECT_CONFIG also excludes .opencode/ plugins and the remote .well-known layer (on the Now list, before first use) (E35); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E35's seams: HarnessAdapter.capabilities(), LaunchContract skills/tools_allowed/native_sandbox, explicit execute and browser denies, the 'nothing else loaded' conformance scenario, tool_output limits (on the Now list) (E35); H-1: qualify OpenCode 2.1.4, with the C1 compaction re-probe, a TESTED_VERSIONS entry and a token_semantics row (on the Now list; CAP-1 PR 3 has merged) (E35); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): H-2 (OpenCode qualification, absorbed F18.11) and H-3 (patch releases without a PR per release, absorbed E17 with H-1's part 2; H-3's bundle import); shares its bundle import with F18.3 (SYS-33) (E35); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E149: the 429 re-drive in the turn-end path, with the relay classifying a 429 and setting x-should-retry; once placed (E149); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E150: turn-ending continuation for workers, after E149 (E150); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): E152: measure ruling 11's W1 workaround (measurement only, before any patch to the harness) (E152); FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md): F24.1, the Codex runtime-semantics probe, the first slice of any Codex adapter work (F24.2, Claude Code headless, after it); held in HOLD-06 (F24); default_binary finds OpenCode Desktop 2.2.6's copy (E235) — **Next:** E35's probe: whether OPENCODE_DISABLE_PROJECT_CONFIG also excludes .opencode/ plugins and the remote .well-known layer (on the Now list, before first use) — E35 — 1 PR (estimate)
 
 **Wired:** cli:harness launch, cli:harness config, cli:opencode, cli:doctor
-
-### SYS-09 — Capability register (CAP-1 and the base bundle)
-
-**Board state:** partly_built
-
-**Who:** Lead
-
-**Now:** 7
-
-**Own slices left:** 5 — The owed lines from CAP-1 PR 2's review: the agent system-text line naming a missing tool, the Lead's results line, the consent prompt, `aew capability fetch` and the setup fetch (STG-15); Card-capability resolution: map the cards' snake_case names to the register's capability ids and replace the 'workbench resolution pending' pack line (STG-15); The stale package docstring (capability/__init__.py:8-10), in BOARD v2 §6's docs PR (row owed); Later: MCP servers and SPT's records (A-54, SPB), host placement and network; designed only (STG-15); The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch` (E171) — **Next:** The owed lines from CAP-1 PR 2's review: the agent system-text line naming a missing tool, the Lead's results line, the consent prompt, `aew capability fetch` and the setup fetch — STG-15 — 1-2 PRs (estimate)
-
-**Wired:** cli:capability list, cli:capability check, cli:capability import, cli:capability add, cli:capability remove, cli:capability host-copies, cli:doctor
 
 ### SYS-19 — Validation evidence completeness (artifact digests, coverage disclosure, readiness, remote provider)
 

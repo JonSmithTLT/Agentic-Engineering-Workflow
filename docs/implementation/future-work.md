@@ -69,7 +69,7 @@ The targets were reset by the register rebaseline (operator, 2026-10-24).
 | 35 | E170 | A command that prints a record's text as written |
 | 36 | E168 | A review of any branch or ref, with `branch_reviewer` |
 | 37 | E169, E155 | O-SECRET's one canonical prohibition, with E155's hand path kept |
-| 38 | E171 | The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch` |
+| 38 | closed: E171 | The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch`, closed by #343 |
 | 39 | E182 | The systems generator: `systems.yaml` and its check (PR 1), then the rendered board (PR 2), then state read from the code with the N = 12 check (PR 3) |
 
 **After items 1 to 11 and 16 to 18, first use:** the operator's SPT work, image work included. CI is SPT's first ticket: AEW's workers write it and the operator pushes. SPT stays as it is until then. Later fixes come from that use.
@@ -2110,18 +2110,6 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 **Notes:** Filed by the Lead. One small PR, the designer's reading
 
 *Later notes: `notes.d/E170/`, oldest first (`python tools/register.py show E170`).*
-
-### E171
-
-**Work:** The tool-consent prompt, CAP-1's follow-on: AEW downloads no tool without the operator's consent. The shipped capability record gains `needed`, with a reason naming what degrades without the tool, which the operator's record can override. One consent screen serves every caller: needed tools in full (name, purpose, version, size, source), optional ones as a count until "pick", the choices needed, all, pick or none, Enter only for what the screen names, and no timed default. `aew init` asks on a terminal; the Lead's start asks only when a needed tool is missing and not declined; a new operator-only `aew capability fetch` asks, with its surface-map entry. A worker's launch never asks or downloads, and off a terminal nothing downloads unless a flag names the tools. A "no" is remembered per tool and pinned version and stays visible in `aew doctor` and `next`; every run's record carries each missing tool with a closed reason. With it, E119 §1's seat wording
-
-**Source:** The operator's decision of 2026-11-05, no download without the operator's consent, which amends `CAPR-04`'s online branch and `CAPR-Q10`; the designer's rulings of 2026-11-05 in STG-15's log, on "needed", declines and the prompt screen; the designer's decision of 2026-11-06 on E119 §1
-
-**When:** **Now.** Item 38 of the Now list, being built
-
-**Notes:** Filed by the Lead, and already being built. STG-15's notes tracked it until now. `aew-reviewer` reviews the fetch path
-
-*Later notes: `notes.d/E171/`, oldest first (`python tools/register.py show E171`).*
 
 ### E172
 
@@ -4654,6 +4642,16 @@ Entries leave the tables above when their work is accepted or another entry abso
 **By:** #340 (`e945b3ca`), with ADR-0009's amendment of 2026-11-06. Owed after it: the VM live check, on a keyed, paid model the operator approves for that event; its readiness line, which joins E125 when E125 is built; and the missing reason in `base.LAUNCH_REFUSALS`, E189. `eval/aew_eval/raw.py`'s two "free model" texts were reworded in the change that closed this row
 
 *Later notes: `notes.d/E156/`, oldest first (`python tools/register.py show E156`).*
+
+### E171
+
+**Was:** The tool-consent prompt, CAP-1's follow-on: AEW downloads no tool without the operator's consent. The shipped capability record gains `needed`, with a reason naming what degrades without the tool, which the operator's record can override. One consent screen serves every caller: needed tools in full (name, purpose, version, size, source), optional ones as a count until "pick", the choices needed, all, pick or none, Enter only for what the screen names, and no timed default. `aew init` asks on a terminal; the Lead's start asks only when a needed tool is missing and not declined; a new operator-only `aew capability fetch` asks, with its surface-map entry. A worker's launch never asks or downloads, and off a terminal nothing downloads unless a flag names the tools. A "no" is remembered per tool and pinned version and stays visible in `aew doctor` and `next`; every run's record carries each missing tool with a closed reason. With it, E119 §1's seat wording
+
+**Closed:** 2026-11-06
+
+**By:** #343 (`c574068d`): `aew capability fetch` and `aew init --fetch-tool`, one consent screen (`src/aew/capability/consent.py`), and declines remembered and shown in `aew doctor`. Its review's point m8 is E191
+
+*Later notes: `notes.d/E171/`, oldest first (`python tools/register.py show E171`).*
 
 ### E180
 

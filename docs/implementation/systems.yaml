@@ -1235,51 +1235,39 @@ systems:
     capabilities resolve against the register instead of printing 'workbench resolution pending'; exercised in a real contained
     run.
   remaining:
-  - slice: 'The owed lines from CAP-1 PR 2''s review: the agent system-text line naming a missing tool, the Lead''s results
-      line, the consent prompt, `aew capability fetch` and the setup fetch'
-    row: STG-15
-    estimate: 1-2 PRs (estimate)
-  - slice: 'Card-capability resolution: map the cards'' snake_case names to the register''s capability ids and replace the
-      ''workbench resolution pending'' pack line'
-    row: STG-15
-    estimate: 1 PR (estimate)
   - slice: The stale package docstring (capability/__init__.py:8-10), in BOARD v2 §6's docs PR
     row: row owed
     estimate: part of 1 small docs PR (estimate)
   - slice: 'Later: MCP servers and SPT''s records (A-54, SPB), host placement and network; designed only'
     row: STG-15
     estimate: unsized (estimate)
-  - slice: The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch`
-    row: E171
-    estimate: 1 PR (estimate)
   decision: 'decided: finished and switched on in slot 1 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: finish
   who: Lead
-  reason: CAP-1 PR 1 and PR 2 are merged and ripgrep is bound into every contained Linux launch; PR 3 is on the Now list,
-    a chain the board places in slot 1 (BOARD v2 §1, §7), so finishing is the Lead's by the register's order.
+  reason: CAP-1 PR 1 to PR 3 are merged, and the first bundle's six tools are shipped as records and bound into every contained
+    Linux launch. The tool-consent prompt and the operator's fetch (E171) are merged, agents are told their tools by name,
+    and card capabilities resolve against the shipped map. What is left is the stale docstring, a real contained run with
+    all six tools (the operator's yes of 2026-11-10), and the later records.
   evidence:
-  - 'src/aew/capability/records.py:34-45 the one shipped record, ripgrep 15.1.0, path: first, capabilities EXACT_CODE_SEARCH
-    and TEXT_SEARCH'
+  - 'src/aew/capability/records.py:51 ripgrep, :157 yq (yq-go), with fd, jq, ast-grep and Universal Ctags: the first bundle''s
+    six shipped records'
   - src/aew/capability/__init__.py:8-10 docstring still says the bind 'comes in the next' PR (stale)
-  - src/aew/harness/containment/layout.py:1099-1112 _tool_fields binds the register; win32 returns {} at :1109-1110
-  - src/aew/harness/containment/layout.py:1227 every contained layout calls _tool_fields
-  - src/aew/harness/containment/__init__.py:70-79 containment mode defaults to required on Linux, allow_weaker on Windows
-  - src/aew/harness/containment/__init__.py:170-172 an unsupported platform returns no layout, so no bind
-  - src/aew/harness/containment/__init__.py:216 the run label carries missing_tools
-  - src/aew/harness/containment/probe.py:755,770-779 the self-test settles each provider's entry (health check inside the
-    sandbox)
-  - 'src/aew/capability/store.py:61 host_copies defaults True in a new store; src/aew/capability/bind.py:111 a host copy
+  - src/aew/harness/containment/layout.py:1116 _tool_fields binds the register; win32 returns {} at :1126
+  - src/aew/harness/containment/layout.py:1248 every contained layout calls _tool_fields
+  - 'src/aew/harness/containment/__init__.py:70 mode(), containment defaults to required on Linux, allow_weaker on Windows'
+  - src/aew/harness/containment/__init__.py:218 the run label carries missing_tools
+  - src/aew/harness/containment/probe.py:648,716 the self-test settles each provider's entry (health checks inside the
+    sandbox, CAPR-13)
+  - 'src/aew/capability/store.py:61 host_copies defaults True in a new store; src/aew/capability/bind.py:126 a host copy
     may serve a path: first record'
-  - src/aew/cli/capability_commands.py:25-53 aew capability list, check, import, add, remove, host-copies
-  - src/aew/doctor.py:51,116-122 one doctor line per capability
-  - src/aew/harness/operator_endpoint.py:374-396 the operator endpoint's capability_change
-  - src/aew/engine/harness_ops.py:290-292,306 card capabilities collected only into the launch contract's card_capabilities
-  - src/aew/knowledge/context.py:199-200 the pack prints 'workbench resolution pending' for card capabilities
-  - 'grep ''capability fetch'' in src/aew/cli finds nothing: no `aew capability fetch`'
-  - docs/implementation/notes.d/STG-15/2026-11-04-feat-cap1-pr2-rg-bind.md the owed lines after CAP-1 PR 2's review, and
-    PR 3 next
-  - 'docs/implementation/future-work.yaml (the Now list''s STG-15 line, at c11a61ea): CAP-1 PR 2 (still listed) and CAP-1
-    PR 3'
+  - src/aew/cli/capability_commands.py:26-62 aew capability list, check, fetch (:40), import, add, remove, host-copies
+  - src/aew/capability/consent.py:375 at_lead_start and :434 at_fetch, the one consent screen (E171)
+  - src/aew/doctor.py:51,116 one doctor line per capability
+  - src/aew/harness/operator_endpoint.py:324 the operator endpoint's capability_change
+  - src/aew/engine/harness_ops.py:388 card capabilities carried into the launch contract's card_capabilities
+  - src/aew/knowledge/context.py:186-190 the pack splits card capabilities by CARD_CAPABILITIES (src/aew/capability/records.py:374)
+  - src/aew/harness/opencode/projection.py:234 a run without a tool says so (the missing-tool line)
+  - tests/live/test_capability_q08_live.py the live lane's fetch, import and contained check
 - id: SYS-10
   name: 'STG-02 slice producer: the O-01 command route and D-01 reads, with the vendored adopted contract files'
   purpose: A standalone HTTP producer of the adopted D-01 reads and the O-01 command route for one operator journey, plus

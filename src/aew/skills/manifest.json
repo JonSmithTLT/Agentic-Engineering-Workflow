@@ -48,6 +48,23 @@
     "snapshot_holds": "SKILL.md, references/, examples/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
    }
   },
+  "c-review": {
+   "version": "0.1.0",
+   "label": "unevaluated",
+   "sha256": "aedc806f9a661a30f9583e23efc705fd4e0338963d69f0da8e576598b3a39254",
+   "files": {
+    "examples/bad/missing-local-free.md": "ea9abb30e4365311f70ab69f3c5a9a8eb35499e253bb32acf94ab2645735fcf6",
+    "examples/good/replace-buffer-leak.md": "93d5b24c919a895ad9ce1b613711ea1833b63f72bf5f7bda47ed195acf975702",
+    "references/cpp-lifetime.md": "f4aaf96517d61c23d54500edb67fb814b480235817669ed017f5a4528386aa66",
+    "references/defined-behavior-and-abi.md": "eecd8dd719ad60388449a6b0ebe8de6dad01f61fc26a414af5698e2699af53fd",
+    "SKILL.md": "2b14fd04ab352179bc253504da086cfea692169d76cb3345539f01d46d6f39b9"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/c-review",
+    "snapshot": "c-review-0.1.0-8ea36e24",
+    "snapshot_holds": "SKILL.md and evals/; the snapshot's name carries its SKILL.md's hash. Shipped split by the pointer rule (operator, 2026-11-10): procedure steps 4-5 (C++ lifetime and unwinding; defined behavior, concurrency and ABI) and the examples moved verbatim into references/ and examples/, so neither this sha256 nor the shipped SKILL.md's hash is the snapshot's"
+   }
+  },
   "python-development": {
    "version": "0.4.0",
    "label": "unevaluated",
@@ -61,6 +78,24 @@
     "candidate": "docs/skills/candidates/python-development",
     "snapshot": "python-development-0.4.0-24e3214d",
     "snapshot_holds": "SKILL.md, references/, examples/ and evals/: evals/ is not shipped, so this sha256 is not the snapshot folder's"
+   }
+  },
+  "security-review": {
+   "version": "0.1.0",
+   "label": "unevaluated",
+   "sha256": "16ed54cb5770640e40e5c1ff2fdacb2402273b44425b2abcc3fb54ec1366092a",
+   "files": {
+    "examples/bad/route-local-check.md": "bb7b0dd2c1e6f973a59b4350d95065d3510e221bd3d8e9cf4231adf4c5785561",
+    "examples/good/export-guard.md": "3a3fd3daf7cc1b81bc48b229a38abc441729fa08583674d0e410eee46f0adc42",
+    "references/cryptography.md": "3a165e0ffe06e392cdb14e626ca80d96d491763148ed67a509630d714ddd6264",
+    "references/sensitive-value-lifetime.md": "6e180774e79ede6983d74769b57862e05f2999ee234bed0b0b5e05453f5d4be4",
+    "references/untrusted-input.md": "8e986b72bc656dee56ebf0d051ce68f90391463b6fef70af65b20f7ee217b735",
+    "SKILL.md": "275ea1a5d77f1c4f83ca1432081d4fdd704bdbc8e43f8e11025f9b6a952c6c80"
+   },
+   "source": {
+    "candidate": "docs/skills/candidates/security-review",
+    "snapshot": "security-review-0.1.0-cec1178e",
+    "snapshot_holds": "SKILL.md and evals/; the snapshot's name carries its SKILL.md's hash. Shipped split by the pointer rule (operator, 2026-11-10): procedure steps 3-5 (cryptography, secret lifetime, untrusted input) and the examples moved verbatim into references/ and examples/, so neither this sha256 nor the shipped SKILL.md's hash is the snapshot's"
    }
   }
  }

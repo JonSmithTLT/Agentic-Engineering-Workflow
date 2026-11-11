@@ -1,0 +1,3 @@
+# Secret lifetime
+
+**Trace secrets through their full changed lifetime.** Identify whether the value is secret, public, synthetic or a non-secret identifier. Follow copies into logs, error returns, diagnostic fields, persistence and cleanup; identify who can read the alleged disclosure surface. For zeroization, distinguish a required wipe missing on a reachable path from an unsupported claim that a compiler removed it. Check the wipe API's documented guarantee, buffer length and surviving copies. Clearing one buffer is not proof that every copy disappeared. Never retrieve real secrets to demonstrate exposure.

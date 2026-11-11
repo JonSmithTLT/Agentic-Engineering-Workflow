@@ -339,6 +339,11 @@
                 "generation": {
                   "type": "integer"
                 },
+                "coordination": {
+                  "description": "Messaging's immutable launch snapshot; absent on old or disabled runs.",
+                  "type": "object", "additionalProperties": false, "required": ["messaging"],
+                  "properties": {"messaging": {"const": "enabled"}}
+                },
                 "requests": {
                   "type": "array",
                   "items": {

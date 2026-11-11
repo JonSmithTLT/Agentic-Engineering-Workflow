@@ -194,6 +194,14 @@ class MessagingDisabled(IllegalTransition):
     code = "MESSAGING_DISABLED"
 
 
+class WaitUnsupported(IllegalTransition):
+    code = "WAIT_UNSUPPORTED"
+
+
+class WaitOutsideAStep(IllegalTransition):
+    code = "WAIT_OUTSIDE_A_STEP"
+
+
 class TurnEndNeedsMessaging(IllegalTransition):
     """``aew harness send --when turn-end`` while coordination messaging is off (F9-A plan v4 amendment 2 §3.3, G1):
     the `turn-end` timing goes only through the message store, so it is unavailable, and nothing is written."""

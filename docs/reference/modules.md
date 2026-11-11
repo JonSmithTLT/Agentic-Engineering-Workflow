@@ -199,6 +199,7 @@ Imports from the groups:
 
 - `aew`
 - `aew.capability`
+- `aew.coordination`
 - `aew.dashboard`
 - `aew.engine`
 - `aew.harness`
@@ -317,6 +318,9 @@ None.
 ### `aew.cli.message_commands`
 
 - `aew.cli.commands`
+- `aew.coordination.layout`
+- `aew.harness.bridge`
+- `aew.harness.wait_binding`
 - `aew.lead_credential`
 
 ### `aew.cli.operator_commands`
@@ -368,6 +372,10 @@ None.
 ### `aew.coordination.layout`
 
 - `aew.harness.delivery`
+
+### `aew.coordination.render`
+
+- `aew.harness.contract`
 
 ## `aew.dashboard`
 
@@ -683,6 +691,7 @@ None.
 ### `aew.engine.coordination_ops`
 
 - `aew.coordination.layout`
+- `aew.coordination.render`
 - `aew.engine.authority`
 - `aew.engine.base`
 - `aew.engine.outbox`
@@ -1370,7 +1379,7 @@ None.
 
 ### `aew.harness.contract`
 
-None.
+- `aew.harness.wait_binding`
 
 ### `aew.harness.dashboard_autostart`
 
@@ -1486,6 +1495,7 @@ None.
 - `aew.harness.runlog`
 - `aew.harness.usage`
 - `aew.harness.usage_live`
+- `aew.harness.wait_binding`
 - `aew.harness.weaker_register`
 - `aew.snapshot.fingerprint`
 
@@ -1650,6 +1660,7 @@ None.
 - `aew.harness.runlog`
 - `aew.harness.usage`
 - `aew.harness.weaker_register`
+- `aew.harness.worker_messages`
 - `aew.knowledge.evidence`
 - `aew.process_kind`
 - `aew.skills`
@@ -1671,6 +1682,10 @@ None.
 - `aew.harness.runlog`
 - `aew.harness.usage`
 - `aew.util`
+
+### `aew.harness.wait_binding`
+
+None.
 
 ### `aew.harness.wake_queue`
 
@@ -1695,6 +1710,13 @@ None.
 - `aew.harness.runlog`
 - `aew.hoststate`
 - `aew.util`
+
+### `aew.harness.worker_messages`
+
+- `aew.errors`
+- `aew.harness.bridge`
+- `aew.harness.supervisor`
+- `aew.harness.wait_binding`
 
 ## `aew.history`
 

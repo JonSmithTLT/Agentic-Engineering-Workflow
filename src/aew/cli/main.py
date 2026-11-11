@@ -29,7 +29,8 @@ def emit(result: Any, *, as_json: bool) -> None:
         sys.stdout.write(result if result.endswith("\n") else result + "\n")
 
 
-def build_parser(recall_search: bool = False, coordination_reads: bool = False) -> argparse.ArgumentParser:
+def build_parser(recall_search: bool = False, coordination_reads: bool = False,
+                 worker_messaging: bool = False) -> argparse.ArgumentParser:
     """The ``aew`` parser. ``recall_search`` registers `history search` (register F21, Arm B), which exists only while
     the project's adopted execution policy switches it on (``recall_search_for``); ``coordination_reads`` registers
     `aew message` (F9-A), which exists only while messaging is on or a thread exists (``coordination_reads_for``).
@@ -41,7 +42,8 @@ def build_parser(recall_search: bool = False, coordination_reads: bool = False) 
     parser.add_argument("--version", action="version", version=f"aew {__version__} (spec set {SPEC_SET})")
     parser.add_argument("-C", dest="cwd", default=None, help="run as if started in this directory")
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
-    commands.register(sub, recall_search=recall_search, coordination_reads=coordination_reads)
+    commands.register(sub, recall_search=recall_search, coordination_reads=coordination_reads,
+                      worker_messaging=worker_messaging)
     fields.register(parser)
     credentials.register(parser)
     return parser
@@ -172,7 +174,9 @@ def _main(argv: list[str]) -> int:
 
 def _run_main(argv: list[str]) -> int:
     _utf8_streams()
-    parser = build_parser(recall_search=recall_search_for(argv), coordination_reads=coordination_reads_for(argv))
+    parser = build_parser(recall_search=recall_search_for(argv), coordination_reads=coordination_reads_for(argv),
+                          worker_messaging=bool(os.environ.get("AEW_AGENT_ENDPOINT"))
+                          and os.environ.get("AEW_MESSAGING") == "enabled")
     try:
         argv = fields.expand(argv, parser)  # authored values arrive as data, never as shell text (B1)
     except AEWError as exc:

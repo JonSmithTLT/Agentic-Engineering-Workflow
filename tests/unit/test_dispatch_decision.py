@@ -39,6 +39,7 @@ NOT_DISPATCHING = {
     "lead takeover", "manifest adopt",
     "map diff", "map generate", "map select-architecture", "map show",  # derived map state (F22.1)
     "message list", "message thread", "message unseen",  # coordination reads, present only when switched on (F9-A)
+    "message reply", "message read", "message wait",  # credential-bound worker communication, never dispatch
     "migrate", "opencode", "plan accept", "plan adopt", "plan lint",
     "plan propose", "plan reconfirm", "resume", "review ingest", "role list", "role show", "role validate", "status",
     "settings show",  # the configuration read projection (F46.1): a lock-free read, no transaction
@@ -64,7 +65,8 @@ def leaves(parser: argparse.ArgumentParser, path: tuple[str, ...] = ()):
 
 def test_every_cli_command_is_a_registered_dispatch_or_classified_as_not_dispatching():
     # every command, the switched ones too
-    commands = {" ".join(p) for p in leaves(build_parser(recall_search=True, coordination_reads=True))}
+    commands = {" ".join(p) for p in leaves(build_parser(
+        recall_search=True, coordination_reads=True, worker_messaging=True))}
     dispatching = {" ".join(p) for p in CLI_DISPATCHES}
     assert dispatching <= commands, dispatching - commands
     assert not dispatching & NOT_DISPATCHING

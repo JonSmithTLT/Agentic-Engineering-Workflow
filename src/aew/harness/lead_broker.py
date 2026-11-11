@@ -181,6 +181,9 @@ CONTAINED_LOCAL: dict[frozenset[str], str] = {frozenset(path.split()): why for p
     ("opencode", "the operator's own: it starts a Lead session"),
     ("check run", "a worker run's, through its run's bridge"), ("submit", "a worker run's, through its run's bridge"),
     ("whoami", "a worker run's, through its run's bridge"),
+    ("message reply", "a worker run's, through its run's bridge"),
+    ("message read", "a worker run's, through its run's bridge"),
+    ("message wait", "a worker run's, through its run's bridge"),
     ("integrate custody", "AEW's own custody worker, started by the engine"),
 )}
 

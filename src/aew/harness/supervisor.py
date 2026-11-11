@@ -40,7 +40,18 @@ from typing import Any
 from aew import errors, skills
 from aew.engine import faults
 from aew.engine.authority import require_invocation, token_id_of
-from aew.harness import agentenv, bridge, containment, event_spool, procs, registry, runlog, usage, weaker_register
+from aew.harness import (
+    agentenv,
+    bridge,
+    containment,
+    event_spool,
+    procs,
+    registry,
+    runlog,
+    usage,
+    weaker_register,
+    worker_messages,
+)
 from aew.harness import contract as K
 from aew.harness.base import HarnessAdapter, refusal_of, relay_family_of
 from aew.harness.delivery import NEXT_STEP, WHEN_DELIVERY
@@ -185,6 +196,8 @@ class Supervisor:
                                        "supervisor_start_id": procs.start_id(os.getpid()), "custody_at": utc_now(),
                                        "timeline": [{"at": utc_now(), "event": "custody"}]}
         self.bridge: bridge.BridgeServer | None = None
+        self.messaging = False  # immutable contract snapshot, never the agent's presentation environment
+        self.messages = worker_messages.WorkerMessages(self)
         self.adapter: Any = None
         # Fail closed until the run's containment is decided: on POSIX, nothing starts without a layout (M4-B).
         self.tree = procs.ProcessTree(require_layout=not procs.IS_WINDOWS)
@@ -274,6 +287,16 @@ class Supervisor:
 
     # ------------------------------------------------------------------ bridge
 
+    def require_message_authority(self) -> None:
+        problem = self.authority_problem()
+        if self._ending.is_set() or problem:
+            raise errors.StaleAuthority(f"run {self.run} cannot message: {problem or 'the run ended'}")
+        if not self.messaging:
+            raise errors.MessagingDisabled("messaging was not enabled in this run's launch snapshot")
+        if not self.engine.messaging_enabled():
+            raise errors.MessagingSnapshotMismatch("the project's adopted messaging switch and this run's enabled "
+                                                   "launch snapshot disagree; relaunch the run")
+
     def handle(self, op: str, args: dict[str, Any]) -> Any:
         if self._start_overdue():  # the run reads (or is about to read) `lost`: nothing it does counts any more
             raise errors.HarnessLaunchFailed(f"run {self.run} did not start within {self._start_s:g}s ({START_ENV}) "
@@ -294,6 +317,14 @@ class Supervisor:
                                              ending=self._ending, label=self.record["containment"])
             if op == "submit":
                 return self.engine.submit(invocation_token=self._credential, kind=args["kind"], text=args["text"])
+            if op.startswith("message."):
+                self.require_message_authority()
+                if op == "message.read":
+                    return self.engine.message_read_worker(invocation_token=self._credential)
+                if op == "message.reply":
+                    return self.engine.message_record_worker(invocation_token=self._credential,
+                        in_reply_to=args["in_reply_to"], body=args["body"], kind=args["kind"] or None,
+                        refs=args["refs"], idempotency_id=args["idempotency_id"] or None)
         except errors.StaleAuthority as exc:
             self.stop_reason = (K.TERMINATED, f"authority ended: {exc.message}")
             raise
@@ -325,7 +356,11 @@ class Supervisor:
             contract = self._deliver_skills(self.engine.harness_contract(state, self.inv_id, self.run))
             self.record["contract"] = contract.to_record()
             (self.run_dir / "prompt.md").write_text(K.redact(contract.prompt), encoding="utf-8")
-            self.bridge = bridge.BridgeServer(self.handle)
+            self.messaging = (contract.extra.get("coordination") or {}).get("messaging") == "enabled"
+            self.bridge = bridge.BridgeServer(self.handle,
+                operations=bridge.OPERATIONS | (bridge.MESSAGE_OPERATIONS if self.messaging else {}),
+                cooperative=frozenset({"message.wait"}) if self.messaging else frozenset(),
+                connection_handlers={"message.wait": self.messages.wait} if self.messaging else {})
             self.bridge.start()
             self.record["bridge"] = {"endpoint": self.bridge.address}
             Path(contract.scratch).mkdir(parents=True, exist_ok=True)
@@ -337,7 +372,9 @@ class Supervisor:
             self.agent_env = agentenv.build(os.environ, endpoint=self.bridge.address, key_hex=self.bridge.key_hex,
                                             invocation=self.inv_id, run=self.run, work_unit=inv["work_unit"],
                                             scratch=contract.scratch,
-                                            contained=self.layout.env if self.layout is not None else None)
+                                             contained=self.layout.env if self.layout is not None else None)
+            if self.messaging:
+                self.agent_env["AEW_MESSAGING"] = "enabled"
             # The run's marker, whatever its label: the register of weaker contexts' scan finds its processes by it
             self.agent_env[weaker_register.MARKER] = str(self.run_dir / runlog.RECORD)
             self.adapter = adapter_cls(self.tree, self.run_dir, self.events)

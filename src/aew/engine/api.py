@@ -419,7 +419,7 @@ class Engine:
         self._units = units = WorkUnits(k, hooks=hooks, guards=guards, archive=archive)
         self._history = history = HistoryCommands(k, units=units, archive=archive, coordination=coordination)
         self._roles = roles = Roles(k, units=units)
-        self._invocations = invocations = Invocations(k, roles=roles)
+        self._invocations = invocations = Invocations(k, roles=roles, coordination=coordination)
         self._queue = queue = Queue(k, invocations=invocations)
         self._inputs = inputs = Inputs(k)
         self._packs = packs = ContextPacks(k, units=units, archive=archive)
@@ -962,6 +962,15 @@ class Engine:
 
     def message_thread(self, invocation: str) -> dict[str, Any]:
         return self._coordination.message_thread(invocation)
+
+    def message_read_worker(self, *, invocation_token: str) -> dict[str, Any]:
+        return self._coordination.message_read_worker(invocation_token=invocation_token)
+
+    def message_waiting(self, *, invocation_token: str, after: str) -> dict[str, Any]:
+        return self._coordination.message_waiting(invocation_token=invocation_token, after=after)
+
+    def message_deliver_wait(self, *, invocation_token: str, after: str, send: Any) -> None:
+        self._coordination.message_deliver_wait(invocation_token=invocation_token, after=after, send=send)
 
     def message_list(self, work_id: str) -> dict[str, Any]:
         return self._coordination.message_list(work_id)

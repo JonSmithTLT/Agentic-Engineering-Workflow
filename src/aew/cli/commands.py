@@ -68,7 +68,7 @@ def _add_lead(p: argparse.ArgumentParser) -> None:
 
 
 def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
-             coordination_reads: bool = False) -> None:
+             coordination_reads: bool = False, worker_messaging: bool = False) -> None:
     p = sub.add_parser("doctor", help="validate the environment and project state")
     _add_json(p)
     p.add_argument("--refresh", action="store_true",
@@ -160,10 +160,10 @@ def register(sub: argparse._SubParsersAction, *, recall_search: bool = False,
     capability_commands.register(sub)  # the capability register (STG-15, CAP-1)
     usage_commands.register(sub)  # the cost and usage ledger's reads (F25 R9)
     g3_commands.register(sub)  # the G3 client (STG-03, G3-D)
-    if coordination_reads:  # F9-A (plan D-31): only while messaging is on or a thread exists, never in a run
+    if coordination_reads or worker_messaging:
         from aew.cli import message_commands
 
-        message_commands.register(sub)
+        message_commands.register(sub, operator=coordination_reads, worker=worker_messaging)
 
 
 def _register_lead(sub: argparse._SubParsersAction) -> None:

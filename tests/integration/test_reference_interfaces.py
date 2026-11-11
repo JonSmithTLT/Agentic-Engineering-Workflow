@@ -212,7 +212,7 @@ def live_leaves() -> set[str]:
             return {" ".join(path)}
         return set().union(*(walk(child, (*path, name)) for a in subs for name, child in a.choices.items()))
 
-    return walk(build_parser(recall_search=True, coordination_reads=True), ())
+    return walk(build_parser(recall_search=True, coordination_reads=True, worker_messaging=True), ())
 
 
 def test_every_surface_map_command_links_to_a_live_command_and_back():

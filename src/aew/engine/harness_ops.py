@@ -183,6 +183,8 @@ class Harness:
             runs.append({"run": run, "harness": inv["execution_profile"]["harness"], "token_id": inv["token_id"],
                          "launched_at": utc_now(), "kind": "relaunch" if previous else "launch",
                          "generation": state["lead"]["generation"]})
+            if self.coordination.project_switch(state) == X.MESSAGING_ENABLED:
+                runs[-1]["coordination"] = {"messaging": X.MESSAGING_ENABLED}
             ctx.refs.append(f"run:{run}")
             ctx.summary = f"{run} launched for {invocation}; credential rotated" + (
                 f" (supersedes {previous['run']})" if previous else "")
@@ -322,6 +324,9 @@ class Harness:
         ops = set(ROLE_OPERATIONS.get(inv["role"], frozenset()))
         if inv.get("allowed_operations") is not None:
             ops &= set(inv["allowed_operations"])
+        runs = inv.get("runs") or []
+        if runs and run_messaging_snapshot(runs[-1]) == X.MESSAGING_ENABLED:
+            ops |= {"message.reply", "message.read", "message.wait"}
         return sorted(ops)
 
     def harness_contract(self, state: dict[str, Any], inv_id: str, run: str) -> K.LaunchContract:
@@ -387,6 +392,8 @@ class Harness:
                    "skills": skills_plan(content.get("skills") or [], content.get("optional_skills") or []),
                    "card_capabilities": sorted(capabilities),
                    "provider_env": list((policy or {}).get("provider_env") or []),
+                   **({"coordination": {"messaging": X.MESSAGING_ENABLED}} if any(
+                       r["run"] == run and run_messaging_snapshot(r) == X.MESSAGING_ENABLED for r in runs) else {}),
                    K.SCOPE_PATHS: scope_paths, K.WORKSPACE_BASE: base})
 
     def run_authority_problem(self, state: dict[str, Any], inv_id: str, run: str, token_id: str) -> str | None:
@@ -986,21 +993,11 @@ def _read_acks(proc: subprocess.Popen[bytes], wait_s: float) -> list[dict[str, A
 MAX_SEND_CHARS = 1 << 20
 
 
-# Whether a run can carry a launch snapshot of the messaging switch. False until F9-A's MS4 writes it: MS4 deletes this
-# constant together with the ``run_messaging_snapshot`` stub below, and with it the pre-MS4 remedy in ``send_route``
-# (review of PR #176, finding 1: until then a relaunch never clears the mismatch, so the refusal must not advise one).
-SNAPSHOT_RECORDED = False
-
-
 def run_messaging_snapshot(run_entry: dict[str, Any]) -> str:
-    """The messaging switch as the run snapshotted it at launch (F9-A plan v4 D-15): ``enabled`` or ``disabled``.
-
-    F9-A's MS4 writes the snapshot (a run carries ``coordination: {messaging: enabled}`` only when enabled) and is not
-    built yet, so no run can carry one, and every run reads as launched with messaging off, which is what an absent
-    snapshot means. MS4 replaces this with the real read and adds the ``off_on`` case (amendment 2 §3.1, §7: the HS1 and
-    MS4 coupling)."""
-    del run_entry  # read from MS4 on
-    return X.MESSAGING_DISABLED
+    """The immutable launch snapshot; an old or absent snapshot is off, never today's project policy."""
+    snapshot = run_entry.get("coordination")
+    return (X.MESSAGING_ENABLED if isinstance(snapshot, dict) and snapshot.get("messaging") == X.MESSAGING_ENABLED
+            else X.MESSAGING_DISABLED)
 
 
 def send_route(project: str, snapshot: str, when: str, *, invocation: str | None = None) -> str:
@@ -1008,17 +1005,11 @@ def send_route(project: str, snapshot: str, when: str, *, invocation: str | None
     (F9-A plan v4 amendment 2 §3.1, §3.3): ``"request"``, the supervisor request file, only when both are off and the
     timing is ``next-step``. Every other case is refused, the mismatch first: it is the more specific fail-closed reason
     and says what to do, so it wins over a timing's own refusal. The remedy is to relaunch the run, which a project
-    switched off always allows; with the project switched on, a relaunch helps only once MS4 records snapshots, and
-    until then sending needs messaging switched off (``SNAPSHOT_RECORDED``). ``invocation`` is the run's, for the
-    relaunch command the remedy prints."""
+    switched off or on records the matching snapshot. ``invocation`` is the run's, for the relaunch remedy."""
     on, launched_on = project == X.MESSAGING_ENABLED, snapshot == X.MESSAGING_ENABLED
     if on != launched_on:
-        if SNAPSHOT_RECORDED or not on:  # project off: a relaunched run reads as launched off, so it agrees
-            remedy = (f"Relaunch the run (`aew harness launch {invocation or '<invocation from aew harness status>'} "
-                      f"{K.EXPECT_REV}`) and send to the new run")
-        else:  # project on, before MS4: every run reads as launched off, so a relaunch would be refused the same way
-            remedy = ("This AEW version cannot yet launch a run with coordination messaging on (F9-A MS4 adds it), so "
-                      "until then `harness send` needs messaging switched off: ask the operator")
+        remedy = (f"Relaunch the run (`aew harness launch {invocation or '<invocation from aew harness status>'} "
+                  f"{K.EXPECT_REV}`) and send to the new run")
         raise MessagingSnapshotMismatch(
             f"the project's messaging switch ({project}) and this run's launch snapshot of it ({snapshot}) disagree; "
             f"nothing was sent. {remedy}", project=project, snapshot=snapshot, when=when)

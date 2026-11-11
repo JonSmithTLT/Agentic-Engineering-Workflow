@@ -181,7 +181,7 @@ def leaves(parser: argparse.ArgumentParser, path: tuple[str, ...] = ()):
 @cache
 def parser() -> argparse.ArgumentParser:
     # Every switched command registered (register F21's `history search`, F9-A's `message`), so none escapes.
-    return build_parser(recall_search=True, coordination_reads=True)
+    return build_parser(recall_search=True, coordination_reads=True, worker_messaging=True)
 
 
 @cache
@@ -246,7 +246,7 @@ def ideal_path_options() -> dict[str, list[str]]:
 
 def worker_commands() -> set[str]:
     """The commands a worker runs through its run's custody bridge (bridge.OPERATIONS: `check.run` is `check run`)."""
-    return {op.replace(".", " ") for op in bridge.OPERATIONS}
+    return {op.replace(".", " ") for op in bridge.OPERATIONS | bridge.MESSAGE_OPERATIONS}
 
 
 def dests(name: str) -> set[str]:
@@ -1413,6 +1413,9 @@ def build_sample(base: Path) -> Sample:
         assert code == 0, (argv, err)
         invocation_token = json.loads(out).get("invocation_token") or invocation_token
     assert invocation_token, "work assign issued no invocation credential"
+    engine = Engine.discover(root)
+    engine.message_record_lead(token=token, expect_rev=engine.store.read()["revision"], to="INV-0001",
+                                body="The probe's worker reads its own coordination thread.")
     s = Sample(base, root, token, "T-0001", "INV-0001", invocation_token)
     # Settle it: the first read after a commit deletes the spent redo records of the commits before it
     # (ControlStore._recover); that housekeeping belongs to the setup's commits, not to the first surface probed.
@@ -1470,7 +1473,21 @@ def fill(argv: list[str], s: Sample) -> list[str]:
 def probe_one(argv: list[str], s: Sample) -> tuple[int, str, list[str]]:
     """Run one probe: its exit code, its refusal code (if any), and what it changed."""
     before = snapshot(s)
-    code, _, err = run_cli(s.root, fill(argv, s))
+    if argv[:2] == ["message", "read"]:
+        from aew.engine.api import Engine
+
+        engine = Engine.discover(s.root)
+        server = bridge.BridgeServer(lambda op, args: engine.message_read_worker(invocation_token=s.invocation_token),
+                                     operations={"message.read": {}})
+        server.start()
+        try:
+            code, _, err = run_cli(s.root, fill(argv, s), env={"AEW_MESSAGING": "enabled",
+                bridge.ENV_ENDPOINT: server.address, bridge.ENV_KEY: server.key_hex})
+        finally:
+            server.close()
+            assert server.wait_stopped()
+    else:
+        code, _, err = run_cli(s.root, fill(argv, s))
     after = snapshot(s)
     refusal = ""
     if code:
@@ -2034,7 +2051,7 @@ def test_the_walk_and_the_ideal_path_are_the_live_ones():
     assert len(rows) == 13 and rows["init"] == ["init"] and resolve(["init"]) == "init"
     assert rows["configure"] == ["init"]  # its options are `ideal_path_options`'s: they're no words of the command
     assert ideal_path_options() == {"init": ["--check-command", "--model", "--provider"]}
-    assert worker_commands() == {"whoami", "check run", "submit"}
+    assert worker_commands() == {"whoami", "check run", "submit", "message reply", "message read", "message wait"}
 
 
 # Each enforced check fails, naming the item, on the drift it exists to catch.

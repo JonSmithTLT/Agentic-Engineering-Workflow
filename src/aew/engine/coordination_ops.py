@@ -38,12 +38,14 @@ import hashlib
 import json
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from aew import util
 from aew.coordination import layout as L
+from aew.coordination.render import lead_message
 from aew.engine import outbox
 from aew.engine.authority import require_invocation, require_lead
 from aew.engine.base import POLICY_PINS, V2, Kernel, TxnContext
@@ -438,6 +440,55 @@ class Coordination:
             return self._result(thread, record, duplicate=False) | {"revision": s.revision}
 
     # ------------------------------------------------------------------ reads
+
+    def message_read_worker(self, *, invocation_token: str) -> dict[str, Any]:
+        """The credential's own thread tail only; no consumption, repair, sibling lookup or revision movement."""
+        state = self.k.store.read_committed()
+        inv_id, inv, _ = require_invocation(state, invocation_token, None, archived=self.archive.archived_credential)
+        thread = read_thread(self.k.aew_root, inv["work_unit"], inv_id)
+        return {"thread": inv_id, "messages": [lead_message(m) if _is_lead(m) else _labelled(m)
+                                               for m in thread.messages[-L.UNSEEN_CAP:]]}
+
+    def _waiting(self, state: dict[str, Any], invocation_token: str, after: str) -> tuple[Thread, list[dict[str, Any]]]:
+        inv_id, inv, _ = require_invocation(state, invocation_token, None, archived=self.archive.archived_credential)
+        self._require_recordable(state)
+        thread = read_thread(self.k.aew_root, inv["work_unit"], inv_id)
+        cursor = 0
+        if after:
+            target = thread.by_id().get(after)
+            if target is None:
+                raise ReplyNotInThread(f"{after} is not a message of your thread ({inv_id})", reason="unknown")
+            cursor = target["seq"]
+        answered = _answered(thread)
+        pending = [m for m in thread.messages if m["sender"] == L.lead_party(state["lead"]["generation"])
+                   and m["seq"] > cursor and m["id"] not in answered]
+        return thread, pending[:L.UNSEEN_CAP]
+
+    def message_waiting(self, *, invocation_token: str, after: str) -> dict[str, Any]:
+        thread, pending = self._waiting(self.k.store.read_committed(), invocation_token, after)
+        return {"thread": thread.invocation, "messages": [lead_message(m) for m in pending]}
+
+    def message_deliver_wait(self, *, invocation_token: str, after: str, send: Callable[[Any], None]) -> None:
+        """Select under authority, send without the control lock, then revalidate before recording carried IDs.
+        Caller holds the supervisor's delivery lock; send rechecks the connection, authority and call/step lifetime.
+        A slow or dead socket must never hold the project's control lock. An exception from send writes no fact;
+        authority lost after the send also writes nothing, and a sealed thread is never reopened."""
+        with self.k.store.session() as s:
+            thread, pending = self._waiting(s.state, invocation_token, after)
+            if not pending:
+                return  # another waiter consumed them: the supervisor resumes its bounded wait
+            result = {"thread": thread.invocation, "messages": [lead_message(m) for m in pending],
+                      "outcome": "messages"}
+            carried = {m["id"] for m in pending}
+        send(result)
+        with self.k.store.session() as s:
+            thread, pending = self._waiting(s.state, invocation_token, after)
+            inv = s.state["invocations"][thread.invocation]
+            run = (inv.get("runs") or [{}])[-1].get("run")
+            for m in pending:
+                if m["id"] in carried:
+                    self._write_fact(s.state, thread, {"kind": L.DELIVERED, "message": m["id"], "via": "wait",
+                                                      "at": utc_now(), "transport_ref": run})
 
     def message_thread(self, invocation: str) -> dict[str, Any]:
         """An invocation's thread, lock-free (a reader never repairs): its complete, chain-verified messages, each with

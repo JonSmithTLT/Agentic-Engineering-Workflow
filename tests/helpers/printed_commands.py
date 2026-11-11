@@ -159,7 +159,7 @@ def parser() -> argparse.ArgumentParser:
     choices and required options are the CLI's own."""
     from aew.cli.main import build_parser
 
-    root = build_parser(recall_search=True, coordination_reads=True)
+    root = build_parser(recall_search=True, coordination_reads=True, worker_messaging=True)
     todo, seen = [root], []
     while todo:
         p = todo.pop()

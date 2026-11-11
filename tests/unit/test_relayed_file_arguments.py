@@ -90,7 +90,7 @@ def two_file_arguments(parser: argparse.ArgumentParser) -> list[str]:
 
 @pytest.fixture(scope="module")
 def parser():
-    return build_parser(recall_search=True, coordination_reads=True)
+    return build_parser(recall_search=True, coordination_reads=True, worker_messaging=True)
 
 
 def _handlers_source() -> str:

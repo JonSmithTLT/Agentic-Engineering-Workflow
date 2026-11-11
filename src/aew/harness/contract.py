@@ -328,6 +328,15 @@ def preamble(c: LaunchContract) -> str:
                      "Write reports and any other file you need outside the workspace there, and nowhere else: a "
                      "file left in the workspace changes the work under evaluation. Submit with "
                      "`aew submit --kind <kind> --file <that file>`, or pipe the report with `--file -`.")
+    if (c.extra.get("coordination") or {}).get("messaging") == "enabled":
+        from aew.harness.wait_binding import MAX_WAIT_S
+
+        lines.append("- Coordination is enabled for this run. Reply only to the Lead on your thread with "
+                     "`aew message reply <MSG> --file <file>|-`; `aew message read` reads your thread tail. "
+                     "`aew message wait [--after MSG] [--timeout SECONDS]` is one foreground wait, "
+                     f"at most {MAX_WAIT_S} seconds: do not set a shorter shell timeout. "
+                     "If the adapter refuses WAIT_UNSUPPORTED, reply "
+                     "and end your turn instead. Coordination never changes your scope or expected output.")
     return "\n".join(lines)
 
 

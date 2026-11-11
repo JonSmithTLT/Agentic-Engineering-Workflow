@@ -44,7 +44,7 @@ provider_env: [OPENAI_API_KEY]
 
 For a manual edit of the pinned execution policy, follow the quickstart's
 [pinned settings steps](quickstart.md#edit-pinned-settings-or-classify-authority-candidates). Once you've adopted the
-edit at your terminal and released the seat, start the Lead with `aew opencode --acquire`.
+edit at your terminal and released the seat, start the Lead with plain `aew opencode`.
 
 Then check the project:
 
@@ -83,11 +83,19 @@ The Lead's own model is different. By default it uses the credentials OpenCode h
 From the project's main worktree:
 
 ```bash
-aew opencode --acquire
+aew opencode
 ```
 
-- `--acquire` takes the vacant Lead seat inside the session, so the Lead credential exists only in the broker's memory. It is never printed. At exit the seat is released if nothing is in flight; otherwise it stays held, and the output tells you that continuing needs a terminal takeover. `--keep-seat` keeps it held.
-- Without `--acquire`, `aew opencode` asks for the Lead credential at a hidden prompt, and the broker holds what you type in its memory. If your shell already holds `AEW_LEAD_TOKEN`, it takes the credential from there instead and removes it from OpenCode's environment. Set it for this shell session only, with a form that echoes nothing and leaves nothing in history:
+- Plain `aew opencode` takes a vacant Lead seat inside the session when the shell has no exported Lead credential.
+  It resumes a seat it took itself when the previous session is gone, the host and user match, and no handoff is
+  pending. When work is carried or processes may still run, the operator's terminal asks for one confirmation code.
+  `--acquire` explicitly selects the same route even if a credential is exported. The credential stays in the
+  broker's memory. The seat is released after a clean exit when nothing is in flight and no acknowledged process
+  may still run. `--keep-seat` keeps it held.
+- With `AEW_LEAD_TOKEN` set in your shell, `aew opencode` uses that Lead credential. Use `--prompt-token` to
+  enter an existing credential at the hidden prompt. `--prompt-token` and `--acquire` cannot be combined.
+  The broker holds the credential in memory and removes it from OpenCode's environment. Set the variable for
+  this shell session only, with a form that echoes nothing and leaves nothing in history:
   - bash: `read -rsp 'Lead token: ' AEW_LEAD_TOKEN; echo; export AEW_LEAD_TOKEN`
   - PowerShell 7: `$env:AEW_LEAD_TOKEN = Read-Host "Lead token" -MaskInput`
   - Windows PowerShell 5.1: `$s = Read-Host "Lead token" -AsSecureString; $env:AEW_LEAD_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s)); Remove-Variable s`
@@ -98,7 +106,7 @@ aew opencode --acquire
 - A pasted image reaches the Lead's model without its path or file name, so the Lead can't name it, read it again or hand it to a worker (OpenCode sends no local path to a server it doesn't treat as local; register E211). To keep the path for a file in the project, attach it with an `@` mention, or type its path and ask the Lead to read it.
 - If the Lead's server dies, nothing restarts it: the session ends, `aew opencode` exits non-zero, and its result says how to go on, which depends on the seat. If it never starts, `aew opencode` exits non-zero and names its log; `aew doctor` checks the rest.
 - AEW wakes the Lead when a run needs it, by posting to the session you last viewed, so the Lead ends its turn after a dispatch and you can talk to it meanwhile; `aew status` shows each wake under "Lead wakes".
-- **To turn wakes off,** set `lead.push_wake: "off"`, quoted, in `.aew/policy/execution.yaml`, and adopt it at your own terminal: `aew manifest adopt --reason ... --expect-rev N`, with the revision from `aew status`. That needs the Lead credential: with it in your shell (`AEW_LEAD_TOKEN`) posts stop within seconds, in a running session too. A session started with `--acquire` holds the only credential, so end that session first. While an edit isn't adopted, no wake is posted, and `aew status` says the last pass failed. The Lead's next steps go back to waiting with `harness_wait`, and a Lead already idle stays idle until you talk to it. A project that doesn't name the key has wakes on. Turning them back on takes effect at once in a session that started with them on, and at the next launch otherwise.
+- **To turn wakes off,** set `lead.push_wake: "off"`, quoted, in `.aew/policy/execution.yaml`, and adopt it at your own terminal: `aew manifest adopt --reason ... --expect-rev N`, with the revision from `aew status`. That needs the Lead credential: with it in your shell (`AEW_LEAD_TOKEN`) posts stop within seconds, in a running session too. A session that took the seat itself holds the only credential, so end that session first. While an edit isn't adopted, no wake is posted, and `aew status` says the last pass failed. The Lead's next steps go back to waiting with `harness_wait`, and a Lead already idle stays idle until you talk to it. A project that doesn't name the key has wakes on. Turning them back on takes effect at once in a session that started with them on, and at the next launch otherwise.
 - Wakes have these limits:
   - **`/new`:** no session exists between `/new` and your first prompt, and the server gives no signal for that gap. A wake in it goes to the session you left and spends a turn there, and it doesn't show in the TUI. `aew status` shows it was posted, and to which session.
   - **A restart:** a wake before your first prompt in this launch is held for it, and `aew status` shows it outstanding. Nothing shows in the TUI until you type.

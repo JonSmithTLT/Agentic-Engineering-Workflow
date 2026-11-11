@@ -154,6 +154,8 @@ The `writers` fact of the `writers` records.
 - `aew.harness.tool_calls:_rotate`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.tool_calls:append`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.harness.wake_queue:WakeQueue._save`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.wake_queue:clear_serving`: no static call chain from any entry point's declaring function reaches this writer
+- `aew.harness.wake_queue:mark_serving`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.history.store:History.append`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.history.store:prewrite`: no static call chain from any entry point's declaring function reaches this writer
 - `aew.process_kind:require_writer`: the role `aew (worker run)` is chosen by an environment variable and not by a command, so the call graph attributes no handler to it, and its absence from `entry_points` says nothing; a write a non-writer process may not make is refused by `process_kind.require_writer` (at the control lock, and before an operation whose purpose is such a write), tested at run time by `test_no_command_a_worker_can_run_writes_under_aew_or_takes_the_lock` and not proved here

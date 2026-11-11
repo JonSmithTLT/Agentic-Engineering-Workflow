@@ -10,6 +10,12 @@
 - **Lead generation** increases on every acquire, handoff accept or takeover. Each of those atomically revokes every superseded credential. A stale Lead write fails `STALE_AUTHORITY` before any state-dependent answer is given. Every control mutation also requires `--expect-rev` (compare-and-swap).
 - **Invocation credentials** are scoped to (invocation, archetype, work unit, generation) and to the operations of the archetype's role table. They are revoked on completion, cancellation, takeover, or a handoff that does not carry them.
 - **Takeover** requires out-of-band operator authorization. The engine itself reads a one-time challenge answer from the controlling terminal (`/dev/tty`, or the Windows console). There is no flag, environment variable, stdin input or API parameter that authorizes. Without a terminal it fails with `OPERATOR_AUTHORIZATION_REQUIRED`.
+- **Resume** applies to a seat taken by `aew opencode` itself (a vacant-seat start, with or without `--acquire`).
+  The same host and user, the recorded session process gone, no pending handoff and the operator's own terminal
+  outside any AEW session and non-writer process are required. The new generation fences the old Lead and carries
+  the still-active invocations and their credentials. If any invocation will be carried or any leftover process may
+  still run, the operator types one code after seeing the generation move and the invocations and processes concerned.
+  The commit re-checks the holder and the subjects shown.
 
 ## Consequences and limits
 
@@ -29,7 +35,7 @@ The credential scheme is unchanged: same form, same verifier, same scopes. What 
 
 - **Custody (operator requirement).** No raw AEW credential ever enters a model-controlled process, whether an invocation's or the Lead's.
   - A harness run's credential is written to its supervisor's **stdin pipe**, never through argv, an environment variable or a file. The supervisor holds it in memory and serves a run-scoped bridge. The agent acts through the bridge and never possesses the credential.
-  - The Lead's credential is held by a **Lead broker** (`aew lead session`, `aew opencode`): taken in-process with `--acquire`, or from `AEW_LEAD_TOKEN` in the operator's own shell, which is removed from the session's environment.
+  - The Lead's credential is held by a **Lead broker**. It is taken in-process when `aew opencode` starts on a vacant seat (`--acquire` says the same and is still accepted), or, when `AEW_LEAD_TOKEN` is set in the operator's own shell or a flag asks for the hidden prompt, from that credential, which is removed from the session's environment. The flag is `--prompt-token`. Explicit `--acquire` selects the in-process path even when `AEW_LEAD_TOKEN` is set. `aew lead session` keeps its existing modes.
   - The broker **refuses credential-emitting commands** (`lead acquire|takeover|release`, `lead handoff offer|accept`) and dispatch without `--launch`, and redacts credential strings from everything it returns.
   - The explicit-credential path (`AEW_INVOCATION_TOKEN`, `AEW_LEAD_TOKEN`, `--token`) remains for scripted roles, tests and the operator's own terminal.
 - **Dispatch with `--launch` withholds the credential.** It is removed from the command's output and handed to the run's supervisor. A dispatch without `--launch` still prints it (M1 behaviour), and that credential dies at the invocation's first launch.
@@ -266,19 +272,3 @@ portion of the 2026-10-05 amendment above:
   automatically; an occupied port skips the dashboard and offers `aew dashboard serve --port 0` to explicitly request
   an ephemeral port (or a free port the operator chooses). A dashboard failure never fails the Lead session. No write
   path is added; a write route bypassing adopt or the operator endpoint reopens the no-code decision.
-
-## Amendment (2026-11-11) — OpenCode takes or resumes the Lead seat (E330)
-
-The Lead credential held by the broker is taken in-process when `aew opencode` starts on a vacant seat
-(`--acquire` says the same and is still accepted), or, when `AEW_LEAD_TOKEN` is set in the operator's own
-shell or a flag asks for the hidden prompt, from that credential, which is removed from the session's
-environment. The flag is `--prompt-token`. An explicit `--acquire` selects the in-process path even if the
-environment variable is set. `aew lead session` keeps its existing credential and acquisition modes.
-
-Beside takeover, the operator can resume a seat that `aew opencode` itself took or previously resumed.
-Resume requires the same host and user, the recorded session process gone, no pending handoff, and the
-operator's own terminal outside any AEW session and non-writer process. The new generation fences the old
-Lead and carries the still-active invocations and their credentials. If any invocation will be carried or
-any leftover process may still run, the operator types one code after seeing the generation move and the
-invocations and processes concerned. The commit re-checks the holder and the subjects shown. Takeover
-retains its existing confirmation and interruption.

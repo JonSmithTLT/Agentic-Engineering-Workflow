@@ -119,7 +119,7 @@ It carries no AEW credential, no provider secret, no harness password, and nothi
   - other projects.
 - When the held credential stops being the current Lead's, the broker closes its bridge. (A pending handoff does not; see the 2026-10-04 amendment.)
 - Parity with the invocation bridge is tested property by property (`harness-conformance.md` §3).
-- With `--acquire`, the seat is released at exit when nothing is in flight; otherwise it stays held and the output says that continuing needs a terminal takeover. The credential is never printed. (Since 2026-10-04 the release also waits until no process the session started is running.)
+- When `aew opencode` took the seat itself, the seat is released at exit when nothing is in flight. Otherwise it stays held, and the next `aew opencode` resumes it under the 2026-11-10 conditions (REVISION-CHECK-REPLACED, decision 3). A seat held by a live Lead, or by the operator's own token, still needs a terminal takeover. The credential is never printed. (Since 2026-10-04 the release also waits until no process the session started is running.)
 
 **Why custody at all.** The spike showed that anything a harness shell prints is persisted twice, in the harness DB and in shell-output files. A harness permission layer is not secret isolation: an `edit` deny was bypassed through the shell.
 
@@ -478,7 +478,7 @@ The Lead's harness now gets what a run's harness already had: process ownership.
 ### The Lead's harness runs in an owned process tree (`procs.run_session_tree`)
 - **Windows:** the harness is created suspended, assigned to a kill-on-close job object, and resumed. It keeps the operator's console (a hidden one only when there is none, so no window appears).
 - **Linux:** a small reaper process parents the harness and makes itself a child subreaper (`PR_SET_CHILD_SUBREAPER`). A descendant that detaches (`setsid`, a double fork, `nohup ... &`) is re-parented to the reaper, not to init. When the harness exits, or the broker dies (its control pipe closes), the reaper kills every descendant, reaps until none is left, and reports `clean`, `survivors` or `unowned`. It stays in the session's process group and on its terminal; Ctrl-C belongs to the harness. Run supervisors the broker starts for `--launch` are the broker's children, not the reaper's, so runs outlive the session as before.
-- **An acquired seat is released only when the tree is `clean`.** Otherwise it stays held, and the output says to continue with a terminal takeover. A process the session left behind can therefore never find the seat vacant.
+- **An acquired seat is released only when the tree is `clean`.** A process the session left behind can therefore never find the seat vacant. The seat stays held against leftover processes, and the operator can resume it under the conditions in ADR-0005.
 - **Other POSIX systems** have no subreaper: ownership is `unowned`, and the seat is kept.
 - **Residual (documented):** a process started through another service (cron, `at`, a user systemd unit) is not a descendant, and no process ownership reaches it. Where the Lead's harness runs uncontained, as the operator (on Windows; on Linux only when the policy allows a weaker launch, `containment.mode: allow_weaker`), persistence the operator's account allows is outside this boundary. That is the ADR-0005 same-UID threat model. *Qualified by the CS-4 amendment below (2026-10-25): on Linux the Lead runs contained.*
 
@@ -647,7 +647,7 @@ The designer's Q12 decision (decision record [`decisions-2026-10-06-q12-hosting-
   execution and never becomes workflow authority. A launcher or wrapper may set up, launch, supervise and tear down, but
   decides no workflow progression, evidence acceptance, retry, gate or other AEW semantics.
 - **The Lead session.** Today `aew lead session -- <harness>` and `aew opencode` tie the Lead broker to the wrapped
-  harness process (with `--acquire`, the seat too; with the operator's `AEW_LEAD_TOKEN`, authority outlives it), and a
+  harness process (when `aew opencode` takes the seat itself, the seat too; with the operator's `AEW_LEAD_TOKEN`, authority outlives it), and a
   superseded session keeps running as a read-only session. Under Q12 an attachment opens and closes (`aew open`,
   `aew close`) while the harness and its conversation keep running; a later attachment re-hydrates from canonical
   project state, which wins over the model's retained context. After `aew close` the model has no AEW project
@@ -2015,15 +2015,7 @@ runs where the Lead's shell runs, and arrive as text.
 
 ## Amendment (2026-11-11) — OpenCode's seat and held exit (E330)
 
-When `aew opencode` took the seat itself, the seat is released at exit when nothing is in flight. Otherwise
-it stays held, and the next `aew opencode` resumes it under the 2026-11-10 conditions
-(REVISION-CHECK-REPLACED, decision 3). A seat held by a live Lead, or by the operator's own token, still
-needs a terminal takeover. (Since 2026-10-04 the release also waits until no process the session started is running.)
-
-The session holds its harness process (when `aew opencode` takes the seat itself, the seat too; with the
-operator's `AEW_LEAD_TOKEN`, authority outlives it). The seat stays held against leftover processes and
-is resumable at the operator's own terminal under the conditions in ADR-0005's E330 amendment. A failed
-start after resume and a clean exit both keep the seat held if an acknowledged process may still run.
+A failed start after resume and a clean exit both keep the seat held if an acknowledged process may still run.
 The next generation's held-exit evidence carries those processes forward. The local evidence records
 process identities on Linux and a count on Windows. An unknown result or missing evidence requires
 acknowledgement. Local process evidence is dev-grade on both platforms.

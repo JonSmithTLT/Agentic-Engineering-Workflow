@@ -935,10 +935,13 @@ None.
 - `aew.engine.store`
 - `aew.errors`
 - `aew.harness.contract`
+- `aew.harness.procs`
+- `aew.harness.seat`
 - `aew.knowledge.records`
 - `aew.knowledge.render`
 - `aew.operator`
 - `aew.roles`
+- `aew.switch_offer`
 - `aew.util`
 
 ### `aew.engine.lock`
@@ -1426,6 +1429,7 @@ None.
 - `aew.harness.containment`
 - `aew.harness.procs`
 - `aew.harness.runlog`
+- `aew.harness.seat`
 - `aew.harness.steering_loop`
 - `aew.harness.tool_calls`
 - `aew.harness.wake_queue`
@@ -1526,7 +1530,9 @@ None.
 - `aew.harness.opencode.projection`
 - `aew.harness.operator_autostart`
 - `aew.harness.registry`
+- `aew.harness.seat`
 - `aew.harness.weaker_register`
+- `aew.lead_credential`
 - `aew.policy.execution`
 - `aew.process_kind`
 - `aew.surface.lead_text`
@@ -1611,6 +1617,12 @@ None.
 
 - `aew.engine.outbox`
 - `aew.harness.contract`
+- `aew.harness.procs`
+- `aew.util`
+
+### `aew.harness.seat`
+
+- `aew.errors`
 - `aew.harness.procs`
 - `aew.util`
 

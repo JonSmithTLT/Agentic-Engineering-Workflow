@@ -534,6 +534,7 @@ None.
 ### `aew.engine.api`
 
 - `aew`
+- `aew.coordination.render`
 - `aew.engine.archive_ops`
 - `aew.engine.assurance`
 - `aew.engine.assurance_ops`
@@ -1256,6 +1257,7 @@ Imports from the groups:
 - `aew`
 - `aew.capability`
 - `aew.cli`
+- `aew.coordination`
 - `aew.dashboard`
 - `aew.engine`
 - `aew.knowledge`
@@ -1664,6 +1666,15 @@ None.
 - `aew.knowledge.evidence`
 - `aew.process_kind`
 - `aew.skills`
+- `aew.util`
+
+### `aew.harness.told_messages`
+
+- `aew.coordination.layout`
+- `aew.engine.faults`
+- `aew.engine.lock`
+- `aew.errors`
+- `aew.process_kind`
 - `aew.util`
 
 ### `aew.harness.tool_calls`

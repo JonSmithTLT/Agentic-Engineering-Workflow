@@ -124,6 +124,40 @@
         "observed_at": {"type": "string"}
       }
     },
+    "coordination_attention": {
+      "description": "Verified coordination data, never authority; local delivery receipts do not prune this view.",
+      "type": "object", "additionalProperties": false,
+      "required": ["awaiting_lead", "awaiting_worker", "omitted", "omitted_revs", "recovery", "integrity_errors"],
+      "properties": {
+        "awaiting_lead": {"type": "array", "maxItems": 20, "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["id", "sender", "kind", "in_reply_to", "refs", "created_at", "untrusted_text", "author",
+                       "invocation", "work_unit", "run", "seq", "rendered"],
+          "properties": {
+            "id": {"type": "string"}, "sender": {"type": "string"}, "kind": {"type": "string"},
+            "in_reply_to": {"type": ["string", "null"]},
+            "refs": {"type": "array", "items": {"type": "string"}}, "created_at": {"type": "string"},
+            "untrusted_text": {"type": "string"}, "author": {"type": "string"},
+            "invocation": {"type": "string"}, "work_unit": {"type": "string"},
+            "run": {"type": ["string", "null"]}, "seq": {"type": "integer", "minimum": 1},
+            "rendered": {"type": "string"}, "seal": {"type": "string"}
+          }
+        }},
+        "awaiting_worker": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["id", "invocation", "work_unit"],
+          "properties": {"id": {"type": "string"}, "invocation": {"type": "string"},
+                         "work_unit": {"type": "string"}}
+        }},
+        "omitted": {"type": "integer", "minimum": 0},
+        "omitted_revs": {"oneOf": [{"type": "null"}, {"type": "array", "minItems": 2, "maxItems": 2,
+                          "items": {"type": "integer", "minimum": 0}}]},
+        "recovery": {"const": "aew message unseen"},
+        "integrity_errors": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["invocation", "code"],
+          "properties": {"invocation": {"type": "string"}, "code": {"type": "string"}}
+        }}
+      }
+    },
     "action_projection": {
       "type": "object",
       "additionalProperties": false,
@@ -139,7 +173,8 @@
         "blockers": {"type": "array", "items": {"$ref": "#/$defs/blocker"}},
         "anomalies": {"type": "array", "items": {"$ref": "#/$defs/blocker"}},
         "hints": {"description": "reader-only prose; never parsed", "type": "array", "items": {"type": "string"}},
-        "runs": {"type": "array", "items": {"$ref": "#/$defs/run"}}
+        "runs": {"type": "array", "items": {"$ref": "#/$defs/run"}},
+        "coordination": {"$ref": "#/$defs/coordination_attention"}
       }
     },
     "stage_result": {

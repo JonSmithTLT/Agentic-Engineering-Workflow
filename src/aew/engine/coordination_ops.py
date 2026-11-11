@@ -45,7 +45,7 @@ from typing import Any
 
 from aew import util
 from aew.coordination import layout as L
-from aew.coordination.render import lead_message
+from aew.coordination.render import lead_message, worker_message
 from aew.engine import outbox
 from aew.engine.authority import require_invocation, require_lead
 from aew.engine.base import POLICY_PINS, V2, Kernel, TxnContext
@@ -793,6 +793,72 @@ class Coordination:
     @staticmethod
     def _active(state: dict[str, Any], inv_id: str) -> bool:
         return (state["invocations"].get(inv_id) or {}).get("status") == "active"
+
+    def attention(self, state: dict[str, Any], *, work_id: str | None = None,
+                  invocations: set[str] | None = None) -> dict[str, Any] | None:
+        """Fresh, verified worker bodies and Lead-pending IDs, bounded across the whole result (MS6).
+        This durable-attention view deliberately ignores generation-local told/posted records. Settled bodies come
+        only from the bounded hot list's pinned seals, never an archive/history walk on the polling path."""
+        if self.project_switch(state) != X.MESSAGING_ENABLED:
+            return None
+        replies: list[dict[str, Any]] = []
+        awaiting: list[dict[str, Any]] = []
+        damaged: list[dict[str, str]] = []
+        seen, recovered = self._seen_log()
+        generation = state["lead"]["generation"]
+
+        def wanted(inv_id: str, work: str) -> bool:
+            return (work_id is None or work == work_id) and (invocations is None or inv_id in invocations)
+
+        def shown(thread: Thread, m: dict[str, Any], *, seal: str | None = None) -> dict[str, Any]:
+            return worker_message({**_shown(m), "invocation": thread.invocation, "work_unit": thread.work_unit,
+                                   "run": m["run"], "seq": m["seq"],
+                                   **({"seal": seal} if seal is not None else {})})
+
+        for inv_id, inv in sorted(state["invocations"].items()):
+            if inv.get("status") != "active" or not wanted(inv_id, inv["work_unit"]):
+                continue
+            try:
+                thread = read_thread(self.k.aew_root, inv["work_unit"], inv_id)
+            except (IntegrityError, ValidationFailed) as exc:
+                damaged.append({"invocation": inv_id, "code": exc.code})
+                continue
+            answered = _answered(thread)
+            for m in thread.messages:
+                if _is_lead(m):
+                    if m["sender"] == L.lead_party(generation) and m["id"] not in answered:
+                        awaiting.append({"id": m["id"], "invocation": inv_id, "work_unit": inv["work_unit"]})
+                elif m["id"] not in answered:
+                    replies.append(shown(thread, m))
+        held = state.get(L.UNSEEN_KEY) or {"entries": [], "omitted": 0, "omitted_revs": None}
+        verified: dict[str, tuple[dict[str, Any], Thread]] = {}
+        rejected: set[str] = set()
+        for entry in held["entries"]:
+            inv_id, work = entry["invocation"], entry["work_unit"]
+            if not wanted(inv_id, work) or entry["message"] in seen or inv_id in rejected:
+                continue
+            try:
+                if inv_id not in verified:
+                    pointer = self._pinned(state, entry["seal"], work, inv_id)
+                    verified[inv_id] = self._sealed(work, inv_id, pointer)
+                seal, thread = verified[inv_id]
+                m = thread.by_id().get(entry["message"])
+                if (m is None or _is_lead(m) or m["id"] not in seal["unseen_by_lead"]
+                        or thread.work_unit != work):
+                    raise IntegrityError("the settled message does not match its verified seal")
+                replies.append(shown(thread, m, seal=entry["seal"]))
+            except (IntegrityError, ValidationFailed) as exc:
+                rejected.add(inv_id)
+                damaged.append({"invocation": inv_id, "code": exc.code})
+        # An ID is quoted once per result, and no local suppression can prune durable attention.
+        replies = list({m["id"]: m for m in replies}.values())
+        revs = held["omitted_revs"]
+        settled_omitted = (held["omitted"] if revs and not any(
+            r[0] <= revs[0] and revs[1] <= r[1] for r in recovered) else 0)
+        return {"awaiting_lead": replies[:L.UNSEEN_CAP], "awaiting_worker": awaiting,
+                "omitted": max(0, len(replies) - L.UNSEEN_CAP) + (settled_omitted if work_id is None
+                    and invocations is None else 0), "omitted_revs": revs,
+                "recovery": "aew message unseen", "integrity_errors": damaged}
 
     def message_list(self, work_id: str) -> dict[str, Any]:
         """``aew message list --work T`` (D-24, operator-only): the unit's threads, hot or archived, as

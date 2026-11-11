@@ -966,6 +966,10 @@ class Engine:
     def message_read_worker(self, *, invocation_token: str) -> dict[str, Any]:
         return self._coordination.message_read_worker(invocation_token=invocation_token)
 
+    def message_attention(self, *, work_id: str | None = None,
+                          invocations: set[str] | None = None) -> dict[str, Any] | None:
+        return self._coordination.attention(self._k.store.read_committed(), work_id=work_id, invocations=invocations)
+
     def message_waiting(self, *, invocation_token: str, after: str) -> dict[str, Any]:
         return self._coordination.message_waiting(invocation_token=invocation_token, after=after)
 
@@ -1029,13 +1033,23 @@ class Engine:
         return self._k.project_id
 
     def render_resume(self, r: dict[str, Any]) -> str:
-        return self._resume.render_resume(r)
+        text = self._resume.render_resume(r)
+        return self._with_coordination_text(text, r)
 
     def render_status(self, report: dict[str, Any]) -> str:
-        return self._views.render_status(report)
+        return self._with_coordination_text(self._views.render_status(report), report)
+
+    @staticmethod
+    def _with_coordination_text(text: str, report: dict[str, Any]) -> str:
+        from aew.coordination.render import attention_text
+
+        view = report.get("coordination")
+        return text + "\n\n" + attention_text(view) if view is not None else text
 
     def resume(self, session: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self._resume.resume(session)
+        out = self._resume.resume(session)
+        view = self.message_attention()
+        return out | {"coordination": view} if view is not None else out
 
     def review_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
         return self._evidence.review_ingest(token=token, expect_rev=expect_rev, work_id=work_id,
@@ -1071,7 +1085,8 @@ class Engine:
                 out["notifier"] = notifier
             if usage:
                 out["usage"] = self._usage.summary(state)  # F25 R9: the hot state's bounded usage summary
-        return out
+        coordination = self.message_attention(work_id=work_id)
+        return out | {"coordination": coordination} if coordination is not None else out
 
     # ---------------------------------------------------------------- steering (M4-E E2; A1 §1)
 

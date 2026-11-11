@@ -485,10 +485,17 @@ def _project(engine: Any, ctx: SurfaceContext, subject: str | None) -> dict[str,
         a["callable"] = contract.callable_on(contract.tool(a["action"]), ctx.profile)
         if held:
             a["auto_runnable"] = False
-    return {"revision": part["revision"], "generation": part["generation"], "subject": subject,
-            "state": part["state"], "actions": actions,
-            "decisions_required": _decisions(engine, part, subject, runs, blockers), "blockers": blockers,
-            "anomalies": [_anomaly(a) for a in part["anomalies"]], "hints": hints, "runs": runs}
+    out = {"revision": part["revision"], "generation": part["generation"], "subject": subject,
+             "state": part["state"], "actions": actions,
+             "decisions_required": _decisions(engine, part, subject, runs, blockers), "blockers": blockers,
+             "anomalies": [_anomaly(a) for a in part["anomalies"]], "hints": hints, "runs": runs}
+    coordination = engine.message_attention(work_id=None if subject == "project" else subject)
+    if coordination is not None:
+        out["coordination"] = coordination
+        ids = [m["id"] for m in coordination["awaiting_lead"]]
+        if ids:
+            hints.append(f"{len(ids)} worker message(s) await the Lead: {', '.join(ids)}")
+    return out
 
 
 def _anomaly(a: dict[str, Any]) -> dict[str, Any]:

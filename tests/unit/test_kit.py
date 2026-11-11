@@ -256,4 +256,15 @@ def test_main_records_readability(tmp_path, monkeypatch, flag, typed, expected):
 def test_main_refuses_to_run_in_an_agent_session(monkeypatch, capsys):
     monkeypatch.setenv("AEW_AGENT_ENDPOINT", "fixture")
     assert kit_main.main() == 1
-    assert "operator's own terminal" in capsys.readouterr().err
+    assert capsys.readouterr().err == (
+        "Run the seeded kit from the operator's own terminal, outside an AEW agent session.\n"
+    )
+
+
+def test_main_refuses_when_lead_session_check_reports_a_problem(monkeypatch, capsys):
+    monkeypatch.delenv("AEW_AGENT_ENDPOINT", raising=False)
+    monkeypatch.setattr(kit_main, "lead_session_problem", lambda: "fixture Lead session problem")
+    assert kit_main.main() == 1
+    assert capsys.readouterr().err == (
+        "Run the seeded kit from the operator's own terminal, outside an AEW agent session.\n"
+    )

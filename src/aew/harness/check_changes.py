@@ -184,7 +184,7 @@ def run_once(engine: Any, check_id: str, cfg: dict[str, Any], commit: str) -> di
         except AEWError:  # a process that stores no objects hashed the trees without writing them
             paths = []
         return {"outcome": out["outcome"], "exit_code": out["exit_code"], "paths": paths, "mutated": a != b,
-                "tracked": tracked}
+                **({"tracked": tracked} if C.cache_hint(paths) else {})}
     finally:
         containment.retire_private_git(run_dir)
         if copy.exists():

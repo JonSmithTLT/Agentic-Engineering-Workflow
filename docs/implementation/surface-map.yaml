@@ -151,6 +151,18 @@ proposed_choices:
     lands: A2
     note: "the escalation's outcome, with a rationale; the returns the phase order admits (§2.7, §3.1a)"
 
+# Operator modules are invoked with Python, outside the aew parser.
+operator_modules:
+- command: python -m aew.kit
+  home: product
+  users: [operator]
+  lead_disposition: forbidden-to-lead
+  lead_kept_out_by: The module refuses the worker bridge environment and Lead sessions before doing any work.
+  reason: The operator initializes a separate sample project, chooses its models, and supplies the receipt answer.
+  operations:
+    start: initializes the seed repository and starts the ordinary operator Lead session on Linux
+    receipt: reads AEW records and writes a receipt beside the sample repository
+
 commands:
   - name: doctor
     home: product
@@ -163,7 +175,7 @@ commands:
       starts it with no session, and with --run-checks each configured check, once, on a disposable copy"
     probe: [doctor]
     refusals: [USAGE]
-    note: "V3's counted fallback while `aew preflight` does not exist"
+    note: "V3's counted fallback while `aew preflight` does not exist. Readiness names the provider key source."
   - name: init
     home: product
     users: [operator]
@@ -1508,6 +1520,20 @@ commands:
     probe: [operator, ping]
     probe_refused: "NOT_FOUND: no operator endpoint runs for the sample (it needs a console)"
     refusals: [PROJECT_NOT_FOUND, USAGE]
+  - name: notify desktop
+    home: product
+    users: [operator]
+    journeys: []
+    mutates: "no"
+    mutates_basis: "shows one desktop notification of the event on stdin, or with --check only says whether one can be
+      shown; opens no project and writes no file"
+    mutates_exempt: "operator-only because what it shows on the operator's desktop is never an agent's text (A-44), but
+      it changes nothing"
+    probe: [notify, desktop, --check]
+    refusals: [AEW_ERROR, CAPABILITY_UNAVAILABLE, USAGE]
+    note: "register E104 (minimal): the default `notify.command` `aew init` writes, which the operator endpoint runs
+      for each event; CAPABILITY_UNAVAILABLE (no_desktop_session) with no desktop session, and AEW_ERROR when the
+      desktop's own notifier fails"
   - name: settings show
     home: operator-admin
     users: [operator]

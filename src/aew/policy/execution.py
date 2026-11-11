@@ -73,6 +73,20 @@ routing:
   classes: {}
   cards: {}
 provider_env: []
+# Steering (crawl/walk/run): no mode is in effect, and the steering loop is off, until the operator first adopts this
+# policy; from then crawl is the standing mode. Under crawl the loop runs no step itself: it stops at each step it
+# could take, for the Lead, and the notifier below shows each such stop once. Unattended Run is the operator's to
+# switch on, for one Lead generation, with `aew lead mode raise run` approved at the operator endpoint. It needs the
+# notifier below, and a `deadline_s` on every profile routing can pick (first configuration writes one with its
+# model, provisional until a measured run replaces it, with `deadline_scope: run`: it bounds only runs started
+# under Run).
+steering:
+  mode: crawl
+# The notifier the operator endpoint runs for each event while it serves: `aew notify desktop` shows it as a desktop
+# notification (notify-send on Linux, a toast on Windows). With no desktop session it is unavailable, and Run refuses
+# it; `aew notify desktop --check` says why. Any argv of your own may replace it: it gets the event as JSON on stdin.
+notify:
+  command: [aew, notify, desktop]
 """
 
 
@@ -260,9 +274,12 @@ def _pin(policy: dict[str, Any], name: str, *, selected_by: str, rule: str, sha:
          identity: ModelIdentityFn | None) -> dict[str, Any]:
     profile = policy["profiles"][name]
     pair = model_pair(policy, name, identity)
+    # `deadline_scope`, only when the profile sets it: which runs its deadline bounds is the supervisor's to apply
+    # (`supervisor.applied_deadline`), since a legality module never reads the steering mode (CWR §11)
+    scope = {"deadline_scope": profile["deadline_scope"]} if profile.get("deadline_scope") else {}
     return {"profile": name, "harness": profile_harness(policy, profile),
             "provider": pair.provider, "model": pair.model, "effort": profile.get("effort"),
-            "max_steps": profile.get("max_steps"), "deadline_s": profile.get("deadline_s"),
+            "max_steps": profile.get("max_steps"), "deadline_s": profile.get("deadline_s"), **scope,
             "selected_by": selected_by, "rule": rule, "policy_sha256": sha}
 
 

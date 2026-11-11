@@ -136,6 +136,17 @@ def name_session(aew_root: Path) -> Path | None:
     return path
 
 
+def unname_session(aew_root: Path, path: Path) -> None:
+    """This session's file removed at its end, under the lock every look reads the files under: on Windows a file
+    another process has open cannot be removed (WinError 32), and a background endpoint's look opens each one. If the
+    lock is busy or the removal still fails, the endpoint's next look removes the file once this process has gone."""
+    try:
+        with sessions_lock(aew_root):
+            path.unlink(missing_ok=True)
+    except (LockTimeout, OSError):
+        pass
+
+
 def no_session_live(aew_root: Path) -> bool:
     """A look that decides nothing: whether a background endpoint has anything to do before its deciding look."""
     try:
@@ -244,10 +255,18 @@ def _send(conn: Any, op: str, args: dict[str, Any]) -> None:
         raise errors.NotFound("the operator endpoint closed the connection") from None
 
 
-def ping(aew_root: Path) -> dict[str, Any]:
+# How long `ping` waits for the endpoint's answer. A ping asks the operator nothing, so a live endpoint answers at
+# once; an endpoint that is alive but silent (stopped in its terminal, or wedged) is not answering, and the steering
+# loop, which pings before each Run action, takes no action then and records its stop (review of E228's third PR, F6).
+PING_TIMEOUT_S = 5.0
+
+
+def ping(aew_root: Path, *, timeout_s: float = PING_TIMEOUT_S) -> dict[str, Any]:
     conn = _connect(aew_root)
     try:
         _send(conn, "ping", {})
+        if not conn.poll(timeout_s):
+            raise errors.NotFound(f"the operator endpoint did not answer a ping within {timeout_s:g} s")
         return _reply(conn)
     finally:
         conn.close()

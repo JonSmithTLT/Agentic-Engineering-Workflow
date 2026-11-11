@@ -218,7 +218,8 @@ def test_guard_query_matches_execute_review_ingest(implemented):
     p.lead("work", "transition", wid, "--to", "REVIEW_PENDING")
     assert equivalent(engine, "review.ingest", wid, {"evidence": "EV-9999"},
                       _ingest(engine, p, wid, "EV-9999"))["reason_codes"] == ["NOT_FOUND"]
-    first, second = review(p, wid), review(p, wid)
+    first = review(p, wid)
+    second = review(p, wid, card="security_reviewer")
     args: dict[str, Any] = {"evidence": first}
     equivalent(engine, "review.ingest", wid, args, _ingest(engine, p, wid, first))
     assert args["found"]["to"] == engine.store.read()["work"][wid]["state"] == "REVIEW_PASSED"

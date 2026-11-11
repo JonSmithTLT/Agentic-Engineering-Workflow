@@ -725,3 +725,20 @@ def test_the_seed_names_what_the_runs_show():
     assert set(S.SEED) == set(L.ENFORCED_PLATFORMS)
     assert S.SEED["linux"] == {S.PASSING: S.Seeded(0, "2026-10-12", "run 38188158379"),
                                S.V1_LANDED: S.Seeded(1, "2026-10-30", "#306, run 41120823321")}
+
+
+def test_report_reads_a_lone_receipt_without_a_scripted_verdict(tmp_path):
+    receipt = {"kind": "real", "header": {"platform": "linux"}, "readability": "yes"}
+    (tmp_path / "alpha-receipt.json").write_text(json.dumps(receipt), encoding="utf-8")
+    text = R.report(tmp_path)
+    assert "Alpha receipt: RECORDED" in text and 'readability: "yes"' in text
+    assert "Alpha scripted gate:" not in text
+
+
+def test_report_explains_an_unreadable_or_non_object_receipt(tmp_path):
+    path = tmp_path / "alpha-receipt.json"
+    for payload, explanation in (("{", "could not read a JSON receipt"), ("[]", "expected a JSON object")):
+        path.write_text(payload, encoding="utf-8")
+        text = R.report(tmp_path)
+        assert f"Alpha receipt: UNREADABLE ({explanation})" in text
+        assert "Alpha scripted gate:" not in text

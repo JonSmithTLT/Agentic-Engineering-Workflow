@@ -299,6 +299,11 @@ class FakeOpenCode:
 
         key = os.environ.get(knob["variable"]) or ""
         base = provider_base(s.info["model"])
+        if knob.get("require_sentinel"):
+            from aew.harness.containment.relay import SENTINEL_PREFIX
+
+            assert key.startswith(SENTINEL_PREFIX), "the fake harness did not receive a relay sentinel"
+            assert base and base.startswith("http://127.0.0.1:"), "the fake harness needs a local relay"
         if base is not None:  # a network of the run's own (F28): the relay holds the key, and the provider answers
             if call_provider(base, key, knob["rejected_sha256"]) < 400:
                 return None

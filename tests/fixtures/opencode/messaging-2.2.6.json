@@ -1,0 +1,138 @@
+{
+ "facts": {
+  "messaging.held_resume": {
+   "queue.accepted_not_admitted": true,
+   "queue.admitted_retry_does_not_wake": true,
+   "queue.held_retry_does_not_wake": true,
+   "queue.staged_first": true,
+   "steer.accepted_not_admitted": true,
+   "steer.admitted_retry_does_not_wake": true,
+   "steer.held_retry_does_not_wake": true,
+   "steer.staged_first": true
+  },
+  "messaging.prompt_identity": {
+   "queue.accepted_not_admitted": true,
+   "queue.admitted_identity_valid": true,
+   "queue.admitted_once": true,
+   "queue.admitted_retry_does_not_wake": true,
+   "queue.changed_admitted_keeps_identity": true,
+   "queue.changed_pending_returns_original": true,
+   "queue.duplicate_admitted": true,
+   "queue.duplicate_pending": true,
+   "queue.first_identity_valid": true,
+   "queue.held_retry_does_not_wake": true,
+   "queue.metadata_round_trip": true,
+   "queue.other_record_conflicts": true,
+   "steer.accepted_not_admitted": true,
+   "steer.admitted_identity_valid": true,
+   "steer.admitted_once": true,
+   "steer.admitted_retry_does_not_wake": true,
+   "steer.changed_admitted_keeps_identity": true,
+   "steer.changed_pending_returns_original": true,
+   "steer.duplicate_admitted": true,
+   "steer.duplicate_pending": true,
+   "steer.first_identity_valid": true,
+   "steer.held_retry_does_not_wake": true,
+   "steer.metadata_round_trip": true,
+   "steer.other_record_conflicts": true
+  },
+  "messaging.queue_boundary": {
+   "queue_fifo": true,
+   "queue_not_before_turn_end": true,
+   "steer_overtakes_queue": true
+  },
+  "messaging.session_loss": {
+   "queue.held_not_admitted": true,
+   "queue.lost_not_admitted": true,
+   "queue.missing_message_tag": true,
+   "queue.missing_session_tag": true,
+   "queue.untagged_loss": true,
+   "queue.untagged_pending": true,
+   "steer.held_not_admitted": true,
+   "steer.lost_not_admitted": true,
+   "steer.missing_message_tag": true,
+   "steer.missing_session_tag": true,
+   "steer.untagged_loss": true,
+   "steer.untagged_pending": true
+  },
+  "messaging.shell_timeout": {
+   "foreground_default_stops_command": true,
+   "positive_safe_wait_budget": true,
+   "shorter_timeout_observed": true
+  },
+  "messaging.steer_boundary": {
+   "model_not_interrupted": true,
+   "shell_not_interrupted": true,
+   "steer_before_next_request": true,
+   "steer_fifo": true,
+   "tool_output_not_truncated": true
+  },
+  "messaging.wait_binding": {
+   "call_step_identity_order": true,
+   "completion_and_failure": true,
+   "distinct_shell_child": true,
+   "execution_end": true,
+   "parallel_shell_calls": true,
+   "process_observation": {
+    "child_alive_after_timeout": false,
+    "parent_alive_after_timeout": false
+   },
+   "real_shell_child_started": true,
+   "short_call_ends_before_step": true,
+   "stream_drop_and_reconnect": true
+  }
+ },
+ "harness": "opencode",
+ "platform": "linux",
+ "qualification": {
+  "addendum": {
+   "digest": "f91361861601e084d561f4b96ee513508c0e4e6b194f3b028e146539c13c5ef5",
+   "parts": [
+    2,
+    4
+   ],
+   "revision": 2,
+   "title": "Messaging amendment 3, addendum 1: retry fields"
+  },
+  "evaluator_revision": "0a1676380480429774bb0418a58cd7a64068791a",
+  "predicate": "post-admission-retry-fields/v2",
+  "required_checks": [
+   "api.openapi",
+   "api.steer_running_turn",
+   "api.queue_until_turn_end",
+   "messaging.steer_boundary",
+   "messaging.queue_boundary",
+   "messaging.prompt_identity",
+   "messaging.held_resume",
+   "messaging.session_loss",
+   "messaging.wait_binding",
+   "messaging.shell_timeout"
+  ],
+  "retired_gate_facts": [
+   "admitted_created_time_preserved",
+   "changed_admitted_returns_original",
+   "admitted_delivery_preserved"
+  ],
+  "ruling": {
+   "digest": "8bfc9c2dd9a16008b0fda92db878db704106ff2b47b839d116e32e7f1cabc65b",
+   "sections": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    7
+   ],
+   "title": "Lead ruling, 2026-11-10: post-admission retry premise on OpenCode 2.2.6"
+  },
+  "runtime_executed": false,
+  "source_digest": "29ef41ae1ce5e73cc8c6b2dd1a03b379b48eacc3e2e0bb4543ae937c7a432ef2",
+  "source_revision": "e1be99c878ed321eb11d029e842af0ea33d81d6c",
+  "source_verdict": {
+   "binary": "fail",
+   "host": "not run"
+  },
+  "windows_runtime": "NOT RUN; capability GAP"
+ },
+ "version": "2.2.6"
+}

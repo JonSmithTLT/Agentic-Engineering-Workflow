@@ -16,10 +16,6 @@
 # First imported 2026-11-06 from the lead designer's board, draft 3 (47 entries).
 schema: aew/systems/v1
 wip_limit: 12
-wip_allowance:
-  count: 14
-  operator: Until the operator’s root G3 session closes SYS-20 and SYS-37, I allow 14 counted systems. No new system starts while this allowance stands; it lapses when both close.
-  date: '2026-11-10'
 unowned:
   E117: the personal alpha's gate, a live run the operator starts; a milestone gate, not a system
 systems:
@@ -376,9 +372,6 @@ systems:
       (E143''s follow-on) but nothing in src/aew/dashboard reads it. The web developer''s to place'
     row: E148
     estimate: 1 PR (estimate)
-  - slice: 'the probe''s diagnostic on a host with no LISTENING row for its own listener'
-    row: E236
-    estimate: 1 small PR (estimate)
   decision: 'decided: kept, not frozen (the operator: "Keep the dashboard"); next after slot 1 (the reset of 2026-11-06
     (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md))'
   recommendation: finish
@@ -388,8 +381,9 @@ systems:
     with A-44''s S1 and S2 (E101 and E102 notes) and F20.6 in part with S2w (E103), which are SYS-21''s slices.'
   evidence:
   - 'src/aew/dashboard/: 14 modules, 4,760 lines (wc -l at c11a61ea)'
-  - src/aew/cli/dashboard_commands.py:29-51 the dashboard serve, open and status parsers (serve on 127.0.0.1, :29); nothing
-    starts the server automatically
+  - src/aew/cli/dashboard_commands.py:32-57 the dashboard serve, open and status parsers (serve on 127.0.0.1)
+  - 'src/aew/harness/dashboard_autostart.py:1-6 aew opencode opens the operator''s first dashboard session itself, with
+    no typed-back code, and the server ends with that session; src/aew/harness/opencode/lead.py:398 the session enters it'
   - src/aew/dashboard/server.py:267-299 ROUTES, including /attention at :286 and the 0.1.3 maps routes
   - 'src/aew/dashboard/server.py:321-330 /history/search exists only while the adopted execution policy sets recall.raw_history_search:
     explicit'
@@ -655,8 +649,8 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: 'OpenCode kept current and qualified: E35''s probe and seams built (HarnessAdapter.capabilities(), the named
-    LaunchContract fields, explicit execute and browser denies, the ''nothing else loaded'' scenario), H-1 qualifies 2.1.4
-    into TESTED_VERSIONS with its token-semantics row and the C1 compaction re-probe, H-2 and H-3 land, and the qualified
+    LaunchContract fields, explicit execute and browser denies, the ''nothing else loaded'' scenario), H-1 re-probes compaction
+    (C1) on the pinned OpenCode 2.2.6, whose TESTED_VERSIONS entry and token-semantics row are in place, H-2 and H-3 land, and the qualified
     version runs the default flow in a real run. E149 and E150 once placed. A second adapter (F24) is outside this finish
     line until HOLD-06 releases it.'
   remaining:
@@ -669,8 +663,8 @@ systems:
       and browser denies, the ''nothing else loaded'' conformance scenario, tool_output limits (on the Now list)'
     row: E35
     estimate: 1 PR (estimate)
-  - slice: 'H-1: qualify OpenCode 2.1.4, with the C1 compaction re-probe, a TESTED_VERSIONS entry and a token_semantics
-      row (on the Now list; CAP-1 PR 3 has merged)'
+  - slice: 'H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics
+      row are in place; no evidence the re-probe ran)'
     row: E35
     estimate: 1-2 PRs (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
@@ -701,7 +695,7 @@ systems:
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: 'Lead (E35''s probe; H-1 to H-3 after CAP-1 PR 3); operator places E149, and E150 follows it; F24 leaves HOLD-06
+  who: 'Lead (E35''s probe; H-1 to H-3); operator places E149, and E150 follows it; F24 leaves HOLD-06
     after the designer''s match, then the operator places it (BOARD v2 §3: after first use, unless 429s recur)'
   reason: 'The OpenCode adapter is on and used every run; what is left (E35, H-1 to H-3) is on the Now list in the Lead''s
     order, and the version ''pin'' is a label, not a gate (BOARD v2 §6), so currency work matters before a newer binary
@@ -710,28 +704,28 @@ systems:
   evidence:
   - src/aew/harness/registry.py:19-29 (BUILTIN names only opencode; AEW_HARNESS_ADAPTERS, read from the launching Lead's
     environment per :3-5, adds others; no CLI, tool or dashboard surface registers one)
-  - src/aew/harness/supervisor.py:74, :222 (registry.load at every launch)
-  - 'src/aew/policy/execution.py:29, :67, :215-216 (DEFAULT_HARNESS ''opencode''; the template''s harness: opencode; profile_harness
+  - src/aew/harness/supervisor.py:75, :332 (registry.load at every launch)
+  - 'src/aew/policy/execution.py:30, :68, :247-248 (DEFAULT_HARNESS ''opencode''; the template''s harness: opencode; profile_harness
     falls back to it)'
-  - src/aew/harness/opencode/capabilities.py:14-15 (SUPPORTED_MAJOR = 2, TESTED_VERSIONS = ('2.0.18',))
-  - src/aew/harness/opencode/capabilities.py:89-96 (version_problems refuses only a non-2 major); :1-7 (the per-launch /openapi.json
+  - src/aew/harness/opencode/capabilities.py:14-15 (SUPPORTED_MAJOR = 2, TESTED_VERSIONS = ('2.2.6',))
+  - src/aew/harness/opencode/capabilities.py:103-110 (version_problems refuses only a non-2 major); :1-7 (the per-launch /openapi.json
     probe is the real gate)
-  - 'src/aew/harness/opencode/adapter.py:139-146 (default_binary: TESTED_VERSIONS[0] picks the Windows default binary),
-    :296 (token_semantics has only a 2.0.18 row), :420-425 (the usage meter is labelled TESTED_VERSIONS[0])'
-  - 'src/aew/harness/opencode/adapter.py:189 (OPENCODE_DISABLE_PROJECT_CONFIG=1 in the server env: an E35 seam partly present)'
-  - 'src/aew/harness/opencode/projection.py:100 (worker rules start rule(''*'', ''deny''): execute and browser denied by
+  - 'src/aew/harness/opencode/adapter.py:180-183 (default_binary: TESTED_VERSIONS[0] picks the Windows default binary),
+    :364-365 (token_semantics has 2.0.18 and 2.2.6 rows), :543 (the usage meter is labelled TESTED_VERSIONS[0])'
+  - 'src/aew/harness/opencode/adapter.py:230 (OPENCODE_DISABLE_PROJECT_CONFIG=1 in the server env: an E35 seam partly present)'
+  - 'src/aew/harness/opencode/projection.py:152 (worker rules start rule(''*'', ''deny''): execute and browser denied by
     default, not by an explicit rule)'
-  - 'src/aew/harness/opencode/projection.py:360 (Lead MCP server codemode: False)'
-  - src/aew/harness/contract.py:232-251 (LaunchContract has no skills, tools_allowed or native_sandbox field)
-  - src/aew/harness/base.py:73-117 (launch, launch_bound_s, inspect, terminate, send, interrupt, collect; no capabilities())
+  - 'src/aew/harness/opencode/projection.py:607 (Lead MCP server codemode: False)'
+  - src/aew/harness/contract.py:266-284 (LaunchContract has no skills, tools_allowed or native_sandbox field)
+  - src/aew/harness/base.py:77-121 (launch, launch_bound_s, inspect, terminate, send, interrupt, collect; no capabilities())
   - grep of '429' under src/aew/harness matches only RFC 4291 comments at src/aew/harness/containment/peer.py:54-83 (no
     429 handling)
-  - src/aew/doctor.py:100-114 (doctor names the harness binary and the tested versions; the version is checked at each launch)
-  - src/aew/cli/work_commands.py:495-499 (aew harness config prints the projection an OpenCode harness receives)
-  - 'src/aew/harness/base.py:21-47 (E143''s follow-on: the closed launch report, RELAY_FAMILY_SHOWN and LAUNCH_REFUSALS,
-    with relay_family_of and refusal_of); src/aew/harness/supervisor.py:235-237, :242, :257-260, :352-363 (E143''s follow-on:
-    the supervisor carries them to the run''s label and its acknowledgements); src/aew/harness/opencode/adapter.py:208-210,
-    :593-600 (the adapter''s relay-route family check, from E143, now names base''s constants)'
+  - src/aew/doctor.py:100-113 (doctor names the harness binary and the tested versions; the version is checked at each launch)
+  - src/aew/cli/work_commands.py:508-512 (aew harness config prints the projection an OpenCode harness receives)
+  - 'src/aew/harness/base.py:22-50 (E143''s follow-on: the closed launch report, RELAY_FAMILY_SHOWN and LAUNCH_REFUSALS,
+    with relay_family_of and refusal_of); src/aew/harness/supervisor.py:348-350, :355, :371-373 (E143''s follow-on:
+    the supervisor carries them to the run''s label and its acknowledgements); src/aew/harness/opencode/adapter.py:57-60,
+    :795-813 (the adapter''s relay-route family check, from E143, now names base''s constants)'
   - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md:1742 (its 'Amendment 2026-11-06', the relay-route family
     check and what a launch reports)
   - 'docs/implementation/future-work.yaml (the Now list''s E35 line; the Now list''s STG-15, E35 line, at c11a61ea) (on
@@ -843,10 +837,6 @@ systems:
       that says rows stay DESIGNED'
     row: row owed
     estimate: part of one small batched PR (estimate)
-  - slice: 'E122: the next step while the Lead waits. Waiting is one blocking request, never a polling loop (designer-decisions-2026-11-06-rate-limit-unit.md,
-      ruling 3)'
-    row: E122
-    estimate: 1 PR (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
       The Lead''s request-economy text remains owed after E139''s worker-pack fixes (designer-decisions-2026-11-06-rate-limit-unit.md,
       ruling 3)'
@@ -859,7 +849,7 @@ systems:
   - slice: 'The Lead''s tool budget, decided before E158'
     row: E231
     estimate: a decision, then 0-1 PR (estimate)
-  - slice: 'The Lead''s exits: the eight dead ends, and the lands guard'
+  - slice: 'The Lead''s exits: the eleven dead ends, and the lands guard'
     row: E233
     estimate: not sized (estimate)
   - slice: 'The worker route''s size check'
@@ -998,10 +988,6 @@ systems:
       ruling 3)
     row: E62
     estimate: 1-2 PRs (estimate)
-  - slice: An architecture_map pack section, or drop the pack promise of `aew map select-architecture`; wire or remove KNOWLEDGE_NAMES
-      and resolve_knowledge (BOARD v2 §4 loose ends)
-    row: row owed
-    estimate: 1 small PR, batched (estimate)
   - slice: 'F22.2 and F22.3, the semantic layer and sibling indexes, after their benchmark (census: P-DEC-03)'
     row: F22.2
     estimate: many PRs, unsized (estimate)
@@ -1019,16 +1005,19 @@ systems:
   - src/aew/schemas/execution.schema.json:109-111 the schema default off; 'Turning it on is the operator's configuration
     decision'
   - src/aew/maps/slices.py:4-5 packs and resume byte-identical to a project without maps while off
-  - 'src/aew/maps/slices.py:43-48 wanted(): switch structural AND the role''s context names codebase_map'
-  - src/aew/engine/context_ops.py:170-172 the pack slice is pinned only when slices.wanted()
+  - 'src/aew/maps/slices.py:50-55 wanted(): switch structural AND the role''s context names codebase_map'
+  - src/aew/engine/context_ops.py:177 the pack slice is pinned only when slices.wanted()
   - src/aew/engine/resume_ops.py:452-467 the resume row behind the same switch
   - src/aew/roles/archetypes/investigator.yaml:21 the only archetype naming codebase_map
   - src/aew/roles/archetypes/planner.yaml:20 the planner's knowledge omits codebase_map (E62)
   - src/aew/knowledge/context.py:609-610 the codebase-map section rendered last and cuttable
   - src/aew/knowledge/context.py:122-130 KNOWLEDGE_SECTIONS has no architecture_map key
-  - src/aew/maps/service.py:142-151 select_architecture records a discovery-evidence id
-  - src/aew/knowledge/manifest.py:22-23,145-147 KNOWLEDGE_NAMES and resolve_knowledge, no callers in src/aew (grep)
-  - src/aew/knowledge/manifest.py:102-105 init writes architecture_map, codebase_map, ownership_map, glossary as None
+  - src/aew/maps/service.py:257-268 select_architecture records a discovery-evidence id
+  - 'src/aew/maps/service.py refresh_at_dispatch and slices.pin''s lead argument: a Lead''s dispatch refreshes a STALE
+    or absent map at use, inert while the switch is off (ADR-0015, amendment of 2026-11-11)'
+  - src/aew/knowledge/manifest.py:99-102 init writes architecture_map, codebase_map, ownership_map, glossary as None;
+    the architecture_map key stays (KC v0.4 §14), and KNOWLEDGE_NAMES and resolve_knowledge, which had no callers,
+    are removed (the BOARD v2 §4 loose ends, closed by the drop branch)
   - src/aew/cli/map_commands.py:56-93 aew map generate, select-architecture, show, diff
   - src/aew/dashboard/server.py:288-298 the five /maps routes
   - 'importers of aew.maps outside the package (grep): cli/map_commands, dashboard/mapview, dashboard/projections, dashboard/reader,
@@ -1118,9 +1107,8 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: 'Every stage the Lead''s main path takes ends in a typed result it can act on: no publish stranded after
-    a STALE_REVISION (E137), no escaping defect without its class and stage result (E138), a typed exit from REVIEW_PASSED,
-    VERIFIED and COMMIT_READY and after a verifier''s report (E133), and the auto-run set declared and pinned (E83), each
-    exercised in a real Lead run. Dispositions and the custody publish (E6b, PIC) stay out of the finish line until the
+    a STALE_REVISION (E137), no escaping defect without its class and stage result (E138), and the auto-run set declared
+    and pinned (E83), each exercised in a real Lead run. Dispositions and the custody publish (E6b, PIC) stay out of the finish line until the
     designer''s D4 and the operator''s placement out of HOLD-10.'
   remaining:
   - slice: 'E137: the other judgment stages stranded at their last committed step, and the custody worker''s registration
@@ -1131,10 +1119,6 @@ systems:
       E138: record the escaping exception''s class where it can be read, with a stage result when steps committed'
     row: E138
     estimate: 1 small PR (estimate)
-  - slice: 'E133: typed exits from REVIEW_PASSED, VERIFIED and COMMIT_READY, and the verifier-mode publish; it waited on
-      E130, which has merged'
-    row: E133
-    estimate: 1-2 PRs (estimate)
   - slice: 'E83: declare the auto-run set (ticket_start and ticket_request_review, under RUN only) and test that classify.auto_runnable''s
       set equals it'
     row: E83
@@ -1147,9 +1131,9 @@ systems:
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: Lead (E137, then E138, E133, E83 by the register's order); designer for D4; operator for placing E6b out of HOLD-10
-  reason: 'On and used in the default Lead flow, with defects filed from the real tool-call log; BOARD v2 §1 sizes the four
-    as about 4 small PRs with no switch. E83''s behaviour already holds in code (only ticket_start and ticket_request_review
+  who: Lead (E137, then E138, E83 by the register's order); designer for D4; operator for placing E6b out of HOLD-10
+  reason: 'On and used in the default Lead flow, with defects filed from the real tool-call log; BOARD v2 §1 sized four
+    as about 4 small PRs with no switch, and E133 has since merged, leaving three. E83''s behaviour already holds in code (only ticket_start and ticket_request_review
     are POLICY_RESOLVED progression rows); its gap is the declaration and the pinning test, subject to classify''s promotion
     over each expanded primitive''s class (classify.py:33-34), which the census did not trace per primitive. The custody
     refusal does not block publishing: the Lead''s integration_publish publishes a VALIDATED entry outside custody.'
@@ -1173,7 +1157,7 @@ systems:
     BOARD v2 §1 lists no switch)'
   - 'src/aew/surface/mcp.py:168-170: a non-AEW exception is answered INTERNAL_ERROR (-32603, :44) with no stage result (E138)'
   - docs/implementation/future-work.yaml (row E137, at c11a61ea) (E137, 3 of 9 publishes stopped stale), :1621-1627 (E138),
-    :1569-1579 (E133), :1092-1099 (E83); the Now list names E137
+    :1092-1099 (E83); the Now list names E137
   - 'docs/implementation/future-work.yaml (row F15.2, at c11a61ea): F15.2 closed 2026-10-24, held in HOLD-10; :502-503 list
     F15 and F15.2 as HOLD-10 members'
   - 'src/aew/surface/contract.py:279-290: ticket_start expands to work.assign, dispatch.launch, work.transition and ticket_request_review
@@ -1250,51 +1234,39 @@ systems:
     capabilities resolve against the register instead of printing 'workbench resolution pending'; exercised in a real contained
     run.
   remaining:
-  - slice: 'The owed lines from CAP-1 PR 2''s review: the agent system-text line naming a missing tool, the Lead''s results
-      line, the consent prompt, `aew capability fetch` and the setup fetch'
-    row: STG-15
-    estimate: 1-2 PRs (estimate)
-  - slice: 'Card-capability resolution: map the cards'' snake_case names to the register''s capability ids and replace the
-      ''workbench resolution pending'' pack line'
-    row: STG-15
-    estimate: 1 PR (estimate)
   - slice: The stale package docstring (capability/__init__.py:8-10), in BOARD v2 §6's docs PR
     row: row owed
     estimate: part of 1 small docs PR (estimate)
   - slice: 'Later: MCP servers and SPT''s records (A-54, SPB), host placement and network; designed only'
     row: STG-15
     estimate: unsized (estimate)
-  - slice: The tool-consent prompt, CAP-1's follow-on, with `aew capability fetch`
-    row: E171
-    estimate: 1 PR (estimate)
   decision: 'decided: finished and switched on in slot 1 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
   recommendation: finish
   who: Lead
-  reason: CAP-1 PR 1 and PR 2 are merged and ripgrep is bound into every contained Linux launch; PR 3 is on the Now list,
-    a chain the board places in slot 1 (BOARD v2 §1, §7), so finishing is the Lead's by the register's order.
+  reason: CAP-1 PR 1 to PR 3 are merged, and the first bundle's six tools are shipped as records and bound into every contained
+    Linux launch. The tool-consent prompt and the operator's fetch (E171) are merged, agents are told their tools by name,
+    and card capabilities resolve against the shipped map. What is left is the stale docstring, a real contained run with
+    all six tools (the operator's yes of 2026-11-10), and the later records.
   evidence:
-  - 'src/aew/capability/records.py:34-45 the one shipped record, ripgrep 15.1.0, path: first, capabilities EXACT_CODE_SEARCH
-    and TEXT_SEARCH'
+  - 'src/aew/capability/records.py:51 ripgrep, :157 yq (yq-go), with fd, jq, ast-grep and Universal Ctags: the first bundle''s
+    six shipped records'
   - src/aew/capability/__init__.py:8-10 docstring still says the bind 'comes in the next' PR (stale)
-  - src/aew/harness/containment/layout.py:1099-1112 _tool_fields binds the register; win32 returns {} at :1109-1110
-  - src/aew/harness/containment/layout.py:1227 every contained layout calls _tool_fields
-  - src/aew/harness/containment/__init__.py:70-79 containment mode defaults to required on Linux, allow_weaker on Windows
-  - src/aew/harness/containment/__init__.py:170-172 an unsupported platform returns no layout, so no bind
-  - src/aew/harness/containment/__init__.py:216 the run label carries missing_tools
-  - src/aew/harness/containment/probe.py:755,770-779 the self-test settles each provider's entry (health check inside the
-    sandbox)
-  - 'src/aew/capability/store.py:61 host_copies defaults True in a new store; src/aew/capability/bind.py:111 a host copy
+  - src/aew/harness/containment/layout.py:1116 _tool_fields binds the register; win32 returns {} at :1126
+  - src/aew/harness/containment/layout.py:1248 every contained layout calls _tool_fields
+  - 'src/aew/harness/containment/__init__.py:70 mode(), containment defaults to required on Linux, allow_weaker on Windows'
+  - src/aew/harness/containment/__init__.py:218 the run label carries missing_tools
+  - src/aew/harness/containment/probe.py:648,716 the self-test settles each provider's entry (health checks inside the
+    sandbox, CAPR-13)
+  - 'src/aew/capability/store.py:61 host_copies defaults True in a new store; src/aew/capability/bind.py:126 a host copy
     may serve a path: first record'
-  - src/aew/cli/capability_commands.py:25-53 aew capability list, check, import, add, remove, host-copies
-  - src/aew/doctor.py:51,116-122 one doctor line per capability
-  - src/aew/harness/operator_endpoint.py:374-396 the operator endpoint's capability_change
-  - src/aew/engine/harness_ops.py:290-292,306 card capabilities collected only into the launch contract's card_capabilities
-  - src/aew/knowledge/context.py:199-200 the pack prints 'workbench resolution pending' for card capabilities
-  - 'grep ''capability fetch'' in src/aew/cli finds nothing: no `aew capability fetch`'
-  - docs/implementation/notes.d/STG-15/2026-11-04-feat-cap1-pr2-rg-bind.md the owed lines after CAP-1 PR 2's review, and
-    PR 3 next
-  - 'docs/implementation/future-work.yaml (the Now list''s STG-15 line, at c11a61ea): CAP-1 PR 2 (still listed) and CAP-1
-    PR 3'
+  - src/aew/cli/capability_commands.py:26-62 aew capability list, check, fetch (:40), import, add, remove, host-copies
+  - src/aew/capability/consent.py:375 at_lead_start and :434 at_fetch, the one consent screen (E171)
+  - src/aew/doctor.py:51,116 one doctor line per capability
+  - src/aew/harness/operator_endpoint.py:324 the operator endpoint's capability_change
+  - src/aew/engine/harness_ops.py:388 card capabilities carried into the launch contract's card_capabilities
+  - src/aew/knowledge/context.py:186-190 the pack splits card capabilities by CARD_CAPABILITIES (src/aew/capability/records.py:374)
+  - src/aew/harness/opencode/projection.py:234 a run without a tool says so (the missing-tool line)
+  - tests/live/test_capability_q08_live.py the live lane's fetch, import and contained check
 - id: SYS-10
   name: 'STG-02 slice producer: the O-01 command route and D-01 reads, with the vendored adopted contract files'
   purpose: A standalone HTTP producer of the adopted D-01 reads and the O-01 command route for one operator journey, plus
@@ -2112,8 +2084,11 @@ systems:
   - docs/implementation/adr/0012-transaction-outbox.md
   - src/aew/engine/seams.py
   depends_on: []
+  signoff:
+    date: '2026-11-10'
+    words: 'SYS-38 and SYS-17 signed off, history audit clean'
   state:
-    board_state: awaiting_signoff
+    board_state: on_and_used
     built: 'yes'
     wired:
     - cli:history log
@@ -2148,7 +2123,7 @@ systems:
   - src/aew/engine/api.py:542-544 (eight finalizers registered; src/aew/engine/seams.py:202 still says the list is empty)
   - src/aew/cli/history_commands.py:41 (history log), :55 (history compact)
   - src/aew/cli/work_commands.py:450,456 (harness wait --any); src/aew/engine/harness_ops.py:469 (outbox.wait_for)
-  - src/aew/surface/contract.py:211 (harness_wait tool); src/aew/engine/guide.py:123 ('Follow runs with harness_wait')
+  - src/aew/surface/contract.py:214 (harness_wait tool)
   - src/aew/dashboard/server.py:287 (/activity); src/aew/dashboard/projections.py:1086 (read_transitions)
   - src/aew/harness/notify.py:418,495 (outbox.wait_for, outbox.read_transitions)
   - src/aew/harness/steering_loop.py:297 (wake_mark), :524 (read_transitions)
@@ -2293,9 +2268,8 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: Every validation records what it evaluated and what it did not check, and a failing check's lines reach the
-    worker (E120); a setup problem is named with its cause and fix before any Ticket, with the driver asserting it (E125);
-    V3's two missing detectors exist (E153); artifact_digests is populated or dropped and working_diff kept or removed;
-    all exercised by the vertical driver and a real run. The remote validation provider stays Designed until it has acceptance.
+    worker (E120); artifact_digests is populated or dropped and working_diff kept or removed; all exercised by the vertical
+    driver and a real run. The remote validation provider stays Designed until it has acceptance.
   remaining:
   - slice: 'E120: what its first PR left owed: the record''s section 2 (what a run went without), and E243''s project-owned
       source for the two lists its record now says are not known'
@@ -2315,32 +2289,31 @@ systems:
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: Lead (E120, E125); designer for E153's ruling; designer or operator for the two loose ends (BOARD v2 §4)
-  reason: E120 and E125 are on the Now list before first use, and E125's predecessor E119 has merged (BOARD v2 §0), so the
-    next step is building. artifact_digests is always empty and working_diff has no src caller; BOARD v2 §4 batches both
-    as loose ends. The remote provider stays Designed only.
+  who: Lead (E120); designer or operator for the two loose ends (BOARD v2 §4)
+  reason: E120 is on the Now list and still open; the local readiness surface (E125) and V3's two detectors (E153) have
+    closed. artifact_digests is always empty and working_diff has no src caller; BOARD v2 §4 batches both as loose ends.
+    The remote provider stays Designed only.
   evidence:
   - src/aew/snapshot/fingerprint.py:384-397 (evaluated_snapshot accepts artifact_digests)
   - src/aew/engine/workspace_ops.py:47-52 (its only caller passes exclude and include_ignored only, so artifact_digests
     is always [])
   - src/aew/schemas/evidence.schema.json:190; src/aew/dashboard/projections.py:661,677 (schema field and dashboard echo)
   - src/aew/engine/evidence_ops.py:1012,1043 (evaluated_snapshot on every evidence record), :954-979 (mutated_inputs refusal)
-  - 'src/aew/snapshot/fingerprint.py:32,412 (working_diff, self-flagged with no caller in src); grep: callers only tests/integration/test_fingerprint_reads.py:343
+  - 'src/aew/snapshot/fingerprint.py:32,414 (working_diff, self-flagged with no caller in src); grep: callers only tests/integration/test_fingerprint_reads.py:343
     and tests/regression/test_m4b_review.py:104'
-  - 'grep: no coverage or not-checked field in src/aew/engine/validation_ops.py or evidence_ops.py'
+  - src/aew/engine/validation_ops.py:50,314,398 (the coverage record E120's slices added)
   - src/aew/engine/workspace_ops.py:269,303 ('readiness' is dependency readiness, not setup readiness)
-  - tests/acceptance/test_vertical_path.py:81 (seeded check-changes-snapshot cause), :92-95 (model-not-listed seed), :714
-    (V3_CASES), :720-722 (the model-not-listed and check-changes-snapshot cases E153 names)
+  - tests/acceptance/test_vertical_path.py:83 (seeded check-changes-snapshot cause), :94-97 (model-not-listed seed), :723
+    (V3_CASES), :729 and :731 (the model-not-listed and check-changes-snapshot cases, detected since E153 closed)
   - 'docs/implementation/implementation-status.md:323-327 (Remote validation provider: Designed, no acceptance)'
-  - docs/implementation/future-work.yaml (row E120, at c11a61ea) (E120, Now), :1479 (E125, on the Now list after E119),
-    :1752 (E153, needs a ruling on what may run)
+  - docs/implementation/future-work.yaml (row E120, at c11a61ea) (E120, Now)
 - id: SYS-20
   name: G3 trusted operator origin (approvals)
   purpose: 'One trusted origin for the operator''s approvals: a PIN typed in a confirmer outside every sandbox approves
     a protected command set, which its owner then consumes once.'
   serves_claims:
     closing_works:
-    - the G3 service, built beside CS-4 (STG-03, on the Now list)
+    - the G3 service, built beside CS-4 (STG-03)
     extra: []
   serves_pending: []
   design:
@@ -2366,58 +2339,45 @@ systems:
   - SYS-10
   - SYS-37
   state:
-    board_state: partly_built
-    built: partly
+    board_state: on_and_used
+    built: 'yes'
     wired:
     - cli:g3 request
-    on_by_default: false
-    used_in_default_flow: 'no'
-  finish_line: 'E82''s known-answer tests and G3-C (the owners'' side consuming a consent once at allocation, ATTACH_LEAD
-    included, and reading the register of weaker contexts) merged; G3 installed by root on a Linux host where every agent
-    context runs contained, so G3 is established there (G3-12); and a protected action approved in the confirmer is admitted
-    once by its owner in a real run. A Lead asking for an operator approval is outside this finish line: it is undesigned.'
-  remaining:
-  - slice: 'E82: a known-answer test of the SW-02 set fingerprint and a two-member continuation set, tests only, before
-      G3-C'
-    row: E82
-    estimate: 1 PR (estimate; census)
-  - slice: 'G3-C: owners consume a G3 consent once at allocation, ATTACH_LEAD included, and consult the register of weaker
-      contexts'
-    row: STG-03
-    estimate: 1-2 PRs (estimate; census)
-  - slice: 'The G3 install on a Linux host: root runs g3/install.sh and sets the PIN'
-    row: STG-03
-    estimate: an operator root step, no PR (estimate)
-  - slice: 'G3 on Windows'
-    row: E223
-    estimate: not sized (estimate)
-  decision: 'decided: finished and switched on in slot 1 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
-  recommendation: finish
-  who: Lead (STG-03); operator for the root install on a host
-  reason: 'G3-A, G3-B and G3-D are merged and coherent, but nothing admits a protected action until G3-C, so the built parts
-    have no effect yet. Its blocker E112 has closed, and it is on the Now list, where it never holds first use. The service
-    is in this repository under g3/ and installed separately by root, not an external dependency. The designer''s reading:
-    the only O-01 route today is the STG-02 slice producer (SYS-10), which BOARD v2 §4 freezes and whose real wire is I-6
-    (SYS-29), so where G3-C''s owner consumption lands should be settled in its brief. A Lead asking for an operator approval
-    is the designer''s open question (g3_commands.py:6-7).'
+    on_by_default: true
+    used_in_default_flow: 'yes'
+  signoff:
+    date: '2026-11-10'
+    words: 'SYS-37 and SYS-20 signed off, tested in my root session AS WELL'
+  finish_line: 'Done: the steering raise (SET_STEERING_MODE) is the first protected action G3 admits, on the operator''s decision of 2026-11-07 (design workspace record `2026-11-07-operator-g3-first-real-action-steering-raise.md`), applied through G3-C''s overlay as the operator chose on 2026-11-08. E82''s known-answer tests and G3-C are merged; G3 is installed by root on a Linux host where
+    every agent context runs contained; a raise approved in the confirmer with the PIN is admitted once by its owner and
+    the mode rises; a replay is refused; and after a weaker launch the next raise falls back to the typed code with the
+    standing''s reason. The operator''s root session on a Linux host, 2026-11-10, passed this acceptance. ATTACH_LEAD and
+    REATTACH_LEAD stay proposed, outside this finish line, and so does G3 on Windows (E223).'
+  remaining: []
+  decision: 'decided: closed by the operator, 2026-11-10, with SYS-37: "yes close both and the wording is fine", after
+    the operator''s root session on a Linux host, 2026-11-10'
+  recommendation: done
+  who: Lead (keeps the entry)
+  reason: 'G3-A, G3-B, G3-D and E82 are merged, and G3-C binds its first protected action, the steering raise: where G3
+    counts, the operator endpoint asks G3 for the approval, consumes it once and commits the raise, whose record names
+    the consent set; where the standing fails, the raise takes the typed code and prints why. The service is in this repository
+    under g3/ and installed separately by root. Further bindings (ATTACH_LEAD, REATTACH_LEAD) stay proposed with no row:
+    the designer''s inventory records them. G3 on Windows is E223, Unscheduled.'
   evidence:
-  - src/aew/cli/commands.py:149 aew g3 is registered by default
-  - src/aew/cli/g3_commands.py:40 aew g3 request refuses in a Lead session; :6-7 a Lead asking for an operator approval
-    is not built
-  - 'src/aew/g3client.py:48 REQUEST_SOCK /run/aew-g3/request.sock; :60-64 NOT_ESTABLISHED text: owners accept G3 consent
-    only once G3-C lands'
-  - src/aew/stg02/commands.py:140-143 every non-delegated origin is refused ORIGIN_NOT_ESTABLISHED and nothing is allocated
-  - src/aew/stg02/commands.py:100-103 consent_set_ref is only shape-checked
-  - src/aew/stg02/server.py:418 ATTACH_LEAD exists only as a fixture intent
-  - src/aew/stg02/wire.py:136-139 set_digest, the SW-02 set fingerprint E82 will prove
-  - g3/install.sh:1-15,48-50 root installs the service under /opt/aew-g3 offline, hash-pinned; g3/aew_g3 and g3/aew_g3_confirm
-    are 1,933 lines and lie outside the as-built reference, which indexes src/aew only
-  - pyproject.toml:36-38,103-105 the g3 package is installed apart from the editable aew
-  - 'docs/implementation/future-work.yaml (the Now list''s STG-03 line, at c11a61ea) STG-03: G3-C with ATTACH_LEAD, E82
-    and the G3 install; it never holds first use'
-  - 'map v1.20:116 (design workspace): G3 is established on no host'
-  - docs/implementation/future-work.yaml (row STG-03, at c11a61ea) STG-03's gate still says G3-C waits for E112, which has
-    closed (future-work.yaml (the Now list's E112 line, at c11a61ea); BOARD v2 §6)
+  - src/aew/cli/commands.py:162 aew g3 is registered by default
+  - src/aew/harness/g3_adapter.py:2 its first binding is the steering raise; :37 BINDINGS names only mode_raise
+  - src/aew/harness/g3_adapter.py:60-66 choose() takes the typed code when the standing does not count, with the standing's
+    line
+  - src/aew/harness/g3_adapter.py:201 a replay is refused (CONSENT_ALREADY_USED)
+  - src/aew/harness/operator_endpoint.py:389-391 the raise's preview, then the one choice of the challenge's path
+  - src/aew/engine/steering.py:77 the mode's record carries the origin of a G3-answered challenge
+  - src/aew/stg02/commands.py:205 the owner consumes a G3 consent once
+  - src/aew/g3standing.py:103-114 the standing sweeps and reads the register of weaker contexts (SYS-37)
+  - src/aew/stg02/server.py:429 ATTACH_LEAD exists only as a fixture intent
+  - g3/install.sh root installs the service offline, hash-pinned; g3/acceptance_replay.py the replay a host's first raise
+    shows refused
+  - docs/implementation/notes.d/STG-03/2026-11-08-feat-g3c-steering-adapter.md G3-C's PR C3, the first real protected
+    action
 - id: SYS-21
   name: Operator attention (attention spine, observability, fact-owner registry, blocked-on-you)
   purpose: Tell the operator and the Lead what needs them now, from one derivation, and reach the operator when they are
@@ -3633,39 +3593,40 @@ systems:
   - tests/unit/test_weaker_register.py
   depends_on:
   - SYS-02
+  signoff:
+    date: '2026-11-10'
+    words: 'SYS-37 and SYS-20 signed off, tested in my root session AS WELL'
   state:
-    board_state: awaiting_signoff
+    board_state: on_and_used
     built: 'yes'
     wired: []
     on_by_default: true
-    used_in_default_flow: partly
-  finish_line: G3-C reads the register before admitting a consent (not read(N).clear refuses), something calls sweep(),
-    and a real run on a Linux host shows a consent refused while a weaker context was live within the window.
-  remaining:
-  - slice: The read side (read, sweep) is wired by G3-C, SYS-20's slice; no separate PR (rides on SYS-20's STG-03)
-    row: STG-03
-    estimate: inside SYS-20's estimate
-  decision: 'decided: finished and switched on in slot 1 of the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md)'
-  recommendation: finish
-  who: Lead, with G3-C
-  reason: The write side is built and runs on every launch path; the read side is built and called by nothing, by design
-    until G3-C, which BOARD v2 §2 assigns it to. It needs no build of its own, only G3-C's consumer (SYS-20, which depends
-    on this entry). Its design is published as ADR-0009's amendment of 2026-11-01; G3-PROFILE.md is context only (G3-12),
-    with no text on the register itself.
+    used_in_default_flow: 'yes'
+  finish_line: 'Done: G3''s standing reads the register before admitting a consent (it sweeps, then reads), and the operator''s
+    root session on a Linux host, 2026-11-10, showed a weaker launch keep the next raise off the G3 path: it fell back to
+    the typed code and named the weaker context.'
+  remaining: []
+  decision: 'decided: closed by the operator, 2026-11-10, with SYS-20: "yes close both and the wording is fine", after
+    the operator''s root session on a Linux host, 2026-11-10'
+  recommendation: done
+  who: Lead (keeps the entry)
+  reason: The write side runs on every launch path that can be weaker. The read side is called by G3's standing, which
+    every steering raise's choice of path and the owner's consume compute (SYS-20). Its design is published as ADR-0009's
+    amendment of 2026-11-01; G3-PROFILE.md is context only (G3-12), with no text on the register itself.
   evidence:
   - docs/implementation/adr/0009-harness-boundary-and-opencode-v2.md:1655-1668 the 2026-11-01 amendment publishes G3 addendum
     7's rulings 1 and 2, naming aew.harness.weaker_register
-  - 'src/aew/harness/weaker_register.py:29 the docstring: read() is for G3''s standing, which G3-C builds'
-  - 'src/aew/harness/weaker_register.py:97-99 enforced() on Linux: an entry that cannot be written refuses the launch'
-  - 'src/aew/harness/weaker_register.py:568 read() and :617 sweep(): grep over src/, g3/ and eval/ finds no caller'
-  - src/aew/harness/supervisor.py:286 worker runs write an entry when weaker
-  - src/aew/harness/lead_broker.py:778 aew lead session writes an entry
-  - src/aew/engine/validation_ops.py:491 validation runs write an entry when weaker
-  - src/aew/engine/evidence_ops.py:862 aew check run writes an entry when weaker
-  - src/aew/harness/opencode/lead.py:503,538 aew opencode writes an entry when weaker
-  - 'used_in_default_flow partly: weaker launches write entries; contained launches on Linux write nothing (weaker_register.py:4-6)
-    and nothing reads them'
-  - 'wired is empty: the write side rides the launch commands of SYS-02, and the read side reaches no surface'
+  - 'src/aew/harness/weaker_register.py:101 enforced() on Linux: an entry that cannot be written refuses the launch'
+  - src/aew/harness/weaker_register.py:484 enter(), :534 enter_if_weaker(), :612 read(), :662 sweep()
+  - src/aew/g3standing.py:103-114 no_weaker_context() sweeps, then reads the register; the standing calls it
+  - src/aew/harness/g3_adapter.py:60-66 a raise's choice of path computes the standing
+  - src/aew/harness/supervisor.py:125 worker runs write an entry when weaker
+  - src/aew/harness/lead_broker.py:877 aew lead session writes an entry
+  - src/aew/engine/validation_ops.py:509 validation runs write an entry when weaker
+  - src/aew/engine/evidence_ops.py:876 aew check run writes an entry when weaker
+  - src/aew/harness/opencode/lead.py:796,859 aew opencode writes an entry when weaker
+  - 'wired is empty: the write side rides the launch commands of SYS-02, and the read side is reached through G3''s standing
+    (doctor''s g3 line and the raise), which are SYS-20''s'
 - id: SYS-38
   name: ADR-0011 archival and history
   purpose: Move finished work out of the hot control state at the commit that finishes it, into a hash-chained, verifiable
@@ -3704,8 +3665,11 @@ systems:
   - writers:local/history.sqlite
   touches: []
   depends_on: []
+  signoff:
+    date: '2026-11-10'
+    words: 'SYS-38 and SYS-17 signed off, history audit clean'
   state:
-    board_state: awaiting_signoff
+    board_state: on_and_used
     built: 'yes'
     wired:
     - cli:history show

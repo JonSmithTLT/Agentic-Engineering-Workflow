@@ -36,6 +36,7 @@ from aew.engine.authority import ROLE_OPERATIONS, require_invocation, require_le
 from aew.engine.dispatch import GuardRegistration as DispatchGuard
 from aew.engine.dispatch import blocker_from, checked
 from aew.engine.nonmutating_ops import is_nm_ticket
+from aew.engine.request_ids import ControlRequest
 from aew.engine.store import Transition
 from aew.errors import (
     AEWError,
@@ -164,10 +165,25 @@ class Harness:
                 "--replace` (its credential is revoked either way)", run=previous["run"]))
         return None
 
-    def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False) -> dict[str, Any]:
+    def harness_launch(self, *, token: str, expect_rev: int, invocation: str, replace: bool = False,
+                       request_id: str | None = None) -> dict[str, Any]:
         """Launch (or relaunch) a harness run: rotate the credential, record the run, hand custody over. Its legality
         is the ``harness.launch`` dispatch entrypoint's guards (M4-A)."""
-        with self.k.lead_txn(token, expect_rev, "harness.launch") as ctx:
+        request = ControlRequest.prepare(request_id, invocation=invocation, replace=replace)
+        with self.k.lead_txn(token, expect_rev, "harness.launch", request=request) as ctx:
+            if request is not None and ctx.replayed is not None:
+                replay = ctx.replayed
+                invocation = replay["invocation"]
+                run = replay["run_record"]
+                status_command = f"aew harness status {invocation}"
+                status, _ = runlog.observed_status(runlog.run_dir(self.k.aew_root, run["run"]))
+                target = ctx.state["invocations"][invocation]
+                recovery = ({"recovery": self._unconfirmed_recovery(invocation, run)}
+                            if status == K.UNCONFIRMED and target["status"] == "active"
+                            and target["runs"][-1]["run"] == run["run"] else {})
+                return replay | recovery | {"ok": status != K.UNCONFIRMED, "spawn": status,
+                                            "supervisor_status": status_command,
+                                            "next_action": f"Check `{status_command}`."}
             state = ctx.state
             target = state["invocations"].get(invocation)
             if target is None:
@@ -180,12 +196,16 @@ class Harness:
             run = K.run_id(invocation, len(runs) + 1)
             stop_old = self._record_request(previous, "stop", {"reason": f"superseded by {run}"}) if previous else None
             credential = rotate_invocation_token(state, invocation, f"rotated: {run}")
-            runs.append({"run": run, "harness": inv["execution_profile"]["harness"], "token_id": inv["token_id"],
-                         "launched_at": utc_now(), "kind": "relaunch" if previous else "launch",
-                         "generation": state["lead"]["generation"]})
+            run_record = {"run": run, "harness": inv["execution_profile"]["harness"], "token_id": inv["token_id"],
+                          **self.invocations.provider_key_admission(ctx.dispatch_decisions[-1].facts["inv"]),
+                          "launched_at": utc_now(),
+                          "kind": "relaunch" if previous else "launch", "generation": state["lead"]["generation"]}
+            runs.append(run_record)
             ctx.refs.append(f"run:{run}")
             ctx.summary = f"{run} launched for {invocation}; credential rotated" + (
                 f" (supersedes {previous['run']})" if previous else "")
+            if request is not None:
+                ctx.request_ref = (target["work_unit"], run)
         revision = ctx.session.committed_revision
         old_dir = runlog.run_dir(self.k.aew_root, previous["run"]) if previous else None
         if old_dir is not None and old_dir.exists() and stop_old:  # best effort: its credential is already dead,
@@ -223,6 +243,8 @@ class Harness:
     def launch_dispatched(self, result: dict[str, Any]) -> dict[str, Any]:
         """Finish ``--launch`` on a dispatch: the dispatch-issued credential goes to the run's supervisor and
         is removed from the command's output."""
+        if result.get("replayed"):
+            return result
         credential = result.pop("invocation_token")
         inv_id = result["invocation"]
         run = self.k.store.current()["invocations"][inv_id]["runs"][-1]["run"]
@@ -239,7 +261,7 @@ class Harness:
 
         try:
             execution, _ = self.k.execution_policy()
-            findings = readiness_findings(execution, START)
+            findings = readiness_findings(execution, START, admitted=self.invocations.admitted_key_sources(result))
         except Exception:  # the launch's own checks report an unreadable policy; this only adds to them
             return result
         return {**result, "readiness": findings} if findings else result
@@ -469,10 +491,20 @@ class Harness:
                             **_missing_capabilities(record),
                             "model_check": _field(record, "model_check").get("status"),
                             "foreign_sessions": _list(_field(record, "result").get("foreign_sessions")),
-                            "run_dir": str(directory)})
+                            "run_dir": str(directory),
+                            **({"next_action": self._unconfirmed_recovery(inv_id, r)}
+                               if current and observed == K.UNCONFIRMED else {})})
         if invocation and not out and invocation not in state["invocations"]:
             raise NotFound(f"no invocation {invocation}")
         return {"runs": out}
+
+    @staticmethod
+    def _unconfirmed_recovery(invocation: str, run: dict[str, Any]) -> str:
+        launch = f"aew harness launch {invocation} {K.EXPECT_REV}"
+        if runlog.possibly_live(K.UNCONFIRMED, run["launched_at"]):
+            return (f"Wait for the {runlog.UNCONFIRMED_GRACE_S:g}-second launch grace period. "
+                    f"If the run is still unconfirmed, relaunch with `{launch}`.")
+        return f"Relaunch the unconfirmed run with `{launch}`."
 
     def _find_run(self, state: dict[str, Any], run: str) -> tuple[str, dict[str, Any]]:
         for inv_id, inv in state["invocations"].items():

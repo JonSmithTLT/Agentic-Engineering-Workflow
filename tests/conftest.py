@@ -372,6 +372,11 @@ REAL_DESKTOP_PROBLEM = _desktop_notifier.problem
 NO_DESKTOP_IN_TESTS = "tests show no desktop notification"
 
 
+@functools.wraps(REAL_DESKTOP_PROBLEM)  # keeps the real signature: test_polling_predicates reads its `-> str | None`
+def _no_desktop_problem(*args, **kwargs) -> str | None:
+    return NO_DESKTOP_IN_TESTS
+
+
 @pytest.fixture(autouse=True)
 def no_desktop_notification():
     """No test shows a real desktop notification (the operator's no-popups rule): in process, the shipped default
@@ -380,7 +385,7 @@ def no_desktop_notification():
     `real_desktop_notifier`. The limit: an endpoint a test starts as its own process runs the real check, so on a
     developer's desktop (a session bus on Linux, an interactive session on Windows) such a test that raises an event
     would show one. (Not through ``monkeypatch``, for the reason ``capability_register`` gives.)"""
-    _desktop_notifier.problem = lambda *a, **k: NO_DESKTOP_IN_TESTS
+    _desktop_notifier.problem = _no_desktop_problem
     yield
     _desktop_notifier.problem = REAL_DESKTOP_PROBLEM
 

@@ -410,6 +410,7 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
     for n, step in enumerate(plan, start=1):
         if n < first or n == covered:  # committed already: a stage never repeats a step (its key is recorded)
             continue
+        c.running = step["primitive"]
         try:
             args = _resolve(c, intent, step.get("args") or {})
         except errors.AEWError as refusal:
@@ -421,6 +422,7 @@ def _run_steps(c: Call, intent: str, plan: list[dict[str, Any]], first: int, rev
             try:
                 with SI.step(intent, n, retried=retried, final=final, covers=covers):
                     out = STEP_RUNNERS[step["primitive"]](c, args, rev)
+                    c.running = None
                 break
             except errors.StaleRevision as refusal:
                 try:

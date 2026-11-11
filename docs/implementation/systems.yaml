@@ -2343,8 +2343,8 @@ systems:
     - cli:g3 request
     on_by_default: true
     used_in_default_flow: 'yes'
-  finish_line: 'Done: the steering raise (SET_STEERING_MODE) is the first protected action G3 admits, on the operator''s
-    decision of 2026-11-07. E82''s known-answer tests and G3-C are merged; G3 is installed by root on a Linux host where
+  finish_line: 'Done: the steering raise (SET_STEERING_MODE) is the first protected action G3 admits, as G3-C''s brief and
+    the designer''s rulings on it of 2026-11-08 bind it. E82''s known-answer tests and G3-C are merged; G3 is installed by root on a Linux host where
     every agent context runs contained; a raise approved in the confirmer with the PIN is admitted once by its owner and
     the mode rises; a replay is refused; and after a weaker launch the next raise falls back to the typed code with the
     standing''s reason. The operator''s root session on a Linux host, 2026-11-10, passed this acceptance. ATTACH_LEAD and

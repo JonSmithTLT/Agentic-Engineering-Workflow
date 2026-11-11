@@ -3847,7 +3847,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **When:** **Unscheduled**, the first of the revision check's four PRs (E326 to E329), which run as one chain and start on the ruling
 
-**Notes:** Filed by the register PR of 2026-11-10. The operator's position: one project-wide revision blocks every caller on every unrelated commit and catches no conflict on the item a caller changes
+**Notes:** Filed by the register PR of 2026-11-10. The designer's finding: the project-wide revision catches no conflict on the item a caller changes and refuses every caller on every unrelated commit, which the operator's position of the same day rejects
 
 *Later notes: `notes.d/E326/`, oldest first (`python tools/register.py show E326`).*
 
@@ -4733,7 +4733,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-07
 
-**By:** #363 (`117e2b88`): `tests/unit/test_stg02_set_fingerprint.py` checks the fingerprint against the adopted A-24 package's recorded digests, one of them a two-member set, and `tests/integration/test_stg02_slice.py` admits each member of a two-member set on its own. Its limit is in the row's note of 2026-11-07
+**By:** #363 (`117e2b88`): `tests/unit/test_stg02_set_fingerprint.py` checks the fingerprint against the adopted A-24 package's recorded digests, one of them a two-member set, and `tests/integration/test_stg02_slice.py` judges each member of a two-member set on its own, in request order. Its limit is in the row's note of 2026-11-07
 
 *Later notes: `notes.d/E82/`, oldest first (`python tools/register.py show E82`).*
 
@@ -5959,7 +5959,7 @@ Entries leave the tables above when their work is accepted or another entry abso
 
 **Closed:** 2026-11-10
 
-**By:** G3-A, G3-B and G3-D (#269, #282, #286); E82 (#363); G3-C (#365, #374, #386 and #389), whose first protected action is the steering raise (`SET_STEERING_MODE`), on the operator's decision of 2026-11-07; and the operator's root session on a Linux host, 2026-11-10, which installed G3 and passed the raise's acceptance: approved in the confirmer with the PIN and admitted once by its owner, a replay refused, and after a weaker launch the next raise on the typed code with the standing's reason. `ATTACH_LEAD` and `REATTACH_LEAD` stay proposed, with no row. G3 on Windows is E223
+**By:** G3-A, G3-B and G3-D (#269, #282, #286); E82 (#363); G3-C (#365, #374, #386 and #389), whose first protected action is the steering raise (`SET_STEERING_MODE`), as G3-C's brief and the designer's rulings on it of 2026-11-08 bind it; and the operator's root session on a Linux host, 2026-11-10, which installed G3 and passed the raise's acceptance: approved in the confirmer with the PIN and admitted once by its owner, a replay refused, and after a weaker launch the next raise on the typed code with the standing's reason. `ATTACH_LEAD` and `REATTACH_LEAD` stay proposed, with no row. G3 on Windows is E223
 
 *Later notes: `notes.d/STG-03/`, oldest first (`python tools/register.py show STG-03`).*
 

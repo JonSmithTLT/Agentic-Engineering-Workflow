@@ -235,6 +235,35 @@ def test_the_default_runs_the_endpoints_own_engine_whatever_is_on_path(monkeypat
     assert D.runnable(["/usr/local/bin/my-notifier", "--x"]) == ["/usr/local/bin/my-notifier", "--x"]
 
 
+def test_the_endpoints_watcher_delivers_the_default_as_its_own_engine(project, tmp_path, monkeypatch):
+    """Quick check of E228's third PR, M3: the watcher hands `deliver` the default as ``runnable`` makes it, so the
+    endpoint's own interpreter runs it, never the `aew` on PATH. `deliver` is replaced, so nothing is shown."""
+    from notifier import adopt, until
+
+    from aew.harness import event_spool
+
+    adopt(project, command=list(D.COMMAND))
+    monkeypatch.setattr(D, "problem", lambda env, platform=None: None)  # a desktop that could show it
+    argvs: list[list[str]] = []
+
+    def deliver(command: list[str], event: dict[str, Any], **kw: Any) -> dict[str, Any]:
+        argvs.append(list(command))
+        return {"outcome": "delivered", "reason": None, "exit_code": 0, "timed_out": False, "output_bytes": 0,
+                "discarded_bytes": 0}
+
+    monkeypatch.setattr(notify, "deliver", deliver)
+    watcher = notify.Watcher(project.root, project.root / ".aew")
+    watcher.pass_once()
+    watcher.start()
+    try:
+        event_spool.append(project.root / ".aew", event_spool.BROKER, "loop_stopped", subject="T-0001",
+                           reason="REPETITION: the test's stop", ref="LA-1-1")
+        until(lambda: argvs, what="the delivery")
+    finally:
+        watcher.close()
+    assert argvs[0] == [sys.executable, *procs.ENGINE_PYTHON_FLAGS, "-m", "aew", "notify", "desktop"], argvs
+
+
 def test_no_test_shows_the_shipped_default():
     """The positive control of conftest's `no_desktop_notification`: in any test that does not ask for the real check,
     the shipped default is unavailable, so it shows nothing and Run's gate refuses it."""

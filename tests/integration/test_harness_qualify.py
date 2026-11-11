@@ -552,7 +552,8 @@ class MessagingServerSeam:
                 self.items[mid] = {**self.items[mid], "payload": body}
         if not duplicate:
             self.owners[mid] = sid
-            self.items[mid] = {"id": mid, "time": {"created": len(self.items)}, "payload": dict(body)}
+            self.items[mid] = {"id": mid, "sessionID": sid, "type": "user", "delivery": body.get("delivery", "steer"),
+                               "time": {"created": len(self.items)}, "payload": dict(body)}
         if body.get("resume") is not False or (duplicate and self.mutation == "retry_wakes"):
             self.llm.requests.append({"main": True})
             pending = [item for key, item in self.items.items() if self.owners[key] == sid and not any(
@@ -564,13 +565,23 @@ class MessagingServerSeam:
                 self.sessions[sid].append({"type": "user", "id": item["id"], "text": payload["text"],
                                            "metadata": {} if self.mutation == "metadata_dropped" else
                                            payload.get("metadata", {})})
-        return 200, self.items[mid]
+        item = self.items[mid]
+        admitted = duplicate and any(m["id"] == mid for m in self.sessions[sid])
+        if admitted and self.mutation == "envelope_defaults":
+            item = {**item, "payload": {**item["payload"], "agents": [], "files": [], "skills": []}}
+        elif admitted and self.mutation == "admitted_time_changed":
+            item = {**item, "time": {"created": item["time"]["created"] + 1}}
+        elif admitted and self.mutation == "admitted_mode_changed":
+            item = {**item, "delivery": "queue" if item["delivery"] == "steer" else "steer"}
+        return 200, item
 
 
 @pytest.mark.parametrize(("mutation", "name"), [
     ("none", "prompt_identity"), ("none", "held_resume"), ("metadata_dropped", "prompt_identity"),
     ("changed_pending_accepted", "prompt_identity"), ("changed_admitted_accepted", "prompt_identity"),
     ("conflict_accepted", "prompt_identity"), ("retry_wakes", "held_resume"), ("wake_first", "held_resume"),
+    ("envelope_defaults", "prompt_identity"), ("admitted_time_changed", "prompt_identity"),
+    ("admitted_mode_changed", "prompt_identity"),
     ("false_admission", "prompt_identity"), ("none", "session_loss"),
     ("message_as_lost", "session_loss"), ("lost_as_message", "session_loss"),
 ])
@@ -589,7 +600,7 @@ def test_messaging_checks_fail_scripted_server_payload_and_admission_violations(
     ctx = core.Context(tmp_path / "binary", tmp_path, {}, "2.2.6")
     check = next(c for c in OC.OpenCodePack(FIXTURES).checks() if c.id == "messaging." + name)
     result = check.run(ctx)
-    assert result.status == (core.PASS if mutation == "none" else core.FAIL), result
+    assert result.status == (core.PASS if mutation in ("none", "envelope_defaults") else core.FAIL), result
 
 
 def test_messaging_semantics_render_pin_and_diff_without_overwriting_unrelated_fixtures(tmp_path):

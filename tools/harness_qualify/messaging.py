@@ -64,12 +64,33 @@ def data(value: Any) -> Any:
     return value.get("data", value) if isinstance(value, dict) else value
 
 
+def inbox_identity(value: Any) -> Any:
+    """Canonicalize only absent versus empty optional attachment arrays. No identity, time, mode, text or metadata
+    is dropped. Both raw responses are retained in the measurement for investigation of any failed comparison."""
+    if not isinstance(value, dict) or not isinstance(value.get("payload"), dict):
+        return value
+    payload = {k: v for k, v in value["payload"].items() if k not in ("agents", "files", "skills") or v != []}
+    return {**value, "payload": payload}
+
+
+def expected_inbox(value: Any, sid: str, mid: str, mode: str, text: str, metadata: dict[str, Any]) -> bool:
+    if not isinstance(value, dict):
+        return False
+    created = (value.get("time") or {}).get("created")
+    payload = value.get("payload") or {}
+    return (value.get("id") == mid and value.get("sessionID") == sid and value.get("type") == "user"
+            and value.get("delivery") == mode and isinstance(created, (int, float))
+            and not isinstance(created, bool) and math.isfinite(created) and created >= 0
+            and payload.get("text") == text and payload.get("metadata") == metadata)
+
+
 def identity_measurement(ctx: Context) -> dict[str, Any]:
     """Observe idempotency before and after admission for both modes, including a changed payload/mode and an ID
     owned by another session. Held duplicate retries always explicitly use resume:false."""
     work = ctx.work / "identity"
     llm = model.start("responses", [])
     facts: dict[str, Any] = {}
+    details: dict[str, Any] = {}
     try:
         with opencode.serve(ctx.binary, work, ctx.env, opencode.server_config(llm.base_url),
                             {"OPENAI_API_KEY": opencode.SYNTHETIC_KEY}) as server:
@@ -83,6 +104,8 @@ def identity_measurement(ctx: Context) -> dict[str, Any]:
                 before = len(main_requests(llm))
                 status, first = http(server, "POST", path, payload)
                 first = data(first)
+                facts[mode + ".first_identity_valid"] = expected_inbox(
+                    first, sid, mid, mode, payload["text"], payload["metadata"])
                 retry_status, retry = http(server, "POST", path, payload)
                 changed_status, changed = http(server, "POST", path, {
                     **payload, "text": "HQ_WRONG_TEXT", "delivery": "queue" if mode == "steer" else "steer"})
@@ -90,11 +113,13 @@ def identity_measurement(ctx: Context) -> dict[str, Any]:
                 time.sleep(0.3)
                 code, _ = http(server, "GET", f"/api/session/{sid}/message/{mid}")
                 facts[mode + ".accepted_not_admitted"] = status == 200 and code == 404
-                facts[mode + ".duplicate_pending"] = retry_status == 200 and data(retry) == first
-                facts[mode + ".changed_pending_returns_original"] = changed_status == 200 and data(changed) == first
+                facts[mode + ".duplicate_pending"] = retry_status == 200 and inbox_identity(
+                    data(retry)) == inbox_identity(first)
+                facts[mode + ".changed_pending_returns_original"] = changed_status == 200 and inbox_identity(
+                    data(changed)) == inbox_identity(first)
                 facts[mode + ".held_retry_does_not_wake"] = len(main_requests(llm)) == before and sid not in (
                     (server.client.get("/api/session/active") or {}).get("data") or {})
-                server.client.post(path, {"id": "msg_hq_wake_" + mode, "text": "HQ_WAKE"})
+                server.client.post(path, {"id": "msg_hq_wake_" + mode, "text": "HQ_WAKE", "delivery": mode})
                 until(lambda sid=sid, mid=mid: http(server, "GET", f"/api/session/{sid}/message/{mid}")[0] == 200,
                       "held-message admission")
                 until(lambda sid=sid: sid not in ((server.client.get("/api/session/active") or {}).get("data") or {}),
@@ -106,8 +131,19 @@ def identity_measurement(ctx: Context) -> dict[str, Any]:
                 status, retried = http(server, "POST", path, payload)
                 changed_status, changed = http(server, "POST", path, {
                     **payload, "text": "HQ_WRONG_TEXT", "delivery": "queue" if mode == "steer" else "steer"})
-                facts[mode + ".duplicate_admitted"] = status == 200 and data(retried) == first
-                facts[mode + ".changed_admitted_returns_original"] = changed_status == 200 and data(changed) == first
+                facts[mode + ".duplicate_admitted"] = status == 200 and inbox_identity(data(retried)) == inbox_identity(
+                    first)
+                facts[mode + ".changed_admitted_returns_original"] = changed_status == 200 and inbox_identity(
+                    data(changed)) == inbox_identity(first)
+                after = data(retried)
+                facts[mode + ".admitted_identity_valid"] = expected_inbox(
+                    after, sid, mid, mode, payload["text"], payload["metadata"])
+                facts[mode + ".admitted_created_time_preserved"] = isinstance(after, dict) and isinstance(
+                    first, dict) and after.get("time") == first.get("time")
+                facts[mode + ".admitted_delivery_preserved"] = isinstance(after, dict) and isinstance(
+                    first, dict) and after.get("delivery") == first.get("delivery")
+                details[mode] = {"first": first, "admitted_retry_status": status, "admitted_retry": after,
+                                 "admitted_changed_status": changed_status, "admitted_changed": data(changed)}
                 time.sleep(0.3)
                 facts[mode + ".admitted_retry_does_not_wake"] = len(main_requests(llm)) == before_retry and sid not in (
                     (server.client.get("/api/session/active") or {}).get("data") or {})
@@ -120,13 +156,15 @@ def identity_measurement(ctx: Context) -> dict[str, Any]:
                     "_tag") == "ConflictError"
     finally:
         llm.close()
+    facts["_responses"] = details
     return facts
 
 
 IDENTITY_FACTS = ("accepted_not_admitted", "duplicate_pending", "changed_pending_returns_original",
                   "duplicate_admitted", "changed_admitted_returns_original", "metadata_round_trip", "admitted_once",
                   "other_record_conflicts", "held_retry_does_not_wake")
-IDENTITY_FACTS += ("admitted_retry_does_not_wake",)
+IDENTITY_FACTS += ("admitted_retry_does_not_wake", "admitted_created_time_preserved", "admitted_delivery_preserved",
+                   "first_identity_valid", "admitted_identity_valid")
 HELD_FACTS = ("accepted_not_admitted", "held_retry_does_not_wake", "admitted_retry_does_not_wake", "staged_first")
 
 
@@ -135,7 +173,10 @@ def identity_check(ctx: Context, name: str) -> Outcome:
     keys = IDENTITY_FACTS if name == "prompt_identity" else HELD_FACTS
     facts = {mode + "." + key: observed.get(mode + "." + key) for mode in ("steer", "queue") for key in keys}
     failed = [key for key, value in facts.items() if value is not True]
-    return Outcome(FAIL if failed else PASS, {"messaging." + name: facts}, failed)
+    measured = {"messaging." + name: facts}
+    if name == "prompt_identity":
+        measured["measurement.prompt_identity"] = observed.get("_responses", {})
+    return Outcome(FAIL if failed else PASS, measured, failed)
 
 
 def admission(server: Any, sid: str, mid: str, *, untagged: bool = False) -> str:

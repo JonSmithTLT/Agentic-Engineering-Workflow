@@ -19,3 +19,9 @@ The initial Linux scripted qualification completed with verified loopback-only n
 eight selected checks passed and two failed (prompt identity after admission and queue-mode staged-first ordering).
 This is a failed record, not support or a passing semantic pin. No binding-dependent worker implementation is enabled;
 the failed checks need investigation and any further binary run needs approval. Windows runtime remains NOT RUN.
+
+One additional isolated Linux pass of the same ten checks was approved after tooling corrections. The held-order
+check now wakes in the same delivery mode, still omitting resume to exercise its default. Retry checks retain both
+raw synthetic response envelopes and separately test the preserved identity, creation time, mode, text and metadata.
+Only absent versus empty optional attachment arrays are canonicalized; no relied-on field is dropped. New planted
+controls distinguish harmless empty arrays from changed creation time or delivery. The initial failed record remains.

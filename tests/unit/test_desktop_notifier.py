@@ -1,10 +1,9 @@
-"""`aew notify desktop`, the default notifier `aew init` writes (register E104, minimal).
-
-It shows a notify event as one desktop notification on Linux (notify-send); on Windows it is unavailable in V-01 (the
-toast waits for A-44 BOY-B5). It refuses with its fix when no desktop session is present, never shows an event's
-reason, and its toast gets no console window. Run's gate refuses the shipped default while it cannot deliver, and the
-endpoint runs the default as its own engine. Every test here fakes the process it would start, and conftest's
-``no_desktop_notification`` keeps every other test from showing one.
+"""`aew notify desktop`, the default notifier `aew init` writes (register E104, minimal). It shows a notify event as one
+desktop notification on Linux (notify-send) and Windows (a toast: A-44 BOY-B5, which the operator pulled into V-01 on
+2026-11-10). It refuses with its fix when no desktop session is present, never shows an event's reason, and its toast
+gets no console window. Run's gate refuses the shipped default while it cannot deliver, and the endpoint runs the
+default as its own engine. Every test here fakes the process it would start, and conftest's ``no_desktop_notification``
+keeps every other test from showing one.
 """
 
 from __future__ import annotations
@@ -70,19 +69,9 @@ def test_linux_needs_the_session_bus_and_notify_send_and_no_display(which, real_
         "notify-send is not installed (libnotify; `libnotify-bin` on Debian and Ubuntu)")
 
 
-def test_windows_is_unavailable_in_v01_whatever_its_session(which, real_desktop_notifier):
-    """A-44 BOY-12: Windows reports unavailable in V-01, so Run's gate refuses the default there; the toast is BOY-B5
-    (register E99)."""
-    which.add("powershell.exe")
-    for session in (1, 0, None):
-        assert D.problem({"PATH": "C:\\Windows"}, platform="win32", session_id=lambda s=session: s) == (
-            D.WINDOWS_UNAVAILABLE)
-    assert "E99" in D.WINDOWS_UNAVAILABLE
-
-
-def test_the_toast_behind_its_switch_needs_an_interactive_session_and_powershell(which, real_desktop_notifier,
-                                                                                 monkeypatch):
-    monkeypatch.setattr(D, "WINDOWS_TOAST", True)
+def test_windows_needs_an_interactive_session_and_powershell(which, real_desktop_notifier):
+    """The toast (A-44 BOY-B5, in V-01 by the operator's ruling of 2026-11-10): available, so Run's gate accepts the
+    default, only in an interactive session with Windows PowerShell."""
     which.add("powershell.exe")
     assert D.problem({"PATH": "C:\\Windows"}, platform="win32", session_id=lambda: 1) is None
     for service in (0, None):  # session 0, where services run; or a session that cannot be read

@@ -83,9 +83,8 @@ provider_env: []
 steering:
   mode: crawl
 # The notifier the operator endpoint runs for each event while it serves: `aew notify desktop` shows it as a desktop
-# notification through notify-send on Linux; on Windows it is unavailable in this version. With no desktop session
-# it is unavailable, and Run refuses it; `aew notify desktop --check` says why. Any argv of your own may replace it:
-# it gets the event as JSON on stdin.
+# notification (notify-send on Linux, a toast on Windows). With no desktop session it is unavailable, and Run refuses
+# it; `aew notify desktop --check` says why. Any argv of your own may replace it: it gets the event as JSON on stdin.
 notify:
   command: [aew, notify, desktop]
 """

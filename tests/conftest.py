@@ -377,9 +377,9 @@ def no_desktop_notification():
     """No test shows a real desktop notification (the operator's no-popups rule): in process, the shipped default
     notifier (`aew notify desktop`, register E104) is unavailable, so `show` refuses before it starts anything, and
     Run's gate refuses the default as it would on a host with no desktop. A test of the check itself takes
-    `real_desktop_notifier`. The limit: an endpoint a test starts as its own process runs the real check (on Windows
-    the default is unavailable in V-01; on Linux it needs a session bus). (Not through ``monkeypatch``, for the reason
-    ``capability_register`` gives.)"""
+    `real_desktop_notifier`. The limit: an endpoint a test starts as its own process runs the real check, so on a
+    developer's desktop (a session bus on Linux, an interactive session on Windows) such a test that raises an event
+    would show one. (Not through ``monkeypatch``, for the reason ``capability_register`` gives.)"""
     _desktop_notifier.problem = lambda *a, **k: NO_DESKTOP_IN_TESTS
     yield
     _desktop_notifier.problem = REAL_DESKTOP_PROBLEM

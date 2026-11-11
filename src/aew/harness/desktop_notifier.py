@@ -6,9 +6,9 @@ The operator endpoint runs the execution policy's ``notify.command`` with one ``
 - **Linux:** ``notify-send`` (libnotify), which talks only to the desktop session's bus. The endpoint passes the
   notifier only a sanitized environment, so ``notify.sanitized_env`` keeps the bus's two variables
   (:data:`SESSION_VARS`), and never ``DISPLAY``, ``WAYLAND_DISPLAY`` or ``XAUTHORITY`` (A-44 BOY-12.a).
-- **Windows:** unavailable in V-01 (A-44 BOY-12): the toast is backlog (``BOY-B5``, register E99). The toast below,
-  from Windows PowerShell 5.1 with the title and body passed as environment values, never as script text, waits behind
-  :data:`WINDOWS_TOAST` until that is ruled.
+- **Windows:** a toast from Windows PowerShell 5.1, with the title and body passed as environment values, never as
+  script text. The interactive session is any but session 0, where services run and no toast can show. A-44 put the
+  toast in the backlog (``BOY-B5``); the operator pulled it into V-01 on 2026-11-10 ("yes to the windows toast").
 
 The default runs the operator endpoint's own engine (:func:`runnable`: its interpreter, ``-m aew``), never whatever
 ``aew`` is first on ``PATH``, so the check and the delivery run the same code.
@@ -38,10 +38,6 @@ COMMAND = ("aew", "notify", "desktop")  # the shipped default's argv, as `aew in
 # The session bus's variables, the only ones the notifier's child gets beyond the keep-list (A-44 BOY-12.a: never
 # DISPLAY, WAYLAND_DISPLAY or XAUTHORITY). notify-send needs nothing else.
 SESSION_VARS = ("DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR")
-# The Windows toast is backlog (A-44 BOY-B5, register E99): until it is ruled in, Windows reports unavailable (BOY-12).
-WINDOWS_TOAST = False
-WINDOWS_UNAVAILABLE = ("the desktop notifier is Linux-only in this version: the Windows toast is register E99 "
-                       "(A-44 BOY-B5)")
 MAX_EVENT_BYTES = 65536
 TIMEOUT_S = 8.0  # inside the endpoint's own notifier timeout (notify.DEFAULT_TIMEOUT_S, 10 s)
 MAX_TEXT = 200
@@ -105,8 +101,6 @@ def problem(env: Mapping[str, str], *, platform: str | None = None,
     platform = sys.platform if platform is None else platform
     path = env.get("PATH") or env.get("Path") or ""
     if platform == "win32":
-        if not WINDOWS_TOAST:
-            return WINDOWS_UNAVAILABLE
         if (session_id or windows_session_id)() in (0, None):
             return "no desktop session: this process runs outside an interactive Windows session (session 0)"
         if not shutil.which("powershell.exe", path=path):

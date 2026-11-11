@@ -29,7 +29,7 @@ from legality_modules import legality_modules
 from notifier import Console, loop_chain, raise_to, recorder, seed, until
 from racing_read import read_json_or_none
 from test_stage_resolve import drift
-from test_stage_runner import PROBES, intervene
+from test_stage_runner import PROBES, call, intent, intervene
 
 from aew.engine import outbox
 from aew.engine import primitives as P
@@ -207,6 +207,46 @@ def hot_intents(project: Any) -> dict[str, Any]:
 def spooled(project: Any) -> list[dict[str, Any]]:
     path = event_spool.file_of(project.root / ".aew", event_spool.BROKER)
     return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()] if path.exists() else []
+
+
+# ---------------------------------------------------------------------------------------------- the order (E227)
+
+
+DRAFT = {"title": "Add subtract()", "risk_class": 1, "scope": ["calc/**", "tests/**"],
+         "goal": ["calc.core.subtract(5, 3) == 2 through the public module"]}
+
+
+def test_the_loop_starts_the_critical_ticket_first_whatever_the_ids(p):
+    """Register E227, through the real tick (review of the priority PR, m4): two Tickets drafted through
+    `ticket_draft`, the later one critical; the loop projects them from the committed state, ranks them by that state
+    and takes the critical one first, though its id is higher. Each Ticket is offered one bookkeeping step, so Walk
+    runs it with no confirmation."""
+    ids = []
+    for extra in ({}, {"priority": "critical", "priority_reason": "the release waits on it"}):
+        out = call(p, "ticket_draft", **DRAFT, **extra)
+        assert out["ok"], out.get("stopped")
+        ids.append(intent(p, out)["subject"]["id"])
+    normal, critical = ids
+    assert normal < critical
+
+    def projector(engine: Any, ctx: Any, state: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        rev = int(state["revision"])
+        _, real = L._project_all(engine, ctx, state)
+        subjects = {str(unit["subject"]) for unit in real}
+        assert subjects >= {normal, critical}, subjects
+        offered = {str(unit["subject"]): [action("probe_notes", {"expect_rev": rev, "note": unit["subject"]})]
+                   for unit in real}
+        return projection("project", rev), [projection(s, rev, actions=offered[s]) for s in offered]
+
+    took: list[str] = []
+
+    def executor(engine: Any, ctx: Any, name: str, arguments: dict[str, Any], **kw: Any) -> dict[str, Any]:
+        took.append(arguments["note"])
+        return {"ok": True, "stopped": None, "stage_intent_id": None, "revision": arguments.get("expect_rev")}
+
+    mode(p, "walk")
+    loop(p, projector, executor=executor).activate()
+    assert took and took[0] == critical, took
 
 
 # ---------------------------------------------------------------------------------------------- Walk and confirmation

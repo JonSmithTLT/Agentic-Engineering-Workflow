@@ -84,6 +84,10 @@ None.
 - `aew.harness.procs`
 - `aew.util`
 
+### `aew.priority_levels`
+
+- `aew.schemas`
+
 ### `aew.process_kind`
 
 - `aew.errors`
@@ -346,6 +350,7 @@ None.
 - `aew.harness.contract`
 - `aew.harness.delivery`
 - `aew.operator`
+- `aew.priority_levels`
 - `aew.surface.context`
 - `aew.surface.errors`
 - `aew.surface.run`
@@ -1002,6 +1007,11 @@ None.
 
 None.
 
+### `aew.engine.priority`
+
+- `aew.engine.hierarchy`
+- `aew.priority_levels`
+
 ### `aew.engine.queue_ops`
 
 - `aew.engine.authority`
@@ -1056,6 +1066,7 @@ None.
 - `aew.engine.hierarchy`
 - `aew.engine.nonmutating_ops`
 - `aew.engine.ports`
+- `aew.engine.priority`
 - `aew.engine.queue_ops`
 - `aew.engine.seams`
 - `aew.engine.validation_ops`
@@ -1192,6 +1203,7 @@ None.
 - `aew.engine.guards`
 - `aew.engine.hierarchy`
 - `aew.engine.ports`
+- `aew.engine.priority`
 - `aew.engine.seams`
 - `aew.engine.transitions`
 - `aew.errors`
@@ -1601,6 +1613,7 @@ None.
 - `aew.engine.dispatch`
 - `aew.engine.outbox`
 - `aew.engine.primitives`
+- `aew.engine.priority`
 - `aew.engine.steering`
 - `aew.errors`
 - `aew.harness.event_spool`
@@ -1720,6 +1733,7 @@ Imports from the groups:
 
 - `aew`
 - `aew.capability`
+- `aew.engine`
 - `aew.harness`
 - `aew.roles`
 - `aew.schemas`
@@ -1761,7 +1775,7 @@ None.
 
 ### `aew.knowledge.render`
 
-None.
+- `aew.engine.priority`
 
 ## `aew.maps`
 
@@ -2040,6 +2054,7 @@ None.
 
 ### `aew.surface.contract`
 
+- `aew.priority_levels`
 - `aew.surface.context`
 
 ### `aew.surface.errors`

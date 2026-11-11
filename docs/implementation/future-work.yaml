@@ -3436,12 +3436,12 @@ sections:
     Notes: Filed by the week's register PR
 
   - '#': E227
-    Work: 'Scheduler priority: a field on the Ticket, `critical`, `normal` (the default) or `low`, set at creation or by
-      promotion, and always a Lead judgment, never auto-run. The loop''s `select` orders eligible Tickets by priority, then
-      by how many Tickets each unblocks (derived from the dependency graph, never hand-kept), then by id; it starts a `low`
-      Ticket only when no `normal` or `critical` one is eligible. No pre-emption: a critical Ticket waits for the next free
-      slot. The Lead may also start a Ticket itself with `ticket_start`, CAS-checked, so the two can''t double-start. `status`
-      shows each Ticket''s priority with its reason, and each `low` Ticket''s age'
+    Work: 'Scheduler priority: a field on the Ticket, `critical`, `normal` (the default) or `low`, set at the draft only
+      (the operator, 2026-11-10), and always a Lead judgment, never auto-run. The loop''s `select` orders eligible Tickets
+      by priority, then by how many Tickets each unblocks (derived from the dependency graph, never hand-kept), then by
+      id; it starts a `low` Ticket only when no `normal` or `critical` one is eligible. No pre-emption: a critical Ticket
+      waits for the next free slot. The Lead may also start a Ticket itself with `ticket_start`, CAS-checked, so the two
+      can''t double-start. `status` shows each Ticket''s priority with its reason, and each `low` Ticket''s age'
     Source: 'The operator, 2026-11-08: the steering loop under `RUN` is "95% what I meant" by a scheduler; the rest is priority,
       refined the same day to a field with three levels'
     When: '**Unscheduled**, in the scheduler''s chain'

@@ -427,6 +427,10 @@ Each cap bounds how far one thing is followed, and names where its number comes 
 - `aew.harness.weaker_register:_prune` (direct: Path.unlink): a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.weaker_register:enter` (direct: create_exclusive): a relative path, `aew/weaker-contexts/{}-{}-{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.harness.weaker_register:sweep` (direct: atomic_write): a relative path, `aew/weaker-contexts/{}.json`, with no root this reading can name; the result of `Path.home(...)`, a callee this reading cannot name; the result of `os.environ.get(...)`, a callee this reading cannot name
+- `aew.kit.receipt:write_receipt` (direct: Path.mkdir): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit.receipt:write_receipt` (direct: atomic_write): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit:prepare` (direct: Path.mkdir): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
+- `aew.kit:prepare` (direct: Path.write_text): `--dest` of `aew.kit.__main__`, which no AEW start of it passes: its starter names it
 - `aew.profile:cli_finish` (direct: open): the result of `os.environ.get(...)`, a callee this reading cannot name
 - `aew.stg02.ledger:Ledger.__init__` (direct: Path.mkdir): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it
 - `aew.stg02.ledger:Ledger._connect` (direct: sqlite3.connect): `--state-dir` of `aew.stg02.server`, which no AEW start of it passes: its starter names it

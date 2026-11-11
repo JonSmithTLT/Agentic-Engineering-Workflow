@@ -1585,7 +1585,7 @@ None.
 
 ### `aew.harness.opencode.model_pricing`
 
-None.
+- `aew.harness.models`
 
 ### `aew.harness.opencode.projection`
 
@@ -1781,6 +1781,53 @@ None.
 - `aew.errors`
 - `aew.history.manifest`
 - `aew.schemas`
+- `aew.util`
+
+## `aew.kit`
+
+Imports from the groups:
+
+- `aew`
+- `aew.capability`
+- `aew.engine`
+- `aew.harness`
+- `aew.maps`
+- `aew.policy`
+
+### `aew.kit`
+
+- `aew.engine.api`
+- `aew.engine.first_configuration`
+- `aew.errors`
+- `aew.harness.models`
+- `aew.harness.opencode.projection`
+- `aew.maps.service`
+- `aew.policy.execution`
+- `aew.util`
+
+### `aew.kit.__main__`
+
+- `aew.errors`
+- `aew.harness.operator_client`
+- `aew.kit`
+- `aew.kit.receipt`
+- `aew.process_kind`
+
+### `aew.kit.receipt`
+
+- `aew`
+- `aew.capability.store`
+- `aew.engine.api`
+- `aew.engine.coverage`
+- `aew.engine.harness_ops`
+- `aew.errors`
+- `aew.harness.containment.netns`
+- `aew.harness.models`
+- `aew.harness.opencode.capabilities`
+- `aew.harness.runlog`
+- `aew.kit`
+- `aew.maps.slices`
+- `aew.policy.execution`
 - `aew.util`
 
 ## `aew.knowledge`

@@ -2250,6 +2250,8 @@ def test_only_the_core_lanes_read_the_repositorys_git_history():
 
 # The classifiers that must name the directory: the lane rule (and its error message) and the tier.
 UNIT_ALLOWED: dict[str, str | None] = {"tests/helpers/lanes.py": "lane_of", "tools/ci/tier.py": None}
+# E117's literal command and scopes refer to files in the separately initialized seed repository.
+KIT_SEED_LITERALS = {"{python} -m pytest -q tests/unit", "tests/unit/test_money.py", "tests/unit/test_dates.py"}
 REACH_CALLS = ("import_module", "__import__", "spec_from_file_location", "run_module", "run_path")
 SYSPATH_CALLS = ("sys.path.insert", "sys.path.append", "syspath_prepend", "site.addsitedir")
 UNIT_PATH = re.compile(r"(?:^|[^\w.])tests/unit(?:$|/|[^\w])|(?:^|[^\w.])tests/test_spec_pin\.py")
@@ -2303,7 +2305,8 @@ def unit_reach(label: str, source: str, names: set[str]) -> list[str]:
                     hit(node, f"imports {a.name} from {mod or '.'}")
         elif _is_str(node) and id(node) not in docs:
             text = node.value  # type: ignore[attr-defined]
-            if names_path(text):
+            kit_seed_literal = label == "src/aew/kit/__init__.py" and text in KIT_SEED_LITERALS
+            if names_path(text) and not kit_seed_literal:
                 hit(node, f"names {text!r}")
             for m in IMPORT_TEXT.finditer(text):
                 mods = [m.group(1)] if m.group(1) else [m.group(2)] + [f"{m.group(2)}.{n.strip()}"

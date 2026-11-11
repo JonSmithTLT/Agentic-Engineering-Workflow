@@ -47,6 +47,8 @@ def validate_caches(policy: dict[str, Any], *, repo: Path, commit: str | None, s
             mode, _, path = entry.partition(b"\t")
             tracked.extend(path + (b"/" if mode.startswith(b"160000 ") else b"") + b"\0")
     candidates = b"\0".join(_CACHE_PROBES) + b"\0" + tracked
+    ignore_case = git.git("config", "--bool", "--get", "core.ignorecase", cwd=repo, check=False).stdout.strip()
+    case_setting = "true" if ignore_case == b"true" else "false"
     # A clean Git repository gives check-ignore only this pattern. The candidates need not exist on disk.
     with tempfile.TemporaryDirectory(prefix="aew-cache-probes-") as directory:
         root = Path(directory)
@@ -59,8 +61,9 @@ def validate_caches(policy: dict[str, Any], *, repo: Path, commit: str | None, s
             if path.startswith("/") or windows.drive or ".." in windows.parts or any(c in pattern for c in "\0\r\n"):
                 raise ValidationFailed(f"{source}: invalid check cache pattern {pattern!r}", pattern=pattern)
             (root / ".gitignore").write_text(pattern + "\n", encoding="utf-8", newline="\n")
-            matched = git.git("-c", "core.excludesFile=", "check-ignore", "--no-index", "-z", "--stdin",
-                              cwd=root, env=env, input=candidates, check=False)
+            matched = git.git("-c", "core.excludesFile=", "-c", f"core.ignorecase={case_setting}",
+                              "check-ignore", "--no-index", "-z", "--stdin", cwd=root, env=env,
+                              input=candidates, check=False)
             if matched.returncode not in (0, 1):
                 raise GitError("git check-ignore failed while validating check caches",
                                stderr=matched.stderr.decode("utf-8", "replace").strip())
@@ -84,6 +87,7 @@ def cache_hint(paths: list[str]) -> str | None:
             return None
         patterns.update(matches)
     return f"caches: [{', '.join(json.dumps(p) for p in PYTEST_CACHES if p in patterns)}]" if patterns else None
+
 
 # OpenCode v2.2.6 (also v2.0.18), packages/core/src/tool-output.ts: MAX_BYTES is 50 KiB, measured as UTF-8;
 # truncate keeps only whole lines up to it. Reserve half for the check response's other fields. Measure this excerpt

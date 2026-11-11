@@ -7,7 +7,7 @@ from aewflow import assign, create_planned_ticket, integrate, sample_project, to
 from conftest import make_git_repo
 
 from aew.errors import ValidationFailed
-from aew.policy.checks import definition_digest
+from aew.policy.checks import definition_digest, validate_caches
 from aew.snapshot import fingerprint as F
 from aew.util import dump_yaml, load_yaml
 from aew.workspace import git, integration
@@ -129,7 +129,6 @@ def test_include_ignored_wins_over_a_cache_match(tmp_path):
     assert CACHE not in F.untracked_caches(repo, (CACHES,), [CACHE])
 
 
-
 def test_cache_only_commit_and_existing_git_ignores(tmp_path):
     repo = make_git_repo(tmp_path / "repo", {"tracked.txt": "base\n", ".gitignore": ".build-cache/ignored\n"})
     head = git.out("rev-parse", "HEAD", cwd=repo)
@@ -144,3 +143,15 @@ def test_cache_only_commit_and_existing_git_ignores(tmp_path):
     assert F.changed_paths(repo, head, stores=True, **options) == []
     assert integration.commit_workspace(repo, "cache only", **options) == head
     assert F.relevant_inputs_fingerprint(repo, **options) != f"git-tree:{F.head_tree_id(repo)}"
+
+
+def test_cache_pattern_matching_uses_the_repositories_case_setting(tmp_path):
+    repo = make_git_repo(tmp_path / "repo", {"src/input.txt": "base\n"})
+    policy = {"checks": {"unit": check(caches=["SRC/"])}}
+    for setting in ("true", "false"):
+        git.git("config", "core.ignorecase", setting, cwd=repo)
+        if setting == "true":
+            with pytest.raises(ValidationFailed, match="tracked path"):
+                validate_caches(policy, repo=repo, commit="HEAD", source="checks.yaml")
+        else:
+            validate_caches(policy, repo=repo, commit="HEAD", source="checks.yaml")

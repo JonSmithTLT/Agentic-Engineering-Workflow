@@ -46,9 +46,19 @@ aew doctor
 aew opencode --provider-env OPENAI_API_KEY
 ```
 
-`aew init` writes the first configuration before it pins, so a fresh setup with both flags can go straight to OpenCode
-after setting the key. Its `next` says what's left for what you gave it. If the key is unset when you run `aew doctor`,
-the `provider-env` check fails and shows the forms above.
+This command uses the exported key for the Lead's own model. To use the Lead's existing login, start with
+`aew opencode --acquire`.
+
+`aew init` takes the first configuration in that one call and writes it before it pins. With both flags, a fresh
+setup needs no hand edit, no adopt and no credential at init. Its `next` says what's left for what you gave it.
+After setting the key, you can go straight to OpenCode. If a required key is unavailable, `aew doctor` reports
+the missing provider variable under `provider-env` and shows how to supply it.
+
+On contained Linux a worker uses the saved API-key login through the built-in provider relay when the policy names
+that provider's variable and its other names are set or are other built-in providers' key variables. One login
+decides per provider for the Lead and workers. If the Lead uses a refreshing login for a provider, keep it and
+export that provider's API key for workers. For an explicit override or a legacy launch, use the shell-only forms
+below with the provider variable in place of `AEW_LEAD_TOKEN`. A certificate-only provider skips key setup.
 
 - **`--check-command`** sets the `unit` check. It's split as POSIX on every platform, with no shell, and `{python}` is
   the running Python. The result prints the argv. A command that would pin something broken is refused: empty or
@@ -61,8 +71,7 @@ the `provider-env` check fails and shows the forms above.
   `.aew/policy/checks.yaml`, which goes wherever that file is committed.
 - **`--model`** sets the workers' model, written as the harness lists it, in one profile named `default`; **`--provider`**
   goes with a bare id. They don't set the Lead's own model. For a provider that needs a key, `provider_env` gets the
-  variable's name: no flag takes a key, and `aew init` doesn't look for one. `opencode` writes no variable, since its free
-  models need none; its paid models take the route below. Any other provider is refused, and takes the route below, as
+  variable's name. `aew init` only records the name. Use a paid model. An unknown provider takes the route below, as
   does a proxy variable such as `HTTPS_PROXY`.
 - **No check or model runs at init.** The check isn't run and the model isn't looked up: `aew doctor` has
   `provider-env` and `model-refs`. Init does read your repository once, to make the first project map from the branch's

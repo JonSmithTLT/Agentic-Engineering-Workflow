@@ -2013,6 +2013,40 @@ runs where the Lead's shell runs, and arrive as text.
   object-typed properties; a new reader that takes a path from past those is what the broker's refusal and a review are
   for.
 
+## Amendment 2026-11-10 — workers may use the operator's stored API-key login (E337)
+
+The operator approved default worker use and Linux first ("yes to both, linux now and file the windows row").
+The adopted execution policy's
+`provider_env` name is the consent for the pinned provider. The stored source is eligible
+only on Linux through the established `proxy_only` relay to that provider's built-in
+upstream. A configured upstream override uses the environment path.
+
+A run carries no other built-in provider's key. For a built-in provider, other built-in providers' key variables
+are not required, including on weaker routes. Every non-proxy name retains its sentinel on the relay route. Among
+built-in key variables the relay swaps only the pinned provider's sentinel. Custom and proxy variable handling
+stays as described above.
+
+A usable named export takes precedence. An invalid nonempty export retains its refusal.
+For an unset or empty named variable, admission checks the provider's deciding API-key
+row, and the supervisor reads it afresh before feeding the relay. Both reads are bounded,
+read-only and host-side. SQLite may create WAL sidecar files as a filesystem side effect. The main file and
+its rows stay unchanged. One login decides per provider for the Lead and workers, active first, then by update time
+and descending row ID. Workers only use API-key rows and each launch read selects only the pinned provider's row.
+A refreshing deciding login remains the Lead's login and workers use the named export.
+The worker lookup uses core SQL for Rocky 8 compatibility without JSON1. It reads and parses the
+whole deciding value on the host, then discards OAuth text after classification. OAuth contents
+never reach a return value, record, log, error or sandbox.
+The launch record names the source. The control-state run entry's `provider_key_admission`
+carries the non-secret row identity and update time
+for comparison. The key never
+enters the launch contract, the record, the harness environment, logs or errors. The worker
+receives a sentinel. An upstream rejection ends the attempt with that credential. The next
+launch resolves the source afresh.
+
+This extends the worker preflight rule in the 2026-11-06 amendment. Certificate-only
+providers make no store read. Off the relay, the existing explicit environment path applies.
+The Lead's stored login and the weaker containment guarantees are described above.
+
 ## Amendment (2026-11-11) — OpenCode's seat and held exit (E330)
 
 - **Lead session exit (former line 122).** When `aew opencode` took the seat itself, the seat is released at

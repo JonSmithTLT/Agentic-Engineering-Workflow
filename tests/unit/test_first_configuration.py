@@ -513,5 +513,5 @@ def test_quickstart_marks_key_export_as_optional_and_points_to_the_shell_forms()
     quickstart = Path(__file__).resolve().parents[2] / "docs" / "guides" / "quickstart.md"
     guide = quickstart.read_text(encoding="utf-8")
     intro = "If you use an exported key (not a saved OpenCode login),"
-    pointer = "above with the provider variable in place of"
+    pointer = "use the shell forms above with that provider's variable in place of `OPENAI_API_KEY`."
     assert guide.index(intro) < guide.index("read -rsp") < guide.index(pointer)

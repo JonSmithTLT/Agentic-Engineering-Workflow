@@ -57,8 +57,9 @@ the missing provider variable under `provider-env` and shows how to supply it.
 On contained Linux a worker uses the saved API-key login through the built-in provider relay when the policy names
 that provider's variable and its other names are set or are other built-in providers' key variables. One login
 decides per provider for the Lead and workers. If the Lead uses a refreshing login for a provider, keep it and
-export that provider's API key for workers. For an explicit override or a legacy launch, use the shell-only forms
-above with the provider variable in place of `AEW_LEAD_TOKEN`. A certificate-only provider skips key setup.
+export that provider's API key for workers. For an explicit override or a legacy launch,
+use the shell forms above with that provider's variable in place of `OPENAI_API_KEY`.
+A certificate-only provider skips key setup.
 
 - **`--check-command`** sets the `unit` check. It's split as POSIX on every platform, with no shell, and `{python}` is
   the running Python. The result prints the argv. A command that would pin something broken is refused: empty or

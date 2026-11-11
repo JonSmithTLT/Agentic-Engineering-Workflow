@@ -23,7 +23,7 @@ from aew.errors import (
     StaleRevision,
     WorkspaceNotAuthority,
 )
-from aew.harness.contract import EXPECT_REV
+from aew.harness.contract import EXPECT_REV, MANIFEST_ADOPT
 from aew.knowledge import render
 from aew.knowledge.manifest import AEW_DIR, MANIFEST, load_manifest
 from aew.knowledge.records import decision_record, format_id
@@ -330,7 +330,7 @@ class Kernel:
         if pins is not None and (sha256_bytes(raw) if raw is not None else None) != pins.get(rel, "<not pinned>"):
             raise IntegrityError(
                 f"policy file {AEW_DIR}/{rel} modified outside AEW; the operator reviews the change and runs "
-                "`aew manifest adopt` at their own terminal to accept it", files=[rel])
+                f"{MANIFEST_ADOPT} at their own terminal to accept it", files=[rel])
         return raw
 
     def manifest_pin_ok(self, state: dict[str, Any]) -> bool:
@@ -357,13 +357,13 @@ class Kernel:
         if not self.manifest_pin_ok(state):
             raise IntegrityError(
                 f"{AEW_DIR}/{MANIFEST} was modified outside AEW; review the change and run "
-                "`aew manifest adopt` at the operator's own terminal to accept it (a Lead session is refused it)",
+                f"{MANIFEST_ADOPT} at the operator's own terminal to accept it (a Lead session is refused it)",
             )
         drift = self.policy_pin_drift(state)
         if drift:
             raise IntegrityError(
                 f"policy file(s) {', '.join(f'{AEW_DIR}/{rel}' for rel in drift)} modified outside AEW; the operator "
-                "reviews the change and runs `aew manifest adopt` at their own terminal to accept it", files=drift)
+                f"reviews the change and runs {MANIFEST_ADOPT} at their own terminal to accept it", files=drift)
 
     def workspaces_root(self) -> Path:
         raw = Path(self.manifest.get("workspaces", {}).get("root", f"../.aew-workspaces/{self.project_id}"))

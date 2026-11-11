@@ -103,9 +103,10 @@ PLACEHOLDERS: dict[str, str] = {
 }
 
 # The printed text's owners (``aew.harness.contract``): a replacement field naming one is its value, not a slot.
-OWNED: dict[str, str] = {"EXPECT_REV": K.EXPECT_REV, "REVISION": K.REVISION}
+OWNED: dict[str, str] = {"EXPECT_REV": K.EXPECT_REV, "REVISION": K.REVISION, "MANIFEST_ADOPT": K.MANIFEST_ADOPT}
 
 TEXT_KEYWORDS = frozenset({"help", "description", "epilog", "usage"})  # argparse's own text, not a printed command
+ADOPT_REFERENCE = re.compile(r"(?<!\{)\{(?:K\.)?MANIFEST_ADOPT\}(?!\})")
 SPAN = re.compile(r"`(aew [^`]*)`")
 FENCE = re.compile(r"```sh\n(.*?)\n```", re.DOTALL)
 HEREDOC = " <<'EOF'"
@@ -282,11 +283,12 @@ def parse(command: str, *, fenced: bool, exprs: tuple[str, ...] = ()) -> list[ar
     return out
 
 
-def mention(command: str) -> bool:
-    """Whether an inline command is a mention: a bare command path, every word a real (sub)command of the parser and
-    nothing else (``aew manifest adopt``; each of ``aew harness stop|wait``). A mention names a command and is not
-    held to its required arguments (the Lead's ruling, ITEMS 56 (1)); one word that is not a command makes it a command
-    line, which must parse."""
+def mention(command: str, *, allow_required_options: bool = False) -> bool:
+    """Whether a span only names parser commands that have no required options.
+
+    A bare name of a command with required options goes through normal parsing, so missing options are reported.
+    Positional-only command names can still be mentions. A census of complete hints may opt to recognise bare names.
+    """
     try:
         tokens = shlex.split(fill(command))
     except (ValueError, PrintedCommandError):
@@ -300,11 +302,13 @@ def mention(command: str) -> bool:
             if sub is None or word not in sub.choices:
                 return False
             current = sub.choices[word]
+        if not allow_required_options and any(a.required and a.option_strings for a in current._actions):
+            return False
     return True
 
 
 def check(command: str, kind: str, exprs: tuple[str, ...] = ()) -> None:
-    """One site's command, judged as printed: a mention passes when its path is real; anything else must parse.
+    """Check a site as printed. A mention passes if its path has no required options. Other sites must parse.
     Raises ``PrintedCommandError``."""
     if kind == "unreadable":
         raise PrintedCommandError(f"the finder could not read it: {command}")
@@ -509,6 +513,7 @@ def ast_sites(root: Path = ROOT) -> list[Site]:
             if "aew " not in text and "```sh" not in text:
                 continue
             first, source = _source(lines, node, holes)
+            source = ADOPT_REFERENCE.sub(K.MANIFEST_ADOPT, source)
             # Each command's line is where its opening is in the source; where the source and the text disagree on
             # how many there are (an escape), every one takes the literal's first line.
             for kind, needle, found_here in (("fence", "```sh", FENCE.findall(text)),
@@ -540,13 +545,27 @@ def _strings(path: Path) -> Iterator[tuple[list[tuple[int, str]], str]]:
             while depth:
                 depth += (tokens[j].type == fstart) - (tokens[j].type == fend)
                 j += 1
-            pieces = [(tok.start[0], tok.string)] + [(t.start[0], t.string) for t in tokens[i:j] if t.type == middle]
+            pieces = [(tok.start[0], tok.string)]
+            for k in range(i + 1, j):
+                part = tokens[k]
+                if part.type == middle:
+                    pieces.append((part.start[0], part.string))
+                elif part.type == tokenize.OP and part.string == "{":
+                    # A shared command occupies one simple replacement field, even when tokenize splits the f-string.
+                    for width in (3, 5):
+                        spelling = "".join(t.string for t in tokens[k:k + width])
+                        if ADOPT_REFERENCE.fullmatch(spelling):
+                            pieces.append((part.start[0], K.MANIFEST_ADOPT))
+                            break
             yield pieces, _context(significant)
             significant.append(tokenize.TokenInfo(tokenize.STRING, tok.string, tok.start, tokens[j - 1].end, tok.line))
             i = j
             continue
         if tok.type == tokenize.STRING:
-            yield [(tok.start[0], tok.string)], _context(significant)
+            value = tok.string
+            if re.match(r"(?i)[rf]*f", value):
+                value = ADOPT_REFERENCE.sub(K.MANIFEST_ADOPT, value)
+            yield [(tok.start[0], value)], _context(significant)
         if tok.type == tokenize.OP and tok.string == "[" and _display(tokens, i):
             yield [(tok.start[0], "[")], _context(significant)
         if tok.type not in (tokenize.COMMENT, tokenize.NL):

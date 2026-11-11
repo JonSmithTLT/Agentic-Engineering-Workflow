@@ -116,6 +116,7 @@ def board() -> dict[str, Any]:
                   switch={"key": "a.b", "default": "off", "default_evidence": "src/pkg/a.py:1 (the default)",
                           "owner": "operator", "turning_on_changes": "one line"}),
             entry("SYS-02", register=["E2"], depends_on=["SYS-01"], serves_pending=["HOLD-01"],
+                  remaining=[{"slice": "E2: the work", "row": "E2", "estimate": "1 PR"}],  # partly built, so work left
                   evidence=["E2 on the Now list", "designer-decisions-2026-11-06.md item 3", "#12 is two digits",
                             "future-work.yaml (row E2)"]),
         ],
@@ -256,13 +257,18 @@ PLANTED: dict[str, tuple[str, Callable[[dict[str, Any]], Any]]] = {
     "a stale allowance": ("allowance", lambda d: d.update(wip_allowance={
         "count": 14, "operator": "I allow 14 systems", "date": "2026-11-10"})),
     "table evidence on a hand-kept key": ("default", _set("SYS-01", "switch.default_evidence", systems.SWITCH_SOURCE)),
+    # the operator's sign-off, and the lag rule (the operator, 2026-11-10)
+    "a malformed sign-off": ("schema", _set("SYS-01", "signoff", {"date": "2026-11-10"})),
+    "on_and_used without a sign-off": ("signoff", _set("SYS-01", "state.board_state", "on_and_used")),
+    "a sign-off on another state": ("signoff", _set("SYS-01", "signoff", {"date": "2026-11-10", "words": "ok"})),
+    "a zero-slice partly built system": ("lag", _set("SYS-02", "remaining", [])),
 }
 
 
 def test_every_rule_has_a_planted_case():
     rules = {"schema", "generated", "design", "register", "remaining", "as_built", "touches", "switch",
              "depends_on", "owner", "unowned", "hold", "lint", "public", "rendered", "default", "on_by_default",
-             "wired", "stale_slice", "wip", "allowance"}
+             "wired", "stale_slice", "wip", "allowance", "signoff", "lag"}
     assert {rule for rule, _ in PLANTED.values()} == rules
 
 
@@ -390,6 +396,98 @@ def test_the_limit_count_is_format_rule_one(state, rec):
     data["systems"][0]["state"]["board_state"] = state
     expected = state in ("partly_built", "built_off", "built_not_wired", "staged") and rec in ("finish", "switch_on")
     assert systems.counted_systems(data) == (["SYS-01"] if expected else [])
+
+
+# ------------------------------------------------------------------ the operator's sign-off (the operator, 2026-11-10)
+
+SIGNOFF = {"date": "2026-11-10", "words": "tested it, signed off"}
+
+
+def _state(sid: str, state: str, **fields: Any) -> Callable[[dict[str, Any]], None]:
+    def change(data: dict[str, Any]) -> None:
+        sys_(data, sid)["state"]["board_state"] = state
+        sys_(data, sid).update(fields)
+    return change
+
+
+@pytest.mark.parametrize("rec", ["finish", "switch_on"])
+def test_a_system_awaiting_signoff_is_not_counted_toward_the_limit(rec):
+    data = board()
+    data["wip_limit"] = 1
+    for e in data["systems"]:
+        e["recommendation"] = rec
+    assert systems.counted_systems(data) == ["SYS-01", "SYS-02"]
+    data["systems"][1]["state"]["board_state"] = systems.AWAITING
+    assert systems.counted_systems(data) == ["SYS-01"] and systems.limit_problems(data) == []
+
+
+def test_on_and_used_without_the_operators_signoff_is_refused(own):
+    [problem] = found(own, _state("SYS-01", "on_and_used"))
+    assert (problem.check, problem.where) == ("signoff", "SYS-01")
+    assert "no sign-off" in problem.text and "awaiting_signoff" in problem.text
+    assert found(own, _state("SYS-01", "on_and_used", signoff=dict(SIGNOFF))) == []
+
+
+@pytest.mark.parametrize("state", [s for s in systems.ENUMS[("state", "board_state")] if s != "on_and_used"])
+def test_a_signoff_on_any_state_but_on_and_used_is_refused(state):
+    data = board()
+    data["systems"][0]["state"]["board_state"] = state
+    data["systems"][0]["signoff"] = dict(SIGNOFF)
+    [problem] = systems.signoff_problems(data)
+    assert problem.where == "SYS-01" and state in problem.text and "remove the sign-off" in problem.text
+
+
+@pytest.mark.parametrize("signoff", [{"date": "2026-11-10"}, {"words": "yes"}, "yes", {**SIGNOFF, "by": "x"},
+                                     {**SIGNOFF, "words": " "}, {**SIGNOFF, "date": "2026-02-30"},
+                                     {**SIGNOFF, "date": "10 Nov 2026"}])
+def test_a_malformed_signoff_is_refused_by_the_schema(signoff):
+    data = board()
+    data["systems"][0].update(state={**data["systems"][0]["state"], "board_state": "on_and_used"}, signoff=signoff)
+    assert any("signoff" in p.text for p in systems.schema_problems(data))
+
+
+def test_signoff_words_are_exempt_from_lint_but_never_from_the_public_guard(own):
+    words = {"date": "2026-11-10", "words": "Now 5 is fine, #123 too"}
+    assert found(own, _state("SYS-01", "on_and_used", signoff=words)) == []
+    private = {**words, "words": words["words"] + " AEW-plans/x"}
+    assert {p.check for p in found(own, _state("SYS-01", "on_and_used", signoff=private))} == {"public"}
+
+
+@pytest.mark.parametrize("state", systems.BUILDING)
+def test_the_lag_check_fires_for_a_zero_slice_building_system(own, state):
+    [problem] = found(own, lambda d: (_set("SYS-02", "remaining", [])(d), _state("SYS-02", state)(d)))
+    assert (problem.check, problem.where) == ("lag", "SYS-02")
+    assert problem.text == (f"SYS-02 has no own slices left but is still {state}: move it to awaiting_signoff, or to "
+                            "on_and_used with the operator's sign-off")
+
+
+def test_a_slice_riding_on_another_systems_row_leaves_no_own_slice(own):
+    """The lag rule counts own slices, as the board does: a slice on another system's row is that system's work."""
+    rider = [{"slice": "rides on SYS-01's E1", "row": "E1", "estimate": "inside SYS-01's"}]
+    assert {p.check for p in found(own, _set("SYS-02", "remaining", rider))} == {"lag"}
+
+
+@pytest.mark.parametrize("rec", ["freeze", "cut", "keep"])
+def test_the_lag_check_spares_a_frozen_cut_or_kept_system(own, rec):
+    assert found(own, lambda d: (_set("SYS-02", "remaining", [])(d), _set("SYS-02", "recommendation", rec)(d))) == []
+
+
+@pytest.mark.parametrize("state", ["awaiting_signoff", "designed_only"])
+def test_the_lag_check_spares_a_zero_slice_system_out_of_the_building_states(own, state):
+    assert found(own, lambda d: (_set("SYS-02", "remaining", [])(d), _state("SYS-02", state)(d))) == []
+
+
+def test_the_totals_list_the_systems_waiting_on_the_operators_signoff():
+    data = board()
+    text = systems.render_markdown(data, {})
+    assert "**Waiting on your sign-off:** 0 — none\n" in text
+    assert "**awaiting_signoff (built, awaiting your sign-off):** 0 — none\n" in text
+    for e in data["systems"]:
+        e["state"]["board_state"] = systems.AWAITING
+    text = systems.render_markdown(data, {})
+    assert "**Waiting on your sign-off:** 2 — SYS-01, SYS-02\n" in text
+    assert "**awaiting_signoff (built, awaiting your sign-off):** 2 — SYS-01, SYS-02\n" in text
+    assert "**Limit's count / wip_limit:** 0 / 12 — none" in text
 
 
 def board_copy(root, data=None):

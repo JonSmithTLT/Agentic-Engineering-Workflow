@@ -497,3 +497,6 @@ def trigger_step(whys: list[str], run: str, others: list[str], *, then: str | No
     tells = "; and ".join(WAKE_GUIDE[w].tell for w in WHY if w in whys)
     follow = then or wait_step([run, *others])
     return f"{run} needs you: {acts[0].upper()}{acts[1:]}. Then {follow}. Tell the operator in a line {tells}"
+
+
+MANIFEST_ADOPT = f"`aew manifest adopt --reason <reason> {EXPECT_REV}`"

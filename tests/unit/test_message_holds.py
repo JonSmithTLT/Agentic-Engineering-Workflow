@@ -23,7 +23,7 @@ def test_ended_is_an_explicit_record_fact_and_quiet_is_not_a_wait_trigger():
     assert not P.holds({}, {"why": K.QUIET}, run_ended=True)
 
 
-def test_every_non_timer_produced_reason_has_a_positive_holds_case():
+def test_every_run_or_message_reason_has_a_positive_holds_case():
     cases = {
         K.RUN_ENDED: P.holds(None, {"why": K.RUN_ENDED}, run_ended=True),
         K.WORKER_MESSAGE: P.holds(None, {"why": K.WORKER_MESSAGE, "message": "m"}, eligible_messages={"m"}),
@@ -31,5 +31,6 @@ def test_every_non_timer_produced_reason_has_a_positive_holds_case():
         K.TEST_FAILED: P.holds({"red_commands": ["pytest"]}, {"why": K.TEST_FAILED, "command": "pytest"}),
         K.WORKER_IDLE: P.holds({"state": P.IDLE}, {"why": K.WORKER_IDLE}),
     }
-    assert set(cases) == set(K.WHY) - {K.QUIET}
+    # Push-only quiet/loop reasons are checked by WakeQueue, not a run digest's holds predicate.
+    assert set(cases) == set(K.WHY) - set(K.PUSHED_ONLY)
     assert all(cases.values())

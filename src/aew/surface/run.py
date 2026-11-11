@@ -369,7 +369,8 @@ def _message_budget(payload: Any, projection: dict[str, Any]) -> tuple[Any, dict
         size += cost
     projection = {**projection, "coordination": {**view, "awaiting_lead": list(selected.values()),
         "omitted": max(0, len(view["awaiting_lead"]) + view["omitted"] - len(selected))}}
-    if isinstance(payload_view, dict) and isinstance(payload, dict):
+    if (isinstance(payload_view, dict) and isinstance(payload, dict)
+            and isinstance(payload_view.get("awaiting_lead"), list)):
         refs = [{"id": m["id"]} for m in requested if m["id"] in selected]
         payload = {**payload, "coordination": {**payload_view, "awaiting_lead": refs,
                     "omitted": payload_view["omitted"] + len(requested) - len(refs)}}

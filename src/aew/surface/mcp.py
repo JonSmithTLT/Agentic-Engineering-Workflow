@@ -88,6 +88,11 @@ def tools_list(profile: str, switches: frozenset[str] = frozenset()) -> dict[str
                       for t in contract.exposed(profile, switches)]}
 
 
+def advertised_bytes(listing: dict[str, Any]) -> int:
+    """Compact MCP JSON bytes with ASCII escapes, the budget measure."""
+    return len(json.dumps(listing, separators=(",", ":"), ensure_ascii=True))
+
+
 class Server:
     def __init__(self, forward: Forward, *, profile: str = "normal", log: IO[str] | None = None,
                  switches: frozenset[str] | None = None) -> None:

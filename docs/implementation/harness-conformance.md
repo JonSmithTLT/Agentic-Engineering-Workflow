@@ -123,6 +123,15 @@ A driver declares `capabilities`. A scenario needing one it lacks (for example `
 
 6. **Feature verdicts.** Each version a harness is pinned to records its new features' verdicts (adopt, consume, deny, hold, hold -> consume, ignore), each with its reason and the register row that carries it, in [`tools/harness_qualify/verdicts/<harness>.yaml`](../../tools/harness_qualify/verdicts/opencode.yaml). That file is the record a bump writes and the next bump builds on; `tools/harness_qualify`'s report names the verdicts recorded for the version it measured, or that none are yet. OpenCode 2.2.6's are the first.
 
+7. **OpenCode context measurement (E231).** Install AEW from the checkout being measured into the probe's
+   Python environment. Record the new Linux x64 binary's SHA-256 in
+   `LEAD_PROBE_LINUX_X64_SHA256` beside `TESTED_VERSIONS` in `src/aew/harness/opencode/capabilities.py`.
+   Run the scripted probe on Linux with
+   `python tools/lead_probe --no-network --binary <opencode> --out <fresh-dir>`. Record its commit, binary
+   SHA-256, network proof and results with the bump. Keep raw bodies outside the checkout.
+   For a keyless catalog-only check, add `--catalog-only`. For offline re-analysis of a saved Lead capture,
+   use `python tools/lead_probe --analyse <capture-dir> --out <fresh-dir>`.
+
 ## 5. Watch list for the OpenCode adapter (designer, 2026-09-27)
 
 Where each concern is verified. "Fake V2" means `tests/integration/test_opencode_adapter.py` (CI); "live" means `tests/live/test_opencode_live.py` on OpenCode 2.0.18.

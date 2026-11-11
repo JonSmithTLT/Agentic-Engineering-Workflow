@@ -58,10 +58,6 @@ NORMAL_BYTES_PIN = 11_830
 RESOLVE_BYTES_PIN = 818
 
 
-def advertised_bytes(listing: dict[str, Any]) -> int:
-    return len(json.dumps(listing, separators=(",", ":")))
-
-
 def rpc(server, method, params=None, rid=1):
     return server.handle({"jsonrpc": "2.0", "id": rid, "method": method, "params": params or {}})
 
@@ -94,7 +90,7 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_bu
                      "ticket_request_verification", "ticket_prepare", "integration_publish"]
     recovery = [t["name"] for t in mcp.tools_list("recovery")["tools"]]
     assert recovery == [*names[:9], "cli", *names[9:]]  # catalog order: the escape before the stages
-    size = advertised_bytes(normal)
+    size = mcp.advertised_bytes(normal)
     assert size < 12_000 and len(names) <= 16, f"the normal advertised surface is {size} bytes"
     by_name = {t["name"]: t for t in normal["tools"]}
     assert by_name["status"]["annotations"]["readOnlyHint"] and by_name["harness_wait"]["annotations"]["idempotentHint"]
@@ -107,7 +103,7 @@ def test_the_normal_list_omits_the_cli_escape_and_designed_tools_and_fits_the_bu
     # integration rows as catalogued plus `verification_evidence`, leaving E6b's `publish_if_clean` under the line;
     # 11,741 with ITEMS 55's `replace_gate` and `replacement`, `resolve` then 818 bytes).
     assert size <= NORMAL_BYTES_PIN, f"the normal advertised surface grew past E6a's {size} bytes"
-    assert advertised_bytes(by_name["resolve"]) <= RESOLVE_BYTES_PIN
+    assert mcp.advertised_bytes(by_name["resolve"]) <= RESOLVE_BYTES_PIN
     assert all("title" not in t["annotations"] for t in normal["tools"])  # trimmed (plan v3 §2.6)
     assert all("outputSchema" not in t for t in normal["tools"])  # the result is structured content, not advertised
 
@@ -381,7 +377,7 @@ def test_a_call_with_malformed_params_is_answered_and_the_server_reads_on():
 # ---------------------------------------------------------------------------------------------- A1-0: the G3 spike
 # The A1 slice plan (reviewed CLEAR) §3.4 and §7 `test_a1_rows_measured`: every advertised row A1 changes, built as a
 # catalog entry with no behaviour (none of these is in `contract.TOOLS`, and none has a runner), swapped into the
-# catalog and measured by the cap's own measure, `advertised_bytes(mcp.tools_list("normal"))`. Its figures fill §8's
+# catalog and measured by the cap's own measure, `mcp.advertised_bytes(mcp.tools_list("normal"))`. Its figures fill §8's
 # G3 question. The candidate texts are this measure's input, not a design: the slice that builds a row re-measures what
 # it really registers (A1a-2 re-sets `resolve`'s pin to its registered length, D2), and the whole-surface pin stays
 # unchanged until the designer answers (D3).
@@ -450,11 +446,11 @@ def _measured(tools: dict[str, contract.Tool]) -> tuple[int, int]:
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(contract, "TOOLS", contract._catalog(*tools.values()))  # validated as a real catalog is
         listing = mcp.tools_list("normal")
-    return advertised_bytes(listing), len(listing["tools"])
+    return mcp.advertised_bytes(listing), len(listing["tools"])
 
 
 def _entry_bytes(row: contract.Tool) -> int:
-    return advertised_bytes(mcp.tool_entry(row))
+    return mcp.advertised_bytes(mcp.tool_entry(row))
 
 
 # The spike's figures (§8's G3 question), from this test's own measure. A change to a candidate or to today's
@@ -467,7 +463,7 @@ def test_a1_rows_measured():
     today = dict(contract.TOOLS)
     base, count = _measured(today)
     # The swap is what is measured: with today's catalog swapped in, the measure is the cap test's, on the live list.
-    assert (base, count) == (advertised_bytes(mcp.tools_list("normal")), len(mcp.tools_list("normal")["tools"]))
+    assert (base, count) == (mcp.advertised_bytes(mcp.tools_list("normal")), len(mcp.tools_list("normal")["tools"]))
     assert base == NORMAL_BYTES_PIN  # today's surface is exactly the pin (G3)
     deltas, composed = {}, today
     for name, change in _a1_rows().items():

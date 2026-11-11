@@ -85,6 +85,11 @@ def tools_list(profile: str) -> dict[str, Any]:
     return {"tools": [tool_entry(t) for t in contract.exposed(profile)]}
 
 
+def advertised_bytes(listing: dict[str, Any]) -> int:
+    """Compact MCP JSON bytes with ASCII escapes, the budget measure."""
+    return len(json.dumps(listing, separators=(",", ":"), ensure_ascii=True))
+
+
 class Server:
     def __init__(self, forward: Forward, *, profile: str = "normal", log: IO[str] | None = None) -> None:
         self.forward = forward

@@ -585,6 +585,7 @@ None.
 - `aew.knowledge.manifest`
 - `aew.knowledge.records`
 - `aew.operator`
+- `aew.policy.checks`
 - `aew.policy.execution`
 - `aew.schemas`
 - `aew.util`
@@ -646,10 +647,12 @@ None.
 - `aew.knowledge.manifest`
 - `aew.knowledge.records`
 - `aew.knowledge.render`
+- `aew.policy.checks`
 - `aew.policy.classes`
 - `aew.policy.execution`
 - `aew.process_kind`
 - `aew.schemas`
+- `aew.snapshot.fingerprint`
 - `aew.util`
 - `aew.workspace.git`
 
@@ -1585,7 +1588,7 @@ None.
 
 ### `aew.harness.opencode.model_pricing`
 
-None.
+- `aew.harness.models`
 
 ### `aew.harness.opencode.projection`
 
@@ -1783,6 +1786,54 @@ None.
 - `aew.schemas`
 - `aew.util`
 
+## `aew.kit`
+
+Imports from the groups:
+
+- `aew`
+- `aew.capability`
+- `aew.engine`
+- `aew.harness`
+- `aew.maps`
+- `aew.policy`
+
+### `aew.kit`
+
+- `aew.engine.api`
+- `aew.engine.first_configuration`
+- `aew.errors`
+- `aew.harness.models`
+- `aew.harness.opencode.projection`
+- `aew.maps.service`
+- `aew.policy.checks`
+- `aew.policy.execution`
+- `aew.util`
+
+### `aew.kit.__main__`
+
+- `aew.errors`
+- `aew.harness.operator_client`
+- `aew.kit`
+- `aew.kit.receipt`
+- `aew.process_kind`
+
+### `aew.kit.receipt`
+
+- `aew`
+- `aew.capability.store`
+- `aew.engine.api`
+- `aew.engine.coverage`
+- `aew.engine.harness_ops`
+- `aew.errors`
+- `aew.harness.containment.netns`
+- `aew.harness.models`
+- `aew.harness.opencode.capabilities`
+- `aew.harness.runlog`
+- `aew.kit`
+- `aew.maps.slices`
+- `aew.policy.execution`
+- `aew.util`
+
 ## `aew.knowledge`
 
 Imports from the groups:
@@ -1915,6 +1966,7 @@ Imports from the groups:
 - `aew.engine`
 - `aew.harness`
 - `aew.schemas`
+- `aew.workspace`
 
 ### `aew.policy`
 
@@ -1929,6 +1981,7 @@ None.
 - `aew.harness.containment.layout`
 - `aew.harness.contract`
 - `aew.harness.procs`
+- `aew.workspace.git`
 
 ### `aew.policy.classes`
 

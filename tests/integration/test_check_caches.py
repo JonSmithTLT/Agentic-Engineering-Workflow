@@ -10,7 +10,7 @@ from aew.errors import ValidationFailed
 from aew.policy.checks import definition_digest
 from aew.snapshot import fingerprint as F
 from aew.util import dump_yaml, load_yaml
-from aew.workspace import git
+from aew.workspace import git, integration
 
 CACHES = (".build-cache/",)
 CACHE = ".build-cache/result.bin"
@@ -75,7 +75,7 @@ def test_one_checks_caches_do_not_stale_another_checks_evidence(tmp_path):
 
 def test_a_ticket_commit_leaves_declared_caches_out_and_integrates(tmp_path):
     p = project(tmp_path, unit=check(WRITE_CACHE, CACHES))
-    wid, impl = to_commit_ready(p, tmp_path)
+    wid, impl = to_commit_ready(p, tmp_path, scope=("calc/**", "tests/**", ".build-cache/**"))
     assert (impl.workspace / CACHE).is_file()
     out = integrate(p, wid)
     assert git.git("cat-file", "-e", f"{out['integrated_commit']}:{CACHE}", cwd=p.root, check=False).returncode != 0
@@ -123,3 +123,20 @@ def test_include_ignored_wins_over_a_cache_match(tmp_path):
     path.write_text("included", encoding="utf-8", newline="\n")
     assert before != F.relevant_inputs_fingerprint(repo, cache_patterns=(CACHES,), include_ignored=[CACHE])
     assert CACHE not in F.untracked_caches(repo, (CACHES,), [CACHE])
+
+
+
+def test_cache_only_commit_and_existing_git_ignores(tmp_path):
+    repo = make_git_repo(tmp_path / "repo", {"tracked.txt": "base\n", ".gitignore": ".build-cache/ignored\n"})
+    head = git.out("rev-parse", "HEAD", cwd=repo)
+    path = repo / CACHE
+    path.parent.mkdir()
+    path.write_text("cache", encoding="utf-8", newline="\n")
+    ignored = ".build-cache/ignored"
+    (repo / ignored).write_text("explicit snapshot input", encoding="utf-8", newline="\n")
+    options = {"cache_patterns": (CACHES,), "include_ignored": [ignored]}
+    assert F.untracked_caches(repo, (CACHES,), [ignored]) == [CACHE]
+    assert F.changed_paths(repo, head, stores=False, **options) == []
+    assert F.changed_paths(repo, head, stores=True, **options) == []
+    assert integration.commit_workspace(repo, "cache only", **options) == head
+    assert F.relevant_inputs_fingerprint(repo, **options) != f"git-tree:{F.head_tree_id(repo)}"

@@ -6,7 +6,11 @@
 
 ## Decision
 
-An evaluated snapshot is `{base_revision, workspace_id, relevant_inputs_fingerprint, artifact_digests[]}`. The fingerprint is a **git tree id synthesized in a throwaway index**:
+An evaluated snapshot is `{base_revision, workspace_id, relevant_inputs_fingerprint}`.
+
+`artifact_digests` was never populated and is dropped (2026-11-11): no check declares a build output. Generated-output and package identity are E287's (A-08 WIS-04.a).
+
+The fingerprint is a **git tree id synthesized in a throwaway index**:
 
 1. Copy the workspace's real index to a temporary index, so the stat cache is reused.
 2. `git add -A` to capture tracked files plus untracked files that are not ignored.
@@ -33,7 +37,7 @@ The review showed that copying the real index into the temporary index also copi
   - `assume-unchanged` bits are cleared (`update-index --no-assume-unchanged`).
   - `core.ignoreStat`, `core.fsmonitor` and `core.untrackedCache` are forced off for snapshot synthesis, through `GIT_CONFIG_COUNT`; git ≥ 2.31 is already the floor.
 - **Skip-worktree entries** (sparse checkout) are **refused** with an integrity error. Their content is not in the workspace, so no honest snapshot of it exists. AEW workspaces are full checkouts.
-- The same handling applies to `changed_paths` (guardrails) and `working_diff` (reviewer packs), which share the temporary index.
+- The same handling applies to `changed_paths` (guardrails), which uses the temporary index. `working_diff` was removed (2026-11-11, no caller; packs diff the snapshot tree).
 - Tested: an assume-unchanged edit changes the fingerprint and invalidates VERIFIED gates (review probe M3); `core.ignoreStat` does too; an unflagged workspace hashes to its content tree exactly as before; skip-worktree is refused; the real index flags are unchanged afterwards (`tests/integration/test_fingerprint_flags.py`).
 
 ## Amendment 2026-09-29 — a check result is also bound to its check's definition (independent audit I1)
@@ -58,7 +62,7 @@ A read that fingerprints a workspace (`gate show` and `work roles` of a Ticket w
 - **A store writer keeps storing what it hashes** (`git add -A`, `write-tree`), with the same values. The engine reads a writer's snapshot tree back from the store: the reviewer's and verifier's packs diff the base against it (`engine/context_ops.py`), and a mutated workspace's refusal names the paths between two snapshots (`evidence_ops._paths_between`). Computing nothing stored there made `invoke create --role reviewer` fail with "bad object" (found while building; the designer's ruling leaves writers unaffected).
 - **The process's kind is behaviour, not the boundary.** In a reader's sandbox the store is read-only whatever a process declares.
 - **`index_only_paths`** compares the entries of HEAD, the index and the working index instead of diffing two trees, which need not be in a store.
-- **`working_diff`** still stores what it adds, in any process: a unified diff reads blob content. Nothing in `src` calls it (this ADR's 2026-09-26 amendment names it for reviewer packs, which now diff against the snapshot's tree); it is flagged under "requirements are the authority", and its keep-or-remove question is with the designer and the operator.
+- **`working_diff`** was removed (2026-11-11, no caller; packs diff the snapshot tree).
 - **On Windows,** a file named after a device is refused by name before anything is hashed, as before: `update-index` would read the device, where `git add` failed on it.
 
 Tests: `tests/integration/test_fingerprint_reads.py` runs every case (uncommitted edits with deletions, ignored and excluded files, a file replaced by a directory and a directory by a file; git's tree order; an empty repository; CRLF with `core.autocrlf`; an intent-to-add entry; an unmerged path; an embedded repository and a gitlink at another commit; a symlink and an executable bit; a worktree just made) as a reader and as a writer, on every platform: each value equals git's own (`add -A` and `write-tree` into a private object directory), the reader's leaves the real `objects` directory and index unchanged by digest, and the writer's tree is in the store. The worker-surface tests judge the real object store across every command a worker can run, outside a sandbox (`tests/integration/test_non_writer_reads.py`) and inside a reviewer's (`tests/integration/test_containment.py`, where `READER_GIT_GAP` is now empty), and a reader's fingerprint in its sandbox equals the writer's for uncommitted edits and a fresh worktree.

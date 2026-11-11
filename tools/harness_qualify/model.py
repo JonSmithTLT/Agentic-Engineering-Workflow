@@ -11,6 +11,9 @@ A script is a list of turns, one per *main* request (a request that offers tools
   value ``"$path:<key>"`` is replaced by the offered tool's first parameter whose name contains ``path`` (tools spell
   it ``path``, ``filePath`` or ``file_path``), and ``<key>`` is that argument's value;
 - either may carry ``"usage"``: the raw Responses ``usage`` object to report; it defaults to zeros.
+- ``{"calls": [{"call": [...], "arguments": {...}}, ...]}`` emits parallel calls in one step.
+- Tool-owned ``entered``/``release`` threading events pause a response at a deterministic boundary for probes. They
+  are never taken from an HTTP request; a bounded missing release fails the probe rather than returning fake text.
 
 Past the end of the script a main request is answered with text. An auxiliary request (one with no tools: a title, a
 summary) is answered with text and zero usage. Every request is logged (path, tool names, whether it carried an
@@ -62,7 +65,7 @@ class ResponsesModel:
 
     mode = "responses"
 
-    def __init__(self, script: list[dict[str, Any]]) -> None:
+    def __init__(self, script: list[dict[str, Any]], *, capture_wire: bool = False) -> None:
         self.script = list(script)
         self.requests: list[dict[str, Any]] = []
         self.upgrades = 0
@@ -100,7 +103,8 @@ class ResponsesModel:
 
             def do_POST(self) -> None:  # noqa: N802
                 length = int(self.headers.get("Content-Length") or 0)
-                body = json.loads(self.rfile.read(length) or b"{}")
+                wire = self.rfile.read(length)
+                body = json.loads(wire or b"{}")
                 tools = _tools(body)
                 with model._lock:
                     main = bool(tools)
@@ -111,9 +115,15 @@ class ResponsesModel:
                         model._main += 1
                     model.requests.append({"method": "POST", "path": self.path, "main": main, "tools": sorted(tools),
                                            "auth": "present" if self.headers.get("Authorization") else "absent",
-                                           "stream": bool(body.get("stream")), "body": body})
+                                           "stream": bool(body.get("stream")), "body": body, "raw_bytes": len(wire),
+                                           **({"wire": wire.decode("utf-8")} if capture_wire else {})})
                 if not self.path.rstrip("/").endswith("/responses"):
                     self._plain(404, {"error": {"message": f"this scripted model serves /responses, not {self.path}"}})
+                    return
+                if main and turn.get("entered") is not None:
+                    turn["entered"].set()
+                if main and turn.get("release") is not None and not turn["release"].wait(60):
+                    self._plain(500, {"error": {"message": "scripted response was not released"}})
                     return
                 self._stream(model._events(turn if main else {"text": "title"}, tools, body))
 
@@ -141,6 +151,24 @@ class ResponsesModel:
         base = {"id": rid, "object": "response", "created_at": 1, "model": model_id, "status": "in_progress",
                 "output": []}
         events: list[dict[str, Any]] = [{"type": "response.created", "sequence_number": 0, "response": base}]
+        if "calls" in turn:
+            calls = turn["calls"]
+            if not isinstance(calls, list) or not calls:
+                raise ValueError("parallel scripted calls must be a nonempty list")
+            events = [events[0]]
+            output = []
+            for index, call in enumerate(calls):
+                made = self._events(call, tools, body)
+                for event in made[1:-1]:
+                    if "output_index" in event:
+                        event["output_index"] = index
+                    events.append(event)
+                output.extend(made[-1]["response"]["output"])
+            events.append({"type": "response.completed", "response": {
+                **base, "status": "completed", "output": output, "usage": usage}})
+            for index, event in enumerate(events):
+                event["sequence_number"] = index
+            return events
         name = next((c for c in turn.get("call") or [] if c in tools), None)
         if turn.get("call") and name is None:
             turn = {"text": f"none of {turn['call']} is offered (offered: {sorted(tools)})", "usage": usage}
@@ -184,8 +212,8 @@ class ResponsesModel:
 MODES = {"responses": ResponsesModel}
 
 
-def start(mode: str, script: list[dict[str, Any]]) -> ScriptedModel:
+def start(mode: str, script: list[dict[str, Any]], *, capture_wire: bool = False) -> ResponsesModel:
     try:
-        return MODES[mode](script)
+        return MODES[mode](script, capture_wire=capture_wire)
     except KeyError:
         raise ValueError(f"no scripted model mode {mode!r} (built: {sorted(MODES)})") from None

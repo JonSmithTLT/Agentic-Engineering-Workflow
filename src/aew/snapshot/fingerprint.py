@@ -1,7 +1,7 @@
 """Evaluated-snapshot identity (WC §9.9; KC §11; ADR-0002).
 
-An evaluated snapshot identifies the engineering inputs actually evaluated,
-including relevant uncommitted changes:
+An evaluated snapshot is {base_revision, workspace_id, relevant_inputs_fingerprint}.
+It identifies the engineering inputs actually evaluated, including relevant uncommitted changes:
 
     base_revision               HEAD commit of the workspace (may be None in an empty repo)
     workspace_id                attributable workspace identity
@@ -9,7 +9,6 @@ including relevant uncommitted changes:
                                 temporary index: tracked + untracked-not-ignored files,
                                 plus policy-declared ignored inputs, minus the AEW
                                 knowledge root and policy exclusions
-    artifact_digests            evaluated build artifact digests (optional)
 
 Because ``.aew/`` is removed from the synthesized tree, writing an AEW report or
 control file never changes the fingerprint of the evidence it records. Any change
@@ -29,7 +28,7 @@ where writing it would add loose objects nobody asked for; there is nothing priv
 writer keeps storing what it hashes (``git add -A``, ``write-tree``), with the same values: the reviewer's and
 verifier's packs diff the base against the snapshot's tree, and a mutated workspace's refusal names the paths
 between two snapshots, both read from the store (``engine.context_ops``, ``evidence_ops._paths_between``).
-:func:`working_diff` stores what it adds in any process (it reads blob content; flagged: no caller in ``src``).
+``working_diff`` was removed (2026-11-11, no caller; packs diff the snapshot tree).
 
 Index flags (review 2026-09-26 M3; ADR-0002 amendment). The temporary index
 starts as a copy of the real one (for its stat cache), so flags that make Git
@@ -433,7 +432,6 @@ def evaluated_snapshot(
     *,
     exclude: list[str] | None = None,
     include_ignored: list[str] | None = None,
-    artifact_digests: list[str] | None = None,
     cache_patterns: tuple[tuple[str, ...], ...] = (),
 ) -> dict[str, Any]:
     return {
@@ -441,7 +439,6 @@ def evaluated_snapshot(
         "workspace_id": workspace_id,
         "relevant_inputs_fingerprint": relevant_inputs_fingerprint(
             workspace, exclude=exclude, include_ignored=include_ignored, cache_patterns=cache_patterns),
-        "artifact_digests": list(artifact_digests or []),
     }
 
 
@@ -460,16 +457,3 @@ def changed_paths(workspace: Path, base: str, *, stores: bool | None = None,
                         include_ignored=include_ignored) as idx:
         raw = git.out("diff", "--cached", "--name-only", "--no-renames", "-z", base, cwd=workspace, env=idx.env)
     return [p for p in raw.split(NUL) if p]
-
-
-def working_diff(workspace: Path, base: str) -> str:
-    """Unified diff of base..working state (incl. untracked files), excluding the AEW root.
-
-    It stores the blobs it adds (``git add -A``) in any process: a unified diff reads their content. No reader reaches
-    it, and nothing in ``src`` calls it: it is flagged under "requirements are the authority" (STG-05 CS-2), its
-    keep-or-remove question with the designer and the operator."""
-    workspace = workspace.resolve()
-    with _working_index(workspace, stores=True) as idx:
-        git.git("rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", AEW_ROOT_REL, cwd=workspace, env=idx.env)
-        return git.git("diff", "--cached", "--no-color", "--no-renames", base, cwd=workspace,
-                       env=idx.env).stdout.decode("utf-8", "replace")

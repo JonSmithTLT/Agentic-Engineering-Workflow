@@ -16,6 +16,7 @@ import pytest
 from aew import errors
 from aew.cli.main import build_parser
 from aew.harness import bridge, lead_broker
+from aew.harness import contract as K
 from aew.surface import contract
 
 
@@ -314,7 +315,15 @@ def _messages(tree):
         if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in skip:
             yield node.lineno, node.value
         elif isinstance(node, ast.JoinedStr):
-            yield node.lineno, "".join(v.value for v in node.values if isinstance(v, ast.Constant))
+            pieces = []
+            for value in node.values:
+                if isinstance(value, ast.Constant):
+                    pieces.append(value.value)
+                elif isinstance(value, ast.FormattedValue) and ast.unparse(value.value) in {
+                    "K.MANIFEST_ADOPT", "MANIFEST_ADOPT",
+                }:
+                    pieces.append(K.MANIFEST_ADOPT)
+            yield node.lineno, "".join(pieces)
 
 
 # Machine-readable fields that hold a command and nothing else; the message beside each names the operator.
@@ -332,8 +341,12 @@ def test_no_message_in_aew_hands_an_operator_decision_to_whoever_reads_it():
 
     stale = []
     commands = operator_decided_commands()  # builds the whole CLI parser: once, never per message
-    for path in Path(aew.__file__).parent.rglob("*.py"):
+    src = Path(aew.__file__).parent
+    for path in src.rglob("*.py"):
         for line, text in _messages(ast.parse(path.read_text(encoding="utf-8"))):
+            # The shared command span only reaches a reader inside a message. Check the rendered use sites above.
+            if path == src / "harness/contract.py" and text == K.MANIFEST_ADOPT.replace(K.EXPECT_REV, ""):
+                continue
             for command in commands:
                 if f"aew {command}" in text and "operator" not in text and text not in BARE_COMMAND_FIELDS:
                     stale.append(f"{path.name}:{line}: {text[:100]}")

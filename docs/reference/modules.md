@@ -200,6 +200,7 @@ Imports from the groups:
 - `aew.harness`
 - `aew.knowledge`
 - `aew.maps`
+- `aew.policy`
 - `aew.surface`
 
 ### `aew.cli`
@@ -235,11 +236,13 @@ None.
 - `aew.engine.first_configuration`
 - `aew.errors`
 - `aew.harness.containment.netns`
+- `aew.harness.contract`
 - `aew.harness.lead_broker`
 - `aew.harness.opencode.lead`
 - `aew.lead_credential`
 - `aew.maps.service`
 - `aew.operator`
+- `aew.policy.execution`
 - `aew.surface`
 - `aew.surface.client`
 - `aew.surface.context`
@@ -2154,6 +2157,7 @@ None.
 
 - `aew.engine.base`
 - `aew.errors`
+- `aew.harness.contract`
 - `aew.snapshot.fingerprint`
 - `aew.util`
 - `aew.workspace.git`

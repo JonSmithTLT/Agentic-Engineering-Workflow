@@ -1069,6 +1069,66 @@ def test_hard_deadline_terminates_and_releases_no_lease(tmp_path, monkeypatch):
         lab.cleanup()
 
 
+RUN_ONLY = 1.5  # a Run-scoped deadline short enough to end a hanging run inside the test
+
+
+def _run_scoped_lab(tmp_path, monkeypatch, *, run: bool) -> tuple[Any, HarnessLab, str]:
+    """A sample project on the fake harness whose profile's deadline is Run's alone (``deadline_scope: run``, as first
+    configuration writes it), a planned Ticket, and the mode raised to Run or left at crawl."""
+    p = sample_project(tmp_path)
+    command, _ = recorder(tmp_path)
+    profile = {**POLICY["profiles"]["standard"], "deadline_s": RUN_ONLY, "deadline_scope": "run"}
+    lab = HarnessLab.create(p, tmp_path, policy={**POLICY, "profiles": {"standard": profile},
+                                                 "steering": {"mode": "crawl"}, "notify": {"command": command}})
+    for k, v in lab.env.items():
+        monkeypatch.setenv(k, v)
+    wid = create_planned_ticket(p, tmp_path)
+    if run:
+        raise_to(Engine.discover(p.root), "run")
+    lab.script("default", HANG)
+    return p, lab, wid
+
+
+def test_a_run_started_under_run_keeps_its_deadline_when_run_ends_during_its_launch(tmp_path, monkeypatch):
+    """Quick check of E228's third PR, M1: the Run-only deadline is decided at custody, from the state custody was
+    checked against, never after the launch. Run is lowered while the supervisor is held after launching the
+    harness, and the run still ends at its deadline."""
+    p, lab, wid = _run_scoped_lab(tmp_path, monkeypatch, run=True)
+    held = tmp_path / "launched-held"
+    held.write_text("hold", encoding="utf-8")
+    try:
+        res = lab.lead_res("work", "assign", wid, "--launch", env={
+            "AEW_FAULT": "harness.launch.after_handoff", "AEW_PAUSE": f"harness.supervisor.launched={held}"})
+        assert res.returncode == 86, res.stdout  # the launcher ends at the hand-off; its supervisor goes on
+        lab.until(lambda: Path(f"{held}.reached").exists(), what="the supervisor held after its launch")
+        Engine.discover(p.root).steering_lower(token=p.token, expect_rev=p.rev(), mode="crawl",
+                                               rationale="Run ends while the harness starts")
+        held.unlink()
+        run = lab.until(lambda: next(iter(load_control(p.root)["invocations"].values()))["runs"][0]["run"],
+                        what="the run recorded")
+        record = lab.until(lambda: (r := lab.record(run)).get("status") == "terminated" and r, what="the deadline")
+        assert f"deadline of {RUN_ONLY}s exceeded" in record["reason"], record
+    finally:
+        held.unlink(missing_ok=True)
+        lab.cleanup()
+
+
+def test_an_attended_run_never_gets_a_run_only_deadline(tmp_path, monkeypatch):
+    """Quick check of E228's third PR, M2: the supervisor's watch applies the deadline decided for the run, not the
+    profile's as written: under crawl a Run-scoped deadline bounds nothing, so a run is still running well past it.
+    (An absence, read after three times the deadline: a slow runner can only delay a wrong termination, never fail
+    this test; the planted control is the test above, where the same deadline ends the run.)"""
+    p, lab, wid = _run_scoped_lab(tmp_path, monkeypatch, run=False)
+    try:
+        run = lab.lead("work", "assign", wid, "--launch")["launch"]["run"]
+        lab.until(lambda: lab.record(run).get("status") == "running", what="the run running")
+        time.sleep(3 * RUN_ONLY)
+        record = lab.record(run)
+        assert record.get("status") == "running", record
+    finally:
+        lab.cleanup()
+
+
 def test_the_loop_runs_in_the_broker_and_stops_with_its_session(p, tmp_path):
     """Plan v3 E7 (M8.1): the loop runs in the Lead broker, woken by a committed Lead tool call; it acts for the
     session's credential, and stops when the broker closes."""

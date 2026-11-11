@@ -196,6 +196,7 @@ class Supervisor:
         self._started_mono: float | None = None  # when the harness started: the usage record's wall time (F25 R1)
         self._start_s = 0.0  # the start's deadline in seconds from custody, and as a monotonic time
         self._start_until: float | None = None
+        self.deadline_s: Any = None  # the hard deadline this run gets, decided at custody (``applied_deadline``)
         self.stop_reason: tuple[str, str] | None = None  # (status, reason) requested by a bridge refusal
         self._control_seen: Any = None
         self._state_unreadable = False  # the last lock-free state read failed (logged once until one succeeds)
@@ -315,6 +316,9 @@ class Supervisor:
         profile = inv["execution_profile"] or {}
         self.record.update(work_unit=inv["work_unit"], role=inv["role"], harness=profile.get("harness"),
                            execution_profile=profile)
+        # Decided here, from the state custody was checked against, never after the launch: a Run that ends while the
+        # harness starts must not leave a run it started unbounded (quick check of E228's third PR, M1)
+        self.deadline_s = self.applied_deadline(state)
         # Beat before the first record: a non-terminal record with no heartbeat reads as `lost`, and writing the record
         # wakes every `harness wait` into exactly that gap (CI, Windows, 2026-10-09; register E3).
         self._starting_beats(profile.get("harness"))
@@ -502,23 +506,22 @@ class Supervisor:
                         **({"refusal": refusal} if refusal is not None else {})})
         return False
 
-    def applied_deadline(self) -> Any:
+    def applied_deadline(self, state: dict[str, Any] | None) -> Any:
         """The hard deadline this run gets: its pinned profile's ``deadline_s``, unless the profile keeps it to runs
         started under Run (``deadline_scope: run``, first configuration's provisional one, register E228) and the
-        effective steering mode is not Run as the run starts, so that deadline never ends an attended run (review of
-        E228's third PR, F5). A state that cannot be read keeps the deadline: the bounded side."""
+        effective steering mode in ``state``, the state its custody was checked against, is not Run, so that deadline
+        never ends an attended run (review of E228's third PR, F5). No state keeps the deadline: the bounded side."""
         profile = self.record.get("execution_profile") or {}
-        if profile.get("deadline_scope") == "run":
+        if profile.get("deadline_scope") == "run" and state is not None:
             from aew.engine import steering
 
-            state = self._committed_state()
-            if state is not None and steering.effective(state)["mode"] != "run":
+            if steering.effective(state)["mode"] != "run":
                 return None
         return profile.get("deadline_s")
 
     def watch(self) -> None:
         self._watching.set()
-        deadline_s = self.applied_deadline()
+        deadline_s = self.deadline_s
         deadline = time.monotonic() + deadline_s if deadline_s else None
         last_beat = last_poll = 0.0
         unread = False  # the last authority read failed: read again at the next tick (#366 review, M2)

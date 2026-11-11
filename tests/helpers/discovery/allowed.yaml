@@ -438,23 +438,23 @@ allowed:
 residuals:
 - rule: O-IDS
   site: cli:aew doctor|result
-  decision: E330 follow-on ruling, 2026-11-10
+  decision: Lead's E330 follow-on ruling, 2026-11-10
   reason: The manifest adopt advice names its required revision and reason until the revision-check switch-on.
 - rule: O-IDS
   site: static:docs/guides/quickstart.md|aew authority accept C-001 --class decisions --expect-rev <revision from aew status>
-  decision: E330 follow-on ruling, 2026-11-10
+  decision: Lead's E330 follow-on ruling, 2026-11-10
   reason: Complete example for the existing terminal authority-candidate command.
 - rule: O-IDS
   site: static:docs/guides/quickstart.md|aew lead acquire --expect-rev <revision from aew status> --session-label lead-1
-  decision: E330 follow-on ruling, 2026-11-10
+  decision: Lead's E330 follow-on ruling, 2026-11-10
   reason: Complete example for acquiring a vacant seat before terminal settings changes.
 - rule: O-IDS
   site: static:docs/guides/quickstart.md|aew lead release --expect-rev <revision from aew status>
-  decision: E330 follow-on ruling, 2026-11-10
+  decision: Lead's E330 follow-on ruling, 2026-11-10
   reason: Complete example for releasing a seat after terminal settings changes.
 - rule: O-IDS
   site: static:docs/guides/quickstart.md|aew manifest adopt --reason "updated the pinned settings" --expect-rev <revision from aew status>
-  decision: E330 follow-on ruling, 2026-11-10
+  decision: Lead's E330 follow-on ruling, 2026-11-10
   reason: Complete example for adopting pinned settings at the operator's terminal.
 - rule: O-IDS
   site: static:docs/guides/opencode.md|aew manifest adopt --reason ... --expect-rev N

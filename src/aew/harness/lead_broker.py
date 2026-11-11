@@ -963,6 +963,7 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
     survivors: list[tuple[int, str | None]] = []
     ownership = "clean"
     seat_outcome = "superseded"
+    failed = False
     # Every launch this session's broker relays or its steering loop makes runs in this process and reads its
     # environment: a refusal for a missing provider variable says so (review of PR #214, F2).
     try:
@@ -987,8 +988,10 @@ def run_session(engine: Any, command: list[str], *, acquire: bool, session_label
             ownership = None
             code, ownership = run_session_tree(harness.argv, env=harness.env, cwd=str(engine.repo_root),
                                                relay=harness.relay, survivors=survivors)
+    except BaseException:
+        failed = True
+        raise
     finally:
-        failed = sys.exc_info()[0] is not None
         try:
             if harness is not None:
                 try:
@@ -1030,6 +1033,9 @@ def _end_acquired_seat(engine: Any, token: str, generation: int, *, opencode: bo
     continuation = ("the next `aew opencode` resumes it from this host and user if eligible; otherwise use "
                     "`aew lead takeover` at your own terminal" if opencode else
                     "continue with `aew lead takeover` at your own terminal")
-    if left is None or left:
+    if left is None:
+        return ("held because the leftover process outcome is unknown; to free the seat, run `aew lead takeover` "
+                "at your own terminal, then `aew lead release`")
+    if left:
         return f"held; processes left: {seat.describe_leftovers(left)}; {continuation}"
     return f"held; {continuation}" + (f" (active: {', '.join(active)})" if active else "")

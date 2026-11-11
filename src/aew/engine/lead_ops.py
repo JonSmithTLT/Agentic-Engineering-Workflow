@@ -219,7 +219,10 @@ class Lead:
         lead = state["lead"]
         start = lead.get("start") or {}
         if lead["status"] == "vacant" or start.get("kind") not in seat.RESUMABLE or not start.get("start_id"):
-            raise self._seat_held(state, resume=("seat_not_opencode", "the seat was not taken by an OpenCode session"))
+            raise self._seat_held(state, resume=(
+                "seat_not_opencode", "the seat was not taken by an OpenCode session with a recorded process identity. "
+                "If you have the current Lead credential, use `aew opencode --prompt-token` or start with "
+                "`AEW_LEAD_TOKEN` set"))
         if start["generation"] != lead["generation"]:
             raise self._seat_held(state, resume=("seat_resume_changed",
                                                   "the recorded start is from another generation"))
@@ -249,7 +252,7 @@ class Lead:
         leftovers = seat.read_leftovers(self.k.store.root, generation)
         processes = seat.describe_leftovers(leftovers)
         work = ", ".join(f"{inv_id} ({role}, {unit})" for inv_id, (role, unit) in shown.items()) or "none"
-        authorized_by = "operator-tty"
+        authorized_by = "operator-tty (seat resume without code)"
         if shown or leftovers is None or leftovers:
             auth = operator.authorize(
                 f"Project '{self.k.project_id}': RESUME Lead seat\n"
@@ -274,7 +277,7 @@ class Lead:
                                                       f"active invocations not shown: {', '.join(unseen)}"))
             self.k.check_manifest_pin(state)
             self._revoke_all_lead_credentials(state, "superseded by operator seat resume")
-            token = self._new_lead(state, session_label, lead["start"]["kind"])
+            token = self._new_lead(state, session_label, seat.SEAT_RESUME)
             new_gen = state["lead"]["generation"]
             for inv_id in carry:
                 inv = state["invocations"][inv_id]
@@ -345,7 +348,7 @@ class Lead:
             carry = set(handoff["carry_invocations"])
             self._revoke_all_lead_credentials(state, "superseded by cooperative handoff")
             revoke(state, offer_id, "handoff accepted")
-            token = self._new_lead(state, session_label)
+            token = self._new_lead(state, session_label, seat.HANDOFF)
             new_gen = state["lead"]["generation"]
             for inv_id in carry:
                 inv = state["invocations"][inv_id]
@@ -400,7 +403,7 @@ class Lead:
                                     expected=snapshot["revision"], current=s.revision)
             previous = {"generation": state["lead"]["generation"], "session_label": state["lead"]["session_label"]}
             self._revoke_all_lead_credentials(state, "superseded by operator-authorized takeover")
-            token = self._new_lead(state, session_label)
+            token = self._new_lead(state, session_label, seat.TAKEOVER)
             new_gen = state["lead"]["generation"]
             interrupted = self._interrupt_invocations(state, "Lead takeover")
             actor = {"kind": "operator", "authorized_by": auth["authorized_by"], "session_label": session_label,

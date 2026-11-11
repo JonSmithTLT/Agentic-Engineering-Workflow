@@ -15,9 +15,11 @@ from aew.util import atomic_write
 
 OPENCODE_ACQUIRE = "opencode_acquire"
 VACANT_START = "vacant_start"
-# The transition operation distinguishes other credential-issuing paths within the non-resumable kind.
 LEAD_ACQUIRE = "lead_acquire"
-RESUMABLE = frozenset({OPENCODE_ACQUIRE, VACANT_START})
+TAKEOVER = "takeover"
+HANDOFF = "handoff"
+SEAT_RESUME = "seat_resume"
+RESUMABLE = frozenset({OPENCODE_ACQUIRE, VACANT_START, SEAT_RESUME})
 Leftovers = list[tuple[int, str]] | int | None  # None means the outcome is unknown
 
 

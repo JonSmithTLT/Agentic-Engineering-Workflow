@@ -91,7 +91,8 @@ aew opencode
   pending. When work is carried or processes may still run, the operator's terminal asks for one confirmation code.
   `--acquire` explicitly selects the same route even if a credential is exported. The credential stays in the
   broker's memory. The seat is released after a clean exit when nothing is in flight and no acknowledged process
-  may still run. `--keep-seat` keeps it held.
+  may still run. `--keep-seat` keeps it held. An unknown leftover process outcome also keeps the seat held.
+  To free it after an unknown outcome, run `aew lead takeover` at your own terminal, then `aew lead release`.
 - With `AEW_LEAD_TOKEN` set in your shell, `aew opencode` uses that Lead credential. Use `--prompt-token` to
   enter an existing credential at the hidden prompt. `--prompt-token` and `--acquire` cannot be combined.
   The broker holds the credential in memory and removes it from OpenCode's environment. Set the variable for

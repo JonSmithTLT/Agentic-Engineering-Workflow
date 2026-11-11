@@ -97,7 +97,7 @@
           "required": ["generation", "kind", "at", "host", "user", "pid", "start_id"],
           "properties": {
             "generation": {"type": "integer", "minimum": 1},
-            "kind": {"enum": ["opencode_acquire", "vacant_start", "lead_acquire"]},
+            "kind": {"enum": ["opencode_acquire", "vacant_start", "lead_acquire", "takeover", "handoff", "seat_resume"]},
             "at": {"type": "string", "format": "date-time"},
             "host": {"type": "string", "minLength": 1},
             "user": {"type": ["integer", "string"], "minimum": 0, "minLength": 1},

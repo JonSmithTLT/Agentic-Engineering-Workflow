@@ -47,6 +47,16 @@ def load_control(root: Path) -> dict[str, Any]:
     return deserialize_control(retry_lock_free(path.read_bytes), source=str(path))
 
 
+def baseline_control(state: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
+    """Strip unrelated additive keys so each downgrade test still proves its own feature's rejection."""
+    lead = dict(state["lead"])
+    properties = schema["properties"]["lead"]["properties"]
+    for key in ("host_uid", "start"):
+        if key not in properties:
+            lead.pop(key, None)
+    return {**state, "lead": lead}
+
+
 def with_cold(root: Path, hot: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     """The full state: hot units, invocations and credentials plus every archived one, with each archived unit's
     later moves applied; and the problems found reading the history (rule 19)."""

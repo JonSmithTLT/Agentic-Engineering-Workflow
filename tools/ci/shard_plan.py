@@ -198,28 +198,28 @@ class Sizing:
 
 
 def slowest_shard_s(nodeids: Sequence[str], durations: Mapping[str, float], shards: int, workers: int,
-                    outside_s: float) -> float:
+                    outside_s: float, *, excluded: frozenset[str] = frozenset()) -> float:
     """The estimated wall clock of the slowest of ``shards`` shards, cut by ``lanes.partition``."""
     lanes = _lanes_module()
     weight = lanes.weights(nodeids, durations)
     worst = 0.0
     for bin_ in lanes.partition(list(nodeids), durations, shards):
-        if bin_:
-            loads = [weight[n] for n in bin_]
+        loads = [weight[n] for n in bin_ if n not in excluded]
+        if loads:
             worst = max(worst, max(sum(loads) / workers, max(loads)))
     return worst + outside_s
 
 
 def size_lane(platform: str, lane: str, nodeids: Sequence[str], durations: Mapping[str, float], workers: int,
-              outside_s: float, budget: float) -> Sizing:
+              outside_s: float, budget: float, *, floor: int = 1, excluded: frozenset[str] = frozenset()) -> Sizing:
     """The fewest shards whose slowest one fits ``budget`` (:meth:`Deadlines.budget_s`)."""
     estimates: dict[int, float] = {}
-    for n in range(1, MAX_SHARDS + 1):
-        estimates[n] = slowest_shard_s(nodeids, durations, n, workers, outside_s)
+    for n in range(floor, MAX_SHARDS + 1):
+        estimates[n] = slowest_shard_s(nodeids, durations, n, workers, outside_s, excluded=excluded)
         if estimates[n] <= budget:
             return Sizing(platform, lane, n, len(nodeids), estimates[n], budget, need=n)
     weight = _lanes_module().weights(nodeids, durations)
-    longest = max(weight, key=lambda n: (weight[n], n)) if weight else ""
+    longest = max(weight.keys() - excluded, key=lambda n: (weight[n], n), default="")
     if longest and weight[longest] + outside_s > budget:
         floor = weight[longest] + outside_s  # no shard count can go below its longest test
         n = min((k for k, e in estimates.items() if e <= floor * 1.05), default=MAX_SHARDS)
@@ -346,6 +346,44 @@ REFERENCE_RULE_S = 45 * 60.0
 REFERENCE_NIGHT_VARIANCE = 1.09
 # The most a reference shard's estimate may be: on a night that slow, it still ends before the rule's 45 minutes.
 REFERENCE_TARGET_S = REFERENCE_RULE_S / REFERENCE_NIGHT_VARIANCE
+# The extra interpreters already grow at 30 minutes (nightly.yml). The Nov 10 increase is the floor, including when
+# the cache is cold. The serial and xdist measurements come from different sessions and have separate histories.
+EXTRA_TARGET_S = 30 * 60.0
+EXTRA_FLOORS = {"linux": 4, "win32": 8}
+
+
+def extra_plan(history: Mapping[str, Any] | None, seed: Mapping[str, Any], runners: Sequence[tuple[str, str, str]],
+               why: str = "") -> tuple[list[Sizing], dict[str, Any], str, list[str]]:
+    """Size the extra interpreters from their own xdist history, with a per-platform fallback."""
+    history = history or {}
+    runs = history.get("runs") or []
+    lanes = history.get("lanes") or {}
+    workers = history.get("workers") or {}
+    measured = update_durations.table(dict(history))["platforms"]
+    platforms = [p for _, _, p in runners]
+    usable = {p for p in platforms if runs and lanes.get(p) and workers.get(p) and measured.get(p)}
+    tables = {p: measured[p] if p in usable else (seed.get("platforms") or {}).get(p, {}) for p in platforms}
+    source = f"the median of {len(runs)} nightly extra-interpreter run(s), the last {runs[-1]}" if usable else (
+        "the committed partition table and extra-interpreter shard floors")
+    lanes_module = _lanes_module()
+    sizings, warnings = [], []
+    for p in platforms:
+        floor = EXTRA_FLOORS[p]
+        if p not in usable:
+            sizings.append(Sizing(p, REFERENCE_LANE, floor, 0, 0.0, EXTRA_TARGET_S, committed=floor))
+            warnings.append(f"{p} extra: using the {floor}-shard floor ({why or 'no usable xdist history'})")
+            continue
+        # pytest cuts the complete collection before -m "not serial" deselects. Count those tests in the partition
+        # so the bins agree, and leave them out of the xdist wall-time estimate because they run in their own job.
+        excluded = frozenset(n for n, lane in lanes[p].items() if lane in ONE_PROCESS)
+        kept = ((history.get("overhead") or {}).get(p) or {}).get(REFERENCE_LANE) or []
+        outside = statistics.median(kept) if kept else DEFAULT_OUTSIDE_S
+        s = size_lane(p, REFERENCE_LANE, sorted(lanes[p]), lanes_module.durations_for(p, {"platforms": tables}),
+                      workers[p], outside, EXTRA_TARGET_S, floor=floor, excluded=excluded)
+        sizings.append(s)
+        if s.warning:
+            warnings.append(f"{p} extra: {s.warning}")
+    return sizings, run_table(tables, sizings, source), source, warnings
 
 
 def fallback_split(minutes: Mapping[str, float], jobs: int) -> dict[str, int]:
@@ -403,7 +441,7 @@ def reference_plan(history: Mapping[str, Any] | None, seed: Mapping[str, Any], r
 
 
 def reference_matrix(sizings: Sequence[Sizing], runners: Sequence[tuple[str, str, str]]) -> dict[str, Any]:
-    """The `reference` job's matrix: per runner, shards 1..N of N."""
+    """A nightly shard matrix: per runner, shards 1..N of N."""
     count = {s.platform: s.shards for s in sizings}
     return {"include": [{"os": os_, "python": python, "shard": k, "of": count[platform]}
                         for os_, python, platform in runners for k in range(1, count[platform] + 1)]}
@@ -498,14 +536,38 @@ def summary(sizings: Sequence[Sizing], source: str, warnings: Sequence[str], ext
 def reference_main(args: argparse.Namespace, seed: Mapping[str, Any]) -> int:
     runners = runners_of(args.runner)
     history, why = update_durations.read_history(args.history, of="the nightly's reference shards")
-    beside = starting_jobs(args.workflows / "nightly.yml", besides="reference-plan")
+    workflow = args.workflows / "nightly.yml"
+    beside = starting_jobs(workflow, besides="reference-plan")
+    matrices = {}
+    extra_text, extra_warnings = "", []
+    if args.extra_history:
+        import yaml
+
+        jobs = yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"]
+        include = jobs["matrix-extra-serial"]["strategy"]["matrix"]["include"]
+        extra_runners = runners_of([f"{entry['os']}:{entry['python']}" for entry in include])
+        extra_history, extra_why = update_durations.read_history(args.extra_history, of="the nightly's extra shards")
+        extra, extra_table, extra_source, extra_warnings = extra_plan(extra_history, seed, extra_runners, extra_why)
+        update_durations.write_json(args.extra_durations_out, extra_table)
+        matrices["extra_matrix"] = reference_matrix(extra, extra_runners)
+        beside += sum(s.shards for s in extra)
+        extra_lines = ["## Extra-interpreter shards", "", f"Sized from {extra_source}. Target: "
+                       f"{EXTRA_TARGET_S / 60:g} minutes.", "", "| Platform | Shards | Slowest shard (est.) |",
+                       "|---|---|---|"]
+        for s in extra:
+            estimate = f"{s.slowest_s / 60:.1f} min" if s.tests else "-"
+            extra_lines.append(f"| {s.platform} | {s.shards} | {estimate} |")
+        extra_text = "\n".join(extra_lines) + "\n\n"
     sizings, durations_table, source, warnings = reference_plan(history, seed, runners, REFERENCE_TARGET_S, why,
-                                                                jobs=CONCURRENT_JOBS - beside)
+                                                                jobs=max(len(runners), CONCURRENT_JOBS - beside))
     update_durations.write_json(args.durations_out, durations_table)
-    text, warnings = reference_summary(sizings, source, warnings, REFERENCE_TARGET_S, beside)
+    text, warnings = reference_summary(sizings, source, [*warnings, *extra_warnings], REFERENCE_TARGET_S, beside)
+    text = extra_text + text
+    matrices["reference_matrix"] = reference_matrix(sizings, runners)
     if args.github_output:
         with args.github_output.open("a", encoding="utf-8") as fh:
-            fh.write(f"reference_matrix={json.dumps(reference_matrix(sizings, runners), separators=(',', ':'))}\n")
+            for name, values in matrices.items():
+                fh.write(f"{name}={json.dumps(values, separators=(',', ':'))}\n")
     if args.summary:
         with args.summary.open("a", encoding="utf-8") as fh:
             fh.write(text)
@@ -528,9 +590,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--summary", type=Path, metavar="FILE", help="append the Markdown summary here")
     ap.add_argument("--reference", action="store_true",
                     help="size the nightly's reference lane (nightly.yml `reference`) from its own history")
+    ap.add_argument("--extra-history", type=Path, metavar="FILE",
+                    help="with --reference, also size the nightly's extra-interpreter shards from this history")
+    ap.add_argument("--extra-durations-out", type=Path, metavar="FILE",
+                    help="the one partition table for the extra-interpreter shards")
     ap.add_argument("--runner", action="append", default=[], metavar="OS:PYTHON",
                     help="a runner the gate (or with --reference, the reference lane) runs on (repeat for each)")
     args = ap.parse_args(argv)
+    if (args.extra_history or args.extra_durations_out) and not (
+            args.reference and args.extra_history and args.extra_durations_out):
+        ap.error("--extra-history and --extra-durations-out must be used together with --reference")
     seed = json.loads(args.seed.read_text(encoding="utf-8"))
     if args.reference:
         if not args.runner:

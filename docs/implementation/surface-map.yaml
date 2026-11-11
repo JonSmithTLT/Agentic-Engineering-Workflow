@@ -1676,10 +1676,6 @@ commands:
     journeys: []
     mutates: "yes"
     mutates_basis: "the run's custody bridge records a reply on its own invocation's coordination thread"
-    lead_disposition: forbidden-to-lead
-    lead_kept_out_by: "the handler calls only a worker run's credential-custody bridge; no run bridge means USAGE"
-    primitive: none
-    primitive_reason: "worker-credential bridge operation, not a Lead transition primitive"
     refusals: [MESSAGING_DISABLED, PERMISSION_DENIED, REPLY_NOT_IN_THREAD, STALE_AUTHORITY, USAGE]
     conditional: "only inside a worker run with an enabled messaging launch snapshot; presentation grants nothing"
   - name: message read
@@ -1698,10 +1694,6 @@ commands:
     journeys: []
     mutates: "yes"
     mutates_basis: "after a successful bound bridge send, records exactly its returned Lead messages delivered"
-    lead_disposition: forbidden-to-lead
-    lead_kept_out_by: "the handler calls only a worker run's credential-custody bridge; no run bridge means USAGE"
-    primitive: none
-    primitive_reason: "worker-credential bridge delivery, not a Lead transition primitive"
     refusals: [MESSAGING_DISABLED, PERMISSION_DENIED, STALE_AUTHORITY, USAGE, WAIT_OUTSIDE_A_STEP, WAIT_UNSUPPORTED]
     conditional: "only inside a worker run with an enabled messaging launch snapshot; lifetime binding must be qualified"
 

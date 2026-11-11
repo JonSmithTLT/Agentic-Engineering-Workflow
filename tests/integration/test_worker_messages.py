@@ -9,6 +9,7 @@ import pytest
 from aewflow import create_planned_ticket
 from fake_harness import credential_hits
 from harness_conformance import FakeOpenCodeDriver, sync_dir
+from racing_read import read_text_or_none
 from test_harness_send_when import enable_messaging
 
 from aew.engine.api import Engine
@@ -103,7 +104,7 @@ def test_a_wait_orphaned_by_a_shorter_shell_timeout_records_no_delivery(lab, tmp
     assert shell["timed_out"]
     send(lab)
     output = Path(shell["stdout_file"])
-    lab.until(lambda: output.exists() and "ended_early" in output.read_text(encoding="utf-8"),
+    lab.until(lambda: "ended_early" in (read_text_or_none(output) or ""),
               what="orphaned wait exits early after its shell call ends")
     thread = Engine.discover(lab.root).message_thread("INV-0001")
     assert not any(f["kind"] == "DELIVERED" for f in thread["messages"][0]["facts"])

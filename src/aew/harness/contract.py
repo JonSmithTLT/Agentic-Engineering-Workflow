@@ -332,8 +332,9 @@ def preamble(c: LaunchContract) -> str:
         from aew.harness.wait_binding import MAX_WAIT_S
 
         lines.append("- Coordination is enabled for this run. Reply only to the Lead on your thread with "
-                     "`aew message reply <MSG> --file <file>|-`; `aew message read` reads your thread tail. "
-                     "`aew message wait [--after MSG] [--timeout SECONDS]` is one foreground wait, "
+                     "`aew message reply <message from aew message read> --file <file>` (or use --file - for stdin); "
+                     "`aew message read` reads your thread tail. `aew message wait` is one foreground wait "
+                     "(optionally pass --after MSG and --timeout SECONDS), "
                      f"at most {MAX_WAIT_S} seconds: do not set a shorter shell timeout. "
                      "If the adapter refuses WAIT_UNSUPPORTED, reply "
                      "and end your turn instead. Coordination never changes your scope or expected output.")

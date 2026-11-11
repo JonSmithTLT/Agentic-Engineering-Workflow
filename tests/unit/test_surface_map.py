@@ -1591,6 +1591,8 @@ def lead_kept_out(name: str, e: dict[str, Any]) -> str | None:
                "broker's checks"
     if "invocation_token" in ds:
         return "it acts only with an invocation credential, which the Lead does not hold"
+    if name in worker_commands():
+        return "it acts only through a worker run's credential-custody bridge, which the Lead does not hold"
     if e.get("home") == "internal" and not launcher_problem(name, e):
         return f"internal: started by {e['launcher']['code']}"
     if e.get("lead_kept_out_by"):

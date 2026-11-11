@@ -70,6 +70,7 @@ SRC = ROOT / "src" / "aew"
 PLACEHOLDERS: dict[str, str] = {
     K.REVISION: "17",
     "<invocation from aew harness status>": "INV-0012",
+    "<message from aew message read>": "MSG-INV-0007-1",
     # The guide's and the packs' forms: each names what goes there, and the reader knows where to find it.
     "<T>": "T-0007",  # a Ticket
     "<mode>": "walk",  # a steering mode

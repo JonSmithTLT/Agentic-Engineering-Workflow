@@ -538,6 +538,8 @@ are this registry's own vocabulary; the refusal schema will carry them.
 | `STEERING_NOT_CONFIGURED` | A steering command on a project whose policy names no steering mode | `steering_unconfigured` | operator |
 | `MIGRATION_REQUIRED` | The project's control state is v1 and must be migrated first | `migration_pending` | Lead |
 | `MESSAGING_DISABLED` | A coordination message while messaging is off | `messaging_off` | operator |
+| `WAIT_UNSUPPORTED` | The worker adapter or platform has no qualified foreground wait binding | `wait_binding_unavailable` | engine |
+| `WAIT_OUTSIDE_A_STEP` | No foreground shell call became available within the worker wait's grace | `wait_outside_step` | engine |
 | `TURN_END_NEEDS_MESSAGING` | `harness send --when turn-end` while messaging is off | `messaging_off` | operator |
 | `HARNESS_SEND_NEEDS_STORE` | `harness send` while messaging is on, before this AEW can record it in the store | `message_store_unavailable` | engine |
 | `MESSAGING_SNAPSHOT_MISMATCH` | A send to a run whose launch snapshot of the messaging switch disagrees with the project's | `messaging_switch_changed` | Lead |

@@ -649,8 +649,8 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: 'OpenCode kept current and qualified: E35''s probe and seams built (HarnessAdapter.capabilities(), the named
-    LaunchContract fields, explicit execute and browser denies, the ''nothing else loaded'' scenario), H-1 qualifies 2.1.4
-    into TESTED_VERSIONS with its token-semantics row and the C1 compaction re-probe, H-2 and H-3 land, and the qualified
+    LaunchContract fields, explicit execute and browser denies, the ''nothing else loaded'' scenario), H-1 re-probes compaction
+    (C1) on the pinned OpenCode 2.2.6, whose TESTED_VERSIONS entry and token-semantics row are in place, H-2 and H-3 land, and the qualified
     version runs the default flow in a real run. E149 and E150 once placed. A second adapter (F24) is outside this finish
     line until HOLD-06 releases it.'
   remaining:
@@ -663,8 +663,8 @@ systems:
       and browser denies, the ''nothing else loaded'' conformance scenario, tool_output limits (on the Now list)'
     row: E35
     estimate: 1 PR (estimate)
-  - slice: 'H-1: qualify OpenCode 2.1.4, with the C1 compaction re-probe, a TESTED_VERSIONS entry and a token_semantics
-      row (on the Now list; CAP-1 PR 3 has merged)'
+  - slice: 'H-1: the C1 compaction re-probe on the pinned OpenCode 2.2.6 (its TESTED_VERSIONS entry and token_semantics
+      row are in place; no evidence the re-probe ran)'
     row: E35
     estimate: 1-2 PRs (estimate)
   - slice: 'FROZEN by the reset of 2026-11-06 (design workspace record 2026-11-06-operator-reset-finish-and-switch-on.md):
@@ -707,11 +707,11 @@ systems:
   - src/aew/harness/supervisor.py:74, :222 (registry.load at every launch)
   - 'src/aew/policy/execution.py:29, :67, :215-216 (DEFAULT_HARNESS ''opencode''; the template''s harness: opencode; profile_harness
     falls back to it)'
-  - src/aew/harness/opencode/capabilities.py:14-15 (SUPPORTED_MAJOR = 2, TESTED_VERSIONS = ('2.0.18',))
+  - src/aew/harness/opencode/capabilities.py:14-15 (SUPPORTED_MAJOR = 2, TESTED_VERSIONS = ('2.2.6',))
   - src/aew/harness/opencode/capabilities.py:89-96 (version_problems refuses only a non-2 major); :1-7 (the per-launch /openapi.json
     probe is the real gate)
-  - 'src/aew/harness/opencode/adapter.py:139-146 (default_binary: TESTED_VERSIONS[0] picks the Windows default binary),
-    :296 (token_semantics has only a 2.0.18 row), :420-425 (the usage meter is labelled TESTED_VERSIONS[0])'
+  - 'src/aew/harness/opencode/adapter.py:180-183 (default_binary: TESTED_VERSIONS[0] picks the Windows default binary),
+    :364-365 (token_semantics has 2.0.18 and 2.2.6 rows), :543 (the usage meter is labelled TESTED_VERSIONS[0])'
   - 'src/aew/harness/opencode/adapter.py:189 (OPENCODE_DISABLE_PROJECT_CONFIG=1 in the server env: an E35 seam partly present)'
   - 'src/aew/harness/opencode/projection.py:100 (worker rules start rule(''*'', ''deny''): execute and browser denied by
     default, not by an explicit rule)'
@@ -2121,7 +2121,7 @@ systems:
   - src/aew/engine/api.py:542-544 (eight finalizers registered; src/aew/engine/seams.py:202 still says the list is empty)
   - src/aew/cli/history_commands.py:41 (history log), :55 (history compact)
   - src/aew/cli/work_commands.py:450,456 (harness wait --any); src/aew/engine/harness_ops.py:469 (outbox.wait_for)
-  - src/aew/surface/contract.py:211 (harness_wait tool); src/aew/engine/guide.py:123 ('Follow runs with harness_wait')
+  - src/aew/surface/contract.py:214 (harness_wait tool)
   - src/aew/dashboard/server.py:287 (/activity); src/aew/dashboard/projections.py:1086 (read_transitions)
   - src/aew/harness/notify.py:418,495 (outbox.wait_for, outbox.read_transitions)
   - src/aew/harness/steering_loop.py:297 (wake_mark), :524 (read_transitions)
@@ -2266,9 +2266,8 @@ systems:
     on_by_default: true
     used_in_default_flow: partly
   finish_line: Every validation records what it evaluated and what it did not check, and a failing check's lines reach the
-    worker (E120); a setup problem is named with its cause and fix before any Ticket, with the driver asserting it (E125);
-    V3's two missing detectors exist (E153); artifact_digests is populated or dropped and working_diff kept or removed;
-    all exercised by the vertical driver and a real run. The remote validation provider stays Designed until it has acceptance.
+    worker (E120); artifact_digests is populated or dropped and working_diff kept or removed; all exercised by the vertical
+    driver and a real run. The remote validation provider stays Designed until it has acceptance.
   remaining:
   - slice: 'E120: what its first PR left owed: the record''s section 2 (what a run went without), and E243''s project-owned
       source for the two lists its record now says are not known'
@@ -2288,25 +2287,24 @@ systems:
   decision: 'decided: only its slot items finish; the rest is frozen by the reset of 2026-11-06 (design workspace record
     2026-11-06-operator-reset-finish-and-switch-on.md), item 6'
   recommendation: finish
-  who: Lead (E120, E125); designer for E153's ruling; designer or operator for the two loose ends (BOARD v2 §4)
-  reason: E120 and E125 are on the Now list before first use, and E125's predecessor E119 has merged (BOARD v2 §0), so the
-    next step is building. artifact_digests is always empty and working_diff has no src caller; BOARD v2 §4 batches both
-    as loose ends. The remote provider stays Designed only.
+  who: Lead (E120); designer or operator for the two loose ends (BOARD v2 §4)
+  reason: E120 is on the Now list and still open; the local readiness surface (E125) and V3's two detectors (E153) have
+    closed. artifact_digests is always empty and working_diff has no src caller; BOARD v2 §4 batches both as loose ends.
+    The remote provider stays Designed only.
   evidence:
   - src/aew/snapshot/fingerprint.py:384-397 (evaluated_snapshot accepts artifact_digests)
   - src/aew/engine/workspace_ops.py:47-52 (its only caller passes exclude and include_ignored only, so artifact_digests
     is always [])
   - src/aew/schemas/evidence.schema.json:190; src/aew/dashboard/projections.py:661,677 (schema field and dashboard echo)
   - src/aew/engine/evidence_ops.py:1012,1043 (evaluated_snapshot on every evidence record), :954-979 (mutated_inputs refusal)
-  - 'src/aew/snapshot/fingerprint.py:32,412 (working_diff, self-flagged with no caller in src); grep: callers only tests/integration/test_fingerprint_reads.py:343
+  - 'src/aew/snapshot/fingerprint.py:32,414 (working_diff, self-flagged with no caller in src); grep: callers only tests/integration/test_fingerprint_reads.py:343
     and tests/regression/test_m4b_review.py:104'
-  - 'grep: no coverage or not-checked field in src/aew/engine/validation_ops.py or evidence_ops.py'
+  - src/aew/engine/validation_ops.py:50,314,398 (the coverage record E120's slices added)
   - src/aew/engine/workspace_ops.py:269,303 ('readiness' is dependency readiness, not setup readiness)
-  - tests/acceptance/test_vertical_path.py:81 (seeded check-changes-snapshot cause), :92-95 (model-not-listed seed), :714
-    (V3_CASES), :720-722 (the model-not-listed and check-changes-snapshot cases E153 names)
+  - tests/acceptance/test_vertical_path.py:83 (seeded check-changes-snapshot cause), :94-97 (model-not-listed seed), :723
+    (V3_CASES), :729 and :731 (the model-not-listed and check-changes-snapshot cases, detected since E153 closed)
   - 'docs/implementation/implementation-status.md:323-327 (Remote validation provider: Designed, no acceptance)'
-  - docs/implementation/future-work.yaml (row E120, at c11a61ea) (E120, Now), :1479 (E125, on the Now list after E119),
-    :1752 (E153, needs a ruling on what may run)
+  - docs/implementation/future-work.yaml (row E120, at c11a61ea) (E120, Now)
 - id: SYS-20
   name: G3 trusted operator origin (approvals)
   purpose: 'One trusted origin for the operator''s approvals: a PIN typed in a confirmer outside every sandbox approves

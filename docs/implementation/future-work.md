@@ -1193,7 +1193,7 @@ From `m3-audit-findings.md` and `m3-independent-audit-2026-09-29.md`, with the o
 
 **Source:** The review of #220 (F46.1 slice F1a): under a real replace loop, the configuration projection's lock-free reads reported a present file missing in 314 to 726 of about 24,000 reads per run until the owner retried `FileNotFoundError` as well
 
-**When:** **Unscheduled.** Owner: the dashboard API lane; after #220 merges
+**When:** **Unscheduled.** Owner: the dashboard API lane. `read_lock_free` is built (#220, merged 2026-10-12), and the reader does not use it yet; its fix is open as #423
 
 **Notes:** The reader-side member of one class: readers and scanners that do not go through the one owner. E76 is its test-side twin, the writer's replace racing a raw read; E74 is the same class in the code-registry scan
 

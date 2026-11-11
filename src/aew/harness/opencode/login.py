@@ -24,18 +24,38 @@ it, and never falls back to an older row of that provider.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sqlite3
 import stat
+import time
 from collections.abc import Mapping
+from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from aew.harness.containment import relay
 from aew.harness.opencode import capabilities
 
 DB = "opencode.db"
 BUSY_TIMEOUT_S = 5.0  # the operator's OpenCode holds its write lock briefly; a launch waits this long at most
+# Two attempts share the existing login-store busy-wait budget for one request.
+RESOLVE_READ_ATTEMPTS = 2
+RESOLVE_BUSY_TIMEOUT_S = BUSY_TIMEOUT_S / RESOLVE_READ_ATTEMPTS
+# A refreshing login the contained Lead relays as stored (the designer's addendum 1 to the CS-4 hand-off, option a).
+# Implementation bound: a request that starts with less than this left on the access token may outlive it mid-answer
+# (a 136 KB streamed answer took 7.8 s through a slow client in CS-3b's live lane), so the relay counts it expired.
+EXPIRY_MARGIN_S = 60.0
+# The cheapest use of the operator's own OpenCode that resolves, and so refreshes, a stored login: `opencode auth list`
+# went to the provider's token endpoint with no model call (measured on the Rocky VM, 2026-10-25).
+REFRESH_COMMAND = "opencode auth list"
+# What the operator runs when a relayed login has expired: the expiry message and the launch's warning both give it.
+REFRESH_STEP = (f"`{REFRESH_COMMAND}` at your own terminal: your OpenCode refreshes it there, and the Lead's next "
+                "request then works, with no restart")
+# Headers a refreshing login's requests carry from its stored metadata, which the relay sets so that the operator's
+# values never go inside: header -> metadata key. OpenCode 2.0.18's ChatGPT login sends its account id (measured).
+LOGIN_HEADERS = {"openai": {"chatgpt-account-id": "accountID"}}
 # The files SQLite keeps beside a database (its write-ahead log, the log's index, the rollback journal): they hold rows
 # not yet in the database, and appear and go while the database is open, after any launch.
 SIDECARS = ("-wal", "-shm", "-journal")
@@ -218,7 +238,8 @@ def _read(integration: str, method: str | None, value: Any, *, api_key_only: boo
         return Login(integration, "key", method, parsed["key"], metadata=meta)
     expires = parsed.get("expires")
     if (parsed.get("type") == "oauth" and isinstance(parsed.get("access"), str)
-            and isinstance(expires, (int, float)) and not isinstance(expires, bool)):
+            and isinstance(expires, (int, float)) and not isinstance(expires, bool)
+            and (isinstance(expires, int) or math.isfinite(expires))):
         if api_key_only:
             return Login(integration, "oauth", method)
         return Login(integration, "oauth", str(parsed.get("methodID") or method or ""), parsed["access"], int(expires),
@@ -232,7 +253,7 @@ def stored(env: Mapping[str, str]) -> tuple[list[Login], str | None]:
     operator's terms and without any value, why nothing could be read."""
     path = db_path(env)
     if not path.is_file():
-        return [], f"no OpenCode login database at {path}"
+        return [], "the OpenCode login database is missing"
     try:
         con = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=BUSY_TIMEOUT_S)
         try:
@@ -241,12 +262,71 @@ def stored(env: Mapping[str, str]) -> tuple[list[Login], str | None]:
         finally:
             con.close()
     except sqlite3.Error as exc:
-        return [], f"the OpenCode login database at {path} could not be read ({type(exc).__name__})"
+        return [], f"the OpenCode login database could not be read ({type(exc).__name__})"
     out: dict[str, Login] = {}
     for integration, method, _active, value, _updated in rows:
         if integration and integration not in out:
             out[integration] = _read(str(integration), method, value)
     return [out[k] for k in sorted(out)], None
+
+
+def unknown_remedy(provider: str) -> str:
+    """Why a stored login in a shape AEW does not know is not used, and what serves its provider instead."""
+    from aew.harness.containment import netns
+
+    variable = netns.PROVIDER_KEY_ENV.get(provider)
+    return (f"in a shape AEW does not know (AEW reads OpenCode {', '.join(capabilities.TESTED_VERSIONS)}'s, and never "
+            "guesses at another), so the contained Lead does not use it"
+            + (f"; to serve {provider} with an API key instead, start `aew opencode --provider-env {variable}`"
+               if variable and provider not in netns.CATALOG_ADDRESSED else ""))
+
+
+class StoredLogin:
+    """Resolve one provider's deciding login on each request, read-only and without refreshing it."""
+
+    def __init__(self, integration: str, base: Mapping[str, str]) -> None:
+        self.integration, self.base = integration, dict(base)
+
+    def _deciding_row(self) -> tuple[str | None, Any] | None:
+        path = db_path(self.base)
+        for _ in range(RESOLVE_READ_ATTEMPTS):
+            try:
+                if not stat.S_ISREG(path.stat().st_mode):
+                    break
+                with closing(sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True,
+                                             timeout=RESOLVE_BUSY_TIMEOUT_S)) as con:
+                    return con.execute(
+                        "SELECT method_id, value FROM credential WHERE rowid = ("
+                        "SELECT rowid FROM credential WHERE integration_id = ? "
+                        "ORDER BY active IS NOT 1, time_updated DESC, rowid DESC LIMIT 1)",
+                        (self.integration,),
+                    ).fetchone()
+            except FileNotFoundError:
+                return None
+            except (OSError, ValueError, sqlite3.Error):
+                continue
+        raise relay.Unavailable(f"AEW: your stored {self.integration} login could not be read. Try again once "
+                                "OpenCode's login store is readable.", cause="unreadable")
+
+    def __call__(self) -> tuple[str, dict[str, str]]:
+        row = self._deciding_row()
+        label = f"AEW: your stored {self.integration} login"
+        if row is None:
+            raise relay.Unavailable(f"{label} is missing. Log in with your own OpenCode (`opencode auth login`); "
+                                    "the Lead's next request then works, with no restart.", cause="missing")
+        entry = _read(self.integration, *row)
+        if entry.kind == UNKNOWN or not entry.secret:
+            raise relay.Unavailable(f"{label} is now {unknown_remedy(self.integration)}.", cause="unknown_shape")
+        if entry.kind != "oauth":
+            raise relay.Unavailable(f"{label} is now an API key, which this Lead session's relay was not set up for. "
+                                    "Restart `aew opencode` to use it.", cause="kind_changed")
+        if entry.expires is None or entry.expires <= (time.time() + EXPIRY_MARGIN_S) * 1000:
+            raise relay.Unavailable(f"{label} has expired, and the contained Lead never refreshes it "
+                                    f"(that would write your OpenCode's own login). Run {REFRESH_STEP}.",
+                                    cause="expired")
+        meta = entry.metadata
+        return entry.secret, {h: str(meta[k]) for h, k in LOGIN_HEADERS.get(self.integration, {}).items()
+                              if meta.get(k)}
 
 
 @dataclass(frozen=True)

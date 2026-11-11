@@ -14,7 +14,6 @@ from aew.knowledge.records import (
     work_unit_record,
 )
 from aew.schemas import SCHEMAS, _validator, schema, validate
-from aew.workspace import git
 
 WHO = {"kind": "lead", "session_label": "lead-a", "generation": 1}
 
@@ -133,16 +132,13 @@ def test_legacy_evidence_snapshot_with_empty_artifact_digests_validates():
 
 
 def test_only_the_dashboard_projection_uses_artifact_digests_in_backend_source():
-    root = Path(__file__).resolve().parents[2]
-    # The bundled dashboard client consumes contract 0.1.3, including this field.
-    matches = git.out("grep", "-I", "-F", "artifact_digests", "--", "src",
-                      ":(exclude)src/aew/dashboard/static", cwd=root)
-    projection = "src/aew/dashboard/projections.py:"
-    assert matches.splitlines() == [
-        projection + '        digests = _bounded([str(d) for d in (snapshot or {}).get("artifact_digests") or []])',
-        projection + '                                        "relevant_inputs_fingerprint": fingerprint, '
-        '"artifact_digests": digests}',
-    ]
+    src = Path(__file__).resolve().parents[2] / "src"
+    matches = {}
+    for path in src.rglob("*.py"):
+        count = path.read_bytes().count(b"artifact_digests")
+        if count:
+            matches[path.relative_to(src).as_posix()] = count
+    assert matches == {"aew/dashboard/projections.py": 2}
 
 
 def test_gates_schema_requires_all_risk_classes():

@@ -11,23 +11,15 @@ import os
 import subprocess
 import sys
 import threading
-import time
 from types import SimpleNamespace
 
 import pytest
 from message_wait_adapter import FakeWaitOpenCodeAdapter
+from notifier import until
 from test_coordination_store import world
 
 from aew.engine.api import Engine
 from aew.harness import agentenv, bridge, worker_messages
-
-
-def until(check, timeout=10):
-    deadline = time.monotonic() + timeout
-    while not check():
-        if time.monotonic() >= deadline:
-            raise AssertionError("bridge lifetime did not reach the expected state")
-        time.sleep(0.01)
 
 
 def event(adapter, kind, **fields):
@@ -95,8 +87,8 @@ def test_a_pending_real_cli_wait_releases_its_hold_on_connection_or_call_end_and
             assert child.returncode != 0 and json.loads(err)["error"]["code"] == "WAIT_OUTSIDE_A_STEP"
             assert not selections
         else:
-            until(lambda: messages.waiting)
-            until(lambda: bool(selections))  # actual bridge wait has bound and reached the real engine's selector
+            until(lambda: messages.waiting, timeout=10)
+            until(lambda: bool(selections), timeout=10)  # actual wait reached the real engine's selector
             other = subprocess.run([sys.executable, "-B", "-m", "aew", "-C", str(w.root), "whoami"],
                                    env=env, capture_output=True, timeout=10, **kwargs)
             assert other.returncode == 0 and json.loads(other.stdout)["invocation"] == w.inv
@@ -115,7 +107,7 @@ def test_a_pending_real_cli_wait_releases_its_hold_on_connection_or_call_end_and
             out, err = child.communicate(timeout=10)
             if end not in ("eof", "grace"):
                 assert child.returncode == 0 and json.loads(out)["outcome"] == "ended_early", err
-        until(lambda: not messages.waiting)
+        until(lambda: not messages.waiting, timeout=10)
         if end in ("eof", "grace"):
             assert adapter.wait_binding_valid(binding)  # EOF alone released the hold, not a step/run end
         mid = w.send()["message"]["id"]

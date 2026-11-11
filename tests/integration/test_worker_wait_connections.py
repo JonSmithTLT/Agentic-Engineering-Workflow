@@ -61,13 +61,13 @@ def test_a_pending_real_cli_wait_releases_its_hold_on_connection_or_call_end_and
                             events=lambda value: None, run="R-INV-0001-1",
                             require_message_authority=lambda: e.invocation_whoami(invocation_token=w.worker))
     selections = []
-    deliver = e.message_deliver_wait
+    pending = e.message_waiting
 
     def selecting(**kwargs):
         selections.append(True)
-        return deliver(**kwargs)
+        return pending(**kwargs)
 
-    monkeypatch.setattr(e, "message_deliver_wait", selecting)
+    monkeypatch.setattr(e, "message_waiting", selecting)
     messages = worker_messages.WorkerMessages(owner)
     owner.bridge = server = bridge.BridgeServer(
         lambda op, args: e.invocation_whoami(invocation_token=w.worker),

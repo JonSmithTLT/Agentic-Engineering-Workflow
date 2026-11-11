@@ -170,6 +170,7 @@ EXPLAINABLE = sorted(("harness.launch", "integrate.prepare", "invoke.create.muta
 
 MESSAGING = "coordination.messaging"
 MESSAGE_BODY_CAP = L.UNSEEN_CAP  # one body budget across a StageResult's payload and projection, not per envelope
+MESSAGE_BODY_BYTES = L.UNSEEN_BODY_BYTES
 ALL_SWITCHES = frozenset({MESSAGING})
 ENV_SWITCHES = "AEW_LEAD_SURFACE_SWITCHES"
 _SWITCH_TOOLS: dict[str, Tool] = {}

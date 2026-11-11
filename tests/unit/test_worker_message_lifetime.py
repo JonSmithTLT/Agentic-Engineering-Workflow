@@ -41,7 +41,8 @@ def setup(tmp_path, *, open_call=True):
         recorded.append("MSG-INV-0001-1")  # same order as the real engine: failed send must not reach this line
 
     s = SimpleNamespace(adapter=a, bridge=SimpleNamespace(serialized=nullcontext, closed=False),
-                        engine=SimpleNamespace(message_deliver_wait=engine_send),
+                        engine=SimpleNamespace(message_deliver_wait=engine_send,
+                                               message_waiting=lambda **kw: {"messages": [{"id": "MSG-INV-0001-1"}]}),
                         require_message_authority=lambda: None, _ending=threading.Event(), _credential="held",
                         events=lambda e: None, run="R-INV-0001-1")
     messages = worker_messages.WorkerMessages(s)

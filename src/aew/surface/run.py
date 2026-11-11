@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import json
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -292,31 +293,33 @@ def _run_tool(engine: Any, ctx: SurfaceContext, t: contract.Tool, arguments: Any
 
 
 def _message_budget(payload: Any, projection: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
-    """A filtered query/wait's bodies take priority over unsolicited projection bodies. Share the cap by identity
-    across the two fixed envelopes, preserving per-envelope omission counts and never mutating a cached projection.
-    Duplicate views of an already selected identity cost no additional body slot. Readers verify the carried body
-    before recording a receipt; omitted identities remain durable unseen for subsequent reads/recovery."""
-    selected: set[str] = set()
-
-    def bounded(envelope: Any) -> Any:
-        if not isinstance(envelope, dict) or not isinstance(envelope.get("coordination"), dict):
-            return envelope
-        view = envelope["coordination"]
-        bodies = view.get("awaiting_lead")
-        if not isinstance(bodies, list):
-            return envelope
-        kept = []
-        for body in bodies:
-            if body["id"] in selected or len(selected) < contract.MESSAGE_BODY_CAP:
-                selected.add(body["id"])
-                kept.append(body)
-        out = {**envelope, "coordination": {**view, "awaiting_lead": kept,
-                                           "omitted": view["omitted"] + len(bodies) - len(kept)}}
-        if "messages" in envelope:  # harness_wait's second fixed representation of the same selected body batch
-            out["messages"] = [m for m in envelope["messages"] if m["id"] in selected]
-        return out
-
-    return bounded(payload), bounded(projection)
+    """Quote selected framed bodies once in projection.coordination; payload/wait fields contain ID references.
+    Requested payload takes priority. Both the existing identity cap and a wire-byte budget apply before receipts;
+    no cached object is mutated. Long-body omissions are recoverable just like count-cap omissions."""
+    view = projection.get("coordination")
+    if not isinstance(view, dict):
+        return payload, projection
+    payload_view = payload.get("coordination") if isinstance(payload, dict) else None
+    requested = payload_view.get("awaiting_lead", []) if isinstance(payload_view, dict) else []
+    selected: dict[str, Any] = {}
+    size = 0
+    for message in [*requested, *view["awaiting_lead"]]:
+        if message["id"] in selected:
+            continue
+        cost = len(json.dumps(message, ensure_ascii=True, separators=(",", ":")).encode())
+        if len(selected) >= contract.MESSAGE_BODY_CAP or size + cost > contract.MESSAGE_BODY_BYTES:
+            break
+        selected[message["id"]] = message
+        size += cost
+    projection = {**projection, "coordination": {**view, "awaiting_lead": list(selected.values()),
+        "omitted": max(0, len(view["awaiting_lead"]) + view["omitted"] - len(selected))}}
+    if isinstance(payload_view, dict) and isinstance(payload, dict):
+        refs = [{"id": m["id"]} for m in requested if m["id"] in selected]
+        payload = {**payload, "coordination": {**payload_view, "awaiting_lead": refs,
+                    "omitted": payload_view["omitted"] + len(requested) - len(refs)}}
+        if "messages" in payload:
+            payload["messages"] = refs
+    return payload, projection
 
 
 def record_message_result(engine: Any, result: dict[str, Any], token: str | None) -> None:
@@ -325,6 +328,10 @@ def record_message_result(engine: Any, result: dict[str, Any], token: str | None
     carried bodies before invoking the established durable writer; no failed result consumes its projection."""
     if not token or result.get("ok") is not True:
         return
+    from aew.surface import readable
+
+    if len(readable.render(result).encode()) > readable.CUT_BYTES:
+        return  # the model's tool-output cut may remove the JSON line: never claim its bodies were carried
     if not any(isinstance(result.get(key), dict) and result[key].get("coordination", {}).get("awaiting_lead")
                for key in ("result", "projection")):
         return

@@ -67,3 +67,35 @@ def test_worker_tail_reads_consume_nothing_and_after_cannot_name_another_thread(
     with pytest.raises(ReplyNotInThread):
         w.e.message_waiting(invocation_token=w.worker, after="MSG-INV-9999-1")
     assert w.thread_path().read_bytes() == before
+
+
+def test_an_idle_worker_wait_checks_committed_messages_without_taking_a_control_session(w, tmp_path, monkeypatch):
+    import threading
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from message_wait_adapter import FakeWaitOpenCodeAdapter
+
+    from aew.harness.worker_messages import WorkerMessages
+
+    adapter = FakeWaitOpenCodeAdapter(SimpleNamespace(), tmp_path, lambda event: None)
+    adapter.session = "s"
+    adapter._wait_calls.event("session.step.started", {"assistantMessageID": "step"}, None)
+    adapter._wait_calls.event("session.tool.called", {"assistantMessageID": "step", "id": "call"}, "shell")
+    checks = []
+    original = w.e.message_waiting
+
+    def pending(**kwargs):
+        checks.append(True)
+        return original(**kwargs)
+
+    monkeypatch.setattr(w.e, "message_waiting", pending)
+    monkeypatch.setattr(w.e.store, "session", lambda: pytest.fail("idle wait took a control session"))
+    owner = SimpleNamespace(adapter=adapter, bridge=SimpleNamespace(serialized=nullcontext, closed=False),
+                            engine=w.e, require_message_authority=lambda: None, _ending=threading.Event(),
+                            _credential=w.worker, events=lambda event: None, run="R-INV-0001-1")
+    conn = SimpleNamespace(poll=lambda timeout: False)
+    returned = []
+    WorkerMessages(owner).wait({"after": "", "timeout_s": "0.35"}, conn).deliver(returned.append)
+    assert len(checks) >= 2
+    assert returned == [{"outcome": "timed_out", "messages": []}]

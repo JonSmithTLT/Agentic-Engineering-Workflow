@@ -368,7 +368,8 @@ qualification remains **NOT RUN / GAP**, not inherited from Linux or from determ
 
 The Lead's status/resume/action projection reads verified live threads and the bounded settled hot list's pinned
 seals; it neither trusts the digest for body identity nor walks all history per poll. Wait and wake reuse that view,
-quote at most 20 distinct worker bodies per result/wake, and retain omission counts and the existing recovery read.
+quote at most 20 distinct worker bodies per result/wake, also limited to a 32 KiB serialized-body budget below the
+50 KiB tool-output cut, and retain omission counts and the existing recovery read.
 A typed StageResult shares that budget across its filtered payload and project projection: payload bodies take
 priority; each envelope counts its own omissions. Worker data is attributed and escaped, with fences longer than
 embedded backtick runs; it cannot supply an action, hint or blocker. No new notifier or polling lane was added.
@@ -387,8 +388,8 @@ Only successful admission or exact-ID inbox/message reconciliation adds generati
 existing wake record; no wake writes a durable shown fact. Posted retention is bounded by the live inbox bounds plus
 the settled cap, not the public first-20 view. Final selection shares serialization with broker read completion;
 neither HTTP admission nor result transmission holds that serialization or the control lock. A timed-out request may
-still land after an empty GET: its uncertain identity is retained, never replaced with a fresh ID. This may hold
-automatic wakes while uncertainty persists; explicit reads/waits and durable resume remain available. A process loss
+still land after an empty GET: its uncertain identity is retained until the ADR-0009 60-second recovery bound or a
+pinned-session 404. Expiry releases news without fabricating posted IDs; the status line shows the hold. A process loss
 after output but before a receipt can re-list; a successful send/admission is not evidence of model understanding.
 Local told/posted suppress automatic news only: a new session's resume still carries durably unseen bodies.
 

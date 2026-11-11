@@ -574,7 +574,7 @@ def wake(why: list[str], runs: Mapping[str, Any], *, messages: list[dict[str, An
     is off) and the wake guide's keys for what to do next. The Lead's wait returns it; steering PR 2's broker will
     post it."""
     whys = [w for w in WHY if w in why]
-    return {"why": whys, "runs": dict(runs), "messages": list(messages or []), "next": whys}
+    return {"why": whys, "runs": dict(runs), "messages": [{"id": m["id"]} for m in messages or []], "next": whys}
 
 
 def _same(command: Any) -> str:

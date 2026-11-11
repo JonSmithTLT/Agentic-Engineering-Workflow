@@ -2041,3 +2041,11 @@ sequence/end marks use that same send-success boundary. Own-shell typed consumpt
 and flush. A failed send/write/flush records no message receipt. Local receipts do not clear durable attention or
 the worker inbox cap. Receipt of a successful response is not proof the model read or understood it, and a process
 loss between successful output and receipt recording may cause re-listing rather than exactly-once delivery.
+
+**Bounded uncertain wake recovery (2026-11-11, review M1).** `wake_queue.UNCERTAIN_HOLD_S` is a **60-second** local
+reconciliation deadline starting at the first recorded POSTING attempt, preserved across reads, `/new` and broker
+restart. It is a liveness/recovery bound, not evidence of non-admission. A pinned-session 404 or expiry clears the
+uncertain selection without marking any selected ID posted or advancing its news marks. The same queue can gather
+fresh news again; a delayed earlier admission may repeat news, the accepted disposable-state re-listing cost. The
+status line names the uncertain hold and its deadline. Confirmed admission still records only its exact verified IDs.
+This recovery bound applies to message and steering-loop wakes, not only one kind of news.

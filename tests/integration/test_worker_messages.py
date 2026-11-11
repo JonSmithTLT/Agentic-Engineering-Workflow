@@ -166,3 +166,26 @@ def test_final_worker_reply_survives_submit_seal_and_a_post_submit_continuation(
 
 
 pytestmark = pytest.mark.autopsy
+
+
+def test_adopting_messaging_off_refuses_every_enabled_snapshot_worker_operation(lab, tmp_path):
+    from test_coordination_store import OPERATOR, set_messaging
+
+    run, sync = launch(lab, tmp_path, [
+        {"do": "aew", "args": ["message", "read"]},
+        {"do": "aew", "args": ["message", "reply", MID, "--file", "-"], "stdin": "not admitted"},
+        {"do": "aew", "args": ["message", "wait", "--timeout", "0"]}])
+    send(lab)
+    e = Engine.discover(lab.root)
+    before = e.message_thread("INV-0001")
+    set_messaging(lab.root, "disabled")
+    e.manifest_adopt(token=lab.project.token, expect_rev=e.store.read()["revision"],
+                     reason="disable messaging after the launch snapshot", authorization=OPERATOR)
+    (sync / "go").touch()
+    for i in (2, 3, 4):
+        result = steps_done(lab, run, i)
+        assert result["exit"] != 0
+        assert json.loads(result["stderr"])["error"]["code"] == "MESSAGING_SNAPSHOT_MISMATCH"
+    assert e.message_thread("INV-0001") == before
+    (sync / "end").touch()
+    lab.wait(run)

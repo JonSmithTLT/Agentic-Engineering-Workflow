@@ -85,9 +85,9 @@ def reply(w, body="Reply for the Lead."):
     return w.reply(lead, body=body)["message"]["id"]
 
 
-def queue(w, b, poster):
+def queue(w, b, poster, *, clock=lambda: 100.0):
     return W.WakeQueue(w.root / ".aew", poster=poster, state=w.e.store.current, quiet_s=lambda: 100000,
-                       clock=lambda: 100.0, new_id=poster.new_id, generation=b.generation,
+                       clock=clock, new_id=poster.new_id, generation=b.generation,
                        messages=w.e.message_delivery_view, available=w.e.message_available_ids,
                        verify=w.e.message_result_ids, current=b._receipt_current, serial=b.server.serialized,
                        ended_result=lambda run: w.e.harness_wait(run, timeout=0, triggers=True,
@@ -275,8 +275,8 @@ def test_worker_text_cannot_spoof_wake_reasons_identities_or_terminal_framing(w)
         assert "\x1b" not in posted and "\u202e" not in posted
         assert shape(poster)["why"] == [K.WORKER_MESSAGE]
         assert [m["id"] for m in shape(poster)["messages"]] == [mid]
-        assert shape(poster)["messages"][0]["untrusted_text"] == body
-        assert "\n````\n" in shape(poster)["messages"][0]["rendered"]
+        assert shape(poster)["messages"] == [{"id": mid}]
+        assert "\n````\n" in shape(poster)["coordination"]["awaiting_lead"][0]["rendered"]
 
 
 def test_a_corrupted_in_flight_body_cannot_create_a_posted_receipt(w):
@@ -289,7 +289,7 @@ def test_a_corrupted_in_flight_body_cannot_create_a_posted_receipt(w):
         doc = W.read(w.root / ".aew")
         lines = doc["wake"]["post_text"].splitlines()
         frozen = json.loads(lines[1])
-        frozen["coordination"]["awaiting_lead"][0]["untrusted_text"] = "partial"
+        frozen["coordination"]["awaiting_lead"][0]["rendered"] = "partial"
         lines[1] = json.dumps(frozen)
         doc["wake"]["post_text"] = "\n".join(lines)
         (w.root / ".aew" / W.WAKES_REL).write_text(json.dumps(doc), encoding="utf-8")
@@ -352,3 +352,65 @@ def test_worker_message_handler_ablation_breaks_the_actual_wake_assertion_and_re
                 require_post(q)
         assert W.posted_messages(w.root / ".aew", b.generation) == set()
         require_post(q)
+
+
+@pytest.mark.parametrize("path", ["relayed_read", "new_session", "restart"])
+def test_uncertain_admission_hold_is_visible_bounded_and_does_not_stop_later_news(w, path):
+    first = reply(w)
+    poster = Poster()
+    poster.failure = "before"
+    now = [100.0]
+    with broker(w) as b:
+        q = queue(w, b, poster, clock=lambda: now[0])
+        with pytest.raises(TimeoutError):
+            q.tick()
+        original = W.read(w.root / ".aew")["wake"]
+        if path == "relayed_read":
+            b._read_receipt(w.e.status(w.wid), argparse.Namespace(command="status", work_id=w.wid))
+        elif path == "new_session":
+            poster.target = "session-after-new"
+        else:
+            poster.unavailable = True
+            q = queue(w, b, poster, clock=lambda: now[0])
+        last = reply(w, body="news arriving after the failed post")
+        now[0] += W.UNCERTAIN_HOLD_S - 1
+        q.tick()
+        assert W.read(w.root / ".aew")["wake"]["id"] == original["id"]
+        held = W.status(w.root / ".aew", generation=b.generation)
+        assert held["outstanding"]["uncertain_until"] == 100.0 + W.UNCERTAIN_HOLD_S
+        assert "admission uncertain; held until" in "\n".join(W.render(held))
+        assert W.posted_messages(w.root / ".aew", b.generation) == set()
+        now[0] += 2
+        q.tick()
+        assert poster.attempts[-1][1] != original["id"]
+        assert last in W.posted_messages(w.root / ".aew", b.generation)
+        if path == "relayed_read":
+            assert first not in W.posted_messages(w.root / ".aew", b.generation)
+
+
+def test_pinned_session_404_releases_an_uncertain_selection_without_marking_it_posted(w, monkeypatch):
+    reply(w)
+    poster = Poster()
+    poster.failure = "before"
+    with broker(w) as b:
+        q = queue(w, b, poster)
+        with pytest.raises(TimeoutError):
+            q.tick()
+        old_id = W.read(w.root / ".aew")["wake"]["id"]
+        monkeypatch.setattr(poster, "landed_in", lambda session, wake: W.SESSION_GONE)
+        monkeypatch.setattr(poster, "busy", lambda: True)
+        q.tick()
+        assert W.read(w.root / ".aew")["wake"]["id"] != old_id
+        assert W.posted_messages(w.root / ".aew", b.generation) == set()
+
+
+def test_a_wake_quotes_each_selected_framed_body_once_with_id_references_elsewhere(w):
+    body = "unique-framed-wake-body-" + "x" * 3800
+    mid = reply(w, body)
+    poster = Poster()
+    with broker(w) as b:
+        queue(w, b, poster).tick()
+        posted = poster.attempts[-1][2]
+        assert posted.count(body) == 1
+        assert shape(poster)["messages"] == [{"id": mid}]
+        assert "untrusted_text" not in shape(poster)["coordination"]["awaiting_lead"][0]

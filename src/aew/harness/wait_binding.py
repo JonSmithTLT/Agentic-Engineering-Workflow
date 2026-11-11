@@ -6,6 +6,7 @@ text, digest or run-directory file can establish this binding. Stream loss inval
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -13,6 +14,15 @@ from typing import Any
 # Windows runtime remains NOT RUN; this constant does not enable an unsupported adapter's binding.
 MAX_WAIT_S = 88
 CALL_GRACE_S = 2.0
+
+
+def qualified(platform: str, version: str) -> bool:
+    return platform == "linux" and version == "2.2.6"
+
+
+def preamble_wait_supported(profile: dict[str, Any]) -> bool:
+    """Only the measured host/harness is offered a wait; adapter runtime version is independently checked at use."""
+    return profile.get("harness") == "opencode" and qualified(sys.platform, "2.2.6")
 
 
 @dataclass(frozen=True)

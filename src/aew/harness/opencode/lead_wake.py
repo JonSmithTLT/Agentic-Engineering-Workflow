@@ -141,7 +141,7 @@ class LeadPoster:
 
     def landed_in(self, session: str, wake_id: str) -> str:
         """Only observed admission counts. An unavailable read is not confirmed pending admission."""
-        from aew.harness.wake_queue import UNAVAILABLE
+        from aew.harness.wake_queue import SESSION_GONE, UNAVAILABLE
 
         try:
             inbox = self._call(INBOX, session)
@@ -153,7 +153,7 @@ class LeadPoster:
             if not isinstance(messages, list):
                 return UNAVAILABLE
         except OpenCodeError as exc:
-            return UNKNOWN if exc.status == 404 else UNAVAILABLE
+            return SESSION_GONE if exc.status == 404 else UNAVAILABLE
         except OpenCodeUnavailable:
             return UNAVAILABLE
         return DELIVERED if any(isinstance(m, dict) and m.get("id") == wake_id for m in messages) else UNKNOWN

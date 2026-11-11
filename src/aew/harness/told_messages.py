@@ -1,4 +1,4 @@
-"""Disposable generation-scoped delivery receipts, never durable shown facts (amendment 3 §2.2, reviewed m-1).
+"""Disposable generation-scoped receipts, owned by ADR-0009's 2026-11-11 delivery-record contract.
 
 Only the broker records IDs from a verified, successful body-bearing result. The stable lock and its turnstile are
 not the replaceable JSON inode. Atomic replacement lets lock-free readers see an old complete union or the new one;

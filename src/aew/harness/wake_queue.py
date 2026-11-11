@@ -53,6 +53,10 @@ HEADER = "AEW wake (not the operator)"
 PENDING, POSTING, POSTED = "pending", "posting", "posted"
 # What a harness says of a wake it was given.
 WAITING, DELIVERED, UNKNOWN, UNAVAILABLE = "waiting", "delivered", "unknown", "unavailable"
+SESSION_GONE = "session_gone"
+# ADR-0009, bounded uncertain wake recovery (2026-11-11, M1): local liveness bound, not an admission guarantee.
+# At expiry news can be repeated; no consumed/posted fact is invented. One deadline survives read/new/restart.
+UNCERTAIN_HOLD_S = 60.0
 COUNT_KEYS = ("steps", "files", "commands", "tests")
 OFF_SWITCH = '`lead.push_wake: "off"` in the execution policy'
 
@@ -195,7 +199,10 @@ def status(aew_root: Path, *, generation: int | None = None, off: bool = False) 
     if off:
         return {"off": True}
     wake = doc["wake"]
-    return {"outstanding": None if wake is None else {k: wake.get(k) for k in ("id", "phase", "why")},
+    outstanding = None if wake is None else {k: wake.get(k) for k in ("id", "phase", "why")}
+    if outstanding is not None and wake["phase"] == POSTING:
+        outstanding["uncertain_until"] = float(wake.get("posting_at", wake["at"])) + UNCERTAIN_HOLD_S
+    return {"outstanding": outstanding,
             "last_posted": doc["last_posted"], "last_delivered": doc["last_delivered"],
             "last_failure": doc["last_failure"], "dropped": doc["dropped"],
             "watching": sorted(run for run, mark in doc["marks"].items() if not mark.get("ended_told")),
@@ -219,6 +226,9 @@ def render(status_: Mapping[str, Any]) -> list[str]:
     wake = status_.get("outstanding")
     if wake:
         lines.append(f"  ! outstanding wake {wake['id']}: {wake['phase']} ({', '.join(wake.get('why') or [])})")
+        if "uncertain_until" in wake:
+            lines.append(f"  ! admission uncertain; held until {_when(wake['uncertain_until'])} "
+                         f"(at most {UNCERTAIN_HOLD_S:g}s); then retry news without marking receipt")
     failure = status_.get("last_failure")
     if failure:
         lines.append(f"  ! the last pass failed: {failure['why']}")
@@ -239,7 +249,6 @@ def wake_text(wake_id: str, shape: Mapping[str, Any]) -> str:
     for run, digest in sorted((clean.get("runs") or {}).items()):
         digest = digest or {}
         lines.append(f"- {run}: {digest.get('state', P.UNKNOWN)}, {digest.get('steps', P.UNKNOWN)} steps")
-    lines.extend(m["rendered"] for m in clean.get("messages") or [] if isinstance(m.get("rendered"), str))
     return "\n".join(lines)
 
 
@@ -350,6 +359,11 @@ class WakeQueue:
 
     def _settle_messages(self, wake: dict[str, Any]) -> bool:
         landed = self.poster.landed_in(wake["session"], wake["id"])
+        if landed == SESSION_GONE or (wake["phase"] == POSTING and
+                self.clock() >= float(wake.get("posting_at", wake["at"])) + UNCERTAIN_HOLD_S):
+            self.doc["wake"] = None  # bounded recovery; never mark the abandoned selection posted
+            self._save()
+            return True
         if landed == UNAVAILABLE:
             return False  # uncertain is not admission, absence or permission to allocate another post ID
         if landed == UNKNOWN:
@@ -363,7 +377,8 @@ class WakeQueue:
                 view = self._message_view()
                 eligible = {m["id"] for m in (view or {}).get("awaiting_lead", [])}
                 selected = set(wake["selected_messages"])
-                if (view is None or not selected <= eligible or self.poster.session() != wake["session"]):
+                if ((selected and (view is None or not selected <= eligible))
+                        or self.poster.session() != wake["session"]):
                     return False  # absence from a read is not proof a timed-out request cannot still be admitted
                 reasons = json.dumps({"runs": wake["runs"], "messages": wake.get("message_triggers")}, sort_keys=True)
                 state = self.state()
@@ -481,7 +496,7 @@ class WakeQueue:
                 self._save()
                 return
             shape = self._shape(wake)
-            if wake.get("message_view") is not None:
+            if callable(getattr(self.poster, "post_to", None)):
                 target = self.poster.session()
                 if target is None or self.poster.busy_in(target):
                     return
@@ -489,6 +504,7 @@ class WakeQueue:
                 wake["selected_messages"] = [m["id"] for m in shape["messages"]]
                 wake["post_text"] = wake_text(wake["id"], shape)
             wake["phase"] = POSTING
+            wake["posting_at"] = self.clock()
             self._save()  # immutable ID/target/bytes before admission; no control lock or broker serial across HTTP
         if "selected_messages" in wake:
             self._admit(wake)

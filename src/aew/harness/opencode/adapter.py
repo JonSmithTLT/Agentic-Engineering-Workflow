@@ -90,7 +90,7 @@ from aew.harness.opencode.client import (
     location,
 )
 from aew.harness.usage_live import Meter
-from aew.harness.wait_binding import Binding, Calls
+from aew.harness.wait_binding import Binding, Calls, qualified
 
 BIN_ENV = "AEW_OPENCODE_BIN"
 POLL_S = 1.0
@@ -909,7 +909,7 @@ class OpenCodeAdapter(HarnessAdapter):
     @property
     def reports_steps(self) -> bool:
         # Only the measured platform/version may serve a bound worker wait. Windows remains NOT RUN / GAP.
-        return sys.platform == "linux" and self.health.get("version") == "2.2.6"
+        return qualified(sys.platform, str(self.health.get("version")))
 
     def open_step(self) -> str | None:
         with self._lock:

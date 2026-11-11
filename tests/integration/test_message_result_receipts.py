@@ -113,7 +113,7 @@ def test_complete_verified_result_ids_are_read_only_scoped_and_never_recursive(w
     assert w.thread_path().read_bytes() == thread and w.control_bytes() == control
 
 
-@pytest.mark.parametrize("field", ["id", "invocation", "work_unit", "sender", "run", "untrusted_text", "rendered"])
+@pytest.mark.parametrize("field", ["id", "invocation", "work_unit", "sender", "run", "rendered"])
 def test_changed_identity_or_partial_body_is_not_a_receipt(w, field):
     reply(w)
     result = w.e.status(w.wid)
@@ -121,6 +121,13 @@ def test_changed_identity_or_partial_body_is_not_a_receipt(w, field):
     altered["coordination"]["awaiting_lead"][0][field] = "forged or partial"
     assert w.e.message_result_ids(altered) == []
     del altered["coordination"]["awaiting_lead"][0][field]
+    assert w.e.message_result_ids(altered) == []
+
+
+def test_an_added_raw_body_copy_is_not_a_verified_receipt(w):
+    reply(w)
+    altered = w.e.status(w.wid)
+    altered["coordination"]["awaiting_lead"][0]["untrusted_text"] = "partial extra body"
     assert w.e.message_result_ids(altered) == []
 
 
@@ -178,7 +185,7 @@ def test_filtered_typed_read_and_its_project_projection_share_one_body_budget(w)
                for m in answer[key]["coordination"]["awaiting_lead"]}
     assert len(carried) <= 20, "one StageResult carried two independent 20-body batches"
     assert carried == old_ids
-    assert answer["projection"]["coordination"]["omitted"] == 40
+    assert answer["projection"]["coordination"]["omitted"] == 20
     assert answer["projection"]["coordination"]["recovery"] == "aew message unseen"
     run.record_message_result(w.e, answer, w.token)
     assert {m["id"] for m in w.e.message_attention()["awaiting_lead"]} == new_ids
@@ -203,6 +210,48 @@ def test_own_shell_typed_resume_records_the_sealed_body_and_the_next_commit_prun
     assert L.UNSEEN_KEY not in w.e.store.read()
     assert w.thread_path().read_bytes() == sealed
     assert mid not in cli(w, "resume", "--json").stdout
+
+
+@pytest.mark.parametrize("body_chars", [600, 3900])
+def test_twenty_reply_status_quotes_each_selected_framed_body_once_and_stays_under_the_tool_cut(w, body_chars):
+    from aew.surface import readable, run
+    from aew.surface.context import SurfaceContext, switches_for
+
+    lead = w.send()["message"]["id"]
+    texts = [f"unique-worker-body-{i}-" + "x" * (body_chars - 30) for i in range(20)]
+    ids = {w.reply(lead, body=text)["message"]["id"] for text in texts}
+    answer = run.run_tool(w.e, SurfaceContext.outside_session(switches=switches_for(w.e)),
+                          "status", {"work_id": w.wid}, token=w.token)
+    text = readable.render(answer)
+    assert len(text.encode()) < readable.CUT_BYTES
+    selected = {m["id"] for m in answer["projection"]["coordination"]["awaiting_lead"]}
+    assert 0 < len(selected) <= 20
+    if body_chars == 600:
+        assert len(selected) == 20
+    else:
+        assert len(selected) < 20
+    assert answer["projection"]["coordination"]["omitted"] == 20 - len(selected)
+    for body in texts:
+        assert text.count(body) in (0, 1)
+    assert sum(text.count(body) for body in texts) == len(selected)
+    assert all(set(ref) == {"id"} for ref in answer["result"]["coordination"]["awaiting_lead"])
+    run.record_message_result(w.e, answer, w.token)
+    # No omitted body was consumed; subsequent bounded delivery can recover the remaining batch.
+    unseen = w.e.message_attention()["awaiting_lead"]
+    assert not selected & {m["id"] for m in unseen}
+    assert {m["id"] for m in unseen} <= ids - selected
+
+
+def test_an_over_cut_result_never_records_its_carried_worker_bodies_as_shown(w):
+    from aew.surface import readable, run
+    from aew.surface.context import SurfaceContext, switches_for
+
+    mid = reply(w)
+    answer = run.run_tool(w.e, SurfaceContext.outside_session(switches=switches_for(w.e)), "status", {}, token=w.token)
+    answer["result"]["unrelated_large_field"] = "x" * readable.CUT_BYTES
+    assert len(readable.render(answer).encode()) > readable.CUT_BYTES
+    run.record_message_result(w.e, answer, w.token)
+    assert [m["id"] for m in w.e.message_attention()["awaiting_lead"]] == [mid]
 
 
 @pytest.mark.parametrize("sealed", [False, True])
@@ -254,7 +303,7 @@ def test_a_relayed_receipt_rejects_failed_partial_nested_out_of_target_or_stale_
         if plant == "failed":
             result["ok"] = False
         elif plant == "partial":
-            result["coordination"]["awaiting_lead"][0]["untrusted_text"] = "partial"
+            result["coordination"]["awaiting_lead"][0]["rendered"] = "partial"
         elif plant == "nested":
             result = {"untrusted_text": result}
         elif plant == "wrong_target":

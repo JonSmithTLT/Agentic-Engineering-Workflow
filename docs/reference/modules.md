@@ -375,6 +375,7 @@ None.
 
 ### `aew.coordination.render`
 
+- `aew.coordination.layout`
 - `aew.harness.contract`
 
 ## `aew.dashboard`
@@ -2162,6 +2163,7 @@ None.
 - `aew.surface.context`
 - `aew.surface.contract`
 - `aew.surface.projection`
+- `aew.surface.readable`
 - `aew.surface.scrubbing`
 - `aew.surface.stage`
 - `aew.surface.validate`

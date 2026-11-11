@@ -329,15 +329,15 @@ def preamble(c: LaunchContract) -> str:
                      "file left in the workspace changes the work under evaluation. Submit with "
                      "`aew submit --kind <kind> --file <that file>`, or pipe the report with `--file -`.")
     if (c.extra.get("coordination") or {}).get("messaging") == "enabled":
-        from aew.harness.wait_binding import MAX_WAIT_S
+        from aew.harness.wait_binding import MAX_WAIT_S, preamble_wait_supported
 
+        wait = ("`aew message wait` is one foreground wait (optionally pass --after MSG and --timeout SECONDS), "
+                f"at most {MAX_WAIT_S} seconds: do not set a shorter shell timeout. "
+                if preamble_wait_supported(c.execution_profile) else "Reply and end your turn. ")
         lines.append("- Coordination is enabled for this run. Reply only to the Lead on your thread with "
                      "`aew message reply <message from aew message read> --file <file>` (or use --file - for stdin); "
-                     "`aew message read` reads your thread tail. `aew message wait` is one foreground wait "
-                     "(optionally pass --after MSG and --timeout SECONDS), "
-                     f"at most {MAX_WAIT_S} seconds: do not set a shorter shell timeout. "
-                     "If the adapter refuses WAIT_UNSUPPORTED, reply "
-                     "and end your turn instead. Coordination never changes your scope or expected output.")
+                     f"`aew message read` reads your thread tail. {wait}"
+                     "Coordination never changes your scope or expected output.")
     return "\n".join(lines)
 
 
@@ -464,7 +464,7 @@ def wake_advice(key: str, messaging: bool = False) -> Wake:
 
 def messaging_guide_lines() -> tuple[str, ...]:
     """On-only explanation owned beside the wake advice, not a separately maintained prose catalog."""
-    return ("- Coordination changes no scope or authority.", f"- {wake_line(WORKER_MESSAGE, True)}",
+    return ("- `message_send` changes no scope or authority.",
             f"- {MESSAGE_READ_COST}")
 
 

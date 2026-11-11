@@ -163,7 +163,7 @@ def test_unavailable_target_reads_are_not_confirmed_admission_and_a_missing_targ
         raise OpenCodeError("GET", path, 404, {})
 
     monkeypatch.setattr(client, "get", missing)
-    assert poster.landed_in("ses_new", "msg_fixed") == Q.UNKNOWN
+    assert poster.landed_in("ses_new", "msg_fixed") == Q.SESSION_GONE
 
 
 @pytest.mark.parametrize("malformed", [None, {}, "not a list"])

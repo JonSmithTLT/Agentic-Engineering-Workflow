@@ -131,13 +131,13 @@
       "properties": {
         "awaiting_lead": {"type": "array", "maxItems": 20, "items": {
           "type": "object", "additionalProperties": false,
-          "required": ["id", "sender", "kind", "in_reply_to", "refs", "created_at", "untrusted_text", "author",
+          "required": ["id", "sender", "kind", "in_reply_to", "refs", "created_at", "author",
                        "invocation", "work_unit", "run", "seq", "rendered"],
           "properties": {
             "id": {"type": "string"}, "sender": {"type": "string"}, "kind": {"type": "string"},
             "in_reply_to": {"type": ["string", "null"]},
             "refs": {"type": "array", "items": {"type": "string"}}, "created_at": {"type": "string"},
-            "untrusted_text": {"type": "string"}, "author": {"type": "string"},
+            "author": {"type": "string"},
             "invocation": {"type": "string"}, "work_unit": {"type": "string"},
             "run": {"type": ["string", "null"]}, "seq": {"type": "integer", "minimum": 1},
             "rendered": {"type": "string"}, "seal": {"type": "string"}

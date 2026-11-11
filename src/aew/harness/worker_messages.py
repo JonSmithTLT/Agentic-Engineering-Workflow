@@ -95,7 +95,10 @@ class WorkerMessages:
                 try:
                     with self.delivery_lock, server.serialized():
                         sup.require_message_authority()
-                        sup.engine.message_deliver_wait(invocation_token=sup._credential, after=after, send=final_send)
+                        pending = sup.engine.message_waiting(invocation_token=sup._credential, after=after)
+                        if pending["messages"]:
+                            sup.engine.message_deliver_wait(invocation_token=sup._credential, after=after,
+                                                            send=final_send)
                 except _Ended:
                     send({"outcome": "ended_early", "messages": [],
                           "next_action": "the wait ended early; call `aew message wait` again"})

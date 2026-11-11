@@ -11,13 +11,15 @@ the checkpoint and the recovery escape are never auto-runnable, and the caller's
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from aew.engine.guards import AVAILABLE, BLOCKED, UNKNOWN
 from aew.engine.primitives import JUDGMENT_BEARING, MECHANICAL, POLICY_RESOLVED, spec_for
 from aew.surface.contract import Tool
 
-__all__ = ["AVAILABLE", "BLOCKED", "RANK", "UNKNOWN", "auto_runnable", "effective_class"]  # availability: one source
+__all__ = ["AUTO_RUN", "AVAILABLE", "BLOCKED", "RANK", "UNKNOWN", "auto_run_set", "auto_runnable",
+           "effective_class"]  # availability: one source
 RANK = {MECHANICAL: 0, POLICY_RESOLVED: 1, JUDGMENT_BEARING: 2}
 
 
@@ -35,6 +37,22 @@ def effective_class(t: Tool | None, arguments: dict[str, Any] | None = None) -> 
     for primitive in t.expands_to:
         out = _max(out, spec_for(primitive).operation_class)  # undeclared: JUDGMENT_BEARING (fail closed)
     return out
+
+
+# Register E83 (R01-38; the operator's R-DEC-04, 2026-10-25): the only shipped stages a stage runner may auto-run, each
+# called without ``execution`` (its ``promotes``: with it, a call is judgment-bearing and never auto-runnable).
+# ``auto_run_set`` derives the set from the contract by ``auto_runnable``'s own rule; a test holds the two equal, so a
+# stage joining or leaving it is a decision, never a side effect of a contract edit. Which steering mode lets them run
+# unconfirmed is the steering loop's rule (``steering.confirmation_reason``), not this module's.
+AUTO_RUN = frozenset({"ticket_start", "ticket_request_review"})
+
+
+def auto_run_set(tools: Mapping[str, Tool]) -> frozenset[str]:
+    """The tools of ``tools`` that ``auto_runnable`` can ever admit, by its own rule (called, never restated: the
+    review of E228's fourth PR, n2): each legal now and called with no promoting argument (``execution`` for the two
+    shipped steps). A promoting argument only raises a class, never lowers it, so a call with one is never
+    auto-runnable."""
+    return frozenset(name for name, t in tools.items() if auto_runnable(t, AVAILABLE, effective_class(t)))
 
 
 def auto_runnable(t: Tool | None, availability: str, operation_class: str) -> bool:

@@ -57,13 +57,15 @@ jobs:
     # The rule since E26 is to grow the count when a shard nears 45 minutes, never the timeout: each shard's estimate
     # stays at most the rule less a night's measured variance (shard_plan.REFERENCE_TARGET_S, derived there), so a
     # night that slow still ends it before 45. With no history yet, the runners share what the account's concurrent
-    # jobs leave beside this workflow's other jobs, never more. Static counts (4 Linux, 8 Windows, sized 2026-10-09)
+    # jobs leave beside this workflow's other jobs, including the extra matrix planned below. Static counts
+    # (4 Linux, 8 Windows, sized 2026-10-09)
     # ran out on 10-26 and 10-28. One table for the whole run: every shard of a runner must cut the same partition.
     name: reference shards (tools/ci/shard_plan.py --reference)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.plan.outputs.reference_matrix }}
+      extra-matrix: ${{ steps.plan.outputs.extra_matrix }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -77,16 +79,28 @@ jobs:
           path: reference-history/history.json
           key: reference-durations-restore-only
           restore-keys: reference-durations-
+      - name: The extra interpreters' durations history (the nightly's own, newest)
+        uses: actions/cache/restore@v6
+        with:
+          path: extra-history/history.json
+          key: extra-durations-restore-only
+          restore-keys: extra-durations-
       - id: plan
         run: >-
           python tools/ci/shard_plan.py --reference --history reference-history/history.json
           --seed tests/durations.json --durations-out "$RUNNER_TEMP/reference-durations/durations.json"
           --runner ubuntu-latest:3.11 --runner windows-latest:3.13
+          --extra-history extra-history/history.json --extra-durations-out "$RUNNER_TEMP/extra-durations/durations.json"
           --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v7
         with:
           name: reference-durations
           path: ${{ runner.temp }}/reference-durations/
+          retention-days: 30
+      - uses: actions/upload-artifact@v7
+        with:
+          name: extra-durations
+          path: ${{ runner.temp }}/extra-durations/
           retention-days: 30
 
   reference:
@@ -335,25 +349,13 @@ jobs:
     # lanes (`--shard k/N` over every collected test; the serial tests are deselected here and run once per OS, in
     # `matrix-extra-serial`, with no xdist). `matrix-extra-assurance` proves the shards and the serial lane together ran
     # every collected test exactly once. One job per OS ran out its 60 minute timeout from 2026-10-06 (strategy §8). Grow
-    # `of` when a shard nears 30 minutes; the timeout is never raised for slowness (only G3a's clearance). Linux 4 and
-    # Windows 8 since 2026-11-10, when every Windows shard took 47 to 57 minutes and Linux 34 to 40 (strategy §11).
+    # `of` when a shard nears 30 minutes; the timeout is never raised for slowness (only G3a's clearance).
+    # reference-plan sizes these shards from their own xdist history. Its floors are Linux 4 and Windows 8.
     name: full suite ${{ matrix.shard }}/${{ matrix.of }} (${{ matrix.os }}, py${{ matrix.python }})
+    needs: reference-plan
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - {os: ubuntu-latest, python: "3.13", shard: 1, of: 4}
-          - {os: ubuntu-latest, python: "3.13", shard: 2, of: 4}
-          - {os: ubuntu-latest, python: "3.13", shard: 3, of: 4}
-          - {os: ubuntu-latest, python: "3.13", shard: 4, of: 4}
-          - {os: windows-latest, python: "3.11", shard: 1, of: 8}
-          - {os: windows-latest, python: "3.11", shard: 2, of: 8}
-          - {os: windows-latest, python: "3.11", shard: 3, of: 8}
-          - {os: windows-latest, python: "3.11", shard: 4, of: 8}
-          - {os: windows-latest, python: "3.11", shard: 5, of: 8}
-          - {os: windows-latest, python: "3.11", shard: 6, of: 8}
-          - {os: windows-latest, python: "3.11", shard: 7, of: 8}
-          - {os: windows-latest, python: "3.11", shard: 8, of: 8}
+      matrix: ${{ fromJSON(needs.reference-plan.outputs.extra-matrix) }}
     runs-on: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.os }}
     # its timeout before G3a plus the session deadline's clearance (test_ci_tools: PRE_G3A_TIMEOUT_MIN)
     timeout-minutes: 64
@@ -370,10 +372,15 @@ jobs:
       - uses: ./.github/actions/setup-aew
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: extra-durations
+          path: ${{ runner.temp }}/extra-durations
       - name: pytest -m "not serial" --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto
         run: >-
           python -m pytest -q -p no:cacheprovider --durations=20 -m "not serial"
           --shard ${{ matrix.shard }}/${{ matrix.of }} -n auto --dist worksteal --test-timeout 600
+          "--durations-file=${{ runner.temp }}/extra-durations/durations.json"
           --session-deadline 3600 --max-worker-restart 0
           "--lane-report=${{ runner.temp }}/nightly-extra/extra-${{ runner.os }}-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v7
@@ -444,6 +451,31 @@ jobs:
         run: >-
           python tools/ci/check_assurance.py extra-reports --skips tests/platform-skips.yaml
           --require linux,win32 --summary "$GITHUB_STEP_SUMMARY"
+      - name: The extra interpreters' durations history so far
+        if: success() || failure()
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          path: extra-history/history.json
+          key: extra-durations-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: extra-durations-
+      - id: extra-durations
+        name: This night's passing extra sessions join the history
+        if: success() || failure()
+        continue-on-error: true
+        run: >-
+          python tools/ci/update_durations.py extra-reports --history extra-history/history.json
+          --out extra-history/durations.json --passed-only
+          --run-label "${{ github.run_id }}/${{ github.run_attempt }} ${{ github.sha }}"
+      - name: Save the extra interpreters' history for the next nights
+        if: >-
+          (success() || failure()) && steps.extra-durations.outcome == 'success'
+          && hashFiles('extra-history/history.json') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: extra-history/history.json
+          key: extra-durations-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Every shard job and the serial lane's jobs succeeded
         if: always()
         run: |

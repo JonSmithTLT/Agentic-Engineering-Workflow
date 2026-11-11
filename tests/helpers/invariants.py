@@ -50,6 +50,9 @@ def load_control(root: Path) -> dict[str, Any]:
 
 def baseline_control(state: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
     """Strip unrelated additive keys so each downgrade test still proves its own feature's rejection."""
+    state = dict(state)
+    if "steering" not in schema["properties"]:
+        state.pop("steering", None)
     lead = dict(state["lead"])
     properties = schema["properties"]["lead"]["properties"]
     for key in ("host_uid", "start"):

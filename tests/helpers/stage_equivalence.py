@@ -12,6 +12,9 @@ authored files under ``.aew/``. It removes, **by path only** (a key of the same 
   revision a generated copy names, and the files derived from the transition log (the log, the transaction records,
   ``CURRENT.md``).
 
+A JSON Lines record file (the steering records, from ``aew init`` on) is compared as data, one record a line, so its
+times are normalised too.
+
 What no two runs share is **normalised, never dropped**: a time becomes ``"<time>"`` (a null stays null, so closed or
 revoked versus open still differs), a credential id becomes a stable ordinal in order of first appearance (so the
 token table, its revocations and every reference to a token still compare), a credential verifier becomes
@@ -210,6 +213,9 @@ def end_state(root: Path, decisions: dict[str, dict[str, Any]] | None = None) ->
             record = history_record(rel, yaml.safe_load(text), normalise)
             if record is not None:  # None: the journal's own annotation
                 files[rel] = record
+            continue
+        if rel.endswith(".jsonl"):  # one record a line (the steering records): compared as data, times normalised
+            files[rel] = [normalise(json.loads(line), (), frozenset()) for line in text.splitlines() if line.strip()]
             continue
         if text.startswith("<!-- generated copy"):  # its first line names the control revision it was made at
             text = text.split("\n", 1)[1]

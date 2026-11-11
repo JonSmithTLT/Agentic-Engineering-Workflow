@@ -1746,6 +1746,7 @@ None.
 - `aew.harness.lead_broker`
 - `aew.harness.progress`
 - `aew.harness.runlog`
+- `aew.harness.steering_loop`
 - `aew.util`
 
 ### `aew.harness.weaker_register`

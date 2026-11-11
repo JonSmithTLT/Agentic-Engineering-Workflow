@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import time
+from io import StringIO
 from pathlib import Path
 
 import printed_commands as P
@@ -70,13 +71,16 @@ def test_lead_authority_accept_shows_the_bound_digest_on_a_terminal(project, mon
 
     candidate = next(c for c in project.ok("authority", "list")["candidates"] if c["path"] == "README.md")
     shown = Engine.discover(project.root).authority_candidate(candidate["id"])
-    monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
+    terminal = StringIO()
+    monkeypatch.setattr(terminal, "isatty", lambda: True)
     monkeypatch.setenv("AEW_LEAD_TOKEN", project.token)
-    assert main(["-C", str(project.root), "authority", "accept", candidate["id"], "--class", "orientation",
-                 "--decided-by", "lead", "--expect-rev", str(project.rev())]) == 0
-    out = capsys.readouterr()
-    assert f"README.md (file, SHA-256 {shown['digest']})" in out.err
-    decision = json.loads(out.out)["decision"]
+    argv = ["-C", str(project.root), "authority", "accept", candidate["id"], "--class", "orientation",
+            "--decided-by", "lead", "--expect-rev", str(project.rev())]
+    with monkeypatch.context() as streams:
+        streams.setattr(sys, "stderr", terminal)
+        assert main(argv) == 0
+    assert f"README.md (file, SHA-256 {shown['digest']})" in terminal.getvalue()
+    decision = json.loads(capsys.readouterr().out)["decision"]
     assert shown["ref"] in (project.root / f".aew/decisions/{decision}.md").read_text(encoding="utf-8")
 
 

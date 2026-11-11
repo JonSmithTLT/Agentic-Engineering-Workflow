@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from aew.engine import coverage as CV
 from aew.engine import disposition_ops as DO
 from aew.engine import gates as G
 from aew.engine import transitions
@@ -921,6 +922,7 @@ class EvidenceCommands:
             cfg = C.resolve(self.k.policy("checks"), check_id)
             definition = C.definition_digest(cfg,
                                              guardrails=self.k.policy("guardrails") if cfg.get("builtin") else None)
+            coverage_inventory = CV.inventory(self.k.policy("checks"), self.k.policy("guardrails"))
             meta = self.gates.record_meta(unit)
             scope_paths = (meta.get("scope") or {}).get("paths", [])
             acceptance_inputs = (meta.get("acceptance") or {}).get("inputs")
@@ -931,6 +933,7 @@ class EvidenceCommands:
             with DO.signalled(self.k.aew_root, work_id):  # recorded as an anomaly by the next Lead commit (E5b)
                 self.gates.require_workspace_intact(inv_id, inv, workspace, ws_id)  # never a check on an edited one
         before = self.invocations.snapshot_of(workspace, ws_id)
+        coverage_files = self._coverage_files(workspace, base, inv.get("scope") or "ticket")
         if cfg.get("builtin"):
             if base is None:
                 raise IllegalTransition(f"{inv_id}'s workspace records no base commit, so guardrails cannot say what "
@@ -938,7 +941,8 @@ class EvidenceCommands:
             verdict = GR.evaluate(changed_paths(workspace, base), self.k.policy("guardrails"), scope_paths,
                                   acceptance_inputs)
             run = {"exit_code": 1 if verdict["violations"] else 0, "duration_s": 0.0,
-                   "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"]}
+                   "log": json.dumps(verdict, indent=2), "command": ["aew-builtin", "guardrails"],
+                   "cwd": str(workspace.resolve())}
         else:
             verdict = None
             if label is None:  # the operator's own `aew check run`: contained here, or refused (DV-4)
@@ -967,6 +971,7 @@ class EvidenceCommands:
                 "evaluated_snapshot": before,
                 "method": {"capability": "targeted_test_execution" if not cfg.get("builtin") else "guardrail_check",
                            "provider": "aew-check-runner", "command": run["command"],
+                           "cwd": run.get("cwd"),
                            "containment": (run.get("containment") or {}).get("filesystem")
                            or ("os_readonly_roots" if layout is not None else "workdir_separation_only"),
                            # the check's effective network (F28 §3.8), where it ran in a sandbox
@@ -987,8 +992,15 @@ class EvidenceCommands:
             inputs = self.coordination.evidence_inputs(work_id, inv_id)
             if inputs:
                 meta["coordination_inputs"] = inputs
+            meta["coverage"] = CV.build(
+                subject={"work_id": work_id, "scope": "check", "verification_scope": inv.get("scope") or "ticket",
+                         "snapshot": before},
+                configured=coverage_inventory, checks=[CV.observation(meta)], changed_files=coverage_files,
+                capabilities=CV.run_capabilities(self.k.aew_root, [meta["producer"]["run"]]
+                                                 if meta["producer"].get("run") else []), result=result)
             create_exclusive(self.k.aew_root / f"evidence/{work_id}/{eid}.md", E.seal(meta, ""))
         return {"ok": True, "evidence": eid, "result": result, "exit_code": run["exit_code"],
+                "coverage": meta["coverage"],
                 "mutated_inputs": mutated, "evaluated_snapshot": before, "log": str(self.k.aew_root / log_rel),
                 "log_access": "Full log for the shell, not the harness read tool.",
                 **({"failure_output": C.failure_output(run["log"])} if run["exit_code"] != 0 else {})}
@@ -1081,7 +1093,17 @@ class EvidenceCommands:
             path = self.k.aew_root / f"evidence/{work_id}/{meta['id']}.md"
             create_exclusive(path, E.seal(ordered, body))
         return {"ok": True, "evidence": meta["id"], "result": meta["result"],
-                "evaluated_snapshot": meta["evaluated_snapshot"], "path": str(path)}
+                "evaluated_snapshot": meta["evaluated_snapshot"], "path": str(path),
+                **({"coverage": meta["coverage"]} if "coverage" in meta else {})}
+
+    @staticmethod
+    def _coverage_files(workspace: Path, base: str | None, scope: str) -> dict[str, Any]:
+        if not base or scope not in {"ticket", "integration"}:
+            return CV.files(None, source="workspace_diff", reason="no_source_diff_for_this_subject")
+        try:
+            return CV.files(changed_paths(workspace, base), source=f"workspace_diff_from:{base}")
+        except (AEWError, OSError):
+            return CV.files(None, source="workspace_diff", reason="evaluated_source_diff_unavailable")
 
     def _verification_binding(self, state: dict[str, Any], inv_id: str, inv: dict[str, Any],
                               submitted: dict[str, Any]) -> dict[str, Any]:
@@ -1100,7 +1122,8 @@ class EvidenceCommands:
         if not claims:
             raise ValidationFailed("verification needs at least one claim")
         work_id = inv["work_unit"]
-        records = {e["id"]: e for e in E.scan(self.k.aew_root, work_id)[0]}
+        scanned, coverage_problems = E.scan(self.k.aew_root, work_id)
+        records = {e["id"]: e for e in scanned}
         expected_fp = ((inv.get("observation") or {}).get("fingerprint")
                        or inv["snapshot"]["relevant_inputs_fingerprint"])
         definitions = C.current_definitions(self.k.policy("checks"), self.k.policy("guardrails"))
@@ -1124,7 +1147,24 @@ class EvidenceCommands:
             overall = "pass"
         else:
             overall = "inconclusive"
-        return {"verification": v, "evaluated_snapshot": inv["snapshot"], "result": overall}
+        observed = [e for e in scanned if e["kind"] == "check_result"
+                    and e["producer"]["invocation"] == inv_id
+                    and e["evaluated_snapshot"]["relevant_inputs_fingerprint"] == expected_fp
+                    and C.proves_current_definition(e, definitions)]
+        cited = {cid for c in claims for cid in c.get("checks", [])}
+        workspace, _ws_id, base = self.invocations.invocation_workspace(state, inv)
+        own_run = self.invocations.execution_provenance(inv).get("run")
+        runs = [e["producer"]["run"] for e in observed if e["producer"].get("run")]
+        if own_run:
+            runs.append(own_run)
+        coverage = CV.build(
+            subject={"work_id": work_id, "scope": dispatched, "snapshot": inv["snapshot"]},
+            configured=CV.inventory(self.k.policy("checks"), self.k.policy("guardrails")),
+            checks=[CV.observation(e, cited=e["id"] in cited) for e in observed],
+            changed_files=self._coverage_files(workspace, base, dispatched),
+            capabilities=CV.run_capabilities(self.k.aew_root, runs), result=overall,
+            complete=not coverage_problems, limits=["check_evidence_incomplete"] if coverage_problems else [])
+        return {"verification": v, "evaluated_snapshot": inv["snapshot"], "result": overall, "coverage": coverage}
 
     def review_ingest(self, *, token: str, expect_rev: int, work_id: str, evidence_id: str) -> dict[str, Any]:
         return self._handler(INGEST, work_id)(token=token, expect_rev=expect_rev, work_id=work_id,
@@ -1424,7 +1464,10 @@ class EvidenceCommands:
             self.gates.ingest_ref(unit, ev)
             self.invocations.complete_invocation(state, ev["producer"]["invocation"])
             result = ev["result"]
-            unit["last_verification"] = {"evidence": evidence_id, "result": result, "scope": scope}
+            unit["last_verification"] = {"evidence": evidence_id, "result": result, "scope": scope,
+                                         "coverage": CV.pin(ev["_path"], ev["_sha256"], ev.get("coverage"))}
+            if scope == "integration":
+                unit["integration"]["coverage"] = unit["last_verification"]["coverage"]
             change = None
             # The outcome, by the function the query predicted it with (the report is pinned already: a no-op there).
             to, status, pending = self._verification_outcome(state, work_id, ev)
@@ -1451,7 +1494,8 @@ class EvidenceCommands:
             ctx.summary = f"{work_id} verification {evidence_id} ({scope}) ingested: {result}"
             self.units.before_commit(ctx)
         return {"ok": True, "work_id": work_id, "scope": scope, "result": result, "transition": change,
-                "pending_verifications": pending, "revision": ctx.session.committed_revision}
+                "pending_verifications": pending, "revision": ctx.session.committed_revision,
+                "coverage": ev.get("coverage") or CV.legacy()}
 
     def verify_classify(self, *, token: str, expect_rev: int, work_id: str, classification: str,
                         reason: str) -> dict[str, Any]:

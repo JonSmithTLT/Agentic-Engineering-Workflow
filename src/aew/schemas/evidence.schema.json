@@ -38,6 +38,7 @@
     "method": {"type": "object"},
     "claim": {"type": "string"},
     "result": {"enum": ["pass", "fail", "inconclusive", "blocked"]},
+    "coverage": {"$ref": "#/$defs/coverage", "description": "Engine-computed disclosure, not a gate or an authored claim. Optional on legacy records."},
     "evidence": {
       "type": "array",
       "items": {"type": "object", "required": ["path", "sha256"]}
@@ -180,6 +181,44 @@
     }
   ],
   "$defs": {
+    "coverage_inventory": {
+      "oneOf": [
+        {"type": "object", "required": ["known", "reason"], "additionalProperties": false,
+         "properties": {"known": {"const": false}, "reason": {"type": "string", "minLength": 1}}},
+        {"type": "object", "required": ["known", "source", "items"], "additionalProperties": false,
+         "properties": {"known": {"const": true}, "source": {"type": "string", "minLength": 1},
+                        "items": {"type": "array", "items": {"type": "object"}}}}
+      ]
+    },
+    "coverage": {
+      "type": "object", "required": ["summary"],
+      "description": "Scope is recorded execution (argv/cwd/definition/snapshot), never inferred semantic test coverage. A legacy disclosure may have only its summary.",
+      "properties": {
+        "schema": {"const": "aew/validation-coverage/v1"},
+        "subject": {"type": "object"},
+        "checks": {"type": "array", "items": {"type": "object",
+          "required": ["check_id", "command", "cwd", "definition_sha256", "evaluated_snapshot", "result"],
+          "properties": {"check_id": {"type": "string"}, "command": {"type": ["array", "null"], "items": {"type": "string"}},
+                         "cwd": {"type": ["string", "null"]}, "definition_sha256": {"type": ["string", "null"]},
+                         "evaluated_snapshot": {"type": ["object", "null"]}, "result": {"type": "string"}}}},
+        "configured_not_run": {"type": "array", "items": {"type": "object",
+          "required": ["check_id", "definition_sha256", "reason"]}},
+        "changed_files": {"type": "object", "required": ["known"], "properties": {"known": {"type": "boolean"}}},
+        "run_capabilities": {"type": "object", "additionalProperties": {"type": "object",
+          "required": ["recorded", "tools_recorded", "skills_recorded", "missing_tools", "missing_skills"],
+          "properties": {"recorded": {"type": "boolean"}, "tools_recorded": {"type": "boolean"},
+                         "skills_recorded": {"type": "boolean"}, "missing_tools": {"type": "array"},
+                         "missing_skills": {"type": "array"}}}},
+        "affected_tests": {"$ref": "#/$defs/coverage_inventory"},
+        "ci_tools": {"$ref": "#/$defs/coverage_inventory"},
+        "observation_limits": {"type": "array", "items": {"type": "string"}},
+        "result": {"type": "string"},
+        "summary": {"type": "object", "required": ["headline", "verdict", "known_gaps", "lines"],
+          "properties": {"headline": {"type": "string"}, "verdict": {"type": "string"},
+                         "known_gaps": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+                         "lines": {"type": "array", "items": {"type": "string"}}}}
+      }
+    },
     "snapshot": {
       "type": "object",
       "required": ["base_revision", "workspace_id", "relevant_inputs_fingerprint"],

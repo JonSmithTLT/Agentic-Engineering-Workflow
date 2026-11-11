@@ -692,6 +692,16 @@ None.
 - `aew.schemas`
 - `aew.util`
 
+### `aew.engine.coverage`
+
+- `aew.engine.harness_ops`
+- `aew.errors`
+- `aew.harness.contract`
+- `aew.harness.runlog`
+- `aew.knowledge.evidence`
+- `aew.policy.checks`
+- `aew.util`
+
 ### `aew.engine.custody_ops`
 
 - `aew.engine.base`
@@ -736,6 +746,7 @@ None.
 
 - `aew.engine.authority`
 - `aew.engine.base`
+- `aew.engine.coverage`
 - `aew.engine.dispatch`
 - `aew.engine.disposition_ops`
 - `aew.engine.gates`
@@ -887,6 +898,7 @@ None.
 ### `aew.engine.integration_ops`
 
 - `aew.engine.base`
+- `aew.engine.coverage`
 - `aew.engine.dispatch`
 - `aew.engine.faults`
 - `aew.engine.guards`
@@ -1036,6 +1048,7 @@ None.
 
 - `aew`
 - `aew.engine.base`
+- `aew.engine.coverage`
 - `aew.engine.dependencies`
 - `aew.engine.gate_ops`
 - `aew.engine.gates`
@@ -1151,7 +1164,9 @@ None.
 ### `aew.engine.validation_ops`
 
 - `aew.engine.base`
+- `aew.engine.coverage`
 - `aew.engine.faults`
+- `aew.engine.harness_ops`
 - `aew.engine.outbox`
 - `aew.engine.ports`
 - `aew.engine.queue_ops`

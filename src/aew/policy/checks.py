@@ -220,7 +220,7 @@ def run(cfg: dict[str, Any], workspace: Path, *, policy: dict[str, Any] | None, 
     # ``outcome`` tells a check that could not start (``spawn_failed``, with its errno) or ran out of time (``timeout``)
     # from one that ran: integration validation (M4-D5) treats the first as infrastructure, the second as inconclusive.
     return {"exit_code": exit_code, "duration_s": round(time.monotonic() - started, 3), "log": log,
-            "command": command, "outcome": outcome, "spawn_errno": spawn_errno,
+            "command": command, "cwd": str(cwd), "outcome": outcome, "spawn_errno": spawn_errno,
             "network": layout.network if layout is not None else None}
 
 

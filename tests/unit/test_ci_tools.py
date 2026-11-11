@@ -1305,6 +1305,36 @@ def test_a_flake_register_path_without_git_proof_or_with_a_force_stays_full(tmp_
     assert tier.shortcut_barred([path]) and tier.shortcut_barred(["tools/flake_register.py"])
 
 
+def test_flake_register_check_cli_rejects_a_dropped_base_entry(tmp_path, monkeypatch, capsys):
+    monkeypatch.syspath_prepend(str(ROOT / "tools"))
+    import flake_register
+
+    git = _git(tmp_path)
+    git("init", "-q")
+    register = tmp_path / tier.FLAKE_REGISTER
+    register.parent.mkdir()
+    (register.parent / "test_sample.py").write_text("def test_sample(): pass\n", encoding="utf-8")
+    entry = {"scope": "test", "test": "tests/test_sample.py::test_sample", "status": "open", "lane": "fast",
+             "platforms": ["windows"], "class": "race", "cause": "unestablished", "owner": "CI",
+             "evidence": [{"run": 1, "job": 2, "at": "2026-11-11T00:00:00Z"}]}
+    doc = {"schema": flake_register.SCHEMA, "entries": [{**entry, "id": "keep"}, {**entry, "id": "dropped"}],
+           "census": []}
+    register.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
+    flake_register.lane_policy()
+    monkeypatch.setattr(flake_register, "ROOT", tmp_path)
+    monkeypatch.setattr(flake_register, "TESTS", register.parent)
+    monkeypatch.setattr(flake_register, "REGISTER_PATH", register)
+
+    assert flake_register.main(["check", "--base", base]) == 0
+    doc["entries"].pop()
+    register.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    assert flake_register.main(["check", "--base", base]) == 1
+    assert "dropped: base entry must be retained" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("code", ["tools/flake_register.py", "tools/ci/tier.py"])
 def test_decide_requires_an_exact_register_path_even_with_valid_history(code):
     assert tier.decide("pull_request", [tier.FLAKE_REGISTER, code], "main", register_valid=True) == "full"

@@ -113,7 +113,8 @@ recurrence or a period without a sighting does not close it. Census-only nodes a
 A pull request into `main` that modifies only the existing register takes the docs tier when both merge parents and
 the tested register can be verified. Creation, deletion, rename, mixed changes, invalid input and unverifiable history
 take full CI. Core fast and serial both compare against the base. Existing entry IDs and their evidence are retained,
-and closing an entry requires a valid closure. A later recurrence can open its own entry with a link to the earlier closure.
+and changing an open entry's lane or platforms requires a valid closure. A later recurrence can open its own entry
+with a link to the earlier closure.
 
 `python tools/flake_register.py queue` ranks open entries by distinct sightings in the trailing seven days and marks
 counts of three or more. The scheduled `flake-queue` job updates a standing issue on green and red nights. It combines

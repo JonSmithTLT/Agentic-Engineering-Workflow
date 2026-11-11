@@ -262,6 +262,9 @@ def validate_history(base: dict[str, Any], current: dict[str, Any]) -> None:
         evidence = {_evidence_key(row): row for row in new["evidence"]}
         if any(evidence.get(_evidence_key(row)) != row for row in old["evidence"]):
             raise InvalidRegister(f"{ident}: base evidence is append-only")
+        if old["status"] == new["status"] == "open":
+            if new["lane"] != old["lane"] or set(new["platforms"]) != set(old["platforms"]):
+                raise InvalidRegister(f"{ident}: changing the lane or platforms of an open entry requires closure")
         if "closure" in old and new.get("closure") != old["closure"]:
             raise InvalidRegister(f"{ident}: base closure must be retained")
 

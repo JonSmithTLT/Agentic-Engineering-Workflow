@@ -14,8 +14,8 @@ entries:
   closure:
     pr: 451
     cause: Exclude atomic temporary siblings only for the named broker-owned files from the writes-nothing snapshot.
-    test: tests/integration/test_lead_relayed_reads.py::test_a_relayed_wait_tells_the_lead_through_its_broker_and_its_own_process_writes_nothing
-    proof: fixed order
+    test: tests/integration/test_lead_relayed_reads.py::test_only_the_wake_files_atomic_temp_siblings_are_exempt
+    proof: fault injection
   evidence:
   - run: 42966482319
     job: 130369441983

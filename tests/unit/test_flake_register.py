@@ -135,6 +135,19 @@ def test_history_allows_append_and_proven_closure_but_preserves_closed_history()
         flake.validate_history(closed, load(document(entry)))
 
 
+@pytest.mark.parametrize(("field", "value"), [("lane", "regression"), ("platforms", ["windows"])])
+def test_history_freezes_open_lane_and_platforms_until_closure(field, value):
+    entry = row(scope="session", lane="regress*", platforms=["linux", "windows"])
+    base = load(document(entry))
+    flake.validate_history(base, load(document({**entry, "platforms": ["windows", "linux"]})))
+    changed = {**entry, field: value}
+    with pytest.raises(flake.InvalidRegister, match="lane or platforms of an open entry requires closure"):
+        flake.validate_history(base, load(document(changed)))
+    changed.update(status="closed", closure={"pr": 101, "cause": "ordered writes", "test": NODE,
+                                             "proof": "fixed order"})
+    flake.validate_history(base, load(document(changed)))
+
+
 def test_duplicate_keys_ids_and_evidence_fail_closed():
     text = yaml.safe_dump(document(row()))
     with pytest.raises(flake.InvalidRegister, match="duplicate mapping key"):

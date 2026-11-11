@@ -1971,8 +1971,8 @@ systems:
     configured: true and a configured execution policy before the pin (E119); src/aew/cli/commands.py:82-87 the flags'
   - src/aew/policy/execution.py:255-262 --model pins regardless of configured; :270-274 an unconfigured policy resolves
     no pin; src/aew/engine/api.py:333-335 doctor's WARN says so
-  - src/aew/knowledge/manifest.py:96 project.profile 'base' is written; src/aew/schemas/project.schema.json:16 declares
-    it; no reader in src/aew (grep); tests/integration/test_authority.py carries it
+  - src/aew/knowledge/manifest.py default_manifest omits project.profile; src/aew/schemas/project.schema.json accepts
+    it for existing projects, as proved by tests/integration/test_init_first_configuration.py
   - docs/implementation/future-work.yaml (row HOLD-19, at c11a61ea) HOLD-19 members F15.5 and F46 to F46.4
 - id: SYS-16
   name: Plan assurance before mutating dispatch (ASSURED)
